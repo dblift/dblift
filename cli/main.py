@@ -26,7 +26,6 @@ from cli._command_handlers import (  # noqa: F401
     _extract_version_filters,
     _handle_baseline,
     _handle_clean,
-    _handle_diff,
     _handle_import_flyway,
     _handle_info,
     _handle_migrate,

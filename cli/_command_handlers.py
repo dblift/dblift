@@ -29,7 +29,6 @@ from cli.handlers._shared import (  # noqa: F401  re-exported public surface
 )
 from cli.handlers.baseline import _handle_baseline
 from cli.handlers.clean import _handle_clean
-from cli.handlers.diff import _handle_diff  # noqa: F401  kept for compatibility re-exports
 from cli.handlers.import_flyway import _handle_import_flyway
 from cli.handlers.info import _handle_info, _info_result_to_dict  # noqa: F401
 from cli.handlers.migrate import _handle_migrate
