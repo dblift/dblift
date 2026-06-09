@@ -411,7 +411,7 @@ dblift plan --snapshot-model prod.snapshot.json --format json --fail-on error
 versioned migrations, changed repeatables, checksum drift for already-applied
 migrations when the snapshot contains checksums, and SQL validation for planned
 SQL scripts. Pending migrations are warnings; checksum drift and SQL validation
-failures are errors. See [Offline Migration Plans](plan.md).
+failures are errors.
 
 ### Importing from Flyway
 

@@ -251,7 +251,6 @@ Legacy runtime transport infrastructure has been removed after the relational pl
 
 ## Related documentation
 
-- **[Adding database support](../development/adding-database-support.md)** — step-by-step guide
-- **[ADR-0026](../adr/0026-dialect-plugin-isolation.md)** — dialect plugin architecture decision
-- **[ADR-0027](../adr/0027-generator-isolation.md)** — generator isolation decision
 - **[Architecture overview](overview.md)** — system-level architecture
+- **[SQL parsing](sql-parsing.md)** — how dblift parses and generates SQL per dialect
+- **[CONTRIBUTING.md](../../CONTRIBUTING.md)** — how to contribute a new database provider

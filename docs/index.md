@@ -56,16 +56,11 @@ Technical deep-dive for developers:
 - **[Database Providers](architecture/database-providers.md)** - Provider system architecture
 - **[SQL Parsing](architecture/sql-parsing.md)** - SQL parsing and analysis
 - **[Configuration](architecture/configuration.md)** - Configuration system details
-- **[Licensing](architecture/licensing.md)** - License validation and enforcement
 
-### 💻 Development
+### 💻 Contributing
 
-Contributing to DBLift:
-
-- **[Setup](development/setup.md)** - Development environment setup
-- **[Testing](development/testing.md)** - Testing guidelines and practices
-- **[Contributing](development/contributing.md)** - How to contribute
-- **[Adding Database Support](development/adding-database-support.md)** - Extending DBLift
+- **[CONTRIBUTING.md](../CONTRIBUTING.md)** - How to contribute
+- **[SECURITY.md](../SECURITY.md)** - Security policy and reporting
 
 ### 📖 Examples
 

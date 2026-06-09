@@ -56,11 +56,11 @@ Plongée technique pour les développeurs :
 - **[Analyse SQL](architecture/sql-parsing.md)** - Analyse et parsing SQL
 - **[Configuration](architecture/configuration.md)** - Détails du système de configuration
 
-### 💻 Développement
+### 💻 Contribuer
 
 Contribuer à DBLift :
 
-> **Note:** La documentation de développement n'est actuellement disponible qu'en anglais. Veuillez consulter la [version anglaise](../development/setup.md).
+> **Note:** La documentation de contribution n'est actuellement disponible qu'en anglais. Veuillez consulter [CONTRIBUTING.md](../../CONTRIBUTING.md).
 
 ### 📖 Exemples
 

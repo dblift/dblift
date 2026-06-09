@@ -31,7 +31,7 @@ customer depends on them contractually.
 | 1.2.x | Security fixes only, HIGH severity |
 | ≤ 1.1.x | End of life — upgrade to 1.3.x |
 
-Python runtime: 3.11+ ([ADR-0004](docs/adr/0004-bump-minimum-python-to-3-11.md)).
+Python runtime: 3.11+ (ADR-0004).
 Older Python versions are not supported; supporting an end-of-life
 runtime is itself a security finding.
 
@@ -56,10 +56,9 @@ Listed in order of sensitivity, highest first.
 |---|---|---|
 | External network attacker | Can reach the target DB host but not the dblift runner | Driver TLS is user-configured; dblift does not add new listeners or ports |
 | Malicious migration author | Writes hostile SQL into a migration file | **Out of scope.** dblift trusts migration content by design (it is a migration runner, not a safety sandbox). Review process is the user's responsibility. |
-| Malicious Python dependency | Pushes compromised version to PyPI | `pip-audit` in CI, pinned version floors, `cryptography`/`PyJWT`/`setuptools` CVEs tracked |
-| Compromised CI runner | Could exfiltrate config or credentials used for integration tests | `DBLIFT_LICENSE_KEY` + DB credentials stored as GitHub secrets; gitleaks gates PRs |
+| Malicious Python dependency | Pushes compromised version to PyPI | `pip-audit` in CI, pinned version floors, `setuptools` CVEs tracked |
+| Compromised CI runner | Could exfiltrate config or credentials used for integration tests | DB credentials stored as GitHub secrets; gitleaks gates PRs |
 | Insider committing a secret to history | Accidentally commits `.env`, private key, or test credentials | `gitleaks` on every PR (`.gitleaks.toml`) + `.gitignore` blanket-excludes `*.log`, `*.pem`, `.env`, `custom_logs/` |
-| Insider bypassing license | Edits the embedded public key or skips the license check | Cannot be prevented in a client-side distribution. The license is a commercial control, not a security boundary |
 
 ### 3.3 Attack surface inventory
 
@@ -70,7 +69,7 @@ Listed in order of sensitivity, highest first.
 | SQL generation (`core/sql_generator/`) | SQL injection in generated DDL | Identifiers quoted via `DialectEnum.quote_identifier` (one policy per dialect); schema / table names restricted to ASCII regex; bandit flags 96 MEDIUM-severity `B608` for intentional SQL-as-string patterns (each reviewed) |
 | Placeholder substitution (`${var}`) | Injection via placeholder values | Substitution runs **before** tokenisation so values cannot smuggle DDL across statement boundaries. Values are still interpreted as literal text; users who place `${var}` inside identifier positions accept the substitution semantics |
 | Native database drivers | Malicious data in DB metadata responses | Metadata is normalized before diffing; driver exceptions are surfaced through dblift error handling |
-| History table writes | History table corruption | `acquire_migration_lock()` / `release_migration_lock()` per dialect, plus transactions where the dialect supports them ([ADR-0007](docs/adr/0007-dialect-capabilities-matrix.md)) |
+| History table writes | History table corruption | `acquire_migration_lock()` / `release_migration_lock()` per dialect, plus transactions where the dialect supports them (ADR-0007) |
 | License JWT validation | Forged license | RS256 with embedded public key; any token whose signature does not verify is rejected before any DB operation |
 
 ## 4. Secrets handling
@@ -79,12 +78,12 @@ Listed in order of sensitivity, highest first.
 |---|---|
 | Never commit secrets to git | `.gitleaks.toml` + CI gate on every PR |
 | Never log secrets | URL masking in `core/utils/url_masking.py`; `--log-format json` sanitises `DBLIFT_DB_PASSWORD` and tokens |
-| Never echo secrets to stdout | `CommandOutput` machine-format contract: stdout carries only the requested payload; banner / license info / status all go to stderr ([ADR-0008](docs/adr/0008-command-output-abstraction.md)) |
+| Never echo secrets to stdout | `CommandOutput` machine-format contract: stdout carries only the requested payload; banner / license info / status all go to stderr (ADR-0008) |
 | Credential sources (merge order) | YAML config < env vars < CLI flags |
 | Credential lifetime | In-memory for the process lifetime; no persistence beyond `~/.dblift/license.key` (license only) |
 
 Historical secret incidents are logged in
-[`docs/security-incidents.md`](docs/security-incidents.md), append-only.
+the security policy, coordinated through GitHub Security Advisories.
 Open items follow internal remediation workflows; specifics of
 unresolved incidents are not summarised here.
 
@@ -92,10 +91,10 @@ unresolved incidents are not summarised here.
 
 | Layer | Control |
 |---|---|
-| Python runtime deps | Pinned floors in `pyproject.toml`; `pip-audit` on every PR; known-CVE floors documented in the stabilization plan |
-| Build system | `setuptools>=78.1.1`, `wheel>=0.46.2` floored post CVE triage ([ADR-0003](docs/adr/0003-drop-python-3-8-support.md) superseded by [0004](docs/adr/0004-bump-minimum-python-to-3-11.md)) |
+| Python runtime deps | Pinned floors in `pyproject.toml`; `pip-audit` on every PR |
+| Build system | `setuptools>=78.1.1`, `wheel>=0.46.2` floored post CVE triage |
 | Docker image | Built from `Dockerfile`; pinned base image; no privilege escalation needed at runtime |
-| Source distribution | Signed git tags; `CHANGELOG.md` tracks every change; squash-merge only ([CONTRIBUTING.md](CONTRIBUTING.md)) |
+| Source distribution | Signed git tags; squash-merge only ([CONTRIBUTING.md](CONTRIBUTING.md)) |
 
 ## 6. Known limitations
 
@@ -106,15 +105,7 @@ authors in a migration file executes with the connection's full
 privileges. Reviewing migration scripts before applying them to
 production is the user's responsibility, not dblift's.
 
-### 6.2 License is a commercial control, not a security boundary
-
-The license JWT protects against unlicensed use in the commercial
-sense (a user who pirates dblift could strip the check). It does not
-protect against any adversary able to run arbitrary code on the dblift
-host — such an adversary already has more capability than circumventing
-the license.
-
-### 6.3 Cosmos DB Emulator master key in test fixtures
+### 6.2 Cosmos DB Emulator master key in test fixtures
 
 Test fixtures under `tests/` contain the **public** Azure Cosmos DB
 Emulator master key (a fixed constant Microsoft publishes for local
@@ -133,22 +124,20 @@ tests rather than prose, so regressions fail CI rather than ship:
 | No known-CVE runtime dependency | `pip-audit` on every PR |
 | No HIGH-severity static finding | `bandit` on every PR |
 | No secret printed on stdout (machine mode) | matrix `test_json_output_contract.py` |
-| No placeholder injection across statement boundaries | `execution_engine` places substitution pre-tokeniser; cache isolated ([ADR-0010](docs/adr/0010-migration-sql-statements-cache-immutability.md)) |
+| No placeholder injection across statement boundaries | `execution_engine` places substitution pre-tokeniser; cache isolated (ADR-0010) |
 | Dialect capabilities match provider runtime | `test_dialect_capabilities.py` (prevents a provider silently dropping a transaction guarantee) |
 
-See [`ARCHITECTURE.md`](ARCHITECTURE.md) §9 for the full list and
-[`docs/stabilization-plan.md`](docs/stabilization-plan.md) for the
-metrics targets.
+See [Architecture overview](docs/architecture/overview.md) for more details.
 
 ## 8. Audit trail
 
 | Artefact | Location |
 |---|---|
-| Architecture decisions | [`docs/adr/`](docs/adr/) (0001–0011) |
-| Historical security incidents | [`docs/security-incidents.md`](docs/security-incidents.md) |
-| Stabilisation program ledger | [`docs/stabilization-plan.md`](docs/stabilization-plan.md) |
+| Architecture decisions | `docs/architecture/` |
+| Security policy | `SECURITY.md` (this file) |
+
 | CI quality gates | `.github/workflows/{code-quality,security,complexity,matrix-tests}.yml` |
-| Source licence | [`LICENSE`](LICENSE) — proprietary |
+| Source licence | [`LICENSE`](LICENSE) — MIT |
 
 ## 9. Contact
 

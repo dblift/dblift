@@ -456,10 +456,10 @@ secrets:
 
 ```yaml
 # GitHub Actions workflow
-- name: Run dblift preflight
+- name: Run dblift migrate
   env:
     AWS_ROLE_ARN: ${{ vars.AWS_ROLE_ARN }}
-  run: dblift preflight ...
+  run: dblift migrate ...
 ```
 
 ## Next Steps

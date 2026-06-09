@@ -88,7 +88,7 @@ Concrete examples of internal APIs:
 | Rename or remove a public symbol | **MAJOR** | Would require a superseding ADR |
 | Remove or rename a keyword argument | **MAJOR** | Same |
 | Change the semantic of a public method | **MAJOR** | e.g. `migrate()` no longer acquires a lock by default |
-| Raise the minimum Python version | **MAJOR** | 3.8 → 3.11 was v1.4.0 ([ADR-0004](adr/0004-bump-minimum-python-to-3-11.md)) |
+| Raise the minimum Python version | **MAJOR** | 3.8 → 3.11 was v1.4.0 |
 | Add a new required field to `DbliftConfig` | **MAJOR** | Existing config files would fail to load |
 | Change the schema of `dblift_schema_history` | **MAJOR** | Existing databases need migration |
 | Remove a supported dialect | **MAJOR** | |
@@ -112,7 +112,7 @@ When a public symbol must be removed or renamed, the process is:
 
 1. **Deprecate in a MINOR release.** Add a `DeprecationWarning` at the
    call site and a "Deprecated since vX.Y" note in the docstring and
-   `CHANGELOG.md`. Do not break behaviour yet.
+   the changelog. Do not break behaviour yet.
 2. **Keep the symbol working** for at least one full minor release
    (typically two).
 3. **Remove in a MAJOR release.** The ADR recording the removal
@@ -131,7 +131,7 @@ on this policy.
 
 ## 5. Enforcement
 
-The CHANGELOG `Unreleased` section is maintained on every PR. At
+A changelog `Unreleased` section is maintained on every PR. At
 release time:
 
 1. The maintainer moves entries from `Unreleased` into a new versioned
@@ -153,18 +153,17 @@ entries appended here, linked from the matching ADR.
 
 | Version | Change | ADR |
 |---|---|---|
-| 1.4.0 (planned) | Minimum Python raised to 3.11 | [0004](adr/0004-bump-minimum-python-to-3-11.md) |
-| 1.4.0 (planned) | `cryptography>=46.0.6` and other dep floors | [0004](adr/0004-bump-minimum-python-to-3-11.md) |
+| 1.4.0 (planned) | Minimum Python raised to 3.11 | 0004 |
+| 1.4.0 (planned) | `cryptography>=46.0.6` and other dep floors | 0004 |
 
 Earlier releases predate this policy and are not retroactively
-catalogued here. Their CHANGELOG entries remain the authoritative
-history.
+catalogued here. Earlier release notes in the enterprise changelog remain the authoritative history.
 
 ## 7. Links
 
 - [PEP 440 — Python version specifiers](https://peps.python.org/pep-0440/)
 - [PEP 561 — Distributing and packaging type information](https://peps.python.org/pep-0561/)
 - [Semantic Versioning 2.0.0](https://semver.org/)
-- [`ARCHITECTURE.md` §5 Public API surface](../ARCHITECTURE.md)
-- [`CHANGELOG.md`](../CHANGELOG.md)
-- [ADRs](adr/README.md)
+- `ARCHITECTURE.md`
+- `CHANGELOG.md`
+- ADRs

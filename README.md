@@ -911,8 +911,7 @@ dblift db diagnose-connection
 For advanced features and technical details, see:
 
 - **[SQL validator rule packs](core/sql_validator/rule_packs/README.md)** - Declarative SQL validation and `validate-sql`
-- **[Architecture Guide](ARCHITECTURE.md)** - Technical design details
-- **[Contributing](docs/development/contributing.md)** - Development setup and guidelines
+- **[Contributing](CONTRIBUTING.md)** - Development setup and guidelines
 - **[Documentation index](docs/README.md)** - User guide, API reference, and architecture topics
 - **[Cosmos DB configuration](docs/user-guide/configuration.md#cosmosdb-configuration)** - Account settings and emulator
 - **[Commands reference (incl. diff / Cosmos DB)](docs/user-guide/commands.md)** - CLI behavior including Cosmos-related diff output
@@ -938,7 +937,7 @@ A: Yes, DBLift tracks which migrations have been applied in the database itself.
 A: DBLift automatically rolls back the failed migration so your database stays in a consistent state.
 
 **Q: Can I run migrations in CI/CD pipelines?**
-A: Absolutely! See [core/sql_validator/rule_packs/README.md](core/sql_validator/rule_packs/README.md) and [docs/development/testing.md](docs/development/testing.md) for validation and testing workflows.
+A: Absolutely! See [core/sql_validator/rule_packs/README.md](core/sql_validator/rule_packs/README.md) and the [GitHub Actions validate-sql.yml template](.github/workflows/validate-sql.yml) for validation and CI integration.
 
 ---
 

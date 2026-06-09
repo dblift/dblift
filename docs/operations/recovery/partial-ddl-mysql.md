@@ -5,9 +5,9 @@ A multi-statement migration that fails on statement N has already
 committed statements 1..N−1, and there is no rollback. The schema is
 half-applied; the audit table records the migration as `FAILED`.
 
-Applies to: **MySQL, MariaDB, Oracle** (DDL autocommit per `ARCHITECTURE.md`
-§ 4.2). Also applies to **Cosmos DB** which has no transaction concept
-at all.
+Applies to: **MySQL, MariaDB, Oracle** (DDL autocommit — each DDL statement
+is its own implicit transaction). Also applies to **Cosmos DB** which has no
+transaction concept at all.
 
 Does NOT apply to PostgreSQL, SQL Server, DB2, SQLite — those dialects
 roll the whole migration back automatically when a statement fails.

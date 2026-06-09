@@ -58,14 +58,9 @@ When in doubt, run `dblift info` and the direct SELECT first, then
 choose the runbook that matches what you see. Reach for `repair` only
 after the matching runbook explicitly directs you to.
 
-## Related architecture sections
+## Related documentation
 
-- [`ARCHITECTURE.md` § 4.2 Transactionality by dialect](../../../ARCHITECTURE.md) —
-  which dialects autocommit DDL (Oracle, MySQL) and therefore can leave
-  partial state behind.
-- [`ARCHITECTURE.md` § 4.1 Contracts the system guarantees](../../../ARCHITECTURE.md) —
-  the invariants `dblift migrate` upholds when the process completes
-  normally.
-- [ADR-0007 Transactional DDL matrix](../../adr/0007-transactional-ddl.md)
-  (if present) — the rationale for the per-dialect transactionality
-  flags.
+- [Architecture overview](../../architecture/overview.md) — the invariants
+  `dblift migrate` upholds and which dialects autocommit DDL (Oracle, MySQL).
+- [Database providers](../../architecture/database-providers.md) — per-dialect
+  transactionality behaviour.
