@@ -17,4 +17,4 @@ docker>=6.1.2
 types-PyYAML>=6.0.12.12
 types-setuptools
 pre-commit>=4.0.0
-Cython>=3.0.0
+Cython>=3.2.5
