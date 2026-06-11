@@ -34,7 +34,6 @@ class MysqlQuirks(BaseQuirks):
     missing_connection_identifier_hint = "MySQL connection requires url or host/database fields"
     sqlglot_dialect = "mysql"
     pygments_lexer = "mysql"
-    lint_placeholder_url = "mysql+pymysql://127.0.0.1:3306/dblift_validate_sql"
     quote_open = "`"
     quote_close = "`"
     drop_supports_if_exists = True

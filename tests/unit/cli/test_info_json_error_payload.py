@@ -83,7 +83,7 @@ class TestInfoJsonErrorPayload:
             _handle_info(ctx)
 
     def test_system_exit_always_propagates(self):
-        """``SystemExit`` (raised by license validation, argparse, etc.) must
+        """``SystemExit`` (raised by argparse, etc.) must
         propagate so the process exits with the correct code. Swallowing it
         as a JSON payload would leave the process running."""
         ctx = _make_ctx("json", SystemExit(2))

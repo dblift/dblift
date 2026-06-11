@@ -35,7 +35,6 @@ class SqlserverQuirks(BaseQuirks):
     clean_strategy = "introspector"
     sqlglot_dialect = "tsql"
     pygments_lexer = "tsql"
-    lint_placeholder_url = "mssql+pymssql://127.0.0.1:1433/master"
     connection_identifier_attrs = ("url", "host", "database")
     missing_connection_identifier_hint = (
         "SQL Server connection requires url or host/database fields"

@@ -67,7 +67,6 @@ def test_docker_manifests_do_not_install_jvm_runtime():
         assert not any(term.lower() in content for term in forbidden_terms), dockerfile
 
 
-
 @pytest.mark.unit
 def test_runtime_image_installs_native_driver_extra():
     content = (ROOT / "Dockerfile").read_text(encoding="utf-8")

@@ -1,19 +1,19 @@
-"""Secrets resolution stub for OSS edition.
+"""Secrets resolution stub for the public package.
 
 Secret URI providers (vault://, aws-secrets://, azure-keyvault://, etc.) are
-an enterprise feature. This stub keeps the config layer importable without
-any external dependencies.
+not bundled here. This stub keeps the config layer importable without external
+secret-manager dependencies.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any, Dict, Optional
 
 
 @dataclass
 class SecretsConfig:
-    """No-op secrets config for OSS edition."""
+    """No-op secrets config for the public package."""
 
     vault: Optional[Any] = None
     aws: Optional[Any] = None
@@ -26,7 +26,7 @@ class SecretsConfig:
 
 
 def resolve_secret_refs(data: Any, secrets_config: Optional[SecretsConfig] = None) -> Any:
-    """In OSS, secret URI resolution is a no-op — return data unchanged."""
+    """Secret URI resolution is a no-op in this package; return data unchanged."""
     return data
 
 

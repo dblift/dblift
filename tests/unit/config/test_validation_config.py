@@ -30,7 +30,7 @@ class TestValidationConfig:
         """Test creating ValidationConfig from dictionary."""
         data = {
             "enabled": False,
-            "rule_profile": "enterprise",
+            "rule_profile": "strict",
             "rules": ["no_grant_all_privileges", "require_primary_key"],
             "fail_on": "warning",
             "severity_threshold": "error",
@@ -43,7 +43,7 @@ class TestValidationConfig:
 
         assert config.enabled is False
         assert config.rules_file is None
-        assert config.rule_profile == "enterprise"
+        assert config.rule_profile == "strict"
         assert config.rules == ["no_grant_all_privileges", "require_primary_key"]
         assert config.fail_on == "warning"
         assert config.severity_threshold == "error"
@@ -113,7 +113,7 @@ class TestValidationConfig:
     def test_rules_file_cannot_be_combined_with_profile(self):
         """Test that custom rule files are exclusive with built-in profiles."""
         with pytest.raises(ValueError, match="--rules-file cannot be combined"):
-            ValidationConfig(rules_file=".my_rules.yaml", rule_profile="enterprise")
+            ValidationConfig(rules_file=".my_rules.yaml", rule_profile="strict")
 
     def test_rules_file_cannot_be_combined_with_rules(self):
         """Test that custom rule files are exclusive with selected rules."""

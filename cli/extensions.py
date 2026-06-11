@@ -28,8 +28,7 @@ def register_builtin_command_extensions(parser: ArgumentParser) -> None:
 def load_builtin_command_handlers() -> Dict[str, CommandHandler]:
     """Return first-party command handlers kept in the OSS package.
 
-    Diff and other introspection-backed commands ship with dblift-enterprise
-    as entry-point extensions, not in this package.
+    Additional commands can be installed as entry-point extensions.
     """
     return {}
 

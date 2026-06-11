@@ -44,7 +44,6 @@ from core.logger import (
     MultiLog,
     NullLog,
     OperationResult,
-    PlanResult,
     OutputFormatter,
     OutputFormatterFactory,
     RepairResult,
@@ -157,7 +156,7 @@ entries appended here, linked from the matching ADR.
 | 1.4.0 (planned) | `cryptography>=46.0.6` and other dep floors | 0004 |
 
 Earlier releases predate this policy and are not retroactively
-catalogued here. Earlier release notes in the enterprise changelog remain the authoritative history.
+catalogued here. Earlier release notes remain the authoritative history.
 
 ## 7. Links
 

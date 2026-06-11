@@ -8,7 +8,7 @@ from ``core.logger.log`` for back-compat. JSON / HTML formatters live in
 import logging
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Optional
 
 from core.logger._levels import LogEvent, LogLevel
 
@@ -17,8 +17,6 @@ _logger = logging.getLogger(__name__)
 
 class LogFormatter:
     """Base class for all log formatters."""
-
-    license_info: Optional[Dict[str, Any]] = None
 
     def format_event(self, event: LogEvent) -> Optional[str]:
         """Format a log event."""
@@ -111,18 +109,6 @@ class TextFormatter(LogFormatter):
 
         if version:
             lines.append(f"Dblift version: {version}")
-
-        # License information
-        if self.license_info:
-            name = self.license_info.get("customer_name", "")
-            email = self.license_info.get("customer_email", "")
-            lines.append(f"Licensed to: {name} ({email})")
-            expires = self.license_info.get("expires_at", "Never")
-            days = self.license_info.get("days_remaining")
-            if days is not None:
-                lines.append(f"License expires: {expires} ({days} days remaining)")
-            else:
-                lines.append(f"License expires: {expires}")
 
         # Database/schema info intentionally omitted — rendered in the
         # per-command header (DBLIFT COMMAND: X) to avoid duplication.

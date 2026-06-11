@@ -14,6 +14,7 @@ import pytest
 
 from cli.main import create_parser, execute_single_command, parse_with_selective_errors
 
+
 @pytest.mark.unit
 class TestParseWithSelectiveErrors:
     """Test parse_with_selective_errors function."""
@@ -108,6 +109,7 @@ class TestParseWithSelectiveErrors:
             finally:
                 sys.stderr = old_stderr
 
+
 @pytest.mark.unit
 class TestCreateParserSuppressErrors:
     """Test create_parser with suppress_errors option."""
@@ -125,6 +127,7 @@ class TestCreateParserSuppressErrors:
         assert parser is not None
         # Normal error method should exist
         assert hasattr(parser, "error")
+
 
 @pytest.mark.unit
 class TestCreateParser:
@@ -187,6 +190,7 @@ class TestCreateParser:
         parser = create_parser(exit_on_error=False)
         assert parser is not None
         assert hasattr(parser, "parse_args")
+
 
 @pytest.mark.unit
 class TestExecuteSingleCommand:

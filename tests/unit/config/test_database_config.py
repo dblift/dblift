@@ -219,7 +219,7 @@ class TestDbSpecificFieldsOcp:
     ]
 
     def test_base_config_has_no_db_specific_fields(self):
-        enterprise_fields = [
+        db_specific_fields = [
             "instance",
             "encrypt",
             "trust_server_certificate",
@@ -228,7 +228,7 @@ class TestDbSpecificFieldsOcp:
             "collection",
         ]
         base_fields = set(BaseDatabaseConfig.__dataclass_fields__.keys())
-        for field_name in enterprise_fields:
+        for field_name in db_specific_fields:
             assert (
                 field_name not in base_fields
             ), f"'{field_name}' should not be in BaseDatabaseConfig"

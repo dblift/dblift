@@ -30,7 +30,6 @@ class HtmlFormatter:
             # Default to the templates directory in the parent logger directory
             template_dir = Path(__file__).parent.parent / "templates"
 
-        self.license_info: Optional[Dict[str, Any]] = None
         self.template_dir = template_dir
         self.env = jinja2.Environment(
             loader=jinja2.FileSystemLoader(str(template_dir)),
@@ -240,7 +239,6 @@ class HtmlFormatter:
                 "per_migration_journal": per_migration_journal,
                 "server_name": self._extract_server_from_result(result),
                 "report_time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                "license_info": self.license_info,
                 "logo_path": "",
             }
 

@@ -129,7 +129,6 @@ class TestBug06LogLevelAppliedEverywhere(unittest.TestCase):
             self.assertEqual(file_logs[0].log_level, LogLevel.ERROR)
 
 
-
 # ---------------------------------------------------------------------------
 # BUG-09: migration.script.* events actually fire
 # ---------------------------------------------------------------------------

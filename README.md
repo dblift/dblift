@@ -306,53 +306,6 @@ dblift migrate
 
 Now only migrations after version 1.0.0 will be applied.
 
-### Exporting Existing Schema
-
-If you have an existing database and want to create migration files from it:
-
-**Export entire schema from live database (default):**
-```bash
-dblift export-schema --output migrations/V1__baseline.sql
-```
-
-**Export schema from database stored snapshot:**
-```bash
-dblift export-schema --source=database-model --output migrations/V1__baseline.sql
-```
-
-**Export schema from a JSON model file:**
-```bash
-dblift export-schema --source=file-model --snapshot-model snapshots/schema.json --output migrations/V1__baseline.sql
-```
-
-**Export only specific object types:**
-```bash
-dblift export-schema --types tables,views,functions --output migrations/schema.sql
-```
-
-**Export only managed objects (objects defined in migrations):**
-```bash
-dblift export-schema --managed-only --output migrations/managed.sql
-```
-
-**Export only unmanaged objects (brownfield baseline):**
-```bash
-dblift export-schema --unmanaged-only --output migrations/unmanaged.sql
-```
-
-**Export with filtering by migration tags/versions:**
-```bash
-dblift export-schema --managed-only --tags feature1,feature2 --output migrations/feature.sql
-dblift export-schema --managed-only --target-version=1.5.0 --output migrations/up_to_1_5.sql
-```
-
-**Split output by object type:**
-```bash
-dblift export-schema --split-by-type --output-dir migrations/baseline/
-```
-
-This creates separate files for tables, views, functions, etc.
-
 ### Exporting Schema Snapshots
 
 **Export snapshot from database (latest stored snapshot):**
@@ -380,7 +333,6 @@ Here are the commands you'll use most often:
 | `dblift undo --dry-run --show-sql` | Preview undo scripts and SQL without applying | Review rollback SQL before execution |
 | `dblift undo --target-version=X` | Rolls back to a specific version | Reverse recent changes |
 | `dblift validate` | Checks migrations for errors | Before applying changes |
-| `dblift export-schema` | Exports schema to SQL files from live database, database model, or file model | Capture an existing database as migrations |
 | `dblift snapshot` | Exports schema snapshot to JSON model file from database or live database | Create snapshot for diff comparisons |
 | `dblift baseline --baseline-version=X` | Mark migrations as already applied | Working with existing databases |
 
@@ -397,12 +349,6 @@ dblift undo --target-version=1.0.0
 
 # Working with existing databases
 dblift baseline --baseline-version=2.0.0
-
-# Export schema from live database to SQL
-dblift export-schema --output migrations/schema.sql
-
-# Export schema from database stored snapshot to SQL
-dblift export-schema --source=database-model --output migrations/schema.sql
 
 # Export schema snapshot to JSON model file
 dblift snapshot --output snapshots/public_schema.json
@@ -786,43 +732,6 @@ dblift clean            # Actually clean
 
 ---
 
-## Advanced Commands
-
-### Comparing Database State (diff)
-
-Compare your current database state with what migrations define, or compare migrations against stored snapshots:
-
-**Compare live database with migrations:**
-```bash
-dblift diff
-```
-
-This will show any drift between your database and what your migrations should have created.
-
-**Compare database-stored snapshot with migrations:**
-```bash
-dblift diff --source=database-model
-```
-
-**Compare file-stored snapshot with migrations:**
-```bash
-dblift diff --source=file-model --snapshot-model=snapshots/prod.json
-```
-
-**Ignore unmanaged objects in comparison:**
-```bash
-dblift diff --ignore-unmanaged
-```
-
-**Compare only up to specific version:**
-```bash
-dblift diff --target-version=1.5.0
-```
-
-**Generate SQL from diffs (diff-to-SQL):**
-
-The `diff` command can generate SQL scripts to synchronize schemas. For CosmosDB, operations requiring Azure SDK (like `DROP CONTAINER`) are automatically translated to SDK operations. Generated scripts include both SQL statements and Python SDK code for manual execution if needed.
-
 ### Repairing Migration History
 
 If your migration history table gets corrupted or out of sync:
@@ -841,22 +750,6 @@ This will:
 - Recalculate checksums for applied migrations
 - Fix any inconsistencies in the history table
 - Ensure history matches migration files
-
-### Validating SQL Syntax
-
-Validate SQL syntax before applying migrations:
-
-**Validate all migrations:**
-```bash
-dblift validate-sql
-```
-
-This checks SQL syntax against your target database dialect without executing it.
-Use built-in rule profiles to enforce SQL standards in CI:
-
-```bash
-dblift validate-sql migrations/ --profile strict --fail-on warning --format github-actions
-```
 
 ### Importing from Flyway
 
@@ -908,13 +801,12 @@ dblift db diagnose-connection
 
 ### Documentation
 
-For advanced features and technical details, see:
+For technical details, see:
 
-- **[SQL validator rule packs](core/sql_validator/rule_packs/README.md)** - Declarative SQL validation and `validate-sql`
 - **[Contributing](CONTRIBUTING.md)** - Development setup and guidelines
 - **[Documentation index](docs/README.md)** - User guide, API reference, and architecture topics
 - **[Cosmos DB configuration](docs/user-guide/configuration.md#cosmosdb-configuration)** - Account settings and emulator
-- **[Commands reference (incl. diff / Cosmos DB)](docs/user-guide/commands.md)** - CLI behavior including Cosmos-related diff output
+- **[Commands reference](docs/user-guide/commands.md)** - CLI behavior and examples
 
 ### Configuration Templates
 
@@ -937,7 +829,7 @@ A: Yes, DBLift tracks which migrations have been applied in the database itself.
 A: DBLift automatically rolls back the failed migration so your database stays in a consistent state.
 
 **Q: Can I run migrations in CI/CD pipelines?**
-A: Absolutely! See [core/sql_validator/rule_packs/README.md](core/sql_validator/rule_packs/README.md) and the [GitHub Actions validate-sql.yml template](.github/workflows/validate-sql.yml) for validation and CI integration.
+A: Absolutely. Run `dblift validate` and `dblift migrate` in your pipeline using the same configuration you use locally.
 
 ---
 

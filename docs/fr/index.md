@@ -8,9 +8,8 @@
 
 DBLift vous aide à suivre et appliquer les changements de base de données de manière systématique. Pensez-y comme un contrôle de version pour votre schéma de base de données - chaque changement est suivi, peut être annulé et fonctionne de manière cohérente dans différents environnements.
 
-![Python](https://img.shields.io/badge/Python-3.8%2B-blue)
-![Java](https://img.shields.io/badge/Java-11%2B-orange)
-![License](https://img.shields.io/badge/License-Proprietary-red)
+![Python](https://img.shields.io/badge/Python-3.11%2B-blue)
+![License](https://img.shields.io/badge/License-MIT-green)
 [![Tests](https://github.com/cmodiano/dblift/actions/workflows/unit-tests.yml/badge.svg)](https://github.com/cmodiano/dblift/actions/workflows/unit-tests.yml)
 [![Code Quality](https://github.com/cmodiano/dblift/actions/workflows/code-quality.yml/badge.svg)](https://github.com/cmodiano/dblift/actions/workflows/code-quality.yml/badge.svg)
 [![Coverage](https://codecov.io/gh/cmodiano/dblift/branch/main/graph/badge.svg)](https://codecov.io/gh/cmodiano/dblift/branch/main/graph/badge.svg) (Tests unitaires + intégration combinés)

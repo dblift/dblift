@@ -193,6 +193,7 @@ class TestBug22UrlPrefixDialect(unittest.TestCase):
         result = self._detect("mysql+pymysql://h:3306/oracle_migrated_db")
         self.assertEqual(result, "mysql")
 
+
 # ---------------------------------------------------------------------------
 # B10-BUG-23: SQLite partial-index WHERE predicate must round-trip
 # ---------------------------------------------------------------------------

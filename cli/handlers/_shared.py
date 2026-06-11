@@ -12,10 +12,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-# Flyway-compatible migration filename patterns — used by validate-sql to
-# skip non-migration SQL files when scanning a directory (e.g. leftover
-# temp files, schema dumps) so only intentional migration scripts are
-# checked. Explicitly-listed files are always validated regardless of name.
+# Flyway-compatible migration filename patterns.
 _MIGRATION_FILENAME_RE = re.compile(
     r"^[VRUBvrub][\d_.]*__.*\.sql$",
     re.IGNORECASE,

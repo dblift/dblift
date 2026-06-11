@@ -26,7 +26,6 @@ class TestBug01RecursiveIsGlobal(unittest.TestCase):
 
         global_only_args = [
             "--version",
-            "--license-key",
             "--log-dir",
             "--log-format",
             "--log-level",
@@ -69,8 +68,9 @@ class TestBug01RecursiveIsGlobal(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
-# B8-BUG-02: SQLite export-schema must ignore --db-schema and use "main"
+# B8-BUG-02: SQLite schema operations must ignore --db-schema and use "main"
 # ---------------------------------------------------------------------------
+
 
 class TestBug04JavaFqcnStrip(unittest.TestCase):
     def _capture(self, exc):

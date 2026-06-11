@@ -1009,10 +1009,6 @@
                         <p class="mb-3 text-base"><i class="fas fa-server mr-2"></i> Server: {{ server_name|default('localhost') }}</p>
                         <p class="mb-3 text-base"><i class="fas fa-database mr-2"></i> Database: {{ database_name }}</p>
                         <p class="mb-3 text-base"><i class="fas fa-folder-open mr-2"></i> Schema: <strong>{{ schema_name }}</strong></p>
-                        {% if license_info %}
-                        <p class="mb-3 text-base"><i class="fas fa-id-badge mr-2"></i> Licensed to: <strong>{{ license_info.customer_name }}</strong> ({{ license_info.customer_email }})</p>
-                        <p class="mb-3 text-base"><i class="fas fa-clock mr-2"></i> License expires: {{ license_info.expires_at }}{% if license_info.days_remaining is not none %} ({{ license_info.days_remaining }} days remaining){% endif %}</p>
-                        {% endif %}
                         {% set schema_version = current_version %}
                         {% if not schema_version and unified_commands %}
                             {% for cmd in unified_commands %}

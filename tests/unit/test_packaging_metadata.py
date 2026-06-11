@@ -27,7 +27,7 @@ def test_pyproject_requires_python_311_or_newer():
 
 
 @pytest.mark.unit
-def test_pyproject_packages_enterprise_report_template():
+def test_pyproject_packages_report_template():
     with (ROOT / "pyproject.toml").open("rb") as handle:
         pyproject = tomllib.load(handle)
 

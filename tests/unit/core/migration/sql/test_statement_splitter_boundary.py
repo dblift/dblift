@@ -60,5 +60,3 @@ def test_sql_parser_factory_get_parser_honors_regex_parser_type():
     parser = factory.get_parser()
 
     assert parser.__class__.__name__ == "PostgreSqlRegexParser"
-
-

@@ -136,7 +136,6 @@ class _CliContext:
     config: Optional[Any]  # config.DbliftConfig | None (None for `db` subcommands)
 
 
-
 def main() -> None:
     """Main entry point for DBLift CLI application.
 
@@ -260,8 +259,7 @@ def _setup_logging_and_output(ctx: _CliContext) -> CommandOutput:
     logging configuration / banner setup that the migration workflow
     requires.
 
-    Side effects: reassigns ``ctx.log`` to the fully-configured logger and
-    attaches the license info to every sub-log's formatter.
+    Side effects: reassigns ``ctx.log`` to the fully-configured logger.
     """
     # Handle db utility commands (single command only, no chaining)
     if ctx.commands[0] == "db":

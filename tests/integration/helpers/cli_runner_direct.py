@@ -279,9 +279,6 @@ class DBLiftCLIDirect:
             argv.extend(["--description", kwargs["description"]])
         if kwargs.get("source"):
             argv.extend(["--source", kwargs["source"]])
-        if kwargs.get("snapshot_model"):
-            argv.extend(["--snapshot-model", kwargs["snapshot_model"]])
-
         return argv
 
     def _run_command(self, command: str, **kwargs) -> CommandResult:
@@ -434,45 +431,6 @@ class DBLiftCLIDirect:
             ignore_unmanaged=ignore_unmanaged,
             **kwargs,
         )
-
-    def export_schema(
-        self,
-        output_file: Optional[Path] = None,
-        output_dir: Optional[Path] = None,
-        split_by_type: bool = False,
-        types: Optional[str] = None,
-        tables: Optional[str] = None,
-        managed_only: bool = False,
-        unmanaged_only: bool = False,
-        include_drops: bool = False,
-        schema: Optional[str] = None,
-        description: Optional[str] = None,
-        **kwargs,
-    ) -> CommandResult:
-        """Run export-schema command."""
-        output_kwargs = {}
-        if output_file:
-            output_kwargs["output"] = str(output_file)
-        if output_dir:
-            output_kwargs["output_dir"] = str(output_dir)
-        if split_by_type:
-            output_kwargs["split_by_type"] = True
-        if types:
-            output_kwargs["types"] = types
-        if tables:
-            output_kwargs["tables"] = tables
-        if managed_only:
-            output_kwargs["managed_only"] = True
-        if unmanaged_only:
-            output_kwargs["unmanaged_only"] = True
-        if include_drops:
-            output_kwargs["include_drops"] = True
-        if schema:
-            output_kwargs["schema"] = schema
-        if description:
-            output_kwargs["description"] = description
-
-        return self._run_command("export-schema", **output_kwargs, **kwargs)
 
     def snapshot(
         self,

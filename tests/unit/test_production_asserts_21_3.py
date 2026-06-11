@@ -45,7 +45,6 @@ class TestNoRemainingAsserts:
     def test_python_executor_no_assert(self):
         self._assert_no_bare_assert("core/migration/executors/python_executor.py")
 
-
     def test_sqlalchemy_provider_no_assert(self):
         self._assert_no_bare_assert("db/sqlalchemy_provider.py")
 

@@ -22,7 +22,6 @@ from core.logger.results import (
     MigrateResult,
     MigrationInfo,
     OperationResult,
-    PlanResult,
     RepairResult,
     ValidateResult,
 )
@@ -428,7 +427,6 @@ __all__ = [
     "ConsoleLog",
     "MultiLog",
     "OperationResult",
-    "PlanResult",
     "MigrateResult",
     "MigrationInfo",
     "InfoResult",

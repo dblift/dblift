@@ -1,8 +1,8 @@
 """
 Database capability matrix for version-specific features.
 
-Provides a comprehensive mapping of database features to their
-minimum version requirements and availability across editions.
+Provides a comprehensive mapping of database capabilities to their
+minimum version requirements and edition availability.
 """
 
 from dataclasses import dataclass
@@ -13,12 +13,11 @@ from core.introspection.version_detector import DatabaseVersion
 
 @dataclass
 class FeatureRequirement:
-    """Represents version and edition requirements for a feature."""
+    """Represents version and edition requirements for a database capability."""
 
     min_version: Optional[DatabaseVersion] = None
     max_version: Optional[DatabaseVersion] = None
-    editions: Optional[Set[str]] = None  # e.g., {"Enterprise", "Standard"}
-    requires_license: bool = False
+    editions: Optional[Set[str]] = None  # e.g., {"Developer", "Standard"}
     notes: Optional[str] = None
 
 
@@ -82,9 +81,7 @@ class CapabilityMatrix:
         ),
         "adaptive_plans": FeatureRequirement(
             min_version=DatabaseVersion(12, 1),
-            editions={"Enterprise"},
-            requires_license=True,
-            notes="Adaptive execution plans (Enterprise only)",
+            notes="Adaptive execution plans",
         ),
     }
 
@@ -124,13 +121,13 @@ class CapabilityMatrix:
         ),
         "columnstore_indexes": FeatureRequirement(
             min_version=DatabaseVersion(11, 0),  # SQL Server 2012
-            editions={"Enterprise", "Developer"},
-            notes="Columnstore indexes (Enterprise/Developer)",
+            editions={"Developer", "Standard"},
+            notes="Columnstore indexes",
         ),
         "memory_optimized_tables": FeatureRequirement(
             min_version=DatabaseVersion(12, 0),  # SQL Server 2014
-            editions={"Enterprise", "Developer"},
-            notes="In-Memory OLTP (Enterprise/Developer)",
+            editions={"Developer", "Standard"},
+            notes="In-Memory OLTP",
         ),
         "graph_database": FeatureRequirement(
             min_version=DatabaseVersion(14, 0),  # SQL Server 2017

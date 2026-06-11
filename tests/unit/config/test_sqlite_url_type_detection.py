@@ -109,5 +109,3 @@ database:
 
         assert isinstance(config.database, SQLiteConfig)
         assert config.database.path == str(new_db)
-
-

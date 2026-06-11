@@ -197,7 +197,7 @@ class TestSqlGenerator:
     def test_generate_schema_script_single_file_includes_sequences(self):
         """Regression guard for BUG-C: SINGLE_FILE must include sequences.
 
-        Reported symptom: ``export-schema --output schema.sql`` appeared to drop
+        Reported symptom: generated schema SQL appeared to drop
         sequences while ``--split-by-type`` kept them. Locks in the generator
         behavior — sequences flow through the same ``generate_ddl`` loop as
         tables regardless of ``OrganizationStrategy``, so both paths emit them.
@@ -1123,7 +1123,7 @@ class TestScriptOrganizer:
         assert len(ordered) == 2
 
     def test_order_by_dependencies_circular_dependency_logs_debug_not_warning(self, caplog):
-        """Cycle details should be hidden from normal export-schema output."""
+        """Cycle details should be hidden from normal schema output."""
         organizer = ScriptOrganizer()
         table = Table(
             name="categories",

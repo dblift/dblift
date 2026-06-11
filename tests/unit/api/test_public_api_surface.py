@@ -53,7 +53,6 @@ class TestApiPackageSurface:
 
         assert EventType is not None
 
-
     def test_all_lists_exactly_three_symbols(self):
         """``api.__all__`` is the contract. Additions are MINOR bumps
         (document in semver-policy.md + CHANGELOG); removals are MAJOR."""
@@ -222,7 +221,6 @@ class TestLoggerPackageSurface:
         "MultiLog",
         "NullLog",
         "OperationResult",
-        "PlanResult",
         "OutputFormatter",
         "OutputFormatterFactory",
         "RepairResult",

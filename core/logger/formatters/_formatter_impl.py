@@ -24,7 +24,6 @@ from core.logger.results import (
     InfoResult,
     MigrateResult,
     OperationResult,
-    PlanResult,
     RepairResult,
     UndoResult,
     ValidateResult,
@@ -60,7 +59,6 @@ class OutputFormatter(
         RepairResult: ("format_repair", "repair"),
         DiffResult: ("format_diff", "diff"),
         UndoResult: ("format_undo", "undo"),
-        PlanResult: ("format_plan", "plan"),
     }
 
     def __init__(self) -> None:
@@ -190,55 +188,6 @@ class OutputFormatter(
             output.append("No migrations were undone.")
 
         self._append_sql_visibility(output, result)
-        return "\n".join(output)
-
-    def format_plan(self, result: PlanResult) -> str:
-        """Format an offline plan operation result."""
-        output = []
-        output.append("Migration Plan Report")
-        output.append("=====================")
-        output.append(f"Snapshot: {result.snapshot_model or ''}")
-        output.append("Status: SUCCESS" if result.success else "Status: FAILED")
-        if result.error_message:
-            output.append(f"Error: {result.error_message}")
-        output.append(f"Applied in snapshot: {result.already_applied_count}")
-        output.append(f"Pending versioned: {result.pending_count}")
-        output.append(f"Pending repeatable: {result.repeatables_pending_count}")
-        output.append(f"Checksum drift: {result.checksum_drift_count}")
-        if result.sql_validation:
-            output.append(
-                "SQL validation: "
-                f"{result.sql_validation.status} "
-                f"({result.sql_validation.files_checked} files)"
-            )
-        if result.pending_migrations:
-            output.append("")
-            output.append("Pending Migrations:")
-            for migration in result.pending_migrations:
-                output.append(f"- {migration.script}")
-        if result.repeatables_pending:
-            output.append("")
-            output.append("Repeatables Pending:")
-            for migration in result.repeatables_pending:
-                output.append(f"- {migration.script}")
-        if result.checksum_drift:
-            output.append("")
-            output.append("Checksum Drift:")
-            for drift in result.checksum_drift:
-                output.append(
-                    f"- {drift.script}: snapshot={drift.expected_checksum}, "
-                    f"local={drift.actual_checksum}"
-                )
-        if result.plan_errors:
-            output.append("")
-            output.append("Errors:")
-            for error in result.plan_errors:
-                output.append(f"- {error}")
-        if result.plan_warnings:
-            output.append("")
-            output.append("Warnings:")
-            for warning in result.plan_warnings:
-                output.append(f"- {warning}")
         return "\n".join(output)
 
     def _append_sql_visibility(self, output: list[str], result: OperationResult) -> None:

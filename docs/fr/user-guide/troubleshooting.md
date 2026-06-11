@@ -103,9 +103,6 @@ dblift info
 
 # Valider les migrations
 dblift validate
-
-# Valider la syntaxe SQL
-dblift validate-sql
 ```
 
 ## Prochaines Étapes

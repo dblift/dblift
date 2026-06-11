@@ -140,7 +140,7 @@ class SQLServerSqlGenerator(BaseSqlGenerator):
         ``view.materialized`` and returns the generic
         ``"MATERIALIZED VIEW {schema}.{name}"`` fragment, which is invalid
         T-SQL. Build the prefix locally with a hard-coded ``VIEW`` keyword so
-        the output round-trips through ``export-schema`` → re-import cleanly.
+        the generated DDL can be re-imported cleanly.
         """
         schema_prefix = self._schema_prefix_from_object(view)
         view_name = view.format_identifier(view.name)

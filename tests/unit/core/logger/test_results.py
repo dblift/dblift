@@ -14,7 +14,6 @@ from core.logger.results import (
     MigrationInfo,
     MigrationSqlInfo,
     OperationResult,
-    PlanResult,
     RepairResult,
     ValidateResult,
 )
@@ -218,31 +217,6 @@ class TestCommandResult:
         output = result.get_output()
 
         assert output == ["Test output"]
-
-
-class TestPlanResult:
-    def test_plan_result_initialization(self):
-        result = PlanResult()
-
-        assert result.pending_count == 0
-        assert result.checksum_drift_count == 0
-        assert result.success is True
-
-    def test_plan_result_fails_when_errors_present(self):
-        result = PlanResult()
-
-        result.plan_errors.append("validate-sql failed")
-        result.refresh_success()
-
-        assert result.success is False
-
-    def test_plan_result_fails_when_checksum_drift_present(self):
-        result = PlanResult()
-
-        result.checksum_drift.append({"script": "V1__init.sql"})
-        result.refresh_success()
-
-        assert result.success is False
 
 
 class TestMigrateResult:

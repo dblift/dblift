@@ -4,7 +4,7 @@ SQLite-specific regex-based SQL parser.
 This module provides SQLite-specific parsing logic using regex patterns
 for statement splitting, type classification, and object extraction.
 
-SQLite has simpler SQL syntax compared to enterprise databases:
+SQLite has simpler SQL syntax compared to server databases:
 - No stored procedures or functions (user-defined functions are in app code)
 - No schemas (database file IS the schema)
 - Limited ALTER TABLE (ADD COLUMN and RENAME only)

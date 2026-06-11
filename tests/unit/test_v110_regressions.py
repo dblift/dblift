@@ -6,8 +6,6 @@ These tests guard against re-introduction of the following bugs:
   → Fixed: now uses DELETE FROM ... WHERE success = FALSE
 - BUG-CHECK-CONN-01: get_database_url missing on PostgreSQL/MySQL providers
   → Fixed: added delegation to connection_manager.get_database_url()
-- BUG-VALIDATE-SQL-01: validate-sql must work without DB (config-only client)
-  → Fixed: ValidateSqlConfigClient when command is standalone validate-sql; full client otherwise
 - BUG-UNDO-01: generate_undo_script error handling
   → Fixed: ValueError/FileExistsError return result with success=False; FileNotFoundError
     emits failure then re-raises for exception-based callers / batch flows
@@ -314,7 +312,7 @@ class TestSqliteCaseEndInTrigger:
         AFTER INSERT ON orders
         BEGIN
             UPDATE orders SET status = CASE
-                WHEN NEW.amount > 100 THEN 'premium'
+                WHEN NEW.amount > 100 THEN 'vip'
                 WHEN NEW.amount > 50 THEN 'standard'
                 ELSE 'basic'
             END
@@ -498,7 +496,6 @@ class TestTransactionalDdlSupport:
         ), "MySqlProvider is missing supports_transactional_ddl()"
         # Verify via unbound method call with a dummy self
         assert MySqlProvider.supports_transactional_ddl(Mock()) is False
-
 
     def test_transactional_ddl_default_is_true(self):
         """Default supports_transactional_ddl() should return True (PG, MSSQL, DB2)."""

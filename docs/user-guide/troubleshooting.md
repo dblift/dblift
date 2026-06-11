@@ -147,9 +147,9 @@ The repair command will:
 **Problem**: Migrations fail with SQL syntax errors.
 
 **Solution**: 
-1. Validate SQL before applying:
+1. Validate migrations before applying:
 ```bash
-dblift validate-sql
+dblift validate
 ```
 
 2. Check your SQL against the database dialect documentation
@@ -279,9 +279,6 @@ dblift info
 
 # Validate migrations
 dblift validate
-
-# Validate SQL syntax
-dblift validate-sql
 ```
 
 ## Next Steps

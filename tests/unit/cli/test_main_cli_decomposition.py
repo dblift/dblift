@@ -167,12 +167,12 @@ class TestMainCliDecomposition(unittest.TestCase):
 
     def test_extract_subcommand_arg_with_inline_value_preserves_following_command(self):
         commands, global_args, sub_args = _extract_commands_from_argv(
-            ["validate-sql", "--fail-on=error", "migrate"],
-            [*_AVAILABLE_COMMANDS, "validate-sql"],
+            ["migrate", "--target-version=1.0.0", "info"],
+            _AVAILABLE_COMMANDS,
             _GLOBAL_ONLY_ARGS,
         )
-        self.assertEqual(commands, ["validate-sql", "migrate"])
-        self.assertEqual(sub_args, ["--fail-on=error"])
+        self.assertEqual(commands, ["migrate", "info"])
+        self.assertEqual(sub_args, ["--target-version=1.0.0"])
 
     # --- _collect_placeholders ---
 

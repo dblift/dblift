@@ -294,7 +294,7 @@ secrets:
   vault:
     url: "https://vault.example.com"     # or VAULT_ADDR env var
     token: "s.xxxx"                      # or VAULT_TOKEN env var
-    namespace: "my-namespace"            # or VAULT_NAMESPACE env var (Enterprise)
+    namespace: "my-namespace"            # or VAULT_NAMESPACE env var
 
   aws:
     region: "us-east-1"                  # or AWS_DEFAULT_REGION env var
@@ -323,13 +323,6 @@ Resolved secrets are cached in process memory for `cache_ttl_seconds` (default
 60 seconds). The cache key includes the URI plus all provider-specific auth
 fields so different configs never share a cached value. Call
 `config.secrets.clear_cache()` or restart the process to force fresh resolution.
-
-### Offline Commands
-
-Commands that never open a database connection — currently `validate-sql` and
-`plan` — skip secret resolution entirely. This lets CI jobs run `dblift plan
---snapshot-model` or `dblift validate-sql` without secret-manager credentials
-even when `dblift.yaml` contains secret URIs.
 
 ### Custom Provider Registration
 

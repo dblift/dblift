@@ -47,34 +47,6 @@ C:\path\to\dblift\dblift.bat --version
 
 You should see the DBLift version number. You're ready to go!
 
-## License Activation
-
-DBLift requires a valid license to run. Once you have received your license key, activate it with:
-
-```bash
-dblift license activate <your-license-key>
-```
-
-You should see a confirmation:
-
-```
-License activated successfully!
-
-  Customer:  Jane Smith
-  Email:     jane@example.com
-  Issued:    2025-01-01
-  Expires:   2026-01-01
-  License:   lic_abc123
-```
-
-The license key is saved to `~/.dblift/license.key` and is used automatically for all subsequent commands. You can also supply it per-command with `--license-key <token>` or via the `DBLIFT_LICENSE_KEY` environment variable.
-
-!!! tip "Check Your License Status"
-    Run `dblift license check` at any time to verify your license is valid and see how many days remain.
-
-!!! note "No Internet Required"
-    License validation is fully offline — dblift verifies the cryptographic signature locally without any network calls.
-
 ## Your First Migration
 
 Let's create your first database change in 4 simple steps:

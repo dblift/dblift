@@ -276,13 +276,11 @@ class BaseQuirks:
     #: Default schema name when the user supplies none. ``None`` means
     #: the dialect has no default — the framework returns ``""``.
     #: PostgreSQL=``"public"``, CosmosDB=``"default"``, SQLite=``"main"``.
-    #: SQL Server's "dbo" is NOT set here — it's a parser hint only
-    #: (``parser_default_schema``), not an export-schema fallback.
+    #: SQL Server's "dbo" is NOT set here — it's a parser hint only.
     default_schema_name: Optional[str] = None
     #: Schema name the parser assigns to objects with no explicit schema.
     #: Falls back to ``default_schema_name`` when ``None``.
-    #: SQL Server sets ``"dbo"`` here without setting ``default_schema_name``
-    #: so export-schema doesn't normalize empty schemas to ``"dbo"``.
+    #: SQL Server sets ``"dbo"`` here without setting ``default_schema_name``.
     parser_default_schema: Optional[str] = None
     #: ``DROP TABLE / VIEW / INDEX / ... IF EXISTS`` is supported.
     #: Oracle has no native ``IF EXISTS``; everyone else does.
@@ -331,13 +329,6 @@ class BaseQuirks:
     #: ``database.schema`` during config hydration. Plugins can add aliases
     #: without teaching ``config/`` about dialect-specific spellings.
     native_url_schema_params: Tuple[str, ...] = ("currentSchema",)
-    #: Placeholder URL used by ``validate-sql --dialect <X>``
-    #: when no real database connection exists. The lint-only path
-    #: never opens a connection — but ``DbliftConfig.validate_complete_data``
-    #: still requires a syntactically-valid URL of the right shape.
-    #: ``None`` means the dialect can't be linted offline.
-    lint_placeholder_url: Optional[str] = None
-
     # ------------------------------------------------------------------
     # Procedure / function DDL hooks (story 26-5).
     # Drive ``Procedure._generate_basic_create_statement`` /

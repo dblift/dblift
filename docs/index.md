@@ -8,9 +8,8 @@
 
 DBLift helps you track and apply database changes systematically. Think of it as version control for your database schema - every change is tracked, can be rolled back, and works consistently across different environments.
 
-![Python](https://img.shields.io/badge/Python-3.8%2B-blue)
-![Java](https://img.shields.io/badge/Java-11%2B-orange)
-![License](https://img.shields.io/badge/License-Proprietary-red)
+![Python](https://img.shields.io/badge/Python-3.11%2B-blue)
+![License](https://img.shields.io/badge/License-MIT-green)
 [![Tests](https://github.com/cmodiano/dblift/actions/workflows/unit-tests.yml/badge.svg)](https://github.com/cmodiano/dblift/actions/workflows/unit-tests.yml)
 [![Code Quality](https://github.com/cmodiano/dblift/actions/workflows/code-quality.yml/badge.svg)](https://github.com/cmodiano/dblift/actions/workflows/code-quality.yml)
 [![Coverage](https://codecov.io/gh/cmodiano/dblift/branch/main/graph/badge.svg)](https://codecov.io/gh/cmodiano/dblift/branch/main/graph/badge.svg) (Combined unit + integration tests)
@@ -22,9 +21,8 @@ DBLift helps you track and apply database changes systematically. Think of it as
 Get up and running in minutes:
 
 1. **[Install DBLift](user-guide/getting-started.md#installation)** - Download and set up
-2. **[Activate Your License](user-guide/getting-started.md#license-activation)** - Required before first use
-3. **[Create Your First Migration](user-guide/getting-started.md#your-first-migration)** - Learn the basics
-4. **[Apply Migrations](user-guide/commands.md#applying-changes-to-your-database)** - Deploy your changes
+2. **[Create Your First Migration](user-guide/getting-started.md#your-first-migration)** - Learn the basics
+3. **[Apply Migrations](user-guide/commands.md#applying-changes-to-your-database)** - Deploy your changes
 
 ## Documentation Sections
 
@@ -87,11 +85,9 @@ DBLift supports the following databases:
 - ✅ **Rollback Support** - Undo migrations when needed
 - ✅ **Multi-Database Support** - Works with 7+ database types
 - ✅ **Baseline Support** - Work with existing databases
-- ✅ **Schema Comparison** - Compare database states
-- ✅ **SQL Validation** - Validate SQL before applying
+- ✅ **Migration Validation** - Validate migration scripts before applying
 - ✅ **Tagged Migrations** - Organize migrations by feature
 - ✅ **Dry-Run Mode** - Preview changes before applying
-- ✅ **Commercial Licensing** - JWT-based license with offline validation
 
 ## Need Help?
 

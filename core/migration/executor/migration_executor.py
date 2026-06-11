@@ -18,11 +18,9 @@ from core.logger import Log, NullLog
 from core.logger.results import (
     BaselineResult,
     CleanResult,
-    DiffResult,
     InfoResult,
     MigrateResult,
     OperationResult,
-    PlanResult,
     RepairResult,
     UndoResult,
     ValidateResult,

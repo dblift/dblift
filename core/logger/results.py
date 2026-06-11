@@ -736,25 +736,6 @@ class DiffResult(OperationResult):
         )
 
 
-class ExportSchemaResult(OperationResult):
-    """Result of an export schema operation."""
-
-    def __init__(
-        self,
-        success: bool = True,
-        error_message: Optional[str] = None,
-        output_files: Optional[List[str]] = None,
-        objects_exported: Optional[Dict[str, int]] = None,
-    ) -> None:
-        """Initialize export-schema bookkeeping (output files, per-type counts, filters)."""
-        super().__init__(success=success, error_message=error_message)
-        self.output_files: List[str] = output_files or []
-        self.objects_exported: Dict[str, int] = objects_exported or {}
-        self.current_schema_version: Optional[str] = None
-        self.filters_applied: Optional[List[str]] = None
-        self.output_options: Optional[Dict[str, Any]] = None
-
-
 class SnapshotResult(OperationResult):
     """Result of a snapshot operation."""
 
@@ -771,76 +752,6 @@ class SnapshotResult(OperationResult):
         self.output_file: Optional[str] = output_file
         self.snapshot_id: Optional[str] = snapshot_id
         self.captured_at: Optional[str] = captured_at
-
-
-class PlanResult(OperationResult):
-    """Result of an offline migration plan operation."""
-
-    def __init__(self) -> None:
-        """Initialize empty plan bookkeeping."""
-        super().__init__()
-        self.snapshot_model: Optional[str] = None
-        self.target_last_version: Optional[str] = None
-        self.target_installed_rank: Optional[int] = None
-        self.pending_migrations: List[Any] = []
-        self.repeatables_pending: List[Any] = []
-        self.checksum_drift: List[Any] = []
-        self.already_applied_count: int = 0
-        self.sql_validation: Optional[Any] = None
-        self.plan_warnings: List[str] = []
-        self.plan_errors: List[str] = []
-
-    @property
-    def pending_count(self) -> int:
-        """Number of pending versioned migrations."""
-        return len(self.pending_migrations)
-
-    @property
-    def repeatables_pending_count(self) -> int:
-        """Number of repeatable migrations selected by the plan."""
-        return len(self.repeatables_pending)
-
-    @property
-    def checksum_drift_count(self) -> int:
-        """Number of applied versioned migrations with checksum drift."""
-        return len(self.checksum_drift)
-
-    @property
-    def is_sql_validation_only_failure(self) -> bool:
-        """True when the only plan failure is SQL-validation findings.
-
-        Lets the preflight orchestrator distinguish a soft sql-validation
-        failure (non-blocking under ``--fail-on warning``) from hard errors
-        like checksum drift or runtime exceptions, without comparing raw
-        error-message strings.
-        """
-        if self.error_message or self.checksum_drift:
-            return False
-        if not self.plan_errors:
-            return False
-        from core.migration.planning.models import SQL_VALIDATION_FAILURE_MESSAGE
-
-        return all(error == SQL_VALIDATION_FAILURE_MESSAGE for error in self.plan_errors)
-
-    def refresh_success(self) -> None:
-        """Refresh success after mutating plan errors or drift lists."""
-        self.success = not bool(self.plan_errors or self.checksum_drift)
-
-    def apply_plan_data(self, plan: Any) -> None:
-        """Copy a planning-layer payload into this operation result."""
-        self.snapshot_model = plan.snapshot_model
-        self.target_last_version = plan.target_last_version
-        self.target_installed_rank = plan.target_installed_rank
-        self.pending_migrations = list(plan.pending)
-        self.repeatables_pending = list(plan.repeatables_pending)
-        self.checksum_drift = list(plan.checksum_drift)
-        self.already_applied_count = plan.already_applied_count
-        self.sql_validation = plan.sql_validation
-        self.plan_warnings = list(plan.warnings)
-        self.plan_errors = list(plan.errors)
-        for warning in self.plan_warnings:
-            self.add_warning(warning)
-        self.refresh_success()
 
 
 class UndoResult(OperationResult):
@@ -878,25 +789,6 @@ class GenerateUndoScriptResult(OperationResult):
         self.overwritten: bool = False
         self.statements_generated: int = 0
         self.requires_manual_review: bool = False
-
-    def add_warning(self, warning: str) -> None:
-        """Add a warning to the result."""
-        super().add_warning(warning)
-        if "manual review" in warning.lower() or "warning" in warning.lower():
-            self.requires_manual_review = True
-
-
-class GenerateSqlFromDiffResult(OperationResult):
-    """Result of generating SQL script from schema diff."""
-
-    def __init__(self) -> None:
-        """Initialize SQL-from-diff result bookkeeping (script, path, summary, review flag)."""
-        super().__init__()
-        self.sql_script: Optional[str] = None
-        self.sql_file_path: Optional[str] = None
-        self.statements_generated: int = 0
-        self.requires_manual_review: bool = False
-        self.diff_summary: Optional[Dict[str, Any]] = None
 
     def add_warning(self, warning: str) -> None:
         """Add a warning to the result."""

@@ -47,7 +47,6 @@ class OracleQuirks(BaseQuirks):
     missing_connection_identifier_hint = (
         "Oracle connection requires url, service_name, sid, or host/database fields"
     )
-    lint_placeholder_url = "oracle+oracledb://localhost:1521/?service_name=XEPDB1"
 
     def derive_schema_name(self, database_config: Any) -> Optional[str]:
         """Use the Oracle user/current schema convention when schema is omitted."""

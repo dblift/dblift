@@ -43,7 +43,6 @@ class PostgresqlQuirks(BaseQuirks):
     clean_strategy = "introspector"
     sqlglot_dialect = "postgres"
     pygments_lexer = "postgresql"
-    lint_placeholder_url = "postgresql://127.0.0.1:5432/dblift_validate_sql"
     default_schema_name = "public"
     drop_supports_if_exists = True
     drop_table_default_cascade = True

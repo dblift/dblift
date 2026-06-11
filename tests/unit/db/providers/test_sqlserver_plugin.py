@@ -461,6 +461,7 @@ class TestSqlServerHistoryManager(unittest.TestCase):
         result = manager._get_first_value([{"col": 42}])
         self.assertEqual(42, result)
 
+
 # ---------------------------------------------------------------------------
 # SqlServerLockingManager
 # ---------------------------------------------------------------------------

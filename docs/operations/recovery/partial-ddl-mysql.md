@@ -133,9 +133,8 @@ only when A and B genuinely don't fit.
 - **Pair every DDL migration with an undo script** (`U<N>__*.sql`)
   so Path B is always available. dblift supports undo via the
   `generate_undo_script` API and the `undo` command.
-- **Validate before applying.** Run `dblift validate-sql` in CI
-  against every new V file to catch syntax errors and obvious
-  reasoning bugs before they fail mid-migration.
+- **Validate before applying.** Run `dblift validate` in CI and test
+  migrations against a non-prod database before they fail mid-migration.
 - **Test migrations against a non-prod copy of prod.** The most
   common cause of mid-migration failure is a constraint the dev DB
   doesn't have (FK pointing at a row that doesn't exist, NOT NULL

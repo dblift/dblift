@@ -12,14 +12,6 @@ DBLift follows a layered architecture where each layer has clear responsibilitie
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│                   Licensing Layer                       │
-│            (core/licensing/, cli/license_commands.py)   │
-│  - JWT RS256 license validation (offline)               │
-│  - License resolution: CLI arg → env var → file         │
-│  - License management commands (activate/info/check)    │
-└───────────────────────┬─────────────────────────────────┘
-                        │ gate (all commands require valid license)
-┌───────────────────────▼─────────────────────────────────┐
 │                     CLI Layer                           │
 │                  (cli/main.py)                          │
 │  - Argument parsing                                     │
@@ -39,7 +31,7 @@ DBLift follows a layered architecture where each layer has clear responsibilitie
 │                 Migration Engine                        │
 │            (core/migration/executor/)                   │
 │  - MigrationExecutor: Orchestrates operations           │
-│  - Commands: migrate, undo, baseline, diff, etc.        │
+│  - Commands: migrate, undo, baseline, validate, etc.    │
 │  - State management                                     │
 │  - Script management                                    │
 └───────────────────────┬─────────────────────────────────┘
@@ -71,7 +63,7 @@ DBLift follows a layered architecture where each layer has clear responsibilitie
 3. **Dependency Injection**: Dependencies passed explicitly through call chain
 4. **Database Abstraction**: Common interface for all database types
 5. **Factory Pattern**: Centralized creation of dialect-specific components
-6. **All-or-Nothing Licensing**: A single valid license unlocks all features; no feature tiers
+6. **Public Package**: All bundled commands run without product-tier gates
 
 ## Layer Architecture
 
@@ -79,7 +71,6 @@ DBLift follows a layered architecture where each layer has clear responsibilitie
 
 | Layer | Location | Purpose | Key Components |
 |-------|----------|---------|----------------|
-| **Licensing** | `core/licensing/`, `cli/license_commands.py` | License validation and enforcement | `LicenseManager`, `License` |
 | **CLI** | `cli/` | User interaction, command parsing | `main.py`, command handlers |
 | **API Client** | `api/` | Public API, configuration, provider setup | `DBLiftClient` |
 | **Migration Engine** | `core/migration/` | Migration orchestration | `MigrationExecutor`, Commands |

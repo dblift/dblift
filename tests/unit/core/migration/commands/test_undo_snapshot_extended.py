@@ -58,5 +58,3 @@ class TestUndoCommandExecute(unittest.TestCase):
         scripts_dir = Path("/tmp")
         result = cmd.execute(scripts_dir=scripts_dir)
         self.assertIsNotNone(result)
-
-

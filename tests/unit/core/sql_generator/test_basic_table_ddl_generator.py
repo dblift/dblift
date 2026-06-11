@@ -330,7 +330,6 @@ class TestCheckConstraintParenStrippingInline(unittest.TestCase):
         self.assertNotIn("CHECK (a)(b)", ddl)
 
 
-
 class TestGenerateColumnDefinitionDecomposition(unittest.TestCase):
     """Tests for the decomposed helper methods of _generate_column_definition (story 16-20)."""
 
@@ -514,7 +513,6 @@ class TestGenerateColumnDefinitionDecomposition(unittest.TestCase):
             has_composite_pk_final=True,
         )
         assert result is None
-
 
 
 class TestBasicTableDdlSchemaPrefix:

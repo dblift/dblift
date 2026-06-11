@@ -35,7 +35,6 @@ class SqliteQuirks(BaseQuirks):
     drop_supports_if_exists = True  # supported since SQLite 3.3.0 (2006)
     # SQLite has no CASCADE on DROP TABLE; use plain `DROP TABLE IF EXISTS`.
     table_drop_style = "if_exists"
-    lint_placeholder_url = "sqlite:///:memory:"
     # Wave B hooks.
     native_driver_display = "sqlite3"
     requires_credentials = False

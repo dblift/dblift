@@ -34,7 +34,6 @@ class Db2Quirks(BaseQuirks):
     connection_identifier_attrs = ("url", "host", "database")
     missing_connection_identifier_hint = "DB2 connection requires url or host/database fields"
     native_url_schema_params = ("currentSchema", "schema")
-    lint_placeholder_url = "ibm_db_sa://127.0.0.1:50000/dblift_validate_sql"
     # Procedure / function DDL (story 26-5).
     proc_param_supports_default = False  # DB2 rejects ``= default``
     # Synonym DDL (story 26-5). DB2 calls them ALIAS.

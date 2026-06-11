@@ -45,8 +45,6 @@ Listed in order of sensitivity, highest first.
 |---|---|---|
 | Customer database credentials | ``DbliftConfig.database.{username,password}`` loaded from YAML / env / CLI | In-memory for the duration of the process; never persisted by dblift |
 | Customer database contents | Remote DB accessed via native Python drivers, Azure SDK, or sqlite3 | dblift reads schema metadata; writes only what user migrations request |
-| License private key | `~/.dblift_private_key.pem` (maintainer-side) | Out-of-band; **never ships** in the package. Embedded public key only |
-| License JWT tokens | `~/.dblift/license.key`, `DBLIFT_LICENSE_KEY`, `--license-key` | Per-user, RS256-signed; forgery requires the private key |
 | Migration scripts | User-supplied SQL on disk | Executed verbatim against the target DB — dblift explicitly trusts them |
 | Local dblift history table | `dblift_schema_history` in target DB | Stored in the DB the user already controls |
 
@@ -70,7 +68,6 @@ Listed in order of sensitivity, highest first.
 | Placeholder substitution (`${var}`) | Injection via placeholder values | Substitution runs **before** tokenisation so values cannot smuggle DDL across statement boundaries. Values are still interpreted as literal text; users who place `${var}` inside identifier positions accept the substitution semantics |
 | Native database drivers | Malicious data in DB metadata responses | Metadata is normalized before diffing; driver exceptions are surfaced through dblift error handling |
 | History table writes | History table corruption | `acquire_migration_lock()` / `release_migration_lock()` per dialect, plus transactions where the dialect supports them (ADR-0007) |
-| License JWT validation | Forged license | RS256 with embedded public key; any token whose signature does not verify is rejected before any DB operation |
 
 ## 4. Secrets handling
 
@@ -78,9 +75,9 @@ Listed in order of sensitivity, highest first.
 |---|---|
 | Never commit secrets to git | `.gitleaks.toml` + CI gate on every PR |
 | Never log secrets | URL masking in `core/utils/url_masking.py`; `--log-format json` sanitises `DBLIFT_DB_PASSWORD` and tokens |
-| Never echo secrets to stdout | `CommandOutput` machine-format contract: stdout carries only the requested payload; banner / license info / status all go to stderr (ADR-0008) |
+| Never echo secrets to stdout | `CommandOutput` machine-format contract: stdout carries only the requested payload; status output goes to stderr (ADR-0008) |
 | Credential sources (merge order) | YAML config < env vars < CLI flags |
-| Credential lifetime | In-memory for the process lifetime; no persistence beyond `~/.dblift/license.key` (license only) |
+| Credential lifetime | In-memory for the process lifetime; no persistence by dblift |
 
 Historical secret incidents are logged in
 the security policy, coordinated through GitHub Security Advisories.

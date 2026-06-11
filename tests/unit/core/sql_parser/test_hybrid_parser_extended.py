@@ -40,6 +40,7 @@ class TestHybridParserSplitStatements(unittest.TestCase):
         stmts = p.split_statements("")
         self.assertIsInstance(stmts, list)
 
+
 class TestHybridParserValidateSql(unittest.TestCase):
     def _make(self, dialect="postgresql"):
         from core.sql_parser.hybrid_parser import HybridParser
@@ -112,5 +113,3 @@ class TestHybridParserMysql(unittest.TestCase):
         p = self._make()
         stmts = p.split_statements("SELECT 1; SELECT 2;")
         self.assertIsInstance(stmts, list)
-
-

@@ -202,7 +202,6 @@ class TestBuildArgsNamespace:
         assert args.database_password == "secret"
 
 
-
 # ---------------------------------------------------------------------------
 # _load_and_merge_config — uncovered branches (lines 221-229)
 # ---------------------------------------------------------------------------

@@ -70,8 +70,6 @@ class TestCLIRunnerDirect:
         assert hasattr(cli, "validate")
         assert hasattr(cli, "clean")
         assert hasattr(cli, "repair")
-        assert hasattr(cli, "diff")
-        assert hasattr(cli, "export_schema")
         assert hasattr(cli, "snapshot")
         assert hasattr(cli, "chain")
 

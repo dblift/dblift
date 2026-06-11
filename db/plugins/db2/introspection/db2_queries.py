@@ -730,7 +730,7 @@ class DB2MetadataQueries(VendorMetadataQueries):
 
         However, SYSCAT.TYPES table doesn't exist in all DB2 editions (e.g., DB2 Express).
         To avoid errors in tests and limited environments, we disable UDT support for now.
-        For full DB2 Enterprise editions, this could be enabled conditionally.
+        For DB2 installations with partition groups enabled, this could be enabled conditionally.
         """
         return False  # Disabled due to missing SYSCAT.TYPES in DB2 Express
 
@@ -743,7 +743,7 @@ class DB2MetadataQueries(VendorMetadataQueries):
 
         IMPORTANT: SYSCAT.DATAPARTITIONS may not exist in all DB2 editions (e.g., Express).
         Returning None disables partition scheme tracking for DB2 to avoid errors in test environments.
-        For production DB2 Enterprise with partitioning enabled, this could be re-enabled.
+        For production DB2 with partitioning enabled, this could be re-enabled.
         """
         # Disable partition scheme query for DB2 to avoid compatibility issues
         # SYSCAT.DATAPARTITIONS and partition columns vary across DB2 editions

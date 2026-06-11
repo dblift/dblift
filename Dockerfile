@@ -17,7 +17,7 @@ FROM python:3.11-slim
 
 LABEL org.opencontainers.image.source="https://github.com/dblift/dblift"
 LABEL org.opencontainers.image.description="DBLift - Database Migration Tool"
-LABEL org.opencontainers.image.licenses="Proprietary"
+LABEL org.opencontainers.image.licenses="MIT"
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     tini \
@@ -51,8 +51,7 @@ RUN mkdir -p /workspace
 WORKDIR /workspace
 
 # Verify installation
-RUN python -c "import jwt, cryptography; from core.licensing.license_manager import LicenseManager" && \
-    python -m cli.main --version
+RUN python -m cli.main --version
 
 ENTRYPOINT ["/usr/bin/tini", "--", "python", "-m", "cli.main"]
 CMD ["--help"]

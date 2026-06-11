@@ -15,7 +15,6 @@ from core.logger.results import (
     DiffResult,
     MigrationInfo,
     OperationResult,
-    PlanResult,
 )
 
 
@@ -24,7 +23,6 @@ class JsonFormatter:
 
     def __init__(self):
         """Initialize the JSON formatter."""
-        self.license_info: Optional[Dict[str, Any]] = None
         self.log_entries: List[Dict[str, Any]] = []
 
         # Track multiple commands for multi-command execution
@@ -110,20 +108,12 @@ class JsonFormatter:
 
         output: Dict[str, Any] = {}
         output.update(self._get_version_info())
-        if self.license_info:
-            output["license"] = {
-                "customer_name": self.license_info.get("customer_name"),
-                "customer_email": self.license_info.get("customer_email"),
-                "expires_at": self.license_info.get("expires_at"),
-                "days_remaining": self.license_info.get("days_remaining"),
-            }
         output.update(self._build_time_metadata(result))
         output.update(self._build_base_metadata(result, schema, database_name))
         output.update(self._format_sql_visibility(result))
         output.update(self._format_migrate_metadata(result, command_type))
         output.update(self._format_clean_metadata(result, command_type))
         output.update(self._format_diff_metadata(result, command_type))
-        output.update(self._format_plan_metadata(result, command_type))
 
         total_execution_time, multi_updates = self._format_multi_command_metadata(
             result, schema, database_name, execution_time
@@ -507,37 +497,6 @@ class JsonFormatter:
             output["modified_user_defined_types"] = []
 
         return output
-
-    def _format_plan_metadata(self, result: OperationResult, command_type: str) -> Dict[str, Any]:
-        """Return plan-specific fields for offline migration plans."""
-        if command_type.upper() != "PLAN" or not isinstance(result, PlanResult):
-            return {}
-
-        def _items(items: Any) -> List[Dict[str, Any]]:
-            """Serialize a list of plan item objects."""
-            output = []
-            for item in items or []:
-                to_dict = getattr(item, "to_dict", None)
-                output.append(to_dict() if callable(to_dict) else self._sanitize_for_json(item))
-            return output
-
-        sql_validation = result.sql_validation
-        return {
-            "snapshot_model": result.snapshot_model,
-            "target_last_version": result.target_last_version,
-            "target_installed_rank": result.target_installed_rank,
-            "already_applied_count": result.already_applied_count,
-            "pending": _items(result.pending_migrations),
-            "repeatables_pending": _items(result.repeatables_pending),
-            "checksum_drift": _items(result.checksum_drift),
-            "sql_validation": (
-                sql_validation.to_dict()
-                if sql_validation is not None and hasattr(sql_validation, "to_dict")
-                else self._sanitize_for_json(sql_validation)
-            ),
-            "plan_warnings": list(result.plan_warnings),
-            "plan_errors": list(result.plan_errors),
-        }
 
     def _format_multi_command_metadata(
         self,

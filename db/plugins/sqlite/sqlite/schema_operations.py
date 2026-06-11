@@ -45,7 +45,7 @@ class SQLiteSchemaOperations:
         internal tables (``foo_data``, ``foo_idx``, ``foo_content``,
         ``foo_docsize``, ``foo_config``) that SQLite exposes via
         ``sqlite_master`` as regular tables. Treating them as user tables
-        inflates object counts in ``export-schema`` and makes ``clean``
+        inflates object counts in schema introspection and makes ``clean``
         attempt a plain ``DROP TABLE`` against an FTS5-managed shadow.
         """
         try:

@@ -56,5 +56,3 @@ def test_schema_scoped_engines_use_test_schema():
     schema = integration_conftest._test_schema_for_service("postgresql", {"database": "testdb"})
 
     assert schema == "TEST_SCHEMA"
-
-

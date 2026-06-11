@@ -91,53 +91,6 @@ dblift migrate
 
 Now only migrations after version 1.0.0 will be applied.
 
-### Exporting Existing Schema
-
-If you have an existing database and want to create migration files from it:
-
-**Export entire schema from live database (default):**
-```bash
-dblift export-schema --output migrations/V1__baseline.sql
-```
-
-**Export schema from database stored snapshot:**
-```bash
-dblift export-schema --source=database-model --output migrations/V1__baseline.sql
-```
-
-**Export schema from a JSON model file:**
-```bash
-dblift export-schema --source=file-model --snapshot-model snapshots/schema.json --output migrations/V1__baseline.sql
-```
-
-**Export only specific object types:**
-```bash
-dblift export-schema --types tables,views,functions --output migrations/schema.sql
-```
-
-**Export only managed objects (objects defined in migrations):**
-```bash
-dblift export-schema --managed-only --output migrations/managed.sql
-```
-
-**Export only unmanaged objects (brownfield baseline):**
-```bash
-dblift export-schema --unmanaged-only --output migrations/unmanaged.sql
-```
-
-**Export with filtering by migration tags/versions:**
-```bash
-dblift export-schema --managed-only --tags feature1,feature2 --output migrations/feature.sql
-dblift export-schema --managed-only --target-version=1.5.0 --output migrations/up_to_1_5.sql
-```
-
-**Split output by object type:**
-```bash
-dblift export-schema --split-by-type --output-dir migrations/baseline/
-```
-
-This creates separate files for tables, views, functions, etc.
-
 ### Exporting Schema Snapshots
 
 **Export snapshot from database (latest stored snapshot):**
@@ -164,8 +117,6 @@ Here are the commands you'll use most often:
 | `dblift migrate --dry-run` | Preview without applying | Check what will happen before doing it |
 | `dblift undo --target-version=X` | Rolls back to a specific version | Reverse recent changes |
 | `dblift validate` | Checks migration history and metadata consistency | Before applying changes |
-| `dblift plan --snapshot-model=FILE` | Computes pending migrations from a snapshot without DB access | CI checks for environment branches |
-| `dblift export-schema` | Exports schema to SQL files from live database, database model, or file model | Capture an existing database as migrations |
 | `dblift snapshot` | Exports schema snapshot to JSON model file from database or live database | Create snapshot for diff comparisons |
 | `dblift baseline --baseline-version=X` | Mark migrations as already applied | Working with existing databases |
 
@@ -182,12 +133,6 @@ dblift undo --target-version=1.0.0
 
 # Working with existing databases
 dblift baseline --baseline-version=2.0.0
-
-# Export schema from live database to SQL
-dblift export-schema --output migrations/schema.sql
-
-# Export schema from database stored snapshot to SQL
-dblift export-schema --source=database-model --output migrations/schema.sql
 
 # Export schema snapshot to JSON model file
 dblift snapshot --output snapshots/public_schema.json
@@ -282,43 +227,6 @@ dblift migrate --tags=auth
 dblift migrate --exclude-tags=billing
 ```
 
-## Advanced Commands
-
-### Comparing Database State (diff)
-
-Compare your current database state with what migrations define, or compare migrations against stored snapshots:
-
-**Compare live database with migrations:**
-```bash
-dblift diff
-```
-
-This will show any drift between your database and what your migrations should have created.
-
-**Compare database-stored snapshot with migrations:**
-```bash
-dblift diff --source=database-model
-```
-
-**Compare file-stored snapshot with migrations:**
-```bash
-dblift diff --source=file-model --snapshot-model=snapshots/prod.json
-```
-
-**Ignore unmanaged objects in comparison:**
-```bash
-dblift diff --ignore-unmanaged
-```
-
-**Compare only up to specific version:**
-```bash
-dblift diff --target-version=1.5.0
-```
-
-**Generate SQL from diffs (diff-to-SQL):**
-
-The `diff` command can generate SQL scripts to synchronize schemas. For CosmosDB, operations requiring Azure SDK (like `DROP CONTAINER`) are automatically translated to SDK operations. Generated scripts include both SQL statements and Python SDK code for manual execution if needed.
-
 ### Repairing Migration History
 
 If your migration history table gets corrupted or out of sync:
@@ -354,64 +262,16 @@ dblift migrate --placeholders TABLE_NAME=ph_test LABEL_VALUE=hello
 
 Use comma-separated values in a single shell argument, or pass multiple `key=value` tokens after `--placeholders`.
 
-### Validating SQL Syntax
+### Validating Migrations
 
-Validate SQL syntax before applying migrations:
-
-**Validate all migrations:**
-```bash
-dblift validate-sql
-```
-
-This checks SQL syntax against your target database dialect without executing it.
-Use `--fail-on never|error|warning|info` to choose the minimum finding severity
-that returns a non-zero exit code. The default is `error`.
+Validate migration scripts before applying them:
 
 ```bash
-dblift validate-sql migrations/ --format github-actions --fail-on error
-dblift validate-sql migrations/ --format sarif --fail-on warning > validation.sarif
+dblift validate
 ```
 
-Generate an offline enterprise evidence report:
-
-```bash
-dblift validate-sql migrations/ \
-  --profile enterprise \
-  --fail-on warning \
-  --format html \
-  --output sql-validation-evidence.html
-```
-
-The HTML report is intended for release review and audit evidence. It includes
-the checked files, failure threshold, findings, rule rationale, remediation
-guidance, control mappings, and governed exception details when present.
-
-Use built-in rule profiles when CI should apply DBLift-managed rule coverage
-without a custom YAML rules file:
-
-```bash
-dblift validate-sql migrations/ --profile enterprise --format github-actions --fail-on warning
-dblift validate-sql migrations/ --profile core --rules no_public_schema_access,require_primary_key
-```
-
-Available profiles are `core`, `enterprise`, `strict`, and `technical-debt`.
-Use `--rules` to add rule packs or individual rules to a profile. Use
-`--rules-file` only for a fully custom YAML rules file; it cannot be combined
-with `--profile` or `--rules`.
-
-### Planning from a Snapshot
-
-Build a CI-safe deployment plan from a committed environment snapshot:
-
-```bash
-dblift plan --snapshot-model prod.snapshot.json --format json --fail-on error
-```
-
-`plan` uses the snapshot as the target environment state. It reports pending
-versioned migrations, changed repeatables, checksum drift for already-applied
-migrations when the snapshot contains checksums, and SQL validation for planned
-SQL scripts. Pending migrations are warnings; checksum drift and SQL validation
-failures are errors.
+This checks migration metadata and script consistency against the configured
+database without applying pending migrations.
 
 ### Importing from Flyway
 
@@ -457,78 +317,11 @@ dblift db validate-config
 dblift db diagnose-connection
 ```
 
-## License Management
-
-DBLift requires a valid license key to run. The `license` subcommand manages your license without requiring an active license itself.
-
-### Activate a License
-
-```bash
-dblift license activate <your-license-key>
-```
-
-Validates the key, then saves it to `~/.dblift/license.key` (mode 600). Output:
-
-```
-License activated successfully!
-
-  Customer:  Jane Smith
-  Email:     jane@example.com
-  Issued:    2025-01-01
-  Expires:   2026-01-01
-  License:   lic_abc123
-```
-
-### Show License Information
-
-```bash
-dblift license info
-```
-
-Displays full details about the currently active license.
-
-### Check License Validity
-
-```bash
-dblift license check
-```
-
-Prints a one-line status and exits 0 if valid, 1 if expired or missing:
-
-```
-License status: VALID (247 days remaining)
-```
-
-### Deactivate a License
-
-```bash
-dblift license deactivate
-```
-
-Removes the saved license file. dblift will require a new license to run after this.
-
-### Supplying a License Without Activating
-
-You can pass a license key directly on any command without saving it:
-
-```bash
-dblift --license-key <token> migrate
-```
-
-Or via environment variable:
-
-```bash
-export DBLIFT_LICENSE_KEY=<token>
-dblift migrate
-```
-
 ## Quick Reference Card
 
 ```bash
 # Setup
 dblift --version                                    # Check installation
-dblift license activate <key>                       # Activate license (first-time setup)
-dblift license check                                # Verify license status
 
 # Daily workflow
 dblift info                                         # Check status

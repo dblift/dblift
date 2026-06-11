@@ -35,14 +35,10 @@ from core.sql_model.dialect import (
 class TestMatrixInvariants:
     """Invariants the matrix itself must satisfy."""
 
-    _ENTERPRISE_DIALECTS = {DialectEnum.ORACLE, DialectEnum.SQLSERVER, DialectEnum.DB2, DialectEnum.COSMOSDB}
-
     @pytest.mark.parametrize("member", list(DialectEnum))
     def test_every_canonical_dialect_has_a_capabilities_entry(self, member):
         if member is DialectEnum.UNKNOWN:
             pytest.skip("UNKNOWN is handled via the fallback, not the matrix.")
-        if member in self._ENTERPRISE_DIALECTS:
-            pytest.skip(f"{member.name} is an enterprise-only dialect.")
         assert member.value in _CAPABILITIES, (
             f"DialectEnum.{member.name} has no entry in _CAPABILITIES. Add one — "
             "the matrix must cover every canonical dialect."

@@ -48,17 +48,17 @@ class TestCapabilityMatrix:
         assert is_available is False
         assert "12.0" in reason or "requires" in reason.lower()
 
-    def test_check_feature_availability_edition_restriction(self):
-        """Test checking feature with edition restrictions."""
+    def test_check_feature_availability_edition_metadata(self):
+        """Test checking a feature with edition metadata."""
         version = DatabaseVersion(13, 0)  # SQL Server 2016
         is_available, reason = CapabilityMatrix.check_feature_availability(
             "sqlserver",
             "columnstore_indexes",
             version,
-            edition="Standard",  # Standard edition doesn't support this
+            edition="Standard",
         )
-        # Should fail due to edition restriction
-        assert is_available is False or "Enterprise" in reason
+        assert is_available is True
+        assert reason is None
 
     def test_get_available_features(self):
         """Test getting list of available features."""
@@ -83,8 +83,8 @@ class TestCapabilityMatrix:
             "generated" in name for name, _ in unsupported
         )
 
-    def test_oracle_edition_features(self):
-        """Test Oracle edition-specific features."""
+    def test_oracle_edition_metadata(self):
+        """Test Oracle features with edition metadata."""
         version = DatabaseVersion(12, 1)
         is_available, reason = CapabilityMatrix.check_feature_availability(
             "oracle",
@@ -92,8 +92,8 @@ class TestCapabilityMatrix:
             version,
             edition="Standard",
         )
-        # Adaptive plans require Enterprise edition
-        assert is_available is False or "Enterprise" in reason
+        assert is_available is True
+        assert reason is None
 
     def test_sqlserver_temporal_tables(self):
         """Test SQL Server temporal tables feature."""

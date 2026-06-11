@@ -416,9 +416,6 @@ class DBLiftClient:
             self.events.emit(EventType.VALIDATION_FAILED, {"error": str(e)})
             raise
 
-
-
-
     @_with_client_emitter
     def undo(
         self,
@@ -813,8 +810,6 @@ class DBLiftClient:
                 },
             )
             raise
-
-
 
     @classmethod
     def from_config(

@@ -129,10 +129,6 @@ class TestBug02MigrationAppliedAlias(unittest.TestCase):
         self.assertIs(EventType["MIGRATION_SCRIPT_COMPLETED"], EventType.MIGRATION_APPLIED)
 
 
-# ---------------------------------------------------------------------------
-# B7-BUG-04: export-schema accepts ``database-stored`` alias
-# ---------------------------------------------------------------------------
-
 class TestBug05SQLiteFts5ShadowFilter(unittest.TestCase):
     def _make_ops(self, rows_by_query):
         """Build an ops instance whose query_executor returns canned rows.

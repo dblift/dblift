@@ -179,11 +179,10 @@ class TestNoCoreToPluginImports:
 
 
 class TestNoDbIntrospectionToCoreLeaks:
-    """``db/introspection/`` may not import core.validation / licensing / migration."""
+    """``db/introspection/`` may not import core.validation / migration."""
 
     FORBIDDEN_CORE_PREFIXES = (
         "core.validation",
-        "core.licensing",
         "core.migration",
     )
 

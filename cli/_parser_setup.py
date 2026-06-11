@@ -9,7 +9,6 @@ import io
 import sys
 from typing import Any, Dict, List, Optional, Tuple
 
-from cli._constants import FAIL_ON_CHOICES
 from cli.db_utils import setup_db_utils_parser
 from cli.extensions import load_command_extensions
 
@@ -233,10 +232,6 @@ def _register_builtin_command_parsers(
     ]
     if not subparser_actions:
         return []
-    subparsers = subparser_actions[0]
-    existing = subparsers.choices
-
-    _history = _make_history_table_parent()
     registered: list[argparse.ArgumentParser] = []
 
     return registered

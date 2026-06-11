@@ -14,8 +14,6 @@ from core.comparison.diff_models import DiffSeverity, SchemaDiff
 from core.logger.results import (
     CleanResult,
     DiffResult,
-    ExportSchemaResult,
-    GenerateSqlFromDiffResult,
     GenerateUndoScriptResult,
     MigrateResult,
     MigrationInfo,
@@ -369,37 +367,6 @@ class TestDiffResultExtended:
 
 
 @pytest.mark.unit
-class TestExportSchemaResult:
-    """Tests for ExportSchemaResult."""
-
-    def test_init_default(self):
-        """Test ExportSchemaResult default initialization."""
-        result = ExportSchemaResult()
-
-        assert result.success is True
-        assert result.error_message is None
-        assert result.output_files == []
-        assert result.objects_exported == {}
-        assert result.current_schema_version is None
-        assert result.filters_applied is None
-        assert result.output_options is None
-
-    def test_init_with_params(self):
-        """Test ExportSchemaResult initialization with parameters."""
-        result = ExportSchemaResult(
-            success=False,
-            error_message="Export failed",
-            output_files=["file1.sql", "file2.sql"],
-            objects_exported={"tables": 5, "views": 3},
-        )
-
-        assert result.success is False
-        assert result.error_message == "Export failed"
-        assert result.output_files == ["file1.sql", "file2.sql"]
-        assert result.objects_exported == {"tables": 5, "views": 3}
-
-
-@pytest.mark.unit
 class TestSnapshotResult:
     """Tests for SnapshotResult."""
 
@@ -507,43 +474,6 @@ class TestGenerateUndoScriptResult:
     def test_add_warning_without_keywords(self):
         """Test add_warning without manual review keywords."""
         result = GenerateUndoScriptResult()
-        result.add_warning("Simple message")
-
-        assert result.requires_manual_review is False
-
-
-@pytest.mark.unit
-class TestGenerateSqlFromDiffResult:
-    """Tests for GenerateSqlFromDiffResult."""
-
-    def test_init(self):
-        """Test GenerateSqlFromDiffResult initialization."""
-        result = GenerateSqlFromDiffResult()
-
-        assert result.success is True
-        assert result.sql_script is None
-        assert result.sql_file_path is None
-        assert result.statements_generated == 0
-        assert result.requires_manual_review is False
-        assert result.diff_summary is None
-
-    def test_add_warning_with_manual_review(self):
-        """Test add_warning sets requires_manual_review."""
-        result = GenerateSqlFromDiffResult()
-        result.add_warning("This requires manual review")
-
-        assert result.requires_manual_review is True
-
-    def test_add_warning_with_warning_keyword(self):
-        """Test add_warning with 'warning' keyword."""
-        result = GenerateSqlFromDiffResult()
-        result.add_warning("Warning: potential issue")
-
-        assert result.requires_manual_review is True
-
-    def test_add_warning_without_keywords(self):
-        """Test add_warning without manual review keywords."""
-        result = GenerateSqlFromDiffResult()
         result.add_warning("Simple message")
 
         assert result.requires_manual_review is False
