@@ -31,7 +31,7 @@ DBLift suit une architecture en couches où chaque couche a des responsabilités
 │                 Moteur de Migration                     │
 │            (core/migration/executor/)                  │
 │  - MigrationExecutor: Orchestre les opérations          │
-│  - Commandes: migrate, undo, baseline, diff, etc.      │
+│  - Commandes: migrate, undo, baseline, etc.            │
 │  - Gestion d'état                                      │
 │  - Gestion des scripts                                 │
 └───────────────────────┬─────────────────────────────────┘

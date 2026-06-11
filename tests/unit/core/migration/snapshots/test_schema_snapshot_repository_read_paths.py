@@ -144,7 +144,7 @@ class TestInfrastructureErrorsPropagate:
     ``_snapshot_table_exists`` must NOT catch arbitrary exceptions from
     ``provider.table_exists`` — silently returning False would convert
     a network blip into "no snapshot available" and callers like
-    ``diff_command`` / ``export_schema_command`` / ``snapshot_command``
+    ``export_schema_command`` / ``snapshot_command``
     would continue without a baseline instead of surfacing an
     actionable error.
     """

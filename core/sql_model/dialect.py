@@ -3,7 +3,7 @@
 Story 21-14 — Phase 1 pilot: identifier-quoting dispatch centralised here.
 
 Before (3 files, 14 if/elif branches):
-  diff_sql_generator.py  _quote_identifier()  — 5 branches
+  sql_generator.py       _quote_identifier()  — 5 branches
   base_converter.py      _quote_identifier()  — 5 branches
   undo_script_generator.py _quote_identifier() — 4 branches
 
@@ -281,7 +281,6 @@ def get_sqlglot_dialect(dialect: Optional[str]) -> Optional[str]:
 #
 # Previously duplicated in:
 #   core/sql_generator/formatter.py      — _SQLGLOT_DIALECT_MAP  (private)
-#   core/logger/formatters/diff_utils.py — SQLGLOT_DIALECT_MAP   (public)
 #
 # Both importers now use this definition.  The map is deliberately kept as a
 # plain Dict (not a property) so it can be constructed at import time with

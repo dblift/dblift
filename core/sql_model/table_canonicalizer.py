@@ -8,7 +8,7 @@ semantics in core.sql_model.base._norm_constraint_deferrable / _norm_constraint_
 - is_enabled, is_validated:          SQL default is ENABLED/VALIDATED; collapse True -> None
 
 Intentionally non-destructive: no constraint dedup, no type rewriting, no name cleanup.
-Aggressive operations live elsewhere (DiffSqlGenerator, type_normalizer) and stay opt-in.
+Aggressive operations live in provider-specific SQL generation and stay opt-in.
 """
 
 from typing import Iterable, List

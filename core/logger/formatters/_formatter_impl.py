@@ -1,8 +1,6 @@
-"""Core ``OutputFormatter`` implementation (non-diff format methods + orchestrator).
+"""Core ``OutputFormatter`` implementation.
 
-The text-diff section helpers live in the ``_format_diff_*.py`` sibling
-modules and are mixed in here. The public ``formatter`` façade re-exports
-``OutputFormatter`` so existing imports
+The public ``formatter`` façade re-exports ``OutputFormatter`` so existing imports
 (``from core.logger.formatters.formatter import OutputFormatter``) keep
 working unchanged.
 
@@ -13,14 +11,9 @@ This file was extracted from the monolithic
 from pathlib import Path
 from typing import Any, Dict, Optional, Type
 
-from core.logger.formatters._format_diff_meta import _DiffMetaFormatterMixin
-from core.logger.formatters._format_diff_object import _DiffObjectFormatterMixin
-from core.logger.formatters._format_diff_routine import _DiffRoutineFormatterMixin
-from core.logger.formatters._format_diff_table import _DiffTableFormatterMixin
 from core.logger.results import (
     BaselineResult,
     CleanResult,
-    DiffResult,
     InfoResult,
     MigrateResult,
     OperationResult,
@@ -41,12 +34,7 @@ except ImportError:
     JsonFormatter = None  # type: ignore
 
 
-class OutputFormatter(
-    _DiffMetaFormatterMixin,
-    _DiffTableFormatterMixin,
-    _DiffRoutineFormatterMixin,
-    _DiffObjectFormatterMixin,
-):
+class OutputFormatter:
     """Unified formatter for all operation results."""
 
     # Maps result type → (format_method_name, command_type_string)
@@ -57,7 +45,6 @@ class OutputFormatter(
         ValidateResult: ("format_validate", "validate"),
         BaselineResult: ("format_baseline", "baseline"),
         RepairResult: ("format_repair", "repair"),
-        DiffResult: ("format_diff", "diff"),
         UndoResult: ("format_undo", "undo"),
     }
 
@@ -494,23 +481,3 @@ class OutputFormatter(
                 output.append(f"- {warning}")
 
         return "\n".join(output)
-
-    def format_diff(self, result: DiffResult) -> str:
-        """Format a diff/comparison operation result."""
-        sections = [
-            self._format_diff_header(result),
-            self._format_diff_counts(result),
-            self._format_table_diff(result),
-            self._format_view_diff(result),
-            self._format_index_diff(result),
-            self._format_sequence_diff(result),
-            self._format_trigger_diff(result),
-            self._format_procedure_diff(result),
-            self._format_type_diff(result),
-            self._format_extension_diff(result),
-            self._format_fdw_diff(result),
-            self._format_server_diff(result),
-            self._format_event_diff(result),
-            self._format_diff_footer(result),
-        ]
-        return "\n".join(s for s in sections if s)

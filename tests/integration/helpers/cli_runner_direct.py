@@ -410,28 +410,6 @@ class DBLiftCLIDirect:
         """Run import-flyway command."""
         return self._run_command("import-flyway", **kwargs)
 
-    def diff(
-        self,
-        target_version: Optional[str] = None,
-        tags: Optional[str] = None,
-        exclude_tags: Optional[str] = None,
-        versions: Optional[str] = None,
-        exclude_versions: Optional[str] = None,
-        ignore_unmanaged: bool = False,
-        **kwargs,
-    ) -> CommandResult:
-        """Run diff command."""
-        return self._run_command(
-            "diff",
-            target_version=target_version,
-            tags=tags,
-            exclude_tags=exclude_tags,
-            versions=versions,
-            exclude_versions=exclude_versions,
-            ignore_unmanaged=ignore_unmanaged,
-            **kwargs,
-        )
-
     def snapshot(
         self,
         output: str,

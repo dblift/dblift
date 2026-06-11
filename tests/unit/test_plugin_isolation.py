@@ -179,12 +179,9 @@ class TestNoCoreToPluginImports:
 
 
 class TestNoDbIntrospectionToCoreLeaks:
-    """``db/introspection/`` may not import core.validation / migration."""
+    """``db/introspection/`` may not import core migration internals."""
 
-    FORBIDDEN_CORE_PREFIXES = (
-        "core.validation",
-        "core.migration",
-    )
+    FORBIDDEN_CORE_PREFIXES = ("core.migration",)
 
     def test_no_upward_imports(self):
         violations: dict[str, set[str]] = {}

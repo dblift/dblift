@@ -139,7 +139,6 @@ class DBLiftClient:
     def baseline(self, **options) -> BaselineResult
     def info(self, **options) -> InfoResult
     def validate(self, **options) -> ValidationResult
-    def diff(self, **options) -> DiffResult
     def clean(self, **options) -> CleanResult
     def repair(self, **options) -> RepairResult
     def export_schema(self, **options) -> ExportResult

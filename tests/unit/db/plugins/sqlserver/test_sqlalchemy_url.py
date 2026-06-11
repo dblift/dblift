@@ -1,10 +1,8 @@
 """SQL Server plugin-owned SQLAlchemy URL construction."""
 
-from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
-import yaml
 from sqlalchemy.engine import make_url
 
 from db.plugins.sqlserver.plugin import PLUGIN as SQLSERVER_PLUGIN
@@ -157,9 +155,12 @@ def test_trust_server_certificate_raises_for_native_pymssql():
         SQLSERVER_PLUGIN.sqlalchemy_url_builder(db)
 
 
-def test_integration_diff_config_url_builds_with_supported_options():
-    config_path = Path("tests/integration/config/diff_sqlserver.yaml")
-    raw = yaml.safe_load(config_path.read_text(encoding="utf-8"))["database"]
+def test_url_builds_with_supported_options():
+    raw = {
+        "url": "mssql+pymssql://localhost:1433/dblift?encryption=off",
+        "username": "sa",
+        "password": "secret",
+    }
     db = _db(
         url=raw["url"],
         username=raw["username"],

@@ -436,7 +436,7 @@ class Table(SqlObject):
         self.derived_from = opts.derived_from
         self.raw_ddl = opts.raw_ddl
 
-        # Track explicit T-SQL-specific properties for diff sensitivity
+        # Track explicit T-SQL-specific properties for round-trip fidelity
         if self.filegroup is not None:
             self.mark_property_explicit("filegroup")
         if self.memory_optimized:
@@ -793,16 +793,6 @@ class Table(SqlObject):
 
         if column_differences:
             differences["column_differences"] = column_differences
-
-        # BACKLOG P3 (story 10-26): Ajouter comparaison des contraintes dans Table.compare_to()
-        # Raison: Complexité de normalisation des noms de contraintes cross-dialecte (auto-générés vs explicites)
-        # Impact: Le diff de schéma ne détecte pas les ajouts/suppressions de PK, FK, UNIQUE, CHECK
-        # Approche: Comparer self.pk vs other.pk, self.foreign_keys vs other.foreign_keys, etc.
-        #   Nécessite normalisation des noms (ignorer noms auto-générés dialecte-spécifiques)
-        #   Attributs disponibles: pk, foreign_keys, unique_constraints, check_constraints
-        #   (indexes sont trackés séparément via diff.missing_indexes / diff.extra_indexes)
-        # Dépendances: Normalisation cross-dialecte des noms de contraintes à définir d'abord
-        # Ref: voir _bmad-output/implementation-artifacts/10-26-todos-documenter-ou-implementer.md
 
         return differences
 

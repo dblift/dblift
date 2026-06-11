@@ -68,10 +68,10 @@ class SqlConstraint:
         dialect: Optional[str] = None,
         on_delete: Optional[str] = None,
         on_update: Optional[str] = None,
-        # Constraint state (Oracle, SQL Server) - Diff-relevant
+        # Constraint state (Oracle, SQL Server)
         is_enabled: Optional[bool] = None,
         is_validated: Optional[bool] = None,
-        # Deferrable constraints (PostgreSQL, Oracle) - Diff-relevant
+        # Deferrable constraints (PostgreSQL, Oracle)
         is_deferrable: Optional[bool] = None,
         initially_deferred: Optional[bool] = None,
         # Constraint comment - SQL-generation-only
@@ -89,10 +89,10 @@ class SqlConstraint:
             dialect: SQL dialect
             on_delete: ON DELETE action for foreign keys
             on_update: ON UPDATE action for foreign keys
-            is_enabled: Whether constraint is enabled (Oracle, SQL Server) - Diff-relevant
-            is_validated: Whether constraint is validated (Oracle) - Diff-relevant
-            is_deferrable: Whether constraint is deferrable (PostgreSQL, Oracle) - Diff-relevant
-            initially_deferred: Whether constraint is initially deferred - Diff-relevant
+            is_enabled: Whether constraint is enabled (Oracle, SQL Server)
+            is_validated: Whether constraint is validated (Oracle)
+            is_deferrable: Whether constraint is deferrable (PostgreSQL, Oracle)
+            initially_deferred: Whether constraint is initially deferred
             comment: Constraint comment/description - SQL-generation-only
         """
         # Handle both enum and string constraint types
@@ -115,10 +115,10 @@ class SqlConstraint:
         self.explicit_properties: Dict[str, bool] = {}
         self.on_delete = on_delete
         self.on_update = on_update
-        # Constraint state (Oracle, SQL Server) - Diff-relevant
+        # Constraint state (Oracle, SQL Server)
         self.is_enabled = is_enabled
         self.is_validated = is_validated
-        # Deferrable constraints (PostgreSQL, Oracle) - Diff-relevant
+        # Deferrable constraints (PostgreSQL, Oracle)
         self.is_deferrable = is_deferrable
         self.initially_deferred = initially_deferred
         # Constraint comment - SQL-generation-only
@@ -160,7 +160,7 @@ class SqlConstraint:
         # CHECK expression (str() guards against non-string driver-returned types)
         if str(self.check_expression or "").strip() != str(other.check_expression or "").strip():
             return False
-        # Constraint state (diff-relevant)
+        # Constraint state
         # is_enabled/is_validated: None = default = True (constraints are enabled/validated by default)
         if _norm_constraint_enabled(self.is_enabled) != _norm_constraint_enabled(other.is_enabled):
             return False

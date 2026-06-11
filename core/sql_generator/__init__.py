@@ -1,8 +1,7 @@
 """SQL Generation Module
 
-This module provides functionality for generating SQL DDL scripts from SQL Model objects
-and from schema diffs. Includes SQL formatting, script organization, dependency management,
-and diff-to-SQL conversion.
+This module provides functionality for generating SQL DDL scripts from SQL Model objects.
+Includes SQL formatting, script organization, and dependency management.
 
 Dialect-specific generators live in their plugin packages
 (``db/plugins/<X>/generator/``). They are no longer re-exported here —
@@ -24,9 +23,6 @@ from core.sql_generator.dependency_analyzer import (
     DependencyAnalyzer,
     DependencyGraph,
 )
-from core.sql_generator.diff_analyzer import DiffAnalysis, DiffAnalyzer
-from core.sql_generator.diff_sql_generator import DiffGenerationContext, DiffSqlGenerator
-from core.sql_generator.diff_to_sql import generate_sql_script, generate_sql_statements
 from core.sql_generator.formatter import SqlFormatter
 from core.sql_generator.generator_factory import SqlGeneratorFactory
 from core.sql_generator.options import (
@@ -48,13 +44,7 @@ __all__ = [
     "BasicTableDdlGenerator",
     "DependencyAnalyzer",
     "DependencyGraph",
-    "DiffAnalyzer",
-    "DiffAnalysis",
-    "DiffGenerationContext",
-    "DiffSqlGenerator",
     "GenerationOptions",
-    "generate_sql_script",
-    "generate_sql_statements",
     "SafetyChecker",
     "SafetyCheckResult",
     "SqlFormatter",

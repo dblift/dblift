@@ -53,7 +53,7 @@ class PostgresTableOptions:
 
 @dataclass(frozen=True, slots=True)
 class OracleStorageOptions:
-    """Oracle / DB2 storage parameters — SQL-generation-only, not diff-relevant."""
+    """Oracle / DB2 storage parameters for SQL generation."""
 
     pctfree: Optional[int] = None
     pctused: Optional[int] = None

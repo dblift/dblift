@@ -207,7 +207,6 @@ class TestLoggerPackageSurface:
         "CleanResult",
         "ConsoleLog",
         "DbliftLogger",
-        "DiffResult",
         "FileLog",
         "HtmlFormatter",
         "InfoResult",

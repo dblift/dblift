@@ -1,4 +1,4 @@
-"""SQL Statement models for diff-to-SQL generation."""
+"""SQL statement models for generated SQL operations."""
 
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional

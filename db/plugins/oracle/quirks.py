@@ -195,7 +195,7 @@ class OracleQuirks(BaseQuirks):
         """Look up the real owner/table_name in ALL_TABLES and try it first."""
         import logging
 
-        log = logging.getLogger("core.validation.round_trip_tester")
+        log = logging.getLogger("core.snapshot")
 
         strategies: "list[str]" = [
             f'"{schema_clean}"."{table_clean}"',

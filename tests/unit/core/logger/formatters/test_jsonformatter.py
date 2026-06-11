@@ -12,7 +12,6 @@ from core.logger.formatters.jsonformatter import JsonFormatter
 from core.logger.results import (
     BaselineResult,
     CleanResult,
-    DiffResult,
     InfoResult,
     MigrateResult,
     MigrationInfo,
@@ -603,46 +602,3 @@ class TestJsonFormatter:
 
         # Note: log_entries, total_log_entries, and log_level_counts are not included
         # JSON logs contain only structured command output, not text log messages
-
-    def test_format_result_diff_summary_preserved(self):
-        """Test that DIFF command summary is preserved and merged with log statistics."""
-        formatter = JsonFormatter()
-
-        # Add some log entries
-        formatter.add_log_entry("INFO", "diff", "Comparing schemas")
-        formatter.add_log_entry("WARN", "diff", "Found differences")
-
-        # Create a DIFF result with summary data
-        result = DiffResult()
-        result.success = True
-        result.source_type = "postgresql"
-        result.target_type = "mysql"
-        result.total_differences = 5
-        result.error_count = 1
-        result.warning_count = 2
-        result.info_count = 2
-        result.missing_tables = ["table1", "table2"]
-        result.extra_tables = ["table3"]
-        result.modified_tables = []
-        result.missing_user_defined_types = []
-        result.extra_user_defined_types = []
-        result.schema_diff = None
-        result.complete()
-
-        json_output = formatter.format_result(
-            result=result, schema="test_schema", database_name="test_db", command_type="DIFF"
-        )
-
-        parsed = json.loads(json_output)
-
-        # Verify DIFF-specific summary fields are preserved
-        assert "summary" in parsed
-        assert "missing_tables" in parsed["summary"]
-        assert "extra_tables" in parsed["summary"]
-        assert "modified_tables" in parsed["summary"]
-        assert parsed["summary"]["missing_tables"] == 2
-        assert parsed["summary"]["extra_tables"] == 1
-
-        # Verify log entry statistics are NOT included in JSON output
-        assert "total_log_entries" not in parsed["summary"]
-        assert "log_level_counts" not in parsed["summary"]

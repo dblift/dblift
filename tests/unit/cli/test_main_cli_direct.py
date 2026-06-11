@@ -238,7 +238,6 @@ class TestExecuteSingleCommand:
         client.import_flyway.return_value = mock_operation_result
         client.export_schema.return_value = mock_operation_result
         client.snapshot.return_value = mock_operation_result
-        client.diff.return_value = MagicMock(success=True)
 
         return client
 

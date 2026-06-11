@@ -49,9 +49,9 @@ class View(SqlObject):
         definer: Optional[str] = None,  # user@host (MySQL)
         # Grammar-based: Oracle-specific view properties
         force: Optional[bool] = None,  # FORCE (True) or NOFORCE (False) (Oracle)
-        # PostgreSQL-specific view properties - Diff-relevant
-        security_definer: Optional[bool] = None,  # SECURITY DEFINER (PostgreSQL) - Diff-relevant
-        security_invoker: Optional[bool] = None,  # SECURITY INVOKER (PostgreSQL) - Diff-relevant
+        # PostgreSQL-specific view properties
+        security_definer: Optional[bool] = None,  # SECURITY DEFINER (PostgreSQL)
+        security_invoker: Optional[bool] = None,  # SECURITY INVOKER (PostgreSQL)
         # View dependencies - SQL-generation-only
         dependencies: Optional[
             List[str]
@@ -76,8 +76,8 @@ class View(SqlObject):
             sql_security: SQL security - DEFINER, INVOKER (MySQL grammar-based)
             definer: Definer user - user@host (MySQL grammar-based)
             force: Whether view is created with FORCE (True) or NOFORCE (False) (Oracle grammar-based)
-            security_definer: Whether view uses SECURITY DEFINER (PostgreSQL) - Diff-relevant
-            security_invoker: Whether view uses SECURITY INVOKER (PostgreSQL) - Diff-relevant
+            security_definer: Whether view uses SECURITY DEFINER (PostgreSQL)
+            security_invoker: Whether view uses SECURITY INVOKER (PostgreSQL)
             dependencies: List of tables/views this view depends on - SQL-generation-only
         """
         object_type = SqlObjectType.MATERIALIZED_VIEW if materialized else SqlObjectType.VIEW
@@ -298,7 +298,7 @@ class View(SqlObject):
             and self.security_definer == other.security_definer
             and self.security_invoker == other.security_invoker
             # Note: last_refresh is not compared as it changes with each refresh
-            # Note: dependencies is SQL-generation-only, not diff-relevant
+            # Note: dependencies is SQL-generation-only
         )
 
     # ------------------------------------------------------------------

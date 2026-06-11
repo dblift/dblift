@@ -6,9 +6,7 @@ from types import SimpleNamespace
 import pytest
 
 from core.logger import ConsoleLog, DbliftLogger, LogLevel, MultiLog
-from core.logger.formatters.htmlformatter import HtmlFormatter
 from core.logger.log import Log, LogEvent, LogFormat, LogFormatter, TextFormatter
-from core.logger.results import DiffResult
 
 pytestmark = [pytest.mark.unit]
 
@@ -304,29 +302,3 @@ def test_multilog_set_current_command():
     multi_log.set_current_command("migrate")
 
     assert getattr(console, "command_type") == "migrate"
-
-
-def test_htmlformatter_diff_data_includes_object_lists():
-    formatter = HtmlFormatter()
-    diff_result = DiffResult()
-    diff_result.missing_tables = ["table_missing"]
-    diff_result.extra_tables = ["table_extra"]
-    diff_result.missing_views = ["view_missing"]
-    diff_result.extra_views = ["view_extra"]
-    diff_result.missing_indexes = ["idx_missing"]
-    diff_result.extra_indexes = ["idx_extra"]
-    diff_result.missing_sequences = ["seq_missing"]
-    diff_result.extra_sequences = ["seq_extra"]
-    diff_result.missing_triggers = ["trigger_missing"]
-    diff_result.extra_triggers = ["trigger_extra"]
-    diff_result.missing_procedures = ["proc_missing"]
-    diff_result.extra_procedures = ["proc_extra"]
-    diff_result.missing_functions = ["fn_missing"]
-    diff_result.extra_functions = ["fn_extra"]
-
-    diff_data = formatter._extract_diff_data(diff_result)
-
-    assert diff_data["missing_views"] == diff_result.missing_views
-    assert diff_data["extra_functions"] == diff_result.extra_functions
-    assert diff_data["missing_view_count"] == len(diff_result.missing_views)
-    assert diff_data["extra_trigger_count"] == len(diff_result.extra_triggers)

@@ -30,7 +30,6 @@ Sub-protocols (filled by Epic 26 stories as needed):
 * ``DdlQuirks`` (story 26-3) — DDL/SQL rendering hooks.
 * ``ParserQuirks`` (story 26-4) — parser/tokenizer factory hooks.
 * ``ModelQuirks`` (story 26-5) — domain-model rendering hooks.
-* ``ComparatorQuirks`` (story 26-6) — schema-diff comparator hooks.
 * ``ValidatorQuirks`` (story 26-7) — lint/perf rule hooks.
 * ``TypeMapQuirks`` (story 26-8) — type normalisation hooks.
 
@@ -191,29 +190,6 @@ class ModelQuirks(Protocol):
 
 
 @runtime_checkable
-class ComparatorQuirks(Protocol):
-    """Schema-diff comparator hooks. Populated by story 26-6."""
-
-    view_supports_algorithm: bool
-    view_supports_force_noforce: bool
-    view_supports_unlogged_and_security: bool
-    event_supports_mysql_schedule: bool
-    supports_constraint_triggers: bool
-    index_comment_template: str
-    default_index_type: str
-    serial_types_alias_integer: bool
-    proc_uses_definition_field: bool
-    proc_skip_empty_comparison: bool
-    table_supports_compress: bool
-    table_supports_memory_optimized: bool
-    table_supports_system_versioned: bool
-    table_column_default_has_on_update: bool
-    seq_uses_nextval_syntax: bool
-    computed_column_introspection_incomplete: bool
-    table_prefers_inline_single_pk: bool
-
-
-@runtime_checkable
 class ValidatorQuirks(Protocol):
     """Lint / perf rule hooks. Populated by story 26-7."""
 
@@ -247,7 +223,6 @@ class DialectQuirks(
     DdlQuirks,
     ParserQuirks,
     ModelQuirks,
-    ComparatorQuirks,
     ValidatorQuirks,
     TypeMapQuirks,
     Protocol,
@@ -274,7 +249,6 @@ __all__ = [
     "DdlQuirks",
     "ParserQuirks",
     "ModelQuirks",
-    "ComparatorQuirks",
     "ValidatorQuirks",
     "TypeMapQuirks",
 ]

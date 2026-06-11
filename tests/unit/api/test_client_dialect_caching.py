@@ -295,18 +295,3 @@ class TestGeneratorFactoryCaseInsensitive:
         SqlGeneratorFactory.create("postgresql")
         assert SqlGeneratorFactory.is_supported("POSTGRESQL") is True
         assert SqlGeneratorFactory.is_supported("postgresql") is True
-
-
-# ── AC#4 — DiffSqlGenerator inline comment ──────────────────────────────
-
-
-@pytest.mark.unit
-class TestDiffSqlGeneratorComment:
-    """Tests for DiffSqlGenerator __init__ inline comment (AC#4)."""
-
-    def test_init_contains_normalization_comment(self):
-        """inspect.getsource(DiffSqlGenerator.__init__) contains the normalization comment."""
-        from core.sql_generator.diff_sql_generator import DiffSqlGenerator
-
-        source = inspect.getsource(DiffSqlGenerator.__init__)
-        assert "# Normalized once here" in source

@@ -40,7 +40,7 @@ class EventType(Enum):
     Events are organized by category:
     - Migration: Operation and script-level events
     - Validation: Validation operation and rule-level events
-    - Schema: Schema introspection and diff events
+    - Schema: Schema introspection events
     - Connection: Database connection lifecycle
     - History: Migration history operations
     - Operations: Other operations (undo, clean, baseline, repair, info)
@@ -82,14 +82,11 @@ class EventType(Enum):
     VALIDATION_RULE_VIOLATION = "validation.rule.violation"
     VALIDATION_RULE_PASSED = "validation.rule.passed"
 
-    # ===== Schema & Diff Events (7 events) =====
-    SCHEMA_DIFF_DETECTED = "schema.diff.detected"
+    # ===== Schema Events (4 events) =====
     SCHEMA_INTROSPECTION_STARTED = "schema.introspection.started"
     SCHEMA_INTROSPECTION_COMPLETED = "schema.introspection.completed"
     SCHEMA_INTROSPECTION_FAILED = "schema.introspection.failed"
     SCHEMA_OBJECT_DETECTED = "schema.object.detected"
-    DIFF_ANALYSIS_STARTED = "diff.analysis.started"
-    DIFF_ANALYSIS_COMPLETED = "diff.analysis.completed"
 
     # ===== Connection & Provider Events (6 events) =====
     CONNECTION_ESTABLISHED = "connection.established"

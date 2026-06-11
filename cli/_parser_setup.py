@@ -74,7 +74,7 @@ def parse_with_selective_errors(
 def _make_history_table_parent() -> argparse.ArgumentParser:
     """Parent parser for the ``--table`` history-table override.
 
-    Inherited by migrate, undo, clean, validate, info, diff, repair,
+    Inherited by migrate, undo, clean, validate, info, repair,
     import-flyway, and baseline. Defining it once via ``parents=[...]``
     makes the duplication visible to the type-checker and removes the
     ``for subparser in [...]`` loop that used to add it imperatively.
@@ -114,7 +114,7 @@ def _make_strict_parent() -> argparse.ArgumentParser:
 def _make_filter_parent() -> argparse.ArgumentParser:
     """Parent parser for tag/version/placeholder filters.
 
-    Inherited by migrate, undo, validate, info, diff.
+    Inherited by migrate, undo, validate, info.
     """
     p = argparse.ArgumentParser(add_help=False)
     p.add_argument("--tags", help="Execute migrations with specified tags (comma-separated list)")
@@ -136,10 +136,9 @@ def _make_filter_parent() -> argparse.ArgumentParser:
 
 # NOTE: ``--target-version`` is intentionally NOT extracted into a parent
 # parser. Its help text is genuinely command-specific (migrate / undo /
-# diff each describe a different intent) and unifying it would degrade
-# `--help` output. Each subparser adds it explicitly in
-# ``_add_diff_and_target_options`` so the user-facing string stays
-# accurate. See Bugbot review on PR-09.
+# validate each describe a different intent) and unifying it would degrade
+# `--help` output. Each subparser adds it explicitly in ``_add_target_options``
+# so the user-facing string stays accurate. See Bugbot review on PR-09.
 
 
 def _add_baseline_options(baseline_parser: argparse.ArgumentParser) -> None:
@@ -165,13 +164,13 @@ def _add_baseline_options(baseline_parser: argparse.ArgumentParser) -> None:
     )
 
 
-def _add_diff_and_target_options(
+def _add_target_options(
     migrate_parser: argparse.ArgumentParser,
     undo_parser: argparse.ArgumentParser,
     validate_parser: argparse.ArgumentParser,
     clean_parser: argparse.ArgumentParser,
 ) -> None:
-    """Configure diff/migrate/undo/validate/clean subcommand-specific options.
+    """Configure migrate/undo/validate/clean subcommand-specific options.
 
     ``--target-version`` is added per-command (rather than via a shared
     parent parser) because each command has a meaningfully different
@@ -387,7 +386,7 @@ def create_parser(
     builtin_extension_parsers = _register_builtin_command_parsers(parser)
     # Configure arguments via extracted functions
     _add_baseline_options(baseline_parser)
-    _add_diff_and_target_options(migrate_parser, undo_parser, validate_parser, clean_parser)
+    _add_target_options(migrate_parser, undo_parser, validate_parser, clean_parser)
     # info --format option (JSON output for scripting)
     info_parser.add_argument(
         "--format",

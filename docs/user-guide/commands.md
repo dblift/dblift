@@ -117,7 +117,7 @@ Here are the commands you'll use most often:
 | `dblift migrate --dry-run` | Preview without applying | Check what will happen before doing it |
 | `dblift undo --target-version=X` | Rolls back to a specific version | Reverse recent changes |
 | `dblift validate` | Checks migration history and metadata consistency | Before applying changes |
-| `dblift snapshot` | Exports schema snapshot to JSON model file from database or live database | Create snapshot for diff comparisons |
+| `dblift snapshot` | Exports schema snapshot to JSON model file from database or live database | Capture schema metadata |
 | `dblift baseline --baseline-version=X` | Mark migrations as already applied | Working with existing databases |
 
 **Quick Examples:**

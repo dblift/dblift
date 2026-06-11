@@ -555,7 +555,6 @@ class TestBuildPayload(unittest.TestCase):
             payload = svc._build_payload()
 
         self.assertIsInstance(payload, SchemaSnapshotPayload)
-        svc._validate_snapshot_accuracy.assert_called_once()
 
     def test_build_payload_with_result_tracking(self):
         """Lines 273-274: introspector.enable_result_tracking called when available."""
@@ -685,22 +684,7 @@ class TestBuildPayload(unittest.TestCase):
         introspector = _FakeIntrospectorBase()
         introspector.enable_result_tracking = MagicMock(return_value=introspection_result)
 
-        validation_output = {
-            "overall_status": {
-                "passed": True,
-                "confidence": {},
-                "total_errors": 1,
-                "total_warnings": 1,
-            }
-        }
-
-        with (
-            self._patch_factory(introspector),
-            patch(
-                "core.validation.introspection_validator.IntrospectionValidator"
-            ) as MockValidator,
-        ):
-            MockValidator.return_value.validate_introspection.return_value = validation_output
+        with self._patch_factory(introspector):
             payload = svc._build_payload()
 
         self.assertIn("introspection_quality", payload.metadata)
@@ -826,154 +810,6 @@ class TestCollectMigrationMetadata(unittest.TestCase):
 # ---------------------------------------------------------------------------
 # _validate_snapshot_accuracy
 # ---------------------------------------------------------------------------
-
-
-class TestValidateSnapshotAccuracy(unittest.TestCase):
-    def _make_payload(self):
-        from core.migration.snapshots.schema_snapshot import SchemaSnapshotPayload
-
-        payload = SchemaSnapshotPayload(tables=[], views=[], indexes=[])
-        payload.metadata["validation"] = {}
-        return payload
-
-    def test_validate_accuracy_updates_payload_metadata(self):
-        """Lines 515-566: accuracy validation updates payload.metadata."""
-        svc, config, provider = _make_service()
-        payload = self._make_payload()
-        introspector = MagicMock()
-
-        mock_overall = {
-            "passed": True,
-            "confidence": {
-                "breakdown": {"accuracy": {"score": 1.0}},
-                "confidence_level": "HIGH",
-                "overall_score": 1.0,
-            },
-            "total_errors": 0,
-            "total_warnings": 0,
-        }
-
-        with (
-            patch("core.validation.accuracy_validator.AccuracyValidator") as MockAccuracy,
-            patch("core.validation.state_validator.StateValidator") as MockState,
-        ):
-            MockState.return_value.validate_schema.return_value = {}
-            MockState.return_value.get_overall_status.return_value = mock_overall
-
-            svc._validate_snapshot_accuracy(payload, introspector, "public", [], [], [])
-
-        self.assertTrue(payload.metadata["validation"]["overall_passed"])
-
-    def test_validate_accuracy_logs_warning_when_low_accuracy(self):
-        """Lines 575-610: warning block triggered when accuracy < 1.0."""
-        svc, config, provider = _make_service()
-        payload = self._make_payload()
-        introspector = MagicMock()
-
-        mock_overall = {
-            "passed": False,
-            "confidence": {
-                "breakdown": {
-                    "accuracy": {"score": 0.7},
-                    "error_rate": {"score": 0.9},
-                },
-                "confidence_level": "LOW",
-                "overall_score": 0.75,
-            },
-            "total_errors": 2,
-            "total_warnings": 1,
-        }
-
-        with (
-            patch("core.validation.accuracy_validator.AccuracyValidator") as MockAccuracy,
-            patch("core.validation.state_validator.StateValidator") as MockState,
-        ):
-            MockState.return_value.validate_schema.return_value = {}
-            MockState.return_value.get_overall_status.return_value = mock_overall
-
-            svc._validate_snapshot_accuracy(payload, introspector, "public", [], [], [])
-
-        warning_calls = [str(c) for c in svc.log.warning.call_args_list]
-        assert any("70%" in c or "0.7" in c or "Accuracy" in c for c in warning_calls)
-
-    def test_validate_accuracy_exception_is_non_fatal(self):
-        """Lines 612-615: exception in validation → log warning, no raise."""
-        svc, config, provider = _make_service()
-        payload = self._make_payload()
-        introspector = MagicMock()
-
-        with patch(
-            "core.validation.accuracy_validator.AccuracyValidator",
-            side_effect=ImportError("no module"),
-        ):
-            # must not raise
-            svc._validate_snapshot_accuracy(payload, introspector, "public", [], [], [])
-
-        warning_calls = [str(c) for c in svc.log.warning.call_args_list]
-        assert any("Could not validate" in c or "validate" in c.lower() for c in warning_calls)
-
-    def test_validate_accuracy_confidence_not_high(self):
-        """Lines 604-608: confidence != HIGH triggers warning."""
-        svc, config, provider = _make_service()
-        payload = self._make_payload()
-        introspector = MagicMock()
-
-        mock_overall = {
-            "passed": True,
-            "confidence": {
-                "breakdown": {"accuracy": {"score": 1.0}},
-                "confidence_level": "MEDIUM",
-                "overall_score": 0.85,
-            },
-            "total_errors": 0,
-            "total_warnings": 0,
-        }
-
-        with (
-            patch("core.validation.accuracy_validator.AccuracyValidator") as MockAccuracy,
-            patch("core.validation.state_validator.StateValidator") as MockState,
-        ):
-            MockState.return_value.validate_schema.return_value = {}
-            MockState.return_value.get_overall_status.return_value = mock_overall
-
-            svc._validate_snapshot_accuracy(payload, introspector, "public", [], [], [])
-
-        warning_calls = [str(c) for c in svc.log.warning.call_args_list]
-        assert any("MEDIUM" in c for c in warning_calls)
-
-    def test_validate_accuracy_with_breakdown(self):
-        """Lines 589-595: breakdown dict logged."""
-        svc, config, provider = _make_service()
-        payload = self._make_payload()
-        introspector = MagicMock()
-
-        mock_overall = {
-            "passed": False,
-            "confidence": {
-                "breakdown": {
-                    "accuracy": {"score": 0.8},
-                    "error_rate": {"score": 1.0},
-                    "completeness": {"score": 0.9},
-                },
-                "confidence_level": "MEDIUM",
-                "overall_score": 0.85,
-            },
-            "total_errors": 1,
-            "total_warnings": 0,
-        }
-
-        with (
-            patch("core.validation.accuracy_validator.AccuracyValidator") as MockAccuracy,
-            patch("core.validation.state_validator.StateValidator") as MockState,
-        ):
-            MockState.return_value.validate_schema.return_value = {}
-            MockState.return_value.get_overall_status.return_value = mock_overall
-
-            svc._validate_snapshot_accuracy(payload, introspector, "public", [], [], [])
-
-        # Each breakdown component should be logged
-        warning_calls = " ".join([str(c) for c in svc.log.warning.call_args_list])
-        self.assertIn("Score Breakdown", warning_calls)
 
 
 # ---------------------------------------------------------------------------

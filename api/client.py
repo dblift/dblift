@@ -58,7 +58,7 @@ def _with_client_emitter(method: _F) -> _F:
     "every public operation wraps its body in ``use_client_emitter``",
     but only ``migrate`` and ``undo`` actually did. Any core-layer
     ``emit_event`` raised from ``clean`` / ``info`` / ``validate`` /
-    ``diff`` / ``repair`` / ``baseline`` / ``import_flyway`` /
+    ``repair`` / ``baseline`` / ``import_flyway`` /
     ``export_schema`` / ``snapshot`` would land on the process-wide
     default emitter, breaking the per-client isolation guarantee.
     Decorating every public operation restores that invariant once and

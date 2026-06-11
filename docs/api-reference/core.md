@@ -47,11 +47,6 @@ Command pattern implementation for all migration operations.
       show_root_heading: true
       show_source: true
 
-::: core.migration.commands.diff_command.DiffCommand
-    options:
-      show_root_heading: true
-      show_source: true
-
 ## State Management
 
 Manages migration state and determines which migrations need to run.
@@ -101,7 +96,7 @@ See `core/sql_parser/` for implementation details.
 
 ## SQL Generation
 
-Generates SQL from schema differences.
+Generates SQL from schema model objects.
 
 ::: core.sql_generator.sql_generator.SqlGenerator
     options:
@@ -113,26 +108,6 @@ Generates SQL from schema differences.
 - Database-specific SQL generation
 - Dependency ordering
 - Safety checks
-
-## Schema Comparison
-
-Compares database schemas and identifies differences.
-
-::: core.comparison
-    options:
-      show_root_heading: true
-      show_source: true
-
-**Capabilities**:
-- Compare schemas
-- Detect differences
-- Generate diff reports
-- Support multiple object types
-
-See `core/comparison/` for implementation details including:
-- `comparator.py` - Schema comparison logic
-- `diff_models.py` - Difference models
-- `diff_reporter.py` - Report generation
 
 ## Related Documentation
 

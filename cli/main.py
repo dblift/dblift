@@ -52,7 +52,7 @@ from cli._config_helpers import (  # noqa: F401
 from cli._output import CommandOutput, from_args
 from cli._parser_setup import (  # noqa: F401
     _add_baseline_options,
-    _add_diff_and_target_options,
+    _add_target_options,
     create_parser,
     parse_with_selective_errors,
 )
