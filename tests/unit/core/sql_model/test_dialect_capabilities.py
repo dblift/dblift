@@ -126,8 +126,7 @@ class TestSQLite:
         assert dialect_supports_transactional_ddl("sqlite") is True
 
     def test_clean_strategy_is_native(self):
-        # SQLite enumerates drop candidates via the provider directly,
-        # not via generic introspection.
+        # SQLite enumerates drop candidates via the provider directly.
         assert dialect_clean_strategy("sqlite") == "native"
 
 

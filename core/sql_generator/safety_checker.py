@@ -298,8 +298,8 @@ class SafetyChecker:
         Checks for references in:
         - Foreign key constraints
         - Indexes
-        - Views (if provider supports introspection)
-        - Stored procedures (if provider supports introspection)
+        - Views (when the provider exposes catalog queries)
+        - Stored procedures (when the provider exposes catalog queries)
 
         Args:
             table: Table object

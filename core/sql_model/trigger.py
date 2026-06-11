@@ -86,7 +86,7 @@ class Trigger(SqlObject):
         self.function_name = function_name
         self.function_arguments = function_arguments
         self.when_clause = when_clause
-        # Post-introspection: explicit CONSTRAINT TRIGGER metadata (fallback to definition sniffing)
+        # Prefer explicit CONSTRAINT TRIGGER metadata; fall back to definition sniffing.
         if is_constraint_trigger is None:
             inferred_constraint = "CONSTRAINT TRIGGER" in (definition or "").upper()
             self.is_constraint_trigger = inferred_constraint

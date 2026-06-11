@@ -477,7 +477,7 @@ class TestSqlConstraintHashConsistency:
 
 @pytest.mark.unit
 class TestSqlConstraintDeferrable:
-    """Tests SqlConstraint.__eq__ et __hash__ pour les champs deferrable (diff-relevant)."""
+    """Tests SqlConstraint.__eq__ et __hash__ pour les champs deferrable."""
 
     def test_is_deferrable_none_vs_true_not_equal(self):
         a = SqlConstraint(ConstraintType.FOREIGN_KEY, "fk1", ["id"])
@@ -528,7 +528,7 @@ class TestTable:
         assert table.constraints == []
 
     def test_virtual_table_round_trips_object_type_and_raw_ddl(self):
-        """SQLite virtual table metadata must survive snapshot serialization."""
+        """SQLite virtual table metadata must survive SQL-model serialization."""
         ddl = "CREATE VIRTUAL TABLE users_fts USING fts5(name)"
         table = Table.from_options(
             "users_fts",
@@ -674,7 +674,7 @@ class TestTable:
         """metadata defaults to empty dict — from_dict with no key returns {}."""
         table = Table("orders", dialect="cosmosdb")
         data = table.to_dict()
-        data.pop("metadata", None)  # simulate old snapshot without metadata key
+        data.pop("metadata", None)  # simulate old serialized payload without metadata key
         restored = Table.from_dict(data)
         assert restored.metadata == {}
 

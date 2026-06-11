@@ -91,12 +91,9 @@ class DialectCapabilities:
     #: file-based or schema-less backends (SQLite, Cosmos DB).
     schema_required: bool
     #: Unquoted identifiers fold to uppercase in the persisted catalogue
-    #: (Oracle, DB2). Relevant for introspection comparison and display.
+    #: (Oracle, DB2). Relevant for SQL generation and display.
     uppercase_identifiers: bool
-    #: How ``clean`` enumerates and drops schema objects:
-    #:   - ``"native"``: provider exposes ``enumerate_clean_candidates`` /
-    #:     ``get_clean_preview`` (SQLite, Cosmos DB, Oracle)
-    #:   - ``"introspector"``: introspector walks plugin-owned vendor metadata queries
+    #: How ``clean`` enumerates and drops schema objects.
     clean_strategy: str
 
 
@@ -190,7 +187,7 @@ def dialect_uses_uppercase_identifiers(dialect: Optional[str]) -> bool:
 
 
 def dialect_clean_strategy(dialect: Optional[str]) -> str:
-    """``"native"`` (provider-enumerated) or ``"introspector"`` (query-walked)."""
+    """Return the provider clean enumeration strategy."""
     return get_dialect_capabilities(dialect).clean_strategy
 
 

@@ -400,7 +400,7 @@ class TestGenerateColumnDefinitionDecomposition(unittest.TestCase):
         result = gen._build_identity_clause(col, gen.table.dialect)
         assert result == "AUTO_INCREMENT"
 
-    # PostgreSQL identity strategy — native types pinned (Phase 2 of DDL diff pipeline)
+    # PostgreSQL identity strategy: native types stay pinned.
     def test_build_identity_clause_postgresql_serial_emits_no_clause(self):
         """PG `serial` encodes identity in the type itself — no extra clause."""
         gen = self._make_generator("postgresql")

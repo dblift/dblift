@@ -177,7 +177,7 @@ class TestBaseAlterGeneratorFormatColumnDefinition:
 
         generator = ConcreteAlterGenerator("postgresql")
         column = SqlColumn("id", "INTEGER", is_nullable=True)
-        column.nullable = None  # Simulate introspection with unknown nullability
+        column.nullable = None  # Simulate metadata with unknown nullability
         result = generator._format_column_definition(column)
         assert "NOT NULL" not in result
 

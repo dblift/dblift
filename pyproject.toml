@@ -197,7 +197,7 @@ disable_error_code = ["unreachable"]
 #      end-to-end and confirm 0 errors.
 #
 # Strict flags mirror what the CLI ``--strict`` switch enables; keeping them
-# explicit here makes the contract diff-able when mypy adds new strict
+# explicit here keeps the contract auditable when mypy adds new strict
 # defaults in future releases.
 # ---------------------------------------------------------------------------
 [[tool.mypy.overrides]]
@@ -256,7 +256,6 @@ module = [
     "core.migration.state.migration_classifier",
     "core.migration.ui.display_formatters",
     "core.migration.ui.migration_analyzer",
-    "core.migration.snapshots.schema_snapshot_repository",
     "core.migration.scripting.undo_script_generator._extractors",
     "core.migration.scripting.undo_script_generator._helpers",
     "core.migration.rules.migration_rules",
@@ -306,9 +305,8 @@ strict_equality = true
 
 # PR-H1: strict boundary protocols — Type safety 7→8 lifts the
 # framework's contract layer (dialect_boundary Protocols, BaseQuirks,
-# BaseProvider, ProviderRegistry, sql_model.dialect) plus the 7
-# introspector __init__.py shims that load each plugin's vendor
-# introspector lazily. Same flag set as the api/* carve-outs above.
+# BaseProvider, ProviderRegistry, sql_model.dialect). Same flag set as
+# the api/* carve-outs above.
 [[tool.mypy.overrides]]
 module = [
     "core.dialect_boundary",
@@ -316,9 +314,6 @@ module = [
     "db.base_quirks",
     "db.base_provider",
     "db.provider_registry",
-    "db.plugins.mysql.introspection",
-    "db.plugins.postgresql.introspection",
-    "db.plugins.sqlite.introspection",
 ]
 disallow_any_generics = true
 disallow_subclassing_any = true
@@ -361,7 +356,6 @@ module = [
     "core.sql_model.sequence",
     "core.sql_model.synonym",
     "core.sql_model.table",
-    "core.sql_model.table_canonicalizer",
     "core.sql_model.table_options",
     "core.sql_model.trigger",
     "core.sql_model.user_defined_type",
@@ -393,77 +387,15 @@ no_implicit_optional = true
 warn_unused_ignores = true
 strict_equality = true
 
-# PR-H4: strict core/comparison — all 31 modules in core/comparison/
-# (the 7 _diff_* sibling modules + diff_models façade from the PR-G4
-# split, plus comparator.py, comparison_utils.py, type_normalizer.py,
-# diff_reporter.py, and the 15 object-type comparators). Fixes were
-# mechanical: bare ``Optional[tuple]`` → ``Optional[Tuple[Any, Any]]``
-# on the (expected, actual) diff fields, ``def _calculate_diffs(self):``
-# → ``-> None`` on the per-class overrides, untyped
-# ``__init__(self, type_normalizer=None):`` → ``Optional[object]``
-# (or the real ``DataTypeNormalizer`` where actually used), bare
-# ``list`` / ``set`` parameterised, and 15 stale
-# ``# type: ignore[attr-defined,no-any-return]`` comments on the
-# ObjectComparator delegating methods trimmed to just
-# ``[no-any-return]`` (the ``attr-defined`` half is no longer needed
-# now that ``_COMPARATOR_REGISTRY`` is ``Dict[str, Type[Any]]``).
-# Same flag set as the api/* carve-outs above.
-[[tool.mypy.overrides]]
-module = [
-    "core.comparison",
-    "core.comparison._default_normalizer",
-    "core.comparison._diff_base",
-    "core.comparison._diff_index",
-    "core.comparison._diff_routine",
-    "core.comparison._diff_schema",
-    "core.comparison._diff_simple",
-    "core.comparison._diff_table",
-    "core.comparison._diff_view",
-    "core.comparison._table_property_comparator",
-    "core.comparison.comparator",
-    "core.comparison.comparison_utils",
-    "core.comparison.database_link_comparator",
-    "core.comparison.diff_models",
-    "core.comparison.diff_reporter",
-    "core.comparison.event_comparator",
-    "core.comparison.extension_comparator",
-    "core.comparison.foreign_data_wrapper_comparator",
-    "core.comparison.foreign_server_comparator",
-    "core.comparison.function_comparator",
-    "core.comparison.index_comparator",
-    "core.comparison.linked_server_comparator",
-    "core.comparison.package_comparator",
-    "core.comparison.procedure_comparator",
-    "core.comparison.sequence_comparator",
-    "core.comparison.synonym_comparator",
-    "core.comparison.table_comparator",
-    "core.comparison.trigger_comparator",
-    "core.comparison.type_normalizer",
-    "core.comparison.user_defined_type_comparator",
-    "core.comparison.view_comparator",
-]
-disallow_any_generics = true
-disallow_subclassing_any = true
-disallow_untyped_calls = true
-disallow_untyped_defs = true
-disallow_incomplete_defs = true
-disallow_untyped_decorators = true
-no_implicit_optional = true
-warn_unused_ignores = true
-strict_equality = true
-
-# PR-H6: strict core/migration leaf modules — snapshots, state, scripting,
-# sql, rules, and placeholders sub-packages. Fixes were mechanical:
+# PR-H6: strict core/migration leaf modules — state, scripting, sql, rules,
+# and placeholders sub-packages. Fixes were mechanical:
 # ``migration: Any`` annotations on duck-typed helper parameters, generic
 # parameters on ``List[Dict[str, Any]]`` / ``Dict[str, Any]``, ``Optional``
 # wrappers on default-``None`` params, return-type annotations on two
 # ``SqlAnalyzer`` methods, and explicit ``-> None`` / ``-> str`` on inner
-# functions. ``schema_snapshot_service`` (29 errors) is deferred to a later
-# wave. Same flag set as the api/* carve-outs above.
+# functions. Same flag set as the api/* carve-outs above.
 [[tool.mypy.overrides]]
 module = [
-    "core.migration.snapshots",
-    "core.migration.snapshots.schema_snapshot",
     "core.migration.state",
     "core.migration.state.migration_data_service",
     "core.migration.state.migration_display_state",
@@ -502,11 +434,8 @@ strict_equality = true
 # ``placeholder_service`` params in ``DiffCommand`` / ``MigrateCommand``
 # typed as ``Optional[Union[BaseCommandContext, DbliftConfig]]`` / the
 # appropriate TYPE_CHECKING-guarded types, ``_migration_type_name``
-# annotated as ``(object) -> str``, ``_seen_versions: dict`` →
-# ``Dict[str, str]``, and ``SchemaSnapshotService.load_latest_snapshot``
-# given ``-> Optional[SchemaSnapshot]`` which made a downstream
-# ``cast(SchemaSnapshotPayload, ...)`` in ``export_schema_command``
-# redundant and removable.  Same flag set as the api/* carve-outs above.
+# annotated as ``(object) -> str``, and ``_seen_versions: dict`` →
+# ``Dict[str, str]``. Same flag set as the api/* carve-outs above.
 [[tool.mypy.overrides]]
 module = [
     "core.migration.executor.execution_engine",
@@ -516,73 +445,6 @@ module = [
     "core.migration.commands.info_command",
     "core.migration.commands.migrate_command",
     "core.migration.commands.undo_command",
-]
-disallow_any_generics = true
-disallow_subclassing_any = true
-disallow_untyped_calls = true
-disallow_untyped_defs = true
-disallow_incomplete_defs = true
-disallow_untyped_decorators = true
-no_implicit_optional = true
-warn_unused_ignores = true
-strict_equality = true
-
-# PR-H7a: strict db/introspection — dialect introspectors, all extractors,
-# and small leaf files.  Key fixes: ``__init__`` / ``__exit__`` / abstract
-# method signatures annotated with ``Any``-typed params and explicit return
-# types; bare ``List`` / ``Dict`` / ``frozenset`` literals replaced by their
-# generic forms; ``SchemaIntrospector(...)`` call sites typed as
-# ``temp_introspector: Any = SchemaIntrospector(...)  # type: ignore[no-untyped-call]``
-# with ``# type: ignore[no-any-return]`` on the corresponding ``return``
-# statements (SchemaIntrospector is not yet in the strict zone); stale
-# ``# type: ignore`` comments removed where the underlying type is now
-# ``Any``; ``self.connection: Any`` and ``self.metadata: Any`` added to
-# ``BaseIntrospector``; ``_should_preload_materialized_views`` wrapped in
-# ``bool(...)`` to fix ``Literal[False] | Any | None`` → ``bool`` mismatch.
-# Same flag set as the api/* carve-outs above.
-[[tool.mypy.overrides]]
-module = [
-    "core.introspection.result",
-    "core.introspection._partition_enricher",
-    "core.introspection._column_enricher",
-    "core.introspection._vendor_property_applier",
-    "core.introspection.vendor_queries_factory",
-    "core.introspection.introspector_factory",
-    "core.introspection.validation_integration",
-    "core.introspection.base_introspector",
-    "core.introspection.extractors.base_extractor",
-    "core.introspection.extractors.column_extractor",
-    "core.introspection.extractors.constraint_extractor",
-    "core.introspection.extractors.index_extractor",
-    "core.introspection.extractors.misc_extractor",
-    "core.introspection.extractors.procedure_extractor",
-    "core.introspection.extractors.table_extractor",
-    "core.introspection.extractors.trigger_extractor",
-    "core.introspection.extractors.view_extractor",
-    "db.plugins.postgresql.introspection.postgresql_introspector",
-    "db.plugins.mysql.introspection.mysql_introspector",
-    "db.plugins.sqlite.introspection.sqlite_introspector",
-]
-disallow_any_generics = true
-disallow_subclassing_any = true
-disallow_untyped_calls = true
-disallow_untyped_defs = true
-disallow_incomplete_defs = true
-disallow_untyped_decorators = true
-no_implicit_optional = true
-warn_unused_ignores = true
-strict_equality = true
-
-# PR-H7b: strict db/introspection — SchemaIntrospector orchestrator +
-# remaining helpers + db2/sqlserver introspectors.
-[[tool.mypy.overrides]]
-module = [
-    "core.introspection.schema_introspector",
-    "core.introspection.capability_matrix",
-    "core.introspection.vendor_queries_base",
-    "core.introspection.vendor_queries_protocols",
-    "core.introspection.version_detector",
-    "core.introspection._utils",
 ]
 disallow_any_generics = true
 disallow_subclassing_any = true
@@ -627,7 +489,6 @@ module = [
     "db.plugins.sqlite.sqlite.locking_manager",
     "db.plugins.sqlite.sqlite.query_executor",
     "db.plugins.sqlite.sqlite.schema_operations",
-    "db.plugins.sqlite.sqlite.snapshot_table",
     "db.plugins.sqlite.parser",
     "db.plugins.sqlite.parser.parser_config",
     "db.plugins.sqlite.parser.sqlite_regex_parser",
@@ -823,7 +684,6 @@ module = [
     "core.migration.scripting.undo_script_generator._generator",
     "core.migration.scripting.undo_script_generator._models",
     "core.migration.scripting.undo_script_generator._reversers",
-    "core.migration.snapshots.schema_snapshot_service",
     "core.migration.executors",
     "core.migration.executors.base_executor",
     "core.migration.executors.executor_factory",
@@ -842,7 +702,6 @@ module = [
     "core.migration.commands",
     "core.migration.commands._diff_object_specs",
     "core.migration.commands._diff_output",
-    "core.migration.commands._diff_snapshot",
     "core.migration.commands._export_helpers",
     "core.migration.commands._export_metadata",
     "core.migration.commands._managed_object_filter",
@@ -851,7 +710,6 @@ module = [
     "core.migration.commands.clean_command",
     "core.migration.commands.export_schema_command",
     "core.migration.commands.repair_command",
-    "core.migration.commands.snapshot_command",
 ]
 disallow_any_generics = true
 disallow_subclassing_any = true
