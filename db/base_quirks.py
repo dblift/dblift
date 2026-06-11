@@ -13,13 +13,9 @@ per-plugin classes override the deltas.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, ClassVar, Dict, Optional, Tuple, Type
+from typing import Any, ClassVar, Dict, Optional, Tuple
 
 from core.dialect_boundary import DialectQuirks
-
-if TYPE_CHECKING:
-    from core.sql_generator.alter.base_alter_generator import BaseAlterGenerator
-    from core.sql_generator.base_generator import BaseSqlGenerator
 
 
 class BaseQuirks:
@@ -86,11 +82,9 @@ class BaseQuirks:
         return sql_content
 
     def normalize_column_data_type(self, col: object, data_type: str) -> str:
-        """Normalize a column's data type string for DDL generation.
+        """Normalize a column's data type string.
 
-        Called by ``BasicTableDdlGenerator._normalize_column_data_type`` after
-        the base string is extracted from ``col.data_type``. Plugins override
-        to handle dialect-specific type representations:
+        Plugins override to handle dialect-specific type representations:
         - SQL Server: strip ``IDENTITY`` suffix, collapse ``DATETIME(n)``
         - DB2: collapse ``TIMESTAMP(n)`` → ``TIMESTAMP``
         - PostgreSQL: strip precision from fixed-width float types, reorder
@@ -103,9 +97,8 @@ class BaseQuirks:
     def render_identity_clause(self, col: object) -> "Optional[str]":
         """Return the identity/auto-increment clause for an identity column, or None.
 
-        Called by ``BasicTableDdlGenerator._build_identity_clause``.  When the
-        column is not an identity column the method should return ``None`` so the
-        caller can fall through to the non-identity path.
+        When the column is not an identity column the method should return
+        ``None`` so the caller can fall through to the non-identity path.
 
         Default: None (dialect has no identity syntax, or column is not identity).
         """
@@ -184,9 +177,7 @@ class BaseQuirks:
         return default_str
 
     # ------------------------------------------------------------------
-    # Column ALTER generation hooks (Epic 27).
-    # Drive ``ColumnConverter._generate_*_change`` in
-    # ``core/sql_generator/diff_converters/column_converter.py``.
+    # Column ALTER rendering hooks (Epic 27).
     # Each hook receives the pre-formatted identifiers so the plugin
     # only needs to compose the SQL string.  Return ``None`` to emit
     # a warning and skip the change; return a ``SqlStatement`` comment
@@ -518,8 +509,7 @@ class BaseQuirks:
     supports_sqlplus_preprocessing: bool = False
 
     # ------------------------------------------------------------------
-    # Table DDL generation hooks (story 26-5).
-    # Drive ``BasicTableDdlGenerator`` dispatch.
+    # Table DDL rendering hooks (story 26-5).
     # ------------------------------------------------------------------
 
     #: DROP TABLE style. ``"cascade_constraints"`` → ``DROP TABLE x CASCADE
@@ -573,8 +563,8 @@ class BaseQuirks:
 
         Empty ``dialect_name`` is allowed and signals "no dialect context"
         — the framework calls into ``BaseQuirks()`` from paths where the
-        dialect is unknown (e.g. ``SqlGenerator.generate_ddl(dialect=None)``).
-        All hooks return their generic defaults in that case. (PR #241 Bugbot.)
+        dialect is unknown. All hooks return their generic defaults in that
+        case. (PR #241 Bugbot.)
         """
         self.dialect_name = dialect_name
 
@@ -654,18 +644,6 @@ class BaseQuirks:
 
         Default: no-op. Oracle overrides to drain ``DBMS_OUTPUT``.
         """
-        return None
-
-    # ------------------------------------------------------------------
-    # DdlQuirks (story 26-3)
-    # ------------------------------------------------------------------
-
-    def ddl_generator_class(self) -> Optional[Type["BaseSqlGenerator"]]:
-        """Default: no dialect-specific DDL generator (falls back to ``SqlGenerator``)."""
-        return None
-
-    def alter_generator_class(self) -> Optional[Type["BaseAlterGenerator"]]:
-        """Default: no dialect-specific ALTER generator (factory raises)."""
         return None
 
     def parser_class(self, parser_type: str) -> Optional[type]:
@@ -1154,10 +1132,10 @@ class BaseQuirks:
     def requires_dialect_specific_wrapping(self, object_type_name: str) -> bool:
         """Default: no delimiter wrapping required.
 
-        Used by ``SqlGenerator.generate_ddl`` to decide whether to call
-        ``wrap_dialect_specific_block`` around an object's CREATE
-        statement. MySQL covers procedures/functions here; the wider
-        set covering triggers/events is exposed via the separate
+        Used to decide whether to call ``wrap_dialect_specific_block``
+        around an object's CREATE statement. MySQL covers
+        procedures/functions here; the wider set covering
+        triggers/events is exposed via the separate
         ``requires_block_delimiter_wrapping`` hook (different code
         path, different separator).
         """
@@ -1170,12 +1148,9 @@ class BaseQuirks:
     def requires_block_delimiter_wrapping(self, object_type_name: str) -> bool:
         """Predicate for the ``$$``-flavoured MySQL DELIMITER helper.
 
-        Distinct from :meth:`requires_dialect_specific_wrapping`: that
-        hook governs CREATE-statement wrapping inside ``generate_ddl``
-        (uses ``//`` markers, narrower object set). This hook governs
-        the broader ``$$`` helper (``_requires_mysql_delimiter`` /
-        ``_wrap_mysql_delimiter_block``) which historically covers
-        procedures, functions, triggers and events.
+        Distinct from :meth:`requires_dialect_specific_wrapping`; this
+        hook governs the broader ``$$`` helper which historically
+        covers procedures, functions, triggers and events.
         """
         return False
 
@@ -1192,6 +1167,15 @@ class BaseQuirks:
 
     #: Oracle ``CREATE FORCE VIEW`` / ``CREATE OR REPLACE FORCE VIEW``.
     view_supports_force_noforce: bool = False
+
+    #: Regular views support ``CREATE OR REPLACE VIEW``.
+    view_supports_create_or_replace: bool = False
+
+    #: Materialized views include ``BUILD IMMEDIATE`` in CREATE DDL.
+    view_materialized_uses_build_immediate: bool = False
+
+    #: Materialized views include ``WITH DATA`` / ``WITH NO DATA`` in CREATE DDL.
+    view_materialized_uses_with_data: bool = False
 
     #: PostgreSQL ``UNLOGGED`` materialized views and view-level
     #: ``security_definer`` / ``security_invoker`` attributes (used during

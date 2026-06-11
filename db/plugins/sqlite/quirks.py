@@ -2,13 +2,9 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Optional, Type
+from typing import Optional
 
 from db.base_quirks import BaseQuirks
-
-if TYPE_CHECKING:
-    from core.sql_generator.alter.base_alter_generator import BaseAlterGenerator
-    from core.sql_generator.base_generator import BaseSqlGenerator
 
 
 class SqliteQuirks(BaseQuirks):
@@ -43,18 +39,6 @@ class SqliteQuirks(BaseQuirks):
     def __init__(self, dialect_name: str = "sqlite") -> None:
         """Initialize SQLite quirks with the dialect name."""
         super().__init__(dialect_name=dialect_name)
-
-    def ddl_generator_class(self) -> Optional[Type["BaseSqlGenerator"]]:
-        """Return the SQLite-specific :class:`SQLiteSqlGenerator` (lazy import)."""
-        from db.plugins.sqlite.generator.ddl_generator import SQLiteSqlGenerator
-
-        return SQLiteSqlGenerator
-
-    def alter_generator_class(self) -> Optional[Type["BaseAlterGenerator"]]:
-        """Return the SQLite-specific :class:`SQLiteAlterGenerator` (lazy import)."""
-        from db.plugins.sqlite.generator.alter_generator import SQLiteAlterGenerator
-
-        return SQLiteAlterGenerator
 
     def parser_class(self, parser_type: str) -> Optional[type]:
         """SQLite uses :class:`SQLiteRegexParser` for ``"hybrid"`` and ``"regex"``.

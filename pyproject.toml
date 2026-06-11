@@ -270,16 +270,14 @@ no_implicit_optional = true
 warn_unused_ignores = true
 strict_equality = true
 
-# PR-G2: second wave of strict expansion — sql_parser / sql_generator /
-# sql_validator leaves, normalization, and two cli/handlers leaves.
+# PR-G2: second wave of strict expansion — sql_parser / sql_validator leaves,
+# normalization, and two cli/handlers leaves.
 # Same flag set as the api/* carve-outs above.
 [[tool.mypy.overrides]]
 module = [
     "core.sql_parser.hybrid_parser",
     "core.sql_parser.enhanced_regex_parser",
     "core.sql_parser.unified_regex_parser",
-    "core.sql_generator.formatter",
-    "core.sql_generator.sql_generator",
     "core.normalization",
     "core.normalization.identifier_normalizer",
     "core.validation.result",
@@ -492,8 +490,6 @@ module = [
     "db.plugins.sqlite.parser",
     "db.plugins.sqlite.parser.parser_config",
     "db.plugins.sqlite.parser.sqlite_regex_parser",
-    "db.plugins.sqlite.generator.alter_generator",
-    "db.plugins.sqlite.generator.ddl_generator",
 ]
 disallow_any_generics = true
 disallow_subclassing_any = true
@@ -527,7 +523,7 @@ warn_unused_ignores = true
 strict_equality = true
 
 # PR-H9c: strict db/plugins/postgresql — complete PostgreSQL plugin (provider,
-# quirks, plugin entry, postgresql/ subsystem, parser, generator).
+# quirks, plugin entry, postgresql/ subsystem, parser).
 # PostgreSqlProvider extends SqlAlchemyProvider and PostgresqlQuirks extends
 # BaseQuirks (strict via the dialect_boundary block above), so the full strict
 # flag set including disallow_subclassing_any is safe here.
@@ -545,8 +541,6 @@ module = [
     "db.plugins.postgresql.parser.postgresql_regex_parser",
     "db.plugins.postgresql.parser.postgresql_statement_parser",
     "db.plugins.postgresql.parser.postgresql_tokenizer",
-    "db.plugins.postgresql.generator.alter_generator",
-    "db.plugins.postgresql.generator.ddl_generator",
 ]
 disallow_any_generics = true
 disallow_subclassing_any = true
@@ -559,7 +553,7 @@ warn_unused_ignores = true
 strict_equality = true
 
 # PR-H9d: strict db/plugins/mysql — complete MySQL plugin (provider, quirks,
-# plugin entry, mysql/ subsystem, parser, generator).
+# plugin entry, mysql/ subsystem, parser).
 # MySqlProvider extends SqlAlchemyProvider and MysqlQuirks extends BaseQuirks
 # (strict via the dialect_boundary block above), so the full strict flag set
 # including disallow_subclassing_any is safe here.
@@ -577,8 +571,6 @@ module = [
     "db.plugins.mysql.parser.mysql_regex_parser",
     "db.plugins.mysql.parser.mysql_statement_parser",
     "db.plugins.mysql.parser.mysql_tokenizer",
-    "db.plugins.mysql.generator.alter_generator",
-    "db.plugins.mysql.generator.ddl_generator",
 ]
 disallow_any_generics = true
 disallow_subclassing_any = true

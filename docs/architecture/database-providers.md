@@ -88,7 +88,6 @@ unregistered dialects degrade gracefully.
 | Category | Hook method(s) | Default |
 |---|---|---|
 | **Parser** | `parser_class(parser_type)` | `None` |
-| **Generator** | `ddl_generator_class()`, `alter_generator_class()` | `None` |
 | **Type normalisation** | `normalize_column_data_type(col, data_type)` | passthrough |
 | **Identity/auto-increment** | `render_identity_clause(col)` | `None` |
 | **Column ALTER** | `render_column_nullable_change(...)`, `render_column_default_change(...)`, `render_column_type_change(...)`, `render_column_collation_change(...)` | `None` (warning logged) |
@@ -124,10 +123,8 @@ Code in `core/` must not write `from db.plugins.<specific>...`. Core
 talks to plugins through two channels only:
 
 - `BaseQuirks` hooks (`parser_class(...)`,
-  `ddl_generator_class()`, `is_batch_separator(...)`, etc.) called
+  `is_batch_separator(...)`, etc.) called
   via `ProviderRegistry.get_quirks(dialect).<hook>`.
-- Factory classes (`SqlGenerator`) that consult the registry on the caller's
-  behalf.
 
 A new dialect is added by dropping a folder under `db/plugins/` —
 never by editing `core/`.

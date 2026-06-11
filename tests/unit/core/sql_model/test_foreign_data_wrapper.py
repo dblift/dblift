@@ -1,7 +1,5 @@
 """Unit tests for core.sql_model.foreign_data_wrapper module."""
 
-from unittest.mock import Mock, patch
-
 import pytest
 
 from core.sql_model.foreign_data_wrapper import ForeignDataWrapper
@@ -44,48 +42,6 @@ class TestForeignDataWrapper:
         fdw = ForeignDataWrapper("test_fdw", options=original_options)
         fdw.options["new_key"] = "new_value"
         assert "new_key" not in original_options
-
-    def test_create_statement_with_generator(self):
-        """Test create_statement using generator."""
-        fdw = ForeignDataWrapper("test_fdw", handler="handler_func", validator="validator_func")
-        mock_generator = Mock()
-        mock_generator.generate_create_statement = Mock(
-            return_value="CREATE FOREIGN DATA WRAPPER test_fdw;"
-        )
-
-        with patch(
-            "core.sql_generator.generator_factory.SqlGeneratorFactory.create",
-            return_value=mock_generator,
-        ):
-            result = fdw.create_statement
-            assert result == "CREATE FOREIGN DATA WRAPPER test_fdw;"
-            mock_generator.generate_create_statement.assert_called_once_with(fdw)
-
-    def test_create_statement_fallback_no_generator_method(self):
-        """Test create_statement fallback when generator lacks method."""
-        fdw = ForeignDataWrapper("test_fdw", handler="handler_func")
-        mock_generator = Mock()
-        del mock_generator.generate_create_statement  # Simulate missing method
-
-        with patch(
-            "core.sql_generator.generator_factory.SqlGeneratorFactory.create",
-            return_value=mock_generator,
-        ):
-            result = fdw.create_statement
-            assert "CREATE FOREIGN DATA WRAPPER" in result
-            assert "HANDLER handler_func" in result
-
-    def test_create_statement_fallback_exception(self):
-        """Test create_statement fallback on exception."""
-        fdw = ForeignDataWrapper("test_fdw", validator="validator_func")
-
-        with patch(
-            "core.sql_generator.generator_factory.SqlGeneratorFactory.create",
-            side_effect=ValueError("Error"),
-        ):
-            result = fdw.create_statement
-            assert "CREATE FOREIGN DATA WRAPPER" in result
-            assert "VALIDATOR validator_func" in result
 
     def test_generate_basic_create_statement_minimal(self):
         """Test basic create statement generation with minimal FDW."""

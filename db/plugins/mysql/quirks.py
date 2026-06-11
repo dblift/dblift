@@ -2,14 +2,10 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Dict, Optional, Tuple, Type
+from typing import Any, Dict, Optional, Tuple
 
 from core.utils.database_url_parser import DatabaseUrlParser
 from db.base_quirks import BaseQuirks
-
-if TYPE_CHECKING:
-    from core.sql_generator.alter.base_alter_generator import BaseAlterGenerator
-    from core.sql_generator.base_generator import BaseSqlGenerator
 
 
 class MysqlQuirks(BaseQuirks):
@@ -98,18 +94,6 @@ class MysqlQuirks(BaseQuirks):
         """Initialize MySQL quirks with the dialect name."""
         super().__init__(dialect_name=dialect_name)
 
-    def ddl_generator_class(self) -> Optional[Type["BaseSqlGenerator"]]:
-        """Return the MySQL-specific :class:`MySQLSqlGenerator` (lazy import)."""
-        from db.plugins.mysql.generator.ddl_generator import MySQLSqlGenerator
-
-        return MySQLSqlGenerator
-
-    def alter_generator_class(self) -> Optional[Type["BaseAlterGenerator"]]:
-        """Return the MySQL-specific :class:`MySQLAlterGenerator` (lazy import)."""
-        from db.plugins.mysql.generator.alter_generator import MySQLAlterGenerator
-
-        return MySQLAlterGenerator
-
     def parser_class(self, parser_type: str) -> Optional[type]:
         """MySQL parser dispatch: hybrid → :class:`HybridParser`, sqlglot →
         :class:`SqlGlotParser`, regex → :class:`MySqlRegexParser`."""
@@ -127,18 +111,12 @@ class MysqlQuirks(BaseQuirks):
             return MySqlRegexParser
         return None
 
-    # Story 26-3: MySQL DELIMITER wrapping has two distinct call paths
-    # with different object-type sets — preserve both rather than
-    # collapsing into one (PR #241 Bugbot).
+    # MySQL DELIMITER wrapping has two distinct call paths with different
+    # object-type sets — preserve both rather than collapsing into one.
     #
     #   ``_DELIMITER_OBJECT_TYPES`` (narrow) — PROCEDURE/FUNCTION only.
-    #     Used by ``SqlGenerator.generate_ddl`` to wrap CREATE
-    #     statements with ``DELIMITER //...//\nDELIMITER ;``.
     #
-    #   ``_BLOCK_DELIMITER_OBJECT_TYPES`` (wider) — adds TRIGGER and
-    #     EVENT. Used by the ``$$``-flavoured helper
-    #     ``_requires_mysql_delimiter`` /
-    #     ``_wrap_mysql_delimiter_block`` in sql_generator.py.
+    #   ``_BLOCK_DELIMITER_OBJECT_TYPES`` (wider) — adds TRIGGER and EVENT.
     _DELIMITER_OBJECT_TYPES = frozenset({"PROCEDURE", "FUNCTION"})
     _BLOCK_DELIMITER_OBJECT_TYPES = frozenset({"PROCEDURE", "FUNCTION", "TRIGGER", "EVENT"})
     _DEFINITION_PRESERVE_TYPES = frozenset({"VIEW", "PROCEDURE", "FUNCTION", "TRIGGER", "EVENT"})
@@ -193,7 +171,7 @@ class MysqlQuirks(BaseQuirks):
         self, col_diff: object, formatted_table: str, formatted_column: str, dialect: str
     ) -> "Optional[object]":
         """``ALTER TABLE … MODIFY <col> <type>`` — MySQL's column-type change form."""
-        from core.sql_generator.sql_statement import SqlStatement
+        from core.state.sql_statement import SqlStatement
 
         data_type_diff = getattr(col_diff, "data_type_diff", None)
         if data_type_diff is None:

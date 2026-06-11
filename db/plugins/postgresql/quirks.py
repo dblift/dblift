@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import re
-from typing import TYPE_CHECKING, Any, Dict, Optional, Tuple, Type
+from typing import Any, Dict, Optional, Tuple
 
 from db.base_quirks import BaseQuirks
 
@@ -14,10 +14,6 @@ _DROP_TRIGGER_ON_RE = re.compile(
     r"\s+ON\s+",
     re.IGNORECASE,
 )
-
-if TYPE_CHECKING:
-    from core.sql_generator.alter.base_alter_generator import BaseAlterGenerator
-    from core.sql_generator.base_generator import BaseSqlGenerator
 
 
 class PostgresqlQuirks(BaseQuirks):
@@ -60,6 +56,7 @@ class PostgresqlQuirks(BaseQuirks):
     seq_supports_temp = True
     # View DDL (story 26-5).
     view_supports_security_with_clause = True
+    view_materialized_uses_with_data = True
     # View comparison (story 26-6 Wave A).
     view_supports_unlogged_and_security = True
     serial_types_alias_integer = True
@@ -105,22 +102,6 @@ class PostgresqlQuirks(BaseQuirks):
         if _value("url"):
             return True
         return bool(_value("host") and _value("database"))
-
-    # Story 26-3: own DDL + ALTER generators. Lazy import to avoid a
-    # circular import at module load (provider_registry imports this
-    # module while loading plugins, before core/sql_generator is fully
-    # wired into the provider class graph).
-    def ddl_generator_class(self) -> Optional[Type["BaseSqlGenerator"]]:
-        """Return the PostgreSQL-specific :class:`PostgreSQLSqlGenerator` (lazy import)."""
-        from db.plugins.postgresql.generator.ddl_generator import PostgreSQLSqlGenerator
-
-        return PostgreSQLSqlGenerator
-
-    def alter_generator_class(self) -> Optional[Type["BaseAlterGenerator"]]:
-        """Return the PostgreSQL-specific :class:`PostgreSQLAlterGenerator` (lazy import)."""
-        from db.plugins.postgresql.generator.alter_generator import PostgreSQLAlterGenerator
-
-        return PostgreSQLAlterGenerator
 
     def parser_class(self, parser_type: str) -> Optional[type]:
         """PostgreSQL parser dispatch: hybrid → :class:`HybridParser`, sqlglot →
@@ -564,7 +545,7 @@ class PostgresqlQuirks(BaseQuirks):
         SET NOT NULL emits a pre-check counting NULL rows so a violating migration
         fails cleanly before the ALTER runs.
         """
-        from core.sql_generator.sql_statement import SqlStatement
+        from core.state.sql_statement import SqlStatement
 
         nullable_diff = getattr(col_diff, "nullable_diff", None)
         if nullable_diff is None:
@@ -594,7 +575,7 @@ class PostgresqlQuirks(BaseQuirks):
         self, col_diff: object, formatted_table: str, formatted_column: str, dialect: str
     ) -> "Optional[object]":
         """``ALTER TABLE … ALTER COLUMN <c> SET|DROP DEFAULT`` — PostgreSQL DEFAULT change."""
-        from core.sql_generator.sql_statement import SqlStatement
+        from core.state.sql_statement import SqlStatement
 
         default_diff = getattr(col_diff, "default_diff", None)
         if default_diff is None:
@@ -616,7 +597,7 @@ class PostgresqlQuirks(BaseQuirks):
         self, col_diff: object, formatted_table: str, formatted_column: str, dialect: str
     ) -> "Optional[object]":
         """``ALTER TABLE … ALTER COLUMN <c> TYPE <type>`` — PostgreSQL column-type change form."""
-        from core.sql_generator.sql_statement import SqlStatement
+        from core.state.sql_statement import SqlStatement
 
         data_type_diff = getattr(col_diff, "data_type_diff", None)
         if data_type_diff is None:
@@ -634,7 +615,7 @@ class PostgresqlQuirks(BaseQuirks):
         self, col_diff: object, formatted_table: str, formatted_column: str, dialect: str
     ) -> "Optional[object]":
         """``ALTER TABLE … ALTER COLUMN <c> SET COLLATION <coll>`` — PG collation change."""
-        from core.sql_generator.sql_statement import SqlStatement
+        from core.state.sql_statement import SqlStatement
 
         collation_diff = getattr(col_diff, "collation_diff", None)
         if collation_diff is None:

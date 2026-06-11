@@ -1,7 +1,5 @@
 """Unit tests for core.sql_model.synonym module."""
 
-from unittest.mock import Mock, patch
-
 import pytest
 
 from core.sql_model.synonym import Synonym
@@ -102,46 +100,6 @@ class TestSynonym:
         assert "target_table" in result
         assert "@" in result
         assert "remote_link" in result
-
-    def test_create_statement_with_generator(self):
-        """Test create_statement using generator."""
-        synonym = Synonym("synonym_name", "target_table", schema="public")
-        mock_generator = Mock()
-        mock_generator.generate_create_statement = Mock(return_value="CREATE SYNONYM synonym_name;")
-
-        with patch(
-            "core.sql_generator.generator_factory.SqlGeneratorFactory.create",
-            return_value=mock_generator,
-        ):
-            result = synonym.create_statement
-            assert result == "CREATE SYNONYM synonym_name;"
-            mock_generator.generate_create_statement.assert_called_once_with(synonym)
-
-    def test_create_statement_fallback_no_generator_method(self):
-        """Test create_statement fallback when generator lacks method."""
-        synonym = Synonym("synonym_name", "target_table", schema="public")
-        mock_generator = Mock()
-        del mock_generator.generate_create_statement  # Simulate missing method
-
-        with patch(
-            "core.sql_generator.generator_factory.SqlGeneratorFactory.create",
-            return_value=mock_generator,
-        ):
-            result = synonym.create_statement
-            assert "CREATE SYNONYM" in result
-            assert "FOR" in result
-
-    def test_create_statement_fallback_exception(self):
-        """Test create_statement fallback on exception."""
-        synonym = Synonym("synonym_name", "target_table")
-
-        with patch(
-            "core.sql_generator.generator_factory.SqlGeneratorFactory.create",
-            side_effect=ValueError("Error"),
-        ):
-            result = synonym.create_statement
-            assert "CREATE SYNONYM" in result
-            assert "FOR" in result
 
     def test_generate_basic_create_statement_oracle(self):
         """Test basic create statement for Oracle."""

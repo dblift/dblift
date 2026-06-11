@@ -1,7 +1,5 @@
 """Unit tests for core.sql_model.extension module."""
 
-from unittest.mock import Mock, patch
-
 import pytest
 
 from core.sql_model.extension import Extension
@@ -42,46 +40,6 @@ class TestExtension:
         """Test initialization with relocatable=False."""
         ext = Extension("postgis", relocatable=False)
         assert ext.relocatable is False
-
-    def test_create_statement_with_generator(self):
-        """Test create_statement using generator."""
-        ext = Extension("postgis", version="3.0.0", schema="public")
-        mock_generator = Mock()
-        mock_generator.generate_create_statement = Mock(return_value="CREATE EXTENSION postgis;")
-
-        with patch(
-            "core.sql_generator.generator_factory.SqlGeneratorFactory.create",
-            return_value=mock_generator,
-        ):
-            result = ext.create_statement
-            assert result == "CREATE EXTENSION postgis;"
-            mock_generator.generate_create_statement.assert_called_once_with(ext)
-
-    def test_create_statement_fallback_no_generator_method(self):
-        """Test create_statement fallback when generator lacks method."""
-        ext = Extension("postgis", version="3.0.0")
-        mock_generator = Mock()
-        del mock_generator.generate_create_statement  # Simulate missing method
-
-        with patch(
-            "core.sql_generator.generator_factory.SqlGeneratorFactory.create",
-            return_value=mock_generator,
-        ):
-            result = ext.create_statement
-            assert "CREATE EXTENSION" in result
-            assert "postgis" in result
-
-    def test_create_statement_fallback_exception(self):
-        """Test create_statement fallback on exception."""
-        ext = Extension("postgis")
-
-        with patch(
-            "core.sql_generator.generator_factory.SqlGeneratorFactory.create",
-            side_effect=ValueError("Error"),
-        ):
-            result = ext.create_statement
-            assert "CREATE EXTENSION" in result
-            assert "postgis" in result
 
     def test_generate_basic_create_statement_minimal(self):
         """Test basic create statement generation with minimal extension."""

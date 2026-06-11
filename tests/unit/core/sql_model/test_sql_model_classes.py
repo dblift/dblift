@@ -762,15 +762,6 @@ class TestProcedure:
         assert procedure.body == body
         assert procedure.object_type == SqlObjectType.PROCEDURE
 
-    def test_procedure_create_statement_uses_registered_generator_when_dialect_missing(self):
-        """Without dialect, DDL still routes through the default PG generator (not basic DDL)."""
-        procedure = Procedure("p", body="SELECT 1")
-        assert procedure.dialect is None
-        sql = procedure.create_statement
-        assert "CREATE OR REPLACE PROCEDURE" in sql
-        assert "$$" in sql
-        assert "SELECT 1" in sql
-
 
 class TestSequence:
     """Test Sequence functionality."""
@@ -1180,38 +1171,3 @@ class TestTableEqOracleStorageParams:
         t1 = Table(name="sales", schema="hr", dialect="oracle", export_partitions=[p1])
         t2 = Table(name="sales", schema="hr", dialect="oracle", export_partitions=[p2])
         assert t1 != t2
-
-
-class TestTableCheckExprParenStripping:
-    """Tests for NEW-BUG-18: generate_alter_table_check_constraints uses depth-based stripping."""
-
-    def _make_check_table(self, expr):
-        from core.sql_model.base import ConstraintType, SqlConstraint
-        from core.sql_model.table import Table
-
-        c = SqlConstraint(constraint_type=ConstraintType.CHECK, check_expression=expr)
-        return Table(name="t", constraints=[c], dialect="db2")
-
-    def test_simple_outer_parens_stripped_in_sql(self):
-        """(a > 0) outer parens are stripped → CHECK (a > 0) not CHECK ((a > 0))."""
-        table = self._make_check_table("(a > 0)")
-        sql_list = table.generate_alter_table_check_constraints()
-        assert len(sql_list) == 1
-        assert "CHECK (a > 0)" in sql_list[0]
-        assert "CHECK ((a > 0))" not in sql_list[0]
-
-    def test_function_call_outer_parens_stripped(self):
-        """(func(a, b) > 0) — old count()==1 would NOT strip (count=2); depth algo does."""
-        table = self._make_check_table("(func(a, b) > 0)")
-        sql_list = table.generate_alter_table_check_constraints()
-        assert len(sql_list) == 1
-        # Outer parens stripped → CHECK (func(a, b) > 0)
-        assert "CHECK (func(a, b) > 0)" in sql_list[0]
-
-    def test_separate_paren_groups_not_stripped(self):
-        """(a) + (b) must NOT be stripped — depth goes negative during inner scan."""
-        table = self._make_check_table("(a) + (b)")
-        sql_list = table.generate_alter_table_check_constraints()
-        assert len(sql_list) == 1
-        # Outer parens not stripped since inner scan reveals unbalanced depth
-        assert "CHECK ((a) + (b))" in sql_list[0]

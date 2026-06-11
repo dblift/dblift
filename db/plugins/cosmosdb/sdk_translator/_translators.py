@@ -8,7 +8,7 @@ import json
 import re
 from typing import Any, Dict, Optional
 
-from core.sql_generator.sql_statement import SqlStatement
+from core.state.sql_statement import SqlStatement
 from db.plugins.cosmosdb.sdk_translator._parsing import extract_container_name
 
 

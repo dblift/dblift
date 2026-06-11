@@ -54,28 +54,12 @@ override only the deltas.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Optional, Protocol, Type, runtime_checkable
-
-if TYPE_CHECKING:
-    from core.sql_generator.alter.base_alter_generator import BaseAlterGenerator
-    from core.sql_generator.base_generator import BaseSqlGenerator
+from typing import Any, Optional, Protocol, runtime_checkable
 
 
 @runtime_checkable
 class DdlQuirks(Protocol):
-    """DDL / SQL-rendering hooks. Populated by story 26-3.
-
-    First hooks (story 26-3 first slice): the DDL generator class and
-    the ALTER generator class for this dialect. Returning ``None``
-    means the framework falls back to the dialect-agnostic
-    :class:`core.sql_generator.sql_generator.SqlGenerator`.
-    """
-
-    def ddl_generator_class(self) -> Optional[Type["BaseSqlGenerator"]]:
-        """Return the dialect-specific DDL generator class, or ``None``."""
-
-    def alter_generator_class(self) -> Optional[Type["BaseAlterGenerator"]]:
-        """Return the dialect-specific ALTER generator class, or ``None``."""
+    """DDL / SQL-rendering hooks. Populated by story 26-3."""
 
     def render_drop_for_object(
         self,
@@ -86,9 +70,7 @@ class DdlQuirks(Protocol):
     ) -> Optional[str]:
         """Render a dialect-specific DROP statement, or ``None`` to defer.
 
-        Used by ``SqlGenerator._generate_drop_statement`` so the
-        framework no longer branches on the dialect name. Returning
-        ``None`` lets the framework emit the generic
+        Returning ``None`` lets the framework emit the generic
         ``DROP <type> IF EXISTS <schema>.<obj>`` form.
         """
 
@@ -110,9 +92,8 @@ class DdlQuirks(Protocol):
     def requires_dialect_specific_wrapping(self, object_type_name: str) -> bool:
         """True when an object of this type needs delimiter wrapping.
 
-        Used by ``generate_ddl`` (``//`` separator). MySQL covers
-        procedures and functions here. The broader trigger/event set
-        is exposed via :meth:`requires_block_delimiter_wrapping`.
+        MySQL covers procedures and functions here. The broader trigger/event
+        set is exposed via :meth:`requires_block_delimiter_wrapping`.
         """
 
     def wrap_dialect_specific_block(self, sql: str) -> str:

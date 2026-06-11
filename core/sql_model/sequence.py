@@ -98,32 +98,8 @@ class Sequence(SqlObject):
 
     @property
     def create_statement(self) -> str:
-        """Generate CREATE SEQUENCE statement using database-specific generators.
-
-        Returns:
-            Dialect-specific CREATE SEQUENCE statement
-        """
-        # If no dialect specified, use basic generator to ensure all attributes are included
-        if not self.dialect:
-            return self._generate_basic_create_statement()
-
-        # Use the appropriate SQL generator for the dialect
-        from core.sql_generator.generator_factory import (
-            SqlGeneratorFactory,
-        )
-
-        try:
-            generator = SqlGeneratorFactory.create(self.dialect)
-            # Check if generator has the new method
-            if hasattr(generator, "generate_create_statement"):
-                result = generator.generate_create_statement(self)
-                return str(result)
-            else:
-                # Fallback for old generators that don't have the method yet
-                return self._generate_basic_create_statement()
-        except (ValueError, ImportError, AttributeError):
-            # Fallback to basic CREATE SEQUENCE if generator not available
-            return self._generate_basic_create_statement()
+        """Generate a basic CREATE SEQUENCE statement."""
+        return self._generate_basic_create_statement()
 
     def _generate_basic_create_statement(self) -> str:
         """Generate a basic CREATE SEQUENCE statement as fallback.

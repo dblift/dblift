@@ -200,32 +200,8 @@ class Procedure(SqlObject):
 
     @property
     def create_statement(self) -> str:
-        """Generate CREATE PROCEDURE or CREATE FUNCTION statement using database-specific generators.
-
-        Returns:
-            Dialect-specific CREATE PROCEDURE/FUNCTION statement
-        """
-        # Use the appropriate SQL generator for the dialect
-        from core.sql_generator.generator_factory import (
-            SqlGeneratorFactory,
-        )
-
-        try:
-            # Match Table/View: factory needs a registered dialect; plain SqlGenerator
-            # has no generate_create_statement, so "" would always fall back to basic DDL.
-            generator = SqlGeneratorFactory.create(
-                self.dialect or "postgresql"  # lint: allow-dialect-string: factory default fallback
-            )
-            # Check if generator has the new method
-            if hasattr(generator, "generate_create_statement"):
-                result = generator.generate_create_statement(self)
-                return str(result)
-            else:
-                # Fallback for old generators that don't have the method yet
-                return self._generate_basic_create_statement()
-        except (ValueError, ImportError, AttributeError):
-            # Fallback to basic CREATE PROCEDURE/FUNCTION if generator not available
-            return self._generate_basic_create_statement()
+        """Generate a basic CREATE PROCEDURE or CREATE FUNCTION statement."""
+        return self._generate_basic_create_statement()
 
     def _generate_basic_create_statement(self) -> str:
         """Generate a basic CREATE PROCEDURE/FUNCTION statement as fallback."""

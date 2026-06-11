@@ -94,20 +94,6 @@ Parses SQL scripts and extracts statements.
 
 See `core/sql_parser/` for implementation details.
 
-## SQL Generation
-
-Generates SQL from schema model objects.
-
-::: core.sql_generator.sql_generator.SqlGenerator
-    options:
-      show_root_heading: true
-      show_source: true
-
-**Features**:
-- Generates CREATE/ALTER/DROP statements
-- Database-specific SQL generation
-- Dependency ordering
-- Safety checks
 
 ## Related Documentation
 

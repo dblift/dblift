@@ -1,7 +1,7 @@
 """Tests for dialect caching and normalization (story 18-13).
 
 Validates that dialect is normalized to lowercase and cached at initialization
-in DBLiftClient, JdbcProvider, and SqlGeneratorFactory.
+in DBLiftClient and JdbcProvider.
 """
 
 import inspect
@@ -270,28 +270,3 @@ class TestBaseProviderDialect:
         from db.plugins.postgresql.provider import PostgreSqlProvider
 
         assert PostgreSqlProvider.canonical_dialect_key == "postgresql"
-
-
-# ── AC#3 — SqlGeneratorFactory case-insensitive ──────────────────────────
-
-
-@pytest.mark.unit
-class TestGeneratorFactoryCaseInsensitive:
-    """Tests for SqlGeneratorFactory case-insensitive dialect (AC#3)."""
-
-    def test_generator_factory_create_case_insensitive(self):
-        """create('PostgreSQL') returns same type as create('postgresql')."""
-        from core.sql_generator.generator_factory import SqlGeneratorFactory
-
-        gen_upper = SqlGeneratorFactory.create("PostgreSQL")
-        gen_lower = SqlGeneratorFactory.create("postgresql")
-        assert type(gen_upper) is type(gen_lower)
-
-    def test_generator_factory_is_supported_case_insensitive(self):
-        """is_supported('POSTGRESQL') == is_supported('postgresql')."""
-        from core.sql_generator.generator_factory import SqlGeneratorFactory
-
-        # Ensure defaults are registered
-        SqlGeneratorFactory.create("postgresql")
-        assert SqlGeneratorFactory.is_supported("POSTGRESQL") is True
-        assert SqlGeneratorFactory.is_supported("postgresql") is True

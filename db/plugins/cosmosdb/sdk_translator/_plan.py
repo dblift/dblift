@@ -9,7 +9,7 @@ migration plan generation, undo script generation, and formatting methods.
 import json
 from typing import Any, Callable, Dict, List, Optional
 
-from core.sql_generator.sql_statement import SqlStatement
+from core.state.sql_statement import SqlStatement
 from db.plugins.cosmosdb.sdk_translator._models import MigrationPlan, MigrationPlanStep
 from db.plugins.cosmosdb.sdk_translator._parsing import extract_container_name
 

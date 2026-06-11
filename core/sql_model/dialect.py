@@ -2,8 +2,7 @@
 
 Story 21-14 — Phase 1 pilot: identifier-quoting dispatch centralised here.
 
-Before (3 files, 14 if/elif branches):
-  sql_generator.py       _quote_identifier()  — 5 branches
+Before (2 files, 9 if/elif branches):
   base_converter.py      _quote_identifier()  — 5 branches
   undo_script_generator.py _quote_identifier() — 4 branches
 
@@ -276,12 +275,8 @@ def get_sqlglot_dialect(dialect: Optional[str]) -> Optional[str]:
 # ---------------------------------------------------------------------------
 # SIMP-37 Phase 0 — Centralized sqlglot dialect mapping (single source of truth)
 #
-# Previously duplicated in:
-#   core/sql_generator/formatter.py      — _SQLGLOT_DIALECT_MAP  (private)
-#
-# Both importers now use this definition.  The map is deliberately kept as a
-# plain Dict (not a property) so it can be constructed at import time with
-# zero overhead.
+# The map is deliberately kept as a plain Dict (not a property) so it can be
+# constructed at import time with zero overhead.
 # ---------------------------------------------------------------------------
 
 #: Maps dblift dialect names (and common aliases) to sqlglot dialect
