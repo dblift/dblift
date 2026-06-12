@@ -94,11 +94,9 @@ class EventType(Enum):
     DRIVER_VALIDATION_COMPLETED = "driver.validation.completed"
     DRIVER_VALIDATION_FAILED = "driver.validation.failed"
 
-    # ===== History & State Events (4 events) =====
+    # ===== History & State Events (2 events) =====
     HISTORY_LOADED = "history.loaded"
     HISTORY_UPDATED = "history.updated"
-    STATE_SYNC_STARTED = "state.sync.started"
-    STATE_SYNC_COMPLETED = "state.sync.completed"
 
     # ===== Other Operations (15 events) =====
     # Undo
@@ -127,14 +125,6 @@ class EventType(Enum):
     INFO_STARTED = "info.started"
     INFO_COMPLETED = "info.completed"
     INFO_FAILED = "info.failed"
-
-    # ===== Export Events =====
-    # Export
-    EXPORT_STARTED = "export.started"
-    EXPORT_COMPLETED = "export.completed"
-    EXPORT_FAILED = "export.failed"
-    EXPORT_OBJECT_EXPORTED = "export.object.exported"
-    EXPORT_FILE_WRITTEN = "export.file.written"
 
     # ===== Callback Lifecycle Events (24 events) =====
     # Callback execution (generic)
