@@ -75,72 +75,7 @@ def test_empty_strings_equal():
     assert compare_versions("", "") == 0
 
 
-# --- Structural: each consumer class delegates and no longer defines the method body ---
-
-
-def test_migration_data_service_no_inline_body():
-    import inspect
-
-    from core.migration.state.migration_data_service import MigrationDataService
-
-    src = inspect.getsource(MigrationDataService._compare_versions)
-    assert (
-        "_compare_versions_shared" in src
-    ), "MigrationDataService should delegate to shared utility"
-
-
-def test_migration_formatter_no_inline_body():
-    import inspect
-
-    from core.migration.state.migration_formatter import MigrationFormatter
-
-    src = inspect.getsource(MigrationFormatter._compare_versions)
-    assert "_compare_versions_shared" in src
-
-
-def test_migration_state_service_no_inline_body():
-    import inspect
-
-    from core.migration.state.migration_state_service import MigrationStateService
-
-    src = inspect.getsource(MigrationStateService._compare_versions)
-    assert "_compare_versions_shared" in src
-
-
-def test_migration_rules_no_inline_body():
-    import inspect
-
-    from core.migration.rules.migration_rules import MigrationRules
-
-    src = inspect.getsource(MigrationRules._compare_versions)
-    assert "_compare_versions_shared" in src
-
-
-def test_migration_analyzer_no_inline_body():
-    import inspect
-
-    from core.migration.ui.migration_analyzer import MigrationAnalyzer
-
-    src = inspect.getsource(MigrationAnalyzer._compare_versions)
-    assert "_compare_versions_shared" in src
-
-
-def test_data_collector_no_inline_body():
-    import inspect
-
-    from core.migration.ui.data_collector import MigrationDataCollector
-
-    src = inspect.getsource(MigrationDataCollector._compare_versions)
-    assert "_compare_versions_shared" in src
-
-
-def test_display_formatters_no_inline_body():
-    import inspect
-
-    from core.migration.ui.display_formatters import DisplayFormatters
-
-    src = inspect.getsource(DisplayFormatters._compare_versions)
-    assert "_compare_versions_shared" in src
+# --- Structural: remaining consumer delegates and no longer defines the method body ---
 
 
 def test_migration_script_manager_no_inline_body():

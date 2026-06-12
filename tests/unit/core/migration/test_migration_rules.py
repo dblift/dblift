@@ -1,7 +1,6 @@
 """Tests for core/migration/rules/migration_rules.py."""
 
 import unittest
-from datetime import datetime
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
@@ -30,56 +29,6 @@ class TestMigrationRulesIsSuccess(unittest.TestCase):
     def test_is_success_no_attr(self):
         rules = self._make_rules()
         self.assertFalse(rules.is_success(object()))
-
-
-class TestMigrationRulesResolveDate(unittest.TestCase):
-    def _make_rules(self):
-        from core.migration.rules.migration_rules import MigrationRules
-
-        return MigrationRules(logger=MagicMock())
-
-    def test_none_returns_now_with_zero_exec(self):
-        rules = self._make_rules()
-        dt, ms = rules._resolve_installed_date_and_exec_time(None)
-        self.assertIsInstance(dt, datetime)
-        self.assertEqual(ms, 0)
-
-    def test_int_returns_now_with_int_exec(self):
-        rules = self._make_rules()
-        dt, ms = rules._resolve_installed_date_and_exec_time(500)
-        self.assertIsInstance(dt, datetime)
-        self.assertEqual(ms, 500)
-
-    def test_datetime_returns_same(self):
-        rules = self._make_rules()
-        now = datetime(2024, 1, 15, 10, 30, 0)
-        dt, ms = rules._resolve_installed_date_and_exec_time(now)
-        self.assertEqual(dt, now)
-        self.assertEqual(ms, 0)
-
-    def test_string_valid_format(self):
-        rules = self._make_rules()
-        dt, ms = rules._resolve_installed_date_and_exec_time("2024-01-15 10:30:00")
-        self.assertEqual(dt.year, 2024)
-        self.assertEqual(ms, 0)
-
-    def test_string_invalid_format_returns_now(self):
-        rules = self._make_rules()
-        dt, ms = rules._resolve_installed_date_and_exec_time("not-a-date")
-        self.assertIsInstance(dt, datetime)
-
-    def test_java_timestamp_object(self):
-        rules = self._make_rules()
-        ts = MagicMock()
-        ts.getTime.return_value = 1000000  # ms
-        dt, ms = rules._resolve_installed_date_and_exec_time(ts)
-        self.assertIsInstance(dt, datetime)
-        self.assertEqual(ms, 0)
-
-    def test_unknown_type_returns_now(self):
-        rules = self._make_rules()
-        dt, ms = rules._resolve_installed_date_and_exec_time([1, 2, 3])
-        self.assertIsInstance(dt, datetime)
 
 
 class TestMigrationRulesShouldUndoVersion(unittest.TestCase):
@@ -153,25 +102,6 @@ class TestMigrationRulesShouldUndoVersion(unittest.TestCase):
         m = self._make_migration("2.0", "SQL", rank=1)
         can, msg = rules.should_undo_version("1.0", [m])
         self.assertTrue(can)
-
-
-class TestMigrationRulesCompareVersions(unittest.TestCase):
-    def _make_rules(self):
-        from core.migration.rules.migration_rules import MigrationRules
-
-        return MigrationRules(logger=MagicMock())
-
-    def test_compare_equal(self):
-        rules = self._make_rules()
-        self.assertEqual(rules._compare_versions("1.0", "1.0"), 0)
-
-    def test_compare_less(self):
-        rules = self._make_rules()
-        self.assertLess(rules._compare_versions("1.0", "2.0"), 0)
-
-    def test_compare_greater(self):
-        rules = self._make_rules()
-        self.assertGreater(rules._compare_versions("2.0", "1.0"), 0)
 
 
 class TestCoreStatus(unittest.TestCase):

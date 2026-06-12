@@ -281,58 +281,6 @@ class TestMigrationStateService:
         result = service.determine_pending_state(migration, context)
         assert result == MigrationDisplayState.PENDING
 
-    def test_compare_versions_both_none(self, service):
-        """Test _compare_versions with both None."""
-        result = service._compare_versions(None, None)
-        assert result == 0
-
-    def test_compare_versions_first_none(self, service):
-        """Test _compare_versions with first None."""
-        result = service._compare_versions(None, "1.0.0")
-        assert result == -1
-
-    def test_compare_versions_second_none(self, service):
-        """Test _compare_versions with second None."""
-        result = service._compare_versions("1.0.0", None)
-        assert result == 1
-
-    def test_compare_versions_equal(self, service):
-        """Test _compare_versions with equal versions."""
-        result = service._compare_versions("1.0.0", "1.0.0")
-        assert result == 0
-
-    def test_compare_versions_first_greater(self, service):
-        """Test _compare_versions with first greater."""
-        result = service._compare_versions("2.0.0", "1.0.0")
-        assert result == 1
-
-    def test_compare_versions_first_lesser(self, service):
-        """Test _compare_versions with first lesser."""
-        result = service._compare_versions("1.0.0", "2.0.0")
-        assert result == -1
-
-    def test_compare_versions_with_underscores(self, service):
-        """Test _compare_versions with underscores."""
-        result = service._compare_versions("1_0_0", "1.0.0")
-        assert result == 0
-
-    def test_compare_versions_different_lengths(self, service):
-        """Test _compare_versions with different lengths."""
-        # When versions have different lengths, shorter is padded with zeros
-        # So "1.0.0.0" vs "1.0.0" becomes "1.0.0.0" vs "1.0.0.0" which equals 0
-        result = service._compare_versions("1.0.0.0", "1.0.0")
-        assert result == 0
-
-        # Test with actually different values
-        result = service._compare_versions("2.0.0.0", "1.0.0")
-        assert result == 1
-
-    def test_compare_versions_non_numeric_parts(self, service):
-        """Test _compare_versions with non-numeric parts."""
-        result = service._compare_versions("1.0.0a", "1.0.0")
-        # Should fallback to string comparison
-        assert isinstance(result, int)
-
     def test_compare_version_parts_equal(self, service):
         """Test _compare_version_parts with equal parts."""
         result = service._compare_version_parts([1, 0, 0], [1, 0, 0])

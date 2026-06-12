@@ -12,7 +12,6 @@ from rich.table import Table
 
 from core.logger import Log
 from core.logger.console import render_table_to_str
-from core.migration.version_utils import compare_versions as _compare_versions_shared
 
 
 class MigrationFormatter:
@@ -209,7 +208,3 @@ class MigrationFormatter:
         }
 
         return state_colors.get(state.lower(), "default")
-
-    def _compare_versions(self, version1: str, version2: str) -> int:
-        """Compare two version strings. Delegates to shared compare_versions utility."""
-        return _compare_versions_shared(version1, version2)

@@ -356,7 +356,3 @@ class MigrationUI:
     ) -> List[Dict[str, Any]]:
         """Collect versioned migrations for analysis."""
         return self.data_collector._collect_versioned_migrations(applied_migrations)
-
-    def _compare_versions(self, version1: Optional[str], version2: Optional[str]) -> int:
-        """Compare two version strings."""
-        return self.migration_analyzer._compare_versions(version1 or "", version2 or "")

@@ -1,13 +1,11 @@
 """Migration rules — status enums and ordering/validation helpers shared across migration logic."""
 
-from datetime import datetime
 from enum import Enum
-from typing import Any, List, Optional, Tuple, Union
+from typing import Any, List, Tuple
 
 from core.logger import Log
 from core.migration._type_match import is_migration_type
 from core.migration.migration import Migration, MigrationType
-from core.migration.version_utils import compare_versions as _compare_versions_shared
 from core.migration.version_utils import (
     is_migration_success,
 )
@@ -47,26 +45,6 @@ class MigrationRules:
         """
         success_value = getattr(migration, "success", False)
         return is_migration_success(success_value)
-
-    def _resolve_installed_date_and_exec_time(
-        self, execution_time: Optional[Union[datetime, int]]
-    ) -> Tuple[datetime, int]:
-        """Helper to resolve installed_date and exec_time_ms from execution_time argument."""
-        exec_time_ms = 0
-        if execution_time is None:
-            return datetime.now(), exec_time_ms
-        if isinstance(execution_time, int):
-            return datetime.now(), execution_time
-        if hasattr(execution_time, "getTime"):
-            return datetime.fromtimestamp(execution_time.getTime() / 1000.0), exec_time_ms
-        if isinstance(execution_time, str):
-            try:
-                return datetime.strptime(execution_time, "%Y-%m-%d %H:%M:%S"), exec_time_ms
-            except ValueError:
-                return datetime.now(), exec_time_ms
-        if isinstance(execution_time, datetime):
-            return execution_time, exec_time_ms
-        return datetime.now(), exec_time_ms
 
     def should_undo_version(
         self, version: str, applied_migrations: List[Migration]
@@ -165,7 +143,3 @@ class MigrationRules:
                 )
 
         return True, ""
-
-    def _compare_versions(self, version1: str, version2: str) -> int:
-        """Compare two version strings. Delegates to shared compare_versions utility."""
-        return _compare_versions_shared(version1, version2)
