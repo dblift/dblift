@@ -371,7 +371,6 @@ def create_parser(
         default="flyway_schema_history",
         help="Source Flyway schema history table name (default: flyway_schema_history)",
     )
-    builtin_extension_parsers = _register_builtin_command_parsers(parser)
     # Configure arguments via extracted functions
     _add_baseline_options(baseline_parser)
     _add_target_options(migrate_parser, undo_parser, validate_parser, clean_parser)
@@ -398,7 +397,6 @@ def create_parser(
             repair_parser,
             import_flyway_parser,
             db_parser,
-            *builtin_extension_parsers,
         ]
 
         def silent_error(message: str) -> None:

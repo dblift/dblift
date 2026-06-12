@@ -58,8 +58,6 @@ del _extension_handlers, _builtin_conflicts
 
 _AVAILABLE_COMMANDS = list(_COMMAND_HANDLERS.keys()) + ["db"] + list(load_terminal_commands())
 
-_COMPAT_COMMAND_HANDLERS: Dict[str, Callable[[CliCommandContext], Tuple[bool, Any]]] = {}
-
 
 def execute_single_command(
     client: Any,
@@ -73,7 +71,7 @@ def execute_single_command(
     dir_recursive_map: Dict[Path, bool],
 ) -> tuple[bool, Any]:
     """Execute a single command using the DBLift client."""
-    handler = _COMMAND_HANDLERS.get(command) or _COMPAT_COMMAND_HANDLERS.get(command)
+    handler = _COMMAND_HANDLERS.get(command)
     if handler is None:
         raise ValueError(f"Unknown command: {command}")
     ctx = CliCommandContext(
