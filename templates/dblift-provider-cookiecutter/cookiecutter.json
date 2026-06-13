@@ -1,0 +1,6 @@
+{
+  "project_name": "dblift-myprovider",
+  "dialect_name": "myprovider",
+  "author": "Your Name",
+  "description": "MyProvider database provider for dblift"
+}

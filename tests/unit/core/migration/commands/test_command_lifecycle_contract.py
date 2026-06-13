@@ -108,6 +108,12 @@ class TestCommandLifecycleIntentionalDeviations:
         assert "get_clean_preview" in source
         assert "_run_command_lifecycle" not in source
 
+    def test_diff_retains_snapshot_specific_early_completion_paths(self):
+        source = self._source("core/migration/commands/diff_command.py")
+        assert "snapshot_model" in source
+        assert '_log_command_completion("diff"' in source
+        assert "_run_command_lifecycle" not in source
+
     def test_undo_retains_multiple_early_completion_paths(self):
         source = self._source("core/migration/commands/undo_command.py")
         assert "should_undo_version" in source

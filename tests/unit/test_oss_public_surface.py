@@ -7,7 +7,22 @@ import subprocess
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-FORBIDDEN_PUBLIC_TERMS = re.compile(
+# Code may keep neutral licensing stubs (core/licensing no-op guard), the
+# neutral FeatureTier metadata (core/features.py), and inert `license_info`
+# plumbing, but must not advertise dblift license gates or paid tiers.
+# (`requires_license` in capability_matrix.py refers to database vendor
+# editions, not dblift licensing.)
+FORBIDDEN_CODE_TERMS = re.compile(
+    r"\bproprietary\b|"
+    r"\bpremium\b|"
+    r"license key|"
+    r"dblift_license",
+    re.IGNORECASE,
+)
+# User-facing docs stay fully clean of enterprise/licensing language. README.md
+# is exempt: it is the open-core positioning surface and names the paid
+# `dblift-enterprise` package and its features on purpose.
+FORBIDDEN_DOC_TERMS = re.compile(
     r"\benterprise\b|"
     r"\bproprietary\b|"
     r"\bpremium\b|"
@@ -19,18 +34,16 @@ FORBIDDEN_PUBLIC_TERMS = re.compile(
     r"license_info",
     re.IGNORECASE,
 )
-PUBLIC_PATH_PREFIXES = (
+PUBLIC_CODE_PATH_PREFIXES = (
     "api/",
     "cli/",
     "config/",
     "core/",
     "db/",
-    "docs/",
 )
 PUBLIC_ROOT_FILES = {
     "Dockerfile",
     "pyproject.toml",
-    "README.md",
     "SECURITY.md",
 }
 EXPECTED_PROVIDER_ENTRY_POINTS = {
@@ -50,7 +63,7 @@ FORBIDDEN_PUBLIC_COMMANDS = re.compile(
     re.IGNORECASE,
 )
 PUBLIC_DOC_PATH_PREFIXES = ("docs/",)
-PUBLIC_DOC_FILES = {"README.md"}
+PUBLIC_DOC_FILES: set[str] = set()
 
 
 def _tracked_files() -> list[str]:
@@ -67,9 +80,13 @@ def _tracked_files() -> list[str]:
 def test_public_oss_files_do_not_advertise_pro_enterprise_or_license_gates() -> None:
     offenders: list[str] = []
     for relative_path in _tracked_files():
-        if not (
-            relative_path in PUBLIC_ROOT_FILES or relative_path.startswith(PUBLIC_PATH_PREFIXES)
-        ):
+        is_code = relative_path in PUBLIC_ROOT_FILES or relative_path.startswith(
+            PUBLIC_CODE_PATH_PREFIXES
+        )
+        is_doc = relative_path in PUBLIC_DOC_FILES or relative_path.startswith(
+            PUBLIC_DOC_PATH_PREFIXES
+        )
+        if not (is_code or is_doc):
             continue
         path = ROOT / relative_path
         if not path.exists():
@@ -77,7 +94,8 @@ def test_public_oss_files_do_not_advertise_pro_enterprise_or_license_gates() -> 
         if path.suffix in {".png", ".jpg", ".jpeg", ".gif", ".ico"}:
             continue
         content = path.read_text(encoding="utf-8")
-        if FORBIDDEN_PUBLIC_TERMS.search(content):
+        pattern = FORBIDDEN_DOC_TERMS if is_doc else FORBIDDEN_CODE_TERMS
+        if pattern.search(content):
             offenders.append(relative_path)
 
     assert offenders == []

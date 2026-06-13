@@ -3,9 +3,9 @@
 from abc import ABC, abstractmethod
 from typing import Any, Callable, List, Optional, Set, Tuple, Union
 
+from core.introspection._utils import get_row_value
 from core.logger import Log, NullLog
 from core.migration.clean_summary import CleanExecutionSummary
-from db.value_utils import get_row_value
 
 
 class BaseSchemaOperations(ABC):

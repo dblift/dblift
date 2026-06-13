@@ -96,8 +96,9 @@ class TestResolveClientLogfileDir(unittest.TestCase):
 
 
 class TestClientFromSqlAlchemy(unittest.TestCase):
-    def test_raises_not_implemented(self):
+    def test_requires_engine_or_connection(self):
         from api._client_factory import client_from_sqlalchemy
+        from config.errors import ConfigurationError
 
-        with self.assertRaises(NotImplementedError):
-            client_from_sqlalchemy(None, None, None, None, "INFO", "text", None)
+        with self.assertRaises(ConfigurationError):
+            client_from_sqlalchemy()  # neither engine nor connection

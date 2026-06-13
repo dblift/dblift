@@ -41,32 +41,57 @@ class TestApplySqlScriptWarningScan(unittest.TestCase):
         _apply_sql_script_warning_scan(result, sql)
 
     def test_no_warning_no_flag(self):
-        from core.logger.results import GenerateUndoScriptResult
+        from core.logger.results import GenerateSqlFromDiffResult
 
-        result = GenerateUndoScriptResult()
+        result = GenerateSqlFromDiffResult()
         self._scan(result, "CREATE TABLE t (id INT);")
         self.assertFalse(result.requires_manual_review)
 
     def test_warning_sets_flag(self):
-        from core.logger.results import GenerateUndoScriptResult
+        from core.logger.results import GenerateSqlFromDiffResult
 
-        result = GenerateUndoScriptResult()
+        result = GenerateSqlFromDiffResult()
         self._scan(result, "-- WARNING: review this\nCREATE TABLE t (id INT);")
         self.assertTrue(result.requires_manual_review)
 
     def test_requires_manual_review_text(self):
-        from core.logger.results import GenerateUndoScriptResult
+        from core.logger.results import GenerateSqlFromDiffResult
 
-        result = GenerateUndoScriptResult()
+        result = GenerateSqlFromDiffResult()
         self._scan(result, "-- requires manual review\nALTER TABLE t DROP COLUMN x;")
         self.assertTrue(result.requires_manual_review)
 
     def test_collects_warning_messages(self):
-        from core.logger.results import GenerateUndoScriptResult
+        from core.logger.results import GenerateSqlFromDiffResult
 
-        result = GenerateUndoScriptResult()
+        result = GenerateSqlFromDiffResult()
         self._scan(result, "-- WARNING: data loss possible\nDROP TABLE users;")
         self.assertTrue(result.requires_manual_review)
+
+
+class TestGenerateSqlFromDiffOperation(unittest.TestCase):
+    def test_no_diff_returns_error(self):
+        from api._client_operations import generate_sql_from_diff_operation
+
+        client = MagicMock()
+        result = generate_sql_from_diff_operation(client)
+        self.assertFalse(result.success)
+        self.assertIsNotNone(result.error_message)
+
+    def test_diff_result_without_schema_diff(self):
+        from api._client_operations import generate_sql_from_diff_operation
+
+        client = MagicMock()
+        diff_result = MagicMock(spec=[])  # no schema_diff
+        result = generate_sql_from_diff_operation(client, diff_result=diff_result)
+        self.assertFalse(result.success)
+
+    def test_invalid_diff_type_returns_error(self):
+        from api._client_operations import generate_sql_from_diff_operation
+
+        client = MagicMock()
+        result = generate_sql_from_diff_operation(client, diff="not a schema diff")
+        self.assertFalse(result.success)
 
 
 class TestGenerateUndoScriptOperation(unittest.TestCase):

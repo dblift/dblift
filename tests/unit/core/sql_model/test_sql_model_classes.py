@@ -477,7 +477,7 @@ class TestSqlConstraintHashConsistency:
 
 @pytest.mark.unit
 class TestSqlConstraintDeferrable:
-    """Tests SqlConstraint.__eq__ et __hash__ pour les champs deferrable."""
+    """Tests SqlConstraint.__eq__ et __hash__ pour les champs deferrable (diff-relevant)."""
 
     def test_is_deferrable_none_vs_true_not_equal(self):
         a = SqlConstraint(ConstraintType.FOREIGN_KEY, "fk1", ["id"])
@@ -528,7 +528,7 @@ class TestTable:
         assert table.constraints == []
 
     def test_virtual_table_round_trips_object_type_and_raw_ddl(self):
-        """SQLite virtual table metadata must survive SQL-model serialization."""
+        """SQLite virtual table metadata must survive snapshot serialization."""
         ddl = "CREATE VIRTUAL TABLE users_fts USING fts5(name)"
         table = Table.from_options(
             "users_fts",
@@ -674,7 +674,7 @@ class TestTable:
         """metadata defaults to empty dict — from_dict with no key returns {}."""
         table = Table("orders", dialect="cosmosdb")
         data = table.to_dict()
-        data.pop("metadata", None)  # simulate old serialized payload without metadata key
+        data.pop("metadata", None)  # simulate old snapshot without metadata key
         restored = Table.from_dict(data)
         assert restored.metadata == {}
 
@@ -761,6 +761,15 @@ class TestProcedure:
         assert procedure.schema == "PUBLIC"
         assert procedure.body == body
         assert procedure.object_type == SqlObjectType.PROCEDURE
+
+    def test_procedure_create_statement_uses_registered_generator_when_dialect_missing(self):
+        """Without dialect, DDL still routes through the default PG generator (not basic DDL)."""
+        procedure = Procedure("p", body="SELECT 1")
+        assert procedure.dialect is None
+        sql = procedure.create_statement
+        assert "CREATE OR REPLACE PROCEDURE" in sql
+        assert "$$" in sql
+        assert "SELECT 1" in sql
 
 
 class TestSequence:
@@ -1171,3 +1180,38 @@ class TestTableEqOracleStorageParams:
         t1 = Table(name="sales", schema="hr", dialect="oracle", export_partitions=[p1])
         t2 = Table(name="sales", schema="hr", dialect="oracle", export_partitions=[p2])
         assert t1 != t2
+
+
+class TestTableCheckExprParenStripping:
+    """Tests for NEW-BUG-18: generate_alter_table_check_constraints uses depth-based stripping."""
+
+    def _make_check_table(self, expr):
+        from core.sql_model.base import ConstraintType, SqlConstraint
+        from core.sql_model.table import Table
+
+        c = SqlConstraint(constraint_type=ConstraintType.CHECK, check_expression=expr)
+        return Table(name="t", constraints=[c], dialect="db2")
+
+    def test_simple_outer_parens_stripped_in_sql(self):
+        """(a > 0) outer parens are stripped → CHECK (a > 0) not CHECK ((a > 0))."""
+        table = self._make_check_table("(a > 0)")
+        sql_list = table.generate_alter_table_check_constraints()
+        assert len(sql_list) == 1
+        assert "CHECK (a > 0)" in sql_list[0]
+        assert "CHECK ((a > 0))" not in sql_list[0]
+
+    def test_function_call_outer_parens_stripped(self):
+        """(func(a, b) > 0) — old count()==1 would NOT strip (count=2); depth algo does."""
+        table = self._make_check_table("(func(a, b) > 0)")
+        sql_list = table.generate_alter_table_check_constraints()
+        assert len(sql_list) == 1
+        # Outer parens stripped → CHECK (func(a, b) > 0)
+        assert "CHECK (func(a, b) > 0)" in sql_list[0]
+
+    def test_separate_paren_groups_not_stripped(self):
+        """(a) + (b) must NOT be stripped — depth goes negative during inner scan."""
+        table = self._make_check_table("(a) + (b)")
+        sql_list = table.generate_alter_table_check_constraints()
+        assert len(sql_list) == 1
+        # Outer parens not stripped since inner scan reveals unbalanced depth
+        assert "CHECK ((a) + (b))" in sql_list[0]

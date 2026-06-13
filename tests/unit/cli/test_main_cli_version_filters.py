@@ -86,11 +86,15 @@ class TestAvailableCommandsDerivation(unittest.TestCase):
         """'db' must be present in _AVAILABLE_COMMANDS."""
         self.assertIn("db", _AVAILABLE_COMMANDS)
 
-    def test_pro_commands_are_not_builtin_available_commands(self):
-        """Pro commands are provided by installed extensions, not OSS."""
-        self.assertNotIn("validate-sql", _AVAILABLE_COMMANDS)
-        self.assertNotIn("export-schema", _AVAILABLE_COMMANDS)
-        self.assertNotIn("diff", _AVAILABLE_COMMANDS)
+    def test_pro_commands_are_builtin_but_gated(self):
+        """Pro commands (validate-sql etc.) are registered in OSS source but their
+        full features are gated (see features.py / license). They appear in
+        _AVAILABLE_COMMANDS via load_builtin_command_handlers.
+        """
+        # These are now included via builtin load (gated at runtime per OSS split)
+        self.assertIn("validate-sql", _AVAILABLE_COMMANDS)
+        self.assertIn("export-schema", _AVAILABLE_COMMANDS)
+        self.assertIn("diff", _AVAILABLE_COMMANDS)
 
     def test_all_handler_keys_in_available_commands(self):
         """Every key in _COMMAND_HANDLERS must be in _AVAILABLE_COMMANDS."""

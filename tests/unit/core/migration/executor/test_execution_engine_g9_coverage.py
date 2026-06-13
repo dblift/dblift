@@ -94,9 +94,10 @@ class TestExecuteMigrationParseFailureEarlyReturn(unittest.TestCase):
         migration = _make_sql_migration()
         result = MagicMock()
 
-        with patch.object(engine, "_parse_sql_statements", return_value=None) as mock_parse:
-            with patch.object(engine, "_classify_execution_statements") as mock_classify:
-                engine.execute_migration(migration, result)
+        with patch("core.licensing._guard._refresh_state"):
+            with patch.object(engine, "_parse_sql_statements", return_value=None) as mock_parse:
+                with patch.object(engine, "_classify_execution_statements") as mock_classify:
+                    engine.execute_migration(migration, result)
 
         mock_parse.assert_called_once()
         # Execution must not progress past the None check.

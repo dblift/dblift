@@ -1,19 +1,24 @@
-api.__all__ = ['DBLiftClient', 'EventEmitter', 'EventType']
+api.__all__ = ['DBLiftClient', 'EventEmitter', 'EventType', 'ExportSchemaOptions', 'MigrationContext']
 
 class api.client.DBLiftClient:
   __init__(self, provider: 'BaseProvider', migrations_dir: Union[str, pathlib.Path, List[Union[str, pathlib.Path]]], config: Optional[ForwardRef('DbliftConfig')] = None, logger: Optional[Any] = None, log_level: Optional[str] = None, log_format: Optional[str] = None, log_file: Optional[str] = None, **kwargs: Any)
   baseline(self, version: str, description: Optional[str] = None, **kwargs: Any) -> 'BaselineResult'
   clean(self, dry_run: bool = False, recursive: bool = True, additional_dirs: Optional[List[pathlib.Path]] = None, clean_enabled: bool = False, **kwargs: Any) -> 'CleanResult'
   close(self) -> None
+  diff(self, snapshot_model: Optional[str] = None, ignore_unmanaged: bool = False, target_version: Optional[str] = None, tags: Optional[List[str]] = None, exclude_tags: Optional[List[str]] = None, versions: Optional[List[str]] = None, exclude_versions: Optional[List[str]] = None, recursive: bool = True, additional_dirs: Optional[List[pathlib.Path]] = None, **kwargs: Any) -> core.logger.results.DiffResult
+  export_schema(self, output: Union[str, pathlib.Path, NoneType] = None, output_dir: Union[str, pathlib.Path, NoneType] = None, split_by_type: bool = False, tables: Optional[List[str]] = None, types: Optional[List[str]] = None, unmanaged_only: bool = False, managed_only: bool = False, include_drops: bool = False, schema: Optional[str] = None, description: Optional[str] = None, source: str = 'live-database', snapshot_model: Union[str, pathlib.Path, NoneType] = None, tags: Optional[str] = None, exclude_tags: Optional[str] = None, versions: Optional[str] = None, exclude_versions: Optional[str] = None, target_version: Optional[str] = None, options: Optional[Any] = None, **kwargs: Any) -> core.logger.results.ExportSchemaResult
   from_config(cls, config: 'DbliftConfig', logger: Optional[Any] = None, migrations_dir: Union[str, pathlib.Path, List[Union[str, pathlib.Path]], NoneType] = None, **kwargs: Any) -> Self
   from_config_file(cls, config_path: str, logger: Optional[Any] = None, **overrides: Any) -> Self
-  from_sqlalchemy(cls, engine: Any = None, migrations_dir: Union[str, pathlib.Path, List[Union[str, pathlib.Path]], NoneType] = None, schema: Optional[str] = None, logger: Optional[Any] = None, log_level: str = 'INFO', log_format: str = 'text', log_file: Optional[str] = None, **kwargs: Any) -> NoReturn
+  from_sqlalchemy(cls, engine: Any = None, migrations_dir: Union[str, pathlib.Path, List[Union[str, pathlib.Path]], NoneType] = None, schema: Optional[str] = None, logger: Optional[Any] = None, log_level: str = 'INFO', log_format: str = 'text', log_file: Optional[str] = None, *, connection: Any = None, config: Optional[ForwardRef('DbliftConfig')] = None, **kwargs: Any) -> Self
+  generate_sql_from_diff(self, diff: Optional[Any] = None, diff_result: Optional[ForwardRef('DiffResult')] = None, output_file: Union[str, pathlib.Path, NoneType] = None, expected_objects: Optional[Dict[str, Any]] = None, title: Optional[str] = None, description: Optional[str] = None, include_comments: bool = True, include_checks: bool = True, **kwargs: Any) -> 'GenerateSqlFromDiffResult'
   generate_undo_script(self, migration_path: Union[str, pathlib.Path], output_dir: Union[str, pathlib.Path, NoneType] = None, overwrite: bool = False, **kwargs: Any) -> 'GenerateUndoScriptResult'
   generate_undo_scripts(self, migration_paths: Optional[List[Union[str, pathlib.Path]]] = None, migrations_dir: Union[str, pathlib.Path, NoneType] = None, overwrite: bool = False, recursive: bool = True, **kwargs: Any) -> List[ForwardRef('GenerateUndoScriptResult')]
   import_flyway(self, dry_run: bool = False, recursive: bool = True, flyway_table: str = 'flyway_schema_history', **kwargs: Any) -> 'OperationResult'
   info(self, target_version: Optional[str] = None, tags: Optional[str] = None, exclude_tags: Optional[str] = None, versions: Optional[str] = None, exclude_versions: Optional[str] = None, recursive: bool = True, additional_dirs: Optional[List[pathlib.Path]] = None, display_human: bool = False, **kwargs: Any) -> core.logger.results.InfoResult
   migrate(self, target_version: Optional[str] = None, dry_run: bool = False, tags: Optional[str] = None, exclude_tags: Optional[str] = None, versions: Optional[str] = None, exclude_versions: Optional[str] = None, mark_as_executed: bool = False, show_sql: bool = False, placeholders: Optional[Dict[str, Any]] = None, recursive: bool = True, additional_dirs: Optional[List[pathlib.Path]] = None, **kwargs: Any) -> core.logger.results.MigrateResult
+  plan(self, snapshot_model: Union[str, pathlib.Path], skip_validate_sql: bool = False, validate_scope: str = 'pending', recursive: bool = True, additional_dirs: Optional[List[pathlib.Path]] = None, dir_recursive_map: Optional[Dict[pathlib.Path, bool]] = None, **kwargs: Any) -> core.logger.results.PlanResult
   repair(self, dry_run: bool = False, recursive: bool = True, additional_dirs: Optional[List[pathlib.Path]] = None, dir_recursive_map: Optional[Dict[pathlib.Path, bool]] = None, **kwargs: Any) -> 'RepairResult'
+  snapshot(self, output: Union[str, pathlib.Path], source: str = 'database-stored', min_confidence: Optional[float] = None) -> core.logger.results.SnapshotResult
   undo(self, target_version: Optional[str] = None, dry_run: bool = False, tags: Optional[str] = None, exclude_tags: Optional[str] = None, versions: Optional[str] = None, exclude_versions: Optional[str] = None, show_sql: bool = False, placeholders: Optional[Dict[str, Any]] = None, recursive: bool = True, additional_dirs: Optional[List[pathlib.Path]] = None, **kwargs: Any) -> 'UndoResult'
   validate(self, target_version: Optional[str] = None, tags: Optional[str] = None, exclude_tags: Optional[str] = None, versions: Optional[str] = None, exclude_versions: Optional[str] = None, recursive: bool = True, additional_dirs: Optional[List[pathlib.Path]] = None, **kwargs: Any) -> core.logger.results.ValidateResult
 
@@ -68,9 +73,16 @@ enum api.events.EventType:
   CONNECTION_CLOSED = 'connection.closed'
   CONNECTION_ERROR = 'connection.error'
   CONNECTION_ESTABLISHED = 'connection.established'
+  DIFF_ANALYSIS_COMPLETED = 'diff.analysis.completed'
+  DIFF_ANALYSIS_STARTED = 'diff.analysis.started'
   DRIVER_VALIDATION_COMPLETED = 'driver.validation.completed'
   DRIVER_VALIDATION_FAILED = 'driver.validation.failed'
   DRIVER_VALIDATION_STARTED = 'driver.validation.started'
+  EXPORT_COMPLETED = 'export.completed'
+  EXPORT_FAILED = 'export.failed'
+  EXPORT_FILE_WRITTEN = 'export.file.written'
+  EXPORT_OBJECT_EXPORTED = 'export.object.exported'
+  EXPORT_STARTED = 'export.started'
   HISTORY_LOADED = 'history.loaded'
   HISTORY_UPDATED = 'history.updated'
   INFO_COMPLETED = 'info.completed'
@@ -90,7 +102,17 @@ enum api.events.EventType:
   REPAIR_COMPLETED = 'repair.completed'
   REPAIR_FAILED = 'repair.failed'
   REPAIR_STARTED = 'repair.started'
+  SCHEMA_DIFF_DETECTED = 'schema.diff.detected'
+  SCHEMA_INTROSPECTION_COMPLETED = 'schema.introspection.completed'
+  SCHEMA_INTROSPECTION_FAILED = 'schema.introspection.failed'
+  SCHEMA_INTROSPECTION_STARTED = 'schema.introspection.started'
   SCHEMA_OBJECT_DETECTED = 'schema.object.detected'
+  SNAPSHOT_COMPLETED = 'snapshot.completed'
+  SNAPSHOT_LOADED = 'snapshot.loaded'
+  SNAPSHOT_SAVED = 'snapshot.saved'
+  SNAPSHOT_STARTED = 'snapshot.started'
+  STATE_SYNC_COMPLETED = 'state.sync.completed'
+  STATE_SYNC_STARTED = 'state.sync.started'
   UNDO_COMPLETED = 'undo.completed'
   UNDO_FAILED = 'undo.failed'
   UNDO_SCRIPT_ROLLED_BACK = 'undo.script.rolled_back'
@@ -101,3 +123,14 @@ enum api.events.EventType:
   VALIDATION_RULE_PASSED = 'validation.rule.passed'
   VALIDATION_RULE_VIOLATION = 'validation.rule.violation'
   VALIDATION_STARTED = 'validation.started'
+
+class core.migration.commands._schema_export_types.ExportSchemaOptions:
+  __init__(self, output: Optional[str] = None, output_dir: Optional[str] = None, split_by_type: bool = False, include_drops: bool = False, description: Optional[str] = None, source: str = 'live-database', snapshot_model: Optional[str] = None, tables: Optional[str] = None, types: Optional[str] = None, schema: Optional[str] = None, unmanaged_only: bool = False, managed_only: bool = False, tags: Optional[str] = None, exclude_tags: Optional[str] = None, versions: Optional[str] = None, exclude_versions: Optional[str] = None, target_version: Optional[str] = None, scripts_dir: Optional[pathlib.Path] = None, additional_scripts_dirs: Optional[List[pathlib.Path]] = None, dir_recursive_map: Optional[Dict[pathlib.Path, bool]] = None, recursive: bool = True) -> None
+
+class core.migration.executors.python_executor.MigrationContext:
+  __init__(self, provider: Any, log: Any, dry_run: bool = False, config: Optional[Any] = None, placeholders: Mapping[str, str] = <factory>) -> None
+  close(self) -> None
+  commit(self) -> None
+  cursor(self) -> 'MigrationContext'
+  execute(self, sql: str, params: Optional[Any] = None) -> Any
+  rollback(self) -> None

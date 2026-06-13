@@ -14,6 +14,86 @@ from unittest.mock import MagicMock, patch
 
 
 # ---------------------------------------------------------------------------
+# B9-BUG-01: CosmosDB ``_execute_delete`` must substitute ``?`` placeholders
+# ---------------------------------------------------------------------------
+class TestBug01CosmosDbParamSubstitution(unittest.TestCase):
+    """Repair writes ``WHERE script = ? AND success = false`` and hands the
+    failed-script name in ``params``. CosmosDB SQL has no ``?`` placeholders,
+    so the query used to match zero documents and repair silently left the
+    failed history row in place. The fix inlines the params as quoted/typed
+    literals before composing the SELECT."""
+
+    def _make_executor(self):
+        from db.plugins.cosmosdb.cosmosdb.query_executor import CosmosDbQueryExecutor
+
+        executor = CosmosDbQueryExecutor.__new__(CosmosDbQueryExecutor)
+        executor.log = MagicMock()
+        executor.connection_manager = MagicMock()
+        executor.container_client = None
+        return executor
+
+    # ---- _substitute_params helper ----------------------------------------
+    def test_substitute_params_replaces_single_placeholder(self) -> None:
+        from db.plugins.cosmosdb.cosmosdb.query_executor import CosmosDbQueryExecutor
+
+        out = CosmosDbQueryExecutor._substitute_params(
+            "script = ? AND success = false", ["V1__foo.py"]
+        )
+        self.assertEqual(out, "script = 'V1__foo.py' AND success = false")
+
+    def test_substitute_params_escapes_single_quotes(self) -> None:
+        from db.plugins.cosmosdb.cosmosdb.query_executor import CosmosDbQueryExecutor
+
+        out = CosmosDbQueryExecutor._substitute_params("name = ?", ["O'Brien"])
+        self.assertEqual(out, "name = 'O''Brien'")
+
+    def test_substitute_params_renders_bool_none_number_verbatim(self) -> None:
+        from db.plugins.cosmosdb.cosmosdb.query_executor import CosmosDbQueryExecutor
+
+        out = CosmosDbQueryExecutor._substitute_params(
+            "a = ? AND b = ? AND c = ? AND d = ?", [True, False, None, 42]
+        )
+        self.assertEqual(out, "a = true AND b = false AND c = null AND d = 42")
+
+    def test_substitute_params_mismatch_raises(self) -> None:
+        from db.plugins.cosmosdb.cosmosdb.query_executor import CosmosDbQueryExecutor
+
+        with self.assertRaises(ValueError) as ctx:
+            CosmosDbQueryExecutor._substitute_params("a = ? AND b = ?", ["x"])
+        self.assertIn("Parameter count mismatch", str(ctx.exception))
+
+    def test_substitute_params_no_placeholder_returns_unchanged(self) -> None:
+        from db.plugins.cosmosdb.cosmosdb.query_executor import CosmosDbQueryExecutor
+
+        out = CosmosDbQueryExecutor._substitute_params("a = 'x'", [])
+        self.assertEqual(out, "a = 'x'")
+
+    # ---- _execute_delete integration --------------------------------------
+    def test_execute_delete_inlines_params_in_query(self) -> None:
+        """The composed CosmosDB SELECT must carry the literal 'V1__foo.py'
+        instead of the raw ``?`` — that was the exact symptom of BUG-01."""
+        executor = self._make_executor()
+        container_client = MagicMock()
+        # Return one matching document so we can also verify delete_item call.
+        container_client.query_items.return_value = iter([{"id": "row-1", "_partitionKey": "pk-1"}])
+        executor.connection_manager.get_container_client.return_value = container_client
+
+        deleted = executor._execute_delete(
+            "DELETE FROM dblift_schema_history WHERE script = ? AND success = false",
+            ["V1__foo.py"],
+        )
+
+        # Query composed with the inlined literal.
+        call = container_client.query_items.call_args
+        composed = call.kwargs.get("query") or call.args[0]
+        self.assertIn("'V1__foo.py'", composed)
+        self.assertNotIn("?", composed)
+        # And the matching row was actually deleted.
+        self.assertEqual(deleted, 1)
+        container_client.delete_item.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
 # B9-NOTE-01: MigrationContext must reject dict-style access with a pointer
 # ---------------------------------------------------------------------------
 class TestNote01MigrationContextNotSubscriptable(unittest.TestCase):
@@ -101,6 +181,10 @@ class TestNote02ValidateConfigCredentialWarning(unittest.TestCase):
 
     def test_no_warning_for_sqlite(self) -> None:
         _, _, err = self._run_validate("sqlite", "", "")
+        self.assertNotIn("Warning", err)
+
+    def test_no_warning_for_cosmosdb(self) -> None:
+        _, _, err = self._run_validate("cosmosdb", "", "")
         self.assertNotIn("Warning", err)
 
     def test_no_warning_for_dummy(self) -> None:

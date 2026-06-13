@@ -11,6 +11,20 @@ _REPO_ROOT = str(Path(__file__).resolve().parents[3])
 pytestmark = [pytest.mark.unit]
 
 
+class TestExportSchemaCommandSilentExceptions:
+    """export_schema_command.py had 7 silent except blocks."""
+
+    def test_export_schema_silent_excepts_replaced(self):
+        """Structural: verify no bare 'except Exception: pass' remains."""
+        import inspect
+
+        from core.migration.commands import export_schema_command as mod
+
+        source = inspect.getsource(mod)
+        silent_count = len(re.findall(r"except Exception:\s*\n\s*pass", source))
+        assert silent_count == 0, f"Found {silent_count} silent except blocks remaining"
+
+
 class TestHybridParserSilentExceptions:
     """hybrid_parser.py had 5 silent except blocks."""
 
@@ -31,6 +45,19 @@ class TestMigrationDataServiceSilentExceptions:
         import inspect
 
         from core.migration.state import migration_data_service as mod
+
+        source = inspect.getsource(mod)
+        silent_count = len(re.findall(r"except Exception:\s*\n\s*pass", source))
+        assert silent_count == 0, f"Found {silent_count} silent except blocks"
+
+
+class TestSnapshotCommandSilentExceptions:
+    """snapshot_command.py had 3 silent except blocks."""
+
+    def test_snapshot_command_silent_excepts_replaced(self):
+        import inspect
+
+        from core.migration.commands import snapshot_command as mod
 
         source = inspect.getsource(mod)
         silent_count = len(re.findall(r"except Exception:\s*\n\s*pass", source))

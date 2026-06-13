@@ -26,6 +26,7 @@ from core.migration.migration import (
 )
 from core.migration.rules.migration_rules import MigrationRules
 from core.migration.scripting.migration_script_manager import MigrationScriptManager
+from core.migration.snapshots import SchemaSnapshotService
 from core.migration.state.migration_state_manager import (
     MigrationStateManager,
     StrictModeError,
@@ -68,6 +69,7 @@ class MigrateCommand(BaseCommand):
         migration_rules: Optional[MigrationRules] = None,
         journal: Optional["MigrationJournal"] = None,
         placeholder_service: Optional["PlaceholderService"] = None,
+        snapshot_service: Optional[SchemaSnapshotService] = None,
         config: Optional[DbliftConfig] = None,
     ):
         """Initialize migrate command.
@@ -75,6 +77,7 @@ class MigrateCommand(BaseCommand):
         Args:
             ctx_or_config: A :class:`~.base_command.BaseCommandContext` (preferred)
                 or the application config (legacy).
+            snapshot_service: Optional snapshot service
             (remaining args are legacy; ignored when ctx provided)
         """
         super().__init__(
@@ -93,6 +96,7 @@ class MigrateCommand(BaseCommand):
             placeholder_service=placeholder_service,
             config=config,
         )
+        self.snapshot_service = snapshot_service
 
     def _initialize_migration_execution(
         self,

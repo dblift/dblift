@@ -265,6 +265,23 @@ class Db2Provider(SqlAlchemyProvider):
             )
         """
 
+    def create_snapshot_table_if_not_exists(
+        self, schema: str, table_name: str = "DBLIFT_SCHEMA_SNAPSHOTS"
+    ) -> None:
+        """Create the DB2 schema snapshot table if it is missing."""
+        table_name = _db2_object_name(table_name)
+        self.create_schema_if_not_exists(schema)
+        if self.table_exists(schema, table_name):
+            return
+        self.execute_statement(f"""
+            CREATE TABLE {_schema_object(schema, table_name)} (
+                SNAPSHOT_ID VARCHAR(255) NOT NULL PRIMARY KEY,
+                CAPTURED_AT VARCHAR(255) NOT NULL,
+                CHECKSUM VARCHAR(128),
+                MODEL_DATA CLOB NOT NULL
+            )
+            """)
+
     def get_applied_migrations(
         self, schema: str, table_name: str = "DBLIFT_SCHEMA_HISTORY"
     ) -> List[Dict[str, Any]]:
@@ -482,127 +499,6 @@ class Db2Provider(SqlAlchemyProvider):
                 except Exception as e:
                     summary.add_error(f"Failed to drop {object_type} {name}: {e}")
                     continue
-                summary.record_drop(stmt, object_type, str(name), schema=schema)
-
-        return summary
-
-    def get_clean_preview(self, schema: str) -> CleanExecutionSummary:
-        """Return DB2 objects that native clean would drop without executing DDL."""
-        summary = CleanExecutionSummary()
-        clean_schema = _clean_identifier(schema)
-
-        object_queries = [
-            (
-                "trigger",
-                "DROP TRIGGER",
-                "SELECT TRIGNAME AS object_name FROM SYSCAT.TRIGGERS "
-                "WHERE UPPER(TRIGSCHEMA) = UPPER(?)",
-            ),
-            (
-                "foreign_key",
-                "ALTER TABLE",
-                "SELECT CONSTNAME AS object_name, TABNAME AS table_name FROM SYSCAT.TABCONST "
-                "WHERE UPPER(TABSCHEMA) = UPPER(?) AND TYPE = 'F'",
-            ),
-            (
-                "view",
-                "DROP VIEW",
-                "SELECT TABNAME AS object_name FROM SYSCAT.TABLES "
-                "WHERE UPPER(TABSCHEMA) = UPPER(?) AND TYPE = 'V'",
-            ),
-            (
-                "materialized_query_table",
-                "DROP TABLE",
-                "SELECT TABNAME AS object_name FROM SYSCAT.TABLES "
-                "WHERE UPPER(TABSCHEMA) = UPPER(?) AND TYPE = 'S'",
-            ),
-            (
-                "global_temporary_table",
-                "DROP TABLE",
-                "SELECT TABNAME AS object_name FROM SYSCAT.TABLES "
-                "WHERE UPPER(TABSCHEMA) = UPPER(?) AND TYPE = 'G'",
-            ),
-            (
-                "table",
-                "DROP TABLE",
-                "SELECT TABNAME AS object_name FROM SYSCAT.TABLES "
-                "WHERE UPPER(TABSCHEMA) = UPPER(?) AND TYPE = 'T'",
-            ),
-            (
-                "alias",
-                "DROP ALIAS",
-                "SELECT TABNAME AS object_name FROM SYSCAT.TABLES "
-                "WHERE UPPER(TABSCHEMA) = UPPER(?) AND TYPE = 'A'",
-            ),
-            (
-                "sequence",
-                "DROP SEQUENCE",
-                "SELECT SEQNAME AS object_name FROM SYSCAT.SEQUENCES "
-                "WHERE UPPER(SEQSCHEMA) = UPPER(?)",
-            ),
-            (
-                "function",
-                "DROP SPECIFIC FUNCTION",
-                "SELECT SPECIFICNAME AS object_name FROM SYSCAT.FUNCTIONS "
-                "WHERE UPPER(FUNCSCHEMA) = UPPER(?) AND ORIGIN = 'U'",
-            ),
-            (
-                "procedure",
-                "DROP SPECIFIC PROCEDURE",
-                "SELECT SPECIFICNAME AS object_name FROM SYSCAT.PROCEDURES "
-                "WHERE UPPER(PROCSCHEMA) = UPPER(?)",
-            ),
-            (
-                "type",
-                "DROP TYPE",
-                "SELECT TYPENAME AS object_name FROM SYSCAT.DATATYPES "
-                "WHERE UPPER(TYPESCHEMA) = UPPER(?) AND OWNERTYPE = 'U'",
-            ),
-            (
-                "module",
-                "DROP MODULE",
-                "SELECT MODULENAME AS object_name FROM SYSCAT.MODULES "
-                "WHERE UPPER(MODULESCHEMA) = UPPER(?)",
-            ),
-            (
-                "index",
-                "DROP INDEX",
-                "SELECT INDNAME AS object_name FROM SYSCAT.INDEXES "
-                "WHERE UPPER(INDSCHEMA) = UPPER(?) AND SYSTEM_REQUIRED = 0",
-            ),
-        ]
-
-        for object_type, drop_prefix, query in object_queries:
-            try:
-                rows = self.execute_query(query, [clean_schema])
-            except Exception as e:
-                self.log.debug(f"Could not query DB2 {object_type}s: {e}")
-                continue
-            for row in rows:
-                name = _row_value(
-                    row,
-                    "object_name",
-                    "CONSTNAME",
-                    "TABNAME",
-                    "TRIGNAME",
-                    "SEQNAME",
-                    "SPECIFICNAME",
-                    "TYPENAME",
-                    "MODULENAME",
-                    "INDNAME",
-                )
-                if not name:
-                    continue
-                if object_type == "foreign_key":
-                    table_name = _row_value(row, "table_name", "TABNAME")
-                    if not table_name:
-                        continue
-                    stmt = (
-                        f"ALTER TABLE {_schema_object(schema, str(table_name))} "
-                        f"DROP CONSTRAINT {_q(str(name))}"
-                    )
-                else:
-                    stmt = f"{drop_prefix} {_schema_object(schema, str(name))}"
                 summary.record_drop(stmt, object_type, str(name), schema=schema)
 
         return summary

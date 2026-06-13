@@ -1,0 +1,11 @@
+database:
+  type: postgresql
+  url: postgresql+psycopg://localhost:5432/testdb
+  username: postgres
+  password: postgres
+  schema: inventory
+migrations:
+  directory: migrations/samples/postgresql
+logging:
+  level: INFO
+placeholders: {}

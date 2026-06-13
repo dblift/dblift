@@ -76,9 +76,12 @@ class DialectCapabilities:
     #: file-based or schema-less backends (SQLite, Cosmos DB).
     schema_required: bool
     #: Unquoted identifiers fold to uppercase in the persisted catalogue
-    #: (Oracle, DB2). Relevant for SQL generation and display.
+    #: (Oracle, DB2). Relevant for introspection comparison and display.
     uppercase_identifiers: bool
-    #: How ``clean`` enumerates and drops schema objects.
+    #: How ``clean`` enumerates and drops schema objects:
+    #:   - ``"native"``: provider exposes ``enumerate_clean_candidates`` /
+    #:     ``get_clean_preview`` (SQLite, Cosmos DB, Oracle)
+    #:   - ``"introspector"``: introspector walks plugin-owned vendor metadata queries
     clean_strategy: str
 
 
@@ -134,7 +137,7 @@ _CAPABILITIES_UNKNOWN: DialectCapabilities = DialectCapabilities(
     supports_transactional_ddl=False,
     schema_required=True,  # safest default — force explicit config
     uppercase_identifiers=False,
-    clean_strategy="native",
+    clean_strategy="introspector",
 )
 
 
@@ -172,7 +175,7 @@ def dialect_uses_uppercase_identifiers(dialect: Optional[str]) -> bool:
 
 
 def dialect_clean_strategy(dialect: Optional[str]) -> str:
-    """Return the provider clean enumeration strategy."""
+    """``"native"`` (provider-enumerated) or ``"introspector"`` (query-walked)."""
     return get_dialect_capabilities(dialect).clean_strategy
 
 
@@ -254,8 +257,13 @@ def get_sqlglot_dialect(dialect: Optional[str]) -> Optional[str]:
 # ---------------------------------------------------------------------------
 # SIMP-37 Phase 0 — Centralized sqlglot dialect mapping (single source of truth)
 #
-# The map is deliberately kept as a plain Dict (not a property) so it can be
-# constructed at import time with zero overhead.
+# Previously duplicated in:
+#   core/sql_generator/formatter.py      — _SQLGLOT_DIALECT_MAP  (private)
+#   core/logger/formatters/diff_utils.py — SQLGLOT_DIALECT_MAP   (public)
+#
+# Both importers now use this definition.  The map is deliberately kept as a
+# plain Dict (not a property) so it can be constructed at import time with
+# zero overhead.
 # ---------------------------------------------------------------------------
 
 #: Maps dblift dialect names (and common aliases) to sqlglot dialect
@@ -382,7 +390,7 @@ class DialectEnum(str, Enum):
             dialect: SQL dialect string (any case; None treated as default).
             identifier: Raw identifier to quote (no escaping of internal
                 special characters — callers that need escaping keep their
-                own implementation).
+                own implementation, e.g. SafetyChecker).
 
         Returns:
             Quoted identifier string.

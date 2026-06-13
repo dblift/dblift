@@ -1,0 +1,80 @@
+name: Benchmarks
+
+# Manual dispatch only — see tests/benchmarks/README.md § "Why no automatic
+# regression gate". CI runner CPU share is too variable for automated
+# comparison to be trustworthy; this workflow exists so a maintainer can
+# produce a JSON artefact from a reference environment on demand.
+
+on:
+  workflow_dispatch:
+    inputs:
+      python-version:
+        description: 'Python version'
+        required: false
+        default: '3.11'
+        type: choice
+        options:
+          - '3.11'
+          - '3.12'
+      compare-to-baseline:
+        description: 'Compare against committed baseline.json'
+        required: false
+        default: true
+        type: boolean
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  benchmarks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up Python ${{ inputs.python-version }}
+        uses: actions/setup-python@v6
+        with:
+          python-version: ${{ inputs.python-version }}
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev]"
+
+      - name: Run benchmarks
+        run: |
+          python -m pytest tests/benchmarks/ \
+            --benchmark-only \
+            --benchmark-json=benchmarks.json \
+            --benchmark-columns=min,mean,median,stddev,iqr,rounds \
+            --benchmark-sort=mean
+
+      - name: Compare against committed baseline
+        if: ${{ inputs.compare-to-baseline }}
+        # Loose threshold: anything more than 5x slower than baseline is a
+        # genuine regression even accounting for runner noise. Tighter gates
+        # false-positive constantly on shared runners. See
+        # tests/benchmarks/README.md § "Why no automatic regression gate".
+        run: |
+          python -m pytest tests/benchmarks/ \
+            --benchmark-only \
+            --benchmark-compare=tests/benchmarks/baseline.json \
+            --benchmark-compare-fail=mean:500% \
+            --benchmark-columns=min,mean,median,stddev,iqr,rounds \
+            --benchmark-sort=mean
+        continue-on-error: true
+
+      - name: Upload benchmark JSON artefact
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: benchmarks-py${{ inputs.python-version }}-${{ github.sha }}
+          path: benchmarks.json
+          retention-days: 90

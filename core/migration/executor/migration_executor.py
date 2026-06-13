@@ -29,6 +29,7 @@ from core.migration.history.migration_history_manager import MigrationHistoryMan
 from core.migration.journals.migration_journal import MigrationJournal
 from core.migration.rules.migration_rules import MigrationRules
 from core.migration.scripting.migration_script_manager import MigrationScriptManager
+from core.migration.snapshots.schema_snapshot_service import SchemaSnapshotService
 from core.migration.sql.sql_analyzer import SqlAnalyzer
 from core.migration.state.migration_state_manager import MigrationStateManager
 from core.migration.ui.migration_ui import MigrationUI
@@ -141,6 +142,14 @@ class MigrationExecutor:
             config=self.config,
         )
 
+        # Initialize snapshot service for canonical schema tracking
+        self.snapshot_service = SchemaSnapshotService(
+            config=self.config,
+            provider=self.provider,
+            history_manager=self.history_manager,
+            log=self.log,
+        )
+
         # Initialize MigrationStateManager for centralized state management
         self.state_manager = MigrationStateManager(
             log,
@@ -215,7 +224,10 @@ class MigrationExecutor:
         """Execute database migrations using the dedicated MigrateCommand class."""
         from core.migration.commands.migrate_command import MigrateCommand
 
-        command = MigrateCommand(self._make_command_context())
+        command = MigrateCommand(
+            self._make_command_context(),
+            snapshot_service=self.snapshot_service,
+        )
 
         result = command.execute(
             scripts_dir=scripts_dir,
@@ -233,6 +245,18 @@ class MigrationExecutor:
             dir_recursive_map=dir_recursive_map,
         )
 
+        has_applied_migrations = False
+        if hasattr(result, "migrations_applied"):
+            migrations_applied = result.migrations_applied
+            try:
+                has_applied_migrations = bool(list(migrations_applied))
+            except TypeError:
+                has_applied_migrations = bool(migrations_applied)
+        elif hasattr(result, "migrations"):
+            has_applied_migrations = bool(result.migrations)
+
+        if not dry_run and getattr(result, "success", False) and has_applied_migrations:
+            self._capture_snapshot("migrate", result)
         return result
 
     def undo(
@@ -269,6 +293,8 @@ class MigrationExecutor:
             additional_dirs=additional_dirs,
             dir_recursive_map=dir_recursive_map,
         )
+        if not dry_run and getattr(result, "success", False):
+            self._capture_snapshot("undo", result)
         return result
 
     def clean(
@@ -371,11 +397,14 @@ class MigrationExecutor:
 
         command = BaselineCommand(self._make_command_context())
 
-        return command.execute(
+        result = command.execute(
             baseline_version=baseline_version,
             baseline_description=baseline_description,
             dry_run=dry_run,
         )
+        if getattr(result, "success", False) and not dry_run:
+            self._capture_snapshot("baseline", result)
+        return result
 
     def repair(
         self,
@@ -414,6 +443,49 @@ class MigrationExecutor:
             dry_run=dry_run,
             flyway_table=flyway_table,
         )
+
+    def _capture_snapshot(
+        self,
+        operation: str,
+        result: Optional[OperationResult] = None,
+        extra_metadata: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        """Capture a snapshot of the current schema state."""
+        if not getattr(self, "snapshot_service", None):
+            return
+        if result is not None and not getattr(result, "success", False):
+            return
+        # Skip snapshot capture when the provider explicitly declares it is not
+        # supported. Defaults to True for all providers. Override
+        # supports_snapshots() → False for any provider where the snapshot
+        # repository's parameterized queries cannot be executed.
+        supports_snap = getattr(self.provider, "supports_snapshots", None)
+        if callable(supports_snap) and not supports_snap():
+            return
+
+        metadata: Dict[str, Any] = {"operation": {"name": operation}}
+        if extra_metadata:
+            metadata.update(extra_metadata)
+
+        op_meta = metadata.setdefault("operation", {})
+        if result is not None:
+            if hasattr(result, "current_schema_version") and result.current_schema_version:
+                op_meta["current_schema_version"] = result.current_schema_version
+            if hasattr(result, "migrations_applied"):
+                op_meta["migrations_applied"] = result.migrations_applied
+
+        try:
+            self.snapshot_service.capture_snapshot(operation, extra_metadata=metadata)
+        except Exception as exc:
+            warning = (
+                f"Failed to capture schema snapshot after {operation}: {exc}. "
+                "Commands using --source=database-stored will not see this operation's snapshot; "
+                "use --source=live-database to capture the current schema."
+            )
+            self.log.warning(warning)
+            add_warning = getattr(result, "add_warning", None) if result is not None else None
+            if callable(add_warning):
+                add_warning(warning)
 
     def cleanup(self) -> None:
         """Clean up resources when the executor is no longer needed."""

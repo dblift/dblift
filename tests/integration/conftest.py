@@ -103,6 +103,15 @@ def _published_host_port(container: Any, container_port: str) -> int | None:
     return int(host_port) if host_port else None
 
 
+@pytest.fixture(autouse=True, scope="session")
+def require_license_key():
+    """Integration tests require DBLIFT_LICENSE_KEY to be set."""
+    if not os.environ.get("DBLIFT_LICENSE_KEY"):
+        pytest.skip(
+            "DBLIFT_LICENSE_KEY not set — set it to a valid license token to run integration tests"
+        )
+
+
 # Configure MySQL and DB2 support based on environment
 # Only add additional databases if DBLIFT_CORE_TEST_DB is not set
 if not DBLIFT_CORE_TEST_DB:

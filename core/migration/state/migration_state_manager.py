@@ -796,7 +796,7 @@ class MigrationStateManager:
     ) -> List[Migration]:
         """Apply filter criteria to a list of migrations.
 
-        This is a PUBLIC method that can be used by migration-state commands.
+        This is a PUBLIC method that can be used by migration-state commands
         to filter migrations by version, tags, etc.
 
         Args:

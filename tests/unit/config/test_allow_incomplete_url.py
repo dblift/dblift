@@ -20,7 +20,7 @@ class TestAllowIncompleteUrlGuard:
 
     def test_without_allow_incomplete_url_required_raises(self):
         data = {"type": "postgresql"}
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match="requires url or host/database fields"):
             BaseDatabaseConfig.create(data)
 
     def test_allow_incomplete_with_schema_only(self):
@@ -30,7 +30,7 @@ class TestAllowIncompleteUrlGuard:
 
     def test_allow_incomplete_false_still_raises(self):
         data = {"type": "postgresql", "_allow_incomplete": False}
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match="requires url or host/database fields"):
             BaseDatabaseConfig.create(data)
 
     def test_file_based_provider_never_needs_server_url(self):

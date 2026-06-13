@@ -102,8 +102,8 @@ class CosmosDbHistoryManager(BaseHistoryManager):
                     # Continue to try creating
 
             # Create container if it doesn't exist. The local emulator can return
-            # transient 503/ServiceUnavailable during partition warmup, so retry
-            # history-container creation.
+            # transient 503/ServiceUnavailable during partition warmup, so mirror
+            # the snapshot-container retry behavior here.
             create_error: Optional[Exception] = None
             for attempt in range(self.HISTORY_CREATE_MAX_RETRIES):
                 try:

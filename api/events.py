@@ -40,11 +40,11 @@ class EventType(Enum):
     Events are organized by category:
     - Migration: Operation and script-level events
     - Validation: Validation operation and rule-level events
-    - Schema: Schema object events
+    - Schema: Schema introspection and diff events
     - Connection: Database connection lifecycle
     - History: Migration history operations
     - Operations: Other operations (undo, clean, baseline, repair, info)
-    - Export: Export operations
+    - Export/Snapshot: Export and snapshot operations
     """
 
     # ===== Migration Events (10 events) =====
@@ -82,8 +82,14 @@ class EventType(Enum):
     VALIDATION_RULE_VIOLATION = "validation.rule.violation"
     VALIDATION_RULE_PASSED = "validation.rule.passed"
 
-    # ===== Schema Events =====
+    # ===== Schema & Diff Events (7 events) =====
+    SCHEMA_DIFF_DETECTED = "schema.diff.detected"
+    SCHEMA_INTROSPECTION_STARTED = "schema.introspection.started"
+    SCHEMA_INTROSPECTION_COMPLETED = "schema.introspection.completed"
+    SCHEMA_INTROSPECTION_FAILED = "schema.introspection.failed"
     SCHEMA_OBJECT_DETECTED = "schema.object.detected"
+    DIFF_ANALYSIS_STARTED = "diff.analysis.started"
+    DIFF_ANALYSIS_COMPLETED = "diff.analysis.completed"
 
     # ===== Connection & Provider Events (6 events) =====
     CONNECTION_ESTABLISHED = "connection.established"
@@ -94,9 +100,11 @@ class EventType(Enum):
     DRIVER_VALIDATION_COMPLETED = "driver.validation.completed"
     DRIVER_VALIDATION_FAILED = "driver.validation.failed"
 
-    # ===== History & State Events (2 events) =====
+    # ===== History & State Events (4 events) =====
     HISTORY_LOADED = "history.loaded"
     HISTORY_UPDATED = "history.updated"
+    STATE_SYNC_STARTED = "state.sync.started"
+    STATE_SYNC_COMPLETED = "state.sync.completed"
 
     # ===== Other Operations (15 events) =====
     # Undo
@@ -125,6 +133,20 @@ class EventType(Enum):
     INFO_STARTED = "info.started"
     INFO_COMPLETED = "info.completed"
     INFO_FAILED = "info.failed"
+
+    # ===== Export & Snapshot Events (7 events) =====
+    # Export
+    EXPORT_STARTED = "export.started"
+    EXPORT_COMPLETED = "export.completed"
+    EXPORT_FAILED = "export.failed"
+    EXPORT_OBJECT_EXPORTED = "export.object.exported"
+    EXPORT_FILE_WRITTEN = "export.file.written"
+
+    # Snapshot
+    SNAPSHOT_STARTED = "snapshot.started"
+    SNAPSHOT_COMPLETED = "snapshot.completed"
+    SNAPSHOT_LOADED = "snapshot.loaded"
+    SNAPSHOT_SAVED = "snapshot.saved"
 
     # ===== Callback Lifecycle Events (24 events) =====
     # Callback execution (generic)
@@ -196,7 +218,7 @@ class Event:
     type: Optional[str] = None
     execution_time: Optional[float] = None
 
-    # ----- Generation / undo -----
+    # ----- Generation / undo / introspection -----
     dialect: Optional[str] = None
     migration_path: Optional[str] = None
     count: Optional[int] = None

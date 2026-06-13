@@ -99,10 +99,26 @@ echo -e "\n===== Line-length ratchet (flake8 E501) ====="
 # count, the script prints the new cap to commit in the same PR.
 "$PYTHON_BIN" scripts/check_line_length.py || { echo "❌ Line-length ratchet exceeded."; exit_code=1; }
 
+# Optional unused code check
+if [ "$1" = "--check-unused" ] || [ "$1" = "-u" ]; then
+    echo -e "\n===== Checking for unused code ====="
+    echo "Running unused code analysis..."
+    if "$PYTHON_BIN" dblift_package/scripts/find_unused_code.py --output reports/unused_code_report.txt; then
+        echo "✅ Unused code analysis completed. Report saved to reports/unused_code_report.txt"
+        echo "Review the report and remove confirmed unused code."
+    else
+        echo "❌ Unused code analysis failed."
+        exit_code=1
+    fi
+fi
+
 if [ $exit_code -eq 0 ]; then
     echo -e "\n✅ All code quality checks passed!"
 else
     echo -e "\n❌ Some code quality checks failed. Please fix the issues above."
 fi
+
+# Usage information
+echo -e "\n💡 TIP: Run './scripts/check_code_quality.sh --check-unused' to include unused code analysis"
 
 exit $exit_code

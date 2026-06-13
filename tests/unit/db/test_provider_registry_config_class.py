@@ -52,6 +52,12 @@ class _ThirdPartyProvider(BaseProvider):
     ) -> None:
         pass
 
+    @classmethod
+    def create_snapshot_table_if_not_exists(  # type: ignore[override]
+        cls, *_args: Any, **_kwargs: Any
+    ) -> None:
+        pass
+
 
 class _ThirdPartyQuirks(BaseQuirks):
     def __init__(self, dialect_name: str = "thirdpartydb") -> None:

@@ -156,6 +156,18 @@ class SchemaProvider(ABC):
         """
         ...
 
+    @abstractmethod
+    def create_snapshot_table_if_not_exists(
+        self, schema: str, table_name: str = "dblift_schema_snapshots"
+    ) -> None:
+        """Create the schema snapshot storage table if it does not exist.
+
+        Args:
+            schema: Schema name
+            table_name: Table name for snapshots (default: dblift_schema_snapshots)
+        """
+        ...
+
 
 class TransactionalProvider(ABC):
     """Capacité de gestion des transactions."""
@@ -180,6 +192,14 @@ class TransactionalProvider(ABC):
 
         Override dans les providers non-transactionnels (ex: CosmosDB).
         Permet aux callers de vérifier avant d'appeler begin/commit/rollback.
+        """
+        return True
+
+    def supports_snapshots(self) -> bool:
+        """Return True if the provider supports schema snapshot persistence.
+
+        Override to False in providers where the snapshot repository queries
+        cannot be executed. Defaults to True for all SQL providers including CosmosDB.
         """
         return True
 

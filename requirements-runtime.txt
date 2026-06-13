@@ -18,17 +18,19 @@ Jinja2>=3.1.0
 sqlglot>=30.0.0
 sqlfluff>=4.0.0
 
+# Azure Cosmos DB support
+azure-cosmos>=4.5.0
+azure-identity>=1.15.0
+
+# Secrets manager providers (Vault, AWS, Azure Key Vault, GCP)
+hvac>=1.2.0
+boto3>=1.28.0
+azure-keyvault-secrets>=4.7.0
+google-cloud-secret-manager>=2.16.0
+
 # Native driver integration
 SQLAlchemy>=2.0.0
 
-# Optional database drivers — uncomment the ones you need,
-# or use pip extras: pip install "dblift[postgresql,mysql,oracle,...]"
-# See [project.optional-dependencies] in pyproject.toml for the full list.
-#
-# psycopg[binary]>=3.1   # PostgreSQL  (dblift[postgresql])
-# PyMySQL>=1.1           # MySQL/MariaDB (dblift[mysql])
-# oracledb>=2.0          # Oracle       (dblift[oracle])
-# pymssql>=2.2           # SQL Server   (dblift[sqlserver])
-# ibm_db>=3.2            # DB2          (dblift[db2])
-# ibm_db_sa>=0.4         # DB2 SQLAlchemy dialect (dblift[db2])
-# azure-cosmos>=4.5      # CosmosDB     (dblift[cosmosdb])
+# Licensing/security
+PyJWT>=2.12.0
+cryptography>=46.0.6

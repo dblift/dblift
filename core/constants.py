@@ -17,6 +17,14 @@ DB_SCRIPT_NAME_MAX_LENGTH = 1000
 DB_TEAM_MAX_LENGTH = 100
 DB_DEPLOYMENT_ID_MAX_LENGTH = 100
 
+# Dblift-managed table names. Shared between the snapshot writer
+# (``core.migration.snapshots``) and consumers that need to exclude
+# them from user-facing introspection (``db.introspection``) or
+# normalise them at the storage layer (CosmosDB provider). Living
+# here keeps the constant on the cross-cutting boundary so neither
+# package has to import the other.
+DBLIFT_SCHEMA_SNAPSHOTS_TABLE = "dblift_schema_snapshots"
+
 # Default timeout values
 DEFAULT_CONNECTION_TIMEOUT_SECONDS = 30
 DEFAULT_MIGRATION_LOCK_TIMEOUT_SECONDS = 60

@@ -75,7 +75,13 @@ def clean_test_environment(request):
     This fixture automatically cleans up logs and temp files before and after each test
     to prevent contamination between tests.
     """
-    from tests.utils.test_utils import ensure_clean_test_environment
+    from tests.utils.test_utils import ensure_clean_test_environment, should_clean_test_environment
+
+    node = getattr(request, "node", None)
+    node_path = getattr(node, "path", getattr(node, "fspath", None))
+    if not should_clean_test_environment(node_path, project_root):
+        yield
+        return
 
     # Get test name for targeted cleanup
     test_name = request.node.name if hasattr(request, "node") else "unknown"

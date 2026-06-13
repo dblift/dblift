@@ -46,8 +46,30 @@ class Extension(SqlObject):
 
     @property
     def create_statement(self) -> str:
-        """Generate a basic CREATE EXTENSION statement."""
-        return self._generate_basic_create_statement()
+        """Generate CREATE EXTENSION statement using database-specific generators.
+
+        Returns:
+            Dialect-specific CREATE EXTENSION statement
+        """
+        # Use the appropriate SQL generator for the dialect
+        from core.sql_generator.generator_factory import (
+            SqlGeneratorFactory,
+        )
+
+        try:
+            generator = SqlGeneratorFactory.create(
+                self.dialect or "postgresql"  # lint: allow-dialect-string: extensions PG-only
+            )
+            # Check if generator has the new method
+            if hasattr(generator, "generate_create_statement"):
+                result = generator.generate_create_statement(self)
+                return str(result)
+            else:
+                # Fallback for old generators that don't have the method yet
+                return self._generate_basic_create_statement()
+        except (ValueError, ImportError, AttributeError):
+            # Fallback to basic CREATE EXTENSION if generator not available
+            return self._generate_basic_create_statement()
 
     def _generate_basic_create_statement(self) -> str:
         """Generate a basic CREATE EXTENSION statement as fallback."""

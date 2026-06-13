@@ -9,10 +9,10 @@ The hybrid approach:
 2. Uses sqlglot for dependency extraction and basic object identification
 3. Falls back gracefully when sqlglot cannot parse (procedural blocks, edge cases)
 
-NOTE: Rule engines, SQL analyzers, and CLI validations rely on lightweight SQLModel metadata.
-This parser therefore recreates essential table metadata (columns, constraints, partition
-schemes) directly from CREATE TABLE statements so downstream consumers retain the information
-they need.
+NOTE: While the diff command now relies on introspection-based models, other subsystems (rule
+engine, SQL analyzer, CLI validations) still rely on lightweight SQLModel metadata. This parser
+therefore recreates essential table metadata (columns, constraints, partition schemes) directly
+from CREATE TABLE statements so that downstream consumers retain the information they need.
 """
 
 import inspect
@@ -109,8 +109,8 @@ class HybridParser(_SqlglotBuildersMixin, SqlParserInterface):
     3. Extract basic objects (name, schema, type) using both parsers
     4. Extract dependencies using sqlglot when available
 
-    Note: Detailed metadata extraction is intentionally limited to the fields downstream
-    consumers still need.
+    Note: Detailed metadata extraction (e.g., full table schemas with columns and constraints)
+    has been removed as it's no longer needed for diff comparison.
     """
 
     # Statement types that are "pure SQL" and can benefit from sqlglot analysis

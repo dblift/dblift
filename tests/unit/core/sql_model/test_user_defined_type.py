@@ -1,5 +1,7 @@
 """Unit tests for core.sql_model.user_defined_type module."""
 
+from unittest.mock import Mock, patch
+
 import pytest
 
 from core.sql_model.user_defined_type import UserDefinedType
@@ -105,6 +107,46 @@ class TestUserDefinedType:
         """Test is_distinct property returns False for non-distinct types."""
         assert UserDefinedType("test", "COMPOSITE").is_distinct is False
         assert UserDefinedType("test", "ENUM").is_distinct is False
+
+    def test_create_statement_with_generator(self):
+        """Test create_statement using generator."""
+        udt = UserDefinedType("test_type", "COMPOSITE", schema="public")
+        mock_generator = Mock()
+        mock_generator.generate_create_statement = Mock(return_value="CREATE TYPE test_type;")
+
+        with patch(
+            "core.sql_generator.generator_factory.SqlGeneratorFactory.create",
+            return_value=mock_generator,
+        ):
+            result = udt.create_statement
+            assert result == "CREATE TYPE test_type;"
+            mock_generator.generate_create_statement.assert_called_once_with(udt)
+
+    def test_create_statement_fallback_no_generator_method(self):
+        """Test create_statement fallback when generator lacks method."""
+        udt = UserDefinedType(
+            "test_type", "COMPOSITE", attributes=[{"name": "attr1", "type": "INTEGER"}]
+        )
+        mock_generator = Mock()
+        del mock_generator.generate_create_statement  # Simulate missing method
+
+        with patch(
+            "core.sql_generator.generator_factory.SqlGeneratorFactory.create",
+            return_value=mock_generator,
+        ):
+            result = udt.create_statement
+            assert "CREATE TYPE" in result
+
+    def test_create_statement_fallback_exception(self):
+        """Test create_statement fallback on exception."""
+        udt = UserDefinedType("test_type", "ENUM", enum_values=["val1", "val2"])
+
+        with patch(
+            "core.sql_generator.generator_factory.SqlGeneratorFactory.create",
+            side_effect=ValueError("Error"),
+        ):
+            result = udt.create_statement
+            assert "CREATE TYPE" in result
 
     def test_generate_basic_create_statement_composite(self):
         """Test basic create statement for composite type."""

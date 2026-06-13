@@ -3,7 +3,7 @@
 This module provides SQLite-specific patterns and configurations for the
 unified regex parser framework.
 
-SQLite has simpler SQL syntax compared to server databases:
+SQLite has simpler SQL syntax compared to enterprise databases:
 - No stored procedures
 - No schemas (database file IS the schema)
 - Limited ALTER TABLE support

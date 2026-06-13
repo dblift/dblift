@@ -40,8 +40,8 @@ class PostgresViewOptions:
     """PostgreSQL-specific view options."""
 
     unlogged: Optional[bool] = None  # PostgreSQL grammar-based
-    security_definer: Optional[bool] = None
-    security_invoker: Optional[bool] = None
+    security_definer: Optional[bool] = None  # diff-relevant
+    security_invoker: Optional[bool] = None  # diff-relevant
 
 
 @dataclass(frozen=True, slots=True)

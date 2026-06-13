@@ -11,7 +11,7 @@ class DatabaseLink(SqlObject):
 
     Database links are named connections from one Oracle database to another,
     allowing distributed queries across multiple databases. They are essential
-    for applications with multi-database architectures.
+    for enterprise applications with multi-database architectures.
     """
 
     def __init__(

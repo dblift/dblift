@@ -8,7 +8,6 @@ from typing import (
     Callable,
     Dict,
     List,
-    NoReturn,
     Optional,
     Self,
     TypeVar,
@@ -58,8 +57,8 @@ def _with_client_emitter(method: _F) -> _F:
     "every public operation wraps its body in ``use_client_emitter``",
     but only ``migrate`` and ``undo`` actually did. Any core-layer
     ``emit_event`` raised from ``clean`` / ``info`` / ``validate`` /
-    ``repair`` / ``baseline`` / ``import_flyway`` /
-    ``export_schema`` would land on the process-wide
+    ``diff`` / ``repair`` / ``baseline`` / ``import_flyway`` /
+    ``export_schema`` / ``snapshot`` would land on the process-wide
     default emitter, breaking the per-client isolation guarantee.
     Decorating every public operation restores that invariant once and
     keeps it enforced by location instead of by convention.
@@ -811,7 +810,7 @@ class DBLiftClient:
             )
             raise
 
-    @classmethod
+    @_with_client_emitter
     def from_config(
         cls,
         config: "DbliftConfig",
@@ -867,32 +866,40 @@ class DBLiftClient:
         log_level: str = "INFO",
         log_format: str = "text",
         log_file: Optional[str] = None,
+        *,
+        connection: Any = None,
+        config: Optional["DbliftConfig"] = None,
         **kwargs: Any,
-    ) -> NoReturn:
-        """Create DBLiftClient from SQLAlchemy engine.
+    ) -> Self:
+        """Create DBLiftClient from an existing SQLAlchemy Engine (or Connection).
 
-        DEPRECATED: SQLAlchemy integration has been temporarily removed.
-        Use from_config() or from_config_file() instead.
+        This is the primary Python-native integration API. The caller owns the
+        Engine lifecycle; closing the returned client will not dispose the
+        engine.
 
-        Batch-5 BUG-03: every parameter is optional so the
-        ``NotImplementedError`` (raised inside ``client_from_sqlalchemy``)
-        fires regardless of how callers invoke the classmethod. Previously
-        ``migrations_dir`` was a required positional argument, so
-        ``DBLiftClient.from_sqlalchemy(engine)`` raised ``TypeError`` before
-        the deprecation message was ever reached.
+        Example:
+            from sqlalchemy import create_engine
+            from api import DBLiftClient
 
-        Raises:
-            NotImplementedError: Always, until SQLAlchemy support is restored.
+            engine = create_engine("postgresql+psycopg://...")
+            with DBLiftClient.from_sqlalchemy(engine, migrations_dir="migrations") as client:
+                client.migrate()
         """
-        client_from_sqlalchemy(
-            engine,
-            migrations_dir,
-            schema,
-            logger,
-            log_level,
-            log_format,
-            log_file,
-            **kwargs,
+        return cast(
+            Self,
+            client_from_sqlalchemy(
+                engine,
+                migrations_dir,
+                schema,
+                logger,
+                log_level,
+                log_format,
+                log_file,
+                connection=connection,
+                config=config,
+                client_cls=cls,
+                **kwargs,
+            ),
         )
 
     # Phase 2.4: Context Manager Support

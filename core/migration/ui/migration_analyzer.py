@@ -171,7 +171,7 @@ class MigrationAnalyzer:
             next_version = migrations_by_rank[i + 1]["version"]
 
             # Compare versions - if current > next, then next is out of order
-            if _compare_versions_shared(current_version, next_version) > 0:
+            if self._compare_versions(current_version, next_version) > 0:
                 out_of_order_script = migrations_by_rank[i + 1]["migration"].script_name
                 out_of_order_scripts.add(out_of_order_script)
                 self.log.debug(f"Detected out-of-order migration: {out_of_order_script}")
@@ -253,3 +253,7 @@ class MigrationAnalyzer:
                     keep_duplicates.add(migration)
 
         return keep_duplicates
+
+    def _compare_versions(self, version1: str, version2: str) -> int:
+        """Compare two version strings. Delegates to shared compare_versions utility."""
+        return _compare_versions_shared(version1, version2)

@@ -30,6 +30,7 @@ Sub-protocols (filled by Epic 26 stories as needed):
 * ``DdlQuirks`` (story 26-3) — DDL/SQL rendering hooks.
 * ``ParserQuirks`` (story 26-4) — parser/tokenizer factory hooks.
 * ``ModelQuirks`` (story 26-5) — domain-model rendering hooks.
+* ``ComparatorQuirks`` (story 26-6) — schema-diff comparator hooks.
 * ``ValidatorQuirks`` (story 26-7) — lint/perf rule hooks.
 * ``TypeMapQuirks`` (story 26-8) — type normalisation hooks.
 
@@ -54,12 +55,28 @@ override only the deltas.
 
 from __future__ import annotations
 
-from typing import Any, Optional, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Any, Optional, Protocol, Type, runtime_checkable
+
+if TYPE_CHECKING:
+    from core.sql_generator.alter.base_alter_generator import BaseAlterGenerator
+    from core.sql_generator.base_generator import BaseSqlGenerator
 
 
 @runtime_checkable
 class DdlQuirks(Protocol):
-    """DDL / SQL-rendering hooks. Populated by story 26-3."""
+    """DDL / SQL-rendering hooks. Populated by story 26-3.
+
+    First hooks (story 26-3 first slice): the DDL generator class and
+    the ALTER generator class for this dialect. Returning ``None``
+    means the framework falls back to the dialect-agnostic
+    :class:`core.sql_generator.sql_generator.SqlGenerator`.
+    """
+
+    def ddl_generator_class(self) -> Optional[Type["BaseSqlGenerator"]]:
+        """Return the dialect-specific DDL generator class, or ``None``."""
+
+    def alter_generator_class(self) -> Optional[Type["BaseAlterGenerator"]]:
+        """Return the dialect-specific ALTER generator class, or ``None``."""
 
     def render_drop_for_object(
         self,
@@ -70,7 +87,9 @@ class DdlQuirks(Protocol):
     ) -> Optional[str]:
         """Render a dialect-specific DROP statement, or ``None`` to defer.
 
-        Returning ``None`` lets the framework emit the generic
+        Used by ``SqlGenerator._generate_drop_statement`` so the
+        framework no longer branches on the dialect name. Returning
+        ``None`` lets the framework emit the generic
         ``DROP <type> IF EXISTS <schema>.<obj>`` form.
         """
 
@@ -92,8 +111,9 @@ class DdlQuirks(Protocol):
     def requires_dialect_specific_wrapping(self, object_type_name: str) -> bool:
         """True when an object of this type needs delimiter wrapping.
 
-        MySQL covers procedures and functions here. The broader trigger/event
-        set is exposed via :meth:`requires_block_delimiter_wrapping`.
+        Used by ``generate_ddl`` (``//`` separator). MySQL covers
+        procedures and functions here. The broader trigger/event set
+        is exposed via :meth:`requires_block_delimiter_wrapping`.
         """
 
     def wrap_dialect_specific_block(self, sql: str) -> str:
@@ -115,6 +135,13 @@ class DdlQuirks(Protocol):
         MySQL views / procedures / functions / triggers / events carry
         ``DEFINER`` clauses and quirky identifier quoting that the
         generator should not strip.
+        """
+
+    def introspector_class(self) -> "Optional[type]":
+        """Return the dialect-specific BaseIntrospector class, or None.
+
+        None causes IntrospectorFactory to fall back to SchemaIntrospector.
+        Plugins use a lazy import to avoid circular imports.
         """
 
     non_transactional_sql_patterns: "tuple[tuple[str, str], ...]"
@@ -164,6 +191,29 @@ class ModelQuirks(Protocol):
 
 
 @runtime_checkable
+class ComparatorQuirks(Protocol):
+    """Schema-diff comparator hooks. Populated by story 26-6."""
+
+    view_supports_algorithm: bool
+    view_supports_force_noforce: bool
+    view_supports_unlogged_and_security: bool
+    event_supports_mysql_schedule: bool
+    supports_constraint_triggers: bool
+    index_comment_template: str
+    default_index_type: str
+    serial_types_alias_integer: bool
+    proc_uses_definition_field: bool
+    proc_skip_empty_comparison: bool
+    table_supports_compress: bool
+    table_supports_memory_optimized: bool
+    table_supports_system_versioned: bool
+    table_column_default_has_on_update: bool
+    seq_uses_nextval_syntax: bool
+    computed_column_introspection_incomplete: bool
+    table_prefers_inline_single_pk: bool
+
+
+@runtime_checkable
 class ValidatorQuirks(Protocol):
     """Lint / perf rule hooks. Populated by story 26-7."""
 
@@ -197,6 +247,7 @@ class DialectQuirks(
     DdlQuirks,
     ParserQuirks,
     ModelQuirks,
+    ComparatorQuirks,
     ValidatorQuirks,
     TypeMapQuirks,
     Protocol,
@@ -223,6 +274,7 @@ __all__ = [
     "DdlQuirks",
     "ParserQuirks",
     "ModelQuirks",
+    "ComparatorQuirks",
     "ValidatorQuirks",
     "TypeMapQuirks",
 ]

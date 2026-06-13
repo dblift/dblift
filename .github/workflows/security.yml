@@ -69,6 +69,16 @@ jobs:
           # step above already upgrades pip to latest; these flags are
           # a belt-and-braces to tolerate stale runner metadata.
           #
+          # PYSEC-2025-183 (CVE-2025-45768): PyJWT advisory about weak key
+          # length selection on RS256. Disputed by upstream, no patched
+          # version available (PyJWT 2.12.1 is current). dblift uses
+          # ``jwt.decode(token, self._public_key, algorithms=["RS256"])``
+          # in core/licensing/license_manager.py — verification only, with
+          # an embedded public key controlled by dblift's signing
+          # infrastructure (not by end users), so the vulnerability's
+          # threat model (attacker-controlled key length at generation)
+          # does not apply. Re-evaluate when PyJWT ships a fix.
+          #
           # Revisit this list when a release of dblift requires newer
           # deps that cannot co-install with modern pip.
           pip-audit --skip-editable \
@@ -77,7 +87,8 @@ jobs:
             --ignore-vuln CVE-2026-3219 \
             --ignore-vuln GHSA-4xh5-x5gv-qwph \
             --ignore-vuln ECHO-ffe1-1d3c-d9bc \
-            --ignore-vuln ECHO-7db2-03aa-5591
+            --ignore-vuln ECHO-7db2-03aa-5591 \
+            --ignore-vuln PYSEC-2025-183
 
   gitleaks:
     name: Secret scanning (gitleaks)

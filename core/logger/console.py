@@ -168,7 +168,7 @@ def console_status(message: str) -> "ContextManager[Any]":
     """Return a Rich ``Console.status`` context manager, or a no-op
     when progress is disabled (``--no-progress`` / non-tty).
 
-    Long-running command paths wrap their
+    Long-running command paths (snapshot, export-schema) wrap their
     blocking service calls with this so the spinner respects the
     same suppression rules as ``rich.progress.Progress``.
     """

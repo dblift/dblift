@@ -9,12 +9,27 @@ services:
     volumes:
       - ./migrations:/workspace/migrations
       - ./dblift.yaml:/workspace/dblift.yaml
+      - ./.dblift_rules.yaml:/workspace/.dblift_rules.yaml
     environment:
       - DBLIFT_DB_URL=${DBLIFT_DB_URL}
       - DBLIFT_DB_USERNAME=${DBLIFT_DB_USERNAME}
       - DBLIFT_DB_PASSWORD=${DBLIFT_DB_PASSWORD}
       - DBLIFT_DB_SCHEMA=${DBLIFT_DB_SCHEMA}
     command: ["info"]
+
+  # Lightweight validation-only image for CI/CD
+  validate:
+    build:
+      context: .
+      dockerfile: Dockerfile.validation
+    volumes:
+      - ./migrations:/workspace/migrations
+      - ./.dblift_rules.yaml:/workspace/.dblift_rules.yaml
+    command:
+      - "migrations/"
+      - "--dialect=postgresql"
+      - "--rules-file=.dblift_rules.yaml"
+      - "--format=console"
 
   # Example: PostgreSQL database for testing
   postgres:

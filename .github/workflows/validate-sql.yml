@@ -1,0 +1,95 @@
+name: SQL Validation
+
+on:
+  workflow_dispatch:
+
+jobs:
+  validate-sql:
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/yourusername/dblift:validation-latest
+      # Or build from source:
+      # Build the image in a separate job and use it here
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Validate SQL migrations
+        run: |
+          dblift validate-sql migrations/ \
+            --dialect postgresql \
+            --rules-file .dblift_rules.yaml \
+            --format github-actions \
+            --fail-on error
+
+  # Alternative: Build Docker image from source
+  validate-sql-build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Build validation image
+        run: docker build -f Dockerfile.validation -t dblift-validate .
+
+      - name: Validate SQL migrations
+        run: |
+          docker run --rm \
+            -v $(pwd)/migrations:/workspace/migrations \
+            -v $(pwd)/.dblift_rules.yaml:/workspace/.dblift_rules.yaml \
+            dblift-validate \
+            migrations/ \
+            --dialect postgresql \
+            --rules-file .dblift_rules.yaml \
+            --format github-actions \
+            --fail-on error
+
+      - name: Upload SARIF results (for Code Scanning)
+        if: always()
+        run: |
+          dblift validate-sql migrations/ \
+            --dialect postgresql \
+            --rules-file .dblift_rules.yaml \
+            --format sarif > validation-results.sarif
+
+      - name: Upload SARIF artifact
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: sql-validation-sarif
+          path: validation-results.sarif
+
+      - name: Comment PR with validation results
+        if: github.event_name == 'pull_request' && failure()
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const fs = require('fs');
+            const { execSync } = require('child_process');
+
+            // Get validation results in JSON format. Use --fail-on never so the
+            // command exits zero even when error-level findings exist; otherwise
+            // execSync throws and the comment is never created.
+            const output = execSync('dblift validate-sql migrations/ --dialect postgresql --rules-file .dblift_rules.yaml --format json --fail-on never', {
+              encoding: 'utf-8'
+            });
+            const results = JSON.parse(output);
+
+            // Format comment
+            let comment = '## ❌ SQL Validation Failed\n\n';
+            comment += `**Files checked:** ${results.checked_count}\n`;
+            comment += `**Findings found:** ${results.findings.length}\n`;
+            comment += `- Errors: ${results.summary.error}\n`;
+            comment += `- Warnings: ${results.summary.warning}\n`;
+            comment += `- Info: ${results.summary.info}\n\n`;
+            comment += 'Please review the violations and fix them before merging.\n';
+            comment += 'Check the Actions tab for detailed results.';
+
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: comment
+            });

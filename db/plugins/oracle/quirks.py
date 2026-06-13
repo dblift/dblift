@@ -3,9 +3,13 @@
 from __future__ import annotations
 
 import re
-from typing import Any, Dict, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Dict, Optional, Tuple, Type
 
 from db.base_quirks import BaseQuirks
+
+if TYPE_CHECKING:
+    from core.sql_generator.alter.base_alter_generator import BaseAlterGenerator
+    from core.sql_generator.base_generator import BaseSqlGenerator
 
 
 class OracleQuirks(BaseQuirks):
@@ -43,6 +47,7 @@ class OracleQuirks(BaseQuirks):
     missing_connection_identifier_hint = (
         "Oracle connection requires url, service_name, sid, or host/database fields"
     )
+    lint_placeholder_url = "oracle+oracledb://localhost:1521/?service_name=XEPDB1"
 
     def derive_schema_name(self, database_config: Any) -> Optional[str]:
         """Use the Oracle user/current schema convention when schema is omitted."""
@@ -63,6 +68,19 @@ class OracleQuirks(BaseQuirks):
     index_supports_tablespace = True
     # Trigger DDL (story 26-5).
     trigger_terminator = "\n/"
+    # Engine-internal materialized-view support objects to skip during
+    # table introspection. Non-empty also signals TableExtractor to
+    # preload MV names so it can filter them from the table list.
+    materialized_view_support_table_prefixes: Tuple[str, ...] = (
+        "MLOG$",
+        "RUPD$",
+        "MVIEW$_",
+        "MVW$_",
+        "I_SNAP$",
+        "SNAP$",
+        "AQ$",
+        "DR$",
+    )
 
     def wrap_trigger_body(self, body: str) -> str:
         """Oracle: wrap body in a valid PL/SQL block.
@@ -108,8 +126,6 @@ class OracleQuirks(BaseQuirks):
     supports_sqlplus_preprocessing = True
     # Wave A hooks (story 26-6).
     view_supports_force_noforce = True
-    view_supports_create_or_replace = True
-    view_materialized_uses_build_immediate = True
     proc_uses_definition_field = True
     index_comment_template = "COMMENT ON INDEX {schema_prefix}{idx_name} IS '{escaped_comment}';"
     default_index_type = "NORMAL"
@@ -180,7 +196,7 @@ class OracleQuirks(BaseQuirks):
         """Look up the real owner/table_name in ALL_TABLES and try it first."""
         import logging
 
-        log = logging.getLogger("core.clean")
+        log = logging.getLogger("core.validation.round_trip_tester")
 
         strategies: "list[str]" = [
             f'"{schema_clean}"."{table_clean}"',
@@ -209,6 +225,38 @@ class OracleQuirks(BaseQuirks):
     def __init__(self, dialect_name: str = "oracle") -> None:
         """Initialize Oracle quirks with the dialect name."""
         super().__init__(dialect_name=dialect_name)
+
+    # ------------------------------------------------------------------
+    # Snapshot table DDL (Oracle: VARCHAR2 / CLOB / uppercase identifiers).
+    # ``CREATE TABLE`` is non-idempotent on Oracle; idempotency is handled
+    # by swallowing ORA-00955 in ``is_snapshot_table_already_exists_error``.
+    # ------------------------------------------------------------------
+
+    def build_snapshot_table_ddl(
+        self,
+        qualified_table: str,
+        snapshot_id_size: int,
+        checksum_size: int,
+    ) -> str:
+        """Render the Oracle snapshot table DDL (uppercase columns, ``CLOB``)."""
+        return (
+            f"CREATE TABLE {qualified_table} ("
+            f"SNAPSHOT_ID VARCHAR2({snapshot_id_size}) PRIMARY KEY, "
+            f"CAPTURED_AT VARCHAR2({snapshot_id_size}) NOT NULL, "
+            f"CHECKSUM VARCHAR2({checksum_size}) NOT NULL, "
+            f"MODEL_DATA CLOB NOT NULL)"
+        )
+
+    def is_snapshot_table_already_exists_error(self, error_message: str) -> bool:
+        """Identify ORA-00955 (table already exists) — including localized text."""
+        lowered = (error_message or "").lower()
+        return (
+            "already exists" in lowered
+            or "name is already used" in lowered
+            or "ora-00955" in lowered
+            or "existe déjà" in lowered
+            or "existe já" in lowered
+        )
 
     # ------------------------------------------------------------------
     # Migration-script preprocessing hooks (Tier 1 plugin-isolation).
@@ -264,6 +312,30 @@ class OracleQuirks(BaseQuirks):
         from db.plugins.oracle.oracle.dbms_output import read_dbms_output
 
         read_dbms_output(connection, log)
+
+    def ddl_generator_class(self) -> Optional[Type["BaseSqlGenerator"]]:
+        """Return the Oracle-specific :class:`OracleSqlGenerator` (lazy import)."""
+        from db.plugins.oracle.generator.ddl_generator import OracleSqlGenerator
+
+        return OracleSqlGenerator
+
+    def alter_generator_class(self) -> Optional[Type["BaseAlterGenerator"]]:
+        """Return the Oracle-specific :class:`OracleAlterGenerator` (lazy import)."""
+        from db.plugins.oracle.generator.alter_generator import OracleAlterGenerator
+
+        return OracleAlterGenerator
+
+    def vendor_queries_class(self) -> "Optional[Type[Any]]":
+        """Return the Oracle :class:`OracleMetadataQueries` bundle (lazy import)."""
+        from db.plugins.oracle.introspection.oracle_queries import OracleMetadataQueries
+
+        return OracleMetadataQueries
+
+    def introspector_class(self) -> "Optional[Type[Any]]":
+        """Return the Oracle :class:`OracleIntrospector` (F.3.e, lazy import)."""
+        from db.plugins.oracle.introspection.oracle_introspector import OracleIntrospector
+
+        return OracleIntrospector
 
     def parser_class(self, parser_type: str) -> Optional[type]:
         """Oracle parser dispatch: hybrid → :class:`HybridParser`, sqlglot →
@@ -327,7 +399,7 @@ class OracleQuirks(BaseQuirks):
         Setting NOT NULL emits a pre-check counting NULL rows so a violating
         migration fails cleanly before the ALTER runs.
         """
-        from core.state.sql_statement import SqlStatement
+        from core.sql_generator.sql_statement import SqlStatement
 
         nullable_diff = getattr(col_diff, "nullable_diff", None)
         if nullable_diff is None:
@@ -356,7 +428,7 @@ class OracleQuirks(BaseQuirks):
         self, col_diff: object, formatted_table: str, formatted_column: str, dialect: str
     ) -> "Optional[object]":
         """``ALTER TABLE … MODIFY <col> DEFAULT <expr|NULL>`` — Oracle's DEFAULT change form."""
-        from core.state.sql_statement import SqlStatement
+        from core.sql_generator.sql_statement import SqlStatement
 
         default_diff = getattr(col_diff, "default_diff", None)
         if default_diff is None:
@@ -378,7 +450,7 @@ class OracleQuirks(BaseQuirks):
         self, col_diff: object, formatted_table: str, formatted_column: str, dialect: str
     ) -> "Optional[object]":
         """``ALTER TABLE … MODIFY <col> <type>`` — Oracle column-type change form."""
-        from core.state.sql_statement import SqlStatement
+        from core.sql_generator.sql_statement import SqlStatement
 
         data_type_diff = getattr(col_diff, "data_type_diff", None)
         if data_type_diff is None:
@@ -450,7 +522,9 @@ class OracleQuirks(BaseQuirks):
         """Oracle function-based indexes materialize expression columns under
         ``SYS_NCxxx``-style names. The extractor substitutes the original
         expression text when this returns ``True``."""
-        return bool(name and name.upper().startswith("SYS_NC"))
+        from db.plugins.oracle.introspection.oracle_utils import is_hidden_column
+
+        return bool(is_hidden_column(name))
 
     def apply_index_vendor_properties(
         self, idx_data: Dict[str, Any], index_kwargs: Dict[str, Any]
@@ -475,7 +549,7 @@ class OracleQuirks(BaseQuirks):
         ``tablespace`` property explicit so downstream comparators don't
         treat the default as a diff.
         """
-        from db.value_utils import get_row_value
+        from core.introspection._utils import get_row_value
 
         tablespace = (
             get_row_value(row, "tablespace")
@@ -512,6 +586,10 @@ class OracleQuirks(BaseQuirks):
         """Oracle UNIQUE constraints — iterate the vendor indexes query
         and select non-PK unique entries. Names are run through
         :meth:`sanitize_constraint_name` to drop ``SYS_*`` patterns."""
+        from core.introspection.extractors.constraint_extractor import (
+            _build_unique_constraints_from_dict,
+        )
+
         if not getattr(extractor, "vendor_queries", None):
             return None
         try:
@@ -519,7 +597,7 @@ class OracleQuirks(BaseQuirks):
         except Exception as e:
             extractor.log.warning(f"Error getting unique constraints for {schema}.{table}: {e}")
             return []
-        return list(unique_indexes)
+        return _build_unique_constraints_from_dict(extractor, unique_indexes)
 
     def sanitize_constraint_name(self, name: "Optional[str]") -> "Optional[str]":
         """Oracle drops ``SYS_*`` and ``SYS$*`` system-generated constraint
@@ -567,32 +645,24 @@ class OracleQuirks(BaseQuirks):
         """Strip the ``<E>...</E>`` XML aggregator markup and unescape
         entities that ``DBMS_METADATA`` injects when concatenating PL/SQL
         rows from ``ALL_SOURCE``."""
-        if text is None:
-            return None
-        cleaned = text.replace("<E>", "").replace("</E>", "")
-        return (
-            cleaned.replace("&lt;", "<")
-            .replace("&gt;", ">")
-            .replace("&amp;", "&")
-            .replace("&quot;", '"')
-            .replace("&apos;", "'")
-        )
+        from db.plugins.oracle.introspection.oracle_utils import clean_source_text
+
+        return clean_source_text(text)
 
     def normalize_partition_bound(self, value: Any) -> Any:
         """Collapse ``TO_DATE(...,'SYYYY-MM-DD HH24:MI:SS',
         'NLS_CALENDAR=...')`` partition bounds into a plain
         ``YYYY-MM-DD`` literal when the time component is midnight."""
-        if not isinstance(value, str):
-            return value
-        match = re.search(r"TO_DATE\('(\d{4}-\d{2}-\d{2}) 00:00:00'", value, re.IGNORECASE)
-        return match.group(1) if match else value
+        from db.plugins.oracle.introspection.oracle_utils import normalize_partition_bound
+
+        return normalize_partition_bound(value)
 
     def extract_partition_scheme_from_row(
         self, extractor: Any, row: Dict[str, Any], table: Any
     ) -> None:
         """Oracle: ``partitioning_type`` (RANGE / LIST / HASH / …)
         and a comma-separated ``partition_columns`` projection."""
-        from db.value_utils import get_row_value
+        from core.introspection._utils import get_row_value
 
         part_type = get_row_value(row, "partitioning_type")
         part_cols = get_row_value(row, "partition_columns")

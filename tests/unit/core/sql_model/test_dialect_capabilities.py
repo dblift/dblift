@@ -100,8 +100,21 @@ class TestPostgreSQL:
     def test_lowercase_identifiers(self):
         assert dialect_uses_uppercase_identifiers("postgresql") is False
 
-    def test_clean_strategy_uses_native(self):
-        assert dialect_clean_strategy("postgresql") == "native"
+    def test_clean_strategy_uses_introspector(self):
+        assert dialect_clean_strategy("postgresql") == "introspector"
+
+
+class TestOracle:
+    def test_supports_transactions_but_not_ddl(self):
+        assert dialect_supports_transactions("oracle") is True
+        # Oracle auto-commits DDL; rollback cannot undo CREATE/ALTER/DROP.
+        assert dialect_supports_transactional_ddl("oracle") is False
+
+    def test_uppercase_identifiers(self):
+        assert dialect_uses_uppercase_identifiers("oracle") is True
+
+    def test_schema_required(self):
+        assert dialect_requires_schema("oracle") is True
 
 
 class TestMySQL:
@@ -111,6 +124,20 @@ class TestMySQL:
 
     def test_schema_required(self):
         assert dialect_requires_schema("mysql") is True
+
+
+class TestSQLServer:
+    def test_supports_transactions_and_ddl(self):
+        assert dialect_supports_transactions("sqlserver") is True
+        assert dialect_supports_transactional_ddl("sqlserver") is True
+
+
+class TestDB2:
+    def test_uppercase_identifiers(self):
+        assert dialect_uses_uppercase_identifiers("db2") is True
+
+    def test_supports_transactional_ddl(self):
+        assert dialect_supports_transactional_ddl("db2") is True
 
 
 class TestSQLite:
@@ -126,8 +153,22 @@ class TestSQLite:
         assert dialect_supports_transactional_ddl("sqlite") is True
 
     def test_clean_strategy_is_native(self):
-        # SQLite enumerates drop candidates via the provider directly.
+        # SQLite enumerates drop candidates via the provider directly,
+        # not via generic introspection.
         assert dialect_clean_strategy("sqlite") == "native"
+
+
+class TestCosmosDB:
+    def test_no_transactions(self):
+        # Cosmos DB is NoSQL; begin/commit/rollback are no-ops.
+        assert dialect_supports_transactions("cosmosdb") is False
+        assert dialect_supports_transactional_ddl("cosmosdb") is False
+
+    def test_no_schema_required(self):
+        assert dialect_requires_schema("cosmosdb") is False
+
+    def test_clean_strategy_is_native(self):
+        assert dialect_clean_strategy("cosmosdb") == "native"
 
 
 # --- Provider conformance ---------------------------------------------------
@@ -157,9 +198,13 @@ class TestProviderConformance:
 
     # Each entry: (provider class, dialect string)
     _INSTANTIABLE_PROVIDERS = [
+        ("cosmosdb", "db.plugins.cosmosdb.provider", "CosmosDbProvider"),
+        ("db2", "db.plugins.db2.provider", "Db2Provider"),
         ("mysql", "db.plugins.mysql.provider", "MySqlProvider"),
+        ("oracle", "db.plugins.oracle.provider", "OracleProvider"),
         ("postgresql", "db.plugins.postgresql.provider", "PostgreSqlProvider"),
         ("sqlite", "db.plugins.sqlite.provider", "SQLiteProvider"),
+        ("sqlserver", "db.plugins.sqlserver.provider", "SqlServerProvider"),
     ]
 
     @staticmethod
@@ -219,7 +264,7 @@ class TestProviderConformance:
     )
     def test_clean_strategy_is_declared_for_every_provider(self, dialect, module_path, class_name):
         self._stub(module_path, class_name)
-        assert dialect_clean_strategy(dialect) in {"native"}
+        assert dialect_clean_strategy(dialect) in {"introspector", "native"}
 
     @pytest.mark.parametrize(
         "dialect,module_path,class_name",

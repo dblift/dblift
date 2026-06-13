@@ -436,7 +436,7 @@ class Table(SqlObject):
         self.derived_from = opts.derived_from
         self.raw_ddl = opts.raw_ddl
 
-        # Track explicit T-SQL-specific properties for round-trip fidelity
+        # Track explicit T-SQL-specific properties for diff sensitivity
         if self.filegroup is not None:
             self.mark_property_explicit("filegroup")
         if self.memory_optimized:
@@ -569,23 +569,50 @@ class Table(SqlObject):
         """
         return [c for c in self.constraints if c.constraint_type.value == "CHECK"]
 
+    def generate_alter_table_check_constraints(self) -> List[str]:
+        """Generate ALTER TABLE statements for CHECK constraints.
+
+        Note: Only produces output for DB2 dialect. Returns empty list for all other dialects.
+        """
+        from core.sql_generator.basic_table_ddl_generator import BasicTableDdlGenerator
+
+        return BasicTableDdlGenerator(self).generate_alter_check_constraints()
+
+    def generate_alter_table_self_referencing_foreign_keys(self) -> List[str]:
+        """Generate ALTER TABLE statements for self-referencing foreign keys.
+
+        Note: Only produces output for DB2 dialect. Returns empty list for all other dialects.
+        """
+        from core.sql_generator.basic_table_ddl_generator import BasicTableDdlGenerator
+
+        return BasicTableDdlGenerator(self).generate_alter_self_referencing_fks()
+
     @property
     def create_statement(self) -> str:
-        """Generate a basic CREATE TABLE statement."""
-        definitions = [str(column) for column in self.columns]
-        definitions.extend(str(constraint) for constraint in self.constraints)
-        body = ", ".join(definitions)
-        return f"CREATE TABLE {self._qualified_name()} ({body});"
+        """Generate CREATE TABLE statement using database-specific generators.
+
+        Returns:
+            Dialect-specific CREATE TABLE statement
+        """
+        from core.sql_generator.basic_table_ddl_generator import BasicTableDdlGenerator
+        from core.sql_generator.generator_factory import SqlGeneratorFactory
+
+        try:
+            generator = SqlGeneratorFactory.create(
+                self.dialect or "postgresql"  # lint: allow-dialect-string: factory default fallback
+            )
+            if not hasattr(generator, "generate_create_statement"):
+                raise AttributeError("generator has no generate_create_statement")
+            return str(generator.generate_create_statement(self))
+        except (ValueError, ImportError, AttributeError):
+            return BasicTableDdlGenerator(self).generate_create_statement()
 
     @property
     def drop_statement(self) -> str:
-        """Generate a basic DROP TABLE statement."""
-        return f"DROP TABLE {self._qualified_name()};"
+        """Generate DROP TABLE statement."""
+        from core.sql_generator.basic_table_ddl_generator import BasicTableDdlGenerator
 
-    def _qualified_name(self) -> str:
-        if self.schema:
-            return f"{self.schema}.{self.name}"
-        return self.name
+        return BasicTableDdlGenerator(self).generate_drop_statement()
 
     def __str__(self) -> str:
         """Return string representation of the table."""
@@ -766,6 +793,16 @@ class Table(SqlObject):
 
         if column_differences:
             differences["column_differences"] = column_differences
+
+        # BACKLOG P3 (story 10-26): Ajouter comparaison des contraintes dans Table.compare_to()
+        # Raison: Complexité de normalisation des noms de contraintes cross-dialecte (auto-générés vs explicites)
+        # Impact: Le diff de schéma ne détecte pas les ajouts/suppressions de PK, FK, UNIQUE, CHECK
+        # Approche: Comparer self.pk vs other.pk, self.foreign_keys vs other.foreign_keys, etc.
+        #   Nécessite normalisation des noms (ignorer noms auto-générés dialecte-spécifiques)
+        #   Attributs disponibles: pk, foreign_keys, unique_constraints, check_constraints
+        #   (indexes sont trackés séparément via diff.missing_indexes / diff.extra_indexes)
+        # Dépendances: Normalisation cross-dialecte des noms de contraintes à définir d'abord
+        # Ref: voir _bmad-output/implementation-artifacts/10-26-todos-documenter-ou-implementer.md
 
         return differences
 

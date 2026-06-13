@@ -2,7 +2,7 @@
 
 Verifies that the MariaDB plugin is correctly registered as a native
 transport, inherits MySQL-family behavior, and preserves MariaDB-specific
-quirks (JSON type mapping).
+quirks (requires_rollback_after_introspection=False, JSON type mapping).
 """
 
 from db.plugins.mariadb.plugin import PLUGIN as MARIADB_PLUGIN
@@ -27,6 +27,12 @@ def test_mariadb_provider_inherits_mysql() -> None:
 def test_mariadb_provider_has_correct_dialect_key() -> None:
     """MariaDB declares its own canonical dialect key."""
     assert MariadbProvider.canonical_dialect_key == "mariadb"
+
+
+def test_mariadb_quirks_no_rollback_after_introspection() -> None:
+    """MariaDB does not require post-introspection rollback (unlike MySQL)."""
+    quirks = MariadbQuirks()
+    assert quirks.requires_rollback_after_introspection is False
 
 
 def test_mariadb_quirks_json_type_mapping() -> None:

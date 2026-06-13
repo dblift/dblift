@@ -1,8 +1,4 @@
-"""Private operation helpers for :mod:`api.client`.
-
-Keep large operation bodies out of ``DBLiftClient`` so the public client class
-stays readable while preserving the same public methods and behavior.
-"""
+"""Private operation helpers for OSS :mod:`api.client`."""
 
 from __future__ import annotations
 
@@ -11,7 +7,6 @@ from typing import Any, List, Optional, Union
 
 from api.events import EventType
 from core.logger.results import GenerateUndoScriptResult
-
 
 def _heuristic_statement_count_from_sql(sql_text: str) -> int:
     """Count lines that look like standalone SQL statements (heuristic)."""
@@ -22,7 +17,10 @@ def _heuristic_statement_count_from_sql(sql_text: str) -> int:
     )
 
 
-def _apply_sql_script_warning_scan(result: GenerateUndoScriptResult, sql_text: str) -> None:
+def _apply_sql_script_warning_scan(
+    result: Union[GenerateSqlFromDiffResult, GenerateUndoScriptResult],
+    sql_text: str,
+) -> None:
     """Set manual-review flag and collect per-line warnings from generated SQL text."""
     sql_lower = sql_text.lower()
     if "warning" in sql_lower or "requires manual review" in sql_lower:
@@ -257,3 +255,5 @@ def _undo_script_error_result(
     result.set_error(error_message)
     result.complete()
     return result
+
+

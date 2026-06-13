@@ -137,7 +137,8 @@ def test_migrate_dry_run_is_byte_identical(tmp_path: Path):
 
     Strongest form of the purity contract. If this fails, something under
     dry-run is opening a write connection or committing a transaction —
-    investigate ``_initialize_migration_execution`` and history-table creation.
+    investigate ``_initialize_migration_execution`` / snapshot capture /
+    history-table creation (all known failure modes).
     """
     config, db_file = _make_env_with_pending_migration(tmp_path)
 

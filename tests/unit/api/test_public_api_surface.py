@@ -53,8 +53,8 @@ class TestApiPackageSurface:
 
         assert EventType is not None
 
-    def test_all_lists_exactly_three_symbols(self):
-        """``api.__all__`` is the contract. Additions are MINOR bumps
+    def test_all_lists_exactly_five_symbols(self):
+        """``api.__all__`` is the contract. Additions (e.g. MigrationContext) are MINOR bumps
         (document in semver-policy.md + CHANGELOG); removals are MAJOR."""
         import api
 
@@ -62,6 +62,7 @@ class TestApiPackageSurface:
             "DBLiftClient",
             "EventEmitter",
             "EventType",
+            "MigrationContext",
         }
 
 
@@ -207,6 +208,7 @@ class TestLoggerPackageSurface:
         "CleanResult",
         "ConsoleLog",
         "DbliftLogger",
+        "DiffResult",
         "FileLog",
         "HtmlFormatter",
         "InfoResult",
@@ -220,6 +222,7 @@ class TestLoggerPackageSurface:
         "MultiLog",
         "NullLog",
         "OperationResult",
+        "PlanResult",
         "OutputFormatter",
         "OutputFormatterFactory",
         "RepairResult",
@@ -239,7 +242,7 @@ class TestLoggerPackageSurface:
 
 
 class TestDBLiftClientPublicMethods:
-    """The public methods on DBLiftClient."""
+    """The 14 public methods on DBLiftClient (§ 3.2 of ARCHITECTURE.md)."""
 
     EXPECTED_PUBLIC_METHODS = frozenset(
         {

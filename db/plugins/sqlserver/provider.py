@@ -216,6 +216,29 @@ class SqlServerProvider(SqlAlchemyProvider):
                 "Baseline cannot be applied to a schema with existing migrations."
             )
 
+    def create_snapshot_table_if_not_exists(
+        self, schema: str, table_name: str = "dblift_schema_snapshots"
+    ) -> None:
+        """Create the schema snapshot table if it is missing."""
+        self.create_schema_if_not_exists(schema)
+        qualified = _schema_object(schema, table_name)
+        self.execute_statement(
+            f"""
+            IF NOT EXISTS (
+                SELECT 1 FROM sys.tables t
+                JOIN sys.schemas s ON t.schema_id = s.schema_id
+                WHERE s.name = ? AND t.name = ?
+            )
+            CREATE TABLE {qualified} (
+                snapshot_id NVARCHAR(255) NOT NULL PRIMARY KEY,
+                captured_at DATETIME2 DEFAULT GETDATE(),
+                checksum NVARCHAR(128),
+                model_data NVARCHAR(MAX) NOT NULL
+            )
+        """,
+            params=[schema, table_name],
+        )
+
     def record_migration(
         self,
         schema: str,

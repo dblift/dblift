@@ -1,4 +1,4 @@
-"""SQL statement models used by runtime formatting and SDK translation."""
+"""SQL Statement models for diff-to-SQL generation."""
 
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
@@ -6,25 +6,25 @@ from typing import Any, Dict, List, Optional
 
 @dataclass
 class SqlStatement:
-    """Represents a SQL statement with runtime metadata."""
+    """Represents a SQL statement with metadata."""
 
     sql: str
-    statement_type: str
-    object_type: str
+    statement_type: str  # "CREATE", "ALTER", "DROP", etc.
+    object_type: str  # "TABLE", "COLUMN", "CONSTRAINT", etc.
     object_name: str
     dialect: str
-    pre_check: Optional[str] = None
+    pre_check: Optional[str] = None  # SQL to check before execution
     error_if_check_fails: bool = False
     error_message: Optional[str] = None
-    depends_on: Optional[List[str]] = None
-    sdk_operation: Optional[Dict[str, Any]] = None
-    requires_sdk: bool = False
+    depends_on: Optional[List[str]] = None  # List of object names this depends on
+    sdk_operation: Optional[Dict[str, Any]] = None  # For CosmosDB: SDK operation details
+    requires_sdk: bool = False  # Whether this statement requires SDK execution
 
-    def __post_init__(self) -> None:
+    def __post_init__(self):
         """Initialize default values."""
         if self.depends_on is None:
             self.depends_on = []
 
     def __str__(self) -> str:
-        """Return a concise display label."""
+        """String representation."""
         return f"{self.statement_type} {self.object_type} {self.object_name}"

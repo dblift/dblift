@@ -58,6 +58,100 @@ class TestBug01MySqlAtUserVariableTokenization(unittest.TestCase):
         self.assertTrue(any("@stmt_count" in s for s in stmts))
 
 
+class TestBug02SqlplusDirectiveTermination(unittest.TestCase):
+    """SQL*Plus directives (``SET``, ``DEFINE``, ``PROMPT``,
+    ``WHENEVER SQLERROR``) are line-terminated, not ``;``-terminated. The
+    Oracle tokeniser ends a statement only on ``;`` or ``/``, so a directive
+    line silently merged with the following DDL/DML, either dropping the
+    user's real statement (when ``is_sqlplus_command`` matched the merged
+    text) or pushing invalid SQL to the execution provider. Fix:
+    ``terminate_sqlplus_directives()`` walks the script line-by-line and
+    appends ``;`` to any line that matches ``is_sqlplus_command`` or
+    ``parse_whenever_sqlerror`` and is not already terminated.
+    """
+
+    def _split(self, sql: str) -> list[str]:
+        from db.plugins.oracle.parser.oracle_statement_parser import OracleStatementParser
+        from db.plugins.oracle.parser.oracle_tokenizer import OracleTokenizer
+
+        tokens = OracleTokenizer(sql).tokenize()
+        return [s for s in OracleStatementParser(tokens).split_statements() if s.strip()]
+
+    def test_set_serveroutput_followed_by_ddl_is_split(self) -> None:
+        from db.plugins.oracle.parser.sqlplus_context import terminate_sqlplus_directives
+
+        raw = "SET SERVEROUTPUT ON\nCREATE TABLE t (id NUMBER);\n"
+        terminated = terminate_sqlplus_directives(raw)
+        self.assertIn("SET SERVEROUTPUT ON;", terminated)
+        stmts = self._split(terminated)
+        self.assertTrue(any("CREATE TABLE" in s for s in stmts))
+
+    def test_define_directive_is_terminated(self) -> None:
+        from db.plugins.oracle.parser.sqlplus_context import terminate_sqlplus_directives
+
+        raw = "DEFINE schema_name = APP\nCREATE TABLE &schema_name..t (id NUMBER);\n"
+        self.assertIn("DEFINE schema_name = APP;", terminate_sqlplus_directives(raw))
+
+    def test_prompt_directive_is_terminated(self) -> None:
+        from db.plugins.oracle.parser.sqlplus_context import terminate_sqlplus_directives
+
+        raw = "PROMPT Creating schema\nCREATE TABLE t (id NUMBER);\n"
+        self.assertIn("PROMPT Creating schema;", terminate_sqlplus_directives(raw))
+
+    def test_whenever_sqlerror_continue_is_terminated(self) -> None:
+        from db.plugins.oracle.parser.sqlplus_context import terminate_sqlplus_directives
+
+        raw = "WHENEVER SQLERROR CONTINUE\nDROP TABLE missing;\n"
+        self.assertIn("WHENEVER SQLERROR CONTINUE;", terminate_sqlplus_directives(raw))
+
+    def test_whenever_sqlerror_exit_is_terminated(self) -> None:
+        from db.plugins.oracle.parser.sqlplus_context import terminate_sqlplus_directives
+
+        raw = "WHENEVER SQLERROR EXIT\nSELECT 1 FROM dual;\n"
+        self.assertIn("WHENEVER SQLERROR EXIT;", terminate_sqlplus_directives(raw))
+
+    def test_directive_already_terminated_unchanged(self) -> None:
+        from db.plugins.oracle.parser.sqlplus_context import terminate_sqlplus_directives
+
+        raw = "SET SERVEROUTPUT ON;\nCREATE TABLE t (id NUMBER);\n"
+        self.assertEqual(terminate_sqlplus_directives(raw).count("SET SERVEROUTPUT ON;"), 1)
+
+    def test_non_directive_lines_pass_through(self) -> None:
+        from db.plugins.oracle.parser.sqlplus_context import terminate_sqlplus_directives
+
+        raw = "CREATE TABLE t (\n  id NUMBER,\n  name VARCHAR2(100)\n);\n"
+        self.assertEqual(terminate_sqlplus_directives(raw), raw)
+
+    def test_block_comment_is_not_modified(self) -> None:
+        from db.plugins.oracle.parser.sqlplus_context import terminate_sqlplus_directives
+
+        raw = "/*\n  SET SERVEROUTPUT ON\n*/\nCREATE TABLE t (id NUMBER);\n"
+        out = terminate_sqlplus_directives(raw)
+        self.assertIn("/*\n  SET SERVEROUTPUT ON\n*/", out)
+
+    def test_empty_input_passes_through(self) -> None:
+        from db.plugins.oracle.parser.sqlplus_context import terminate_sqlplus_directives
+
+        self.assertEqual(terminate_sqlplus_directives(""), "")
+
+    def test_multiple_directives_then_ddl_round_trip(self) -> None:
+        from db.plugins.oracle.parser.sqlplus_context import terminate_sqlplus_directives
+
+        # Avoid the word "Begin" inside PROMPT: the Oracle tokeniser treats BEGIN as
+        # a KEYWORD which triggers the PL/SQL ``/``-delimiter switch. Production
+        # users hit the same trap by accident, but the directive stripping itself
+        # is correctly demonstrated here without that confound.
+        raw = (
+            "SET SERVEROUTPUT ON\n"
+            "PROMPT Starting migration\n"
+            "WHENEVER SQLERROR CONTINUE\n"
+            "CREATE TABLE t (id NUMBER);\n"
+        )
+        terminated = terminate_sqlplus_directives(raw)
+        stmts = self._split(terminated)
+        self.assertTrue(any("CREATE TABLE" in s for s in stmts))
+
+
 class TestBug06SqliteRecordUndo(unittest.TestCase):
     """``SQLiteProvider`` previously declared ``record_migration`` but no
     ``record_undo``. ``MigrationHistoryManager.record_undo`` calls

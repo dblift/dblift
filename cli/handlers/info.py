@@ -106,7 +106,7 @@ def _handle_info(ctx: CliCommandContext) -> Tuple[bool, Any]:
     # behavior (the outer runner formats/prints the error).
     #
     # We intentionally narrow the catch to ``Exception``: ``KeyboardInterrupt``
-    # (Ctrl-C) and ``SystemExit`` (raised by argparse)
+    # (Ctrl-C) and ``SystemExit`` (raised by license validation or argparse)
     # MUST propagate so the process terminates with the correct exit code.
     # Wrapping them as ``{"success": false}`` would silently swallow the signal.
     result: Any = None

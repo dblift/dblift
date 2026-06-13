@@ -26,6 +26,12 @@ class _FakeProvider(BaseProvider):
     ) -> None:
         pass
 
+    @classmethod
+    def create_snapshot_table_if_not_exists(  # type: ignore[override]
+        cls, *_args, **_kwargs
+    ) -> None:
+        pass
+
 
 class _FakeQuirks(BaseQuirks):
     def __init__(self, dialect_name: str = "fakedb") -> None:

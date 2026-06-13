@@ -4,6 +4,7 @@ Cosmos DB provider implementation.
 This provider uses modular components to handle Cosmos DB-specific database operations.
 """
 
+import time
 from typing import Any, Dict, List, Optional
 
 from config import DbliftConfig
@@ -176,8 +177,8 @@ class CosmosDbProvider(NativeProvider):
         Clean all containers from the specified Cosmos DB database.
 
         This drops every container in the database, including dblift-managed
-        internal containers. The next migrate operation recreates the
-        history and lock containers as needed.
+        internal containers. The next migrate/snapshot operation recreates the
+        history, lock, and snapshot containers as needed.
 
         Args:
             schema: Schema name (not used in Cosmos DB, but kept for compatibility)
@@ -255,7 +256,8 @@ class CosmosDbProvider(NativeProvider):
 
         The Cosmos query executor inlines ``?`` parameters before translating
         generic SQL into SDK calls. Keeping the provider contract positional
-        lets shared migration-history callers use the same INSERT and DELETE paths.
+        lets shared callers such as the snapshot repository use the same INSERT
+        and DELETE paths.
         """
         return ", ".join(["?" for _ in range(count)])
 
@@ -299,3 +301,83 @@ class CosmosDbProvider(NativeProvider):
     def is_connected(self) -> bool:
         """Check if the provider is connected to Cosmos DB."""
         return self.connection_manager.database is not None
+
+    # BUG-04: emulator first-boot can return ServiceUnavailable / 503 for
+    # several seconds while partitions warm up. Retry the container-create
+    # with exponential backoff so the migration body's snapshot capture is
+    # not surfaced as an error wall.
+    _SNAPSHOT_CREATE_MAX_RETRIES = 5
+    _SNAPSHOT_CREATE_BACKOFF_BASE = 2.0
+
+    @staticmethod
+    def _is_transient_snapshot_error(exc: Exception) -> bool:
+        msg = str(exc).lower()
+        return (
+            "serviceunavailable" in msg
+            or "service unavailable" in msg
+            or "503" in msg
+            or "timeout" in msg
+            or "timed out" in msg
+        )
+
+    def create_snapshot_table_if_not_exists(
+        self,
+        schema: str,
+        table_name: Optional[str] = None,
+    ) -> None:
+        """Create the schema snapshot storage container if it does not exist.
+
+        Args:
+            schema: Schema name (not used in Cosmos DB, but kept for compatibility)
+            table_name: Container name for snapshots. Defaults to the
+                canonical ``DBLIFT_SCHEMA_SNAPSHOTS_TABLE`` constant so the
+                name is not hardcoded here.
+        """
+        from core.constants import DBLIFT_SCHEMA_SNAPSHOTS_TABLE
+
+        # Cosmos DB container names are case-sensitive; resolve via the
+        # dialect-aware helper so dblift objects use the case the rest of
+        # the codebase expects.
+        from db.object_naming import get_normalized_object_name
+
+        raw_name = table_name or DBLIFT_SCHEMA_SNAPSHOTS_TABLE
+        container_name = get_normalized_object_name(raw_name, "cosmosdb")
+
+        # Check if container already exists
+        if self.schema_operations.container_exists(container_name):
+            self.log.debug(f"Snapshot container {container_name} already exists")
+            return
+
+        # Create container with partition key on 'id' field
+        create_sql = f"CREATE CONTAINER {container_name} (id STRING) WITH (partitionKey='/id')"
+
+        last_exc: Optional[Exception] = None
+        for attempt in range(self._SNAPSHOT_CREATE_MAX_RETRIES):
+            try:
+                self.execute_statement(create_sql)
+                self.log.debug(f"Created snapshot container: {container_name}")
+                return
+            except Exception as e:
+                last_exc = e
+                # Container might have been created concurrently.
+                if self.schema_operations.container_exists(container_name):
+                    self.log.debug(
+                        f"Snapshot container {container_name} exists (created concurrently)"
+                    )
+                    return
+
+                transient = self._is_transient_snapshot_error(e)
+                if attempt < self._SNAPSHOT_CREATE_MAX_RETRIES - 1 and transient:
+                    wait = self._SNAPSHOT_CREATE_BACKOFF_BASE**attempt
+                    self.log.warning(
+                        f"Snapshot container creation transient failure "
+                        f"(attempt {attempt + 1}/{self._SNAPSHOT_CREATE_MAX_RETRIES}): "
+                        f"{e}. Retrying in {wait:.1f}s…"
+                    )
+                    time.sleep(wait)
+                    continue
+                break
+
+        error_msg = f"Failed to create snapshot container {container_name}: {str(last_exc)}"
+        self.log.error(error_msg)
+        raise RuntimeError(error_msg) from last_exc

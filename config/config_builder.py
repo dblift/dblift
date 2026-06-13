@@ -40,6 +40,8 @@ class ConfigBuilder:
             "container_name",
             "use_managed_identity",
             "history_table",
+            "snapshot_table",
+            "max_snapshots",
             "log_level",
             "log_file",
             "log_dir",
@@ -292,6 +294,8 @@ class ConfigBuilder:
             # Map other top-level kwargs
             for key in [
                 "history_table",
+                "snapshot_table",
+                "max_snapshots",
                 "log_level",
                 "log_file",
                 "log_dir",

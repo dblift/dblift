@@ -66,11 +66,12 @@ class TestSchemaProviderABC:
             "set_current_schema",
             "get_schema_qualified_name",
             "clean_schema",
+            "create_snapshot_table_if_not_exists",
         }
         assert SchemaProvider.__abstractmethods__ == expected
 
     def test_method_count(self):
-        assert len(SchemaProvider.__abstractmethods__) == 6
+        assert len(SchemaProvider.__abstractmethods__) == 7
 
 
 class TestTransactionalProviderABC:

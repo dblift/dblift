@@ -1,0 +1,11 @@
+[project]
+name = "pytest-dblift"
+version = "0.1.0"
+requires-python = ">=3.11"
+dependencies = ["dblift>=1.8", "pytest>=7.3", "sqlalchemy>=2.0"]
+
+[project.entry-points.pytest11]
+dblift = "pytest_dblift.plugin"
+
+[project.optional-dependencies]
+dev = ["pytest-xdist>=3.3"]

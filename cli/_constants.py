@@ -22,3 +22,12 @@ from __future__ import annotations
 MACHINE_READABLE_FORMATS: frozenset[str] = frozenset(
     {"json", "sarif", "github-actions", "gitlab", "compact"}
 )
+FAIL_ON_CHOICES: tuple[str, ...] = ("never", "error", "warning", "info")
+
+# ``console`` and ``html`` are human-facing; every other entry must also
+# appear in ``MACHINE_READABLE_FORMATS`` above (tested in the matrix
+# regression suite to prevent the two lists from drifting out of sync).
+VALIDATE_SQL_FORMATS: tuple[str, ...] = (
+    "console",
+    "html",
+) + tuple(sorted(MACHINE_READABLE_FORMATS))

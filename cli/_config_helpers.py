@@ -46,6 +46,7 @@ _SUBCOMMAND_BOOLEAN_FLAGS = frozenset(
         "--rehearse-rollback",
         "--skip-replay",
         "--skip-validation",
+        "--skip-validate-sql",
         "--split-by-type",
         "--strict",
         "--unmanaged-only",
@@ -85,7 +86,7 @@ def _extract_commands_from_argv(
             i += 1
             # Commands with subcommands: stop extracting further commands,
             # but continue loop so global args are still extracted
-            if arg == "db":
+            if arg in ("db", "license"):
                 stop_command_extraction = True
             continue
 
@@ -163,6 +164,7 @@ def _build_args_namespace(
             args.database_username = None
             args.database_password = None
             args.database_schema = None
+            args.license_key = None
 
         def extract_db_arg(attr_name: str, cli_arg: str) -> None:
             """Extract database connection argument from global_arguments."""
@@ -190,6 +192,7 @@ def _build_args_namespace(
         extract_db_arg("database_username", "--db-username")
         extract_db_arg("database_password", "--db-password")
         extract_db_arg("database_schema", "--db-schema")
+        extract_db_arg("license_key", "--license-key")
     else:
         parser = create_parser()
         args = parser.parse_args()
@@ -234,15 +237,22 @@ def _load_and_merge_config(args: argparse.Namespace, log: Any) -> Any:
         db_overrides["schema"] = args.database_schema
 
     if db_overrides:
-        from config.secrets import resolve_secret_refs
+        # Resolve secret URIs in CLI overrides, but only for online commands.
+        # Offline commands (plan, validate-sql) skip secret resolution in load_config;
+        # the same bypass must apply here so they don't trigger provider calls.
+        command = getattr(args, "command", None)
+        commands_list = getattr(args, "commands_list", None) or ([command] if command else [])
+        is_offline = command in ("validate-sql", "plan") and len(commands_list) == 1
+        if not is_offline:
+            from config.secrets._resolver import resolve_secret_refs
 
-        try:
-            db_overrides = resolve_secret_refs({"database": db_overrides}, config.secrets).get(
-                "database", db_overrides
-            )
-        except SecretsResolutionError as e:
-            print(f"Error: {e}", file=sys.stderr)
-            sys.exit(1)
+            try:
+                db_overrides = resolve_secret_refs({"database": db_overrides}, config.secrets).get(
+                    "database", db_overrides
+                )
+            except SecretsResolutionError as e:
+                print(f"Error: {e}", file=sys.stderr)
+                sys.exit(1)
         config.database = ConfigBuilder.merge_database_overrides(config.database, db_overrides)
 
     if log:
@@ -257,6 +267,8 @@ def _load_and_merge_config(args: argparse.Namespace, log: Any) -> Any:
 
     if hasattr(args, "table_name") and args.table_name:
         config.history_table = args.table_name
+    if hasattr(args, "snapshot_table") and args.snapshot_table:
+        config.snapshot_table = args.snapshot_table
 
     if hasattr(args, "installed_by") and args.installed_by:
         config.database.installed_by = args.installed_by
@@ -300,9 +312,12 @@ def _validate_db_config(
         "clean",
         "validate",
         "info",
+        "diff",
         "repair",
         "import-flyway",
         "baseline",
+        "export-schema",
+        "snapshot",
     ]
     if args.command not in migration_commands:
         return

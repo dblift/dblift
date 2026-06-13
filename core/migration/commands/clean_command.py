@@ -25,6 +25,7 @@ class CleanCommand(BaseCommand):
         recursive: bool = True,
         additional_dirs: Optional[List[Path]] = None,
         dir_recursive_map: Optional[Dict[Path, bool]] = None,
+        snapshot_model_path: Optional[Path] = None,
         **kwargs: Any,
     ) -> CleanResult:
         """Clean the database by dropping all objects in the schema.
@@ -35,6 +36,7 @@ class CleanCommand(BaseCommand):
             recursive: If True, search scripts recursively.
             additional_dirs: Additional directories to search for scripts.
             dir_recursive_map: Map of directories to their recursive setting.
+            snapshot_model_path: Path to snapshot model file.
             **kwargs: Reserved for forward compatibility; passed through from API/executor.
         """
         result = CleanResult()
@@ -98,7 +100,9 @@ class CleanCommand(BaseCommand):
 
                 schema = self.config.database.schema
                 objects_found = False
-                # Use the provider's own discovery (same code a real
+                preview_succeeded = False
+
+                # Preferred path: the provider's own discovery (same code a real
                 # clean would use), so dry-run can't drift from reality.
                 try:
                     preview = get_clean_preview(self.provider, schema)
@@ -106,8 +110,73 @@ class CleanCommand(BaseCommand):
                         for obj in preview.objects:
                             self.log.info(f"  Would drop {obj.object_type}: {obj.name}")
                             objects_found = True
+                        preview_succeeded = True
                 except Exception as e:
-                    self.log.warning(f"Could not enumerate schema objects for dry-run preview: {e}")
+                    # Fall through to the introspector fallback below — a failing
+                    # get_clean_preview should not silently produce an empty listing.
+                    self.log.debug(
+                        f"Provider get_clean_preview failed, falling back to introspector: {e}"
+                    )
+
+                # Fallback for providers that have not implemented get_clean_preview
+                # *or* whose get_clean_preview raised — best-effort enumeration via
+                # SchemaIntrospector.
+                if not preview_succeeded:
+
+                    def _safe_introspect(fn: Any, schema: Any) -> List[Any]:
+                        try:
+                            return fn(schema) or []
+                        except Exception:
+                            return []
+
+                    try:
+                        from core.introspection.schema_introspector import SchemaIntrospector
+
+                        introspector = SchemaIntrospector(self.provider, self.log)
+                        for obj in _safe_introspect(introspector.get_tables, schema):
+                            self.log.info(f"  Would drop table: {obj.name}")
+                            objects_found = True
+                        for obj in _safe_introspect(introspector.get_views, schema):
+                            self.log.info(f"  Would drop view: {obj.name}")
+                            objects_found = True
+                        # Batch-5 BUG-04: dialect-specific object types that a
+                        # real clean drops but the minimal fallback used to
+                        # skip. Oracle matview/package/procedure/synonym are
+                        # the confirmed-broken case; each getter returns ``[]``
+                        # on dialects that do not expose that object kind, so
+                        # these extra loops are safe cross-dialect.
+                        for obj in _safe_introspect(introspector.get_materialized_views, schema):
+                            self.log.info(f"  Would drop materialized view: {obj.name}")
+                            objects_found = True
+                        for obj in _safe_introspect(introspector.get_sequences, schema):
+                            self.log.info(f"  Would drop sequence: {obj.name}")
+                            objects_found = True
+                        for obj in _safe_introspect(introspector.get_functions, schema):
+                            self.log.info(f"  Would drop function: {obj.name}")
+                            objects_found = True
+                        for obj in _safe_introspect(introspector.get_procedures, schema):
+                            name = getattr(obj, "name", None) or str(obj)
+                            self.log.info(f"  Would drop procedure: {name}")
+                            objects_found = True
+                        for obj in _safe_introspect(introspector.get_packages, schema):
+                            name = getattr(obj, "name", None) or str(obj)
+                            self.log.info(f"  Would drop package: {name}")
+                            objects_found = True
+                        for obj in _safe_introspect(introspector.get_synonyms, schema):
+                            name = getattr(obj, "name", None) or str(obj)
+                            self.log.info(f"  Would drop synonym: {name}")
+                            objects_found = True
+                        for obj in _safe_introspect(introspector.get_triggers, schema):
+                            self.log.info(f"  Would drop trigger: {obj.name}")
+                            objects_found = True
+                        for obj in _safe_introspect(introspector.get_user_defined_types, schema):
+                            name = getattr(obj, "name", None) or str(obj)
+                            self.log.info(f"  Would drop type: {name}")
+                            objects_found = True
+                    except Exception as e:
+                        self.log.warning(
+                            f"Could not enumerate schema objects for dry-run preview: {e}"
+                        )
 
                 if not objects_found:
                     self.log.info("  (schema appears empty or objects could not be enumerated)")

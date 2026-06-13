@@ -30,6 +30,13 @@ class TestHybridParser:
 
     # ========== Parser Initialization ==========
 
+    def test_parser_creation_oracle(self):
+        """Test creating hybrid parser for Oracle."""
+        parser = HybridParser("oracle")
+        assert parser.dialect_name == "oracle"
+        assert parser.regex_parser is not None
+        assert parser.sqlglot_parser is not None
+
     def test_parser_creation_mysql(self):
         """Test creating hybrid parser for MySQL."""
         parser = HybridParser("mysql")
@@ -43,6 +50,20 @@ class TestHybridParser:
         assert parser.dialect_name == "postgresql"
         assert parser.regex_parser is not None
         assert parser.sqlglot_parser is not None
+
+    def test_parser_creation_sqlserver(self):
+        """Test creating hybrid parser for SQL Server."""
+        parser = HybridParser("sqlserver")
+        assert parser.dialect_name == "sqlserver"
+        assert parser.regex_parser is not None
+        assert parser.sqlglot_parser is not None
+
+    def test_parser_creation_db2(self):
+        """Test creating hybrid parser for DB2 (no sqlglot)."""
+        parser = HybridParser("db2")
+        assert parser.dialect_name == "db2"
+        assert parser.regex_parser is not None
+        assert parser.sqlglot_parser is None  # DB2 not supported by sqlglot
 
     # ========== Statement Splitting (Regex-based) ==========
 
@@ -74,6 +95,32 @@ class TestHybridParser:
         )
         assert "INSERT INTO" in statements[2].upper()
 
+    def test_split_oracle_procedural(self):
+        """Test splitting Oracle statements with PL/SQL procedure."""
+        parser = HybridParser("oracle")
+        sql = """
+        CREATE TABLE test_table (id NUMBER PRIMARY KEY);
+
+        CREATE OR REPLACE PROCEDURE test_proc IS
+        BEGIN
+            INSERT INTO test_table VALUES (1);
+            COMMIT;
+        END;
+        /
+
+        SELECT * FROM test_table;
+        """
+
+        statements = parser.split_statements(sql)
+        # Should split properly handling the / delimiter
+        assert len(statements) >= 3
+        assert "CREATE TABLE" in statements[0].upper()
+        # Procedure should be intact
+        assert (
+            "CREATE OR REPLACE PROCEDURE" in statements[1].upper()
+            or "CREATE PROCEDURE" in statements[1].upper()
+        )
+
     def test_split_mysql_delimiter(self):
         """Test splitting MySQL statements with DELIMITER."""
         parser = HybridParser("mysql")
@@ -93,6 +140,28 @@ class TestHybridParser:
         statements = parser.split_statements(sql)
         # Should handle DELIMITER properly
         assert len(statements) >= 2
+
+    def test_split_sqlserver_go(self):
+        """Test splitting SQL Server statements with GO."""
+        parser = HybridParser("sqlserver")
+        sql = """
+        CREATE TABLE users (id INT PRIMARY KEY);
+        GO
+
+        CREATE PROCEDURE GetUsers
+        AS
+        BEGIN
+            SELECT * FROM users;
+        END;
+        GO
+
+        INSERT INTO users VALUES (1);
+        GO
+        """
+
+        statements = parser.split_statements(sql)
+        # GO should act as delimiter
+        assert len(statements) >= 3
 
     # ========== Pure SQL Enhancement ==========
 
@@ -151,6 +220,29 @@ class TestHybridParser:
 
     # ========== Procedural Language Handling ==========
 
+    def test_parse_oracle_plsql_procedure(self):
+        """Test parsing Oracle PL/SQL procedure (uses regex, not sqlglot)."""
+        parser = HybridParser("oracle")
+        sql = """
+        CREATE OR REPLACE PROCEDURE update_salary(emp_id NUMBER, new_salary NUMBER) IS
+        BEGIN
+            UPDATE employees SET salary = new_salary WHERE id = emp_id;
+            COMMIT;
+        END;
+        /
+        """
+
+        result = parser.parse_sql(sql, "HR")
+        assert result.success
+        assert len(result.statements) >= 1
+        # Should identify as CREATE, DDL, or UNKNOWN (procedural language)
+        stmt = result.statements[0]
+        assert stmt.statement_type in [
+            SqlStatementType.CREATE,
+            SqlStatementType.DDL,
+            SqlStatementType.UNKNOWN,
+        ]
+
     def test_parse_postgresql_plpgsql_function(self):
         """Test parsing PostgreSQL PL/pgSQL function (uses regex, not sqlglot)."""
         parser = HybridParser("postgresql")
@@ -168,6 +260,24 @@ class TestHybridParser:
         """
 
         result = parser.parse_sql(sql, "public")
+        assert result.success
+        assert len(result.statements) >= 1
+
+    def test_parse_sqlserver_tsql_procedure(self):
+        """Test parsing SQL Server T-SQL procedure (uses regex, not sqlglot)."""
+        parser = HybridParser("sqlserver")
+        sql = """
+        CREATE PROCEDURE GetUserOrders @UserId INT
+        AS
+        BEGIN
+            SELECT o.*
+            FROM orders o
+            WHERE o.user_id = @UserId
+            ORDER BY o.created_at DESC;
+        END;
+        """
+
+        result = parser.parse_sql(sql, "dbo")
         assert result.success
         assert len(result.statements) >= 1
 
@@ -190,7 +300,7 @@ class TestHybridParser:
 
     def test_extract_dependencies_create_view(self):
         """Test extracting dependencies from CREATE VIEW."""
-        parser = HybridParser("postgresql")
+        parser = HybridParser("oracle")
         sql = """
         CREATE VIEW active_customers AS
         SELECT c.*, COUNT(o.id) as order_count
@@ -200,7 +310,7 @@ class TestHybridParser:
         GROUP BY c.id, c.name, c.email;
         """
 
-        deps = parser.extract_dependencies(sql, "public")
+        deps = parser.extract_dependencies(sql, "SALES")
         assert "tables" in deps
         # Should find customers and orders
         assert len(deps["tables"]) >= 2
@@ -250,6 +360,21 @@ class TestHybridParser:
         assert len(objects) >= 1
         assert objects[0].name.lower() == "products"
 
+    def test_extract_objects_oracle_partition_by_reference(self):
+        """Test Oracle PARTITION BY REFERENCE - SqlGlot cannot parse, regex fallback used."""
+        parser = HybridParser("oracle")
+        sql = """
+        CREATE TABLE EXECUTION_STEPS_NEW (
+            ID NUMBER,
+            CONSTRAINT FK_EXEC_STEPS_NEW_EXEC
+                FOREIGN KEY (ID) REFERENCES EXECUTIONS(ID) ON DELETE CASCADE ENABLE
+        )
+        PARTITION BY REFERENCE (FK_EXEC_STEPS_NEW_EXEC);
+        """
+        objects = parser.extract_objects(sql)
+        assert len(objects) >= 1
+        assert any(o.name == "EXECUTION_STEPS_NEW" for o in objects)
+
     # ========== Validation ==========
 
     def test_validate_pure_sql_valid(self):
@@ -273,21 +398,18 @@ class TestHybridParser:
 
     def test_validate_procedural_sql(self):
         """Test validating procedural SQL."""
-        parser = HybridParser("postgresql")
+        parser = HybridParser("oracle")
         sql = """
-        CREATE OR REPLACE FUNCTION test_func() RETURNS VOID AS $$
+        CREATE OR REPLACE PROCEDURE test_proc IS
         BEGIN
             NULL;
         END;
-        $$ LANGUAGE plpgsql;
+        /
         """
 
         result = parser.validate_sql(sql)
-        # Regex parser should handle this - check for valid or absence of errors
-        assert isinstance(result, dict)
-        is_valid = result.get("valid", True)
-        errors = result.get("errors", [])
-        assert is_valid or len(errors) == 0
+        # Regex parser should handle this
+        assert result["valid"] or len(result["errors"]) == 0
 
     # ========== Hybrid Behavior ==========
 
@@ -313,13 +435,25 @@ class TestHybridParser:
 
     def test_hybrid_fallback_on_sqlglot_failure(self):
         """Test graceful fallback when sqlglot fails."""
-        parser = HybridParser("mysql")
-        # Use a non-standard construct that sqlglot may struggle with
-        sql = "SELECT 1 /* unusual comment */ FROM DUAL;"
+        parser = HybridParser("oracle")
+        # Oracle Q-quote that sqlglot may struggle with
+        sql = "SELECT q'[It's a string with 'quotes']' FROM DUAL;"
 
         result = parser.parse_sql(sql)
         # Should still succeed using regex parser
         assert result.success
+
+    # ========== DB2 (Regex-Only) ==========
+
+    def test_db2_regex_only(self):
+        """Test that DB2 uses regex-only (no sqlglot)."""
+        parser = HybridParser("db2")
+        sql = "CREATE TABLE test (id INTEGER PRIMARY KEY);"
+
+        result = parser.parse_sql(sql, "TESTDB")
+        assert result.success
+        # Verify sqlglot is not used
+        assert parser.sqlglot_parser is None
 
     # ========== Edge Cases ==========
 

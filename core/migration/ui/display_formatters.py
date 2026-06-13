@@ -131,12 +131,12 @@ class DisplayFormatters:
         if migration_type in VERSIONED_SCRIPT_TYPES and version:
             # Check if version is above target (if specified)
             if target_version:
-                if _compare_versions_shared(version, target_version) > 0:
+                if self._compare_versions(version, target_version) > 0:
                     return "Above Target"
 
             # Check if version is below baseline (if specified)
             if baseline_version:
-                if _compare_versions_shared(version, baseline_version) <= 0:
+                if self._compare_versions(version, baseline_version) <= 0:
                     return "Below Baseline"
 
             return "Pending"
@@ -237,3 +237,15 @@ class DisplayFormatters:
             str: Visual indicator
         """
         return "✓" if success else "✗"
+
+    def _compare_versions(self, version1: str, version2: str) -> int:
+        """Compare two version strings.
+
+        Args:
+            version1: First version
+            version2: Second version
+
+        Returns:
+            int: -1 if v1 < v2, 0 if equal, 1 if v1 > v2
+        """
+        return _compare_versions_shared(version1, version2)

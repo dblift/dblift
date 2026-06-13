@@ -147,7 +147,8 @@ class TestTopLevelEnvVarsNotDropped:
     """Regression: top-level env vars must be merged even when no DBLIFT_DB_* vars set.
 
     The narrow guard `if env_dict.get("database"):` silently dropped
-    DBLIFT_HISTORY_TABLE overrides whenever no database env vars were present. The systemic fix
+    DBLIFT_HISTORY_TABLE, DBLIFT_SNAPSHOT_TABLE, and DBLIFT_MAX_SNAPSHOTS
+    overrides whenever no database env vars were present. The systemic fix
     delegates the merge decision to `DbliftConfig.merge()` itself instead of
     pre-filtering on a single key.
     """
@@ -168,6 +169,34 @@ class TestTopLevelEnvVarsNotDropped:
         with patch.dict(os.environ, env_patch, clear=False):
             config = load_config(str(cfg_file))
         assert config.history_table == "custom_history"
+
+    def test_snapshot_table_env_applied_without_db_env_vars(self, tmp_path):
+        cfg_file = tmp_path / "dblift.yaml"
+        cfg_file.write_text(
+            "database:\n  type: postgresql\n"
+            "  url: postgresql+psycopg://localhost:5432/mydb\n"
+            "  username: u\n  password: p\n"
+        )
+        from config.dblift_config import load_config
+
+        env_patch = {**self._clear_dblift_env(), "DBLIFT_SNAPSHOT_TABLE": "custom_snapshots"}
+        with patch.dict(os.environ, env_patch, clear=False):
+            config = load_config(str(cfg_file))
+        assert config.snapshot_table == "custom_snapshots"
+
+    def test_max_snapshots_env_applied_without_db_env_vars(self, tmp_path):
+        cfg_file = tmp_path / "dblift.yaml"
+        cfg_file.write_text(
+            "database:\n  type: postgresql\n"
+            "  url: postgresql+psycopg://localhost:5432/mydb\n"
+            "  username: u\n  password: p\n"
+        )
+        from config.dblift_config import load_config
+
+        env_patch = {**self._clear_dblift_env(), "DBLIFT_MAX_SNAPSHOTS": "42"}
+        with patch.dict(os.environ, env_patch, clear=False):
+            config = load_config(str(cfg_file))
+        assert config.max_snapshots == 42
 
     def test_config_builder_history_table_env_applied_without_db_env_vars(self, tmp_path):
         cfg_file = tmp_path / "dblift.yaml"

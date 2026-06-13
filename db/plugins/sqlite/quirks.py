@@ -2,9 +2,14 @@
 
 from __future__ import annotations
 
-from typing import Optional
+from typing import TYPE_CHECKING, Any, Optional, Type, cast
 
 from db.base_quirks import BaseQuirks
+
+if TYPE_CHECKING:
+    from core.introspection.base_introspector import BaseIntrospector
+    from core.sql_generator.alter.base_alter_generator import BaseAlterGenerator
+    from core.sql_generator.base_generator import BaseSqlGenerator
 
 
 class SqliteQuirks(BaseQuirks):
@@ -30,6 +35,7 @@ class SqliteQuirks(BaseQuirks):
     drop_supports_if_exists = True  # supported since SQLite 3.3.0 (2006)
     # SQLite has no CASCADE on DROP TABLE; use plain `DROP TABLE IF EXISTS`.
     table_drop_style = "if_exists"
+    lint_placeholder_url = "sqlite:///:memory:"
     # Wave B hooks.
     native_driver_display = "sqlite3"
     requires_credentials = False
@@ -39,6 +45,18 @@ class SqliteQuirks(BaseQuirks):
     def __init__(self, dialect_name: str = "sqlite") -> None:
         """Initialize SQLite quirks with the dialect name."""
         super().__init__(dialect_name=dialect_name)
+
+    def ddl_generator_class(self) -> Optional[Type["BaseSqlGenerator"]]:
+        """Return the SQLite-specific :class:`SQLiteSqlGenerator` (lazy import)."""
+        from db.plugins.sqlite.generator.ddl_generator import SQLiteSqlGenerator
+
+        return SQLiteSqlGenerator
+
+    def alter_generator_class(self) -> Optional[Type["BaseAlterGenerator"]]:
+        """Return the SQLite-specific :class:`SQLiteAlterGenerator` (lazy import)."""
+        from db.plugins.sqlite.generator.alter_generator import SQLiteAlterGenerator
+
+        return SQLiteAlterGenerator
 
     def parser_class(self, parser_type: str) -> Optional[type]:
         """SQLite uses :class:`SQLiteRegexParser` for ``"hybrid"`` and ``"regex"``.
@@ -53,6 +71,18 @@ class SqliteQuirks(BaseQuirks):
         if parser_type in ("hybrid", "regex"):
             return SQLiteRegexParser
         return None
+
+    def introspector_class(self) -> Optional[Type["BaseIntrospector"]]:
+        """Return the SQLite-specific :class:`SQLiteIntrospector` (lazy import)."""
+        from db.plugins.sqlite.introspection import SQLiteIntrospector
+
+        return cast("Optional[Type[BaseIntrospector]]", SQLiteIntrospector)
+
+    def vendor_queries_class(self) -> "Optional[Type[Any]]":
+        """Return the SQLite :class:`SQLiteMetadataQueries` bundle (lazy import)."""
+        from db.plugins.sqlite.introspection.sqlite_queries import SQLiteMetadataQueries
+
+        return SQLiteMetadataQueries
 
     def type_equivalents(self) -> "dict[str, str]":
         """SQLite alias → canonical type map.

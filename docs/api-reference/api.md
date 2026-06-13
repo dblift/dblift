@@ -118,6 +118,15 @@ result = client.baseline(
 )
 ```
 
+### diff()
+
+Compare database state with migrations.
+
+```python
+result = client.diff()
+print(f"Differences found: {result.total_differences}")
+```
+
 ## Event System
 
 DBLiftClient supports events for IDE/tooling integration:
@@ -149,6 +158,7 @@ Common event types — see [Events reference](events.md) for the complete enum:
 - `MIGRATION_SCRIPT_STARTED` / `MIGRATION_SCRIPT_COMPLETED` / `MIGRATION_SCRIPT_FAILED` / `MIGRATION_SCRIPT_SKIPPED`
 - `INFO_STARTED` / `INFO_COMPLETED`
 - `VALIDATION_STARTED` / `VALIDATION_COMPLETED` / `VALIDATION_FAILED`
+- `SNAPSHOT_STARTED` / `SNAPSHOT_COMPLETED` / `SNAPSHOT_FAILED`
 
 ## Result Objects
 
@@ -158,6 +168,7 @@ operation-specific fields:
 - `success` - Boolean indicating success
 - `migrations_applied` - List of applied version strings/script names on migration status results such as `MigrateResult` and `InfoResult`
 - `migrations` - List of migration records on migration status results such as `MigrateResult`, `ValidateResult`, and `InfoResult`
+- `total_differences` - Count of detected schema differences on `DiffResult`
 - `errors` / `error_message` - Error details when present
 - `execution_time_ms` - Execution time in milliseconds
 

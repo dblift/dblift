@@ -192,8 +192,6 @@ def test_postgresql_sqlalchemy_url_builder_rejects_database_url(_reset_registry)
 
 def test_postgresql_field_based_config_validates(_reset_registry) -> None:
     """Native PostgreSQL accepts host/database credentials without database.url."""
-    import importlib.util
-
     from config import DbliftConfig
     from config._subclasses.postgresql_config import PostgreSqlConfig
 
@@ -210,10 +208,7 @@ def test_postgresql_field_based_config_validates(_reset_registry) -> None:
         )
     )
 
-    valid, msg = ProviderRegistry.validate_database_configuration(config)
-    if importlib.util.find_spec("psycopg") is None:
-        pytest.skip("psycopg not installed")
-    assert (valid, msg) == (True, None)
+    assert ProviderRegistry.validate_database_configuration(config) == (True, None)
 
 
 def test_dblift_config_accepts_field_based_postgresql_without_url(_reset_registry) -> None:

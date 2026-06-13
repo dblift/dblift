@@ -60,8 +60,30 @@ class ForeignServer(SqlObject):
 
     @property
     def create_statement(self) -> str:
-        """Generate a basic CREATE SERVER statement."""
-        return self._generate_basic_create_statement()
+        """Generate CREATE SERVER statement using database-specific generators.
+
+        Returns:
+            Dialect-specific CREATE SERVER statement
+        """
+        # Use the appropriate SQL generator for the dialect
+        from core.sql_generator.generator_factory import (
+            SqlGeneratorFactory,
+        )
+
+        try:
+            generator = SqlGeneratorFactory.create(
+                self.dialect or "postgresql"  # lint: allow-dialect-string: FDW server PG-only
+            )
+            # Check if generator has the new method
+            if hasattr(generator, "generate_create_statement"):
+                result = generator.generate_create_statement(self)
+                return str(result)
+            else:
+                # Fallback for old generators that don't have the method yet
+                return self._generate_basic_create_statement()
+        except (ValueError, ImportError, AttributeError):
+            # Fallback to basic CREATE SERVER if generator not available
+            return self._generate_basic_create_statement()
 
     def _generate_basic_create_statement(self) -> str:
         """Generate a basic CREATE SERVER statement as fallback."""

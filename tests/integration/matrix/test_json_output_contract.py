@@ -9,6 +9,12 @@ Bugs this guards against:
   * df143fb1 BUG-03 — ``checksum`` missing from ``migrations[*]`` entries.
   * a23a0a75 BUG-02 / d88f88a4 BUG-02 — duplicate "header" lines in output.
   * bb47769c BUG-06 — ``info`` did not support ``--format json`` at all.
+  * 217a5694 — ``validate-sql --format json`` was collaterally broken by
+    the info-banner-suppression fix (bugbot thread
+    #discussion_r3106139669). The fix was scoped back to the ``info``
+    command, but there was no test to pin the contract across commands.
+    Phase 1 PR-01 adds ``validate-sql`` coverage below.
+
 Doctrine: stdout is for machine-readable payload; stderr is for humans. A
 machine consumer must be able to run ``json.loads(result.stdout)`` without
 stripping anything. This file exists to make that contract executable.
@@ -145,6 +151,111 @@ def test_info_json_installed_on_is_string_not_datetime(tmp_path: Path):
             assert isinstance(
                 m["installed_on"], str
             ), f"installed_on must be str, got {type(m['installed_on'])}: {m}"
+
+
+# --- validate-sql --format json --------------------------------------------
+#
+# validate-sql takes SQL files and lints them. Its --format json output is
+# used by downstream tooling (CI reporters, IDE integrations). Same contract
+# as info: stdout must be parseable JSON, end to end.
+
+
+def _make_sql_file(tmp_path: Path, body: str = "SELECT * FROM users;") -> Path:
+    """Create a minimal SQL file for validate-sql. No DB required."""
+    sql_file = tmp_path / "sample.sql"
+    sql_file.write_text(body)
+    return sql_file
+
+
+@pytest.mark.integration
+def test_validate_sql_json_stdout_is_parseable(tmp_path: Path):
+    """``validate-sql --format json`` stdout must be valid JSON."""
+    sql_file = _make_sql_file(tmp_path)
+    _, stdout, stderr = _run(
+        ["validate-sql", "--dialect", "postgresql", "--format", "json", str(sql_file)]
+    )
+
+    # Exit code may be 0 (no findings) or non-zero (findings that meet
+    # --fail-on); either way stdout must still be JSON.
+    assert "Traceback" not in stderr, f"Traceback on validate-sql: {stderr}"
+    assert stdout.strip(), f"validate-sql --format json emitted nothing: stderr={stderr!r}"
+
+    try:
+        json.loads(stdout)
+    except json.JSONDecodeError as e:
+        pytest.fail(
+            f"validate-sql --format json stdout is not valid JSON: {e}\n"
+            f"stdout={stdout!r}\nstderr={stderr!r}"
+        )
+
+
+@pytest.mark.integration
+def test_validate_sql_json_stdout_is_parseable_with_debug_logs(tmp_path: Path):
+    """Debug console logs must not contaminate JSON stdout."""
+    sql_file = _make_sql_file(tmp_path, "SELECT 1;")
+    _, stdout, stderr = _run(
+        [
+            "--log-level",
+            "debug",
+            "validate-sql",
+            "--dialect",
+            "sqlite",
+            "--format",
+            "json",
+            str(sql_file),
+        ]
+    )
+
+    assert stdout.strip(), f"validate-sql --format json emitted nothing: stderr={stderr!r}"
+    assert "DEBUG:" not in stdout
+    json.loads(stdout)
+
+
+@pytest.mark.integration
+def test_validate_sql_json_stdout_parseable_when_no_files_found(tmp_path: Path):
+    """``validate-sql --format json`` on an empty dir must still emit valid JSON.
+
+    Regression: machine-format early-exit paths must never produce empty
+    stdout. The no-files case previously suppressed both the human log and
+    any machine payload, breaking ``jq`` / ``json.loads`` consumers.
+    """
+    empty_dir = tmp_path / "empty"
+    empty_dir.mkdir()
+
+    _, stdout, stderr = _run(
+        ["validate-sql", "--dialect", "postgresql", "--format", "json", str(empty_dir)]
+    )
+    assert "Traceback" not in stderr, f"Traceback on validate-sql: {stderr}"
+    assert stdout.strip(), (
+        "validate-sql --format json emitted nothing when no SQL files found "
+        f"(breaks stdout-as-contract): stderr={stderr!r}"
+    )
+    payload = json.loads(stdout)
+    assert isinstance(payload, dict), f"JSON root is not a dict: {payload!r}"
+    assert payload.get("checked_count") == 0
+    assert payload.get("success") is True
+
+
+@pytest.mark.integration
+def test_validate_sql_json_stdout_has_no_trailing_banner(tmp_path: Path):
+    """Nothing (banner / log line) may follow the JSON document on stdout.
+
+    Direct guard against 217a5694 and the pattern that required it: the
+    banner-suppression fix for ``info --format json`` must not regress in
+    either direction (must stay suppressed for info, must stay present or
+    not-contaminate-stdout for validate-sql). Whichever way a future change
+    breaks it, this test fails on the affected branch.
+    """
+    sql_file = _make_sql_file(tmp_path)
+    _, stdout, _ = _run(
+        ["validate-sql", "--dialect", "postgresql", "--format", "json", str(sql_file)]
+    )
+    try:
+        _, end = json.JSONDecoder().raw_decode(stdout)
+    except json.JSONDecodeError as e:
+        pytest.fail(f"stdout not parseable: {e}\nstdout={stdout!r}")
+    trailing = stdout[end:].strip()
+    assert trailing == "", f"Banner/log text contaminated stdout after JSON: {trailing!r}"
 
 
 # --- Helpers ----------------------------------------------------------------

@@ -60,3 +60,14 @@ def test_sql_parser_factory_get_parser_honors_regex_parser_type():
     parser = factory.get_parser()
 
     assert parser.__class__.__name__ == "PostgreSqlRegexParser"
+
+
+@pytest.mark.unit
+def test_statement_splitter_supports_cosmosdb_regex_parser():
+    splitter = StatementSplitter("cosmosdb")
+
+    statements = splitter.split_statements(
+        "CREATE CONTAINER users (id STRING) WITH (partitionKey='/id');"
+    )
+
+    assert statements == ["CREATE CONTAINER users (id STRING) WITH (partitionKey='/id');"]

@@ -13,7 +13,8 @@ dispatch in ``cli/main.py`` re-derive the same predicate:
     else:
         ctx.log.info(payload)          # routed through ConsoleLog
 
-That duplication has already caused regressions. ADR-0005 added the
+That duplication has already caused two regressions (PR 158 banner fix
++ PR-01 `validate-sql --format json` scope). ADR-0005 added the
 `MACHINE_READABLE_FORMATS` set as a single source of truth; this
 module does the same for the *routing* decision itself.
 
@@ -126,7 +127,7 @@ class CommandOutput:
         self._emit_human(message)
 
     def banner(self, text: str) -> None:
-        """Emit the session banner (version, database).
+        """Emit the session banner (version, license, database).
 
         Same routing as ``.status``. Kept separate so a future policy
         can suppress banners while keeping status visible (or vice

@@ -82,7 +82,7 @@ class MigrationStateService:
             if hasattr(migration, "resolved") and not migration.resolved:
                 # Check if version is in the future
                 if version and current_version:
-                    if _compare_versions_shared(version, current_version) > 0:
+                    if self._compare_versions(version, current_version) > 0:
                         return MigrationDisplayState.FAILED_FUTURE
                     else:
                         return MigrationDisplayState.FAILED_MISSING
@@ -123,7 +123,7 @@ class MigrationStateService:
             if hasattr(migration, "resolved") and not migration.resolved:
                 # Check if version is in the future
                 if version and current_version:
-                    if _compare_versions_shared(version, current_version) > 0:
+                    if self._compare_versions(version, current_version) > 0:
                         return MigrationDisplayState.FUTURE
                     else:
                         return MigrationDisplayState.MISSING
@@ -175,11 +175,11 @@ class MigrationStateService:
         # Handle versioned migrations
         if version:
             # Check if below baseline
-            if baseline_version and _compare_versions_shared(version, baseline_version) < 0:
+            if baseline_version and self._compare_versions(version, baseline_version) < 0:
                 return MigrationDisplayState.BELOW_BASELINE
 
             # Check if above target
-            if target_version and _compare_versions_shared(version, target_version) > 0:
+            if target_version and self._compare_versions(version, target_version) > 0:
                 return MigrationDisplayState.ABOVE_TARGET
 
             # Check if this version has an undo script available
@@ -188,6 +188,10 @@ class MigrationStateService:
 
         # Default pending state
         return MigrationDisplayState.PENDING
+
+    def _compare_versions(self, version1: str, version2: str) -> int:
+        """Compare two version strings. Delegates to shared compare_versions utility."""
+        return _compare_versions_shared(version1, version2)
 
     def _compare_version_parts(self, v1_parts: List[int], v2_parts: List[int]) -> int:
         """Compare version part lists.

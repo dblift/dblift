@@ -637,7 +637,7 @@ class MigrationDataCollector:
                 elif self._is_versioned_type(migration_type):
                     if (
                         current_version is None
-                        or _compare_versions_shared(version, current_version) > 0
+                        or self._compare_versions(version, current_version) > 0
                     ):
                         current_version = version
 
@@ -709,7 +709,7 @@ class MigrationDataCollector:
         for i in range(len(versions) - 1):
             current_version = versions[i]
             next_version = versions[i + 1]
-            if _compare_versions_shared(current_version, next_version) > 0:
+            if self._compare_versions(current_version, next_version) > 0:
                 out_of_order.add(versioned_migrations[i + 1]["migration"].script_name)
 
         return out_of_order
@@ -920,3 +920,7 @@ class MigrationDataCollector:
         """Determine status for pending migration."""
         # Simplified implementation
         return "PENDING"
+
+    def _compare_versions(self, version1: Optional[str], version2: Optional[str]) -> int:
+        """Compare two version strings. Delegates to shared compare_versions utility."""
+        return _compare_versions_shared(version1, version2)

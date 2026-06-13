@@ -53,6 +53,8 @@ class TestBug02UndoChecksumZeroSentinel(unittest.TestCase):
         return [
             Path("db/plugins/base_undo_manager.py"),
             Path("db/plugins/base_history_manager.py"),
+            Path("db/plugins/oracle/oracle/history_manager.py"),
+            Path("db/plugins/sqlserver/sqlserver/history_manager.py"),
         ]
 
     def test_no_source_still_uses_checksum_none(self) -> None:

@@ -49,9 +49,9 @@ class View(SqlObject):
         definer: Optional[str] = None,  # user@host (MySQL)
         # Grammar-based: Oracle-specific view properties
         force: Optional[bool] = None,  # FORCE (True) or NOFORCE (False) (Oracle)
-        # PostgreSQL-specific view properties
-        security_definer: Optional[bool] = None,  # SECURITY DEFINER (PostgreSQL)
-        security_invoker: Optional[bool] = None,  # SECURITY INVOKER (PostgreSQL)
+        # PostgreSQL-specific view properties - Diff-relevant
+        security_definer: Optional[bool] = None,  # SECURITY DEFINER (PostgreSQL) - Diff-relevant
+        security_invoker: Optional[bool] = None,  # SECURITY INVOKER (PostgreSQL) - Diff-relevant
         # View dependencies - SQL-generation-only
         dependencies: Optional[
             List[str]
@@ -76,8 +76,8 @@ class View(SqlObject):
             sql_security: SQL security - DEFINER, INVOKER (MySQL grammar-based)
             definer: Definer user - user@host (MySQL grammar-based)
             force: Whether view is created with FORCE (True) or NOFORCE (False) (Oracle grammar-based)
-            security_definer: Whether view uses SECURITY DEFINER (PostgreSQL)
-            security_invoker: Whether view uses SECURITY INVOKER (PostgreSQL)
+            security_definer: Whether view uses SECURITY DEFINER (PostgreSQL) - Diff-relevant
+            security_invoker: Whether view uses SECURITY INVOKER (PostgreSQL) - Diff-relevant
             dependencies: List of tables/views this view depends on - SQL-generation-only
         """
         object_type = SqlObjectType.MATERIALIZED_VIEW if materialized else SqlObjectType.VIEW
@@ -188,8 +188,30 @@ class View(SqlObject):
 
     @property
     def create_statement(self) -> str:
-        """Generate a basic CREATE VIEW statement."""
-        return self._generate_basic_create_statement()
+        """Generate CREATE VIEW statement using database-specific generators.
+
+        Returns:
+            Dialect-specific CREATE VIEW statement
+        """
+        # Use the appropriate SQL generator for the dialect
+        from core.sql_generator.generator_factory import (
+            SqlGeneratorFactory,
+        )
+
+        try:
+            generator = SqlGeneratorFactory.create(
+                self.dialect or "postgresql"  # lint: allow-dialect-string: factory default fallback
+            )
+            # Check if generator has the new method
+            if hasattr(generator, "generate_create_statement"):
+                result = generator.generate_create_statement(self)
+                return str(result)
+            else:
+                # Fallback for old generators that don't have the method yet
+                return self._generate_basic_create_statement()
+        except (ValueError, ImportError, AttributeError):
+            # Fallback to basic CREATE VIEW if generator not available
+            return self._generate_basic_create_statement()
 
     def _generate_basic_create_statement(self) -> str:
         """Generate a basic CREATE VIEW statement as fallback."""
@@ -198,39 +220,30 @@ class View(SqlObject):
         view_name = self.format_identifier(self.name)
         schema_prefix = f"{schema_name}." if schema_name else ""
 
-        from db.base_quirks import BaseQuirks
-        from db.provider_registry import ProviderRegistry
-
-        canonical = ProviderRegistry.canonical_dialect_name(self.dialect or "")
-        quirks = ProviderRegistry.get_quirks(canonical) if canonical else BaseQuirks()
-
-        if self.materialized:
-            stmt = f"CREATE MATERIALIZED VIEW {schema_prefix}{view_name}"
-        elif quirks.view_supports_create_or_replace:
-            stmt = f"CREATE OR REPLACE VIEW {schema_prefix}{view_name}"
-        else:
-            stmt = f"CREATE VIEW {schema_prefix}{view_name}"
+        # Basic CREATE VIEW statement
+        view_type = "MATERIALIZED VIEW" if self.materialized else "VIEW"
+        stmt = f"CREATE {view_type} {schema_prefix}{view_name}"
 
         # Add columns if specified
         if self.columns:
             formatted_columns = [self.format_identifier(col) for col in self.columns]
             stmt += f" ({', '.join(formatted_columns)})"
 
-        if self.materialized and quirks.view_materialized_uses_build_immediate:
-            stmt += " BUILD IMMEDIATE"
-
         # Add query
         if self.query:
             stmt += f" AS\n{self.query}"
 
+        # Story 26-5: security WITH clause via plugin Quirks.
+        from db.base_quirks import BaseQuirks
+        from db.provider_registry import ProviderRegistry
+
+        canonical = ProviderRegistry.canonical_dialect_name(self.dialect or "")
+        quirks = ProviderRegistry.get_quirks(canonical) if canonical else BaseQuirks()
         if quirks.view_supports_security_with_clause:
             if self.security_definer:
                 stmt += " WITH (security_definer=true)"
             elif self.security_invoker:
                 stmt += " WITH (security_invoker=true)"
-
-        if self.materialized and quirks.view_materialized_uses_with_data:
-            stmt += " WITH DATA" if self.is_populated is not False else " WITH NO DATA"
 
         return stmt
 
@@ -285,7 +298,7 @@ class View(SqlObject):
             and self.security_definer == other.security_definer
             and self.security_invoker == other.security_invoker
             # Note: last_refresh is not compared as it changes with each refresh
-            # Note: dependencies is SQL-generation-only
+            # Note: dependencies is SQL-generation-only, not diff-relevant
         )
 
     # ------------------------------------------------------------------

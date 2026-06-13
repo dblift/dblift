@@ -1,0 +1,12 @@
+database:
+  type: sqlserver
+  url: mssql+pymssql://localhost:1433/dblift?encrypt=false
+  username: sa
+  password: YourStrong@Passw0rd
+  schema: logistics
+logging:
+  file: dblift.log
+  level: INFO
+migrations:
+  directory: ./migrations/samples/sqlserver
+  table: schema_version

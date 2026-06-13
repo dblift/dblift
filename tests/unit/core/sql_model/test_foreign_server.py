@@ -1,5 +1,7 @@
 """Unit tests for core.sql_model.foreign_server module."""
 
+from unittest.mock import Mock, patch
+
 import pytest
 
 from core.sql_model.foreign_server import ForeignServer
@@ -77,6 +79,46 @@ class TestForeignServer:
         assert server.options["host"] == "remote.example.com"
         assert server.options["port"] == "5432"
         assert server.options["dbname"] == "remote_db"
+
+    def test_create_statement_with_generator(self):
+        """Test create_statement using generator."""
+        server = ForeignServer("test_server", "postgres_fdw", host="remote.example.com")
+        mock_generator = Mock()
+        mock_generator.generate_create_statement = Mock(return_value="CREATE SERVER test_server;")
+
+        with patch(
+            "core.sql_generator.generator_factory.SqlGeneratorFactory.create",
+            return_value=mock_generator,
+        ):
+            result = server.create_statement
+            assert result == "CREATE SERVER test_server;"
+            mock_generator.generate_create_statement.assert_called_once_with(server)
+
+    def test_create_statement_fallback_no_generator_method(self):
+        """Test create_statement fallback when generator lacks method."""
+        server = ForeignServer("test_server", "postgres_fdw", host="remote.example.com")
+        mock_generator = Mock()
+        del mock_generator.generate_create_statement  # Simulate missing method
+
+        with patch(
+            "core.sql_generator.generator_factory.SqlGeneratorFactory.create",
+            return_value=mock_generator,
+        ):
+            result = server.create_statement
+            assert "CREATE SERVER" in result
+            assert "FOREIGN DATA WRAPPER" in result
+
+    def test_create_statement_fallback_exception(self):
+        """Test create_statement fallback on exception."""
+        server = ForeignServer("test_server", "postgres_fdw")
+
+        with patch(
+            "core.sql_generator.generator_factory.SqlGeneratorFactory.create",
+            side_effect=ValueError("Error"),
+        ):
+            result = server.create_statement
+            assert "CREATE SERVER" in result
+            assert "FOREIGN DATA WRAPPER" in result
 
     def test_generate_basic_create_statement_minimal(self):
         """Test basic create statement generation with minimal server."""

@@ -1,16 +1,27 @@
-"""Secrets provider base stub for the public package.
+"""Base types for secrets providers."""
 
-Secret-manager provider base classes (vault, AWS, Azure, GCP) are not bundled
-here. This stub provides the minimum interface to keep the config layer
-importable.
-"""
+from abc import ABC, abstractmethod
+from typing import Optional
 
-from __future__ import annotations
+from config.secrets._secrets_config import SecretsConfig
 
 
 class SecretsResolutionError(Exception):
-    """Raised when a secret URI cannot be resolved.
+    """Raised when a secret URI cannot be resolved."""
 
-    Secret URIs are unsupported here, so this error is never raised in
-    practice, but the class must exist for code that catches it.
-    """
+
+class AbstractSecretsProvider(ABC):
+    """Abstract base class for all secrets providers."""
+
+    scheme: str
+
+    def __init__(self, config: Optional[SecretsConfig] = None) -> None:
+        self._config = config or SecretsConfig()
+
+    @abstractmethod
+    def resolve(self, uri: str) -> str:
+        """Resolve a secret URI to its plaintext value."""
+
+    @abstractmethod
+    def is_available(self) -> bool:
+        """Return True if the provider is configured and its SDK is importable."""

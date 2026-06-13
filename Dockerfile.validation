@@ -1,0 +1,56 @@
+# Lightweight Dockerfile for SQL Validation Only
+# This image is optimized for CI/CD pipelines that only need the validate-sql command
+# Python-only runtime - 60% smaller than full image
+
+FROM python:3.11-slim AS builder
+
+# Install build dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gcc \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy requirements and install Python dependencies
+COPY requirements.txt /tmp/
+RUN pip install --no-cache-dir --user -r /tmp/requirements.txt
+
+# Final stage
+FROM python:3.11-slim
+
+LABEL org.opencontainers.image.source="https://github.com/cmodiano/dblift"
+LABEL org.opencontainers.image.description="DBLift SQL Validation Tool (Lightweight)"
+LABEL org.opencontainers.image.licenses="Proprietary"
+
+# Set environment variables
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    DBLIFT_HOME=/opt/dblift \
+    PATH="/opt/dblift/bin:/opt/dblift:${PATH}"
+
+# Copy Python packages from builder
+COPY --from=builder /root/.local /root/.local
+ENV PATH=/root/.local/bin:$PATH
+
+# Create application directory
+WORKDIR /opt/dblift
+
+# Copy application files (excluding test files, docs, etc. - see .dockerignore)
+COPY . .
+COPY ./scripts/docker/run_validation.py /opt/dblift/bin/run-validation
+
+# Add /opt/dblift to PYTHONPATH so Python can find modules
+ENV PYTHONPATH=/opt/dblift
+
+# Create CLI entry point and make it executable
+RUN chmod +x /opt/dblift/dblift /opt/dblift/bin/run-validation
+
+# Create workspace directory
+RUN mkdir -p /workspace
+WORKDIR /workspace
+
+# Verify installation
+RUN python -c "import jwt, cryptography; from core.licensing.license_manager import LicenseManager" && \
+    python -m cli.main validate-sql --help
+
+# Default command shows validation help
+ENTRYPOINT ["/opt/dblift/bin/run-validation"]
+CMD []

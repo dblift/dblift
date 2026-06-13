@@ -28,6 +28,11 @@ class MariadbQuirks(MysqlQuirks):
         ("mariadb", "10.2+"): {"JSON": "JSON"},
     }
 
+    # MariaDB historically did not need post-introspection rollback in dblift's
+    # snapshot path (the legacy gate was ``dialect in ("db2", "mysql")``).
+    # Override the parent ``True`` to preserve that behavior.
+    requires_rollback_after_introspection: bool = False
+
     def __init__(self, dialect_name: str = "mariadb") -> None:
         """Initialize MariaDB quirks with the dialect name."""
         super().__init__(dialect_name=dialect_name)

@@ -6,11 +6,15 @@ from datetime import datetime
 
 _logger = logging.getLogger(__name__)
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 import jinja2
 
-from core.logger.results import OperationResult
+from core.logger.formatters.diff_utils import (
+    generate_generic_diff_sql,
+    generate_unified_diff,
+)
+from core.logger.results import DiffResult, OperationResult
 
 
 class HtmlFormatter:
@@ -26,6 +30,7 @@ class HtmlFormatter:
             # Default to the templates directory in the parent logger directory
             template_dir = Path(__file__).parent.parent / "templates"
 
+        self.license_info: Optional[Dict[str, Any]] = None
         self.template_dir = template_dir
         self.env = jinja2.Environment(
             loader=jinja2.FileSystemLoader(str(template_dir)),
@@ -173,6 +178,8 @@ class HtmlFormatter:
         """
         # Normalize command type for template usage
         normalized_command_type = (command_type or "operation").upper()
+        if isinstance(result, DiffResult) and normalized_command_type != "DIFF":
+            normalized_command_type = "DIFF"
         self.command_type = normalized_command_type
 
         try:
@@ -233,6 +240,7 @@ class HtmlFormatter:
                 "per_migration_journal": per_migration_journal,
                 "server_name": self._extract_server_from_result(result),
                 "report_time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                "license_info": self.license_info,
                 "logo_path": "",
             }
 
@@ -271,8 +279,16 @@ class HtmlFormatter:
                     }
                 )
 
+            current_diff_data: Optional[Dict[str, Any]] = None
+            if isinstance(result, DiffResult):
+                current_diff_data = self._extract_diff_data(result)
+                context["diff_data"] = current_diff_data
+
             # Build multi-command contexts if available
             multi_commands: List[Dict[str, Any]] = []
+            diff_data_cache: Dict[int, Dict[str, Any]] = {}
+            if current_diff_data is not None:
+                diff_data_cache[id(result)] = current_diff_data
             if self.using_multi_command and self.command_results:
                 for idx, cmd in enumerate(self.command_results, start=1):
                     cmd_type = cmd.get("command_type")
@@ -308,6 +324,13 @@ class HtmlFormatter:
                         "timestamp": cmd.get("timestamp"),
                     }
 
+                    if cmd_type == "DIFF" and isinstance(cmd_result, DiffResult):
+                        cached_diff = diff_data_cache.get(id(cmd_result))
+                        if cached_diff is None:
+                            cached_diff = self._extract_diff_data(cmd_result)
+                            diff_data_cache[id(cmd_result)] = cached_diff
+                        cmd_dict["diff_data"] = cached_diff
+
                     multi_commands.append(cmd_dict)
 
                 context.update(
@@ -332,6 +355,8 @@ class HtmlFormatter:
                     "execution_time": result.execution_time(),
                     "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                 }
+                if current_diff_data is not None:
+                    single_cmd["diff_data"] = current_diff_data
                 unified_commands = [single_cmd]
             context["unified_commands"] = unified_commands
 
@@ -412,6 +437,247 @@ class HtmlFormatter:
 
             return fallback_html
 
+    def _extract_diff_data(self, result: DiffResult) -> Dict[str, Any]:
+        """Build diff-specific context data for a DiffResult."""
+        dialect = getattr(
+            # lint: allow-dialect-string: dialect dispatch
+            result,
+            "dialect",
+            # lint: allow-dialect-string: dialect dispatch
+            "postgresql",
+        )  # lint: allow-dialect-string: dialect dispatch
+        schema_diff = getattr(result, "schema_diff", None)
+
+        missing_tables = getattr(result, "missing_tables", []) or []
+        extra_tables = getattr(result, "extra_tables", []) or []
+        modified_tables = getattr(result, "modified_tables", []) or []
+
+        missing_views = getattr(result, "missing_views", []) or []
+        extra_views = getattr(result, "extra_views", []) or []
+        missing_indexes = getattr(result, "missing_indexes", []) or []
+        extra_indexes = getattr(result, "extra_indexes", []) or []
+        missing_sequences = getattr(result, "missing_sequences", []) or []
+        extra_sequences = getattr(result, "extra_sequences", []) or []
+        missing_triggers = getattr(result, "missing_triggers", []) or []
+        extra_triggers = getattr(result, "extra_triggers", []) or []
+        missing_procedures = getattr(result, "missing_procedures", []) or []
+        extra_procedures = getattr(result, "extra_procedures", []) or []
+        missing_functions = getattr(result, "missing_functions", []) or []
+        extra_functions = getattr(result, "extra_functions", []) or []
+
+        diff_data: Dict[str, Any] = {
+            "source_type": getattr(result, "source_type", None),
+            "target_type": getattr(result, "target_type", None),
+            "total_differences": getattr(result, "total_differences", 0),
+            "error_count": getattr(result, "error_count", 0),
+            "warning_count": getattr(result, "warning_count", 0),
+            "info_count": getattr(result, "info_count", 0),
+            "missing_tables": missing_tables,
+            "extra_tables": extra_tables,
+            "missing_table_count": len(missing_tables),
+            "extra_table_count": len(extra_tables),
+            "modified_table_count": len(modified_tables),
+            "has_critical_diffs": getattr(result, "error_count", 0) > 0,
+            "missing_views": missing_views,
+            "extra_views": extra_views,
+            "missing_indexes": missing_indexes,
+            "extra_indexes": extra_indexes,
+            "missing_sequences": missing_sequences,
+            "extra_sequences": extra_sequences,
+            "missing_triggers": missing_triggers,
+            "extra_triggers": extra_triggers,
+            "missing_procedures": missing_procedures,
+            "extra_procedures": extra_procedures,
+            "missing_functions": missing_functions,
+            "extra_functions": extra_functions,
+            "missing_view_count": len(missing_views),
+            "extra_view_count": len(extra_views),
+            "missing_index_count": len(missing_indexes),
+            "extra_index_count": len(extra_indexes),
+            "missing_sequence_count": len(missing_sequences),
+            "extra_sequence_count": len(extra_sequences),
+            "missing_trigger_count": len(missing_triggers),
+            "extra_trigger_count": len(extra_triggers),
+            "missing_procedure_count": len(missing_procedures),
+            "extra_procedure_count": len(extra_procedures),
+            "missing_function_count": len(missing_functions),
+            "extra_function_count": len(extra_functions),
+        }
+
+        diff_data["modified_tables"] = self._build_modified_tables_data(result, dialect)
+
+        object_mappings = [
+            ("modified_views", [("view_name", "view_name")]),
+            ("modified_indexes", [("index_name", "index_name"), ("table_name", "table_name")]),
+            ("modified_sequences", [("sequence_name", "sequence_name")]),
+            ("modified_triggers", [("trigger_name", "trigger_name"), ("table_name", "table_name")]),
+            ("modified_procedures", [("procedure_name", "procedure_name")]),
+            ("modified_functions", [("function_name", "function_name")]),
+        ]
+        for key, mapping in object_mappings:
+            diff_data[key] = self._build_modified_object_entries(
+                schema_diff, key, mapping, dialect, result
+            )
+
+        return diff_data
+
+    def _build_modified_tables_data(self, result: DiffResult, dialect: str) -> List[Dict[str, Any]]:
+        """Build table-specific diff data."""
+        tables_data: List[Dict[str, Any]] = []
+        schema_diff = getattr(result, "schema_diff", None)
+        modified_tables = getattr(schema_diff, "modified_tables", None) if schema_diff else None
+        if not modified_tables:
+            return tables_data
+
+        for table_diff in modified_tables:
+            columns = self._build_modified_columns_data(table_diff)
+            diff_count = 0
+            if hasattr(table_diff, "get_diff_count"):
+                try:
+                    diff_count = sum(table_diff.get_diff_count().values())
+                except Exception as e:
+                    _logger.debug(f"Could not compute diff count: {e}")
+                    diff_count = 0
+
+            tables_data.append(
+                {
+                    "table_name": getattr(table_diff, "table_name", ""),
+                    "severity": getattr(getattr(table_diff, "severity", None), "value", "info"),
+                    "diff_count": diff_count,
+                    "missing_columns": getattr(table_diff, "missing_columns", []),
+                    "extra_columns": getattr(table_diff, "extra_columns", []),
+                    "modified_columns": columns,
+                    "missing_constraints": getattr(table_diff, "missing_constraints", []),
+                    "extra_constraints": getattr(table_diff, "extra_constraints", []),
+                    "modified_constraints": getattr(table_diff, "modified_constraints", []),
+                    "unified_diff": self._generate_unified_diff_data(
+                        table_diff, dialect, result, getattr(table_diff, "table_name", "")
+                    ),
+                }
+            )
+
+        return tables_data
+
+    def _build_modified_columns_data(self, table_diff: Any) -> List[Dict[str, Any]]:
+        """Build column change data for a table diff."""
+        modified_columns = getattr(table_diff, "modified_columns", None) or []
+        column_data: List[Dict[str, Any]] = []
+
+        for col_diff in modified_columns:
+            changes: List[Dict[str, Any]] = []
+            col_entry: Dict[str, Any] = {
+                "column_name": getattr(col_diff, "column_name", ""),
+                "severity": getattr(getattr(col_diff, "severity", None), "value", "info"),
+                "changes": changes,
+            }
+
+            if getattr(col_diff, "data_type_diff", None):
+                expected, actual = col_diff.data_type_diff
+                changes.append(
+                    {
+                        "property": "Type",
+                        "expected": expected,
+                        "actual": actual,
+                        "severity": "error",
+                    }
+                )
+            if getattr(col_diff, "nullable_diff", None) is not None:
+                expected, actual = col_diff.nullable_diff
+                changes.append(
+                    {
+                        "property": "Nullable",
+                        "expected": str(expected),
+                        "actual": str(actual),
+                        "severity": "warning",
+                    }
+                )
+            if getattr(col_diff, "default_diff", None):
+                expected, actual = col_diff.default_diff
+                changes.append(
+                    {
+                        "property": "Default",
+                        "expected": str(expected or "NULL"),
+                        "actual": str(actual or "NULL"),
+                        "severity": "warning",
+                    }
+                )
+            if getattr(col_diff, "identity_diff", None) is not None:
+                expected, actual = col_diff.identity_diff
+                changes.append(
+                    {
+                        "property": "Identity",
+                        "expected": str(expected),
+                        "actual": str(actual),
+                        "severity": "error",
+                    }
+                )
+            if getattr(col_diff, "computed_diff", None):
+                expected, actual = col_diff.computed_diff
+                changes.append(
+                    {
+                        "property": "Computed",
+                        "expected": str(expected or "None"),
+                        "actual": str(actual or "None"),
+                        "severity": "warning",
+                    }
+                )
+
+            column_data.append(col_entry)
+
+        return column_data
+
+    def _build_modified_object_entries(
+        self,
+        schema_diff: Any,
+        attribute_name: str,
+        field_mapping: List[Tuple[str, str]],
+        dialect: str,
+        result: DiffResult,
+    ) -> List[Dict[str, Any]]:
+        """Build diff data for non-table objects (views, indexes, etc.)."""
+        if not schema_diff or not hasattr(schema_diff, attribute_name):
+            return []
+
+        objects = getattr(schema_diff, attribute_name) or []
+        entries: List[Dict[str, Any]] = []
+        for diff_obj in objects:
+            entry: Dict[str, Any] = {}
+            for output_key, attr_name in field_mapping:
+                entry[output_key] = getattr(diff_obj, attr_name, "")
+
+            entry["severity"] = getattr(getattr(diff_obj, "severity", None), "value", "info")
+            entry["unified_diff"] = self._generate_unified_diff_data(diff_obj, dialect, result)
+            entries.append(entry)
+
+        return entries
+
+    def _generate_unified_diff_data(
+        self,
+        diff_obj: Any,
+        dialect: str,
+        result: DiffResult,
+        object_name: Optional[str] = None,
+    ) -> Optional[Dict[str, Any]]:
+        """Generate a unified diff snippet for a diff object."""
+        try:
+            sql_result = generate_generic_diff_sql(diff_obj, dialect)
+            if not sql_result:
+                return None
+
+            before_sql, after_sql = sql_result
+            return generate_unified_diff(
+                before_sql,
+                after_sql,
+                before_label=getattr(result, "source_type", None) or "Expected",
+                after_label=getattr(result, "target_type", None) or "Actual",
+            )
+        except Exception as exc:
+            if object_name:
+                logging.getLogger(__name__).debug(
+                    "Failed to generate unified diff for %s: %s", object_name, exc
+                )
+            return None
+
     def _get_command_details(self, command_type: str, result: OperationResult) -> Dict[str, Any]:
         """Get details specific to the command type.
 
@@ -458,6 +724,18 @@ class HtmlFormatter:
         elif command_type == "REPAIR":
             details["icon"] = "wrench"
             details["description"] = "This command repairs the schema history table."
+        elif command_type == "EXPORT-SCHEMA":
+            details["icon"] = "download"
+            details["description"] = "This command exports the database schema to SQL file(s)."
+            # Add export-specific details
+            if hasattr(result, "output_files") and result.output_files:
+                details["output_files"] = result.output_files
+            if hasattr(result, "objects_exported") and result.objects_exported:
+                details["objects_exported"] = result.objects_exported
+            if hasattr(result, "filters_applied") and result.filters_applied:
+                details["filters_applied"] = result.filters_applied
+            if hasattr(result, "output_options") and result.output_options:
+                details["output_options"] = result.output_options
 
         return details
 

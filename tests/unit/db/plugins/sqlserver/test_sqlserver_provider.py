@@ -102,6 +102,22 @@ def test_create_migration_lock_table_uses_parameterized_catalog_check():
     assert params == ["d'bo", "dblift_migration_lock"]
 
 
+def test_create_snapshot_table_uses_parameterized_catalog_check():
+    provider = object.__new__(SqlServerProvider)
+    provider.create_schema_if_not_exists = MagicMock()
+    provider.execute_statement = MagicMock()
+
+    provider.create_snapshot_table_if_not_exists("d'bo", "snap's")
+
+    provider.create_schema_if_not_exists.assert_called_once_with("d'bo")
+    sql = provider.execute_statement.call_args.args[0]
+    params = provider.execute_statement.call_args.kwargs["params"]
+    assert "s.name = ? AND t.name = ?" in sql
+    assert "s.name = '" not in sql
+    assert "t.name = '" not in sql
+    assert params == ["d'bo", "snap's"]
+
+
 def test_execute_statement_creates_schema_when_schema_is_passed(monkeypatch):
     provider = object.__new__(SqlServerProvider)
     provider.create_schema_if_not_exists = MagicMock()

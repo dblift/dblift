@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import re
-from typing import Any, Dict, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Dict, Optional, Tuple, Type
 
 from db.base_quirks import BaseQuirks
 
@@ -14,6 +14,10 @@ _DROP_TRIGGER_ON_RE = re.compile(
     r"\s+ON\s+",
     re.IGNORECASE,
 )
+
+if TYPE_CHECKING:
+    from core.sql_generator.alter.base_alter_generator import BaseAlterGenerator
+    from core.sql_generator.base_generator import BaseSqlGenerator
 
 
 class PostgresqlQuirks(BaseQuirks):
@@ -36,9 +40,10 @@ class PostgresqlQuirks(BaseQuirks):
     supports_transactional_ddl = True
     schema_required = True
     uppercase_identifiers = False
-    clean_strategy = "native"
+    clean_strategy = "introspector"
     sqlglot_dialect = "postgres"
     pygments_lexer = "postgresql"
+    lint_placeholder_url = "postgresql://127.0.0.1:5432/dblift_validate_sql"
     default_schema_name = "public"
     drop_supports_if_exists = True
     drop_table_default_cascade = True
@@ -56,7 +61,8 @@ class PostgresqlQuirks(BaseQuirks):
     seq_supports_temp = True
     # View DDL (story 26-5).
     view_supports_security_with_clause = True
-    view_materialized_uses_with_data = True
+    # View comparison (story 26-6 Wave A).
+    view_supports_unlogged_and_security = True
     serial_types_alias_integer = True
     # Table DDL (story 26-5).
     table_supports_inline_collate = True
@@ -101,6 +107,38 @@ class PostgresqlQuirks(BaseQuirks):
             return True
         return bool(_value("host") and _value("database"))
 
+    # Story 26-3: own DDL + ALTER generators. Lazy import to avoid a
+    # circular import at module load (provider_registry imports this
+    # module while loading plugins, before core/sql_generator is fully
+    # wired into the provider class graph).
+    def ddl_generator_class(self) -> Optional[Type["BaseSqlGenerator"]]:
+        """Return the PostgreSQL-specific :class:`PostgreSQLSqlGenerator` (lazy import)."""
+        from db.plugins.postgresql.generator.ddl_generator import PostgreSQLSqlGenerator
+
+        return PostgreSQLSqlGenerator
+
+    def alter_generator_class(self) -> Optional[Type["BaseAlterGenerator"]]:
+        """Return the PostgreSQL-specific :class:`PostgreSQLAlterGenerator` (lazy import)."""
+        from db.plugins.postgresql.generator.alter_generator import PostgreSQLAlterGenerator
+
+        return PostgreSQLAlterGenerator
+
+    def vendor_queries_class(self) -> "Optional[Type[Any]]":
+        """Return the PostgreSQL :class:`PostgreSQLMetadataQueries` bundle (lazy import)."""
+        from db.plugins.postgresql.introspection.postgresql_queries import (
+            PostgreSQLMetadataQueries,
+        )
+
+        return PostgreSQLMetadataQueries
+
+    def introspector_class(self) -> "Optional[Type[Any]]":
+        """Return the PostgreSQL :class:`PostgreSQLIntrospector` (F.3.a, lazy import)."""
+        from db.plugins.postgresql.introspection.postgresql_introspector import (
+            PostgreSQLIntrospector,
+        )
+
+        return PostgreSQLIntrospector
+
     def parser_class(self, parser_type: str) -> Optional[type]:
         """PostgreSQL parser dispatch: hybrid → :class:`HybridParser`, sqlglot →
         :class:`SqlGlotParser` (``postgres`` dialect), regex → :class:`PostgreSqlRegexParser`."""
@@ -135,7 +173,7 @@ class PostgresqlQuirks(BaseQuirks):
         """PostgreSQL 15+ views can declare ``security_definer`` /
         ``security_invoker``; the vendor query projects both as
         boolean-coerced columns."""
-        from db.value_utils import get_row_value
+        from core.introspection._utils import get_row_value
 
         security_definer = get_row_value(row, "security_definer")
         security_invoker = get_row_value(row, "security_invoker")
@@ -147,24 +185,21 @@ class PostgresqlQuirks(BaseQuirks):
     def enrich_materialized_view_from_row(self, mview: Any, row: Dict[str, Any]) -> None:
         """PostgreSQL materialized views can be ``UNLOGGED``; the catalog
         projects ``relpersistence`` as ``is_unlogged`` (``"YES"`` / ``"NO"``)."""
-        from db.value_utils import get_row_value
+        from core.introspection._utils import get_row_value
 
         is_unlogged = get_row_value(row, "is_unlogged")
         if is_unlogged == "YES":
             mview.unlogged = True
 
     def normalize_index_predicate(self, predicate: Optional[str]) -> Optional[str]:
-        """Strip simple text casts from PostgreSQL index predicates."""
-        if predicate is None:
-            return None
-        normalized = re.sub(r"::\s*text\b", "", predicate, flags=re.IGNORECASE)
-        normalized = re.sub(
-            r"CAST\(([^()]+)\s+AS\s+TEXT\)",
-            r"\1",
-            normalized,
-            flags=re.IGNORECASE,
+        """Strip redundant ``::TEXT`` and ``CAST(<col> AS TEXT)`` decorations
+        the catalog re-introduces, so partial-index WHERE clauses round-trip
+        against the source DDL."""
+        from core.introspection.extractors.index_extractor import (
+            normalize_postgresql_index_predicate,
         )
-        return normalized
+
+        return normalize_postgresql_index_predicate(predicate)
 
     def apply_index_vendor_properties(
         self, idx_data: Dict[str, Any], index_kwargs: Dict[str, Any]
@@ -186,12 +221,16 @@ class PostgresqlQuirks(BaseQuirks):
 
         Falls back to the generic vendor path if the catalog query fails (rare; preserves
         the existing error semantics)."""
+        from core.introspection.extractors.constraint_extractor import (
+            _build_unique_constraints_from_dict,
+        )
+
         try:
             unique_indexes = extractor._get_unique_constraints_postgresql(schema, table)
         except Exception as e:
             extractor.log.warning(f"Error getting unique constraints for {schema}.{table}: {e}")
             return []
-        return list(unique_indexes)
+        return _build_unique_constraints_from_dict(extractor, unique_indexes)
 
     def extract_partition_scheme_from_row(
         self, extractor: Any, row: Dict[str, Any], table: Any
@@ -201,7 +240,7 @@ class PostgresqlQuirks(BaseQuirks):
         ``partition_columns``."""
         import re
 
-        from db.value_utils import get_row_value
+        from core.introspection._utils import get_row_value
 
         part_def = get_row_value(row, "partition_definition")
         if not part_def:
@@ -242,7 +281,7 @@ class PostgresqlQuirks(BaseQuirks):
 
     def _postgresql_relation_type_names(self, extractor: Any, schema: str) -> "set[str]":
         """Return table/view/materialized-view row-type names for PostgreSQL."""
-        from db.value_utils import get_row_value
+        from core.introspection._utils import get_row_value
 
         query_executor = getattr(getattr(extractor, "provider", None), "query_executor", None)
         connection = getattr(extractor, "connection", None)
@@ -267,11 +306,151 @@ class PostgresqlQuirks(BaseQuirks):
             if get_row_value(row, "relname")
         }
 
+    def enrich_table_extra(self, extractor: Any, schema: str, table_name: str, table: Any) -> None:
+        """PostgreSQL row security + table inheritance + RLS policies.
+
+        Three vendor queries (``pg_class.relrowsecurity`` /
+        ``relforcerowsecurity``, ``pg_inherits``, ``pg_policies``)
+        run on demand; each is gated by the corresponding
+        ``vendor_queries.get_*_query`` returning a non-``None`` SQL
+        string so older PostgreSQL versions (or trimmed query sets)
+        simply skip the unsupported call.
+        """
+        from core.introspection._utils import get_row_value, parse_json_array
+
+        vendor_queries = extractor.vendor_queries
+        if not vendor_queries:
+            return
+
+        try:
+            query, params = vendor_queries.get_table_row_security_query(schema, table_name)
+            if query:
+                results = extractor.provider.query_executor.execute_query(
+                    extractor.connection, query, params
+                )
+                if results:
+                    row = results[0]
+                    table.row_security = get_row_value(row, "row_security") == "YES"
+                    table.force_row_security = get_row_value(row, "force_row_security") == "YES"
+        except Exception as e:
+            extractor.log.debug(f"Could not get row security flags for {schema}.{table_name}: {e}")
+            extractor.track_warning(
+                f"Could not get row security flags: {e}",
+                object_type="table",
+                object_name=table_name,
+                property_name="row_security",
+                exception=e,
+            )
+
+        try:
+            query, params = vendor_queries.get_table_inheritance_query(schema, table_name)
+            if query:
+                results = extractor.provider.query_executor.execute_query(
+                    extractor.connection, query, params
+                )
+                if results:
+                    inherits = []
+                    for row in results:
+                        parent_schema = get_row_value(row, "parent_schema")
+                        parent_table = get_row_value(row, "parent_table")
+                        if parent_schema and parent_table:
+                            if parent_schema == schema:
+                                inherits.append(parent_table)
+                            else:
+                                inherits.append(f"{parent_schema}.{parent_table}")
+                    if inherits:
+                        table.inherits = inherits
+        except Exception as e:
+            extractor.log.debug(f"Could not get table inheritance for {schema}.{table_name}: {e}")
+            extractor.track_warning(
+                f"Could not get table inheritance: {e}",
+                object_type="table",
+                object_name=table_name,
+                property_name="inherits",
+                exception=e,
+            )
+
+        try:
+            query, params = vendor_queries.get_policies_query(schema, table_name)
+            if query:
+                results = extractor.provider.query_executor.execute_query(
+                    extractor.connection, query, params
+                )
+                policies: list[Dict[str, Any]] = []
+                for row in results:
+                    policies.append(
+                        {
+                            "name": get_row_value(row, "policy_name"),
+                            "command": get_row_value(row, "policy_command"),
+                            "permissive": get_row_value(row, "is_permissive") == "YES",
+                            "roles": parse_json_array(get_row_value(row, "roles")),
+                            "qual": get_row_value(row, "policy_qual"),
+                            "with_check": get_row_value(row, "policy_with_check"),
+                        }
+                    )
+                if policies:
+                    table.policies = policies
+        except Exception as e:
+            extractor.log.debug(
+                f"Could not get row security policies for {schema}.{table_name}: {e}"
+            )
+            extractor.track_warning(
+                f"Could not get row security policies: {e}",
+                object_type="table",
+                object_name=table_name,
+                property_name="policies",
+                exception=e,
+            )
+
+    def supplement_table_list(
+        self, extractor: Any, schema: str, existing_tables: "list[Any]"
+    ) -> "list[Any]":
+        """Append declarative-partitioned tables (``relkind = 'p'``).
+
+        The regular table query intentionally keeps table categories focused.
+        This vendor query adds partitioned parents; columns and constraints are populated through
+        the extractor's sub-extractors.
+        """
+        from core.introspection._utils import get_row_value
+        from core.sql_model.table import Table
+
+        if not extractor.vendor_queries:
+            return existing_tables
+
+        try:
+            query, params = extractor.vendor_queries.get_partitioned_tables_query(schema)
+            results = extractor.provider.query_executor.execute_query(
+                extractor.connection, query, params
+            )
+            existing_names = {t.name.lower() for t in existing_tables}
+            for row in results:
+                pt_name = get_row_value(row, "table_name")
+                if not pt_name or pt_name.lower() in existing_names:
+                    continue
+                remarks = get_row_value(row, "remarks")
+                pt = Table(
+                    name=pt_name,
+                    schema=schema,
+                    dialect=extractor.dialect,
+                    comment=remarks if remarks else None,
+                    temporary=False,
+                )
+                if extractor.column_extractor:
+                    pt.columns = extractor.column_extractor.get_columns(schema, pt_name)
+                if extractor.constraint_extractor:
+                    pt.constraints = extractor.constraint_extractor.get_constraints(schema, pt_name)
+                existing_tables.append(pt)
+                extractor.log.info(f"Added partitioned table (relkind='p'): {schema}.{pt_name}")
+        except Exception as e:
+            extractor.log.warning(f"Could not get partitioned tables for {schema}: {e}")
+
+        return existing_tables
+
     def is_temporary_sequence(self, row: "Dict[str, Any]") -> bool:
         """PostgreSQL sequences may be ``CREATE TEMPORARY SEQUENCE`` —
         the vendor query projects ``relpersistence`` as ``is_temporary``
         with values ``"YES"`` / ``"NO"``."""
-        from db.value_utils import get_row_value
+        from core.introspection._utils import get_row_value
 
         return bool(get_row_value(row, "is_temporary") == "YES")
 
@@ -403,7 +582,7 @@ class PostgresqlQuirks(BaseQuirks):
         SET NOT NULL emits a pre-check counting NULL rows so a violating migration
         fails cleanly before the ALTER runs.
         """
-        from core.state.sql_statement import SqlStatement
+        from core.sql_generator.sql_statement import SqlStatement
 
         nullable_diff = getattr(col_diff, "nullable_diff", None)
         if nullable_diff is None:
@@ -433,7 +612,7 @@ class PostgresqlQuirks(BaseQuirks):
         self, col_diff: object, formatted_table: str, formatted_column: str, dialect: str
     ) -> "Optional[object]":
         """``ALTER TABLE … ALTER COLUMN <c> SET|DROP DEFAULT`` — PostgreSQL DEFAULT change."""
-        from core.state.sql_statement import SqlStatement
+        from core.sql_generator.sql_statement import SqlStatement
 
         default_diff = getattr(col_diff, "default_diff", None)
         if default_diff is None:
@@ -455,7 +634,7 @@ class PostgresqlQuirks(BaseQuirks):
         self, col_diff: object, formatted_table: str, formatted_column: str, dialect: str
     ) -> "Optional[object]":
         """``ALTER TABLE … ALTER COLUMN <c> TYPE <type>`` — PostgreSQL column-type change form."""
-        from core.state.sql_statement import SqlStatement
+        from core.sql_generator.sql_statement import SqlStatement
 
         data_type_diff = getattr(col_diff, "data_type_diff", None)
         if data_type_diff is None:
@@ -473,7 +652,7 @@ class PostgresqlQuirks(BaseQuirks):
         self, col_diff: object, formatted_table: str, formatted_column: str, dialect: str
     ) -> "Optional[object]":
         """``ALTER TABLE … ALTER COLUMN <c> SET COLLATION <coll>`` — PG collation change."""
-        from core.state.sql_statement import SqlStatement
+        from core.sql_generator.sql_statement import SqlStatement
 
         collation_diff = getattr(col_diff, "collation_diff", None)
         if collation_diff is None:

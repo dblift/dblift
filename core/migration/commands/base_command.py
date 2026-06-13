@@ -63,7 +63,7 @@ class BaseCommandContext:
             migration_ui=self.migration_ui,
             migration_rules=self.rules,
         )
-        command = MigrateCommand(ctx)
+        command = MigrateCommand(ctx, snapshot_service=self.snapshot_service)
     """
 
     config: DbliftConfig
@@ -102,8 +102,8 @@ def _props_text(*lines: str) -> Text:
 def _render_main_header_panel(raw_header: str) -> str:
     """Convert a TextFormatter ASCII header string into a Rich panel string.
 
-    Shared by BaseCommand._print_main_header_once and cli.main so both
-    render the same styled banner.
+    Shared by BaseCommand._print_main_header_once, snapshot_command, and
+    export_schema_command so all three render the same styled banner.
     """
     from rich import box
     from rich.panel import Panel

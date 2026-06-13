@@ -80,3 +80,10 @@ def get_version_specific_mappings() -> Dict[tuple, Dict[str, str]]:
     if _version_specific_mappings_cache is None:
         _version_specific_mappings_cache = _build_version_specific_mappings()
     return _version_specific_mappings_cache
+
+
+def __getattr__(name: str) -> object:
+    """Backward-compatible ``VERSION_SPECIFIC_MAPPINGS`` lazy alias."""
+    if name == "VERSION_SPECIFIC_MAPPINGS":
+        return get_version_specific_mappings()
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

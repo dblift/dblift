@@ -86,7 +86,7 @@ class Trigger(SqlObject):
         self.function_name = function_name
         self.function_arguments = function_arguments
         self.when_clause = when_clause
-        # Prefer explicit CONSTRAINT TRIGGER metadata; fall back to definition sniffing.
+        # Post-introspection: explicit CONSTRAINT TRIGGER metadata (fallback to definition sniffing)
         if is_constraint_trigger is None:
             inferred_constraint = "CONSTRAINT TRIGGER" in (definition or "").upper()
             self.is_constraint_trigger = inferred_constraint
@@ -171,8 +171,28 @@ class Trigger(SqlObject):
 
     @property
     def create_statement(self) -> str:
-        """Generate a basic CREATE TRIGGER statement."""
-        return self._generate_basic_create_statement()
+        """Generate CREATE TRIGGER statement using database-specific generators.
+
+        Returns:
+            Dialect-specific CREATE TRIGGER statement
+        """
+        # Use the appropriate SQL generator for the dialect
+        from core.sql_generator.generator_factory import SqlGeneratorFactory
+
+        try:
+            generator = SqlGeneratorFactory.create(
+                self.dialect or "postgresql"  # lint: allow-dialect-string: factory default fallback
+            )
+            # Check if generator has the new method
+            if hasattr(generator, "generate_create_statement"):
+                result = generator.generate_create_statement(self)
+                return str(result)
+            else:
+                # Fallback for old generators that don't have the method yet
+                return self._generate_basic_create_statement()
+        except (ValueError, ImportError, AttributeError):
+            # Fallback to basic CREATE TRIGGER if generator not available
+            return self._generate_basic_create_statement()
 
     def _generate_basic_create_statement(self) -> str:
         """Generate a basic CREATE TRIGGER statement as fallback.

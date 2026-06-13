@@ -6,7 +6,7 @@ import os
 import pytest
 
 from config.config_builder import ConfigBuilder
-from config.database_config import SQLiteConfig
+from config.database_config import SQLiteConfig, SqlServerConfig
 from config.dblift_config import load_config
 from config.errors import ConfigurationError
 
@@ -109,3 +109,41 @@ database:
 
         assert isinstance(config.database, SQLiteConfig)
         assert config.database.path == str(new_db)
+
+
+@pytest.mark.unit
+class TestConfigBuilderMergeOverridesSqlite:
+    """BUG-01: ConfigBuilder.merge_database_overrides must not reset type to 'sqlserver'
+    when a sqlite:// URL is applied over a SqlServerConfig base (the default config type).
+    This covers the root-cause path: __post_init__ resets type after dataclasses.replace().
+    """
+
+    def _base_sqlserver_config(self):
+        """Return a SqlServerConfig (the default base_config type when no YAML config exists)."""
+        return SqlServerConfig(
+            type="sqlserver",
+            url="mssql+pymssql://localhost:1433/master",
+            username="sa",
+            password="pass",
+            schema="dbo",
+        )
+
+    def test_sqlite_url_override_sets_type_sqlite(self):
+        """sqlite:/// URL override on SqlServerConfig base → type = 'sqlite'."""
+        base = self._base_sqlserver_config()
+        result = ConfigBuilder.merge_database_overrides(base, {"url": "sqlite:///tmp/x.db"})
+        assert result.type == "sqlite", f"Expected 'sqlite', got '{result.type}'"
+
+    def test_sqlite3_url_override_sets_type_sqlite(self):
+        """sqlite3:/// URL override on SqlServerConfig base → type = 'sqlite'."""
+        base = self._base_sqlserver_config()
+        result = ConfigBuilder.merge_database_overrides(base, {"url": "sqlite3:///tmp/x.db"})
+        assert result.type == "sqlite", f"Expected 'sqlite', got '{result.type}'"
+
+    def test_sqlserver_url_override_unchanged(self):
+        """SQL Server SQLAlchemy URL override does not change type away from 'sqlserver'."""
+        base = self._base_sqlserver_config()
+        result = ConfigBuilder.merge_database_overrides(
+            base, {"url": "mssql+pymssql://localhost:1433/mydb"}
+        )
+        assert result.type == "sqlserver", f"Expected 'sqlserver', got '{result.type}'"

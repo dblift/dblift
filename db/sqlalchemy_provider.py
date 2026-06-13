@@ -1,7 +1,7 @@
 """Native provider base backed by SQLAlchemy Core.
 
 Implements the provider public surface used by ExecutionEngine,
-history managers, locking managers, and plugins. Returns native Python
+history/locking/snapshot managers, and plugins. Returns native Python
 types directly.
 
 Dialect-specific operations (schema management, migration history, locking)
@@ -50,7 +50,11 @@ class _SqlAlchemyQueryExecutor:
                 sql, params, connection.dialect.paramstyle
             )
             result = connection.exec_driver_sql(driver_sql, bound_params)
-        if getattr(self._provider, "_tx", None) is None and hasattr(connection, "commit"):
+        if (
+            getattr(self._provider, "_tx", None) is None
+            and not getattr(self._provider, "_external_connection", False)
+            and hasattr(connection, "commit")
+        ):
             connection.commit()
         return result.rowcount if result.rowcount is not None else -1
 
@@ -88,18 +92,45 @@ class SqlAlchemyProvider(NativeProvider):
     concrete per-DB subclasses.
     """
 
-    def __init__(self, config: DbliftConfig, log: Optional[Log] = None) -> None:
+    def __init__(
+        self,
+        config: DbliftConfig,
+        log: Optional[Log] = None,
+        *,
+        engine: Optional[Engine] = None,
+        owns_engine: bool = True,
+    ) -> None:
         """Initialise with a DbliftConfig and an optional logger.
 
         Args:
             config: Application configuration (must be a DbliftConfig instance).
             log: Optional logger; defaults to NullLog when omitted.
+            engine: Optional external SQLAlchemy Engine to inject (for from_sqlalchemy etc.).
+            owns_engine: Whether dblift owns lifecycle of the engine (False for injected).
         """
         super().__init__(config, log)
-        self._conn_mgr = NativeConnectionManager(config, log=self.log)
+        self._conn_mgr = NativeConnectionManager(
+            config, log=self.log, engine=engine, owns_engine=owns_engine
+        )
         self._connection: Optional[Connection] = None
         self._tx: Optional[Transaction] = None
         self.query_executor = _SqlAlchemyQueryExecutor(self)
+
+    @classmethod
+    def from_engine(
+        cls,
+        config: DbliftConfig,
+        engine: Engine,
+        log: Optional[Log] = None,
+        *,
+        owns_engine: bool = False,
+    ) -> "SqlAlchemyProvider":
+        """Create provider that re-uses a caller-owned SQLAlchemy Engine.
+
+        Used by DBLiftClient.from_sqlalchemy to hand off an app's existing
+        engine without taking ownership or disposing it on close.
+        """
+        return cls(config, log=log, engine=engine, owns_engine=owns_engine)
 
     # ------------------------------------------------------------------
     # ConnectionProvider
@@ -111,6 +142,10 @@ class SqlAlchemyProvider(NativeProvider):
         Returns:
             An open sqlalchemy.engine.Connection.
         """
+        # Prefer any pre-bound open connection (e.g. injected via from_sqlalchemy
+        # with connection=) so that the caller's session/transaction is used.
+        if self._connection is not None and not self._connection.closed:
+            return self._connection
         if self._tx is not None and self._connection is not None and not self._connection.closed:
             return self._connection
         self._connection = self._conn_mgr.create_connection()
@@ -241,7 +276,7 @@ class SqlAlchemyProvider(NativeProvider):
         else:
             named_sql, bound_params = self._bind(sql, params)
             result = conn.execute(text(named_sql), bound_params)
-        if self._tx is None:
+        if self._tx is None and not getattr(self, "_external_connection", False):
             conn.commit()
         return result.rowcount if result.rowcount is not None else -1
 
@@ -262,7 +297,7 @@ class SqlAlchemyProvider(NativeProvider):
             named_sql, bound_params = self._bind(sql, params)
             result = conn.execute(text(named_sql), bound_params)
         rows = [dict(row) for row in result.mappings()]
-        if self._tx is None:
+        if self._tx is None and not getattr(self, "_external_connection", False):
             conn.commit()
         return rows
 

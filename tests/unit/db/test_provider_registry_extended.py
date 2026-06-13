@@ -21,6 +21,9 @@ class TestPluginInfo(unittest.TestCase):
             def create_migration_history_table_if_not_exists(self, s, cs=False, tn="t"):
                 pass
 
+            def create_snapshot_table_if_not_exists(self, s, tn="t"):
+                pass
+
             def execute_query(self, sql, params=None, schema=None):
                 return []
 

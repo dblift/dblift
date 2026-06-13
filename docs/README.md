@@ -13,23 +13,26 @@ docs/
 │   ├── commands.md
 │   ├── best-practices.md
 │   └── troubleshooting.md
-├── api-reference/              # API documentation (auto-generated from docstrings)
+├── api-reference/             # API documentation (auto-generated from docstrings)
 │   ├── api.md
-│   ├── events.md
 │   ├── cli.md
 │   ├── core.md
 │   └── db.md
-├── architecture/               # Architecture docs
+├── architecture/              # Technical architecture docs
 │   ├── overview.md
 │   ├── migration-engine.md
 │   ├── database-providers.md
 │   ├── sql-parsing.md
-│   └── configuration.md
-├── operations/recovery/        # Recovery runbooks
-├── examples/                   # Code examples
-│   ├── basic-migrations.md
-│   └── advanced-scenarios.md
-└── fr/                         # French translations
+│   ├── configuration.md
+│   └── licensing.md
+├── development/               # Developer guides
+│   ├── setup.md
+│   ├── testing.md
+│   ├── contributing.md
+│   └── adding-database-support.md
+└── examples/                  # Code examples
+    ├── basic-migrations.md
+    └── advanced-scenarios.md
 ```
 
 ## Building Documentation
@@ -54,8 +57,20 @@ This starts a local server at `http://127.0.0.1:8000` that auto-reloads on file 
 
 ### Build Static Site
 
+Build the documentation site:
+
 ```bash
 mkdocs build
+```
+
+This creates a `site/` directory with the static HTML files.
+
+### Build with Strict Mode
+
+Build with strict mode to catch errors:
+
+```bash
+mkdocs build --strict
 ```
 
 ## Documentation Standards
@@ -77,6 +92,21 @@ client = DBLiftClient(...)
 ```
 ````
 
+### Admonitions
+
+Use admonitions for important notes:
+
+````markdown
+!!! tip "Tip"
+    This is a helpful tip.
+
+!!! warning "Warning"
+    This is a warning.
+
+!!! danger "Danger"
+    This is a critical warning.
+````
+
 ### Links
 
 - Use relative links within documentation
@@ -95,11 +125,26 @@ To improve API docs:
 
 ## Deployment
 
-Documentation is automatically deployed to GitHub Pages on push to `main`.
-See `.github/workflows/docs.yml` for the deployment configuration.
+Documentation is automatically deployed to GitHub Pages when:
+- Changes are pushed to `main` branch
+- Files in `docs/` or `*.md` are modified
+- `mkdocs.yml` is updated
+
+See `.github/workflows/docs.yml` for deployment configuration.
+
+## Contributing
+
+When adding or updating documentation:
+
+1. **User Guide**: Update when adding user-facing features
+2. **Architecture**: Update when changing system design (including `licensing.md` for license changes)
+3. **API Reference**: Improve docstrings in code (auto-generated)
+4. **Examples**: Add examples for new features or patterns
+5. **Development**: Update when changing development workflow
 
 ## Resources
 
 - [MkDocs Documentation](https://www.mkdocs.org/)
 - [Material for MkDocs](https://squidfunk.github.io/mkdocs-material/)
 - [mkdocstrings](https://mkdocstrings.github.io/)
+- [Google Python Style Guide - Docstrings](https://google.github.io/styleguide/pyguide.html#38-comments-and-docstrings)

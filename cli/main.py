@@ -3,7 +3,7 @@
 import sys
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, List, Optional
+from typing import Any, List, Optional, Union
 
 # Add project root to Python path when running as a script
 # This allows imports to work when running: python3 cli/main.py
@@ -23,6 +23,7 @@ from cli._command_handlers import (  # noqa: F401
     _AVAILABLE_COMMANDS,
     _COMMAND_HANDLERS,
     CliCommandContext,
+    ValidateSqlConfigClient,
     _extract_version_filters,
     _handle_baseline,
     _handle_clean,
@@ -52,7 +53,9 @@ from cli._config_helpers import (  # noqa: F401
 from cli._output import CommandOutput, from_args
 from cli._parser_setup import (  # noqa: F401
     _add_baseline_options,
-    _add_target_options,
+    _add_diff_and_target_options,
+    _add_validate_sql_options,
+    _setup_export_schema_options,
     create_parser,
     parse_with_selective_errors,
 )
@@ -134,6 +137,8 @@ class _CliContext:
     parser: Any  # argparse.ArgumentParser
     log: Any  # core.logger Log — bootstrap instance (re-assigned by phase 3).
     config: Optional[Any]  # config.DbliftConfig | None (None for `db` subcommands)
+
+    # Optional paid extension metadata.
 
 
 def main() -> None:
@@ -226,6 +231,8 @@ def _parse_argv_and_load_config(argv: List[str]) -> _CliContext:
     # Validate log format before any config load so bogus --log-format fails with argparse
     # UX (and so db/* commands are covered — _validate_db_config skips early for "db").
     _validate_log_format_for_cli(args, parser)
+    # Attach the full command list so load_config can distinguish standalone
+    # offline commands (plan, validate-sql) from chained invocations.
     args.commands_list = commands
     config = None if commands[0] == "db" else _load_and_merge_config(args, log)
     _validate_db_config(args, config, parser, commands)
@@ -259,7 +266,8 @@ def _setup_logging_and_output(ctx: _CliContext) -> CommandOutput:
     logging configuration / banner setup that the migration workflow
     requires.
 
-    Side effects: reassigns ``ctx.log`` to the fully-configured logger.
+    Side effects: reassigns ``ctx.log`` to the fully-configured logger and
+    attaches the license info to every sub-log's formatter.
     """
     # Handle db utility commands (single command only, no chaining)
     if ctx.commands[0] == "db":
@@ -279,11 +287,28 @@ def _setup_logging_and_output(ctx: _CliContext) -> CommandOutput:
 
     assert ctx.config is not None
     ctx.log = _configure_logging(ctx.args, ctx.config, ctx.parser)
+    if False:
+        loggers = getattr(ctx.log, "logs", [ctx.log])
+        for sub_log in loggers:
+            if hasattr(sub_log, "formatter"):
+                sub_log.formatter.license_info = ctx.license_info
+
+    _apply_validate_sql_configured_output_format(ctx)
 
     # Banner routing is centralised in :class:`cli._output.CommandOutput`
     # (ADR-0008 supersedes ADR-0005's suppression approach). Machine
     # mode routes the banner to stderr; human mode keeps it on stdout.
     return from_args(ctx.args)
+
+
+def _apply_validate_sql_configured_output_format(ctx: _CliContext) -> None:
+    """Use configured validate-sql output format before top-level banner routing."""
+    if ctx.commands != ["validate-sql"] or getattr(ctx.args, "format", None):
+        return
+    validation_config = getattr(ctx.config, "validation", None)
+    output_format = getattr(validation_config, "output_format", None)
+    if output_format:
+        ctx.args.format = output_format
 
 
 def _dispatch_command(ctx: _CliContext, command_output: CommandOutput) -> int:
@@ -298,8 +323,16 @@ def _dispatch_command(ctx: _CliContext, command_output: CommandOutput) -> int:
         _resolve_scripts_directories(ctx.args, ctx.config, ctx.parser, ctx.commands)
     )
 
-    client: DBLiftClient
-    client = DBLiftClient.from_config(ctx.config, logger=ctx.log)
+    # Standalone offline commands only need DbliftConfig (dialect, validation rules).
+    validate_sql_only = len(ctx.commands) == 1 and ctx.commands[0] == "validate-sql"
+    plan_only = len(ctx.commands) == 1 and ctx.commands[0] == "plan"
+    preflight_only = len(ctx.commands) == 1 and ctx.commands[0] == "preflight"
+    offline_only = validate_sql_only or plan_only or preflight_only
+    client: Union[DBLiftClient, ValidateSqlConfigClient]
+    if offline_only:
+        client = ValidateSqlConfigClient(config=ctx.config)
+    else:
+        client = DBLiftClient.from_config(ctx.config, logger=ctx.log)
     ctx.log.debug(f"scripts_dir: {scripts_dir}")
     ctx.log.debug(
         f"config.migrations.directories: {getattr(ctx.config.migrations, 'directories', None)}"
@@ -326,8 +359,10 @@ def _dispatch_command(ctx: _CliContext, command_output: CommandOutput) -> int:
         )
         schema_name = getattr(ctx.config.database, "schema", None)
         formatter = TextFormatter()
+        formatter.license_info = ctx.license_info
         main_header = formatter.format_header(schema_name, database_name)
 
+        from cli import export_schema_command, snapshot_command
         from core.migration.commands import base_command
 
         if main_header:
@@ -338,6 +373,18 @@ def _dispatch_command(ctx: _CliContext, command_output: CommandOutput) -> int:
         # in base_command does not re-emit it (it also has no format awareness).
         if main_header:
             base_command._console_main_header_printed = True  # type: ignore[attr-defined]
+            export_schema_command._console_main_header_printed = True  # type: ignore[attr-defined]
+            snapshot_command._console_main_header_printed = True  # type: ignore[attr-defined]
+            # Also suppress the header in the core command modules, which have their
+            # own independent module-level flag that would otherwise cause a duplicate.
+            try:
+                from core.migration.commands import export_schema_command as _core_esc
+                from core.migration.commands import snapshot_command as _core_sc
+
+                _core_esc._console_main_header_printed = True  # type: ignore[attr-defined]
+                _core_sc._console_main_header_printed = True  # type: ignore[attr-defined]
+            except ImportError:
+                pass
 
         for cmd_index, command in enumerate(ctx.commands):
             if len(ctx.commands) > 1 and cmd_index > 0:

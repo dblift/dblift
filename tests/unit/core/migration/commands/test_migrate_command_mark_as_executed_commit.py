@@ -13,6 +13,8 @@ from core.migration.migration import MigrationType
 
 
 def _command_with_pending_migration(monkeypatch, provider: MagicMock) -> MigrateCommand:
+    monkeypatch.setattr("core.licensing._guard._refresh_state", lambda: None)
+
     command = MigrateCommand.__new__(MigrateCommand)
     command.config = SimpleNamespace(database=SimpleNamespace(schema="public"))
     command.provider = provider

@@ -1,0 +1,368 @@
+name: Build Distribution Packages
+
+on:
+  workflow_dispatch:  # Manual triggering
+  push:
+    tags:
+      - 'v*'  # Trigger on version tags (v1.0.0, v1.1.0, etc.)
+
+permissions:
+  contents: write  # Needed for creating releases
+  checks: write
+  actions: read
+
+jobs:
+  # Run basic verification checks
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies  
+        run: |
+          python -m pip install --upgrade pip
+          # Install dev dependencies first to ensure consistent versions
+          python -m pip install -r requirements-dev.txt
+          python -m pip install -e ".[dev]"
+
+      - name: Run code quality checks
+        run: |
+          echo "Running code quality checks..."
+          black --check --diff api/ cli/ config/ core/ db/ tests/ scripts/ || exit 1
+          isort --check --diff api/ cli/ config/ core/ db/ tests/ scripts/ || exit 1  
+          # Note: .flake8 config excludes tests/ and scripts/, so we only check source directories
+          flake8 --config=.flake8 api/ cli/ config/ core/ db/ || exit 1
+          mypy --config-file pyproject.toml --show-error-codes api/ cli/ config/ core/ db/ || exit 1
+          echo "✅ Code quality checks passed"
+
+  build-distribution:
+    needs: [verify]
+    if: ${{ always() && (needs.verify.result == 'success' || needs.verify.result == 'skipped') }}
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            platform: linux
+            arch: x86_64
+          - os: windows-latest
+            platform: win32
+            arch: x86_64
+          - os: macos-latest
+            platform: darwin
+            arch: arm64
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install -r requirements-dev.txt
+          pip install "Cython>=3.0.0"
+          pip install -e ".[all]"
+
+      - name: Compile critical-path modules (Cython)
+        run: python setup_cython.py build_ext --inplace
+
+      - name: Build distribution package
+        run: |
+          python scripts/build_distributions.py --platform ${{ matrix.platform }} --arch ${{ matrix.arch }}
+          python scripts/build_distributions.py --platform ${{ matrix.platform }} --arch ${{ matrix.arch }} --exe
+
+      - name: Get version
+        id: get_version
+        shell: bash
+        run: |
+          VERSION=$(python -c "import sys; sys.path.insert(0, '.'); from __init__ import __version__; print(__version__)")
+          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+          echo "Detected version: $VERSION"
+
+      - name: Upload distribution artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: dblift-${{ steps.get_version.outputs.VERSION }}-${{ matrix.platform }}-${{ matrix.arch }}
+          path: dist/*
+          if-no-files-found: error
+
+  release:
+    needs: [build-distribution]
+    # Create release when:
+    # 1. Triggered by a tag push (automatic)
+    # 2. Or manually triggered (workflow_dispatch) - will use version from code
+    if: |
+      (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) ||
+      (github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0  # Fetch full history for changelog extraction
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v8
+        with:
+          path: artifacts
+
+      - name: List downloaded artifacts
+        run: |
+          echo "Artifacts structure:"
+          find artifacts -type f -name "*.tar.gz" -o -name "*.zip" | sort
+          echo ""
+          echo "Artifact directories:"
+          ls -la artifacts/*/ || echo "No artifact directories found"
+        
+      - name: Extract version from tag or code
+        id: get_version
+        shell: bash
+        run: |
+          if [[ "${{ github.event_name }}" == "push" ]] && [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+            # Extract from tag
+            VERSION=${GITHUB_REF#refs/tags/v}
+            echo "Extracted version from tag: $VERSION"
+          else
+            # Extract from code (for manual workflow_dispatch)
+            VERSION=$(python -c "import sys; sys.path.insert(0, '.'); from __init__ import __version__; print(__version__)")
+            echo "Extracted version from code: $VERSION"
+          fi
+          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+          echo "Using version: $VERSION"
+        
+      - name: Extract release notes from changelog
+        id: extract_notes
+        run: |
+          VERSION=${{ steps.get_version.outputs.VERSION }}
+          # Extract the section for this version from CHANGELOG.md
+          # Match both "## [1.0.0]" and "## [1.0.0] - 2025-12-16" formats
+          NOTES=$(awk -v ver="## \\[${VERSION}\\]" '
+            BEGIN { found=0; }
+            $0 ~ ver { found=1; next; }
+            found && $0 ~ /^## \[/ { found=0; }
+            found { print $0; }
+          ' CHANGELOG.md)
+          
+          # If no notes found, try without brackets
+          if [ -z "$NOTES" ]; then
+            NOTES=$(awk -v ver="## ${VERSION}" '
+              BEGIN { found=0; }
+              $0 ~ ver { found=1; next; }
+              found && $0 ~ /^## / { found=0; }
+              found { print $0; }
+            ' CHANGELOG.md)
+          fi
+          
+          # Save to a file (preserving newlines)
+          echo "$NOTES" > release_notes.md
+          echo "Generated release notes for version $VERSION"
+          echo "Release notes length: $(wc -l < release_notes.md) lines"
+
+      - name: Determine tag name
+        id: tag_name
+        shell: bash
+        run: |
+          if [[ "${{ github.event_name }}" == "push" ]] && [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+            TAG_NAME="${{ github.ref_name }}"
+          else
+            TAG_NAME="v${{ steps.get_version.outputs.VERSION }}"
+          fi
+          echo "TAG_NAME=$TAG_NAME" >> $GITHUB_OUTPUT
+          echo "Using tag: $TAG_NAME"
+
+      - name: Check if release exists and delete if needed
+        id: check_release
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG_NAME="${{ steps.tag_name.outputs.TAG_NAME }}"
+          REPO="${{ github.repository }}"
+          echo "Checking for existing release with tag: $TAG_NAME"
+          
+          # Use GitHub API directly with curl to avoid gh CLI authentication issues
+          # Check if release exists for this tag
+          RELEASE_RESPONSE=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
+            "https://api.github.com/repos/$REPO/releases/tags/$TAG_NAME" || echo "")
+          
+          RELEASE_ID=$(echo "$RELEASE_RESPONSE" | grep -o '"id":[0-9]*' | head -1 | cut -d':' -f2 || echo "")
+          
+          if [ -n "$RELEASE_ID" ] && [ "$RELEASE_ID" != "null" ] && [ -n "$RELEASE_ID" ]; then
+            echo "Release for tag $TAG_NAME already exists (ID: $RELEASE_ID)"
+            
+            echo "Deleting existing release and all its assets..."
+            # Delete the release using GitHub API
+            DELETE_RESPONSE=$(curl -s -w "\n%{http_code}" -X DELETE \
+              -H "Authorization: token $GITHUB_TOKEN" \
+              -H "Accept: application/vnd.github.v3+json" \
+              "https://api.github.com/repos/$REPO/releases/$RELEASE_ID")
+            
+            HTTP_CODE=$(echo "$DELETE_RESPONSE" | tail -1)
+            
+            if [ "$HTTP_CODE" = "204" ] || [ "$HTTP_CODE" = "200" ]; then
+              echo "✅ Successfully deleted existing release"
+              # Wait for GitHub to process the deletion
+              echo "Waiting for GitHub to process deletion..."
+              sleep 5
+              
+              # Verify deletion
+              VERIFY_RESPONSE=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
+                "https://api.github.com/repos/$REPO/releases/tags/$TAG_NAME" || echo "")
+              VERIFY_ID=$(echo "$VERIFY_RESPONSE" | grep -o '"id":[0-9]*' | head -1 | cut -d':' -f2 || echo "")
+              
+              if [ -n "$VERIFY_ID" ] && [ "$VERIFY_ID" != "null" ] && [ -n "$VERIFY_ID" ]; then
+                echo "⚠️  Warning: Release still exists after deletion attempt. This may cause issues."
+              else
+                echo "✅ Release successfully deleted and verified"
+              fi
+            else
+              echo "❌ ERROR: Failed to delete existing release (HTTP $HTTP_CODE)."
+              echo "Response: $(echo "$DELETE_RESPONSE" | head -1)"
+              echo "This may be due to insufficient permissions or the release being protected."
+              echo "Please manually delete the release at: https://github.com/$REPO/releases/tag/$TAG_NAME"
+              echo "Or ensure the GITHUB_TOKEN has 'contents: write' permission."
+              exit 1
+            fi
+          else
+            echo "No existing release for tag $TAG_NAME - proceeding with new release"
+          fi
+
+      - name: Prepare release files
+        id: prepare_files
+        shell: bash
+        run: |
+          # Find all distribution files (tar.gz and zip) and copy to a flat structure
+          echo "Searching for distribution files in artifacts directory..."
+          echo "Current directory: $(pwd)"
+          
+          # Create a flat directory for release files
+          RELEASE_DIR="release_files"
+          mkdir -p "$RELEASE_DIR"
+          
+          # Find all distribution archive files
+          FILES=$(find artifacts -type f \( -name "*.tar.gz" -o -name "*.zip" \) | sort)
+          
+          if [ -z "$FILES" ]; then
+            echo "ERROR: No distribution files found!"
+            echo "Artifacts directory contents:"
+            ls -la artifacts/ || echo "artifacts/ does not exist"
+            if [ -d "artifacts" ]; then
+              echo "Recursive contents:"
+              find artifacts -type f || echo "No files found in artifacts"
+            fi
+            exit 1
+          fi
+          
+          # Copy files to flat structure and verify
+          FILE_COUNT=0
+          RELEASE_FILES=""
+          while IFS= read -r file; do
+            if [ ! -f "$file" ]; then
+              echo "ERROR: Source file not found: $file"
+              exit 1
+            fi
+            
+            # Copy to flat directory with just the filename
+            FILENAME=$(basename "$file")
+            cp "$file" "$RELEASE_DIR/$FILENAME"
+            
+            if [ ! -f "$RELEASE_DIR/$FILENAME" ]; then
+              echo "ERROR: Failed to copy $file to $RELEASE_DIR/$FILENAME"
+              exit 1
+            fi
+            
+            if [ -z "$RELEASE_FILES" ]; then
+              RELEASE_FILES="$RELEASE_DIR/$FILENAME"
+            else
+              RELEASE_FILES="$RELEASE_FILES $RELEASE_DIR/$FILENAME"
+            fi
+            
+            FILE_COUNT=$((FILE_COUNT + 1))
+            echo "Copied: $file -> $RELEASE_DIR/$FILENAME ($(du -h "$file" | cut -f1))"
+          done <<< "$FILES"
+          
+          # Store file list
+          echo "$RELEASE_FILES" | tr ' ' '\n' > release_files.txt
+          echo "files=$RELEASE_FILES" >> $GITHUB_OUTPUT
+          echo "Prepared $FILE_COUNT files for release in $RELEASE_DIR/"
+          echo "File list saved to release_files.txt"
+
+      - name: Verify files before release
+        shell: bash
+        run: |
+          echo "Files to be uploaded from release_files directory:"
+          if [ ! -d "release_files" ]; then
+            echo "ERROR: release_files directory does not exist!"
+            exit 1
+          fi
+          
+          echo "Listing all files in release_files directory:"
+          ls -lah release_files/ || echo "Directory is empty"
+          
+          FILE_COUNT=0
+          for file in release_files/*.tar.gz release_files/*.zip; do
+            # Check if glob matched actual files (not the literal pattern)
+            if [ -f "$file" ]; then
+              echo "  ✓ $file ($(du -h "$file" | cut -f1))"
+              FILE_COUNT=$((FILE_COUNT + 1))
+            fi
+          done
+          
+          if [ $FILE_COUNT -eq 0 ]; then
+            echo "ERROR: No files found matching patterns release_files/*.tar.gz or release_files/*.zip!"
+            echo "Contents of release_files:"
+            find release_files -type f || echo "No files found"
+            exit 1
+          fi
+          
+          echo "Found $FILE_COUNT files ready for upload"
+          
+          # Also create a file list for the release action as fallback
+          find release_files -type f \( -name "*.tar.gz" -o -name "*.zip" \) > release_file_list.txt
+          echo "File list saved to release_file_list.txt"
+
+      - name: Generate release checksums
+        shell: bash
+        run: |
+          cd release_files
+          shopt -s nullglob
+          archives=( *.tar.gz *.zip )
+          if [ ${#archives[@]} -eq 0 ]; then
+            echo "ERROR: No .tar.gz or .zip files to checksum in release_files"
+            exit 1
+          fi
+          shasum -a 256 "${archives[@]}" | sort > SHA256SUMS.txt
+          echo "Generated SHA256SUMS.txt:"
+          cat SHA256SUMS.txt
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: ${{ steps.tag_name.outputs.TAG_NAME }}
+          name: Release ${{ steps.get_version.outputs.VERSION }}
+          # Use multiline format for file patterns - more reliable
+          files: |
+            release_files/*.tar.gz
+            release_files/*.zip
+            release_files/SHA256SUMS.txt
+          draft: false
+          prerelease: false
+          token: ${{ secrets.GITHUB_TOKEN }}
+          body_path: release_notes.md
+          generate_release_notes: false
+          # Don't fail if some patterns don't match (we verify files exist above)
+          fail_on_unmatched_files: false

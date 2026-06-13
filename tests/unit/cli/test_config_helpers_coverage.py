@@ -201,6 +201,22 @@ class TestBuildArgsNamespace:
             )
         assert args.database_password == "secret"
 
+    def test_multi_command_extract_license_key(self):
+        # Lines 170: extract license_key
+        mock_parser = MagicMock()
+        with (
+            patch("cli._config_helpers.create_parser", return_value=mock_parser),
+            patch(
+                "cli._config_helpers.parse_with_selective_errors", return_value=(None, [], False)
+            ),
+        ):
+            args, _ = _build_args_namespace(
+                commands=["migrate", "info"],
+                global_arguments=["--license-key=ABC-123"],
+                subcommand_args=[],
+            )
+        assert args.license_key == "ABC-123"
+
 
 # ---------------------------------------------------------------------------
 # _load_and_merge_config — uncovered branches (lines 221-229)
@@ -244,6 +260,25 @@ class TestLoadAndMergeConfig:
             result = _load_and_merge_config(args, None)
         assert result.history_table == "my_history"
 
+    def test_snapshot_table_sets_snapshot_table(self):
+        config = self._make_config()
+        args = SimpleNamespace(
+            config=None,
+            database_url=None,
+            database_username=None,
+            database_password=None,
+            database_schema=None,
+            table_name=None,
+            snapshot_table="my_snapshots",
+            installed_by=None,
+        )
+        with (
+            patch("cli._config_helpers.load_config", return_value=config),
+            patch("cli._config_helpers.ConfigBuilder"),
+        ):
+            result = _load_and_merge_config(args, None)
+        assert result.snapshot_table == "my_snapshots"
+
     def test_installed_by_set_from_args(self):
         # Line 224-225: args.installed_by → config.database.installed_by
         config = self._make_config()
@@ -283,6 +318,27 @@ class TestLoadAndMergeConfig:
         ):
             result = _load_and_merge_config(args, None)
         assert result.database.installed_by == "db_user"
+
+    def test_db_overrides_applied(self):
+        # Lines 198-209: database overrides from args
+        config = self._make_config()
+        args = SimpleNamespace(
+            config=None,
+            database_url="postgresql+psycopg://newhost/db",
+            database_username="new_user",
+            database_password="new_pass",
+            database_schema="new_schema",
+            table_name=None,
+            installed_by=None,
+        )
+        mock_merged_db = MagicMock()
+        with (
+            patch("cli._config_helpers.load_config", return_value=config),
+            patch("cli._config_helpers.ConfigBuilder") as mock_cb,
+        ):
+            mock_cb.merge_database_overrides.return_value = mock_merged_db
+            result = _load_and_merge_config(args, None)
+        mock_cb.merge_database_overrides.assert_called_once()
 
     def test_log_debug_called_when_log_present(self):
         # Lines 211-219: log is not None → debug calls
@@ -425,6 +481,22 @@ class TestValidateDbConfig:
         _validate_db_config(args, config, parser, ["migrate"])
 
         assert config.database.schema == "appdb"
+        parser.error.assert_not_called()
+
+    def test_sqlserver_missing_schema_uses_dbo(self):
+        parser = self._make_parser()
+        args = SimpleNamespace(command="migrate", database_url=None)
+        config = MagicMock()
+        config.database.type = "sqlserver"
+        config.database.url = "mssql+pymssql://localhost:1433/appdb"
+        config.database.username = "user"
+        config.database.password = "pass"
+        config.database.database = "appdb"
+        config.database.schema = None
+
+        _validate_db_config(args, config, parser, ["migrate"])
+
+        assert config.database.schema == "dbo"
         parser.error.assert_not_called()
 
     def test_postgresql_missing_schema_uses_public(self):

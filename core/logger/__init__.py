@@ -17,10 +17,12 @@ from core.logger.log import (
 from core.logger.results import (
     BaselineResult,
     CleanResult,
+    DiffResult,
     InfoResult,
     MigrateResult,
     MigrationInfo,
     OperationResult,
+    PlanResult,
     RepairResult,
     ValidateResult,
 )
@@ -426,6 +428,7 @@ __all__ = [
     "ConsoleLog",
     "MultiLog",
     "OperationResult",
+    "PlanResult",
     "MigrateResult",
     "MigrationInfo",
     "InfoResult",
@@ -435,6 +438,7 @@ __all__ = [
     "RepairResult",
     "NullLog",
     "DbliftLogger",
+    "DiffResult",
     # Formatters
     "OutputFormatter",
     "OutputFormatterFactory",

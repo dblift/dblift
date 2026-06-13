@@ -7,7 +7,8 @@ _find_current_and_baseline_version, _collect_versioned_migrations,
 _build_repeatable_checksums, _sort_applied_migrations, _mark_reapplied_duplicates,
 _detect_out_of_order_migrations, _get_undone_versions, _get_reapplied_versions,
 _should_exclude_migration, _clean_delete_description, _get_category_from_type,
-_get_type_from_migration_type, _format_version, _determine_pending_migration_status.
+_get_type_from_migration_type, _format_version, _determine_pending_migration_status,
+_compare_versions.
 """
 
 import datetime
@@ -744,6 +745,30 @@ class TestDeterminePendingMigrationStatusCoverage(unittest.TestCase):
         m = _make_migration("2.0")
         result = coll._determine_pending_migration_status(m, "5.0", "1.0", "0.5")
         assert result == "PENDING"
+
+
+# ===========================================================================
+# _compare_versions  (line 910-912)
+# ===========================================================================
+
+
+class TestCompareVersionsCoverage(unittest.TestCase):
+    def _c(self):
+        return _make_collector()[0]
+
+    def test_equal_versions(self):
+        assert self._c()._compare_versions("1.0", "1.0") == 0
+
+    def test_greater_than(self):
+        assert self._c()._compare_versions("2.0", "1.0") > 0
+
+    def test_less_than(self):
+        assert self._c()._compare_versions("1.0", "2.0") < 0
+
+    def test_none_values(self):
+        # Should not raise
+        result = self._c()._compare_versions(None, "1.0")
+        assert isinstance(result, int)
 
 
 # ===========================================================================

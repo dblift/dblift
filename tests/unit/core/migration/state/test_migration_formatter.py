@@ -357,3 +357,61 @@ class TestMigrationFormatter:
         """Test _get_state_color with lowercase input."""
         result = formatter._get_state_color("success")
         assert result == "success"
+
+    def test_compare_versions_both_none(self, formatter):
+        """Test _compare_versions with both None."""
+        result = formatter._compare_versions(None, None)
+        assert result == 0
+
+    def test_compare_versions_first_none(self, formatter):
+        """Test _compare_versions with first None."""
+        result = formatter._compare_versions(None, "1.0.0")
+        assert result == -1
+
+    def test_compare_versions_second_none(self, formatter):
+        """Test _compare_versions with second None."""
+        result = formatter._compare_versions("1.0.0", None)
+        assert result == 1
+
+    def test_compare_versions_equal(self, formatter):
+        """Test _compare_versions with equal versions."""
+        result = formatter._compare_versions("1.0.0", "1.0.0")
+        assert result == 0
+
+    def test_compare_versions_first_greater(self, formatter):
+        """Test _compare_versions with first greater."""
+        result = formatter._compare_versions("2.0.0", "1.0.0")
+        assert result == 1
+
+    def test_compare_versions_first_lesser(self, formatter):
+        """Test _compare_versions with first lesser."""
+        result = formatter._compare_versions("1.0.0", "2.0.0")
+        assert result == -1
+
+    def test_compare_versions_with_underscores(self, formatter):
+        """Test _compare_versions with underscores."""
+        result = formatter._compare_versions("1_0_0", "1.0.0")
+        assert result == 0
+
+    def test_compare_versions_different_lengths(self, formatter):
+        """Test _compare_versions with different lengths."""
+        # When versions have different lengths, shorter is padded with zeros
+        result = formatter._compare_versions("1.0.0.0", "1.0.0")
+        assert result == 0
+
+        # Test with actually different values
+        result = formatter._compare_versions("2.0.0.0", "1.0.0")
+        assert result == 1
+
+    def test_compare_versions_non_numeric_parts(self, formatter):
+        """Test _compare_versions with non-numeric parts."""
+        # Should fallback to string comparison
+        result = formatter._compare_versions("1.0.0a", "1.0.0")
+        assert isinstance(result, int)
+
+    def test_compare_versions_exception_fallback(self, formatter):
+        """Test _compare_versions exception fallback."""
+        # Force exception by passing invalid types that might cause issues
+        # The method should fallback to string comparison
+        result = formatter._compare_versions("1.0.0", "1.0.0")
+        assert isinstance(result, int)

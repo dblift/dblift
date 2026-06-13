@@ -172,6 +172,24 @@ def test_fk_reference_bind_params_non_oracle_has_three_items(dialect: str) -> No
     assert params == ["s", "t", "c"], f"{dialect}: fk_reference_bind_params returned {params!r}"
 
 
+def test_cosmosdb_requires_sdk_for_drop() -> None:
+    """Story 27-3: CosmosDB must declare SDK-required drops."""
+    quirks = ProviderRegistry.get_quirks("cosmosdb")
+    assert quirks.requires_sdk_for_drop() is True
+
+
+@pytest.mark.parametrize(
+    "dialect",
+    [d for d in KNOWN_DIALECTS if d != "cosmosdb"],
+)
+def test_non_cosmosdb_does_not_require_sdk_for_drop(dialect: str) -> None:
+    """Story 27-3: Non-CosmosDB dialects must not require SDK drops."""
+    quirks = ProviderRegistry.get_quirks(dialect)
+    assert (
+        quirks.requires_sdk_for_drop() is False
+    ), f"{dialect}: requires_sdk_for_drop() must return False"
+
+
 def test_unwrap_default_value_sqlserver_strips_parens() -> None:
     """Story 27-5: SQL Server must strip outer parens from simple defaults."""
 

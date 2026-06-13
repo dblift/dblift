@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools>=78.1.1", "wheel>=0.46.2"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "{{cookiecutter.project_name}}"
+version = "0.1.0"
+description = "{{cookiecutter.description}}"
+readme = "README.md"
+requires-python = ">=3.11"
+authors = [{name = "{{cookiecutter.author}}"}]
+dependencies = [
+    "dblift>=1.8",
+    # Add your native DB driver here or under an extra below.
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=7.3"]
+
+[project.entry-points."dblift.providers"]
+{{cookiecutter.dialect_name}} = "db.plugins.{{cookiecutter.dialect_name}}.plugin:PLUGIN"
+
+[tool.setuptools]
+# Explicit packages list (no top-level 'db' package from this dist).
+# This lets the plugin drop db/plugins/<dialect>/... into site-packages
+# additively next to the main dblift installation without clobbering
+# dblift's db/__init__.py.
+packages = ["db.plugins.{{cookiecutter.dialect_name}}"]

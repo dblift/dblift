@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Dict, Optional, Tuple, Type
 
 from core.utils.database_url_parser import DatabaseUrlParser
 from db.base_quirks import BaseQuirks
+
+if TYPE_CHECKING:
+    from core.sql_generator.alter.base_alter_generator import BaseAlterGenerator
+    from core.sql_generator.base_generator import BaseSqlGenerator
 
 
 class MysqlQuirks(BaseQuirks):
@@ -25,11 +29,12 @@ class MysqlQuirks(BaseQuirks):
     supports_transactional_ddl = False  # DDL auto-commits
     schema_required = True
     uppercase_identifiers = False
-    clean_strategy = "native"
+    clean_strategy = "introspector"
     connection_identifier_attrs = ("url", "host", "database")
     missing_connection_identifier_hint = "MySQL connection requires url or host/database fields"
     sqlglot_dialect = "mysql"
     pygments_lexer = "mysql"
+    lint_placeholder_url = "mysql+pymysql://127.0.0.1:3306/dblift_validate_sql"
     quote_open = "`"
     quote_close = "`"
     drop_supports_if_exists = True
@@ -55,13 +60,15 @@ class MysqlQuirks(BaseQuirks):
     view_supports_algorithm = True
     proc_skip_empty_comparison = True
     table_column_default_has_on_update = True
-    # MySQL TIMESTAMP/TIME takes only fractional-seconds precision (0-6), not size,scale.
-    time_type_supports_only_fractional_precision = True
     # Wave B hooks.
     native_driver_display = "pymysql"
     # Wave C hooks (story 26-9): migration engine transaction semantics.
     clean_schema_auto_commits = True
     supports_session_autocommit = False
+    # MySQL InnoDB consistent-snapshot mode locks the snapshot until
+    # commit/rollback; the snapshot service rolls back after read-only
+    # introspection to free the connection.
+    requires_rollback_after_introspection = True
 
     def derive_schema_name(self, database_config: Any) -> Optional[str]:
         """Use MySQL's selected database/catalog as DBLift's effective schema."""
@@ -94,6 +101,51 @@ class MysqlQuirks(BaseQuirks):
         """Initialize MySQL quirks with the dialect name."""
         super().__init__(dialect_name=dialect_name)
 
+    def build_snapshot_table_ddl(
+        self,
+        qualified_table: str,
+        snapshot_id_size: int,
+        checksum_size: int,
+    ) -> str:
+        """Render the MySQL/MariaDB snapshot table DDL — ``LONGTEXT`` model column."""
+        return (
+            f"CREATE TABLE {qualified_table} ("
+            f"snapshot_id VARCHAR({snapshot_id_size}) PRIMARY KEY, "
+            f"captured_at VARCHAR({snapshot_id_size}) NOT NULL, "
+            f"checksum VARCHAR({checksum_size}) NOT NULL, "
+            f"model_data LONGTEXT NOT NULL)"
+        )
+
+    def ddl_generator_class(self) -> Optional[Type["BaseSqlGenerator"]]:
+        """Return the MySQL-specific :class:`MySQLSqlGenerator` (lazy import)."""
+        from db.plugins.mysql.generator.ddl_generator import MySQLSqlGenerator
+
+        return MySQLSqlGenerator
+
+    def alter_generator_class(self) -> Optional[Type["BaseAlterGenerator"]]:
+        """Return the MySQL-specific :class:`MySQLAlterGenerator` (lazy import)."""
+        from db.plugins.mysql.generator.alter_generator import MySQLAlterGenerator
+
+        return MySQLAlterGenerator
+
+    def vendor_queries_class(self) -> "Optional[Type[Any]]":
+        """Return the MySQL :class:`MySQLMetadataQueries` bundle (lazy import).
+
+        MariaDB inherits this via :class:`MariadbQuirks(MysqlQuirks)` — its
+        ``information_schema`` queries are identical to MySQL's."""
+        from db.plugins.mysql.introspection.mysql_queries import MySQLMetadataQueries
+
+        return MySQLMetadataQueries
+
+    def introspector_class(self) -> "Optional[Type[Any]]":
+        """Return the MySQL :class:`MySQLIntrospector` (F.3.b, lazy import).
+
+        MariaDB inherits this — both dialects share the same orchestration
+        and the same MySQL-family quirks hooks."""
+        from db.plugins.mysql.introspection.mysql_introspector import MySQLIntrospector
+
+        return MySQLIntrospector
+
     def parser_class(self, parser_type: str) -> Optional[type]:
         """MySQL parser dispatch: hybrid → :class:`HybridParser`, sqlglot →
         :class:`SqlGlotParser`, regex → :class:`MySqlRegexParser`."""
@@ -111,12 +163,18 @@ class MysqlQuirks(BaseQuirks):
             return MySqlRegexParser
         return None
 
-    # MySQL DELIMITER wrapping has two distinct call paths with different
-    # object-type sets — preserve both rather than collapsing into one.
+    # Story 26-3: MySQL DELIMITER wrapping has two distinct call paths
+    # with different object-type sets — preserve both rather than
+    # collapsing into one (PR #241 Bugbot).
     #
     #   ``_DELIMITER_OBJECT_TYPES`` (narrow) — PROCEDURE/FUNCTION only.
+    #     Used by ``SqlGenerator.generate_ddl`` to wrap CREATE
+    #     statements with ``DELIMITER //...//\nDELIMITER ;``.
     #
-    #   ``_BLOCK_DELIMITER_OBJECT_TYPES`` (wider) — adds TRIGGER and EVENT.
+    #   ``_BLOCK_DELIMITER_OBJECT_TYPES`` (wider) — adds TRIGGER and
+    #     EVENT. Used by the ``$$``-flavoured helper
+    #     ``_requires_mysql_delimiter`` /
+    #     ``_wrap_mysql_delimiter_block`` in sql_generator.py.
     _DELIMITER_OBJECT_TYPES = frozenset({"PROCEDURE", "FUNCTION"})
     _BLOCK_DELIMITER_OBJECT_TYPES = frozenset({"PROCEDURE", "FUNCTION", "TRIGGER", "EVENT"})
     _DEFINITION_PRESERVE_TYPES = frozenset({"VIEW", "PROCEDURE", "FUNCTION", "TRIGGER", "EVENT"})
@@ -171,7 +229,7 @@ class MysqlQuirks(BaseQuirks):
         self, col_diff: object, formatted_table: str, formatted_column: str, dialect: str
     ) -> "Optional[object]":
         """``ALTER TABLE … MODIFY <col> <type>`` — MySQL's column-type change form."""
-        from core.state.sql_statement import SqlStatement
+        from core.sql_generator.sql_statement import SqlStatement
 
         data_type_diff = getattr(col_diff, "data_type_diff", None)
         if data_type_diff is None:
@@ -218,7 +276,7 @@ class MysqlQuirks(BaseQuirks):
         ``information_schema.views``. The ``ALGORITHM`` clause is fetched
         via ``SHOW CREATE VIEW`` elsewhere (gated by its own dialect
         check inside the extractor's ``_get_mysql_view_algorithm`` helper)."""
-        from db.value_utils import get_row_value
+        from core.introspection._utils import get_row_value
 
         definer = get_row_value(row, "definer")
         if definer:
@@ -256,7 +314,7 @@ class MysqlQuirks(BaseQuirks):
         reports ``definer captured: yes`` or ``no`` for each trigger.
         Inherited unchanged by MariaDB.
         """
-        from db.value_utils import get_row_value
+        from core.introspection._utils import get_row_value
 
         definer = get_row_value(row, "definer")
         if definer:
@@ -336,9 +394,11 @@ class MysqlQuirks(BaseQuirks):
         the ``BEGIN`` offset."""
         if routine.definition is not None:
             return
-        create_stmt = None
-        if hasattr(extractor, "_fetch_mysql_show_create_routine"):
-            create_stmt = extractor._fetch_mysql_show_create_routine(schema, name, kind, status)
+        from core.introspection.extractors.procedure_extractor import (
+            _fetch_mysql_show_create_routine,
+        )
+
+        create_stmt = _fetch_mysql_show_create_routine(extractor, schema, name, kind, status)
         if create_stmt:
             routine.definition = create_stmt
             upper_stmt = create_stmt.upper()
@@ -354,7 +414,7 @@ class MysqlQuirks(BaseQuirks):
         Empty / missing falls through to ``VOLATILE``; only ``YES`` maps
         to ``IMMUTABLE``. The caller applies the row's own ``volatility``
         column afterwards, so a real projection still overrides this."""
-        from db.value_utils import get_row_value
+        from core.introspection._utils import get_row_value
 
         deterministic = (get_row_value(row, "is_deterministic") or "").upper()
         routine.volatility = "IMMUTABLE" if deterministic == "YES" else "VOLATILE"
@@ -365,7 +425,7 @@ class MysqlQuirks(BaseQuirks):
         """MySQL / MariaDB: ``definer`` column has final authority (it runs
         after the generic ``execute_as_principal`` / ``EXECUTE AS OWNER``
         path), so it can replace ``"OWNER"`` with the real ``user@host``."""
-        from db.value_utils import get_row_value
+        from core.introspection._utils import get_row_value
 
         definer_val = get_row_value(row, "definer")
         if definer_val:
@@ -378,7 +438,7 @@ class MysqlQuirks(BaseQuirks):
         with SQL-function stripping (``YEAR(col)`` → ``col``)."""
         import re
 
-        from db.value_utils import get_row_value
+        from core.introspection._utils import get_row_value
 
         part_method = get_row_value(row, "partition_method")
         part_expr = get_row_value(row, "partition_expression")
@@ -422,7 +482,7 @@ class MysqlQuirks(BaseQuirks):
 
     def apply_vendor_table_properties(self, table: Any, row: Dict[str, Any]) -> None:
         """Apply MySQL storage engine + row format + collation + create options."""
-        from db.value_utils import get_row_value
+        from core.introspection._utils import get_row_value
 
         storage_engine = get_row_value(row, "storage_engine")
         if storage_engine:

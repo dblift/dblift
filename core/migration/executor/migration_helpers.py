@@ -136,3 +136,7 @@ class MigrationHelpers:
                 return False, error_message_str, validation_time
 
         return validation_result.success, error_message_str, validation_time
+
+    # NOTE: analyze_applied_migrations has been removed in favor of MigrationStateManager.
+    # All migration state analysis should now go through MigrationStateManager.build_state()
+    # which provides centralized, consistent state management across all operations.

@@ -21,6 +21,7 @@ _COMMAND_MODULES = [
     "core.migration.commands.migrate_command",
     "core.migration.commands.undo_command",
     "core.migration.commands.validate_command",
+    "core.migration.commands.diff_command",
 ]
 
 # Commands that directly reference BaseProvider in their own source (not just
@@ -29,6 +30,7 @@ _COMMAND_MODULES = [
 _MODULES_WITH_BASE_PROVIDER_IMPORT = [
     "core.migration.commands.base_command",
     "core.migration.commands.migrate_command",
+    "core.migration.commands.diff_command",
 ]
 
 

@@ -52,6 +52,7 @@ class TestCosmosDbCleanDropsAllContainers:
                 "products",
                 "audit",
                 "dblift_schema_history",
+                "dblift_schema_snapshots",
                 "dblift_migration_lock",
             ],
         )
@@ -64,6 +65,7 @@ class TestCosmosDbCleanDropsAllContainers:
             "products",
             "audit",
             "dblift_schema_history",
+            "dblift_schema_snapshots",
             "dblift_migration_lock",
         ]
         assert sorted(delete_calls) == sorted(expected)
@@ -77,6 +79,7 @@ class TestCosmosDbCleanDropsAllContainers:
             container_names=[
                 "users",
                 "dblift_schema_history",
+                "dblift_schema_snapshots",
                 "dblift_migration_lock",
             ],
         )
@@ -87,6 +90,7 @@ class TestCosmosDbCleanDropsAllContainers:
         assert sorted((obj.object_type, obj.name) for obj in summary.objects) == [
             ("CONTAINER", "dblift_migration_lock"),
             ("CONTAINER", "dblift_schema_history"),
+            ("CONTAINER", "dblift_schema_snapshots"),
             ("CONTAINER", "users"),
         ]
 
@@ -139,6 +143,7 @@ class TestCosmosDbCleanPreview:
         operations.list_containers = MagicMock(
             return_value=[
                 "dblift_schema_history",
+                "dblift_schema_snapshots",
                 "dblift_migration_lock",
             ]
         )
@@ -148,5 +153,6 @@ class TestCosmosDbCleanPreview:
         assert sorted(obj.name for obj in summary.objects) == [
             "dblift_migration_lock",
             "dblift_schema_history",
+            "dblift_schema_snapshots",
         ]
         assert all(obj.object_type == "CONTAINER" for obj in summary.objects)

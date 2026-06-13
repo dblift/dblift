@@ -1,6 +1,8 @@
-"""Core ``OutputFormatter`` implementation.
+"""Core ``OutputFormatter`` implementation (non-diff format methods + orchestrator).
 
-The public ``formatter`` façade re-exports ``OutputFormatter`` so existing imports
+The text-diff section helpers live in the ``_format_diff_*.py`` sibling
+modules and are mixed in here. The public ``formatter`` façade re-exports
+``OutputFormatter`` so existing imports
 (``from core.logger.formatters.formatter import OutputFormatter``) keep
 working unchanged.
 
@@ -11,12 +13,18 @@ This file was extracted from the monolithic
 from pathlib import Path
 from typing import Any, Dict, Optional, Type
 
+from core.logger.formatters._format_diff_meta import _DiffMetaFormatterMixin
+from core.logger.formatters._format_diff_object import _DiffObjectFormatterMixin
+from core.logger.formatters._format_diff_routine import _DiffRoutineFormatterMixin
+from core.logger.formatters._format_diff_table import _DiffTableFormatterMixin
 from core.logger.results import (
     BaselineResult,
     CleanResult,
+    DiffResult,
     InfoResult,
     MigrateResult,
     OperationResult,
+    PlanResult,
     RepairResult,
     UndoResult,
     ValidateResult,
@@ -34,7 +42,12 @@ except ImportError:
     JsonFormatter = None  # type: ignore
 
 
-class OutputFormatter:
+class OutputFormatter(
+    _DiffMetaFormatterMixin,
+    _DiffTableFormatterMixin,
+    _DiffRoutineFormatterMixin,
+    _DiffObjectFormatterMixin,
+):
     """Unified formatter for all operation results."""
 
     # Maps result type → (format_method_name, command_type_string)
@@ -45,7 +58,9 @@ class OutputFormatter:
         ValidateResult: ("format_validate", "validate"),
         BaselineResult: ("format_baseline", "baseline"),
         RepairResult: ("format_repair", "repair"),
+        DiffResult: ("format_diff", "diff"),
         UndoResult: ("format_undo", "undo"),
+        PlanResult: ("format_plan", "plan"),
     }
 
     def __init__(self) -> None:
@@ -175,6 +190,55 @@ class OutputFormatter:
             output.append("No migrations were undone.")
 
         self._append_sql_visibility(output, result)
+        return "\n".join(output)
+
+    def format_plan(self, result: PlanResult) -> str:
+        """Format an offline plan operation result."""
+        output = []
+        output.append("Migration Plan Report")
+        output.append("=====================")
+        output.append(f"Snapshot: {result.snapshot_model or ''}")
+        output.append("Status: SUCCESS" if result.success else "Status: FAILED")
+        if result.error_message:
+            output.append(f"Error: {result.error_message}")
+        output.append(f"Applied in snapshot: {result.already_applied_count}")
+        output.append(f"Pending versioned: {result.pending_count}")
+        output.append(f"Pending repeatable: {result.repeatables_pending_count}")
+        output.append(f"Checksum drift: {result.checksum_drift_count}")
+        if result.sql_validation:
+            output.append(
+                "SQL validation: "
+                f"{result.sql_validation.status} "
+                f"({result.sql_validation.files_checked} files)"
+            )
+        if result.pending_migrations:
+            output.append("")
+            output.append("Pending Migrations:")
+            for migration in result.pending_migrations:
+                output.append(f"- {migration.script}")
+        if result.repeatables_pending:
+            output.append("")
+            output.append("Repeatables Pending:")
+            for migration in result.repeatables_pending:
+                output.append(f"- {migration.script}")
+        if result.checksum_drift:
+            output.append("")
+            output.append("Checksum Drift:")
+            for drift in result.checksum_drift:
+                output.append(
+                    f"- {drift.script}: snapshot={drift.expected_checksum}, "
+                    f"local={drift.actual_checksum}"
+                )
+        if result.plan_errors:
+            output.append("")
+            output.append("Errors:")
+            for error in result.plan_errors:
+                output.append(f"- {error}")
+        if result.plan_warnings:
+            output.append("")
+            output.append("Warnings:")
+            for warning in result.plan_warnings:
+                output.append(f"- {warning}")
         return "\n".join(output)
 
     def _append_sql_visibility(self, output: list[str], result: OperationResult) -> None:
@@ -481,3 +545,23 @@ class OutputFormatter:
                 output.append(f"- {warning}")
 
         return "\n".join(output)
+
+    def format_diff(self, result: DiffResult) -> str:
+        """Format a diff/comparison operation result."""
+        sections = [
+            self._format_diff_header(result),
+            self._format_diff_counts(result),
+            self._format_table_diff(result),
+            self._format_view_diff(result),
+            self._format_index_diff(result),
+            self._format_sequence_diff(result),
+            self._format_trigger_diff(result),
+            self._format_procedure_diff(result),
+            self._format_type_diff(result),
+            self._format_extension_diff(result),
+            self._format_fdw_diff(result),
+            self._format_server_diff(result),
+            self._format_event_diff(result),
+            self._format_diff_footer(result),
+        ]
+        return "\n".join(s for s in sections if s)

@@ -1,3 +1,19 @@
+# DBLift (Open Source)
+
+Core database migration engine for PostgreSQL, MySQL/MariaDB, SQLite, Oracle, SQL Server, DB2, and CosmosDB.
+
+Pro and Enterprise features (`validate-sql`, `drift`, `export-schema`, `plan`, `preflight`, cloud secret managers, enriched reports, etc.) ship in the separate `dblift-enterprise` package. All databases are available in OSS; we gate on features, not database engines.
+
+| Install | Dialects |
+| --- | --- |
+| `pip install dblift[postgresql]` | PostgreSQL (OSS) |
+| `pip install dblift[mysql]` / `dblift[mariadb]` | MySQL / MariaDB (OSS) |
+| `pip install dblift[oracle]` | Oracle (OSS; Pro/Enterprise features such as `plan` or paid `validate-sql` packs require `dblift-enterprise` on top) |
+| `pip install dblift[sqlserver]` | SQL Server (OSS) |
+| `pip install dblift[db2]` | DB2 (OSS) |
+| `pip install dblift` | SQLite and CosmosDB (OSS, no extra needed) |
+| `pip install dblift[all]` | All of the above |
+
 # DBLift User Guide
 
 <p align="center">

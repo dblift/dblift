@@ -1,26 +1,15 @@
-"""Façade re-exporting per-command handlers from :mod:`cli.handlers`.
-
-Historically this module hosted all CLI handlers in a single 742-line
-file. The handlers were extracted into :mod:`cli.handlers` (one module
-per command, plus :mod:`cli.handlers._shared` for the
-``CliCommandContext`` dataclass and shared helpers). This file now
-re-exports the same names so existing imports — ``cli.main`` and the
-test suite — keep working unchanged.
-"""
+"""Façade re-exporting OSS CLI command handlers."""
 
 from __future__ import annotations
 
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
-from cli.extensions import (
-    load_builtin_command_handlers,
-    load_command_handlers,
-    load_terminal_commands,
-)
-from cli.handlers._shared import (  # noqa: F401  re-exported public surface
+from cli.extensions import load_command_handlers, load_terminal_commands
+from cli.handlers._shared import (  # noqa: F401
     _MIGRATION_FILENAME_RE,
     CliCommandContext,
+    ValidateSqlConfigClient,
     _extract_version_filters,
     _is_migration_sql_file,
     _minimal_result,
@@ -45,7 +34,6 @@ _COMMAND_HANDLERS: Dict[str, Callable[[CliCommandContext], Tuple[bool, Any]]] = 
     "repair": _handle_repair,
     "import-flyway": _handle_import_flyway,
 }
-_COMMAND_HANDLERS.update(load_builtin_command_handlers())
 
 _extension_handlers = load_command_handlers()
 _builtin_conflicts = set(_extension_handlers) & set(_COMMAND_HANDLERS)
@@ -84,8 +72,7 @@ def execute_single_command(
         placeholders=placeholders,
         dir_recursive_map=dir_recursive_map,
     )
-    result: Tuple[bool, Any] = handler(ctx)
-    return result
+    return handler(ctx)
 
 
 def _validate_migrate_options(cmd_args: Any, parser: Any) -> None:

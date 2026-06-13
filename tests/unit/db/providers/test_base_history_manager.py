@@ -179,12 +179,6 @@ class TestToInt(unittest.TestCase):
         mgr = _make_concrete()
         self.assertEqual(mgr._to_int("abc"), 0)
 
-    def test_java_bigdecimal_with_intvalue(self):
-        mgr = _make_concrete()
-        bd = MagicMock()
-        bd.intValue.return_value = 99
-        self.assertEqual(mgr._to_int(bd), 99)
-
 
 class TestToBoolean(unittest.TestCase):
     def test_none_false(self):
@@ -211,12 +205,6 @@ class TestToBoolean(unittest.TestCase):
         self.assertFalse(mgr._to_boolean("0"))
         self.assertFalse(mgr._to_boolean("no"))
 
-    def test_java_intvalue(self):
-        mgr = _make_concrete()
-        obj = MagicMock()
-        obj.intValue.return_value = 1
-        self.assertTrue(mgr._to_boolean(obj))
-
 
 class TestConvertTimestamp(unittest.TestCase):
     def test_none_returns_none(self):
@@ -231,22 +219,6 @@ class TestConvertTimestamp(unittest.TestCase):
     def test_string_returned_as_is(self):
         mgr = _make_concrete()
         self.assertEqual(mgr._convert_timestamp("2024-01-01"), "2024-01-01")
-
-    def test_jdbc_timestamp_converted(self):
-        mgr = _make_concrete()
-        ts = MagicMock()
-        local_dt = MagicMock()
-        local_dt.getYear.return_value = 2024
-        local_dt.getMonthValue.return_value = 6
-        local_dt.getDayOfMonth.return_value = 15
-        local_dt.getHour.return_value = 10
-        local_dt.getMinute.return_value = 30
-        local_dt.getSecond.return_value = 0
-        local_dt.getNano.return_value = 0
-        ts.toLocalDateTime.return_value = local_dt
-        result = mgr._convert_timestamp(ts)
-        self.assertIsInstance(result, datetime.datetime)
-        self.assertEqual(result.year, 2024)
 
 
 class TestBuildMigrationParams(unittest.TestCase):

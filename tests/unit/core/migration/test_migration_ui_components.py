@@ -476,6 +476,21 @@ class TestMigrationAnalyzerMarkReappliedDuplicates(unittest.TestCase):
         assert result == set()
 
 
+class TestMigrationAnalyzerCompareVersions(unittest.TestCase):
+
+    def setUp(self):
+        self.analyzer = MigrationAnalyzer(_make_log())
+
+    def test_equal_versions(self):
+        assert self.analyzer._compare_versions("1.0", "1.0") == 0
+
+    def test_lower_version(self):
+        assert self.analyzer._compare_versions("1.0", "2.0") < 0
+
+    def test_higher_version(self):
+        assert self.analyzer._compare_versions("2.0", "1.0") > 0
+
+
 # ===========================================================================
 # DisplayFormatters tests
 # ===========================================================================

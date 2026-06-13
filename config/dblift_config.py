@@ -28,6 +28,56 @@ _CONFIG_LOAD_EXC: Tuple[Type[Exception], ...] = (
 )
 
 
+# ``validate-sql`` only needs a dialect-typed DbliftConfig; connection is never opened.
+# Placeholder database URLs satisfy :meth:`DbliftConfig.validate_complete_data` and are never
+# used to connect in the validate-sql code path.
+def _validate_sql_lint_filler(dialect: str) -> Dict[str, Any]:
+    """Minimal ``database:`` block for validate-sql (lint-only) when
+    no real DB is configured.
+
+    Story 26-11: dialect normalisation + placeholder URL come from the
+    plugin registry / quirks. The earlier hardcoded
+    ``_VALIDATE_SQL_DIALECT_TO_DB``, ``_VALIDATE_SQL_PLACEHOLDER_URL``,
+    and ``_VALIDATE_SQL_DB_TO_DIALECT`` dicts are gone; adding a new
+    dialect with offline-lint support = override
+    ``lint_placeholder_url`` in its plugin quirks.py.
+    """
+    from db.provider_registry import ProviderRegistry
+
+    db_type = ProviderRegistry.canonical_dialect_name((dialect or "").strip().lower())
+    if not db_type:
+        return {}
+    quirks = ProviderRegistry.get_quirks(db_type)
+    placeholder = quirks.lint_placeholder_url
+    if not placeholder:
+        return {}
+    return {
+        "database": {
+            "type": db_type,
+            "url": placeholder,
+            "username": "dblift_validate_sql",
+            "password": "dblift_validate_sql",
+        }
+    }
+
+
+def _validate_sql_effective_dialect(args: Any, config_data: Dict[str, Any]) -> Optional[str]:
+    """Resolve validate-sql dialect from CLI or config without defaulting."""
+    cli_dialect = getattr(args, "dialect", None)
+    if isinstance(cli_dialect, str) and cli_dialect.strip():
+        return cli_dialect.strip().lower()
+
+    database_config = config_data.get("database")
+    if isinstance(database_config, dict):
+        from db.provider_registry import ProviderRegistry
+
+        db_type = str(database_config.get("type") or "").strip().lower()
+        if db_type:
+            return ProviderRegistry.canonical_dialect_name(db_type) or db_type
+
+    return None
+
+
 def _placeholder_tokens(raw_placeholders: Any) -> List[str]:
     if not raw_placeholders:
         return []
@@ -120,12 +170,31 @@ def load_config(config_file_path: Optional[str], args: Optional[Any] = None) -> 
         if args_dict:
             config_data = DbliftConfig.merge_config_data(config_data, args_dict)
 
+    # ``validate-sql`` does not need a real database, but static linting does
+    # need an explicit SQL dialect or a database type from config.
+    if args and getattr(args, "command", None) == "validate-sql":
+        dialect = _validate_sql_effective_dialect(args, config_data)
+        if not dialect:
+            raise ConfigurationError(
+                "validate-sql requires --dialect for offline validation when no database type is configured."
+            )
+        filler = _validate_sql_lint_filler(dialect)
+        if filler:
+            config_data = DbliftConfig.merge_config_data(filler, config_data)
+
     if not config_data:
         raise ConfigurationError(
             "No configuration source provided. Pass --config, --db-url, or set DBLIFT_DB_URL."
         )
 
-    config = DbliftConfig.from_dict(config_data)
+    command = getattr(args, "command", None) if args else None
+    commands_list = getattr(args, "commands_list", None) if args else None
+    if commands_list is None and command:
+        commands_list = [command]
+    is_offline_cmd = bool(
+        command in ("validate-sql", "plan") and commands_list and len(commands_list) == 1
+    )
+    config = DbliftConfig.from_dict(config_data, resolve_secrets=not is_offline_cmd)
     if args:
         installed_by = getattr(args, "installed_by", None)
         if installed_by:
@@ -281,6 +350,10 @@ class DbliftConfig:
 
     # Migration history and journal configuration
     history_table: str = "dblift_schema_history"
+    snapshot_table: str = "dblift_schema_snapshots"
+    max_snapshots: int = (
+        1  # Maximum number of snapshots to keep (oldest are deleted when limit exceeded)
+    )
     journal_enabled: bool = True
     journal_dir: Optional[str] = None
 
@@ -368,6 +441,10 @@ class DbliftConfig:
 
         if "history_table" in other_config and other_config["history_table"]:
             self.history_table = other_config["history_table"]
+        if "snapshot_table" in other_config and other_config["snapshot_table"]:
+            self.snapshot_table = other_config["snapshot_table"]
+        if "max_snapshots" in other_config:
+            self.max_snapshots = other_config["max_snapshots"]
 
         if "logging" in other_config:
             logging_raw = other_config["logging"]
@@ -429,8 +506,9 @@ class DbliftConfig:
 
         Args:
             data: Configuration dictionary
-            resolve_secrets: When False, leave secret URIs unresolved for callers
-                that need to inspect raw configuration data.
+            resolve_secrets: When False, skip secret-URI resolution (used for
+                offline commands such as validate-sql that never open a DB connection
+                and must not require secret-manager credentials to be available).
 
         Returns:
             A DbliftConfig instance
@@ -484,9 +562,9 @@ class DbliftConfig:
                 # Non-secret unparseable URLs are left as-is so _apply_url_overrides
                 # raises a focused URL error immediately rather than producing a
                 # silently broken config.
-        # When secrets are not resolved, a secret URI in database.url must not be
-        # validated as a database URL — the type may already be known from
-        # database.type but the URL is still raw.
+        # When secrets are not resolved (offline commands like plan/validate-sql),
+        # a secret URI in database.url must not be validated as a database URL — the
+        # type may already be known from database.type but the URL is still raw.
         # This covers the case where database.type is set explicitly, which skips
         # the `if url and not db_type` block above.
         if not resolve_secrets and url:
@@ -601,6 +679,8 @@ class DbliftConfig:
             clean_disabled=data.get("clean_disabled", True),
             placeholders=data.get("placeholders"),
             history_table=data.get("history_table", "dblift_schema_history"),
+            snapshot_table=data.get("snapshot_table", "dblift_schema_snapshots"),
+            max_snapshots=data.get("max_snapshots", 1),
             journal_enabled=data.get("journal_enabled", True),
             error_handling_enabled=data.get("error_handling_enabled", True),
             max_retries=data.get("max_retries", 3),
@@ -688,7 +768,7 @@ class DbliftConfig:
 
         Convention: DBLIFT_DB_<SUFFIX> maps to database.<suffix.lower()>.
         Special cases: USER -> username, OPTIONS and SESSION_VARS accept JSON or k=v CSV.
-        Top-level keys: DBLIFT_HISTORY_TABLE.
+        Top-level keys: DBLIFT_SNAPSHOT_TABLE, DBLIFT_HISTORY_TABLE, DBLIFT_MAX_SNAPSHOTS.
         Pass ``diagnostics`` to collect ignored/coercion issues without changing
         the default silent-merge behavior.
         """
@@ -777,8 +857,17 @@ class DbliftConfig:
         config: Dict[str, Any] = {}
         if db:
             config["database"] = db
+        if env.get("DBLIFT_SNAPSHOT_TABLE"):
+            config["snapshot_table"] = env["DBLIFT_SNAPSHOT_TABLE"]
         if env.get("DBLIFT_HISTORY_TABLE"):
             config["history_table"] = env["DBLIFT_HISTORY_TABLE"]
+        if env.get("DBLIFT_MAX_SNAPSHOTS"):
+            try:
+                config["max_snapshots"] = int(env["DBLIFT_MAX_SNAPSHOTS"])
+            except ValueError:
+                if diagnostics is not None:
+                    diagnostics.invalid_int_vars.append("DBLIFT_MAX_SNAPSHOTS")
+                pass  # Ignore invalid values
         if env.get("DBLIFT_CLEAN_DISABLED"):
             config["clean_disabled"] = env["DBLIFT_CLEAN_DISABLED"].lower() in ("1", "true", "yes")
         return config
@@ -846,7 +935,9 @@ class DbliftConfig:
             config["database"] = db_cfg
 
         for key in (
+            "snapshot_table",
             "history_table",
+            "max_snapshots",
             "baseline_version",
             "target_version",
             "dry_run",
@@ -976,6 +1067,8 @@ class DbliftConfig:
             "strict_mode": self.strict_mode,
             "clean_disabled": self.clean_disabled,
             "history_table": self.history_table,
+            "snapshot_table": self.snapshot_table,
+            "max_snapshots": self.max_snapshots,
             "journal_enabled": self.journal_enabled,
             # Error handling configuration
             "error_handling_enabled": self.error_handling_enabled,
@@ -1023,6 +1116,21 @@ class DbliftConfig:
             result["retryable_error_categories"] = cast(Any, self.retryable_error_categories)
 
         return result
+
+    @classmethod
+    def from_args(cls, args: Any) -> "DbliftConfig":
+        """Create a DbliftConfig instance from argparse.Namespace or dict-like args.
+        Args:
+            args: argparse.Namespace or dict with CLI arguments
+        Returns:
+            DbliftConfig instance
+        """
+        # Convert Namespace to dict if needed
+        if hasattr(args, "__dict__"):
+            args_dict = vars(args)
+        else:
+            args_dict = dict(args)
+        return cls.from_all_sources(args_dict)
 
     @staticmethod
     def _load_yaml_file(path: Union[str, Path]) -> Dict[str, Any]:

@@ -13,9 +13,14 @@ per-plugin classes override the deltas.
 
 from __future__ import annotations
 
-from typing import Any, ClassVar, Dict, Optional, Tuple
+from typing import TYPE_CHECKING, Any, ClassVar, Dict, Optional, Tuple, Type
 
 from core.dialect_boundary import DialectQuirks
+
+if TYPE_CHECKING:
+    from core.introspection.base_introspector import BaseIntrospector
+    from core.sql_generator.alter.base_alter_generator import BaseAlterGenerator
+    from core.sql_generator.base_generator import BaseSqlGenerator
 
 
 class BaseQuirks:
@@ -58,8 +63,8 @@ class BaseQuirks:
     schema_required: bool = True
     #: Unquoted identifiers fold to uppercase in the catalogue.
     uppercase_identifiers: bool = False
-    #: How ``clean`` enumerates schema objects.
-    clean_strategy: str = "native"
+    #: How ``clean`` enumerates schema objects: ``"native"`` or ``"introspector"``.
+    clean_strategy: str = "introspector"
     #: ``sqlglot`` dialect name (or ``None`` if sqlglot has no match).
     #: Used by formatters/parsers that delegate to sqlglot.
     sqlglot_dialect: Optional[str] = None
@@ -82,9 +87,11 @@ class BaseQuirks:
         return sql_content
 
     def normalize_column_data_type(self, col: object, data_type: str) -> str:
-        """Normalize a column's data type string.
+        """Normalize a column's data type string for DDL generation.
 
-        Plugins override to handle dialect-specific type representations:
+        Called by ``BasicTableDdlGenerator._normalize_column_data_type`` after
+        the base string is extracted from ``col.data_type``. Plugins override
+        to handle dialect-specific type representations:
         - SQL Server: strip ``IDENTITY`` suffix, collapse ``DATETIME(n)``
         - DB2: collapse ``TIMESTAMP(n)`` → ``TIMESTAMP``
         - PostgreSQL: strip precision from fixed-width float types, reorder
@@ -97,8 +104,9 @@ class BaseQuirks:
     def render_identity_clause(self, col: object) -> "Optional[str]":
         """Return the identity/auto-increment clause for an identity column, or None.
 
-        When the column is not an identity column the method should return
-        ``None`` so the caller can fall through to the non-identity path.
+        Called by ``BasicTableDdlGenerator._build_identity_clause``.  When the
+        column is not an identity column the method should return ``None`` so the
+        caller can fall through to the non-identity path.
 
         Default: None (dialect has no identity syntax, or column is not identity).
         """
@@ -124,6 +132,49 @@ class BaseQuirks:
         """
         return self.default_schema_name
 
+    def requires_sdk_for_drop(self) -> bool:
+        """Return True if DROP statements require SDK execution rather than SQL.
+
+        CosmosDB containers cannot be dropped through SQL execution; the Azure
+        SDK must be used instead. All other dialects return False.
+        """
+        return False
+
+    def sdk_operation_hint_prefix(self) -> "Optional[str]":
+        """Return the comment prefix to inject before SDK-executed statements, or None.
+
+        Used by ``script_formatter`` to annotate CosmosDB SDK operations in
+        generated SQL scripts. Default: None (no annotation).
+        """
+        return None
+
+    def build_sdk_drop_operation(self, statement: object) -> "Optional[dict[str, Any]]":
+        """Build the SDK operation dict for a DROP statement, or None.
+
+        Called by ``generate_sql_script`` for each DROP statement when
+        ``requires_sdk_for_drop()`` is True. The returned dict is stored as
+        ``statement.sdk_operation`` and later passed to ``generate_sdk_script``.
+
+        ``statement`` is a ``SqlStatement``; access attributes via ``getattr``.
+        Return ``None`` to leave ``sdk_operation`` unset (no-op for this
+        statement).
+
+        Default: None (no SDK operation).
+        """
+        return None
+
+    def generate_sdk_script(self, sdk_statements: "list[Any]") -> "Optional[str]":
+        """Generate a dialect-specific SDK script block for ``sdk_statements``.
+
+        Called by ``generate_sql_script`` after SQL formatting when there are
+        statements with ``requires_sdk=True``. Return the full text to append
+        to the generated script (including headers/comments), or ``None`` to
+        skip appending.
+
+        Default: None (no SDK script appended).
+        """
+        return None
+
     def unwrap_default_value(self, default_str: str, column: object) -> str:
         """Strip dialect-specific wrapping from a DEFAULT value string.
 
@@ -134,7 +185,9 @@ class BaseQuirks:
         return default_str
 
     # ------------------------------------------------------------------
-    # Column ALTER rendering hooks (Epic 27).
+    # Column ALTER generation hooks (Epic 27).
+    # Drive ``ColumnConverter._generate_*_change`` in
+    # ``core/sql_generator/diff_converters/column_converter.py``.
     # Each hook receives the pre-formatted identifiers so the plugin
     # only needs to compose the SQL string.  Return ``None`` to emit
     # a warning and skip the change; return a ``SqlStatement`` comment
@@ -223,11 +276,13 @@ class BaseQuirks:
     #: Default schema name when the user supplies none. ``None`` means
     #: the dialect has no default — the framework returns ``""``.
     #: PostgreSQL=``"public"``, CosmosDB=``"default"``, SQLite=``"main"``.
-    #: SQL Server's "dbo" is NOT set here — it's a parser hint only.
+    #: SQL Server's "dbo" is NOT set here — it's a parser hint only
+    #: (``parser_default_schema``), not an export-schema fallback.
     default_schema_name: Optional[str] = None
     #: Schema name the parser assigns to objects with no explicit schema.
     #: Falls back to ``default_schema_name`` when ``None``.
-    #: SQL Server sets ``"dbo"`` here without setting ``default_schema_name``.
+    #: SQL Server sets ``"dbo"`` here without setting ``default_schema_name``
+    #: so export-schema doesn't normalize empty schemas to ``"dbo"``.
     parser_default_schema: Optional[str] = None
     #: ``DROP TABLE / VIEW / INDEX / ... IF EXISTS`` is supported.
     #: Oracle has no native ``IF EXISTS``; everyone else does.
@@ -276,6 +331,13 @@ class BaseQuirks:
     #: ``database.schema`` during config hydration. Plugins can add aliases
     #: without teaching ``config/`` about dialect-specific spellings.
     native_url_schema_params: Tuple[str, ...] = ("currentSchema",)
+    #: Placeholder URL used by ``validate-sql --dialect <X>``
+    #: when no real database connection exists. The lint-only path
+    #: never opens a connection — but ``DbliftConfig.validate_complete_data``
+    #: still requires a syntactically-valid URL of the right shape.
+    #: ``None`` means the dialect can't be linted offline.
+    lint_placeholder_url: Optional[str] = None
+
     # ------------------------------------------------------------------
     # Procedure / function DDL hooks (story 26-5).
     # Drive ``Procedure._generate_basic_create_statement`` /
@@ -466,7 +528,8 @@ class BaseQuirks:
     supports_sqlplus_preprocessing: bool = False
 
     # ------------------------------------------------------------------
-    # Table DDL rendering hooks (story 26-5).
+    # Table DDL generation hooks (story 26-5).
+    # Drive ``BasicTableDdlGenerator`` dispatch.
     # ------------------------------------------------------------------
 
     #: DROP TABLE style. ``"cascade_constraints"`` → ``DROP TABLE x CASCADE
@@ -520,8 +583,8 @@ class BaseQuirks:
 
         Empty ``dialect_name`` is allowed and signals "no dialect context"
         — the framework calls into ``BaseQuirks()`` from paths where the
-        dialect is unknown. All hooks return their generic defaults in that
-        case. (PR #241 Bugbot.)
+        dialect is unknown (e.g. ``SqlGenerator.generate_ddl(dialect=None)``).
+        All hooks return their generic defaults in that case. (PR #241 Bugbot.)
         """
         self.dialect_name = dialect_name
 
@@ -603,6 +666,18 @@ class BaseQuirks:
         """
         return None
 
+    # ------------------------------------------------------------------
+    # DdlQuirks (story 26-3)
+    # ------------------------------------------------------------------
+
+    def ddl_generator_class(self) -> Optional[Type["BaseSqlGenerator"]]:
+        """Default: no dialect-specific DDL generator (falls back to ``SqlGenerator``)."""
+        return None
+
+    def alter_generator_class(self) -> Optional[Type["BaseAlterGenerator"]]:
+        """Default: no dialect-specific ALTER generator (factory raises)."""
+        return None
+
     def parser_class(self, parser_type: str) -> Optional[type]:
         """Return the parser class for ``parser_type``, or ``None``.
 
@@ -631,7 +706,8 @@ class BaseQuirks:
     def enrich_view_from_row(self, view: Any, row: Dict[str, Any], view_status: Any = None) -> None:
         """Add dialect-specific attributes to *view* from a vendor-query row.
 
-        Called after the canonical ``View(...)`` is constructed. Default: no-op.
+        Called by ``core.introspection.extractors.view_extractor.get_views``
+        after the canonical ``View(...)`` is constructed. Default: no-op.
         Plugins override to capture attributes that only exist on their
         dialect:
 
@@ -656,6 +732,43 @@ class BaseQuirks:
         ``is_unlogged`` (``"YES"`` / ``"NO"``).
         """
         return None
+
+    #: Vendor-specific table-name prefixes that identify objects
+    #: created by the engine to support its own materialized-view
+    #: machinery (Oracle: ``MLOG$``, ``MVIEW$_``, ``SNAP$``, ``AQ$``,
+    #: ``DR$`` …). Tables whose names start with any of these prefixes
+    #: are filtered out of user-facing introspection results, and a
+    #: non-empty tuple also tells :class:`TableExtractor` that it must
+    #: preload materialized-view names so it can drop them from the
+    #: vendor table listing. Default: empty tuple (no filtering).
+    materialized_view_support_table_prefixes: Tuple[str, ...] = ()
+
+    def enrich_table_extra(self, extractor: Any, schema: str, table_name: str, table: Any) -> None:
+        """Apply dialect-specific table enrichment that needs extra catalog queries.
+
+        Default: no-op. PostgreSQL overrides to capture row-security
+        flags, single-table inheritance parents, and row-level security
+        policies. The *extractor* gives the hook access to
+        ``provider.query_executor``, ``connection``, ``vendor_queries``,
+        ``get_row_value`` / ``parse_json_array`` helpers, and the
+        ``track_warning`` sink.
+        """
+        return None
+
+    def supplement_table_list(
+        self, extractor: Any, schema: str, existing_tables: "list[Any]"
+    ) -> "list[Any]":
+        """Add tables that the dialect's base table query missed.
+
+        Default: returns *existing_tables* unchanged. PostgreSQL
+        overrides to append declarative-partitioned tables (``relkind
+        = 'p'``) — the generic table query doesn't report them as ``TABLE``,
+        so a vendor query is needed. The hook is responsible for
+        populating columns and constraints on any new tables it
+        creates by calling ``extractor.column_extractor`` /
+        ``extractor.constraint_extractor`` when those are available.
+        """
+        return existing_tables
 
     def is_temporary_sequence(self, row: Dict[str, Any]) -> bool:
         """Return ``True`` if the catalog *row* describes a temporary sequence.
@@ -992,7 +1105,8 @@ class BaseQuirks:
     ) -> None:
         """Add dialect-specific attributes to *trigger* from a vendor-query row.
 
-        Called after the canonical ``Trigger(name=..., schema=..., timing=..., events=[],
+        Called by ``core.introspection.extractors.trigger_extractor`` after the
+        canonical ``Trigger(name=..., schema=..., timing=..., events=[],
         ...)`` is constructed. Default: no-op. Plugins override to capture
         attributes that only exist on their dialect:
 
@@ -1001,15 +1115,18 @@ class BaseQuirks:
         ``trigger_status`` is an opaque tracker (``ObjectCaptureStatus`` or
         ``None``) — when present, plugins call its
         ``add_property_status(property_name, captured: bool)`` for any
-        dialect-specific attribute they look for.
+        dialect-specific attribute they look for, so the introspection
+        result summary can surface "definer captured: yes / no".
         """
         return None
 
     def apply_vendor_table_properties(self, table: Any, row: Dict[str, Any]) -> None:
         """Apply dialect-specific table properties from a vendor-query row.
 
-        Called after vendor metadata returns a result row. Default: no-op.
-        Plugins override to enrich the ``Table`` with dialect-specific attributes (SQL Server filegroup
+        Called by ``core.introspection._vendor_property_applier`` after
+        ``vendor_queries.get_table_properties_query`` returns a result
+        row. Default: no-op. Plugins override to enrich the introspected
+        ``Table`` with dialect-specific attributes (SQL Server filegroup
         / memory-optimised / system-versioned, DB2 tablespace +
         compression, Oracle tablespace + storage params, MySQL
         storage_engine + row_format + collation + create_options).
@@ -1052,10 +1169,10 @@ class BaseQuirks:
     def requires_dialect_specific_wrapping(self, object_type_name: str) -> bool:
         """Default: no delimiter wrapping required.
 
-        Used to decide whether to call ``wrap_dialect_specific_block``
-        around an object's CREATE statement. MySQL covers
-        procedures/functions here; the wider set covering
-        triggers/events is exposed via the separate
+        Used by ``SqlGenerator.generate_ddl`` to decide whether to call
+        ``wrap_dialect_specific_block`` around an object's CREATE
+        statement. MySQL covers procedures/functions here; the wider
+        set covering triggers/events is exposed via the separate
         ``requires_block_delimiter_wrapping`` hook (different code
         path, different separator).
         """
@@ -1068,9 +1185,12 @@ class BaseQuirks:
     def requires_block_delimiter_wrapping(self, object_type_name: str) -> bool:
         """Predicate for the ``$$``-flavoured MySQL DELIMITER helper.
 
-        Distinct from :meth:`requires_dialect_specific_wrapping`; this
-        hook governs the broader ``$$`` helper which historically
-        covers procedures, functions, triggers and events.
+        Distinct from :meth:`requires_dialect_specific_wrapping`: that
+        hook governs CREATE-statement wrapping inside ``generate_ddl``
+        (uses ``//`` markers, narrower object set). This hook governs
+        the broader ``$$`` helper (``_requires_mysql_delimiter`` /
+        ``_wrap_mysql_delimiter_block``) which historically covers
+        procedures, functions, triggers and events.
         """
         return False
 
@@ -1088,14 +1208,10 @@ class BaseQuirks:
     #: Oracle ``CREATE FORCE VIEW`` / ``CREATE OR REPLACE FORCE VIEW``.
     view_supports_force_noforce: bool = False
 
-    #: Regular views support ``CREATE OR REPLACE VIEW``.
-    view_supports_create_or_replace: bool = False
-
-    #: Materialized views include ``BUILD IMMEDIATE`` in CREATE DDL.
-    view_materialized_uses_build_immediate: bool = False
-
-    #: Materialized views include ``WITH DATA`` / ``WITH NO DATA`` in CREATE DDL.
-    view_materialized_uses_with_data: bool = False
+    #: PostgreSQL ``UNLOGGED`` materialized views and view-level
+    #: ``security_definer`` / ``security_invoker`` attributes (used during
+    #: comparison to decide whether to diff these attributes).
+    view_supports_unlogged_and_security: bool = False
 
     # ------------------------------------------------------------------
     # Trigger comparison hooks (story 26-6 Wave A).
@@ -1191,6 +1307,50 @@ class BaseQuirks:
     #: completes successfully. Oracle and DB2 require this even when
     #: autoCommit is False.
     requires_explicit_commit_after_ddl: bool = False
+
+    #: Dialect leaves implicit transactions open after read-only
+    #: introspection (DB2 blocks subsequent queries until uncommitted
+    #: transactions are resolved; MySQL InnoDB consistent-snapshot mode
+    #: locks the snapshot until commit/rollback). The snapshot service
+    #: rolls back after introspection for these dialects to free the
+    #: connection.
+    requires_rollback_after_introspection: bool = False
+
+    def build_snapshot_table_ddl(
+        self,
+        qualified_table: str,
+        snapshot_id_size: int,
+        checksum_size: int,
+    ) -> str:
+        """Render the ``CREATE TABLE`` SQL for ``dblift_schema_snapshots``.
+
+        The default produces the lowercase-identifier / ``VARCHAR`` /
+        ``TEXT`` shape used by PostgreSQL, SQLite, and other dialects
+        without a wider text type. Plugins override for Oracle
+        (``VARCHAR2`` / ``CLOB`` / uppercase), SQL Server
+        (``NVARCHAR`` / ``NVARCHAR(MAX)``), MySQL family
+        (``LONGTEXT``), and DB2 (uppercase columns + explicit
+        ``NOT NULL PRIMARY KEY``).
+        """
+        return (
+            f"CREATE TABLE {qualified_table} ("
+            f"snapshot_id VARCHAR({snapshot_id_size}) PRIMARY KEY, "
+            f"captured_at VARCHAR({snapshot_id_size}) NOT NULL, "
+            f"checksum VARCHAR({checksum_size}) NOT NULL, "
+            f"model_data TEXT NOT NULL)"
+        )
+
+    def is_snapshot_table_already_exists_error(self, error_message: str) -> bool:
+        """Whether ``error_message`` indicates the snapshot table already exists.
+
+        Returning ``True`` lets ``BaseSnapshotManager`` swallow the
+        exception (idempotent create). The default is ``False`` —
+        ``CREATE TABLE IF NOT EXISTS`` covers most dialects so a real
+        failure should propagate. Oracle overrides because it has no
+        ``IF NOT EXISTS`` syntax and instead raises ORA-00955 (with
+        locale-translated message text) when the table already exists.
+        """
+        return False
 
     #: Dialect supports direct session autocommit control reliably. MySQL,
     #: DB2 and Oracle behave inconsistently; PostgreSQL and SQL Server support
@@ -1347,6 +1507,26 @@ class BaseQuirks:
         ``SET (SYSTEM_VERSIONING = ON|OFF …)`` shape. All identifier arguments
         arrive pre-formatted (quote rules already applied) so the hook only
         composes the surrounding SQL.
+        """
+        return None
+
+    def introspector_class(self) -> "Optional[Type[BaseIntrospector]]":
+        """Return the dialect-specific BaseIntrospector class, or None.
+
+        None means IntrospectorFactory falls back to SchemaIntrospector.
+        Plugins override with a lazy import to avoid circular imports at
+        module-load time.
+        """
+        return None
+
+    def vendor_queries_class(self) -> "Optional[Type[Any]]":
+        """Return the dialect-specific VendorMetadataQueries class, or None.
+
+        ``None`` means the plugin doesn't ship its own catalog-query
+        bundle and :class:`VendorQueriesFactory.create` returns ``None``
+        for the dialect. Plugins override with a lazy import to keep
+        the queries module out of the import graph until the factory
+        actually needs it. Mirrors :meth:`introspector_class`.
         """
         return None
 

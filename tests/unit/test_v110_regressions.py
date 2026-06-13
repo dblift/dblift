@@ -6,6 +6,8 @@ These tests guard against re-introduction of the following bugs:
   → Fixed: now uses DELETE FROM ... WHERE success = FALSE
 - BUG-CHECK-CONN-01: get_database_url missing on PostgreSQL/MySQL providers
   → Fixed: added delegation to connection_manager.get_database_url()
+- BUG-VALIDATE-SQL-01: validate-sql must work without DB (config-only client)
+  → Fixed: ValidateSqlConfigClient when command is standalone validate-sql; full client otherwise
 - BUG-UNDO-01: generate_undo_script error handling
   → Fixed: ValueError/FileExistsError return result with success=False; FileNotFoundError
     emits failure then re-raises for exception-based callers / batch flows
@@ -133,6 +135,44 @@ class TestProviderGetDatabaseUrl:
 
 
 # ════════════════════════════════════════════════════════════
+# BUG-VALIDATE-SQL-01: validate-sql must use config-only client (no DB connect)
+# ════════════════════════════════════════════════════════════
+class TestValidateSqlClientInit:
+    """Regression: standalone validate-sql uses ValidateSqlConfigClient, not full DBLiftClient."""
+
+    def test_main_uses_config_only_path_for_validate_sql(self):
+        """BUG-VALIDATE-SQL-01: main() must set validate_sql_only and use ValidateSqlConfigClient."""
+        import inspect
+
+        import cli.main as main_module
+
+        source = inspect.getsource(main_module)
+        assert "ValidateSqlConfigClient" in source
+        assert "validate_sql_only" in source
+        assert (
+            'not in ["validate-sql"]' not in source
+        ), "BUG-VALIDATE-SQL-01: do not revert to string-based client skip; use config-only client"
+
+    def test_validate_sql_handler_accesses_client_config(self):
+        """BUG-VALIDATE-SQL-01: validate-sql handler accesses ctx.client.config.
+
+        After PR #351 (action #9a) the orchestrator was decomposed into 5 named
+        phases — ctx.client.config now lives in _resolve_dialect and
+        _build_validation_config rather than the top-level entry function.
+        The regression intent is preserved: any helper in the
+        cli.handlers.validate_sql module must still pull dialect/config
+        from the client.
+        """
+        import inspect
+
+        import cli.handlers.validate_sql as handler_module
+
+        source = inspect.getsource(handler_module)
+        assert (
+            "ctx.client.config" in source
+        ), "validate-sql handler needs ctx.client.config for dialect detection"
+
+
 # ════════════════════════════════════════════════════════════
 # BUG-UNDO-01: generate_undo_script must return result, not raise
 # ════════════════════════════════════════════════════════════
@@ -163,6 +203,7 @@ class TestUndoScriptErrorHandling:
         mock_executor.history_manager.provider = Mock()
         mock_executor.sql_execution_service = Mock()
         mock_executor.sql_execution_service.provider = Mock()
+        mock_executor.snapshot_service = None
         mock_executor_class.return_value = mock_executor
 
         client = DBLiftClient(provider=self._make_mock_provider(), migrations_dir="/tmp")
@@ -183,6 +224,7 @@ class TestUndoScriptErrorHandling:
         mock_executor.history_manager.provider = Mock()
         mock_executor.sql_execution_service = Mock()
         mock_executor.sql_execution_service.provider = Mock()
+        mock_executor.snapshot_service = None
         mock_executor_class.return_value = mock_executor
 
         non_versioned = tmp_path / "R__repeatable.sql"
@@ -210,6 +252,7 @@ class TestUndoScriptErrorHandling:
         mock_executor.history_manager.provider = Mock()
         mock_executor.sql_execution_service = Mock()
         mock_executor.sql_execution_service.provider = Mock()
+        mock_executor.snapshot_service = None
         mock_executor_class.return_value = mock_executor
 
         migration = tmp_path / "V1_0_0__test.sql"
@@ -309,7 +352,7 @@ class TestSqliteCaseEndInTrigger:
         AFTER INSERT ON orders
         BEGIN
             UPDATE orders SET status = CASE
-                WHEN NEW.amount > 100 THEN 'vip'
+                WHEN NEW.amount > 100 THEN 'premium'
                 WHEN NEW.amount > 50 THEN 'standard'
                 ELSE 'basic'
             END
@@ -402,6 +445,18 @@ class TestSqliteCaseEndInTrigger:
 
 
 # ════════════════════════════════════════════════════════════
+# DB2 native transport: provider must not expose legacy URL API
+# ════════════════════════════════════════════════════════════
+class TestDb2NativeTransport:
+    """DB2 native provider should not expose legacy transport APIs."""
+
+    def test_db2_provider_does_not_have_get_database_url_method(self):
+        """DB2 v2 native provider rejects legacy URL compatibility."""
+        from db.plugins.db2.provider import Db2Provider
+
+        assert not hasattr(Db2Provider, "get_database_url")
+
+
 # ════════════════════════════════════════════════════════════
 # BUG-CONFIG-MERGE: ConfigBuilder must not pollute non-sqlserver configs
 # ════════════════════════════════════════════════════════════
@@ -493,6 +548,15 @@ class TestTransactionalDdlSupport:
         ), "MySqlProvider is missing supports_transactional_ddl()"
         # Verify via unbound method call with a dummy self
         assert MySqlProvider.supports_transactional_ddl(Mock()) is False
+
+    def test_oracle_does_not_support_transactional_ddl(self):
+        """Oracle implicitly commits DDL and must report supports_transactional_ddl() == False."""
+        from db.plugins.oracle.provider import OracleProvider
+
+        assert hasattr(
+            OracleProvider, "supports_transactional_ddl"
+        ), "OracleProvider is missing supports_transactional_ddl()"
+        assert OracleProvider.supports_transactional_ddl(Mock()) is False
 
     def test_transactional_ddl_default_is_true(self):
         """Default supports_transactional_ddl() should return True (PG, MSSQL, DB2)."""

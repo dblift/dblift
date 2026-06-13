@@ -128,12 +128,16 @@ def test_bad_db_url_produces_friendly_error_no_traceback():
 LEAF_SUBCOMMANDS: List[str] = [
     "migrate",
     "info",
+    "diff",
     "validate",
+    "validate-sql",
     "undo",
     "clean",
     "baseline",
     "repair",
     "import-flyway",
+    "export-schema",
+    "snapshot",
 ]
 
 

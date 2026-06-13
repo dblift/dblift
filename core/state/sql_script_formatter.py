@@ -7,7 +7,7 @@ that DBAs can review and execute.
 import logging
 from typing import List, Optional
 
-from core.state.sql_statement import SqlStatement
+from core.sql_generator.sql_statement import SqlStatement
 
 logger = logging.getLogger(__name__)
 

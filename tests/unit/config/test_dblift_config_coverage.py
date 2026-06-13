@@ -206,6 +206,183 @@ def test_load_config_no_path_returns_defaults():
 
 
 @pytest.mark.unit
+def test_load_config_validate_sql_requires_dialect_without_database_type():
+    class Args:
+        command = "validate-sql"
+        dialect = None
+
+    with patch.dict(os.environ, {}, clear=True):
+        with pytest.raises(ConfigurationError) as exc:
+            load_config("", Args())
+
+    message = str(exc.value)
+    assert "validate-sql requires --dialect" in message
+    assert "--db-url" not in message
+
+
+@pytest.mark.unit
+def test_load_config_validate_sql_dialect_uses_lint_placeholder_config():
+    class Args:
+        command = "validate-sql"
+        dialect = "postgresql"
+
+    with patch.dict(os.environ, {}, clear=True):
+        config = load_config("", Args())
+
+    assert config.database.type == "postgresql"
+    assert config.database.url == "postgresql://127.0.0.1:5432/dblift_validate_sql"
+
+
+@pytest.mark.unit
+def test_load_config_validate_sql_sqlite_dialect_uses_lint_placeholder_config():
+    class Args:
+        command = "validate-sql"
+        dialect = "sqlite"
+
+    with patch.dict(os.environ, {}, clear=True):
+        config = load_config("", Args())
+
+    assert config.database.type == "sqlite"
+    assert getattr(config.database, "path", None) == ":memory:"
+
+
+@pytest.mark.unit
+def test_load_config_validate_sql_db2_dialect_uses_native_placeholder_config():
+    class Args:
+        command = "validate-sql"
+        dialect = "db2"
+
+    with patch.dict(os.environ, {}, clear=True):
+        config = load_config("", Args())
+
+    assert config.database.type == "db2"
+    assert config.database.database == "dblift_validate_sql"
+    assert config.database.host == "127.0.0.1"
+    assert config.database.url == "ibm_db_sa://127.0.0.1:50000/dblift_validate_sql"
+
+
+@pytest.mark.unit
+def test_from_dict_secret_uri_as_database_url_does_not_raise(monkeypatch):
+    """database.url: vault://... must not raise 'Invalid legacy URL' when resolve_secrets=False."""
+    config = DbliftConfig.from_dict(
+        {"database": {"url": "vault://secret/data/prod/db#url", "schema": "public"}},
+        resolve_secrets=False,
+    )
+    assert config is not None
+    assert config.database is not None
+
+
+@pytest.mark.unit
+def test_from_dict_typed_secret_uri_as_database_url_does_not_raise():
+    """database.type set + database.url: vault://... must not be parsed as native."""
+    config = DbliftConfig.from_dict(
+        {
+            "database": {
+                "type": "postgresql",
+                "url": "vault://secret/data/prod/db#url",
+                "schema": "public",
+            }
+        },
+        resolve_secrets=False,
+    )
+    assert config is not None
+    assert config.database is not None
+    assert config.database.url == "vault://secret/data/prod/db#url"
+    assert getattr(config.database, "host", None) is None
+    assert getattr(config.database, "database", None) is None
+
+
+@pytest.mark.unit
+def test_from_dict_oracle_host_database_uses_database_as_service_name():
+    config = DbliftConfig.from_dict(
+        {
+            "database": {
+                "type": "oracle",
+                "host": "db.example.com",
+                "database": "ORCLPDB1",
+                "username": "system",
+                "password": "oracle",
+            }
+        }
+    )
+
+    assert config.database.database == "ORCLPDB1"
+    assert config.database.service_name == "ORCLPDB1"
+    assert "service_name=ORCLPDB1" in config.database.build_database_url()
+
+
+@pytest.mark.unit
+def test_from_dict_db2_host_database_is_valid_connection_identifier():
+    config = DbliftConfig.from_dict(
+        {
+            "database": {
+                "type": "db2",
+                "host": "db.example.com",
+                "database": "SAMPLE",
+                "username": "db2inst1",
+                "password": "secret",
+            }
+        }
+    )
+
+    assert config.database.type == "db2"
+
+
+@pytest.mark.unit
+def test_from_dict_db2_host_without_database_is_invalid_connection_identifier():
+    with pytest.raises(ConfigurationError, match="host/database"):
+        DbliftConfig.from_dict(
+            {
+                "database": {
+                    "type": "db2",
+                    "host": "db.example.com",
+                    "username": "db2inst1",
+                    "password": "secret",
+                }
+            }
+        )
+
+
+@pytest.mark.unit
+def test_load_config_plan_skips_secret_resolution(monkeypatch):
+    """plan is an offline command — DbliftConfig.from_dict must be called with resolve_secrets=False."""
+
+    class Args:
+        command = "plan"
+
+    monkeypatch.setenv("DBLIFT_DB_URL", "postgresql+psycopg://user:pass@localhost:5432/db")
+    monkeypatch.setenv("DBLIFT_DB_SCHEMA", "public")
+
+    with patch(
+        "config.dblift_config.DbliftConfig.from_dict", wraps=DbliftConfig.from_dict
+    ) as mock_from_dict:
+        load_config("", Args())
+
+    _, kwargs = mock_from_dict.call_args
+    assert kwargs.get("resolve_secrets") is False
+
+
+@pytest.mark.unit
+def test_load_config_plan_chained_resolves_secrets(monkeypatch):
+    """Chained 'plan migrate' must resolve secrets — plan is offline only when alone."""
+
+    class Args:
+        command = "plan"
+        commands_list = ["plan", "migrate"]  # chained invocation
+
+    monkeypatch.setenv("DBLIFT_DB_URL", "postgresql+psycopg://user:pass@localhost:5432/db")
+    monkeypatch.setenv("DBLIFT_DB_SCHEMA", "public")
+
+    with patch(
+        "config.dblift_config.DbliftConfig.from_dict", wraps=DbliftConfig.from_dict
+    ) as mock_from_dict:
+        load_config("", Args())
+
+    _, kwargs = mock_from_dict.call_args
+    assert kwargs.get("resolve_secrets") is True
+
+
+@pytest.mark.unit
 def test_load_config_env_override(monkeypatch, tmp_path):
     os.environ.pop("DBLIFT_DB_USER", None)
     os.environ.pop("DBLIFT_DB_URL", None)

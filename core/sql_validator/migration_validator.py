@@ -305,7 +305,7 @@ class MigrationValidator:
                 return validation_result
 
             # Flyway-compatible validate semantics: validate migration metadata/history,
-            # not SQL syntax.
+            # not SQL syntax. SQL parsing belongs to the explicit validate-sql command.
             validation_result.migrations = valid_scripts
 
             if history_table_exists:
@@ -540,7 +540,7 @@ class MigrationValidator:
             validation_result.migrations = valid_scripts
 
             # Flyway-compatible validate semantics: validate migration metadata/history,
-            # not SQL syntax.
+            # not SQL syntax. SQL parsing belongs to the explicit validate-sql command.
             self.log.debug(
                 f"[DEBUG] validate_migrations: skipping SQL syntax parsing; success={validation_result.success}, error='{validation_result.error_message}', issues={issues}"
             )

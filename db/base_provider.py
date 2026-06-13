@@ -158,6 +158,20 @@ class BaseProvider(
         """
         self.create_migration_history_table_if_not_exists(schema, create_schema, table_name)
 
+    @abstractmethod
+    def create_snapshot_table_if_not_exists(
+        self, schema: str, table_name: str = "dblift_schema_snapshots"
+    ) -> None:
+        """Create the schema snapshot storage table if it does not exist.
+
+        All concrete providers **must** implement this method.
+        Mirrors the contract of ``create_migration_history_table_if_not_exists``.
+
+        Args:
+            schema: Schema name
+            table_name: Table name for snapshots (default: dblift_schema_snapshots)
+        """
+
     def record_undo(
         self,
         schema: str,

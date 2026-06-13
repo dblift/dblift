@@ -25,6 +25,11 @@ concurrency:
 permissions:
   contents: read
 
+env:
+  # Test license key from secrets — required by the
+  # tests/integration/conftest.py `require_license_key` fixture.
+  DBLIFT_LICENSE_KEY: ${{ secrets.DBLIFT_LICENSE_KEY }}
+
 jobs:
   matrix:
     name: Regression matrix

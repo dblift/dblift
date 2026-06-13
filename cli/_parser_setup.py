@@ -9,6 +9,7 @@ import io
 import sys
 from typing import Any, Dict, List, Optional, Tuple
 
+from cli._constants import FAIL_ON_CHOICES, VALIDATE_SQL_FORMATS
 from cli.db_utils import setup_db_utils_parser
 from cli.extensions import load_command_extensions
 
@@ -71,10 +72,135 @@ def parse_with_selective_errors(
     return args, unknown_args, False  # No validation errors
 
 
+def _setup_export_schema_options(
+    export_schema_parser: argparse.ArgumentParser,
+    snapshot_parser: argparse.ArgumentParser | None = None,
+) -> None:
+    """Configure all arguments for export-schema and, optionally, snapshot."""
+    # Export schema output options
+    export_schema_parser.add_argument(
+        "--output",
+        help="Output file path (single file output). Use --output-dir for directory output",
+    )
+    export_schema_parser.add_argument(
+        "--output-dir",
+        help="Output directory path (for split-by-type output or multiple files)",
+    )
+    export_schema_parser.add_argument(
+        "--source",
+        # BUG-04: accept ``database-stored`` as a deprecated alias of
+        # ``database-model`` so ``snapshot --source`` and
+        # ``export-schema --source`` share vocabulary. Normalized in
+        # ``_handle_export_schema``.
+        choices=["database-model", "database-stored", "file-model", "live-database"],
+        default="live-database",
+        help="Source for schema data: 'database-model' (latest snapshot from database), "
+        "'file-model' (JSON model file), or 'live-database' (default, introspect live database). "
+        "'database-stored' is accepted as a deprecated alias for 'database-model'.",
+    )
+    export_schema_parser.add_argument(
+        "--snapshot-model",
+        help="Path to JSON model file (required when --source=file-model)",
+    )
+    export_schema_parser.add_argument(
+        "--split-by-type",
+        action="store_true",
+        help="Split output into separate files by object type (requires --output-dir)",
+    )
+    export_schema_parser.add_argument(
+        "--description",
+        help="Description to include in migration header",
+    )
+    if snapshot_parser is not None:
+        _setup_snapshot_options(snapshot_parser)
+    # Export schema filtering options
+    export_schema_parser.add_argument(
+        "--schema",
+        help="Database schema name to export (default: use config schema). Only objects from this schema will be exported.",
+    )
+    export_schema_parser.add_argument(
+        "--tables",
+        help="Comma-separated list of table names to export (filters to specific tables and related objects)",
+    )
+    export_schema_parser.add_argument(
+        "--types",
+        help="Comma-separated list of object types to export (e.g., tables,views,indexes,functions,triggers)",
+    )
+    export_schema_parser.add_argument(
+        "--managed-only",
+        action="store_true",
+        help="Export only objects defined in applied migrations (tracked objects). "
+        "Requires --scripts directory to parse migration files.",
+    )
+    export_schema_parser.add_argument(
+        "--unmanaged-only",
+        action="store_true",
+        help="Export only objects not defined in applied migrations (brownfield baseline). "
+        "Requires --scripts directory to parse migration files.",
+    )
+    export_schema_parser.add_argument(
+        "--include-drops",
+        action="store_true",
+        help="Include DROP statements in output (for clean recreation)",
+    )
+    # Export-schema specific migration filtering options
+    export_schema_parser.add_argument(
+        "--tags",
+        help="Only consider migrations with specified tags when determining managed objects (comma-separated list)",
+    )
+    export_schema_parser.add_argument(
+        "--exclude-tags",
+        help="Exclude migrations with specified tags when determining managed objects (comma-separated list)",
+    )
+    export_schema_parser.add_argument(
+        "--versions",
+        help="Only consider specific migration versions when determining managed objects (comma-separated list)",
+    )
+    export_schema_parser.add_argument(
+        "--exclude-versions",
+        help="Exclude specific migration versions when determining managed objects (comma-separated list)",
+    )
+    # Export-schema target version
+    export_schema_parser.add_argument(
+        "--target-version",
+        help="Only consider migrations up to this version when determining managed objects",
+    )
+
+
+def _setup_snapshot_options(snapshot_parser: argparse.ArgumentParser) -> None:
+    """Configure snapshot command arguments for extension registration."""
+    snapshot_parser.add_argument(
+        "--output",
+        required=True,
+        help="Output file path for the snapshot JSON model",
+    )
+    snapshot_parser.add_argument(
+        "--source",
+        choices=["database-stored", "live-database"],
+        default="database-stored",
+        help="Source for snapshot data: 'database-stored' (default) loads latest from database, "
+        "'live-database' captures new snapshot from live database introspection",
+    )
+    # B8-BUG-05: allow callers to accept snapshots below the default HIGH
+    # confidence threshold. Emulators (CosmosDB, SQL Server dev, etc.)
+    # routinely score MEDIUM/LOW because metadata views are incomplete; this
+    # flag lets a user say "I accept 0.4 confidence for the emulator".
+    # Value is the minimum overall_score in [0.0, 1.0] required to succeed.
+    snapshot_parser.add_argument(
+        "--min-confidence",
+        type=float,
+        default=None,
+        metavar="SCORE",
+        help="Minimum acceptable snapshot confidence score (0.0-1.0). "
+        "When a live-database snapshot scores below SCORE the command fails. "
+        "Useful to bypass HIGH-only gating against emulators (e.g. --min-confidence 0.4).",
+    )
+
+
 def _make_history_table_parent() -> argparse.ArgumentParser:
     """Parent parser for the ``--table`` history-table override.
 
-    Inherited by migrate, undo, clean, validate, info, repair,
+    Inherited by migrate, undo, clean, validate, info, diff, repair,
     import-flyway, and baseline. Defining it once via ``parents=[...]``
     makes the duplication visible to the type-checker and removes the
     ``for subparser in [...]`` loop that used to add it imperatively.
@@ -84,6 +210,17 @@ def _make_history_table_parent() -> argparse.ArgumentParser:
         "--table",
         dest="table_name",
         help="Custom schema history table name (default: dblift_schema_history)",
+    )
+    return p
+
+
+def _make_snapshot_table_parent() -> argparse.ArgumentParser:
+    """Parent parser for commands that read or write persisted schema snapshots."""
+    p = argparse.ArgumentParser(add_help=False)
+    p.add_argument(
+        "--snapshot-table",
+        dest="snapshot_table",
+        help="Custom schema snapshot table name (default: dblift_schema_snapshots)",
     )
     return p
 
@@ -103,7 +240,7 @@ def _make_strict_parent() -> argparse.ArgumentParser:
 def _make_filter_parent() -> argparse.ArgumentParser:
     """Parent parser for tag/version/placeholder filters.
 
-    Inherited by migrate, undo, validate, info.
+    Inherited by migrate, undo, validate, info, diff.
     """
     p = argparse.ArgumentParser(add_help=False)
     p.add_argument("--tags", help="Execute migrations with specified tags (comma-separated list)")
@@ -125,9 +262,10 @@ def _make_filter_parent() -> argparse.ArgumentParser:
 
 # NOTE: ``--target-version`` is intentionally NOT extracted into a parent
 # parser. Its help text is genuinely command-specific (migrate / undo /
-# validate each describe a different intent) and unifying it would degrade
-# `--help` output. Each subparser adds it explicitly in ``_add_target_options``
-# so the user-facing string stays accurate. See Bugbot review on PR-09.
+# diff each describe a different intent) and unifying it would degrade
+# `--help` output. Each subparser adds it explicitly in
+# ``_add_diff_and_target_options`` so the user-facing string stays
+# accurate. See Bugbot review on PR-09.
 
 
 def _add_baseline_options(baseline_parser: argparse.ArgumentParser) -> None:
@@ -153,13 +291,38 @@ def _add_baseline_options(baseline_parser: argparse.ArgumentParser) -> None:
     )
 
 
-def _add_target_options(
+def _setup_diff_options(diff_parser: argparse.ArgumentParser) -> None:
+    """Configure arguments specific to the diff/drift command."""
+    diff_parser.add_argument("--target-version", help="Compare migrations up to this version")
+    diff_parser.add_argument(
+        "--ignore-unmanaged",
+        action="store_true",
+        help="Hide unmanaged objects section (objects not in migrations)",
+    )
+    diff_parser.add_argument(
+        "--snapshot-model",
+        dest="snapshot_model",
+        help="Path to a schema snapshot model file (JSON or encoded) to compare against",
+    )
+    diff_parser.add_argument(
+        "--generate-sql",
+        action="store_true",
+        help="Generate SQL script to synchronize schemas based on detected differences",
+    )
+    diff_parser.add_argument(
+        "--output-file",
+        help="Output file path for generated SQL script (requires --generate-sql)",
+    )
+
+
+def _add_diff_and_target_options(
+    diff_parser: argparse.ArgumentParser | None,
     migrate_parser: argparse.ArgumentParser,
     undo_parser: argparse.ArgumentParser,
     validate_parser: argparse.ArgumentParser,
     clean_parser: argparse.ArgumentParser,
 ) -> None:
-    """Configure migrate/undo/validate/clean subcommand-specific options.
+    """Configure diff/migrate/undo/validate/clean subcommand-specific options.
 
     ``--target-version`` is added per-command (rather than via a shared
     parent parser) because each command has a meaningfully different
@@ -170,6 +333,8 @@ def _add_target_options(
     migrate_parser.add_argument("--target-version", help="Target version to migrate to")
     undo_parser.add_argument("--target-version", help="Target version to roll back to")
     validate_parser.add_argument("--target-version", help="Validate migrations up to this version")
+    if diff_parser is not None:
+        _setup_diff_options(diff_parser)
     # Validate specific options
     validate_parser.add_argument(
         "--skip-validation", action="store_true", help="Skip validation checks"
@@ -211,18 +376,191 @@ def _add_target_options(
     )
 
 
-def _register_builtin_command_parsers(
-    parser: argparse.ArgumentParser,
-) -> list[argparse.ArgumentParser]:
-    """Register first-party command parsers that remain in the OSS CLI."""
-    subparser_actions = [
-        action for action in parser._actions if isinstance(action, argparse._SubParsersAction)
-    ]
-    if not subparser_actions:
-        return []
-    registered: list[argparse.ArgumentParser] = []
+def _add_validate_sql_options(validate_sql_parser: argparse.ArgumentParser) -> None:
+    """Configure arguments specific to the validate-sql command."""
+    validate_sql_parser.add_argument(
+        "files",
+        nargs="*",
+        help="SQL files or directories to validate (defaults to migration scripts directory)",
+    )
+    validate_sql_parser.add_argument(
+        "--dialect",
+        # lint: allow-dialect-string: dialect dispatch
+        choices=["oracle", "postgresql", "mysql", "sqlserver", "db2", "sqlite"],
+        help="SQL dialect (defaults to dialect from database config)",
+    )
+    validate_sql_parser.add_argument(
+        "--format",
+        choices=list(VALIDATE_SQL_FORMATS),
+        help="Output format (default: console)",
+    )
+    validate_sql_parser.add_argument(
+        "--output",
+        help="Optional file path for console, JSON, SARIF, GitLab, compact, or HTML output",
+    )
+    validate_sql_parser.add_argument(
+        "--fail-on",
+        choices=list(FAIL_ON_CHOICES),
+        default=None,
+        help="Minimum finding severity that makes the command fail (default: from config or error)",
+    )
+    validate_sql_parser.add_argument(
+        "--severity-threshold",
+        choices=["error", "warning", "info"],
+        help="Minimum severity to report (default: from config or 'warning')",
+    )
+    validate_sql_parser.add_argument(
+        "--rules-file", help="Path to custom validation rules YAML file"
+    )
+    validate_sql_parser.add_argument(
+        "--profile",
+        dest="rule_profile",
+        help=("Built-in validation profile to apply " "(core, enterprise, strict, technical-debt)"),
+    )
+    validate_sql_parser.add_argument(
+        "--rules",
+        action="append",
+        help=(
+            "Rule packs or individual rules to apply; accepts comma-separated " "or repeated values"
+        ),
+    )
+    validate_sql_parser.add_argument(
+        "--no-performance",
+        action="store_true",
+        help="Disable performance analysis (only run business rules)",
+    )
 
-    return registered
+
+def _add_plan_options(plan_parser: argparse.ArgumentParser) -> None:
+    plan_parser.add_argument(
+        "--snapshot-model",
+        required=True,
+        help="Path to the DBLift snapshot model representing the target environment state",
+    )
+    plan_parser.add_argument(
+        "--skip-validate-sql",
+        action="store_true",
+        help="Do not run SQL validation on planned migration scripts",
+    )
+    plan_parser.add_argument(
+        "--validate-scope",
+        choices=["pending", "all"],
+        default="pending",
+        help="SQL validation scope (default: pending)",
+    )
+    plan_parser.add_argument(
+        "--format",
+        default="text",
+        metavar="FORMAT[,FORMAT...]",
+        help=(
+            "Report format(s): text, json, html, sarif, github-actions, gitlab, compact; "
+            "comma-separate values to write multiple artifacts"
+        ),
+    )
+    plan_parser.add_argument(
+        "--fail-on",
+        choices=list(FAIL_ON_CHOICES),
+        default="error",
+        help="Minimum finding severity that makes the command fail (default: error)",
+    )
+    plan_parser.add_argument(
+        "--output", help="Optional file path for text, JSON, or HTML plan output"
+    )
+    plan_parser.add_argument(
+        "--output-dir",
+        help="Directory for timestamped report artifacts when multiple formats are requested",
+    )
+
+
+def _add_preflight_options(preflight_parser: argparse.ArgumentParser) -> None:
+    preflight_parser.add_argument(
+        "--snapshot-model",
+        required=True,
+        help="Path to the DBLift snapshot model representing the target environment state",
+    )
+    container_mode = preflight_parser.add_mutually_exclusive_group(required=True)
+    container_mode.add_argument(
+        "--container-image", help="Docker image to start for migration replay"
+    )
+    container_mode.add_argument(
+        "--container-existing",
+        help="Name or ID of an already-running validation database container",
+    )
+    container_mode.add_argument(
+        "--skip-replay",
+        action="store_true",
+        help="Run plan and SQL validation without replaying migrations in a container",
+    )
+    preflight_parser.add_argument("--container-name", help="Name for the managed Docker container")
+    preflight_parser.add_argument(
+        "--container-env",
+        action="append",
+        default=[],
+        help="Environment variable for managed Docker container, KEY=VALUE; repeatable",
+    )
+    preflight_parser.add_argument(
+        "--container-env-file",
+        dest="container_env_file",
+        metavar="PATH",
+        help="File of env vars to pass to the validation container (docker --env-file)",
+    )
+    preflight_parser.add_argument(
+        "--container-port",
+        action="append",
+        default=[],
+        help="Port mapping for managed Docker container, HOST:CONTAINER; repeatable",
+    )
+    preflight_parser.add_argument(
+        "--container-wait-timeout",
+        type=int,
+        default=120,
+        help="Seconds to wait for the validation database to become usable",
+    )
+    preflight_parser.add_argument(
+        "--replay-scope",
+        choices=["all", "planned"],
+        default="all",
+        help=(
+            "Migration replay scope: all for empty containers, planned for containers "
+            "preloaded with history matching the snapshot (default: all)"
+        ),
+    )
+    preflight_parser.add_argument(
+        "--keep-container",
+        action="store_true",
+        help="Do not remove a managed validation container after preflight",
+    )
+    preflight_parser.add_argument(
+        "--format",
+        default="text",
+        metavar="FORMAT[,FORMAT...]",
+        help=(
+            "Report format(s): text, json, html, sarif, github-actions, gitlab, compact; "
+            "comma-separate values to write multiple artifacts"
+        ),
+    )
+    preflight_parser.add_argument(
+        "--fail-on",
+        choices=list(FAIL_ON_CHOICES),
+        default="error",
+        help="Minimum finding severity that makes the command fail (default: error)",
+    )
+    preflight_parser.add_argument(
+        "--output",
+        help="Optional file path for text, JSON, or HTML preflight output",
+    )
+    preflight_parser.add_argument(
+        "--output-dir",
+        help="Directory for timestamped report artifacts when multiple formats are requested",
+    )
+    preflight_parser.add_argument(
+        "--rehearse-rollback",
+        action="store_true",
+        dest="rehearse_rollback",
+        default=False,
+        help="After replay, also run undo migrations to verify rollback scripts work",
+    )
+
 
 
 def create_parser(
@@ -323,13 +661,14 @@ def create_parser(
     # of these dests — structurally enforced by
     # ``tests/unit/cli/test_parser_invariants.py``).
     _history = _make_history_table_parent()
+    _snapshot_table = _make_snapshot_table_parent()
     _strict = _make_strict_parent()
     _filter = _make_filter_parent()
     # Create all subcommand parsers
     migrate_parser = subparsers.add_parser(
         "migrate",
         help="Apply migrations",
-        parents=[_history, _strict, _filter],
+        parents=[_history, _snapshot_table, _strict, _filter],
     )
     info_parser = subparsers.add_parser(
         "info",
@@ -344,7 +683,7 @@ def create_parser(
     undo_parser = subparsers.add_parser(
         "undo",
         help="Rollback migrations",
-        parents=[_history, _strict, _filter],
+        parents=[_history, _snapshot_table, _strict, _filter],
     )
     clean_parser = subparsers.add_parser(
         "clean",
@@ -354,7 +693,7 @@ def create_parser(
     baseline_parser = subparsers.add_parser(
         "baseline",
         help="Baseline an existing database",
-        parents=[_history],
+        parents=[_history, _snapshot_table],
     )
     repair_parser = subparsers.add_parser(
         "repair",
@@ -371,9 +710,10 @@ def create_parser(
         default="flyway_schema_history",
         help="Source Flyway schema history table name (default: flyway_schema_history)",
     )
+    builtin_extension_parsers: list = []
     # Configure arguments via extracted functions
     _add_baseline_options(baseline_parser)
-    _add_target_options(migrate_parser, undo_parser, validate_parser, clean_parser)
+    _add_diff_and_target_options(None, migrate_parser, undo_parser, validate_parser, clean_parser)
     # info --format option (JSON output for scripting)
     info_parser.add_argument(
         "--format",
@@ -397,6 +737,7 @@ def create_parser(
             repair_parser,
             import_flyway_parser,
             db_parser,
+            *builtin_extension_parsers,
         ]
 
         def silent_error(message: str) -> None:

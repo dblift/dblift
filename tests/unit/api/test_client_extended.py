@@ -144,10 +144,11 @@ class TestDBLiftClientContextManager(unittest.TestCase):
 
 
 class TestDBLiftClientFromSqlAlchemy(unittest.TestCase):
-    def test_from_sqlalchemy_raises_not_implemented(self):
+    def test_from_sqlalchemy_requires_engine_or_connection(self):
         from api.client import DBLiftClient
+        from config.errors import ConfigurationError
 
-        with self.assertRaises(NotImplementedError):
+        with self.assertRaises(ConfigurationError):
             DBLiftClient.from_sqlalchemy()
 
 

@@ -8,12 +8,14 @@ from __future__ import annotations
 
 from copy import deepcopy
 from pathlib import Path
-from typing import Any, Dict, List, NoReturn, Optional, Protocol, Union
+from typing import Any, Dict, List, Optional, Protocol, Union
 
+from api._engine_config import config_from_engine
 from config import DbliftConfig
 from config.config_builder import ConfigBuilder
 from config.errors import ConfigurationError
 from core.logger import DbliftLogger, LogFormat, LogLevel
+from db.native_connection_manager import NativeConnectionManager
 from db.provider_registry import ProviderRegistry
 
 
@@ -261,6 +263,18 @@ def client_from_config_file(
     return client_from_config(config, logger, client_cls=client_cls, **passthrough)
 
 
+def _attach_external_sqlite_connection(provider: Any, engine: Any, connection: Any) -> None:
+    """Bind a caller-owned SQLAlchemy engine/connection to a sqlite3 provider.
+
+    The native ``SQLiteProvider`` extracts the underlying DBAPI
+    ``sqlite3.Connection`` from the SQLAlchemy Engine (or Connection) and
+    operates on the *same* database as the caller. It also retains the
+    engine/connection so it can re-bind on reconnect, and flags the connection
+    as caller-owned so ``close()`` never disposes it.
+    """
+    provider.attach_external_sqlalchemy(engine, connection)
+
+
 def client_from_sqlalchemy(
     engine: Any = None,
     migrations_dir: Optional[Union[str, Path, List[Union[str, Path]]]] = None,
@@ -269,18 +283,94 @@ def client_from_sqlalchemy(
     log_level: str = "INFO",
     log_format: str = "text",
     log_file: Optional[str] = None,
+    *,
+    connection: Any = None,
+    config: Optional[DbliftConfig] = None,
+    client_cls: Optional[type[Any]] = None,
     **kwargs: Any,
-) -> NoReturn:
-    """Create DBLiftClient from SQLAlchemy engine.
+) -> Any:
+    """Create DBLiftClient from an existing SQLAlchemy Engine or Connection.
 
-    DEPRECATED: SQLAlchemy integration has been temporarily removed during
-    the API-first refactoring. Use client_from_config() or client_from_config_file() instead.
+    Primary integration point for Python application runtimes (FastAPI lifespan,
+    pytest fixtures, Flask, etc.). The caller retains ownership of the engine;
+    DBLiftClient.close() will not dispose it.
 
-    Raises:
-        NotImplementedError: SQLAlchemy integration is temporarily unavailable
+    Accepts either ``engine=`` or ``connection=`` (mutually exclusive).
     """
-    raise NotImplementedError(
-        "SQLAlchemy integration has been temporarily removed during the API-first "
-        "refactoring. Please use DBLiftClient.from_config() or from_config_file() "
-        "instead. SQLAlchemy integration will be reintroduced in a future version."
+    if engine is not None and connection is not None:
+        raise ConfigurationError("Pass engine or connection, not both")
+    if connection is not None:
+        engine = getattr(connection, "engine", connection)
+    if engine is None:
+        raise ConfigurationError("from_sqlalchemy requires engine= or connection=")
+
+    derived = config_from_engine(engine, schema=schema, migrations_dir=migrations_dir)
+    if config is not None:
+        # Overlay the caller's config without stomping derived fields (schema,
+        # migrations_dir, placeholders etc. that came from engine + explicit args).
+        # Merge into sub-objects field-by-field so partial overrides (e.g. only
+        # changing database.host while keeping .schema) work correctly.
+        merged = deepcopy(derived)
+        for attr in ("database", "migrations", "logging"):
+            if hasattr(config, attr):
+                override = getattr(config, attr)
+                target = getattr(merged, attr)
+                for f in dir(override):
+                    if not f.startswith("_") and hasattr(override, f):
+                        val = getattr(override, f)
+                        if val is not None and not callable(val):
+                            setattr(target, f, val)
+        # Also bring in top-level fields from the override (e.g. placeholders)
+        for f in dir(config):
+            if not f.startswith("_") and hasattr(config, f):
+                val = getattr(config, f)
+                if (
+                    val is not None
+                    and f not in ("database", "migrations", "logging")
+                    and not callable(val)
+                ):  # noqa: E501
+                    setattr(merged, f, val)
+        derived = merged
+
+    # Respect explicit logger if provided (matches client_from_config contract).
+    # Only fall back to building from log_* params when logger is None.
+    if logger is None:
+        logger = build_default_logger(derived, log_level, log_format, log_file)
+
+    provider = ProviderRegistry.create_provider(derived, logger)
+    dialect_name = str(getattr(engine.dialect, "name", ""))
+
+    # Inject external engine so provider re-uses caller's Engine/Connection
+    # (ownership=False prevents dispose on client/provider close).
+    if hasattr(provider, "_conn_mgr"):
+        provider._conn_mgr = NativeConnectionManager(
+            derived, logger, engine=engine, owns_engine=False
+        )  # noqa: E501
+    elif dialect_name == "sqlite":  # lint: allow-dialect-string: stdlib sqlite3 provider path
+        # The native SQLite provider talks to ``sqlite3`` directly instead of
+        # through a NativeConnectionManager, so the branch above never fires for
+        # it. Without this, the provider would open its *own* ``sqlite3``
+        # connection and migrate a different database than the caller's engine —
+        # fatal for ``sqlite:///:memory:`` where every connection is a separate
+        # in-memory DB. Reach through the SQLAlchemy engine/connection to its
+        # underlying DBAPI ``sqlite3.Connection`` and hand that to the provider.
+        _attach_external_sqlite_connection(provider, engine, connection)
+
+    # When a specific Connection was passed, bind it directly so that
+    # immediate provider operations (and thus migrations) run against the
+    # caller's live connection/session rather than opening a fresh one from
+    # the engine pool. This makes the `connection=` path actually useful.
+    # We also set a flag so the provider skips its auto-commit logic
+    # (the caller owns the session/tx and is responsible for commit/rollback).
+    if connection is not None:
+        setattr(provider, "_connection", connection)
+        setattr(provider, "_external_connection", True)
+
+    ctor = client_cls or __import__("api.client", fromlist=["DBLiftClient"]).DBLiftClient
+    return ctor(
+        provider=provider,
+        migrations_dir=migrations_dir or getattr(derived.migrations, "directory", None),
+        config=derived,
+        logger=logger,
+        **kwargs,
     )

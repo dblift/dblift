@@ -1,0 +1,3035 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dblift Migration Report</title>
+    <!-- Tailwind CSS via CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Font Awesome Icons via CDN -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <!-- Prism.js Syntax Highlighting via CDN -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-core.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/plugins/autoloader/prism-autoloader.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-sql.min.js"></script>
+    
+    <!-- Tailwind Configuration with DBLift Brand Colors -->
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        'dblift-blue': {
+                            50: '#E6F2FF',
+                            100: '#CCE5FF',
+                            200: '#99CBFF',
+                            300: '#66B1FF',
+                            400: '#3397FF',
+                            500: '#1F77B4',
+                            600: '#1A5F91',
+                            700: '#15476E',
+                            800: '#0F2F4B',
+                            900: '#0A1728',
+                        },
+                        'dblift-teal': {
+                            50: '#F0FDFA',
+                            100: '#CCFBF1',
+                            200: '#99F6E4',
+                            300: '#5EEAD4',
+                            400: '#2DD4BF',
+                            500: '#14B8A6',
+                            600: '#0D9488',
+                            700: '#0F766E',
+                            800: '#115E59',
+                            900: '#134E4A',
+                        },
+                        'dblift-cyan': {
+                            50: '#ECFEFF',
+                            100: '#CFFAFE',
+                            200: '#A5F3FC',
+                            300: '#67E8F9',
+                            400: '#22D3EE',
+                            500: '#06B6D4',
+                            600: '#0891B2',
+                            700: '#0E7490',
+                            800: '#155E75',
+                            900: '#164E63',
+                        },
+                        'dblift-slate': {
+                            50: '#F8FAFC',
+                            100: '#F1F5F9',
+                            200: '#E2E8F0',
+                            300: '#CBD5E1',
+                            400: '#94A3B8',
+                            500: '#64748B',
+                            600: '#475569',
+                            700: '#334155',
+                            800: '#151A25',
+                            900: '#0A0E1A',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        :root {
+            /* DBLift website color palette - Updated to match website */
+            /* Blue palette - Primary color */
+            --dblift-blue-50: #E6F2FF;
+            --dblift-blue-100: #CCE5FF;
+            --dblift-blue-200: #99CBFF;
+            --dblift-blue-300: #66B1FF;
+            --dblift-blue-400: #3397FF;
+            --dblift-blue-500: #1F77B4;
+            --dblift-blue-600: #1A5F91;
+            --dblift-blue-700: #15476E;
+            --dblift-blue-800: #0F2F4B;
+            --dblift-blue-900: #0A1728;
+
+            /* Teal palette - Secondary color */
+            --dblift-teal-50: #F0FDFA;
+            --dblift-teal-100: #CCFBF1;
+            --dblift-teal-200: #99F6E4;
+            --dblift-teal-300: #5EEAD4;
+            --dblift-teal-400: #2DD4BF;
+            --dblift-teal-500: #14B8A6;
+            --dblift-teal-600: #0D9488;
+            --dblift-teal-700: #0F766E;
+            --dblift-teal-800: #115E59;
+            --dblift-teal-900: #134E4A;
+
+            /* Cyan palette - Accent */
+            --dblift-cyan-50: #ECFEFF;
+            --dblift-cyan-100: #CFFAFE;
+            --dblift-cyan-200: #A5F3FC;
+            --dblift-cyan-300: #67E8F9;
+            --dblift-cyan-400: #22D3EE;
+            --dblift-cyan-500: #06B6D4;
+            --dblift-cyan-600: #0891B2;
+            --dblift-cyan-700: #0E7490;
+            --dblift-cyan-800: #155E75;
+            --dblift-cyan-900: #164E63;
+
+            /* Dark slate background - Updated to match website */
+            --dblift-slate-50: #F8FAFC;
+            --dblift-slate-100: #F1F5F9;
+            --dblift-slate-200: #E2E8F0;
+            --dblift-slate-300: #CBD5E1;
+            --dblift-slate-400: #94A3B8;
+            --dblift-slate-500: #64748B;
+            --dblift-slate-600: #475569;
+            --dblift-slate-700: #334155;
+            --dblift-slate-800: #151A25;
+            --dblift-slate-900: #0A0E1A;
+
+            /* Functional colors mapped to new brand colors */
+            --primary-color: var(--dblift-blue-500);
+            --secondary-color: var(--dblift-teal-500);
+            --accent-color: var(--dblift-cyan-500);
+            --neutral-color: var(--dblift-slate-400);
+
+            /* Status colors */
+            --success-color: var(--dblift-teal-500);
+            --warning-color: #fbbf24;
+            --error-color: #ef4444;
+            --info-color: var(--dblift-cyan-500);
+            --notice-color: var(--dblift-blue-500);
+
+            /* UI elements - Dark theme matching website */
+            --header-bg: var(--dblift-slate-900);
+            --header-text: var(--dblift-slate-100);
+            --header-accent: var(--dblift-blue-500);
+            --body-bg: var(--dblift-slate-900);
+            --card-bg: var(--dblift-slate-800);
+            --text-primary: var(--dblift-slate-100);
+            --text-secondary: var(--dblift-slate-300);
+            --border-color: var(--dblift-slate-700);
+        }
+        html, body {
+            margin: 0 !important;
+            padding: 0 !important;
+        }
+        body {
+            font-family: 'Inter', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            background-color: var(--body-bg);
+            color: var(--text-primary);
+            padding-bottom: 2rem;
+            padding-left: 0 !important;
+            margin-left: 0 !important;
+            overflow-x: hidden;
+        }
+        .header {
+            background: var(--dblift-slate-900);
+            color: var(--header-text);
+            padding: 2rem 0;
+            padding-left: 0 !important;
+            margin-left: 0 !important;
+            margin-bottom: 2rem;
+            border-bottom: 3px solid var(--header-accent);
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+            position: relative;
+            overflow: hidden;
+        }
+        body {
+            padding-left: 0 !important;
+            margin-left: 0 !important;
+        }
+        .header::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: 
+                linear-gradient(rgba(31, 119, 180, 0.03) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(31, 119, 180, 0.03) 1px, transparent 1px);
+            background-size: 50px 50px;
+            pointer-events: none;
+        }
+        .logo-container {
+            display: flex;
+            align-items: center;
+            margin-left: 0;
+            padding-left: 0;
+        }
+        .logo-container img {
+            max-width: 400px;
+            height: auto;
+            margin-right: 2rem;
+            margin-left: 0;
+        }
+        .report-title {
+            margin-left: 1rem;
+            border-left: 3px solid var(--header-accent);
+            padding-left: 1rem;
+        }
+        .main-container {
+            background: var(--card-bg);
+            border-radius: 16px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+            padding: 2rem;
+            margin-bottom: 2rem;
+            max-width: 100%;
+            overflow-x: hidden;
+            border: 1px solid var(--border-color);
+            backdrop-filter: blur(10px);
+        }
+        .summary-box {
+            border-radius: 16px;
+            margin-bottom: 1.5rem;
+            padding: 1.5rem;
+            color: white;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        .success-bg { 
+            background: linear-gradient(135deg, var(--success-color), var(--dblift-teal-600)); 
+            box-shadow: 0 8px 32px rgba(20, 184, 166, 0.3);
+        }
+        .error-bg { 
+            background: linear-gradient(135deg, var(--error-color), #dc2626); 
+            box-shadow: 0 8px 32px rgba(239, 68, 68, 0.3);
+        }
+        .warning-bg { 
+            background: linear-gradient(135deg, var(--warning-color), #f59e0b); 
+            color: var(--dblift-slate-900);
+            box-shadow: 0 8px 32px rgba(251, 191, 36, 0.3);
+        }
+        .info-bg { 
+            background: linear-gradient(135deg, var(--info-color), var(--dblift-cyan-600)); 
+            box-shadow: 0 8px 32px rgba(6, 182, 212, 0.3);
+        }
+        
+        .log-entry {
+            border-bottom: 1px solid var(--border-color);
+            padding: 12px 16px;
+            margin-bottom: 8px;
+            border-radius: 8px;
+            transition: all 0.3s ease;
+            background: rgba(255, 255, 255, 0.02);
+        }
+        .log-entry:hover {
+            background-color: var(--dblift-slate-700);
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+        }
+        .log-debug { border-left: 4px solid var(--neutral-color); color: var(--neutral-color); }
+        .log-info { border-left: 4px solid var(--info-color); }
+        .log-warn { border-left: 4px solid var(--warning-color); }
+        .log-error { border-left: 4px solid var(--error-color); color: var(--error-color); }
+        .log-notice { border-left: 4px solid var(--primary-color); font-weight: 500; }
+        
+        .timestamp {
+            color: var(--dblift-slate-300);
+            font-size: 0.85rem;
+        }
+        
+        .migration-item {
+            padding: 1.5rem;
+            margin-bottom: 1rem;
+            border-radius: 12px;
+            border: 1px solid var(--border-color);
+            background-color: var(--card-bg);
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+            transition: all 0.3s ease;
+            backdrop-filter: blur(10px);
+        }
+        .migration-item:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+            border-color: var(--primary-color);
+        }
+        .migration-success { border-left: 4px solid var(--success-color); }
+        .migration-pending { border-left: 4px solid var(--info-color); }
+        .migration-future { border-left: 4px solid var(--teal-blue); }
+        .migration-failed { border-left: 4px solid var(--error-color); }
+        .migration-outdated { border-left: 4px solid var(--accent-color); }
+        .migration-undone { border-left: 4px solid var(--neutral-color); }
+        
+        .badge-type {
+            font-size: 0.75rem;
+            padding: 0.35em 0.65em;
+            background-color: var(--neutral-color);
+            color: white;
+            border-radius: 50rem;
+        }
+        
+        .badge-status-success { 
+            background: linear-gradient(135deg, var(--success-color), var(--dblift-teal-600)); 
+            color: white; 
+            box-shadow: 0 2px 8px rgba(20, 184, 166, 0.3);
+        }
+        .badge-status-applied { 
+            background: linear-gradient(135deg, var(--success-color), var(--dblift-teal-600)); 
+            color: white; 
+            box-shadow: 0 2px 8px rgba(20, 184, 166, 0.3);
+        }
+        .badge-status-pending { 
+            background: linear-gradient(135deg, var(--info-color), var(--dblift-cyan-600)); 
+            color: white; 
+            box-shadow: 0 2px 8px rgba(6, 182, 212, 0.3);
+        }
+        .badge-status-future { 
+            background: linear-gradient(135deg, var(--dblift-cyan-500), var(--dblift-cyan-600)); 
+            color: white; 
+            box-shadow: 0 2px 8px rgba(6, 182, 212, 0.3);
+        }
+        .badge-status-failed { 
+            background: linear-gradient(135deg, var(--error-color), #dc2626); 
+            color: white; 
+            box-shadow: 0 2px 8px rgba(239, 68, 68, 0.3);
+        }
+        .badge-status-outdated { 
+            background: linear-gradient(135deg, var(--accent-color), var(--dblift-cyan-600)); 
+            color: white; 
+            box-shadow: 0 2px 8px rgba(6, 182, 212, 0.3);
+        }
+        .badge-status-undone { 
+            background: linear-gradient(135deg, var(--neutral-color), var(--dblift-slate-500)); 
+            color: white; 
+            box-shadow: 0 2px 8px rgba(148, 163, 184, 0.3);
+        }
+        
+        .duration {
+            font-size: 0.9rem;
+            color: var(--dblift-slate-300);
+        }
+        
+        .version-badge {
+            font-family: monospace;
+            font-size: 0.85rem;
+            background-color: var(--neutral-color);
+            color: white;
+            padding: 0.2rem 0.5rem;
+            border-radius: 4px;
+            margin-left: 0.5rem;
+        }
+        
+        .progress-section {
+            margin: 2rem 0;
+        }
+        
+        .footer {
+            text-align: center;
+            margin-top: 3rem;
+            padding: 2rem;
+            font-size: 0.9rem;
+            color: var(--text-secondary);
+            background: linear-gradient(135deg, var(--dblift-slate-900), var(--dblift-slate-800));
+            border-radius: 12px;
+            border: 1px solid var(--border-color);
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+        }
+        
+        .section-title {
+            border-bottom: 2px solid var(--primary-color);
+            padding-bottom: 0.5rem;
+            margin-bottom: 1.5rem;
+            color: var(--text-primary);
+            font-family: 'Montserrat', sans-serif;
+            font-weight: 700;
+            background: linear-gradient(135deg, var(--primary-color), var(--accent-color));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        
+        .driver-info {
+            background: var(--card-bg);
+            border: 1px solid var(--border-color);
+            border-left: 4px solid var(--primary-color);
+            padding: 1.5rem;
+            margin-bottom: 1.5rem;
+            border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+            backdrop-filter: blur(10px);
+        }
+        
+        /* HTML table styling */
+        .migration-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 1rem 0;
+        }
+        
+        /* Responsive table container */
+        .table-responsive {
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+            max-width: 100%;
+        }
+        
+        .migration-table th {
+            background: var(--dblift-slate-600);
+            color: var(--text-primary);
+            padding: 1rem;
+            text-align: left;
+            font-weight: 600;
+            font-family: 'Montserrat', sans-serif;
+        }
+        
+        .migration-table td {
+            padding: 1rem;
+            border-bottom: 1px solid var(--border-color);
+            color: var(--text-secondary);
+        }
+        
+        .migration-table tr:nth-child(even) {
+            background-color: var(--dblift-slate-800);
+        }
+        
+        .migration-table tr:hover {
+            background: linear-gradient(135deg, rgba(31, 119, 180, 0.1), rgba(6, 182, 212, 0.05));
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+        }
+        
+        /* Migration accordion styling */
+        .migration-operations {
+            margin-top: 1rem;
+            padding: 1rem;
+            background: var(--dblift-slate-800);
+            border-radius: 12px;
+            border-left: 3px solid var(--primary-color);
+            overflow-x: auto;
+            max-width: 100%;
+            border: 1px solid var(--border-color);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+        }
+        
+        .operation-item {
+            margin-bottom: 0.5rem;
+            padding: 0.75rem;
+            border-radius: 8px;
+            background: rgba(30, 41, 59, 0.5);
+            word-break: break-word;
+            overflow-wrap: break-word;
+            border: 1px solid var(--border-color);
+            color: var(--text-secondary);
+        }
+        
+        .operation-item:last-child {
+            margin-bottom: 0;
+        }
+        
+        .accordion-button:not(.collapsed) {
+            background: linear-gradient(135deg, rgba(31, 119, 180, 0.1), rgba(6, 182, 212, 0.05));
+            color: var(--text-primary);
+            border-color: var(--primary-color);
+        }
+        
+        .accordion-button:focus {
+            box-shadow: 0 0 0 0.25rem rgba(31, 119, 180, 0.25);
+        }
+        
+        .accordion-button {
+            background: var(--dblift-slate-600) !important;
+            color: var(--text-primary) !important;
+            border-color: var(--border-color) !important;
+        }
+
+        /* Fix accordion items */
+        .accordion-item {
+            background-color: var(--dblift-slate-600) !important;
+            border: 1px solid var(--border-color) !important;
+            margin-bottom: 1rem;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+
+        .accordion-header {
+            background-color: var(--dblift-slate-600) !important;
+        }
+
+        .accordion-collapse {
+            background-color: var(--dblift-slate-700) !important;
+            border-color: var(--border-color) !important;
+        }
+        
+        .log-paragraph {
+            margin-bottom: 1rem;
+            line-height: 1.6;
+        }
+        
+        .report-info {
+            background: linear-gradient(135deg, var(--dblift-slate-800), var(--dblift-slate-700));
+            border-radius: 12px;
+            padding: 1.5rem;
+            margin-top: 0.5rem;
+            border: 1px solid var(--border-color);
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+            backdrop-filter: blur(10px);
+        }
+
+        .alert-sm {
+            padding: 0.5rem 1rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .timeline-wrapper { 
+            height: 10px; 
+            background: var(--dblift-slate-600); 
+            overflow: hidden; 
+            position: relative; 
+            border-radius: 4px;
+        }
+        .timeline-bar {
+            position: absolute;
+            top: 0;
+            border-radius: 4px;
+        }
+        /* subnav removed per UX */
+
+        /* Print-friendly adjustments */
+        @media print {
+            body { 
+                background: #ffffff !important; 
+                color: #000000 !important;
+            }
+            .main-container, .card, .summary-box { 
+                box-shadow: none !important; 
+                background: #ffffff !important;
+                color: #000000 !important;
+            }
+            .header { 
+                border-bottom: 1px solid #ccc; 
+                box-shadow: none !important; 
+                background: #ffffff !important;
+                color: #000000 !important;
+            }
+            .accordion-button::after { display: none; }
+            .accordion-collapse { display: block !important; height: auto !important; }
+            .section-title {
+                color: #000000 !important;
+                -webkit-text-fill-color: #000000 !important;
+            }
+        }
+        /* Timeline column sizing - fixed width for consistency */
+        td.timeline-cell { width: 480px; min-width: 480px; max-width: 480px; padding: 8px; }
+        th.timeline-col { width: 480px; min-width: 480px; max-width: 480px; }
+        .timeline-wrapper { 
+            height: 10px; 
+            background: var(--dblift-slate-600); 
+            overflow: hidden; 
+            position: relative; 
+            width: 100%; 
+            max-width: 464px; 
+            border-radius: 4px;
+        }
+        
+        /* Side-by-side diff display */
+        .diff-container {
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            margin: 1rem 0;
+            overflow: hidden;
+            background: var(--card-bg);
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+        }
+        .diff-header {
+            background: linear-gradient(135deg, var(--dblift-slate-800), var(--dblift-slate-700));
+            border-bottom: 1px solid var(--border-color);
+            padding: 0.75rem 1rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 0.875rem;
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+        .diff-header .diff-label {
+            color: var(--text-primary);
+            font-family: 'Montserrat', sans-serif;
+        }
+        .diff-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', 'Consolas', 'source-code-pro', monospace;
+            font-size: 0.875rem;
+            line-height: 1.2;
+            table-layout: auto;
+        }
+        .diff-table td {
+            padding: 0;
+            vertical-align: top;
+        }
+        .diff-line-num {
+            padding: 0 0.5rem;
+            text-align: right;
+            color: var(--dblift-slate-400);
+            background-color: var(--dblift-slate-800);
+            border-right: 1px solid var(--border-color);
+            user-select: none;
+            white-space: nowrap;
+            width: 50px;
+        }
+        .diff-line-num.before {
+            background-color: rgba(239, 68, 68, 0.15);
+            color: #fca5a5;
+        }
+        .diff-line-num.after {
+            background-color: rgba(20, 184, 166, 0.15);
+            color: #5eead4;
+        }
+        .diff-content {
+            padding: 0.05rem 0.75rem;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            overflow-x: hidden;
+            overflow-y: visible;
+            width: 50%;
+            max-width: none;
+            font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', 'Consolas', 'source-code-pro', monospace;
+            font-size: 0.85rem;
+            line-height: 1.2;
+            vertical-align: top;
+        }
+        /* Override Prism.js styles for diff view to keep compact line height */
+        .diff-content pre[class*="language-"],
+        .diff-content code[class*="language-"] {
+            margin: 0 !important;
+            padding: 0 !important;
+            line-height: 1.2 !important;
+            font-size: 0.85rem !important;
+            background: transparent !important;
+            border: none !important;
+            outline: none !important;
+            box-shadow: none !important;
+        }
+        .diff-content pre[class*="language-"] {
+            margin: 0 !important;
+            padding: 0 !important;
+        }
+        .diff-content code[class*="language-"] {
+            display: block;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+        .diff-content.old {
+            background-color: rgba(239, 68, 68, 0.15);
+            color: #fca5a5;
+        }
+        .diff-content.new {
+            background-color: rgba(20, 184, 166, 0.15);
+            color: #5eead4;
+        }
+        .diff-content.equal {
+            background-color: var(--dblift-slate-800);
+            color: var(--dblift-slate-200);
+        }
+        .diff-line {
+            display: table-row;
+        }
+        .diff-line.removed {
+            background-color: rgba(239, 68, 68, 0.1);
+        }
+        .diff-line.removed .diff-content {
+            color: #fca5a5;
+        }
+        .diff-line.added {
+            background-color: rgba(20, 184, 166, 0.1);
+        }
+        .diff-line.added .diff-content {
+            color: #5eead4;
+        }
+        .diff-line.equal {
+            background-color: var(--dblift-slate-800);
+        }
+        .diff-line.equal .diff-content {
+            color: var(--dblift-slate-200);
+        }
+        .diff-toggle {
+            cursor: pointer;
+            color: var(--dblift-blue-light);
+            text-decoration: none;
+            font-size: 0.875rem;
+            margin-top: 0.5rem;
+            display: inline-block;
+        }
+        .diff-toggle:hover {
+            text-decoration: underline;
+        }
+        .diff-section {
+            margin-top: 1rem;
+        }
+
+        /* Modern animations and effects */
+        @keyframes float {
+            0%, 100% {
+                transform: translateY(0px);
+            }
+            50% {
+                transform: translateY(-6px);
+            }
+        }
+        
+        @keyframes glow {
+            0%, 100% {
+                box-shadow: 0 4px 20px rgba(31, 119, 180, 0.2);
+            }
+            50% {
+                box-shadow: 0 8px 32px rgba(31, 119, 180, 0.4);
+            }
+        }
+        
+        .animate-float {
+            animation: float 3s ease-in-out infinite;
+        }
+        
+        .animate-glow {
+            animation: glow 2s ease-in-out infinite;
+        }
+
+        /* Gradient text effect for titles */
+        .gradient-text {
+            background: linear-gradient(135deg, var(--primary-color), var(--accent-color));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        /* Fix Bootstrap table backgrounds for dark theme with better contrast */
+        .table {
+            --bs-table-bg: var(--dblift-slate-700);
+            --bs-table-striped-bg: var(--dblift-slate-600);
+            --bs-table-hover-bg: rgba(31, 119, 180, 0.2);
+            --bs-table-border-color: var(--border-color);
+            --bs-table-color: var(--text-primary);
+            background-color: var(--dblift-slate-700) !important;
+            color: var(--text-primary) !important;
+            border-color: var(--border-color) !important;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+
+        .table th {
+            background: var(--dblift-slate-600) !important;
+            color: var(--text-primary) !important;
+            border-color: var(--border-color) !important;
+            font-family: 'Montserrat', sans-serif;
+            font-weight: 600;
+        }
+
+        .table td {
+            background-color: var(--dblift-slate-700) !important;
+            color: var(--text-primary) !important;
+            border-color: var(--border-color) !important;
+        }
+
+        .table-striped > tbody > tr:nth-of-type(odd) > td {
+            background-color: var(--dblift-slate-700) !important;
+        }
+        
+        .table-striped > tbody > tr:nth-of-type(even) > td {
+            background-color: var(--dblift-slate-800) !important;
+        }
+        
+        /* Remove stripes in accordion tables for better readability */
+        .accordion-body .table-striped > tbody > tr > td {
+            background-color: var(--dblift-slate-800) !important;
+        }
+        
+        .accordion-body .table-striped > tbody > tr:nth-of-type(even) > td {
+            background-color: var(--dblift-slate-800) !important;
+        }
+
+        .table-hover > tbody > tr:hover > td {
+            background: linear-gradient(135deg, rgba(31, 119, 180, 0.1), rgba(6, 182, 212, 0.05)) !important;
+        }
+
+        /* Fix accordion and tab content backgrounds */
+        .accordion-body {
+            background-color: var(--dblift-slate-800) !important;
+            color: var(--text-primary) !important;
+        }
+        
+        /* Prism.js SQL syntax highlighting - Dark theme customization */
+        pre[class*="language-"] {
+            background: var(--dblift-slate-900) !important;
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            padding: 0.75rem !important;
+            margin: 0;
+            overflow-x: auto;
+        }
+        
+        code[class*="language-"] {
+            color: var(--dblift-slate-100) !important;
+            font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', 'Consolas', 'source-code-pro', monospace;
+            font-size: 0.875rem;
+            line-height: 1.5;
+        }
+        
+        /* SQL syntax colors for dark theme */
+        .token.keyword {
+            color: #66B1FF !important; /* Blue for keywords */
+        }
+        
+        .token.string {
+            color: #2DD4BF !important; /* Teal for strings */
+        }
+        
+        .token.number {
+            color: #06B6D4 !important; /* Cyan for numbers */
+        }
+        
+        .token.comment {
+            color: var(--dblift-slate-500) !important;
+            font-style: italic;
+        }
+        
+        .token.function {
+            color: #3397FF !important; /* Lighter blue for functions */
+        }
+        
+        .token.operator {
+            color: var(--dblift-slate-300) !important;
+        }
+        
+        .token.punctuation {
+            color: var(--dblift-slate-400) !important;
+        }
+
+        .tab-content {
+            background-color: var(--dblift-slate-700) !important;
+            color: var(--text-primary) !important;
+            border-color: var(--border-color) !important;
+            border-radius: 0 0 8px 8px;
+        }
+
+        .nav-tabs {
+            border-color: var(--border-color) !important;
+        }
+
+        .nav-tabs .nav-link {
+            background-color: var(--dblift-slate-600) !important;
+            color: var(--text-secondary) !important;
+            border-color: var(--border-color) !important;
+            margin-right: 2px;
+            border-radius: 8px 8px 0 0;
+        }
+
+        .nav-tabs .nav-link.active {
+            background-color: var(--dblift-slate-700) !important;
+            color: var(--text-primary) !important;
+            border-color: var(--primary-color) !important;
+            border-bottom-color: var(--dblift-slate-700) !important;
+        }
+
+        /* Fix card backgrounds */
+        .card {
+            background-color: var(--card-bg) !important;
+            color: var(--text-secondary) !important;
+            border-color: var(--border-color) !important;
+        }
+
+        .card-header {
+            background-color: var(--dblift-slate-700) !important;
+            color: var(--text-primary) !important;
+            border-color: var(--border-color) !important;
+        }
+
+        .card-body {
+            background-color: var(--card-bg) !important;
+            color: var(--text-secondary) !important;
+        }
+
+        /* Fix alert backgrounds for dark theme */
+        .alert {
+            background-color: var(--card-bg) !important;
+            color: var(--text-secondary) !important;
+            border-color: var(--border-color) !important;
+        }
+
+        .alert-info {
+            background-color: var(--dblift-slate-700) !important;
+            color: var(--text-primary) !important;
+            border-left: 4px solid var(--info-color) !important;
+            border-color: var(--border-color) !important;
+            border-radius: 8px;
+        }
+
+        .alert-warning {
+            background-color: var(--dblift-slate-800) !important;
+            color: var(--text-secondary) !important;
+            border-left: 4px solid var(--warning-color) !important;
+            border-color: var(--border-color) !important;
+        }
+
+        .alert-danger {
+            background-color: var(--dblift-slate-800) !important;
+            color: var(--text-secondary) !important;
+            border-left: 4px solid var(--error-color) !important;
+            border-color: var(--border-color) !important;
+        }
+
+        .alert-success {
+            background-color: var(--dblift-slate-800) !important;
+            color: var(--text-secondary) !important;
+            border-left: 4px solid var(--success-color) !important;
+            border-color: var(--border-color) !important;
+        }
+
+        /* Fix Bootstrap badge backgrounds */
+        .badge {
+            color: white !important;
+        }
+
+        .bg-primary {
+            background-color: var(--primary-color) !important;
+        }
+
+        .bg-secondary {
+            background-color: var(--dblift-slate-600) !important;
+        }
+
+        .bg-info {
+            background-color: var(--info-color) !important;
+        }
+
+        .bg-warning {
+            background-color: var(--warning-color) !important;
+            color: var(--dblift-slate-900) !important;
+        }
+
+        .bg-danger {
+            background-color: var(--error-color) !important;
+        }
+
+        .bg-success {
+            background-color: var(--success-color) !important;
+        }
+
+        /* Fix table light backgrounds */
+        .table-light {
+            background-color: var(--dblift-slate-600) !important;
+            color: var(--text-primary) !important;
+        }
+
+        .table-light th {
+            background-color: var(--dblift-slate-600) !important;
+            color: var(--text-primary) !important;
+            border-color: var(--border-color) !important;
+        }
+
+        /* Fix border styling */
+        .border {
+            border-color: var(--border-color) !important;
+        }
+
+        .border-top-0 {
+            border-top: 0 !important;
+        }
+
+        /* Fix text readability */
+        .text-muted {
+            color: var(--dblift-slate-300) !important;
+        }
+
+        .text-secondary {
+            color: var(--text-secondary) !important;
+        }
+
+        .text-primary {
+            color: var(--text-primary) !important;
+        }
+
+        /* Fix small text readability */
+        small.text-muted {
+            color: var(--dblift-slate-300) !important;
+        }
+
+        /* Fix execution time text */
+        .mb-2.text-muted {
+            color: var(--dblift-slate-300) !important;
+        }
+
+        /* Fix h6 text in object breakdown */
+        h6.text-muted {
+            color: var(--dblift-slate-300) !important;
+        }
+    </style>
+</head>
+<body class="bg-dblift-slate-900 text-slate-100 font-sans">
+    <div class="header bg-dblift-slate-900 text-slate-100 py-8 mb-8 border-b-4 border-dblift-blue-500 shadow-2xl relative overflow-hidden" style="padding-left: 0 !important; margin-left: 0 !important;">
+        <div class="flex items-center flex-wrap w-full" style="padding-left: 0 !important; margin-left: 0 !important;">
+            <div class="w-full md:w-1/4 mb-4 md:mb-0" style="padding-left: 0 !important; margin-left: 0 !important; padding-right: 0 !important;">
+                <div class="logo-container flex items-center justify-start" style="margin-left: 0 !important; padding-left: 0 !important;">
+                    <img src="{{ logo_path }}" alt="Dblift Logo" class="max-w-[400px] h-auto" style="margin-left: 0 !important; padding-left: 0 !important;">
+                </div>
+            </div>
+            <div class="w-full md:w-1/4"></div>
+            <div class="w-full md:w-1/2 pr-4">
+                    <div class="report-info bg-gradient-to-br from-dblift-slate-800 to-dblift-slate-700 rounded-xl p-8 border border-dblift-slate-700 shadow-xl backdrop-blur-sm">
+                        <p class="mb-3 text-base"><i class="fas fa-calendar-check mr-2"></i> Generated: {{ report_time|default(now().strftime('%Y-%m-%d %H:%M:%S')) }}</p>
+                        <p class="mb-3 text-base"><i class="fas fa-server mr-2"></i> Server: {{ server_name|default('localhost') }}</p>
+                        <p class="mb-3 text-base"><i class="fas fa-database mr-2"></i> Database: {{ database_name }}</p>
+                        <p class="mb-3 text-base"><i class="fas fa-folder-open mr-2"></i> Schema: <strong>{{ schema_name }}</strong></p>
+                        {% if license_info %}
+                        <p class="mb-3 text-base"><i class="fas fa-id-badge mr-2"></i> Licensed to: <strong>{{ license_info.customer_name }}</strong> ({{ license_info.customer_email }})</p>
+                        <p class="mb-3 text-base"><i class="fas fa-clock mr-2"></i> License expires: {{ license_info.expires_at }}{% if license_info.days_remaining is not none %} ({{ license_info.days_remaining }} days remaining){% endif %}</p>
+                        {% endif %}
+                        {% set schema_version = current_version %}
+                        {% if not schema_version and unified_commands %}
+                            {% for cmd in unified_commands %}
+                                {% if not schema_version and cmd.result %}
+                                    {% set result = cmd.result %}
+                                    {% set test_version = result.current_schema_version|default('') %}
+                                    {% if test_version %}
+                                        {% set schema_version = result.current_schema_version %}
+                                    {% endif %}
+                                {% endif %}
+                                {% if not schema_version and cmd.migrations and cmd.migrations|length > 0 %}
+                                    {% set last_migration = cmd.migrations[-1] %}
+                                    {% if last_migration.version %}
+                                        {% set schema_version = last_migration.version %}
+                                    {% endif %}
+                                {% endif %}
+                            {% endfor %}
+                        {% endif %}
+                        {% if not schema_version and command_results %}
+                            {% for cmd_result in command_results %}
+                                {% if not schema_version and cmd_result.result %}
+                                    {% set result = cmd_result.result %}
+                                    {% set test_version = result.current_schema_version|default('') %}
+                                    {% if test_version %}
+                                        {% set schema_version = result.current_schema_version %}
+                                    {% endif %}
+                                {% endif %}
+                            {% endfor %}
+                        {% endif %}
+                        {% if not schema_version and migration_data %}
+                            {% if migration_data.last_version %}
+                                {% set schema_version = migration_data.last_version %}
+                            {% elif migration_data.applied_versions and migration_data.applied_versions|length > 0 %}
+                                {% set schema_version = migration_data.applied_versions[-1] %}
+                            {% endif %}
+                        {% endif %}
+                        {% if not schema_version and result %}
+                            {% set test_version = result.current_schema_version|default('') %}
+                            {% if test_version %}
+                                {% set schema_version = result.current_schema_version %}
+                            {% endif %}
+                        {% endif %}
+                        {% if schema_version %}<p class="mb-3 text-base"><i class="fas fa-tag mr-2"></i> Schema Version: {{ schema_version }}</p>{% else %}<p class="mb-3 text-base"><i class="fas fa-tag mr-2"></i> Schema Version: <none></p>{% endif %}
+                        {% if db_version %}<p class="mb-3 text-base"><i class="fas fa-server mr-2"></i> DB Version: {{ db_version }}</p>{% endif %}
+                        {% if native_driver %}<p class="mb-3 text-base"><i class="fas fa-plug mr-2"></i> Driver: {{ native_driver }}</p>{% endif %}
+                        {% if database_url_masked %}<p class="mb-3 text-base"><i class="fas fa-link mr-2"></i> Database URL: <span class="text-slate-200">{{ database_url_masked }}</span></p>{% endif %}
+                        {% if unified_commands and unified_commands[0].result %}
+                            {% set result = unified_commands[0].result %}
+                            {% set test_db_version = result.db_version|default('') %}
+                            {% if test_db_version and not db_version %}
+                                <p class="mb-3 text-base"><i class="fas fa-server mr-2"></i> DB Version: {{ result.db_version }}</p>
+                            {% endif %}
+                            {% set test_native_driver = result.native_driver|default('') %}
+                            {% if test_native_driver and not native_driver %}
+                                <p class="mb-3 text-base"><i class="fas fa-plug mr-2"></i> Driver: {{ result.native_driver }}</p>
+                            {% endif %}
+                            {% set test_database_url = result.database_url_masked|default('') %}
+                            {% if test_database_url and not database_url_masked %}
+                                <p class="mb-3 text-base"><i class="fas fa-link mr-2"></i> Database URL: <span class="text-slate-200">{{ result.database_url_masked }}</span></p>
+                            {% endif %}
+                            {% set test_server_name = result.server_name|default('') %}
+                            {% if test_server_name and not server_name %}
+                                <p class="mb-3 text-base"><i class="fas fa-server mr-2"></i> Server: {{ result.server_name }}</p>
+                            {% endif %}
+                        {% endif %}
+                    </div>
+                </div>
+        </div>
+    </div>
+
+    <div class="container mx-auto px-4">
+        <!-- subnav removed per UX -->
+        {# Global color mapping for object type badges - reusable across all commands #}
+        {# Using distinct colors that don't conflict with command statuses (teal/cyan/red) or operations #}
+        {% set get_object_type_badge = {
+            'schema': 'bg-purple-500',
+            'table': 'bg-emerald-500',
+            'view': 'bg-indigo-500',
+            'materialized_view': 'bg-indigo-600',
+            'materialized_query_table': 'bg-indigo-600',
+            'function': 'bg-violet-500',
+            'procedure': 'bg-violet-600',
+            'sequence': 'bg-emerald-600',
+            'trigger': 'bg-pink-500',
+            'index': 'bg-sky-500',
+            'indexes': 'bg-sky-500',
+            'foreign_key': 'bg-rose-500',
+            'extension': 'bg-purple-600',
+            'domain': 'bg-slate-400',
+            'type': 'bg-slate-400',
+            'user_defined_type': 'bg-slate-400',
+            'alias': 'bg-slate-400',
+            'synonym': 'bg-slate-400',
+            'module': 'bg-slate-500',
+            'event': 'bg-pink-600',
+            'global_temporary_table': 'bg-emerald-400',
+            'package': 'bg-violet-600',
+            'package_body': 'bg-violet-700',
+            'database_link': 'bg-slate-500',
+            'foreign_data_wrapper': 'bg-slate-500',
+            'foreign_server': 'bg-slate-500',
+            'partition': 'bg-slate-500',
+            'constraint': 'bg-rose-600',
+            'role': 'bg-slate-500',
+            'user': 'bg-slate-500',
+            'database': 'bg-purple-600'
+        } %}
+        {% set unified_commands = [] %}
+        {% if using_multi_command and multi_commands %}
+            {% set unified_commands = multi_commands %}
+        {% elif command_type %}
+            {% if command_type == 'DIFF' and diff_data %}
+                {% set _ = unified_commands.append({
+                    'command_type': command_type,
+                    'success': operation_success,
+                    'result': result,
+                    'error_message': error_message,
+                    'migrations': migration_data if migration_data else [],
+                    'per_migration_journal': per_migration_journal if per_migration_journal else {},
+                    'timestamp': timestamp if timestamp else 'N/A',
+                    'execution_time': execution_time if execution_time else 0,
+                    'diff_data': diff_data
+                }) %}
+            {% else %}
+                {% set _ = unified_commands.append({
+                    'command_type': command_type,
+                    'success': operation_success,
+                    'result': result,
+                    'error_message': error_message,
+                    'migrations': migration_data if migration_data else [],
+                    'per_migration_journal': per_migration_journal if per_migration_journal else {},
+                    'timestamp': timestamp if timestamp else 'N/A',
+                    'execution_time': execution_time if execution_time else 0
+                }) %}
+            {% endif %}
+        {% endif %}
+        
+        {% if unified_commands %}
+        <div class="main-container" id="section-commands">
+            <h2 class="section-title"><i class="fas fa-folder-open mr-2"></i> Commands</h2>
+            
+            <!-- Dry-Run Mode Warning Banner -->
+            {% if unified_commands and unified_commands[0].result and unified_commands[0].result.cli_options %}
+            {% set is_dry_run = unified_commands[0].result.cli_options.get('dry_run', False) %}
+            {% if is_dry_run %}
+            <div class="bg-yellow-900 border-l-4 border-yellow-500 rounded p-4 mb-3">
+                <div class="flex items-center">
+                    <div class="mr-3">
+                        <i class="fas fa-exclamation-triangle text-3xl text-yellow-500"></i>
+                    </div>
+                    <div>
+                        <h5 class="mb-1 text-yellow-200 font-bold">DRY RUN MODE</h5>
+                        <p class="mb-0 text-yellow-100">No migrations were actually executed. This report shows what <strong>would have been executed</strong>.</p>
+                    </div>
+                </div>
+            </div>
+            {% endif %}
+            {% endif %}
+            
+            <!-- CLI Options (displayed once for all commands) -->
+            {% if unified_commands and unified_commands[0].result and unified_commands[0].result.cli_options %}
+            {% set global_opts = unified_commands[0].result.cli_options %}
+            {% set filtered_opts = {} %}
+            {% for key, value in global_opts.items() %}
+                {% if value not in [None, False, '', [], {}] and key not in ['snapshot', 'operation', 'migration', 'validation', 'introspection_quality', 'schema'] %}
+                    {% set _ = filtered_opts.update({key: value}) %}
+                {% endif %}
+            {% endfor %}
+            {% if filtered_opts %}
+            <div class="bg-dblift-slate-800 border-l-4 border-dblift-slate-600 rounded p-4 mb-3">
+                <div class="flex items-center flex-wrap">
+                    <div class="mr-3">
+                        <i class="fas fa-sliders-h text-xl text-dblift-slate-400"></i>
+                    </div>
+                    <div class="flex-1 text-slate-100">
+                        <strong class="text-slate-100">Command Options:</strong>
+                        {% for key, value in filtered_opts.items() %}
+                                <span class="ml-3 text-slate-100">
+                                    <code class="bg-dblift-slate-700 px-2 py-1 rounded text-slate-100">--{{ key|replace('_', '-') }}</code>: 
+                                    {% if value is mapping %}
+                                        <strong class="text-slate-100">{{ value|tojson }}</strong>
+                                    {% elif value is iterable and value is not string %}
+                                        <strong class="text-slate-100">{{ value|join(', ') }}</strong>
+                                    {% elif value == True %}
+                                        <strong class="text-slate-100">enabled</strong>
+                                    {% else %}
+                                        <strong class="text-slate-100">{{ value }}</strong>
+                                    {% endif %}
+                                </span>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+            {% endif %}
+            {% endif %}
+            
+            <div class="border-b border-dblift-slate-700 mb-4" id="cmdTabs">
+                <nav class="flex -mb-px">
+                    {% for cmd in unified_commands %}
+                    <button class="tab-button px-6 py-3 text-sm font-medium border-b-2 {% if loop.index == 1 %}border-dblift-blue-500 text-dblift-blue-500{% else %}border-transparent text-dblift-slate-400 hover:text-dblift-slate-300 hover:border-dblift-slate-500{% endif %}" 
+                            onclick="switchTab({{ loop.index }})" 
+                            id="tab-{{ loop.index }}" 
+                            data-tab-target="pane-{{ loop.index }}">
+                        {{ cmd.command_type }}
+                        {% if cmd.success %}
+                            <span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-semibold bg-gradient-to-r from-dblift-teal-500 to-dblift-teal-600 text-white ml-1">Success</span>
+                        {% else %}
+                            <span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-semibold bg-gradient-to-r from-red-500 to-red-600 text-white ml-1">Failed</span>
+                        {% endif %}
+                    </button>
+                    {% endfor %}
+                </nav>
+            </div>
+            <div class="tab-content" id="cmdTabsContent">
+                {% for cmd in unified_commands %}
+                {% set diff_data = None %}
+                <div class="tab-pane p-4 {% if loop.index == 1 %}block{% else %}hidden{% endif %}" id="pane-{{ loop.index }}" role="tabpanel">
+                    <div class="mb-2 text-dblift-slate-300 text-sm">Executed at {{ cmd.timestamp }} • {{ cmd.execution_time }} ms</div>
+                    {% if not cmd.success and cmd.error_message %}
+                    <div class="bg-red-900 border-l-4 border-red-500 rounded p-4 mb-3"><strong>Error:</strong> {{ cmd.error_message }}</div>
+                    {% endif %}
+
+                    <!-- Overall Migration Statistics Summary (for MIGRATE/UNDO commands) -->
+                    {% if cmd.command_type in ['MIGRATE','UNDO'] and cmd.per_migration_journal %}
+                    {% set ns_summary = namespace(total_stmts=0, total_time=0, min_time=999999, max_time=0) %}
+                    {% for mig_script, mj in cmd.per_migration_journal.items() %}
+                        {% if mj.statements %}
+                            {% set ns_summary.total_stmts = ns_summary.total_stmts + mj.statements|length %}
+                            {% set ns_summary.total_time = ns_summary.total_time + (mj.total_execution_time or 0) %}
+                            {% if mj.min_statement_time and mj.min_statement_time < ns_summary.min_time %}
+                                {% set ns_summary.min_time = mj.min_statement_time %}
+                            {% endif %}
+                            {% if mj.max_statement_time and mj.max_statement_time > ns_summary.max_time %}
+                                {% set ns_summary.max_time = mj.max_statement_time %}
+                            {% endif %}
+                        {% endif %}
+                    {% endfor %}
+                    {% if ns_summary.total_stmts > 0 %}
+                    <div class="bg-dblift-slate-800 border-l-4 border-dblift-teal-500 rounded p-4 mb-3">
+                        <div class="flex items-center flex-wrap">
+                            <div class="mr-3">
+                                <i class="fas fa-chart-bar text-xl text-dblift-teal-500"></i>
+                            </div>
+                            <div class="flex-1 text-slate-100">
+                                <strong class="text-slate-100">Overall Statement Statistics:</strong>
+                                <span class="ml-3 text-slate-100"><strong>{{ ns_summary.total_stmts }}</strong> statements</span>
+                                <span class="ml-3 text-slate-100">Total: <strong>{{ ns_summary.total_time }} ms</strong></span>
+                                <span class="ml-3 text-slate-100">Avg: <strong>{{ (ns_summary.total_time / ns_summary.total_stmts)|round(2) }} ms</strong></span>
+                                <span class="ml-3 text-slate-100">Min/Max: <strong>{{ ns_summary.min_time }}/{{ ns_summary.max_time }} ms</strong></span>
+                            </div>
+                        </div>
+                    </div>
+                    {% endif %}
+                    {% endif %}
+
+                    {% if cmd.command_type == 'INFO' and cmd.migrations %}
+                    <!-- INFO command: Display migrations table -->
+                    <div class="overflow-x-auto">
+                        <table class="min-w-full divide-y divide-dblift-slate-700 bg-dblift-slate-700 rounded-lg overflow-hidden">
+                            <thead class="bg-dblift-slate-600">
+                                <tr>
+                                    <th class="px-6 py-3 text-left text-xs font-semibold text-slate-100 uppercase tracking-wider">Version</th>
+                                    <th class="px-6 py-3 text-left text-xs font-semibold text-slate-100 uppercase tracking-wider">Description</th>
+                                    <th class="px-6 py-3 text-left text-xs font-semibold text-slate-100 uppercase tracking-wider">Type</th>
+                                    <th class="px-6 py-3 text-left text-xs font-semibold text-slate-100 uppercase tracking-wider">Status</th>
+                                    <th class="px-6 py-3 text-left text-xs font-semibold text-slate-100 uppercase tracking-wider">Installed On</th>
+                                    <th class="px-6 py-3 text-left text-xs font-semibold text-slate-100 uppercase tracking-wider">Installed By</th>
+                                    <th class="px-6 py-3 text-left text-xs font-semibold text-slate-100 uppercase tracking-wider">Execution Time</th>
+                                </tr>
+                            </thead>
+                            <tbody class="bg-dblift-slate-800 divide-y divide-dblift-slate-700">
+                                {% for migration in cmd.migrations %}
+                                <tr class="hover:bg-dblift-slate-700 transition-colors {% if loop.index % 2 == 0 %}bg-dblift-slate-800{% else %}bg-dblift-slate-700{% endif %}">
+                                    <td class="px-6 py-4 whitespace-nowrap"><span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-dblift-slate-600 text-white">{{ migration.version|default('N/A') }}</span></td>
+                                    <td class="px-6 py-4 text-sm text-slate-300">{{ migration.description|default(migration.script) }}</td>
+                                    <td class="px-6 py-4 whitespace-nowrap">
+                                        {% if migration.type == 'VERSIONED' or migration.type == 'SQL' %}
+                                            <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-dblift-blue-500 text-white">Versioned</span>
+                                        {% elif migration.type == 'REPEATABLE' %}
+                                            <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-dblift-cyan-500 text-white">Repeatable</span>
+                                        {% elif migration.type == 'UNDO_SQL' %}
+                                            <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-yellow-500 text-white">Undo</span>
+                                        {% elif migration.type == 'BASELINE' %}
+                                            <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-dblift-slate-600 text-white">Baseline</span>
+                                        {% else %}
+                                            <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-dblift-slate-600 text-white">{{ migration.type|default('N/A') }}</span>
+                                        {% endif %}
+                                    </td>
+                                    <td class="px-6 py-4 whitespace-nowrap">
+                                        {% if migration.status|lower == 'success' or migration.status|lower == 'applied' %}
+                                            <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-gradient-to-r from-dblift-teal-500 to-dblift-teal-600 text-white">{{ migration.status }}</span>
+                                        {% elif migration.status|lower == 'pending' %}
+                                            <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-gradient-to-r from-dblift-cyan-500 to-dblift-cyan-600 text-white">{{ migration.status }}</span>
+                                        {% elif migration.status|lower == 'failed' %}
+                                            <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-gradient-to-r from-red-500 to-red-600 text-white">{{ migration.status }}</span>
+                                        {% else %}
+                                            <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-dblift-slate-600 text-white">{{ migration.status }}</span>
+                                        {% endif %}
+                                    </td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-slate-300">{{ migration.installed_on|default('N/A') }}</td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-slate-300">{{ migration.installed_by|default('N/A') }}</td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-slate-300">{{ migration.execution_time|default('N/A') }}</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% elif cmd.command_type in ['MIGRATE','UNDO'] %}
+                    <div id="cmd-acc-{{ loop.index }}">
+                        {% for migration in cmd.migrations %}
+                        {% set mj = cmd.per_migration_journal.get(migration.script) if cmd.per_migration_journal else None %}
+                        <div class="mb-3 border border-dblift-slate-700 rounded-lg overflow-hidden">
+                            <h2>
+                                <button class="accordion-button w-full px-6 py-4 text-left bg-dblift-slate-800 hover:bg-dblift-slate-700 transition-colors {% if loop.index0 == 0 %}bg-dblift-slate-700{% endif %}" 
+                                        type="button" 
+                                        onclick="toggleAccordion(this)"
+                                        data-accordion-target="cmd-acc-c-{{ loop.index }}-{{ loop.index0 }}">
+                                    <div class="w-full flex justify-between items-center flex-wrap">
+                                        <div class="mr-2">
+                                            {% if migration.version %}<span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-dblift-slate-600 text-white mr-2">{{ migration.version }}</span>{% endif %}
+                                            <strong>{{ migration.description|default(migration.script) }}</strong>
+                                            <span class="text-dblift-slate-300 ml-2 text-sm">{{ migration.script }}</span>
+                                            {% if migration.category == 'Versioned' %}
+                                                <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-dblift-blue-500 text-white ml-2">Versioned</span>
+                                            {% elif migration.category == 'Repeatable' %}
+                                                <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-dblift-cyan-500 text-white ml-2">Repeatable</span>
+                                            {% elif migration.category == 'Undo' %}
+                                                <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-yellow-500 text-white ml-2">Undo</span>
+                                            {% elif migration.type == 'VERSIONED' or migration.type == 'SQL' %}
+                                                <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-dblift-blue-500 text-white ml-2">Versioned</span>
+                                            {% elif migration.type == 'REPEATABLE' %}
+                                                <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-dblift-cyan-500 text-white ml-2">Repeatable</span>
+                                            {% elif migration.type == 'UNDO_SQL' %}
+                                                <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-yellow-500 text-white ml-2">Undo</span>
+                                            {% elif migration.type %}
+                                                <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-dblift-slate-600 text-white ml-2">{{ migration.type }}</span>
+                                            {% endif %}
+                                        </div>
+                                        <div>
+                                            {% if mj and mj.total_execution_time is defined %}
+                                            <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-dblift-cyan-500 text-white">Total: {{ mj.total_execution_time }} ms</span>
+                                            {% endif %}
+                                            {% if migration.status|lower == 'success' or migration.status|lower == 'applied' %}
+                                                <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-gradient-to-r from-dblift-teal-500 to-dblift-teal-600 text-white ml-2">{{ migration.status }}</span>
+                                            {% elif migration.status|lower == 'pending' %}
+                                                <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-gradient-to-r from-dblift-cyan-500 to-dblift-cyan-600 text-white ml-2">{{ migration.status }}</span>
+                                            {% elif migration.status|lower == 'failed' %}
+                                                <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-gradient-to-r from-red-500 to-red-600 text-white ml-2">{{ migration.status }}</span>
+                                            {% else %}
+                                                <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-dblift-slate-600 text-white ml-2">{{ migration.status }}</span>
+                                            {% endif %}
+                                        </div>
+                                    </div>
+                                </button>
+                            </h2>
+                            <div id="cmd-acc-c-{{ loop.index }}-{{ loop.index0 }}" class="accordion-content {% if loop.index0 != 0 %}hidden{% endif %} bg-dblift-slate-800">
+                                <div class="p-6">
+                                    {% if mj and mj.statements and mj.statements|length > 0 %}
+                                    <!-- Statements table -->
+                                    <div>
+                                        <table class="w-full divide-y divide-dblift-slate-700 bg-dblift-slate-800" style="table-layout: auto;">
+                                            <thead class="bg-dblift-slate-600">
+                                                <tr>
+                                                    <th class="px-4 py-3 text-left text-xs font-semibold text-slate-100 uppercase tracking-wider" style="width:44px">#</th>
+                                                    <th class="px-4 py-3 text-left text-xs font-semibold text-slate-100 uppercase tracking-wider" style="min-width: 200px; max-width: 50%;">Statement</th>
+                                                    <th class="px-4 py-3 text-left text-xs font-semibold text-slate-100 uppercase tracking-wider timeline-col" style="width:480px">Timeline</th>
+                                                    <th class="px-4 py-3 text-left text-xs font-semibold text-slate-100 uppercase tracking-wider" style="width:120px">Execution Time</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody class="bg-dblift-slate-800 divide-y divide-dblift-slate-700">
+                                                {% set total_time = mj.total_execution_time or 1 %}
+                                                {% set ns = namespace(cum=0) %}
+                                                {% for stmt in mj.statements %}
+                                                {% set width = (stmt.execution_time / total_time * 100) if total_time else 0 %}
+                                                {% set offset = (ns.cum / total_time * 100) if total_time else 0 %}
+                                                {% set cls = 'bg-dblift-teal-500' %}
+                                                {% if mj.avg_statement_time and stmt.execution_time > (mj.avg_statement_time * 2) %}
+                                                    {% set cls = 'bg-yellow-500' %}
+                                                {% endif %}
+                                                <tr class="{% if stmt.execution_time > (mj.avg_statement_time or 0) * 2 %}bg-yellow-900{% else %}hover:bg-dblift-slate-700{% endif %} transition-colors">
+                                                    <td class="px-4 py-3 text-sm text-slate-300">{{ loop.index }}</td>
+                                                    <td class="px-4 py-3" style="word-wrap: break-word; max-width: 0;"><div><pre class="language-sql" style="margin: 0; padding: 0.5rem; background: var(--dblift-slate-900); border-radius: 4px; white-space: pre-wrap; word-wrap: break-word; overflow-wrap: break-word;"><code class="language-sql">{{ stmt.statement }}</code></pre></div></td>
+                                                    <td class="px-4 py-3 timeline-cell">
+                                                        <div class="timeline-wrapper relative h-2.5 bg-dblift-slate-600 rounded overflow-hidden" style="width: 100%; max-width: 464px;">
+                                                            <div class="absolute top-0 left-0 h-full {{ cls }} timeline-bar rounded" data-left="{{ (offset | float) | round(2) }}" data-width="{{ (width | float) | round(2) }}"></div>
+                                                        </div>
+                                                    </td>
+                                                    <td class="px-4 py-3 whitespace-nowrap text-sm text-slate-300">{{ stmt.execution_time }} ms</td>
+                                                </tr>
+                                                {% set ns.cum = ns.cum + stmt.execution_time %}
+                                                {% endfor %}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                    
+                                    <!-- Per-Migration Object Breakdown -->
+                                    {% if mj and mj.object_operations %}
+                                    {% set mig_obj_breakdown = {} %}
+                                    {% for op in mj.object_operations %}
+                                        {% set op_type = op.get('operation', 'UNKNOWN') %}
+                                        {% set obj_type = op.get('object_type', 'UNKNOWN') %}
+                                        {% set key = op_type + '_' + obj_type %}
+                                        {% if key not in mig_obj_breakdown %}
+                                            {% set _ = mig_obj_breakdown.update({key: {'operation': op_type, 'type': obj_type, 'count': 0, 'names': []}}) %}
+                                        {% endif %}
+                                        {% set _ = mig_obj_breakdown[key].update({'count': mig_obj_breakdown[key]['count'] + 1}) %}
+                                        {% if op.get('object_name') %}
+                                            {% set _ = mig_obj_breakdown[key]['names'].append(op.get('object_name')) %}
+                                        {% endif %}
+                                    {% endfor %}
+                                    {% if mig_obj_breakdown %}
+                                    <div class="mt-3">
+                                        <h6 class="text-dblift-slate-300 mb-2"><i class="fas fa-box mr-1"></i> Database Objects</h6>
+                                        <div class="overflow-x-auto">
+                                            <table class="min-w-full divide-y divide-dblift-slate-700 bg-dblift-slate-800 rounded-lg overflow-hidden">
+                                                <thead class="bg-dblift-slate-600">
+                                                    <tr>
+                                                        <th class="px-4 py-3 text-left text-xs font-semibold text-slate-100 uppercase tracking-wider" style="width: 20%;">Operation</th>
+                                                        <th class="px-4 py-3 text-left text-xs font-semibold text-slate-100 uppercase tracking-wider" style="width: 20%;">Type</th>
+                                                        <th class="px-4 py-3 text-center text-xs font-semibold text-slate-100 uppercase tracking-wider" style="width: 10%;">Count</th>
+                                                        <th class="px-4 py-3 text-left text-xs font-semibold text-slate-100 uppercase tracking-wider" style="width: 50%;">Objects</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody class="bg-dblift-slate-800 divide-y divide-dblift-slate-700">
+                                                    {% for key, data in mig_obj_breakdown.items() %}
+                                                    <tr class="hover:bg-dblift-slate-700 transition-colors">
+                                                        <td class="px-4 py-3 whitespace-nowrap">
+                                                            <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold 
+                                                                {% if data.operation == 'CREATE' %}bg-dblift-teal-500
+                                                                {% elif data.operation == 'DROP' %}bg-red-500
+                                                                {% elif data.operation == 'ALTER' %}bg-yellow-500
+                                                                {% else %}bg-dblift-slate-600
+                                                                {% endif %} text-white">
+                                                                {{ data.operation }}
+                                                            </span>
+                                                        </td>
+                                                        <td class="px-4 py-3 whitespace-nowrap">
+                                                            <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold {{ get_object_type_badge.get(data.type.lower(), 'bg-dblift-slate-600') }} text-white">
+                                                                {{ data.type.replace('_', ' ')|title }}
+                                                            </span>
+                                                        </td>
+                                                        <td class="px-4 py-3 text-center text-sm text-slate-300"><strong>{{ data.count }}</strong></td>
+                                                        <td class="px-4 py-3 text-sm text-slate-300">
+                                                            {% if data.names|length > 0 %}
+                                                                <small class="text-dblift-slate-300">{{ data.names|join(', ') }}</small>
+                                                            {% else %}
+                                                                <small class="text-dblift-slate-300">-</small>
+                                                            {% endif %}
+                                                        </td>
+                                                    </tr>
+                                                    {% endfor %}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+                                    {% endif %}
+                                    {% endif %}
+                                    
+                                    {% else %}
+                                        <div class="text-dblift-slate-300">No statement timing available.</div>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </div>
+                        {% endfor %}
+                        {% if not cmd.migrations %}
+                        <div class="bg-dblift-slate-800 border-l-4 border-dblift-cyan-500 rounded p-4">
+                            <div class="flex items-center">
+                                <i class="fas fa-info-circle mr-2 text-dblift-cyan-500"></i>
+                                <div class="text-slate-100">
+                                    {% if cmd.command_type == 'MIGRATE' %}
+                                        <strong>No pending migrations found</strong><br>
+                                        All migrations are already applied to the database.
+                                    {% elif cmd.command_type == 'UNDO' %}
+                                        <strong>No migrations to undo</strong><br>
+                                        No applicable migrations found for undo operation.
+                                    {% else %}
+                                        <strong>No migrations to process</strong><br>
+                                        No applicable migrations found for this operation.
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </div>
+                        {% endif %}
+                    </div>
+                    {% elif cmd.command_type == 'DIFF' and cmd.diff_data %}
+                    <!-- DIFF command: Display schema comparison results -->
+                    {% set diff_data = cmd.diff_data %}
+                    
+                    <!-- Introspection Quality & Validation Results -->
+                    {% if cmd.result and cmd.result.cli_options and cmd.result.cli_options.get('snapshot') %}
+                    {% set snapshot_metadata = cmd.result.cli_options.get('snapshot') %}
+                    {% set validation_metadata = snapshot_metadata.get('validation') %}
+                    {% set introspection_quality = snapshot_metadata.get('introspection_quality') %}
+                    {% if validation_metadata or introspection_quality %}
+                    <div class="mb-6">
+                        <h2 class="section-title mb-4"><i class="fas fa-check-circle mr-2"></i> Introspection Quality & Validation</h2>
+                        
+                        {% if introspection_quality %}
+                        <div class="bg-dblift-slate-800 border-l-4 border-dblift-cyan-500 rounded p-4 mb-4">
+                            <h3 class="text-lg font-semibold text-slate-100 mb-3"><i class="fas fa-chart-line mr-2 text-dblift-cyan-500"></i> Introspection Quality</h3>
+                            {% set completeness = introspection_quality.get('completeness_score', 0) %}
+                            {% set confidence = introspection_quality.get('confidence_level', 'UNKNOWN') %}
+                            {% set error_count = introspection_quality.get('error_count', 0) %}
+                            {% set warning_count = introspection_quality.get('warning_count', 0) %}
+                            
+                            <div class="space-y-2 text-slate-100">
+                                <div><strong>Completeness:</strong> {{ (completeness * 100)|round(1) }}%</div>
+                                <div><strong>Confidence Level:</strong> 
+                                    <span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-semibold 
+                                        {% if confidence == 'HIGH' %}bg-dblift-teal-500
+                                        {% elif confidence == 'MEDIUM' %}bg-yellow-500
+                                        {% else %}bg-red-500
+                                        {% endif %} text-white ml-2">{{ confidence }}</span>
+                                </div>
+                                {% if error_count > 0 %}
+                                <div class="text-red-300"><strong>Errors:</strong> {{ error_count }}</div>
+                                {% endif %}
+                                {% if warning_count > 0 %}
+                                <div class="text-yellow-300"><strong>Warnings:</strong> {{ warning_count }}</div>
+                                {% endif %}
+                                {% if error_count == 0 and warning_count == 0 %}
+                                <div class="text-dblift-teal-300">✓ No errors or warnings</div>
+                                {% endif %}
+                            </div>
+                        </div>
+                        {% endif %}
+                        
+                        {% if validation_metadata %}
+                        <div class="bg-dblift-slate-800 border-l-4 {% if validation_metadata.get('overall_passed', True) %}border-dblift-teal-500{% else %}border-red-500{% endif %} rounded p-4 mb-4">
+                            <h3 class="text-lg font-semibold text-slate-100 mb-3"><i class="fas fa-shield-alt mr-2 {% if validation_metadata.get('overall_passed', True) %}text-dblift-teal-500{% else %}text-red-500{% endif %}"></i> Validation Results</h3>
+                            {% set overall_passed = validation_metadata.get('overall_passed', True) %}
+                            {% set confidence = validation_metadata.get('confidence', {}) %}
+                            {% set total_errors = validation_metadata.get('total_errors', 0) %}
+                            {% set total_warnings = validation_metadata.get('total_warnings', 0) %}
+                            
+                            <div class="space-y-2 text-slate-100">
+                                <div>
+                                    <strong>Overall Status:</strong> 
+                                    <span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-semibold 
+                                        {% if overall_passed %}bg-dblift-teal-500{% else %}bg-red-500{% endif %} text-white ml-2">
+                                        {% if overall_passed %}✓ PASSED{% else %}✗ FAILED{% endif %}
+                                    </span>
+                                </div>
+                                {% if confidence %}
+                                {% set confidence_level = confidence.get('confidence_level', 'UNKNOWN') %}
+                                {% set overall_score = confidence.get('overall_score', 0) %}
+                                <div><strong>Confidence:</strong> 
+                                    <span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-semibold 
+                                        {% if confidence_level == 'HIGH' %}bg-dblift-teal-500
+                                        {% elif confidence_level == 'MEDIUM' %}bg-yellow-500
+                                        {% else %}bg-red-500
+                                        {% endif %} text-white ml-2">{{ confidence_level }} ({{ (overall_score * 100)|round(1) }}%)</span>
+                                </div>
+                                {% set breakdown = confidence.get('breakdown', {}) %}
+                                {% if breakdown %}
+                                <div class="mt-3">
+                                    <strong>Score Breakdown:</strong>
+                                    <div class="ml-4 mt-2 space-y-1">
+                                        {% for component, details in breakdown.items() %}
+                                        {% set score = details.get('score', 0) %}
+                                        <div class="text-sm">{{ component.replace('_', ' ')|title }}: {{ (score * 100)|round(1) }}%</div>
+                                        {% endfor %}
+                                    </div>
+                                </div>
+                                {% endif %}
+                                {% endif %}
+                                {% if total_errors > 0 %}
+                                <div class="text-red-300"><strong>Validation Errors:</strong> {{ total_errors }}</div>
+                                {% endif %}
+                                {% if total_warnings > 0 %}
+                                <div class="text-yellow-300"><strong>Validation Warnings:</strong> {{ total_warnings }}</div>
+                                {% endif %}
+                                {% if total_errors == 0 and total_warnings == 0 %}
+                                <div class="text-dblift-teal-300">✓ No validation issues</div>
+                                {% endif %}
+                            </div>
+                        </div>
+                        {% endif %}
+                    </div>
+                    {% endif %}
+                    {% endif %}
+                    
+                    <!-- Statistics Cards Row - All Object Types -->
+                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+                        <!-- Missing Objects -->
+                        <div class="bg-dblift-slate-800 border border-dblift-slate-700 rounded-lg shadow-lg p-6 text-center">
+                            <h5 class="text-red-400 font-semibold mb-2">Missing Objects</h5>
+                            <h3 class="text-4xl font-bold text-red-400 mb-2">{{ (diff_data.missing_tables|length if diff_data.missing_tables else 0) + (diff_data.missing_views|length if diff_data.missing_views else 0) + (diff_data.missing_indexes|length if diff_data.missing_indexes else 0) + (diff_data.missing_sequences|length if diff_data.missing_sequences else 0) + (diff_data.missing_triggers|length if diff_data.missing_triggers else 0) + (diff_data.missing_procedures|length if diff_data.missing_procedures else 0) + (diff_data.missing_functions|length if diff_data.missing_functions else 0) }}</h3>
+                            <small class="text-dblift-slate-300 text-xs">
+                                Tables: {{ diff_data.missing_table_count|default(0) }},
+                                Views: {{ diff_data.missing_views|length if diff_data.missing_views else 0 }},
+                                Indexes: {{ diff_data.missing_indexes|length if diff_data.missing_indexes else 0 }},
+                                Others: {{ (diff_data.missing_sequences|length if diff_data.missing_sequences else 0) + (diff_data.missing_triggers|length if diff_data.missing_triggers else 0) + (diff_data.missing_procedures|length if diff_data.missing_procedures else 0) + (diff_data.missing_functions|length if diff_data.missing_functions else 0) }}
+                            </small>
+                        </div>
+
+                        <!-- Extra Objects -->
+                        <div class="bg-dblift-slate-800 border border-dblift-slate-700 rounded-lg shadow-lg p-6 text-center">
+                            <h5 class="text-yellow-400 font-semibold mb-2">Extra Objects</h5>
+                            <h3 class="text-4xl font-bold text-yellow-400 mb-2">{{ (diff_data.extra_tables|length if diff_data.extra_tables else 0) + (diff_data.extra_views|length if diff_data.extra_views else 0) + (diff_data.extra_indexes|length if diff_data.extra_indexes else 0) + (diff_data.extra_sequences|length if diff_data.extra_sequences else 0) + (diff_data.extra_triggers|length if diff_data.extra_triggers else 0) + (diff_data.extra_procedures|length if diff_data.extra_procedures else 0) + (diff_data.extra_functions|length if diff_data.extra_functions else 0) }}</h3>
+                            <small class="text-dblift-slate-300 text-xs">
+                                Tables: {{ diff_data.extra_table_count|default(0) }},
+                                Views: {{ diff_data.extra_views|length if diff_data.extra_views else 0 }},
+                                Indexes: {{ diff_data.extra_indexes|length if diff_data.extra_indexes else 0 }},
+                                Others: {{ (diff_data.extra_sequences|length if diff_data.extra_sequences else 0) + (diff_data.extra_triggers|length if diff_data.extra_triggers else 0) + (diff_data.extra_procedures|length if diff_data.extra_procedures else 0) + (diff_data.extra_functions|length if diff_data.extra_functions else 0) }}
+                            </small>
+                        </div>
+
+                        <!-- Modified Objects -->
+                        <div class="bg-dblift-slate-800 border border-dblift-slate-700 rounded-lg shadow-lg p-6 text-center">
+                            <h5 class="text-orange-400 font-semibold mb-2">Modified Objects</h5>
+                            <h3 class="text-4xl font-bold text-orange-400 mb-2">{{ (diff_data.modified_tables|length if diff_data.modified_tables else 0) + (diff_data.modified_views|length if diff_data.modified_views else 0) + (diff_data.modified_indexes|length if diff_data.modified_indexes else 0) + (diff_data.modified_sequences|length if diff_data.modified_sequences else 0) + (diff_data.modified_triggers|length if diff_data.modified_triggers else 0) + (diff_data.modified_procedures|length if diff_data.modified_procedures else 0) + (diff_data.modified_functions|length if diff_data.modified_functions else 0) }}</h3>
+                            <small class="text-dblift-slate-300 text-xs">
+                                Tables: {{ diff_data.modified_table_count|default(0) }},
+                                Views: {{ diff_data.modified_views|length if diff_data.modified_views else 0 }},
+                                Indexes: {{ diff_data.modified_indexes|length if diff_data.modified_indexes else 0 }},
+                                Others: {{ (diff_data.modified_sequences|length if diff_data.modified_sequences else 0) + (diff_data.modified_triggers|length if diff_data.modified_triggers else 0) + (diff_data.modified_procedures|length if diff_data.modified_procedures else 0) + (diff_data.modified_functions|length if diff_data.modified_functions else 0) }}
+                            </small>
+                        </div>
+
+                        <!-- Total Diffs -->
+                        <div class="bg-dblift-slate-800 border border-dblift-slate-700 rounded-lg shadow-lg p-6 text-center">
+                            <h5 class="text-dblift-slate-300 font-semibold mb-2">Total Diffs</h5>
+                            <h3 class="text-4xl font-bold text-dblift-slate-300 mb-2">{{ diff_data.total_differences }}</h3>
+                        </div>
+                    </div>
+
+                    <!-- Missing & Extra Objects -->
+                    {% set has_missing_or_extra = (diff_data.missing_tables or diff_data.extra_tables or 
+                        diff_data.missing_views or diff_data.extra_views or 
+                        diff_data.missing_indexes or diff_data.extra_indexes or
+                        diff_data.missing_sequences or diff_data.extra_sequences or
+                        diff_data.missing_triggers or diff_data.extra_triggers or
+                        diff_data.missing_procedures or diff_data.extra_procedures or
+                        diff_data.missing_functions or diff_data.extra_functions or
+                        diff_data.missing_user_defined_types or diff_data.extra_user_defined_types or
+                        diff_data.missing_extensions or diff_data.extra_extensions or
+                        diff_data.missing_events or diff_data.extra_events) %}
+                    {% if has_missing_or_extra %}
+                    <div class="mb-4">
+                        <h2 class="section-title"><i class="fas fa-exclamation-triangle mr-2"></i> Missing & Extra Objects</h2>
+                        
+                        <!-- Missing Objects -->
+                        {% if diff_data.missing_tables %}
+                        <div class="bg-red-900 border-l-4 border-red-500 rounded p-4 mb-4">
+                            <h5 class="text-red-200 font-semibold mb-2"><i class="fas fa-minus-circle mr-2"></i> Missing Tables ({{ diff_data.missing_tables|length }})</h5>
+                            <p class="text-red-100 mb-2">These tables exist in {{ diff_data.source_type }} but not in {{ diff_data.target_type }}:</p>
+                            <ul class="list-disc list-inside text-red-100">
+                                {% for table in diff_data.missing_tables %}
+                                <li><code class="bg-red-800 px-2 py-1 rounded">{{ table }}</code></li>
+                                {% endfor %}
+                            </ul>
+                        </div>
+                        {% endif %}
+                        
+                        {% if diff_data.missing_views %}
+                        <div class="bg-red-900 border-l-4 border-red-500 rounded p-4 mb-4">
+                            <h5 class="text-red-200 font-semibold mb-2"><i class="fas fa-minus-circle mr-2"></i> Missing Views ({{ diff_data.missing_views|length }})</h5>
+                            <p class="text-red-100 mb-2">These views exist in {{ diff_data.source_type }} but not in {{ diff_data.target_type }}:</p>
+                            <ul class="list-disc list-inside text-red-100">
+                                {% for view in diff_data.missing_views %}
+                                <li><code class="bg-red-800 px-2 py-1 rounded">{{ view }}</code></li>
+                                {% endfor %}
+                            </ul>
+                        </div>
+                        {% endif %}
+                        
+                        {% if diff_data.missing_indexes %}
+                        <div class="bg-red-900 border-l-4 border-red-500 rounded p-4 mb-4">
+                            <h5 class="text-red-200 font-semibold mb-2"><i class="fas fa-minus-circle mr-2"></i> Missing Indexes ({{ diff_data.missing_indexes|length }})</h5>
+                            <p class="text-red-100 mb-2">These indexes exist in {{ diff_data.source_type }} but not in {{ diff_data.target_type }}:</p>
+                            <ul class="list-disc list-inside text-red-100">
+                                {% for index in diff_data.missing_indexes %}
+                                <li><code class="bg-red-800 px-2 py-1 rounded">{{ index }}</code></li>
+                                {% endfor %}
+                            </ul>
+                        </div>
+                        {% endif %}
+                        
+                        {% if diff_data.missing_sequences %}
+                        <div class="bg-red-900 border-l-4 border-red-500 rounded p-4 mb-4">
+                            <h5 class="text-red-200 font-semibold mb-2"><i class="fas fa-minus-circle mr-2"></i> Missing Sequences ({{ diff_data.missing_sequences|length }})</h5>
+                            <p class="text-red-100 mb-2">These sequences exist in {{ diff_data.source_type }} but not in {{ diff_data.target_type }}:</p>
+                            <ul class="list-disc list-inside text-red-100">
+                                {% for sequence in diff_data.missing_sequences %}
+                                <li><code class="bg-red-800 px-2 py-1 rounded">{{ sequence }}</code></li>
+                                {% endfor %}
+                            </ul>
+                        </div>
+                        {% endif %}
+                        
+                        {% if diff_data.missing_triggers %}
+                        <div class="bg-red-900 border-l-4 border-red-500 rounded p-4 mb-4">
+                            <h5 class="text-red-200 font-semibold mb-2"><i class="fas fa-minus-circle mr-2"></i> Missing Triggers ({{ diff_data.missing_triggers|length }})</h5>
+                            <p class="text-red-100 mb-2">These triggers exist in {{ diff_data.source_type }} but not in {{ diff_data.target_type }}:</p>
+                            <ul class="list-disc list-inside text-red-100">
+                                {% for trigger in diff_data.missing_triggers %}
+                                <li><code class="bg-red-800 px-2 py-1 rounded">{{ trigger }}</code></li>
+                                {% endfor %}
+                            </ul>
+                        </div>
+                        {% endif %}
+                        
+                        {% if diff_data.missing_procedures %}
+                        <div class="bg-red-900 border-l-4 border-red-500 rounded p-4 mb-4">
+                            <h5 class="text-red-200 font-semibold mb-2"><i class="fas fa-minus-circle mr-2"></i> Missing Procedures ({{ diff_data.missing_procedures|length }})</h5>
+                            <p class="text-red-100 mb-2">These procedures exist in {{ diff_data.source_type }} but not in {{ diff_data.target_type }}:</p>
+                            <ul class="list-disc list-inside text-red-100">
+                                {% for procedure in diff_data.missing_procedures %}
+                                <li><code class="bg-red-800 px-2 py-1 rounded">{{ procedure }}</code></li>
+                                {% endfor %}
+                            </ul>
+                        </div>
+                        {% endif %}
+                        
+                        {% if diff_data.missing_functions %}
+                        <div class="bg-red-900 border-l-4 border-red-500 rounded p-4 mb-4">
+                            <h5 class="text-red-200 font-semibold mb-2"><i class="fas fa-minus-circle mr-2"></i> Missing Functions ({{ diff_data.missing_functions|length }})</h5>
+                            <p class="text-red-100 mb-2">These functions exist in {{ diff_data.source_type }} but not in {{ diff_data.target_type }}:</p>
+                            <ul class="list-disc list-inside text-red-100">
+                                {% for function in diff_data.missing_functions %}
+                                <li><code class="bg-red-800 px-2 py-1 rounded">{{ function }}</code></li>
+                                {% endfor %}
+                            </ul>
+                        </div>
+                        {% endif %}
+                        
+                        {% if diff_data.missing_user_defined_types %}
+                        <div class="bg-red-900 border-l-4 border-red-500 rounded p-4 mb-4">
+                            <h5 class="text-red-200 font-semibold mb-2"><i class="fas fa-minus-circle mr-2"></i> Missing User-Defined Types ({{ diff_data.missing_user_defined_types|length }})</h5>
+                            <p class="text-red-100 mb-2">These user-defined types exist in {{ diff_data.source_type }} but not in {{ diff_data.target_type }}:</p>
+                            <ul class="list-disc list-inside text-red-100">
+                                {% for udt in diff_data.missing_user_defined_types %}
+                                <li><code class="bg-red-800 px-2 py-1 rounded">{{ udt }}</code></li>
+                                {% endfor %}
+                            </ul>
+                        </div>
+                        {% endif %}
+                        
+                        <!-- Extra Objects -->
+                        {% if diff_data.extra_tables %}
+                        <div class="bg-yellow-900 border-l-4 border-yellow-500 rounded p-4 mb-4">
+                            <h5 class="text-yellow-200 font-semibold mb-2"><i class="fas fa-plus-circle mr-2"></i> Extra Tables ({{ diff_data.extra_tables|length }})</h5>
+                            <p class="text-yellow-100 mb-2">These tables exist in {{ diff_data.target_type }} but not in {{ diff_data.source_type }}:</p>
+                            <ul class="list-disc list-inside text-yellow-100">
+                                {% for table in diff_data.extra_tables %}
+                                <li><code class="bg-yellow-800 px-2 py-1 rounded">{{ table }}</code></li>
+                                {% endfor %}
+                            </ul>
+                        </div>
+                        {% endif %}
+                        
+                        {% if diff_data.extra_views %}
+                        <div class="bg-yellow-900 border-l-4 border-yellow-500 rounded p-4 mb-4">
+                            <h5 class="text-yellow-200 font-semibold mb-2"><i class="fas fa-plus-circle mr-2"></i> Extra Views ({{ diff_data.extra_views|length }})</h5>
+                            <p class="text-yellow-100 mb-2">These views exist in {{ diff_data.target_type }} but not in {{ diff_data.source_type }}:</p>
+                            <ul class="list-disc list-inside text-yellow-100">
+                                {% for view in diff_data.extra_views %}
+                                <li><code class="bg-yellow-800 px-2 py-1 rounded">{{ view }}</code></li>
+                                {% endfor %}
+                            </ul>
+                        </div>
+                        {% endif %}
+                        
+                        {% if diff_data.extra_indexes %}
+                        <div class="bg-yellow-900 border-l-4 border-yellow-500 rounded p-4 mb-4">
+                            <h5 class="text-yellow-200 font-semibold mb-2"><i class="fas fa-plus-circle mr-2"></i> Extra Indexes ({{ diff_data.extra_indexes|length }})</h5>
+                            <p class="text-yellow-100 mb-2">These indexes exist in {{ diff_data.target_type }} but not in {{ diff_data.source_type }}:</p>
+                            <ul class="list-disc list-inside text-yellow-100">
+                                {% for index in diff_data.extra_indexes %}
+                                <li><code class="bg-yellow-800 px-2 py-1 rounded">{{ index }}</code></li>
+                                {% endfor %}
+                            </ul>
+                        </div>
+                        {% endif %}
+                        
+                        {% if diff_data.extra_sequences %}
+                        <div class="bg-yellow-900 border-l-4 border-yellow-500 rounded p-4 mb-4">
+                            <h5 class="text-yellow-200 font-semibold mb-2"><i class="fas fa-plus-circle mr-2"></i> Extra Sequences ({{ diff_data.extra_sequences|length }})</h5>
+                            <p class="text-yellow-100 mb-2">These sequences exist in {{ diff_data.target_type }} but not in {{ diff_data.source_type }}:</p>
+                            <ul class="list-disc list-inside text-yellow-100">
+                                {% for sequence in diff_data.extra_sequences %}
+                                <li><code class="bg-yellow-800 px-2 py-1 rounded">{{ sequence }}</code></li>
+                                {% endfor %}
+                            </ul>
+                        </div>
+                        {% endif %}
+                        
+                        {% if diff_data.extra_triggers %}
+                        <div class="bg-yellow-900 border-l-4 border-yellow-500 rounded p-4 mb-4">
+                            <h5 class="text-yellow-200 font-semibold mb-2"><i class="fas fa-plus-circle mr-2"></i> Extra Triggers ({{ diff_data.extra_triggers|length }})</h5>
+                            <p class="text-yellow-100 mb-2">These triggers exist in {{ diff_data.target_type }} but not in {{ diff_data.source_type }}:</p>
+                            <ul class="list-disc list-inside text-yellow-100">
+                                {% for trigger in diff_data.extra_triggers %}
+                                <li><code class="bg-yellow-800 px-2 py-1 rounded">{{ trigger }}</code></li>
+                                {% endfor %}
+                            </ul>
+                        </div>
+                        {% endif %}
+                        
+                        {% if diff_data.extra_procedures %}
+                        <div class="bg-yellow-900 border-l-4 border-yellow-500 rounded p-4 mb-4">
+                            <h5 class="text-yellow-200 font-semibold mb-2"><i class="fas fa-plus-circle mr-2"></i> Extra Procedures ({{ diff_data.extra_procedures|length }})</h5>
+                            <p class="text-yellow-100 mb-2">These procedures exist in {{ diff_data.target_type }} but not in {{ diff_data.source_type }}:</p>
+                            <ul class="list-disc list-inside text-yellow-100">
+                                {% for procedure in diff_data.extra_procedures %}
+                                <li><code class="bg-yellow-800 px-2 py-1 rounded">{{ procedure }}</code></li>
+                                {% endfor %}
+                            </ul>
+                        </div>
+                        {% endif %}
+                        
+                        {% if diff_data.extra_functions %}
+                        <div class="bg-yellow-900 border-l-4 border-yellow-500 rounded p-4 mb-4">
+                            <h5 class="text-yellow-200 font-semibold mb-2"><i class="fas fa-plus-circle mr-2"></i> Extra Functions ({{ diff_data.extra_functions|length }})</h5>
+                            <p class="text-yellow-100 mb-2">These functions exist in {{ diff_data.target_type }} but not in {{ diff_data.source_type }}:</p>
+                            <ul class="list-disc list-inside text-yellow-100">
+                                {% for function in diff_data.extra_functions %}
+                                <li><code class="bg-yellow-800 px-2 py-1 rounded">{{ function }}</code></li>
+                                {% endfor %}
+                            </ul>
+                        </div>
+                        {% endif %}
+                        
+                        {% if diff_data.extra_user_defined_types %}
+                        <div class="bg-yellow-900 border-l-4 border-yellow-500 rounded p-4 mb-4">
+                            <h5 class="text-yellow-200 font-semibold mb-2"><i class="fas fa-plus-circle mr-2"></i> Extra User-Defined Types ({{ diff_data.extra_user_defined_types|length }})</h5>
+                            <p class="text-yellow-100 mb-2">These user-defined types exist in {{ diff_data.target_type }} but not in {{ diff_data.source_type }}:</p>
+                            <ul class="list-disc list-inside text-yellow-100">
+                                {% for udt in diff_data.extra_user_defined_types %}
+                                <li><code class="bg-yellow-800 px-2 py-1 rounded">{{ udt }}</code></li>
+                                {% endfor %}
+                            </ul>
+                        </div>
+                        {% endif %}
+                    </div>
+                    {% endif %}
+
+                    <!-- Modified Tables - Detailed Diff -->
+                    {% if diff_data.modified_tables %}
+                    <div class="mb-4">
+                        <h2 class="section-title"><i class="fas fa-edit mr-2"></i> Modified Tables</h2>
+                        {% for table in diff_data.modified_tables %}
+                        <div class="bg-dblift-slate-800 border-2 {% if table.severity == 'error' %}border-red-500{% else %}border-yellow-500{% endif %} rounded-lg mb-4 overflow-hidden">
+                            <div class="bg-{% if table.severity == 'error' %}red-900{% else %}yellow-900{% endif %} bg-opacity-20 px-6 py-4">
+                                <div class="flex justify-between items-center flex-wrap">
+                                    <div class="flex-1">
+                                        <h4 class="mb-0 text-slate-100">
+                                            <i class="fas fa-table mr-2"></i> <code class="bg-dblift-slate-900 px-2 py-1 rounded">{{ table.table_name }}</code>
+                                            <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold {% if table.severity == 'error' %}bg-red-500{% else %}bg-yellow-500 text-gray-900{% endif %} ml-2">
+                                                {{ table.severity|upper }}
+                                            </span>
+                                        </h4>
+                                    </div>
+                                    <div class="mt-2 md:mt-0">
+                                        <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-dblift-slate-600 text-white">{{ table.diff_count }} differences</span>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="p-6">
+                                <!-- Side-by-side SQL Diff View -->
+                                {% if table.unified_diff and table.unified_diff.lines %}
+                                <div class="diff-section">
+                                    <h5 class="mt-4 mb-3"><i class="fas fa-code mr-2"></i> SQL Diff View</h5>
+                                    <div class="diff-container">
+                                        <div class="diff-header">
+                                            <span class="diff-label">{{ diff_data.source_type|default('Expected') }} (Old) ↔ {{ diff_data.target_type|default('Actual') }} (New)</span>
+                                        </div>
+                                        <table class="diff-table">
+                                            <tbody>
+                                                {% for line in table.unified_diff.lines %}
+                                                <tr class="diff-line {{ line.type }}">
+                                                    <td class="diff-line-num {% if line.type == 'removed' %}before{% elif line.type == 'added' %}after{% endif %}">
+                                                        {% if line.before_num %}{{ line.before_num }}{% endif %}
+                                                    </td>
+                                                    <td class="diff-content {% if line.type == 'removed' %}old{% elif line.type == 'added' %}new{% else %}equal{% endif %}">
+                                                        {% if line.type == 'removed' or line.type == 'equal' %}<pre class="language-sql"><code class="language-sql">{{ line.content|e }}</code></pre>{% endif %}
+                                                    </td>
+                                                    <td class="diff-line-num {% if line.type == 'removed' %}before{% elif line.type == 'added' %}after{% endif %}">
+                                                        {% if line.after_num %}{{ line.after_num }}{% endif %}
+                                                    </td>
+                                                    <td class="diff-content {% if line.type == 'added' %}new{% elif line.type == 'equal' %}equal{% else %}old{% endif %}">
+                                                        {% if line.type == 'added' or line.type == 'equal' %}<pre class="language-sql"><code class="language-sql">{{ line.content|e }}</code></pre>{% endif %}
+                                                    </td>
+                                                </tr>
+                                                {% endfor %}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                                {% endif %}
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                    {% endif %}
+
+                    <!-- Modified Views, Indexes, Sequences, Triggers, Procedures, Functions -->
+                    {% if diff_data.modified_views or diff_data.modified_indexes or diff_data.modified_sequences or diff_data.modified_triggers or diff_data.modified_procedures or diff_data.modified_functions %}
+                    <div class="mb-4">
+                        <h2 class="section-title"><i class="fas fa-list-check mr-2"></i> Other Modified Objects</h2>
+                        {% if diff_data.modified_views %}
+                        {% for view in diff_data.modified_views %}
+                        <div class="bg-dblift-slate-800 border-2 border-yellow-500 rounded-lg mb-3 overflow-hidden">
+                            <div class="bg-yellow-900 bg-opacity-20 px-6 py-4">
+                                <h5 class="mb-0 text-slate-100"><i class="fas fa-eye mr-2"></i> <code class="bg-dblift-slate-900 px-2 py-1 rounded">{{ view.view_name }}</code></h5>
+                            </div>
+                            <div class="p-6">
+                                {% if view.unified_diff and view.unified_diff.lines %}
+                                <div class="diff-section">
+                                    <div class="diff-container">
+                                        <div class="diff-header">
+                                            <span class="diff-label">{{ diff_data.source_type|default('Expected') }} (Old) ↔ {{ diff_data.target_type|default('Actual') }} (New)</span>
+                                        </div>
+                                        <table class="diff-table">
+                                            <tbody>
+                                                {% for line in view.unified_diff.lines %}
+                                                <tr class="diff-line {{ line.type }}">
+                                                    <td class="diff-line-num {% if line.type == 'removed' %}before{% elif line.type == 'added' %}after{% endif %}">
+                                                        {% if line.before_num %}{{ line.before_num }}{% endif %}
+                                                    </td>
+                                                    <td class="diff-content {% if line.type == 'removed' %}old{% elif line.type == 'added' %}new{% else %}equal{% endif %}">
+                                                        {% if line.type == 'removed' or line.type == 'equal' %}<pre class="language-sql"><code class="language-sql">{{ line.content|e }}</code></pre>{% endif %}
+                                                    </td>
+                                                    <td class="diff-line-num {% if line.type == 'removed' %}before{% elif line.type == 'added' %}after{% endif %}">
+                                                        {% if line.after_num %}{{ line.after_num }}{% endif %}
+                                                    </td>
+                                                    <td class="diff-content {% if line.type == 'added' %}new{% elif line.type == 'equal' %}equal{% else %}old{% endif %}">
+                                                        {% if line.type == 'added' or line.type == 'equal' %}<pre class="language-sql"><code class="language-sql">{{ line.content|e }}</code></pre>{% endif %}
+                                                    </td>
+                                                </tr>
+                                                {% endfor %}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                                {% endif %}
+                            </div>
+                        </div>
+                        {% endfor %}
+                        {% endif %}
+                        
+                        {% if diff_data.modified_indexes %}
+                        <h3 class="text-lg font-semibold text-slate-100 mb-3 mt-4"><i class="fas fa-sitemap mr-2"></i> Modified Indexes</h3>
+                        {% for index in diff_data.modified_indexes %}
+                        <div class="bg-dblift-slate-800 border-2 border-yellow-500 rounded-lg mb-3 overflow-hidden">
+                            <div class="bg-yellow-900 bg-opacity-20 px-6 py-4">
+                                <h5 class="mb-0 text-slate-100"><i class="fas fa-sitemap mr-2"></i> <code class="bg-dblift-slate-900 px-2 py-1 rounded">{{ index.index_name|default(index) }}</code></h5>
+                            </div>
+                            {% set test_diff = index.unified_diff|default(None) %}
+                            {% if test_diff and index.unified_diff.lines %}
+                            <div class="p-6">
+                                <div class="diff-section">
+                                    <div class="diff-container">
+                                        <div class="diff-header">
+                                            <span class="diff-label">{{ diff_data.source_type|default('Expected') }} (Old) ↔ {{ diff_data.target_type|default('Actual') }} (New)</span>
+                                        </div>
+                                        <table class="diff-table">
+                                            <tbody>
+                                                {% for line in index.unified_diff.lines %}
+                                                <tr class="diff-line {{ line.type }}">
+                                                    <td class="diff-line-num {% if line.type == 'removed' %}before{% elif line.type == 'added' %}after{% endif %}">
+                                                        {% if line.before_num %}{{ line.before_num }}{% endif %}
+                                                    </td>
+                                                    <td class="diff-content {% if line.type == 'removed' %}old{% elif line.type == 'added' %}new{% else %}equal{% endif %}">
+                                                        {% if line.type == 'removed' or line.type == 'equal' %}<pre class="language-sql"><code class="language-sql">{{ line.content|e }}</code></pre>{% endif %}
+                                                    </td>
+                                                    <td class="diff-line-num {% if line.type == 'removed' %}before{% elif line.type == 'added' %}after{% endif %}">
+                                                        {% if line.after_num %}{{ line.after_num }}{% endif %}
+                                                    </td>
+                                                    <td class="diff-content {% if line.type == 'added' %}new{% elif line.type == 'equal' %}equal{% else %}old{% endif %}">
+                                                        {% if line.type == 'added' or line.type == 'equal' %}<pre class="language-sql"><code class="language-sql">{{ line.content|e }}</code></pre>{% endif %}
+                                                    </td>
+                                                </tr>
+                                                {% endfor %}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            </div>
+                            {% endif %}
+                        </div>
+                        {% endfor %}
+                        {% endif %}
+                        
+                        {% if diff_data.modified_sequences %}
+                        <h3 class="text-lg font-semibold text-slate-100 mb-3 mt-4"><i class="fas fa-list-ol mr-2"></i> Modified Sequences</h3>
+                        {% for sequence in diff_data.modified_sequences %}
+                        <div class="bg-dblift-slate-800 border-2 border-yellow-500 rounded-lg mb-3 overflow-hidden">
+                            <div class="bg-yellow-900 bg-opacity-20 px-6 py-4">
+                                <h5 class="mb-0 text-slate-100"><i class="fas fa-list-ol mr-2"></i> <code class="bg-dblift-slate-900 px-2 py-1 rounded">{{ sequence.sequence_name|default(sequence) }}</code></h5>
+                            </div>
+                            {% set test_diff = sequence.unified_diff|default(None) %}
+                            {% if test_diff and sequence.unified_diff.lines %}
+                            <div class="p-6">
+                                <div class="diff-section">
+                                    <div class="diff-container">
+                                        <div class="diff-header">
+                                            <span class="diff-label">{{ diff_data.source_type|default('Expected') }} (Old) ↔ {{ diff_data.target_type|default('Actual') }} (New)</span>
+                                        </div>
+                                        <table class="diff-table">
+                                            <tbody>
+                                                {% for line in sequence.unified_diff.lines %}
+                                                <tr class="diff-line {{ line.type }}">
+                                                    <td class="diff-line-num {% if line.type == 'removed' %}before{% elif line.type == 'added' %}after{% endif %}">
+                                                        {% if line.before_num %}{{ line.before_num }}{% endif %}
+                                                    </td>
+                                                    <td class="diff-content {% if line.type == 'removed' %}old{% elif line.type == 'added' %}new{% else %}equal{% endif %}">
+                                                        {% if line.type == 'removed' or line.type == 'equal' %}<pre class="language-sql"><code class="language-sql">{{ line.content|e }}</code></pre>{% endif %}
+                                                    </td>
+                                                    <td class="diff-line-num {% if line.type == 'removed' %}before{% elif line.type == 'added' %}after{% endif %}">
+                                                        {% if line.after_num %}{{ line.after_num }}{% endif %}
+                                                    </td>
+                                                    <td class="diff-content {% if line.type == 'added' %}new{% elif line.type == 'equal' %}equal{% else %}old{% endif %}">
+                                                        {% if line.type == 'added' or line.type == 'equal' %}<pre class="language-sql"><code class="language-sql">{{ line.content|e }}</code></pre>{% endif %}
+                                                    </td>
+                                                </tr>
+                                                {% endfor %}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            </div>
+                            {% endif %}
+                        </div>
+                        {% endfor %}
+                        {% endif %}
+                        
+                        {% if diff_data.modified_triggers %}
+                        <h3 class="text-lg font-semibold text-slate-100 mb-3 mt-4"><i class="fas fa-bolt mr-2"></i> Modified Triggers</h3>
+                        {% for trigger in diff_data.modified_triggers %}
+                        <div class="bg-dblift-slate-800 border-2 border-yellow-500 rounded-lg mb-3 overflow-hidden">
+                            <div class="bg-yellow-900 bg-opacity-20 px-6 py-4">
+                                <h5 class="mb-0 text-slate-100"><i class="fas fa-bolt mr-2"></i> <code class="bg-dblift-slate-900 px-2 py-1 rounded">{{ trigger.trigger_name|default(trigger) }}</code></h5>
+                            </div>
+                            {% set test_diff = trigger.unified_diff|default(None) %}
+                            {% if test_diff and trigger.unified_diff.lines %}
+                            <div class="p-6">
+                                <div class="diff-section">
+                                    <div class="diff-container">
+                                        <div class="diff-header">
+                                            <span class="diff-label">{{ diff_data.source_type|default('Expected') }} (Old) ↔ {{ diff_data.target_type|default('Actual') }} (New)</span>
+                                        </div>
+                                        <table class="diff-table">
+                                            <tbody>
+                                                {% for line in trigger.unified_diff.lines %}
+                                                <tr class="diff-line {{ line.type }}">
+                                                    <td class="diff-line-num {% if line.type == 'removed' %}before{% elif line.type == 'added' %}after{% endif %}">
+                                                        {% if line.before_num %}{{ line.before_num }}{% endif %}
+                                                    </td>
+                                                    <td class="diff-content {% if line.type == 'removed' %}old{% elif line.type == 'added' %}new{% else %}equal{% endif %}">
+                                                        {% if line.type == 'removed' or line.type == 'equal' %}<pre class="language-sql"><code class="language-sql">{{ line.content|e }}</code></pre>{% endif %}
+                                                    </td>
+                                                    <td class="diff-line-num {% if line.type == 'removed' %}before{% elif line.type == 'added' %}after{% endif %}">
+                                                        {% if line.after_num %}{{ line.after_num }}{% endif %}
+                                                    </td>
+                                                    <td class="diff-content {% if line.type == 'added' %}new{% elif line.type == 'equal' %}equal{% else %}old{% endif %}">
+                                                        {% if line.type == 'added' or line.type == 'equal' %}<pre class="language-sql"><code class="language-sql">{{ line.content|e }}</code></pre>{% endif %}
+                                                    </td>
+                                                </tr>
+                                                {% endfor %}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            </div>
+                            {% endif %}
+                        </div>
+                        {% endfor %}
+                        {% endif %}
+                        
+                        {% if diff_data.modified_procedures %}
+                        <h3 class="text-lg font-semibold text-slate-100 mb-3 mt-4"><i class="fas fa-cogs mr-2"></i> Modified Procedures</h3>
+                        {% for procedure in diff_data.modified_procedures %}
+                        <div class="bg-dblift-slate-800 border-2 border-yellow-500 rounded-lg mb-3 overflow-hidden">
+                            <div class="bg-yellow-900 bg-opacity-20 px-6 py-4">
+                                <h5 class="mb-0 text-slate-100"><i class="fas fa-cogs mr-2"></i> <code class="bg-dblift-slate-900 px-2 py-1 rounded">{{ procedure.procedure_name|default(procedure) }}</code></h5>
+                            </div>
+                            {% set test_diff = procedure.unified_diff|default(None) %}
+                            {% if test_diff and procedure.unified_diff.lines %}
+                            <div class="p-6">
+                                <div class="diff-section">
+                                    <div class="diff-container">
+                                        <div class="diff-header">
+                                            <span class="diff-label">{{ diff_data.source_type|default('Expected') }} (Old) ↔ {{ diff_data.target_type|default('Actual') }} (New)</span>
+                                        </div>
+                                        <table class="diff-table">
+                                            <tbody>
+                                                {% for line in procedure.unified_diff.lines %}
+                                                <tr class="diff-line {{ line.type }}">
+                                                    <td class="diff-line-num {% if line.type == 'removed' %}before{% elif line.type == 'added' %}after{% endif %}">
+                                                        {% if line.before_num %}{{ line.before_num }}{% endif %}
+                                                    </td>
+                                                    <td class="diff-content {% if line.type == 'removed' %}old{% elif line.type == 'added' %}new{% else %}equal{% endif %}">
+                                                        {% if line.type == 'removed' or line.type == 'equal' %}<pre class="language-sql"><code class="language-sql">{{ line.content|e }}</code></pre>{% endif %}
+                                                    </td>
+                                                    <td class="diff-line-num {% if line.type == 'removed' %}before{% elif line.type == 'added' %}after{% endif %}">
+                                                        {% if line.after_num %}{{ line.after_num }}{% endif %}
+                                                    </td>
+                                                    <td class="diff-content {% if line.type == 'added' %}new{% elif line.type == 'equal' %}equal{% else %}old{% endif %}">
+                                                        {% if line.type == 'added' or line.type == 'equal' %}<pre class="language-sql"><code class="language-sql">{{ line.content|e }}</code></pre>{% endif %}
+                                                    </td>
+                                                </tr>
+                                                {% endfor %}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            </div>
+                            {% endif %}
+                        </div>
+                        {% endfor %}
+                        {% endif %}
+                        
+                        {% if diff_data.modified_functions %}
+                        <h3 class="text-lg font-semibold text-slate-100 mb-3 mt-4"><i class="fas fa-function mr-2"></i> Modified Functions</h3>
+                        {% for function in diff_data.modified_functions %}
+                        <div class="bg-dblift-slate-800 border-2 border-yellow-500 rounded-lg mb-3 overflow-hidden">
+                            <div class="bg-yellow-900 bg-opacity-20 px-6 py-4">
+                                <h5 class="mb-0 text-slate-100"><i class="fas fa-function mr-2"></i> <code class="bg-dblift-slate-900 px-2 py-1 rounded">{{ function.function_name|default(function) }}</code></h5>
+                            </div>
+                            {% set test_diff = function.unified_diff|default(None) %}
+                            {% if test_diff and function.unified_diff.lines %}
+                            <div class="p-6">
+                                <div class="diff-section">
+                                    <div class="diff-container">
+                                        <div class="diff-header">
+                                            <span class="diff-label">{{ diff_data.source_type|default('Expected') }} (Old) ↔ {{ diff_data.target_type|default('Actual') }} (New)</span>
+                                        </div>
+                                        <table class="diff-table">
+                                            <tbody>
+                                                {% for line in function.unified_diff.lines %}
+                                                <tr class="diff-line {{ line.type }}">
+                                                    <td class="diff-line-num {% if line.type == 'removed' %}before{% elif line.type == 'added' %}after{% endif %}">
+                                                        {% if line.before_num %}{{ line.before_num }}{% endif %}
+                                                    </td>
+                                                    <td class="diff-content {% if line.type == 'removed' %}old{% elif line.type == 'added' %}new{% else %}equal{% endif %}">
+                                                        {% if line.type == 'removed' or line.type == 'equal' %}<pre class="language-sql"><code class="language-sql">{{ line.content|e }}</code></pre>{% endif %}
+                                                    </td>
+                                                    <td class="diff-line-num {% if line.type == 'removed' %}before{% elif line.type == 'added' %}after{% endif %}">
+                                                        {% if line.after_num %}{{ line.after_num }}{% endif %}
+                                                    </td>
+                                                    <td class="diff-content {% if line.type == 'added' %}new{% elif line.type == 'equal' %}equal{% else %}old{% endif %}">
+                                                        {% if line.type == 'added' or line.type == 'equal' %}<pre class="language-sql"><code class="language-sql">{{ line.content|e }}</code></pre>{% endif %}
+                                                    </td>
+                                                </tr>
+                                                {% endfor %}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            </div>
+                            {% endif %}
+                        </div>
+                        {% endfor %}
+                        {% endif %}
+                    </div>
+                    {% endif %}
+                    {% elif command_type == 'EXPORT-SCHEMA' and result %}
+                    <!-- EXPORT-SCHEMA command: Display export details (single command) -->
+                    {% if result.output_files or result.objects_exported or result.filters_applied %}
+                    <div class="bg-dblift-slate-800 border border-dblift-slate-700 rounded-lg p-6">
+                        <h3 class="text-xl font-semibold text-slate-100 mb-4"><i class="fas fa-download mr-2 text-dblift-teal-500"></i> Export Results</h3>
+                        
+                        {% set export_result = result %}
+                        {% set total_objects = export_result.objects_exported.values()|sum if export_result.objects_exported else 0 %}
+                        
+                        <!-- Summary Statistics Cards -->
+                        {% if export_result.objects_exported %}
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                            <div class="bg-dblift-slate-700 border border-dblift-slate-600 rounded-lg shadow-lg p-4 text-center">
+                                <h5 class="text-dblift-slate-300 font-semibold mb-2">Total Objects</h5>
+                                <h3 class="text-4xl font-bold text-dblift-teal-400 mb-2">{{ total_objects }}</h3>
+                                <small class="text-dblift-slate-400 text-xs">Objects exported</small>
+                            </div>
+                            <div class="bg-dblift-slate-700 border border-dblift-slate-600 rounded-lg shadow-lg p-4 text-center">
+                                <h5 class="text-dblift-slate-300 font-semibold mb-2">Object Types</h5>
+                                <h3 class="text-4xl font-bold text-dblift-cyan-400 mb-2">{{ export_result.objects_exported|length }}</h3>
+                                <small class="text-dblift-slate-400 text-xs">Different types</small>
+                            </div>
+                            <div class="bg-dblift-slate-700 border border-dblift-slate-600 rounded-lg shadow-lg p-4 text-center">
+                                <h5 class="text-dblift-slate-300 font-semibold mb-2">Generated Files</h5>
+                                <h3 class="text-4xl font-bold text-dblift-teal-400 mb-2">{{ export_result.output_files|length if export_result.output_files else 0 }}</h3>
+                                <small class="text-dblift-slate-400 text-xs">SQL files created</small>
+                            </div>
+                        </div>
+                        {% endif %}
+                        
+                        <!-- Objects Exported -->
+                        {% if export_result.objects_exported %}
+                        <div class="mb-6">
+                            <h4 class="text-lg font-semibold text-slate-200 mb-3"><i class="fas fa-cubes mr-2 text-dblift-teal-400"></i> Objects Exported</h4>
+                            <div class="bg-dblift-slate-700 rounded-lg p-4">
+                                <div class="flex flex-wrap gap-2">
+                                    {% for obj_type, count in export_result.objects_exported.items() %}
+                                    <span class="inline-flex items-center px-4 py-2 rounded-full text-sm font-semibold bg-gradient-to-r from-dblift-teal-500 to-dblift-teal-600 text-white">
+                                        {{ obj_type }}: <strong class="ml-1">{{ count }}</strong>
+                                    </span>
+                                    {% endfor %}
+                                </div>
+                            </div>
+                        </div>
+                        {% endif %}
+                        
+                        <!-- Generated Files -->
+                        {% if export_result.output_files %}
+                        <div class="mb-6">
+                            <h4 class="text-lg font-semibold text-slate-200 mb-3"><i class="fas fa-file-code mr-2 text-dblift-teal-400"></i> Generated Files</h4>
+                            <div class="bg-dblift-slate-700 rounded-lg p-4">
+                                <div class="space-y-2">
+                                    {% for file in export_result.output_files %}
+                                    <div class="flex items-center text-slate-200">
+                                        <i class="fas fa-file-alt mr-2 text-dblift-teal-400"></i>
+                                        <code class="text-dblift-teal-300 bg-dblift-slate-800 px-2 py-1 rounded">{{ file }}</code>
+                                    </div>
+                                    {% endfor %}
+                                </div>
+                            </div>
+                        </div>
+                        {% endif %}
+                        
+                        <!-- Filters Applied -->
+                        {% if export_result.filters_applied %}
+                        <div class="mb-6">
+                            <h4 class="text-lg font-semibold text-slate-200 mb-3"><i class="fas fa-filter mr-2 text-dblift-teal-400"></i> Filters Applied</h4>
+                            <div class="bg-dblift-slate-700 rounded-lg p-4">
+                                <div class="flex flex-wrap gap-2">
+                                    {% for filter in export_result.filters_applied %}
+                                    <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-dblift-slate-600 text-slate-200">
+                                        <code>{{ filter }}</code>
+                                    </span>
+                                    {% endfor %}
+                                </div>
+                            </div>
+                        </div>
+                        {% endif %}
+                        
+                        <!-- Output Options -->
+                        {% if export_result.output_options %}
+                        <div class="mb-4">
+                            <h4 class="text-lg font-semibold text-slate-200 mb-3"><i class="fas fa-cog mr-2 text-dblift-teal-400"></i> Output Options</h4>
+                            <div class="bg-dblift-slate-700 rounded-lg p-4">
+                                <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                    {% for key, value in export_result.output_options.items() %}
+                                    <div class="flex items-center justify-between">
+                                        <span class="text-slate-300 font-medium">{{ key|replace('_', ' ')|title }}:</span>
+                                        <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold {% if value is sameas true %}bg-dblift-teal-500{% elif value is sameas false %}bg-dblift-slate-600{% else %}bg-dblift-cyan-500{% endif %} text-white">
+                                            {% if value is sameas true %}Yes{% elif value is sameas false %}No{% else %}{{ value }}{% endif %}
+                                        </span>
+                                    </div>
+                                    {% endfor %}
+                                </div>
+                            </div>
+                        </div>
+                        {% endif %}
+                    </div>
+                    {% endif %}
+                    {% elif cmd.command_type == 'EXPORT-SCHEMA' and cmd.result %}
+                    <!-- EXPORT-SCHEMA command: Display export details (multi-command) -->
+                    {% if cmd.result.output_files or cmd.result.objects_exported or cmd.result.filters_applied %}
+                    <div class="bg-dblift-slate-800 border border-dblift-slate-700 rounded-lg p-6">
+                        <h3 class="text-xl font-semibold text-slate-100 mb-4"><i class="fas fa-download mr-2 text-dblift-teal-500"></i> Export Results</h3>
+                        
+                        {% set export_result = cmd.result %}
+                        {% set total_objects = export_result.objects_exported.values()|sum if export_result.objects_exported else 0 %}
+                        
+                        <!-- Summary Statistics Cards -->
+                        {% if export_result.objects_exported %}
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                            <div class="bg-dblift-slate-700 border border-dblift-slate-600 rounded-lg shadow-lg p-4 text-center">
+                                <h5 class="text-dblift-slate-300 font-semibold mb-2">Total Objects</h5>
+                                <h3 class="text-4xl font-bold text-dblift-teal-400 mb-2">{{ total_objects }}</h3>
+                                <small class="text-dblift-slate-400 text-xs">Objects exported</small>
+                            </div>
+                            <div class="bg-dblift-slate-700 border border-dblift-slate-600 rounded-lg shadow-lg p-4 text-center">
+                                <h5 class="text-dblift-slate-300 font-semibold mb-2">Object Types</h5>
+                                <h3 class="text-4xl font-bold text-dblift-cyan-400 mb-2">{{ export_result.objects_exported|length }}</h3>
+                                <small class="text-dblift-slate-400 text-xs">Different types</small>
+                            </div>
+                            <div class="bg-dblift-slate-700 border border-dblift-slate-600 rounded-lg shadow-lg p-4 text-center">
+                                <h5 class="text-dblift-slate-300 font-semibold mb-2">Generated Files</h5>
+                                <h3 class="text-4xl font-bold text-dblift-teal-400 mb-2">{{ export_result.output_files|length if export_result.output_files else 0 }}</h3>
+                                <small class="text-dblift-slate-400 text-xs">SQL files created</small>
+                            </div>
+                        </div>
+                        {% endif %}
+                        
+                        <!-- Objects Exported -->
+                        {% if export_result.objects_exported %}
+                        <div class="mb-6">
+                            <h4 class="text-lg font-semibold text-slate-200 mb-3"><i class="fas fa-cubes mr-2 text-dblift-teal-400"></i> Objects Exported</h4>
+                            <div class="bg-dblift-slate-700 rounded-lg p-4">
+                                <div class="flex flex-wrap gap-2">
+                                    {% for obj_type, count in export_result.objects_exported.items() %}
+                                    <span class="inline-flex items-center px-4 py-2 rounded-full text-sm font-semibold bg-gradient-to-r from-dblift-teal-500 to-dblift-teal-600 text-white">
+                                        {{ obj_type }}: <strong class="ml-1">{{ count }}</strong>
+                                    </span>
+                                    {% endfor %}
+                                </div>
+                            </div>
+                        </div>
+                        {% endif %}
+                        
+                        <!-- Generated Files -->
+                        {% if export_result.output_files %}
+                        <div class="mb-6">
+                            <h4 class="text-lg font-semibold text-slate-200 mb-3"><i class="fas fa-file-code mr-2 text-dblift-teal-400"></i> Generated Files</h4>
+                            <div class="bg-dblift-slate-700 rounded-lg p-4">
+                                <div class="space-y-2">
+                                    {% for file in export_result.output_files %}
+                                    <div class="flex items-center text-slate-200">
+                                        <i class="fas fa-file-alt mr-2 text-dblift-teal-400"></i>
+                                        <code class="text-dblift-teal-300 bg-dblift-slate-800 px-2 py-1 rounded">{{ file }}</code>
+                                    </div>
+                                    {% endfor %}
+                                </div>
+                            </div>
+                        </div>
+                        {% endif %}
+                        
+                        <!-- Filters Applied -->
+                        {% if export_result.filters_applied %}
+                        <div class="mb-6">
+                            <h4 class="text-lg font-semibold text-slate-200 mb-3"><i class="fas fa-filter mr-2 text-dblift-teal-400"></i> Filters Applied</h4>
+                            <div class="bg-dblift-slate-700 rounded-lg p-4">
+                                <div class="flex flex-wrap gap-2">
+                                    {% for filter in export_result.filters_applied %}
+                                    <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-dblift-slate-600 text-slate-200">
+                                        <code>{{ filter }}</code>
+                                    </span>
+                                    {% endfor %}
+                                </div>
+                            </div>
+                        </div>
+                        {% endif %}
+                        
+                        <!-- Output Options -->
+                        {% if export_result.output_options %}
+                        <div class="mb-4">
+                            <h4 class="text-lg font-semibold text-slate-200 mb-3"><i class="fas fa-cog mr-2 text-dblift-teal-400"></i> Output Options</h4>
+                            <div class="bg-dblift-slate-700 rounded-lg p-4">
+                                <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                    {% for key, value in export_result.output_options.items() %}
+                                    <div class="flex items-center justify-between">
+                                        <span class="text-slate-300 font-medium">{{ key|replace('_', ' ')|title }}:</span>
+                                        <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold {% if value is sameas true %}bg-dblift-teal-500{% elif value is sameas false %}bg-dblift-slate-600{% else %}bg-dblift-cyan-500{% endif %} text-white">
+                                            {% if value is sameas true %}Yes{% elif value is sameas false %}No{% else %}{{ value }}{% endif %}
+                                        </span>
+                                    </div>
+                                    {% endfor %}
+                                </div>
+                            </div>
+                        </div>
+                        {% endif %}
+                    </div>
+                    {% endif %}
+                    {% elif cmd.command_type == 'CLEAN' and cmd.result %}
+                    <!-- CLEAN command: Display deleted objects -->
+        {% set objects_map = cmd.result.get_objects_by_type() %}
+        {% set ns = namespace(total=0) %}
+        {% for object_type, names in objects_map.items() %}
+            {% set ns.total = ns.total + (names|length) %}
+        {% endfor %}
+        <div class="bg-dblift-slate-800 border-l-4 border-dblift-cyan-500 rounded p-4 mb-4">
+            <div class="flex items-center flex-wrap">
+                <div class="mr-3">
+                    <i class="fas fa-trash text-xl text-dblift-cyan-500"></i>
+                </div>
+                <div class="flex-1 text-slate-100">
+                    <strong class="text-slate-100">Database Objects Cleaned:</strong>
+                    <span class="ml-3 text-slate-100"><strong>{{ ns.total }}</strong> object(s) dropped from schema</span>
+                    {% if objects_map.get('schema') %}
+                        {% set schemas_list = objects_map.get('schema')|list|sort %}
+                        <span class="ml-3 text-slate-100">(<strong>{{ schemas_list|length }}</strong> schema(s) cleaned: {{ schemas_list|join(', ') }})</span>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+        
+        <div class="overflow-x-auto">
+            <table class="min-w-full divide-y divide-dblift-slate-700 bg-dblift-slate-700 rounded-lg overflow-hidden">
+                <thead class="bg-dblift-slate-600">
+                    <tr>
+                        <th class="px-6 py-3 text-left text-xs font-semibold text-slate-100 uppercase tracking-wider">Object Type</th>
+                        <th class="px-6 py-3 text-left text-xs font-semibold text-slate-100 uppercase tracking-wider">Count</th>
+                        <th class="px-6 py-3 text-left text-xs font-semibold text-slate-100 uppercase tracking-wider">Objects</th>
+                    </tr>
+                </thead>
+                <tbody class="bg-dblift-slate-800 divide-y divide-dblift-slate-700">
+                    {% for object_type, names in objects_map|dictsort %}
+                        {% set names_list = names|list|sort %}
+                        {% if names_list %}
+                        <tr class="hover:bg-dblift-slate-700 transition-colors {% if loop.index % 2 == 0 %}bg-dblift-slate-800{% else %}bg-dblift-slate-700{% endif %}">
+                            <td class="px-6 py-4 whitespace-nowrap">
+                                <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold {{ get_object_type_badge.get(object_type.lower(), 'bg-dblift-slate-600') }} text-white">
+                                    {{ object_type.replace('_', ' ')|title }}
+                                </span>
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-slate-300"><strong>{{ names_list|length }}</strong></td>
+                            <td class="px-6 py-4 text-sm text-slate-300">{{ names_list|join(', ') }}</td>
+                        </tr>
+                        {% endif %}
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+                    {% elif cmd.command_type == 'VALIDATE' %}
+                    <!-- VALIDATE command: Display validation results -->
+                    <div class="bg-dblift-slate-800 border border-dblift-slate-700 rounded-lg p-6">
+                        <h3 class="text-xl font-semibold text-slate-100 mb-4"><i class="fas fa-check-circle mr-2 text-dblift-teal-500"></i> Validation Results</h3>
+                        {% if cmd.success %}
+                            <div class="bg-dblift-teal-900 border-l-4 border-dblift-teal-500 rounded p-4 mb-4">
+                                <p class="text-dblift-teal-100"><strong>✓ All migrations validated successfully</strong></p>
+                                {% if cmd.migrations %}
+                                    <p class="text-dblift-teal-200 mt-2">Validated {{ cmd.migrations|length }} migration(s)</p>
+                                {% endif %}
+                            </div>
+                        {% else %}
+                            <div class="bg-red-900 border-l-4 border-red-500 rounded p-4 mb-4">
+                                <p class="text-red-100"><strong>✗ Validation failed</strong></p>
+                                {% if cmd.error_message %}
+                                    <p class="text-red-200 mt-2">{{ cmd.error_message }}</p>
+                                {% endif %}
+                            </div>
+                        {% endif %}
+                        {% if cmd.migrations %}
+                            <div class="mt-4">
+                                <h4 class="text-lg font-semibold text-slate-200 mb-2">Migration Status</h4>
+                                <div class="space-y-2">
+                                    {% for migration in cmd.migrations %}
+                                    <div class="flex items-center justify-between bg-dblift-slate-700 rounded p-3">
+                                        <span class="text-slate-300">{{ migration.script }}</span>
+                                        {% if migration.status|lower == 'success' or migration.status|lower == 'applied' %}
+                                            <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-gradient-to-r from-dblift-teal-500 to-dblift-teal-600 text-white">Valid</span>
+                                        {% else %}
+                                            <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-gradient-to-r from-red-500 to-red-600 text-white">Invalid</span>
+                                        {% endif %}
+                                    </div>
+                                    {% endfor %}
+                                </div>
+                            </div>
+                        {% endif %}
+                    </div>
+                    {% elif cmd.command_type == 'BASELINE' %}
+                    <!-- BASELINE command: Display baseline information -->
+                    <div class="bg-dblift-slate-800 border border-dblift-slate-700 rounded-lg p-6">
+                        <h3 class="text-xl font-semibold text-slate-100 mb-4"><i class="fas fa-flag mr-2 text-dblift-blue-500"></i> Baseline Information</h3>
+                        {% if cmd.success %}
+                            <div class="bg-dblift-blue-900 border-l-4 border-dblift-blue-500 rounded p-4 mb-4">
+                                <p class="text-dblift-blue-100"><strong>✓ Schema baselined successfully</strong></p>
+                                {% if cmd.result %}
+                                    {% set test_version = cmd.result.current_schema_version|default('') %}
+                                    {% if test_version %}
+                                        <p class="text-dblift-blue-200 mt-2">Baseline version: <strong>{{ cmd.result.current_schema_version }}</strong></p>
+                                    {% endif %}
+                                {% endif %}
+                            </div>
+                        {% else %}
+                            <div class="bg-red-900 border-l-4 border-red-500 rounded p-4 mb-4">
+                                <p class="text-red-100"><strong>✗ Baseline failed</strong></p>
+                                {% if cmd.error_message %}
+                                    <p class="text-red-200 mt-2">{{ cmd.error_message }}</p>
+                                {% endif %}
+                            </div>
+                        {% endif %}
+                    </div>
+                    {% elif cmd.command_type == 'REPAIR' %}
+                    <!-- REPAIR command: Display repair results -->
+                    <div class="bg-dblift-slate-800 border border-dblift-slate-700 rounded-lg p-6">
+                        <h3 class="text-xl font-semibold text-slate-100 mb-4"><i class="fas fa-wrench mr-2 text-dblift-cyan-500"></i> Repair Results</h3>
+                        {% if cmd.success %}
+                            <div class="bg-dblift-teal-900 border-l-4 border-dblift-teal-500 rounded p-4 mb-4">
+                                <p class="text-dblift-teal-100"><strong>✓ Schema history table repaired successfully</strong></p>
+                            </div>
+                        {% else %}
+                            <div class="bg-red-900 border-l-4 border-red-500 rounded p-4 mb-4">
+                                <p class="text-red-100"><strong>✗ Repair failed</strong></p>
+                                {% if cmd.error_message %}
+                                    <p class="text-red-200 mt-2">{{ cmd.error_message }}</p>
+                                {% endif %}
+                            </div>
+                        {% endif %}
+                    </div>
+                    {% else %}
+                    <!-- Fallback for unknown command types -->
+                    <div class="bg-dblift-slate-800 border border-dblift-slate-700 rounded-lg p-6">
+                        <h3 class="text-xl font-semibold text-slate-100 mb-4">Command: {{ cmd.command_type }}</h3>
+                        {% if cmd.success %}
+                            <div class="bg-dblift-teal-900 border-l-4 border-dblift-teal-500 rounded p-4">
+                                <p class="text-dblift-teal-100"><strong>✓ Command completed successfully</strong></p>
+                            </div>
+                        {% else %}
+                            <div class="bg-red-900 border-l-4 border-red-500 rounded p-4">
+                                <p class="text-red-100"><strong>✗ Command failed</strong></p>
+                                {% if cmd.error_message %}
+                                    <p class="text-red-200 mt-2">{{ cmd.error_message }}</p>
+                                {% endif %}
+                            </div>
+                        {% endif %}
+                        {% if cmd.migrations %}
+                            <div class="mt-4">
+                                <p class="text-slate-300">Migrations processed: {{ cmd.migrations|length }}</p>
+                            </div>
+                        {% endif %}
+                    </div>
+                    {% endif %}
+                </div>
+                {% endfor %}
+            </div>
+        {% endif %}
+        <!-- Multi-Command Summary (if multiple commands were executed) -->
+        {% if false %}
+        <div class="main-container" id="section-summary">
+            <h2 class="section-title"><i class="fas fa-terminal mr-2"></i> Multi-Command Execution Summary</h2>
+            
+            <div class="bg-dblift-slate-800 rounded-lg shadow-md mb-4">
+                <div class="bg-dblift-slate-700 px-6 py-4 rounded-t-lg">
+                    <h4 class="mb-0 text-slate-100"><i class="fas fa-list-check mr-2"></i> Commands Executed</h4>
+                </div>
+                <div class="p-6">
+                    <div class="overflow-x-auto">
+                        <table class="min-w-full divide-y divide-dblift-slate-700 bg-dblift-slate-700 rounded-lg overflow-hidden">
+                            <thead class="bg-dblift-slate-600">
+                                <tr>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-slate-300 uppercase tracking-wider">#</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-slate-300 uppercase tracking-wider">Command</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-slate-300 uppercase tracking-wider">Status</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-slate-300 uppercase tracking-wider">Execution Time</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-slate-300 uppercase tracking-wider">Details</th>
+                                </tr>
+                            </thead>
+                            <tbody class="bg-dblift-slate-800 divide-y divide-dblift-slate-700">
+                                {% for cmd in command_results %}
+                                <tr>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-slate-300">{{ loop.index }}</td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-slate-300"><strong>{{ cmd.command_type }}</strong></td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-slate-300">
+                                        {% if cmd.success %}
+                                            <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-gradient-to-r from-dblift-teal-500 to-dblift-teal-600 text-white"><i class="fas fa-check-circle mr-1"></i> Success</span>
+                                        {% else %}
+                                            <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-gradient-to-r from-red-500 to-red-600 text-white"><i class="fas fa-times-circle mr-1"></i> Failed</span>
+                                        {% endif %}
+                                    </td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-slate-300">{{ cmd.execution_time }} ms</td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-slate-300">
+                                        {% if not cmd.success and cmd.error_message %}
+                                            <span class="text-red-400">{{ cmd.error_message }}</span>
+                                        {% else %}
+                                            <span class="text-dblift-teal-400">Completed at {{ cmd.timestamp }}</span>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="{% if operation_success %}bg-dblift-teal-900 border-l-4 border-dblift-teal-500{% else %}bg-yellow-900 border-l-4 border-yellow-500{% endif %} rounded p-4">
+                <h4 class="{% if operation_success %}text-dblift-teal-100{% else %}text-yellow-100{% endif %} font-semibold mb-2">
+                    {% if operation_success %}
+                        <i class="fas fa-check-circle"></i> All Commands Completed Successfully
+                    {% else %}
+                        <i class="fas fa-exclamation-triangle"></i> Some Commands Failed
+                    {% endif %}
+                </h4>
+                <p class="{% if operation_success %}text-dblift-teal-200{% else %}text-yellow-200{% endif %}">Total execution time: {{ execution_time }} ms</p>
+                {% if not operation_success %}
+                    <hr class="border-dblift-slate-600 my-3">
+                    <p class="mb-0 {% if operation_success %}text-dblift-teal-200{% else %}text-yellow-200{% endif %}">Check each command for specific error details.</p>
+                {% endif %}
+            </div>
+        </div>
+        {% endif %}
+        
+        <!-- Diagnostic Information removed -->
+        
+        <!-- Operation Summary (disabled) -->
+        {% if false %}
+        <div class="main-container">
+            <h2 class="section-title"><i class="fas fa-info-circle mr-2"></i> Operation Summary</h2>
+            
+            <!-- Connection info moved to header -->
+            
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                    <div class="summary-box {% if operation_success %}success-bg{% else %}error-bg{% endif %}">
+                        <h3 class="mb-2">
+                            {% if operation_success %}
+                                <i class="fas fa-check-circle mr-2"></i> Operation Successful
+                            {% else %}
+                                <i class="fas fa-times-circle mr-2"></i> Operation Failed
+                            {% endif %}
+                        </h3>
+                        <div class="details">
+                            <p class="mb-0">
+                                Command: <strong>{{ command_type }}</strong>
+                                {% if current_version %}Version: <strong>{{ current_version }}</strong>{% endif %}
+                                Execution time: <strong>{{ execution_time }} ms</strong>
+                            </p>
+                        </div>
+                    </div>
+                </div>
+                
+                <div>
+                    {% if not operation_success %}
+                        <div class="summary-box error-bg">
+                            <h3 class="mb-2"><i class="fas fa-exclamation-triangle mr-2"></i> Error</h3>
+                            <p>{{ error_message }}</p>
+                        </div>
+                    {% elif warnings and warnings|length > 0 %}
+                        <div class="summary-box warning-bg">
+                            <h3 class="mb-2"><i class="fas fa-exclamation-triangle mr-2"></i> Warnings</h3>
+                            {% for warning in warnings %}
+                                <p {% if not loop.last %}class="mb-2"{% else %}class="mb-0"{% endif %}>{{ warning }}</p>
+                            {% endfor %}
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+            
+            <!-- Migration Statistics -->
+            {% if migration_data and command_type == 'INFO' %}
+            <div class="progress-section">
+                <h3 class="mb-3">Migration Statistics</h3>
+                
+                <!-- Calculate statistics from migration_data -->
+                {% set total = migration_data|length %}
+                {% set success = migration_data|selectattr('status', 'equalto', 'SUCCESS')|list|length %}
+                {% set pending = migration_data|selectattr('status', 'equalto', 'PENDING')|list|length %}
+                {% set failed = migration_data|selectattr('status', 'equalto', 'FAILED')|list|length %}
+                {% set outdated = migration_data|selectattr('status', 'equalto', 'OUTDATED')|list|length %}
+                {% set undone = migration_data|selectattr('status', 'equalto', 'UNDONE')|list|length %}
+                
+                {# Use pre-calculated values from the result object #}
+                {% set avg_time = avg_execution_time|default(0) %}
+                {% set sum_time = total_execution_time|default(0) %}
+                {% set count = execution_count|default(0) %}
+                
+                <!-- Migration stats in cards -->
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                    <!-- Total migrations -->
+                    <div class="mb-3">
+                        <div class="bg-dblift-slate-800 rounded-lg shadow-md p-6">
+                            <div class="text-center">
+                                <h5 class="text-slate-400 text-sm font-medium mb-2">Number of Migrations</h5>
+                                <h3 class="text-4xl font-bold text-slate-100">{{ total }}</h3>                                
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Success count -->
+                    <div class="mb-3">
+                        <div class="bg-dblift-slate-800 rounded-lg shadow-md p-6">
+                            <div class="text-center">
+                                <h5 class="text-dblift-teal-400 text-sm font-medium mb-2">Success</h5>
+                                <h3 class="text-4xl font-bold text-dblift-teal-400">{{ success }}</h3>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Average execution time -->
+                    <div class="mb-3">
+                        <div class="bg-dblift-slate-800 rounded-lg shadow-md p-6">
+                            <div class="text-center">
+                                <h5 class="text-dblift-cyan-400 text-sm font-medium mb-2">Avg Time</h5>
+                                <h3 class="text-4xl font-bold text-dblift-cyan-400">{{ avg_time }} <small class="text-slate-400 text-sm">ms</small></h3>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Undone count if any -->
+                    {% if undone > 0 %}
+                    <div class="mb-3">
+                        <div class="bg-dblift-slate-800 rounded-lg shadow-md p-6">
+                            <div class="text-center">
+                                <h5 class="text-slate-300 text-sm font-medium mb-2" style="color: var(--neutral-color)">Undone</h5>
+                                <h3 class="text-4xl font-bold" style="color: var(--neutral-color)">{{ undone }}</h3>
+                            </div>
+                        </div>
+                    </div>
+                    {% endif %}
+                    
+                    <!-- Pending count if any -->
+                    {% if pending > 0 %}
+                    <div class="mb-3">
+                        <div class="bg-dblift-slate-800 rounded-lg shadow-md p-6">
+                            <div class="text-center">
+                                <h5 class="text-dblift-blue-400 text-sm font-medium mb-2">Pending</h5>
+                                <h3 class="text-4xl font-bold text-dblift-blue-400">{{ pending }}</h3>
+                            </div>
+                        </div>
+                    </div>
+                    {% endif %}
+                    
+                    <!-- Failed count if any -->
+                    {% if failed > 0 %}
+                    <div class="mb-3">
+                        <div class="bg-dblift-slate-800 rounded-lg shadow-md p-6">
+                            <div class="text-center">
+                                <h5 class="text-red-400 text-sm font-medium mb-2">Failed</h5>
+                                <h3 class="text-4xl font-bold text-red-400">{{ failed }}</h3>
+                            </div>
+                        </div>
+                    </div>
+                    {% endif %}
+                    
+                    <!-- Outdated count if any -->
+                    {% if outdated > 0 %}
+                    <div class="mb-3">
+                        <div class="bg-dblift-slate-800 rounded-lg shadow-md p-6">
+                            <div class="text-center">
+                                <h5 class="text-sm font-medium mb-2" style="color: var(--accent-color)">Outdated</h5>
+                                <h3 class="text-4xl font-bold" style="color: var(--accent-color)">{{ outdated }}</h3>
+                            </div>
+                        </div>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+            {% endif %}
+            
+        </div>
+        {% endif %}
+
+        <!-- Migration Details -->
+        {% if migration_data and command_type in ['MIGRATE', 'UNDO'] %}
+        <div class="main-container" id="section-migrations" style="display:none;">
+            <h2 class="section-title"><i class="fas fa-list-check mr-2"></i> Migration Details</h2>
+            
+            <div id="migrationsAccordion">
+                {% for migration in migration_data %}
+                <div class="mb-3 border border-dblift-slate-700 rounded-lg overflow-hidden">
+                    <h2>
+                        <button class="w-full px-6 py-4 text-left bg-dblift-slate-800 hover:bg-dblift-slate-700 transition-colors {% if loop.index == 1 %}bg-dblift-slate-700{% endif %}" 
+                                type="button" 
+                                onclick="toggleAccordion(this)"
+                                data-accordion-target="collapse{{ loop.index }}">
+                            <div class="w-full">
+                                <div class="flex justify-between items-center flex-wrap">
+                                    <div class="mr-2">
+                                        {% if migration.version %}
+                                        <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-dblift-slate-600 text-white mr-2">{{ migration.version }}</span>
+                                        {% endif %}
+                                        <strong>{{ migration.description|default(migration.script) }}</strong>
+                                    </div>
+                                    <div>
+                                        {% if migration.status|lower == 'success' or migration.status|lower == 'applied' %}
+                                            <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-gradient-to-r from-dblift-teal-500 to-dblift-teal-600 text-white">{{ migration.status }}</span>
+                                        {% elif migration.status|lower == 'pending' %}
+                                            <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-gradient-to-r from-dblift-cyan-500 to-dblift-cyan-600 text-white">{{ migration.status }}</span>
+                                        {% elif migration.status|lower == 'failed' %}
+                                            <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-gradient-to-r from-red-500 to-red-600 text-white">{{ migration.status }}</span>
+                                        {% else %}
+                                            <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-dblift-slate-600 text-white">{{ migration.status }}</span>
+                                        {% endif %}
+                                        
+                                        {% if migration.type == 'VERSIONED' or migration.type == 'SQL' %}
+                                            <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-dblift-blue-500 text-white ml-2">{{ migration.type }}</span>
+                                        {% elif migration.type == 'REPEATABLE' %}
+                                            <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-dblift-cyan-500 text-white ml-2">{{ migration.type }}</span>
+                                        {% elif migration.type == 'UNDO_SQL' %}
+                                            <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-yellow-500 text-white ml-2">{{ migration.type }}</span>
+                                        {% elif migration.type == 'BASELINE' %}
+                                            <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-dblift-slate-600 text-white ml-2">{{ migration.type }}</span>
+                                        {% else %}
+                                            <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-dblift-slate-600 text-white ml-2">{{ migration.type }}</span>
+                                        {% endif %}
+                                        
+                                        {% if migration.category == 'Versioned' %}
+                                            <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-dblift-blue-500 text-white ml-2">{{ migration.category }}</span>
+                                        {% elif migration.category == 'Repeatable' %}
+                                            <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-dblift-cyan-500 text-white ml-2">{{ migration.category }}</span>
+                                        {% elif migration.category == 'Undo' %}
+                                            <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-yellow-500 text-white ml-2">{{ migration.category }}</span>
+                                        {% elif migration.category == 'Baseline' %}
+                                            <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-dblift-slate-600 text-white ml-2">{{ migration.category }}</span>
+                                        {% else %}
+                                            <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-dblift-slate-600 text-white ml-2">{{ migration.category }}</span>
+                                        {% endif %}
+                                    </div>
+                                </div>
+                            </div>
+                        </button>
+                    </h2>
+                    <div id="collapse{{ loop.index }}" class="accordion-content bg-dblift-slate-800 {% if loop.index != 1 %}hidden{% endif %}">
+                        <div class="p-6">
+                            <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                                <div>
+                                    <p class="text-break"><strong>Script:</strong> {{ migration.script }}</p>
+                                    {% if migration.execution_time %}
+                                    <p><strong>Execution time:</strong> {{ migration.execution_time }} ms</p>
+                                    {% endif %}
+                                    {% if migration.installed_on %}
+                                    <p><strong>Installed on:</strong> {{ migration.installed_on }}</p>
+                                    {% endif %}
+                                    {% if migration.installed_by %}
+                                    <p><strong>Installed by:</strong> {{ migration.installed_by }}</p>
+                                    {% endif %}
+                                    {% if migration.undoable is defined %}
+                                    <p><strong>Undoable:</strong> 
+                                    {% if migration.undoable == 'Yes' or migration.undoable == true or migration.undoable == 1 %}
+                                        Yes
+                                    {% else %}
+                                        No
+                                    {% endif %}
+                                    </p>
+                                    {% endif %}
+                                </div>
+                                <div>
+                                    {% if migration.error %}
+                                    <div class="bg-red-900 border-l-4 border-red-500 rounded p-4">
+                                        <strong>Error:</strong> {{ migration.error }}
+                                    </div>
+                                    {% endif %}
+                                </div>
+                            </div>
+                            
+                            <!-- Migration Operations -->
+                            {% if migration_operations and migration_operations[migration.script] %}
+                            <div class="migration-operations mt-3">
+                                <h5><i class="fas fa-tools mr-2"></i> Operations</h5>
+                                <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                                    {% for operation in migration_operations[migration.script] %}
+                                    <div>
+                                        <div class="operation-item">
+                                            <strong>
+                                                {% if operation.type == 'TABLE_CREATED' %}
+                                                <i class="fas fa-table mr-2"></i> Table Created:
+                                                {% elif operation.type == 'TABLE_ALTERED' %}
+                                                <i class="fas fa-edit mr-2"></i> Table Altered:
+                                                {% elif operation.type == 'TABLE_DROPPED' %}
+                                                <i class="fas fa-trash mr-2"></i> Table Dropped:
+                                                {% elif operation.type == 'INDEX_CREATED' %}
+                                                <i class="fas fa-sitemap mr-2"></i> Index Created:
+                                                {% elif operation.type == 'VIEW_CREATED' %}
+                                                <i class="fas fa-window-maximize mr-2"></i> View Created:
+                                                {% elif operation.type == 'ROW_INSERTED' %}
+                                                <i class="fas fa-plus-circle mr-2"></i> Row Inserted
+                                                {% elif operation.type == 'ROW_UPDATED' %}
+                                                <i class="fas fa-sync-alt mr-2"></i> Row Updated
+                                                {% elif operation.type == 'ROW_DELETED' %}
+                                                <i class="fas fa-minus-circle mr-2"></i> Row Deleted
+                                                {% else %}
+                                                <i class="fas fa-code mr-2"></i> SQL Executed:
+                                                {% endif %}
+                                            </strong>
+                                            <span class="text-break">{{ operation.object_name|default('') }}</span>
+                                        </div>
+                                    </div>
+                                    {% endfor %}
+                                </div>
+                            </div>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
+        
+        
+        <div class="footer">
+            <p>Generated by DBLift - Version-Controlled Schemas at DevOps Speed.</p>
+            <p>© {{ now().year }} DBLift</p>
+        </div>
+    </div>
+
+    <script>
+    // Tab switching functionality
+    function switchTab(tabIndex) {
+        // Hide all tab panes
+        document.querySelectorAll('.tab-pane').forEach(pane => {
+            pane.classList.add('hidden');
+            pane.classList.remove('block');
+        });
+        
+        // Remove active state from all tabs
+        document.querySelectorAll('.tab-button').forEach(btn => {
+            btn.classList.remove('border-dblift-blue-500', 'text-dblift-blue-500');
+            btn.classList.add('border-transparent', 'text-dblift-slate-400');
+        });
+        
+        // Show selected tab pane
+        const targetPane = document.getElementById('pane-' + tabIndex);
+        if (targetPane) {
+            targetPane.classList.remove('hidden');
+            targetPane.classList.add('block');
+        }
+        
+        // Activate selected tab button
+        const targetBtn = document.getElementById('tab-' + tabIndex);
+        if (targetBtn) {
+            targetBtn.classList.remove('border-transparent', 'text-dblift-slate-400');
+            targetBtn.classList.add('border-dblift-blue-500', 'text-dblift-blue-500');
+        }
+    }
+    
+    // Accordion toggle functionality
+    function toggleAccordion(button) {
+        const targetId = button.getAttribute('data-accordion-target');
+        const content = document.getElementById(targetId);
+        if (!content) return;
+        
+        const isOpen = !content.classList.contains('hidden');
+        
+        if (isOpen) {
+            content.classList.add('hidden');
+            button.classList.remove('bg-dblift-slate-700');
+        } else {
+            // Close other accordions in the same group (optional - for single-open behavior)
+            const accordionGroup = button.closest('#migrationsAccordion');
+            if (accordionGroup) {
+                accordionGroup.querySelectorAll('.accordion-content').forEach(function(item) {
+                    if (item.id !== targetId) {
+                        item.classList.add('hidden');
+                    }
+                });
+                accordionGroup.querySelectorAll('[data-accordion-target]').forEach(function(btn) {
+                    if (btn !== button) {
+                        btn.classList.remove('bg-dblift-slate-700');
+                    }
+                });
+            }
+            
+            content.classList.remove('hidden');
+            button.classList.add('bg-dblift-slate-700');
+            
+            // Re-highlight SQL if Prism is available
+            if (typeof Prism !== 'undefined') {
+                setTimeout(function() {
+                    Prism.highlightAll();
+                }, 100);
+            }
+        }
+    }
+    
+    // Simple client-side filtering and search for INFO table
+    (function() {
+      const searchInput = document.getElementById('migrationSearch');
+      const filterButtons = document.querySelectorAll('[data-filter]');
+      const rows = document.querySelectorAll('tbody tr[data-status]');
+      let activeFilter = 'all';
+
+      function applyFilters() {
+        const term = (searchInput && searchInput.value || '').toLowerCase();
+        rows.forEach(function(row) {
+          const status = (row.getAttribute('data-status') || '').toUpperCase();
+          const text = row.textContent.toLowerCase();
+          const statusMatch = (activeFilter === 'all') || (status === activeFilter);
+          const textMatch = term === '' || text.indexOf(term) !== -1;
+          row.style.display = (statusMatch && textMatch) ? '' : 'none';
+        });
+      }
+
+      if (searchInput) {
+        searchInput.addEventListener('input', applyFilters);
+      }
+
+      filterButtons.forEach(function(btn) {
+        btn.addEventListener('click', function() {
+          activeFilter = (btn.getAttribute('data-filter') || 'all').toUpperCase();
+          filterButtons.forEach(function(b) { b.classList.remove('active'); });
+          btn.classList.add('active');
+          applyFilters();
+        });
+      });
+    })();
+
+    // Initialize progress bar widths from data-width to avoid inline templating issues
+    (function() {
+      const bars = document.querySelectorAll('.progress-bar[data-width]');
+      bars.forEach(function(bar) {
+        const w = bar.getAttribute('data-width');
+        if (w !== null) {
+          bar.style.width = w + '%';
+        }
+      });
+    })();
+
+    // Initialize timeline bars (left & width from data attributes)
+    (function() {
+      const bars = document.querySelectorAll('.timeline-bar[data-left][data-width]');
+      bars.forEach(function(bar) {
+        const left = bar.getAttribute('data-left');
+        const width = bar.getAttribute('data-width');
+        if (left !== null) bar.style.left = left + '%';
+        if (width !== null) bar.style.width = width + '%';
+      });
+    })();
+
+    // Initialize Prism.js for SQL syntax highlighting
+    if (typeof Prism !== 'undefined') {
+        Prism.plugins.autoloader.languages_path = 'https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/';
+        // Highlight all SQL code blocks after page load
+        Prism.highlightAll();
+        
+        // Highlight SQL when tabs are switched
+        document.querySelectorAll('.tab-button').forEach(function(button) {
+            button.addEventListener('click', function() {
+                setTimeout(function() {
+                    Prism.highlightAll();
+                }, 100);
+            });
+        });
+        
+        // Use MutationObserver to highlight SQL when accordion content becomes visible
+        const observer = new MutationObserver(function(mutations) {
+            Prism.highlightAll();
+        });
+        document.querySelectorAll('.accordion-content').forEach(function(content) {
+            observer.observe(content, { attributes: true, attributeFilter: ['class'] });
+        });
+    }
+    </script>
+</body>
+</html> 

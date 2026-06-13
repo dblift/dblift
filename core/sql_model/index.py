@@ -147,8 +147,30 @@ class Index(SqlObject):
 
     @property
     def create_statement(self) -> str:
-        """Generate a basic CREATE INDEX statement."""
-        return self._generate_basic_create_statement()
+        """Generate CREATE INDEX statement using database-specific generators.
+
+        Returns:
+            Dialect-specific CREATE INDEX statement
+        """
+        # Use the appropriate SQL generator for the dialect
+        from core.sql_generator.generator_factory import (
+            SqlGeneratorFactory,
+        )
+
+        try:
+            generator = SqlGeneratorFactory.create(
+                self.dialect or "postgresql"  # lint: allow-dialect-string: factory default fallback
+            )
+            # Check if generator has the new method
+            if hasattr(generator, "generate_create_statement"):
+                result = generator.generate_create_statement(self)
+                return str(result)
+            else:
+                # Fallback for old generators that don't have the method yet
+                return self._generate_basic_create_statement()
+        except (ValueError, ImportError, AttributeError):
+            # Fallback to basic CREATE INDEX if generator not available
+            return self._generate_basic_create_statement()
 
     def _generate_basic_create_statement(self) -> str:
         """Generate a basic CREATE INDEX statement as fallback.
@@ -215,11 +237,13 @@ class Index(SqlObject):
         if quirks.index_supports_local_partitioned and self.is_local:
             stmt += " LOCAL"
 
-        # INCLUDE / storage / WHERE clauses are generic. PostgreSQL requires
-        # WITH storage options before WHERE on partial indexes.
+        # INCLUDE / WHERE clauses are generic.
         if self.include_columns:
             include_columns = [self.format_identifier(col) for col in self.include_columns]
             stmt += f" INCLUDE ({', '.join(include_columns)})"
+
+        if self.condition:
+            stmt += f" WHERE {self.condition}"
 
         if quirks.index_supports_bitmap and self.type == "BITMAP":
             stmt = stmt.replace("INDEX", "BITMAP INDEX")
@@ -231,9 +255,6 @@ class Index(SqlObject):
         with_clause = self._render_with_options(quirks.index_with_options_style)
         if with_clause:
             stmt += with_clause
-
-        if self.condition:
-            stmt += f" WHERE {self.condition}"
 
         return stmt
 

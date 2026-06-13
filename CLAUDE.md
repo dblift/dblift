@@ -9,13 +9,12 @@ take 6+ minutes; parallel runs complete in ~60 seconds.
 python -m pytest tests/unit/ -n auto --dist=loadscope -q --no-header
 ```
 
-## OSS vs Enterprise
+## Known environment issue
 
-This is the **OSS package** (dblift). Enterprise features (Oracle, SQL Server,
-DB2, CosmosDB dialects; plan, preflight, snapshot, validate-sql, export-schema
-commands) are in dblift-enterprise and install as entry-point extensions.
-
-No license gate exists in this package — all OSS commands run without a key.
+The system `cryptography` package has a broken Rust/pyo3 extension (`_cffi_backend`
+missing). This causes every test to fail locally because `tests/unit/conftest.py`
+has an autouse fixture that imports `core.licensing`, which imports `jwt`, which
+imports `cryptography`. **This is not a code bug** — CI passes (clean container).
 
 ## Always subscribe to PR activity
 

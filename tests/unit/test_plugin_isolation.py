@@ -1,6 +1,6 @@
 """Layering tests — enforce the plugin isolation contract in CI.
 
-The architecture commits to two layering rules (see
+The architecture commits to three layering rules (see
 ``docs/architecture/database-providers.md``):
 
 1. **No hardcoded core → plugin dependencies.** A file in ``core/``
@@ -9,7 +9,12 @@ The architecture commits to two layering rules (see
    ``ProviderRegistry`` factories — never by naming a specific
    dialect. Currently strict (PR #370 retired the last violation).
 
-2. **No cross-plugin imports.** A plugin in ``db/plugins/<a>/`` must
+2. **No upward db → core domain leaks.** ``db/introspection/`` must
+   not import from ``core/validation/``, ``core/licensing/``, or
+   ``core/migration/``. The only legal upward references are
+   ``core.sql_model``, ``core.logger``, ``core.constants``.
+
+3. **No cross-plugin imports.** A plugin in ``db/plugins/<a>/`` must
    not import from ``db/plugins/<b>/`` (a ≠ b). Plugins are
    siblings; they communicate via the abstract interfaces in ``db/``.
 
@@ -46,7 +51,13 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 KNOWN_CORE_TO_PLUGIN_VIOLATIONS: dict[str, set[str]] = {}
 
 
-# ── Rule 2: no cross-plugin imports ───────────────────────────────────────
+# ── Rule 2: no db/introspection/ → core/{validation,licensing,migration} ──
+
+# Same shape as ``KNOWN_CORE_TO_PLUGIN_VIOLATIONS``. Empty = Rule 2 strict.
+KNOWN_DB_TO_CORE_VIOLATIONS: dict[str, set[str]] = {}
+
+
+# ── Rule 3: no cross-plugin imports ───────────────────────────────────────
 
 # MariaDB inherits from MySQL by design (same native-driver family, same
 # SQL dialect for ~95% of cases). CosmosDB SQL is T-SQL-flavoured enough
@@ -165,6 +176,59 @@ class TestNoCoreToPluginImports:
 
 
 # ── Rule 2 enforcement ────────────────────────────────────────────────────
+
+
+class TestNoDbIntrospectionToCoreLeaks:
+    """``db/introspection/`` may not import core.validation / licensing / migration."""
+
+    FORBIDDEN_CORE_PREFIXES = (
+        "core.validation",
+        "core.licensing",
+        "core.migration",
+    )
+
+    def test_no_upward_imports(self):
+        violations: dict[str, set[str]] = {}
+        target = REPO_ROOT / "db" / "introspection"
+        for path in _python_files_under(target):
+            modules = _imported_modules(path)
+            hits = _has_forbidden_import(modules, self.FORBIDDEN_CORE_PREFIXES, allowed_exact=set())
+            if hits:
+                rel = _relative(path)
+                allowed = KNOWN_DB_TO_CORE_VIOLATIONS.get(rel, set())
+                unexpected = hits - allowed
+                if unexpected:
+                    violations[rel] = unexpected
+
+        assert not violations, (
+            "db/introspection/ files importing core.{validation,licensing,migration}\n"
+            "(rule #2 violation). Either lift the helper up into core/, or\n"
+            "register it in KNOWN_DB_TO_CORE_VIOLATIONS with a follow-up reference:\n"
+            + "\n".join(
+                f"  {file}: {sorted(imports)}" for file, imports in sorted(violations.items())
+            )
+        )
+
+    def test_known_violations_are_still_present(self):
+        stale: dict[str, set[str]] = {}
+        for rel, expected in KNOWN_DB_TO_CORE_VIOLATIONS.items():
+            path = REPO_ROOT / rel
+            if not path.is_file():
+                stale[rel] = expected
+                continue
+            actual = _imported_modules(path)
+            missing = expected - actual
+            if missing:
+                stale[rel] = missing
+
+        assert (
+            not stale
+        ), "KNOWN_DB_TO_CORE_VIOLATIONS contains entries no longer present:\n" + "\n".join(
+            f"  {file}: {sorted(imports)}" for file, imports in sorted(stale.items())
+        )
+
+
+# ── Rule 3 enforcement ────────────────────────────────────────────────────
 
 
 class TestNoCrossPluginImports:

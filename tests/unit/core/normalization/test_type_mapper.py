@@ -57,9 +57,17 @@ class TestCanonicalTypeMapper:
         assert mapper.from_canonical("INTEGER", "postgresql") == "INTEGER"
         assert mapper.from_canonical("VARCHAR", "postgresql") == "VARCHAR"
 
+        # Oracle
+        assert mapper.from_canonical("INTEGER", "oracle") == "NUMBER"
+        assert mapper.from_canonical("VARCHAR", "oracle") == "VARCHAR2"
+
         # MySQL
         assert mapper.from_canonical("INTEGER", "mysql") == "INT"
         assert mapper.from_canonical("TIMESTAMP", "mysql") == "DATETIME"
+
+        # SQL Server
+        assert mapper.from_canonical("INTEGER", "sqlserver") == "INT"
+        assert mapper.from_canonical("TIMESTAMP", "sqlserver") == "DATETIME2"
 
     def test_get_canonical_variants(self):
         """Test getting all variants for a canonical type."""
@@ -88,18 +96,23 @@ class TestCanonicalTypeMapper:
 
     def test_version_specific_mappings(self):
         """Test version-specific type mappings."""
-        from core.normalization.type_mappings import get_version_specific_mappings
+        from core.normalization.type_mappings import VERSION_SPECIFIC_MAPPINGS
 
-        mappings = get_version_specific_mappings()
-        assert mappings
-        assert ("postgresql", "9.4+") in mappings
-        assert ("mysql", "5.7+") in mappings
-        assert ("mariadb", "10.2+") in mappings
+        assert VERSION_SPECIFIC_MAPPINGS
+        assert ("postgresql", "9.4+") in VERSION_SPECIFIC_MAPPINGS
+        assert ("oracle", "12.2+") in VERSION_SPECIFIC_MAPPINGS
+        assert ("mysql", "5.7+") in VERSION_SPECIFIC_MAPPINGS
+        assert ("sqlserver", "13.0+") in VERSION_SPECIFIC_MAPPINGS
+        assert ("mariadb", "10.2+") in VERSION_SPECIFIC_MAPPINGS
 
         mapper = CanonicalTypeMapper()
 
         # JSONB in PostgreSQL 9.4+
         result = mapper.to_canonical("JSONB", "postgresql", "9.4")
+        assert result == "JSON"
+
+        # JSON in Oracle 12.2+
+        result = mapper.to_canonical("JSON", "oracle", "12.2")
         assert result == "JSON"
 
         # JSON in MariaDB 10.2+

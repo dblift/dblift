@@ -254,6 +254,99 @@ class DBLiftCLI:
         """Run import-flyway command."""
         return self._run_command("import-flyway", **kwargs)
 
+    def diff(
+        self,
+        target_version: Optional[str] = None,
+        tags: Optional[str] = None,
+        exclude_tags: Optional[str] = None,
+        versions: Optional[str] = None,
+        exclude_versions: Optional[str] = None,
+        ignore_unmanaged: bool = False,
+        **kwargs,
+    ) -> CommandResult:
+        """Run diff command."""
+        return self._run_command(
+            "diff",
+            target_version=target_version,
+            tags=tags,
+            exclude_tags=exclude_tags,
+            versions=versions,
+            exclude_versions=exclude_versions,
+            ignore_unmanaged=ignore_unmanaged,
+            **kwargs,
+        )
+
+    def export_schema(
+        self,
+        output_file: Optional[Path] = None,
+        output_dir: Optional[Path] = None,
+        split_by_type: bool = False,
+        types: Optional[str] = None,
+        tables: Optional[str] = None,
+        managed_only: bool = False,
+        unmanaged_only: bool = False,
+        include_drops: bool = False,
+        schema: Optional[str] = None,
+        description: Optional[str] = None,
+        **kwargs,
+    ) -> CommandResult:
+        """
+        Run export-schema command.
+
+        Examples:
+            # Export to single file
+            result = cli.export_schema(output_file=Path("schema.yaml"))
+
+            # Export to directory with split by type
+            result = cli.export_schema(output_dir=Path("schemas"), split_by_type=True)
+        """
+        output_kwargs = {}
+        if output_file:
+            output_kwargs["output"] = str(output_file)
+        if output_dir:
+            output_kwargs["output_dir"] = str(output_dir)
+        if split_by_type:
+            output_kwargs["split_by_type"] = True
+        if types:
+            output_kwargs["types"] = types
+        if tables:
+            output_kwargs["tables"] = tables
+        if managed_only:
+            output_kwargs["managed_only"] = True
+        if unmanaged_only:
+            output_kwargs["unmanaged_only"] = True
+        if include_drops:
+            output_kwargs["include_drops"] = True
+        if schema:
+            output_kwargs["schema"] = schema
+        if description:
+            output_kwargs["description"] = description
+
+        return self._run_command("export-schema", **output_kwargs, **kwargs)
+
+    def snapshot(
+        self,
+        output: str,
+        source: str = "database-stored",
+        **kwargs,
+    ) -> CommandResult:
+        """
+        Run snapshot command.
+
+        Examples:
+            # Export from database-stored snapshot
+            result = cli.snapshot(output="snapshot.json", source="database-stored")
+
+            # Export from live database
+            result = cli.snapshot(output="snapshot.json", source="live-database")
+        """
+        return self._run_command(
+            "snapshot",
+            output=output,
+            source=source,
+            **kwargs,
+        )
+
     def chain(self, *commands: str, **kwargs) -> CommandResult:
         """
         Execute multiple commands in sequence (command chaining).
@@ -287,13 +380,16 @@ class DBLiftCLI:
         # Add config (always required)
         cmd.extend(["--config", str(self.config_file)])
 
-        # Add migration path(s)
-        cmd.extend(["--scripts", str(self.migrations_dir)])
+        # Add migration path(s) - only for commands that need it
+        # Snapshot command doesn't need --scripts
+        # Baseline accepts --scripts for command chaining compatibility
+        if command != "snapshot":
+            cmd.extend(["--scripts", str(self.migrations_dir)])
 
-        # Add additional script directories if provided
-        if kwargs.get("additional_scripts"):
-            for script_dir in kwargs["additional_scripts"]:
-                cmd.extend(["--scripts", str(script_dir)])
+            # Add additional script directories if provided
+            if kwargs.get("additional_scripts"):
+                for script_dir in kwargs["additional_scripts"]:
+                    cmd.extend(["--scripts", str(script_dir)])
 
         # Add command-specific options
         if kwargs.get("target_version"):
@@ -380,6 +476,9 @@ class DBLiftCLI:
             cmd.extend(["--description", kwargs["description"]])
         if kwargs.get("source"):
             cmd.extend(["--source", kwargs["source"]])
+        if kwargs.get("snapshot_model"):
+            cmd.extend(["--snapshot-model", kwargs["snapshot_model"]])
+
         # Execute command
         result = subprocess.run(cmd, capture_output=True, text=True, cwd=self.cwd)
 

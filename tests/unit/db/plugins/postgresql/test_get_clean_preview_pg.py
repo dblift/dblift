@@ -36,6 +36,7 @@ class TestPgGetCleanPreview(unittest.TestCase):
                 "pg_views": [{"view_name": "user_view"}],
                 "pg_tables": [
                     {"table_name": "dblift_schema_history"},
+                    {"table_name": "dblift_schema_snapshots"},
                     {"table_name": "dblift_migration_lock"},
                     {"table_name": "users"},
                 ],
@@ -66,6 +67,7 @@ class TestPgGetCleanPreview(unittest.TestCase):
         self.assertIn(("extension", "pg_trgm"), names)
         self.assertIn(("view", "user_view"), names)
         self.assertIn(("table", "dblift_schema_history"), names)
+        self.assertIn(("table", "dblift_schema_snapshots"), names)
         self.assertIn(("table", "dblift_migration_lock"), names)
         self.assertIn(("table", "users"), names)
         self.assertIn(("sequence", "dblift_schema_history_installed_rank_seq"), names)
@@ -81,6 +83,7 @@ class TestPgGetCleanPreview(unittest.TestCase):
             {
                 "pg_tables": [
                     {"table_name": "dblift_schema_history"},
+                    {"table_name": "dblift_schema_snapshots"},
                     {"table_name": "dblift_migration_lock"},
                 ],
             }
@@ -91,6 +94,7 @@ class TestPgGetCleanPreview(unittest.TestCase):
 
         names = {o.name for o in summary.objects}
         self.assertIn("dblift_schema_history", names)
+        self.assertIn("dblift_schema_snapshots", names)
         self.assertIn("dblift_migration_lock", names)
 
     def test_preview_empty_schema_yields_empty_summary(self):

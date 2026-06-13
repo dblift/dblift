@@ -2,9 +2,14 @@
 
 from __future__ import annotations
 
-from typing import Dict, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Type, cast
 
 from db.base_quirks import BaseQuirks
+
+if TYPE_CHECKING:
+    from core.introspection.base_introspector import BaseIntrospector
+    from core.sql_generator.alter.base_alter_generator import BaseAlterGenerator
+    from core.sql_generator.base_generator import BaseSqlGenerator
 
 
 class CosmosdbQuirks(BaseQuirks):
@@ -47,6 +52,19 @@ class CosmosdbQuirks(BaseQuirks):
         """Initialize Cosmos DB quirks with the dialect name."""
         super().__init__(dialect_name=dialect_name)
 
+    def ddl_generator_class(self) -> Optional[Type["BaseSqlGenerator"]]:
+        """No SQL-DDL generator — ``CREATE CONTAINER`` paths route through the SDK translator."""
+        # CosmosDB has no traditional DDL generator. Its CREATE TABLE
+        # path goes through the SDK translator (db/plugins/cosmosdb/sdk_translator/).
+        # Fall back to the framework default.
+        return None
+
+    def alter_generator_class(self) -> Optional[Type["BaseAlterGenerator"]]:
+        """Return the CosmosDB-specific :class:`CosmosDbAlterGenerator` (lazy import)."""
+        from db.plugins.cosmosdb.generator.alter_generator import CosmosDbAlterGenerator
+
+        return CosmosDbAlterGenerator
+
     def parser_class(self, parser_type: str) -> Optional[type]:
         """CosmosDB parser dispatch: hybrid → :class:`HybridParser`, regex →
         :class:`CosmosDbRegexParser`, sqlglot → ``None`` (no Cosmos sqlglot dialect)."""
@@ -65,8 +83,10 @@ class CosmosdbQuirks(BaseQuirks):
             return CosmosDbRegexParser
         return None
 
-    # CosmosDB has no SQL DDL — most "DROP X" forms become explanatory
-    # comments or pseudo-SQL the SDK translator rewrites into Azure SDK calls.
+    # Story 26-3: CosmosDB has no SQL DDL — most "DROP X" forms become
+    # explanatory comments or pseudo-SQL the SDK translator rewrites
+    # into Azure SDK calls. Centralised here so ``sql_generator.py`` no
+    # longer carries ``if dialect == "cosmosdb"`` branches.
     def render_drop_for_object(
         self,
         obj_type: str,
@@ -136,7 +156,7 @@ class CosmosdbQuirks(BaseQuirks):
     def _cosmosdb_noop(
         self, formatted_table: str, formatted_column: str, change_kind: str, dialect: str
     ) -> object:
-        from core.state.sql_statement import SqlStatement
+        from core.sql_generator.sql_statement import SqlStatement
 
         sql = (
             f"-- CosmosDB is schema-less, no ALTER TABLE needed for "
@@ -173,6 +193,52 @@ class CosmosdbQuirks(BaseQuirks):
     ) -> "Optional[object]":
         """Schema-less — emit a no-op comment rather than an ALTER for collation changes."""
         return self._cosmosdb_noop(formatted_table, formatted_column, "collation", dialect)
+
+    # Story 27-3: CosmosDB DROP operations require the Azure SDK, not SQL execution.
+    def requires_sdk_for_drop(self) -> bool:
+        """True — Cosmos containers cannot be dropped via the native driver; the SDK is required."""
+        return True
+
+    # Story 27-3: annotation injected into generated scripts for SDK operations.
+    def sdk_operation_hint_prefix(self) -> "Optional[str]":
+        """``"-- [COSMOSDB SDK OPERATION]"`` — annotates SDK-routed statements in scripts."""
+        return "-- [COSMOSDB SDK OPERATION]"
+
+    def build_sdk_drop_operation(self, statement: object) -> "Optional[Dict[str, Any]]":
+        """Build a CosmosDB delete_container SDK operation for a DROP statement."""
+        sql = getattr(statement, "sql", "") or ""
+        if "DROP CONTAINER" in sql.upper():
+            container_name = getattr(statement, "object_name", None) or ""
+            return {
+                "operation": "delete_container",
+                "container_name": container_name,
+                "python_code": f"database.delete_container(container='{container_name}')",
+                "warning": "This will DELETE ALL DATA in the container",
+            }
+        return None
+
+    def generate_sdk_script(self, sdk_statements: "List[Any]") -> "Optional[str]":
+        """Generate a CosmosDB Python SDK script block for sdk_statements."""
+        from db.plugins.cosmosdb.sdk_translator import CosmosDbSdkTranslator
+
+        dummy_translator = CosmosDbSdkTranslator(connection_manager=None)
+        python_script = dummy_translator.generate_python_script(sdk_statements)
+        header = (
+            "\n\n"
+            "-- ========================================\n"
+            "-- COSMOSDB SDK OPERATIONS (Python)\n"
+            "-- ========================================\n"
+            "-- The following operations require Azure SDK and cannot be executed via SQL API\n"
+            "-- Use the Python script below or execute via Azure Portal\n"
+            "\n"
+        )
+        return header + python_script
+
+    def introspector_class(self) -> "Optional[Type[BaseIntrospector]]":
+        """Return the CosmosDB-specific :class:`CosmosDbIntrospector` (lazy import)."""
+        from db.plugins.cosmosdb.introspection import CosmosDbIntrospector
+
+        return cast("Optional[Type[BaseIntrospector]]", CosmosDbIntrospector)
 
     def type_equivalents(self) -> "Dict[str, str]":
         """CosmosDB has no relational type aliases — JSON documents store untyped values."""

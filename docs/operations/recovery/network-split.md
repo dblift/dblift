@@ -12,11 +12,11 @@ on whether DDL is transactional.
 ## Symptoms
 
 - `dblift migrate` exits with one of:
-  - `sqlalchemy.exc.OperationalError: (psycopg.OperationalError) connection reset by peer` (PostgreSQL)
-  - `sqlalchemy.exc.OperationalError: (pymssql.OperationalError) Connection closed` (SQL Server)
-  - `sqlalchemy.exc.OperationalError: (pymysql.err.OperationalError) (2013, 'Lost connection to MySQL server')` (MySQL/MariaDB)
-  - `oracledb.DatabaseError: DPY-4011: the database or network closed the connection` (Oracle)
-  - `socket.timeout: timed out` or `ConnectionResetError: [Errno 54] Connection reset by peer`
+  - `java.sql.SQLException: I/O Error: Connection reset`
+  - `java.sql.SQLRecoverableException: No more data to read from socket`
+  - `socket.timeout: timed out`
+  - `oracle.net.ns.NetException: Got minus one from a read call`
+  - `MySQLNonTransientConnectionException: Communications link failure`
 - `dblift info` may show the failed version as `pending` (commit didn't
   reach the client) **or** `success` (commit landed but the client
   socket died on the way back).
@@ -104,20 +104,14 @@ the trigger.
   VPC / subnet as the DB primary, with predictable routes. Migrations
   from a developer laptop over VPN against prod is the highest-risk
   configuration.
-- **Tune native driver connection settings** via the `connect_args`
-  key in your `dblift.yaml` (passed through SQLAlchemy to the driver):
-  - Enable TCP keepalives so a half-open connection fails fast instead
-    of hanging until a layer-7 timeout.
-    - PostgreSQL (psycopg): `keepalives: 1`, `keepalives_idle: 30`
-    - MySQL (PyMySQL): `connect_timeout: 10`
-    - Oracle (python-oracledb): `tcp_connect_timeout: 10.0`
-    - SQL Server (pymssql): `timeout: 10`, `login_timeout: 10`
-  - Set a short connection/login timeout so an unreachable DB fails
-    before the migration grabs locks.
-  - Do **not** enable driver-level automatic reconnect or statement
-    retries. dblift manages its own error handling; transparent
-    reconnects mask the half-applied state and produce the worst
-    possible outcome.
+- **Tune native driver connection settings**:
+  - `socketTimeout` / `tcpKeepAlive=true` so a half-open connection
+    fails fast instead of hanging until a layer-7 timeout.
+  - `loginTimeout` short enough that an unreachable DB fails before
+    the migration grabs locks.
+  - Disable driver-level statement retries
+    (`autoReconnect=false` on MySQL, equivalent on others). dblift
+    treats retries itself; double-retries are the worst case here.
 - **Schedule migrations outside of maintenance windows**. DB failovers,
   LB cutovers, and firewall changes during a deploy window dramatically
   raise the chance of this scenario.

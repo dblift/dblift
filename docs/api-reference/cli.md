@@ -18,5 +18,6 @@ For detailed API documentation of command implementations, see:
 - `cli.commands.baseline` - Baseline management
 - `cli.commands.info` - Status information
 - `cli.commands.validate` - Validation operations
+- `cli.commands.diff` - Schema comparison
 - `cli.commands.clean` - Clean operations
 - `cli.commands.repair` - History repair

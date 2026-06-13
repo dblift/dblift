@@ -2,9 +2,13 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Dict, Optional, Tuple, Type
 
 from db.base_quirks import BaseQuirks
+
+if TYPE_CHECKING:
+    from core.sql_generator.alter.base_alter_generator import BaseAlterGenerator
+    from core.sql_generator.base_generator import BaseSqlGenerator
 
 
 class Db2Quirks(BaseQuirks):
@@ -23,13 +27,14 @@ class Db2Quirks(BaseQuirks):
     supports_transactional_ddl = True
     schema_required = True
     uppercase_identifiers = True
-    clean_strategy = "native"
+    clean_strategy = "introspector"
     connection_probe_sql = "SELECT 1 FROM SYSIBM.SYSDUMMY1"
     select_supports_limit = False
     unquoted_identifier_case = "uppercase"
     connection_identifier_attrs = ("url", "host", "database")
     missing_connection_identifier_hint = "DB2 connection requires url or host/database fields"
     native_url_schema_params = ("currentSchema", "schema")
+    lint_placeholder_url = "ibm_db_sa://127.0.0.1:50000/dblift_validate_sql"
     # Procedure / function DDL (story 26-5).
     proc_param_supports_default = False  # DB2 rejects ``= default``
     # Synonym DDL (story 26-5). DB2 calls them ALIAS.
@@ -54,6 +59,10 @@ class Db2Quirks(BaseQuirks):
     requires_explicit_commit_after_ddl = True
     supports_session_autocommit = False
     retry_drop_create_on_error = True
+    # DB2 blocks subsequent queries until uncommitted transactions are
+    # resolved; the snapshot service rolls back after read-only
+    # introspection to free the connection.
+    requires_rollback_after_introspection = True
     # PR-C2: DB2 SYSCAT stores unquoted identifiers upper-cased — the
     # round-trip tester upper-cases unquoted table names before DROP.
     unquoted_identifiers_uppercase_in_dictionary = True
@@ -96,6 +105,21 @@ class Db2Quirks(BaseQuirks):
         """Initialize Db2 quirks with the dialect name."""
         super().__init__(dialect_name=dialect_name)
 
+    def build_snapshot_table_ddl(
+        self,
+        qualified_table: str,
+        snapshot_id_size: int,
+        checksum_size: int,
+    ) -> str:
+        """Render the DB2 snapshot table DDL — uppercase columns + ``NOT NULL PRIMARY KEY``."""
+        return (
+            f"CREATE TABLE {qualified_table} ("
+            f"SNAPSHOT_ID VARCHAR({snapshot_id_size}) NOT NULL PRIMARY KEY, "
+            f"CAPTURED_AT VARCHAR({snapshot_id_size}) NOT NULL, "
+            f"CHECKSUM VARCHAR({checksum_size}) NOT NULL, "
+            f"MODEL_DATA CLOB NOT NULL)"
+        )
+
     def render_round_trip_drop_table_sql(self, target: str) -> str:
         """Older DB2 versions reject ``DROP TABLE IF EXISTS`` — use plain DROP."""
         return f"DROP TABLE {target}"
@@ -110,7 +134,7 @@ class Db2Quirks(BaseQuirks):
         """Look up the actual TABSCHEMA/TABNAME in SYSCAT.TABLES and try it first."""
         import logging
 
-        log = logging.getLogger("core.clean")
+        log = logging.getLogger("core.validation.round_trip_tester")
 
         strategies: "list[str]" = [f'"{schema_clean}"."{table_clean}"']
         try:
@@ -140,6 +164,30 @@ class Db2Quirks(BaseQuirks):
         except Exception as find_err:
             log.warning(f"DB2: Could not query SYSCAT.TABLES: {find_err}")
         return strategies
+
+    def ddl_generator_class(self) -> Optional[Type["BaseSqlGenerator"]]:
+        """Return the Db2-specific :class:`DB2SqlGenerator` (lazy import)."""
+        from db.plugins.db2.generator.ddl_generator import DB2SqlGenerator
+
+        return DB2SqlGenerator
+
+    def alter_generator_class(self) -> Optional[Type["BaseAlterGenerator"]]:
+        """Return the Db2-specific :class:`DB2AlterGenerator` (lazy import)."""
+        from db.plugins.db2.generator.alter_generator import DB2AlterGenerator
+
+        return DB2AlterGenerator
+
+    def vendor_queries_class(self) -> "Optional[Type[Any]]":
+        """Return the Db2 :class:`DB2MetadataQueries` bundle (lazy import)."""
+        from db.plugins.db2.introspection.db2_queries import DB2MetadataQueries
+
+        return DB2MetadataQueries
+
+    def introspector_class(self) -> "Optional[Type[Any]]":
+        """Return the Db2 :class:`DB2Introspector` (F.3.f, lazy import)."""
+        from db.plugins.db2.introspection.db2_introspector import DB2Introspector
+
+        return DB2Introspector
 
     def parser_class(self, parser_type: str) -> Optional[type]:
         """Return the Db2 parser class for ``parser_type``, or ``None``.
@@ -185,7 +233,7 @@ class Db2Quirks(BaseQuirks):
 
     def apply_vendor_table_properties(self, table: Any, row: Dict[str, Any]) -> None:
         """Apply DB2 tablespace + compression + storage params."""
-        from db.value_utils import get_row_value
+        from core.introspection._utils import get_row_value
 
         tablespace = get_row_value(row, "tablespace_name")
         if tablespace:
@@ -242,7 +290,7 @@ class Db2Quirks(BaseQuirks):
         DB2 only supports range partitioning."""
         import re
 
-        from db.value_utils import get_row_value
+        from core.introspection._utils import get_row_value
 
         part_def = get_row_value(row, "partition_definition")
         if not part_def:

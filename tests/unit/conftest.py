@@ -1,1 +1,1 @@
-# No shared fixtures needed for OSS unit tests.
+"""Unit-test conftest for OSS dblift."""

@@ -1,0 +1,739 @@
+name: Integration Tests (New Structure)
+
+on:
+  push:
+    branches:
+      - main
+      - 'release/**'
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  checks: write
+  security-events: write  # For SARIF upload
+
+env:
+  DBLIFT_LICENSE_KEY: ${{ secrets.DBLIFT_LICENSE_KEY }}
+  DBLIFT_MYSQL_PORT: 3307
+
+jobs:
+  validate-codecov-config:
+    name: Validate codecov.yml Configuration
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v6
+    
+    - name: Validate codecov.yml syntax
+      run: |
+        echo "🔍 Validating codecov.yml syntax..."
+        python3 -c "import yaml; yaml.safe_load(open('codecov.yml'))" && echo "✅ Valid YAML syntax"
+    
+    - name: Validate codecov.yml with Codecov API
+      run: |
+        echo "🔍 Validating codecov.yml with Codecov API..."
+        response=$(curl -s -w "\n%{http_code}" --data-binary @codecov.yml https://api.codecov.io/validate)
+        http_code=$(echo "$response" | tail -n1)
+        body=$(echo "$response" | head -n-1)
+        
+        if [ "$http_code" -eq 200 ]; then
+          echo "✅ codecov.yml is valid!"
+          echo "$body"
+        else
+          echo "❌ codecov.yml validation failed (HTTP $http_code)"
+          echo "$body"
+          exit 1
+        fi
+
+  validate-sql:
+    name: Validate SQL Syntax and Rules
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v6
+    
+    - name: Set up Python 3.11
+      uses: actions/setup-python@v6
+      with:
+        python-version: '3.11'
+        cache: 'pip'
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        python -m pip install -e ".[dev,all]"
+    
+    - name: Validate SQL for PostgreSQL (primary dialect)
+      run: |
+        python -m cli.main validate-sql \
+          --scripts tests/integration \
+          --dialect postgresql \
+          --format github-actions \
+          --fail-on error
+      continue-on-error: true
+    
+    - name: Generate SARIF report
+      if: always()
+      run: |
+        python -m cli.main validate-sql \
+          --scripts tests/integration \
+          --dialect postgresql \
+          --format sarif > validation-results.sarif || echo "{}" > validation-results.sarif
+    
+    - name: Upload SQL validation SARIF artifact
+      if: always()
+      uses: actions/upload-artifact@v7
+      with:
+        name: sql-validation-sarif
+        path: validation-results.sarif
+
+  integration-commands:
+    name: Command Tests (${{ matrix.database }})
+    runs-on: ubuntu-latest
+    # Note: Not depending on validate-sql to allow tests to run even if validation has warnings
+    # Validation runs in parallel and provides feedback without blocking tests
+    strategy:
+      fail-fast: false
+      matrix:
+        database: ['postgresql', 'mysql', 'sqlserver', 'db2', 'oracle', 'cosmosdb']
+    
+    steps:
+    - uses: actions/checkout@v6
+    
+    - name: Set up Python 3.11
+      uses: actions/setup-python@v6
+      with:
+        python-version: '3.11'
+        cache: 'pip'
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        python -m pip install -e ".[dev,all]"
+        python -m pip install docker pytest pytest-cov
+        
+    - name: Start ${{ matrix.database }} container
+      run: |
+        cd tests/integration
+        echo "🚀 Starting ${{ matrix.database }} container..."
+        docker compose up -d ${{ matrix.database }}
+        
+    - name: Wait for ${{ matrix.database }} to be ready
+      timeout-minutes: 10
+      run: |
+        cd tests/integration
+        max_attempts=60
+        attempt=1
+        
+        while [ $attempt -le $max_attempts ]; do
+          if docker compose ps ${{ matrix.database }} | grep -q "healthy"; then
+            echo "✅ ${{ matrix.database }} is healthy!"
+            break
+          fi
+          echo "⏳ Attempt $attempt/$max_attempts - waiting..."
+          sleep 10
+          attempt=$((attempt + 1))
+        done
+        
+        if [ $attempt -gt $max_attempts ]; then
+          echo "❌ Timeout waiting for ${{ matrix.database }}"
+          docker compose logs ${{ matrix.database }}
+          exit 1
+        fi
+        
+        echo "🔄 Additional wait for database to be fully ready..."
+        sleep 30
+
+    - name: Run command tests
+      run: |
+        export DBLIFT_CORE_TEST_DB="${{ matrix.database }}"
+        python -m pytest tests/integration/commands/ \
+          -v \
+          --tb=short \
+          --cov \
+          --cov-report=xml:coverage.xml \
+          --cov-report=term-missing \
+          --durations=10 \
+          --log-cli-level=INFO
+        
+    - name: Verify codecov.yml is present
+      run: |
+        if [ ! -f codecov.yml ]; then
+          echo "❌ codecov.yml not found!"
+          exit 1
+        fi
+        echo "✅ codecov.yml found"
+        echo "📄 codecov.yml contents (first 20 lines):"
+        head -n 20 codecov.yml
+        
+    - name: Upload coverage
+      uses: codecov/codecov-action@v6
+      if: always()
+      with:
+        token: ${{ secrets.CODECOV_TOKEN }}
+        files: ./coverage.xml
+        flags: integration-commands-${{ matrix.database }}
+        name: commands-${{ matrix.database }}
+      continue-on-error: true
+        
+    - name: Cleanup
+      if: always() && matrix.database != 'sqlite'
+      run: |
+        cd tests/integration
+        docker compose down -v
+
+  integration-parsers:
+    name: Parser Tests (${{ matrix.database }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        database: ['postgresql', 'mysql', 'sqlserver', 'oracle', 'db2', 'sqlite', 'cosmosdb']
+    
+    steps:
+    - uses: actions/checkout@v6
+    
+    - name: Set up Python 3.11
+      uses: actions/setup-python@v6
+      with:
+        python-version: '3.11'
+        cache: 'pip'
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        python -m pip install -e ".[dev,all]"
+        python -m pip install docker pytest pytest-cov
+        
+    - name: Start ${{ matrix.database }} container
+      if: matrix.database != 'sqlite'
+      run: |
+        cd tests/integration
+        echo "🚀 Starting ${{ matrix.database }} container..."
+        docker compose up -d ${{ matrix.database }}
+        
+    - name: Wait for ${{ matrix.database }} to be ready
+      if: matrix.database != 'sqlite'
+      timeout-minutes: 10
+      run: |
+        cd tests/integration
+        max_attempts=60
+        attempt=1
+        
+        while [ $attempt -le $max_attempts ]; do
+          if docker compose ps ${{ matrix.database }} | grep -q "healthy"; then
+            echo "✅ ${{ matrix.database }} is healthy!"
+            break
+          fi
+          echo "⏳ Attempt $attempt/$max_attempts - waiting..."
+          sleep 10
+          attempt=$((attempt + 1))
+        done
+        
+        if [ $attempt -gt $max_attempts ]; then
+          echo "❌ Timeout"
+          docker compose logs ${{ matrix.database }}
+          exit 1
+        fi
+        
+        sleep 30
+
+    - name: Run parser tests for ${{ matrix.database }}
+      run: |
+        export DBLIFT_CORE_TEST_DB="${{ matrix.database }}"
+        python -m pytest tests/integration/parsers/test_${{ matrix.database }}_parser.py \
+          -v \
+          --tb=short \
+          --cov \
+          --cov-report=xml:coverage.xml \
+          --cov-report=term-missing \
+          --durations=10 \
+          --log-cli-level=INFO
+        
+    - name: Upload coverage
+      uses: codecov/codecov-action@v6
+      if: always()
+      with:
+        token: ${{ secrets.CODECOV_TOKEN }}
+        files: ./coverage.xml
+        flags: integration-parsers-${{ matrix.database }}
+        name: parsers-${{ matrix.database }}
+      continue-on-error: true
+        
+    - name: Cleanup
+      if: always() && matrix.database != 'sqlite'
+      run: |
+        cd tests/integration
+        docker compose down -v
+
+  integration-features:
+    name: Feature Tests (${{ matrix.database }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        database: ['postgresql', 'mysql', 'sqlserver', 'db2', 'oracle', 'cosmosdb']
+    
+    steps:
+    - uses: actions/checkout@v6
+    
+    - name: Set up Python 3.11
+      uses: actions/setup-python@v6
+      with:
+        python-version: '3.11'
+        cache: 'pip'
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        python -m pip install -e ".[dev,all]"
+        python -m pip install docker pytest pytest-cov
+        
+    - name: Start ${{ matrix.database }} container
+      run: |
+        cd tests/integration
+        docker compose up -d ${{ matrix.database }}
+        
+    - name: Wait for ${{ matrix.database }} to be ready
+      timeout-minutes: 10
+      run: |
+        cd tests/integration
+        max_attempts=60
+        attempt=1
+        
+        while [ $attempt -le $max_attempts ]; do
+          if docker compose ps ${{ matrix.database }} | grep -q "healthy"; then
+            echo "✅ Healthy!"
+            break
+          fi
+          echo "⏳ Waiting..."
+          sleep 10
+          attempt=$((attempt + 1))
+        done
+        
+        sleep 30
+
+    - name: Run feature tests (placeholders & callbacks)
+      run: |
+        export DBLIFT_CORE_TEST_DB="${{ matrix.database }}"
+        python -m pytest tests/integration/features/ \
+          -v \
+          --tb=short \
+          --cov \
+          --cov-report=xml:coverage.xml \
+          --cov-report=term-missing \
+          --durations=10 \
+          --log-cli-level=INFO
+        
+    - name: Upload coverage
+      uses: codecov/codecov-action@v6
+      if: always()
+      with:
+        token: ${{ secrets.CODECOV_TOKEN }}
+        files: ./coverage.xml
+        flags: integration-features-${{ matrix.database }}
+        name: features-${{ matrix.database }}
+      continue-on-error: true
+        
+    - name: Cleanup
+      if: always() && matrix.database != 'sqlite'
+      run: |
+        cd tests/integration
+        docker compose down -v
+
+  integration-concurrency:
+    name: Concurrency Tests (${{ matrix.database }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        database: ['postgresql', 'mysql', 'sqlserver', 'db2', 'oracle', 'cosmosdb']
+    
+    steps:
+    - uses: actions/checkout@v6
+    
+    - name: Set up Python 3.11
+      uses: actions/setup-python@v6
+      with:
+        python-version: '3.11'
+        cache: 'pip'
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        python -m pip install -e ".[dev,all]"
+        python -m pip install docker pytest pytest-cov
+        
+    - name: Start ${{ matrix.database }} container
+      run: |
+        cd tests/integration
+        docker compose up -d ${{ matrix.database }}
+        
+    - name: Wait for ${{ matrix.database }} to be ready
+      timeout-minutes: 10
+      run: |
+        cd tests/integration
+        max_attempts=60
+        attempt=1
+        
+        while [ $attempt -le $max_attempts ]; do
+          if docker compose ps ${{ matrix.database }} | grep -q "healthy"; then
+            echo "✅ Healthy!"
+            break
+          fi
+          echo "⏳ Waiting..."
+          sleep 10
+          attempt=$((attempt + 1))
+        done
+        
+        sleep 30
+
+    - name: Run concurrency/locking tests
+      run: |
+        export DBLIFT_CORE_TEST_DB="${{ matrix.database }}"
+        python -m pytest tests/integration/concurrency/ \
+          -v \
+          --tb=short \
+          --cov \
+          --cov-report=xml:coverage.xml \
+          --cov-report=term-missing \
+          --durations=10 \
+          --log-cli-level=INFO
+        
+    - name: Upload coverage
+      uses: codecov/codecov-action@v6
+      if: always()
+      with:
+        token: ${{ secrets.CODECOV_TOKEN }}
+        files: ./coverage.xml
+        flags: integration-concurrency-${{ matrix.database }}
+        name: concurrency-${{ matrix.database }}
+      continue-on-error: true
+        
+    - name: Cleanup
+      if: always() && matrix.database != 'sqlite'
+      run: |
+        cd tests/integration
+        docker compose down -v
+
+  integration-scenarios:
+    name: Scenario Tests (${{ matrix.database }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        database: ['postgresql', 'mysql', 'sqlserver', 'db2', 'oracle', 'cosmosdb']
+    
+    steps:
+    - uses: actions/checkout@v6
+    
+    - name: Set up Python 3.11
+      uses: actions/setup-python@v6
+      with:
+        python-version: '3.11'
+        cache: 'pip'
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        python -m pip install -e ".[dev,all]"
+        python -m pip install docker pytest pytest-cov
+        
+    - name: Start ${{ matrix.database }} container
+      run: |
+        cd tests/integration
+        docker compose up -d ${{ matrix.database }}
+        
+    - name: Wait for ${{ matrix.database }} to be ready
+      timeout-minutes: 10
+      run: |
+        cd tests/integration
+        max_attempts=60
+        attempt=1
+        
+        while [ $attempt -le $max_attempts ]; do
+          if docker compose ps ${{ matrix.database }} | grep -q "healthy"; then
+            echo "✅ Healthy!"
+            break
+          fi
+          echo "⏳ Waiting..."
+          sleep 10
+          attempt=$((attempt + 1))
+        done
+        
+        sleep 30
+
+    - name: Run scenario tests (end-to-end workflows)
+      run: |
+        export DBLIFT_CORE_TEST_DB="${{ matrix.database }}"
+        python -m pytest tests/integration/scenarios/ \
+          -v \
+          --tb=short \
+          --cov \
+          --cov-report=xml:coverage.xml \
+          --cov-report=term-missing \
+          --durations=10 \
+          --log-cli-level=INFO
+        
+    - name: Upload coverage
+      uses: codecov/codecov-action@v6
+      if: always()
+      with:
+        token: ${{ secrets.CODECOV_TOKEN }}
+        files: ./coverage.xml
+        flags: integration-scenarios-${{ matrix.database }}
+        name: scenarios-${{ matrix.database }}
+      continue-on-error: true
+        
+    - name: Cleanup
+      if: always() && matrix.database != 'sqlite'
+      run: |
+        cd tests/integration
+        docker compose down -v
+
+  integration-validation:
+    name: CLI Validation Tests
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v6
+    
+    - name: Set up Python 3.11
+      uses: actions/setup-python@v6
+      with:
+        python-version: '3.11'
+        cache: 'pip'
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        python -m pip install -e ".[dev,all]"
+        python -m pip install pytest pytest-cov
+        
+    - name: Run CLI validation tests
+      run: |
+        python -m pytest tests/integration/test_cli_validation.py \
+          -v \
+          --tb=short \
+          --cov \
+          --cov-report=xml:coverage.xml \
+          --cov-report=term-missing \
+          --durations=10 \
+          --log-cli-level=INFO
+        
+    - name: Upload coverage
+      uses: codecov/codecov-action@v6
+      if: always()
+      with:
+        token: ${{ secrets.CODECOV_TOKEN }}
+        files: ./coverage.xml
+        flags: integration-validation
+        name: cli-validation
+      continue-on-error: true
+
+  integration-introspection:
+    name: Introspection Tests (${{ matrix.database }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        database: ['postgresql', 'oracle', 'sqlserver', 'mysql', 'db2', 'cosmosdb']
+
+    steps:
+    - uses: actions/checkout@v6
+
+    - name: Set up Python 3.11
+      uses: actions/setup-python@v6
+      with:
+        python-version: '3.11'
+        cache: 'pip'
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        python -m pip install -e ".[dev,all]"
+        python -m pip install docker pytest pytest-cov
+
+    - name: Start ${{ matrix.database }} container
+      run: |
+        cd tests/integration
+        echo "🚀 Starting ${{ matrix.database }} container..."
+        docker compose up -d ${{ matrix.database }}
+
+    - name: Wait for ${{ matrix.database }} to be ready
+      timeout-minutes: 10
+      run: |
+        cd tests/integration
+        max_attempts=60
+        attempt=1
+
+        while [ $attempt -le $max_attempts ]; do
+          if docker compose ps ${{ matrix.database }} | grep -q "healthy"; then
+            echo "✅ ${{ matrix.database }} is healthy!"
+            break
+          fi
+          echo "⏳ Attempt $attempt/$max_attempts - waiting..."
+          sleep 10
+          attempt=$((attempt + 1))
+        done
+
+        if [ $attempt -gt $max_attempts ]; then
+          echo "❌ Timeout waiting for ${{ matrix.database }}"
+          docker compose logs ${{ matrix.database }}
+          exit 1
+        fi
+
+        echo "🔄 Additional wait for database to be fully ready..."
+        sleep 30
+
+    - name: Run introspection tests for ${{ matrix.database }}
+      run: |
+        export DBLIFT_CORE_TEST_DB="${{ matrix.database }}"
+        python -m pytest tests/integration/db/test_introspection_integration.py \
+          -v \
+          --tb=short \
+          --cov \
+          --cov-report=xml:coverage.xml \
+          --cov-report=term-missing \
+          --durations=10 \
+          --log-cli-level=INFO
+
+    - name: Upload coverage
+      uses: codecov/codecov-action@v6
+      if: always()
+      with:
+        token: ${{ secrets.CODECOV_TOKEN }}
+        files: ./coverage.xml
+        flags: integration-introspection-${{ matrix.database }}
+        name: introspection-${{ matrix.database }}
+      continue-on-error: true
+
+    - name: Cleanup
+      if: always() && matrix.database != 'sqlite'
+      run: |
+        cd tests/integration
+        docker compose down -v
+
+  integration-validation-sqlite:
+    name: SQLite Validation Tests
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v6
+    
+    - name: Set up Python 3.11
+      uses: actions/setup-python@v6
+      with:
+        python-version: '3.11'
+        cache: 'pip'
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        python -m pip install -e ".[dev,all]"
+        python -m pip install pytest pytest-cov
+    
+    - name: Run SQLite validation tests
+      run: |
+        export DBLIFT_CORE_TEST_DB="sqlite"
+        python -m pytest tests/integration/validation/test_sqlite*.py \
+          -v \
+          --tb=short \
+          --cov \
+          --cov-report=xml:coverage.xml \
+          --cov-report=term-missing \
+          --durations=10 \
+          --log-cli-level=INFO
+    
+    - name: Upload coverage
+      uses: codecov/codecov-action@v6
+      if: always()
+      with:
+        token: ${{ secrets.CODECOV_TOKEN }}
+        files: ./coverage.xml
+        flags: integration-validation-sqlite
+        name: validation-sqlite
+      continue-on-error: true
+
+  integration-validation-cosmosdb:
+    name: CosmosDB Validation Tests
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v6
+    
+    - name: Set up Python 3.11
+      uses: actions/setup-python@v6
+      with:
+        python-version: '3.11'
+        cache: 'pip'
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        python -m pip install -e ".[dev,all]"
+        python -m pip install docker pytest pytest-cov
+    
+    - name: Start CosmosDB Emulator container
+      run: |
+        cd tests/integration
+        echo "🚀 Starting CosmosDB Emulator container..."
+        docker compose up -d cosmosdb
+    
+    - name: Wait for CosmosDB Emulator to be ready
+      timeout-minutes: 10
+      run: |
+        cd tests/integration
+        max_attempts=60
+        attempt=1
+        
+        while [ $attempt -le $max_attempts ]; do
+          if docker compose ps cosmosdb | grep -q "healthy"; then
+            echo "✅ CosmosDB Emulator is healthy!"
+            break
+          fi
+          echo "⏳ Attempt $attempt/$max_attempts - waiting..."
+          sleep 10
+          attempt=$((attempt + 1))
+        done
+        
+        if [ $attempt -gt $max_attempts ]; then
+          echo "❌ Timeout waiting for CosmosDB Emulator"
+          docker compose logs cosmosdb
+          exit 1
+        fi
+        
+        echo "🔄 Additional wait for CosmosDB Emulator to be fully ready..."
+        sleep 30
+    
+    - name: Run CosmosDB validation tests
+      run: |
+        export DBLIFT_CORE_TEST_DB="cosmosdb"
+        python -m pytest tests/integration/validation/test_cosmosdb*.py \
+          -v \
+          --tb=short \
+          --cov \
+          --cov-report=xml:coverage.xml \
+          --cov-report=term-missing \
+          --durations=10 \
+          --log-cli-level=INFO
+    
+    - name: Upload coverage
+      uses: codecov/codecov-action@v6
+      if: always()
+      with:
+        token: ${{ secrets.CODECOV_TOKEN }}
+        files: ./coverage.xml
+        flags: integration-validation-cosmosdb
+        name: validation-cosmosdb
+      continue-on-error: true
+    
+    - name: Cleanup
+      if: always()
+      run: |
+        cd tests/integration
+        docker compose down -v

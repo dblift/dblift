@@ -1,8 +1,4 @@
-"""Public API for DBLift library integration.
-
-This module provides a clean Python API for using DBLift programmatically,
-enabling integration with IDEs, CI/CD pipelines, and other development tools.
-"""
+"""Public API for DBLift library integration (OSS)."""
 
 from api.client import DBLiftClient
 from api.events import EventEmitter, EventType

@@ -462,6 +462,23 @@ class OracleProvider(SqlAlchemyProvider):
                 "Baseline cannot be applied to a schema with existing migrations."
             )
 
+    def create_snapshot_table_if_not_exists(
+        self, schema: str, table_name: str = "dblift_schema_snapshots"
+    ) -> None:
+        """Create the Oracle schema snapshot table if missing."""
+        self.create_schema_if_not_exists(schema)
+        table = _oracle_name(table_name)
+        if self.table_exists(schema, table):
+            return
+        self.execute_statement(f"""
+            CREATE TABLE {_schema_object(schema, table)} (
+                SNAPSHOT_ID VARCHAR2(255) PRIMARY KEY,
+                CAPTURED_AT TIMESTAMP DEFAULT SYSTIMESTAMP,
+                CHECKSUM VARCHAR2(128),
+                MODEL_DATA CLOB NOT NULL
+            )
+            """)
+
     def record_migration(
         self,
         schema: str,

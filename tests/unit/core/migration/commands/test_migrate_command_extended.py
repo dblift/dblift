@@ -39,6 +39,7 @@ def _make_cmd(
     execution_engine=None,
     migration_helpers=None,
     validator=None,
+    snapshot_service=None,
     journal=None,
 ):
     """Build a MigrateCommand with minimal mocked collaborators."""
@@ -67,6 +68,7 @@ def _make_cmd(
         state_manager=_stm,
         migration_ui=MagicMock(),
         migration_rules=MagicMock(),
+        snapshot_service=snapshot_service,
         journal=journal,
     )
     return cmd
@@ -97,6 +99,15 @@ def _make_migration(
 
 
 class TestMigrateCommandConstruction(unittest.TestCase):
+    def test_snapshot_service_stored(self):
+        svc = MagicMock()
+        cmd = _make_cmd(snapshot_service=svc)
+        self.assertIs(cmd.snapshot_service, svc)
+
+    def test_snapshot_service_defaults_to_none(self):
+        cmd = _make_cmd()
+        self.assertIsNone(cmd.snapshot_service)
+
     def test_log_defaults_to_nulllog_when_none(self):
         from core.logger import NullLog
 
@@ -568,11 +579,12 @@ class TestMigrateCommandExecute(unittest.TestCase):
     def test_no_pending_migrations_returns_success(self):
         cmd = self._make_execute_cmd(pending=[])
 
-        with patch.object(cmd, "_run_preflight"):
-            with patch.object(cmd, "_log_command_header_update"):
-                with patch.object(cmd, "_log_current_schema_version"):
-                    with patch.object(cmd, "_log_command_completion"):
-                        result = cmd.execute(Path("/migrations"))
+        with patch("core.licensing._guard._refresh_state", return_value=None):
+            with patch.object(cmd, "_run_preflight"):
+                with patch.object(cmd, "_log_command_header_update"):
+                    with patch.object(cmd, "_log_current_schema_version"):
+                        with patch.object(cmd, "_log_command_completion"):
+                            result = cmd.execute(Path("/migrations"))
 
         self.assertTrue(result.success)
 
@@ -580,11 +592,12 @@ class TestMigrateCommandExecute(unittest.TestCase):
         m = _make_migration("V1__a.sql")
         cmd = self._make_execute_cmd(pending=[m])
 
-        with patch.object(cmd, "_run_preflight"):
-            with patch.object(cmd, "_log_command_header_update"):
-                with patch.object(cmd, "_log_current_schema_version"):
-                    with patch.object(cmd, "_log_command_completion"):
-                        result = cmd.execute(Path("/migrations"), dry_run=True)
+        with patch("core.licensing._guard._refresh_state", return_value=None):
+            with patch.object(cmd, "_run_preflight"):
+                with patch.object(cmd, "_log_command_header_update"):
+                    with patch.object(cmd, "_log_current_schema_version"):
+                        with patch.object(cmd, "_log_command_completion"):
+                            result = cmd.execute(Path("/migrations"), dry_run=True)
 
         self.assertTrue(result.success)
         cmd.provider.acquire_migration_lock.assert_not_called()
@@ -593,11 +606,12 @@ class TestMigrateCommandExecute(unittest.TestCase):
         m = _make_migration("V1__a.sql")
         cmd = self._make_execute_cmd(pending=[m], lock_acquired=False)
 
-        with patch.object(cmd, "_run_preflight"):
-            with patch.object(cmd, "_log_command_header_update"):
-                with patch.object(cmd, "_log_current_schema_version"):
-                    with patch.object(cmd, "_log_command_completion"):
-                        result = cmd.execute(Path("/migrations"))
+        with patch("core.licensing._guard._refresh_state", return_value=None):
+            with patch.object(cmd, "_run_preflight"):
+                with patch.object(cmd, "_log_command_header_update"):
+                    with patch.object(cmd, "_log_current_schema_version"):
+                        with patch.object(cmd, "_log_command_completion"):
+                            result = cmd.execute(Path("/migrations"))
 
         self.assertFalse(result.success)
         self.assertIn("migration lock", result.error_message.lower())
@@ -606,12 +620,13 @@ class TestMigrateCommandExecute(unittest.TestCase):
         m = _make_migration("V1__a.sql")
         cmd = self._make_execute_cmd(pending=[m])
 
-        with patch.object(cmd, "_run_preflight"):
-            with patch.object(cmd, "_log_command_header_update"):
-                with patch.object(cmd, "_log_current_schema_version"):
-                    with patch.object(cmd, "_update_final_state"):
-                        with patch.object(cmd, "_log_command_completion"):
-                            result = cmd.execute(Path("/migrations"), mark_as_executed=True)
+        with patch("core.licensing._guard._refresh_state", return_value=None):
+            with patch.object(cmd, "_run_preflight"):
+                with patch.object(cmd, "_log_command_header_update"):
+                    with patch.object(cmd, "_log_current_schema_version"):
+                        with patch.object(cmd, "_update_final_state"):
+                            with patch.object(cmd, "_log_command_completion"):
+                                result = cmd.execute(Path("/migrations"), mark_as_executed=True)
 
         cmd.history_manager.record_migration.assert_called()
         # Should not call execute_migration
@@ -622,11 +637,12 @@ class TestMigrateCommandExecute(unittest.TestCase):
         cmd = self._make_execute_cmd(pending=[m])
         cmd.provider.commit_transaction.side_effect = RuntimeError("commit failed")
 
-        with patch.object(cmd, "_run_preflight"):
-            with patch.object(cmd, "_log_command_header_update"):
-                with patch.object(cmd, "_log_current_schema_version"):
-                    with patch.object(cmd, "_log_command_completion"):
-                        result = cmd.execute(Path("/migrations"), mark_as_executed=True)
+        with patch("core.licensing._guard._refresh_state", return_value=None):
+            with patch.object(cmd, "_run_preflight"):
+                with patch.object(cmd, "_log_command_header_update"):
+                    with patch.object(cmd, "_log_current_schema_version"):
+                        with patch.object(cmd, "_log_command_completion"):
+                            result = cmd.execute(Path("/migrations"), mark_as_executed=True)
 
         self.assertFalse(result.success)
 
@@ -635,28 +651,34 @@ class TestMigrateCommandExecute(unittest.TestCase):
         m = _make_migration("V1__a.sql")
         cmd = self._make_execute_cmd(pending=[m])
 
-        with patch.object(cmd, "_run_preflight"):
-            with patch.object(cmd, "_log_command_header_update"):
-                with patch.object(cmd, "_log_current_schema_version"):
-                    with patch.object(
-                        cmd, "_execute_migration_loop", side_effect=RuntimeError("boom")
-                    ):
-                        with patch.object(cmd, "_execute_before_callbacks"):
-                            with patch.object(cmd, "_execute_after_callbacks"):
-                                with patch.object(cmd, "_log_command_completion"):
-                                    with patch.object(cmd, "_update_final_state"):
-                                        result = cmd.execute(Path("/migrations"))
+        # Make migration execution raise
+        def _raise(*args, **kwargs):
+            raise RuntimeError("boom")
+
+        with patch("core.licensing._guard._refresh_state", return_value=None):
+            with patch.object(cmd, "_run_preflight"):
+                with patch.object(cmd, "_log_command_header_update"):
+                    with patch.object(cmd, "_log_current_schema_version"):
+                        with patch.object(
+                            cmd, "_execute_migration_loop", side_effect=RuntimeError("boom")
+                        ):
+                            with patch.object(cmd, "_execute_before_callbacks"):
+                                with patch.object(cmd, "_execute_after_callbacks"):
+                                    with patch.object(cmd, "_log_command_completion"):
+                                        with patch.object(cmd, "_update_final_state"):
+                                            result = cmd.execute(Path("/migrations"))
 
         cmd.provider.release_migration_lock.assert_called()
 
     def test_result_target_schema_set(self):
         cmd = self._make_execute_cmd(pending=[])
 
-        with patch.object(cmd, "_run_preflight"):
-            with patch.object(cmd, "_log_command_header_update"):
-                with patch.object(cmd, "_log_current_schema_version"):
-                    with patch.object(cmd, "_log_command_completion"):
-                        result = cmd.execute(Path("/migrations"))
+        with patch("core.licensing._guard._refresh_state", return_value=None):
+            with patch.object(cmd, "_run_preflight"):
+                with patch.object(cmd, "_log_command_header_update"):
+                    with patch.object(cmd, "_log_current_schema_version"):
+                        with patch.object(cmd, "_log_command_completion"):
+                            result = cmd.execute(Path("/migrations"))
 
         self.assertEqual(result.target_schema, "public")
 
@@ -666,11 +688,12 @@ class TestMigrateCommandExecute(unittest.TestCase):
         cmd = self._make_execute_cmd(pending=[m])
 
         # _initialize_migration_execution raises inside the try block → outer except catches it
-        with patch.object(
-            cmd, "_initialize_migration_execution", side_effect=RuntimeError("internal error")
-        ):
-            with patch.object(cmd, "_log_command_completion"):
-                result = cmd.execute(Path("/migrations"))
+        with patch("core.licensing._guard._refresh_state", return_value=None):
+            with patch.object(
+                cmd, "_initialize_migration_execution", side_effect=RuntimeError("internal error")
+            ):
+                with patch.object(cmd, "_log_command_completion"):
+                    result = cmd.execute(Path("/migrations"))
 
         self.assertFalse(result.success)
         self.assertIn("Migration operation failed", result.error_message)

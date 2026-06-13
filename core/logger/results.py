@@ -1,7 +1,7 @@
 """Operation result containers returned by the command layer.
 
 Each ``*Result`` class subclasses :class:`OperationResult` and carries the
-typed payload (migrations applied, objects dropped, snapshots, ...) that
+typed payload (migrations applied, objects dropped, diff buckets, ...) that
 formatters and the JSON/HTML report writers consume.
 """
 
@@ -466,6 +466,383 @@ class RepairResult(OperationResult):
         self.aligned_migrations.append(migration)
 
 
+class DiffResult(OperationResult):
+    """Result of a schema comparison/drift detection operation."""
+
+    def __init__(self) -> None:
+        """Initialize empty per-object-type diff buckets and counters used by formatters."""
+        super().__init__()
+        self.schema_diff: Optional[Any] = None  # SchemaDiff object
+        self.table_diffs: List[Any] = []  # List of TableDiff objects
+        self.comparison_type: str = "schema"  # "schema" or "table"
+        self.source_type: str = "script"  # "script" or "database"
+        self.target_type: str = "database"  # "script" or "database"
+        self.expected_payload: Optional[Any] = None  # Expected schema payload (for SQL generation)
+        self.total_differences: int = 0
+        self.error_count: int = 0
+        self.warning_count: int = 0
+        self.info_count: int = 0
+        self.missing_tables: List[str] = []
+        self.extra_tables: List[str] = []
+        self.modified_tables: List[str] = []
+
+        # View diffs
+        self.missing_views: List[str] = []
+        self.extra_views: List[str] = []
+        self.modified_views: List[str] = []
+
+        # Index diffs
+        self.missing_indexes: List[str] = []
+        self.extra_indexes: List[str] = []
+        self.modified_indexes: List[str] = []
+
+        # Sequence diffs
+        self.missing_sequences: List[str] = []
+        self.extra_sequences: List[str] = []
+        self.modified_sequences: List[str] = []
+
+        # Trigger diffs
+        self.missing_triggers: List[str] = []
+        self.extra_triggers: List[str] = []
+        self.modified_triggers: List[str] = []
+
+        # Procedures
+        self.missing_procedures: List[str] = []
+        self.extra_procedures: List[str] = []
+        self.modified_procedures: List[str] = []
+
+        # Functions
+        self.missing_functions: List[str] = []
+        self.extra_functions: List[str] = []
+        self.modified_functions: List[str] = []
+
+        # User-defined types
+        self.missing_user_defined_types: List[str] = []
+        self.extra_user_defined_types: List[str] = []
+        self.modified_user_defined_types: List[str] = []
+
+        # Extensions
+        self.missing_extensions: List[str] = []
+        self.extra_extensions: List[str] = []
+        self.modified_extensions: List[str] = []
+
+        # Foreign data wrappers and servers
+        self.missing_foreign_data_wrappers: List[str] = []
+        self.extra_foreign_data_wrappers: List[str] = []
+        self.modified_foreign_data_wrappers: List[str] = []
+
+        self.missing_foreign_servers: List[str] = []
+        self.extra_foreign_servers: List[str] = []
+        self.modified_foreign_servers: List[str] = []
+
+        # Events
+        self.missing_events: List[str] = []
+        self.extra_events: List[str] = []
+        self.modified_events: List[str] = []
+
+        # Unmanaged objects (for brownfield databases)
+        self.unmanaged_tables: List[str] = []
+        self.unmanaged_views: List[str] = []
+        self.unmanaged_procedures: List[str] = []
+        self.unmanaged_functions: List[str] = []
+        self.unmanaged_triggers: List[str] = []
+        self.has_unmanaged_objects: bool = False
+
+    def set_schema_diff(self, schema_diff: Any) -> None:
+        """Set the schema diff and calculate counts.
+
+        Args:
+            schema_diff: SchemaDiff object containing comparison results
+        """
+        self.schema_diff = schema_diff
+
+        # If schema_diff is None or falsy, set success=True (no drift)
+        if not schema_diff:
+            self.success = True
+            self.total_differences = 0
+            return
+
+        if schema_diff:
+            self.missing_tables = list(schema_diff.missing_tables)
+            self.extra_tables = list(schema_diff.extra_tables)
+            self.modified_tables = [t.table_name for t in schema_diff.modified_tables]
+
+            # Extract view diffs
+            self.missing_views = list(getattr(schema_diff, "missing_views", []))
+            self.extra_views = list(getattr(schema_diff, "extra_views", []))
+            self.modified_views = [v.view_name for v in getattr(schema_diff, "modified_views", [])]
+
+            # Extract index diffs
+            self.missing_indexes = list(getattr(schema_diff, "missing_indexes", []))
+            self.extra_indexes = list(getattr(schema_diff, "extra_indexes", []))
+            self.modified_indexes = [
+                i.index_name for i in getattr(schema_diff, "modified_indexes", [])
+            ]
+
+            # Extract sequence diffs
+            self.missing_sequences = list(getattr(schema_diff, "missing_sequences", []))
+            self.extra_sequences = list(getattr(schema_diff, "extra_sequences", []))
+            self.modified_sequences = [
+                s.sequence_name for s in getattr(schema_diff, "modified_sequences", [])
+            ]
+
+            # Extract trigger diffs
+            self.missing_triggers = list(getattr(schema_diff, "missing_triggers", []))
+            self.extra_triggers = list(getattr(schema_diff, "extra_triggers", []))
+            self.modified_triggers = [
+                t.trigger_name for t in getattr(schema_diff, "modified_triggers", [])
+            ]
+
+            # Procedures
+            self.missing_procedures = list(getattr(schema_diff, "missing_procedures", []))
+            self.extra_procedures = list(getattr(schema_diff, "extra_procedures", []))
+            self.modified_procedures = [
+                p.procedure_name for p in getattr(schema_diff, "modified_procedures", [])
+            ]
+
+            # Functions
+            self.missing_functions = list(getattr(schema_diff, "missing_functions", []))
+            self.extra_functions = list(getattr(schema_diff, "extra_functions", []))
+            self.modified_functions = [
+                f.function_name for f in getattr(schema_diff, "modified_functions", [])
+            ]
+
+            # User-defined types
+            self.missing_user_defined_types = list(
+                getattr(schema_diff, "missing_user_defined_types", [])
+            )
+            self.extra_user_defined_types = list(
+                getattr(schema_diff, "extra_user_defined_types", [])
+            )
+            self.modified_user_defined_types = [
+                udt.type_name for udt in getattr(schema_diff, "modified_user_defined_types", [])
+            ]
+
+            # Extensions
+            self.missing_extensions = list(getattr(schema_diff, "missing_extensions", []))
+            self.extra_extensions = list(getattr(schema_diff, "extra_extensions", []))
+            self.modified_extensions = [
+                ext.extension_name for ext in getattr(schema_diff, "modified_extensions", [])
+            ]
+
+            # Foreign data wrappers and servers
+            self.missing_foreign_data_wrappers = list(
+                getattr(schema_diff, "missing_foreign_data_wrappers", [])
+            )
+            self.extra_foreign_data_wrappers = list(
+                getattr(schema_diff, "extra_foreign_data_wrappers", [])
+            )
+            self.modified_foreign_data_wrappers = [
+                fdw.wrapper_name
+                for fdw in getattr(schema_diff, "modified_foreign_data_wrappers", [])
+            ]
+
+            self.missing_foreign_servers = list(getattr(schema_diff, "missing_foreign_servers", []))
+            self.extra_foreign_servers = list(getattr(schema_diff, "extra_foreign_servers", []))
+            self.modified_foreign_servers = [
+                server.server_name
+                for server in getattr(schema_diff, "modified_foreign_servers", [])
+            ]
+
+            # Events
+            self.missing_events = list(getattr(schema_diff, "missing_events", []))
+            self.extra_events = list(getattr(schema_diff, "extra_events", []))
+            self.modified_events = [
+                event.event_name for event in getattr(schema_diff, "modified_events", [])
+            ]
+
+            self.total_differences = schema_diff.get_total_diff_count()
+
+            # Calculate severity counts
+            self.error_count = 0
+            self.warning_count = 0
+            self.info_count = 0
+
+            # Count by severity
+            from core.comparison.diff_models import DiffSeverity
+
+            if schema_diff.severity == DiffSeverity.ERROR:
+                self.error_count = self.total_differences
+            elif schema_diff.severity == DiffSeverity.WARNING:
+                self.warning_count = self.total_differences
+            else:
+                self.info_count = self.total_differences
+
+            # Set success based on whether there are any differences
+            # Drift detection should fail on any managed object differences (ERROR, WARNING, or INFO)
+            if self.total_differences > 0:
+                self.success = False
+                if self.error_count > 0:
+                    self.error_message = f"Found {self.error_count} critical differences"
+                elif self.warning_count > 0:
+                    self.error_message = f"Found {self.warning_count} schema differences"
+                else:
+                    self.error_message = f"Found {self.info_count} informational differences"
+            else:
+                self.success = True
+
+    def add_table_diff(self, table_diff: Any) -> None:
+        """Add a table diff to the result.
+
+        Args:
+            table_diff: TableDiff object to add
+        """
+        self.table_diffs.append(table_diff)
+
+    def set_unmanaged_objects(
+        self,
+        tables: List[str] = None,
+        views: List[str] = None,
+        procedures: List[str] = None,
+        functions: List[str] = None,
+        triggers: List[str] = None,
+    ) -> None:
+        """Set unmanaged objects detected in database.
+
+        Args:
+            tables: List of unmanaged table names
+            views: List of unmanaged view names
+            procedures: List of unmanaged procedure names
+            functions: List of unmanaged function names
+            triggers: List of unmanaged trigger names
+        """
+        self.unmanaged_tables = tables or []
+        self.unmanaged_views = views or []
+        self.unmanaged_procedures = procedures or []
+        self.unmanaged_functions = functions or []
+        self.unmanaged_triggers = triggers or []
+
+        # Set flag if any unmanaged objects exist
+        self.has_unmanaged_objects = bool(
+            self.unmanaged_tables
+            or self.unmanaged_views
+            or self.unmanaged_procedures
+            or self.unmanaged_functions
+            or self.unmanaged_triggers
+        )
+
+    def get_unmanaged_count(self) -> int:
+        """Get total count of unmanaged objects.
+
+        Returns:
+            Total number of unmanaged objects
+        """
+        return (
+            len(self.unmanaged_tables)
+            + len(self.unmanaged_views)
+            + len(self.unmanaged_procedures)
+            + len(self.unmanaged_functions)
+            + len(self.unmanaged_triggers)
+        )
+
+
+class ExportSchemaResult(OperationResult):
+    """Result of an export schema operation."""
+
+    def __init__(
+        self,
+        success: bool = True,
+        error_message: Optional[str] = None,
+        output_files: Optional[List[str]] = None,
+        objects_exported: Optional[Dict[str, int]] = None,
+    ) -> None:
+        """Initialize export-schema bookkeeping (output files, per-type counts, filters)."""
+        super().__init__(success=success, error_message=error_message)
+        self.output_files: List[str] = output_files or []
+        self.objects_exported: Dict[str, int] = objects_exported or {}
+        self.current_schema_version: Optional[str] = None
+        self.filters_applied: Optional[List[str]] = None
+        self.output_options: Optional[Dict[str, Any]] = None
+
+
+class SnapshotResult(OperationResult):
+    """Result of a snapshot operation."""
+
+    def __init__(
+        self,
+        success: bool = True,
+        error_message: Optional[str] = None,
+        output_file: Optional[str] = None,
+        snapshot_id: Optional[str] = None,
+        captured_at: Optional[str] = None,
+    ) -> None:
+        """Initialize a snapshot result with file path, snapshot id, and capture timestamp."""
+        super().__init__(success=success, error_message=error_message)
+        self.output_file: Optional[str] = output_file
+        self.snapshot_id: Optional[str] = snapshot_id
+        self.captured_at: Optional[str] = captured_at
+
+
+class PlanResult(OperationResult):
+    """Result of an offline migration plan operation."""
+
+    def __init__(self) -> None:
+        """Initialize empty plan bookkeeping."""
+        super().__init__()
+        self.snapshot_model: Optional[str] = None
+        self.target_last_version: Optional[str] = None
+        self.target_installed_rank: Optional[int] = None
+        self.pending_migrations: List[Any] = []
+        self.repeatables_pending: List[Any] = []
+        self.checksum_drift: List[Any] = []
+        self.already_applied_count: int = 0
+        self.sql_validation: Optional[Any] = None
+        self.plan_warnings: List[str] = []
+        self.plan_errors: List[str] = []
+
+    @property
+    def pending_count(self) -> int:
+        """Number of pending versioned migrations."""
+        return len(self.pending_migrations)
+
+    @property
+    def repeatables_pending_count(self) -> int:
+        """Number of repeatable migrations selected by the plan."""
+        return len(self.repeatables_pending)
+
+    @property
+    def checksum_drift_count(self) -> int:
+        """Number of applied versioned migrations with checksum drift."""
+        return len(self.checksum_drift)
+
+    @property
+    def is_sql_validation_only_failure(self) -> bool:
+        """True when the only plan failure is SQL-validation findings.
+
+        Lets the preflight orchestrator distinguish a soft sql-validation
+        failure (non-blocking under ``--fail-on warning``) from hard errors
+        like checksum drift or runtime exceptions, without comparing raw
+        error-message strings.
+        """
+        if self.error_message or self.checksum_drift:
+            return False
+        if not self.plan_errors:
+            return False
+        from core.migration.planning.models import SQL_VALIDATION_FAILURE_MESSAGE
+
+        return all(error == SQL_VALIDATION_FAILURE_MESSAGE for error in self.plan_errors)
+
+    def refresh_success(self) -> None:
+        """Refresh success after mutating plan errors or drift lists."""
+        self.success = not bool(self.plan_errors or self.checksum_drift)
+
+    def apply_plan_data(self, plan: Any) -> None:
+        """Copy a planning-layer payload into this operation result."""
+        self.snapshot_model = plan.snapshot_model
+        self.target_last_version = plan.target_last_version
+        self.target_installed_rank = plan.target_installed_rank
+        self.pending_migrations = list(plan.pending)
+        self.repeatables_pending = list(plan.repeatables_pending)
+        self.checksum_drift = list(plan.checksum_drift)
+        self.already_applied_count = plan.already_applied_count
+        self.sql_validation = plan.sql_validation
+        self.plan_warnings = list(plan.warnings)
+        self.plan_errors = list(plan.errors)
+        for warning in self.plan_warnings:
+            self.add_warning(warning)
+        self.refresh_success()
+
+
 class UndoResult(OperationResult):
     """Result of an undo operation."""
 
@@ -501,6 +878,25 @@ class GenerateUndoScriptResult(OperationResult):
         self.overwritten: bool = False
         self.statements_generated: int = 0
         self.requires_manual_review: bool = False
+
+    def add_warning(self, warning: str) -> None:
+        """Add a warning to the result."""
+        super().add_warning(warning)
+        if "manual review" in warning.lower() or "warning" in warning.lower():
+            self.requires_manual_review = True
+
+
+class GenerateSqlFromDiffResult(OperationResult):
+    """Result of generating SQL script from schema diff."""
+
+    def __init__(self) -> None:
+        """Initialize SQL-from-diff result bookkeeping (script, path, summary, review flag)."""
+        super().__init__()
+        self.sql_script: Optional[str] = None
+        self.sql_file_path: Optional[str] = None
+        self.statements_generated: int = 0
+        self.requires_manual_review: bool = False
+        self.diff_summary: Optional[Dict[str, Any]] = None
 
     def add_warning(self, warning: str) -> None:
         """Add a warning to the result."""

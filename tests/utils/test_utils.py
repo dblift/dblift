@@ -5,6 +5,18 @@ import shutil
 from pathlib import Path
 
 
+def should_clean_test_environment(node_path: object, project_root: Path) -> bool:
+    """Return whether the global filesystem cleanup should run for this test node."""
+    if node_path is None:
+        return True
+
+    try:
+        Path(node_path).resolve().relative_to(project_root / "tests" / "unit")
+    except (TypeError, ValueError, OSError):
+        return True
+    return False
+
+
 def ensure_clean_test_environment(test_name: str) -> None:
     """Ensure clean test environment by removing logs and temp files.
 

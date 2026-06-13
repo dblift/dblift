@@ -8,8 +8,8 @@ convention: def migrate(context: MigrationContext).
 import importlib.util
 import inspect
 import time
-from dataclasses import dataclass
-from typing import Any, List, Optional
+from dataclasses import dataclass, field
+from typing import Any, List, Mapping, Optional
 
 from core.migration.formats import MigrationFormat
 from core.migration.migration import Migration
@@ -96,6 +96,26 @@ class MigrationContext:
     provider: Any
     log: Any
     dry_run: bool = False
+    config: Optional[Any] = None
+    placeholders: Mapping[str, str] = field(default_factory=dict)
+
+    @property
+    def schema(self) -> Optional[str]:
+        """Target schema from config (or None)."""
+        if self.config is None:
+            return None
+        return getattr(self.config.database, "schema", None)
+
+    @property
+    def connection(self) -> Optional[Any]:
+        """Active provider connection (if exposed)."""
+        return getattr(self.provider, "connection", None)
+
+    @property
+    def engine(self) -> Optional[Any]:
+        """SQLAlchemy Engine (if provider is SQLAlchemy-backed and exposed)."""
+        eng = getattr(self.provider, "engine", None)
+        return eng if eng is not None else None
 
     def execute(self, sql: str, params: Optional[Any] = None) -> Any:
         """Execute a SQL statement via the underlying provider.
@@ -233,7 +253,15 @@ class PythonMigrationExecutor(BaseMigrationExecutor):
                 ),
             )
 
-        context = MigrationContext(provider=self.provider, log=self.log, dry_run=dry_run)
+        context = MigrationContext(
+            provider=self.provider,
+            log=self.log,
+            dry_run=dry_run,
+            config=getattr(self, "config", None),
+            placeholders=dict(
+                getattr(self, "config", None) and getattr(self.config, "placeholders", {}) or {}
+            ),
+        )
         try:
             spec = importlib.util.spec_from_file_location(
                 migration.script_name, str(migration.path)
@@ -307,7 +335,15 @@ class PythonMigrationExecutor(BaseMigrationExecutor):
                 error=f"Python script has no file path: {migration.script_name}.",
             )
 
-        context = MigrationContext(provider=self.provider, log=self.log, dry_run=dry_run)
+        context = MigrationContext(
+            provider=self.provider,
+            log=self.log,
+            dry_run=dry_run,
+            config=getattr(self, "config", None),
+            placeholders=dict(
+                getattr(self, "config", None) and getattr(self.config, "placeholders", {}) or {}
+            ),
+        )
         try:
             spec = importlib.util.spec_from_file_location(
                 migration.script_name, str(migration.path)

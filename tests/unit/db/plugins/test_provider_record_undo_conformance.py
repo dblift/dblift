@@ -120,6 +120,11 @@ class _StubProvider(BaseProvider):
     def create_schema_if_not_exists(self, schema):  # pragma: no cover
         pass
 
+    def create_snapshot_table_if_not_exists(  # pragma: no cover
+        self, schema, table_name="dblift_schema_snapshots"
+    ):
+        pass
+
     def execute_query(self, sql, params=None):  # pragma: no cover
         return []
 

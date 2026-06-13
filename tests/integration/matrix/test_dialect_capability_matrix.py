@@ -5,6 +5,7 @@ Every provider class declares what it supports via ISP protocols
 ``supports_transactions()``. If a provider implements a protocol but raises
 ``NotImplementedError`` at runtime — or vice versa — that's the exact class
 of bug that caused:
+  * BUG-COSMOS-1 — ``_capture_snapshot`` fired SQL queries at CosmosDB
   * BUG-COSMOS-2 — ``getAutoCommit()`` called unguarded on DatabaseProxy
   * 045ee0a1 — CosmosDB account_endpoint guard missing
 

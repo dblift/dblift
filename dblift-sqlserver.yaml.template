@@ -1,0 +1,37 @@
+# DBLift Configuration Template for SQL Server
+# Copy this file to dblift-sqlserver.yaml and update with your actual database credentials
+
+database:
+  url: mssql+pymssql://localhost:1433/your_database_name?encrypt=false
+  schema: dbo
+  username: your_username
+  password: your_password
+  
+  # SQL Server specific options
+  integrated_security: false  # Set to true for Windows Authentication
+  trust_server_certificate: false  # Set to true to trust server certificate
+  encrypt: false  # Set to true to enable encryption
+
+migrations:
+  directory: ./migrations
+  script_encoding: utf-8  # Encoding for reading migration script files (utf-8, windows-1252, iso-8859-1, etc.)
+  detect_encoding: false  # Set true to detect script encoding before reading; decoding errors still fail migrations
+  recursive: true
+  
+  # Alternative: Use 'directories' for multiple directories
+  # directories:
+  #   - ./migrations/core
+  #   - ./migrations/features
+  # 
+  # Per-directory recursive settings:
+  # directories:
+  #   - path: ./migrations/core
+  #     recursive: true    # Search subdirectories
+  #   - path: ./migrations/features
+  #     recursive: false   # Only top-level files
+
+logging:
+  level: INFO
+
+# Optional CLI overrides
+log_format: text  # text, json, or html

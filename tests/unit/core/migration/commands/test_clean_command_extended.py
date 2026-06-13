@@ -1,8 +1,8 @@
 """Extended unit tests for clean_command.py.
 
 Covers previously untested paths to push coverage toward 70%+:
-  - CleanCommand.execute() — dry_run paths (provider preview, empty schema message),
-    beforeClean callback failure, clean_schema paths,
+  - CleanCommand.execute() — dry_run paths (provider preview, introspector fallback,
+    empty schema message), beforeClean callback failure, clean_schema paths,
     CleanExecutionSummary with errors, fallback without clean_schema, commit,
     afterClean callbacks, afterCleanError callbacks on exception
   - _parse_drop_statement_for_result — all DROP types (view, table, sequence,
@@ -243,6 +243,70 @@ class TestCleanCommandDryRun(unittest.TestCase):
         self.assertTrue(result.success)
         info_calls = " ".join(str(c) for c in log.info.call_args_list)
         self.assertIn("users", info_calls)
+
+    def test_dry_run_empty_schema_logs_appears_empty_message(self):
+        provider = MagicMock()
+
+        log = MagicMock()
+        cmd = _make_cmd(provider=provider, log=log, clean_disabled=False)
+
+        with patch("core.migration.commands.clean_command.get_clean_preview", return_value=None):
+            with patch(
+                "core.introspection.schema_introspector.SchemaIntrospector"
+            ) as mock_introspector_cls:
+                mock_intro = MagicMock()
+                mock_intro.get_tables.return_value = []
+                mock_intro.get_views.return_value = []
+                mock_intro.get_materialized_views.return_value = []
+                mock_intro.get_sequences.return_value = []
+                mock_intro.get_functions.return_value = []
+                mock_intro.get_procedures.return_value = []
+                mock_intro.get_packages.return_value = []
+                mock_intro.get_synonyms.return_value = []
+                mock_intro.get_triggers.return_value = []
+                mock_intro.get_user_defined_types.return_value = []
+                mock_introspector_cls.return_value = mock_intro
+
+                with patch.object(cmd, "_ensure_connected"):
+                    with patch.object(cmd, "_populate_database_info"):
+                        with patch.object(cmd, "_log_command_header_update"):
+                            with patch.object(cmd, "_log_command_completion"):
+                                result = cmd.execute(dry_run=True)
+
+        self.assertTrue(result.success)
+        info_calls = " ".join(str(c) for c in log.info.call_args_list)
+        self.assertIn("empty", info_calls.lower())
+
+    def test_dry_run_introspector_fallback_lists_tables(self):
+        provider = MagicMock()
+        log = MagicMock()
+        cmd = _make_cmd(provider=provider, log=log, clean_disabled=False)
+
+        table_obj = SimpleNamespace(name="orders")
+
+        with patch("core.migration.commands.clean_command.get_clean_preview", return_value=None):
+            with patch("core.introspection.schema_introspector.SchemaIntrospector") as mock_cls:
+                mock_intro = MagicMock()
+                mock_intro.get_tables.return_value = [table_obj]
+                mock_intro.get_views.return_value = []
+                mock_intro.get_materialized_views.return_value = []
+                mock_intro.get_sequences.return_value = []
+                mock_intro.get_functions.return_value = []
+                mock_intro.get_procedures.return_value = []
+                mock_intro.get_packages.return_value = []
+                mock_intro.get_synonyms.return_value = []
+                mock_intro.get_triggers.return_value = []
+                mock_intro.get_user_defined_types.return_value = []
+                mock_cls.return_value = mock_intro
+
+                with patch.object(cmd, "_ensure_connected"):
+                    with patch.object(cmd, "_populate_database_info"):
+                        with patch.object(cmd, "_log_command_header_update"):
+                            with patch.object(cmd, "_log_command_completion"):
+                                result = cmd.execute(dry_run=True)
+
+        info_calls = " ".join(str(c) for c in log.info.call_args_list)
+        self.assertIn("orders", info_calls)
 
     def test_dry_run_connection_error_returns_error(self):
         cmd = _make_cmd(clean_disabled=False)

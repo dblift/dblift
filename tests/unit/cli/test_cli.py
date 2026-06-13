@@ -145,6 +145,109 @@ class TestCLI:
         assert "drivers" in json_output
         assert "plugins" in json_output
 
+    def test_test_connection_success(self, mock_provider_registry, capsys):
+        """Test successful connection test."""
+        # Setup mock
+        mock_provider = MagicMock()
+        mock_provider.test_connection.return_value = {
+            "success": True,
+            "connection_time": 0.1,
+            "database_version": "1.0",
+        }
+        mock_provider.get_database_url.return_value = (
+            "oracle+oracledb://localhost:1521?service_name=XE"
+        )
+        mock_provider.get_database_version.return_value = "1.0"
+        mock_provider.create_connection.return_value = MagicMock()
+        mock_provider_registry.create_provider.return_value = mock_provider
+
+        # Create mock args
+        args = MagicMock()
+        args.db_url = "oracle+oracledb://localhost:1521?service_name=XE"
+        args.format = "text"
+        args.config = None  # force load_config path with no --config file
+        args.get = lambda x, default=None: getattr(args, x, default)
+
+        # Mock the database configuration
+        mock_config = MagicMock(spec=DbliftConfig)
+        mock_config.database = MagicMock()
+        mock_config.database.type = "oracle"
+        mock_config.database.url = args.db_url
+        mock_config.database.host = "localhost"
+        mock_config.database.port = 1521
+        mock_config.database.database = "XE"
+        mock_config.database.username = "test"
+        mock_config.database.password = "test"
+        mock_config.database.build_database_url.return_value = args.db_url
+
+        # Execute command
+        with patch("cli.db_utils.load_config", return_value=mock_config):
+            with patch(
+                "db.plugins.oracle.provider.OracleProvider",
+                return_value=mock_provider,
+            ):
+                result = check_connection(args)
+
+        # Capture output
+        captured = capsys.readouterr()
+
+        # Verify results
+        assert result == 0
+        assert "Connection successful" in captured.out
+        assert "version: 1.0" in captured.out
+        assert "database_url" in captured.out
+        assert "db_type" in captured.out
+
+    def test_test_connection_failure(self, mock_provider_registry, capsys):
+        """Test failed connection test."""
+        # Setup mock
+        mock_provider = MagicMock()
+        mock_provider.test_connection.return_value = {
+            "success": False,
+            "error": "Connection refused",
+        }
+        mock_provider.get_display_url.return_value = (
+            "oracle+oracledb://invalid:1521?service_name=XE"
+        )
+        mock_provider.create_connection.side_effect = Exception("Connection refused")
+        mock_provider_registry.create_provider.return_value = mock_provider
+
+        # Create mock args
+        args = MagicMock()
+        args.db_url = "oracle+oracledb://invalid:1521?service_name=XE"
+        args.format = "text"
+        args.log_level = "info"
+        args.config = None  # force load_config path with no --config file
+        args.get = lambda x, default=None: getattr(args, x, default)
+
+        # Mock the database configuration
+        mock_config = MagicMock(spec=DbliftConfig)
+        mock_config.database = MagicMock()
+        mock_config.database.type = "oracle"
+        mock_config.database.url = args.db_url
+        mock_config.database.host = "invalid"
+        mock_config.database.port = 1521
+        mock_config.database.service_name = "XE"
+        mock_config.database.username = "test"
+        mock_config.database.password = "test"
+        mock_config.database.build_database_url.return_value = args.db_url
+
+        # Execute command
+        with patch("cli.db_utils.load_config", return_value=mock_config):
+            with patch(
+                "db.plugins.oracle.provider.OracleProvider",
+                return_value=mock_provider,
+            ):
+                result = check_connection(args)
+
+        # Capture output
+        captured = capsys.readouterr()
+
+        # Verify results: BUG-03/-08 map "refused" to a friendly one-liner.
+        assert result == 1
+        assert "Connection failed" in captured.err
+        assert "host unreachable" in captured.err
+
     def test_validate_config_with_native_url_credentials(self, mock_provider_registry):
         """Test configuration validation with credentials in native URL."""
         # Setup mock

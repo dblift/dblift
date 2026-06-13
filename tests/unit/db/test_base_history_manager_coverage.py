@@ -1,10 +1,13 @@
 """Coverage tests for db/plugins/base_history_manager.py.
 
 Targets the uncovered lines: _validate_migration_info, _normalize_migration_results,
-_to_int, _to_boolean, _convert_timestamp, _convert_java_object_to_python,
+_to_int, _to_boolean, _convert_timestamp,
 _get_first_value, _build_migration_params, _undo_script_name, migration_exists,
 get_row_limit_clause, get_current_version, record_undo, create_history_table,
 _get_default_table_name.
+
+Note: Java/JDBC conversion tests (_convert_java_object_to_python and related)
+were removed as the project has moved to Python native drivers (no more JVM/JDBC).
 """
 
 import datetime

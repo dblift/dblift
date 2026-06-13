@@ -14,6 +14,8 @@ from core.migration.migration import MigrationType
 
 @pytest.mark.unit
 def test_python_migrations_trigger_versioned_callbacks(monkeypatch):
+    monkeypatch.setattr("core.licensing._guard._refresh_state", lambda: None)
+
     command = MigrateCommand.__new__(MigrateCommand)
     command.config = SimpleNamespace(database=SimpleNamespace(schema="public"))
     command.provider = MagicMock()

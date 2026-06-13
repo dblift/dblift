@@ -7,12 +7,16 @@ enabling consistent type representation regardless of source dialect.
 
 import logging
 import re
-from typing import Dict, Optional, Set
+from typing import TYPE_CHECKING, Any, Dict, Optional, Set
 
 from db.provider_registry import ProviderRegistry
 
 _logger = logging.getLogger(__name__)
 
+if TYPE_CHECKING:
+    pass
+
+from core.comparison.type_normalizer import DataTypeNormalizer
 from core.normalization.type_constants import CANONICAL_TO_VARIANTS
 from core.normalization.type_mappings import (
     TYPE_ALIASES,
@@ -43,6 +47,7 @@ class CanonicalTypeMapper:
 
     def __init__(self):
         """Initialize the canonical type mapper."""
+        self.normalizer = DataTypeNormalizer()
         self._build_reverse_mapping()
 
     def _build_reverse_mapping(self):
@@ -79,7 +84,7 @@ class CanonicalTypeMapper:
             return data_type
 
         # Extract base type (without precision/scale)
-        base_type = self._extract_base_type(data_type).upper()
+        base_type = self.normalizer._extract_base_type(data_type).upper()
 
         # Special handling for NUMBER/DECIMAL with scale=0 -> INTEGER
         if base_type in ("NUMBER", "NUMERIC", "DECIMAL"):
@@ -109,8 +114,8 @@ class CanonicalTypeMapper:
 
         # If dialect provided, normalize first
         if dialect:
-            normalized = self._normalize_type_name(data_type, dialect)
-            base_normalized = self._extract_base_type(normalized or "").upper()
+            normalized = self.normalizer.normalize(data_type, dialect)
+            base_normalized = self.normalizer._extract_base_type(normalized or "").upper()
             canonical = self.TYPE_TO_CANONICAL.get(base_normalized)
             if canonical:
                 return canonical
@@ -125,40 +130,23 @@ class CanonicalTypeMapper:
             try:
                 min_ver = self._parse_version(min_version)
                 actual_ver = self._parse_version(version)
-                return actual_ver >= min_ver
+                # Compare DatabaseVersion objects - mypy doesn't understand the comparison
+                result: bool = bool(actual_ver >= min_ver)  # type: ignore[operator]
+                return result
             except Exception as e:
                 _logger.debug(f"Version comparison failed: {e}")
                 return False
         return version == pattern
 
-    def _parse_version(self, version_str: str) -> tuple[int, int, int]:
-        """Parse version string to a comparable version tuple."""
+    def _parse_version(self, version_str: str) -> Any:  # DatabaseVersion
+        """Parse version string to DatabaseVersion."""
+        from core.introspection.version_detector import DatabaseVersion
+
         parts = version_str.split(".")
         major = int(parts[0]) if len(parts) > 0 else 0
         minor = int(parts[1]) if len(parts) > 1 else 0
         patch = int(parts[2]) if len(parts) > 2 else 0
-        return major, minor, patch
-
-    @staticmethod
-    def _extract_base_type(data_type: str) -> str:
-        """Extract the base type name before precision, scale, array, or spacing details."""
-        if not data_type:
-            return data_type
-        normalized = data_type.strip()
-        normalized = re.sub(r"\s*\(.*$", "", normalized)
-        normalized = re.sub(r"\s+.*$", "", normalized)
-        normalized = normalized.rstrip("[]")
-        return normalized
-
-    def _normalize_type_name(self, data_type: str, dialect: str) -> str:
-        """Apply the local alias map for dialect-specific type names."""
-        base_type = self._extract_base_type(data_type).upper()
-        version_mappings = get_version_specific_mappings()
-        dialect_lower = dialect.lower()
-        for (map_dialect, _map_version), mappings in version_mappings.items():
-            if map_dialect == dialect_lower and base_type in mappings:
-                return mappings[base_type]
-        return TYPE_ALIASES.get(base_type, base_type)
+        return DatabaseVersion(major, minor, patch)
 
     def get_canonical_variants(self, canonical_type: str) -> Set[str]:
         """Get all variant names for a canonical type.

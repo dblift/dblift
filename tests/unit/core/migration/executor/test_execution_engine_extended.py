@@ -159,18 +159,20 @@ class TestExecuteMigrationMainFlow(unittest.TestCase):
         engine.executor_factory = MagicMock()
         engine.executor_factory.execute.return_value = exec_result
 
-        with patch.object(engine, "_execute_via_factory") as mock_factory:
-            engine.execute_migration(migration, result)
-            mock_factory.assert_called_once_with(migration, result)
+        with patch("core.licensing._guard._refresh_state"):
+            with patch.object(engine, "_execute_via_factory") as mock_factory:
+                engine.execute_migration(migration, result)
+                mock_factory.assert_called_once_with(migration, result)
 
     def test_mixed_mode_policy_sets_error(self):
         engine, policy = self._make_engine_with_policy(transactional=False, mixed=True)
         migration = _make_sql_migration()
         result = MagicMock()
 
-        with patch.object(engine, "_parse_sql_statements", return_value=["SELECT 1"]):
-            with patch.object(engine, "_classify_execution_statements", return_value=[]):
-                engine.execute_migration(migration, result)
+        with patch("core.licensing._guard._refresh_state"):
+            with patch.object(engine, "_parse_sql_statements", return_value=["SELECT 1"]):
+                with patch.object(engine, "_classify_execution_statements", return_value=[]):
+                    engine.execute_migration(migration, result)
 
         result.set_error.assert_called_once()
         error_msg = result.set_error.call_args[0][0]
@@ -181,10 +183,11 @@ class TestExecuteMigrationMainFlow(unittest.TestCase):
         migration = _make_sql_migration()
         result = MagicMock()
 
-        with patch.object(engine, "_parse_sql_statements", return_value=["SELECT 1"]):
-            with patch.object(engine, "_classify_execution_statements", return_value=[]):
-                with patch.object(engine, "_prepare_transaction", return_value=False):
-                    engine.execute_migration(migration, result)
+        with patch("core.licensing._guard._refresh_state"):
+            with patch.object(engine, "_parse_sql_statements", return_value=["SELECT 1"]):
+                with patch.object(engine, "_classify_execution_statements", return_value=[]):
+                    with patch.object(engine, "_prepare_transaction", return_value=False):
+                        engine.execute_migration(migration, result)
 
         result.set_error.assert_called_once()
         self.assertIn("Could not begin transaction", result.set_error.call_args[0][0])
@@ -196,14 +199,15 @@ class TestExecuteMigrationMainFlow(unittest.TestCase):
         migration = _make_sql_migration()
         result = MagicMock()
 
-        with patch.object(engine, "_parse_sql_statements", return_value=["SELECT 1"]):
-            with patch.object(engine, "_classify_execution_statements", return_value=[]):
-                with patch.object(engine, "_ensure_autocommit_for_policy") as mock_ac:
-                    with patch.object(engine, "_execute_statements", return_value=True):
-                        with patch.object(
-                            engine, "_record_autocommit_migration_history"
-                        ) as mock_rec:
-                            engine.execute_migration(migration, result)
+        with patch("core.licensing._guard._refresh_state"):
+            with patch.object(engine, "_parse_sql_statements", return_value=["SELECT 1"]):
+                with patch.object(engine, "_classify_execution_statements", return_value=[]):
+                    with patch.object(engine, "_ensure_autocommit_for_policy") as mock_ac:
+                        with patch.object(engine, "_execute_statements", return_value=True):
+                            with patch.object(
+                                engine, "_record_autocommit_migration_history"
+                            ) as mock_rec:
+                                engine.execute_migration(migration, result)
 
         mock_ac.assert_called_once_with(migration)
         mock_rec.assert_called_once()
@@ -213,13 +217,14 @@ class TestExecuteMigrationMainFlow(unittest.TestCase):
         migration = _make_sql_migration()
         result = MagicMock()
 
-        with patch.object(engine, "_parse_sql_statements", return_value=["SELECT 1"]):
-            with patch.object(engine, "_classify_execution_statements", return_value=[]):
-                with patch.object(engine, "_prepare_transaction", return_value=True):
-                    with patch.object(engine, "_execute_statements", return_value=True):
-                        with patch.object(engine, "_record_migration_history") as mock_rec:
-                            with patch.object(engine, "_commit_and_verify") as mock_commit:
-                                engine.execute_migration(migration, result)
+        with patch("core.licensing._guard._refresh_state"):
+            with patch.object(engine, "_parse_sql_statements", return_value=["SELECT 1"]):
+                with patch.object(engine, "_classify_execution_statements", return_value=[]):
+                    with patch.object(engine, "_prepare_transaction", return_value=True):
+                        with patch.object(engine, "_execute_statements", return_value=True):
+                            with patch.object(engine, "_record_migration_history") as mock_rec:
+                                with patch.object(engine, "_commit_and_verify") as mock_commit:
+                                    engine.execute_migration(migration, result)
 
         mock_rec.assert_called_once()
         mock_commit.assert_called_once()
@@ -229,14 +234,15 @@ class TestExecuteMigrationMainFlow(unittest.TestCase):
         migration = _make_sql_migration()
         result = MagicMock()
 
-        with patch.object(engine, "_parse_sql_statements", return_value=["SELECT 1"]):
-            with patch.object(engine, "_classify_execution_statements", return_value=[]):
-                with patch.object(engine, "_prepare_transaction", return_value=True):
-                    with patch.object(
-                        engine, "_execute_statements", side_effect=RuntimeError("unexpected")
-                    ):
-                        with self.assertRaises(RuntimeError):
-                            engine.execute_migration(migration, result)
+        with patch("core.licensing._guard._refresh_state"):
+            with patch.object(engine, "_parse_sql_statements", return_value=["SELECT 1"]):
+                with patch.object(engine, "_classify_execution_statements", return_value=[]):
+                    with patch.object(engine, "_prepare_transaction", return_value=True):
+                        with patch.object(
+                            engine, "_execute_statements", side_effect=RuntimeError("unexpected")
+                        ):
+                            with self.assertRaises(RuntimeError):
+                                engine.execute_migration(migration, result)
 
         engine.provider.rollback_transaction.assert_called()
 
@@ -246,14 +252,15 @@ class TestExecuteMigrationMainFlow(unittest.TestCase):
         migration = _make_sql_migration()
         result = MagicMock()
 
-        with patch.object(engine, "_parse_sql_statements", return_value=["SELECT 1"]):
-            with patch.object(engine, "_classify_execution_statements", return_value=[]):
-                with patch.object(engine, "_prepare_transaction", return_value=True):
-                    with patch.object(
-                        engine, "_execute_statements", side_effect=RuntimeError("oops")
-                    ):
-                        with self.assertRaises(RuntimeError):
-                            engine.execute_migration(migration, result)
+        with patch("core.licensing._guard._refresh_state"):
+            with patch.object(engine, "_parse_sql_statements", return_value=["SELECT 1"]):
+                with patch.object(engine, "_classify_execution_statements", return_value=[]):
+                    with patch.object(engine, "_prepare_transaction", return_value=True):
+                        with patch.object(
+                            engine, "_execute_statements", side_effect=RuntimeError("oops")
+                        ):
+                            with self.assertRaises(RuntimeError):
+                                engine.execute_migration(migration, result)
 
         engine.log.warning.assert_called()
 
@@ -262,12 +269,13 @@ class TestExecuteMigrationMainFlow(unittest.TestCase):
         migration = _make_sql_migration()
         result = MagicMock()
 
-        with patch.object(engine, "_parse_sql_statements", return_value=["SELECT 1"]):
-            with patch.object(engine, "_classify_execution_statements", return_value=[]):
-                with patch.object(engine, "_prepare_transaction", return_value=True):
-                    with patch.object(engine, "_execute_statements", return_value=False):
-                        with patch.object(engine, "_record_migration_history") as mock_rec:
-                            engine.execute_migration(migration, result)
+        with patch("core.licensing._guard._refresh_state"):
+            with patch.object(engine, "_parse_sql_statements", return_value=["SELECT 1"]):
+                with patch.object(engine, "_classify_execution_statements", return_value=[]):
+                    with patch.object(engine, "_prepare_transaction", return_value=True):
+                        with patch.object(engine, "_execute_statements", return_value=False):
+                            with patch.object(engine, "_record_migration_history") as mock_rec:
+                                engine.execute_migration(migration, result)
 
         mock_rec.assert_not_called()
 

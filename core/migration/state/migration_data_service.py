@@ -587,7 +587,7 @@ class MigrationDataService:
                         current_version = version
                     else:
                         try:
-                            if _compare_versions_shared(version, current_version) > 0:
+                            if self._compare_versions(version, current_version) > 0:
                                 current_version = version
                         except Exception as e:
                             self.logger.debug(
@@ -597,3 +597,7 @@ class MigrationDataService:
                                 current_version = version
 
         return current_version
+
+    def _compare_versions(self, version1: str, version2: str) -> int:
+        """Compare two version strings. Delegates to shared compare_versions utility."""
+        return _compare_versions_shared(version1, version2)

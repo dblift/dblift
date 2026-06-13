@@ -59,3 +59,19 @@ class PlaceholderManager:
         if hasattr(self.config, "placeholders") and self.config.placeholders:
             placeholders.update(self.config.placeholders)
         return placeholders
+
+    def replace_placeholders(self, sql_text: str) -> str:
+        """Replace placeholders in SQL text with their values.
+
+        Uses the PlaceholderService for consistent placeholder handling.
+
+        Args:
+            sql_text: The SQL text containing placeholders
+
+        Returns:
+            SQL text with placeholders replaced by actual values
+        """
+        # The placeholder_service was initialized in __init__
+        if self.placeholder_service is None:
+            return sql_text  # Return unchanged if service not available
+        return self.placeholder_service.replace_placeholders(sql_text)

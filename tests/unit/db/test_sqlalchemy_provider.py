@@ -43,6 +43,11 @@ class _Concrete(SqlAlchemyProvider):
     def clean_schema(self, schema: str) -> Any:  # noqa: D102
         pass
 
+    def create_snapshot_table_if_not_exists(
+        self, schema: str, table_name: str = "dblift_schema_snapshots"
+    ) -> None:  # noqa: D102
+        pass
+
     def create_migration_history_table_if_not_exists(
         self, schema: str, create_schema: bool = False, table_name: str = "dblift_schema_history"
     ) -> None:  # noqa: D102
@@ -301,3 +306,22 @@ def test_catalog_query_executor_executes_statements_with_driver_params(
 
     assert affected == 3
     assert connection.driver_calls == [("DELETE FROM lock_table WHERE name = %s", ("migration",))]
+
+
+# ---------------------------------------------------------------------------
+# External engine injection (python-native plan Task 1.2)
+# ---------------------------------------------------------------------------
+
+
+def test_provider_engine_property_returns_injected_engine():
+    """Provider constructed via from_engine (or equiv) reuses the caller's engine."""
+    from sqlalchemy import create_engine
+
+    engine = create_engine("sqlite:///:memory:")
+    config = DbliftConfig.from_dict({"database": {"type": "sqlite", "path": ":memory:"}})
+    provider = _Concrete.from_engine(config, engine, owns_engine=False)
+    assert provider.engine is engine
+    # Provider close must not dispose the injected engine (ownership=False)
+    provider.close()
+    with engine.connect() as conn:
+        conn.exec_driver_sql("SELECT 1")

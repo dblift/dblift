@@ -91,9 +91,9 @@ class TestSqlObjectStringType(unittest.TestCase):
         obj = SqlObject("t", SqlObjectType.TABLE, dialect="mysql")
         self.assertEqual(obj.format_identifier("col"), "`col`")
 
-    def test_format_identifier_postgresql(self):
-        obj = SqlObject("t", SqlObjectType.TABLE, dialect="postgresql")
-        self.assertEqual(obj.format_identifier("col"), '"col"')
+    def test_format_identifier_sqlserver(self):
+        obj = SqlObject("t", SqlObjectType.TABLE, dialect="sqlserver")
+        self.assertEqual(obj.format_identifier("col"), "[col]")
 
     def test_format_identifier_default(self):
         obj = SqlObject("t", SqlObjectType.TABLE, dialect="unknown_dialect")
@@ -771,10 +771,20 @@ class TestParameter(unittest.TestCase):
         s = str(p)
         self.assertIn("INOUT", s)
 
+    def test_sqlserver_inout_becomes_output(self):
+        p = Parameter("p_io", "INT", direction="INOUT", dialect="sqlserver")
+        s = str(p)
+        self.assertIn("OUTPUT", s)
+
     def test_default_value(self):
         p = Parameter("p", "INT", default_value="42")
         s = str(p)
         self.assertIn("42", s)
+
+    def test_db2_no_default_value(self):
+        p = Parameter("p", "INT", default_value="0", dialect="db2")
+        s = str(p)
+        self.assertNotIn("= 0", s)
 
     def test_to_dict(self):
         p = Parameter("x", "BIGINT", direction="OUT", default_value="0", dialect="postgresql")
@@ -842,10 +852,11 @@ class TestProcedure(unittest.TestCase):
         self.assertEqual(fn.parameters, [])
 
     def test_basic_create_statement_procedure(self):
-        proc = Procedure("sp1", body="SELECT 1", dialect="postgresql")
+        proc = Procedure("sp1", body="SELECT 1", dialect="oracle")
         stmt = proc._generate_basic_create_statement()
         self.assertIn("CREATE OR REPLACE", stmt)
         self.assertIn("PROCEDURE", stmt)
+        self.assertIn("AS", stmt)
 
     def test_basic_create_statement_function_postgresql(self):
         fn = Procedure(
@@ -859,10 +870,28 @@ class TestProcedure(unittest.TestCase):
         self.assertIn("FUNCTION", stmt)
         self.assertIn("RETURNS", stmt)
 
+    def test_basic_create_statement_function_oracle_return(self):
+        fn = Procedure(
+            "fn1",
+            is_function=True,
+            return_type="NUMBER",
+            body="BEGIN RETURN 1; END",
+            dialect="oracle",
+        )
+        stmt = fn._generate_basic_create_statement()
+        self.assertIn("RETURN", stmt)
+
     def test_basic_create_statement_uses_definition_if_present(self):
         proc = Procedure("sp1", definition="CREATE PROCEDURE sp1 AS BEGIN END")
         stmt = proc._generate_basic_create_statement()
         self.assertEqual(stmt, "CREATE PROCEDURE sp1 AS BEGIN END")
+
+    def test_basic_create_statement_sqlserver_body(self):
+        proc = Procedure("sp1", body="SELECT 1", dialect="sqlserver")
+        stmt = proc._generate_basic_create_statement()
+        self.assertIn("AS", stmt)
+        self.assertIn("BEGIN", stmt)
+        self.assertIn("END", stmt)
 
     def test_basic_create_statement_mysql_proc(self):
         proc = Procedure("sp1", body="SELECT 1", dialect="mysql")
@@ -940,6 +969,12 @@ class TestProcedure(unittest.TestCase):
         proc = Procedure("sp1", parameters=[p])
         stmt = proc._generate_basic_create_statement()
         self.assertIn("p1", stmt)
+
+    def test_drop_statement_oracle(self):
+        proc = Procedure("sp1", dialect="oracle")
+        stmt = proc.drop_statement
+        self.assertIn("DROP PROCEDURE", stmt)
+        self.assertNotIn("IF EXISTS", stmt)
 
     def test_drop_statement_non_oracle(self):
         proc = Procedure("sp1", dialect="postgresql")
@@ -1191,6 +1226,52 @@ class TestTable(unittest.TestCase):
         t2 = Table("t", columns=[col2])
         result = t1.compare_with_defaults(t2)
         self.assertIn("column_differences", result)
+
+    def test_compare_with_defaults_sqlserver_filegroup(self):
+        t1 = Table.from_options(
+            "t",
+            dialect="sqlserver",
+            options=TableOptions(sqlserver=SqlServerTableOptions(filegroup="PRIMARY")),
+        )
+        t2 = Table.from_options(
+            "t",
+            dialect="sqlserver",
+            options=TableOptions(sqlserver=SqlServerTableOptions(filegroup="SECONDARY")),
+        )
+        result = t1.compare_with_defaults(t2)
+        self.assertIn("filegroup", result)
+
+    def test_compare_with_defaults_sqlserver_memory_optimized(self):
+        t1 = Table.from_options(
+            "t",
+            dialect="sqlserver",
+            options=TableOptions(sqlserver=SqlServerTableOptions(memory_optimized=True)),
+        )
+        t2 = Table.from_options(
+            "t",
+            dialect="sqlserver",
+            options=TableOptions(sqlserver=SqlServerTableOptions(memory_optimized=False)),
+        )
+        result = t1.compare_with_defaults(t2)
+        self.assertIn("memory_optimized", result)
+
+    def test_compare_with_defaults_system_versioned_history(self):
+        t1 = Table.from_options(
+            "t",
+            dialect="sqlserver",
+            options=TableOptions(
+                sqlserver=SqlServerTableOptions(system_versioned=True, history_table="ht1")
+            ),
+        )
+        t2 = Table.from_options(
+            "t",
+            dialect="sqlserver",
+            options=TableOptions(
+                sqlserver=SqlServerTableOptions(system_versioned=True, history_table="ht2")
+            ),
+        )
+        result = t1.compare_with_defaults(t2)
+        self.assertIn("history_table", result)
 
     def test_to_dict_basic(self):
         col = self._col("id")

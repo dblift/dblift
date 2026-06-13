@@ -18,6 +18,7 @@ from db.plugins.sqlite.sqlite import (
     SQLiteQueryExecutor,
     SQLiteSchemaOperations,
 )
+from db.plugins.sqlite.sqlite.snapshot_table import ensure_sqlite_snapshot_table_exists
 
 
 class SQLiteProvider(NativeProvider):
@@ -25,7 +26,12 @@ class SQLiteProvider(NativeProvider):
 
     canonical_dialect_key = "sqlite"
 
-    # Keep the lock-table name available to internal-table filters.
+    # BUG-04: schema_snapshot_service filters internal tables by looking up
+    # ``provider.MIGRATION_LOCK_TABLE`` via ``getattr(..., "")``. Without this
+    # attribute, the filter reduced to the empty string and the lock table
+    # appeared in snapshots as if it were a user table. SQLite inherits from
+    # ``BaseProvider``, so we declare it here explicitly, matching the hardcoded name used by
+    # ``SQLiteLockingManager``.
     MIGRATION_LOCK_TABLE = "dblift_migration_lock"
 
     def __init__(self, config: DbliftConfig, log: Optional[Log] = None) -> None:
@@ -49,12 +55,66 @@ class SQLiteProvider(NativeProvider):
         # Store connection reference
         self.connection: Optional[sqlite3.Connection] = None
 
+        # Set when a caller-owned SQLAlchemy engine/connection is injected via
+        # DBLiftClient.from_sqlalchemy. The provider then re-uses the caller's
+        # underlying sqlite3 connection and must never close it on shutdown.
+        # The engine/SA-connection references are retained so a reconnect (e.g.
+        # after close() then reuse) re-binds to the *same* caller database rather
+        # than silently opening a fresh native one.
+        self._external_connection: bool = False
+        self._external_dbapi_fairy: Optional[Any] = None
+        self._external_engine: Optional[Any] = None
+        self._external_sa_connection: Optional[Any] = None
+
+    def attach_external_sqlalchemy(self, engine: Any, connection: Any) -> None:
+        """Bind a caller-owned SQLAlchemy engine/connection (from_sqlalchemy).
+
+        Retains the engine/SA-connection so the provider can re-bind to the same
+        caller database if it ever needs to reconnect, and extracts the
+        underlying sqlite3 connection to operate on directly.
+        """
+        self._external_engine = engine
+        self._external_sa_connection = connection
+        self._external_connection = True
+        self._bind_external_sqlalchemy()
+
+    def _bind_external_sqlalchemy(self) -> sqlite3.Connection:
+        """(Re)extract the caller's underlying sqlite3 connection.
+
+        Prefers an explicitly injected SQLAlchemy Connection; otherwise checks a
+        connection out of the engine's pool (kept as ``_external_dbapi_fairy`` so
+        it can be returned on close). For ``sqlite:///:memory:`` the engine's
+        SingletonThreadPool hands back the same underlying connection, so re-bind
+        sees the caller's data.
+        """
+        sa_conn = self._external_sa_connection
+        if sa_conn is not None:
+            proxy = getattr(sa_conn, "connection", None)
+            dbapi = getattr(proxy, "dbapi_connection", None) or proxy
+        else:
+            fairy = self._external_engine.raw_connection()  # type: ignore[union-attr]
+            self._external_dbapi_fairy = fairy
+            dbapi = getattr(fairy, "dbapi_connection", None) or fairy
+        self.connection = dbapi
+        return dbapi  # type: ignore[return-value]
+
     def create_connection(self) -> sqlite3.Connection:
         """Create a connection to SQLite database.
 
         Returns:
             sqlite3.Connection: SQLite connection object
         """
+        # When a caller-owned SQLAlchemy engine/connection was injected
+        # (from_sqlalchemy), re-use / re-bind to that database rather than
+        # opening a fresh one. Opening a new native connection here would migrate
+        # a *different* database than the caller's engine — fatal for
+        # ``sqlite:///:memory:`` where every connection is a separate in-memory DB.
+        if self._external_connection:
+            if self.connection is not None:
+                return self.connection
+            if self._external_engine is not None or self._external_sa_connection is not None:
+                return self._bind_external_sqlalchemy()
+
         connection = self.connection_manager.create_connection()
         self.connection = connection
 
@@ -65,6 +125,14 @@ class SQLiteProvider(NativeProvider):
 
     def _ensure_connection(self) -> None:
         """Ensure we have an active database connection."""
+        # Never replace a caller-owned (injected) connection; re-bind to the
+        # same caller database if it was cleared (e.g. after close()).
+        if self._external_connection:
+            if self.connection is not None:
+                return
+            if self._external_engine is not None or self._external_sa_connection is not None:
+                self._bind_external_sqlalchemy()
+                return
         if self.connection is None:
             self.create_connection()
         else:
@@ -337,6 +405,35 @@ class SQLiteProvider(NativeProvider):
             connection, schema, create_schema, table_name
         )
 
+    def create_snapshot_table_if_not_exists(
+        self, schema: str, table_name: str = "dblift_schema_snapshots"
+    ) -> None:
+        """Create the schema snapshot storage table if it does not exist.
+
+        Args:
+            schema: Schema name (ignored for SQLite)
+            table_name: Table name for snapshots
+        """
+        connection = self._get_connection()
+
+        try:
+            ensure_sqlite_snapshot_table_exists(
+                self.query_executor, connection, schema, table_name, self.log
+            )
+        except Exception as e:
+            error_msg = f"Failed to create snapshot table {table_name}: {str(e)}"
+            self.log.error(error_msg)
+            raise RuntimeError(error_msg) from e
+
+    def is_connected(self) -> bool:
+        """Return True when an active sqlite3 connection is held.
+
+        Overrides the BaseProvider default (always False) so that
+        ``DBLiftClient.__enter__`` does not call ``create_connection()`` and
+        clobber a caller-owned connection injected via ``from_sqlalchemy``.
+        """
+        return self.connection is not None and not self._is_connection_closed()
+
     def _is_connection_closed(self) -> bool:
         """Check if the connection is closed.
 
@@ -358,6 +455,21 @@ class SQLiteProvider(NativeProvider):
 
     def _close_connection_impl(self) -> None:
         """Close the database connection."""
+        if self._external_connection:
+            # Caller owns the underlying SQLAlchemy engine/connection
+            # (from_sqlalchemy): never close it. Return any pooled connection
+            # we checked out from the engine so the pool stays balanced.
+            fairy = self._external_dbapi_fairy
+            if fairy is not None:
+                try:
+                    fairy.close()
+                except Exception as e:
+                    self.log.warning(f"Error releasing external connection: {str(e)}")
+                finally:
+                    self._external_dbapi_fairy = None
+            self.connection = None
+            return
+
         if self.connection is not None:
             try:
                 self.connection.close()

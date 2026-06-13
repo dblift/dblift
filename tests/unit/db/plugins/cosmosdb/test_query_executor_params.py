@@ -30,7 +30,7 @@ class TestExecuteQueryParamSubstitution:
 
         executor.execute_query(
             connection=None,
-            sql="SELECT c.item_id FROM app_records c WHERE c.item_id = ?",
+            sql="SELECT c.snapshot_id FROM dblift_schema_snapshots c WHERE c.snapshot_id = ?",
             params=["abc-123"],
         )
 
@@ -51,7 +51,7 @@ class TestExecuteQueryParamSubstitution:
 
         executor.execute_query(
             connection=None,
-            sql="SELECT c.item_id FROM app_records c",
+            sql="SELECT c.snapshot_id FROM dblift_schema_snapshots c",
             params=None,
         )
 
@@ -69,7 +69,7 @@ class TestExecuteQueryParamSubstitution:
 
         executor.execute_query(
             connection=None,
-            sql="SELECT c.item_id FROM app_records c",
+            sql="SELECT c.snapshot_id FROM dblift_schema_snapshots c",
             params=[],
         )
         assert captured_sql
@@ -128,8 +128,8 @@ class TestExecuteInsertParamSubstitution:
 
         executor._execute_insert(
             sql=(
-                "INSERT INTO app_records "
-                "(item_id, captured_at, checksum, model_data) "
+                "INSERT INTO dblift_schema_snapshots "
+                "(snapshot_id, captured_at, checksum, model_data) "
                 "VALUES (?, ?, ?, ?)"
             ),
             params=["snap-uuid", "2026-04-25T00:00:00", "abc123", "bW9kZWw="],
@@ -137,11 +137,11 @@ class TestExecuteInsertParamSubstitution:
 
         assert created_docs, "create_item was not called"
         doc = created_docs[0]
-        assert doc["item_id"] == "snap-uuid"
+        assert doc["snapshot_id"] == "snap-uuid"
         assert doc["captured_at"] == "2026-04-25T00:00:00"
         assert doc["checksum"] == "abc123"
         assert doc["model_data"] == "bW9kZWw="
-        assert doc["id"] == "snap-uuid"  # auto-set from first column (item_id)
+        assert doc["id"] == "snap-uuid"  # auto-set from first column (snapshot_id)
 
 
 @pytest.mark.unit
@@ -169,7 +169,7 @@ class TestExecuteDeleteParamSubstitution:
 
         captured_sql = []
         mock_container = MagicMock()
-        # app_records uses /id as its partition key path
+        # dblift_schema_snapshots uses /id as its partition key path
         mock_container.read.return_value = {"partitionKey": {"paths": ["/id"]}}
         mock_container.query_items.side_effect = lambda query, **kw: captured_sql.append(query) or [
             {"id": "snap-1"},
@@ -178,14 +178,14 @@ class TestExecuteDeleteParamSubstitution:
         executor.connection_manager.get_container_client.return_value = mock_container
 
         deleted = executor._execute_delete(
-            sql="DELETE FROM app_records WHERE item_id IN (?, ?)",
+            sql="DELETE FROM dblift_schema_snapshots WHERE snapshot_id IN (?, ?)",
             params=["snap-1", "snap-2"],
         )
 
         assert deleted == 2
         assert captured_sql
         assert "?" not in captured_sql[0]
-        assert "c.item_id IN ('snap-1', 'snap-2')" in captured_sql[0]
+        assert "c.snapshot_id IN ('snap-1', 'snap-2')" in captured_sql[0]
         mock_container.delete_item.assert_any_call(item="snap-1", partition_key="snap-1")
         mock_container.delete_item.assert_any_call(item="snap-2", partition_key="snap-2")
 

@@ -9,7 +9,9 @@ from config.config_builder import ConfigBuilder, ConfigurationError
 from config.database_config import (
     BaseDatabaseConfig,
     MySqlConfig,
+    OracleConfig,
     PostgreSqlConfig,
+    SqlServerConfig,
 )
 from config.dblift_config import DbliftConfig
 
@@ -68,6 +70,48 @@ class TestConfigBuilder:
         assert result.username == "newuser"
         assert result.extra_params == {"sslmode": "require"}
 
+    def test_merge_database_overrides_different_type(self):
+        """Test merge_database_overrides with URL override changing database type."""
+        base_config = BaseDatabaseConfig.create(
+            {
+                "type": "postgresql",
+                "url": "postgresql+psycopg://localhost/mydb",
+                "username": "user",
+                "password": "pass",
+                "schema": "public",
+            }
+        )
+        overrides = {"url": "mssql+pymssql://localhost/newdb", "username": "newuser"}
+
+        result = ConfigBuilder.merge_database_overrides(base_config, overrides)
+
+        assert isinstance(result, SqlServerConfig)
+        assert result.url == "mssql+pymssql://localhost/newdb"
+        assert result.username == "newuser"
+
+    def test_merge_oracle_url_override_replaces_service_name(self):
+        base_config = BaseDatabaseConfig.create(
+            {
+                "type": "oracle",
+                "url": "oracle+oracledb://db.example.com:1521/?service_name=OLD",
+                "host": "db.example.com",
+                "port": 1521,
+                "service_name": "OLD",
+                "username": "user",
+                "password": "pass",
+            }
+        )
+
+        result = ConfigBuilder.merge_database_overrides(
+            base_config,
+            {"url": "oracle+oracledb://db.example.com:1521/?service_name=NEW"},
+        )
+
+        assert isinstance(result, OracleConfig)
+        assert result.service_name == "NEW"
+        assert result.sid is None
+        assert "service_name=NEW" in result.build_database_url()
+
     def test_merge_database_overrides_url_parsing_failure(self):
         """Test merge_database_overrides when URL parsing fails."""
         base_config = BaseDatabaseConfig.create(
@@ -87,6 +131,21 @@ class TestConfigBuilder:
         assert result.username == "newuser"
         assert result.url == "invalid_url"
 
+    def test_merge_database_overrides_rejects_native_database_url(self):
+        """legacy URL overrides fail instead of keeping the old type."""
+        base_config = BaseDatabaseConfig.create(
+            {
+                "type": "sqlserver",
+                "url": "mssql+pymssql://localhost/mydb",
+                "username": "user",
+                "password": "pass",
+            }
+        )
+        overrides = {"url": "jdbc:mysql://localhost/newdb", "username": "newuser"}
+
+        with pytest.raises(ValueError, match="Legacy database URLs are no longer supported"):
+            ConfigBuilder.merge_database_overrides(base_config, overrides)
+
     def test_merge_database_overrides_config_creation_failure(self):
         """Test merge_database_overrides when config creation fails."""
         base_config = BaseDatabaseConfig.create(
@@ -99,7 +158,7 @@ class TestConfigBuilder:
             }
         )
         overrides = {
-            "url": "postgresql+psycopg://localhost/otherdb",
+            "url": "oracle+oracledb://localhost:1521?service_name=XE",
             "username": "newuser",
         }
 

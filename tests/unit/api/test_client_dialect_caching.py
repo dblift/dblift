@@ -1,7 +1,7 @@
 """Tests for dialect caching and normalization (story 18-13).
 
 Validates that dialect is normalized to lowercase and cached at initialization
-in DBLiftClient and JdbcProvider.
+in DBLiftClient, JdbcProvider, and SqlGeneratorFactory.
 """
 
 import inspect
@@ -78,12 +78,24 @@ class TestClientDialectCaching:
             assert client.dialect == "postgresql"
             assert mock_get.call_count == 1
 
-    def test_generate_undo_scripts_dialect_regression(self):
-        """generate_undo_script and generate_undo_scripts_batch use client.dialect."""
+    def test_generate_sql_from_diff_uses_self_dialect_not_method(self):
+        """generate_sql_from_diff, generate_undo_script and generate_undo_scripts_batch
+        use self.dialect (not _get_dialect_for_sql_generation) — regression guard."""
         from api._client_operations import (
             _generate_undo_script_for_migration,
+            generate_sql_from_diff_operation,
             generate_undo_scripts_operation,
         )
+
+        direct_dialect_helpers = (generate_sql_from_diff_operation,)
+        for helper in direct_dialect_helpers:
+            source = inspect.getsource(helper)
+            assert (
+                "client.dialect" in source
+            ), f"{helper.__name__} should use client.dialect (cached)"
+            assert (
+                "_get_dialect_for_sql_generation()" not in source
+            ), f"{helper.__name__} must not re-call _get_dialect_for_sql_generation()"
 
         undo_generation_source = inspect.getsource(_generate_undo_script_for_migration)
         assert "client.dialect" in undo_generation_source
@@ -270,3 +282,43 @@ class TestBaseProviderDialect:
         from db.plugins.postgresql.provider import PostgreSqlProvider
 
         assert PostgreSqlProvider.canonical_dialect_key == "postgresql"
+
+
+# ── AC#3 — SqlGeneratorFactory case-insensitive ──────────────────────────
+
+
+@pytest.mark.unit
+class TestGeneratorFactoryCaseInsensitive:
+    """Tests for SqlGeneratorFactory case-insensitive dialect (AC#3)."""
+
+    def test_generator_factory_create_case_insensitive(self):
+        """create('PostgreSQL') returns same type as create('postgresql')."""
+        from core.sql_generator.generator_factory import SqlGeneratorFactory
+
+        gen_upper = SqlGeneratorFactory.create("PostgreSQL")
+        gen_lower = SqlGeneratorFactory.create("postgresql")
+        assert type(gen_upper) is type(gen_lower)
+
+    def test_generator_factory_is_supported_case_insensitive(self):
+        """is_supported('ORACLE') == is_supported('oracle')."""
+        from core.sql_generator.generator_factory import SqlGeneratorFactory
+
+        # Ensure defaults are registered
+        SqlGeneratorFactory.create("postgresql")
+        assert SqlGeneratorFactory.is_supported("ORACLE") is True
+        assert SqlGeneratorFactory.is_supported("oracle") is True
+
+
+# ── AC#4 — DiffSqlGenerator inline comment ──────────────────────────────
+
+
+@pytest.mark.unit
+class TestDiffSqlGeneratorComment:
+    """Tests for DiffSqlGenerator __init__ inline comment (AC#4)."""
+
+    def test_init_contains_normalization_comment(self):
+        """inspect.getsource(DiffSqlGenerator.__init__) contains the normalization comment."""
+        from core.sql_generator.diff_sql_generator import DiffSqlGenerator
+
+        source = inspect.getsource(DiffSqlGenerator.__init__)
+        assert "# Normalized once here" in source

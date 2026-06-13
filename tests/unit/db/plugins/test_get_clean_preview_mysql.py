@@ -36,6 +36,7 @@ class TestMysqlGetCleanPreview(unittest.TestCase):
                 "VIEWS": [{"TABLE_NAME": "active_users_v"}],
                 "TABLES": [
                     {"TABLE_NAME": "dblift_schema_history"},
+                    {"TABLE_NAME": "dblift_schema_snapshots"},
                     {"TABLE_NAME": "dblift_migration_lock"},
                     {"TABLE_NAME": "users"},
                 ],
@@ -54,6 +55,7 @@ class TestMysqlGetCleanPreview(unittest.TestCase):
         self.assertIn(("trigger", "audit_trg"), names)
         self.assertIn(("view", "active_users_v"), names)
         self.assertIn(("table", "dblift_schema_history"), names)
+        self.assertIn(("table", "dblift_schema_snapshots"), names)
         self.assertIn(("table", "dblift_migration_lock"), names)
         self.assertIn(("table", "users"), names)
         self.assertIn(("function", "calc_total"), names)
@@ -65,6 +67,7 @@ class TestMysqlGetCleanPreview(unittest.TestCase):
             {
                 "TABLES": [
                     {"TABLE_NAME": "dblift_schema_history"},
+                    {"TABLE_NAME": "dblift_schema_snapshots"},
                     {"TABLE_NAME": "dblift_migration_lock"},
                 ],
             }
@@ -75,6 +78,7 @@ class TestMysqlGetCleanPreview(unittest.TestCase):
 
         names = {o.name for o in summary.objects}
         self.assertIn("dblift_schema_history", names)
+        self.assertIn("dblift_schema_snapshots", names)
         self.assertIn("dblift_migration_lock", names)
 
     def test_preview_empty_schema(self):

@@ -8,9 +8,12 @@ import pytest
 
 pytestmark = [pytest.mark.unit]
 
-from cli._command_handlers import _AVAILABLE_COMMANDS
-from cli._config_helpers import _collect_placeholders, _extract_commands_from_argv
-from cli._parser_setup import (
+from cli.main import (
+    _AVAILABLE_COMMANDS,
+    _add_validate_sql_options,
+    _collect_placeholders,
+    _extract_commands_from_argv,
+    _setup_export_schema_options,
     create_parser,
 )
 
@@ -138,6 +141,26 @@ class TestMainCliDecomposition(unittest.TestCase):
         self.assertEqual(global_args, ["--no-progress"])
         self.assertNotIn("migrate", global_args)
 
+    def test_extract_plan_skip_validate_sql_does_not_consume_following_command(self):
+        """Boolean plan flag --skip-validate-sql must not swallow chained commands."""
+        commands, global_args, sub_args = _extract_commands_from_argv(
+            ["plan", "--skip-validate-sql", "validate"],
+            [*_AVAILABLE_COMMANDS, "plan"],
+            _GLOBAL_ONLY_ARGS,
+        )
+        self.assertEqual(commands, ["plan", "validate"])
+        self.assertEqual(sub_args, ["--skip-validate-sql"])
+
+    def test_extract_preflight_skip_replay_does_not_consume_following_command(self):
+        """Boolean preflight flag --skip-replay must not swallow chained commands."""
+        commands, global_args, sub_args = _extract_commands_from_argv(
+            ["preflight", "--skip-replay", "validate"],
+            [*_AVAILABLE_COMMANDS, "preflight"],
+            _GLOBAL_ONLY_ARGS,
+        )
+        self.assertEqual(commands, ["preflight", "validate"])
+        self.assertEqual(sub_args, ["--skip-replay"])
+
     def test_extract_quiet_with_multi_command_chain(self):
         """`dblift --quiet migrate validate` must yield both commands."""
         commands, global_args, sub_args = _extract_commands_from_argv(
@@ -167,12 +190,12 @@ class TestMainCliDecomposition(unittest.TestCase):
 
     def test_extract_subcommand_arg_with_inline_value_preserves_following_command(self):
         commands, global_args, sub_args = _extract_commands_from_argv(
-            ["migrate", "--target-version=1.0.0", "info"],
-            _AVAILABLE_COMMANDS,
+            ["validate-sql", "--fail-on=error", "migrate"],
+            [*_AVAILABLE_COMMANDS, "validate-sql"],
             _GLOBAL_ONLY_ARGS,
         )
-        self.assertEqual(commands, ["migrate", "info"])
-        self.assertEqual(sub_args, ["--target-version=1.0.0"])
+        self.assertEqual(commands, ["validate-sql", "migrate"])
+        self.assertEqual(sub_args, ["--fail-on=error"])
 
     # --- _collect_placeholders ---
 
@@ -213,6 +236,59 @@ class TestMainCliDecomposition(unittest.TestCase):
     def test_parser_rejects_short_placeholder_flag(self):
         with self.assertRaises(SystemExit):
             create_parser().parse_args(["migrate", "-P", "key=val"])
+
+    # --- _setup_export_schema_options ---
+
+    def test_export_schema_parser_has_output_arg(self):
+        export_parser = argparse.ArgumentParser()
+        snapshot_parser = argparse.ArgumentParser()
+        _setup_export_schema_options(export_parser, snapshot_parser)
+        # --output should be present
+        actions = {a.dest for a in export_parser._actions}
+        self.assertIn("output", actions)
+        self.assertIn("output_dir", actions)
+
+    def test_export_schema_parser_has_source_choices(self):
+        export_parser = argparse.ArgumentParser()
+        snapshot_parser = argparse.ArgumentParser()
+        _setup_export_schema_options(export_parser, snapshot_parser)
+        source_action = None
+        for action in export_parser._actions:
+            if action.dest == "source":
+                source_action = action
+                break
+        self.assertIsNotNone(source_action)
+        # B7-BUG-04 added ``database-stored`` as a deprecated alias for
+        # ``database-model``; the parser still accepts it even though the
+        # handler normalises it back to the canonical name.
+        self.assertEqual(
+            sorted(source_action.choices),
+            sorted(["database-model", "database-stored", "file-model", "live-database"]),
+        )
+
+    # --- _add_validate_sql_options ---
+
+    def test_validate_sql_has_format_arg(self):
+        parser = argparse.ArgumentParser()
+        _add_validate_sql_options(parser)
+        actions = {a.dest for a in parser._actions}
+        self.assertIn("format", actions)
+
+    def test_validate_sql_has_rule_selection_args(self):
+        parser = argparse.ArgumentParser()
+        _add_validate_sql_options(parser)
+        actions = {a.dest for a in parser._actions}
+        self.assertIn("rules_file", actions)
+        self.assertIn("rule_profile", actions)
+        self.assertIn("rules", actions)
+
+    def test_validate_sql_accepts_sqlite_dialect(self):
+        parser = argparse.ArgumentParser()
+        _add_validate_sql_options(parser)
+        args = parser.parse_args(["--dialect", "sqlite"])
+        self.assertEqual(args.dialect, "sqlite")
+
+    # --- create_parser integration ---
 
     def test_create_parser_returns_valid_parser(self):
         parser = create_parser()

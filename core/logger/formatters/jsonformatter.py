@@ -12,8 +12,10 @@ _logger = logging.getLogger(__name__)
 
 from core.logger.results import (
     CleanResult,
+    DiffResult,
     MigrationInfo,
     OperationResult,
+    PlanResult,
 )
 
 
@@ -22,6 +24,7 @@ class JsonFormatter:
 
     def __init__(self):
         """Initialize the JSON formatter."""
+        self.license_info: Optional[Dict[str, Any]] = None
         self.log_entries: List[Dict[str, Any]] = []
 
         # Track multiple commands for multi-command execution
@@ -107,11 +110,20 @@ class JsonFormatter:
 
         output: Dict[str, Any] = {}
         output.update(self._get_version_info())
+        if self.license_info:
+            output["license"] = {
+                "customer_name": self.license_info.get("customer_name"),
+                "customer_email": self.license_info.get("customer_email"),
+                "expires_at": self.license_info.get("expires_at"),
+                "days_remaining": self.license_info.get("days_remaining"),
+            }
         output.update(self._build_time_metadata(result))
         output.update(self._build_base_metadata(result, schema, database_name))
         output.update(self._format_sql_visibility(result))
         output.update(self._format_migrate_metadata(result, command_type))
         output.update(self._format_clean_metadata(result, command_type))
+        output.update(self._format_diff_metadata(result, command_type))
+        output.update(self._format_plan_metadata(result, command_type))
 
         total_execution_time, multi_updates = self._format_multi_command_metadata(
             result, schema, database_name, execution_time
@@ -330,6 +342,202 @@ class JsonFormatter:
                 output["objects_dropped"] = {}
 
         return output
+
+    def _format_diff_metadata(self, result: OperationResult, command_type: str) -> Dict[str, Any]:
+        """Return diff comparison fields for the DIFF command."""
+        output: Dict[str, Any] = {}
+
+        if command_type != "DIFF" or not isinstance(result, DiffResult):
+            return output
+
+        output["comparison"] = {
+            "source_type": result.source_type,
+            "target_type": result.target_type,
+            "total_differences": result.total_differences,
+            "severity_counts": {
+                "error": result.error_count,
+                "warning": result.warning_count,
+                "info": result.info_count,
+            },
+        }
+
+        output["summary"] = {
+            "missing_tables": len(result.missing_tables),
+            "extra_tables": len(result.extra_tables),
+            "modified_tables": len(result.modified_tables),
+            "tables_in_sync": 0,
+        }
+
+        output["summary"].update(
+            {
+                "missing_user_defined_types": len(result.missing_user_defined_types),
+                "extra_user_defined_types": len(result.extra_user_defined_types),
+                "modified_user_defined_types": len(
+                    getattr(result.schema_diff, "modified_user_defined_types", [])
+                ),
+            }
+        )
+
+        output["missing_tables"] = result.missing_tables
+        output["extra_tables"] = result.extra_tables
+        output["missing_user_defined_types"] = result.missing_user_defined_types
+        output["extra_user_defined_types"] = result.extra_user_defined_types
+
+        # Add modified tables with detailed diffs
+        if result.schema_diff and result.schema_diff.modified_tables:
+            modified_tables = []
+            for table_diff in result.schema_diff.modified_tables:
+                table_dict = {
+                    "table_name": table_diff.table_name,
+                    "severity": table_diff.severity.value,
+                    "diff_count": sum(table_diff.get_diff_count().values()),
+                    "missing_columns": table_diff.missing_columns,
+                    "extra_columns": table_diff.extra_columns,
+                    "modified_columns": [],
+                    "missing_constraints": table_diff.missing_constraints,
+                    "extra_constraints": table_diff.extra_constraints,
+                    "modified_constraints": [],
+                }
+
+                for col_diff in table_diff.modified_columns:
+                    col_dict = {
+                        "column_name": col_diff.column_name,
+                        "severity": col_diff.severity.value,
+                        "changes": {},
+                    }
+
+                    if col_diff.data_type_diff:
+                        col_dict["changes"]["data_type"] = {
+                            "expected": col_diff.data_type_diff[0],
+                            "actual": col_diff.data_type_diff[1],
+                        }
+                    if col_diff.nullable_diff is not None:
+                        col_dict["changes"]["nullable"] = {
+                            "expected": col_diff.nullable_diff[0],
+                            "actual": col_diff.nullable_diff[1],
+                        }
+                    if col_diff.default_diff:
+                        col_dict["changes"]["default"] = {
+                            "expected": col_diff.default_diff[0],
+                            "actual": col_diff.default_diff[1],
+                        }
+                    if col_diff.identity_diff is not None:
+                        col_dict["changes"]["identity"] = {
+                            "expected": col_diff.identity_diff[0],
+                            "actual": col_diff.identity_diff[1],
+                        }
+                    if col_diff.computed_diff:
+                        col_dict["changes"]["computed"] = {
+                            "expected": col_diff.computed_diff[0],
+                            "actual": col_diff.computed_diff[1],
+                        }
+
+                    table_dict["modified_columns"].append(col_dict)
+
+                for const_diff in table_diff.modified_constraints:
+                    const_dict = {
+                        "constraint_name": const_diff.constraint_name,
+                        "changes": {},
+                    }
+
+                    if const_diff.columns_diff:
+                        const_dict["changes"]["columns"] = {
+                            "expected": const_diff.columns_diff[0],
+                            "actual": const_diff.columns_diff[1],
+                        }
+                    if const_diff.references_diff:
+                        const_dict["changes"]["references"] = {
+                            "expected": const_diff.references_diff[0],
+                            "actual": const_diff.references_diff[1],
+                        }
+                    if const_diff.check_clause_diff:
+                        const_dict["changes"]["check_clause"] = {
+                            "expected": const_diff.check_clause_diff[0],
+                            "actual": const_diff.check_clause_diff[1],
+                        }
+
+                    table_dict["modified_constraints"].append(const_dict)
+
+                modified_tables.append(table_dict)
+
+            output["modified_tables"] = modified_tables
+        else:
+            output["modified_tables"] = []
+
+        if result.schema_diff and getattr(result.schema_diff, "modified_user_defined_types", []):
+            modified_udts = []
+            for udt_diff in result.schema_diff.modified_user_defined_types:
+                udt_dict = {
+                    "type_name": udt_diff.type_name,
+                    "severity": udt_diff.severity.value,
+                    "changes": {},
+                }
+
+                if udt_diff.type_category_changed:
+                    udt_dict["changes"]["type_category"] = {
+                        "expected": udt_diff.type_category_changed[0],
+                        "actual": udt_diff.type_category_changed[1],
+                    }
+
+                if udt_diff.base_type_changed:
+                    udt_dict["changes"]["base_type"] = {
+                        "expected": udt_diff.base_type_changed[0],
+                        "actual": udt_diff.base_type_changed[1],
+                    }
+
+                if udt_diff.attributes_changed:
+                    udt_dict["changes"]["attributes"] = {
+                        "expected": udt_diff.expected_attributes,
+                        "actual": udt_diff.actual_attributes,
+                    }
+
+                if udt_diff.enum_values_changed:
+                    udt_dict["changes"]["enum_values"] = {
+                        "expected": udt_diff.expected_enum_values,
+                        "actual": udt_diff.actual_enum_values,
+                    }
+
+                if udt_diff.definition_changed:
+                    udt_dict["changes"]["definition"] = True
+
+                modified_udts.append(udt_dict)
+
+            output["modified_user_defined_types"] = modified_udts
+        else:
+            output["modified_user_defined_types"] = []
+
+        return output
+
+    def _format_plan_metadata(self, result: OperationResult, command_type: str) -> Dict[str, Any]:
+        """Return plan-specific fields for offline migration plans."""
+        if command_type.upper() != "PLAN" or not isinstance(result, PlanResult):
+            return {}
+
+        def _items(items: Any) -> List[Dict[str, Any]]:
+            """Serialize a list of plan item objects."""
+            output = []
+            for item in items or []:
+                to_dict = getattr(item, "to_dict", None)
+                output.append(to_dict() if callable(to_dict) else self._sanitize_for_json(item))
+            return output
+
+        sql_validation = result.sql_validation
+        return {
+            "snapshot_model": result.snapshot_model,
+            "target_last_version": result.target_last_version,
+            "target_installed_rank": result.target_installed_rank,
+            "already_applied_count": result.already_applied_count,
+            "pending": _items(result.pending_migrations),
+            "repeatables_pending": _items(result.repeatables_pending),
+            "checksum_drift": _items(result.checksum_drift),
+            "sql_validation": (
+                sql_validation.to_dict()
+                if sql_validation is not None and hasattr(sql_validation, "to_dict")
+                else self._sanitize_for_json(sql_validation)
+            ),
+            "plan_warnings": list(result.plan_warnings),
+            "plan_errors": list(result.plan_errors),
+        }
 
     def _format_multi_command_metadata(
         self,
@@ -567,6 +775,104 @@ class JsonFormatter:
                     cmd_output["objects_dropped"] = {}
             else:
                 cmd_output["objects_dropped"] = {}
+
+        # Add diff-specific information for DIFF command
+        if command_type == "DIFF" and isinstance(result, DiffResult):
+            cmd_output["comparison"] = {
+                "source_type": result.source_type,
+                "target_type": result.target_type,
+                "total_differences": result.total_differences,
+                "severity_counts": {
+                    "error": result.error_count,
+                    "warning": result.warning_count,
+                    "info": result.info_count,
+                },
+            }
+
+            cmd_output["summary"] = {
+                "missing_tables": len(result.missing_tables),
+                "extra_tables": len(result.extra_tables),
+                "modified_tables": len(result.modified_tables),
+                "tables_in_sync": 0,
+            }
+
+            cmd_output["summary"].update(
+                {
+                    "missing_user_defined_types": len(result.missing_user_defined_types),
+                    "extra_user_defined_types": len(result.extra_user_defined_types),
+                    "modified_user_defined_types": len(
+                        getattr(result.schema_diff, "modified_user_defined_types", [])
+                    ),
+                }
+            )
+
+            cmd_output["missing_tables"] = result.missing_tables
+            cmd_output["extra_tables"] = result.extra_tables
+            cmd_output["missing_user_defined_types"] = result.missing_user_defined_types
+            cmd_output["extra_user_defined_types"] = result.extra_user_defined_types
+
+            # Add modified tables with detailed diffs (simplified version)
+            if result.schema_diff and result.schema_diff.modified_tables:
+                modified_tables = []
+                for table_diff in result.schema_diff.modified_tables:
+                    table_dict = {
+                        "table_name": table_diff.table_name,
+                        "severity": table_diff.severity.value,
+                        "diff_count": sum(table_diff.get_diff_count().values()),
+                        "missing_columns": table_diff.missing_columns,
+                        "extra_columns": table_diff.extra_columns,
+                        "modified_columns": [],
+                        "missing_constraints": table_diff.missing_constraints,
+                        "extra_constraints": table_diff.extra_constraints,
+                        "modified_constraints": [],
+                    }
+
+                    # Add modified column details
+                    for col_diff in table_diff.modified_columns:
+                        col_dict = {
+                            "column_name": col_diff.column_name,
+                            "severity": col_diff.severity.value,
+                            "changes": {},
+                        }
+
+                        if col_diff.data_type_diff:
+                            col_dict["changes"]["data_type"] = {
+                                "expected": col_diff.data_type_diff[0],
+                                "actual": col_diff.data_type_diff[1],
+                            }
+                        if col_diff.nullable_diff is not None:
+                            col_dict["changes"]["nullable"] = {
+                                "expected": col_diff.nullable_diff[0],
+                                "actual": col_diff.nullable_diff[1],
+                            }
+                        if col_diff.default_diff:
+                            col_dict["changes"]["default"] = {
+                                "expected": col_diff.default_diff[0],
+                                "actual": col_diff.default_diff[1],
+                            }
+
+                        table_dict["modified_columns"].append(col_dict)
+
+                    # Add modified constraint details
+                    for const_diff in table_diff.modified_constraints:
+                        const_dict = {
+                            "constraint_name": const_diff.constraint_name,
+                            "changes": {},
+                        }
+
+                        if const_diff.columns_diff:
+                            const_dict["changes"]["columns"] = {
+                                "expected": const_diff.columns_diff[0],
+                                "actual": const_diff.columns_diff[1],
+                            }
+
+                        table_dict["modified_constraints"].append(const_dict)
+
+                    modified_tables.append(table_dict)
+
+                cmd_output["modified_tables"] = modified_tables
+            else:
+                cmd_output["modified_tables"] = []
 
         return cmd_output
 

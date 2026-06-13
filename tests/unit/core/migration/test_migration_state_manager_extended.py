@@ -3,7 +3,6 @@ Extended unit tests for MigrationStateManager covering paths not in
 tests/unit/core/migration/test_migration_state_manager.py.
 
 Covers:
-  - format_state / format_category / format_version / get_category_and_display_type
   - _normalize_filter
   - _get_type_name
   - _installed_rank
