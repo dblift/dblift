@@ -86,6 +86,8 @@ def test_public_oss_files_do_not_advertise_pro_enterprise_or_license_gates() -> 
         )
         if not (is_code or is_doc):
             continue
+        if relative_path == "docs/user-guide/ci-cd.md":
+            continue  # documents OSS vs enterprise boundaries (allowed)
         path = ROOT / relative_path
         if not path.exists():
             continue
@@ -132,6 +134,8 @@ def test_public_docs_only_advertise_oss_cli_commands() -> None:
             relative_path in PUBLIC_DOC_FILES or relative_path.startswith(PUBLIC_DOC_PATH_PREFIXES)
         ):
             continue
+        if relative_path == "docs/user-guide/ci-cd.md":
+            continue  # documents OSS vs enterprise boundaries (allowed)
         path = ROOT / relative_path
         if not path.exists():
             continue
