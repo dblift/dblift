@@ -83,6 +83,7 @@ nav:
     - user-guide/configuration.md
     - user-guide/commands.md
     - user-guide/best-practices.md
+    - user-guide/async.md
     - user-guide/ci-cd.md
     - user-guide/troubleshooting.md
   - API Reference:

@@ -9,11 +9,7 @@ Intended usage:
 - check_migrations_current(...) and health_payload(...) for /health or
   debug endpoints (or to decide whether to show maintenance banners).
 
-All three helpers are synchronous. See docs for AsyncEngine notes.
-
-Sync-only limitation (v1): DBLiftClient + these helpers use sync SQLAlchemy
-Engine/Connection exclusively. No AsyncEngine support in v1. For async
-web frameworks run the guard via thread pool / to_thread if necessary.
+The ``*_async`` helpers mirror this behavior for AsyncDBLiftClient.
 """
 
 from __future__ import annotations
@@ -23,6 +19,7 @@ from typing import TYPE_CHECKING, Any, Literal
 
 if TYPE_CHECKING:
     from api import DBLiftClient
+    from api.async_client import AsyncDBLiftClient
 
 from core.exceptions import DbliftError
 
@@ -106,6 +103,46 @@ def health_payload(client: DBLiftClient) -> dict:
     Never has side effects. Does not call migrate().
     """
     info = client.info()
+    pending = _pending_ids_from_info(info)
+    current = len(pending) == 0
+    return {
+        "pending_migrations": pending,
+        "current": current,
+        "current_schema_version": getattr(info, "current_schema_version", None),
+        "pending_count": len(pending),
+    }
+
+
+async def check_migrations_current_async(client: "AsyncDBLiftClient") -> list[str]:
+    """Async mirror of :func:`check_migrations_current`."""
+    info = await client.info()
+    return _pending_ids_from_info(info)
+
+
+async def migration_guard_async(
+    client: "AsyncDBLiftClient",
+    *,
+    on_pending: Literal["raise", "warn", "ignore"] = "raise",
+) -> None:
+    """Async mirror of :func:`migration_guard`."""
+    if on_pending == "ignore":
+        return
+
+    pending = await check_migrations_current_async(client)
+    if not pending:
+        return
+
+    msg = f"Pending DBLift migrations: {pending}. Apply with client.migrate() or adjust on_pending."
+
+    if on_pending == "warn":
+        warnings.warn(msg, UserWarning, stacklevel=2)
+        return
+    raise DbliftError(msg)
+
+
+async def health_payload_async(client: "AsyncDBLiftClient") -> dict:
+    """Async mirror of :func:`health_payload`."""
+    info = await client.info()
     pending = _pending_ids_from_info(info)
     current = len(pending) == 0
     return {
