@@ -7,6 +7,14 @@
 #         - id: dblift-validate
 # Both hooks require a configured dblift.yaml (or DBLIFT_DB_URL) and a reachable
 # database — dblift has no offline lint in OSS.
+#
+# Because these hooks use `language: python`, pre-commit installs the base
+# dblift package (without DB driver extras). For PostgreSQL etc. you must
+# provide the driver in the consuming repo's .pre-commit-config.yaml, e.g.:
+#
+#   hooks:
+#     - id: dblift-validate
+#       additional_dependencies: ["dblift[postgresql]"]
 - id: dblift-validate
   name: dblift validate (checksums/order vs DB history)
   entry: dblift validate

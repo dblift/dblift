@@ -13,29 +13,11 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 @pytest.mark.unit
-def test_pyproject_distribution_name_is_dblift_enterprise():
-    with (ROOT / "pyproject.toml").open("rb") as handle:
-        pyproject = tomllib.load(handle)
-
-    assert pyproject["project"]["name"] == "dblift-enterprise"
-
-
-@pytest.mark.unit
 def test_pyproject_exposes_dblift_console_script():
     with (ROOT / "pyproject.toml").open("rb") as handle:
         pyproject = tomllib.load(handle)
 
     assert pyproject["project"]["scripts"]["dblift"] == "cli.main:main"
-
-
-@pytest.mark.unit
-def test_all_extra_self_references_enterprise_distribution_name():
-    with (ROOT / "pyproject.toml").open("rb") as handle:
-        pyproject = tomllib.load(handle)
-
-    assert pyproject["project"]["optional-dependencies"]["all"] == [
-        "dblift-enterprise[postgresql,mysql,oracle,sqlserver,db2]"
-    ]
 
 
 @pytest.mark.unit

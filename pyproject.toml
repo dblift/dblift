@@ -3,7 +3,7 @@ requires = ["setuptools>=78.1.1", "wheel>=0.46.2"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "dblift-enterprise"
+name = "dblift"
 version = "1.8.0"
 description = "A database migration tool that supports multiple databases with native Python drivers"
 readme = "README.md"
@@ -102,7 +102,7 @@ sqlserver = ["pymssql>=2.3"]
 db2 = ["ibm_db>=3.2", "ibm_db_sa>=0.4"]
 fastapi = ["fastapi>=0.100"]
 flask = ["flask>=2.3"]
-all = ["dblift-enterprise[postgresql,mysql,oracle,sqlserver,db2]"]
+all = ["dblift[postgresql,mysql,mariadb,oracle,sqlserver,db2]"]
 
 [tool.setuptools]
 # Use find directive to automatically discover all packages

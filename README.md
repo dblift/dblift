@@ -788,6 +788,12 @@ dblift db diagnose-connection
 
 ---
 
+## Running in CI/CD
+
+dblift is a pip package with no system dependencies — CI is `pip install` plus a
+command. See [CI/CD recipes](docs/user-guide/ci-cd.md) for copy-paste GitHub
+Actions, GitLab CI, and pre-commit configurations (OSS `validate` / `info`).
+
 ## Need More Help?
 
 ### Documentation
