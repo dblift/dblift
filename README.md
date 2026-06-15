@@ -32,7 +32,7 @@ DBLift helps you track and apply database changes systematically. Think of it as
 [![Code Quality](https://github.com/cmodiano/dblift-oss/actions/workflows/code-quality.yml/badge.svg)](https://github.com/cmodiano/dblift-oss/actions/workflows/code-quality.yml)
 [![Complexity](https://github.com/cmodiano/dblift-oss/actions/workflows/complexity.yml/badge.svg)](https://github.com/cmodiano/dblift-oss/actions/workflows/complexity.yml)
 [![Security](https://github.com/cmodiano/dblift-oss/actions/workflows/security.yml/badge.svg)](https://github.com/cmodiano/dblift-oss/actions/workflows/security.yml)
-[![codecov](https://codecov.io/gh/cmodiano/dblift-oss/graph/badge.svg)](https://codecov.io/gh/cmodiano/dblift-oss)
+[![codecov](https://codecov.io/gh/cmodiano/dblift-oss/graph/badge.svg?token=AwwDdaGVOc)](https://codecov.io/gh/cmodiano/dblift-oss)
 
 ---
 
