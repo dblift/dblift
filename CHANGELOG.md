@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.0.1] - 2026-06-22
+
+### Added
+
+- **CLI extension opt-out** — set `DBLIFT_DISABLE_CLI_EXTENSIONS=1` to skip
+  loading any installed CLI extensions, handlers, or terminal commands.
+
 ## [2.0.0] - 2026-06-18
 
 ### Fixed
