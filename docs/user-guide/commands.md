@@ -224,12 +224,9 @@ dblift repair
 This will:
 - Remove failed migration entries from the history table
 - Mark history entries for missing script files as deleted
+- Recalculate and update checksums for applied migrations whose script content
+  has changed since it was applied
 - Ensure history reflects what scripts are actually present
-
-!!! warning "Repair does not reconcile modified scripts"
-    If you changed an already-applied script and the checksum no longer matches, `repair` will not fix it. Options:
-    - If the migration was already undone: `clean` + `migrate` (restores history)
-    - If the migration is still applied: update the checksum manually in the history table, or `clean` + `migrate`
 
 ### Using Migration Placeholders
 

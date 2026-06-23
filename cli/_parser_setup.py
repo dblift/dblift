@@ -104,6 +104,7 @@ def _make_strict_parent() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(add_help=False)
     p.add_argument(
         "--strict",
+        dest="strict_mode",
         action="store_true",
         help="Enable strict mode - fail if any previously applied migration is missing "
         "and require migrations to be applied in strict version order",

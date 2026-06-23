@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.0.3] - 2026-06-23
+
+### Fixed
+
+- **`--strict` CLI flag silently did nothing** on `migrate`/`validate` — argparse
+  stored it on `args.strict`, but config merging looked for `strict_mode`, so the
+  value was never read; out-of-order migrations applied with exit 0 even with
+  `--strict` passed. Fixed by giving the flag `dest="strict_mode"`. Only the YAML
+  `strict_mode: true` path worked before this fix.
+- **Stale `repair` documentation** — docs claimed `repair` does not fix checksum
+  drift on modified scripts; it does, and now the docs say so.
+
 ## [2.0.2] - 2026-06-22
 
 ### Fixed
