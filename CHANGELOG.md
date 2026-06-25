@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.0.4] - 2026-06-25
+
+### Removed
+
+- Stripped non-functional placeholder surface for Pro/Enterprise-only commands
+  (`validate-sql`, `diff`, `plan`, `export-schema`, `snapshot`) that shipped as
+  dead code: their result types, output formatters, config schema, and CLI
+  stubs. These commands have never been available in the open-source package;
+  the dead code is now removed from the build. No user-facing behavior change.
+
 ## [2.0.3] - 2026-06-23
 
 ### Fixed
