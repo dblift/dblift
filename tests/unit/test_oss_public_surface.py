@@ -42,9 +42,9 @@ def test_oss_tests_do_not_name_non_oss_tiers():
     )
     offenders: list[str] = []
 
-    # test_oss_standalone.py deliberately names these packages to assert their
-    # *absence* from the OSS-only import path; that's the opposite of a leak.
-    exempt_names = {"test_oss_standalone.py"}
+    # These tests deliberately name the non-OSS packages to assert their
+    # *absence* from the OSS-only surface; that's the opposite of a leak.
+    exempt_names = {"test_oss_standalone.py", "test_oss_no_paid_surface.py"}
 
     for path in sorted((ROOT / "tests").rglob("*")):
         if (

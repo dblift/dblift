@@ -12,7 +12,6 @@ DBLift helps you track and apply database changes systematically. Think of it as
 ![License](https://img.shields.io/badge/License-Apache--2.0-blue)
 
 [![Unit Tests](https://img.shields.io/badge/Unit%20Tests-GitHub%20Actions-2088FF?logo=githubactions&logoColor=white)](https://github.com/cmodiano/dblift-oss/actions/workflows/unit-tests.yml)
-[![codecov](https://codecov.io/gh/cmodiano/dblift-oss/graph/badge.svg)](https://codecov.io/gh/cmodiano/dblift-oss)
 [![Security Policy](https://img.shields.io/badge/Security-Policy-green)](SECURITY.md)
 
 ---

@@ -10,7 +10,32 @@ permissions:
   id-token: write
 
 jobs:
+  # Gate: never publish to PyPI unless the unit suite passes on the released ref.
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev,postgresql,mysql,mariadb,oracle,sqlserver,db2,django]"
+
+      - name: Run unit tests
+        run: |
+          python -m pytest tests/unit/ \
+            -n auto \
+            --dist=loadscope \
+            -p no:benchmark \
+            --timeout=120
+
   publish:
+    needs: test
     runs-on: ubuntu-latest
     environment: pypi
 
