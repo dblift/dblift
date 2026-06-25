@@ -465,18 +465,6 @@ class HtmlFormatter:
         elif command_type == "REPAIR":
             details["icon"] = "wrench"
             details["description"] = "This command repairs the schema history table."
-        elif command_type == "EXPORT-SCHEMA":
-            details["icon"] = "download"
-            details["description"] = "This command exports the database schema to SQL file(s)."
-            # Add export-specific details
-            if hasattr(result, "output_files") and result.output_files:
-                details["output_files"] = result.output_files
-            if hasattr(result, "objects_exported") and result.objects_exported:
-                details["objects_exported"] = result.objects_exported
-            if hasattr(result, "filters_applied") and result.filters_applied:
-                details["filters_applied"] = result.filters_applied
-            if hasattr(result, "output_options") and result.output_options:
-                details["output_options"] = result.output_options
 
         return details
 

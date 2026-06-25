@@ -328,40 +328,6 @@ def test_walker_allows_parents_inheritance():
 # choice.
 
 
-def test_machine_readable_formats_subset_of_validate_sql_choices():
-    """``--format <machine>`` must be accepted by validate-sql for every machine format."""
-    from cli._constants import MACHINE_READABLE_FORMATS, VALIDATE_SQL_FORMATS
-
-    missing = MACHINE_READABLE_FORMATS - set(VALIDATE_SQL_FORMATS)
-    assert not missing, (
-        f"Machine-readable formats not exposed by validate-sql parser: {missing}. "
-        "Add them to VALIDATE_SQL_FORMATS in cli/_constants.py."
-    )
-
-
-def test_validate_sql_formats_except_console_and_html_are_machine_readable():
-    """Every parser-facing validate-sql format must be machine-readable."""
-    from cli._constants import MACHINE_READABLE_FORMATS, VALIDATE_SQL_FORMATS
-
-    human = set(VALIDATE_SQL_FORMATS) - MACHINE_READABLE_FORMATS
-    assert human <= {"console", "html"}, (
-        f"Unexpected non-machine formats in VALIDATE_SQL_FORMATS: {human - {'console', 'html'}}. "
-        "Add new parser-facing formats to MACHINE_READABLE_FORMATS."
-    )
-
-
-# --- Meta-property: no top-level flag escapes the coverage net ----------------
-#
-# Motivation: PARENT_FLAG_CASES is the list of top-level flags whose
-# preservation across every subcommand is behaviorally verified. If a new
-# top-level flag is added to the parser but not to PARENT_FLAG_CASES, the
-# BUG-01/02 class of regressions can re-enter undetected.
-#
-# This property test walks the top-level parser, collects every optional flag,
-# and asserts that each one is either (a) covered by PARENT_FLAG_CASES or
-# (b) explicitly listed in EXEMPT_FROM_PARENT_FLAG_CASES with a justification.
-
-
 def _top_level_optional_flags() -> set:
     """Return the set of ``--flag`` option strings defined directly on the
     top-level parser (including those pulled in via ``parents=[...]``).

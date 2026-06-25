@@ -3,7 +3,7 @@
 import sys
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, List, Optional, Union
+from typing import Any, List, Optional
 
 # Add project root to Python path when running as a script
 # This allows imports to work when running: python3 cli/main.py
@@ -23,7 +23,6 @@ from cli._command_handlers import (  # noqa: F401
     _AVAILABLE_COMMANDS,
     _COMMAND_HANDLERS,
     CliCommandContext,
-    ValidateSqlConfigClient,
     _extract_version_filters,
     _handle_baseline,
     _handle_clean,
@@ -306,13 +305,7 @@ def _dispatch_command(ctx: _CliContext, command_output: CommandOutput) -> int:
         _resolve_scripts_directories(ctx.args, ctx.config, ctx.parser, ctx.commands)
     )
 
-    # Standalone offline commands only need DbliftConfig (dialect, validation rules).
-    offline_only = False
-    client: Union[DBLiftClient, ValidateSqlConfigClient]
-    if offline_only:
-        client = ValidateSqlConfigClient(config=ctx.config)
-    else:
-        client = DBLiftClient.from_config(ctx.config, logger=ctx.log)
+    client = DBLiftClient.from_config(ctx.config, logger=ctx.log)
     ctx.log.debug(f"scripts_dir: {scripts_dir}")
     ctx.log.debug(
         f"config.migrations.directories: {getattr(ctx.config.migrations, 'directories', None)}"
@@ -351,13 +344,6 @@ def _dispatch_command(ctx: _CliContext, command_output: CommandOutput) -> int:
         # in base_command does not re-emit it (it also has no format awareness).
         if main_header:
             base_command._console_main_header_printed = True  # type: ignore[attr-defined]
-            for module_name in (
-                "cli.export_schema_command",
-                "cli.snapshot_command",
-            ):
-                command_module = sys.modules.get(module_name)
-                if command_module is not None:
-                    command_module._console_main_header_printed = True  # type: ignore[attr-defined]
 
         for cmd_index, command in enumerate(ctx.commands):
             if len(ctx.commands) > 1 and cmd_index > 0:

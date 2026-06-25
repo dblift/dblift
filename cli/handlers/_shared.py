@@ -61,17 +61,6 @@ class CliCommandContext:
     dir_recursive_map: Dict[Path, bool] = field(default_factory=dict)
 
 
-@dataclass
-class ValidateSqlConfigClient:
-    """Config-only stand-in for DBLiftClient when running offline commands."""
-
-    config: Any
-
-    def plan(self, *args: Any, **kwargs: Any) -> Any:
-        """Offline plan construction is not available in DBLift OSS."""
-        raise RuntimeError("plan is not available in DBLift OSS")
-
-
 def _set_command_completed(log: Any, result: Any, command_type: str) -> None:
     """Helper to report command completion to the logger (eliminates SMELL-04 duplication)."""
     if result is None:
@@ -98,7 +87,7 @@ def emit_rendered_output(
 ) -> None:
     """Dispatch a rendered command output to machine channel, logger, and/or file.
 
-    Shared by plan and preflight handlers — both follow the same machine/human/file
+    Used by command handlers that follow the same machine/human/file
     dispatch pattern once the command-specific rendering is done.
     """
     if command_output.is_machine_format:

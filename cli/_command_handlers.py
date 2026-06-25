@@ -9,7 +9,6 @@ from cli.extensions import load_command_handlers, load_terminal_commands
 from cli.handlers._shared import (  # noqa: F401
     _MIGRATION_FILENAME_RE,
     CliCommandContext,
-    ValidateSqlConfigClient,
     _extract_version_filters,
     _is_migration_sql_file,
     _minimal_result,
