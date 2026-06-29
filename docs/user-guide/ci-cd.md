@@ -77,7 +77,7 @@ validate-migrations:
 ```yaml
 repos:
   - repo: https://github.com/cmodiano/dblift-oss
-    rev: v1.8.0   # pin to a released tag
+    rev: v2.0.5   # pin to a released tag
     hooks:
       - id: dblift-validate
       - id: dblift-info
@@ -95,7 +95,7 @@ driver in the *consuming* repository's `.pre-commit-config.yaml`:
 ```yaml
 repos:
   - repo: https://github.com/cmodiano/dblift-oss
-    rev: v1.8.0
+    rev: v2.0.5
     hooks:
       - id: dblift-validate
         additional_dependencies: ["dblift[postgresql]"]
@@ -103,8 +103,7 @@ repos:
         additional_dependencies: ["dblift[postgresql]"]
 ```
 
-Use the appropriate extra(s) for the database(s) you connect to. The same
-applies when using `pre-commit try-repo` locally or in CI.
+Replace `v2.0.5` with the latest released tag. Use the appropriate extra(s) for the database(s) you connect to. The same applies when using `pre-commit try-repo` locally or in CI.
 
 ## Optional: Guard the pre-commit hook contract in your own CI
 
@@ -170,11 +169,11 @@ jobs:
         run: |
           set -euo pipefail
           pre-commit try-repo https://github.com/cmodiano/dblift-oss dblift-validate \
-            --rev v1.8.0 \
+            --rev v2.0.5 \
             --additional-deps "dblift[postgresql]" \
             --files migrations/V1_0_0__init.sql
           pre-commit try-repo https://github.com/cmodiano/dblift-oss dblift-info \
-            --rev v1.8.0 \
+            --rev v2.0.5 \
             --additional-deps "dblift[postgresql]" \
             --files migrations/V1_0_0__init.sql
 
@@ -185,7 +184,7 @@ jobs:
           printf '\n-- drift\nALTER TABLE widgets ADD COLUMN name TEXT;\n' \
             >> migrations/V1_0_0__init.sql
           if pre-commit try-repo https://github.com/cmodiano/dblift-oss dblift-validate \
-               --rev v1.8.0 \
+               --rev v2.0.5 \
                --additional-deps "dblift[postgresql]" \
                --files migrations/V1_0_0__init.sql; then
             echo "ERROR: dblift-validate should have failed on checksum drift" >&2
