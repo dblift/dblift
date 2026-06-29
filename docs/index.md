@@ -10,8 +10,8 @@ DBLift helps you track and apply database changes systematically. Think of it as
 
 ![Python](https://img.shields.io/badge/Python-3.11%2B-blue)
 ![License](https://img.shields.io/badge/License-Apache--2.0-blue)
-[![Tests](https://img.shields.io/badge/Tests-GitHub%20Actions-2088FF?logo=githubactions&logoColor=white)](https://github.com/cmodiano/dblift-oss/actions/workflows/unit-tests.yml)
-[![Code Quality](https://img.shields.io/badge/Code%20Quality-GitHub%20Actions-2088FF?logo=githubactions&logoColor=white)](https://github.com/cmodiano/dblift-oss/actions/workflows/code-quality.yml)
+[![Tests](https://github.com/cmodiano/dblift-oss/actions/workflows/unit-tests.yml/badge.svg)](https://github.com/cmodiano/dblift-oss/actions/workflows/unit-tests.yml)
+[![Code Quality](https://github.com/cmodiano/dblift-oss/actions/workflows/code-quality.yml/badge.svg)](https://github.com/cmodiano/dblift-oss/actions/workflows/code-quality.yml)
 
 ---
 
