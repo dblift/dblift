@@ -19,7 +19,15 @@ Other supported extras: `dblift[oracle]`, `dblift[mysql]`, `dblift[sqlserver]`.
 
 ## Step 2: Configure
 
-Create `dblift.yaml` in your project root:
+Set your connection URL as an environment variable:
+
+```bash
+export DBLIFT_DB_URL="postgresql+psycopg://user:password@localhost:5432/mydb"
+```
+
+The rest of this guide uses that variable — all commands below work as-is once it is set.
+
+**Using a config file instead:** create `dblift.yaml` in your project root:
 
 ```yaml
 database:
@@ -30,11 +38,7 @@ migrations:
   directory: "./migrations"
 ```
 
-You can also set the connection via environment variable instead of a config file:
-
-```bash
-export DBLIFT_DB_URL="postgresql+psycopg://user:password@localhost:5432/mydb"
-```
+dblift does not auto-discover `dblift.yaml`. When using a config file, pass `--config dblift.yaml` with every command (e.g. `dblift --config dblift.yaml info`). The env var approach skips that flag.
 
 ## Step 3: Create your first migration
 
