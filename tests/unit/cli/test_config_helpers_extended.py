@@ -117,3 +117,59 @@ class TestExtractCommandsFromArgv(unittest.TestCase):
             ["--url", "postgresql+psycopg://localhost/db", "migrate"], {"migrate"}, {"--url"}
         )
         self.assertIn("migrate", commands)
+
+
+class TestDiscoverDefaultConfig(unittest.TestCase):
+    """Default config-file discovery in the cwd (2.1.1)."""
+
+    def _run_in(self, tmp):
+        import os
+
+        from cli._config_helpers import _discover_default_config
+
+        prev = os.getcwd()
+        os.chdir(tmp)
+        try:
+            return _discover_default_config()
+        finally:
+            os.chdir(prev)
+
+    def test_returns_none_when_no_config_present(self):
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp:
+            self.assertIsNone(self._run_in(tmp))
+
+    def test_finds_dblift_yaml(self):
+        import os
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp:
+            open(os.path.join(tmp, "dblift.yaml"), "w").close()
+            result = self._run_in(tmp)
+            self.assertIsNotNone(result)
+            self.assertEqual(os.path.basename(result), "dblift.yaml")
+
+    def test_finds_dblift_yml(self):
+        import os
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp:
+            open(os.path.join(tmp, "dblift.yml"), "w").close()
+            result = self._run_in(tmp)
+            self.assertIsNotNone(result)
+            self.assertEqual(os.path.basename(result), "dblift.yml")
+
+    def test_yaml_takes_precedence_over_yml(self):
+        import os
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp:
+            open(os.path.join(tmp, "dblift.yaml"), "w").close()
+            open(os.path.join(tmp, "dblift.yml"), "w").close()
+            result = self._run_in(tmp)
+            self.assertEqual(os.path.basename(result), "dblift.yaml")
+
+
+if __name__ == "__main__":
+    unittest.main()

@@ -189,12 +189,45 @@ def _build_args_namespace(
     return args, unknown_args
 
 
+# Default config filenames searched in the current working directory when no
+# --config is given, in precedence order. Lets `dblift <command>` run without an
+# explicit --config when a config file sits in the project root, matching the
+# convention of peer tools (Alembic's alembic.ini, Flyway's flyway.conf).
+_DEFAULT_CONFIG_NAMES: Tuple[str, ...] = ("dblift.yaml", "dblift.yml")
+
+
+def _discover_default_config(log: Any = None) -> Optional[str]:
+    """Return the path to a default config file in the cwd, or None.
+
+    Searches the current working directory for the filenames in
+    :data:`_DEFAULT_CONFIG_NAMES` and returns the first match. Returns ``None``
+    when no default config is present, preserving the existing behaviour for
+    pure ``--db-url`` workflows.
+    """
+    cwd = Path.cwd()
+    for name in _DEFAULT_CONFIG_NAMES:
+        candidate = cwd / name
+        if candidate.is_file():
+            if log:
+                log.debug(f"Using discovered config file: {candidate}")
+            return str(candidate)
+    return None
+
+
 def _load_and_merge_config(args: argparse.Namespace, log: Any) -> Any:
     """Load configuration and merge database overrides from CLI arguments.
 
     Returns:
         Loaded and merged config object
     """
+    # Auto-discover a config file in the cwd when the user passed neither
+    # --config nor --db-url, so `dblift <command>` works from a project that has
+    # a dblift.yaml without forcing an explicit --config on every invocation.
+    if not getattr(args, "config", None) and not getattr(args, "database_url", None):
+        discovered = _discover_default_config(log)
+        if discovered:
+            args.config = discovered
+
     try:
         config = load_config(args.config, args)
     except (
