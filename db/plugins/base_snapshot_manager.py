@@ -47,40 +47,15 @@ class BaseSnapshotManager:
         return (
             getattr(database, "type", None)
             or getattr(provider, "canonical_dialect_key", None)
-            or "postgresql"
+            or ""
         ).lower()
 
-    def _uses_provider_compat_snapshot_ddl(self, dialect: str) -> bool:
-        """Return whether a concrete native provider keeps legacy snapshot DDL compatibility."""
+    def _provider_owns_legacy_snapshot_ddl(self, dialect: str) -> bool:
+        """True only for the canonical native provider class (not a generic
+        provider configured with the same type). Whether that provider keeps
+        legacy compat DDL is then decided by its quirks."""
         provider_key = getattr(self._provider.__class__, "canonical_dialect_key", None)
-        return provider_key == dialect and dialect in {"mysql", "oracle"}
-
-    @staticmethod
-    def _provider_compat_snapshot_ddl(
-        dialect: str,
-        qualified_table: str,
-        snapshot_id_size: int,
-        checksum_size: int,
-    ) -> str:
-        """Render legacy concrete-provider snapshot DDL for compatibility callers."""
-        if dialect == "mysql":
-            return (
-                f"CREATE TABLE IF NOT EXISTS {qualified_table} ("
-                f"snapshot_id VARCHAR({snapshot_id_size}) PRIMARY KEY, "
-                "captured_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, "
-                f"checksum VARCHAR({checksum_size}), "
-                "model_data LONGTEXT NOT NULL"
-                ") ENGINE=InnoDB"
-            )
-        if dialect == "oracle":
-            return (
-                f"CREATE TABLE {qualified_table} ("
-                f"SNAPSHOT_ID VARCHAR2({snapshot_id_size}) PRIMARY KEY, "
-                f"CAPTURED_AT VARCHAR2({snapshot_id_size}) NOT NULL, "
-                f"CHECKSUM VARCHAR2({checksum_size}) NOT NULL, "
-                "MODEL_DATA CLOB NOT NULL)"
-            )
-        raise NotImplementedError(f"No provider compatibility snapshot DDL for {dialect}")
+        return provider_key is not None and provider_key == dialect
 
     def create_snapshot_table_if_not_exists(
         self, schema: str, table_name: str = "dblift_schema_snapshots"
@@ -95,17 +70,15 @@ class BaseSnapshotManager:
 
         dialect = self._provider_dialect()
         dblift_table_name = get_normalized_object_name(table_name, dialect)
+        quirks = ProviderRegistry.get_quirks(dialect)
+        uses_compat = self._provider_owns_legacy_snapshot_ddl(dialect)
 
-        if not self._is_provider_connected():
-            provider.create_connection()
-        if not (
-            dialect == "mysql" and self._uses_provider_compat_snapshot_ddl(dialect)
-        ) and provider.table_exists(schema, dblift_table_name):
+        skip_existence_check = uses_compat and quirks.provider_compat_snapshot_skips_existence_check
+        if not skip_existence_check and provider.table_exists(schema, dblift_table_name):
             return
 
         qualified_table = provider.get_schema_qualified_name(schema, dblift_table_name)
 
-        quirks = ProviderRegistry.get_quirks(dialect)
         try:
             create_table_sql = quirks.build_snapshot_table_ddl(
                 qualified_table,
@@ -113,14 +86,16 @@ class BaseSnapshotManager:
                 CHECKSUM_VARCHAR_SIZE,
             )
         except NotImplementedError:
-            if not self._uses_provider_compat_snapshot_ddl(dialect):
+            if not uses_compat:
                 raise
-            create_table_sql = self._provider_compat_snapshot_ddl(
-                dialect,
+            compat_sql = quirks.build_provider_compat_snapshot_ddl(
                 qualified_table,
                 SNAPSHOT_ID_VARCHAR_SIZE,
                 CHECKSUM_VARCHAR_SIZE,
             )
+            if compat_sql is None:
+                raise
+            create_table_sql = compat_sql
 
         try:
             provider.execute_statement(create_table_sql, schema=schema)

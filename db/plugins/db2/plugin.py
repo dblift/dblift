@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from config._subclasses.db2_config import Db2Config
+from db.plugins.db2.config import Db2Config
 from db.plugins.db2.provider import Db2Provider
 from db.plugins.db2.quirks import Db2Quirks
 from db.plugins.db2.sqlalchemy_url import build_sqlalchemy_url

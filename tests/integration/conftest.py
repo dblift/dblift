@@ -308,7 +308,7 @@ def db_configs() -> Dict[str, Dict[str, Any]]:
         },
         "mysql": {
             "type": "mysql",
-            "host": "127.0.0.1",
+            "host": "localhost",
             "port": 3306,
             "database": "testdb",
             "username": "root",

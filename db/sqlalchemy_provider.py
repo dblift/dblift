@@ -81,12 +81,14 @@ class _SqlAlchemyQueryExecutor:
         return f"{open_q}{clean_schema}{close_q}.{open_q}{clean_object}{close_q}"
 
     def _identifier_quote_chars(self) -> Tuple[str, str, str]:
-        dialect = str(getattr(self._provider, "canonical_dialect_key", "") or "").lower()
-        if dialect in {"mysql", "mariadb"}:
-            return "`", "`", "``"
-        if dialect == "sqlserver":
-            return "[", "]", "]]"
-        return '"', '"', '""'
+        """Return (open_quote, close_quote, escaped_close) for identifier quoting.
+
+        Sourced from the provider's quirks (``quote_open`` / ``quote_close``)
+        so the framework never branches on the dialect name. The escape
+        sequence is the close-quote doubled (`` `` ``, ``]]``, ``""``).
+        """
+        q = self._provider.quirks
+        return q.quote_open, q.quote_close, q.quote_close * 2
 
 
 class SqlAlchemyProvider(NativeProvider):

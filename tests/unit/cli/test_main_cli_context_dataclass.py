@@ -3,6 +3,7 @@ from dataclasses import fields, is_dataclass
 import pytest
 
 from cli.main import CliCommandContext
+from core.features import FeatureTier
 
 
 @pytest.mark.unit
@@ -11,7 +12,7 @@ class TestCliCommandContextDataclass:
         assert is_dataclass(CliCommandContext)
 
     def test_fields_count(self):
-        assert len(fields(CliCommandContext)) == 8
+        assert len(fields(CliCommandContext)) == 9
 
     def test_field_names(self):
         field_names = {f.name for f in fields(CliCommandContext)}
@@ -24,6 +25,7 @@ class TestCliCommandContextDataclass:
             "recursive",
             "placeholders",
             "dir_recursive_map",
+            "license_tier",
         }
 
     def test_default_values(self):
@@ -36,6 +38,7 @@ class TestCliCommandContextDataclass:
         assert ctx.recursive is False
         assert ctx.placeholders == {}
         assert ctx.dir_recursive_map == {}
+        assert ctx.license_tier is FeatureTier.ENTERPRISE
 
     def test_default_factory_independence(self):
         ctx1 = CliCommandContext()

@@ -8,8 +8,6 @@ from typing import Any, Dict, Optional
 
 from core.sql_model.base import SqlObject, SqlObjectType
 
-_NS_MYSQL = "mysql"  # lint: allow-dialect-string: plugin namespace key for dialect_options
-
 
 def _quirks_for(dialect: Optional[str]) -> Any:
     """Resolve quirks for *dialect* via the registry.
@@ -94,58 +92,11 @@ class Trigger(SqlObject):
             self.is_constraint_trigger = is_constraint_trigger
         self.constraint_deferrable = constraint_deferrable
         self.constraint_initially_deferred = constraint_initially_deferred
-        # ``dialect_options`` is initialized by ``SqlObject.__init__``; the
-        # property setters below route into it under their plugin namespace.
-        self.definer = definer
-        self.execution_order = execution_order
-        self.follows_trigger = follows_trigger
-        self.precedes_trigger = precedes_trigger
-
-    @property
-    def definer(self) -> Optional[str]:
-        """MySQL ``DEFINER = user@host``."""
-        value = self.get_dialect_option(_NS_MYSQL, "definer")
-        return value if value is None or isinstance(value, str) else str(value)
-
-    @definer.setter
-    def definer(self, value: Optional[str]) -> None:
-        """Set MySQL ``DEFINER = user@host``."""
-        self._set_plugin_option(_NS_MYSQL, "definer", value)
-
-    @property
-    def execution_order(self) -> Optional[int]:
-        """Trigger execution priority (integer)."""
-        value = self.get_dialect_option(_NS_MYSQL, "execution_order")
-        if value is None:
-            return None
-        return value if isinstance(value, int) else int(value)
-
-    @execution_order.setter
-    def execution_order(self, value: Optional[int]) -> None:
-        """Set trigger execution priority (integer)."""
-        self._set_plugin_option(_NS_MYSQL, "execution_order", value)
-
-    @property
-    def follows_trigger(self) -> Optional[str]:
-        """Name of the trigger this one is declared to FOLLOW."""
-        value = self.get_dialect_option(_NS_MYSQL, "follows_trigger")
-        return value if value is None or isinstance(value, str) else str(value)
-
-    @follows_trigger.setter
-    def follows_trigger(self, value: Optional[str]) -> None:
-        """Set name of the trigger this one is declared to FOLLOW."""
-        self._set_plugin_option(_NS_MYSQL, "follows_trigger", value)
-
-    @property
-    def precedes_trigger(self) -> Optional[str]:
-        """Name of the trigger this one is declared to PRECEDE."""
-        value = self.get_dialect_option(_NS_MYSQL, "precedes_trigger")
-        return value if value is None or isinstance(value, str) else str(value)
-
-    @precedes_trigger.setter
-    def precedes_trigger(self, value: Optional[str]) -> None:
-        """Set name of the trigger this one is declared to PRECEDE."""
-        self._set_plugin_option(_NS_MYSQL, "precedes_trigger", value)
+        # MySQL grammar-based trigger properties.
+        self.definer = definer  # ``DEFINER = user@host``
+        self.execution_order = execution_order  # execution priority (integer)
+        self.follows_trigger = follows_trigger  # trigger this one FOLLOWs
+        self.precedes_trigger = precedes_trigger  # trigger this one PRECEDEs
 
     @property
     def qualified_table_name(self) -> str:

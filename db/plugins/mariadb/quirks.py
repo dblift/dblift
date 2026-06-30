@@ -8,6 +8,8 @@ modern versions) get added here as the epic touches each subsystem.
 
 from __future__ import annotations
 
+from typing import Optional
+
 from db.plugins.mysql.quirks import MysqlQuirks
 
 
@@ -33,6 +35,11 @@ class MariadbQuirks(MysqlQuirks):
     # Override the parent ``True`` to preserve that behavior.
     requires_rollback_after_introspection: bool = False
 
+    # MariaDB does not keep provider-compat snapshot DDL; reset the values
+    # inherited from MysqlQuirks so a real MariadbProvider keeps the normal
+    # existence check and raises (snapshots are not provider-owned).
+    provider_compat_snapshot_skips_existence_check: bool = False
+
     def __init__(self, dialect_name: str = "mariadb") -> None:
         """Initialize MariaDB quirks with the dialect name."""
         super().__init__(dialect_name=dialect_name)
@@ -45,6 +52,12 @@ class MariadbQuirks(MysqlQuirks):
     ) -> str:
         """Reject inherited MySQL snapshot table DDL."""
         raise NotImplementedError("MariaDB snapshots are not provider-owned")
+
+    def build_provider_compat_snapshot_ddl(
+        self, qualified_table: str, snapshot_id_size: int, checksum_size: int
+    ) -> "Optional[str]":
+        """MariaDB has no provider-compat snapshot DDL (overrides MySQL's)."""
+        return None
 
 
 __all__ = ["MariadbQuirks"]

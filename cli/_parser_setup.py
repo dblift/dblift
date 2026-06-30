@@ -13,6 +13,24 @@ from typing import Any, Dict, List, Optional, Tuple
 from cli.db_utils import setup_db_utils_parser
 
 
+def _native_dialect_choices() -> List[str]:
+    """Sorted native dialect names from the plugin registry (ADR-26 E5).
+
+    Replaces the hardcoded ``--dialect`` choices list so the CLI surface
+    tracks the registered plugins automatically — dropping a plugin folder
+    adds its dialect here with no string literal in framework code.
+    """
+    # Route through ``api.*`` (not ``db.provider_registry`` directly): cli/ is
+    # banned from importing the registry by .flake8 banned-modules (I251).
+    from api._cli_support import ProviderRegistry
+
+    return sorted(
+        p.name
+        for p in ProviderRegistry.list_plugins()
+        if ProviderRegistry.is_native_dialect(p.name)
+    )
+
+
 def parse_with_selective_errors(
     parser: argparse.ArgumentParser,
 ) -> Tuple[Optional[argparse.Namespace], List[str], bool]:

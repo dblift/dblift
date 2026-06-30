@@ -4,8 +4,6 @@ from typing import Any, Dict, Optional
 
 from core.sql_model.base import SqlObject, SqlObjectType
 
-_NS_POSTGRES = "postgresql"  # lint: allow-dialect-string: plugin namespace key for dialect_options
-
 
 def _quirks_for(dialect: Optional[str]) -> Any:
     """Story 26-5: resolve quirks for *dialect* via the registry."""
@@ -58,43 +56,10 @@ class Sequence(SqlObject):
         self.max_value = max_value
         self.cycle = cycle
         self.cache = cache
-        # ``dialect_options`` is initialized by ``SqlObject.__init__``; the
-        # property setters below route into it under their plugin namespace.
-        self.temp = temp
-        self.owned_by_table = owned_by_table
-        self.owned_by_column = owned_by_column
-
-    @property
-    def temp(self) -> bool:
-        """PostgreSQL ``CREATE TEMPORARY SEQUENCE`` flag."""
-        return bool(self.get_dialect_option(_NS_POSTGRES, "temp", default=False))
-
-    @temp.setter
-    def temp(self, value: bool) -> None:
-        """Set PostgreSQL ``CREATE TEMPORARY SEQUENCE`` flag."""
-        self._set_plugin_option(_NS_POSTGRES, "temp", value, default=False)
-
-    @property
-    def owned_by_table(self) -> Optional[str]:
-        """PostgreSQL ``OWNED BY <table>.<column>`` — owning table portion."""
-        value = self.get_dialect_option(_NS_POSTGRES, "owned_by_table")
-        return value if value is None or isinstance(value, str) else str(value)
-
-    @owned_by_table.setter
-    def owned_by_table(self, value: Optional[str]) -> None:
-        """Set PostgreSQL ``OWNED BY <table>.<column>`` — owning table portion."""
-        self._set_plugin_option(_NS_POSTGRES, "owned_by_table", value)
-
-    @property
-    def owned_by_column(self) -> Optional[str]:
-        """PostgreSQL ``OWNED BY <table>.<column>`` — owning column portion."""
-        value = self.get_dialect_option(_NS_POSTGRES, "owned_by_column")
-        return value if value is None or isinstance(value, str) else str(value)
-
-    @owned_by_column.setter
-    def owned_by_column(self, value: Optional[str]) -> None:
-        """Set PostgreSQL ``OWNED BY <table>.<column>`` — owning column portion."""
-        self._set_plugin_option(_NS_POSTGRES, "owned_by_column", value)
+        # PostgreSQL grammar-based sequence properties.
+        self.temp = temp  # ``CREATE TEMPORARY SEQUENCE`` flag
+        self.owned_by_table = owned_by_table  # ``OWNED BY <table>.<column>`` table
+        self.owned_by_column = owned_by_column  # ``OWNED BY <table>.<column>`` column
 
     @property
     def create_statement(self) -> str:

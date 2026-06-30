@@ -47,7 +47,10 @@ def config_from_engine(
         scheme = engine.url.drivername.split("+", 1)[0]
         db_type = ProviderRegistry.canonical_dialect_name(scheme) or scheme
     except Exception:
-        db_type = "postgresql"  # lint: allow-dialect-string: safe fallback only; real type comes from URL scheme + ProviderRegistry.canonical_dialect_name above  # noqa: E501
+        # The provider was already matched above, so it carries its own
+        # canonical dialect name — derive the fallback from it instead of
+        # naming a dialect here.
+        db_type = getattr(provider_cls, "canonical_dialect_key", "")
 
     db_dict: dict[str, Any] = {"url": url, "type": db_type}
     if schema is not None:

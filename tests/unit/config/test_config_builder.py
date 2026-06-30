@@ -6,14 +6,12 @@ from unittest.mock import Mock, patch
 import pytest
 
 from config.config_builder import ConfigBuilder, ConfigurationError
-from config.database_config import (
-    BaseDatabaseConfig,
-    MySqlConfig,
-    OracleConfig,
-    PostgreSqlConfig,
-    SqlServerConfig,
-)
+from config.database_config import BaseDatabaseConfig
 from config.dblift_config import DbliftConfig
+from db.plugins.mysql.config import MySqlConfig
+from db.plugins.oracle.config import OracleConfig
+from db.plugins.postgresql.config import PostgreSqlConfig
+from db.plugins.sqlserver.config import SqlServerConfig
 
 
 @pytest.mark.unit

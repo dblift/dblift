@@ -193,7 +193,7 @@ def test_postgresql_sqlalchemy_url_builder_rejects_database_url(_reset_registry)
 def test_postgresql_field_based_config_validates(_reset_registry) -> None:
     """Native PostgreSQL accepts host/database credentials without database.url."""
     from config import DbliftConfig
-    from config._subclasses.postgresql_config import PostgreSqlConfig
+    from db.plugins.postgresql.config import PostgreSqlConfig
 
     ProviderRegistry._plugins["postgresql"] = PLUGIN
     ProviderRegistry._discovered = True
@@ -297,7 +297,7 @@ def test_dblift_config_rejects_postgresql_host_without_database(_reset_registry)
 def test_postgresql_registry_rejects_host_without_database(_reset_registry) -> None:
     """Registry validation uses the plugin-owned PostgreSQL identifier rules."""
     from config import DbliftConfig
-    from config._subclasses.postgresql_config import PostgreSqlConfig
+    from db.plugins.postgresql.config import PostgreSqlConfig
 
     ProviderRegistry._plugins["postgresql"] = PLUGIN
     ProviderRegistry._discovered = True

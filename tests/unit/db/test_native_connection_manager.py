@@ -98,3 +98,32 @@ def test_non_mysql_engine_keeps_default_pool_reset(monkeypatch):
 
     assert mgr.engine is fake_engine
     assert calls["kwargs"] == {"pool_pre_ping": True, "future": True}
+
+
+def test_engine_options_mysql_includes_pool_reset():
+    class _MySqlDB:
+        type = "mysql"
+
+    class _MySqlCfg:
+        database = _MySqlDB()
+
+    mgr = NativeConnectionManager(_MySqlCfg())
+    options = mgr._engine_options()
+    assert options == {
+        "pool_pre_ping": True,
+        "future": True,
+        "pool_reset_on_return": None,
+    }
+
+
+def test_engine_options_postgresql_omits_pool_reset():
+    class _PgDB:
+        type = "postgresql"
+
+    class _PgCfg:
+        database = _PgDB()
+
+    mgr = NativeConnectionManager(_PgCfg())
+    options = mgr._engine_options()
+    assert options == {"pool_pre_ping": True, "future": True}
+    assert "pool_reset_on_return" not in options

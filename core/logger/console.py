@@ -7,11 +7,14 @@ goes to stderr.
 """
 
 import contextlib
-from typing import Any, ContextManager
+import sys
+from typing import Any, ContextManager, Dict, List, Literal, Optional, Tuple, cast
 
+from rich import box
 from rich.console import Console, RenderableType
 from rich.panel import Panel
 from rich.table import Table
+from rich.text import Text
 from rich.theme import Theme
 from rich.tree import Tree
 
@@ -24,6 +27,42 @@ DBLIFT_THEME = Theme(
         "log.notice": "bold green",
     }
 )
+
+ColumnJustify = Literal["default", "left", "center", "right", "full"]
+
+# Shared state-color palette (relocated from core/migration/ui/table_renderer.py
+# so plugin commands and migration UI share one source of truth).
+_STATE_STYLE: Dict[str, str] = {
+    "success": "bold green",
+    "applied": "bold green",
+    "failed": "bold red",
+    "missing": "bold red",
+    "mismatch": "bold red",
+    "pending": "yellow",
+    "undone": "yellow",
+    "warning": "yellow",
+    "baseline": "dim",
+    "ignored": "dim",
+    "skipped": "dim",
+    "future": "dim",
+    "superseded": "dim",
+    "available": "cyan",
+}
+
+
+def state_text(state: str) -> Text:
+    """Return a rich ``Text`` for a state string, styled per the shared palette.
+
+    Unknown states render unstyled. Callers pass the result as a table cell so
+    the same colors are used everywhere (migration tables, data tables, ...).
+    Lookup is case-insensitive; the original casing is preserved in the rendered
+    text. An empty string is treated as unknown and renders unstyled.
+    """
+    style = _STATE_STYLE.get(state.lower(), "")
+    text = Text(state)
+    if style:
+        text.stylize(style)
+    return text
 
 
 _stderr_console: "Console | None" = None
@@ -162,6 +201,38 @@ def render_tree_to_str(tree: Tree, width: int = 200) -> str:
 def render_panel_to_str(panel: Panel, width: int = 200) -> str:
     """Render a Rich Panel to plain text."""
     return render_to_str(panel, width=width)
+
+
+def render_records_table(
+    columns: List[Tuple[str, str]],
+    rows: List[List[Any]],
+    *,
+    title: Optional[str] = None,
+    width: int = 200,
+    color: bool = False,
+) -> str:
+    """Render tabular records as plain text (ANSI-safe) using the shared theme.
+
+    Generic and command-agnostic: ``columns`` is a list of ``(header, justify)``
+    pairs (justify in left|center|right), ``rows`` is a list of cell lists where
+    each cell is a ``str`` or a rich ``Text`` (e.g. ``state_text(...)``). Returns
+    a plain-text table string suitable for stdout, pipes, and log files.
+    When ``color=True`` the table is rendered through a tty-aware console so ANSI
+    colors appear on a real terminal and are auto-stripped when piped/redirected.
+    """
+    table = Table(box=box.ROUNDED, show_header=True, header_style="bold", title=title)
+    for header, justify in columns:
+        table.add_column(header, justify=cast(ColumnJustify, justify))
+    for row in rows:
+        table.add_row(*[cell if isinstance(cell, Text) else str(cell) for cell in row])
+    if color:
+        console = Console(
+            file=sys.stdout, highlight=False, markup=False, soft_wrap=True, emoji=False
+        )
+        with console.capture() as capture:
+            console.print(table)
+        return capture.get().rstrip("\n")
+    return render_table_to_str(table, width=width)
 
 
 def console_status(message: str) -> "ContextManager[Any]":

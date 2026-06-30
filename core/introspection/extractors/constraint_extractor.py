@@ -13,18 +13,6 @@ from core.sql_model.base import ConstraintType, SqlConstraint
 from core.utils.metadata_helpers import _build_unique_constraints_from_dict  # noqa: F401
 
 
-def _is_oracle_generated_not_null_check(dialect: str, row: Dict[str, Any], check_expr: str) -> bool:
-    if (dialect or "").lower() != "oracle":
-        return False
-    generated = str(row.get("generated") or row.get("GENERATED") or "").upper()
-    if generated != "GENERATED NAME":
-        return False
-    return (
-        re.match(r'^\s*\(?\s*"?[A-Z0-9_$#]+"?\s+IS\s+NOT\s+NULL\s*\)?\s*$', check_expr, re.I)
-        is not None
-    )
-
-
 class ConstraintExtractor(BaseExtractor):
     """Extract constraint metadata from plugin-owned vendor metadata queries."""
 
@@ -490,6 +478,9 @@ class ConstraintExtractor(BaseExtractor):
 
             results = self.provider.query_executor.execute_query(self.connection, sql, params)
 
+            from db.provider_registry import ProviderRegistry
+
+            quirks = ProviderRegistry.get_quirks(self.dialect or "")
             constraints = []
             for row in results:
                 constraint_name = self.get_row_value(row, "constraint_name")
@@ -517,7 +508,7 @@ class ConstraintExtractor(BaseExtractor):
                 # Skip empty or trivial constraints
                 if not check_expr or check_expr.strip() in ("1=1", "(1=1)"):
                     continue
-                if _is_oracle_generated_not_null_check(self.dialect or "", row, check_expr):
+                if quirks.is_generated_not_null_check(row, check_expr):
                     continue
 
                 # Sanitize constraint name (Oracle system-generated names)

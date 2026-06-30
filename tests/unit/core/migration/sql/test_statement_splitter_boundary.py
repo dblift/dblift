@@ -9,6 +9,15 @@ from core.sql_parser.parser_factory import SqlParserFactory
 
 
 @pytest.mark.unit
+def test_statement_splitter_dialect_is_required():
+    """ADR-26 E: ``dialect`` has no default — the sole production caller
+    (SqlAnalyzer) always passes ``self.dialect``, so the literal default was
+    removed."""
+    with pytest.raises(TypeError):
+        StatementSplitter()
+
+
+@pytest.mark.unit
 def test_statement_splitter_uses_regex_parser_factory(monkeypatch):
     created_parser_types = []
 

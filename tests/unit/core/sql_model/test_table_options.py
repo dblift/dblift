@@ -70,10 +70,10 @@ class TestFromOptionsEquivalence:
         assert typed.name == legacy.name
         assert typed.dialect == legacy.dialect
         assert [c.name for c in typed.columns] == [c.name for c in legacy.columns]
-        assert typed.storage_engine is None
-        assert typed.memory_optimized is False
-        assert typed.policies == []
-        assert typed.inherits == []
+        assert typed.get_dialect_option("mysql", "storage_engine") is None
+        assert typed.get_dialect_option("sqlserver", "memory_optimized", default=False) is False
+        assert typed.get_dialect_option("postgresql", "policies", default=[]) == []
+        assert typed.get_dialect_option("postgresql", "inherits", default=[]) == []
 
     def test_mysql_options_propagate_to_attributes(self):
         opts = TableOptions(
@@ -87,11 +87,11 @@ class TestFromOptionsEquivalence:
         )
         t = Table.from_options(name="t", columns=_basic_columns(), options=opts, dialect="mysql")
 
-        assert t.storage_engine == "InnoDB"
-        assert t.row_format == "DYNAMIC"
-        assert t.table_collation == "utf8mb4_unicode_ci"
-        assert t.next_auto_increment == 42
-        assert t.create_options == "ROW_FORMAT=DYNAMIC"
+        assert t.get_dialect_option("mysql", "storage_engine") == "InnoDB"
+        assert t.get_dialect_option("mysql", "row_format") == "DYNAMIC"
+        assert t.get_dialect_option("mysql", "table_collation") == "utf8mb4_unicode_ci"
+        assert t.get_dialect_option("mysql", "next_auto_increment") == 42
+        assert t.get_dialect_option("mysql", "create_options") == "ROW_FORMAT=DYNAMIC"
 
     def test_sqlserver_options_propagate_and_mark_explicit(self):
         opts = TableOptions(
@@ -109,10 +109,10 @@ class TestFromOptionsEquivalence:
             name="t", columns=_basic_columns(), options=opts, dialect="sqlserver"
         )
 
-        assert t.filegroup == "PRIMARY"
-        assert t.memory_optimized is True
-        assert t.system_versioned is True
-        assert t.history_table == "t_history"
+        assert t.get_dialect_option("sqlserver", "filegroup") == "PRIMARY"
+        assert t.get_dialect_option("sqlserver", "memory_optimized") is True
+        assert t.get_dialect_option("sqlserver", "system_versioned") is True
+        assert t.get_dialect_option("sqlserver", "history_table") == "t_history"
         # mark_property_explicit hooks must still fire — same as legacy ctor
         assert t.is_property_explicit("filegroup")
         assert t.is_property_explicit("memory_optimized")
@@ -131,10 +131,10 @@ class TestFromOptionsEquivalence:
             name="t", columns=_basic_columns(), options=opts, dialect="postgresql"
         )
 
-        assert t.row_security is True
-        assert t.force_row_security is True
-        assert t.policies == [{"name": "p1", "for": "ALL"}]
-        assert t.inherits == ["parent_a", "parent_b"]
+        assert t.get_dialect_option("postgresql", "row_security") is True
+        assert t.get_dialect_option("postgresql", "force_row_security") is True
+        assert t.get_dialect_option("postgresql", "policies") == [{"name": "p1", "for": "ALL"}]
+        assert t.get_dialect_option("postgresql", "inherits") == ["parent_a", "parent_b"]
 
     def test_oracle_storage_options_propagate(self):
         opts = TableOptions(
@@ -142,10 +142,10 @@ class TestFromOptionsEquivalence:
         )
         t = Table.from_options(name="t", columns=_basic_columns(), options=opts, dialect="oracle")
 
-        assert t.pctfree == 10
-        assert t.pctused == 40
-        assert t.initial == 1024
-        assert t.next == 2048
+        assert t.get_dialect_option("oracle", "pctfree") == 10
+        assert t.get_dialect_option("oracle", "pctused") == 40
+        assert t.get_dialect_option("oracle", "initial") == 1024
+        assert t.get_dialect_option("oracle", "next") == 2048
 
 
 # ---------------------------------------------------------------------------

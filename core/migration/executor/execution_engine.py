@@ -31,7 +31,7 @@ from core.migration.sql.execution_statement import (
 )
 from core.migration.sql.sql_analyzer import SqlAnalyzer
 from core.migration.sql.sql_execution_service import SqlExecutionService
-from core.sql_model.dialect import DialectEnum
+from core.sql_model.dialect import quote_qualified
 from db.base_provider import BaseProvider
 from db.provider_interfaces import TransactionalProvider
 from db.provider_registry import ProviderRegistry
@@ -314,16 +314,14 @@ class ExecutionEngine:
                         dialect_key = str(raw_type).strip().lower()  # lint: allow-enum-str
                     # Only normalize SQL Server aliases (preserves original behaviour
                     # where other aliases like "postgres" pass through unchanged).
-                    canonical = ProviderRegistry.canonical_dialect_name(dialect_key)
-                    # OCP-todo: this special-case branches on a specific
-                    # dialect name in framework code, which is exactly
-                    # what Epic 26 wants to eliminate. The behavior
-                    # ("only normalize SQL Server aliases like ``mssql``
-                    # → ``sqlserver``; pass other aliases such as
-                    # ``postgres`` through unchanged") is preserved
-                    # verbatim here and tracked as a follow-up.
-                    if canonical == "sqlserver":  # lint: allow-dialect-string: ocp-todo
-                        dialect_key = canonical
+                    # The SQL-Server-family check is a quirks capability
+                    # (``is_sqlserver_family``) set by the SQL Server plugin, so
+                    # this branch carries no hardcoded dialect-name literal. Only
+                    # SQL Server aliases (``mssql``/``tsql``/``sql_server``) are
+                    # canonicalised; other aliases such as ``postgres`` pass
+                    # through unchanged.
+                    if ProviderRegistry.get_quirks(dialect_key).is_sqlserver_family:
+                        dialect_key = ProviderRegistry.canonical_dialect_name(dialect_key)
             if not dialect_key:
                 dialect_key = self.sql_analyzer.dialect
 
@@ -847,7 +845,7 @@ class ExecutionEngine:
                                             # scripts that wrote plain (unquoted) names.
                                             # Safe: schema/table validated as \w+ —
                                             # alphanumeric and underscore only.
-                                            qualified = DialectEnum.quote_qualified(
+                                            qualified = quote_qualified(
                                                 dialect, schema_name, table_name
                                             )
                                             from db.provider_registry import ProviderRegistry

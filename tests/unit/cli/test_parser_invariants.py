@@ -366,6 +366,37 @@ def test_every_top_level_flag_is_covered_or_exempted():
     )
 
 
+# --- --dialect choices must be derived from the plugin registry (ADR-26 E5) ---
+#
+# The validate-sql ``--dialect`` choices were a hardcoded six-name list. They
+# now come from the plugin registry's native dialect names so that adding or
+# removing a plugin updates the CLI surface automatically (no string literals).
+
+
+def _registry_native_dialect_names() -> List[str]:
+    from db.provider_registry import ProviderRegistry
+
+    return sorted(
+        p.name
+        for p in ProviderRegistry.list_plugins()
+        if ProviderRegistry.is_native_dialect(p.name)
+    )
+
+
+def _validate_sql_dialect_action() -> argparse.Action:
+    parser = create_parser()
+    for action in parser._actions:
+        if not isinstance(action, argparse._SubParsersAction):
+            continue
+        sub = action.choices.get("validate-sql")
+        if sub is None:
+            continue
+        for sub_action in sub._actions:
+            if "--dialect" in sub_action.option_strings:
+                return sub_action
+    raise AssertionError("validate-sql --dialect action not found")
+
+
 @pytest.mark.unit
 class TestPlaceholderTokensMultiFlag:
     """BUG-01: multiple --placeholders flags must all survive, not last-wins."""

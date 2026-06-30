@@ -13,9 +13,19 @@ per-plugin classes override the deltas.
 
 from __future__ import annotations
 
-from typing import Any, ClassVar, Dict, Optional, Tuple, Type
+import re
+from typing import Any, ClassVar, Dict, Optional, Sequence, Tuple, Type
 
 from core.dialect_boundary import DialectQuirks
+from db.dml_analysis import (
+    DEFAULT_QUOTE_PAIRS,
+    DEFAULT_UPSERT_MARKER_PAIRS,
+    DEFAULT_UPSERT_SET_MARKERS,
+    DmlMutation,
+    analyze_dml,
+    is_full_table_dml,
+    updates_restore_key,
+)
 
 
 class BaseQuirks:
@@ -68,6 +78,54 @@ class BaseQuirks:
     #: uppercased SQL text, ``HybridParser`` falls back to regex-only.
     #: Plugins override to declare dialect-specific incompatibilities.
     sqlglot_unsupported_sql_patterns: "tuple[str, ...]" = ()
+
+    # ------------------------------------------------------------------
+    # DML undo-safety scanning (data corrections). The scanning mechanics
+    # live dialect-free in ``db.dml_analysis``; these attributes carry the
+    # only per-dialect knowledge it needs, so plugins can narrow them
+    # without the data layer hard-coding any vendor SQL.
+    # ------------------------------------------------------------------
+
+    #: Quote delimiters (opening char -> closing char) the scanner skips
+    #: over. Default is the union of every dialect's string/identifier
+    #: quoting; plugins may narrow it.
+    sql_scan_quote_pairs: ClassVar[Dict[str, str]] = dict(DEFAULT_QUOTE_PAIRS)
+    #: Phrases that make an ``INSERT`` also take the UPDATE path without a
+    #: following ``SET`` keyword (e.g. MySQL ``ON DUPLICATE KEY UPDATE``).
+    upsert_update_set_markers: "tuple[str, ...]" = DEFAULT_UPSERT_SET_MARKERS
+    #: Two-token upsert markers (both must appear) introducing a standard
+    #: ``... DO UPDATE SET`` clause (e.g. PostgreSQL ``ON CONFLICT``).
+    upsert_update_marker_pairs: "tuple[tuple[str, str], ...]" = DEFAULT_UPSERT_MARKER_PAIRS
+
+    def analyze_dml(self, statement: str) -> DmlMutation:
+        """Classify a DML statement for undo-safety (table, events, updated columns)."""
+        return analyze_dml(
+            statement,
+            sqlglot_dialect=self.sqlglot_dialect,
+            quote_pairs=self.sql_scan_quote_pairs,
+            upsert_set_markers=self.upsert_update_set_markers,
+            upsert_marker_pairs=self.upsert_update_marker_pairs,
+        )
+
+    def statement_updates_restore_key(
+        self, statement: str, restore_key_columns: Sequence[str]
+    ) -> bool:
+        """Whether the statement assigns any of ``restore_key_columns``."""
+        return updates_restore_key(
+            statement,
+            restore_key_columns,
+            sqlglot_dialect=self.sqlglot_dialect,
+            quote_pairs=self.sql_scan_quote_pairs,
+            upsert_set_markers=self.upsert_update_set_markers,
+        )
+
+    def is_full_table_dml(self, statement: str) -> bool:
+        """Whether the statement is an UPDATE/DELETE with no top-level WHERE."""
+        return is_full_table_dml(
+            statement,
+            sqlglot_dialect=self.sqlglot_dialect,
+            quote_pairs=self.sql_scan_quote_pairs,
+        )
 
     def is_sqlglot_opaque_valid_ddl(self, sql_content: str) -> bool:
         """Return True if *sql_content* is valid DDL that sqlglot would
@@ -258,6 +316,14 @@ class BaseQuirks:
     #: brackets. Plugins override the two attributes.
     quote_open: str = '"'
     quote_close: str = '"'
+    #: ``quote_qualified`` upper-cases the schema + identifier before
+    #: quoting. Oracle folds unquoted identifiers to uppercase at CREATE
+    #: TABLE time, so explicitly-quoted lower-case idents would target a
+    #: non-existent object; upper-casing here matches the catalogue.
+    #: Oracle ONLY — DB2 shares Oracle's identifier-folding quirks but is
+    #: deliberately left untouched here to preserve historical behaviour
+    #: (story 26-5).
+    quote_qualified_folds_to_uppercase: bool = False
     #: Single-row SELECT statement used as a transaction-liveness
     #: probe (e.g. connection pre-flight). DB2 rejects bare ``SELECT 1``;
     #: Oracle requires ``FROM DUAL``.
@@ -309,6 +375,35 @@ class BaseQuirks:
     supports_online_index: bool = False
     #: The dialect uses ``GO`` as a batch separator (SQL Server / MSSQL).
     supports_go_batch_separator: bool = False
+    #: This dialect belongs to the SQL Server / T-SQL family. SQL-Server-only
+    #: framework branches (e.g. the alias-canonicalisation step in
+    #: ``ExecutionEngine._parse_sql_statements``) gate on this instead of
+    #: comparing against the literal ``"sqlserver"``. Exactly the SQL Server
+    #: plugin (and its aliases ``mssql``/``tsql``/``sql_server``) sets it True.
+    is_sqlserver_family: bool = False
+    #: This dialect is the permissive default sqlglot *read* grammar used as
+    #: the last-resort fallback when a dialect declares no ``sqlglot_dialect``
+    #: of its own (e.g. DB2, CosmosDB). Exactly one native plugin (PostgreSQL,
+    #: whose ``sqlglot_dialect`` is ``"postgres"``) advertises this so the
+    #: undo-script generators resolve the fallback from the registry rather
+    #: than hardcoding ``"postgres"``.
+    is_default_sqlglot_read_fallback: bool = False
+    #: This dialect is the ANSI/generic reference dialect dblift renders with
+    #: when a model carries no dialect of its own (``dialect is None``). The
+    #: ``SqlGeneratorFactory`` resolves a falsy dialect to the single plugin
+    #: that sets this True (PostgreSQL) via
+    #: :meth:`db.provider_registry.ProviderRegistry.reference_dialect_name`,
+    #: so the no-dialect render default is a registry/plugin decision with no
+    #: hardcoded literal in ``core/``.
+    is_ansi_reference_dialect: bool = False
+    #: The dialect authenticates against a cloud account (endpoint + key or
+    #: managed identity) rather than the usual host/user/password. Gates the
+    #: Azure-account auth validation in
+    #: ``DbliftConfig.validate_complete_data``. Exactly the CosmosDB plugin
+    #: sets it True; ``is_nosql`` is deliberately *not* reused because it is
+    #: too generic (a future relational cloud dialect could need this, and a
+    #: future non-Azure NoSQL dialect must not inherit the rule).
+    requires_cloud_account_auth: bool = False
     #: NoSQL / document-store dialect (no relational DDL).
     is_nosql: bool = False
     #: How metadata queries treat the catalog argument:
@@ -405,6 +500,12 @@ class BaseQuirks:
     #: Comparator: SERIAL/BIGSERIAL/SMALLSERIAL data types alias to
     #: INTEGER/BIGINT/SMALLINT respectively (PostgreSQL identity columns).
     serial_types_alias_integer: bool = False
+    #: ``import-flyway`` reads the *source* Flyway table by its exact name
+    #: rather than through ``get_applied_migrations`` (which folds the name
+    #: to the dialect's catalogue case). True only for dialects whose
+    #: history-name normalisation would otherwise miss a verbatim-cased
+    #: Flyway table — Oracle, where ``get_applied_migrations`` uppercases.
+    flyway_source_table_case_sensitive: bool = False
 
     # ------------------------------------------------------------------
     # Trigger DDL hooks (story 26-5).
@@ -557,6 +658,12 @@ class BaseQuirks:
     table_tablespace_style: str = "plain"
     #: Oracle storage parameters (PCTFREE, PCTUSED, INITIAL, NEXT).
     table_supports_storage_params: bool = False
+    #: MySQL/MariaDB ``ENGINE=`` storage-engine clause (and the sibling
+    #: ROW_FORMAT / table COLLATE / AUTO_INCREMENT / CREATE_OPTIONS table
+    #: options). Identifies the canonical plugin that owns the ``mysql``
+    #: ``dialect_options`` namespace so framework code resolves it from the
+    #: registry instead of a hardcoded dialect literal (ADR-26 E story 26-5).
+    table_uses_storage_engine_clause: bool = False
     #: PostgreSQL ``INHERITS (parent1, parent2)`` clause.
     table_supports_inherits: bool = False
     #: Dialect inlines single-column PKs when there is no composite PK.
@@ -654,6 +761,22 @@ class BaseQuirks:
         Default: no-op. Oracle overrides to drain ``DBMS_OUTPUT``.
         """
         return None
+
+    # ------------------------------------------------------------------
+    # ErrorQuirks (ADR-26 T0)
+    # ------------------------------------------------------------------
+
+    def error_patterns(self) -> "list[tuple[re.Pattern[str], Any]]":
+        """Default: no dialect-specific error-classification patterns."""
+        return []
+
+    # ------------------------------------------------------------------
+    # ConnectionQuirks (ADR-26 T0)
+    # ------------------------------------------------------------------
+
+    def engine_pool_options(self) -> "dict[str, Any]":
+        """Default: no dialect-specific engine/pool kwargs."""
+        return {}
 
     # ------------------------------------------------------------------
     # DdlQuirks (story 26-3)
@@ -765,6 +888,16 @@ class BaseQuirks:
         ``pg_catalog.pg_class`` view exposes a ``relpersistence``
         column projected as ``is_temporary`` (``"YES"`` / ``"NO"``)
         by the PG vendor query.
+        """
+        return False
+
+    def is_generated_not_null_check(self, row: Dict[str, Any], check_expr: str) -> bool:
+        """Whether *row* is a system-generated ``IS NOT NULL`` check constraint.
+
+        Default: ``False`` — non-Oracle dialects don't have this concept,
+        so their check constraints are always kept. Oracle overrides to
+        drop the implicit ``"<col>" IS NOT NULL`` constraints it creates
+        for ``NOT NULL`` columns (``GENERATED NAME`` in the catalog).
         """
         return False
 
@@ -1327,6 +1460,18 @@ class BaseQuirks:
             f"model_data TEXT NOT NULL)"
         )
 
+    # Whether the provider-compat snapshot DDL is self-guarding
+    # (CREATE ... IF NOT EXISTS), letting the manager skip its pre-existence
+    # check. Default False (the manager runs its normal existence short-circuit).
+    provider_compat_snapshot_skips_existence_check: bool = False
+
+    def build_provider_compat_snapshot_ddl(
+        self, qualified_table: str, snapshot_id_size: int, checksum_size: int
+    ) -> "Optional[str]":
+        """Legacy provider-owned snapshot DDL for native providers that predate
+        plugin-owned snapshot tables. Default None (no provider-compat DDL)."""
+        return None
+
     def is_snapshot_table_already_exists_error(self, error_message: str) -> bool:
         """Whether ``error_message`` indicates the snapshot table already exists.
 
@@ -1337,6 +1482,109 @@ class BaseQuirks:
         ``IF NOT EXISTS`` syntax and instead raises ORA-00955 (with
         locale-translated message text) when the table already exists.
         """
+        return False
+
+    # --- Data sets / Lane B table DDL (per spec: reuse snapshot codec pattern for change_set) ---
+
+    #: Column type for the free-text ledger columns (``summary``/``note``).
+    #: ``TEXT`` works on PG/MySQL/SQLite; Oracle/DB2 have no ``TEXT`` type and
+    #: SQL Server prefers ``VARCHAR(MAX)``. Plugins override.
+    data_history_text_type: str = "TEXT"
+    #: Column type for the change-set payload (base64/gz row images, can be
+    #: large). ``TEXT`` on PG/SQLite; large-object types elsewhere.
+    data_change_set_blob_type: str = "TEXT"
+    #: DDL for the ``installed_on`` timestamp column. SQL Server's ``TIMESTAMP``
+    #: is a rowversion that rejects defaults (uses ``DATETIME2``); Oracle/DB2 use
+    #: their own special registers. Plugins override.
+    data_timestamp_column_ddl: str = "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
+
+    def build_data_history_table_ddl(
+        self,
+        qualified_table: str,
+        id_size: int = 100,
+        checksum_size: int = 128,
+    ) -> str:
+        """Render the ``CREATE TABLE`` SQL for a per-dataset data history ledger.
+
+        Used by data sets (Lane B) to track applied corrections.
+        """
+        return (
+            f"CREATE TABLE {qualified_table} ("
+            f"id VARCHAR({id_size}) PRIMARY KEY, "
+            f"dataset VARCHAR(100), "
+            f"sql_checksum VARCHAR({checksum_size}), "
+            f"installed_by VARCHAR(100), "
+            f"installed_on {self.data_timestamp_column_ddl}, "
+            f"status VARCHAR(20), "
+            f"plan_fingerprint VARCHAR(128), "
+            f"summary {self.data_history_text_type}, "
+            f"vcs_ref VARCHAR(200), "
+            f"note {self.data_history_text_type}"
+            ")"
+        )
+
+    def build_data_change_set_table_ddl(
+        self,
+        qualified_table: str,
+        history_id_size: int = 100,
+        checksum_size: int = 128,
+    ) -> str:
+        """Render the ``CREATE TABLE`` SQL for ``dblift_data_change_set``.
+
+        Stores before/after row images (b64/gz) using the same codec as snapshots.
+        The ``(dataset, history_id)`` primary key enforces exactly one change-set
+        row per applied correction (the table is shared across datasets, so the
+        key is composite), making the apply write idempotent and guarding against
+        duplicate change records.
+        """
+        return (
+            f"CREATE TABLE {qualified_table} ("
+            f"dataset VARCHAR(100) NOT NULL, "
+            f"history_id VARCHAR({history_id_size}) NOT NULL, "
+            f"checksum VARCHAR({checksum_size}), "
+            f"model_data {self.data_change_set_blob_type} NOT NULL, "
+            f"PRIMARY KEY (dataset, history_id)"
+            ")"
+        )
+
+    def build_data_audit_table_ddl(
+        self,
+        qualified_table: str,
+        history_id_size: int = 100,
+        checksum_size: int = 128,
+    ) -> str:
+        """Render the ``CREATE TABLE`` SQL for the append-only audit log.
+
+        An immutable, hash-chained record of apply/undo events (shared across
+        data sets, chained per data set via ``seq``/``prev_hash``/``row_hash``)
+        that makes ledger tampering — a deleted, reordered or edited event —
+        detectable. The ``(dataset, seq)`` primary key gives the per-dataset
+        ordering the chain is verified against.
+        """
+        return (
+            f"CREATE TABLE {qualified_table} ("
+            f"dataset VARCHAR(100) NOT NULL, "
+            f"seq INTEGER NOT NULL, "
+            f"history_id VARCHAR({history_id_size}) NOT NULL, "
+            f"event VARCHAR(20) NOT NULL, "
+            f"sql_checksum VARCHAR({checksum_size}), "
+            f"installed_by VARCHAR(100), "
+            f"recorded_on {self.data_timestamp_column_ddl}, "
+            f"prev_hash VARCHAR(64) NOT NULL, "
+            f"row_hash VARCHAR(64) NOT NULL, "
+            f"PRIMARY KEY (dataset, seq)"
+            ")"
+        )
+
+    def is_data_history_table_already_exists_error(self, error_message: str) -> bool:
+        """Whether the error indicates the data history table already exists.
+
+        Allows idempotent CREATE TABLE calls (mirrors snapshot handling).
+        """
+        return False
+
+    def is_data_change_set_table_already_exists_error(self, error_message: str) -> bool:
+        """Whether the error indicates the data change-set table already exists."""
         return False
 
     #: Dialect supports direct session autocommit control reliably. MySQL,

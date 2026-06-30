@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from config._subclasses.sqlserver_config import SqlServerConfig
+from db.plugins.sqlserver.config import SqlServerConfig
 from db.plugins.sqlserver.provider import SqlServerProvider
 from db.plugins.sqlserver.quirks import SqlserverQuirks
 from db.plugins.sqlserver.sqlalchemy_url import build_sqlalchemy_url

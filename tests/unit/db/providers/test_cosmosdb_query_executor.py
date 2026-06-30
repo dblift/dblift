@@ -263,7 +263,7 @@ class TestExecuteQueryRouting(unittest.TestCase):
 
         ex = self._make()
         # Config provides a container name
-        from config.database_config import CosmosDbConfig
+        from db.plugins.cosmosdb.config import CosmosDbConfig
 
         mock_db_config = MagicMock(spec=CosmosDbConfig)
         mock_db_config.container_name = "fallback_container"

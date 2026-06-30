@@ -382,6 +382,7 @@ def _dispatch_command(ctx: _CliContext, command_output: CommandOutput) -> int:
                 recursive=recursive,
                 placeholders=placeholders,
                 dir_recursive_map=dir_recursive_map,
+                license_tier=_resolve_license_tier(ctx.args),
             )
             if not success:
                 any_command_failed = True

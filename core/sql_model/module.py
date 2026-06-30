@@ -29,12 +29,7 @@ class Module(SqlObject):
             schema: Schema name (typically the module owner)
             dialect: SQL dialect (typically 'db2')
         """
-        super().__init__(
-            name,
-            SqlObjectType.PACKAGE,
-            schema,
-            dialect or "db2",  # lint: allow-dialect-string: modules DB2-only
-        )
+        super().__init__(name, SqlObjectType.PACKAGE, schema, dialect)
         self.definition = definition
 
     @property

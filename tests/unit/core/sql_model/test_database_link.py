@@ -11,7 +11,7 @@ class TestDatabaseLink:
 
     def test_init_basic(self):
         """Test basic initialization."""
-        link = DatabaseLink("remote_db")
+        link = DatabaseLink("remote_db", dialect="oracle")
         assert link.name == "remote_db"
         assert link.host is None
         assert link.username is None
@@ -93,14 +93,14 @@ class TestDatabaseLink:
 
     def test_drop_statement_private(self):
         """Test drop statement for private link."""
-        link = DatabaseLink("test_link")
+        link = DatabaseLink("test_link", dialect="oracle")
         result = link.drop_statement
         assert result == 'DROP DATABASE LINK "test_link"'
         assert "PUBLIC" not in result
 
     def test_drop_statement_public(self):
         """Test drop statement for public link."""
-        link = DatabaseLink("test_link", public=True)
+        link = DatabaseLink("test_link", public=True, dialect="oracle")
         result = link.drop_statement
         assert result == 'DROP PUBLIC DATABASE LINK "test_link"'
 

@@ -452,6 +452,65 @@ class ProviderRegistry:
         return plugin_info.name
 
     @classmethod
+    def reference_dialect_name(cls) -> str:
+        """Return the canonical name of the ANSI/generic reference dialect.
+
+        This is the single registered plugin whose quirks set
+        :attr:`db.base_quirks.BaseQuirks.is_ansi_reference_dialect` True
+        (PostgreSQL today). dblift renders dialect-agnostic models — those
+        with ``dialect is None`` — through this dialect's generator, so the
+        no-dialect render default is a registry/plugin decision rather than a
+        ``"postgresql"`` literal in ``core/``.
+
+        Exactly one plugin must declare it (a first-party invariant); zero or
+        more than one is a registration error and raises ``RuntimeError``.
+        """
+        winners = sorted(
+            p.name for p in cls.list_plugins() if cls.get_quirks(p.name).is_ansi_reference_dialect
+        )
+        if len(winners) != 1:
+            raise RuntimeError(
+                "Exactly one plugin must set is_ansi_reference_dialect=True; " f"found {winners!r}."
+            )
+        return winners[0]
+
+    @classmethod
+    def canonical_dialect_name_for_capability(cls, capability: str) -> Optional[str]:
+        """Return the canonical name of the plugin whose quirks set *capability*.
+
+        ``capability`` is the name of a boolean :class:`db.base_quirks.BaseQuirks`
+        attribute that uniquely identifies one plugin (e.g.
+        ``"table_uses_filegroup_syntax"`` → SQL Server,
+        ``"table_supports_inherits"`` → PostgreSQL,
+        ``"table_supports_storage_params"`` → Oracle,
+        ``"table_uses_storage_engine_clause"`` → MySQL). Lets framework code
+        resolve a ``dialect_options`` namespace from the registry instead of
+        hardcoding a dialect string literal (ADR-26 E story 26-5).
+
+        Returns the single matching plugin's canonical name, or ``None`` when
+        zero or more than one plugin advertise the capability (so callers can
+        fall back without raising). Mirrors :meth:`reference_dialect_name` but
+        is non-raising because the namespace lookup is best-effort.
+
+        Only plugins whose *quirks class declares the attribute in its own
+        class body* count — an inheriting plugin (e.g. MariaDB extends MySQL's
+        quirks) does not become a second owner of an inherited capability, so
+        the MySQL/MariaDB family resolves to the single canonical owner.
+        """
+        winners = []
+        for plugin in cls.list_plugins():
+            quirks_class = type(cls.get_quirks(plugin.name))
+            # The owner is the plugin whose quirks class sets the flag truthy
+            # in its *own* class body — an inheriting subclass (MariaDB ←
+            # MySQL) that merely inherits the flag is not a second owner.
+            if vars(quirks_class).get(capability):
+                winners.append(plugin.name)
+        winners = sorted(set(winners))
+        if len(winners) != 1:
+            return None
+        return winners[0]
+
+    @classmethod
     def is_native_dialect(cls, db_type: str) -> bool:
         """True when the dialect's plugin advertises ``transport='native'``.
 

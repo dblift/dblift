@@ -17,7 +17,8 @@ from pathlib import Path
 
 import pytest
 
-from core.dialect_boundary import DialectQuirks
+from core import dialect_boundary
+from core.dialect_boundary import ConnectionQuirks, DialectQuirks, ErrorQuirks
 from db.base_quirks import BaseQuirks
 from db.provider_registry import ProviderRegistry
 
@@ -250,3 +251,72 @@ def test_each_first_party_plugin_declares_quirks_class() -> None:
         + ", ".join(missing)
         + ". See docs/architecture/EPIC-26-dialect-plugin-isolation.md story 26-2."
     )
+
+
+# ---------------------------------------------------------------------------
+# ADR-26 T0: ErrorQuirks + ConnectionQuirks sub-protocols.
+# ---------------------------------------------------------------------------
+
+
+# ---------------------------------------------------------------------------
+# Story 26-5: ``quote_qualified_folds_to_uppercase`` capability.
+#
+# ``DialectEnum.quote_qualified`` used to hardcode ``if key == "oracle"``.
+# Oracle folds unquoted identifiers to uppercase at CREATE TABLE time, so the
+# helper upper-cases the idents before quoting. DB2 shares Oracle's
+# identifier-folding quirks but historically was NOT upper-cased here — the
+# capability flag must be True for Oracle ONLY.
+# ---------------------------------------------------------------------------
+
+
+def test_oracle_quote_qualified_folds_to_uppercase() -> None:
+    """Oracle is the only dialect that upper-cases in quote_qualified."""
+    assert ProviderRegistry.get_quirks("oracle").quote_qualified_folds_to_uppercase is True
+
+
+@pytest.mark.parametrize(
+    "dialect",
+    [d for d in KNOWN_DIALECTS if d != "oracle"],
+)
+def test_non_oracle_quote_qualified_does_not_fold_to_uppercase(dialect: str) -> None:
+    """Every non-Oracle dialect (incl. DB2) leaves quote_qualified case untouched."""
+    quirks = ProviderRegistry.get_quirks(dialect)
+    assert quirks.quote_qualified_folds_to_uppercase is False, (
+        f"{dialect}: quote_qualified_folds_to_uppercase must be False " f"(only Oracle upper-cases)"
+    )
+
+
+def test_base_quirks_quote_qualified_folds_to_uppercase_defaults_false() -> None:
+    """The conservative default is False — unknown dialects do not fold."""
+    assert BaseQuirks().quote_qualified_folds_to_uppercase is False
+
+
+def test_base_quirks_satisfies_error_quirks_protocol() -> None:
+    """T0: BaseQuirks must structurally satisfy the ErrorQuirks Protocol."""
+    assert isinstance(BaseQuirks(), ErrorQuirks)
+
+
+def test_base_quirks_satisfies_connection_quirks_protocol() -> None:
+    """T0: BaseQuirks must structurally satisfy the ConnectionQuirks Protocol."""
+    assert isinstance(BaseQuirks(), ConnectionQuirks)
+
+
+def test_base_quirks_still_satisfies_aggregate_after_new_subprotocols() -> None:
+    """T0: adding ErrorQuirks/ConnectionQuirks must not break the aggregate."""
+    assert isinstance(BaseQuirks(), DialectQuirks)
+
+
+def test_base_quirks_error_patterns_defaults_to_empty_list() -> None:
+    """T0: the safe default for error_patterns() is an empty list."""
+    assert BaseQuirks().error_patterns() == []
+
+
+def test_base_quirks_engine_pool_options_defaults_to_empty_dict() -> None:
+    """T0: the safe default for engine_pool_options() is an empty dict."""
+    assert BaseQuirks().engine_pool_options() == {}
+
+
+def test_new_subprotocols_are_exported() -> None:
+    """T0: ErrorQuirks and ConnectionQuirks are part of the public surface."""
+    assert "ErrorQuirks" in dialect_boundary.__all__
+    assert "ConnectionQuirks" in dialect_boundary.__all__

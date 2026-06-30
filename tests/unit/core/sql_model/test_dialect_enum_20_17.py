@@ -1,84 +1,65 @@
-"""Tests for DialectEnum (story 20-17)."""
+"""Tests for the dialect quoting module functions (story 20-17 / 26-5).
+
+Story 26-5 removed the ``DialectEnum`` canonical-name vocabulary (the 7
+member literals were referenced only by tests). The surviving public
+surface is the two module-level quoting functions; canonical-name
+resolution now lives on ``ProviderRegistry.canonical_dialect_name``.
+These tests pin the importability and resolution semantics.
+"""
 
 import pytest
 
-from core.sql_model.dialect import DialectEnum
+from core.sql_model.dialect import quote_identifier, quote_qualified
 
 pytestmark = [pytest.mark.unit]
 
 
-class TestDialectEnumValues:
-    """AC#1.1 — Verify each DialectEnum value is correct."""
+class TestQuotingFunctionsImportable:
+    """The quoting functions are importable from the package root."""
 
-    def test_postgresql(self):
-        assert DialectEnum.POSTGRESQL == "postgresql"
+    def test_quote_identifier_importable_from_package(self):
+        from core.sql_model import quote_identifier as qi
 
-    def test_oracle(self):
-        assert DialectEnum.ORACLE == "oracle"
+        assert qi("postgresql", "users") == '"users"'
 
-    def test_mysql(self):
-        assert DialectEnum.MYSQL == "mysql"
+    def test_quote_qualified_importable_from_package(self):
+        from core.sql_model import quote_qualified as qq
 
-    def test_sqlserver(self):
-        assert DialectEnum.SQLSERVER == "sqlserver"
+        assert qq("postgresql", "public", "users") == '"public"."users"'
 
-    def test_db2(self):
-        assert DialectEnum.DB2 == "db2"
-
-    def test_sqlite(self):
-        assert DialectEnum.SQLITE == "sqlite"
-
-    def test_cosmosdb(self):
-        assert DialectEnum.COSMOSDB == "cosmosdb"
-
-    def test_unknown(self):
-        assert DialectEnum.UNKNOWN == "unknown"
-
-
-class TestDialectEnumFromString:
-    """AC#1.3 — from_string normalizes and handles unknowns."""
-
-    def test_case_insensitive_oracle(self):
-        assert DialectEnum.from_string("Oracle") == DialectEnum.ORACLE
-
-    def test_case_insensitive_postgresql(self):
-        assert DialectEnum.from_string("POSTGRESQL") == DialectEnum.POSTGRESQL
-
-    def test_case_insensitive_mysql(self):
-        assert DialectEnum.from_string("MySQL") == DialectEnum.MYSQL
-
-    def test_unknown_dialect(self):
-        assert DialectEnum.from_string("unknown_db") == DialectEnum.UNKNOWN
-
-    def test_empty_string(self):
-        assert DialectEnum.from_string("") == DialectEnum.UNKNOWN
-
-    def test_none_input(self):
-        assert DialectEnum.from_string(None) == DialectEnum.UNKNOWN
-
-    def test_whitespace_stripped(self):
-        assert DialectEnum.from_string("  postgresql  ") == DialectEnum.POSTGRESQL
-
-
-class TestDialectEnumImportable:
-    """AC#1.4 + AC#1.5 — DialectEnum importable from core.sql_model."""
-
-    def test_importable_from_package(self):
-        from core.sql_model import DialectEnum as DE
-
-        assert DE.POSTGRESQL == "postgresql"
-
-    def test_in_all(self):
+    def test_quoting_functions_in_all(self):
         import core.sql_model as mod
 
-        assert "DialectEnum" in mod.__all__
+        assert "quote_identifier" in mod.__all__
+        assert "quote_qualified" in mod.__all__
 
-    def test_str_enum_equality(self):
-        """AC#1.2 — str mixin ensures equality with plain strings."""
-        assert DialectEnum.POSTGRESQL == "postgresql"
-        assert "postgresql" == DialectEnum.POSTGRESQL
+    def test_dialect_enum_removed(self):
+        """The DialectEnum vocabulary is gone — package must not export it."""
+        import core.sql_model as mod
 
-    def test_dict_lookup_with_string_key(self):
-        """Dispatch dict .get(self.dialect) works with plain string."""
-        dispatch = {DialectEnum.POSTGRESQL: "pg_handler"}
-        assert dispatch.get("postgresql") == "pg_handler"
+        assert not hasattr(mod, "DialectEnum")
+        assert "DialectEnum" not in mod.__all__
+
+
+class TestCanonicalDialectNameResolution:
+    """Canonical-name resolution replaces the old DialectEnum.from_string."""
+
+    def test_case_insensitive_oracle(self):
+        from db.provider_registry import ProviderRegistry
+
+        assert ProviderRegistry.canonical_dialect_name("Oracle") == "oracle"
+
+    def test_case_insensitive_postgresql(self):
+        from db.provider_registry import ProviderRegistry
+
+        assert ProviderRegistry.canonical_dialect_name("POSTGRESQL") == "postgresql"
+
+    def test_unknown_dialect_returns_none(self):
+        from db.provider_registry import ProviderRegistry
+
+        assert ProviderRegistry.canonical_dialect_name("unknown_db") is None
+
+    def test_empty_string_returns_none(self):
+        from db.provider_registry import ProviderRegistry
+
+        assert ProviderRegistry.canonical_dialect_name("") is None

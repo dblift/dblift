@@ -94,3 +94,17 @@ def test_mariadb_plugin_sqlalchemy_url_builder_builds_pymysql_url() -> None:
     assert url.host == "db.example.com"
     assert url.database == "app"
     assert url.username == "maria"
+
+
+def test_mariadb_has_no_provider_compat_snapshot_ddl():
+    from db.plugins.mariadb.quirks import MariadbQuirks
+
+    assert MariadbQuirks().build_provider_compat_snapshot_ddl("db.snap", 100, 128) is None
+
+
+def test_mariadb_does_not_skip_existence_check():
+    from db.plugins.mariadb.quirks import MariadbQuirks
+
+    # Must override the True it would inherit from MysqlQuirks, else a real
+    # MariadbProvider would skip the existence check and then raise.
+    assert MariadbQuirks().provider_compat_snapshot_skips_existence_check is False

@@ -9,7 +9,7 @@ plugins are discovered through the same mechanism.
 
 from __future__ import annotations
 
-from config._subclasses.postgresql_config import PostgreSqlConfig
+from db.plugins.postgresql.config import PostgreSqlConfig
 from db.plugins.postgresql.provider import PostgreSqlProvider
 from db.plugins.postgresql.quirks import PostgresqlQuirks
 from db.plugins.postgresql.sqlalchemy_url import build_sqlalchemy_url

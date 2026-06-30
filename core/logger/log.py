@@ -398,6 +398,16 @@ class ConsoleLog(AbstractLog):
                 self.debug(f"Could not display result summary: {e}")
 
 
+def _safe_name(value: str) -> str:
+    """Collapse anything that isn't a safe filename char to ``_``.
+
+    Used for the schema/database-name components of a log filename so a
+    path-like identifier (e.g. a SQLite file path) cannot inject directory
+    separators and point the log at a nonexistent nested directory.
+    """
+    return re.sub(r"[^\w.-]+", "_", value)
+
+
 # File log implementation
 class FileLog(AbstractLog):
     """File-based log implementation."""
@@ -443,6 +453,9 @@ class FileLog(AbstractLog):
 
         # Get initial log file path
         self.log_file = self._get_log_file()
+        # Defense-in-depth: a custom pattern may legitimately nest directories;
+        # ensure the file's parent exists so the header write never crashes.
+        self.log_file.parent.mkdir(parents=True, exist_ok=True)
 
         # Create formatter based on format
         from typing import Union
@@ -479,8 +492,10 @@ class FileLog(AbstractLog):
         if self.log_file_pattern:
             # Replace placeholders in the custom pattern
             log_file_name = self.log_file_pattern
-            log_file_name = log_file_name.replace("<schema>", str(self.schema or ""))
-            log_file_name = log_file_name.replace("<database_name>", str(self.database_name or ""))
+            log_file_name = log_file_name.replace("<schema>", _safe_name(str(self.schema or "")))
+            log_file_name = log_file_name.replace(
+                "<database_name>", _safe_name(str(self.database_name or ""))
+            )
             log_file_name = log_file_name.replace("<timestamp>", timestamp)
 
             # Check if we need to replace <format> placeholder
@@ -491,7 +506,10 @@ class FileLog(AbstractLog):
                 log_file_name += f".{extension}"
         else:
             # Use default naming convention
-            log_file_name = f"Dblift_{self.schema}_{self.database_name}_{timestamp}.{extension}"
+            log_file_name = (
+                f"Dblift_{_safe_name(str(self.schema))}_"
+                f"{_safe_name(str(self.database_name))}_{timestamp}.{extension}"
+            )
 
         return self.log_dir / log_file_name
 

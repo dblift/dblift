@@ -54,13 +54,16 @@ class SqlMigrationExecutor(BaseMigrationExecutor):
 
         # Import here to avoid circular dependency
         if sql_analyzer is None:
+            from core.migration.migration import _default_splitter_dialect
             from core.migration.sql.sql_analyzer import SqlAnalyzer
 
-            # Safely get dialect, handling None config or missing database attribute
-            dialect = "postgresql"  # Default  # lint: allow-dialect-string: dialect dispatch
+            # Resolve dialect from config; fall back to the registry-derived
+            # generic dialect when config has none (ADR-26 E5 — no literal).
+            dialect = ""
             if config and hasattr(config, "database") and config.database:
-                # lint: allow-dialect-string: dialect dispatch
-                dialect = getattr(config.database, "type", "postgresql")
+                dialect = getattr(config.database, "type", None) or ""
+            if not dialect:
+                dialect = _default_splitter_dialect()
             sql_analyzer = SqlAnalyzer(dialect=dialect, logger=log)
 
         self.sql_analyzer = sql_analyzer

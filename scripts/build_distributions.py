@@ -498,6 +498,35 @@ setup_bundled_resources()
             # - Database-specific introspectors (db.plugins.<dialect>.introspection.*)
             # - All other db submodules that may be loaded dynamically
             "--collect-submodules=db",  # Include all db submodules
+            # Collect the CLI + dynamically-loaded command/plugin packages so the
+            # frozen binary exposes the full command surface (incl. the PRO/
+            # ENTERPRISE `data`, `diff`, `plan`, `preflight`, … commands, which
+            # are registered via runtime plugin discovery PyInstaller can't trace).
+            "--collect-submodules=cli",
+            "--collect-submodules=core",
+            "--collect-submodules=config",
+            "--collect-submodules=api",
+            # Commands/handlers/providers are discovered at runtime via
+            # importlib.metadata entry points (`dblift.commands`, …). A frozen
+            # binary only sees them if the distribution *metadata* is bundled —
+            # without this the standalone binary silently loses every PRO/
+            # ENTERPRISE command (data/diff/plan/preflight/…) and provider.
+            "--copy-metadata=dblift",
+            "--copy-metadata=dblift-pro",
+            "--copy-metadata=dblift-enterprise",
+            # Database drivers are imported lazily per dialect, so PyInstaller's
+            # static analysis misses the ones not reached from the entry import.
+            # A standalone binary cannot pip-install drivers, so bundle every
+            # supported one explicitly (PG/MySQL/SQLite are usually auto-found;
+            # SQL Server and Oracle were not). `cryptography` is required by
+            # oracledb's thin mode.
+            "--hidden-import=pymssql",
+            "--hidden-import=pymysql",
+            "--hidden-import=psycopg2",
+            "--hidden-import=psycopg",
+            "--collect-all=oracledb",
+            "--collect-all=cryptography",
+            "--collect-all=azure",
             "--exclude-module=tests",  # Exclude tests from distribution
             "--exclude-module=pytest",  # Exclude pytest
             "--exclude-module=conftest",  # Exclude pytest configuration
@@ -515,213 +544,13 @@ setup_bundled_resources()
     # Add bootstrap code to the entry point
     temp_entry = project_root / "temp_entry.py"
     with open(temp_entry, "w") as f:
-        f.write("""
-import sys
-import os
-from pathlib import Path
-
-# Add the project root to the path first
-project_root = Path(__file__).parent
-sys.path.insert(0, str(project_root))
-
-# Now import our bootstrap script
-import bootstrap
-
-# Directly copy the CLI main function to avoid import issues
-# This is a safer approach for PyInstaller
-def main():
-    import argparse
-    from pathlib import Path
-    from config.dblift_config import load_config
-    from core.migration.migration_executor import MigrationExecutor
-    from core.logger import LogFactory, LogFormat
-    
-    parser = argparse.ArgumentParser(description='Dblift - Database Migration Tool')
-    parser.add_argument('command', choices=['migrate', 'undo', 'clean', 'validate', 'info', 'baseline', 'repair', 'import-flyway'],
-                      help='Command to execute')
-    
-    # Common options
-    parser.add_argument('--config', default='Dblift.yaml',
-                      help='Path to configuration file (default: Dblift.yaml)')
-    parser.add_argument('--scripts', default='./migrations',
-                      help='Directory containing migration scripts (default: ./migrations)')
-    parser.add_argument('--dry-run', action='store_true',
-                      help='Show what would be executed without making changes')
-    parser.add_argument('--log-dir', default='./logs',
-                      help='Directory for log files (default: ./logs)')
-    parser.add_argument('--log-format', choices=['text', 'json', 'html'], default='text',
-                      help='Log file format (default: text)')
-    parser.add_argument('--log-level', choices=['debug', 'info', 'warn', 'error'], default='info',
-                      help='Log level (default: info)')
-    parser.add_argument('--log-file', default='Dblift_<schema>_<database_name>_<timestamp>.log',
-                      help='Log file name pattern (default: Dblift_<schema>_<database_name>_<timestamp>.log)')
-                      
-    # Database configuration options - unified across all database types
-    db_group = parser.add_argument_group('Database Configuration')
-    db_group.add_argument('--db-type',
-                         help='Database type (sqlserver, oracle, postgresql, mysql, db2)')
-    db_group.add_argument('--db-url',
-                         help='Full database connection URL (alternative to individual components)')
-    db_group.add_argument('--db-server',
-                         help='Database server hostname or IP')
-    db_group.add_argument('--db-port',
-                         type=int,
-                         help='Database server port')
-    db_group.add_argument('--db-name',
-                         help='Database/catalog name')
-    db_group.add_argument('--db-schema',
-                         help='Database schema name')
-    db_group.add_argument('--db-username',
-                         help='Database username')
-    db_group.add_argument('--db-password',
-                         help='Database password')
-    
-    # Advanced connection options
-    advanced_group = parser.add_argument_group('Advanced Connection Options')
-    advanced_group.add_argument('--db-identifier',
-                            help='Database identifier (Oracle service_name/SID, SQL Server instance)')
-    advanced_group.add_argument('--db-identifier-type', choices=['service_name', 'sid', 'instance'],
-                            help='Type of database identifier (for Oracle and SQL Server)')  
-    advanced_group.add_argument('--db-secure', action='store_true',
-                            help='Enable secure connection (SSL/TLS)')
-    advanced_group.add_argument('--db-trust-cert', action='store_true',
-                            help='Trust server certificate')
-    advanced_group.add_argument('--db-conn-timeout',
-                            type=int, default=30,
-                            help='Connection timeout in seconds')
-    advanced_group.add_argument('--db-conn-params',
-                            help='Additional connection parameters as a semicolon-separated list of key=value pairs')
-
-    # Command-specific options
-    command_group = parser.add_argument_group('Command Options')
-    command_group.add_argument('--target-version',
-                             help='Target version for migrate/undo command')
-    command_group.add_argument('--baseline-version',
-                             help='Version to baseline the database at (for baseline command)')
-    command_group.add_argument('--baseline-description',
-                             help='Description for the baseline version')
-    command_group.add_argument('--skip-validation',
-                             action='store_true',
-                             help='Skip validation checks (validate command)')
-    command_group.add_argument('--table',
-                             help='Custom schema history table name (default: dblift_schema_history)')
-    
-    # Migration selection options
-    migration_group = parser.add_argument_group('Migration Selection')
-    migration_group.add_argument('--tags',
-                              help='Execute migrations with specified tags (comma-separated list)')
-    migration_group.add_argument('--exclude-tags',
-                              help='Skip migrations with specified tags (comma-separated list)')
-
-    args = parser.parse_args()
-
-    # Load configuration with command line overrides
-    config = load_config(args.config, args)
-    
-    # Add custom table name to config if provided
-    if args.table:
-        config.table = args.table
-    
-    # Validate required configuration
-    if not config.database.type:
-        parser.error("Database type is required. Specify it in the config file, environment variables, or command line.")
-    
-    if not config.database.url and not config.database.server:
-        parser.error("Either database URL or server must be provided.")
-    
-    if not config.database.username:
-        parser.error("Database username is required. Specify it in the config file, environment variables, or command line.")
-    
-    if not config.database.password:
-        parser.error("Database password is required. Specify it in the config file, environment variables, or command line.")
-    
-    if not config.database.schema:
-        parser.error("Database schema is required. Specify it in the config file, environment variables, or command line.")
-    
-    # Validate database-specific requirements
-    if config.database.type == 'oracle' and args.db_identifier:
-        if args.db_identifier_type not in ['service_name', 'sid']:
-            parser.error("For Oracle, identifier type must be either 'service_name' or 'sid'")
-    
-    # Validate command-specific requirements
-    if args.command == 'baseline' and not args.baseline_version:
-        parser.error("Baseline version is required for baseline command (--baseline-version)")
-    
-    # Set up logging
-    log_dir_path = Path(args.log_dir)
-    log_dir_path.mkdir(parents=True, exist_ok=True)
-    
-    # Use log_level only
-    enable_debug = args.log_level == 'debug'
-    
-    # Configure the logging system
-    LogFactory.configure(
-        log_dir=log_dir_path,
-        log_format=args.log_format,
-        schema=config.database.schema,
-        database_name=config.database.database if hasattr(config.database, 'database') else config.database.server,
-        log_file_pattern=args.log_file,
-        enable_debug=enable_debug
-    )
-    
-    # Get logger for main application
-    log = LogFactory.get_log("Dblift")
-
-    # Create provider and migration executor (Phase 1 pattern)
-    from db.provider_registry import ProviderRegistry
-    provider = ProviderRegistry.create_provider(config, log)
-    executor = MigrationExecutor(provider, config, log)
-    
-    # Execute command
-    scripts_dir = Path(args.scripts)
-    if not scripts_dir.exists() and args.command != 'baseline':
-        parser.error(f"Migration scripts directory not found: {args.scripts}")
-
-    try:
-        if args.command == 'migrate':
-            result = executor.migrate(scripts_dir, dry_run=args.dry_run, target_version=args.target_version,
-                                     tags=args.tags, exclude_tags=args.exclude_tags)
-            if not result.success:
-                sys.exit(1)
-        elif args.command == 'undo':
-            result = executor.undo(scripts_dir, args.target_version, dry_run=args.dry_run,
-                                  tags=args.tags, exclude_tags=args.exclude_tags)
-            if not result.success:
-                sys.exit(1)
-        elif args.command == 'clean':
-            result = executor.clean(scripts_dir, dry_run=args.dry_run)
-            if not result.success:
-                sys.exit(1)
-        elif args.command == 'validate':
-            result = executor.validate(scripts_dir, skip_validation=args.skip_validation,
-                                      tags=args.tags, exclude_tags=args.exclude_tags)
-            if not result.success:
-                sys.exit(1)
-        elif args.command == 'info':
-            result = executor.info(scripts_dir, tags=args.tags, exclude_tags=args.exclude_tags)
-            if not result.success:
-                sys.exit(1)
-        elif args.command == 'baseline':
-            baseline_description = args.baseline_description or "n"
-            result = executor.baseline(args.baseline_version, baseline_description, dry_run=args.dry_run)
-            if not result.success:
-                sys.exit(1)
-        elif args.command == 'repair':
-            result = executor.repair(scripts_dir, dry_run=args.dry_run)
-            if not result.success:
-                sys.exit(1)
-        elif args.command == 'import-flyway':
-            result = executor.import_flyway(scripts_dir, dry_run=args.dry_run)
-            if not result.success:
-                sys.exit(1)
-    except Exception as e:
-        log.error(f"Unexpected error: {str(e)}")
-        log.error_with_exception("Command execution failed", e)
-        sys.exit(1)
-
-if __name__ == "__main__":
-    sys.exit(main())
-""")
+        f.write(
+            "import bootstrap  # noqa: F401 - sets up bundled resource paths\n"
+            "from cli.main import main\n"
+            "\n"
+            'if __name__ == "__main__":\n'
+            "    main()\n"
+        )
 
     # Build the PyInstaller command
     cmd = [sys.executable, "-m", "PyInstaller"] + options + [str(temp_entry)]

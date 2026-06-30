@@ -10,10 +10,15 @@ from core.sql_model.base import (
 )
 from core.sql_model.partition import Partition
 
-_NS_MYSQL = "mysql"  # lint: allow-dialect-string: plugin namespace key for dialect_options
-_NS_ORACLE = "oracle"  # lint: allow-dialect-string: plugin namespace key for dialect_options
-_NS_POSTGRES = "postgresql"  # lint: allow-dialect-string: plugin namespace key for dialect_options
-_NS_SQLSERVER = "sqlserver"  # lint: allow-dialect-string: plugin namespace key for dialect_options
+# ADR-26 E / story 26-5 — ``Table`` stores its built-in per-dialect options
+# inside ``dialect_options`` under the owning plugin's canonical namespace
+# (``mysql`` / ``sqlserver`` / ``postgresql`` / ``oracle``), the same public
+# extension point third-party plugins use. Those namespace strings are resolved
+# from the plugin registry via ``core.sql_model.table_options`` so this module
+# names no dialect. Framework consumers read built-ins via
+# ``get_dialect_option(<canonical-dialect>, "<option>")`` (resolving the
+# canonical dialect from the target ``quirks`` already in scope), not named
+# convenience properties.
 
 if TYPE_CHECKING:
     from core.sql_model.table_options import TableOptions
@@ -123,239 +128,6 @@ class Table(SqlObject):
             self.mark_property_explicit("tablespace")
 
     # ------------------------------------------------------------------
-    # Tier-3b: legacy flat-attribute aliases backed by ``dialect_options``.
-    # Each property keeps the historical ``table.<attr>`` call sites working
-    # while the storage moves under the plugin namespace.
-    # ------------------------------------------------------------------
-
-    @property
-    def storage_engine(self) -> Optional[str]:
-        """MySQL storage engine (``InnoDB`` / ``MyISAM`` / …).
-
-        Backed by ``dialect_options['mysql']['storage_engine']``.
-        """
-        value = self.get_dialect_option(_NS_MYSQL, "storage_engine")
-        return value if value is None or isinstance(value, str) else str(value)
-
-    @storage_engine.setter
-    def storage_engine(self, value: Optional[str]) -> None:
-        """Set MySQL storage engine (``InnoDB`` / ``MyISAM`` / …)."""
-        self._set_plugin_option(_NS_MYSQL, "storage_engine", value)
-
-    @property
-    def row_format(self) -> Optional[str]:
-        """MySQL ``ROW_FORMAT`` (``DYNAMIC`` / ``COMPACT`` / …)."""
-        value = self.get_dialect_option(_NS_MYSQL, "row_format")
-        return value if value is None or isinstance(value, str) else str(value)
-
-    @row_format.setter
-    def row_format(self, value: Optional[str]) -> None:
-        """Set MySQL ``ROW_FORMAT`` (``DYNAMIC`` / ``COMPACT`` / …)."""
-        self._set_plugin_option(_NS_MYSQL, "row_format", value)
-
-    @property
-    def table_collation(self) -> Optional[str]:
-        """MySQL table-level ``COLLATE`` (``utf8mb4_unicode_ci`` / …)."""
-        value = self.get_dialect_option(_NS_MYSQL, "table_collation")
-        return value if value is None or isinstance(value, str) else str(value)
-
-    @table_collation.setter
-    def table_collation(self, value: Optional[str]) -> None:
-        """Set MySQL table-level ``COLLATE`` (``utf8mb4_unicode_ci`` / …)."""
-        self._set_plugin_option(_NS_MYSQL, "table_collation", value)
-
-    @property
-    def next_auto_increment(self) -> Optional[int]:
-        """MySQL ``AUTO_INCREMENT = N`` seed value."""
-        value = self.get_dialect_option(_NS_MYSQL, "next_auto_increment")
-        if value is None:
-            return None
-        return value if isinstance(value, int) else int(value)
-
-    @next_auto_increment.setter
-    def next_auto_increment(self, value: Optional[int]) -> None:
-        """Set MySQL ``AUTO_INCREMENT = N`` seed value."""
-        self._set_plugin_option(_NS_MYSQL, "next_auto_increment", value)
-
-    @property
-    def create_options(self) -> Optional[str]:
-        """MySQL ``CREATE_OPTIONS`` (free-form ``KEY_BLOCK_SIZE=4 …``)."""
-        value = self.get_dialect_option(_NS_MYSQL, "create_options")
-        return value if value is None or isinstance(value, str) else str(value)
-
-    @create_options.setter
-    def create_options(self, value: Optional[str]) -> None:
-        """Set MySQL ``CREATE_OPTIONS`` (free-form ``KEY_BLOCK_SIZE=4 …``)."""
-        self._set_plugin_option(_NS_MYSQL, "create_options", value)
-
-    # ── SQL Server (T-SQL) ─────────────────────────────────────────
-
-    @property
-    def filegroup(self) -> Optional[str]:
-        """SQL Server ``ON <filegroup>`` clause."""
-        value = self.get_dialect_option(_NS_SQLSERVER, "filegroup")
-        return value if value is None or isinstance(value, str) else str(value)
-
-    @filegroup.setter
-    def filegroup(self, value: Optional[str]) -> None:
-        """Set SQL Server ``ON <filegroup>`` clause."""
-        self._set_plugin_option(_NS_SQLSERVER, "filegroup", value)
-
-    @property
-    def memory_optimized(self) -> bool:
-        """SQL Server HEKATON memory-optimized table flag."""
-        return bool(self.get_dialect_option(_NS_SQLSERVER, "memory_optimized", default=False))
-
-    @memory_optimized.setter
-    def memory_optimized(self, value: bool) -> None:
-        """Set SQL Server HEKATON memory-optimized table flag."""
-        self._set_plugin_option(_NS_SQLSERVER, "memory_optimized", value, default=False)
-
-    @property
-    def system_versioned(self) -> bool:
-        """SQL Server temporal-table ``SYSTEM_VERSIONING = ON`` flag."""
-        return bool(self.get_dialect_option(_NS_SQLSERVER, "system_versioned", default=False))
-
-    @system_versioned.setter
-    def system_versioned(self, value: bool) -> None:
-        """Set SQL Server temporal-table ``SYSTEM_VERSIONING = ON`` flag."""
-        self._set_plugin_option(_NS_SQLSERVER, "system_versioned", value, default=False)
-
-    @property
-    def history_table(self) -> Optional[str]:
-        """SQL Server temporal ``HISTORY_TABLE`` name."""
-        value = self.get_dialect_option(_NS_SQLSERVER, "history_table")
-        return value if value is None or isinstance(value, str) else str(value)
-
-    @history_table.setter
-    def history_table(self, value: Optional[str]) -> None:
-        """Set SQL Server temporal ``HISTORY_TABLE`` name."""
-        self._set_plugin_option(_NS_SQLSERVER, "history_table", value)
-
-    @property
-    def history_schema(self) -> Optional[str]:
-        """SQL Server temporal ``HISTORY_TABLE`` schema."""
-        value = self.get_dialect_option(_NS_SQLSERVER, "history_schema")
-        return value if value is None or isinstance(value, str) else str(value)
-
-    @history_schema.setter
-    def history_schema(self, value: Optional[str]) -> None:
-        """Set SQL Server temporal ``HISTORY_TABLE`` schema."""
-        self._set_plugin_option(_NS_SQLSERVER, "history_schema", value)
-
-    @property
-    def period_start_column(self) -> Optional[str]:
-        """SQL Server temporal ``PERIOD FOR SYSTEM_TIME`` start column."""
-        value = self.get_dialect_option(_NS_SQLSERVER, "period_start_column")
-        return value if value is None or isinstance(value, str) else str(value)
-
-    @period_start_column.setter
-    def period_start_column(self, value: Optional[str]) -> None:
-        """Set SQL Server temporal ``PERIOD FOR SYSTEM_TIME`` start column."""
-        self._set_plugin_option(_NS_SQLSERVER, "period_start_column", value)
-
-    @property
-    def period_end_column(self) -> Optional[str]:
-        """SQL Server temporal ``PERIOD FOR SYSTEM_TIME`` end column."""
-        value = self.get_dialect_option(_NS_SQLSERVER, "period_end_column")
-        return value if value is None or isinstance(value, str) else str(value)
-
-    @period_end_column.setter
-    def period_end_column(self, value: Optional[str]) -> None:
-        """Set SQL Server temporal ``PERIOD FOR SYSTEM_TIME`` end column."""
-        self._set_plugin_option(_NS_SQLSERVER, "period_end_column", value)
-
-    # ── PostgreSQL ──────────────────────────────────────────────────
-
-    @property
-    def row_security(self) -> bool:
-        """PostgreSQL ``ALTER TABLE … ENABLE ROW LEVEL SECURITY``."""
-        return bool(self.get_dialect_option(_NS_POSTGRES, "row_security", default=False))
-
-    @row_security.setter
-    def row_security(self, value: bool) -> None:
-        """Set PostgreSQL ``ALTER TABLE … ENABLE ROW LEVEL SECURITY``."""
-        self._set_plugin_option(_NS_POSTGRES, "row_security", value, default=False)
-
-    @property
-    def force_row_security(self) -> bool:
-        """PostgreSQL ``FORCE ROW LEVEL SECURITY`` (applies RLS to table owners)."""
-        return bool(self.get_dialect_option(_NS_POSTGRES, "force_row_security", default=False))
-
-    @force_row_security.setter
-    def force_row_security(self, value: bool) -> None:
-        """Set PostgreSQL ``FORCE ROW LEVEL SECURITY`` (applies RLS to table owners)."""
-        self._set_plugin_option(_NS_POSTGRES, "force_row_security", value, default=False)
-
-    @property
-    def policies(self) -> List[Dict[str, Any]]:
-        """PostgreSQL row-level-security policies attached to the table."""
-        value = self.get_dialect_option(_NS_POSTGRES, "policies", default=[])
-        return value if isinstance(value, list) else []
-
-    @policies.setter
-    def policies(self, value: List[Dict[str, Any]]) -> None:
-        """Set PostgreSQL row-level-security policies attached to the table."""
-        self._set_plugin_option(_NS_POSTGRES, "policies", list(value or []), default=[])
-
-    @property
-    def inherits(self) -> List[str]:
-        """PostgreSQL ``INHERITS (parent1, parent2)`` parent table list."""
-        value = self.get_dialect_option(_NS_POSTGRES, "inherits", default=[])
-        return value if isinstance(value, list) else []
-
-    @inherits.setter
-    def inherits(self, value: List[str]) -> None:
-        """Set PostgreSQL ``INHERITS (parent1, parent2)`` parent table list."""
-        self._set_plugin_option(_NS_POSTGRES, "inherits", list(value or []), default=[])
-
-    # ── Oracle / DB2 storage ───────────────────────────────────────
-
-    @property
-    def pctfree(self) -> Optional[int]:
-        """Oracle/DB2 ``PCTFREE`` storage parameter."""
-        value = self.get_dialect_option(_NS_ORACLE, "pctfree")
-        return value if value is None or isinstance(value, int) else int(value)
-
-    @pctfree.setter
-    def pctfree(self, value: Optional[int]) -> None:
-        """Set Oracle/DB2 ``PCTFREE`` storage parameter."""
-        self._set_plugin_option(_NS_ORACLE, "pctfree", value)
-
-    @property
-    def pctused(self) -> Optional[int]:
-        """Oracle/DB2 ``PCTUSED`` storage parameter."""
-        value = self.get_dialect_option(_NS_ORACLE, "pctused")
-        return value if value is None or isinstance(value, int) else int(value)
-
-    @pctused.setter
-    def pctused(self, value: Optional[int]) -> None:
-        """Set Oracle/DB2 ``PCTUSED`` storage parameter."""
-        self._set_plugin_option(_NS_ORACLE, "pctused", value)
-
-    @property
-    def initial(self) -> Optional[int]:
-        """Oracle/DB2 ``INITIAL`` extent size."""
-        value = self.get_dialect_option(_NS_ORACLE, "initial")
-        return value if value is None or isinstance(value, int) else int(value)
-
-    @initial.setter
-    def initial(self, value: Optional[int]) -> None:
-        """Set Oracle/DB2 ``INITIAL`` extent size."""
-        self._set_plugin_option(_NS_ORACLE, "initial", value)
-
-    @property
-    def next(self) -> Optional[int]:
-        """Oracle/DB2 ``NEXT`` extent size."""
-        value = self.get_dialect_option(_NS_ORACLE, "next")
-        return value if value is None or isinstance(value, int) else int(value)
-
-    @next.setter
-    def next(self, value: Optional[int]) -> None:
-        """Set Oracle/DB2 ``NEXT`` extent size."""
-        self._set_plugin_option(_NS_ORACLE, "next", value)
-
-    # ------------------------------------------------------------------
     # SIMP-48 — Typed-options surface (non-breaking).
     # ------------------------------------------------------------------
 
@@ -406,50 +178,80 @@ class Table(SqlObject):
         """Overlay typed dialect-specific options onto this table.
 
         Mutates self. Sibling of ``to_options`` — together they round-trip
-        the dialect subset without going through the kwargs surface.
+        the dialect subset without going through the kwargs surface. Built-in
+        options land in ``dialect_options`` under their canonical namespace
+        (resolved from the plugin registry, so no dialect literal is named).
         """
+        from core.sql_model.table_options import builtin_namespace_for
+
+        ns_mysql = builtin_namespace_for("table_uses_storage_engine_clause")
+        ns_sqlserver = builtin_namespace_for("table_uses_filegroup_syntax")
+        ns_postgres = builtin_namespace_for("table_supports_inherits")
+        ns_oracle = builtin_namespace_for("table_supports_storage_params")
+
         # MySQL
-        self.storage_engine = opts.mysql.storage_engine
-        self.row_format = opts.mysql.row_format
-        self.table_collation = opts.mysql.table_collation
-        self.next_auto_increment = opts.mysql.next_auto_increment
-        self.create_options = opts.mysql.create_options
+        if ns_mysql:
+            self._set_plugin_option(ns_mysql, "storage_engine", opts.mysql.storage_engine)
+            self._set_plugin_option(ns_mysql, "row_format", opts.mysql.row_format)
+            self._set_plugin_option(ns_mysql, "table_collation", opts.mysql.table_collation)
+            self._set_plugin_option(ns_mysql, "next_auto_increment", opts.mysql.next_auto_increment)
+            self._set_plugin_option(ns_mysql, "create_options", opts.mysql.create_options)
         # SQL Server
-        self.filegroup = opts.sqlserver.filegroup
-        self.memory_optimized = opts.sqlserver.memory_optimized
-        self.system_versioned = opts.sqlserver.system_versioned
-        self.history_table = opts.sqlserver.history_table
-        self.history_schema = opts.sqlserver.history_schema
-        self.period_start_column = opts.sqlserver.period_start_column
-        self.period_end_column = opts.sqlserver.period_end_column
+        if ns_sqlserver:
+            self._set_plugin_option(ns_sqlserver, "filegroup", opts.sqlserver.filegroup)
+            self._set_plugin_option(
+                ns_sqlserver, "memory_optimized", opts.sqlserver.memory_optimized, default=False
+            )
+            self._set_plugin_option(
+                ns_sqlserver, "system_versioned", opts.sqlserver.system_versioned, default=False
+            )
+            self._set_plugin_option(ns_sqlserver, "history_table", opts.sqlserver.history_table)
+            self._set_plugin_option(ns_sqlserver, "history_schema", opts.sqlserver.history_schema)
+            self._set_plugin_option(
+                ns_sqlserver, "period_start_column", opts.sqlserver.period_start_column
+            )
+            self._set_plugin_option(
+                ns_sqlserver, "period_end_column", opts.sqlserver.period_end_column
+            )
         # PostgreSQL
-        self.row_security = opts.postgres.row_security
-        self.force_row_security = opts.postgres.force_row_security
-        self.policies = list(opts.postgres.policies)
-        self.inherits = list(opts.postgres.inherits)
+        if ns_postgres:
+            self._set_plugin_option(
+                ns_postgres, "row_security", opts.postgres.row_security, default=False
+            )
+            self._set_plugin_option(
+                ns_postgres, "force_row_security", opts.postgres.force_row_security, default=False
+            )
+            self._set_plugin_option(
+                ns_postgres, "policies", list(opts.postgres.policies), default=[]
+            )
+            self._set_plugin_option(
+                ns_postgres, "inherits", list(opts.postgres.inherits), default=[]
+            )
         # Oracle / DB2 storage
-        self.pctfree = opts.oracle_storage.pctfree
-        self.pctused = opts.oracle_storage.pctused
-        self.initial = opts.oracle_storage.initial
-        self.next = opts.oracle_storage.next
+        if ns_oracle:
+            self._set_plugin_option(ns_oracle, "pctfree", opts.oracle_storage.pctfree)
+            self._set_plugin_option(ns_oracle, "pctused", opts.oracle_storage.pctused)
+            self._set_plugin_option(ns_oracle, "initial", opts.oracle_storage.initial)
+            self._set_plugin_option(ns_oracle, "next", opts.oracle_storage.next)
         # Misc
         self.derived_from = opts.derived_from
         self.raw_ddl = opts.raw_ddl
 
         # Track explicit T-SQL-specific properties for diff sensitivity
-        if self.filegroup is not None:
+        sqlserver_opts = self.dialect_options.get(ns_sqlserver, {}) if ns_sqlserver else {}
+        if sqlserver_opts.get("filegroup") is not None:
             self.mark_property_explicit("filegroup")
-        if self.memory_optimized:
+        if sqlserver_opts.get("memory_optimized"):
             self.mark_property_explicit("memory_optimized")
-        if self.system_versioned:
+        if sqlserver_opts.get("system_versioned"):
             self.mark_property_explicit("system_versioned")
-        if self.history_table is not None:
+        if sqlserver_opts.get("history_table") is not None:
             self.mark_property_explicit("history_table")
-        if self.history_schema is not None:
+        if sqlserver_opts.get("history_schema") is not None:
             self.mark_property_explicit("history_schema")
-        if self.period_start_column is not None:
+        if sqlserver_opts.get("period_start_column") is not None:
             self.mark_property_explicit("period_start_column")
-        if self.period_end_column is not None:
+        if sqlserver_opts.get("period_end_column") is not None:
             self.mark_property_explicit("period_end_column")
 
     def to_options(self) -> "TableOptions":
@@ -463,36 +265,47 @@ class Table(SqlObject):
             PostgresTableOptions,
             SqlServerTableOptions,
             TableOptions,
+            builtin_namespace_for,
         )
+
+        ns_mysql = builtin_namespace_for("table_uses_storage_engine_clause")
+        ns_sqlserver = builtin_namespace_for("table_uses_filegroup_syntax")
+        ns_postgres = builtin_namespace_for("table_supports_inherits")
+        ns_oracle = builtin_namespace_for("table_supports_storage_params")
+
+        def _opt(namespace: Optional[str], key: str, default: Any = None) -> Any:
+            if not namespace:
+                return default
+            return self.get_dialect_option(namespace, key, default=default)
 
         return TableOptions(
             mysql=MySqlTableOptions(
-                storage_engine=self.storage_engine,
-                row_format=self.row_format,
-                table_collation=self.table_collation,
-                next_auto_increment=self.next_auto_increment,
-                create_options=self.create_options,
+                storage_engine=_opt(ns_mysql, "storage_engine"),
+                row_format=_opt(ns_mysql, "row_format"),
+                table_collation=_opt(ns_mysql, "table_collation"),
+                next_auto_increment=_opt(ns_mysql, "next_auto_increment"),
+                create_options=_opt(ns_mysql, "create_options"),
             ),
             sqlserver=SqlServerTableOptions(
-                filegroup=self.filegroup,
-                memory_optimized=self.memory_optimized,
-                system_versioned=self.system_versioned,
-                history_table=self.history_table,
-                history_schema=self.history_schema,
-                period_start_column=self.period_start_column,
-                period_end_column=self.period_end_column,
+                filegroup=_opt(ns_sqlserver, "filegroup"),
+                memory_optimized=bool(_opt(ns_sqlserver, "memory_optimized", default=False)),
+                system_versioned=bool(_opt(ns_sqlserver, "system_versioned", default=False)),
+                history_table=_opt(ns_sqlserver, "history_table"),
+                history_schema=_opt(ns_sqlserver, "history_schema"),
+                period_start_column=_opt(ns_sqlserver, "period_start_column"),
+                period_end_column=_opt(ns_sqlserver, "period_end_column"),
             ),
             postgres=PostgresTableOptions(
-                row_security=self.row_security,
-                force_row_security=self.force_row_security,
-                policies=list(self.policies),
-                inherits=list(self.inherits),
+                row_security=bool(_opt(ns_postgres, "row_security", default=False)),
+                force_row_security=bool(_opt(ns_postgres, "force_row_security", default=False)),
+                policies=list(_opt(ns_postgres, "policies", default=[]) or []),
+                inherits=list(_opt(ns_postgres, "inherits", default=[]) or []),
             ),
             oracle_storage=OracleStorageOptions(
-                pctfree=self.pctfree,
-                pctused=self.pctused,
-                initial=self.initial,
-                next=self.next,
+                pctfree=_opt(ns_oracle, "pctfree"),
+                pctused=_opt(ns_oracle, "pctused"),
+                initial=_opt(ns_oracle, "initial"),
+                next=_opt(ns_oracle, "next"),
             ),
             derived_from=self.derived_from,
             raw_ddl=self.raw_ddl,
@@ -689,9 +502,13 @@ class Table(SqlObject):
             differences["temporary"] = {"self": self.temporary, "other": other_table.temporary}
 
         # T-SQL grammar-based: Compare filegroup (SQL Server).
-        # Story 26-5: gate via plugin Quirks
-        # (``table_uses_filegroup_syntax``).
+        # Story 26-5: gate via plugin Quirks (``table_uses_filegroup_syntax``)
+        # and read the built-ins from ``dialect_options`` under the canonical
+        # SQL Server namespace resolved from the registry (no dialect literal).
+        from core.sql_model.table_options import builtin_namespace_for
         from db.provider_registry import ProviderRegistry
+
+        ns_sqlserver = builtin_namespace_for("table_uses_filegroup_syntax")
 
         def _filegroup_supported(dialect_name: Optional[str]) -> bool:
             if not dialect_name:
@@ -701,15 +518,20 @@ class Table(SqlObject):
                 return False
             return ProviderRegistry.get_quirks(canonical).table_uses_filegroup_syntax
 
+        def _ss(table_obj: "Table", key: str, default: Any = None) -> Any:
+            if not ns_sqlserver:
+                return default
+            return table_obj.get_dialect_option(ns_sqlserver, key, default=default)
+
         if _filegroup_supported(self.dialect) or _filegroup_supported(other_table.dialect):
             if self.is_property_explicit("filegroup") or (
                 hasattr(other_table, "is_property_explicit")
                 and other_table.is_property_explicit("filegroup")
             ):
-                if self.filegroup != other_table.filegroup:
+                if _ss(self, "filegroup") != _ss(other_table, "filegroup"):
                     differences["filegroup"] = {
-                        "self": self.filegroup,
-                        "other": other_table.filegroup,
+                        "self": _ss(self, "filegroup"),
+                        "other": _ss(other_table, "filegroup"),
                     }
 
             # Compare memory-optimized property
@@ -717,43 +539,47 @@ class Table(SqlObject):
                 hasattr(other_table, "is_property_explicit")
                 and other_table.is_property_explicit("memory_optimized")
             ):
-                if self.memory_optimized != other_table.memory_optimized:
+                self_mem = bool(_ss(self, "memory_optimized", default=False))
+                other_mem = bool(_ss(other_table, "memory_optimized", default=False))
+                if self_mem != other_mem:
                     differences["memory_optimized"] = {
-                        "self": self.memory_optimized,
-                        "other": other_table.memory_optimized,
+                        "self": self_mem,
+                        "other": other_mem,
                     }
 
             # Compare system-versioned property
+            self_sysver = bool(_ss(self, "system_versioned", default=False))
+            other_sysver = bool(_ss(other_table, "system_versioned", default=False))
             if self.is_property_explicit("system_versioned") or (
                 hasattr(other_table, "is_property_explicit")
                 and other_table.is_property_explicit("system_versioned")
             ):
-                if self.system_versioned != other_table.system_versioned:
+                if self_sysver != other_sysver:
                     differences["system_versioned"] = {
-                        "self": self.system_versioned,
-                        "other": other_table.system_versioned,
+                        "self": self_sysver,
+                        "other": other_sysver,
                     }
                 # Also compare history table if system-versioned
-                if self.system_versioned and other_table.system_versioned:
-                    if self.history_table != other_table.history_table:
+                if self_sysver and other_sysver:
+                    if _ss(self, "history_table") != _ss(other_table, "history_table"):
                         differences["history_table"] = {
-                            "self": self.history_table,
-                            "other": other_table.history_table,
+                            "self": _ss(self, "history_table"),
+                            "other": _ss(other_table, "history_table"),
                         }
-                    if self.history_schema != other_table.history_schema:
+                    if _ss(self, "history_schema") != _ss(other_table, "history_schema"):
                         differences["history_schema"] = {
-                            "self": self.history_schema,
-                            "other": other_table.history_schema,
+                            "self": _ss(self, "history_schema"),
+                            "other": _ss(other_table, "history_schema"),
                         }
-                    if self.period_start_column != other_table.period_start_column:
+                    if _ss(self, "period_start_column") != _ss(other_table, "period_start_column"):
                         differences["period_start_column"] = {
-                            "self": self.period_start_column,
-                            "other": other_table.period_start_column,
+                            "self": _ss(self, "period_start_column"),
+                            "other": _ss(other_table, "period_start_column"),
                         }
-                    if self.period_end_column != other_table.period_end_column:
+                    if _ss(self, "period_end_column") != _ss(other_table, "period_end_column"):
                         differences["period_end_column"] = {
-                            "self": self.period_end_column,
-                            "other": other_table.period_end_column,
+                            "self": _ss(self, "period_end_column"),
+                            "other": _ss(other_table, "period_end_column"),
                         }
 
         # Compare columns
@@ -880,18 +706,11 @@ class Table(SqlObject):
             "temporary": self.temporary,
             "tablespace": self.tablespace,
             "comment": self.comment,
-            "storage_engine": self.storage_engine,
-            "row_format": self.row_format,
-            "table_collation": self.table_collation,
-            "next_auto_increment": self.next_auto_increment,
-            "create_options": self.create_options,
-            "filegroup": self.filegroup,
-            "memory_optimized": self.memory_optimized,
-            "system_versioned": self.system_versioned,
-            "history_table": self.history_table,
-            "history_schema": self.history_schema,
-            "period_start_column": self.period_start_column,
-            "period_end_column": self.period_end_column,
+            # Built-in per-dialect options (storage_engine / filegroup /
+            # pctfree / row_security / ...) live exclusively inside
+            # ``dialect_options`` under their canonical namespace — the public
+            # extension point — and are no longer mirrored as redundant
+            # top-level keys (ADR-26 E story 26-5).
             "partition_method": self.partition_method,
             "partition_columns": self.partition_columns,
             "partitions": (
@@ -907,14 +726,6 @@ class Table(SqlObject):
             "metadata": self.metadata,
             "dialect_options": self.dialect_options,
             "explicit_properties": self.explicit_properties,
-            "row_security": self.row_security,
-            "force_row_security": self.force_row_security,
-            "policies": self.policies,
-            "pctfree": self.pctfree,
-            "pctused": self.pctused,
-            "initial": self.initial,
-            "next": self.next,
-            "inherits": self.inherits,
         }
 
     @classmethod
@@ -1066,6 +877,11 @@ class Table(SqlObject):
     def __eq__(self, other: Any) -> bool:
         if not isinstance(other, Table):
             return False
+        # All built-in per-dialect options (filegroup / storage_engine /
+        # pctfree / row_security / inherits / ...) live inside
+        # ``dialect_options``, so the single ``dialect_options`` comparison
+        # covers every one of them — no need to enumerate each built-in
+        # (ADR-26 E story 26-5).
         return (
             self.name == other.name
             and self.schema == other.schema
@@ -1074,33 +890,13 @@ class Table(SqlObject):
             and self.dialect == other.dialect
             and self.columns == other.columns
             and self.constraints == other.constraints
-            and self.filegroup == other.filegroup
-            and self.memory_optimized == other.memory_optimized
-            and self.system_versioned == other.system_versioned
-            and self.history_table == other.history_table
-            and self.history_schema == other.history_schema
-            and self.period_start_column == other.period_start_column
-            and self.period_end_column == other.period_end_column
-            and self.row_security == other.row_security
-            and self.force_row_security == other.force_row_security
-            and self.policies == other.policies
-            and self.storage_engine == other.storage_engine
-            and self.row_format == other.row_format
-            and self.table_collation == other.table_collation
-            and self.next_auto_increment == other.next_auto_increment
             and self.object_type == other.object_type
             and self.raw_ddl == other.raw_ddl
-            and self.create_options == other.create_options
             and self.partition_method == other.partition_method
             and self.partition_columns == other.partition_columns
             and self.partitions == other.partitions
             and self.comment == other.comment
-            and self.inherits == other.inherits
             and self.derived_from == other.derived_from
-            and self.pctfree == other.pctfree
-            and self.pctused == other.pctused
-            and self.initial == other.initial
-            and self.next == other.next
             and self.export_partitions == other.export_partitions
             and self.dialect_options == other.dialect_options
         )

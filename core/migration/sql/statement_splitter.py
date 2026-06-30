@@ -17,10 +17,8 @@ class StatementSplitter:
     """Split migration scripts without constructing rich schema-analysis parsers."""
 
     def __init__(
-        # lint: allow-dialect-string: dialect dispatch
         self,
-        # lint: allow-dialect-string: dialect dispatch
-        dialect: str = "oracle",
+        dialect: str,
         logger: Optional[Union[Log, _logging.Logger]] = None,
     ):
         """Pick a regex parser for the given ``dialect`` — lighter than full schema parsing."""

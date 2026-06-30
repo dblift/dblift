@@ -72,7 +72,7 @@ class CosmosDbConnectionManager:
             DatabaseProxy instance
         """
         # Type guard: ensure we have CosmosDbConfig
-        from config.database_config import CosmosDbConfig
+        from db.plugins.cosmosdb.config import CosmosDbConfig
 
         if not isinstance(self.config.database, CosmosDbConfig):
             raise TypeError("Expected CosmosDbConfig for Cosmos DB provider")

@@ -10,6 +10,11 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import jinja2
 
+from core.logger.formatters.diff_utils import (
+    _DEFAULT_PRESENTATION_DIALECT,
+    generate_generic_diff_sql,
+    generate_unified_diff,
+)
 from core.logger.results import OperationResult
 
 

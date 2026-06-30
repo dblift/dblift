@@ -11,7 +11,7 @@ pytestmark = pytest.mark.unit
 
 def _make_config(schema: str):
     """Create a minimal PostgreSQL config with the given schema."""
-    from config.database_config import PostgreSqlConfig
+    from db.plugins.postgresql.config import PostgreSqlConfig
 
     return PostgreSqlConfig(
         type="postgresql",

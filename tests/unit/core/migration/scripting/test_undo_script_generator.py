@@ -16,6 +16,13 @@ from core.migration.scripting.undo_script_generator import (
 class TestUndoScriptGenerator:
     """Test cases for undo script generator."""
 
+    def test_dialect_is_required(self):
+        """ADR-26 E: ``dialect`` has no default — the sole production caller
+        (api/_client_operations) always passes ``client.dialect``, so the
+        literal default was removed."""
+        with pytest.raises(TypeError):
+            UndoScriptGenerator()
+
     @pytest.fixture
     def generator(self):
         """Create an undo script generator instance."""

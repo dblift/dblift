@@ -62,6 +62,42 @@ class TestSqlMigrationExecutorInit(unittest.TestCase):
             exec_ = SqlMigrationExecutor(provider=provider, config=config, log=log)
         self.assertIsNotNone(exec_.sql_analyzer)
 
+    def test_default_analyzer_uses_config_database_type(self):
+        """When config supplies a dialect it is passed through to SqlAnalyzer."""
+        from core.migration.executors.sql_executor import SqlMigrationExecutor
+
+        provider = MagicMock()
+        config = MagicMock()
+        config.database.type = "mysql"
+        log = MagicMock()
+        with patch("core.migration.sql.sql_analyzer.SqlAnalyzer") as MockSA:
+            MockSA.return_value = MagicMock()
+            SqlMigrationExecutor(provider=provider, config=config, log=log)
+        _, kwargs = MockSA.call_args
+        self.assertEqual(kwargs.get("dialect"), "mysql")
+
+    def test_default_analyzer_no_config_uses_registry_default(self):
+        """ADR-26 E5: with no config, the dialect comes from the registry,
+        not a hardcoded ``"postgresql"`` literal.
+
+        It must equal the shared registry-derived splitter default so the
+        no-dialect path is consistent across the codebase.
+        """
+        from core.migration.executors.sql_executor import SqlMigrationExecutor
+        from core.migration.migration import _default_splitter_dialect
+        from db.provider_registry import ProviderRegistry
+
+        provider = MagicMock()
+        log = MagicMock()
+        with patch("core.migration.sql.sql_analyzer.SqlAnalyzer") as MockSA:
+            MockSA.return_value = MagicMock()
+            SqlMigrationExecutor(provider=provider, config=None, log=log)
+        _, kwargs = MockSA.call_args
+        dialect = kwargs.get("dialect")
+        self.assertEqual(dialect, _default_splitter_dialect())
+        self.assertEqual(ProviderRegistry.canonical_dialect_name(dialect), dialect)
+        self.assertTrue(ProviderRegistry.is_native_dialect(dialect))
+
 
 class TestSqlMigrationExecutorCanExecute(unittest.TestCase):
     def test_sql_format_true(self):

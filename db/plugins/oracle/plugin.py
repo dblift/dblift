@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from config._subclasses.oracle_config import OracleConfig
+from db.plugins.oracle.config import OracleConfig
 from db.plugins.oracle.provider import OracleProvider
 from db.plugins.oracle.quirks import OracleQuirks
 from db.plugins.oracle.sqlalchemy_url import build_sqlalchemy_url

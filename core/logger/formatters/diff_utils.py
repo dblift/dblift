@@ -8,12 +8,30 @@ types preserved end-to-end.
 import difflib
 from typing import Any, Dict, Optional, Tuple
 
-# Story 26-5: presentation-layer fallback default. The diff formatters
-# render DDL on a best-effort basis; an unset dialect collapses to a
-# generic ANSI-ish PostgreSQL shape.
-_DEFAULT_PRESENTATION_DIALECT = (
-    "postgresql"  # lint: allow-dialect-string: presentation default fallback
-)
+
+def _resolve_presentation_dialect() -> str:
+    """Registry-derived presentation fallback dialect (ADR-26 E5).
+
+    The diff formatters render DDL on a best-effort basis. A Table whose own
+    ``dialect`` is unset (a degenerate case — snapshot loaders and the live
+    introspector always set it) collapses to a generic relational shape. We
+    take the first relational native dialect the plugin registry advertises
+    (one whose quirks expose a ``sqlglot_dialect``, excluding document stores
+    like CosmosDB), deterministically by sorted name — no dialect-name literal
+    is hardcoded in this framework module.
+    """
+    from db.provider_registry import ProviderRegistry
+
+    relational = sorted(
+        p.name
+        for p in ProviderRegistry.list_plugins()
+        if ProviderRegistry.is_native_dialect(p.name)
+        and ProviderRegistry.get_quirks(p.name).sqlglot_dialect
+    )
+    return relational[0] if relational else ""
+
+
+_DEFAULT_PRESENTATION_DIALECT = _resolve_presentation_dialect()
 
 
 def _render_table_diff_placeholder(table: Any, table_name: str, side: str) -> str:

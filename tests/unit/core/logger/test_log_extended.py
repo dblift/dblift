@@ -589,6 +589,23 @@ class TestFileLog:
         assert log.schema == "test_schema"
         assert log.database_name == "test_db"
 
+    def test_init_with_path_like_database_name_stays_flat(self, tmp_path):
+        """Regression for BUG-LOG-01: a SQLite file-path database_name must not
+        inject directory separators into the log filename (which would point at
+        nonexistent nested dirs and crash on header write)."""
+        log = FileLog(
+            "test_log",
+            tmp_path,
+            LogFormat.TEXT,
+            schema="main",
+            database_name="/var/folders/x/tmp.abc/dblift_test.db",
+        )
+        # Log file is a direct child of log_dir — no nested separators from the name.
+        assert log.log_file.parent == tmp_path
+        assert "/" not in log.log_file.name
+        # Header write happened in __init__ without raising; file exists.
+        assert log.log_file.exists()
+
     def test_init_with_log_file_pattern(self, tmp_path):
         """Test FileLog initialization with log file pattern."""
         log = FileLog(

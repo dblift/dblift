@@ -6,39 +6,15 @@ query results, and other structured display formats.
 """
 
 import sys
-from typing import Any, Dict, List, Literal, cast
+from typing import Any, Dict, List, cast
 
 from rich import box
 from rich.console import Console
 from rich.measure import Measurement
 from rich.table import Table
-from rich.text import Text
 
 from core.logger import Log, NullLog
-from core.logger.console import render_table_to_str
-
-_ColumnJustify = Literal["default", "left", "center", "right", "full"]
-
-_STATE_STYLE: Dict[str, str] = {
-    "success": "bold green",
-    "failed": "bold red",
-    "pending": "yellow",
-    "baseline": "dim",
-    "ignored": "dim",
-    "missing": "bold red",
-    "future": "dim",
-    "superseded": "dim",
-    "undone": "yellow",
-    "available": "cyan",
-}
-
-
-def _state_text(state: str) -> Text:
-    style = _STATE_STYLE.get(state.lower(), "")
-    t = Text(state)
-    if style:
-        t.stylize(style)
-    return t
+from core.logger.console import ColumnJustify, render_table_to_str, state_text
 
 
 class TableRenderer:
@@ -103,7 +79,7 @@ class TableRenderer:
         for header, _, justify, min_w, max_w, no_wrap in columns:
             table.add_column(
                 header,
-                justify=cast(_ColumnJustify, justify),
+                justify=cast(ColumnJustify, justify),
                 min_width=min_w,
                 max_width=max_w,
                 no_wrap=no_wrap,
@@ -113,7 +89,7 @@ class TableRenderer:
             row: List[Any] = []
             for _, key, _, _, _, _ in columns:
                 if key == "state":
-                    row.append(_state_text(str(migration.get(key, ""))))
+                    row.append(state_text(str(migration.get(key, ""))))
                 elif key == "description":
                     desc = str(migration.get(key, ""))
                     row.append(desc[:26] + "…" if len(desc) > 27 else desc)

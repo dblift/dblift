@@ -308,3 +308,41 @@ def test_discovery_threads_config_class_from_plugin_py(_reset_registry):
     assert "thirdpartydb" in ProviderRegistry._plugins
     plugin = ProviderRegistry._plugins["thirdpartydb"]
     assert plugin.config_class is _ThirdPartyConfig
+
+
+# ---------------------------------------------------------------------------
+# ADR-26 Definition-of-Done smoke: a brand-new dialect is fully usable by
+# dropping a plugin package + one entry-point line, with ZERO edits to
+# framework code (api/, cli/, config/, core/, shared db/). The framework never
+# names this dialect, yet config, quirks, provider, URL construction and every
+# behaviour hook resolve through plugin metadata — hooks the plugin does not
+# override fall back to safe framework defaults (ADR-26 A / B / B2).
+# ---------------------------------------------------------------------------
+
+
+def test_adr26_new_dialect_resolves_full_stack_via_plugin(_reset_registry):
+    """A brand-new dialect, discovered through its entry-point alone, resolves
+    its config, quirks, provider and SQLAlchemy URL through plugin metadata, and
+    every un-overridden behaviour hook returns a safe framework default — proving
+    a dialect can be added with no edit to api/cli/config/core/shared-db."""
+    fake_ep = SimpleNamespace(name="thirdpartydb", value="x:y", load=lambda: _THIRD_PARTY_PLUGIN)
+    with patch("importlib.metadata.entry_points", return_value=[fake_ep]):
+        ProviderRegistry._discover_via_entry_points()
+
+    # Config, quirks, provider and URL construction all resolve via the plugin.
+    assert _resolve_config_class(BaseDatabaseConfig, "thirdpartydb") is _ThirdPartyConfig
+    quirks = ProviderRegistry.get_quirks("thirdpartydb")
+    assert isinstance(quirks, _ThirdPartyQuirks)
+    assert quirks.dialect_name == "thirdpartydb"
+    assert ProviderRegistry.get_provider_class("thirdpartydb") is _ThirdPartyProvider
+    assert (
+        ProviderRegistry.build_sqlalchemy_url(SimpleNamespace(type="thirdpartydb", database="app"))
+        == "thirdpartydb:///app"
+    )
+
+    # Behaviour hooks the plugin did not override fall back to safe defaults, so
+    # the new dialect works without any framework branch (ADR-26 A / B).
+    assert quirks.error_patterns() == []
+    assert quirks.engine_pool_options() == {}
+    assert quirks.unquoted_identifier_case == "lowercase"
+    assert (quirks.quote_open, quirks.quote_close) == ('"', '"')

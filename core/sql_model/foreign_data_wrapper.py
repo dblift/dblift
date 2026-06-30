@@ -33,12 +33,7 @@ class ForeignDataWrapper(SqlObject):
             schema: Schema (typically 'public' or system schemas)
             dialect: SQL dialect (typically 'postgresql')
         """
-        super().__init__(
-            name,
-            SqlObjectType.FOREIGN_DATA_WRAPPER,
-            schema,
-            dialect or "postgresql",  # lint: allow-dialect-string: FDW PG-only
-        )
+        super().__init__(name, SqlObjectType.FOREIGN_DATA_WRAPPER, schema, dialect)
         self.handler = handler
         self.validator = validator
         # Create a copy of options to avoid mutating caller's dictionary

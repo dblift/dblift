@@ -175,3 +175,28 @@ class TestGetDialectForSqlGeneration(unittest.TestCase):
             dialect = client._get_dialect_for_sql_generation()
             self.assertIsInstance(dialect, str)
             self.assertIn("postgresql", dialect.lower())
+
+    def test_no_provider_or_config_dialect_uses_registry_default(self):
+        """ADR-26 E5: when neither provider nor config supplies a dialect, the
+        fallback comes from the plugin registry, not a hardcoded ``"postgresql"``.
+        """
+        from core.migration.migration import _default_splitter_dialect
+        from db.provider_registry import ProviderRegistry
+
+        with TemporaryDirectory() as tmpdir:
+            client, provider, config, _ = _make_client(tmpdir)
+            provider.dialect = None
+            config.database.type = None
+            dialect = client._get_dialect_for_sql_generation()
+            self.assertEqual(dialect, _default_splitter_dialect())
+            self.assertEqual(ProviderRegistry.canonical_dialect_name(dialect), dialect)
+            self.assertTrue(ProviderRegistry.is_native_dialect(dialect))
+
+    def test_empty_config_dialect_still_raises(self):
+        """An explicitly-empty config dialect remains an error (unchanged)."""
+        with TemporaryDirectory() as tmpdir:
+            client, provider, config, _ = _make_client(tmpdir)
+            provider.dialect = None
+            config.database.type = ""
+            with self.assertRaises(ValueError):
+                client._get_dialect_for_sql_generation()

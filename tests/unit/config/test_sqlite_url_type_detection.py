@@ -6,9 +6,10 @@ import os
 import pytest
 
 from config.config_builder import ConfigBuilder
-from config.database_config import SQLiteConfig, SqlServerConfig
 from config.dblift_config import load_config
 from config.errors import ConfigurationError
+from db.plugins.sqlite.config import SQLiteConfig
+from db.plugins.sqlserver.config import SqlServerConfig
 
 
 def _args(**kwargs):

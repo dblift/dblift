@@ -37,12 +37,7 @@ class ForeignServer(SqlObject):
             schema: Schema (typically 'public')
             dialect: SQL dialect (typically 'postgresql')
         """
-        super().__init__(
-            name,
-            SqlObjectType.FOREIGN_SERVER,
-            schema,
-            dialect or "postgresql",  # lint: allow-dialect-string: FDW server PG-only
-        )
+        super().__init__(name, SqlObjectType.FOREIGN_SERVER, schema, dialect)
         self.fdw_name = fdw_name
         self.host = host
         self.port = port

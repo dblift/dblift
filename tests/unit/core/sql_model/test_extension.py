@@ -13,7 +13,7 @@ class TestExtension:
 
     def test_init_basic(self):
         """Test basic initialization."""
-        ext = Extension("postgis")
+        ext = Extension("postgis", dialect="postgresql")
         assert ext.name == "postgis"
         assert ext.version is None
         assert ext.schema is None
@@ -45,7 +45,7 @@ class TestExtension:
 
     def test_drop_statement(self):
         """Test drop statement generation."""
-        ext = Extension("postgis")
+        ext = Extension("postgis", dialect="postgresql")
         result = ext.drop_statement
         assert result == 'DROP EXTENSION IF EXISTS "postgis"'
 

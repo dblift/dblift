@@ -13,7 +13,7 @@ class TestForeignDataWrapper:
 
     def test_init_basic(self):
         """Test basic initialization."""
-        fdw = ForeignDataWrapper("postgres_fdw")
+        fdw = ForeignDataWrapper("postgres_fdw", dialect="postgresql")
         assert fdw.name == "postgres_fdw"
         assert fdw.handler is None
         assert fdw.validator is None
@@ -47,7 +47,7 @@ class TestForeignDataWrapper:
 
     def test_drop_statement(self):
         """Test drop statement generation."""
-        fdw = ForeignDataWrapper("test_fdw")
+        fdw = ForeignDataWrapper("test_fdw", dialect="postgresql")
         result = fdw.drop_statement
         assert result == 'DROP FOREIGN DATA WRAPPER IF EXISTS "test_fdw" CASCADE;'
 

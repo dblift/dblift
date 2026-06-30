@@ -34,12 +34,7 @@ class Extension(SqlObject):
             dialect: SQL dialect (typically 'postgresql')
         """
         # Extensions are a PostgreSQL-specific feature
-        super().__init__(
-            name,
-            SqlObjectType.EXTENSION,
-            schema,
-            dialect or "postgresql",  # lint: allow-dialect-string: extensions PostgreSQL-only
-        )
+        super().__init__(name, SqlObjectType.EXTENSION, schema, dialect)
         self.version = version
         self.description = description
         self.relocatable = relocatable

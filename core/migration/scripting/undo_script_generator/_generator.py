@@ -24,7 +24,7 @@ class UndoScriptGenerator(_UndoReversersMixin, _UndoExtractorsMixin):
 
     def __init__(
         self,
-        dialect: str = "postgresql",  # lint: allow-dialect-string: parser_factory requires registered dialect
+        dialect: str,
         logger: Optional[Log] = None,
     ):
         """Initialize the undo script generator.

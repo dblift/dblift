@@ -17,6 +17,12 @@ class TestSqlGlotParser:
 
     # ==================== Parser Creation Tests ====================
 
+    def test_dialect_is_required(self):
+        """ADR-26 E: ``dialect`` has no default — the sole production caller
+        (HybridParser) always passes one, so the literal default was removed."""
+        with pytest.raises(TypeError):
+            SqlGlotParser()
+
     def test_parser_creation_postgresql(self):
         """Test parser can be created for PostgreSQL."""
         parser = SqlGlotParser(dialect="postgresql")

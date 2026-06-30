@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from config._subclasses.sqlite_config import SQLiteConfig
+from db.plugins.sqlite.config import SQLiteConfig
 from db.plugins.sqlite.provider import SQLiteProvider
 from db.plugins.sqlite.quirks import SqliteQuirks
 from db.plugins.sqlite.sqlalchemy_url import build_sqlalchemy_url

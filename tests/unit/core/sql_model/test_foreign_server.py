@@ -13,7 +13,7 @@ class TestForeignServer:
 
     def test_init_basic(self):
         """Test basic initialization."""
-        server = ForeignServer("remote_server", "postgres_fdw")
+        server = ForeignServer("remote_server", "postgres_fdw", dialect="postgresql")
         assert server.name == "remote_server"
         assert server.fdw_name == "postgres_fdw"
         assert server.host is None
@@ -82,7 +82,7 @@ class TestForeignServer:
 
     def test_drop_statement(self):
         """Test drop statement generation."""
-        server = ForeignServer("test_server", "test_fdw")
+        server = ForeignServer("test_server", "test_fdw", dialect="postgresql")
         result = server.drop_statement
         assert result == 'DROP SERVER IF EXISTS "test_server" CASCADE;'
 

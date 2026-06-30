@@ -1,6 +1,6 @@
 """SQL Statement models for diff-to-SQL generation."""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
 
@@ -34,7 +34,10 @@ class SqlStatement:
 class GenerationOptions:
     """Options for SQL generation."""
 
-    dialect: str = "postgresql"  # lint: allow-dialect-string: dialect dispatch
+    # ``dialect`` is required (no default) and is therefore declared
+    # keyword-only so it can keep its position while every existing caller —
+    # all of which pass ``dialect=`` — continues to work unchanged (ADR-26 E).
+    dialect: str = field(kw_only=True)
     include_comments: bool = True
     dry_run: bool = False
     validate_before_execute: bool = True

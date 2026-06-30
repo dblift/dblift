@@ -25,7 +25,7 @@ class SqlAnalyzer:
 
     def __init__(
         self,
-        dialect: str = "oracle",  # lint: allow-dialect-string: dialect dispatch
+        dialect: str,
         logger: Optional[Log] = None,
         parser_factory: Any = None,
         statement_splitter: Optional[StatementSplitter] = None,
@@ -33,7 +33,8 @@ class SqlAnalyzer:
         """Initialize SQL analyzer.
 
         Args:
-            dialect: SQL dialect to use (default: oracle)
+            dialect: SQL dialect to use (required — callers resolve it from
+                config/provider or the plugin registry; ADR-26 E5)
             logger: Optional logger to use
             parser_factory: Optional parser factory to use
         """

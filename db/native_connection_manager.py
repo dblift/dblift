@@ -44,9 +44,8 @@ class NativeConnectionManager:
 
     def _engine_options(self) -> dict[str, Any]:
         options: dict[str, Any] = {"pool_pre_ping": True, "future": True}
-        dialect = str(getattr(self.config.database, "type", "")).lower()
-        if dialect in {"mysql", "mariadb"}:
-            options["pool_reset_on_return"] = None
+        dialect = str(getattr(self.config.database, "type", ""))
+        options.update(ProviderRegistry.get_quirks(dialect).engine_pool_options())
         return options
 
     def create_connection(self) -> Connection:

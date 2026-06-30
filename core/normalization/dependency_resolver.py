@@ -73,9 +73,18 @@ class DependencyResolver:
                         dep_key = self._get_object_key("table", ref_table, ref_schema)
                         deps.add(dep_key)
 
-            # Inheritance dependencies (PostgreSQL)
-            if hasattr(table, "inherits") and table.inherits:
-                for parent in table.inherits:
+            # Inheritance dependencies (PostgreSQL ``INHERITS``). Read from
+            # ``dialect_options`` under the canonical namespace resolved from
+            # the registry, so this module names no dialect (ADR-26 E 26-5).
+            inherits: List[str] = []
+            if hasattr(table, "get_dialect_option"):
+                from core.sql_model.table_options import builtin_namespace_for
+
+                ns = builtin_namespace_for("table_supports_inherits")
+                if ns:
+                    inherits = table.get_dialect_option(ns, "inherits", default=[]) or []
+            if inherits:
+                for parent in inherits:
                     # Parent can be "table" or "schema.table"
                     if "." in parent:
                         parent_schema, parent_table = parent.split(".", 1)

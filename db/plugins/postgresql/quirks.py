@@ -3,9 +3,27 @@
 from __future__ import annotations
 
 import re
-from typing import Any, Dict, Optional, Tuple, Type
+from typing import Any, Dict, List, Optional, Tuple, Type
 
 from db.base_quirks import BaseQuirks
+from db.error import ErrorCategory
+
+# Each entry: (compiled regex, ErrorCategory). Sourced by
+# ``DatabaseErrorClassifier`` via ``error_patterns()`` (ADR-26 A2).
+_ERROR_PATTERNS: List[Tuple[re.Pattern[str], ErrorCategory]] = [
+    # SQLSTATE class-based matching
+    (re.compile(r"SQLSTATE\s*08\w{3}", re.IGNORECASE), ErrorCategory.NETWORK),
+    (re.compile(r"SQLSTATE\s*08\d{3}", re.IGNORECASE), ErrorCategory.NETWORK),
+    (re.compile(r"SQLSTATE\s*57P01", re.IGNORECASE), ErrorCategory.NETWORK),  # admin_shutdown
+    (re.compile(r"SQLSTATE\s*40\w{3}", re.IGNORECASE), ErrorCategory.LOCKING),
+    (re.compile(r"SQLSTATE\s*23\w{3}", re.IGNORECASE), ErrorCategory.CONSTRAINT),
+    (re.compile(r"SQLSTATE\s*42\w{3}", re.IGNORECASE), ErrorCategory.SQL_SYNTAX),
+    (re.compile(r"SQLSTATE\s*28\w{3}", re.IGNORECASE), ErrorCategory.AUTHENTICATION),
+    (re.compile(r"SQLSTATE\s*3D\w{3}", re.IGNORECASE), ErrorCategory.SCHEMA),
+    (re.compile(r"SQLSTATE\s*3F\w{3}", re.IGNORECASE), ErrorCategory.SCHEMA),
+    (re.compile(r"SQLSTATE\s*53\w{3}", re.IGNORECASE), ErrorCategory.RESOURCE),
+    (re.compile(r"SQLSTATE\s*57\w{3}", re.IGNORECASE), ErrorCategory.INTERNAL),
+]
 
 _DROP_TRIGGER_ON_RE = re.compile(
     r"^\s*DROP\s+TRIGGER\s+(?:IF\s+EXISTS\s+)?"
@@ -38,6 +56,14 @@ class PostgresqlQuirks(BaseQuirks):
     uppercase_identifiers = False
     clean_strategy = "introspector"
     sqlglot_dialect = "postgres"
+    # PostgreSQL's permissive grammar is the last-resort sqlglot read dialect
+    # for dialects that declare none of their own (DB2, CosmosDB). See
+    # ``core.migration.scripting.undo_script_generator._helpers``.
+    is_default_sqlglot_read_fallback = True
+    # PostgreSQL is the ANSI/generic reference dialect dblift renders with when
+    # a model has no dialect of its own. The SqlGeneratorFactory resolves a
+    # falsy dialect to this plugin (ADR-26 E, story 26-5).
+    is_ansi_reference_dialect = True
     pygments_lexer = "postgresql"
     default_schema_name = "public"
     drop_supports_if_exists = True
@@ -86,6 +112,10 @@ class PostgresqlQuirks(BaseQuirks):
     def __init__(self, dialect_name: str = "postgresql") -> None:
         """Initialize PostgreSQL quirks with the dialect name."""
         super().__init__(dialect_name=dialect_name)
+
+    def error_patterns(self) -> "List[Tuple[re.Pattern[str], ErrorCategory]]":
+        """PostgreSQL SQLSTATE-class error-classification patterns (ADR-26 A2)."""
+        return _ERROR_PATTERNS
 
     def has_connection_identifier(self, database_config: Any) -> bool:
         """PostgreSQL accepts a URL or a complete host/database pair."""
@@ -309,8 +339,13 @@ class PostgresqlQuirks(BaseQuirks):
                 )
                 if results:
                     row = results[0]
-                    table.row_security = get_row_value(row, "row_security") == "YES"
-                    table.force_row_security = get_row_value(row, "force_row_security") == "YES"
+                    # Only persist when True — the absence of the key is the
+                    # canonical "off" state (matches the default-deletion the
+                    # former property setter applied, keeping snapshots stable).
+                    if get_row_value(row, "row_security") == "YES":
+                        table.set_dialect_option("postgresql", "row_security", True)
+                    if get_row_value(row, "force_row_security") == "YES":
+                        table.set_dialect_option("postgresql", "force_row_security", True)
         except Exception as e:
             extractor.log.debug(f"Could not get row security flags for {schema}.{table_name}: {e}")
             extractor.track_warning(
@@ -338,7 +373,7 @@ class PostgresqlQuirks(BaseQuirks):
                             else:
                                 inherits.append(f"{parent_schema}.{parent_table}")
                     if inherits:
-                        table.inherits = inherits
+                        table.set_dialect_option("postgresql", "inherits", inherits)
         except Exception as e:
             extractor.log.debug(f"Could not get table inheritance for {schema}.{table_name}: {e}")
             extractor.track_warning(
@@ -368,7 +403,7 @@ class PostgresqlQuirks(BaseQuirks):
                         }
                     )
                 if policies:
-                    table.policies = policies
+                    table.set_dialect_option("postgresql", "policies", policies)
         except Exception as e:
             extractor.log.debug(
                 f"Could not get row security policies for {schema}.{table_name}: {e}"

@@ -10,9 +10,38 @@ from dataclasses import replace
 from pathlib import Path
 from typing import Any, Dict, Optional, Union
 
-from config.database_config import BaseDatabaseConfig, _detect_dialect_from_url
+from config.database_config import (
+    BaseDatabaseConfig,
+    _detect_dialect_from_url,
+    _native_canonical_from_scheme,
+)
 from config.dblift_config import DbliftConfig
 from config.errors import ConfigurationError
+
+
+def _file_url_dialect_from_scheme(scheme: str) -> Optional[str]:
+    """Resolve a URL scheme to its canonical dialect *iff* that dialect uses
+    file-URL semantics (ADR-26 E5).
+
+    A "file-URL" dialect is one whose quirks advertise
+    ``url_optional_when_file_path_given`` — the file path *is* the database, so
+    a stale ``database`` attribute on a copied config (e.g. SQL Server's
+    ``master``) must not win over the URL. SQLite is the only such native
+    dialect today; any future embedded/file-based plugin is handled the same
+    way without naming a dialect here.
+
+    Returns the canonical dialect name, or ``None`` when the scheme is unknown
+    or its dialect is not file-URL based.
+    """
+    canonical = _native_canonical_from_scheme(scheme)
+    if not canonical:
+        return None
+    from db.provider_registry import ProviderRegistry
+
+    quirks = ProviderRegistry.get_quirks(canonical)
+    if getattr(quirks, "url_optional_when_file_path_given", False):
+        return canonical
+    return None
 
 
 class ConfigBuilder:
@@ -147,9 +176,10 @@ class ConfigBuilder:
             if hasattr(result, key):
                 setattr(result, key, value)
         if overrides.get("url"):
-            _url_lower = overrides["url"].lower()
-            if _url_lower.startswith(("sqlite:", "sqlite3:")):
-                result.type = "sqlite"  # lint: allow-dialect-string: dialect dispatch
+            _scheme = overrides["url"].strip().lower().split(":", 1)[0].split("+", 1)[0]
+            _file_dialect = _file_url_dialect_from_scheme(_scheme)
+            if _file_dialect:
+                result.type = _file_dialect
         return result
 
     @staticmethod
@@ -166,13 +196,19 @@ class ConfigBuilder:
         """
         if not overrides.get("url"):
             return None
-        _url_lower = overrides["url"].lower()
-        if not _url_lower.startswith(("sqlite:", "sqlite3:")):
+        _scheme = overrides["url"].strip().lower().split(":", 1)[0].split("+", 1)[0]
+        _file_dialect = _file_url_dialect_from_scheme(_scheme)
+        if not _file_dialect:
             return None
+        from db.provider_registry import ProviderRegistry
+
+        _default_schema = getattr(
+            ProviderRegistry.get_quirks(_file_dialect), "default_schema_name", None
+        )
         sqlite_data: Dict[str, Any] = {
-            "type": "sqlite",  # lint: allow-dialect-string: dialect dispatch
+            "type": _file_dialect,
             "url": overrides["url"],
-            "schema": overrides.get("schema", base_config.schema) or "main",
+            "schema": overrides.get("schema", base_config.schema) or _default_schema,
         }
         try:
             return BaseDatabaseConfig.create(sqlite_data)

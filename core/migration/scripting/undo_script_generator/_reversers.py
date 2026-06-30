@@ -507,11 +507,11 @@ class _UndoReversersMixin:
 
         # Try to parse with sqlglot for better extraction
         try:
-            from db.provider_registry import ProviderRegistry
+            from core.migration.scripting.undo_script_generator._helpers import (
+                resolve_sqlglot_read_dialect,
+            )
 
-            _quirks = ProviderRegistry.get_quirks(self.dialect)
-            # lint: allow-dialect-string: sqlglot fallback
-            sqlglot_dialect = _quirks.sqlglot_dialect or "postgres"
+            sqlglot_dialect = resolve_sqlglot_read_dialect(self.dialect)
             ast = parse_one(sql, read=sqlglot_dialect)
 
             if isinstance(ast, exp.Insert):

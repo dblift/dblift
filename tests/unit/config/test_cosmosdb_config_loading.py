@@ -8,8 +8,8 @@ from unittest.mock import Mock, patch
 import pytest
 
 from api.client import DBLiftClient
-from config.database_config import CosmosDbConfig
 from config.dblift_config import load_config
+from db.plugins.cosmosdb.config import CosmosDbConfig
 
 
 @pytest.mark.unit

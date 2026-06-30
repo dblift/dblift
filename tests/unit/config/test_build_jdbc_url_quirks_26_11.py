@@ -4,7 +4,8 @@ import inspect
 
 import pytest
 
-from config.database_config import BaseDatabaseConfig, SqlServerConfig
+from config.database_config import BaseDatabaseConfig
+from db.plugins.sqlserver.config import SqlServerConfig
 
 pytestmark = [pytest.mark.unit]
 

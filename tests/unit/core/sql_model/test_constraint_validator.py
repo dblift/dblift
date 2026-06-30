@@ -97,8 +97,10 @@ class TestValidationError:
 class TestConstructor:
 
     def test_default_dialect(self):
+        # ADR-26 E: the validator no longer self-supplies a dialect; the
+        # caller (the DDL generator) passes ``self.table.dialect or ""``.
         v = ConstraintValidator()
-        assert v.dialect == "postgresql"
+        assert v.dialect == ""
 
     def test_dialect_lowered(self):
         v = ConstraintValidator(dialect="MYSQL")

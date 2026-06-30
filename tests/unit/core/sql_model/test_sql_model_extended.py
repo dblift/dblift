@@ -1226,7 +1226,7 @@ class TestTable(unittest.TestCase):
         t = Table.from_dict(data)
         self.assertEqual(t.name, "orders")
         self.assertEqual(len(t.columns), 1)
-        self.assertEqual(t.filegroup, "PRIMARY")
+        self.assertEqual(t.get_dialect_option("sqlserver", "filegroup"), "PRIMARY")
 
     def test_from_dict_object_type_enum(self):
         """object_type can be an enum value string."""
@@ -1269,7 +1269,7 @@ class TestTable(unittest.TestCase):
         t = Table.from_options(
             "child", options=TableOptions(postgres=PostgresTableOptions(inherits=["parent"]))
         )
-        self.assertEqual(t.inherits, ["parent"])
+        self.assertEqual(t.get_dialect_option("postgresql", "inherits", default=[]), ["parent"])
 
     def test_storage_parameters(self):
         t = Table.from_options(
@@ -1278,8 +1278,8 @@ class TestTable(unittest.TestCase):
                 oracle_storage=OracleStorageOptions(pctfree=10, pctused=80, initial=64, next=64)
             ),
         )
-        self.assertEqual(t.pctfree, 10)
-        self.assertEqual(t.pctused, 80)
+        self.assertEqual(t.get_dialect_option("oracle", "pctfree"), 10)
+        self.assertEqual(t.get_dialect_option("oracle", "pctused"), 80)
 
     def test_row_security(self):
         t = Table.from_options(
@@ -1288,8 +1288,8 @@ class TestTable(unittest.TestCase):
                 postgres=PostgresTableOptions(row_security=True, force_row_security=True)
             ),
         )
-        self.assertTrue(t.row_security)
-        self.assertTrue(t.force_row_security)
+        self.assertTrue(t.get_dialect_option("postgresql", "row_security", default=False))
+        self.assertTrue(t.get_dialect_option("postgresql", "force_row_security", default=False))
 
 
 if __name__ == "__main__":

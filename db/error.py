@@ -1,8 +1,10 @@
 """
 Database error classification and retry logic.
 
-Provides pattern-based error classification for Oracle, PostgreSQL, DB2, MySQL,
-and generic databases, along with exponential-backoff retry for transient errors.
+Provides pattern-based error classification along with exponential-backoff
+retry for transient errors. Dialect-specific error patterns are supplied by
+each dialect's quirks (``error_patterns()``); this module owns only the
+generic, dialect-agnostic fallback patterns.
 """
 
 import functools
@@ -58,101 +60,11 @@ class DatabaseErrorInfo:
 
 
 # ---------------------------------------------------------------------------
-# Error patterns per database type
+# Generic (dialect-agnostic) error patterns
 # ---------------------------------------------------------------------------
-
-# Each entry: (compiled regex, ErrorCategory)
-_ORACLE_PATTERNS: List[Tuple[re.Pattern[str], ErrorCategory]] = [
-    # Network / connection
-    (re.compile(r"ORA-17800", re.IGNORECASE), ErrorCategory.NETWORK),
-    (re.compile(r"ORA-17002", re.IGNORECASE), ErrorCategory.NETWORK),
-    (re.compile(r"ORA-12541", re.IGNORECASE), ErrorCategory.NETWORK),
-    (re.compile(r"ORA-12514", re.IGNORECASE), ErrorCategory.NETWORK),
-    (re.compile(r"ORA-12170", re.IGNORECASE), ErrorCategory.TIMEOUT),
-    (re.compile(r"ORA-12571", re.IGNORECASE), ErrorCategory.NETWORK),
-    (re.compile(r"ORA-03113", re.IGNORECASE), ErrorCategory.NETWORK),
-    (re.compile(r"ORA-03114", re.IGNORECASE), ErrorCategory.NETWORK),
-    # Locking
-    (re.compile(r"ORA-00060", re.IGNORECASE), ErrorCategory.LOCKING),
-    (re.compile(r"ORA-00054", re.IGNORECASE), ErrorCategory.LOCKING),
-    # Authentication / Authorization
-    (re.compile(r"ORA-01017", re.IGNORECASE), ErrorCategory.AUTHENTICATION),
-    (re.compile(r"ORA-01031", re.IGNORECASE), ErrorCategory.AUTHORIZATION),
-    (re.compile(r"ORA-01045", re.IGNORECASE), ErrorCategory.AUTHENTICATION),
-    # Schema
-    (re.compile(r"ORA-00942", re.IGNORECASE), ErrorCategory.SCHEMA),
-    (re.compile(r"ORA-00904", re.IGNORECASE), ErrorCategory.SCHEMA),
-    # Constraint
-    (re.compile(r"ORA-00001", re.IGNORECASE), ErrorCategory.CONSTRAINT),
-    (re.compile(r"ORA-02291", re.IGNORECASE), ErrorCategory.CONSTRAINT),
-    (re.compile(r"ORA-02292", re.IGNORECASE), ErrorCategory.CONSTRAINT),
-    # SQL Syntax
-    (re.compile(r"ORA-00900", re.IGNORECASE), ErrorCategory.SQL_SYNTAX),
-    (re.compile(r"ORA-00933", re.IGNORECASE), ErrorCategory.SQL_SYNTAX),
-    # Resource
-    (re.compile(r"ORA-04031", re.IGNORECASE), ErrorCategory.RESOURCE),
-    (re.compile(r"ORA-01653", re.IGNORECASE), ErrorCategory.RESOURCE),
-]
-
-_POSTGRESQL_PATTERNS: List[Tuple[re.Pattern[str], ErrorCategory]] = [
-    # SQLSTATE class-based matching
-    (re.compile(r"SQLSTATE\s*08\w{3}", re.IGNORECASE), ErrorCategory.NETWORK),
-    (re.compile(r"SQLSTATE\s*08\d{3}", re.IGNORECASE), ErrorCategory.NETWORK),
-    (re.compile(r"SQLSTATE\s*57P01", re.IGNORECASE), ErrorCategory.NETWORK),  # admin_shutdown
-    (re.compile(r"SQLSTATE\s*40\w{3}", re.IGNORECASE), ErrorCategory.LOCKING),
-    (re.compile(r"SQLSTATE\s*23\w{3}", re.IGNORECASE), ErrorCategory.CONSTRAINT),
-    (re.compile(r"SQLSTATE\s*42\w{3}", re.IGNORECASE), ErrorCategory.SQL_SYNTAX),
-    (re.compile(r"SQLSTATE\s*28\w{3}", re.IGNORECASE), ErrorCategory.AUTHENTICATION),
-    (re.compile(r"SQLSTATE\s*3D\w{3}", re.IGNORECASE), ErrorCategory.SCHEMA),
-    (re.compile(r"SQLSTATE\s*3F\w{3}", re.IGNORECASE), ErrorCategory.SCHEMA),
-    (re.compile(r"SQLSTATE\s*53\w{3}", re.IGNORECASE), ErrorCategory.RESOURCE),
-    (re.compile(r"SQLSTATE\s*57\w{3}", re.IGNORECASE), ErrorCategory.INTERNAL),
-]
-
-_DB2_PATTERNS: List[Tuple[re.Pattern[str], ErrorCategory]] = [
-    # Connection errors (consolidated from db/plugins/db2/db2/query_executor.py)
-    (re.compile(r"errorcode=-4499", re.IGNORECASE), ErrorCategory.NETWORK),
-    (re.compile(r"sqlstate=08001", re.IGNORECASE), ErrorCategory.NETWORK),
-    (re.compile(r"sqlstate=08\w{3}", re.IGNORECASE), ErrorCategory.NETWORK),
-    (
-        re.compile(r"disconnectnontransientconnectionexception", re.IGNORECASE),
-        ErrorCategory.NETWORK,
-    ),
-    (re.compile(r"disconnectexception", re.IGNORECASE), ErrorCategory.NETWORK),
-    (re.compile(r"communication\s+error", re.IGNORECASE), ErrorCategory.NETWORK),
-    # Locking
-    (re.compile(r"sql0911n", re.IGNORECASE), ErrorCategory.LOCKING),
-    (re.compile(r"sqlstate=40001", re.IGNORECASE), ErrorCategory.LOCKING),
-    # Authentication
-    (re.compile(r"sqlstate=28000", re.IGNORECASE), ErrorCategory.AUTHENTICATION),
-    # SQL Syntax
-    (re.compile(r"sqlstate=42\w{3}", re.IGNORECASE), ErrorCategory.SQL_SYNTAX),
-    # Constraint
-    (re.compile(r"sqlstate=23\w{3}", re.IGNORECASE), ErrorCategory.CONSTRAINT),
-    # Resource
-    (re.compile(r"sqlstate=57\w{3}", re.IGNORECASE), ErrorCategory.RESOURCE),
-]
-
-_MYSQL_PATTERNS: List[Tuple[re.Pattern[str], ErrorCategory]] = [
-    # Network / connection
-    (re.compile(r"\b2003\b.*Can't connect", re.IGNORECASE), ErrorCategory.NETWORK),
-    (re.compile(r"\b2013\b.*Lost connection", re.IGNORECASE), ErrorCategory.NETWORK),
-    (re.compile(r"\b2006\b.*server has gone away", re.IGNORECASE), ErrorCategory.NETWORK),
-    (re.compile(r"\b2002\b.*Can't connect", re.IGNORECASE), ErrorCategory.NETWORK),
-    # Locking
-    (re.compile(r"\b1205\b.*Lock wait timeout", re.IGNORECASE), ErrorCategory.LOCKING),
-    (re.compile(r"\b1213\b.*Deadlock", re.IGNORECASE), ErrorCategory.LOCKING),
-    # Authentication
-    (re.compile(r"\b1045\b.*Access denied", re.IGNORECASE), ErrorCategory.AUTHENTICATION),
-    # Schema
-    (re.compile(r"\b1146\b.*doesn't exist", re.IGNORECASE), ErrorCategory.SCHEMA),
-    (re.compile(r"\b1054\b.*Unknown column", re.IGNORECASE), ErrorCategory.SCHEMA),
-    # Constraint
-    (re.compile(r"\b1062\b.*Duplicate entry", re.IGNORECASE), ErrorCategory.CONSTRAINT),
-    (re.compile(r"\b1452\b.*foreign key constraint", re.IGNORECASE), ErrorCategory.CONSTRAINT),
-    # SQL Syntax
-    (re.compile(r"\b1064\b.*syntax", re.IGNORECASE), ErrorCategory.SQL_SYNTAX),
-]
+# Dialect-specific patterns now live in each plugin's quirks
+# (``db/plugins/<X>/quirks.py`` ``error_patterns()``) and are sourced at
+# classifier construction via ``ProviderRegistry.get_quirks`` (ADR-26 A2).
 
 # Generic fallback patterns (checked for all database types)
 _GENERIC_PATTERNS: List[Tuple[re.Pattern[str], ErrorCategory]] = [
@@ -173,13 +85,6 @@ _GENERIC_PATTERNS: List[Tuple[re.Pattern[str], ErrorCategory]] = [
     (re.compile(r"permission\s+denied", re.IGNORECASE), ErrorCategory.AUTHORIZATION),
 ]
 
-_DB_PATTERNS = {
-    "oracle": _ORACLE_PATTERNS,
-    "postgresql": _POSTGRESQL_PATTERNS,
-    "db2": _DB2_PATTERNS,
-    "mysql": _MYSQL_PATTERNS,
-}
-
 # Categories eligible for retry
 _RETRYABLE_CATEGORIES = frozenset(
     {
@@ -196,17 +101,23 @@ class DatabaseErrorClassifier:
     def __init__(self, db_type: str = "generic", log: Optional[Any] = None):
         """Initialize the classifier for *db_type*.
 
-        ``db_type`` selects the dialect-specific pattern table (``oracle``,
-        ``postgresql``, ``db2``, ``mysql``); generic patterns are always
-        appended afterwards. Unknown / missing ``db_type`` falls back to
-        the generic-only ordering.
+        ``db_type`` selects the dialect-specific pattern table from that
+        dialect's quirks (``error_patterns()``); generic patterns are always
+        appended afterwards. Unknown / missing ``db_type`` resolves to the
+        ``BaseQuirks`` default (no dialect patterns), i.e. the generic-only
+        ordering.
         """
         self.db_type = db_type.lower() if db_type else "generic"
         self.log = log if log is not None else NullLog()
+        # Source dialect-specific patterns from the dialect's quirks (lazy
+        # import avoids any import cycle through the plugin registry).
+        from db.provider_registry import ProviderRegistry
+
+        dialect_patterns = ProviderRegistry.get_quirks(self.db_type).error_patterns()
         # Build ordered pattern list: db-specific first, then generic
-        self._patterns: List[Tuple[re.Pattern[str], ErrorCategory]] = list(
-            _DB_PATTERNS.get(self.db_type, [])
-        ) + list(_GENERIC_PATTERNS)
+        self._patterns: List[Tuple[re.Pattern[str], ErrorCategory]] = list(dialect_patterns) + list(
+            _GENERIC_PATTERNS
+        )
 
     def categorize_error(self, error: Exception, sql: Optional[str] = None) -> ErrorCategory:
         """Classify a database exception into an ErrorCategory."""

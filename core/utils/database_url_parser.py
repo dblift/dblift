@@ -82,22 +82,22 @@ class DatabaseUrlParser:
 
         parsed = urllib.parse.urlparse(database_url)
         if database_url.lower().startswith("ibm_db_sa://"):
-            native_scheme = "ibm_db_sa"
             authority_and_path = database_url.split("://", 1)[1].split("?", 1)[0]
             if "/" not in authority_and_path:
                 return None
             database = authority_and_path.split("/", 1)[1]
             return urllib.parse.unquote(database) if database else None
+        # Lazy import to avoid a core -> db import cycle (mirrors
+        # config/database_config.py).
+        from db.provider_registry import ProviderRegistry
+
+        # Native (SQLAlchemy-style) URLs carry the DB name in the path; the
+        # plugin registry is the single source of truth for which schemes are
+        # native (resolving aliases like postgres/mssql). ``.lower()`` matters:
+        # urlparse does not lowercase a scheme that has a ``+driver`` suffix.
         native_scheme = parsed.scheme.split("+", 1)[0].lower()
-        if native_scheme in {
-            "postgresql",  # lint: allow-dialect-string: SQLAlchemy URL database extraction
-            "postgres",  # lint: allow-dialect-string: SQLAlchemy URL database extraction
-            "mysql",  # lint: allow-dialect-string: SQLAlchemy URL database extraction
-            "mariadb",  # lint: allow-dialect-string: SQLAlchemy URL database extraction
-            "ibm_db_sa",  # lint: allow-dialect-string: SQLAlchemy URL database extraction
-            "oracle",  # lint: allow-dialect-string: SQLAlchemy URL database extraction
-            "mssql",  # lint: allow-dialect-string: SQLAlchemy URL database extraction
-        }:
+        canonical = ProviderRegistry.canonical_dialect_name(native_scheme)
+        if canonical and ProviderRegistry.is_native_dialect(canonical):
             database = parsed.path.lstrip("/")
             return urllib.parse.unquote(database) if database else None
 

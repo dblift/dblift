@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from config._subclasses.cosmosdb_config import CosmosDbConfig
+from db.plugins.cosmosdb.config import CosmosDbConfig
 from db.plugins.cosmosdb.provider import CosmosDbProvider
 from db.plugins.cosmosdb.quirks import CosmosdbQuirks
 from db.provider_registry import PluginInfo

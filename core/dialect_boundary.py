@@ -55,6 +55,7 @@ override only the deltas.
 
 from __future__ import annotations
 
+import re
 from typing import Any, Optional, Protocol, runtime_checkable
 
 
@@ -238,6 +239,29 @@ class TypeMapQuirks(Protocol):
 
 
 @runtime_checkable
+class ErrorQuirks(Protocol):
+    """Error-classification hooks. Populated by ADR-26 T0."""
+
+    def error_patterns(self) -> "list[tuple[re.Pattern[str], Any]]":
+        """Return this dialect's ordered (compiled-regex, ErrorCategory) pairs
+        for connection/SQL error classification, or [] for none.
+
+        Typed loosely (second element is the db-layer ``ErrorCategory`` enum)
+        because this module is in ``core/`` and MUST NOT import from ``db/``
+        at module load — the core→db layering rule. Plugins return the
+        precise type."""
+
+
+@runtime_checkable
+class ConnectionQuirks(Protocol):
+    """Connection / engine-pool hooks. Populated by ADR-26 T0."""
+
+    def engine_pool_options(self) -> "dict[str, Any]":
+        """Return dialect-specific SQLAlchemy engine/pool kwargs merged into
+        ``create_engine(...)``. Default: {} (no overrides)."""
+
+
+@runtime_checkable
 class DialectQuirks(
     DdlQuirks,
     ParserQuirks,
@@ -245,6 +269,8 @@ class DialectQuirks(
     ComparatorQuirks,
     ValidatorQuirks,
     TypeMapQuirks,
+    ErrorQuirks,
+    ConnectionQuirks,
     Protocol,
 ):
     """Single contract for dialect-specific behaviour.
@@ -272,4 +298,6 @@ __all__ = [
     "ComparatorQuirks",
     "ValidatorQuirks",
     "TypeMapQuirks",
+    "ErrorQuirks",
+    "ConnectionQuirks",
 ]

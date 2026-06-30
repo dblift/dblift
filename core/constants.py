@@ -25,6 +25,15 @@ DB_DEPLOYMENT_ID_MAX_LENGTH = 100
 # package has to import the other.
 DBLIFT_SCHEMA_SNAPSHOTS_TABLE = "dblift_schema_snapshots"
 
+# Data sets / Lane B (audited corrections) managed tables.
+# The change-set table stores before/after row images using the snapshot codec.
+# Per-dataset history tables are named via config (e.g. dblift_data_history_corrections).
+DBLIFT_DATA_CHANGE_SET_TABLE = "dblift_data_change_set"
+
+# The audit table is an append-only, hash-chained log of apply/undo events,
+# shared across datasets (chained per-dataset). Tamper-evidence for the ledger.
+DBLIFT_DATA_AUDIT_TABLE = "dblift_data_audit"
+
 # Default timeout values
 DEFAULT_CONNECTION_TIMEOUT_SECONDS = 30
 DEFAULT_MIGRATION_LOCK_TIMEOUT_SECONDS = 60

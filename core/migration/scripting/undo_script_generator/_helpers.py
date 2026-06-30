@@ -14,8 +14,35 @@ from typing import Any, List, Optional, Tuple
 from sqlglot import exp
 
 from core.migration.scripting.undo_script_generator._models import UndoStatement
-from core.sql_model.dialect import CASCADE_DROP_DIALECTS, DialectEnum
+from core.sql_model.dialect import CASCADE_DROP_DIALECTS, quote_identifier
 from db.provider_registry import ProviderRegistry
+
+
+def _default_sqlglot_read_dialect() -> Optional[str]:
+    """Registry-derived safe default for ``sqlglot.parse_one(read=...)``.
+
+    When a dialect declares no sqlglot mapping (unknown/empty dialect), the
+    undo generators fall back to the permissive default sqlglot grammar.
+    That dialect is the single native plugin whose quirks set
+    :attr:`db.base_quirks.BaseQuirks.is_default_sqlglot_read_fallback`
+    (PostgreSQL today, whose ``sqlglot_dialect`` is ``"postgres"``), resolved
+    from the registry — so framework code holds no hardcoded dialect literal.
+    """
+    for name in sorted(p.name for p in ProviderRegistry.list_plugins()):
+        quirks = ProviderRegistry.get_quirks(name)
+        if quirks.is_default_sqlglot_read_fallback:
+            return quirks.sqlglot_dialect
+    return None
+
+
+def resolve_sqlglot_read_dialect(dialect: str) -> Optional[str]:
+    """Return the ``read`` dialect for ``sqlglot.parse_one`` for *dialect*.
+
+    Uses the dialect's own ``sqlglot_dialect`` quirk when present, else the
+    registry-derived PostgreSQL fallback. Shared by every undo-script
+    extractor/reverser so the fallback is defined in exactly one place.
+    """
+    return ProviderRegistry.get_quirks(dialect).sqlglot_dialect or _default_sqlglot_read_dialect()
 
 
 class _UndoHelpersMixin:
@@ -63,7 +90,7 @@ class _UndoHelpersMixin:
     def _quote_identifier(self, identifier: str) -> str:
         """Quote identifier based on dialect.
 
-        Delegates to DialectEnum.quote_identifier (story 21-14 dispatch).
+        Delegates to quote_identifier (story 21-14 dispatch).
 
         Args:
             identifier: Identifier to quote
@@ -71,7 +98,7 @@ class _UndoHelpersMixin:
         Returns:
             Quoted identifier
         """
-        return DialectEnum.quote_identifier(self.dialect, identifier)
+        return quote_identifier(self.dialect, identifier)
 
     def _extract_version_from_filename(self, filename: str) -> Optional[str]:
         """Extract version from migration filename, preserving original format (underscores/dots).
@@ -149,11 +176,7 @@ class _UndoHelpersMixin:
         from sqlglot import exp, parse_one
 
         try:
-            from db.provider_registry import ProviderRegistry
-
-            _quirks = ProviderRegistry.get_quirks(self.dialect)
-            # lint: allow-dialect-string: sqlglot fallback
-            sqlglot_dialect = _quirks.sqlglot_dialect or "postgres"
+            sqlglot_dialect = resolve_sqlglot_read_dialect(self.dialect)
             ast = parse_one(sql, read=sqlglot_dialect)
 
             if isinstance(ast, exp.Insert):

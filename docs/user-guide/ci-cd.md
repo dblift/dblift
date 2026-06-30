@@ -34,16 +34,15 @@ jobs:
     env:
       DBLIFT_DB_URL: postgresql+psycopg://dblift:dblift@localhost:5432/dblift
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
           cache: pip
       - run: pip install "dblift[postgresql]"
-      - run: dblift migrate --dry-run --show-sql  # preview SQL — output visible in CI logs
-      - run: dblift migrate                        # apply to the ephemeral CI database
-      - run: dblift validate                       # checksums / order / applied-state integrity
-      - run: dblift info                           # report pending migrations
+      - run: dblift migrate   # apply to the ephemeral CI database
+      - run: dblift validate  # checksums / order / applied-state integrity
+      - run: dblift info      # report pending migrations
 ```
 
 ## GitLab CI
@@ -66,7 +65,6 @@ validate-migrations:
     - changes: [migrations/**/*]
   script:
     - pip install "dblift[postgresql]"
-    - dblift migrate --dry-run --show-sql  # preview SQL — output visible in CI logs
     - dblift migrate
     - dblift validate
     - dblift info
@@ -77,7 +75,7 @@ validate-migrations:
 ```yaml
 repos:
   - repo: https://github.com/cmodiano/dblift-oss
-    rev: v2.0.5   # pin to a released tag
+    rev: v1.8.0   # pin to a released tag
     hooks:
       - id: dblift-validate
       - id: dblift-info
@@ -95,7 +93,7 @@ driver in the *consuming* repository's `.pre-commit-config.yaml`:
 ```yaml
 repos:
   - repo: https://github.com/cmodiano/dblift-oss
-    rev: v2.0.5
+    rev: v1.8.0
     hooks:
       - id: dblift-validate
         additional_dependencies: ["dblift[postgresql]"]
@@ -103,7 +101,8 @@ repos:
         additional_dependencies: ["dblift[postgresql]"]
 ```
 
-Replace `v2.0.5` with the latest released tag. Use the appropriate extra(s) for the database(s) you connect to. The same applies when using `pre-commit try-repo` locally or in CI.
+Use the appropriate extra(s) for the database(s) you connect to. The same
+applies when using `pre-commit try-repo` locally or in CI.
 
 ## Optional: Guard the pre-commit hook contract in your own CI
 
@@ -144,7 +143,7 @@ jobs:
     env:
       DBLIFT_DB_URL: postgresql+psycopg://dblift:dblift@localhost:5432/dblift
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
@@ -169,11 +168,11 @@ jobs:
         run: |
           set -euo pipefail
           pre-commit try-repo https://github.com/cmodiano/dblift-oss dblift-validate \
-            --rev v2.0.5 \
+            --rev v1.8.0 \
             --additional-deps "dblift[postgresql]" \
             --files migrations/V1_0_0__init.sql
           pre-commit try-repo https://github.com/cmodiano/dblift-oss dblift-info \
-            --rev v2.0.5 \
+            --rev v1.8.0 \
             --additional-deps "dblift[postgresql]" \
             --files migrations/V1_0_0__init.sql
 
@@ -184,7 +183,7 @@ jobs:
           printf '\n-- drift\nALTER TABLE widgets ADD COLUMN name TEXT;\n' \
             >> migrations/V1_0_0__init.sql
           if pre-commit try-repo https://github.com/cmodiano/dblift-oss dblift-validate \
-               --rev v2.0.5 \
+               --rev v1.8.0 \
                --additional-deps "dblift[postgresql]" \
                --files migrations/V1_0_0__init.sql; then
             echo "ERROR: dblift-validate should have failed on checksum drift" >&2

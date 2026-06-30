@@ -6,8 +6,8 @@ import pytest
 
 from api import DBLiftClient
 from config import DbliftConfig
-from config._subclasses.postgresql_config import PostgreSqlConfig
 from core.sql_model.base import ConstraintType
+from db.plugins.postgresql.config import PostgreSqlConfig
 from db.provider_registry import ProviderRegistry
 from db.sqlalchemy_provider import SqlAlchemyProvider
 from tests.integration.helpers.migration_helper import (

@@ -11,7 +11,7 @@ from core.sql_model.base import (
     get_object_type_name,
 )
 from core.sql_model.database_link import DatabaseLink
-from core.sql_model.dialect import DialectEnum
+from core.sql_model.dialect import quote_identifier, quote_qualified
 from core.sql_model.event import Event
 from core.sql_model.extension import Extension
 from core.sql_model.foreign_data_wrapper import ForeignDataWrapper
@@ -38,7 +38,8 @@ __all__ = [
     "ParseResult",
     "get_constraint_type_name",
     "get_object_type_name",
-    "DialectEnum",
+    "quote_identifier",
+    "quote_qualified",
     "Table",
     "View",
     "Sequence",

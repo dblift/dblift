@@ -349,7 +349,6 @@ def client_from_sqlalchemy(
         logger = build_default_logger(derived, log_level, log_format, log_file)
 
     provider = ProviderRegistry.create_provider(derived, logger)
-    dialect_name = str(getattr(engine.dialect, "name", ""))
 
     # Inject external engine so provider re-uses caller's Engine/Connection
     # (ownership=False prevents dispose on client/provider close).
@@ -357,14 +356,15 @@ def client_from_sqlalchemy(
         provider._conn_mgr = NativeConnectionManager(
             derived, logger, engine=engine, owns_engine=False
         )  # noqa: E501
-    elif dialect_name == "sqlite":  # lint: allow-dialect-string: stdlib sqlite3 provider path
+    elif hasattr(provider, "attach_external_sqlalchemy"):
         # The native SQLite provider talks to ``sqlite3`` directly instead of
         # through a NativeConnectionManager, so the branch above never fires for
-        # it. Without this, the provider would open its *own* ``sqlite3``
-        # connection and migrate a different database than the caller's engine —
-        # fatal for ``sqlite:///:memory:`` where every connection is a separate
-        # in-memory DB. Reach through the SQLAlchemy engine/connection to its
-        # underlying DBAPI ``sqlite3.Connection`` and hand that to the provider.
+        # it. It is the only provider exposing ``attach_external_sqlalchemy`` —
+        # the capability of reaching through a caller's SQLAlchemy engine to its
+        # underlying DBAPI connection. Without this, the provider would open its
+        # *own* ``sqlite3`` connection and migrate a different database than the
+        # caller's engine — fatal for ``sqlite:///:memory:`` where every
+        # connection is a separate in-memory DB.
         _attach_external_sqlite_connection(provider, engine, connection)
 
     # When a specific Connection was passed, bind it directly so that

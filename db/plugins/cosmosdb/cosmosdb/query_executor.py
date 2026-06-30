@@ -252,7 +252,7 @@ class CosmosDbQueryExecutor(BaseQueryExecutor):
             container_name = self._extract_container_from_query(sql)
             if not container_name:
                 # Type guard: ensure we have CosmosDbConfig
-                from config.database_config import CosmosDbConfig
+                from db.plugins.cosmosdb.config import CosmosDbConfig
 
                 cosmos_config = self.connection_manager.config.database
                 if isinstance(cosmos_config, CosmosDbConfig):
@@ -889,7 +889,7 @@ class CosmosDbQueryExecutor(BaseQueryExecutor):
         container_name = self._extract_container_from_query(sql)
         if not container_name:
             # Try using default container from config
-            from config.database_config import CosmosDbConfig
+            from db.plugins.cosmosdb.config import CosmosDbConfig
 
             if isinstance(self.connection_manager.config.database, CosmosDbConfig):
                 container_name = (

@@ -128,12 +128,36 @@ def test_connection_property_returns_active_connection(provider: _Concrete) -> N
 def test_query_executor_exposes_mysql_identifier_helpers() -> None:
     """Native schema operations need the same identifier helpers legacy executors had."""
     from db.plugins.mysql.provider import MySqlProvider
+    from db.plugins.mysql.quirks import MysqlQuirks
 
     provider = object.__new__(MySqlProvider)
+    # object.__new__ skips __init__, so seed the quirks cache directly: the lazy
+    # quirks property would otherwise resolve via self.config, which is unset here.
+    provider._quirks = MysqlQuirks()
     executor = _SqlAlchemyQueryExecutor(provider)
 
     assert executor.get_quoted_schema_name("my`db") == "`my``db`"
     assert executor.get_schema_qualified_name("my`db", "orders") == "`my``db`.`orders`"
+
+
+def test_identifier_quote_chars_derived_from_quirks() -> None:
+    """_identifier_quote_chars sources quotes from quirks, not the dialect name."""
+    from db.base_quirks import BaseQuirks
+    from db.plugins.mysql.quirks import MysqlQuirks
+    from db.plugins.sqlserver.quirks import SqlserverQuirks
+
+    # The dialects that reach this native path are exactly the ones that
+    # override quote_* (mysql/sqlserver) plus everything else on the BaseQuirks
+    # default. cosmosdb/sqlite never use SqlAlchemyProvider, so they are out of scope.
+    cases = [
+        (MysqlQuirks(), ("`", "`", "``")),
+        (SqlserverQuirks(), ("[", "]", "]]")),
+        (BaseQuirks(), ('"', '"', '""')),
+    ]
+    for quirks, expected in cases:
+        provider = SimpleNamespace(quirks=quirks)
+        executor = _SqlAlchemyQueryExecutor(provider)  # type: ignore[arg-type]
+        assert executor._identifier_quote_chars() == expected
 
 
 def test_query_executor_statement_commits_without_provider_transaction() -> None:

@@ -6,7 +6,7 @@ from typing import Any
 
 from django.core.exceptions import ImproperlyConfigured
 from sqlalchemy import create_engine
-from sqlalchemy.engine import Engine, URL
+from sqlalchemy.engine import URL, Engine
 
 _DRIVERS = {
     "postgresql": "postgresql+psycopg",

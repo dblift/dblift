@@ -6,7 +6,7 @@ from typing import Any
 import pytest
 
 from config import DbliftConfig
-from config._subclasses.mysql_config import MySqlConfig
+from db.plugins.mysql.config import MySqlConfig
 from db.provider_registry import ProviderRegistry
 from db.sqlalchemy_provider import SqlAlchemyProvider
 

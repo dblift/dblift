@@ -1,12 +1,10 @@
 import pytest
 
-from config.database_config import (
-    Db2Config,
-    MySqlConfig,
-    OracleConfig,
-    PostgreSqlConfig,
-)
 from config.dblift_config import DbliftConfig
+from db.plugins.db2.config import Db2Config
+from db.plugins.mysql.config import MySqlConfig
+from db.plugins.oracle.config import OracleConfig
+from db.plugins.postgresql.config import PostgreSqlConfig
 
 
 @pytest.mark.unit

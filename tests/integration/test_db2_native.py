@@ -10,8 +10,8 @@ import uuid
 import pytest
 
 from config import DbliftConfig
-from config.database_config import Db2Config
 from core.logger import NullLog
+from db.plugins.db2.config import Db2Config
 from db.plugins.db2.provider import Db2Provider
 
 pytestmark = [pytest.mark.integration]

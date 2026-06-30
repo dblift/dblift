@@ -23,39 +23,36 @@ class TestBug01PostCommitQuoting(unittest.TestCase):
     query crashed on those engines. On Oracle it quoted the name, bypassing
     the default upper-case folding that the CREATE TABLE used, so the
     COUNT(*) targeted a non-existent identifier. Fix: route through
-    ``DialectEnum.quote_identifier`` and upper-case the idents on Oracle."""
+    ``quote_identifier`` and upper-case the idents on Oracle."""
 
     def test_mysql_uses_backticks(self) -> None:
-        from core.sql_model.dialect import DialectEnum
+        from core.sql_model.dialect import quote_identifier
 
-        self.assertEqual(DialectEnum.quote_identifier("mysql", "public"), "`public`")
-        self.assertEqual(DialectEnum.quote_identifier("mysql", "users"), "`users`")
+        self.assertEqual(quote_identifier("mysql", "public"), "`public`")
+        self.assertEqual(quote_identifier("mysql", "users"), "`users`")
 
     def test_sqlserver_uses_brackets(self) -> None:
-        from core.sql_model.dialect import DialectEnum
+        from core.sql_model.dialect import quote_identifier
 
-        self.assertEqual(DialectEnum.quote_identifier("sqlserver", "dbo"), "[dbo]")
-        self.assertEqual(DialectEnum.quote_identifier("sqlserver", "Users"), "[Users]")
+        self.assertEqual(quote_identifier("sqlserver", "dbo"), "[dbo]")
+        self.assertEqual(quote_identifier("sqlserver", "Users"), "[Users]")
 
     def test_postgres_and_oracle_use_ansi_quotes(self) -> None:
-        from core.sql_model.dialect import DialectEnum
+        from core.sql_model.dialect import quote_identifier
 
-        self.assertEqual(DialectEnum.quote_identifier("postgresql", "public"), '"public"')
-        self.assertEqual(DialectEnum.quote_identifier("oracle", "HR"), '"HR"')
+        self.assertEqual(quote_identifier("postgresql", "public"), '"public"')
+        self.assertEqual(quote_identifier("oracle", "HR"), '"HR"')
 
     def test_engine_composes_verification_per_dialect(self) -> None:
         """Compose the exact same expression the engine builds and assert
         the resulting SELECT text differs by dialect and respects Oracle's
         upper-case folding."""
-        from core.sql_model.dialect import DialectEnum
+        from core.sql_model.dialect import quote_identifier
 
         def compose(dialect: str, schema: str, table: str) -> str:
             s = schema.upper() if dialect == "oracle" else schema
             t = table.upper() if dialect == "oracle" else table
-            qualified = (
-                f"{DialectEnum.quote_identifier(dialect, s)}"
-                f".{DialectEnum.quote_identifier(dialect, t)}"
-            )
+            qualified = f"{quote_identifier(dialect, s)}" f".{quote_identifier(dialect, t)}"
             if dialect in ("oracle", "sqlserver"):
                 return f"SELECT COUNT(*) as cnt FROM {qualified}"
             return f"SELECT COUNT(*) as cnt FROM {qualified} LIMIT 1"

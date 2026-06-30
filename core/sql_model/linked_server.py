@@ -38,12 +38,7 @@ class LinkedServer(SqlObject):
             dialect: SQL dialect (typically 'sqlserver')
         """
         # Linked servers are a SQL Server-specific feature
-        super().__init__(
-            name,
-            SqlObjectType.DATABASE_LINK,
-            schema,
-            dialect or "sqlserver",  # lint: allow-dialect-string: linked servers SQL Server-only
-        )
+        super().__init__(name, SqlObjectType.DATABASE_LINK, schema, dialect)
         self.product = product
         self.provider = provider
         self.data_source = data_source

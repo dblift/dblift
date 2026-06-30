@@ -11,7 +11,7 @@ class TestLinkedServer:
 
     def test_init_basic(self):
         """Test basic initialization."""
-        server = LinkedServer("remote_server")
+        server = LinkedServer("remote_server", dialect="sqlserver")
         assert server.name == "remote_server"
         assert server.product is None
         assert server.provider is None
@@ -43,7 +43,7 @@ class TestLinkedServer:
 
     def test_create_statement_minimal(self):
         """Test create statement with minimal parameters."""
-        server = LinkedServer("test_server")
+        server = LinkedServer("test_server", dialect="sqlserver")
         result = server.create_statement
         assert "EXEC sp_addlinkedserver" in result
         assert "@server = [test_server]" in result
@@ -89,6 +89,7 @@ class TestLinkedServer:
             data_source="remote.example.com",
             catalog="remote_db",
             username="user1",
+            dialect="sqlserver",
         )
         result = server.create_statement
         assert "EXEC sp_addlinkedserver" in result
@@ -101,7 +102,7 @@ class TestLinkedServer:
 
     def test_drop_statement(self):
         """Test drop statement generation."""
-        server = LinkedServer("test_server")
+        server = LinkedServer("test_server", dialect="sqlserver")
         result = server.drop_statement
         assert result == "EXEC sp_dropserver @server = [test_server], @droplogins = 'droplogins';"
 

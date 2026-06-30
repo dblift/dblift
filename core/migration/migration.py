@@ -22,6 +22,27 @@ from core.migration.formats import MigrationFormat, MigrationFormatDetector
 # Forward declare MigrationScriptManager to avoid circular imports
 MigrationScriptManager = None
 
+
+def _default_splitter_dialect() -> str:
+    """Registry-derived generic dialect for statement splitting (ADR-26 E5).
+
+    Used only on the no-dialect fallback path where no dialect could be
+    resolved from explicit args, config, or environment. The statement
+    splitter still needs *a* relational dialect for its regex tokenizer;
+    we take the first relational native dialect the plugin registry
+    advertises (sorted by name) so no dialect-name literal is hardcoded.
+    """
+    from db.provider_registry import ProviderRegistry
+
+    relational = sorted(
+        p.name
+        for p in ProviderRegistry.list_plugins()
+        if ProviderRegistry.is_native_dialect(p.name)
+        and ProviderRegistry.get_quirks(p.name).sqlglot_dialect
+    )
+    return relational[0] if relational else ""
+
+
 # Canonical list of callback event prefixes (camelCase).
 # Must stay in sync with MigrationScriptManager.callback_prefixes
 # (core/migration/scripting/migration_script_manager.py).
@@ -580,12 +601,15 @@ class Migration:
                     dialect = db_type.lower()
                     log.info(f"Using dialect '{dialect}' from environment variable")
 
-        # If no dialect determined from any source, we can't proceed properly
+        # If no dialect determined from any source, we can't proceed properly.
+        # Statement splitting still needs *a* dialect for its regex splitter;
+        # resolve a generic relational dialect from the plugin registry rather
+        # than hardcoding one (ADR-26 E5).
         if not dialect:
             log.warning("No dialect available from config, defaulting to simple parser")
             from core.migration.sql.sql_analyzer import SqlAnalyzer
 
-            sql_analyzer = SqlAnalyzer(logger=log)
+            sql_analyzer = SqlAnalyzer(dialect=_default_splitter_dialect(), logger=log)
             statements = sql_analyzer.split_statements(content)
             if cache_result:
                 self._sql_statements = statements

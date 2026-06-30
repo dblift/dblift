@@ -73,6 +73,7 @@ def register_cli(app: Flask, client: DBLiftClient) -> None:
     After calling this, `flask dblift-migrate` (or equivalent via FLASK_APP)
     will apply pending migrations using the provided client.
     """
+
     @click.command("dblift-migrate")
     @with_appcontext
     def dblift_migrate() -> None:

@@ -53,7 +53,7 @@ def test_clean_drops_sqlite_tables_with_foreign_keys_without_introspector(tmp_pa
 
 def test_sqlite_clean_command_emits_foreign_key_control_statements(tmp_path: Path):
     from config import DbliftConfig
-    from config._subclasses.sqlite_config import SQLiteConfig
+    from db.plugins.sqlite.config import SQLiteConfig
     from db.plugins.sqlite.provider import SQLiteProvider
 
     db_path = tmp_path / "db.sqlite"

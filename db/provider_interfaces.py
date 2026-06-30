@@ -183,6 +183,28 @@ class SchemaProvider(ABC):
         """
         ...
 
+    @abstractmethod
+    def create_data_history_table_if_not_exists(self, schema: str, table_name: str) -> None:
+        """Create the per-dataset data history (ledger) table if it does not exist.
+
+        Args:
+            schema: Schema name
+            table_name: Data history table name
+        """
+        ...
+
+    @abstractmethod
+    def create_data_change_set_table_if_not_exists(
+        self, schema: str, table_name: str = "dblift_data_change_set"
+    ) -> None:
+        """Create the data change-set table (before/after payloads via snapshot codec) if it does not exist.
+
+        Args:
+            schema: Schema name
+            table_name: Table name (default from core.constants)
+        """
+        ...
+
 
 class TransactionalProvider(ABC):
     """Capacité de gestion des transactions."""

@@ -203,12 +203,14 @@ class DBLiftClient:
             raise ValueError(
                 "Database type is configured but empty. Please set config.database.type to a valid dialect."
             )
-        return (
-            # lint: allow-dialect-string: dialect dispatch
-            config_dialect
-            # lint: allow-dialect-string: dialect dispatch
-            or "postgresql"
-        ).lower()  # lint: allow-dialect-string: dialect dispatch
+        if config_dialect:
+            return str(config_dialect).lower()
+        # Neither provider nor config supplied a dialect: fall back to the
+        # registry-derived generic dialect rather than a hardcoded literal
+        # (ADR-26 E5).
+        from core.migration.migration import _default_splitter_dialect
+
+        return _default_splitter_dialect().lower()
 
     @_with_client_emitter
     def migrate(

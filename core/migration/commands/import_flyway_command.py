@@ -5,6 +5,7 @@ from typing import Any, Dict, List
 
 from core.logger.results import OperationResult
 from core.migration.commands.base_command import BaseCommand
+from db.provider_registry import ProviderRegistry
 
 
 class ImportFlywayCommand(BaseCommand):
@@ -130,8 +131,8 @@ class ImportFlywayCommand(BaseCommand):
 
     def _get_flyway_rows(self, schema: str, source_table: str) -> List[Dict[str, Any]]:
         db_type = str(getattr(self.config.database, "type", "") or "").lower()
-        is_oracle = db_type == "oracle"  # lint: allow-dialect-string: quoted Flyway table case
-        if not is_oracle:
+        quirks = ProviderRegistry.get_quirks(db_type)
+        if not quirks.flyway_source_table_case_sensitive:
             return self.provider.get_applied_migrations(schema, source_table)
 
         qualified_table = self.provider.get_schema_qualified_name(schema, source_table)

@@ -34,14 +34,13 @@ class ValidationError:
 class ConstraintValidator:
     """Validates SQL model constraints for correctness."""
 
-    def __init__(
-        self, dialect: str = "postgresql"  # lint: allow-dialect-string: dialect dispatch
-    ):  # lint: allow-dialect-string: validator default fallback
+    def __init__(self, dialect: str = ""):
         """
         Initialize the validator.
 
         Args:
-            dialect: SQL dialect for dialect-specific validation
+            dialect: SQL dialect for dialect-specific validation; supplied by
+                the caller (defaults to the unknown sentinel ``""``)
         """
         self.dialect = dialect.lower()
 

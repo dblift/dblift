@@ -79,7 +79,9 @@ def _make_si(dialect="postgresql", has_connection=False, autocommit_value=True):
 class TestVendorPropertyApplierSqlServer(unittest.TestCase):
 
     def _make_table(self):
-        return MagicMock()
+        # Real Table so the dialect-options accessors behave like production
+        # (ADR-26 E story 26-5 — built-ins live in ``dialect_options``).
+        return Table(name="t", dialect="sqlserver")
 
     def test_apply_filegroup(self):
         table = self._make_table()
@@ -89,13 +91,13 @@ class TestVendorPropertyApplierSqlServer(unittest.TestCase):
             "is_system_versioned": None,
         }
         SqlserverQuirks().apply_vendor_table_properties(table, row)
-        self.assertEqual(table.filegroup, "PRIMARY")
+        self.assertEqual(table.get_dialect_option("sqlserver", "filegroup"), "PRIMARY")
 
     def test_apply_memory_optimized(self):
         table = self._make_table()
         row = {"filegroup_name": None, "is_memory_optimized": "YES", "is_system_versioned": None}
         SqlserverQuirks().apply_vendor_table_properties(table, row)
-        self.assertTrue(table.memory_optimized)
+        self.assertTrue(table.get_dialect_option("sqlserver", "memory_optimized", default=False))
 
     def test_apply_system_versioned_with_history(self):
         table = self._make_table()
@@ -109,14 +111,16 @@ class TestVendorPropertyApplierSqlServer(unittest.TestCase):
             "period_end_column": "valid_to",
         }
         SqlserverQuirks().apply_vendor_table_properties(table, row)
-        self.assertTrue(table.system_versioned)
-        self.assertEqual(table.history_table, "employees_history")
-        self.assertEqual(table.history_schema, "dbo")
+        self.assertTrue(table.get_dialect_option("sqlserver", "system_versioned", default=False))
+        self.assertEqual(
+            table.get_dialect_option("sqlserver", "history_table"), "employees_history"
+        )
+        self.assertEqual(table.get_dialect_option("sqlserver", "history_schema"), "dbo")
 
     def test_apply_no_filegroup_no_effect(self):
         table = self._make_table()
         row = {"is_memory_optimized": None, "is_system_versioned": None}
-        # filegroup_name is not in row, so table.filegroup should not be set
+        # filegroup_name is not in row, so table.get_dialect_option("sqlserver", "filegroup") should not be set
         # Use a simple namespace to test actual attribute assignment behavior
         from types import SimpleNamespace
 
@@ -162,9 +166,7 @@ class TestVendorPropertyApplierDb2(unittest.TestCase):
         self.assertFalse(table.compress)
 
     def test_apply_numeric_attrs(self):
-        from types import SimpleNamespace
-
-        table = SimpleNamespace()
+        table = Table(name="t", dialect="db2")
         row = {
             "tablespace_name": None,
             "is_compressed": None,
@@ -174,8 +176,8 @@ class TestVendorPropertyApplierDb2(unittest.TestCase):
             "next_extent_size": "32",
         }
         Db2Quirks().apply_vendor_table_properties(table, row)
-        self.assertEqual(table.pctfree, 10)
-        self.assertEqual(table.pctused, 80)
+        self.assertEqual(table.get_dialect_option("oracle", "pctfree"), 10)
+        self.assertEqual(table.get_dialect_option("oracle", "pctused"), 80)
 
     def test_invalid_numeric_ignored(self):
         table = MagicMock()
@@ -227,7 +229,7 @@ class TestVendorPropertyApplierOracle(unittest.TestCase):
 class TestVendorPropertyApplierMysql(unittest.TestCase):
 
     def test_apply_storage_engine(self):
-        table = MagicMock()
+        table = Table(name="t", dialect="mysql")
         row = {
             "storage_engine": "InnoDB",
             "row_format": None,
@@ -236,7 +238,7 @@ class TestVendorPropertyApplierMysql(unittest.TestCase):
             "create_options": None,
         }
         MysqlQuirks().apply_vendor_table_properties(table, row)
-        self.assertEqual(table.storage_engine, "InnoDB")
+        self.assertEqual(table.get_dialect_option("mysql", "storage_engine"), "InnoDB")
 
     def test_apply_row_format(self):
         table = MagicMock()
@@ -298,11 +300,11 @@ class TestVendorPropertyApplierApply(unittest.TestCase):
         query_executor.execute_query.return_value = [{"storage_engine": "InnoDB"}]
 
         applier = VendorPropertyApplier(dialect="mysql", vendor_queries=vendor_queries, log=log)
-        table = MagicMock()
+        table = Table(name="orders", dialect="mysql")
         applier.apply("mydb", "orders", table, MagicMock(), query_executor)
 
         vendor_queries.get_table_properties_query.assert_called_once_with("mydb", "orders")
-        self.assertEqual(table.storage_engine, "InnoDB")
+        self.assertEqual(table.get_dialect_option("mysql", "storage_engine"), "InnoDB")
 
     def test_apply_handles_exception_gracefully(self):
         log = MagicMock()

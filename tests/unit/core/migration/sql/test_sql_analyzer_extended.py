@@ -19,6 +19,18 @@ from unittest.mock import MagicMock, patch
 from core.migration.sql.sql_analyzer import SqlAnalyzer
 
 
+class TestSqlAnalyzerDialectRequired(unittest.TestCase):
+    """ADR-26 E5: ``dialect`` is a required argument (no hidden default)."""
+
+    def test_dialect_is_required(self):
+        with self.assertRaises(TypeError):
+            SqlAnalyzer()  # type: ignore[call-arg]
+
+    def test_explicit_dialect_is_lowercased_and_stored(self):
+        analyzer = SqlAnalyzer(dialect="PostgreSQL")
+        self.assertEqual(analyzer.dialect, "postgresql")
+
+
 class TestGetStatementTypeStringBranches(unittest.TestCase):
     """Test _get_statement_type_string for every keyword branch."""
 

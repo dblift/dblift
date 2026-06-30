@@ -4,10 +4,6 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 from core.sql_model.base import SqlObject, SqlObjectType
 
-_NS_MYSQL = "mysql"  # lint: allow-dialect-string: plugin namespace key for dialect_options
-_NS_ORACLE = "oracle"  # lint: allow-dialect-string: plugin namespace key for dialect_options
-_NS_POSTGRES = "postgresql"  # lint: allow-dialect-string: plugin namespace key for dialect_options
-
 if TYPE_CHECKING:
     from core.sql_model.view_options import ViewOptions
 
@@ -97,94 +93,17 @@ class View(SqlObject):
         # View dependencies - SQL-generation-only
         self.dependencies = dependencies or []
 
-        # ``dialect_options`` is initialized by ``SqlObject.__init__``; the
-        # property setters below route into it under their plugin namespace.
-        self.unlogged = unlogged
-        self.algorithm = algorithm
-        self.sql_security = sql_security
-        self.definer = definer
-        self.force = force
-        self.security_definer = security_definer
-        self.security_invoker = security_invoker
-
-    # ── PostgreSQL ──────────────────────────────────────────────────
-
-    @property
-    def unlogged(self) -> Optional[bool]:
-        """PostgreSQL ``UNLOGGED`` materialized view flag."""
-        return self.get_dialect_option(_NS_POSTGRES, "unlogged")
-
-    @unlogged.setter
-    def unlogged(self, value: Optional[bool]) -> None:
-        """Set PostgreSQL ``UNLOGGED`` materialized view flag."""
-        self._set_plugin_option(_NS_POSTGRES, "unlogged", value)
-
-    @property
-    def security_definer(self) -> Optional[bool]:
-        """PostgreSQL ``SECURITY DEFINER`` view flag."""
-        return self.get_dialect_option(_NS_POSTGRES, "security_definer")
-
-    @security_definer.setter
-    def security_definer(self, value: Optional[bool]) -> None:
-        """Set PostgreSQL ``SECURITY DEFINER`` view flag."""
-        self._set_plugin_option(_NS_POSTGRES, "security_definer", value)
-
-    @property
-    def security_invoker(self) -> Optional[bool]:
-        """PostgreSQL ``SECURITY INVOKER`` view flag."""
-        return self.get_dialect_option(_NS_POSTGRES, "security_invoker")
-
-    @security_invoker.setter
-    def security_invoker(self, value: Optional[bool]) -> None:
-        """Set PostgreSQL ``SECURITY INVOKER`` view flag."""
-        self._set_plugin_option(_NS_POSTGRES, "security_invoker", value)
-
-    # ── MySQL ───────────────────────────────────────────────────────
-
-    @property
-    def algorithm(self) -> Optional[str]:
-        """MySQL view ``ALGORITHM = MERGE|TEMPTABLE|UNDEFINED``."""
-        value = self.get_dialect_option(_NS_MYSQL, "algorithm")
-        return value if value is None or isinstance(value, str) else str(value)
-
-    @algorithm.setter
-    def algorithm(self, value: Optional[str]) -> None:
-        """Set MySQL view ``ALGORITHM = MERGE|TEMPTABLE|UNDEFINED``."""
-        self._set_plugin_option(_NS_MYSQL, "algorithm", value)
-
-    @property
-    def sql_security(self) -> Optional[str]:
-        """MySQL view ``SQL SECURITY = DEFINER|INVOKER``."""
-        value = self.get_dialect_option(_NS_MYSQL, "sql_security")
-        return value if value is None or isinstance(value, str) else str(value)
-
-    @sql_security.setter
-    def sql_security(self, value: Optional[str]) -> None:
-        """Set MySQL view ``SQL SECURITY = DEFINER|INVOKER``."""
-        self._set_plugin_option(_NS_MYSQL, "sql_security", value)
-
-    @property
-    def definer(self) -> Optional[str]:
-        """MySQL view ``DEFINER = user@host``."""
-        value = self.get_dialect_option(_NS_MYSQL, "definer")
-        return value if value is None or isinstance(value, str) else str(value)
-
-    @definer.setter
-    def definer(self, value: Optional[str]) -> None:
-        """Set MySQL view ``DEFINER = user@host``."""
-        self._set_plugin_option(_NS_MYSQL, "definer", value)
-
-    # ── Oracle ──────────────────────────────────────────────────────
-
-    @property
-    def force(self) -> Optional[bool]:
-        """Oracle ``FORCE`` / ``NOFORCE`` view modifier."""
-        return self.get_dialect_option(_NS_ORACLE, "force")
-
-    @force.setter
-    def force(self, value: Optional[bool]) -> None:
-        """Set Oracle ``FORCE`` / ``NOFORCE`` view modifier."""
-        self._set_plugin_option(_NS_ORACLE, "force", value)
+        # Grammar-based view properties.
+        # PostgreSQL:
+        self.unlogged = unlogged  # ``UNLOGGED`` materialized view flag
+        self.security_definer = security_definer  # ``SECURITY DEFINER`` view flag
+        self.security_invoker = security_invoker  # ``SECURITY INVOKER`` view flag
+        # MySQL:
+        self.algorithm = algorithm  # ``ALGORITHM = MERGE|TEMPTABLE|UNDEFINED``
+        self.sql_security = sql_security  # ``SQL SECURITY = DEFINER|INVOKER``
+        self.definer = definer  # ``DEFINER = user@host``
+        # Oracle:
+        self.force = force  # ``FORCE`` / ``NOFORCE`` view modifier
 
     @property
     def create_statement(self) -> str:

@@ -254,3 +254,55 @@ class TestDatabaseUrlParser:
         url = "postgresql+psycopg://host:5432"
         result = DatabaseUrlParser.parse_database_name(url)
         assert result is None
+
+    @pytest.mark.parametrize(
+        "url, expected",
+        [
+            # Parity: schemes accepted by the previous hardcoded set.
+            ("postgresql://host/db", "db"),
+            ("postgres://host/db", "db"),
+            ("mysql://host/db", "db"),
+            ("mariadb://host/db", "db"),
+            ("oracle://host/db", "db"),
+            ("mssql://host/db", "db"),
+            # +driver suffix is stripped before scheme resolution.
+            ("postgresql+psycopg://host/db", "db"),
+            # Upper-case scheme: ``.lower()`` is load-bearing — urlparse does
+            # not lowercase a scheme that carries a ``+driver`` suffix.
+            ("POSTGRESQL+PSYCOPG://host/db", "db"),
+            ("MSSQL://host/db", "db"),
+            # Improvement: native schemes the old hardcoded set omitted.
+            ("sqlserver://host/db", "db"),
+            ("db2://host/db", "db"),
+            ("cosmosdb://host/db", "db"),
+            ("sqlite:///app.db", "app.db"),
+        ],
+    )
+    def test_parse_database_name_native_schemes(self, url, expected):
+        """Native schemes derived from the plugin registry carry the DB in the path."""
+        assert DatabaseUrlParser.parse_database_name(url) == expected
+
+    @pytest.mark.parametrize(
+        "url",
+        [
+            "jdbc:sqlserver://host:1433;databaseName=mydb",
+            "weirddb://host/db",
+            "https://host/db",
+        ],
+    )
+    def test_parse_database_name_unknown_scheme_returns_none(self, url):
+        """Unknown / non-native schemes return None."""
+        assert DatabaseUrlParser.parse_database_name(url) is None
+
+    @pytest.mark.parametrize(
+        "url",
+        [
+            "postgresql://host/",
+            "sqlserver://host/",
+            "db2://host/",
+            "cosmosdb://host/",
+        ],
+    )
+    def test_parse_database_name_native_scheme_no_path_returns_none(self, url):
+        """Native scheme with no path component returns None."""
+        assert DatabaseUrlParser.parse_database_name(url) is None

@@ -359,9 +359,20 @@ class TestRealisticConcurrencyScenarios:
             schema=db_container.get("schema", "TEST_SCHEMA"),
         )
 
-        # Verify with info command
+        # Verify with info command. On SQL Server, a pooled connection reused
+        # right after a burst of concurrent migrations can raise a transient
+        # transaction-reset error (pymssql 3971, "failed to resume the
+        # transaction") during sp_reset_connection; SQLAlchemy invalidates that
+        # connection, so a retry picks up a clean one and info renders the
+        # history. Other dialects pass on the first call. Retry a few times so
+        # the assertion is not flaky.
         cli = DBLiftCLI(config_file, migrations_dir)
         info_result = cli.info()
+        for _ in range(3):
+            if info_result.success and "1.0.0" in info_result.stdout:
+                break
+            time.sleep(0.5)
+            info_result = cli.info()
         assert info_result.success
         # Check for version and description in output
         assert "1.0.0" in info_result.stdout

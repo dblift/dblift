@@ -28,10 +28,15 @@ Rules
     Dialect-name string literals (``"postgresql"``, ``"oracle"``,
     ``"mysql"``, ``"sqlserver"``, ``"db2"``, ``"sqlite"``,
     ``"cosmosdb"``, ``"mariadb"``, …) appearing in ``api/``, ``cli/``,
-    ``config/`` or ``core/`` couple framework code to specific dialects
-    and prevent the plug-and-play architecture from Epic 26. Plugin
-    code under ``db/plugins/<X>/**`` may reference its own dialect; the
-    framework should never name one. Replace branches like
+    ``config/``, ``core/`` or ``db/`` couple framework code to specific
+    dialects and prevent the plug-and-play architecture from Epic 26.
+    ``db/`` is scanned in full, including the shared base modules
+    directly under ``db/plugins/`` (``db/plugins/*.py``, e.g.
+    ``base_snapshot_manager.py``) — they are framework code. Only a
+    per-dialect plugin *package* ``db/plugins/<X>/**`` may reference its
+    own dialect (and is exempt); ``core/introspection/`` is exempt for
+    its capability matrices; the rest of the framework should never name
+    a dialect. Replace branches like
     ``if dialect.lower() == "oracle":`` with a ``DialectQuirks`` hook
     on the provider. Annotate intentional uses (e.g. registry keys
     that *must* hold a string list of supported dialects) with
@@ -108,19 +113,34 @@ DIALECT_NAMES: frozenset = frozenset(
     }
 )
 
-# Roots the dialect-string-literal rule scans. ``db/`` is excluded
-# because plugins legitimately reference their own dialect there.
-DIALECT_RULE_ROOTS: Tuple[str, ...] = ("api", "cli", "config", "core")
+# Roots the dialect-string-literal rule scans. ``db/`` shared framework
+# code is scanned in full, including the shared base modules directly
+# under ``db/plugins/`` (``db/plugins/*.py``). Only per-dialect plugin
+# packages ``db/plugins/<X>/**`` (handled positionally in
+# ``_is_under_dialect_rule_roots``) and ``core/introspection/`` (see
+# DIALECT_RULE_EXEMPT_PREFIXES) are exempt.
+DIALECT_RULE_ROOTS: Tuple[str, ...] = ("api", "cli", "config", "core", "db")
 
 # Path prefixes that are otherwise inside ``DIALECT_RULE_ROOTS`` but
 # exempted because the dialect-string literal is inherent to the
-# module's purpose:
-#   * ``core/introspection/`` — the schema-reading layer enumerates
-#     dialects for capability matrices, version-detector parsing, and
-#     declarative metadata. The plugin-isolation contract is still
-#     enforced by ``tests/unit/test_plugin_isolation.py``; this only
-#     relaxes the AST literal scan.
-DIALECT_RULE_EXEMPT_PREFIXES: Tuple[str, ...] = ("core/introspection",)
+# module's purpose. Currently empty: ``core/introspection/`` is now
+# scanned. The dialect-specific introspection filters that used to
+# require the exemption (Oracle's generated ``IS NOT NULL`` check,
+# version-detector parsing, and the dead capability/version stores)
+# have been moved into plugin quirks or deleted (ADR-26 B/B2), so the
+# schema-reading layer no longer names a dialect.
+#
+# ``db/`` is scanned in full, *including* the shared base modules that
+# sit directly under ``db/plugins/`` (``db/plugins/*.py``, e.g.
+# ``base_snapshot_manager.py``) — those are framework code. Only the
+# per-dialect plugin *packages* ``db/plugins/<X>/**`` are exempt, and
+# that exemption is handled positionally in
+# ``_is_under_dialect_rule_roots`` (not via a simple prefix), because a
+# plugin package legitimately names its own dialect.
+#
+# ``_is_under_dialect_rule_roots`` still iterates this tuple, so it
+# stays defined (empty).
+DIALECT_RULE_EXEMPT_PREFIXES: Tuple[str, ...] = ()
 
 
 class Violation:
@@ -260,13 +280,18 @@ def _check_enum_str_conversion(path: Path, tree: ast.AST, source: List[str]) -> 
 
 
 def _is_under_dialect_rule_roots(path: Path) -> bool:
-    """True when the file lives under api/, cli/, config/, or core/
+    """True when the file lives under api/, cli/, config/, core/, or db/
     *and* is not under a documented exempt prefix.
 
-    The rule is intentionally narrow — db/plugins/<X>/ legitimately
-    references its own dialect, scripts/ and docs/ ship one-off tools,
-    and ``core/introspection/`` enumerates dialects for capability
-    matrices / version detection by design.
+    ``db/`` is scanned in full, including the shared base modules that sit
+    directly under ``db/plugins/`` (``db/plugins/*.py``, e.g.
+    ``base_snapshot_manager.py``) — those are framework code. The
+    exemption is deliberately narrow: a per-dialect plugin *package*
+    ``db/plugins/<X>/**`` legitimately references its own dialect.
+    ``core/introspection/`` is no longer exempt — its dialect-specific
+    filters were moved to plugin quirks (ADR-26 B2), so the schema-reading
+    layer is now scanned like the rest of ``core/``. scripts/ and docs/
+    ship one-off tools and are out of scope entirely.
     """
     parts = path.parts
     if not parts:
@@ -277,6 +302,12 @@ def _is_under_dialect_rule_roots(path: Path) -> bool:
     for prefix in DIALECT_RULE_EXEMPT_PREFIXES:
         if posix.startswith(prefix + "/") or posix == prefix:
             return False
+    # db/plugins/<X>/** is a per-dialect plugin package (it may name its own
+    # dialect — that is its identity). Shared base modules directly under
+    # db/plugins/ (db/plugins/*.py, e.g. base_snapshot_manager.py) are framework
+    # code and ARE scanned.
+    if parts[:2] == ("db", "plugins") and len(parts) >= 4:
+        return False
     return True
 
 

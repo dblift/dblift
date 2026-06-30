@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from config._subclasses.mysql_config import MySqlConfig
+from db.plugins.mysql.config import MySqlConfig
 from db.plugins.mysql.provider import MySqlProvider
 from db.plugins.mysql.quirks import MysqlQuirks
 from db.plugins.mysql.sqlalchemy_url import build_sqlalchemy_url

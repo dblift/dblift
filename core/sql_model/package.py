@@ -15,7 +15,7 @@ class Package(SqlObject):
         schema: Optional[str] = None,
         spec: Optional[str] = None,
         body: Optional[str] = None,
-        dialect: Optional[str] = "oracle",  # lint: allow-dialect-string: packages are Oracle-only
+        dialect: Optional[str] = None,
     ):
         """Initialize an Oracle package.
 
@@ -24,7 +24,7 @@ class Package(SqlObject):
             schema: Schema name (optional)
             spec: Package specification (header/interface)
             body: Package body (implementation)
-            dialect: SQL dialect (defaults to oracle)
+            dialect: SQL dialect, supplied by the creating introspector
         """
         super().__init__(name, SqlObjectType.PACKAGE, schema, dialect)
         self.spec = spec
@@ -70,7 +70,7 @@ class Package(SqlObject):
             schema=data.get("schema"),
             spec=data.get("spec"),
             body=data.get("body"),
-            dialect=data.get("dialect", "oracle"),  # lint: allow-dialect-string
+            dialect=data.get("dialect"),
         )
 
     def to_dict(self) -> Dict[str, Any]:
@@ -126,7 +126,7 @@ class Package(SqlObject):
         """Append a SQL*Plus-style block terminator if the dialect uses one."""
         from db.provider_registry import ProviderRegistry
 
-        quirks = ProviderRegistry.get_quirks(self.dialect or "oracle")  # lint: allow-dialect-string
+        quirks = ProviderRegistry.get_quirks(self.dialect or "")
         text = statement.rstrip()
         if not text.endswith(";"):
             text = f"{text};"

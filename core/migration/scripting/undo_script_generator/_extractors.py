@@ -13,7 +13,10 @@ from typing import Any, Optional, Tuple
 
 from sqlglot import exp, parse_one
 
-from core.sql_model.dialect import DialectEnum
+from core.migration.scripting.undo_script_generator._helpers import (
+    resolve_sqlglot_read_dialect,
+)
+from core.sql_model.dialect import quote_identifier
 from db.provider_registry import ProviderRegistry
 
 
@@ -260,7 +263,7 @@ class _UndoExtractorsMixin:
     def _quote_identifier(self, identifier: str) -> str:
         """Quote identifier based on dialect.
 
-        Delegates to DialectEnum.quote_identifier (story 21-14 dispatch).
+        Delegates to quote_identifier (story 21-14 dispatch).
 
         Args:
             identifier: Identifier to quote
@@ -268,7 +271,7 @@ class _UndoExtractorsMixin:
         Returns:
             Quoted identifier
         """
-        return DialectEnum.quote_identifier(self.dialect, identifier)
+        return quote_identifier(self.dialect, identifier)
 
     def _extract_version_from_filename(self, filename: str) -> Optional[str]:
         """Extract version from migration filename, preserving original format (underscores/dots).
@@ -344,11 +347,7 @@ class _UndoExtractorsMixin:
             Table name or None
         """
         try:
-            _quirks = ProviderRegistry.get_quirks(self.dialect)
-            sqlglot_dialect = (
-                _quirks.sqlglot_dialect
-                or "postgres"  # lint: allow-dialect-string: sqlglot canonical fallback
-            )
+            sqlglot_dialect = resolve_sqlglot_read_dialect(self.dialect)
             ast = parse_one(sql, read=sqlglot_dialect)
 
             if isinstance(ast, exp.Insert):

@@ -471,14 +471,11 @@ class DbliftConfig:
         db_type = str(database_data.get("type") or "").strip().lower()
         url = str(database_data.get("url") or "").strip()
         if url and not db_type:
-            url_lower = url.lower()
-            if url_lower.startswith(("sqlite:", "sqlite3:")):
-                db_type = "sqlite"  # lint: allow-dialect-string: URL-scheme inference (sqlite:// URL maps to sqlite type)
-            else:
-                from db.provider_registry import ProviderRegistry
+            from db.provider_registry import ProviderRegistry
 
-                scheme = url_lower.split(":", 1)[0].split("+", 1)[0]
-                db_type = ProviderRegistry.canonical_dialect_name(scheme) or ""
+            url_lower = url.lower()
+            scheme = url_lower.split(":", 1)[0].split("+", 1)[0]
+            db_type = ProviderRegistry.canonical_dialect_name(scheme) or ""
             if not db_type:
                 from config.secrets._registry import is_secret_uri as _is_secret_uri_inline
 
@@ -642,11 +639,8 @@ class DbliftConfig:
         url = str(database.get("url") or "").strip()
         if not db_type and url:
             url_lower = url.lower()
-            if url_lower.startswith(("sqlite:", "sqlite3:")):
-                db_type = "sqlite"  # lint: allow-dialect-string: URL-scheme inference (sqlite:// URL maps to sqlite type)
-            else:
-                scheme = url_lower.split(":", 1)[0].split("+", 1)[0]
-                db_type = ProviderRegistry.canonical_dialect_name(scheme) or ""
+            scheme = url_lower.split(":", 1)[0].split("+", 1)[0]
+            db_type = ProviderRegistry.canonical_dialect_name(scheme) or ""
 
         if not db_type:
             if url:
@@ -654,11 +648,12 @@ class DbliftConfig:
             raise ConfigurationError("Database type is required in configuration")
 
         _quirks = ProviderRegistry.get_quirks(db_type)
-        # CosmosDB-specific auth validation: account_endpoint + account_key (or
-        # use_managed_identity). is_nosql is too generic — match the canonical
-        # plugin name so future NoSQL dialects don't inherit Azure-specific rules.
-        # lint: allow-dialect-string: CosmosDB Azure auth validation
-        if ProviderRegistry.canonical_dialect_name(db_type) == "cosmosdb":
+        # Cloud-account auth validation: account_endpoint + account_key (or
+        # use_managed_identity). Gated on the ``requires_cloud_account_auth``
+        # quirks capability (CosmosDB sets it True) rather than a hardcoded
+        # dialect name. ``is_nosql`` is deliberately not reused — it is too
+        # generic, so future NoSQL dialects don't inherit Azure-specific rules.
+        if _quirks.requires_cloud_account_auth:
             has_endpoint = bool(database.get("account_endpoint") or database.get("url"))
             if not has_endpoint:
                 raise ConfigurationError("Cosmos DB configuration requires account_endpoint or url")
@@ -842,15 +837,11 @@ class DbliftConfig:
             from config.secrets._registry import is_secret_uri as _is_secret_uri_args
 
             if not _is_secret_uri_args(url_val):
-                inferred_type = ""
-                url_lower = url_val.strip().lower()
-                if url_lower.startswith(("sqlite:", "sqlite3:")):
-                    inferred_type = "sqlite"  # lint: allow-dialect-string: URL-scheme inference (sqlite:// URL maps to sqlite type)
-                else:
-                    from db.provider_registry import ProviderRegistry
+                from db.provider_registry import ProviderRegistry
 
-                    scheme = url_lower.split(":", 1)[0].split("+", 1)[0]
-                    inferred_type = ProviderRegistry.canonical_dialect_name(scheme) or ""
+                url_lower = url_val.strip().lower()
+                scheme = url_lower.split(":", 1)[0].split("+", 1)[0]
+                inferred_type = ProviderRegistry.canonical_dialect_name(scheme) or ""
                 if inferred_type:
                     db_cfg["type"] = inferred_type
 

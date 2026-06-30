@@ -3,9 +3,44 @@
 from __future__ import annotations
 
 import re
-from typing import Any, Dict, Optional, Tuple, Type
+from typing import Any, Dict, List, Optional, Tuple, Type
 
 from db.base_quirks import BaseQuirks
+from db.error import ErrorCategory
+
+# Each entry: (compiled regex, ErrorCategory). Sourced by
+# ``DatabaseErrorClassifier`` via ``error_patterns()`` (ADR-26 A2).
+_ERROR_PATTERNS: List[Tuple[re.Pattern[str], ErrorCategory]] = [
+    # Network / connection
+    (re.compile(r"ORA-17800", re.IGNORECASE), ErrorCategory.NETWORK),
+    (re.compile(r"ORA-17002", re.IGNORECASE), ErrorCategory.NETWORK),
+    (re.compile(r"ORA-12541", re.IGNORECASE), ErrorCategory.NETWORK),
+    (re.compile(r"ORA-12514", re.IGNORECASE), ErrorCategory.NETWORK),
+    (re.compile(r"ORA-12170", re.IGNORECASE), ErrorCategory.TIMEOUT),
+    (re.compile(r"ORA-12571", re.IGNORECASE), ErrorCategory.NETWORK),
+    (re.compile(r"ORA-03113", re.IGNORECASE), ErrorCategory.NETWORK),
+    (re.compile(r"ORA-03114", re.IGNORECASE), ErrorCategory.NETWORK),
+    # Locking
+    (re.compile(r"ORA-00060", re.IGNORECASE), ErrorCategory.LOCKING),
+    (re.compile(r"ORA-00054", re.IGNORECASE), ErrorCategory.LOCKING),
+    # Authentication / Authorization
+    (re.compile(r"ORA-01017", re.IGNORECASE), ErrorCategory.AUTHENTICATION),
+    (re.compile(r"ORA-01031", re.IGNORECASE), ErrorCategory.AUTHORIZATION),
+    (re.compile(r"ORA-01045", re.IGNORECASE), ErrorCategory.AUTHENTICATION),
+    # Schema
+    (re.compile(r"ORA-00942", re.IGNORECASE), ErrorCategory.SCHEMA),
+    (re.compile(r"ORA-00904", re.IGNORECASE), ErrorCategory.SCHEMA),
+    # Constraint
+    (re.compile(r"ORA-00001", re.IGNORECASE), ErrorCategory.CONSTRAINT),
+    (re.compile(r"ORA-02291", re.IGNORECASE), ErrorCategory.CONSTRAINT),
+    (re.compile(r"ORA-02292", re.IGNORECASE), ErrorCategory.CONSTRAINT),
+    # SQL Syntax
+    (re.compile(r"ORA-00900", re.IGNORECASE), ErrorCategory.SQL_SYNTAX),
+    (re.compile(r"ORA-00933", re.IGNORECASE), ErrorCategory.SQL_SYNTAX),
+    # Resource
+    (re.compile(r"ORA-04031", re.IGNORECASE), ErrorCategory.RESOURCE),
+    (re.compile(r"ORA-01653", re.IGNORECASE), ErrorCategory.RESOURCE),
+]
 
 
 class OracleQuirks(BaseQuirks):
@@ -30,6 +65,23 @@ class OracleQuirks(BaseQuirks):
     uppercase_identifiers = True
     clean_strategy = "native"
     sqlglot_dialect = "oracle"
+    # import-flyway reads the verbatim-cased Flyway source table directly,
+    # because get_applied_migrations would uppercase the name and miss it.
+    flyway_source_table_case_sensitive = True
+    # Data-set ledger DDL: Oracle has no TEXT type (use CLOB) and defaults the
+    # install timestamp from SYSTIMESTAMP.
+    data_history_text_type = "CLOB"
+    data_change_set_blob_type = "CLOB"
+    data_timestamp_column_ddl = "TIMESTAMP DEFAULT SYSTIMESTAMP"
+
+    def is_data_history_table_already_exists_error(self, error_message: str) -> bool:
+        """Oracle lacks CREATE TABLE IF NOT EXISTS and raises ORA-00955 instead."""
+        return "ORA-00955" in (error_message or "")
+
+    def is_data_change_set_table_already_exists_error(self, error_message: str) -> bool:
+        """Same ORA-00955 detection as the data history table."""
+        return self.is_data_history_table_already_exists_error(error_message)
+
     sqlglot_unsupported_sql_patterns = (
         "PARTITION BY REFERENCE",
         "PARTITION BY RANGE",
@@ -39,6 +91,9 @@ class OracleQuirks(BaseQuirks):
     select_supports_limit = False
     boolean_false_literal = "0"
     unquoted_identifier_case = "uppercase"
+    # quote_qualified upper-cases idents to match Oracle's catalogue folding.
+    # DB2 shares the folding quirks but must NOT inherit this (story 26-5).
+    quote_qualified_folds_to_uppercase = True
     connection_identifier_attrs = ("url", "service_name", "sid", "database")
     missing_connection_identifier_hint = (
         "Oracle connection requires url, service_name, sid, or host/database fields"
@@ -221,6 +276,10 @@ class OracleQuirks(BaseQuirks):
         """Initialize Oracle quirks with the dialect name."""
         super().__init__(dialect_name=dialect_name)
 
+    def error_patterns(self) -> "List[Tuple[re.Pattern[str], ErrorCategory]]":
+        """Oracle ORA-code error-classification patterns (ADR-26 A2)."""
+        return _ERROR_PATTERNS
+
     def build_snapshot_table_ddl(
         self,
         qualified_table: str,
@@ -229,6 +288,18 @@ class OracleQuirks(BaseQuirks):
     ) -> str:
         """Oracle snapshot table DDL is not owned by the Oracle plugin."""
         raise NotImplementedError("Oracle snapshot table DDL is not plugin-owned")
+
+    def build_provider_compat_snapshot_ddl(
+        self, qualified_table: str, snapshot_id_size: int, checksum_size: int
+    ) -> "Optional[str]":
+        """Legacy Oracle provider-compat snapshot DDL (VARCHAR2/CLOB, uppercase)."""
+        return (
+            f"CREATE TABLE {qualified_table} ("
+            f"SNAPSHOT_ID VARCHAR2({snapshot_id_size}) PRIMARY KEY, "
+            f"CAPTURED_AT VARCHAR2({snapshot_id_size}) NOT NULL, "
+            f"CHECKSUM VARCHAR2({checksum_size}) NOT NULL, "
+            "MODEL_DATA CLOB NOT NULL)"
+        )
 
     # ------------------------------------------------------------------
     # Migration-script preprocessing hooks (Tier 1 plugin-isolation).
@@ -482,6 +553,20 @@ class OracleQuirks(BaseQuirks):
         normalized = name.strip().upper()
         return normalized.startswith("SYS_") or normalized.startswith("SYS$")
 
+    def is_generated_not_null_check(self, row: Dict[str, Any], check_expr: str) -> bool:
+        """Drop Oracle's implicit ``"<col>" IS NOT NULL`` check constraints.
+
+        Oracle materializes a ``GENERATED NAME`` check constraint for every
+        ``NOT NULL`` column; these are noise in introspection output, so the
+        extractor skips them when this returns ``True``."""
+        generated = str(row.get("generated") or row.get("GENERATED") or "").upper()
+        if generated != "GENERATED NAME":
+            return False
+        return (
+            re.match(r'^\s*\(?\s*"?[A-Z0-9_$#]+"?\s+IS\s+NOT\s+NULL\s*\)?\s*$', check_expr, re.I)
+            is not None
+        )
+
     def is_index_hidden_column(self, name: str) -> bool:
         """Oracle function-based indexes materialize expression columns under
         ``SYS_NCxxx``-style names. The extractor substitutes the original
@@ -533,7 +618,7 @@ class OracleQuirks(BaseQuirks):
             val = get_row_value(row, col)
             if val is not None:
                 try:
-                    setattr(table, attr, int(val))
+                    table.set_dialect_option("oracle", attr, int(val))
                 except (ValueError, TypeError):
                     pass
 

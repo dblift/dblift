@@ -60,12 +60,28 @@ class CommandResult:
         return self.stdout + self.stderr
 
 
+# The true (non-captured) streams, recorded the first time we see a real stream.
+# Concurrent in-process runs swap the global sys.stdout/stderr to per-call
+# StringIO captures; if a racing thread saved another thread's capture as its
+# "original" and restored to it, the global would be left pointing at a dead
+# StringIO and a later sequential capture (e.g. `info`) would read empty. Always
+# restore to the true stream so the global can never be left on a capture buffer.
+_TRUE_STDOUT = None
+_TRUE_STDERR = None
+
+
 @contextmanager
 def capture_main_execution(argv_list: List[str]):
     """Context manager to capture main() execution with mocked sys.argv and sys.exit."""
+    global _TRUE_STDOUT, _TRUE_STDERR
+    if not isinstance(sys.stdout, StringIO):
+        _TRUE_STDOUT = sys.stdout
+    if not isinstance(sys.stderr, StringIO):
+        _TRUE_STDERR = sys.stderr
+
     original_argv = sys.argv.copy()
-    original_stdout = sys.stdout
-    original_stderr = sys.stderr
+    original_stdout = _TRUE_STDOUT if _TRUE_STDOUT is not None else sys.stdout
+    original_stderr = _TRUE_STDERR if _TRUE_STDERR is not None else sys.stderr
     original_exit = sys.exit
 
     stdout_capture = StringIO()
@@ -190,6 +206,19 @@ class DBLiftCLIDirect:
 
         argv.append(command)
 
+        # Support grouped subcommands, e.g. command="data", data_command="plan" | "apply" | "status" | "undo"
+        data_sub = kwargs.pop("data_command", None) or kwargs.pop("sub_command", None)
+        if data_sub:
+            argv.append(data_sub)
+
+            # Positional arguments for data subcommands
+            if data_sub == "apply" and kwargs.get("plan_file"):
+                argv.append(str(kwargs["plan_file"]))
+            elif data_sub == "undo":
+                undo_id = kwargs.get("id") or kwargs.get("undo_id")
+                if undo_id:
+                    argv.append(str(undo_id))
+
         # Add config (always required)
         argv.extend(["--config", str(self.config_file)])
 
@@ -253,11 +282,46 @@ class DBLiftCLIDirect:
         if kwargs.get("show_sql"):
             argv.append("--show-sql")
 
+        if kwargs.get("ignore_unmanaged"):
+            argv.append("--ignore-unmanaged")
+
         if kwargs.get("skip_validation"):
             argv.append("--skip-validation")
 
         if kwargs.get("clean_enabled"):
             argv.append("--clean-enabled")
+
+        # Export-schema specific options
+        if kwargs.get("output"):
+            argv.extend(["--output", kwargs["output"]])
+        if kwargs.get("output_dir"):
+            argv.extend(["--output-dir", kwargs["output_dir"]])
+        if kwargs.get("split_by_type"):
+            argv.append("--split-by-type")
+        if kwargs.get("types"):
+            argv.extend(["--types", kwargs["types"]])
+        if kwargs.get("tables"):
+            argv.extend(["--tables", kwargs["tables"]])
+        if kwargs.get("managed_only"):
+            argv.append("--managed-only")
+        if kwargs.get("unmanaged_only"):
+            argv.append("--unmanaged-only")
+        if kwargs.get("include_drops"):
+            argv.append("--include-drops")
+        if kwargs.get("schema"):
+            argv.extend(["--schema", kwargs["schema"]])
+        if kwargs.get("description"):
+            argv.extend(["--description", kwargs["description"]])
+        if kwargs.get("source"):
+            argv.extend(["--source", kwargs["source"]])
+        if kwargs.get("snapshot_model"):
+            argv.extend(["--snapshot-model", kwargs["snapshot_model"]])
+
+        # Data (Lane B) options (plan/status use --dataset; apply uses positional plan_file + --force)
+        if kwargs.get("dataset"):
+            argv.extend(["--dataset", str(kwargs["dataset"])])
+        if kwargs.get("force"):
+            argv.append("--force")
 
         return argv
 
@@ -389,6 +453,46 @@ class DBLiftCLIDirect:
     def import_flyway(self, **kwargs) -> CommandResult:
         """Run import-flyway command."""
         return self._run_command("import-flyway", **kwargs)
+
+    def data_plan(self, dataset: str, output: Optional[str] = None, **kwargs) -> CommandResult:
+        """Run `data plan --dataset X [--output ...]`."""
+        return self._run_command(
+            "data",
+            data_command="plan",
+            dataset=dataset,
+            output=output,
+            **kwargs,
+        )
+
+    def data_apply(self, plan_file: str, force: bool = False, **kwargs) -> CommandResult:
+        """Run `data apply <plan.json> [--force]`."""
+        return self._run_command(
+            "data",
+            data_command="apply",
+            plan_file=plan_file,
+            force=force,
+            **kwargs,
+        )
+
+    def data_status(self, dataset: str, **kwargs) -> CommandResult:
+        """Run `data status --dataset X`."""
+        return self._run_command(
+            "data",
+            data_command="status",
+            dataset=dataset,
+            **kwargs,
+        )
+
+    def data_undo(self, cid: str, dataset: str, force: bool = False, **kwargs) -> CommandResult:
+        """Run `data undo <id> --dataset X [--force]`."""
+        return self._run_command(
+            "data",
+            data_command="undo",
+            id=cid,
+            dataset=dataset,
+            force=force,
+            **kwargs,
+        )
 
     def chain(self, *commands: str, **kwargs) -> CommandResult:
         """Execute multiple commands in sequence (command chaining)."""

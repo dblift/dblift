@@ -11,7 +11,7 @@ class TestModule:
 
     def test_init_basic(self):
         """Test basic initialization."""
-        module = Module("test_module", "CREATE MODULE test_module END MODULE;")
+        module = Module("test_module", "CREATE MODULE test_module END MODULE;", dialect="db2")
         assert module.name == "test_module"
         assert module.definition == "CREATE MODULE test_module END MODULE;"
         assert module.schema is None
@@ -20,7 +20,10 @@ class TestModule:
     def test_init_with_schema(self):
         """Test initialization with schema."""
         module = Module(
-            "test_module", "CREATE MODULE test_module END MODULE;", schema="test_schema"
+            "test_module",
+            "CREATE MODULE test_module END MODULE;",
+            schema="test_schema",
+            dialect="db2",
         )
         assert module.name == "test_module"
         assert module.definition == "CREATE MODULE test_module END MODULE;"

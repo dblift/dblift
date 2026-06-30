@@ -1,4 +1,4 @@
-"""Dialect enum for canonical database dialect identifiers.
+"""Dialect quoting and capability helpers for database dialect identifiers.
 
 Story 21-14 — Phase 1 pilot: identifier-quoting dispatch centralised here.
 
@@ -6,18 +6,22 @@ Before (2 files, 9 if/elif branches):
   base_converter.py      _quote_identifier()  — 5 branches
   undo_script_generator.py _quote_identifier() — 4 branches
 
-After (0 branches in those files, 1 dispatch dict below):
+After (0 branches in those files, 1 quirks-delegated function below):
   Each `_quote_identifier` becomes a one-liner:
-    return DialectEnum.quote_identifier(self.dialect, identifier)
+    return quote_identifier(self.dialect, identifier)
 
 SIMP-37 — Phase 0: DialectGroup constants + SQLGLOT_DIALECT_MAP centralized here
   so that all clusters (Phase 1–5) can import frozensets instead of repeating
   inline string comparisons.
 
 Story 25-19 — Phase 5: dispatch_by_dialect utility for replacing scattered if/elif chains.
+
+Story 26-5 — Removed the ``DialectEnum`` canonical-name vocabulary; the
+  quoting statics became the module-level ``quote_identifier`` /
+  ``quote_qualified`` functions and canonical-name resolution moved to
+  ``ProviderRegistry.canonical_dialect_name``.
 """
 
-from enum import Enum
 from typing import TYPE_CHECKING, Any, Callable, Dict, FrozenSet, Optional, TypeVar
 
 T = TypeVar("T")
@@ -241,11 +245,11 @@ def __getattr__(name: str) -> Any:  # noqa: D401 - module-level dunder
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
-# SQLGLOT_DIALECT_MAP and _QUOTE_OPEN/_CLOSE start empty; consumers
-# either call ``_ensure_*`` directly (internal) or trigger population
-# implicitly through helpers that wrap access. Importers that read
-# the dict before any plugin-aware code path runs would see an empty
-# dict — wrap external read paths to call the ensure-helper.
+# SQLGLOT_DIALECT_MAP starts empty; consumers either call ``_ensure_*``
+# directly (internal) or trigger population implicitly through helpers
+# that wrap access. Importers that read the dict before any plugin-aware
+# code path runs would see an empty dict — wrap external read paths to
+# call the ensure-helper.
 def get_sqlglot_dialect(dialect: Optional[str]) -> Optional[str]:
     """Public API for sqlglot-dialect lookup. Builds the map lazily."""
     _ensure_sqlglot_dialect_map()
@@ -301,145 +305,84 @@ def _ensure_sqlglot_dialect_map() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Canonical quoting rules per dialect (story 21-14). Now driven by
-# ``Quirks.quote_open`` / ``Quirks.quote_close`` rather than a static
-# table — adding a new dialect = override the attributes in its
-# plugin Quirks, no edit to this file.
+# Canonical quoting rules per dialect (story 21-14). Driven directly by
+# ``Quirks.quote_open`` / ``Quirks.quote_close`` — ``quote_identifier``
+# reads them from ``ProviderRegistry.get_quirks`` per call, so adding a
+# new dialect = override the attributes in its plugin Quirks, no edit to
+# this file.
 # ---------------------------------------------------------------------------
-_QUOTE_OPEN: "dict[str, str]" = {}
-_QUOTE_CLOSE: "dict[str, str]" = {}
-_DEFAULT_QUOTE = '"'
-# Tracks how many plugin dialects we've ingested. Re-build when stale
-# (registry got cleared by tests). Counter beats a bool flag here
-# because some plugins keep both maps empty (default ANSI quote
-# everywhere) and a bool would always force re-discovery.
-_quote_maps_seen: int = 0
 
 
-def _ensure_quote_maps() -> None:
-    global _quote_maps_seen
+def quote_identifier(dialect: Optional[str], identifier: str) -> str:
+    """Quote a SQL identifier using the canonical rules for *dialect*.
+
+    This is the single source of truth for identifier quoting (story 21-14).
+    Callers that previously maintained their own ``_quote_identifier``
+    if/elif chains now delegate here.
+
+    Rules:
+      - mysql    → ``identifier``
+      - sqlserver → [identifier]
+      - all others (postgresql, oracle, db2, sqlite, cosmosdb, unknown,
+        None) → "identifier"  (ANSI SQL double-quote)
+
+    Args:
+        dialect: SQL dialect string (any case; None treated as default).
+        identifier: Raw identifier to quote (no escaping of internal
+            special characters — callers that need escaping keep their
+            own implementation, e.g. SafetyChecker).
+
+    Returns:
+        Quoted identifier string.
+    """
     from db.provider_registry import ProviderRegistry
 
-    ProviderRegistry.discover_plugins()
-    expected = sum(len(p.dialects) for p in ProviderRegistry.list_plugins())
-    # ``==`` not ``>=`` — see _ensure_capabilities for rationale.
-    if expected and _quote_maps_seen == expected:
-        return
-    _QUOTE_OPEN.clear()
-    _QUOTE_CLOSE.clear()
-    _quote_maps_seen = 0
-    for plugin_info in ProviderRegistry.list_plugins():
-        quirks = ProviderRegistry.get_quirks(plugin_info.name)
-        for alias in plugin_info.dialects:
-            _quote_maps_seen += 1
-            if quirks.quote_open != _DEFAULT_QUOTE:
-                _QUOTE_OPEN[alias.lower()] = quirks.quote_open
-            if quirks.quote_close != _DEFAULT_QUOTE:
-                _QUOTE_CLOSE[alias.lower()] = quirks.quote_close
+    q = ProviderRegistry.get_quirks((dialect or "").lower().strip())
+    return f"{q.quote_open}{identifier}{q.quote_close}"
 
 
-class DialectEnum(str, Enum):
-    """Canonical dialect identifiers for dblift.
+def quote_qualified(
+    dialect: Optional[str],
+    schema: Optional[str],
+    identifier: str,
+) -> str:
+    """Quote a schema-qualified SQL identifier using dialect rules.
 
-    Uses str mixin for backward compatibility with existing string-based
-    dialect comparisons (e.g., `self.dialect == DialectEnum.POSTGRESQL`
-    works even if `self.dialect` is the plain string "postgresql").
+    Bans the ``f'"{schema}"."{table}"'`` anti-pattern that ignored
+    dialect quoting (B10-BUG-01). On Oracle, unquoted identifiers fold
+    to upper-case at CREATE TABLE time, so explicitly quoted lower-case
+    idents target a non-existent object — Oracle inputs are upper-cased
+    here to match the folding done at definition.
+
+    Args:
+        dialect: SQL dialect string (any case).
+        schema: Optional schema name. Omitted when None or empty.
+        identifier: Object name (table, view, sequence, ...).
+
+    Returns:
+        ``"<schema>"."<identifier>"`` with dialect-correct quotes, or
+        ``"<identifier>"`` alone when *schema* is empty.
     """
+    # Oracle folds unquoted identifiers to uppercase at CREATE TABLE
+    # time, so explicitly-quoted lower-case idents target a
+    # non-existent object — upper-case them to match the folding done
+    # at definition. The decision is dialect-owned via the
+    # ``quote_qualified_folds_to_uppercase`` quirk (Oracle ONLY).
+    # DB2 shares Oracle's identifier-folding quirks but deliberately
+    # leaves this flag False to preserve historical behaviour
+    # (story 26-5).
+    from db.provider_registry import ProviderRegistry
 
-    POSTGRESQL = "postgresql"  # lint: allow-dialect-string: dialect dispatch
-    ORACLE = "oracle"  # lint: allow-dialect-string: dialect dispatch
-    MYSQL = "mysql"  # lint: allow-dialect-string: dialect dispatch
-    SQLSERVER = "sqlserver"  # lint: allow-dialect-string: dialect dispatch
-    DB2 = "db2"  # lint: allow-dialect-string: dialect dispatch
-    SQLITE = "sqlite"  # lint: allow-dialect-string: dialect dispatch
-    COSMOSDB = "cosmosdb"  # lint: allow-dialect-string: dialect dispatch
-    UNKNOWN = "unknown"
-
-    @classmethod
-    def from_string(cls, dialect: Optional[str]) -> "DialectEnum":
-        """Normalize a dialect string to DialectEnum.
-
-        Args:
-            dialect: Dialect string (any case, e.g., "Oracle", "POSTGRESQL")
-
-        Returns:
-            DialectEnum member, or DialectEnum.UNKNOWN if not recognized
-        """
-        if not dialect:
-            return cls.UNKNOWN
-        try:
-            return cls(dialect.lower().strip())
-        except ValueError:
-            return cls.UNKNOWN
-
-    @staticmethod
-    def quote_identifier(dialect: Optional[str], identifier: str) -> str:
-        """Quote a SQL identifier using the canonical rules for *dialect*.
-
-        This is the single source of truth for identifier quoting (story 21-14).
-        Callers that previously maintained their own ``_quote_identifier``
-        if/elif chains now delegate here.
-
-        Rules:
-          - mysql    → ``identifier``
-          - sqlserver → [identifier]
-          - all others (postgresql, oracle, db2, sqlite, cosmosdb, unknown,
-            None) → "identifier"  (ANSI SQL double-quote)
-
-        Args:
-            dialect: SQL dialect string (any case; None treated as default).
-            identifier: Raw identifier to quote (no escaping of internal
-                special characters — callers that need escaping keep their
-                own implementation, e.g. SafetyChecker).
-
-        Returns:
-            Quoted identifier string.
-        """
-        _ensure_quote_maps()
-        key = (dialect or "").lower().strip()
-        open_q = _QUOTE_OPEN.get(key, _DEFAULT_QUOTE)
-        close_q = _QUOTE_CLOSE.get(key, _DEFAULT_QUOTE)
-        return f"{open_q}{identifier}{close_q}"
-
-    @staticmethod
-    def quote_qualified(
-        dialect: Optional[str],
-        schema: Optional[str],
-        identifier: str,
-    ) -> str:
-        """Quote a schema-qualified SQL identifier using dialect rules.
-
-        Bans the ``f'"{schema}"."{table}"'`` anti-pattern that ignored
-        dialect quoting (B10-BUG-01). On Oracle, unquoted identifiers fold
-        to upper-case at CREATE TABLE time, so explicitly quoted lower-case
-        idents target a non-existent object — Oracle inputs are upper-cased
-        here to match the folding done at definition.
-
-        Args:
-            dialect: SQL dialect string (any case).
-            schema: Optional schema name. Omitted when None or empty.
-            identifier: Object name (table, view, sequence, ...).
-
-        Returns:
-            ``"<schema>"."<identifier>"`` with dialect-correct quotes, or
-            ``"<identifier>"`` alone when *schema* is empty.
-        """
-        # Preserve historical Oracle-only behaviour here. The wider
-        # ``uppercase_identifiers`` quirks flag (which DB2 also sets)
-        # is consulted elsewhere; this specific helper only
-        # uppercased identifiers for Oracle, and changing that would
-        # alter DB2 output formatting unexpectedly. (PR #241 Bugbot.)
-        # lint: allow-dialect-string: preserve narrow historical Oracle path
-        key = (dialect or "").lower().strip()
-        if key == "oracle":  # lint: allow-dialect-string: narrow historical scope
-            identifier = identifier.upper()
-            if schema:
-                schema = schema.upper()
-        ident_q = DialectEnum.quote_identifier(dialect, identifier)
-        if not schema:
-            return ident_q
-        schema_q = DialectEnum.quote_identifier(dialect, schema)
-        return f"{schema_q}.{ident_q}"
+    key = (dialect or "").lower().strip()
+    if ProviderRegistry.get_quirks(key).quote_qualified_folds_to_uppercase:
+        identifier = identifier.upper()
+        if schema:
+            schema = schema.upper()
+    ident_q = quote_identifier(dialect, identifier)
+    if not schema:
+        return ident_q
+    schema_q = quote_identifier(dialect, schema)
+    return f"{schema_q}.{ident_q}"
 
 
 def dispatch_by_dialect(

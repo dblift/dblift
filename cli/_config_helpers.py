@@ -75,7 +75,7 @@ def _extract_commands_from_argv(
             i += 1
             # Commands with subcommands: stop extracting further commands,
             # but continue loop so global args are still extracted
-            if arg in ("db", "license"):
+            if arg in ("db", "license", "data"):
                 stop_command_extraction = True
             continue
 

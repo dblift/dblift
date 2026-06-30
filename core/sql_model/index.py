@@ -4,10 +4,6 @@ from typing import Any, Dict, List, Optional, Sequence
 
 from core.sql_model.base import SqlObject, SqlObjectType
 
-_NS_MYSQL = "mysql"  # lint: allow-dialect-string: plugin namespace key for dialect_options
-_NS_ORACLE = "oracle"  # lint: allow-dialect-string: plugin namespace key for dialect_options
-_NS_POSTGRES = "postgresql"  # lint: allow-dialect-string: plugin namespace key for dialect_options
-
 
 def _quirks_for(dialect: Optional[str]) -> Any:
     """Resolve quirks for *dialect* via the registry.
@@ -88,12 +84,11 @@ class Index(SqlObject):
         self.condition = condition
         self.include_columns = self._normalize_include_columns(include_columns)
         self.sort_directions = sort_directions or []
-        # ``dialect_options`` is initialized by ``SqlObject.__init__``; the
-        # property setters below route into it under their plugin namespace.
-        self.online = online
-        self.concurrently = concurrently
-        self.tablespace = tablespace
-        self.is_local = is_local
+        # Grammar-based index properties.
+        self.online = online  # MySQL ``ONLINE`` / ``OFFLINE``
+        self.concurrently = concurrently  # PostgreSQL ``CREATE INDEX CONCURRENTLY``
+        self.tablespace = tablespace  # Oracle ``TABLESPACE`` clause
+        self.is_local = is_local  # Oracle ``LOCAL`` partitioned-index keyword
         expr_flags = expression_flags or []
         self.expression_flags = [
             bool(expr_flags[i]) if i < len(expr_flags) else False for i in range(len(columns))
@@ -103,47 +98,6 @@ class Index(SqlObject):
         self.compression = compression
         self.comment = comment
         self.definition = definition
-
-    @property
-    def online(self) -> Optional[bool]:
-        """MySQL ``ONLINE`` / ``OFFLINE`` index keyword."""
-        return self.get_dialect_option(_NS_MYSQL, "online")
-
-    @online.setter
-    def online(self, value: Optional[bool]) -> None:
-        """Set MySQL ``ONLINE`` / ``OFFLINE`` index keyword."""
-        self._set_plugin_option(_NS_MYSQL, "online", value)
-
-    @property
-    def concurrently(self) -> bool:
-        """PostgreSQL ``CREATE INDEX CONCURRENTLY`` flag."""
-        return bool(self.get_dialect_option(_NS_POSTGRES, "concurrently", default=False))
-
-    @concurrently.setter
-    def concurrently(self, value: bool) -> None:
-        """Set PostgreSQL ``CREATE INDEX CONCURRENTLY`` flag."""
-        self._set_plugin_option(_NS_POSTGRES, "concurrently", value, default=False)
-
-    @property
-    def tablespace(self) -> Optional[str]:
-        """Oracle ``TABLESPACE`` clause."""
-        value = self.get_dialect_option(_NS_ORACLE, "tablespace")
-        return value if value is None or isinstance(value, str) else str(value)
-
-    @tablespace.setter
-    def tablespace(self, value: Optional[str]) -> None:
-        """Set Oracle ``TABLESPACE`` clause."""
-        self._set_plugin_option(_NS_ORACLE, "tablespace", value)
-
-    @property
-    def is_local(self) -> Optional[bool]:
-        """Oracle ``LOCAL`` partitioned-index keyword."""
-        return self.get_dialect_option(_NS_ORACLE, "is_local")
-
-    @is_local.setter
-    def is_local(self, value: Optional[bool]) -> None:
-        """Set Oracle ``LOCAL`` partitioned-index keyword."""
-        self._set_plugin_option(_NS_ORACLE, "is_local", value)
 
     @property
     def create_statement(self) -> str:

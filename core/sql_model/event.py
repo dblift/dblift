@@ -5,8 +5,6 @@ from typing import Any, Dict, Optional
 
 from core.sql_model.base import SqlObject, SqlObjectType
 
-_NS_MYSQL = "mysql"  # lint: allow-dialect-string: plugin namespace key for dialect_options
-
 
 class Event(SqlObject):
     """Represents a MySQL scheduled event."""
@@ -21,9 +19,7 @@ class Event(SqlObject):
         comment: Optional[str] = None,
         definer: Optional[str] = None,
         event_type: str = "ONE TIME",  # ONE TIME or RECURRING
-        dialect: Optional[
-            str
-        ] = "mysql",  # lint: allow-dialect-string: events are MySQL-only domain object
+        dialect: Optional[str] = None,
     ):
         """Initialize a MySQL event.
 
@@ -36,28 +32,16 @@ class Event(SqlObject):
             comment: Event comment/description
             definer: User who defined the event
             event_type: Event type (ONE TIME or RECURRING)
-            dialect: SQL dialect (defaults to mysql)
+            dialect: SQL dialect, supplied by the creating introspector
         """
         super().__init__(name, SqlObjectType.EVENT, schema, dialect)
         self.definition = definition
         self.schedule = schedule
         self.enabled = enabled
         self.comment = comment
-        # ``dialect_options`` is initialized by ``SqlObject.__init__``; the
-        # property setter below routes into it under its plugin namespace.
+        # MySQL ``DEFINER = user@host`` (Events are MySQL/MariaDB-only).
         self.definer = definer
         self.event_type = event_type
-
-    @property
-    def definer(self) -> Optional[str]:
-        """MySQL ``DEFINER = user@host`` (Events are MySQL/MariaDB-only)."""
-        value = self.get_dialect_option(_NS_MYSQL, "definer")
-        return value if value is None or isinstance(value, str) else str(value)
-
-    @definer.setter
-    def definer(self, value: Optional[str]) -> None:
-        """Set MySQL ``DEFINER = user@host`` (Events are MySQL/MariaDB-only)."""
-        self._set_plugin_option(_NS_MYSQL, "definer", value)
 
     @property
     def create_statement(self) -> str:
@@ -132,7 +116,7 @@ class Event(SqlObject):
             comment=data.get("comment"),
             definer=data.get("definer"),
             event_type=data.get("event_type", "ONE TIME"),
-            dialect=data.get("dialect", "mysql"),  # lint: allow-dialect-string: events MySQL-only
+            dialect=data.get("dialect"),
         )
 
     def to_dict(self) -> Dict[str, Any]:

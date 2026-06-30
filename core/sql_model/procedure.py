@@ -4,9 +4,6 @@ from typing import Any, Dict, List, Optional
 
 from core.sql_model.base import SqlObject, SqlObjectType
 
-_NS_MYSQL = "mysql"  # lint: allow-dialect-string: plugin namespace key for dialect_options
-_NS_POSTGRES = "postgresql"  # lint: allow-dialect-string: plugin namespace key for dialect_options
-
 
 def _quirks_for(dialect: Optional[str]) -> Any:
     """Resolve quirks for *dialect* via the registry.
@@ -151,11 +148,10 @@ class Procedure(SqlObject):
         self.comment = comment
         self.definition = definition
         self.volatility = volatility
-        # ``dialect_options`` is initialized by ``SqlObject.__init__``; the
-        # property setters below route into it under their plugin namespace.
-        self.security_definer = security_definer
-        self.definer = definer
-        self.data_access = data_access
+        # Grammar-based routine properties.
+        self.security_definer = security_definer  # PostgreSQL ``SECURITY DEFINER``
+        self.definer = definer  # MySQL ``DEFINER = user@host``
+        self.data_access = data_access  # MySQL ``DATA ACCESS`` characteristic
 
         if self.is_function and self.parameters:
             first_param = self.parameters[0]
@@ -165,38 +161,6 @@ class Procedure(SqlObject):
                 if inferred_type:
                     self.return_type = inferred_type
                 self.parameters = self.parameters[1:]
-
-    @property
-    def security_definer(self) -> Optional[bool]:
-        """PostgreSQL ``SECURITY DEFINER`` flag."""
-        return self.get_dialect_option(_NS_POSTGRES, "security_definer")
-
-    @security_definer.setter
-    def security_definer(self, value: Optional[bool]) -> None:
-        """Set PostgreSQL ``SECURITY DEFINER`` flag."""
-        self._set_plugin_option(_NS_POSTGRES, "security_definer", value)
-
-    @property
-    def definer(self) -> Optional[str]:
-        """MySQL ``DEFINER = user@host``."""
-        value = self.get_dialect_option(_NS_MYSQL, "definer")
-        return value if value is None or isinstance(value, str) else str(value)
-
-    @definer.setter
-    def definer(self, value: Optional[str]) -> None:
-        """Set MySQL ``DEFINER = user@host``."""
-        self._set_plugin_option(_NS_MYSQL, "definer", value)
-
-    @property
-    def data_access(self) -> Optional[str]:
-        """MySQL ``DATA ACCESS`` characteristic (``READS SQL DATA`` / …)."""
-        value = self.get_dialect_option(_NS_MYSQL, "data_access")
-        return value if value is None or isinstance(value, str) else str(value)
-
-    @data_access.setter
-    def data_access(self, value: Optional[str]) -> None:
-        """Set MySQL ``DATA ACCESS`` characteristic (``READS SQL DATA`` / …)."""
-        self._set_plugin_option(_NS_MYSQL, "data_access", value)
 
     @property
     def create_statement(self) -> str:

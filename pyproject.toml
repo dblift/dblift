@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "dblift"
-version = "2.0.5"
+version = "2.1.0"
 description = "A database migration tool that supports multiple databases with native Python drivers"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -604,6 +604,7 @@ strict_equality = true
 module = [
     "db.plugins.sqlite",
     "db.plugins.sqlite.plugin",
+    "db.plugins.sqlite.config",
     "db.plugins.sqlite.provider",
     "db.plugins.sqlite.quirks",
     "db.plugins.sqlite.sqlite",
@@ -656,6 +657,7 @@ strict_equality = true
 module = [
     "db.plugins.postgresql",
     "db.plugins.postgresql.plugin",
+    "db.plugins.postgresql.config",
     "db.plugins.postgresql.provider",
     "db.plugins.postgresql.quirks",
     "db.plugins.postgresql.postgresql",
@@ -686,6 +688,7 @@ strict_equality = true
 module = [
     "db.plugins.mysql",
     "db.plugins.mysql.plugin",
+    "db.plugins.mysql.config",
     "db.plugins.mysql.provider",
     "db.plugins.mysql.quirks",
     "db.plugins.mysql.mysql",
@@ -717,6 +720,7 @@ strict_equality = true
 module = [
     "db.plugins.oracle",
     "db.plugins.oracle.plugin",
+    "db.plugins.oracle.config",
     "db.plugins.oracle.provider",
     "db.plugins.oracle.quirks",
     "db.plugins.oracle.oracle",
@@ -756,6 +760,7 @@ strict_equality = true
 module = [
     "db.plugins.sqlserver",
     "db.plugins.sqlserver.plugin",
+    "db.plugins.sqlserver.config",
     "db.plugins.sqlserver.provider",
     "db.plugins.sqlserver.quirks",
     "db.plugins.sqlserver.sqlserver",
@@ -791,6 +796,7 @@ strict_equality = true
 module = [
     "db.plugins.db2",
     "db.plugins.db2.plugin",
+    "db.plugins.db2.config",
     "db.plugins.db2.provider",
     "db.plugins.db2.quirks",
     "db.plugins.db2.db2",
@@ -816,6 +822,7 @@ strict_equality = true
 module = [
     "db.plugins.cosmosdb",
     "db.plugins.cosmosdb.plugin",
+    "db.plugins.cosmosdb.config",
     "db.plugins.cosmosdb.provider",
     "db.plugins.cosmosdb.quirks",
     "db.plugins.cosmosdb.cosmosdb",
@@ -889,8 +896,10 @@ warn_unused_ignores = true
 strict_equality = true
 
 # PR-H12: strict config/ — full config package (dblift_config, database_config,
-# URL parsing, builders, validation, and 7 dialect-specific config
-# subclasses).
+# URL parsing, builders, validation). The 7 dialect-specific config subclasses
+# moved into their plugin packages (db/plugins/<dialect>/config.py, ADR-26 D /
+# story 26-11); only the non-dialect ``dummy`` config remains under
+# ``config/_subclasses``.
 [[tool.mypy.overrides]]
 module = [
     "config",
@@ -902,14 +911,7 @@ module = [
     "config.errors",
     "config.validation_config",
     "config._subclasses",
-    "config._subclasses.cosmosdb_config",
-    "config._subclasses.db2_config",
     "config._subclasses.dummy_config",
-    "config._subclasses.mysql_config",
-    "config._subclasses.oracle_config",
-    "config._subclasses.postgresql_config",
-    "config._subclasses.sqlite_config",
-    "config._subclasses.sqlserver_config",
 ]
 disallow_any_generics = true
 disallow_subclassing_any = true

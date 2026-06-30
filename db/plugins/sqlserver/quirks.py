@@ -30,6 +30,21 @@ class SqlserverQuirks(BaseQuirks):
     uppercase_identifiers = False
     clean_strategy = "introspector"
     sqlglot_dialect = "tsql"
+    is_sqlserver_family = True
+    # Data-set ledger DDL: tsql TIMESTAMP is a rowversion (no default allowed)
+    # and TEXT is a deprecated LOB; use DATETIME2 and VARCHAR(MAX).
+    data_history_text_type = "VARCHAR(MAX)"
+    data_change_set_blob_type = "VARCHAR(MAX)"
+    data_timestamp_column_ddl = "DATETIME2 DEFAULT GETDATE()"
+
+    def is_data_history_table_already_exists_error(self, error_message: str) -> bool:
+        """SQL Server raises "There is already an object named ..." (Msg 2714)."""
+        return "already an object named" in (error_message or "").lower()
+
+    def is_data_change_set_table_already_exists_error(self, error_message: str) -> bool:
+        """Same Msg 2714 detection as the data history table."""
+        return self.is_data_history_table_already_exists_error(error_message)
+
     pygments_lexer = "tsql"
     connection_identifier_attrs = ("url", "host", "database")
     missing_connection_identifier_hint = (
@@ -318,23 +333,23 @@ class SqlserverQuirks(BaseQuirks):
 
         filegroup = get_row_value(row, "filegroup_name")
         if filegroup:
-            table.filegroup = filegroup
+            table.set_dialect_option("sqlserver", "filegroup", filegroup)
         if get_row_value(row, "is_memory_optimized") == "YES":
-            table.memory_optimized = True
+            table.set_dialect_option("sqlserver", "memory_optimized", True)
         if get_row_value(row, "is_system_versioned") == "YES":
-            table.system_versioned = True
+            table.set_dialect_option("sqlserver", "system_versioned", True)
             history_table = get_row_value(row, "history_table_name")
             history_schema = get_row_value(row, "history_schema_name")
             period_start = get_row_value(row, "period_start_column")
             period_end = get_row_value(row, "period_end_column")
             if history_table:
-                table.history_table = history_table
+                table.set_dialect_option("sqlserver", "history_table", history_table)
             if history_schema:
-                table.history_schema = history_schema
+                table.set_dialect_option("sqlserver", "history_schema", history_schema)
             if period_start:
-                table.period_start_column = period_start
+                table.set_dialect_option("sqlserver", "period_start_column", period_start)
             if period_end:
-                table.period_end_column = period_end
+                table.set_dialect_option("sqlserver", "period_end_column", period_end)
 
     def existence_check_sql(self, table_name: str) -> str:
         """Use ``SELECT TOP 1 1`` — SQL Server has no ``LIMIT`` clause."""

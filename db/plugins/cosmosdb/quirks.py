@@ -29,6 +29,10 @@ class CosmosdbQuirks(BaseQuirks):
     default_schema_name = "default"
     boolean_false_literal = "false"
     is_nosql = True
+    # Azure account auth (endpoint + key, or managed identity) instead of
+    # host/user/password. Gates the auth validation in
+    # ``DbliftConfig.validate_complete_data``.
+    requires_cloud_account_auth = True
     # NoSQL: identifiers are JSON keys, not SQL identifiers — no quoting.
     quote_open = ""
     quote_close = ""

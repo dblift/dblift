@@ -2,10 +2,35 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, Optional, Tuple, Type
+import re
+from typing import Any, Dict, List, Optional, Tuple, Type
 
 from core.utils.database_url_parser import DatabaseUrlParser
 from db.base_quirks import BaseQuirks
+from db.error import ErrorCategory
+
+# Each entry: (compiled regex, ErrorCategory). Sourced by
+# ``DatabaseErrorClassifier`` via ``error_patterns()`` (ADR-26 A2).
+_ERROR_PATTERNS: List[Tuple[re.Pattern[str], ErrorCategory]] = [
+    # Network / connection
+    (re.compile(r"\b2003\b.*Can't connect", re.IGNORECASE), ErrorCategory.NETWORK),
+    (re.compile(r"\b2013\b.*Lost connection", re.IGNORECASE), ErrorCategory.NETWORK),
+    (re.compile(r"\b2006\b.*server has gone away", re.IGNORECASE), ErrorCategory.NETWORK),
+    (re.compile(r"\b2002\b.*Can't connect", re.IGNORECASE), ErrorCategory.NETWORK),
+    # Locking
+    (re.compile(r"\b1205\b.*Lock wait timeout", re.IGNORECASE), ErrorCategory.LOCKING),
+    (re.compile(r"\b1213\b.*Deadlock", re.IGNORECASE), ErrorCategory.LOCKING),
+    # Authentication
+    (re.compile(r"\b1045\b.*Access denied", re.IGNORECASE), ErrorCategory.AUTHENTICATION),
+    # Schema
+    (re.compile(r"\b1146\b.*doesn't exist", re.IGNORECASE), ErrorCategory.SCHEMA),
+    (re.compile(r"\b1054\b.*Unknown column", re.IGNORECASE), ErrorCategory.SCHEMA),
+    # Constraint
+    (re.compile(r"\b1062\b.*Duplicate entry", re.IGNORECASE), ErrorCategory.CONSTRAINT),
+    (re.compile(r"\b1452\b.*foreign key constraint", re.IGNORECASE), ErrorCategory.CONSTRAINT),
+    # SQL Syntax
+    (re.compile(r"\b1064\b.*syntax", re.IGNORECASE), ErrorCategory.SQL_SYNTAX),
+]
 
 
 class MysqlQuirks(BaseQuirks):
@@ -33,6 +58,7 @@ class MysqlQuirks(BaseQuirks):
     quote_open = "`"
     quote_close = "`"
     drop_supports_if_exists = True
+    provider_compat_snapshot_skips_existence_check = True
     tinyint1_is_boolean = True
     metadata_catalog_mode = "catalog"
     # Procedure / function DDL (story 26-5).
@@ -51,6 +77,7 @@ class MysqlQuirks(BaseQuirks):
     table_drop_style = "if_exists"
     table_supports_inline_collate = True
     table_check_strip_utf8mb4 = True
+    table_uses_storage_engine_clause = True
     # Wave A hooks (story 26-6).
     view_supports_algorithm = True
     proc_skip_empty_comparison = True
@@ -95,6 +122,18 @@ class MysqlQuirks(BaseQuirks):
         """Initialize MySQL quirks with the dialect name."""
         super().__init__(dialect_name=dialect_name)
 
+    def error_patterns(self) -> "List[Tuple[re.Pattern[str], ErrorCategory]]":
+        """MySQL numeric error-code classification patterns (ADR-26 A2).
+
+        Inherited by :class:`MariadbQuirks` — MariaDB is MySQL
+        wire-compatible and shares the same numeric error codes.
+        """
+        return _ERROR_PATTERNS
+
+    def engine_pool_options(self) -> "dict[str, Any]":
+        """MySQL/MariaDB: disable pool reset-on-return to avoid connection-state churn."""
+        return {"pool_reset_on_return": None}
+
     def build_snapshot_table_ddl(
         self,
         qualified_table: str,
@@ -103,6 +142,84 @@ class MysqlQuirks(BaseQuirks):
     ) -> str:
         """MySQL does not support DBLift-managed snapshot table DDL."""
         raise NotImplementedError("MySQL does not support DBLift-managed snapshot table DDL")
+
+    def build_provider_compat_snapshot_ddl(
+        self, qualified_table: str, snapshot_id_size: int, checksum_size: int
+    ) -> "Optional[str]":
+        """Legacy MySQL provider-compat snapshot DDL (idempotent, InnoDB)."""
+        return (
+            f"CREATE TABLE IF NOT EXISTS {qualified_table} ("
+            f"snapshot_id VARCHAR({snapshot_id_size}) PRIMARY KEY, "
+            "captured_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, "
+            f"checksum VARCHAR({checksum_size}), "
+            "model_data LONGTEXT NOT NULL"
+            ") ENGINE=InnoDB"
+        )
+
+    def build_data_history_table_ddl(
+        self,
+        qualified_table: str,
+        id_size: int = 100,
+        checksum_size: int = 128,
+    ) -> str:
+        """MySQL-specific DDL for data history table (with ENGINE)."""
+        return (
+            f"CREATE TABLE {qualified_table} ("
+            f"id VARCHAR({id_size}) PRIMARY KEY, "
+            f"dataset VARCHAR(100), "
+            f"sql_checksum VARCHAR({checksum_size}), "
+            f"installed_by VARCHAR(100), "
+            f"installed_on TIMESTAMP DEFAULT CURRENT_TIMESTAMP, "
+            f"status VARCHAR(20), "
+            f"plan_fingerprint VARCHAR(128), "
+            f"summary TEXT, "
+            f"vcs_ref VARCHAR(200), "
+            f"note TEXT"
+            ") ENGINE=InnoDB"
+        )
+
+    def build_data_change_set_table_ddl(
+        self,
+        qualified_table: str,
+        history_id_size: int = 100,
+        checksum_size: int = 128,
+    ) -> str:
+        """MySQL-specific DDL for data change-set table using LONGTEXT.
+
+        ``(dataset, history_id)`` primary key enforces one change-set row per
+        applied correction (the table is shared across datasets).
+        """
+        return (
+            f"CREATE TABLE {qualified_table} ("
+            f"dataset VARCHAR(100) NOT NULL, "
+            f"history_id VARCHAR({history_id_size}) NOT NULL, "
+            f"checksum VARCHAR({checksum_size}), "
+            f"model_data LONGTEXT NOT NULL, "
+            f"PRIMARY KEY (dataset, history_id)"
+            ") ENGINE=InnoDB"
+        )
+
+    def build_data_audit_table_ddl(
+        self,
+        qualified_table: str,
+        history_id_size: int = 100,
+        checksum_size: int = 128,
+    ) -> str:
+        """MySQL-specific append-only audit-log DDL (InnoDB)."""
+        return (
+            f"CREATE TABLE {qualified_table} ("
+            f"dataset VARCHAR(100) NOT NULL, "
+            f"seq INTEGER NOT NULL, "
+            f"history_id VARCHAR({history_id_size}) NOT NULL, "
+            f"event VARCHAR(20) NOT NULL, "
+            f"sql_checksum VARCHAR({checksum_size}), "
+            f"installed_by VARCHAR(100), "
+            f"recorded_on TIMESTAMP DEFAULT CURRENT_TIMESTAMP, "
+            f"prev_hash VARCHAR(64) NOT NULL, "
+            f"row_hash VARCHAR(64) NOT NULL, "
+            f"PRIMARY KEY (dataset, seq)"
+            ") ENGINE=InnoDB"
+        )
 
     def ddl_generator_class(self) -> None:
         """OSS builds do not ship SQL generator implementations."""
@@ -460,19 +577,19 @@ class MysqlQuirks(BaseQuirks):
 
         storage_engine = get_row_value(row, "storage_engine")
         if storage_engine:
-            table.storage_engine = storage_engine
+            table.set_dialect_option("mysql", "storage_engine", storage_engine)
         row_format = get_row_value(row, "row_format")
         if row_format:
-            table.row_format = row_format
+            table.set_dialect_option("mysql", "row_format", row_format)
         table_collation = get_row_value(row, "table_collation")
         if table_collation:
-            table.table_collation = table_collation
+            table.set_dialect_option("mysql", "table_collation", table_collation)
         next_auto_increment = get_row_value(row, "next_auto_increment")
         if next_auto_increment is not None:
-            table.next_auto_increment = next_auto_increment
+            table.set_dialect_option("mysql", "next_auto_increment", next_auto_increment)
         create_options = get_row_value(row, "create_options")
         if create_options:
-            table.create_options = create_options
+            table.set_dialect_option("mysql", "create_options", create_options)
 
     def fk_reference_query(
         self, schema: str, table: str, col: str

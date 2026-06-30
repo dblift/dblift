@@ -120,3 +120,42 @@ class TestMigrationConfigInjection:
         assert any(
             "dialect" in c.lower() for c in warning_calls
         ), f"Expected warning about missing dialect, got: {warning_calls}"
+
+    def test_no_dialect_path_passes_registry_default_not_hidden_literal(self):
+        """The config=None/no-dialect path must pass an explicit registry-derived
+        dialect to SqlAnalyzer (ADR-26 E5).
+
+        Previously SqlAnalyzer had a hidden ``dialect="oracle"`` default and this
+        path called ``SqlAnalyzer(logger=...)`` with no dialect. The dialect is
+        now required, so the caller resolves a registry default and passes it.
+        """
+        from db.provider_registry import ProviderRegistry
+
+        migration = Migration(
+            script_name="V001__test.sql",
+            content="SELECT 1;",
+            config=None,
+        )
+        mock_logger = MagicMock()
+        migration.logger = mock_logger
+
+        with patch.dict("os.environ", {}, clear=True):
+            with patch("core.migration.sql.sql_analyzer.SqlAnalyzer") as mock_analyzer_class:
+                mock_analyzer = MagicMock()
+                mock_analyzer.split_statements.return_value = ["SELECT 1"]
+                mock_analyzer_class.return_value = mock_analyzer
+
+                migration.parse_sql_statements()
+
+        # SqlAnalyzer must be constructed with an explicit dialect that resolves
+        # to a real registered native dialect — never an implicit default.
+        passed_dialects = []
+        for c in mock_analyzer_class.call_args_list:
+            if c.args:
+                passed_dialects.append(c.args[0])
+            if "dialect" in c.kwargs:
+                passed_dialects.append(c.kwargs["dialect"])
+        assert passed_dialects, "SqlAnalyzer must be called with an explicit dialect"
+        for d in passed_dialects:
+            assert ProviderRegistry.canonical_dialect_name(d) == d
+            assert ProviderRegistry.is_native_dialect(d)

@@ -72,9 +72,6 @@ def _infer_type_from_url_scheme(data: Dict[str, Any]) -> None:
         _normalize_sqlite_url_alias(data)
         url = str(data.get("url") or "")
         url_lower = url.lower()
-        if url_lower.startswith(("sqlite:", "sqlite3:")):
-            data["type"] = "sqlite"  # lint: allow-dialect-string: URL-scheme inference
-            return
         scheme = url_lower.split(":", 1)[0].split("+", 1)[0]
         if scheme:
             canonical = _native_canonical_from_scheme(scheme)
@@ -102,24 +99,20 @@ def _normalize_sqlite_url_alias(data: Dict[str, Any]) -> None:
 
 
 def _infer_type_from_uri(data: Dict[str, Any], url: str) -> None:
-    """Handle bare ``sqlite:`` / ``sqlite3:`` URIs (PEP-249 / RFC 8085 style).
+    """Infer ``type`` for native URIs (e.g. ``sqlite:`` / ``sqlite3:``) via the registry.
 
-    Unknown schemes are left for normal validation so secret/offline URLs can
-    still flow through the incomplete-config path when requested.
+    The scheme is resolved through ``_native_canonical_from_scheme`` after the
+    ``sqlite3:`` alias is normalised. Unknown schemes are left for normal
+    validation so secret/offline URLs can still flow through the
+    incomplete-config path when requested.
     """
     _normalize_sqlite_url_alias(data)
     url = str(data.get("url") or url)
     url_l = (url or "").strip().lower()
-    if url_l.startswith("sqlite3:"):
-        data["type"] = "sqlite"  # lint: allow-dialect-string: URL-scheme inference
-    elif url_l.startswith("sqlite:"):
-        data["type"] = "sqlite"  # lint: allow-dialect-string: URL-scheme inference
-    else:
-        scheme = url_l.split(":", 1)[0].split("+", 1)[0]
-        canonical = _native_canonical_from_scheme(scheme)
-        if canonical:
-            data["type"] = canonical
-            return
+    scheme = url_l.split(":", 1)[0].split("+", 1)[0]
+    canonical = _native_canonical_from_scheme(scheme)
+    if canonical:
+        data["type"] = canonical
 
 
 def _hydrate_from_native_url(data: Dict[str, Any], url: str) -> None:
@@ -442,10 +435,12 @@ class BaseDatabaseConfig(UrlBuilderMixin, ABC):
 
     @classmethod
     def create(cls, data: Dict[str, Any]) -> "BaseDatabaseConfig":
-        # NOTE: per-dialect subclasses register themselves at the bottom of this
-        # module via eager imports of ``config._subclasses.*_config``; the
-        # ``BaseDatabaseConfig._registry`` lookup below depends on those
-        # registrations being in place by the time ``create()`` runs.
+        # NOTE: the config subclass for a dialect is resolved in
+        # ``_resolve_config_class`` — first via the eager ``_registry`` (only the
+        # non-dialect ``dummy`` config eager-imports here now), then via plugin
+        # discovery (``PluginInfo.config_class``). Per-dialect configs live in
+        # ``db/plugins/<X>/config.py`` (ADR-26 D); see the block at the bottom
+        # of this module.
         # Phase 1: infer a missing ``type`` from well-known URL schemes.
         _infer_type_from_url_scheme(data)
 
@@ -589,27 +584,18 @@ class DatabaseConfig:
 
 
 # ---------------------------------------------------------------------------
-# Re-export per-dialect subclasses so the legacy
-# ``from config.database_config import XxxConfig`` import path keeps working
-# (used by ~25 test modules and a couple of production sites).
+# Per-dialect config subclasses now live in their plugin packages
+# (``db/plugins/<dialect>/config.py``) and register via plugin discovery
+# (story 26-11 / ADR-26 D). Each plugin declares ``config_class=XxxConfig`` on
+# its ``PluginInfo`` and ``_resolve_config_class`` (above) picks it up through
+# the plugin registry — adding a dialect no longer requires editing ``config/``.
 #
-# These imports are intentionally at the bottom of the module: each subclass
-# module imports ``BaseDatabaseConfig`` (and ``register_database_type``) from
-# this file, so the symbols above must be fully defined before we load them.
-# Importing the modules registers their classes via ``@register_database_type``.
-#
-# Roadmap action #11: third-party plugins do **not** need to add to this list
-# — they declare ``config_class=MyConfig`` on their ``PluginInfo`` and
-# ``_resolve_config_class`` (above) picks it up via the plugin registry. The
-# eager imports below stay only because removing them would break the legacy
-# import path; they aren't the modern entry point for new dialects.
+# Only the non-dialect ``dummy`` config stays eager-imported here: it is a
+# generic/test config (not a plugin), so it has no plugin to register through.
+# The import is at the bottom because ``dummy_config`` imports
+# ``BaseDatabaseConfig`` (and ``register_database_type``) from this file, so the
+# symbols above must be fully defined first; importing it registers its class
+# via ``@register_database_type``.
 # ---------------------------------------------------------------------------
 
-from config._subclasses.cosmosdb_config import CosmosDbConfig  # noqa: E402, F401
-from config._subclasses.db2_config import Db2Config  # noqa: E402, F401
 from config._subclasses.dummy_config import DummyDatabaseConfig  # noqa: E402, F401
-from config._subclasses.mysql_config import MySqlConfig  # noqa: E402, F401
-from config._subclasses.oracle_config import OracleConfig  # noqa: E402, F401
-from config._subclasses.postgresql_config import PostgreSqlConfig  # noqa: E402, F401
-from config._subclasses.sqlite_config import SQLiteConfig  # noqa: E402, F401
-from config._subclasses.sqlserver_config import SqlServerConfig  # noqa: E402, F401

@@ -599,10 +599,10 @@ class TestTable:
             ),
         )
 
-        assert table.pctfree == 10
-        assert table.pctused == 40
-        assert table.initial == 65536
-        assert table.next == 65536
+        assert table.get_dialect_option("oracle", "pctfree") == 10
+        assert table.get_dialect_option("oracle", "pctused") == 40
+        assert table.get_dialect_option("oracle", "initial") == 65536
+        assert table.get_dialect_option("oracle", "next") == 65536
 
     def test_table_with_inheritance(self):
         """Test table with inheritance (PostgreSQL)."""
@@ -615,7 +615,10 @@ class TestTable:
             ),
         )
 
-        assert table.inherits == ["parent_table1", "parent_table2"]
+        assert table.get_dialect_option("postgresql", "inherits", default=[]) == [
+            "parent_table1",
+            "parent_table2",
+        ]
 
     def test_table_storage_parameters_serialization(self):
         """Test table storage parameters in to_dict and from_dict."""
@@ -631,16 +634,17 @@ class TestTable:
         )
         data = table.to_dict()
 
-        assert data.get("pctfree") == 10
-        assert data.get("pctused") == 40
-        assert data.get("initial") == 65536
-        assert data.get("next") == 65536
+        # Built-ins live inside ``dialect_options`` (no redundant top-level keys).
+        assert data["dialect_options"]["oracle"]["pctfree"] == 10
+        assert data["dialect_options"]["oracle"]["pctused"] == 40
+        assert data["dialect_options"]["oracle"]["initial"] == 65536
+        assert data["dialect_options"]["oracle"]["next"] == 65536
 
         restored = Table.from_dict(data)
-        assert restored.pctfree == 10
-        assert restored.pctused == 40
-        assert restored.initial == 65536
-        assert restored.next == 65536
+        assert restored.get_dialect_option("oracle", "pctfree") == 10
+        assert restored.get_dialect_option("oracle", "pctused") == 40
+        assert restored.get_dialect_option("oracle", "initial") == 65536
+        assert restored.get_dialect_option("oracle", "next") == 65536
 
     def test_table_inheritance_serialization(self):
         """Test table inheritance in to_dict and from_dict."""
@@ -654,10 +658,16 @@ class TestTable:
         )
         data = table.to_dict()
 
-        assert data.get("inherits") == ["parent_table1", "parent_table2"]
+        assert data["dialect_options"]["postgresql"]["inherits"] == [
+            "parent_table1",
+            "parent_table2",
+        ]
 
         restored = Table.from_dict(data)
-        assert restored.inherits == ["parent_table1", "parent_table2"]
+        assert restored.get_dialect_option("postgresql", "inherits", default=[]) == [
+            "parent_table1",
+            "parent_table2",
+        ]
 
     def test_table_metadata_round_trips(self):
         """metadata (e.g. CosmosDB partition_key) must survive to_dict/from_dict."""

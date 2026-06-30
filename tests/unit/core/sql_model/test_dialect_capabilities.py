@@ -20,7 +20,6 @@ from core.sql_model.dialect import (
     SCHEMA_OPTIONAL_DIALECTS,
     SCHEMA_OPTIONAL_DIALECTS_FROM_MATRIX,
     DialectCapabilities,
-    DialectEnum,
     dialect_clean_strategy,
     dialect_requires_schema,
     dialect_supports_transactional_ddl,
@@ -32,15 +31,25 @@ from core.sql_model.dialect import (
 # --- Matrix-level invariants -------------------------------------------------
 
 
+def _canonical_dialect_names():
+    """Canonical primary dialect names from the plugin registry.
+
+    Replaces the removed ``list(DialectEnum)`` vocabulary (story 26-5);
+    the plugin registry is now the single source of canonical names.
+    """
+    from db.provider_registry import ProviderRegistry
+
+    return sorted(p.name for p in ProviderRegistry.list_plugins())
+
+
 class TestMatrixInvariants:
     """Invariants the matrix itself must satisfy."""
 
-    @pytest.mark.parametrize("member", list(DialectEnum))
-    def test_every_canonical_dialect_has_a_capabilities_entry(self, member):
-        if member is DialectEnum.UNKNOWN:
-            pytest.skip("UNKNOWN is handled via the fallback, not the matrix.")
-        assert member.value in _CAPABILITIES, (
-            f"DialectEnum.{member.name} has no entry in _CAPABILITIES. Add one — "
+    @pytest.mark.parametrize("dialect", _canonical_dialect_names())
+    def test_every_canonical_dialect_has_a_capabilities_entry(self, dialect):
+        get_dialect_capabilities(dialect)  # trigger lazy matrix build
+        assert dialect in _CAPABILITIES, (
+            f"Dialect {dialect!r} has no entry in _CAPABILITIES. Add one — "
             "the matrix must cover every canonical dialect."
         )
 

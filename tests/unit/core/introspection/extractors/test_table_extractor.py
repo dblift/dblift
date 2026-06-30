@@ -453,8 +453,10 @@ class TestEnrichPostgresqlTable(unittest.TestCase):
         table = Table(name="users", schema="public", dialect="postgresql")
         self._pg_quirks().enrich_table_extra(extractor, "public", "users", table)
 
-        self.assertTrue(table.row_security)
-        self.assertFalse(table.force_row_security)
+        self.assertTrue(table.get_dialect_option("postgresql", "row_security", default=False))
+        self.assertFalse(
+            table.get_dialect_option("postgresql", "force_row_security", default=False)
+        )
 
     def test_table_inheritance_set(self):
         vq = MagicMock()
@@ -472,7 +474,7 @@ class TestEnrichPostgresqlTable(unittest.TestCase):
         table = Table(name="child_table", schema="public", dialect="postgresql")
         self._pg_quirks().enrich_table_extra(extractor, "public", "child_table", table)
 
-        self.assertIn("base_table", table.inherits)
+        self.assertIn("base_table", table.get_dialect_option("postgresql", "inherits", default=[]))
 
     def test_table_inheritance_cross_schema(self):
         vq = MagicMock()
@@ -490,7 +492,10 @@ class TestEnrichPostgresqlTable(unittest.TestCase):
         table = Table(name="child_table", schema="public", dialect="postgresql")
         self._pg_quirks().enrich_table_extra(extractor, "public", "child_table", table)
 
-        self.assertIn("other_schema.base_table", table.inherits)
+        self.assertIn(
+            "other_schema.base_table",
+            table.get_dialect_option("postgresql", "inherits", default=[]),
+        )
 
     def test_policies_set(self):
         vq = MagicMock()
@@ -515,8 +520,10 @@ class TestEnrichPostgresqlTable(unittest.TestCase):
         table = Table(name="secure_data", schema="public", dialect="postgresql")
         self._pg_quirks().enrich_table_extra(extractor, "public", "secure_data", table)
 
-        self.assertEqual(len(table.policies), 1)
-        self.assertEqual(table.policies[0]["name"], "usr_policy")
+        self.assertEqual(len(table.get_dialect_option("postgresql", "policies", default=[])), 1)
+        self.assertEqual(
+            table.get_dialect_option("postgresql", "policies", default=[])[0]["name"], "usr_policy"
+        )
 
     def test_no_vendor_queries_early_return(self):
         extractor = _make_extractor(dialect="postgresql", vendor_queries=None)

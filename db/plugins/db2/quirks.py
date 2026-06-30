@@ -2,9 +2,37 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, Optional, Tuple, Type
+import re
+from typing import Any, Dict, List, Optional, Tuple, Type
 
 from db.base_quirks import BaseQuirks
+from db.error import ErrorCategory
+
+# Each entry: (compiled regex, ErrorCategory). Sourced by
+# ``DatabaseErrorClassifier`` via ``error_patterns()`` (ADR-26 A2).
+_ERROR_PATTERNS: List[Tuple[re.Pattern[str], ErrorCategory]] = [
+    # Connection errors (consolidated from db/plugins/db2/db2/query_executor.py)
+    (re.compile(r"errorcode=-4499", re.IGNORECASE), ErrorCategory.NETWORK),
+    (re.compile(r"sqlstate=08001", re.IGNORECASE), ErrorCategory.NETWORK),
+    (re.compile(r"sqlstate=08\w{3}", re.IGNORECASE), ErrorCategory.NETWORK),
+    (
+        re.compile(r"disconnectnontransientconnectionexception", re.IGNORECASE),
+        ErrorCategory.NETWORK,
+    ),
+    (re.compile(r"disconnectexception", re.IGNORECASE), ErrorCategory.NETWORK),
+    (re.compile(r"communication\s+error", re.IGNORECASE), ErrorCategory.NETWORK),
+    # Locking
+    (re.compile(r"sql0911n", re.IGNORECASE), ErrorCategory.LOCKING),
+    (re.compile(r"sqlstate=40001", re.IGNORECASE), ErrorCategory.LOCKING),
+    # Authentication
+    (re.compile(r"sqlstate=28000", re.IGNORECASE), ErrorCategory.AUTHENTICATION),
+    # SQL Syntax
+    (re.compile(r"sqlstate=42\w{3}", re.IGNORECASE), ErrorCategory.SQL_SYNTAX),
+    # Constraint
+    (re.compile(r"sqlstate=23\w{3}", re.IGNORECASE), ErrorCategory.CONSTRAINT),
+    # Resource
+    (re.compile(r"sqlstate=57\w{3}", re.IGNORECASE), ErrorCategory.RESOURCE),
+]
 
 
 class Db2Quirks(BaseQuirks):
@@ -24,6 +52,20 @@ class Db2Quirks(BaseQuirks):
     schema_required = True
     uppercase_identifiers = True
     clean_strategy = "introspector"
+    # Data-set ledger DDL: DB2 has no TEXT type (use CLOB) and defaults the
+    # install timestamp from the CURRENT TIMESTAMP special register.
+    data_history_text_type = "CLOB"
+    data_change_set_blob_type = "CLOB"
+    data_timestamp_column_ddl = "TIMESTAMP DEFAULT CURRENT TIMESTAMP"
+
+    def is_data_history_table_already_exists_error(self, error_message: str) -> bool:
+        """DB2 reports a duplicate object with SQLSTATE 42710 (SQL0601N)."""
+        return "42710" in (error_message or "")
+
+    def is_data_change_set_table_already_exists_error(self, error_message: str) -> bool:
+        """Same SQLSTATE 42710 detection as the data history table."""
+        return self.is_data_history_table_already_exists_error(error_message)
+
     connection_probe_sql = "SELECT 1 FROM SYSIBM.SYSDUMMY1"
     select_supports_limit = False
     unquoted_identifier_case = "uppercase"
@@ -98,6 +140,10 @@ class Db2Quirks(BaseQuirks):
     def __init__(self, dialect_name: str = "db2") -> None:
         """Initialize Db2 quirks with the dialect name."""
         super().__init__(dialect_name=dialect_name)
+
+    def error_patterns(self) -> "List[Tuple[re.Pattern[str], ErrorCategory]]":
+        """DB2 SQLSTATE / errorcode error-classification patterns (ADR-26 A2)."""
+        return _ERROR_PATTERNS
 
     def build_snapshot_table_ddl(
         self,
@@ -226,6 +272,15 @@ class Db2Quirks(BaseQuirks):
                 table.compress_type = compress_type
         elif is_compressed == "NO":
             table.compress = False
+        # DB2 storage parameters share the Oracle ``dialect_options`` namespace
+        # (both render PCTFREE/PCTUSED/INITIAL/NEXT). Resolve that canonical
+        # namespace from the registry via the storage-params capability so this
+        # plugin names no foreign dialect (ADR-26 E story 26-5).
+        from db.provider_registry import ProviderRegistry
+
+        storage_ns = ProviderRegistry.canonical_dialect_name_for_capability(
+            "table_supports_storage_params"
+        )
         for attr, col in (
             ("pctfree", "pctfree_value"),
             ("pctused", "pctused_value"),
@@ -233,9 +288,9 @@ class Db2Quirks(BaseQuirks):
             ("next", "next_extent_size"),
         ):
             val = get_row_value(row, col)
-            if val is not None:
+            if val is not None and storage_ns:
                 try:
-                    setattr(table, attr, int(val))
+                    table.set_dialect_option(storage_ns, attr, int(val))
                 except (ValueError, TypeError):
                     pass
 

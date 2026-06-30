@@ -36,12 +36,7 @@ class DatabaseLink(SqlObject):
             dialect: SQL dialect (typically 'oracle')
         """
         # Database links are an Oracle-specific feature
-        super().__init__(
-            name,
-            SqlObjectType.DATABASE_LINK,
-            schema,
-            dialect or "oracle",  # lint: allow-dialect-string: database links Oracle-only
-        )
+        super().__init__(name, SqlObjectType.DATABASE_LINK, schema, dialect)
         self.host = host
         self.username = username
         self.connect_string = connect_string

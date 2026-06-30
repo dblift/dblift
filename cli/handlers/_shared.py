@@ -12,6 +12,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from core.features import FeatureTier
+
 # Flyway-compatible migration filename patterns used to skip non-migration
 # SQL files when scanning a directory (e.g. leftover temp files, schema
 # dumps) so only intentional migration scripts are
@@ -59,6 +61,9 @@ class CliCommandContext:
     # Migration configuration
     placeholders: Dict[str, Any] = field(default_factory=dict)
     dir_recursive_map: Dict[Path, bool] = field(default_factory=dict)
+    # License tier for feature-level gates. execute_single_command supplies
+    # the real CLI-resolved tier; the default keeps direct handler tests terse.
+    license_tier: FeatureTier = FeatureTier.ENTERPRISE
 
 
 def _set_command_completed(log: Any, result: Any, command_type: str) -> None:

@@ -45,7 +45,7 @@ class SqlGlotParser(SqlParserInterface):
     This provides a hybrid approach with best-effort AST parsing and graceful degradation.
     """
 
-    def __init__(self, dialect: str = "postgres"):  # lint: allow-dialect-string: dialect dispatch
+    def __init__(self, dialect: str):
         """Initialize the parser with a specific SQL dialect.
 
         Args:

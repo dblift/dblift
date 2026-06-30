@@ -189,3 +189,100 @@ class TestErrorPaths:
         # Should not raise; fallback path exercised
         BaseSnapshotManager(provider).create_snapshot_table_if_not_exists("public")
         provider.commit_transaction.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# ADR-26: provider-compat snapshot DDL hooks default to "no compat"
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestProviderCompatSnapshotDefaults:
+    def test_base_quirks_compat_ddl_defaults_to_none(self):
+        from db.base_quirks import BaseQuirks
+
+        assert BaseQuirks().build_provider_compat_snapshot_ddl("t.snap", 100, 128) is None
+
+    def test_base_quirks_skip_existence_check_defaults_false(self):
+        from db.base_quirks import BaseQuirks
+
+        assert BaseQuirks().provider_compat_snapshot_skips_existence_check is False
+
+
+# ---------------------------------------------------------------------------
+# ADR-26: live provider-compat path (real native provider class)
+# ---------------------------------------------------------------------------
+
+
+def _mysql_compat_provider(table_exists: bool):
+    """A provider whose class declares canonical_dialect_key='mysql', so the
+    manager's uses_compat gate is True (unlike a bare MagicMock)."""
+    base = _make_provider("mysql", table_exists=table_exists)
+
+    class _MySqlLike:
+        canonical_dialect_key = "mysql"
+
+    base.__class__ = _MySqlLike  # gate reads type(self._provider)
+    return base
+
+
+@pytest.mark.unit
+class TestLiveProviderCompatPath:
+    def test_mysql_compat_emits_innodb_ddl_and_skips_existence_check(self):
+        # table_exists=True must NOT short-circuit for mysql compat.
+        provider = _mysql_compat_provider(table_exists=True)
+        BaseSnapshotManager(provider).create_snapshot_table_if_not_exists("db")
+        assert any(
+            "ENGINE=InnoDB" in s and "CREATE TABLE IF NOT EXISTS" in s
+            for s in provider.executed_sqls
+        )
+
+    def test_mysql_compat_ddl_uses_constants(self):
+        provider = _mysql_compat_provider(table_exists=False)
+        BaseSnapshotManager(provider).create_snapshot_table_if_not_exists("db")
+        assert any("model_data LONGTEXT NOT NULL" in s for s in provider.executed_sqls)
+
+
+def _compat_provider(dialect: str, table_exists: bool):
+    """A provider whose class declares canonical_dialect_key=<dialect>, so the
+    manager's uses_compat gate is True (unlike a bare MagicMock)."""
+    base = _make_provider(dialect, table_exists=table_exists)
+
+    class _NativeLike:
+        canonical_dialect_key = dialect
+
+    base.__class__ = _NativeLike  # gate reads type(self._provider)
+    return base
+
+
+@pytest.mark.unit
+class TestLiveOracleCompatPath:
+    def test_oracle_compat_keeps_existence_check(self):
+        # Oracle does NOT skip the existence check; an existing table short-circuits.
+        provider = _compat_provider("oracle", table_exists=True)
+        BaseSnapshotManager(provider).create_snapshot_table_if_not_exists("s")
+        assert provider.executed_sqls == []
+
+    def test_oracle_compat_emits_clob_plain_create(self):
+        provider = _compat_provider("oracle", table_exists=False)
+        BaseSnapshotManager(provider).create_snapshot_table_if_not_exists("s")
+        assert any(
+            "MODEL_DATA CLOB NOT NULL" in s and "CREATE TABLE IF NOT EXISTS" not in s
+            for s in provider.executed_sqls
+        )
+
+
+@pytest.mark.unit
+class TestLiveMariadbCompatPath:
+    def test_mariadb_compat_reraises_not_implemented(self):
+        # uses_compat gate is True, but MariaDB's compat DDL is None -> re-raise.
+        provider = _compat_provider("mariadb", table_exists=False)
+        with pytest.raises(NotImplementedError):
+            BaseSnapshotManager(provider).create_snapshot_table_if_not_exists("db")
+        assert provider.executed_sqls == []
+
+    def test_mariadb_compat_keeps_existence_check(self):
+        # Skip-flag reset to False, so an existing table short-circuits (no raise).
+        provider = _compat_provider("mariadb", table_exists=True)
+        BaseSnapshotManager(provider).create_snapshot_table_if_not_exists("db")
+        assert provider.executed_sqls == []
