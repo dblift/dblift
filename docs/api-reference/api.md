@@ -99,23 +99,72 @@ if not result.success:
     print(f"Validation errors: {result.errors}")
 ```
 
-### undo()
-
-Rollback migrations to a specific version.
-
-```python
-result = client.undo(target_version="1.0.0")
-```
-
 ### baseline()
 
 Mark migrations as already applied (for existing databases).
 
 ```python
 result = client.baseline(
-    baseline_version="1.0.0",
-    baseline_description="Existing production database"
+    version="1.0.0",
+    description="Existing production database"
 )
+```
+
+### plan()
+
+Build an offline migration plan from a DBLift snapshot model, without connecting to a database.
+
+```python
+result = client.plan(
+    snapshot_model="snapshot.json",
+    validate_scope="pending"  # or "all"
+)
+print(f"Planned migrations: {len(result.migrations)}")
+```
+
+### generate_undo_script()
+
+Generate an undo script for a single versioned migration.
+
+```python
+result = client.generate_undo_script(
+    "migrations/V1_0_1__Create_table.sql",
+    overwrite=True
+)
+print(f"Generated: {result.undo_script_path}")
+```
+
+### generate_undo_scripts()
+
+Generate undo scripts for one or more versioned migrations (defaults to all versioned migrations in the migrations directory).
+
+```python
+results = client.generate_undo_scripts(overwrite=True)
+print(f"Generated {len(results)} undo scripts")
+```
+
+### export_schema()
+
+Export the database schema to SQL file(s).
+
+```python
+result = client.export_schema(
+    output="schema.sql",
+    include_drops=False
+)
+print(f"Exported to: {result.output_file}")
+```
+
+### snapshot()
+
+Export a schema snapshot to a JSON model file, for use with `plan()` or `diff()`.
+
+```python
+result = client.snapshot(
+    output="snapshot.json",
+    source="database-stored"
+)
+print(f"Snapshot written to: {result.output_file}")
 ```
 
 ### diff()

@@ -329,7 +329,6 @@ database:
         strict_mode = True
         history_table = "h"
         journal_enabled = True
-        journal_dir = "jdir"
         error_handling_enabled = False
         max_retries = 5
         retry_delay = 2.0
@@ -352,8 +351,6 @@ database:
         assert config.strict_mode is True
         assert config.history_table == "h"
         assert config.journal_enabled is True
-        # journal_dir is always None - journal is always in-memory only (set in cli/main.py)
-        assert config.journal_dir is None
         assert config.error_handling_enabled is False
         assert config.max_retries == 5
         assert config.retry_delay == 2.0

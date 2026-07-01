@@ -599,24 +599,18 @@ class MigrationDataCollector:
     def _find_undo_versions(self, scripts_dir: Optional[Path]) -> Set[str]:
         """Find versions that have undo capability available.
 
-        A version is undoable if it has a U*.sql companion script (SQL migrations)
-        or if its V*.py file contains a ``def undo(`` function (Python migrations).
+        A version is undoable if it has a separate undo companion script:
+        ``U*.sql`` for SQL migrations or ``U*.py`` for Python migrations. An inline
+        ``def undo(`` inside a versioned ``V*.py`` does NOT make a version undoable —
+        undo is always the job of the separate ``U*`` script.
         """
         undo_versions = set()
         if scripts_dir and scripts_dir.exists() and self.script_manager is not None:
-            for file_path in scripts_dir.rglob("U*.sql"):
-                version = self.script_manager.extract_version(file_path.name)
-                if version:
-                    undo_versions.add(version)
-            for file_path in scripts_dir.rglob("V*.py"):
-                try:
-                    content = file_path.read_text(encoding="utf-8", errors="replace")
-                    if "def undo(" in content:
-                        version = self.script_manager.extract_version(file_path.name)
-                        if version:
-                            undo_versions.add(version)
-                except OSError:
-                    pass
+            for pattern in ("U*.sql", "U*.py"):
+                for file_path in scripts_dir.rglob(pattern):
+                    version = self.script_manager.extract_version(file_path.name)
+                    if version:
+                        undo_versions.add(version)
         return undo_versions
 
     def _find_current_and_baseline_version(

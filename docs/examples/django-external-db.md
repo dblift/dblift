@@ -78,6 +78,6 @@ This guide is **positioning only**. DBLift does not replace Django's migration t
 - **Do not** point DBLift (or the pattern above) at the `'default'` alias or any alias whose schema is defined by Django models and applied with `python manage.py makemigrations` / `migrate` (or `migrate --database=...`).
 - DBLift has zero knowledge of Django models, the Django migration autodetector, `django.db.migrations`, or the `django_migrations` table. It cannot generate, detect, or apply Django migration files.
 - If you have chosen to manage a schema with Django, keep using Django's commands for it. Mixing the two systems on the same objects is your responsibility to avoid.
-- There is (and will be in v1) no `django-dblift` package or deep framework integration. The documented surface is the public `DBLiftClient.from_sqlalchemy(engine=...)` (or `connection=...`) plus your own thin wiring, exactly as shown for FastAPI and Flask.
+- This manual `from_sqlalchemy` pattern is an **alternative** to the built-in `integrations.django` package, which ships `dblift_migrate` / `dblift_info` / `dblift_validate` management commands plus a system check for pending migrations. Reach for the pattern above when you want the external database wired up by hand instead of through those commands.
 
 Use DBLift where you have already decided the schema lives outside Django's migration system. Keep the two tools in their respective lanes.

@@ -92,13 +92,19 @@ class TestAvailableCommandsDerivation(unittest.TestCase):
             self.assertIn(key, _AVAILABLE_COMMANDS)
 
     def test_length_is_handlers_plus_extra(self):
-        """_AVAILABLE_COMMANDS has handlers + db subparser group + terminal extension commands."""
-        extra_commands = {"db"} | set(load_terminal_commands())
+        """_AVAILABLE_COMMANDS has handlers + offline subparser groups + terminal extension commands.
+
+        ``db`` and ``config`` are offline commands that short-circuit in
+        cli.main before any client is built, so they are listed in
+        _AVAILABLE_COMMANDS but are not client-backed _COMMAND_HANDLERS.
+        """
+        extra_commands = {"db", "config"} | set(load_terminal_commands())
         self.assertEqual(len(_AVAILABLE_COMMANDS), len(_COMMAND_HANDLERS) + len(extra_commands))
 
     def test_subparser_groups_not_in_command_handlers(self):
-        """'db' is a subparser group, not a handler."""
+        """'db' and 'config' are offline subparser groups, not client-backed handlers."""
         self.assertNotIn("db", _COMMAND_HANDLERS)
+        self.assertNotIn("config", _COMMAND_HANDLERS)
 
 
 if __name__ == "__main__":

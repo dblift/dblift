@@ -23,6 +23,25 @@ with patch.dict(
     from cli.main import create_parser, main
 
 
+def test_config_list_short_circuits_before_config_load(monkeypatch):
+    from cli import main as cli_main
+
+    monkeypatch.setattr(
+        cli_main,
+        "_load_and_merge_config",
+        Mock(side_effect=AssertionError("config should not be loaded for `config --list`")),
+    )
+    run_config_command = Mock(return_value=0)
+    monkeypatch.setattr("cli.commands.config_command.run_config_command", run_config_command)
+
+    with pytest.raises(SystemExit) as exc_info:
+        cli_main._parse_argv_and_load_config(["config", "--list"])
+
+    assert exc_info.value.code == 0
+    run_config_command.assert_called_once()
+    assert run_config_command.call_args.args[0].list is True
+
+
 def test_terminal_extension_dispatches_before_argparse_validation(monkeypatch):
     from cli import main as cli_main
 
@@ -677,11 +696,18 @@ def test_main_missing_database_url_subprocess():
         "migrate",
         # No --db-url provided, should trigger error
     ]
+    import tempfile
+
     env = os.environ.copy()
     env["DBLIFT_LICENSE_KEY"] = "dummy"
-    result = subprocess.run(
-        cmd, capture_output=True, text=True, cwd=os.getcwd(), env=env, timeout=30
-    )
+    # Run from a clean directory so config auto-discovery (2.1.1+) cannot pick up
+    # the dblift.yaml committed at the repo root; keep `cli` importable via PYTHONPATH.
+    repo_root = os.getcwd()
+    env["PYTHONPATH"] = repo_root + os.pathsep + env.get("PYTHONPATH", "")
+    with tempfile.TemporaryDirectory() as clean_cwd:
+        result = subprocess.run(
+            cmd, capture_output=True, text=True, cwd=clean_cwd, env=env, timeout=30
+        )
     assert result.returncode != 0
     assert (
         "Database URL is required" in result.stderr or "Database URL is required" in result.stdout

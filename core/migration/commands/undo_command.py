@@ -12,9 +12,9 @@ if TYPE_CHECKING:
 
 from core.constants import SECONDS_TO_MILLISECONDS
 from core.logger.results import MigrationInfo, MigrationSqlInfo, UndoResult
+from core.migration.formats.migration_format import MigrationFormat
 from core.migration.migration import MigrationType
 from core.migration.version_utils import compare_versions, is_migration_success
-from db.provider_interfaces import TransactionalProvider
 
 from ._script_events import emit_script_event as _emit_script_event
 from .base_command import BaseCommand
@@ -276,42 +276,17 @@ class UndoCommand(BaseCommand):
                     if normalized_exclude_versions and version in normalized_exclude_versions:
                         continue
 
-                    if migration.type == MigrationType.PYTHON:
-                        # Python migrations expose undo via an inline undo() function.
-                        # A Python migration without undo() is a non-reversible gate:
-                        # undoing anything below it would leave the DB inconsistent.
-                        # DB-loaded migrations have content="" — read from disk before
-                        # checking for def undo() so supports_rollback works correctly.
-                        migration.load_content(scripts_dir)
-                        executor = self.execution_engine.executor_factory.get_executor(migration)
-                        if (
-                            executor is not None
-                            and hasattr(executor, "supports_rollback")
-                            and executor.supports_rollback(migration)
-                        ):
-                            migrations_to_undo.append(migration)
-                        else:
-                            error_msg = (
-                                f"Migration {migration.script_name} at version {version} "
-                                f"cannot be undone — add 'def undo(context):' to the script "
-                                f"to make it reversible."
-                            )
-                            self.log.info(error_msg)
-                            result.set_error(error_msg)
-                        break  # Whether undoable or not, stop here — don't skip over it
-                    else:
-                        can_undo, message = self.migration_rules.should_undo_version(
-                            version, applied_migrations
-                        )
-                        if can_undo:
-                            migrations_to_undo.append(migration)
-                            if not tag_filter_active:
-                                break  # Only undo the most recent undoable migration
-                        elif message:
-                            self.log.info(message)
+                    can_undo, message = self.migration_rules.should_undo_version(
+                        version, applied_migrations
+                    )
+                    if can_undo:
+                        migrations_to_undo.append(migration)
+                        if not tag_filter_active:
+                            break  # Only undo the most recent undoable migration
+                    elif message:
+                        self.log.info(message)
             else:
                 # Target version specified - find all migrations newer than target that can be undone
-                undo_blocked_by = None
                 for migration in reversed(applied_migrations):
                     if not self._matches_tag_filters(
                         migration,
@@ -337,54 +312,20 @@ class UndoCommand(BaseCommand):
                         and compare_versions(str(migration.version), str(target_version)) > 0
                     ):
                         version = str(migration.version)
-                        if migration.type == MigrationType.PYTHON:
-                            # DB-loaded migrations have content="" — read from disk before
-                            # checking for def undo() so supports_rollback works correctly.
-                            migration.load_content(scripts_dir)
-                            executor = self.execution_engine.executor_factory.get_executor(
-                                migration
-                            )
-                            if (
-                                executor is not None
-                                and hasattr(executor, "supports_rollback")
-                                and executor.supports_rollback(migration)
-                            ):
-                                migrations_to_undo.append(migration)
-                            else:
-                                undo_blocked_by = migration
-                                break
-                        else:
-                            can_undo, message = self.migration_rules.should_undo_version(
-                                version, applied_migrations
-                            )
-                            if can_undo:
-                                migrations_to_undo.append(migration)
-                            elif message:
-                                result.set_error(message)
-                                self._log_command_completion("undo", result)
-                                return result
+                        can_undo, message = self.migration_rules.should_undo_version(
+                            version, applied_migrations
+                        )
+                        if can_undo:
+                            migrations_to_undo.append(migration)
+                        elif message:
+                            result.set_error(message)
+                            self._log_command_completion("undo", result)
+                            return result
                     elif (
                         migration.version is not None
                         and compare_versions(str(migration.version), str(target_version)) <= 0
                     ):
                         break
-
-                if undo_blocked_by is not None:
-                    # BUG-04: previously we warned and cleared the list,
-                    # which then fell through to "No migrations to undo" —
-                    # success exit. An un-undoable Python gate must fail
-                    # the command so CI / operators notice, identical to
-                    # the no-target-version branch's strict behavior.
-                    blocked_message = (
-                        f"Migration {undo_blocked_by.script_name} at version "
-                        f"{undo_blocked_by.version} cannot be undone — add "
-                        f"'def undo(context):' to the script to make it reversible. "
-                        f"Cannot undo to version {target_version}."
-                    )
-                    self.log.error(blocked_message)
-                    result.set_error(blocked_message)
-                    self._log_command_completion("undo", result)
-                    return result
 
             if not migrations_to_undo:
                 self.log.info("No migrations to undo")
@@ -396,9 +337,6 @@ class UndoCommand(BaseCommand):
             if dry_run:
                 if show_sql:
                     for migration in migrations_to_undo:
-                        if migration.type != MigrationType.SQL:
-                            self._add_empty_visible_sql(migration, result)
-                            continue
                         undo_migration = self._find_undo_script(
                             migration,
                             all_scripts,
@@ -411,7 +349,10 @@ class UndoCommand(BaseCommand):
                             result.set_error(error_msg)
                             self._log_command_completion("undo", result)
                             return result
-                        self._add_visible_sql(undo_migration, result)
+                        if undo_migration.format == MigrationFormat.PYTHON:
+                            self._add_empty_visible_sql(undo_migration, result)
+                        else:
+                            self._add_visible_sql(undo_migration, result)
                         if result.error_message:
                             self._log_command_completion("undo", result)
                             return result
@@ -457,177 +398,6 @@ class UndoCommand(BaseCommand):
                         use_additional_dirs,
                         dir_recursive_map,
                     )
-
-                    # Python migrations use their inline undo() function.
-                    if migration.type == MigrationType.PYTHON:
-                        executor = self.execution_engine.executor_factory.get_executor(migration)
-                        if executor is None or not hasattr(executor, "rollback_migration"):
-                            error_msg = (
-                                f"No rollback executor for Python migration {migration.script_name}"
-                            )
-                            self.log.error(error_msg)
-                            result.set_error(error_msg)
-                            self._execute_callbacks(
-                                scripts_dir,
-                                "afterUndoError",
-                                use_recursive,
-                                use_additional_dirs,
-                                dir_recursive_map,
-                            )
-                            break
-
-                        start_time = time.time()
-                        _undo_script_data = {
-                            "script": migration.script_name,
-                            "version": migration.version,
-                            "description": f"Undo: {migration.description}",
-                            "type": "UNDO_PYTHON",
-                        }
-                        _emit_script_event("migration.script.started", _undo_script_data)
-
-                        if self.journal:
-                            self.journal.start_migration(
-                                migration.script_name,
-                                details={
-                                    "version": migration.version,
-                                    "description": migration.description,
-                                    "type": "UNDO_PYTHON",
-                                },
-                            )
-                            journal_started = True
-
-                        # Wrap the Python rollback in an explicit transaction
-                        # envelope (mirror of ExecutionEngine._execute_via_factory
-                        # for migrate). Without this, DML issued by def undo()
-                        # stays in an uncommitted transaction and is silently
-                        # discarded on connection cleanup.
-                        provider = self.execution_engine.provider
-                        is_transactional = isinstance(provider, TransactionalProvider)
-                        transaction_started = False
-                        if is_transactional:
-                            try:
-                                provider.begin_transaction()
-                                transaction_started = True
-                            except Exception as tx_err:
-                                self.log.debug(
-                                    f"Could not begin transaction for undo of "
-                                    f"{migration.script_name}: {tx_err}"
-                                )
-
-                        exec_result = executor.rollback_migration(migration)
-                        execution_time = int((time.time() - start_time) * SECONDS_TO_MILLISECONDS)
-
-                        if self.journal and journal_started:
-                            self.journal.end_migration(
-                                migration.script_name,
-                                success=exec_result.success,
-                                execution_time=execution_time,
-                            )
-                            journal_started = False
-
-                        if not exec_result.success:
-                            if transaction_started:
-                                try:
-                                    provider.rollback_transaction()
-                                except Exception as rb_err:
-                                    self.log.debug(
-                                        f"Could not rollback transaction for "
-                                        f"{migration.script_name}: {rb_err}"
-                                    )
-                            error_msg = (
-                                exec_result.error
-                                or f"Python rollback failed for {migration.script_name}"
-                            )
-                            if not result.error_message:
-                                self.log.error(
-                                    f"Failed to undo Python migration "
-                                    f"{migration.script_name}: {error_msg}"
-                                )
-                                result.set_error(f"Undo failed: {error_msg}")
-                            _emit_script_event(
-                                "migration.script.failed",
-                                {
-                                    "script": migration.script_name,
-                                    "version": migration.version,
-                                    "error": error_msg,
-                                    "execution_time": execution_time,
-                                },
-                            )
-                            self._execute_callbacks(
-                                scripts_dir,
-                                "afterUndoError",
-                                use_recursive,
-                                use_additional_dirs,
-                                dir_recursive_map,
-                            )
-                            break
-
-                        if self.history_manager:
-                            try:
-                                self.history_manager.record_undo(migration)
-                            except Exception as history_err:
-                                self.log.warning(
-                                    f"Could not record undo in history for "
-                                    f"{migration.script_name}: {history_err}"
-                                )
-
-                        if transaction_started:
-                            try:
-                                provider.commit_transaction()
-                            except Exception as commit_err:
-                                self.log.error(
-                                    f"Failed to commit undo transaction for "
-                                    f"{migration.script_name}: {commit_err}"
-                                )
-                                result.set_error(f"Undo commit failed: {commit_err}")
-                                if "_undo_script_data" in locals():
-                                    _emit_script_event(
-                                        "migration.script.failed",
-                                        {
-                                            "script": migration.script_name,
-                                            "version": migration.version,
-                                            "error": f"Undo commit failed: {commit_err}",
-                                            "execution_time": execution_time,
-                                        },
-                                    )
-                                self._execute_callbacks(
-                                    scripts_dir,
-                                    "afterUndoError",
-                                    use_recursive,
-                                    use_additional_dirs,
-                                    dir_recursive_map,
-                                )
-                                break
-
-                        migration_info = MigrationInfo(
-                            script=migration.script_name,
-                            version=migration.version,
-                            description=f"Undo: {migration.description}",
-                            type="UNDO_PYTHON",
-                            status="UNDONE",
-                            execution_time=execution_time,
-                            checksum=migration.checksum,
-                        )
-                        result.add_undone_migration(migration_info)
-
-                        _emit_script_event(
-                            "migration.script.completed",
-                            {**_undo_script_data, "execution_time": execution_time},
-                        )
-
-                        self.log.info(
-                            f"Successfully undone Python migration {migration.script_name}"
-                        )
-                        if show_sql:
-                            self._add_empty_visible_sql(migration, result)
-                        self._execute_callbacks(
-                            scripts_dir,
-                            "afterEach",
-                            use_recursive,
-                            use_additional_dirs,
-                            dir_recursive_map,
-                        )
-                        continue  # skip SQL undo path below
 
                     # SQL path: find the corresponding UNDO_SQL script
                     undo_migration = self._find_undo_script(
@@ -765,11 +535,11 @@ class UndoCommand(BaseCommand):
                         # Error was already logged by execute_migration, just use the existing message
                         error_message = result.error_message
 
-                    # End journal tracking for failed undo migration.
-                    # SQL path started the journal under ``undo_migration.script_name``;
-                    # Python path started it under the original ``migration.script_name``
-                    # and never assigns ``undo_migration``. Pick whichever is available
-                    # so the journal entry is always closed.
+                    # End journal tracking for a failed undo migration. The journal
+                    # entry was opened under ``undo_migration.script_name``; fall back
+                    # to ``migration.script_name`` only for the rare case where the
+                    # failure occurred before ``undo_migration`` was resolved, so the
+                    # journal entry is always closed.
                     execution_time = 0
                     if start_time is not None:
                         execution_time = int((time.time() - start_time) * SECONDS_TO_MILLISECONDS)
