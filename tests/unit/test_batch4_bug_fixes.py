@@ -39,20 +39,6 @@ class TestBug01And03PostgresPartialUniqueIndexes(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
-# BUG-04: undo --target-version must fail hard on un-undoable scripts
-# ---------------------------------------------------------------------------
-class TestBug04UndoTargetVersionFailsOnBlocking(unittest.TestCase):
-    def test_undo_with_target_version_errors_when_script_not_undoable(self) -> None:
-        import core.migration.commands.undo_command as mod
-
-        src = Path(mod.__file__).read_text()
-        # Should NOT silently warn + clear the blocker: the error branch must
-        # call ``result.set_error`` with the explicit guidance text.
-        self.assertIn("cannot be undone", src)
-        self.assertIn("add 'def undo(context):'", src)
-
-
-# ---------------------------------------------------------------------------
 # BUG-05: strict mode must raise on out-of-order migrations, non-strict warn
 # ---------------------------------------------------------------------------
 class TestBug05StrictOutOfOrder(unittest.TestCase):

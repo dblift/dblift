@@ -106,6 +106,53 @@ def _make_history_table_parent() -> argparse.ArgumentParser:
     return p
 
 
+def _add_registry_flags(parser: argparse.ArgumentParser) -> None:
+    """Emit a --flag for every registry property that lacks one.
+
+    Skips properties that are cli_only, cli_exempt, nested (database.*), or
+    already covered by a legacy flag recorded in cli_aliases. Ensures any NEW
+    persistent property added to the registry automatically gets a CLI flag,
+    so the CLI surface can never silently drift from config/env again.
+    """
+    from config.property_registry import PROPERTY_REGISTRY
+
+    # Collect option strings across the WHOLE tree (root + every subparser), not
+    # just the root parser. Many registry properties (e.g. --tags,
+    # --target-version, --snapshot-table) intentionally live only on specific
+    # subcommands; a root-only ``existing`` set would treat them as missing and
+    # emit a duplicate root flag, colliding with the subparser dest. This helper
+    # therefore runs AFTER subparsers are registered so the tree walk sees them.
+    existing: set[str] = set()
+
+    def _collect(p: argparse.ArgumentParser) -> None:
+        for action in p._actions:
+            existing.update(action.option_strings)
+            choices = getattr(action, "choices", None)
+            if isinstance(choices, dict):
+                for sub in choices.values():
+                    if isinstance(sub, argparse.ArgumentParser):
+                        _collect(sub)
+
+    _collect(parser)
+    for spec in PROPERTY_REGISTRY:
+        if spec.cli_only or spec.cli_exempt or "." in spec.name:
+            continue
+        if spec.cli_aliases:
+            continue  # legacy flag (e.g. --table, --strict) already provides the surface
+        if spec.cli in existing:
+            continue
+        if spec.type == "bool":
+            parser.add_argument(
+                spec.cli, dest=spec.name, action="store_true", default=None, help=spec.help
+            )
+        elif spec.type == "int":
+            parser.add_argument(spec.cli, dest=spec.name, type=int, default=None, help=spec.help)
+        elif spec.type == "float":
+            parser.add_argument(spec.cli, dest=spec.name, type=float, default=None, help=spec.help)
+        else:
+            parser.add_argument(spec.cli, dest=spec.name, default=None, help=spec.help)
+
+
 def _make_snapshot_table_parent() -> argparse.ArgumentParser:
     """Parent parser for explicit snapshot storage commands."""
     p = argparse.ArgumentParser(add_help=False)
@@ -307,6 +354,11 @@ def create_parser(
         ),
     )
     parser.add_argument("--dry-run", action="store_true", help="Dry run mode")
+    parser.add_argument(
+        "--installed-by",
+        dest="installed_by",
+        help="Value recorded in the installed_by column (default: database username)",
+    )
     parser.add_argument("--log-dir", default="logs", help="Log directory")
     parser.add_argument("--log-format", default="text", help="Log format (text, json, html)")
     parser.add_argument(
@@ -404,7 +456,21 @@ def create_parser(
     db_parser = subparsers.add_parser("db", help="Database utility commands")
     db_subparsers = db_parser.add_subparsers(dest="db_command", required=True)
     setup_db_utils_parser(db_subparsers)
+    # Configuration introspection: `dblift config --list` prints every persistent
+    # property and its three surfaces (config key / env var / CLI flag). Distinct
+    # from the global `--config <path>` option — a subcommand named ``config`` and
+    # an optional ``--config`` flag do not collide in argparse.
+    config_parser = subparsers.add_parser("config", help="Inspect dblift configuration")
+    config_parser.add_argument(
+        "--list",
+        action="store_true",
+        help="List all properties and how to set them (config key / env var / CLI flag)",
+    )
     import_module("cli.extensions").load_command_extensions(parser)
+    # Emit registry-derived flags LAST, after every subparser (built-in and
+    # extension) is registered, so the tree walk in _add_registry_flags can see
+    # subcommand-only flags and skip them instead of shadowing them on the root.
+    _add_registry_flags(parser)
     if suppress_errors:
         all_subparsers = [
             migrate_parser,

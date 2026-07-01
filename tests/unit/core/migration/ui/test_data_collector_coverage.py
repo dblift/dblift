@@ -802,7 +802,7 @@ class TestFindUndoVersionsCoverage(unittest.TestCase):
             result = coll._find_undo_versions(scripts_dir)
             assert "1.0" in result
 
-    def test_finds_python_migrations_with_undo_function(self):
+    def test_finds_python_migrations_with_undo_script(self):
         import tempfile
 
         coll, _, sm = _make_collector()
@@ -810,13 +810,13 @@ class TestFindUndoVersionsCoverage(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as tmpdir:
             scripts_dir = Path(tmpdir)
-            py_file = scripts_dir / "V2__migrate.py"
-            py_file.write_text("def undo(conn):\n    pass\n", encoding="utf-8")
+            undo_file = scripts_dir / "U2__undo.py"
+            undo_file.write_text("def migrate(conn):\n    pass\n", encoding="utf-8")
 
             result = coll._find_undo_versions(scripts_dir)
             assert "2.0" in result
 
-    def test_python_without_undo_function_not_included(self):
+    def test_inline_undo_function_in_versioned_py_not_included(self):
         import tempfile
 
         coll, _, sm = _make_collector()
@@ -825,7 +825,7 @@ class TestFindUndoVersionsCoverage(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             scripts_dir = Path(tmpdir)
             py_file = scripts_dir / "V3__migrate.py"
-            py_file.write_text("def upgrade(conn):\n    pass\n", encoding="utf-8")
+            py_file.write_text("def undo(conn):\n    pass\n", encoding="utf-8")
 
             result = coll._find_undo_versions(scripts_dir)
             assert "3.0" not in result

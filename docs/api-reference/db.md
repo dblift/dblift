@@ -35,10 +35,14 @@ See the [Database Providers Architecture](../architecture/database-providers.md)
 
 All providers implement these base interfaces:
 
-- `db.base_connection_manager.BaseConnectionManager`
-- `db.base_query_executor.BaseQueryExecutor`
-- `db.base_schema_operations.BaseSchemaOperations`
-- `db.base_locking_manager.BaseLockingManager`
-- `db.base_history_manager.BaseHistoryManager`
+- `db.plugins.base_query_executor.BaseQueryExecutor`
+- `db.plugins.base_schema_operations.BaseSchemaOperations`
+- `db.plugins.base_locking_manager.BaseLockingManager`
+- `db.plugins.base_history_manager.BaseHistoryManager`
+
+Connection management has no shared base class; each provider implements its
+own concrete connection manager, e.g. `db.native_connection_manager.NativeConnectionManager`,
+`db.plugins.sqlite.sqlite.connection_manager.SQLiteConnectionManager`, and
+`db.plugins.cosmosdb.cosmosdb.connection_manager.CosmosDbConnectionManager`.
 
 For implementation details, see the source code in `db/plugins/<database>/`.

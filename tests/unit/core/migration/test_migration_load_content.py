@@ -6,8 +6,11 @@ B-1: Migration.load_content() reads script body from disk when content is empty,
 B-2: _validate_checksums() now includes MigrationType.PYTHON in checksum validation
      (previously it was silently skipped via an allowlist that omitted PYTHON).
 
-B-3: UndoCommand calls load_content() before supports_rollback() so that DB-loaded
-     Python migrations with def undo() are correctly identified as undoable.
+B-3: Migration.load_content() populates self.content from disk so that
+     PythonMigrationExecutor.supports_rollback() (which inspects content for a
+     ``def undo(`` function) works for DB-loaded Python migrations. (The historical
+     UndoCommand selection call site was removed when Python undo moved to separate
+     U*.py scripts; this exercises the retained executor-level behavior directly.)
 """
 
 from __future__ import annotations
@@ -179,8 +182,8 @@ class TestChecksumValidationIncludesPython:
         assert not any("has been modified" in issue for issue in issues)
 
 
-class TestUndoCommandLoadContentBeforeRollback:
-    """B-3: UndoCommand calls load_content() before supports_rollback()."""
+class TestSupportsRollbackAfterLoadContent:
+    """B-3: PythonMigrationExecutor.supports_rollback() works after load_content()."""
 
     def _make_executor(self):
         from core.migration.executors.python_executor import PythonMigrationExecutor

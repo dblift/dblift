@@ -2,7 +2,7 @@
 
 Python (`.py`) migration scripts give you full Python for complex logic, data transformations, conditional DDL, or calls that cannot be expressed (or safely parameterized) in plain SQL.
 
-A Python migration is a file named `V<ver>__<desc>.py` (or repeatable `R__...py`, or undo `U<ver>__...py`) containing:
+A Python migration is a file named `V<ver>__<desc>.py` (or repeatable `R__...py`) containing:
 
 ```python
 # migrations/V1__seed_and_transform.py
@@ -29,16 +29,10 @@ def migrate(context: MigrationContext) -> None:
         context.log.info(f"Placeholders available: {dict(context.placeholders)}")
     if context.engine is not None:
         context.log.info("SQLAlchemy engine is available (from_sqlalchemy path)")
-
-def undo(context: MigrationContext) -> None:
-    """Rollback the change (optional)."""
-    if context.dry_run:
-        return
-    context.execute("DROP TABLE IF EXISTS items")
-    context.log.info("Dropped items table")
 ```
 
-The only requirement: a top-level `def migrate(context):` (and optionally `def undo(context):` for rollback support).
+A versioned `.py` defines only a top-level `def migrate(context):`. Rollback is not
+defined inline — it lives in a separate `U<ver>__*.py` file (see "Undo Support" below).
 
 ## End-to-End Runnable Example (SQLite + from_sqlalchemy)
 
@@ -104,9 +98,16 @@ def migrate(context: MigrationContext) -> None:
     context.log.info(f"Row count via cursor shim: {count}")
 
     context.log.info("Python migration complete")
+''')
+
+        # Write the separate undo script (rollback for V1, same as SQL's U1__*.sql)
+        undo_mig = migrations_dir / "U1__demo_python_migration.py"
+        undo_mig.write_text('''"""Undo script for V1__demo_python_migration.py."""
+
+from api import MigrationContext
 
 
-def undo(context: MigrationContext) -> None:
+def migrate(context: MigrationContext) -> None:
     if context.dry_run:
         context.log.info("[DRY-RUN] would drop demo")
         return
@@ -141,7 +142,7 @@ def undo(context: MigrationContext) -> None:
         info_after = client.info()
         print(f"Pending after: {getattr(info_after, 'pending_count', 0)}")
 
-        # Undo example (the same .py file supplies the undo function)
+        # Undo example (the separate U1__demo_python_migration.py supplies the undo function)
         print("=== Running undo ===")
         undo_result = client.undo()
         print(f"Undo success: {undo_result.success}")
@@ -173,7 +174,8 @@ python demo_python_migs.py
 
 ## Context Surface Reference (for .py migrations)
 
-Inside `migrate(context)` / `undo(context)` you receive a `MigrationContext` with:
+Inside `migrate(context)` — whether in a `V<ver>__*.py` script or its `U<ver>__*.py`
+undo companion — you receive a `MigrationContext` with:
 
 - `context.execute(sql, params=None)` — the primary way to run SQL. It inspects the statement and calls the right provider method (`execute_query` for SELECT/WITH/etc, `execute_statement` otherwise). Works on every supported dialect.
 - `context.log` — the DBLift structured logger (`.info()`, `.debug()`, `.warning()`, `.error()`).
@@ -214,9 +216,14 @@ context.execute(f"CREATE TABLE {prefix}items (...)")  # manual use
 
 ## Undo Support
 
-- Implement `def undo(context):` in the **same** `.py` file as the corresponding `migrate`.
-- `client.undo()` (or `U<ver>__*.py` files) will invoke it when rolling back that version.
-- `supports_rollback` is detected by the presence of the `def undo(` string (simple but reliable).
+- Rollback for a `V<ver>__*.py` lives in a **separate** `U<ver>__*.py` file — exactly
+  like SQL, where `U<ver>__*.sql` undoes `V<ver>__*.sql`.
+- The undo script exposes a top-level `def migrate(context):` whose body performs the
+  rollback. `client.undo()` runs it the same way it runs a forward migration.
+- A versioned `V<ver>__*.py` must NOT undo itself. Any inline `def undo(context):`
+  left in a versioned file is ignored.
+- If no `U<ver>__*.py` exists for an applied `V<ver>__*.py`, `undo` fails with
+  "No undo script found", identical to SQL.
 
 See the runnable example above for a complete migrate + undo round-trip.
 
@@ -226,7 +233,8 @@ See the runnable example above for a complete migrate + undo round-trip.
 - Validation (syntax + presence of `migrate(`) happens before execution.
 - Keep side effects minimal; the ExecutionEngine owns the transaction boundary.
 - For pure SQL prefer `.sql` files. Use `.py` when you need loops, conditionals on live data, external service calls, or complex Python libraries.
-- The same `MigrationContext` is used for both `migrate` and `undo` of a given script.
+- Undo is not part of the versioned script: the `U*.py` companion file is a separate
+  migration script and receives its own `MigrationContext` when `client.undo()` runs it.
 - See `docs/examples/sqlalchemy-integration.md` for wiring `from_sqlalchemy` into app startup, pytest, scripts, and framework lifespans.
 - All of the above is OSS and works with `pip install dblift[sqlite]` (or the matching extra for your DB).
 

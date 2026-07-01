@@ -1,14 +1,8 @@
-"""Regression tests for BUG-A (lexicographic sort) and BUG-B (missing commit).
+"""Regression tests for BUG-A (lexicographic sort).
 
 BUG-A: ``undo`` without ``--target-version`` must pick the semantically
 highest version, not the lexicographically highest — so V10 beats V4, not
 the other way around.
-
-BUG-B: After ``PythonMigrationExecutor.rollback_migration`` succeeds, the
-undo command must commit the transaction so DML issued by ``def undo()``
-is persisted. Before the fix, the changes were silently rolled back on
-connection cleanup (mirrors the same-class bug on the migrate path fixed
-earlier for ``_execute_via_factory``).
 """
 
 from __future__ import annotations
@@ -20,7 +14,7 @@ import pytest
 from core.migration.migration import MigrationType
 
 
-def _make_migration(version: str, mtype, has_undo_fn: bool = False):
+def _make_migration(version: str, mtype):
     m = MagicMock()
     m.version = version
     m.type = mtype
@@ -28,18 +22,11 @@ def _make_migration(version: str, mtype, has_undo_fn: bool = False):
     m.script_name = f"V{version}__test"
     m.description = "test"
     m.checksum = "abc"
-    if mtype == MigrationType.PYTHON:
-        m.content = (
-            "def migrate(ctx): pass\ndef undo(ctx): pass"
-            if has_undo_fn
-            else "def migrate(ctx): pass"
-        )
-    else:
-        m.content = None
+    m.content = None
     return m
 
 
-def _make_command(applied_migrations, provider=None):
+def _make_command(applied_migrations):
     from core.migration.commands.undo_command import UndoCommand
 
     state_manager = MagicMock()
@@ -52,25 +39,10 @@ def _make_command(applied_migrations, provider=None):
     migration_rules.should_undo_version.return_value = (True, None)
 
     executor_factory = MagicMock()
-
-    def _get_executor(migration):
-        if migration.type == MigrationType.PYTHON:
-            executor = MagicMock()
-            executor.supports_rollback.side_effect = lambda m: (
-                m.content is not None and "def undo(" in m.content
-            )
-            exec_result = MagicMock()
-            exec_result.success = True
-            exec_result.error = None
-            executor.rollback_migration.return_value = exec_result
-            return executor
-        return None
-
-    executor_factory.get_executor.side_effect = _get_executor
+    executor_factory.get_executor.return_value = None
 
     execution_engine = MagicMock()
     execution_engine.executor_factory = executor_factory
-    execution_engine.provider = provider if provider is not None else MagicMock()
 
     history_manager = MagicMock()
     script_manager = MagicMock()
@@ -134,74 +106,3 @@ class TestVersionSortIsSemanticNotLexicographic:
             call.args[0] for call in cmd.migration_rules.should_undo_version.call_args_list
         ]
         assert rules_calls[0] == "1.10", f"1.10 should sort after 1.9, got {rules_calls[0]}"
-
-
-@pytest.mark.unit
-class TestPythonUndoCommitsTransaction:
-    """BUG-B: Python rollback changes must be committed, not left dangling."""
-
-    def _make_transactional_provider(self):
-        from db.provider_interfaces import TransactionalProvider
-
-        provider = MagicMock(spec=TransactionalProvider)
-        return provider
-
-    def test_commit_called_after_successful_python_rollback(self):
-        provider = self._make_transactional_provider()
-        v1 = _make_migration("1", MigrationType.PYTHON, has_undo_fn=True)
-
-        cmd, history_manager, _ = _make_command([v1], provider=provider)
-        call_order = MagicMock()
-        call_order.attach_mock(history_manager.record_undo, "record_undo")
-        call_order.attach_mock(provider.commit_transaction, "commit_transaction")
-
-        result = cmd.execute(scripts_dir=MagicMock())
-
-        assert result.undone_count == 1
-        provider.begin_transaction.assert_called_once()
-        history_manager.record_undo.assert_called_once()
-        provider.commit_transaction.assert_called_once()
-        provider.rollback_transaction.assert_not_called()
-        assert [call[0] for call in call_order.mock_calls] == [
-            "record_undo",
-            "commit_transaction",
-        ]
-
-    def test_rollback_called_after_failed_python_rollback(self):
-        provider = self._make_transactional_provider()
-        v1 = _make_migration("1", MigrationType.PYTHON, has_undo_fn=True)
-        cmd, history_manager, exec_engine = _make_command([v1], provider=provider)
-
-        def _failing_executor(migration):
-            executor = MagicMock()
-            executor.supports_rollback.return_value = True
-            fail = MagicMock()
-            fail.success = False
-            fail.error = "undo raised"
-            executor.rollback_migration.return_value = fail
-            return executor
-
-        exec_engine.executor_factory.get_executor.side_effect = _failing_executor
-
-        cmd.execute(scripts_dir=MagicMock())
-
-        provider.begin_transaction.assert_called_once()
-        provider.commit_transaction.assert_not_called()
-        provider.rollback_transaction.assert_called_once()
-        history_manager.record_undo.assert_not_called()
-
-    def test_non_transactional_provider_no_commit_call(self):
-        """Providers that do not implement TransactionalProvider (e.g. CosmosDB) must not get begin/commit calls."""
-        provider = MagicMock()
-        # spec-free MagicMock will pass isinstance() only by accident — ensure it doesn't:
-        from db.provider_interfaces import TransactionalProvider
-
-        assert not isinstance(provider, TransactionalProvider)
-
-        v1 = _make_migration("1", MigrationType.PYTHON, has_undo_fn=True)
-        cmd, _, _ = _make_command([v1], provider=provider)
-
-        cmd.execute(scripts_dir=MagicMock())
-
-        provider.begin_transaction.assert_not_called()
-        provider.commit_transaction.assert_not_called()

@@ -133,6 +133,10 @@ PARENT_FLAG_CASES = [
     ("--log-dir", "/tmp/logs", "log_dir", "/tmp/logs"),
     ("--log-file", "run.log", "log_file", "run.log"),
     ("--dry-run", None, "dry_run", True),
+    ("--installed-by", "alice", "installed_by", "alice"),
+    # Generated from the property registry (Task 7 / Phase 5). ``--max-snapshots``
+    # is int-typed, so the parsed value is the coerced int, not the argv string.
+    ("--max-snapshots", "5", "max_snapshots", 5),
     # B8-BUG-01: --recursive/--no-recursive are mutually-exclusive top-level
     # flags backed by ``store_const`` → ``recursive_flag``. Each value must
     # survive through to every subcommand's namespace.
@@ -157,6 +161,7 @@ EXEMPT_FROM_PARENT_FLAG_CASES = {
     # "preserved across subcommand" property does not apply.
     "--quiet",
     "--no-progress",
+    "--snapshot-table",
 }
 
 

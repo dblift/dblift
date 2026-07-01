@@ -285,7 +285,6 @@ class DbliftConfig:
         1  # Maximum number of snapshots to keep (oldest are deleted when limit exceeded)
     )
     journal_enabled: bool = True
-    journal_dir: Optional[str] = None
 
     # Error handling and retry configuration
     error_handling_enabled: bool = True
@@ -572,8 +571,8 @@ class DbliftConfig:
         migrations_directories = migrations.get("directories", [])
         migrations_recursive = migrations.get("recursive", True)
 
-        # Journal settings are always in-memory only - ignore journal_dir if set in config files
-        # journal_enabled defaults to True, journal_dir defaults to None (will be enforced in cli/main.py)
+        # Journal settings are always in-memory only
+        # journal_enabled defaults to True
         config = cls(
             database=database_config,
             migrations=MigrationsConfig(
@@ -614,8 +613,6 @@ class DbliftConfig:
             log_level=data.get("log_level"),
             secrets=secrets_config,
         )
-        # Explicitly ensure journal_dir is None (journal is always in-memory only)
-        config.journal_dir = None
         config.log_dir = root_log_dir
         return config
 
@@ -699,7 +696,11 @@ class DbliftConfig:
         # cannot pollute or shadow legitimate config fields.
         #
         # Names whose env-var suffix differs from the config field name
-        _DB_ALIASES: Dict[str, str] = {"USER": "username", "SESSION_VARS": "session_variables"}
+        _DB_ALIASES: Dict[str, str] = {
+            "USER": "username",
+            "USERNAME": "username",
+            "SESSION_VARS": "session_variables",
+        }
         # Suffixes that require structured (JSON / k=v CSV) parsing into a dict
         _STRUCTURED = {"OPTIONS", "SESSION_VARS", "EXTRA_PARAMS", "PROPERTIES"}
         # Suffixes whose value must be coerced to int
@@ -719,6 +720,7 @@ class DbliftConfig:
             | {
                 "URL",
                 "USER",
+                "USERNAME",
                 "PASSWORD",
                 "SCHEMA",
                 "HOST",
@@ -776,19 +778,23 @@ class DbliftConfig:
         config: Dict[str, Any] = {}
         if db:
             config["database"] = db
-        if env.get("DBLIFT_SNAPSHOT_TABLE"):
-            config["snapshot_table"] = env["DBLIFT_SNAPSHOT_TABLE"]
-        if env.get("DBLIFT_HISTORY_TABLE"):
-            config["history_table"] = env["DBLIFT_HISTORY_TABLE"]
-        if env.get("DBLIFT_MAX_SNAPSHOTS"):
-            try:
-                config["max_snapshots"] = int(env["DBLIFT_MAX_SNAPSHOTS"])
-            except ValueError:
-                if diagnostics is not None:
-                    diagnostics.invalid_int_vars.append("DBLIFT_MAX_SNAPSHOTS")
-                pass  # Ignore invalid values
-        if env.get("DBLIFT_CLEAN_DISABLED"):
-            config["clean_disabled"] = env["DBLIFT_CLEAN_DISABLED"].lower() in ("1", "true", "yes")
+
+        from config.property_registry import PROPERTY_REGISTRY
+
+        for spec in PROPERTY_REGISTRY:
+            if spec.cli_only or "." in spec.name:
+                continue  # nested database.* fields are handled by the DBLIFT_DB_* loop above
+            raw = env.get(spec.env)
+            if not raw:
+                continue
+            if spec.coerce is not None:
+                try:
+                    config[spec.name] = spec.coerce(raw)
+                except (ValueError, TypeError):
+                    if diagnostics is not None:
+                        diagnostics.invalid_int_vars.append(spec.env)
+            else:
+                config[spec.name] = raw
         return config
 
     @classmethod
@@ -849,34 +855,16 @@ class DbliftConfig:
         if db_cfg:
             config["database"] = db_cfg
 
-        for key in (
-            "snapshot_table",
-            "history_table",
-            "max_snapshots",
-            "baseline_version",
-            "target_version",
-            "dry_run",
-            "undo",
-            "installed_by",
-            "mark_as_executed",
-            "strict_mode",
-            "clean_disabled",
-            "journal_enabled",
-            "error_handling_enabled",
-            "max_retries",
-            "retry_delay",
-            "retry_backoff",
-            "retry_jitter",
-            "retryable_error_categories",
-            "tags",
-            "exclude_tags",
-            "versions",
-            "exclude_versions",
-            "log_file",
-            "log_dir",
-            "log_format",
-            "log_level",
-        ):
+        from config.property_registry import PROPERTY_REGISTRY
+
+        # Registry covers the persistent scalar properties; these three are
+        # arg-only keys not modeled in the registry (undo is subcommand-driven,
+        # journal_enabled/retryable_error_categories are non-scalar/internal).
+        _arg_only_keys = ("undo", "journal_enabled", "retryable_error_categories")
+        registry_keys = [
+            spec.name for spec in PROPERTY_REGISTRY if not spec.cli_only and "." not in spec.name
+        ]
+        for key in (*registry_keys, *_arg_only_keys):
             if key in args and args[key] not in (None, ""):
                 config[key] = args[key]
 
@@ -1018,9 +1006,6 @@ class DbliftConfig:
 
         if self.placeholders:
             result["placeholders"] = self.placeholders
-
-        if self.journal_dir:
-            result["journal_dir"] = self.journal_dir
 
         if self.log_dir:
             result["log_dir"] = self.log_dir

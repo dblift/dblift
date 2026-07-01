@@ -43,7 +43,9 @@ if _builtin_conflicts:
 _COMMAND_HANDLERS.update(_extension_handlers)
 del _extension_handlers, _builtin_conflicts
 
-_AVAILABLE_COMMANDS = list(_COMMAND_HANDLERS.keys()) + ["db"] + list(load_terminal_commands())
+_AVAILABLE_COMMANDS = (
+    list(_COMMAND_HANDLERS.keys()) + ["db", "config"] + list(load_terminal_commands())
+)
 
 
 def execute_single_command(
