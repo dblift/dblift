@@ -44,7 +44,6 @@ from core.logger import (
     MultiLog,
     NullLog,
     OperationResult,
-    PlanResult,
     OutputFormatter,
     OutputFormatterFactory,
     RepairResult,
