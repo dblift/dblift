@@ -8,7 +8,7 @@ to use specialized components for better separation of concerns.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, cast
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 if TYPE_CHECKING:
     from core.migration.commands.base_command import BaseCommandContext

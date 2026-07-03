@@ -1,4 +1,8 @@
-"""Private operation helpers for OSS :mod:`api.client`."""
+"""Private operation helpers for :mod:`api.client`.
+
+Keep large operation bodies out of ``DBLiftClient`` so the public client class
+stays readable while preserving the same public methods and behavior.
+"""
 
 from __future__ import annotations
 
@@ -19,7 +23,7 @@ def _heuristic_statement_count_from_sql(sql_text: str) -> int:
 
 
 def _apply_sql_script_warning_scan(
-    result: GenerateUndoScriptResult,
+    result: Union[Any, GenerateUndoScriptResult],
     sql_text: str,
 ) -> None:
     """Set manual-review flag and collect per-line warnings from generated SQL text."""

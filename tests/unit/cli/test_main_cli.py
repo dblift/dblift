@@ -4,7 +4,6 @@ import os
 import subprocess
 import sys
 from pathlib import Path
-from types import SimpleNamespace
 from unittest.mock import MagicMock, Mock, call, patch
 
 import pytest

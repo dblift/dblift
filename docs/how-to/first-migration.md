@@ -1,8 +1,9 @@
 # How to Write and Apply Your First Migration
 
-This recipe assumes DBLift is already installed and licensed (see
-[Getting Started](../user-guide/getting-started.md)) and that you have
-database connection details on hand.
+This recipe assumes DBLift is already installed (see
+[Getting Started](../user-guide/getting-started.md)). Activate a license first
+when using the commercial distribution. You also need database connection
+details on hand.
 
 ## 1. Configure your database connection
 

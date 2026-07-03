@@ -2,9 +2,13 @@
 
 from __future__ import annotations
 
-from typing import Any, Optional, Type
+from typing import TYPE_CHECKING, Any, Optional, Type
 
 from db.base_quirks import BaseQuirks
+
+if TYPE_CHECKING:
+    from core.sql_generator.alter.base_alter_generator import BaseAlterGenerator
+    from core.sql_generator.base_generator import BaseSqlGenerator
 
 
 class SqliteQuirks(BaseQuirks):
@@ -40,12 +44,12 @@ class SqliteQuirks(BaseQuirks):
         """Initialize SQLite quirks with the dialect name."""
         super().__init__(dialect_name=dialect_name)
 
-    def ddl_generator_class(self) -> None:
-        """OSS builds do not ship SQL generator implementations."""
+    def ddl_generator_class(self) -> Optional[Type["BaseSqlGenerator"]]:
+        """DDL generator relocated to the paid package; registered by register_pro_generators()."""
         return None
 
-    def alter_generator_class(self) -> None:
-        """OSS builds do not ship ALTER generator implementations."""
+    def alter_generator_class(self) -> Optional[Type["BaseAlterGenerator"]]:
+        """ALTER generator relocated to the paid package; registered by register_pro_generators()."""
         return None
 
     def parser_class(self, parser_type: str) -> Optional[type]:

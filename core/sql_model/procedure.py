@@ -164,8 +164,20 @@ class Procedure(SqlObject):
 
     @property
     def create_statement(self) -> str:
-        """OSS builds do not ship SQL generation for this object."""
-        return ""
+        """Generate CREATE PROCEDURE or CREATE FUNCTION statement using database-specific generators.
+
+        Returns:
+            Dialect-specific CREATE PROCEDURE/FUNCTION statement
+        """
+        from core.sql_generator.generator_factory import (
+            SqlGeneratorFactory,
+        )
+
+        try:
+            generator = SqlGeneratorFactory.create(self.dialect)
+            return str(generator.generate_create_statement(self))
+        except (ValueError, ImportError, AttributeError):
+            return ""
 
     def _render_body(self, style: str) -> str:
         """Render procedure body for the given wrap *style*.

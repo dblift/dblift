@@ -129,19 +129,21 @@ class Db2SchemaOperations(BaseSchemaOperations):
     def get_database_version(self, connection: Any) -> str:
         """Get the DB2 version information.
 
+        Reads ``dbms_ver`` off the driver's own connection handle (populated
+        from the CLI handshake at connect time) instead of querying
+        ``SYSIBMADM.ENV_INST_INFO`` — that admin view is backed by a fenced
+        stored procedure and raises SQL1646N whenever the fenced user can't
+        reach the instance's ``sqllib`` directory (common on minimal/
+        containerized installs).
+
         Returns:
             Database version string
         """
-        version_sql = "SELECT SERVICE_LEVEL, FIXPACK_NUM FROM SYSIBMADM.ENV_INST_INFO"
         try:
-            results = self.query_executor.execute_query(connection, version_sql)
+            dbms_ver = getattr(getattr(connection, "connection", None), "dbms_ver", None)
+            if dbms_ver:
+                return f"DB2 {dbms_ver}"
 
-            if results and len(results) > 0:
-                service_level = results[0].get("SERVICE_LEVEL", "")
-                fixpack_num = results[0].get("FIXPACK_NUM", "")
-                return f"DB2 {service_level} FixPack {fixpack_num}"
-
-            # Alternative query if the above doesn't work
             fallback_sql = "SELECT CURRENT SERVER AS DB_NAME FROM SYSIBM.SYSDUMMY1"
             results = self.query_executor.execute_query(connection, fallback_sql)
             if results and len(results) > 0:

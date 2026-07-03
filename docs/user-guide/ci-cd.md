@@ -74,7 +74,7 @@ validate-migrations:
 
 ```yaml
 repos:
-  - repo: https://github.com/cmodiano/dblift-oss
+  - repo: https://github.com/dblift/dblift
     rev: v1.8.0   # pin to a released tag
     hooks:
       - id: dblift-validate
@@ -92,7 +92,7 @@ driver in the *consuming* repository's `.pre-commit-config.yaml`:
 
 ```yaml
 repos:
-  - repo: https://github.com/cmodiano/dblift-oss
+  - repo: https://github.com/dblift/dblift
     rev: v1.8.0
     hooks:
       - id: dblift-validate
@@ -107,7 +107,7 @@ applies when using `pre-commit try-repo` locally or in CI.
 ## Optional: Guard the pre-commit hook contract in your own CI
 
 If you publish migrations and consume the `dblift-validate` / `dblift-info`
-pre-commit hooks from `https://github.com/cmodiano/dblift-oss`, you may want
+pre-commit hooks from `https://github.com/dblift/dblift`, you may want
 a CI job in *your own repository* that proves the hooks still work end-to-end
 (positive on a clean DB history, negative on checksum drift).
 
@@ -167,11 +167,11 @@ jobs:
         working-directory: /tmp/fixture
         run: |
           set -euo pipefail
-          pre-commit try-repo https://github.com/cmodiano/dblift-oss dblift-validate \
+          pre-commit try-repo https://github.com/dblift/dblift dblift-validate \
             --rev v1.8.0 \
             --additional-deps "dblift[postgresql]" \
             --files migrations/V1_0_0__init.sql
-          pre-commit try-repo https://github.com/cmodiano/dblift-oss dblift-info \
+          pre-commit try-repo https://github.com/dblift/dblift dblift-info \
             --rev v1.8.0 \
             --additional-deps "dblift[postgresql]" \
             --files migrations/V1_0_0__init.sql
@@ -182,7 +182,7 @@ jobs:
           set -euo pipefail
           printf '\n-- drift\nALTER TABLE widgets ADD COLUMN name TEXT;\n' \
             >> migrations/V1_0_0__init.sql
-          if pre-commit try-repo https://github.com/cmodiano/dblift-oss dblift-validate \
+          if pre-commit try-repo https://github.com/dblift/dblift dblift-validate \
                --rev v1.8.0 \
                --additional-deps "dblift[postgresql]" \
                --files migrations/V1_0_0__init.sql; then

@@ -81,15 +81,26 @@ def _env_param(spec):
     return pytest.param(spec, marks=marks, id=spec.name)
 
 
+# Properties whose CLI flag is registered only by the Pro/Enterprise
+# cli_extensions (see cli/_parser_setup.py::_add_registry_flags deferred_specs).
+# In an OSS-only install (no Pro extension) the flag genuinely does not exist on
+# the parser; this is by design, not a coverage gap. The monorepo (Pro present)
+# still asserts full coverage for these — only a genuinely-absent flag skips.
+_PRO_DEFERRED_CLI = {"max_snapshots", "snapshot_table"}
+
+
 @pytest.mark.parametrize(
     "spec",
     [_cli_param(s) for s in PROPERTY_REGISTRY if not s.cli_exempt and not s.cli_only],
 )
 def test_cli_flag_exists(spec):
     flags = _all_option_strings(create_parser(exit_on_error=False))
-    assert spec.cli in flags or any(
-        a in flags for a in spec.cli_aliases
-    ), f"{spec.name}: no CLI flag ({spec.cli} or aliases {spec.cli_aliases})"
+    present = spec.cli in flags or any(a in flags for a in spec.cli_aliases)
+    if not present and spec.name in _PRO_DEFERRED_CLI:
+        pytest.skip(
+            f"{spec.name}: CLI flag registered only by the Pro extension, absent in this install"
+        )
+    assert present, f"{spec.name}: no CLI flag ({spec.cli} or aliases {spec.cli_aliases})"
 
 
 @pytest.mark.parametrize("spec", [_env_param(s) for s in PROPERTY_REGISTRY])

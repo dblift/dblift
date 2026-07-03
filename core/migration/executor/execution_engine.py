@@ -121,6 +121,9 @@ class ExecutionEngine:
             migration: The migration to execute
             result: The migration result to update
         """
+        from core.seams.runtime_checks import run_checks
+
+        run_checks("migration.pre_execution")
         start_time = time.time()
         migration.logger = self.log
 

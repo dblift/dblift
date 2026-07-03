@@ -17,6 +17,14 @@ def _truthy(value: Any) -> bool:
     return str(value).strip().lower() in {"1", "true", "yes", "on"}
 
 
+#: Values pymssql's ``encryption`` connect kwarg actually accepts
+#: (``pymssql._mssql.TDS_ENCRYPTION_LEVEL``). Anything else raises a
+#: ``ValueError`` deep in the driver, so a boolean-ish value typed directly
+#: into a URL (e.g. ``?encryption=true``, the ODBC/JDBC convention) must be
+#: normalized here rather than forwarded as-is.
+_VALID_ENCRYPTION_VALUES = {"default", "off", "request", "require"}
+
+
 def _pop_case_insensitive(query: Dict[str, str], names: set[str]) -> str | None:
     for key in list(query):
         if key.lower() in names:
@@ -64,7 +72,10 @@ def _query_mapping(database_config: Any, base_query: Any = None) -> Dict[str, st
     encrypt_value = _pop_case_insensitive(query, {"encrypt"})
     if encrypt_value is not None:
         query.setdefault("encryption", "require" if _truthy(encrypt_value) else "off")
-    elif hasattr(database_config, "encrypt") and "encryption" not in query:
+    elif "encryption" in query:
+        if str(query["encryption"]).strip().lower() not in _VALID_ENCRYPTION_VALUES:
+            query["encryption"] = "require" if _truthy(query["encryption"]) else "off"
+    elif hasattr(database_config, "encrypt"):
         query["encryption"] = "require" if getattr(database_config, "encrypt") else "off"
 
     connection_timeout = getattr(database_config, "connection_timeout", None)

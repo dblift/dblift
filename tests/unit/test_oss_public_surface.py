@@ -62,11 +62,13 @@ def test_oss_tests_do_not_name_non_oss_tiers():
 
 
 def test_oss_repo_does_not_ship_removed_tier_modules():
+    """core/sql_generator ships in OSS by design (phase2: keep OSS SQL generator
+    runtime, 2026-07-03) — it's the base DDL-generation engine higher tiers'
+    per-dialect generators subclass (BaseSqlGenerator/BaseAlterGenerator) and
+    register into (SqlGeneratorFactory/AlterGeneratorFactory); paid-tier
+    implementations live outside this module, not inside it."""
     tracked = _tracked_files()
-    forbidden_roots = (
-        "core/licensing/",
-        "core/sql_generator/",
-    )
+    forbidden_roots = ("core/licensing/",)
     offenders = [
         path for path in sorted(tracked) if any(path.startswith(root) for root in forbidden_roots)
     ]
@@ -75,11 +77,16 @@ def test_oss_repo_does_not_ship_removed_tier_modules():
 
 
 def test_oss_cli_does_not_expose_license_key_surface():
+    """core/seams/license_info.py is the neutral seam OSS core calls to learn
+    what to show in the license banner (symmetrical with tier_resolver.py) —
+    it registers a None-default provider and holds no license logic or keys
+    itself, so it's exempt from this scan by design, not by oversight."""
     offenders = []
     current_test = Path(__file__).resolve().relative_to(ROOT).as_posix()
+    exempt = {"core/seams/license_info.py"}
 
     for path in sorted(_tracked_files()):
-        if path == current_test:
+        if path == current_test or path in exempt:
             continue
         if not path.endswith(".py"):
             continue

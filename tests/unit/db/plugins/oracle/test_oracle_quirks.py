@@ -27,3 +27,29 @@ def test_oracle_does_not_skip_existence_check():
     from db.plugins.oracle.quirks import OracleQuirks
 
     assert OracleQuirks().provider_compat_snapshot_skips_existence_check is False
+
+
+def test_oracle_round_trip_drop_table_sql_uses_native_if_exists():
+    """23ai+/19.28+ native syntax replaces the old PL/SQL exception wrapper."""
+    sql = OracleQuirks().render_round_trip_drop_table_sql('"HR"."EMPLOYEES"')
+    assert sql == 'DROP TABLE IF EXISTS "HR"."EMPLOYEES" CASCADE CONSTRAINTS'
+    assert "EXECUTE IMMEDIATE" not in sql
+    assert "EXCEPTION" not in sql
+
+
+@pytest.mark.parametrize(
+    "obj_type, expected",
+    [
+        ("TABLE", 'DROP TABLE IF EXISTS "S"."T" CASCADE CONSTRAINTS'),
+        ("VIEW", 'DROP VIEW IF EXISTS "S"."T"'),
+        ("MATERIALIZED_VIEW", 'DROP MATERIALIZED VIEW IF EXISTS "S"."T"'),
+        ("INDEX", 'DROP INDEX IF EXISTS "S"."T"'),
+        ("SEQUENCE", 'DROP SEQUENCE IF EXISTS "S"."T"'),
+        ("PROCEDURE", 'DROP PROCEDURE IF EXISTS "S"."T"'),
+        ("FUNCTION", 'DROP FUNCTION IF EXISTS "S"."T"'),
+        ("TRIGGER", 'DROP TRIGGER IF EXISTS "S"."T"'),
+    ],
+)
+def test_oracle_render_drop_for_object_uses_native_if_exists(obj_type, expected):
+    result = OracleQuirks().render_drop_for_object(obj_type, '"T"', '"S".', None)
+    assert result == expected

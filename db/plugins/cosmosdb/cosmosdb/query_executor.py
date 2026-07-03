@@ -185,7 +185,7 @@ class CosmosDbQueryExecutor(BaseQueryExecutor):
         Returns:
             1 if successful, 0 otherwise
         """
-        from core.state.sql_statement import SqlStatement
+        from core.sql_generator.sql_statement import SqlStatement
         from db.plugins.cosmosdb.sdk_translator import CosmosDbSdkTranslator
 
         # Create a statement for translation

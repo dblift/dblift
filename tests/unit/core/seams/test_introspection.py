@@ -1,5 +1,4 @@
-import sys
-from types import ModuleType
+import importlib
 
 from core.seams.introspection import attach_registered_introspection
 
@@ -24,6 +23,23 @@ def test_attach_registered_introspection_loads_entrypoints(monkeypatch):
         "core.seams.introspection.entry_points",
         lambda group: [_EntryPoint(registrar)] if group == "dblift.introspection" else [],
     )
+
     attach_registered_introspection()
 
     assert calls == ["registered"]
+
+
+def test_attach_registered_introspection_uses_entrypoints_only(monkeypatch, caplog):
+    monkeypatch.setattr(
+        "core.seams.introspection.entry_points",
+        lambda group: [],
+    )
+    monkeypatch.setattr(
+        importlib,
+        "import_module",
+        lambda name: (_ for _ in ()).throw(AssertionError(f"unexpected import: {name}")),
+    )
+
+    attach_registered_introspection()
+
+    assert "unexpected import" not in caplog.text

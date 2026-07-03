@@ -1,7 +1,8 @@
-"""Discover and attach event-bus listeners registered by extensions.
+"""Discover and attach event-bus listeners registered by higher tiers.
 
 Each ``dblift.event_listeners`` entry point resolves to a callable
-``register(emitter) -> None`` that subscribes its listeners. OSS ships none.
+``register(emitter) -> None`` that subscribes its listeners. OSS ships none;
+dblift-enterprise registers (e.g.) the snapshot capture listener.
 """
 
 from __future__ import annotations

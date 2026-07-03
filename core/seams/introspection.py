@@ -1,4 +1,4 @@
-"""Discover and run installed introspection registrars."""
+"""Discover and run tier-provided introspection registrars."""
 
 from __future__ import annotations
 

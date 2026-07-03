@@ -1,8 +1,6 @@
 """Core ``OutputFormatter`` implementation (non-diff format methods + orchestrator).
 
-The text-diff section helpers live in the ``_format_diff_*.py`` sibling
-modules and are mixed in here. The public ``formatter`` façade re-exports
-``OutputFormatter`` so existing imports
+The public ``formatter`` façade re-exports ``OutputFormatter`` so existing imports
 (``from core.logger.formatters.formatter import OutputFormatter``) keep
 working unchanged.
 

@@ -187,6 +187,13 @@ def _leaf_subcommand_invocations() -> List[Tuple[str, List[str]]]:
     ]
 
 
+# Top-level flags registered only by the Pro/Enterprise CLI extension (see
+# cli/_parser_setup.py::_add_registry_flags deferred_specs). They are absent
+# from an OSS-only parser by design; skip the preservation check for them
+# when the extension isn't installed, but still assert it in the monorepo.
+_PRO_ONLY_PARENT_FLAGS = {"--max-snapshots"}
+
+
 @pytest.mark.parametrize("subcmd_name,subcmd_argv", _leaf_subcommand_invocations())
 @pytest.mark.parametrize(
     "flag,flag_value,dest,expected",
@@ -208,6 +215,9 @@ def test_parent_flag_survives_every_subcommand(
     through a parents= chain), this test will catch it.
     """
     parser = create_parser()
+
+    if flag in _PRO_ONLY_PARENT_FLAGS and flag not in _top_level_optional_flags():
+        pytest.skip(f"{flag}: registered only by the Pro extension, absent in this install")
 
     argv: List[str] = [flag] if flag_value is None else [flag, flag_value]
     argv.extend(subcmd_argv)
@@ -232,12 +242,21 @@ def test_import_flyway_accepts_source_table_override():
     assert args.flyway_table == "custom_flyway_history"
 
 
+def test_oss_parser_has_no_paid_commands(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("DBLIFT_DISABLE_CLI_EXTENSIONS", "1")
+    parser = create_parser()
+
+    help_text = parser.format_help()
+    for command in ("diff", "export-schema", "snapshot", "validate-sql", "plan", "preflight"):
+        assert command not in help_text
+
+
 @pytest.mark.parametrize(
     "subcmd_argv",
     [
-        ["migrate"],
-        ["undo"],
-        ["baseline", "--baseline-version", "1"],
+        ["diff"],
+        ["export-schema", "--output", "schema.sql"],
+        ["snapshot", "--output", "snapshot.json"],
     ],
 )
 def test_snapshot_table_option_is_not_available_for_migration_lifecycle_commands(

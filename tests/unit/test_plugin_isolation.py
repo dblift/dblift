@@ -103,6 +103,20 @@ def _imported_modules(path: Path) -> set[str]:
     return modules
 
 
+def _string_literals(path: Path) -> set[str]:
+    """Return every string literal in ``path``."""
+    try:
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    except SyntaxError:
+        return set()
+
+    return {
+        node.value
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Constant) and isinstance(node.value, str)
+    }
+
+
 def _has_forbidden_import(
     modules: set[str], forbidden_prefixes: tuple[str, ...], allowed_exact: set[str]
 ) -> set[str]:

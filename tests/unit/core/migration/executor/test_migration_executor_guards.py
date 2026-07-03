@@ -5,6 +5,12 @@ from unittest.mock import MagicMock, patch
 
 
 class TestMigrationExecutorGuards(unittest.TestCase):
+    def test_executor_does_not_expose_paid_diff_or_plan_methods(self):
+        from core.migration.executor.migration_executor import MigrationExecutor
+
+        self.assertFalse(hasattr(MigrationExecutor, "diff"))
+        self.assertFalse(hasattr(MigrationExecutor, "plan"))
+
     def test_raises_when_provider_none(self):
         from core.migration.executor.migration_executor import MigrationExecutor
 

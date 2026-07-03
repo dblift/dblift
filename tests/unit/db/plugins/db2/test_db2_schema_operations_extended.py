@@ -66,6 +66,7 @@ class TestGetDatabaseVersionExtended:
     def test_both_queries_empty_returns_unknown(self):
         ops, qe, log = _make_ops()
         conn = _make_connection()
+        conn.connection = None
         qe.execute_query.side_effect = [[], []]
 
         result = ops.get_database_version(conn)

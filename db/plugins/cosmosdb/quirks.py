@@ -2,9 +2,13 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional, Type
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Type
 
 from db.base_quirks import BaseQuirks
+
+if TYPE_CHECKING:
+    from core.sql_generator.alter.base_alter_generator import BaseAlterGenerator
+    from core.sql_generator.base_generator import BaseSqlGenerator
 
 
 class CosmosdbQuirks(BaseQuirks):
@@ -51,12 +55,15 @@ class CosmosdbQuirks(BaseQuirks):
         """Initialize Cosmos DB quirks with the dialect name."""
         super().__init__(dialect_name=dialect_name)
 
-    def ddl_generator_class(self) -> None:
-        """OSS builds do not ship SQL generator implementations."""
+    def ddl_generator_class(self) -> Optional[Type["BaseSqlGenerator"]]:
+        """No SQL-DDL generator — ``CREATE CONTAINER`` paths route through the SDK translator."""
+        # CosmosDB has no traditional DDL generator. Its CREATE TABLE
+        # path goes through the SDK translator (db/plugins/cosmosdb/sdk_translator/).
+        # Fall back to the framework default.
         return None
 
-    def alter_generator_class(self) -> None:
-        """OSS builds do not ship ALTER generator implementations."""
+    def alter_generator_class(self) -> Optional[Type["BaseAlterGenerator"]]:
+        """ALTER generator relocated to the paid package; registered by register_pro_generators()."""
         return None
 
     def parser_class(self, parser_type: str) -> Optional[type]:
@@ -150,7 +157,7 @@ class CosmosdbQuirks(BaseQuirks):
     def _cosmosdb_noop(
         self, formatted_table: str, formatted_column: str, change_kind: str, dialect: str
     ) -> object:
-        from core.state.sql_statement import SqlStatement
+        from core.sql_generator.sql_statement import SqlStatement
 
         sql = (
             f"-- CosmosDB is schema-less, no ALTER TABLE needed for "

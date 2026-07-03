@@ -618,6 +618,9 @@ class MigrateCommand(BaseCommand):
         This will automatically create the schema history table if it doesn't exist,
         without requiring a separate baseline command.
         """
+        from core.seams.runtime_checks import run_checks
+
+        run_checks("command.pre_migrate")
         result = MigrateResult()
         result.show_sql = show_sql
         result.target_schema = self.config.database.schema

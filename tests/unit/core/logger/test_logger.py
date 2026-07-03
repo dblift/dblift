@@ -6,7 +6,6 @@ from types import SimpleNamespace
 import pytest
 
 from core.logger import ConsoleLog, DbliftLogger, LogLevel, MultiLog
-from core.logger.formatters.htmlformatter import HtmlFormatter
 from core.logger.log import Log, LogEvent, LogFormat, LogFormatter, TextFormatter
 
 pytestmark = [pytest.mark.unit]

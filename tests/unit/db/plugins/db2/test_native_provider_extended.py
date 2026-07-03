@@ -49,28 +49,31 @@ class TestExecuteStatement:
 
 
 class TestGetDatabaseVersion:
-    def test_returns_service_level_and_fixpack(self) -> None:
+    def test_returns_dbms_ver_from_driver_connection(self) -> None:
+        # No SQL query at all — reads the version the driver already got
+        # from the CLI handshake at connect time (avoids the fenced
+        # SYSIBMADM.ENV_INST_INFO route entirely; see BUG OBS-01).
         provider = DummyDb2Provider()
-        provider.execute_query = lambda sql, params=None: [
-            {"SERVICE_LEVEL": "v11.5", "FIXPACK_NUM": "5"}
-        ]
+        raw = SimpleNamespace(dbms_ver="12.01.0500")
+        provider._ensure_connection = lambda: SimpleNamespace(connection=raw)
+        provider.execute_query = lambda sql, params=None: (_ for _ in ()).throw(
+            AssertionError("should not query SYSIBMADM.ENV_INST_INFO")
+        )
 
-        assert provider.get_database_version() == "DB2 v11.5 FixPack 5"
+        assert provider.get_database_version() == "DB2 12.01.0500"
 
-    def test_falls_back_to_current_server(self) -> None:
+    def test_falls_back_to_current_server_when_dbms_ver_missing(self) -> None:
         provider = DummyDb2Provider()
-
-        def execute_query(sql, params=None):
-            if "ENV_INST_INFO" in sql:
-                return []
-            return [{"DB_NAME": "SAMPLE"}]
-
-        provider.execute_query = execute_query
+        raw = SimpleNamespace(dbms_ver=None)
+        provider._ensure_connection = lambda: SimpleNamespace(connection=raw)
+        provider.execute_query = lambda sql, params=None: [{"DB_NAME": "SAMPLE"}]
 
         assert provider.get_database_version() == "DB2 SAMPLE"
 
-    def test_returns_unknown_when_both_queries_empty(self) -> None:
+    def test_returns_unknown_when_dbms_ver_missing_and_fallback_empty(self) -> None:
         provider = DummyDb2Provider()
+        raw = SimpleNamespace(dbms_ver=None)
+        provider._ensure_connection = lambda: SimpleNamespace(connection=raw)
         provider.execute_query = lambda sql, params=None: []
 
         assert provider.get_database_version() == "DB2 Unknown Version"
@@ -78,10 +81,10 @@ class TestGetDatabaseVersion:
     def test_returns_unknown_on_exception(self) -> None:
         provider = DummyDb2Provider()
 
-        def execute_query(sql, params=None):
+        def ensure_connection():
             raise RuntimeError("connection lost")
 
-        provider.execute_query = execute_query
+        provider._ensure_connection = ensure_connection
 
         assert provider.get_database_version() == "DB2 Unknown Version"
 

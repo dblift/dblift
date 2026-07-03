@@ -126,6 +126,28 @@ def test_raw_encrypt_query_maps_to_pymssql_encryption():
     assert "encrypt" not in url.query
 
 
+def test_raw_encryption_boolean_value_normalized_to_pymssql_keyword():
+    # BUG-02 follow-up: a user typing the ODBC/JDBC-style ?encryption=true
+    # directly (SQLAlchemy's own query key, not dblift's ``encrypt`` alias)
+    # must not be forwarded verbatim — pymssql only accepts
+    # default/off/request/require and raises ValueError on anything else.
+    db = _db(url="mssql+pymssql://h/app?encryption=true")
+    url = make_url(SQLSERVER_PLUGIN.sqlalchemy_url_builder(db))
+    assert url.query["encryption"] == "require"
+
+
+def test_raw_encryption_false_normalized_to_off():
+    db = _db(url="mssql+pymssql://h/app?encryption=false")
+    url = make_url(SQLSERVER_PLUGIN.sqlalchemy_url_builder(db))
+    assert url.query["encryption"] == "off"
+
+
+def test_raw_encryption_valid_pymssql_keyword_preserved():
+    db = _db(url="mssql+pymssql://h/app?encryption=request")
+    url = make_url(SQLSERVER_PLUGIN.sqlalchemy_url_builder(db))
+    assert url.query["encryption"] == "request"
+
+
 def test_extra_params_encrypt_maps_to_pymssql_encryption():
     db = _db(host="h", database="app", extra_params={"encrypt": "true"})
     url = make_url(SQLSERVER_PLUGIN.sqlalchemy_url_builder(db))

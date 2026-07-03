@@ -101,8 +101,20 @@ class Index(SqlObject):
 
     @property
     def create_statement(self) -> str:
-        """OSS builds do not ship SQL generation for this object."""
-        return ""
+        """Generate CREATE INDEX statement using database-specific generators.
+
+        Returns:
+            Dialect-specific CREATE INDEX statement
+        """
+        from core.sql_generator.generator_factory import (
+            SqlGeneratorFactory,
+        )
+
+        try:
+            generator = SqlGeneratorFactory.create(self.dialect)
+            return str(generator.generate_create_statement(self))
+        except (ValueError, ImportError, AttributeError):
+            return ""
 
     def _render_with_options(self, style: str) -> str:
         """Render the ``WITH (...)`` storage-options clause.

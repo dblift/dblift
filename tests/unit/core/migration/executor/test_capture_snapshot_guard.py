@@ -39,3 +39,7 @@ def test_migrate_does_not_pass_snapshot_service_to_command():
     assert result.success is True
     command_cls.assert_called_once_with(executor._make_command_context.return_value)
     assert "snapshot_service" not in command_cls.call_args.kwargs
+
+
+def test_executor_does_not_expose_paid_diff_method():
+    assert not hasattr(MigrationExecutor, "diff")

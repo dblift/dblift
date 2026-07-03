@@ -12,11 +12,9 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from core.features import FeatureTier
-
-# Flyway-compatible migration filename patterns used to skip non-migration
-# SQL files when scanning a directory (e.g. leftover temp files, schema
-# dumps) so only intentional migration scripts are
+# Flyway-compatible migration filename patterns — used by SQL-file validation to
+# skip non-migration SQL files when scanning a directory (e.g. leftover
+# temp files, schema dumps) so only intentional migration scripts are
 # checked. Explicitly-listed files are always validated regardless of name.
 _MIGRATION_FILENAME_RE = re.compile(
     r"^[VRUBvrub][\d_.]*__.*\.sql$",
@@ -61,9 +59,21 @@ class CliCommandContext:
     # Migration configuration
     placeholders: Dict[str, Any] = field(default_factory=dict)
     dir_recursive_map: Dict[Path, bool] = field(default_factory=dict)
-    # License tier for feature-level gates. execute_single_command supplies
-    # the real CLI-resolved tier; the default keeps direct handler tests terse.
-    license_tier: FeatureTier = FeatureTier.ENTERPRISE
+    # License tier for feature-level gates. Opaque to OSS (see
+    # core.seams.tier_resolver) — execute_single_command supplies the real
+    # CLI-resolved tier; paid-tier handler tests must pass their own tier
+    # explicitly since OSS no longer has a permissive default to fall back on.
+    license_tier: Any = None
+
+
+@dataclass
+class ConfigOnlyClient:
+    """Config-only stand-in for commands that do not need a live provider."""
+
+    config: Any
+
+
+ValidateSqlConfigClient = ConfigOnlyClient
 
 
 def _set_command_completed(log: Any, result: Any, command_type: str) -> None:
@@ -92,7 +102,7 @@ def emit_rendered_output(
 ) -> None:
     """Dispatch a rendered command output to machine channel, logger, and/or file.
 
-    Used by command handlers that follow the same machine/human/file
+    Shared by extension report handlers that follow the same machine/human/file
     dispatch pattern once the command-specific rendering is done.
     """
     if command_output.is_machine_format:
@@ -111,7 +121,7 @@ def emit_rendered_output(
 
 
 def _extract_version_filters(args: Any) -> tuple[Any, Any, Any, Any, Any]:
-    """Extract version/tag filter arguments common to migrate, undo, validate, info, diff handlers.
+    """Extract version/tag filter arguments common to filtered migration handlers.
 
     Returns:
         Tuple (target_version, versions, exclude_versions, tags, exclude_tags),

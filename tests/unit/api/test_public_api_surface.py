@@ -53,25 +53,20 @@ class TestApiPackageSurface:
 
         assert EventType is not None
 
-    def test_export_schema_options_is_not_eagerly_bound_on_package_import(self):
-        import subprocess
-        import sys
+    def test_oss_client_does_not_expose_paid_methods(self) -> None:
+        from api import DBLiftClient
 
-        probe = """
-import api
+        paid_methods = {
+            "diff",
+            "export_schema",
+            "generate_sql_from_diff",
+            "plan",
+            "snapshot",
+        }
 
-if "ExportSchemaOptions" in api.__dict__:
-    raise SystemExit("eager")
-"""
-        out = subprocess.run(
-            [sys.executable, "-c", probe],
-            capture_output=True,
-            text=True,
-        )
+        assert paid_methods.isdisjoint(dir(DBLiftClient))
 
-        assert out.returncode == 0, out.stderr or out.stdout
-
-    def test_all_lists_exactly_five_symbols(self):
+    def test_all_lists_exactly_four_symbols(self):
         """``api.__all__`` is the contract. Additions (e.g. MigrationContext) are MINOR bumps
         (document in semver-policy.md + CHANGELOG); removals are MAJOR."""
         import api
@@ -258,7 +253,7 @@ class TestLoggerPackageSurface:
 
 
 class TestDBLiftClientPublicMethods:
-    """The 14 public methods on DBLiftClient (§ 3.2 of ARCHITECTURE.md)."""
+    """The OSS public methods on DBLiftClient."""
 
     EXPECTED_PUBLIC_METHODS = frozenset(
         {

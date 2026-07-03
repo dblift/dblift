@@ -145,15 +145,21 @@ class Db2Provider(SqlAlchemyProvider):
         return bool(rows)
 
     def get_database_version(self) -> str:
-        """Return DB2 version information."""
+        """Return DB2 version information.
+
+        Reads ``dbms_ver``/``dbms_name`` off the driver's own connection
+        handle (populated from the CLI handshake at connect time) instead of
+        querying ``SYSIBMADM.ENV_INST_INFO`` — that admin view is backed by
+        a fenced stored procedure and raises SQL1646N whenever the fenced
+        user can't reach the instance's ``sqllib`` directory (common on
+        minimal/containerized installs), which broke version lookup on
+        every single command.
+        """
         try:
-            rows = self.execute_query(
-                "SELECT SERVICE_LEVEL, FIXPACK_NUM FROM SYSIBMADM.ENV_INST_INFO"
-            )
-            if rows:
-                service_level = _row_value(rows[0], "SERVICE_LEVEL", default="")
-                fixpack_num = _row_value(rows[0], "FIXPACK_NUM", default="")
-                return f"DB2 {service_level} FixPack {fixpack_num}".strip()
+            raw = self._ensure_connection().connection
+            dbms_ver = getattr(raw, "dbms_ver", None)
+            if dbms_ver:
+                return f"DB2 {dbms_ver}"
             rows = self.execute_query("SELECT CURRENT SERVER AS DB_NAME FROM SYSIBM.SYSDUMMY1")
             if rows:
                 return f"DB2 {_row_value(rows[0], 'DB_NAME', default='Unknown')}"

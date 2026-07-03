@@ -772,6 +772,19 @@ class TestProcedure:
         assert procedure.body == body
         assert procedure.object_type == SqlObjectType.PROCEDURE
 
+    def test_procedure_create_statement_without_paid_generator_returns_empty(self, monkeypatch):
+        """OSS core does not require paid routine DDL generators."""
+        from core.seams.sql_generators import clear_sql_generator_registrars
+        from core.sql_generator.generator_factory import SqlGeneratorFactory
+
+        monkeypatch.setenv("DBLIFT_DISABLE_CLI_EXTENSIONS", "1")
+        clear_sql_generator_registrars()
+        SqlGeneratorFactory.reset()
+
+        procedure = Procedure("p", body="SELECT 1")
+        assert procedure.dialect is None
+        assert procedure.create_statement == ""
+
 
 class TestSequence:
     """Test Sequence functionality."""
