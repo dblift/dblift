@@ -56,7 +56,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- **Every CLI command crashed** with a `_resolve_license_tier` `NameError`.
+- **Every CLI command crashed on startup** with a `NameError` during license
+  tier resolution.
 
 ## [2.1.0] - 2026-06-30
 
