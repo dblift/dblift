@@ -7,6 +7,83 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+### Changed
+
+### Fixed
+
+### Removed
+
+## [2.2.1] - 2026-07-03
+
+### Changed
+
+- Internal refactor: introduced a plugin-registration seam
+  (`core/seams/{tier_resolver,license_info,capabilities,feature_loading,runtime_checks}.py`)
+  that higher tiers register against, replacing the old `core/features.py`.
+  `core/sql_generator` remains the OSS-owned base DDL-generation engine that
+  paid tiers subclass. No user-facing behavior change.
+
+## [2.2.0] - 2026-07-01
+
+### Added
+
+- **`dblift config --list`** — prints every persistent configuration property
+  alongside its config key, environment variable, and CLI flag, so the full
+  property surface is discoverable from the command line instead of the docs.
+- New [How to Write and Apply Your First Migration](docs/how-to/first-migration.md)
+  quickstart guide.
+
+### Changed
+
+- **Python migration undo now requires a separate `U<ver>__*.py` file** —
+  matching the existing SQL convention (`U<ver>__*.sql` undoes `V<ver>__*.sql`).
+  Previously a versioned `.py` migration could define both `migrate()` and an
+  inline `undo()` in the same file; that inline `undo()` is no longer honored.
+  If no `U<ver>__*.py` companion exists for an applied `V<ver>__*.py`, `undo`
+  fails with "No undo script found", same as SQL migrations.
+- Documented that `integrations.django` ships `dblift_migrate` / `dblift_info`
+  / `dblift_validate` management commands plus a pending-migrations system
+  check, as an alternative to wiring `DBLiftClient.from_sqlalchemy()` by hand.
+
+## [2.1.1] - 2026-06-30
+
+### Added
+
+- `dblift.yaml` / `dblift.yml` are now auto-discovered from the current
+  working directory when no `--config` or `--db-url` is given.
+
+### Fixed
+
+- **Every CLI command crashed on startup** with a `NameError` during license
+  tier resolution.
+
+## [2.1.0] - 2026-06-30
+
+### Changed
+
+- Rewrote the README opening for developer-first positioning: problem-first
+  tagline, a 3-command quickstart (`validate`, `migrate --dry-run --show-sql`,
+  `migrate`), and an explicit OSS/Pro tier callout.
+- Rewrote the Getting Started guide (pip-first, OSS-only, tier-aware) and
+  clarified configuration discovery: the `DBLIFT_DB_URL` environment variable
+  is the primary workflow; `--config` is required to use a `dblift.yaml` file
+  (dblift does not auto-discover it from the working directory as of this
+  release — see 2.1.1 above, which added that auto-discovery).
+- Fixed the CI/CD guide: corrected `actions/checkout@v6` references to `@v4`,
+  added a `migrate --dry-run --show-sql` step to the GitHub Actions and
+  GitLab CI examples, and updated the documented pre-commit `rev` to `v2.0.5`.
+- Switched the README test-status badge from a static shields.io label to the
+  live GitHub Actions workflow badge, and restored the codecov badge now that
+  the repository is public.
+- CI now gates PyPI publishing on the unit-test suite passing, so a release
+  can no longer publish to PyPI while the unit suite is red.
+
+### Fixed
+
+- Fixed broken badge links and assorted documentation wording issues.
+
 ## [2.0.5] - 2026-06-25
 
 ### Fixed
