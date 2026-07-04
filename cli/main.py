@@ -53,6 +53,7 @@ from cli._output import CommandOutput, from_args
 from cli._parser_setup import create_parser, parse_with_selective_errors
 from cli.extensions import load_terminal_commands
 from core.seams.feature_loading import load_feature_extensions
+from core.seams.license_info import get_license_info
 
 # Module-level placeholder; main() uses a local 'log' variable (no global declaration)
 log = None
@@ -138,7 +139,10 @@ class _CliContext:
     log: Any  # core.logger Log — bootstrap instance (re-assigned by phase 3).
     config: Optional[Any]  # config.DbliftConfig | None (None for `db` subcommands)
 
-    # Optional paid extension metadata.
+    # Optional paid extension metadata. Populated from the
+    # ``core.seams.license_info`` seam: ``None`` in a pure OSS install (no
+    # provider registered), a license-info dict when a higher tier registers one.
+    license_info: Optional[Any] = None
 
 
 def main() -> None:
@@ -259,6 +263,7 @@ def _parse_argv_and_load_config(argv: List[str]) -> _CliContext:
         parser=parser,
         log=log,
         config=config,
+        license_info=get_license_info(args),
     )
 
 
@@ -279,6 +284,18 @@ def _command_handler_attr(command: Optional[str], attr_name: str, default: Any =
     if handler is None:
         return default
     return getattr(handler, attr_name, default)
+
+
+def _propagate_license_banner(log: Any, license_info: Optional[Any]) -> None:
+    """Set ``license_info`` on every sub-logger's formatter so the banner
+    renders. No-op when ``license_info`` is falsy (pure OSS: no provider
+    registered on the ``core.seams.license_info`` seam)."""
+    if not license_info:
+        return
+    loggers = getattr(log, "logs", [log])
+    for sub_log in loggers:
+        if hasattr(sub_log, "formatter"):
+            sub_log.formatter.license_info = license_info
 
 
 def _setup_logging_and_output(ctx: _CliContext) -> CommandOutput:
@@ -309,6 +326,10 @@ def _setup_logging_and_output(ctx: _CliContext) -> CommandOutput:
 
     assert ctx.config is not None
     ctx.log = _configure_logging(ctx.args, ctx.config, ctx.parser)
+    # Propagate the license banner (if a higher tier registered a provider on
+    # the seam) onto the reconfigured loggers' formatters. No-op in a pure OSS
+    # install where ``ctx.license_info`` is ``None``.
+    _propagate_license_banner(ctx.log, ctx.license_info)
 
     _apply_configured_output_format(ctx)
 
@@ -368,6 +389,7 @@ def _dispatch_command(ctx: _CliContext, command_output: CommandOutput) -> int:
         )
         schema_name = getattr(ctx.config.database, "schema", None)
         formatter = TextFormatter()
+        formatter.license_info = ctx.license_info
         main_header = formatter.format_header(schema_name, database_name)
 
         from core.migration.commands import base_command

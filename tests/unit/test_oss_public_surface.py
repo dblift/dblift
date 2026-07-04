@@ -77,22 +77,38 @@ def test_oss_repo_does_not_ship_removed_tier_modules():
 
 
 def test_oss_cli_does_not_expose_license_key_surface():
-    """core/seams/license_info.py is the neutral seam OSS core calls to learn
-    what to show in the license banner (symmetrical with tier_resolver.py) —
-    it registers a None-default provider and holds no license logic or keys
-    itself, so it's exempt from this scan by design, not by oversight."""
-    offenders = []
-    current_test = Path(__file__).resolve().relative_to(ROOT).as_posix()
-    exempt = {"core/seams/license_info.py"}
+    """OSS must never carry the actual license *key* surface (``license_key`` /
+    ``--license-key``) — that's paid-tier territory.
 
+    The ``license_info`` token is different: it's the neutral banner seam
+    (``core.seams.license_info``) plus its OSS-side *consumer* (cli/main.py
+    calls the seam and sets ``formatter.license_info``; _formatters.py renders
+    the banner only when a higher tier populated it). That consumer is inert in
+    a pure OSS install (the seam returns ``None``) and holds no license logic or
+    keys, so those files are exempt for the ``license_info`` token only."""
+    current_test = Path(__file__).resolve().relative_to(ROOT).as_posix()
+    # Files where the neutral banner seam/consumer legitimately names
+    # ``license_info`` (never ``license_key``).
+    license_info_ok = {
+        "core/seams/license_info.py",
+        "cli/main.py",
+        "core/logger/_formatters.py",
+        # Tests for the banner seam/consumer legitimately name license_info.
+        "tests/unit/core/logger/test_license_banner.py",
+        "tests/unit/cli/test_license_banner_wiring.py",
+    }
+
+    key_offenders = []
+    info_offenders = []
     for path in sorted(_tracked_files()):
-        if path == current_test or path in exempt:
-            continue
-        if not path.endswith(".py"):
+        if path == current_test or not path.endswith(".py"):
             continue
         text = (ROOT / path).read_text(encoding="utf-8")
-        if "--license-key" in text or "license_key" in text or "license_info" in text:
-            offenders.append(path)
+        if "--license-key" in text or "license_key" in text:
+            key_offenders.append(path)
+        if "license_info" in text and path not in license_info_ok:
+            info_offenders.append(path)
+    offenders = key_offenders + info_offenders
 
     assert offenders == []
 
