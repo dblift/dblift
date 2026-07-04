@@ -93,6 +93,9 @@ def test_oss_cli_does_not_expose_license_key_surface():
         "core/seams/license_info.py",
         "cli/main.py",
         "core/logger/_formatters.py",
+        # Tests for the banner seam/consumer legitimately name license_info.
+        "tests/unit/core/logger/test_license_banner.py",
+        "tests/unit/cli/test_license_banner_wiring.py",
     }
 
     key_offenders = []
