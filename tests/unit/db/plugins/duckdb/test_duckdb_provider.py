@@ -50,6 +50,21 @@ class TestDuckDBRegistration:
 
 
 @pytest.mark.unit
+class TestDuckDBParamBinding:
+    def test_driver_bind_numeric_dollar(self) -> None:
+        """duckdb_engine's dialect reports ``numeric_dollar``; the raw
+        exec_driver_sql path must emit ``$1``/``$2`` (its DBAPI accepts them),
+        not the unbindable ``:p0`` fallback."""
+        from db.sqlalchemy_provider import SqlAlchemyProvider
+
+        sql, params = SqlAlchemyProvider._driver_bind(
+            "SELECT * FROM t WHERE a = ? AND b = ?", ["x", "y"], "numeric_dollar"
+        )
+        assert sql == "SELECT * FROM t WHERE a = $1 AND b = $2"
+        assert params == ("x", "y")
+
+
+@pytest.mark.unit
 class TestDuckDBSplitter:
     def test_splits_respecting_strings_and_comments(self) -> None:
         from db.plugins.duckdb.parser.duckdb_regex_parser import DuckDBRegexParser
