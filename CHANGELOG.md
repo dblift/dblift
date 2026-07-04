@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Internal refactor: introduced a plugin-registration seam
+  (`core/seams/{tier_resolver,license_info,capabilities,feature_loading,runtime_checks}.py`)
+  that higher tiers register against, replacing the old `core/features.py`.
+  `core/sql_generator` remains the OSS-owned base DDL-generation engine that
+  paid tiers subclass. No user-facing behavior change.
+
 ## [2.2.0] - 2026-07-01
 
 ### Added
