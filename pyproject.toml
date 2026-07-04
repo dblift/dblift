@@ -50,6 +50,7 @@ sqlserver = "db.plugins.sqlserver.plugin:PLUGIN"
 db2 = "db.plugins.db2.plugin:PLUGIN"
 sqlite = "db.plugins.sqlite.plugin:PLUGIN"
 cosmosdb = "db.plugins.cosmosdb.plugin:PLUGIN"
+duckdb = "db.plugins.duckdb.plugin:PLUGIN"
 
 # CLI command parser extensions (third-party packages can add subcommands
 # by loading a function that receives the top-level ArgumentParser).
@@ -111,11 +112,12 @@ mariadb = ["PyMySQL>=1.1"]
 oracle = ["oracledb>=2.0"]
 sqlserver = ["pymssql>=2.3"]
 db2 = ["ibm_db>=3.2", "ibm_db_sa>=0.4"]
+duckdb = ["duckdb>=1.0", "duckdb_engine>=0.13"]
 fastapi = ["fastapi>=0.100"]
 flask = ["flask>=2.3"]
 django = ["Django>=4.2"]
 otel = ["opentelemetry-api>=1.20"]
-all = ["dblift[postgresql,mysql,mariadb,oracle,sqlserver,db2]"]
+all = ["dblift[postgresql,mysql,mariadb,oracle,sqlserver,db2,duckdb]"]
 
 [tool.setuptools]
 # Use find directive to automatically discover all packages
