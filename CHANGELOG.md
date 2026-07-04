@@ -15,6 +15,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
+## [2.2.2] - 2026-07-04
+
+### Fixed
+
+- **HTML reports failed with "template not found" on wheel installs.** The
+  packaged wheel did not include `core/logger/templates/*.html` — the
+  `[tool.setuptools.package-data]` table only shipped `api/py.typed`. Any
+  `pip install dblift` user generating an HTML report hit
+  `report.html not found in search path`. Editable installs masked it (the
+  templates were visible on disk). The wheel now ships the templates.
+
 ## [2.2.1] - 2026-07-03
 
 ### Changed

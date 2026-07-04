@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "dblift"
-version = "2.2.1"
+version = "2.2.2"
 description = "A database migration tool that supports multiple databases with native Python drivers"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -128,6 +128,7 @@ exclude = ["tests*", "demo*", "scripts*", "docs*", "example*", "logo*", "site*"]
 # PEP 561: ship ``api/py.typed`` so downstream type checkers pick up
 # the public API's type annotations. See docs/semver-policy.md.
 api = ["py.typed"]
+"core.logger" = ["templates/*.html"]
 
 [tool.black]
 line-length = 100

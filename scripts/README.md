@@ -16,3 +16,14 @@ docstring, and line-length checks used by CI.
 
 `build_distributions.py` is used by `.github/workflows/build.yaml` to create
 release archives and standalone executables.
+
+## Cutting a Release
+
+```bash
+python scripts/create_release.py --dry-run X.Y.Z
+python scripts/create_release.py --push X.Y.Z
+```
+
+Rolls `## [Unreleased]` in `CHANGELOG.md` into a dated `## [X.Y.Z]` section,
+bumps the version in `pyproject.toml`/`__init__.py`, commits, and tags
+`vX.Y.Z`.
