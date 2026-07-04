@@ -52,7 +52,6 @@ from cli._config_helpers import (  # noqa: F401
 from cli._output import CommandOutput, from_args
 from cli._parser_setup import create_parser, parse_with_selective_errors
 from cli.extensions import load_terminal_commands
-from cli.handlers._shared import ValidateSqlConfigClient
 from core.seams.feature_loading import load_feature_extensions
 
 # Module-level placeholder; main() uses a local 'log' variable (no global declaration)
@@ -343,14 +342,7 @@ def _dispatch_command(ctx: _CliContext, command_output: CommandOutput) -> int:
         _resolve_scripts_directories(ctx.args, ctx.config, ctx.parser, ctx.commands)
     )
 
-    client: Union[DBLiftClient, ValidateSqlConfigClient]
-    validate_sql_only = len(ctx.commands) == 1 and bool(
-        _command_handler_attr(ctx.commands[0], "_dblift_config_only_client", False)
-    )
-    if validate_sql_only:
-        client = ValidateSqlConfigClient(config=ctx.config)
-    else:
-        client = DBLiftClient.from_config(ctx.config, logger=ctx.log)
+    client = DBLiftClient.from_config(ctx.config, logger=ctx.log)
     ctx.log.debug(f"scripts_dir: {scripts_dir}")
     ctx.log.debug(
         f"config.migrations.directories: {getattr(ctx.config.migrations, 'directories', None)}"
