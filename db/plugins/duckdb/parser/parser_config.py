@@ -41,8 +41,10 @@ class DuckDBParserConfig(DialectConfig):
 
     def _compile_patterns(self) -> None:
         def _create(kind: str) -> Pattern[str]:
-            return re.compile(rf"\s*CREATE\s+(?:OR\s+REPLACE\s+)?{kind}\s+(?:IF\s+NOT\s+EXISTS\s+)?",
-                              re.IGNORECASE)
+            return re.compile(
+                rf"\s*CREATE\s+(?:OR\s+REPLACE\s+)?{kind}\s+(?:IF\s+NOT\s+EXISTS\s+)?",
+                re.IGNORECASE,
+            )
 
         def _drop(kind: str) -> Pattern[str]:
             return re.compile(rf"\s*DROP\s+{kind}\s+(?:IF\s+EXISTS\s+)?", re.IGNORECASE)
@@ -67,7 +69,9 @@ class DuckDBParserConfig(DialectConfig):
         }
 
         self._dml_patterns = {
-            "insert": re.compile(r"\s*INSERT\s+(?:OR\s+(?:REPLACE|IGNORE)\s+)?INTO\s+", re.IGNORECASE),
+            "insert": re.compile(
+                r"\s*INSERT\s+(?:OR\s+(?:REPLACE|IGNORE)\s+)?INTO\s+", re.IGNORECASE
+            ),
             "update": re.compile(r"\s*UPDATE\s+", re.IGNORECASE),
             "delete": re.compile(r"\s*DELETE\s+FROM\s+", re.IGNORECASE),
             "copy": re.compile(r"\s*COPY\s+", re.IGNORECASE),

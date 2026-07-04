@@ -118,9 +118,7 @@ class TestDuckDBRoundTrip:
             "CREATE TABLE customers (id INTEGER PRIMARY KEY, name VARCHAR NOT NULL, "
             "active BOOLEAN DEFAULT TRUE);"
         )
-        (migrations / "V2__alter.sql").write_text(
-            "ALTER TABLE customers ADD COLUMN email VARCHAR;"
-        )
+        (migrations / "V2__alter.sql").write_text("ALTER TABLE customers ADD COLUMN email VARCHAR;")
         client = DBLiftClient(
             provider=provider, migrations_dir=str(migrations), config=provider.config
         )
