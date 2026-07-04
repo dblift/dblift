@@ -286,6 +286,18 @@ def _command_handler_attr(command: Optional[str], attr_name: str, default: Any =
     return getattr(handler, attr_name, default)
 
 
+def _propagate_license_banner(log: Any, license_info: Optional[Any]) -> None:
+    """Set ``license_info`` on every sub-logger's formatter so the banner
+    renders. No-op when ``license_info`` is falsy (pure OSS: no provider
+    registered on the ``core.seams.license_info`` seam)."""
+    if not license_info:
+        return
+    loggers = getattr(log, "logs", [log])
+    for sub_log in loggers:
+        if hasattr(sub_log, "formatter"):
+            sub_log.formatter.license_info = license_info
+
+
 def _setup_logging_and_output(ctx: _CliContext) -> CommandOutput:
     """Phase 3: configure logging, build :class:`CommandOutput`.
 
@@ -317,11 +329,7 @@ def _setup_logging_and_output(ctx: _CliContext) -> CommandOutput:
     # Propagate the license banner (if a higher tier registered a provider on
     # the seam) onto the reconfigured loggers' formatters. No-op in a pure OSS
     # install where ``ctx.license_info`` is ``None``.
-    if ctx.license_info:
-        loggers = getattr(ctx.log, "logs", [ctx.log])
-        for sub_log in loggers:
-            if hasattr(sub_log, "formatter"):
-                sub_log.formatter.license_info = ctx.license_info
+    _propagate_license_banner(ctx.log, ctx.license_info)
 
     _apply_configured_output_format(ctx)
 
