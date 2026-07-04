@@ -149,12 +149,14 @@ class DuckDBProvider(SqlAlchemyProvider):
                 time.sleep(0.2)
 
     def release_migration_lock(self, schema: str) -> bool:
-        """Release the migration lock by deleting the lock row."""
+        """Release the migration lock by deleting the lock row.
+
+        DuckDB reports ``-1`` rowcount for DML, so success is "the DELETE
+        executed" rather than a rowcount check.
+        """
         qualified = self.get_schema_qualified_name(schema, self.MIGRATION_LOCK_TABLE)
-        result = self.execute_statement(
-            f"DELETE FROM {qualified} WHERE lock_name = ?", params=["migration"]
-        )
-        return result >= 0
+        self.execute_statement(f"DELETE FROM {qualified} WHERE lock_name = ?", params=["migration"])
+        return True
 
     # --- migration history ----------------------------------------------
     def get_applied_migrations(
@@ -257,18 +259,25 @@ class DuckDBProvider(SqlAlchemyProvider):
         table_name: str = "dblift_schema_history",
         success_value: Optional[Any] = None,
     ) -> bool:
-        """Update checksum and success state for an existing migration row."""
+        """Update checksum and success state for an existing migration row.
+
+        DuckDB reports ``-1`` rowcount for DML, so existence is checked with a
+        SELECT before the UPDATE to report whether a row was actually repaired.
+        """
         if not self.table_exists(schema, table_name):
             return False
-        result = self.execute_statement(
+        qualified = self.get_schema_qualified_name(schema, table_name)
+        if not self.execute_query(f"SELECT 1 FROM {qualified} WHERE script = ?", [script_name]):
+            return False
+        self.execute_statement(
             f"""
-            UPDATE {self.get_schema_qualified_name(schema, table_name)}
+            UPDATE {qualified}
             SET checksum = ?, success = COALESCE(?, success)
             WHERE script = ?
             """,
             params=[checksum, success_value, script_name],
         )
-        return result > 0
+        return True
 
     def create_history_table(self, schema: str, table_name: str) -> str:
         """Return SQL for the DuckDB migration history table.
