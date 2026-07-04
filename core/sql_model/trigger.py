@@ -122,8 +122,18 @@ class Trigger(SqlObject):
 
     @property
     def create_statement(self) -> str:
-        """OSS builds do not ship SQL generation for this object."""
-        return ""
+        """Generate CREATE TRIGGER statement using database-specific generators.
+
+        Returns:
+            Dialect-specific CREATE TRIGGER statement
+        """
+        from core.sql_generator.generator_factory import SqlGeneratorFactory
+
+        try:
+            generator = SqlGeneratorFactory.create(self.dialect)
+            return str(generator.generate_create_statement(self))
+        except (ValueError, ImportError, AttributeError):
+            return ""
 
     @staticmethod
     def _format_mysql_definer(definer: str) -> str:

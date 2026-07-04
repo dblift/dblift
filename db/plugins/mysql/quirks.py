@@ -3,11 +3,16 @@
 from __future__ import annotations
 
 import re
-from typing import Any, Dict, List, Optional, Tuple, Type
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Type
 
 from core.utils.database_url_parser import DatabaseUrlParser
 from db.base_quirks import BaseQuirks
 from db.error import ErrorCategory
+
+if TYPE_CHECKING:
+    from core.sql_generator.alter.base_alter_generator import BaseAlterGenerator
+    from core.sql_generator.base_generator import BaseSqlGenerator
+
 
 # Each entry: (compiled regex, ErrorCategory). Sourced by
 # ``DatabaseErrorClassifier`` via ``error_patterns()`` (ADR-26 A2).
@@ -221,12 +226,12 @@ class MysqlQuirks(BaseQuirks):
             ") ENGINE=InnoDB"
         )
 
-    def ddl_generator_class(self) -> None:
-        """OSS builds do not ship SQL generator implementations."""
+    def ddl_generator_class(self) -> Optional[Type["BaseSqlGenerator"]]:
+        """DDL generator relocated to the paid package; registered by register_pro_generators()."""
         return None
 
-    def alter_generator_class(self) -> None:
-        """OSS builds do not ship ALTER generator implementations."""
+    def alter_generator_class(self) -> Optional[Type["BaseAlterGenerator"]]:
+        """ALTER generator relocated to the paid package; registered by register_pro_generators()."""
         return None
 
     def vendor_queries_class(self) -> "Optional[Type[Any]]":
@@ -320,7 +325,7 @@ class MysqlQuirks(BaseQuirks):
         self, col_diff: object, formatted_table: str, formatted_column: str, dialect: str
     ) -> "Optional[object]":
         """``ALTER TABLE … MODIFY <col> <type>`` — MySQL's column-type change form."""
-        from core.state.sql_statement import SqlStatement
+        from core.sql_generator.sql_statement import SqlStatement
 
         data_type_diff = getattr(col_diff, "data_type_diff", None)
         if data_type_diff is None:

@@ -199,9 +199,9 @@ def _apply_url_overrides(cls: Type["BaseDatabaseConfig"], data: Dict[str, Any]) 
         if url_lower.startswith("jdbc:"):
             raise ValueError("Legacy database URLs are no longer supported; use a SQLAlchemy URL")
         # _allow_incomplete is set when the URL could not be parsed (e.g. an
-        # unresolved secret URI in offline mode). Skip hydration/inference so
-        # an unresolved secret URI doesn't mutate fields before a connection
-        # is opened.
+        # unresolved secret URI in offline mode). Skip hydration/inference so that
+        # `dblift plan` with `database.url: vault://...` doesn't mutate fields from
+        # the secret URI before a connection is opened.
         if data.get("_allow_incomplete"):
             return
         if ProviderRegistry.is_native_dialect(db_type):

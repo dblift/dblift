@@ -41,8 +41,18 @@ class ForeignDataWrapper(SqlObject):
 
     @property
     def create_statement(self) -> str:
-        """OSS builds do not ship SQL generation for this object."""
-        return ""
+        """Generate CREATE FOREIGN DATA WRAPPER statement using database-specific generators.
+
+        Returns:
+            Dialect-specific CREATE FOREIGN DATA WRAPPER statement
+        """
+        from core.sql_generator.generator_factory import SqlGeneratorFactory
+
+        try:
+            generator = SqlGeneratorFactory.create(self.dialect or "")
+            return str(generator.generate_create_statement(self))
+        except (ValueError, ImportError, AttributeError):
+            return ""
 
     @property
     def drop_statement(self) -> str:

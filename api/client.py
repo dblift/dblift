@@ -1,7 +1,6 @@
 """Main client for programmatic access to DBLift."""
 
 from functools import wraps
-from importlib import import_module
 from pathlib import Path
 from types import TracebackType
 from typing import (
@@ -25,10 +24,7 @@ from api._client_factory import (
     normalize_migrations_dirs,
     resolve_config_or_raise,
 )
-from api._client_operations import (
-    generate_undo_script_operation,
-    generate_undo_scripts_operation,
-)
+from api._client_operations import generate_undo_script_operation, generate_undo_scripts_operation
 from api.events import EventEmitter, EventType, use_client_emitter
 from config import DbliftConfig
 from core.logger.results import (
@@ -44,6 +40,7 @@ from core.logger.results import (
 )
 from core.migration.executor.migration_executor import MigrationExecutor
 from core.seams.event_listeners import attach_registered_listeners
+from core.seams.feature_loading import load_feature_extensions
 from db.base_provider import BaseProvider
 from db.provider_interfaces import ConnectionProvider, TransactionalProvider
 
@@ -119,6 +116,13 @@ class DBLiftClient:
             log_file: Optional log file path; omit to keep ``config`` values
             **kwargs: Additional configuration options
         """
+        # Feature registrations from installed add-on packages must load for
+        # every client construction path, not just CLI startup — otherwise the
+        # runtime-check and tier-resolver seams would silently no-op for
+        # API-only usage. Idempotent (module-level once-flag), so double-loading
+        # with the CLI's own call is harmless.
+        load_feature_extensions()
+
         # Resolve config before logger so defaults come from merged config (e.g. from file).
         config = resolve_config_or_raise(provider, config)
 

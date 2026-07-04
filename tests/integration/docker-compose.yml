@@ -42,10 +42,14 @@ services:
       - MYSQL_ROOT_PASSWORD=root
       - MYSQL_DATABASE=testdb
       - MYSQL_ROOT_HOST=%
-    command: >
-      mysqld --log-bin-trust-function-creators=1
-      --default-authentication-plugin=mysql_native_password
-      --skip-name-resolve --bind-address=0.0.0.0
+    command:
+      [
+        "mysqld",
+        "--log-bin-trust-function-creators=1",
+        "--default-authentication-plugin=mysql_native_password",
+        "--skip-name-resolve",
+        "--bind-address=0.0.0.0",
+      ]
     ports:
       - "3306:3306"
     healthcheck:
@@ -71,7 +75,6 @@ services:
       retries: 5
       start_period: 10s
 
-  # DB2 container configuration - Note: Not compatible with macOS
   db2:
     image: icr.io/db2_community/db2:latest
     container_name: dblift_db2
@@ -91,7 +94,6 @@ services:
       timeout: 10s
       retries: 5
       start_period: 300s
-    # DB2 requires special handling and is not used in GitHub Actions due to licensing
 
   cosmosdb:
     image: mcr.microsoft.com/cosmosdb/linux/azure-cosmos-emulator:vnext-preview
@@ -99,6 +101,7 @@ services:
     environment:
       - AZURE_COSMOS_EMULATOR_PARTITION_COUNT=10
       - AZURE_COSMOS_EMULATOR_ENABLE_DATA_PERSISTENCE=true
+    mem_limit: 4g
     ports:
       - "8081:8081"
       - "10251:10251"
@@ -114,4 +117,6 @@ services:
       timeout: 10s
       retries: 10
       start_period: 120s
-    # Note: CosmosDB Emulator may not be available on all platforms (e.g., macOS ARM64)
+    # Note: vnext-preview is arm64-native; on Docker/Colima with an x86_64 VM profile
+    # this image fails with "exec format error" — use Apple's `container` runtime or
+    # a native-arm64 Colima profile on macOS ARM64 instead.

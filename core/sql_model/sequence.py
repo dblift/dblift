@@ -63,7 +63,27 @@ class Sequence(SqlObject):
 
     @property
     def create_statement(self) -> str:
-        """Generate CREATE SEQUENCE using OSS quirks."""
+        """Generate CREATE SEQUENCE statement using database-specific generators.
+
+        For sequences with a known dialect the dialect-specific SQL generator is
+        used.  When no dialect is set the quirks-based DDL path is taken directly
+        so that generic sequence attributes (CYCLE, NOCYCLE, CACHE, etc.) are
+        rendered using the ``BaseQuirks`` defaults without requiring a registered
+        generator for the dialect.
+
+        Returns:
+            Dialect-specific CREATE SEQUENCE statement
+        """
+        if self.dialect:
+            from core.sql_generator.generator_factory import SqlGeneratorFactory
+
+            try:
+                generator = SqlGeneratorFactory.create(self.dialect)
+                return str(generator.generate_create_statement(self))
+            except (ValueError, ImportError, AttributeError):
+                pass
+
+        # No dialect or generator unavailable — build DDL from quirks directly.
         return self._build_sequence_ddl()
 
     def _build_sequence_ddl(self) -> str:

@@ -299,6 +299,8 @@ module = [
     "core.sql_parser.hybrid_parser",
     "core.sql_parser.enhanced_regex_parser",
     "core.sql_parser.unified_regex_parser",
+    "core.sql_generator.formatter",
+    "core.sql_generator.sql_generator",
     "core.normalization",
     "core.normalization.identifier_normalizer",
     "core.sql_model.view_options",

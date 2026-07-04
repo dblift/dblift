@@ -1,4 +1,4 @@
-"""SQL validation components (OSS migration validation)."""
+"""SQL validation components."""
 
 from core.sql_validator.migration_validator import MigrationValidator
 

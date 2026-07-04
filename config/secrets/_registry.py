@@ -1,12 +1,13 @@
 """Provider class registry — maps URI schemes to provider classes."""
 
-from importlib import import_module
 from importlib.metadata import entry_points
 from typing import Dict, Optional, Set, Type
 
 # Fixed set of known schemes — used for fast URI detection without requiring
 # providers to be registered first (avoids import-order sensitivity).
-KNOWN_SCHEMES: frozenset = frozenset()
+KNOWN_SCHEMES: frozenset = frozenset(
+    ["vault", "aws-secrets", "aws-ssm", "azure-keyvault", "gcp-secrets"]
+)
 
 # Populated by providers/__init__.py at import time.
 _providers: Dict[str, Type] = {}

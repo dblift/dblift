@@ -105,20 +105,24 @@ class TestDb2SchemaOperations(unittest.TestCase):
 
     # --- get_database_version ---
 
-    def test_get_database_version_returns_version_string(self):
+    def test_get_database_version_reads_driver_connection_dbms_ver(self):
+        # No SQL query at all — reads the version the driver already got
+        # from the CLI handshake at connect time (avoids the fenced
+        # SYSIBMADM.ENV_INST_INFO route entirely; see BUG OBS-01).
         ops, qe, log = self._make_ops()
         conn = _make_connection()
-        qe.execute_query.return_value = [{"SERVICE_LEVEL": "DB2 11.5", "FIXPACK_NUM": "0"}]
+        conn.connection.dbms_ver = "11.05.0900"
+        qe.execute_query.side_effect = AssertionError("should not query SYSIBMADM.ENV_INST_INFO")
 
         result = ops.get_database_version(conn)
 
-        self.assertIn("DB2", result)
+        self.assertEqual("DB2 11.05.0900", result)
 
-    def test_get_database_version_fallback_when_empty(self):
+    def test_get_database_version_fallback_when_dbms_ver_missing(self):
         ops, qe, log = self._make_ops()
         conn = _make_connection()
-        # First query returns empty, second returns fallback
-        qe.execute_query.side_effect = [[], [{"DB_NAME": "MYDB"}]]
+        conn.connection = None
+        qe.execute_query.return_value = [{"DB_NAME": "MYDB"}]
 
         result = ops.get_database_version(conn)
 
@@ -127,6 +131,7 @@ class TestDb2SchemaOperations(unittest.TestCase):
     def test_get_database_version_on_exception_returns_unknown(self):
         ops, qe, log = self._make_ops()
         conn = _make_connection()
+        conn.connection = None
         qe.execute_query.side_effect = RuntimeError("driver error")
 
         result = ops.get_database_version(conn)

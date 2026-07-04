@@ -3,10 +3,15 @@
 from __future__ import annotations
 
 import re
-from typing import Any, Dict, List, Optional, Tuple, Type
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Type
 
 from db.base_quirks import BaseQuirks
 from db.error import ErrorCategory
+
+if TYPE_CHECKING:
+    from core.sql_generator.alter.base_alter_generator import BaseAlterGenerator
+    from core.sql_generator.base_generator import BaseSqlGenerator
+
 
 # Each entry: (compiled regex, ErrorCategory). Sourced by
 # ``DatabaseErrorClassifier`` via ``error_patterns()`` (ADR-26 A2).
@@ -48,8 +53,9 @@ class OracleQuirks(BaseQuirks):
 
     Covers Oracle's deviations from ANSI SQL: uppercase-folded unquoted
     identifiers stored upper-cased in the data dictionary, ``FROM DUAL``
-    on probe SELECTs, no ``LIMIT`` (``ROWNUM`` / ``FETCH FIRST n``), no
-    ``DROP ... IF EXISTS`` (rendered via PL/SQL exception wrappers),
+    on probe SELECTs, no ``LIMIT`` (``ROWNUM`` / ``FETCH FIRST n``), native
+    ``IF [NOT] EXISTS`` DDL (23ai+, backported to 19.28+ — no version gate,
+    older targets simply error at execution time),
     PL/SQL trigger / function bodies wrapped in ``BEGIN ... END;``,
     ``CREATE OR REPLACE`` for procedures / functions / synonyms,
     ``CASCADE CONSTRAINTS`` on DROP TABLE, tablespace and storage
@@ -75,7 +81,8 @@ class OracleQuirks(BaseQuirks):
     data_timestamp_column_ddl = "TIMESTAMP DEFAULT SYSTIMESTAMP"
 
     def is_data_history_table_already_exists_error(self, error_message: str) -> bool:
-        """Oracle lacks CREATE TABLE IF NOT EXISTS and raises ORA-00955 instead."""
+        """The data-history ledger DDL doesn't use IF NOT EXISTS (shared across
+        dialects); Oracle raises ORA-00955 when the table already exists."""
         return "ORA-00955" in (error_message or "")
 
     def is_data_change_set_table_already_exists_error(self, error_message: str) -> bool:
@@ -110,9 +117,9 @@ class OracleQuirks(BaseQuirks):
     proc_supports_create_or_replace = True
     proc_function_returns_keyword = "RETURN"  # Oracle: ``RETURN`` (no S)
     proc_body_wrap_style = "plain"
-    proc_drop_supports_if_exists = False
+    proc_drop_supports_if_exists = True
     # Index DDL (story 26-5).
-    index_drop_standalone_supports_if_exists = False  # pre-23c has no IF EXISTS
+    index_drop_standalone_supports_if_exists = True  # native since 23ai / 19.28
     index_supports_bitmap = True
     index_supports_local_partitioned = True
     index_supports_tablespace = True
@@ -155,17 +162,18 @@ class OracleQuirks(BaseQuirks):
     # Sequence DDL (story 26-5).
     seq_default_nocache_when_unset = True
     seq_cache_one_means_nocache = True
-    seq_drop_supports_if_exists = False
+    seq_drop_supports_if_exists = True
     # Synonym DDL (story 26-5).
     synonym_supports_create_or_replace = True
     # View DDL (story 26-5).
-    view_drop_supports_if_exists = False
+    view_drop_supports_if_exists = True
     # UDT DDL (story 26-5). Oracle ``CREATE TYPE foo AS OBJECT`` uses
     # semicolons in the body; SQL Server uses different syntax.
     udt_object_body_uses_semicolons = True
     udt_composite_object_modifier = " OBJECT"
     # Table DDL (story 26-5).
-    table_drop_style = "cascade_constraints"
+    table_drop_style = "if_exists_cascade_constraints"
+    table_create_supports_if_not_exists = True
     table_temporary_style = "global_temporary"
     table_not_null_implicit_on_inline_pk = True
     table_fk_suppress_on_update = True
@@ -200,12 +208,9 @@ class OracleQuirks(BaseQuirks):
     unquoted_identifiers_uppercase_in_dictionary = True
 
     def render_round_trip_drop_table_sql(self, target: str) -> str:
-        """Oracle has no ``DROP TABLE IF EXISTS`` — use the PL/SQL exception wrapper
-        with ``CASCADE CONSTRAINTS`` so the drop survives FK references."""
-        return (
-            f"BEGIN EXECUTE IMMEDIATE 'DROP TABLE {target} CASCADE CONSTRAINTS'; "
-            "EXCEPTION WHEN OTHERS THEN NULL; END;"
-        )
+        """Native ``DROP TABLE IF EXISTS ... CASCADE CONSTRAINTS`` (23ai+/19.28+)
+        so the drop survives FK references without erroring if absent."""
+        return f"DROP TABLE IF EXISTS {target} CASCADE CONSTRAINTS"
 
     def replace_round_trip_schema_in_sql(
         self, sql: str, source_schema: str, target_schema: str
@@ -356,12 +361,12 @@ class OracleQuirks(BaseQuirks):
 
         read_dbms_output(connection, log)
 
-    def ddl_generator_class(self) -> None:
-        """OSS builds do not ship SQL generator implementations."""
+    def ddl_generator_class(self) -> Optional[Type["BaseSqlGenerator"]]:
+        """DDL generator relocated to the paid package; registered by register_pro_generators()."""
         return None
 
-    def alter_generator_class(self) -> None:
-        """OSS builds do not ship ALTER generator implementations."""
+    def alter_generator_class(self) -> Optional[Type["BaseAlterGenerator"]]:
+        """ALTER generator relocated to the paid package; registered by register_pro_generators()."""
         return None
 
     def vendor_queries_class(self) -> "Optional[Type[Any]]":
@@ -389,13 +394,12 @@ class OracleQuirks(BaseQuirks):
             return OracleParser
         return None
 
-    # Story 26-3: Oracle DROP variants — no IF EXISTS for any object
-    # type pre-Oracle 23c, CASCADE CONSTRAINTS for tables. TRIGGER
-    # handled explicitly so it doesn't fall through the generic
-    # quirks-driven fallback (which would emit ``DROP TRIGGER`` based
-    # on ``drop_supports_if_exists=False`` — same shape, but routing
-    # through ``render_drop_for_object`` keeps Oracle's drop grammar
-    # owned in one place. PR #241 Bugbot.)
+    # Story 26-3: Oracle DROP variants — native IF EXISTS (23ai+/19.28+, no
+    # version gate) for every object type, CASCADE CONSTRAINTS for tables.
+    # TRIGGER/INDEX handled explicitly so they don't fall through the
+    # generic quirks-driven fallback (which would emit a shape keyed on
+    # ``drop_supports_if_exists`` — routing through ``render_drop_for_object``
+    # keeps Oracle's drop grammar owned in one place. PR #241 Bugbot.)
     def render_drop_for_object(
         self,
         obj_type: str,
@@ -403,21 +407,26 @@ class OracleQuirks(BaseQuirks):
         schema_prefix: str,
         table_name: Optional[str],
     ) -> Optional[str]:
-        """Oracle DROP variants — no ``IF EXISTS`` pre-23c; ``CASCADE CONSTRAINTS`` on tables.
+        """Oracle DROP variants — native ``IF EXISTS``; ``CASCADE CONSTRAINTS`` on tables.
 
-        Handles ``VIEW``/``MATERIALIZED_VIEW``/``TABLE``/``SEQUENCE``/``PROCEDURE``/
-        ``FUNCTION``/``TRIGGER`` so the entire Oracle DROP grammar is owned here.
+        Handles ``VIEW``/``MATERIALIZED_VIEW``/``TABLE``/``INDEX``/``SEQUENCE``/
+        ``PROCEDURE``/``FUNCTION``/``TRIGGER`` so the entire Oracle DROP grammar
+        is owned here.
         """
-        if obj_type in ("VIEW", "MATERIALIZED_VIEW"):
-            return f"DROP {obj_type} {schema_prefix}{obj_name}"
+        if obj_type == "VIEW":
+            return f"DROP VIEW IF EXISTS {schema_prefix}{obj_name}"
+        if obj_type == "MATERIALIZED_VIEW":
+            return f"DROP MATERIALIZED VIEW IF EXISTS {schema_prefix}{obj_name}"
         if obj_type == "TABLE":
-            return f"DROP TABLE {schema_prefix}{obj_name} CASCADE CONSTRAINTS"
+            return f"DROP TABLE IF EXISTS {schema_prefix}{obj_name} CASCADE CONSTRAINTS"
+        if obj_type == "INDEX":
+            return f"DROP INDEX IF EXISTS {schema_prefix}{obj_name}"
         if obj_type == "SEQUENCE":
-            return f"DROP SEQUENCE {schema_prefix}{obj_name}"
+            return f"DROP SEQUENCE IF EXISTS {schema_prefix}{obj_name}"
         if obj_type in ("PROCEDURE", "FUNCTION"):
-            return f"DROP {obj_type} {schema_prefix}{obj_name}"
+            return f"DROP {obj_type} IF EXISTS {schema_prefix}{obj_name}"
         if obj_type == "TRIGGER":
-            return f"DROP TRIGGER {schema_prefix}{obj_name}"
+            return f"DROP TRIGGER IF EXISTS {schema_prefix}{obj_name}"
         return None
 
     # round_trip extra object types.
@@ -434,7 +443,7 @@ class OracleQuirks(BaseQuirks):
         Setting NOT NULL emits a pre-check counting NULL rows so a violating
         migration fails cleanly before the ALTER runs.
         """
-        from core.state.sql_statement import SqlStatement
+        from core.sql_generator.sql_statement import SqlStatement
 
         nullable_diff = getattr(col_diff, "nullable_diff", None)
         if nullable_diff is None:
@@ -463,7 +472,7 @@ class OracleQuirks(BaseQuirks):
         self, col_diff: object, formatted_table: str, formatted_column: str, dialect: str
     ) -> "Optional[object]":
         """``ALTER TABLE … MODIFY <col> DEFAULT <expr|NULL>`` — Oracle's DEFAULT change form."""
-        from core.state.sql_statement import SqlStatement
+        from core.sql_generator.sql_statement import SqlStatement
 
         default_diff = getattr(col_diff, "default_diff", None)
         if default_diff is None:
@@ -485,7 +494,7 @@ class OracleQuirks(BaseQuirks):
         self, col_diff: object, formatted_table: str, formatted_column: str, dialect: str
     ) -> "Optional[object]":
         """``ALTER TABLE … MODIFY <col> <type>`` — Oracle column-type change form."""
-        from core.state.sql_statement import SqlStatement
+        from core.sql_generator.sql_statement import SqlStatement
 
         data_type_diff = getattr(col_diff, "data_type_diff", None)
         if data_type_diff is None:

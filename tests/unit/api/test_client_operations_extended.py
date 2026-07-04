@@ -40,31 +40,28 @@ class TestApplySqlScriptWarningScan(unittest.TestCase):
 
         _apply_sql_script_warning_scan(result, sql)
 
-    def test_no_warning_no_flag(self):
+    def _result(self):
         from core.logger.results import GenerateUndoScriptResult
 
-        result = GenerateUndoScriptResult()
+        return GenerateUndoScriptResult()
+
+    def test_no_warning_no_flag(self):
+        result = self._result()
         self._scan(result, "CREATE TABLE t (id INT);")
         self.assertFalse(result.requires_manual_review)
 
     def test_warning_sets_flag(self):
-        from core.logger.results import GenerateUndoScriptResult
-
-        result = GenerateUndoScriptResult()
+        result = self._result()
         self._scan(result, "-- WARNING: review this\nCREATE TABLE t (id INT);")
         self.assertTrue(result.requires_manual_review)
 
     def test_requires_manual_review_text(self):
-        from core.logger.results import GenerateUndoScriptResult
-
-        result = GenerateUndoScriptResult()
+        result = self._result()
         self._scan(result, "-- requires manual review\nALTER TABLE t DROP COLUMN x;")
         self.assertTrue(result.requires_manual_review)
 
     def test_collects_warning_messages(self):
-        from core.logger.results import GenerateUndoScriptResult
-
-        result = GenerateUndoScriptResult()
+        result = self._result()
         self._scan(result, "-- WARNING: data loss possible\nDROP TABLE users;")
         self.assertTrue(result.requires_manual_review)
 

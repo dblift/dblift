@@ -14,7 +14,7 @@ per-plugin classes override the deltas.
 from __future__ import annotations
 
 import re
-from typing import Any, ClassVar, Dict, Optional, Sequence, Tuple, Type
+from typing import TYPE_CHECKING, Any, ClassVar, Dict, Optional, Sequence, Tuple, Type
 
 from core.dialect_boundary import DialectQuirks
 from db.dml_analysis import (
@@ -26,6 +26,10 @@ from db.dml_analysis import (
     is_full_table_dml,
     updates_restore_key,
 )
+
+if TYPE_CHECKING:
+    from core.sql_generator.alter.base_alter_generator import BaseAlterGenerator
+    from core.sql_generator.base_generator import BaseSqlGenerator
 
 
 class BaseQuirks:
@@ -421,6 +425,12 @@ class BaseQuirks:
     #: ``database.schema`` during config hydration. Plugins can add aliases
     #: without teaching ``config/`` about dialect-specific spellings.
     native_url_schema_params: Tuple[str, ...] = ("currentSchema",)
+    #: Placeholder URL used by offline SQL lint when no real database
+    #: connection exists. The lint-only path
+    #: never opens a connection — but ``DbliftConfig.validate_complete_data``
+    #: still requires a syntactically-valid URL of the right shape.
+    #: ``None`` means the dialect can't be linted offline.
+    lint_placeholder_url: Optional[str] = None
 
     # ------------------------------------------------------------------
     # Procedure / function DDL hooks (story 26-5).
@@ -623,10 +633,15 @@ class BaseQuirks:
     # ------------------------------------------------------------------
 
     #: DROP TABLE style. ``"cascade_constraints"`` → ``DROP TABLE x CASCADE
-    #: CONSTRAINTS`` (Oracle); ``"if_exists"`` → ``DROP TABLE IF EXISTS x``
-    #: (MySQL); ``"if_exists_cascade"`` → ``DROP TABLE IF EXISTS x CASCADE``
+    #: CONSTRAINTS`` (Oracle pre-23ai); ``"if_exists_cascade_constraints"`` →
+    #: ``DROP TABLE IF EXISTS x CASCADE CONSTRAINTS`` (Oracle 23ai+/19.28+);
+    #: ``"if_exists"`` → ``DROP TABLE IF EXISTS x`` (MySQL);
+    #: ``"if_exists_cascade"`` → ``DROP TABLE IF EXISTS x CASCADE``
     #: (default — PG/MSSQL/DB2).
     table_drop_style: str = "if_exists_cascade"
+    #: Whether ``CREATE TABLE`` supports a native ``IF NOT EXISTS`` clause.
+    #: Default False; Oracle (23ai+/19.28+) and SQLite opt in.
+    table_create_supports_if_not_exists: bool = False
     #: CREATE TABLE header for non-temporary tables uses
     #: ``CREATE CONTAINER`` (CosmosDB NoSQL quirk).
     table_create_keyword: str = "TABLE"
@@ -782,12 +797,12 @@ class BaseQuirks:
     # DdlQuirks (story 26-3)
     # ------------------------------------------------------------------
 
-    def ddl_generator_class(self) -> None:
-        """OSS builds do not ship SQL generator implementations."""
+    def ddl_generator_class(self) -> Optional[Type["BaseSqlGenerator"]]:
+        """Default: no dialect-specific DDL generator (falls back to ``SqlGenerator``)."""
         return None
 
-    def alter_generator_class(self) -> None:
-        """OSS builds do not ship ALTER generator implementations."""
+    def alter_generator_class(self) -> Optional[Type["BaseAlterGenerator"]]:
+        """Default: no dialect-specific ALTER generator (factory raises)."""
         return None
 
     def parser_class(self, parser_type: str) -> Optional[type]:

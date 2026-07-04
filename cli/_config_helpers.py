@@ -35,13 +35,35 @@ _SUBCOMMAND_BOOLEAN_FLAGS = frozenset(
         "--clean-disabled",
         "--clean-enabled",
         "--dry-run",
+        "--generate-sql",
+        "--ignore-unmanaged",
+        "--include-drops",
+        "--keep-container",
+        "--managed-only",
         "--mark-as-executed",
+        "--no-performance",
         "--show-sql",
+        "--rehearse-rollback",
+        "--skip-replay",
         "--skip-validation",
+        "--skip-validate-sql",
+        "--split-by-type",
         "--strict",
+        "--unmanaged-only",
         "--validate-only",
     }
 )
+
+
+def _command_handler_attr(command: Optional[str], attr_name: str, default: Any = None) -> Any:
+    if not command:
+        return default
+    from cli._command_handlers import _COMMAND_HANDLERS
+
+    handler = _COMMAND_HANDLERS.get(command)
+    if handler is None:
+        return default
+    return getattr(handler, attr_name, default)
 
 
 def _extract_commands_from_argv(
@@ -257,16 +279,21 @@ def _load_and_merge_config(args: argparse.Namespace, log: Any) -> Any:
         db_overrides["schema"] = args.database_schema
 
     if db_overrides:
-        # Resolve secret URIs in CLI overrides.
-        from config.secrets._resolver import resolve_secret_refs
+        command = getattr(args, "command", None)
+        commands_list = getattr(args, "commands_list", None) or ([command] if command else [])
+        is_offline = len(commands_list) == 1 and bool(
+            _command_handler_attr(command, "_dblift_skip_secret_resolution", False)
+        )
+        if not is_offline:
+            from config.secrets._resolver import resolve_secret_refs
 
-        try:
-            db_overrides = resolve_secret_refs({"database": db_overrides}, config.secrets).get(
-                "database", db_overrides
-            )
-        except SecretsResolutionError as e:
-            print(f"Error: {e}", file=sys.stderr)
-            sys.exit(1)
+            try:
+                db_overrides = resolve_secret_refs({"database": db_overrides}, config.secrets).get(
+                    "database", db_overrides
+                )
+            except SecretsResolutionError as e:
+                print(f"Error: {e}", file=sys.stderr)
+                sys.exit(1)
         config.database = ConfigBuilder.merge_database_overrides(config.database, db_overrides)
 
     if log:
@@ -321,7 +348,7 @@ def _validate_db_config(
     if commands and commands[0] == "db":
         return
 
-    migration_commands = [
+    migration_commands = {
         "migrate",
         "undo",
         "clean",
@@ -330,7 +357,9 @@ def _validate_db_config(
         "repair",
         "import-flyway",
         "baseline",
-    ]
+    }
+    if _command_handler_attr(args.command, "_dblift_validate_db_config", False):
+        migration_commands.add(args.command)
     if args.command not in migration_commands:
         return
 

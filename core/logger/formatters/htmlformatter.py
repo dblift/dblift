@@ -6,15 +6,10 @@ from datetime import datetime
 
 _logger = logging.getLogger(__name__)
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 import jinja2
 
-from core.logger.formatters.diff_utils import (
-    _DEFAULT_PRESENTATION_DIALECT,
-    generate_generic_diff_sql,
-    generate_unified_diff,
-)
 from core.logger.results import OperationResult
 
 
@@ -177,7 +172,7 @@ class HtmlFormatter:
             HTML string of the rendered template
         """
         # Normalize command type for template usage
-        normalized_command_type = (command_type or "operation").upper()
+        normalized_command_type = self._normalize_command_type(command_type, result)
         self.command_type = normalized_command_type
 
         try:
@@ -252,6 +247,7 @@ class HtmlFormatter:
                     "database_url_masked": getattr(result, "database_url_masked", None),
                 }
             )
+            context.update(self._get_extra_template_context(result, normalized_command_type))
 
             # Provide KPI metrics for INFO command
             if normalized_command_type == "INFO" and migrations:
@@ -276,13 +272,8 @@ class HtmlFormatter:
                     }
                 )
 
-            current_diff_data: Optional[Dict[str, Any]] = None
-
             # Build multi-command contexts if available
             multi_commands: List[Dict[str, Any]] = []
-            diff_data_cache: Dict[int, Dict[str, Any]] = {}
-            if current_diff_data is not None:
-                diff_data_cache[id(result)] = current_diff_data
             if self.using_multi_command and self.command_results:
                 for idx, cmd in enumerate(self.command_results, start=1):
                     cmd_type = cmd.get("command_type")
@@ -317,6 +308,12 @@ class HtmlFormatter:
                         "execution_time": cmd.get("execution_time"),
                         "timestamp": cmd.get("timestamp"),
                     }
+                    cmd_dict.update(
+                        self._get_extra_command_context(
+                            cmd_result,
+                            str(cmd_type) if cmd_type else "",  # lint: allow-enum-str
+                        )
+                    )
 
                     multi_commands.append(cmd_dict)
 
@@ -342,8 +339,7 @@ class HtmlFormatter:
                     "execution_time": result.execution_time(),
                     "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                 }
-                if current_diff_data is not None:
-                    single_cmd["diff_data"] = current_diff_data
+                single_cmd.update(self._get_extra_command_context(result, normalized_command_type))
                 unified_commands = [single_cmd]
             context["unified_commands"] = unified_commands
 
@@ -423,6 +419,22 @@ class HtmlFormatter:
                     f.write(fallback_html)
 
             return fallback_html
+
+    def _normalize_command_type(self, command_type: str, result: OperationResult) -> str:
+        """Normalize command labels for template usage."""
+        return (command_type or "operation").upper()
+
+    def _get_extra_template_context(
+        self, result: OperationResult, command_type: str
+    ) -> Dict[str, Any]:
+        """Return formatter-extension context for the top-level template."""
+        return {}
+
+    def _get_extra_command_context(
+        self, result: OperationResult, command_type: str
+    ) -> Dict[str, Any]:
+        """Return formatter-extension context for a command block."""
+        return {}
 
     def _get_command_details(self, command_type: str, result: OperationResult) -> Dict[str, Any]:
         """Get details specific to the command type.

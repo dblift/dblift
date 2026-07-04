@@ -383,76 +383,47 @@ class Table(SqlObject):
         return [c for c in self.constraints if c.constraint_type.value == "CHECK"]
 
     def generate_alter_table_check_constraints(self) -> List[str]:
-        """OSS builds do not ship dialect-specific ALTER TABLE generators."""
-        return []
+        """Generate ALTER TABLE statements for CHECK constraints.
+
+        Note: Only produces output for DB2 dialect. Returns empty list for all other dialects.
+        """
+        from core.sql_generator.basic_table_ddl_generator import BasicTableDdlGenerator
+
+        return BasicTableDdlGenerator(self).generate_alter_check_constraints()
 
     def generate_alter_table_self_referencing_foreign_keys(self) -> List[str]:
-        """OSS builds do not ship dialect-specific ALTER TABLE generators."""
-        return []
+        """Generate ALTER TABLE statements for self-referencing foreign keys.
+
+        Note: Only produces output for DB2 dialect. Returns empty list for all other dialects.
+        """
+        from core.sql_generator.basic_table_ddl_generator import BasicTableDdlGenerator
+
+        return BasicTableDdlGenerator(self).generate_alter_self_referencing_fks()
 
     @property
     def create_statement(self) -> str:
-        """Generate a basic CREATE TABLE statement in OSS builds."""
-        table_name = self.format_identifier(self.name)
-        if self.schema:
-            table_name = f"{self.format_identifier(self.schema)}.{table_name}"
+        """Generate CREATE TABLE statement using database-specific generators.
 
-        definitions = []
-        primary_key_columns = []
-        for column in self.columns:
-            column_def = f"{self.format_identifier(column.name)} {column.data_type}"
-            default_value = getattr(column, "default_value", None)
-            if default_value is not None:
-                column_def += f" DEFAULT {default_value}"
-            if not getattr(column, "nullable", True) or getattr(column, "is_primary_key", False):
-                column_def += " NOT NULL"
-            definitions.append(column_def)
-            if getattr(column, "is_primary_key", False):
-                primary_key_columns.append(column.name)
+        Returns:
+            Dialect-specific CREATE TABLE statement
+        """
+        from core.sql_generator.basic_table_ddl_generator import BasicTableDdlGenerator
+        from core.sql_generator.generator_factory import SqlGeneratorFactory
 
-        if primary_key_columns and not any(
-            getattr(c.constraint_type, "value", str(c.constraint_type)) == "PRIMARY KEY"
-            for c in self.constraints
-        ):
-            columns = ", ".join(self.format_identifier(c) for c in primary_key_columns)
-            definitions.append(f"PRIMARY KEY ({columns})")
-
-        for constraint in self.constraints:
-            constraint_type = getattr(
-                constraint.constraint_type, "value", str(constraint.constraint_type)
-            )
-            columns = ", ".join(self.format_identifier(c) for c in (constraint.column_names or []))
-            prefix = (
-                f"CONSTRAINT {self.format_identifier(constraint.name)} " if constraint.name else ""
-            )
-            if constraint_type in {"PRIMARY KEY", "UNIQUE"}:
-                definitions.append(f"{prefix}{constraint_type} ({columns})")
-            elif constraint_type == "CHECK" and constraint.check_expression:
-                definitions.append(f"{prefix}CHECK ({constraint.check_expression})")
-            elif constraint_type == "FOREIGN KEY" and constraint.reference_table:
-                reference = self.format_identifier(constraint.reference_table)
-                ref_columns = ", ".join(
-                    self.format_identifier(c) for c in (constraint.reference_columns or [])
-                )
-                clause = f"{prefix}FOREIGN KEY ({columns}) REFERENCES {reference}"
-                if ref_columns:
-                    clause += f" ({ref_columns})"
-                if constraint.on_delete:
-                    clause += f" ON DELETE {constraint.on_delete}"
-                if constraint.on_update:
-                    clause += f" ON UPDATE {constraint.on_update}"
-                definitions.append(clause)
-
-        body = ",\n    ".join(definitions)
-        return f"CREATE TABLE {table_name} (\n    {body}\n);"
+        try:
+            generator = SqlGeneratorFactory.create(self.dialect)
+            if not hasattr(generator, "generate_create_statement"):
+                raise AttributeError("generator has no generate_create_statement")
+            return str(generator.generate_create_statement(self))
+        except (ValueError, ImportError, AttributeError):
+            return BasicTableDdlGenerator(self).generate_create_statement()
 
     @property
     def drop_statement(self) -> str:
-        """Generate a basic DROP TABLE statement in OSS builds."""
-        table_name = self.format_identifier(self.name)
-        if self.schema:
-            table_name = f"{self.format_identifier(self.schema)}.{table_name}"
-        return f"DROP TABLE IF EXISTS {table_name};"
+        """Generate DROP TABLE statement."""
+        from core.sql_generator.basic_table_ddl_generator import BasicTableDdlGenerator
+
+        return BasicTableDdlGenerator(self).generate_drop_statement()
 
     def __str__(self) -> str:
         """Return string representation of the table."""

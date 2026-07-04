@@ -5,7 +5,7 @@ extraction and DML classification. No dialect names or vendor SQL
 literals live here: the dialect-specific markers (upsert clauses,
 identifier quoting) are owned by the plugin's
 :class:`~db.base_quirks.BaseQuirks` and passed in by the caller. This
-keeps the data layer free of per-database
+keeps the paid data layer free of per-database
 knowledge while the scanning algorithm stays in one shared place.
 """
 

@@ -76,6 +76,13 @@ else
     echo -e "✅ Type checking passed."
 fi
 
+echo -e "\n===== import-linter (tier boundaries) ====="
+# Mirrors .github/workflows/code-quality.yml step. Enforces the
+# tier-boundary contracts in .importlinter (OSS must not import
+# pro/enterprise; pro must not import enterprise). Static analysis
+# only — nothing is imported at runtime.
+lint-imports --config .importlinter || { echo "❌ Import-linter: tier boundary contract broken."; exit_code=1; }
+
 echo -e "\n===== AST lint patterns (ratchet) ====="
 # Mirrors .github/workflows/code-quality.yml step. Fails only on NEW
 # entries vs .lint-patterns-baseline.txt — pre-existing legacy hits

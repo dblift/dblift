@@ -45,8 +45,20 @@ class Event(SqlObject):
 
     @property
     def create_statement(self) -> str:
-        """OSS builds do not ship SQL generation for this object."""
-        return ""
+        """Generate CREATE EVENT statement using database-specific generators.
+
+        Returns:
+            Dialect-specific CREATE EVENT statement
+        """
+        from core.sql_generator.generator_factory import (
+            SqlGeneratorFactory,
+        )
+
+        try:
+            generator = SqlGeneratorFactory.create(self.dialect or "")
+            return str(generator.generate_create_statement(self))
+        except (ValueError, ImportError, AttributeError):
+            return ""
 
     def _normalize_schedule(self, schedule: Optional[str]) -> Optional[str]:
         """Ensure MySQL/MariaDB schedule clauses quote literal timestamps.

@@ -116,6 +116,8 @@ def _add_registry_flags(parser: argparse.ArgumentParser) -> None:
     """
     from config.property_registry import PROPERTY_REGISTRY
 
+    deferred_specs = {"max_snapshots", "snapshot_table"}
+
     # Collect option strings across the WHOLE tree (root + every subparser), not
     # just the root parser. Many registry properties (e.g. --tags,
     # --target-version, --snapshot-table) intentionally live only on specific
@@ -136,6 +138,8 @@ def _add_registry_flags(parser: argparse.ArgumentParser) -> None:
     _collect(parser)
     for spec in PROPERTY_REGISTRY:
         if spec.cli_only or spec.cli_exempt or "." in spec.name:
+            continue
+        if spec.name in deferred_specs:
             continue
         if spec.cli_aliases:
             continue  # legacy flag (e.g. --table, --strict) already provides the surface
@@ -202,7 +206,7 @@ def _make_filter_parent() -> argparse.ArgumentParser:
 
 # NOTE: ``--target-version`` is intentionally NOT extracted into a parent
 # parser. Its help text is genuinely command-specific (migrate / undo /
-# diff each describe a different intent) and unifying it would degrade
+# validate each describe a different intent) and unifying it would degrade
 # `--help` output. Each subparser adds it explicitly in
 # ``_add_diff_and_target_options`` so the user-facing string stays
 # accurate. See Bugbot review on PR-09.
@@ -232,13 +236,12 @@ def _add_baseline_options(baseline_parser: argparse.ArgumentParser) -> None:
 
 
 def _add_diff_and_target_options(
-    diff_parser: argparse.ArgumentParser | None,
     migrate_parser: argparse.ArgumentParser,
     undo_parser: argparse.ArgumentParser,
     validate_parser: argparse.ArgumentParser,
     clean_parser: argparse.ArgumentParser,
 ) -> None:
-    """Configure diff/migrate/undo/validate/clean subcommand-specific options.
+    """Configure migrate/undo/validate/clean subcommand-specific options.
 
     ``--target-version`` is added per-command (rather than via a shared
     parent parser) because each command has a meaningfully different
@@ -288,6 +291,21 @@ def _add_diff_and_target_options(
         default=None,
         help="Disable destructive clean execution (default).",
     )
+
+
+def _register_builtin_command_parsers(
+    parser: argparse.ArgumentParser,
+) -> list[argparse.ArgumentParser]:
+    """Register first-party command parsers that remain in the OSS CLI."""
+    subparser_actions = [
+        action for action in parser._actions if isinstance(action, argparse._SubParsersAction)
+    ]
+    if not subparser_actions:
+        return []
+
+    registered: list[argparse.ArgumentParser] = []
+
+    return registered
 
 
 def create_parser(
@@ -441,10 +459,10 @@ def create_parser(
         default="flyway_schema_history",
         help="Source Flyway schema history table name (default: flyway_schema_history)",
     )
-    builtin_extension_parsers: list[argparse.ArgumentParser] = []
+    builtin_extension_parsers = _register_builtin_command_parsers(parser)
     # Configure arguments via extracted functions
     _add_baseline_options(baseline_parser)
-    _add_diff_and_target_options(None, migrate_parser, undo_parser, validate_parser, clean_parser)
+    _add_diff_and_target_options(migrate_parser, undo_parser, validate_parser, clean_parser)
     # info --format option (JSON output for scripting)
     info_parser.add_argument(
         "--format",

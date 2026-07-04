@@ -855,7 +855,7 @@ class TestProcedure(unittest.TestCase):
         proc = Procedure("sp1", dialect="oracle")
         stmt = proc.drop_statement
         self.assertIn("DROP PROCEDURE", stmt)
-        self.assertNotIn("IF EXISTS", stmt)
+        self.assertIn("IF EXISTS", stmt)
 
     def test_drop_statement_non_oracle(self):
         proc = Procedure("sp1", dialect="postgresql")

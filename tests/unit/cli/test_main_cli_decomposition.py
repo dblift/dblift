@@ -204,7 +204,7 @@ class TestMainCliDecomposition(unittest.TestCase):
         with self.assertRaises(SystemExit):
             create_parser().parse_args(["migrate", "-P", "key=val"])
 
-    # --- _setup_export_schema_options ---
+    # --- create_parser integration ---
 
     def test_create_parser_returns_valid_parser(self):
         parser = create_parser()
