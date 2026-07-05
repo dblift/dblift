@@ -15,9 +15,28 @@ class PostgreSqlConfig(BaseDatabaseConfig):
     # PostgreSQL specific attributes
     ssl_mode: Optional[str] = None
 
+    # PostgreSQL-compatible distributions share this config class via
+    # ``PluginInfo.config_dialect="postgresql"``. Membership here preserves their
+    # own ``type`` identity (mirrors MySQL/MariaDB's ``_MYSQL_FAMILY``); anything
+    # else — including the ``postgres`` alias — normalises to ``postgresql``.
+    # lint: allow-dialect-string: config family membership
+    _POSTGRESQL_FAMILY = frozenset(
+        {
+            "postgresql",
+            "neon",
+            "supabase",
+            "aurora-postgresql",
+            "alloydb",
+            "yugabytedb",
+            "timescaledb",
+            "citus",
+        }
+    )
+
     def __post_init__(self) -> None:
         super().__post_init__()
-        self.type = "postgresql"  # lint: allow-dialect-string: config type identity
+        if self.type not in self._POSTGRESQL_FAMILY:
+            self.type = "postgresql"  # lint: allow-dialect-string: config type identity
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary with PostgreSQL specific parameters."""
