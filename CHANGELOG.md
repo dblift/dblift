@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+### Changed
+
+### Fixed
+
+### Removed
+
+## [2.4.0] - 2026-07-05
+
+### Added
+
 - Seven PostgreSQL-compatible distribution plugins: Neon (`dblift[neon]`),
   Supabase (`dblift[supabase]`), Amazon Aurora PostgreSQL
   (`dblift[aurora-postgresql]`), Google AlloyDB (`dblift[alloydb]`), YugabyteDB
