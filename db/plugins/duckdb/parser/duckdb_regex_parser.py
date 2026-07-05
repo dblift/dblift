@@ -29,6 +29,7 @@ class DuckDBRegexParser(EnhancedRegexParser):
         statements: List[str] = []
         current: List[str] = []
         in_string = False
+        in_ident = False  # inside a "double-quoted" identifier
         in_block_comment = False
         in_line_comment = False
 
@@ -39,7 +40,13 @@ class DuckDBRegexParser(EnhancedRegexParser):
             char = content[i]
             nxt = content[i + 1] if i + 1 < length else ""
 
-            if not in_string and not in_line_comment and char == "/" and nxt == "*":
+            if (
+                not in_string
+                and not in_ident
+                and not in_line_comment
+                and char == "/"
+                and nxt == "*"
+            ):
                 in_block_comment = True
                 current.append(char)
                 current.append(nxt)
@@ -55,7 +62,7 @@ class DuckDBRegexParser(EnhancedRegexParser):
                 i += 1
                 continue
 
-            if not in_string and char == "-" and nxt == "-":
+            if not in_string and not in_ident and char == "-" and nxt == "-":
                 in_line_comment = True
                 current.append(char)
                 i += 1
@@ -64,6 +71,23 @@ class DuckDBRegexParser(EnhancedRegexParser):
                 current.append(char)
                 if char in "\r\n":
                     in_line_comment = False
+                i += 1
+                continue
+
+            # Double-quoted identifiers may contain ; and comment markers.
+            if char == '"' and not in_string and not in_ident:
+                in_ident = True
+                current.append(char)
+                i += 1
+                continue
+            if in_ident:
+                current.append(char)
+                if char == '"':
+                    if nxt == '"':  # escaped quote inside identifier
+                        current.append(nxt)
+                        i += 2
+                        continue
+                    in_ident = False
                 i += 1
                 continue
 

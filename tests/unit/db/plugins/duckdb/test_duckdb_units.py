@@ -28,6 +28,14 @@ class TestDuckDBConfig:
 
         assert DuckDBConfig(type="duckdb", url="duckdb:///:memory:").path == ":memory:"
 
+    def test_path_from_url_relative_vs_absolute(self):
+        from db.plugins.duckdb.config import DuckDBConfig
+
+        # 3-slash → relative (duckdb_engine convention); 4-slash → absolute.
+        assert DuckDBConfig(type="duckdb", url="duckdb:///app.db").path == "app.db"
+        assert DuckDBConfig(type="duckdb", url="duckdb:///sub/app.db").path == "sub/app.db"
+        assert DuckDBConfig(type="duckdb", url="duckdb:////abs/app.db").path == "/abs/app.db"
+
     def test_path_from_database_field(self):
         from db.plugins.duckdb.config import DuckDBConfig
 
@@ -167,6 +175,17 @@ class TestRegexParser:
         assert p.split_statements("") == []
         stmts = p.split_statements("/* c; */ SELECT 1; SELECT 2;")
         assert len(stmts) == 2
+
+    def test_split_respects_quoted_identifiers(self):
+        from db.plugins.duckdb.parser.duckdb_regex_parser import DuckDBRegexParser
+
+        p = DuckDBRegexParser()
+        # ';' and '--' inside a double-quoted identifier are literal.
+        stmts = p.split_statements('CREATE TABLE "weird;name" (a INT); SELECT 1;')
+        assert len(stmts) == 2
+        assert '"weird;name"' in stmts[0]
+        stmts2 = p.split_statements('CREATE TABLE "a--b" (x INT);\nSELECT 2;')
+        assert len(stmts2) == 2
 
     def test_extract_variants(self):
         from db.plugins.duckdb.parser.duckdb_regex_parser import DuckDBRegexParser

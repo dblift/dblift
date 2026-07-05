@@ -498,7 +498,23 @@ class RepairCommand(BaseCommand):
                     params=[script_name],
                 )
 
-            if rows_affected > 0:
+            row_removed = rows_affected > 0
+            if (
+                rows_affected < 0
+                and not is_non_transactional
+                and hasattr(self.provider, "execute_query")
+            ):
+                # Some DBAPIs report an "unknown" rowcount of -1 for DML
+                # (e.g. duckdb_engine), so ``rows_affected > 0`` would wrongly
+                # read as "nothing removed". Verify the failed row is gone.
+                remaining = self.provider.execute_query(
+                    f"SELECT 1 FROM {qualified_table} "
+                    f"WHERE script = ? AND success = {false_literal}",
+                    [script_name],
+                )
+                row_removed = not remaining
+
+            if row_removed:
                 result.failed_migrations_removed = (
                     getattr(result, "failed_migrations_removed", 0) + 1
                 )

@@ -28,11 +28,17 @@ class DuckDBConfig(BaseDatabaseConfig):
             if self.url:
                 url = self.url
                 if url.startswith("duckdb://"):
+                    # Match duckdb_engine's URL convention:
+                    #   duckdb:///rel.db   (3 slashes) -> relative "rel.db"
+                    #   duckdb:////abs.db  (4 slashes) -> absolute "/abs.db"
+                    #   duckdb:///:memory: -> ":memory:"
                     self.path = url[len("duckdb://") :]
-                    if self.path == "/:memory:":
+                    if self.path in ("/:memory:", ":memory:"):
                         self.path = ":memory:"
-                    if self.path.startswith("//"):
+                    elif self.path.startswith("//"):
                         self.path = "/" + self.path.lstrip("/")
+                    elif self.path.startswith("/"):
+                        self.path = self.path[1:]
                 else:
                     self.path = url
             elif self.database:

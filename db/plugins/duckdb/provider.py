@@ -187,7 +187,15 @@ class DuckDBProvider(SqlAlchemyProvider):
             """)
 
     def acquire_migration_lock(self, schema: str, wait_timeout_seconds: int = 60) -> bool:
-        """Acquire the migration lock by inserting the lock row (PK conflict = held)."""
+        """Acquire the migration lock by inserting the lock row.
+
+        A primary-key conflict (``IntegrityError``) means the lock is held —
+        retry until the timeout. Any other error (connection loss, permissions,
+        a dropped lock table) is unexpected and propagates rather than being
+        masked as routine contention.
+        """
+        from sqlalchemy.exc import IntegrityError
+
         self.create_migration_lock_table_if_not_exists(schema)
         qualified = self.get_schema_qualified_name(schema, self.MIGRATION_LOCK_TABLE)
         deadline = time.monotonic() + wait_timeout_seconds
@@ -197,7 +205,7 @@ class DuckDBProvider(SqlAlchemyProvider):
                     f"INSERT INTO {qualified} (lock_name) VALUES (?)", params=["migration"]
                 )
                 return True
-            except Exception:
+            except IntegrityError:
                 if time.monotonic() >= deadline:
                     return False
                 time.sleep(0.2)
