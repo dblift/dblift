@@ -152,3 +152,14 @@ class TestDuckDBRoundTrip:
         ]
         provider.clean_schema("main")
         assert provider.get_clean_preview("main").objects == []
+
+    def test_clean_drops_fk_referenced_table(self, duckdb_provider) -> None:
+        # DuckDB DROP TABLE CASCADE does not drop FKs held by other tables, so
+        # a referenced table must be dropped after its referencing table.
+        provider, _ = duckdb_provider
+        provider.execute_statement("CREATE TABLE parent (id INTEGER PRIMARY KEY)")
+        provider.execute_statement(
+            "CREATE TABLE child (id INTEGER PRIMARY KEY, pid INTEGER REFERENCES parent(id))"
+        )
+        provider.clean_schema("main")
+        assert provider.get_clean_preview("main").objects == []

@@ -71,10 +71,39 @@ class DuckDBProvider(SqlAlchemyProvider):
 
     # --- clean -----------------------------------------------------------
     def clean_schema(self, schema: str) -> CleanExecutionSummary:
-        """Drop all objects in a schema (native strategy)."""
+        """Drop all objects in a schema (native strategy).
+
+        DuckDB's ``DROP TABLE ... CASCADE`` does not drop foreign keys held by
+        *other* tables, so a referenced table cannot be dropped while a
+        referencing table still exists. Drop views first, then tables in
+        FK-dependency order via a retry loop (referencing tables succeed and
+        free their referenced tables on the next pass), then sequences.
+        """
         summary = self.get_clean_preview(schema)
-        for stmt in summary.statements:
-            self.execute_statement(stmt)
+        pairs = list(zip(summary.objects, summary.statements))
+
+        for obj, stmt in pairs:
+            if obj.object_type == "VIEW":
+                self.execute_statement(stmt)
+
+        remaining = [stmt for obj, stmt in pairs if obj.object_type == "TABLE"]
+        while remaining:
+            still: List[str] = []
+            for stmt in remaining:
+                try:
+                    self.execute_statement(stmt)
+                except Exception:
+                    still.append(stmt)
+            if len(still) == len(remaining):
+                # No progress (e.g. a circular FK) — re-run to surface the error.
+                for stmt in still:
+                    self.execute_statement(stmt)
+                break
+            remaining = still
+
+        for obj, stmt in pairs:
+            if obj.object_type == "SEQUENCE":
+                self.execute_statement(stmt)
         return summary
 
     def get_clean_preview(self, schema: str) -> CleanExecutionSummary:
