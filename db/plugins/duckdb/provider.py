@@ -73,44 +73,74 @@ class DuckDBProvider(SqlAlchemyProvider):
     def clean_schema(self, schema: str) -> CleanExecutionSummary:
         """Drop all objects in a schema (native strategy).
 
-        DuckDB's ``DROP TABLE ... CASCADE`` does not drop foreign keys held by
-        *other* tables, so a referenced table cannot be dropped while a
-        referencing table still exists. Drop views first, then tables in
-        FK-dependency order via a retry loop (referencing tables succeed and
-        free their referenced tables on the next pass), then sequences.
+        Order is set by :meth:`get_clean_preview` (views, then tables in
+        FK-dependency order, then sequences), so a plain in-order execution
+        drops everything.
         """
         summary = self.get_clean_preview(schema)
-        pairs = list(zip(summary.objects, summary.statements))
-
-        for obj, stmt in pairs:
-            if obj.object_type == "VIEW":
-                self.execute_statement(stmt)
-
-        remaining = [stmt for obj, stmt in pairs if obj.object_type == "TABLE"]
-        while remaining:
-            still: List[str] = []
-            for stmt in remaining:
-                try:
-                    self.execute_statement(stmt)
-                except Exception:
-                    still.append(stmt)
-            if len(still) == len(remaining):
-                # No progress (e.g. a circular FK) — re-run to surface the error.
-                for stmt in still:
-                    self.execute_statement(stmt)
-                break
-            remaining = still
-
-        for obj, stmt in pairs:
-            if obj.object_type == "SEQUENCE":
-                self.execute_statement(stmt)
+        for stmt in summary.statements:
+            self.execute_statement(stmt)
         return summary
+
+    def _fk_ordered_tables(self, schema: str) -> List[str]:
+        """Return base-table names with referencing tables before referenced.
+
+        DuckDB's ``DROP TABLE ... CASCADE`` does not drop foreign keys held by
+        *other* tables, so a referenced table can only be dropped once every
+        referencing table is gone. Topologically sort so children precede
+        parents (both the CLI clean executor and ``clean_schema`` consume this
+        order).
+        """
+        tables = {
+            row["table_name"]
+            for row in self.execute_query(
+                "SELECT table_name FROM information_schema.tables "
+                "WHERE table_schema = ? AND table_type = 'BASE TABLE'",
+                [schema],
+            )
+        }
+        # child -> set of parents it references (within this schema)
+        parents: dict[str, set[str]] = {t: set() for t in tables}
+        referencers: dict[str, set[str]] = {t: set() for t in tables}
+        for row in self.execute_query(
+            """
+            SELECT DISTINCT kcu.table_name AS child, ref.table_name AS parent
+            FROM information_schema.referential_constraints rc
+            JOIN information_schema.key_column_usage kcu
+                ON kcu.constraint_name = rc.constraint_name
+                AND kcu.constraint_schema = rc.constraint_schema
+            JOIN information_schema.key_column_usage ref
+                ON ref.constraint_name = rc.unique_constraint_name
+                AND ref.constraint_schema = rc.unique_constraint_schema
+            WHERE rc.constraint_schema = ?
+            """,
+            [schema],
+        ):
+            child, parent = row["child"], row["parent"]
+            if child in tables and parent in tables and child != parent:
+                parents[child].add(parent)
+                referencers[parent].add(child)
+        # Kahn: emit tables no remaining table references (children first).
+        indegree = {t: len(referencers[t]) for t in tables}
+        queue = sorted(t for t in tables if indegree[t] == 0)
+        ordered: List[str] = []
+        while queue:
+            table = queue.pop(0)
+            ordered.append(table)
+            for parent in sorted(parents[table]):
+                indegree[parent] -= 1
+                if indegree[parent] == 0:
+                    queue.append(parent)
+        # Any leftover (circular FK) — append deterministically.
+        ordered.extend(sorted(t for t in tables if t not in ordered))
+        return ordered
 
     def get_clean_preview(self, schema: str) -> CleanExecutionSummary:
         """Enumerate droppable DuckDB objects without executing the drops."""
         objects: List[Any] = []
         statements: List[str] = []
-        # Views first (they depend on tables), then tables, then sequences.
+        # Views first (they depend on tables), then tables in FK-dependency
+        # order, then sequences.
         for row in self.execute_query(
             "SELECT table_name FROM information_schema.tables "
             "WHERE table_schema = ? AND table_type = 'VIEW'",
@@ -119,12 +149,7 @@ class DuckDBProvider(SqlAlchemyProvider):
             name = row["table_name"]
             objects.append(DroppableObject(name=name, object_type="VIEW", drop_sql=""))
             statements.append(f"DROP VIEW IF EXISTS {self.get_schema_qualified_name(schema, name)}")
-        for row in self.execute_query(
-            "SELECT table_name FROM information_schema.tables "
-            "WHERE table_schema = ? AND table_type = 'BASE TABLE'",
-            [schema],
-        ):
-            name = row["table_name"]
+        for name in self._fk_ordered_tables(schema):
             objects.append(DroppableObject(name=name, object_type="TABLE", drop_sql=""))
             statements.append(
                 f"DROP TABLE IF EXISTS {self.get_schema_qualified_name(schema, name)} CASCADE"
