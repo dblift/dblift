@@ -145,6 +145,44 @@ class _CliContext:
     license_info: Optional[Any] = None
 
 
+def _format_version() -> str:
+    """Render the ``--version`` output.
+
+    The published ``dblift`` wheel is the OSS *core*. The paid tiers ship as
+    separate distributions (``dblift-pro`` / ``dblift-enterprise``) bundled into
+    the compiled binary, each on its own release lifecycle — so their versions
+    need not match the core's. Report the most-derived installed tier as the
+    headline (that is the product the user actually runs) and, when a paid tier
+    is present, list every component so a bare number is never ambiguous. In a
+    plain OSS install only the core is present, so the output stays a single
+    ``dblift version X`` line — unchanged from before.
+    """
+    from importlib.metadata import PackageNotFoundError
+    from importlib.metadata import version as _version
+
+    def _get(dist: str) -> Optional[str]:
+        try:
+            return _version(dist)
+        except PackageNotFoundError:
+            return None
+
+    core = _get("dblift")
+    pro = _get("dblift-pro")
+    enterprise = _get("dblift-enterprise")
+
+    # Headline = most-derived installed tier (the product actually running).
+    product = enterprise or pro or core
+    lines = [f"dblift version {product}"]
+    # Component manifest only when a paid tier is present; OSS stays one line.
+    if pro or enterprise:
+        lines.append(f"  core (OSS):  {core}")
+        if pro:
+            lines.append(f"  pro:         {pro}")
+        if enterprise:
+            lines.append(f"  enterprise:  {enterprise}")
+    return "\n".join(lines)
+
+
 def main() -> None:
     """Main entry point for DBLift CLI application.
 
@@ -211,22 +249,14 @@ def _parse_argv_and_load_config(argv: List[str]) -> _CliContext:
     if commands and commands[0] in terminal_commands:
         args = _build_terminal_args(commands[0], global_arguments, subcommand_args)
         if hasattr(args, "version") and args.version:
-            from importlib.metadata import version as _version
-
-            __version__ = _version("dblift")
-
-            print(f"dblift version {__version__}")  # lint: allow-print  --version terminal action
+            print(_format_version())  # lint: allow-print  --version terminal action
             sys.exit(0)
         sys.exit(terminal_commands[commands[0]](args))
 
     args, _unknown_args = _build_args_namespace(commands, global_arguments, subcommand_args)
 
     if hasattr(args, "version") and args.version:
-        from importlib.metadata import version as _version
-
-        __version__ = _version("dblift")
-
-        print(f"dblift version {__version__}")  # lint: allow-print  --version terminal action
+        print(_format_version())  # lint: allow-print  --version terminal action
         sys.exit(0)
 
     if not commands and (not hasattr(args, "command") or not args.command):
