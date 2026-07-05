@@ -66,6 +66,16 @@ KNOWN_DB_TO_CORE_VIOLATIONS: dict[str, set[str]] = {}
 ALLOWED_CROSS_PLUGIN_IMPORTS: dict[str, set[str]] = {
     "db/plugins/mariadb": {"db.plugins.mysql"},
     "db/plugins/cosmosdb": {"db.plugins.sqlserver.parser"},
+    # PostgreSQL-compatible distributions reuse the PostgreSQL provider/quirks/
+    # URL builder (they speak the PostgreSQL wire protocol). Same intentional
+    # family relation as MariaDB ⊃ MySQL.
+    "db/plugins/neon": {"db.plugins.postgresql"},
+    "db/plugins/supabase": {"db.plugins.postgresql"},
+    "db/plugins/aurora_postgresql": {"db.plugins.postgresql"},
+    "db/plugins/alloydb": {"db.plugins.postgresql"},
+    "db/plugins/yugabytedb": {"db.plugins.postgresql"},
+    "db/plugins/timescaledb": {"db.plugins.postgresql"},
+    "db/plugins/citus": {"db.plugins.postgresql"},
 }
 
 

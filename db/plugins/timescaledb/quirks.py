@@ -21,6 +21,9 @@ class TimescaledbQuirks(PostgresqlQuirks):
     # ``ProviderRegistry.reference_dialect_name`` (which requires a single
     # winner), so reset it here.
     is_ansi_reference_dialect = False
+    # PostgreSQL is likewise the single owner of the sqlglot read-dialect
+    # fallback; a PG-derived plugin must not claim it either.
+    is_default_sqlglot_read_fallback = False
 
     def __init__(self, dialect_name: str = "timescaledb") -> None:
         super().__init__(dialect_name=dialect_name)
