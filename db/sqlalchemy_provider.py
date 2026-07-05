@@ -261,6 +261,12 @@ class SqlAlchemyProvider(NativeProvider):
         if paramstyle == "numeric":
             numeric_names = iter(str(index) for index in range(1, len(values) + 1))
             return re.sub(r"\?", lambda _match: f":{next(numeric_names)}", sql), values
+        if paramstyle == "numeric_dollar":
+            # duckdb_engine's dialect reports ``numeric_dollar`` while its DBAPI
+            # (duckdb) accepts qmark; exec_driver_sql goes to the raw DBAPI, so
+            # ``$1``/``$2`` positional params bind correctly against a tuple.
+            dollar_names = iter(f"${index}" for index in range(1, len(values) + 1))
+            return re.sub(r"\?", lambda _match: next(dollar_names), sql), values
 
         names = [f"p{index}" for index in range(len(values))]
         bound = dict(zip(names, values))
