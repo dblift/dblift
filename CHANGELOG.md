@@ -15,6 +15,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
+## [2.3.0] - 2026-07-05
+
+### Added
+
+- DuckDB provider plugin (`dblift[duckdb]`): a first-class embedded/file-based
+  dialect supporting migrate, schema history, migration locking, and clean.
+  Backed by SQLAlchemy via `duckdb_engine`; PostgreSQL-like SQL (real schemas,
+  sequences, native `BOOLEAN`, transactional DDL). Registered through the
+  standard `dblift.providers` entry point — no core changes required.
+
+### Fixed
+
+- SQLAlchemy provider: bind the `numeric_dollar` paramstyle on the raw
+  `exec_driver_sql` metadata-query path. `duckdb_engine`'s dialect reports
+  `numeric_dollar` while its DBAPI accepts qmark, so vendor metadata queries
+  previously failed with an unbindable `:p0` placeholder.
+
 ## [2.2.2] - 2026-07-04
 
 ### Fixed
