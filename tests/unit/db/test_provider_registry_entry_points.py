@@ -125,8 +125,27 @@ def test_filesystem_fallback_skips_already_registered(_reset_registry):
 
 def test_first_party_plugins_round_trip_through_full_discovery(_reset_registry):
     """``discover_plugins`` (entry-point + filesystem) must end up with
-    all 7 first-party plugins registered, regardless of which path
+    all first-party plugins registered, regardless of which path
     finds each one."""
     ProviderRegistry.discover_plugins()
-    for dialect in ("postgresql", "mysql", "oracle", "sqlserver", "db2", "sqlite", "cosmosdb"):
+    for dialect in (
+        "postgresql",
+        "mysql",
+        "mariadb",
+        "oracle",
+        "sqlserver",
+        "db2",
+        "sqlite",
+        "cosmosdb",
+        "duckdb",
+        "neon",
+        "supabase",
+        "aurora-postgresql",
+        "alloydb",
+        "yugabytedb",
+        "timescaledb",
+        "citus",
+        "cockroachdb",
+        "redshift",
+    ):
         assert dialect in ProviderRegistry._plugins, f"{dialect} not registered"

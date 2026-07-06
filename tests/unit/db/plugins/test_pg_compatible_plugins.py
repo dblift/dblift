@@ -1,5 +1,7 @@
-"""PostgreSQL-compatible distribution plugins (Neon, Supabase, Aurora PostgreSQL,
-AlloyDB, YugabyteDB, TimescaleDB, Citus).
+"""PostgreSQL-compatible distribution plugins.
+
+Includes Neon, Supabase, Aurora PostgreSQL, AlloyDB, YugabyteDB, TimescaleDB,
+Citus, CockroachDB, and Redshift.
 
 Each is a thin plugin that reuses the PostgreSQL provider/config/URL-builder/
 driver and only carries a distinct identity + a quirks subclass. The tests pin
@@ -31,6 +33,8 @@ PG_COMPATIBLE = [
     ("yugabytedb", "yugabytedb", "YugabytedbProvider", "YugabytedbQuirks"),
     ("timescaledb", "timescaledb", "TimescaledbProvider", "TimescaledbQuirks"),
     ("citus", "citus", "CitusProvider", "CitusQuirks"),
+    ("cockroachdb", "cockroachdb", "CockroachdbProvider", "CockroachdbQuirks"),
+    ("redshift", "redshift", "RedshiftProvider", "RedshiftQuirks"),
 ]
 
 
