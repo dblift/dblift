@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "dblift"
-version = "2.3.0"
+version = "2.4.0"
 description = "A database migration tool that supports multiple databases with native Python drivers"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -51,6 +51,16 @@ db2 = "db.plugins.db2.plugin:PLUGIN"
 sqlite = "db.plugins.sqlite.plugin:PLUGIN"
 cosmosdb = "db.plugins.cosmosdb.plugin:PLUGIN"
 duckdb = "db.plugins.duckdb.plugin:PLUGIN"
+# PostgreSQL-compatible distributions — reuse the PostgreSQL provider/config/
+# driver, distinct identity only. Users keep their postgresql:// URL and select
+# via `type: <name>`.
+neon = "db.plugins.neon.plugin:PLUGIN"
+supabase = "db.plugins.supabase.plugin:PLUGIN"
+aurora-postgresql = "db.plugins.aurora_postgresql.plugin:PLUGIN"
+alloydb = "db.plugins.alloydb.plugin:PLUGIN"
+yugabytedb = "db.plugins.yugabytedb.plugin:PLUGIN"
+timescaledb = "db.plugins.timescaledb.plugin:PLUGIN"
+citus = "db.plugins.citus.plugin:PLUGIN"
 
 # CLI command parser extensions (third-party packages can add subcommands
 # by loading a function that receives the top-level ArgumentParser).
@@ -113,6 +123,14 @@ oracle = ["oracledb>=2.0"]
 sqlserver = ["pymssql>=2.3"]
 db2 = ["ibm_db>=3.2", "ibm_db_sa>=0.4"]
 duckdb = ["duckdb>=1.0", "duckdb_engine>=0.13"]
+# PostgreSQL-compatible distributions share the psycopg driver.
+neon = ["psycopg[binary]>=3.1"]
+supabase = ["psycopg[binary]>=3.1"]
+aurora-postgresql = ["psycopg[binary]>=3.1"]
+alloydb = ["psycopg[binary]>=3.1"]
+yugabytedb = ["psycopg[binary]>=3.1"]
+timescaledb = ["psycopg[binary]>=3.1"]
+citus = ["psycopg[binary]>=3.1"]
 fastapi = ["fastapi>=0.100"]
 flask = ["flask>=2.3"]
 django = ["Django>=4.2"]
@@ -642,6 +660,51 @@ module = [
     "db.plugins.mariadb.plugin",
     "db.plugins.mariadb.provider",
     "db.plugins.mariadb.quirks",
+]
+disallow_any_generics = true
+disallow_subclassing_any = true
+disallow_untyped_calls = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+disallow_untyped_decorators = true
+no_implicit_optional = true
+warn_unused_ignores = true
+strict_equality = true
+
+# strict db/plugins/<pg-compatible> — thin PostgreSQL-derived plugins (Neon,
+# Supabase, Aurora PostgreSQL, AlloyDB, YugabyteDB, TimescaleDB, Citus). Each
+# subclasses the (strict) PostgreSQL provider/quirks, so disallow_subclassing_any
+# is safe.
+[[tool.mypy.overrides]]
+module = [
+    "db.plugins.neon",
+    "db.plugins.neon.plugin",
+    "db.plugins.neon.provider",
+    "db.plugins.neon.quirks",
+    "db.plugins.supabase",
+    "db.plugins.supabase.plugin",
+    "db.plugins.supabase.provider",
+    "db.plugins.supabase.quirks",
+    "db.plugins.aurora_postgresql",
+    "db.plugins.aurora_postgresql.plugin",
+    "db.plugins.aurora_postgresql.provider",
+    "db.plugins.aurora_postgresql.quirks",
+    "db.plugins.alloydb",
+    "db.plugins.alloydb.plugin",
+    "db.plugins.alloydb.provider",
+    "db.plugins.alloydb.quirks",
+    "db.plugins.yugabytedb",
+    "db.plugins.yugabytedb.plugin",
+    "db.plugins.yugabytedb.provider",
+    "db.plugins.yugabytedb.quirks",
+    "db.plugins.timescaledb",
+    "db.plugins.timescaledb.plugin",
+    "db.plugins.timescaledb.provider",
+    "db.plugins.timescaledb.quirks",
+    "db.plugins.citus",
+    "db.plugins.citus.plugin",
+    "db.plugins.citus.provider",
+    "db.plugins.citus.quirks",
 ]
 disallow_any_generics = true
 disallow_subclassing_any = true
