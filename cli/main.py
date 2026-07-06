@@ -106,6 +106,12 @@ _GLOBAL_ONLY_ARGS: List[str] = [
     # tests/unit/cli/test_global_only_args_completeness.py.
     "--installed-by",
     "--max-snapshots",
+    # Enterprise-registered root-only value flag (overrides the license file /
+    # env var). Not visible to test_global_only_args_completeness in a pure-OSS
+    # parser (no enterprise extension installed), so it must be listed here
+    # explicitly — otherwise the argv splitter relocates it past the subcommand
+    # token and the subparser rejects it as "unrecognized arguments".
+    "--license-key",
 ]
 
 # Tool-level flag aliases for subcommands that take their own version-like

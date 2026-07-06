@@ -64,6 +64,20 @@ def test_max_snapshots_survives_subcommand_argv_split():
     assert "--max-snapshots" not in sub_args
 
 
+def test_license_key_survives_subcommand_argv_split():
+    # --license-key is an enterprise-registered root-only value flag. It is not
+    # visible to the completeness test in a pure-OSS parser (no enterprise
+    # extension installed), so it must be classified explicitly — otherwise the
+    # splitter relocates it into subcommand args and the subparser rejects it.
+    argv = ["export-schema", "--license-key", "JWT.TOKEN.HERE", "--source", "live-database"]
+    _cmds, global_args, sub_args = _extract_commands_from_argv(
+        argv, list(_AVAILABLE_COMMANDS), _GLOBAL_ONLY_ARGS
+    )
+    assert "--license-key" in global_args
+    assert "JWT.TOKEN.HERE" in global_args
+    assert "--license-key" not in sub_args
+
+
 def test_full_parser_accepts_installed_by_after_subcommand():
     # End-to-end through the same split the real CLI uses, then argparse.
     argv = ["migrate", "--installed-by", "release-bot", "--db-url", "sqlite:///x.db"]

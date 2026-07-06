@@ -22,6 +22,7 @@ from cli.handlers.migrate import _handle_migrate
 from cli.handlers.repair import _handle_repair
 from cli.handlers.undo import _handle_undo
 from cli.handlers.validate import _handle_validate
+from core.seams.tier_resolver import resolve_tier
 
 _COMMAND_HANDLERS: Dict[str, Callable[[CliCommandContext], Tuple[bool, Any]]] = {
     "migrate": _handle_migrate,
@@ -72,6 +73,10 @@ def execute_single_command(
         recursive=recursive,
         placeholders=placeholders,
         dir_recursive_map=dir_recursive_map,
+        # Resolve the license tier through the seam so paid-feature gates
+        # (``require_tier(FEATURE, ctx.license_tier)``) see the real tier. In a
+        # pure-OSS install no resolver is registered and this is ``None``.
+        license_tier=resolve_tier(args),
     )
     return handler(ctx)
 
