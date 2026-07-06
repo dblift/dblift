@@ -15,6 +15,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
+## [2.4.1] - 2026-07-06
+
+### Fixed
+
+- **Paid-tier CLI commands were rejected for every license.** The CLI dispatch
+  built the command context without resolving the license tier, so every
+  feature gate saw `NONE` and Pro/Enterprise commands (`diff`, `export-schema`,
+  `plan`, `snapshot`, ...) failed with "requires a … license (current: NONE)"
+  regardless of a valid license file, environment variable, or `--license-key`.
+  The tier is now resolved through the tier-resolver seam when the command
+  context is built. Pure-OSS installs (no resolver registered) are unaffected.
+- **`--license-key` was rejected as "unrecognized arguments".** This root-only
+  flag was not classified as global, so the argv preprocessor relocated it past
+  the subcommand token and the subparser rejected it. It is now classified
+  alongside the other root-only value flags.
+
 ## [2.4.0] - 2026-07-05
 
 ### Added
