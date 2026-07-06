@@ -15,6 +15,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
+## [2.4.2] - 2026-07-06
+
+### Fixed
+
+- `View` now carries plugin-owned `dialect_options` through serialization and
+  equality, matching `Table`. Previously `View.to_dict`/`from_dict` dropped them
+  and `__eq__` ignored them, so options a plugin stored on a view under its
+  dialect namespace were lost across a schema-snapshot round-trip — a reloaded
+  snapshot compared against a live introspection could then falsely report a
+  change (or miss one).
+
 ## [2.4.1] - 2026-07-06
 
 ### Fixed
