@@ -1,9 +1,10 @@
 """Main CLI module for dblift."""
 
+import argparse
 import sys
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, List, Optional
+from typing import Any, List, Optional, Set
 
 # Add project root to Python path when running as a script
 # This allows imports to work when running: python3 cli/main.py
@@ -106,13 +107,37 @@ _GLOBAL_ONLY_ARGS: List[str] = [
     # tests/unit/cli/test_global_only_args_completeness.py.
     "--installed-by",
     "--max-snapshots",
-    # Enterprise-registered root-only value flag (overrides the license file /
-    # env var). Not visible to test_global_only_args_completeness in a pure-OSS
-    # parser (no enterprise extension installed), so it must be listed here
-    # explicitly — otherwise the argv splitter relocates it past the subcommand
-    # token and the subparser rejects it as "unrecognized arguments".
-    "--license-key",
 ]
+
+
+def _root_only_long_flags(parser: argparse.ArgumentParser) -> Set[str]:
+    """Long flags defined only on the root parser, not on any subparser.
+
+    Paid extensions register their own root-only value flags on the parser
+    (``load_feature_extensions`` runs before the parser is built). Those flags
+    live only on the root parser, so — exactly like the static root-only flags
+    in ``_GLOBAL_ONLY_ARGS`` — the argv preprocessor must classify them as
+    global, or it relocates them past the subcommand token and the subparser
+    rejects them as "unrecognized arguments". Deriving them from the built
+    parser keeps the classification correct without the OSS core having to name
+    each extension flag. Mirrors the invariant asserted by
+    tests/unit/cli/test_global_only_args_completeness.py.
+    """
+    root = {o for a in parser._actions for o in a.option_strings if o.startswith("--")}
+    sub: Set[str] = set()
+    for action in parser._actions:
+        choices = getattr(action, "choices", None)
+        if isinstance(choices, dict):
+            for sub_parser in choices.values():
+                if isinstance(sub_parser, argparse.ArgumentParser):
+                    sub.update(
+                        o
+                        for a in sub_parser._actions
+                        for o in a.option_strings
+                        if o.startswith("--")
+                    )
+    return root - sub - {"--help"}
+
 
 # Tool-level flag aliases for subcommands that take their own version-like
 # argument. Used by the B10-BUG-04 footgun guard in phase 1 to redirect
@@ -231,8 +256,15 @@ def _parse_argv_and_load_config(argv: List[str]) -> _CliContext:
     """
     terminal_commands = load_terminal_commands()
     available_commands = list(dict.fromkeys(_AVAILABLE_COMMANDS + list(terminal_commands)))
+    # Union the static root-only classification with root-only flags derived
+    # from the built parser, so paid-extension root flags (e.g. an
+    # override-the-license-file flag) are classified as global without the OSS
+    # core naming them. See _root_only_long_flags.
+    global_only_args = list(_GLOBAL_ONLY_ARGS) + sorted(
+        _root_only_long_flags(create_parser()) - set(_GLOBAL_ONLY_ARGS)
+    )
     commands, global_arguments, subcommand_args = _extract_commands_from_argv(
-        argv, available_commands, _GLOBAL_ONLY_ARGS
+        argv, available_commands, global_only_args
     )
 
     # B10-BUG-04: Flyway users type ``dblift baseline --version 1.0.0``

@@ -30,7 +30,7 @@ def test_execute_single_command_populates_license_tier_from_resolver(monkeypatch
     _command_handlers.execute_single_command(
         client=None,
         command="migrate",
-        args=SimpleNamespace(license_key=None),
+        args=SimpleNamespace(),
         log=None,
         scripts_dir=None,
         additional_scripts_dirs=[],
@@ -57,7 +57,7 @@ def test_license_tier_is_none_when_no_resolver_registered(monkeypatch):
     _command_handlers.execute_single_command(
         client=None,
         command="migrate",
-        args=SimpleNamespace(license_key=None),
+        args=SimpleNamespace(),
         log=None,
         scripts_dir=None,
         additional_scripts_dirs=[],
