@@ -12,7 +12,12 @@ such omission.
 
 from cli._config_helpers import _GLOBAL_BOOLEAN_FLAGS, _extract_commands_from_argv
 from cli._parser_setup import create_parser
-from cli.main import _AVAILABLE_COMMANDS, _GLOBAL_ONLY_ARGS, _root_only_long_flags
+from cli.main import (
+    _AVAILABLE_COMMANDS,
+    _GLOBAL_ONLY_ARGS,
+    _root_only_boolean_flags,
+    _root_only_long_flags,
+)
 
 
 def test_every_root_only_flag_is_globally_classified():
@@ -73,6 +78,30 @@ def test_extension_root_value_flag_is_auto_classified_global():
     assert ext_flag in global_args
     assert "SECRET-VALUE" in global_args
     assert ext_flag not in sub_args
+
+
+def test_extension_root_boolean_flag_does_not_swallow_command():
+    # A paid extension can register a root-only *boolean* (store_true) flag. It
+    # takes no value, so the splitter's value-lookahead must be suppressed —
+    # otherwise the token after it (a command name) is swallowed into the global
+    # bucket and the command is lost. This bites hardest in multi-command mode.
+    ext_flag = "--offline-ext"
+    parser = create_parser(exit_on_error=False)
+    parser.add_argument(ext_flag, action="store_true")
+
+    assert ext_flag in _root_only_boolean_flags(parser)
+
+    global_only = list(_GLOBAL_ONLY_ARGS) + sorted(
+        _root_only_long_flags(parser) - set(_GLOBAL_ONLY_ARGS)
+    )
+    boolean_flags = set(_GLOBAL_BOOLEAN_FLAGS) | _root_only_boolean_flags(parser)
+    argv = [ext_flag, "migrate", "validate", "--db-url", "sqlite:///x.db"]
+    cmds, global_args, _sub = _extract_commands_from_argv(
+        argv, list(_AVAILABLE_COMMANDS), global_only, boolean_flags
+    )
+    assert cmds == ["migrate", "validate"]
+    assert ext_flag in global_args
+    assert "migrate" not in global_args
 
 
 def test_full_parser_accepts_installed_by_after_subcommand():

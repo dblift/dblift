@@ -39,6 +39,7 @@ from cli._command_handlers import (  # noqa: F401
     execute_single_command,
 )
 from cli._config_helpers import (  # noqa: F401
+    _GLOBAL_BOOLEAN_FLAGS,
     _build_args_namespace,
     _close_logs,
     _collect_placeholders,
@@ -137,6 +138,19 @@ def _root_only_long_flags(parser: argparse.ArgumentParser) -> Set[str]:
                         if o.startswith("--")
                     )
     return root - sub - {"--help"}
+
+
+def _root_only_boolean_flags(parser: argparse.ArgumentParser) -> Set[str]:
+    """Root-only long flags that take no value (``store_true``/``store_const``).
+
+    The argv preprocessor must know these so it does NOT run its value-lookahead
+    on them — otherwise the token after a boolean flag (typically a command
+    name) gets swallowed into the global bucket and the command is lost. The
+    static ``_GLOBAL_BOOLEAN_FLAGS`` covers OSS flags; this derives the same for
+    dynamically-discovered paid-extension boolean root flags.
+    """
+    root_only = _root_only_long_flags(parser)
+    return {o for a in parser._actions if a.nargs == 0 for o in a.option_strings if o in root_only}
 
 
 # Tool-level flag aliases for subcommands that take their own version-like
@@ -259,12 +273,16 @@ def _parse_argv_and_load_config(argv: List[str]) -> _CliContext:
     # Union the static root-only classification with root-only flags derived
     # from the built parser, so paid-extension root flags (e.g. an
     # override-the-license-file flag) are classified as global without the OSS
-    # core naming them. See _root_only_long_flags.
+    # core naming them. Boolean extension flags must also feed the splitter's
+    # boolean set, or its value-lookahead swallows the following command token.
+    # See _root_only_long_flags / _root_only_boolean_flags.
+    _parser = create_parser()
     global_only_args = list(_GLOBAL_ONLY_ARGS) + sorted(
-        _root_only_long_flags(create_parser()) - set(_GLOBAL_ONLY_ARGS)
+        _root_only_long_flags(_parser) - set(_GLOBAL_ONLY_ARGS)
     )
+    global_boolean_flags = set(_GLOBAL_BOOLEAN_FLAGS) | _root_only_boolean_flags(_parser)
     commands, global_arguments, subcommand_args = _extract_commands_from_argv(
-        argv, available_commands, global_only_args
+        argv, available_commands, global_only_args, global_boolean_flags
     )
 
     # B10-BUG-04: Flyway users type ``dblift baseline --version 1.0.0``
