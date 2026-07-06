@@ -15,6 +15,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
+## [2.4.0] - 2026-07-05
+
+### Added
+
+- Seven PostgreSQL-compatible distribution plugins: Neon (`dblift[neon]`),
+  Supabase (`dblift[supabase]`), Amazon Aurora PostgreSQL
+  (`dblift[aurora-postgresql]`), Google AlloyDB (`dblift[alloydb]`), YugabyteDB
+  (`dblift[yugabytedb]`), TimescaleDB (`dblift[timescaledb]`), and Citus
+  (`dblift[citus]`). Each speaks the PostgreSQL wire protocol and reuses the
+  PostgreSQL provider, config, SQLAlchemy URL builder, and `psycopg` driver;
+  users keep their `postgresql://` connection string and select the engine via
+  `type: <name>`. Registered through the standard `dblift.providers` entry
+  point — no core changes required.
+- `dblift --version` now prints the product headline plus a component manifest
+  (core / pro / enterprise) reflecting which packages are installed.
+
+### Changed
+
+### Fixed
+
+### Removed
+
 ## [2.3.0] - 2026-07-05
 
 ### Added
