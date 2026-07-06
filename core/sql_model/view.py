@@ -172,6 +172,8 @@ class View(SqlObject):
             and self.unlogged == other.unlogged
             and self.security_definer == other.security_definer
             and self.security_invoker == other.security_invoker
+            # Plugin-owned dialect options participate in equality (mirrors Table)
+            and self.dialect_options == other.dialect_options
             # Note: last_refresh is not compared as it changes with each refresh
             # Note: dependencies is SQL-generation-only, not diff-relevant
         )
@@ -261,7 +263,7 @@ class View(SqlObject):
         Returns:
             View object
         """
-        return cls(
+        view = cls(
             name=data["name"],
             schema=data.get("schema"),
             query=data.get("query"),
@@ -284,6 +286,11 @@ class View(SqlObject):
             security_invoker=data.get("security_invoker"),
             dependencies=data.get("dependencies", []),
         )
+        # Restore plugin-owned dialect options (mirrors Table.from_dict).
+        for plugin, opts in (data.get("dialect_options") or {}).items():
+            for key, value in opts.items():
+                view.set_dialect_option(plugin, key, value)
+        return view
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert view to dictionary representation.
@@ -335,6 +342,13 @@ class View(SqlObject):
         # Grammar-based: PostgreSQL-specific properties
         if self.unlogged is not None:
             result["unlogged"] = self.unlogged
+
+        # Plugin-owned dialect options (mirrors Table.to_dict). Without this a
+        # round-trip through a schema snapshot silently drops everything a plugin
+        # stashed under ``dialect_options``, so a diff of the reloaded snapshot
+        # against a live introspection would falsely report a change.
+        if self.dialect_options:
+            result["dialect_options"] = self.dialect_options
 
         return result
 
