@@ -10,25 +10,14 @@ without updating the classification list; this test fails loudly on the next
 such omission.
 """
 
-import argparse
-
 from cli._config_helpers import _GLOBAL_BOOLEAN_FLAGS, _extract_commands_from_argv
 from cli._parser_setup import create_parser
-from cli.main import _AVAILABLE_COMMANDS, _GLOBAL_ONLY_ARGS
-
-
-def _root_only_long_flags(parser: argparse.ArgumentParser) -> set:
-    root = {o for a in parser._actions for o in a.option_strings if o.startswith("--")}
-    sub: set = set()
-    for action in parser._actions:
-        choices = getattr(action, "choices", None)
-        if isinstance(choices, dict):
-            for sp in choices.values():
-                if isinstance(sp, argparse.ArgumentParser):
-                    sub.update(
-                        o for a in sp._actions for o in a.option_strings if o.startswith("--")
-                    )
-    return root - sub - {"--help"}
+from cli.main import (
+    _AVAILABLE_COMMANDS,
+    _GLOBAL_ONLY_ARGS,
+    _root_only_boolean_flags,
+    _root_only_long_flags,
+)
 
 
 def test_every_root_only_flag_is_globally_classified():
@@ -62,6 +51,57 @@ def test_max_snapshots_survives_subcommand_argv_split():
     assert "--max-snapshots" in global_args
     assert "7" in global_args
     assert "--max-snapshots" not in sub_args
+
+
+def test_extension_root_value_flag_is_auto_classified_global():
+    # A paid extension registers its own root-only *value* flag that the OSS
+    # parser never names. The argv splitter must classify it as global from the
+    # built parser — otherwise it relocates the flag past the subcommand token
+    # and the subparser rejects it as "unrecognized arguments". Simulate the
+    # extension flag with a synthetic root-only value option.
+    ext_flag = "--synthetic-ext-token"
+    parser = create_parser(exit_on_error=False)
+    parser.add_argument(ext_flag, dest="synthetic_ext_token")
+
+    # The derivation used at the real call site picks it up as root-only.
+    assert ext_flag in _root_only_long_flags(parser)
+
+    # Feeding that derived set into the splitter keeps the flag and its value in
+    # the global bucket, not leaked into subcommand args.
+    global_only = list(_GLOBAL_ONLY_ARGS) + sorted(
+        _root_only_long_flags(parser) - set(_GLOBAL_ONLY_ARGS)
+    )
+    argv = ["migrate", ext_flag, "SECRET-VALUE", "--db-url", "sqlite:///x.db"]
+    _cmds, global_args, sub_args = _extract_commands_from_argv(
+        argv, list(_AVAILABLE_COMMANDS), global_only
+    )
+    assert ext_flag in global_args
+    assert "SECRET-VALUE" in global_args
+    assert ext_flag not in sub_args
+
+
+def test_extension_root_boolean_flag_does_not_swallow_command():
+    # A paid extension can register a root-only *boolean* (store_true) flag. It
+    # takes no value, so the splitter's value-lookahead must be suppressed —
+    # otherwise the token after it (a command name) is swallowed into the global
+    # bucket and the command is lost. This bites hardest in multi-command mode.
+    ext_flag = "--offline-ext"
+    parser = create_parser(exit_on_error=False)
+    parser.add_argument(ext_flag, action="store_true")
+
+    assert ext_flag in _root_only_boolean_flags(parser)
+
+    global_only = list(_GLOBAL_ONLY_ARGS) + sorted(
+        _root_only_long_flags(parser) - set(_GLOBAL_ONLY_ARGS)
+    )
+    boolean_flags = set(_GLOBAL_BOOLEAN_FLAGS) | _root_only_boolean_flags(parser)
+    argv = [ext_flag, "migrate", "validate", "--db-url", "sqlite:///x.db"]
+    cmds, global_args, _sub = _extract_commands_from_argv(
+        argv, list(_AVAILABLE_COMMANDS), global_only, boolean_flags
+    )
+    assert cmds == ["migrate", "validate"]
+    assert ext_flag in global_args
+    assert "migrate" not in global_args
 
 
 def test_full_parser_accepts_installed_by_after_subcommand():

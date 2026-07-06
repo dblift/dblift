@@ -3,7 +3,7 @@
 import argparse
 import sys
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 from api._cli_support import ConnectionProvider
 from cli._parser_setup import create_parser, parse_with_selective_errors
@@ -70,12 +70,22 @@ def _extract_commands_from_argv(
     argv_list: List[str],
     available_commands: List[str],
     global_only_args: List[str],
+    global_boolean_flags: Optional[Iterable[str]] = None,
 ) -> Tuple[List[str], List[str], List[str]]:
     """Extract commands, global arguments, and subcommand arguments from argv.
+
+    ``global_boolean_flags`` names the global flags that take no value (so the
+    lookahead must not swallow the next token — usually a command name). It
+    defaults to the static :data:`_GLOBAL_BOOLEAN_FLAGS`; callers pass a
+    superset when dynamically-derived global flags (e.g. paid-extension
+    root-only flags) include boolean ones the static set can't see.
 
     Returns:
         Tuple of (commands, global_arguments, subcommand_args)
     """
+    boolean_flags = (
+        _GLOBAL_BOOLEAN_FLAGS if global_boolean_flags is None else frozenset(global_boolean_flags)
+    )
     commands = []
     global_arguments = []
     subcommand_args = []
@@ -103,7 +113,7 @@ def _extract_commands_from_argv(
 
         arg_name = safe_split_first(arg, "=", default=arg)
         is_global_only = arg_name in global_only_args
-        is_boolean_flag = arg_name in _GLOBAL_BOOLEAN_FLAGS
+        is_boolean_flag = arg_name in boolean_flags
 
         if is_global_only:
             global_arguments.append(arg)
