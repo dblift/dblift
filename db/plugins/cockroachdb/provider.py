@@ -21,7 +21,6 @@ class CockroachdbProvider(PostgreSqlProvider):
     """CockroachDB provider with table-backed migration locking."""
 
     canonical_dialect_key = "cockroachdb"
-    LOCK_STALE_SECONDS = 3600
 
     def acquire_migration_lock(
         self,
@@ -32,15 +31,6 @@ class CockroachdbProvider(PostgreSqlProvider):
         self.create_migration_lock_table_if_not_exists(schema)
         lock_table = self.MIGRATION_LOCK_TABLE
         qualified_table = self.get_schema_qualified_name(schema, lock_table)
-        self.execute_statement(
-            f"""
-            DELETE FROM {qualified_table}
-            WHERE lock_name = ?
-              AND locked_at < CURRENT_TIMESTAMP
-                - INTERVAL '{self.LOCK_STALE_SECONDS} seconds'
-            """,
-            params=["migration"],
-        )
 
         deadline = time.monotonic() + max(0, int(wait_timeout_seconds))
         while True:
@@ -81,8 +71,9 @@ class CockroachdbProvider(PostgreSqlProvider):
         if connection is not None:
             try:
                 connection.rollback()
-            except Exception:
-                pass
+            except Exception as exc:
+                message = "Could not rollback failed CockroachDB lock attempt"
+                raise RuntimeError(message) from exc
 
 
 __all__ = ["CockroachdbProvider"]
