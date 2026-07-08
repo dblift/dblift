@@ -76,6 +76,8 @@ ALLOWED_CROSS_PLUGIN_IMPORTS: dict[str, set[str]] = {
     "db/plugins/yugabytedb": {"db.plugins.postgresql"},
     "db/plugins/timescaledb": {"db.plugins.postgresql"},
     "db/plugins/citus": {"db.plugins.postgresql"},
+    "db/plugins/cockroachdb": {"db.plugins.postgresql"},
+    "db/plugins/redshift": {"db.plugins.postgresql"},
 }
 
 

@@ -255,6 +255,8 @@ def test_oss_dialect_surface_covers_all_first_party_providers():
             "yugabytedb",
             "timescaledb",
             "citus",
+            "cockroachdb",
+            "redshift",
         }
     )
 
@@ -267,7 +269,7 @@ def test_oss_dialect_surface_covers_all_first_party_providers():
         f"OSS dialect surface mismatch.\n"
         f"Expected: {sorted(OSS_DIALECTS)}\n"
         f"Got:      {sorted(registered)}\n"
-        "All 16 first-party providers must be listed under "
+        "All 18 first-party providers must be listed under "
         '[project.entry-points."dblift.providers"] in pyproject.toml. '
         "The export script must preserve (never drop) db/plugins/* entries."
     )

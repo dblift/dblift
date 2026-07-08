@@ -76,6 +76,8 @@ Real-world examples and tutorials:
 DBLift supports the following databases:
 
 - **PostgreSQL** - Native SQLAlchemy support
+- **CockroachDB** - PostgreSQL-compatible SQLAlchemy support
+- **Redshift** - PostgreSQL-compatible SQLAlchemy support
 - **MySQL** - Native SQLAlchemy support
 - **SQL Server** - Native SQLAlchemy support
 - **Oracle** - Native SQLAlchemy support
@@ -87,7 +89,7 @@ DBLift supports the following databases:
 
 - ✅ **Version Control for Databases** - Track every schema change
 - ✅ **Rollback Support** - Undo migrations when needed
-- ✅ **Multi-Database Support** - Works with 7+ database types
+- ✅ **Multi-Database Support** - Works with 9+ database types
 - ✅ **Baseline Support** - Work with existing databases
 - ✅ **Schema Comparison** - Compare database states
 - ✅ **SQL Validation** - Validate SQL before applying

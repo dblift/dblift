@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- CockroachDB (`dblift[cockroachdb]`) and Redshift (`dblift[redshift]`)
+  PostgreSQL-compatible provider plugins. They follow the existing
+  PostgreSQL-derived plugin pattern: same provider/config/SQLAlchemy URL builder
+  and `psycopg` driver, with distinct `type: cockroachdb` / `type: redshift`
+  identities.
+
 ### Changed
 
 ### Fixed

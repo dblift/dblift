@@ -70,6 +70,8 @@ DBLift works with these databases:
 | Database | Connection URL Example | Driver extra |
 |----------|------------------------|--------------|
 | PostgreSQL | `postgresql+psycopg://localhost:5432/mydb` | `dblift[postgresql]` |
+| CockroachDB | `postgresql+psycopg://localhost:26257/mydb` | `dblift[cockroachdb]` |
+| Redshift | `postgresql+psycopg://cluster.example.com:5439/dev` | `dblift[redshift]` |
 | SQL Server | `mssql+pymssql://localhost:1433/mydb` | `dblift[sqlserver]` |
 | Oracle | `oracle+oracledb://localhost:1521?sid=SID` | `dblift[oracle]` |
 | MySQL | `mysql+pymysql://localhost:3306/mydb` | `dblift[mysql]` |
