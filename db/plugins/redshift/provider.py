@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from core.migration.clean_summary import CleanExecutionSummary
 from db.plugins.postgresql.provider import PostgreSqlProvider
 
 
@@ -18,6 +19,75 @@ class RedshiftProvider(PostgreSqlProvider):
     canonical_dialect_key = "redshift"
     _migration_lock_connection: Any | None = None
     _migration_lock_transaction: Any | None = None
+
+    def clean_schema(self, schema: str) -> CleanExecutionSummary:
+        """Drop Redshift objects without querying PostgreSQL-only catalogs."""
+        summary = CleanExecutionSummary()
+        object_names = self._redshift_clean_object_names
+        qualified_name = self.get_schema_qualified_name
+
+        for view_name in object_names(_REDSHIFT_VIEWS_QUERY, schema):
+            qualified_view = qualified_name(schema, view_name)
+            drop_sql = f"DROP VIEW IF EXISTS {qualified_view} CASCADE"
+            self.execute_statement(drop_sql)
+            summary.record_drop(
+                drop_sql,
+                object_type="view",
+                name=view_name,
+                schema=schema,
+            )
+
+        for table_name in object_names(_REDSHIFT_TABLES_QUERY, schema):
+            qualified_table = qualified_name(schema, table_name)
+            drop_sql = f"DROP TABLE IF EXISTS {qualified_table} CASCADE"
+            self.execute_statement(drop_sql)
+            summary.record_drop(
+                drop_sql,
+                object_type="table",
+                name=table_name,
+                schema=schema,
+            )
+
+        return summary
+
+    def get_clean_preview(self, schema: str) -> CleanExecutionSummary:
+        """Preview Redshift objects clean would drop."""
+        summary = CleanExecutionSummary()
+        object_names = self._redshift_clean_object_names
+        qualified_name = self.get_schema_qualified_name
+
+        for view_name in object_names(_REDSHIFT_VIEWS_QUERY, schema):
+            qualified_view = qualified_name(schema, view_name)
+            summary.record_drop(
+                f"DROP VIEW IF EXISTS {qualified_view} CASCADE",
+                object_type="view",
+                name=view_name,
+                schema=schema,
+            )
+
+        for table_name in object_names(_REDSHIFT_TABLES_QUERY, schema):
+            qualified_table = qualified_name(schema, table_name)
+            summary.record_drop(
+                f"DROP TABLE IF EXISTS {qualified_table} CASCADE",
+                object_type="table",
+                name=table_name,
+                schema=schema,
+            )
+
+        return summary
+
+    def _redshift_clean_object_names(
+        self,
+        query: str,
+        schema: str,
+    ) -> list[str]:
+        rows = self.execute_query(query, [schema])
+        column_name = "object_name"
+        return [
+            str(row.get(column_name) or row.get(column_name.upper()))
+            for row in rows
+            if row.get(column_name) or row.get(column_name.upper())
+        ]
 
     def acquire_migration_lock(
         self,
@@ -93,3 +163,19 @@ class RedshiftProvider(PostgreSqlProvider):
 
 
 __all__ = ["RedshiftProvider"]
+
+
+_REDSHIFT_VIEWS_QUERY = """
+    SELECT table_name AS object_name
+    FROM information_schema.views
+    WHERE table_schema = ?
+    ORDER BY table_name
+"""
+
+_REDSHIFT_TABLES_QUERY = """
+    SELECT table_name AS object_name
+    FROM information_schema.tables
+    WHERE table_schema = ?
+      AND table_type = 'BASE TABLE'
+    ORDER BY table_name
+"""
