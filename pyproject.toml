@@ -134,7 +134,7 @@ yugabytedb = ["psycopg[binary]>=3.1"]
 timescaledb = ["psycopg[binary]>=3.1"]
 citus = ["psycopg[binary]>=3.1"]
 cockroachdb = ["psycopg[binary]>=3.1"]
-redshift = ["psycopg[binary]>=3.1"]
+redshift = ["sqlalchemy-redshift>=1.0.0", "redshift-connector>=2.1.0"]
 fastapi = ["fastapi>=0.100"]
 flask = ["flask>=2.3"]
 django = ["Django>=4.2"]
@@ -717,6 +717,7 @@ module = [
     "db.plugins.redshift.plugin",
     "db.plugins.redshift.provider",
     "db.plugins.redshift.quirks",
+    "db.plugins.redshift.sqlalchemy_url",
 ]
 disallow_any_generics = true
 disallow_subclassing_any = true
