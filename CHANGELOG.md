@@ -15,6 +15,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
+## [2.5.1] - 2026-07-10
+
+### Added
+
+### Changed
+
+### Fixed
+
+- Redshift now uses the native `redshift+redshift_connector` SQLAlchemy
+  dialect/driver and stores schema snapshot payloads in `VARCHAR(MAX)`, so
+  fresh migrations and snapshot capture work on Redshift Serverless targets.
+
+### Removed
+
 ## [2.5.0] - 2026-07-08
 
 ### Added
