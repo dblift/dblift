@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from db.plugins.postgresql.provider import PostgreSqlProvider
 
 
@@ -14,6 +16,8 @@ class RedshiftProvider(PostgreSqlProvider):
     """Redshift provider with Redshift-specific history and locking SQL."""
 
     canonical_dialect_key = "redshift"
+    _migration_lock_connection: Any | None = None
+    _migration_lock_transaction: Any | None = None
 
     def acquire_migration_lock(
         self,

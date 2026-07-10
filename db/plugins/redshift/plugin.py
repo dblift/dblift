@@ -1,17 +1,15 @@
 """Entry-point declaration for the Redshift plugin.
 
-Redshift is PostgreSQL-compatible: this plugin reuses PostgreSQL's config
-class (``config_dialect="postgresql"``), SQLAlchemy URL builder, and
-``psycopg`` driver, attaching only a distinct identity + quirks subclass. Users
-keep their ``postgresql://`` connection string and select this engine via
-``type: redshift``.
+Redshift is PostgreSQL-wire-compatible, but it needs the Redshift SQLAlchemy
+dialect/driver instead of the standard PostgreSQL dialect because Redshift does
+not implement every PostgreSQL connection bootstrap query.
 """
 
 from __future__ import annotations
 
-from db.plugins.postgresql.sqlalchemy_url import build_sqlalchemy_url
 from db.plugins.redshift.provider import RedshiftProvider
 from db.plugins.redshift.quirks import RedshiftQuirks
+from db.plugins.redshift.sqlalchemy_url import build_sqlalchemy_url
 from db.provider_registry import PluginInfo
 
 PLUGIN: PluginInfo = PluginInfo(
@@ -24,5 +22,5 @@ PLUGIN: PluginInfo = PluginInfo(
     quirks_class=RedshiftQuirks,
     config_dialect="postgresql",
     sqlalchemy_url_builder=build_sqlalchemy_url,
-    native_driver_module="psycopg",
+    native_driver_module="redshift_connector",
 )
