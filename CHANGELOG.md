@@ -15,6 +15,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
+## [2.5.2] - 2026-07-10
+
+### Added
+
+### Changed
+
+### Fixed
+
+- Redshift schema cleanup now uses Redshift-safe `information_schema` queries
+  instead of PostgreSQL-only catalogs, so clean migrations and integration
+  setup do not fail on missing catalog relations such as `pg_extension`.
+
+### Removed
+
 ## [2.5.1] - 2026-07-10
 
 ### Added
