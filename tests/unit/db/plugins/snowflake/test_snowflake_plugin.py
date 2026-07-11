@@ -9,10 +9,19 @@ from sqlalchemy.engine import make_url
 from config.database_config import BaseDatabaseConfig
 from db.plugins.snowflake.config import SnowflakeConfig
 from db.plugins.snowflake.plugin import PLUGIN as SNOWFLAKE_PLUGIN
-from db.plugins.snowflake.provider import SnowflakeProvider
+from db.plugins.snowflake.provider import (
+    SnowflakeProvider,
+    _is_lock_timeout_error,
+)
 from db.plugins.snowflake.quirks import SnowflakeQuirks
 from db.provider_registry import ProviderRegistry
 from db.sqlalchemy_provider import SqlAlchemyProvider
+
+
+class _DriverError(Exception):
+    def __init__(self, message: str, raw_msg: str | None = None) -> None:
+        super().__init__(message)
+        self.raw_msg = raw_msg
 
 
 class _FakeTransaction:
@@ -520,8 +529,9 @@ def test_snowflake_migration_lock_table_creation_is_seeded() -> None:
     assert 'CREATE SCHEMA IF NOT EXISTS "APP"' in statement_sql
     assert "CREATE TABLE IF NOT EXISTS" in statement_sql
     assert '"APP"."DBLIFT_MIGRATION_LOCK"' in statement_sql
-    assert "INSERT INTO" in statement_sql
-    assert "WHERE NOT EXISTS" in statement_sql
+    assert "MERGE INTO" in statement_sql
+    assert "WHEN NOT MATCHED THEN" in statement_sql
+    assert "WHERE NOT EXISTS" not in statement_sql
 
 
 def test_snowflake_acquire_migration_lock_holds_transaction() -> None:
@@ -544,6 +554,22 @@ def test_snowflake_acquire_migration_lock_holds_transaction() -> None:
     assert connection.committed is True
     assert provider._migration_lock_connection is connection
     assert provider._migration_lock_transaction is transaction
+
+
+def test_snowflake_lock_timeout_detection_is_lock_specific() -> None:
+    raw_message = " ".join(
+        [
+            "Your statement was aborted because waiting for this lock is",
+            "currently not allowed",
+        ]
+    )
+    driver_error = _DriverError("SQL execution failed", raw_msg=raw_message)
+    network_timeout = RuntimeError("network timeout while connecting")
+
+    assert _is_lock_timeout_error(RuntimeError("lock timeout exceeded"))
+    assert _is_lock_timeout_error(driver_error)
+    assert not _is_lock_timeout_error(network_timeout)
+    assert not _is_lock_timeout_error(RuntimeError("statement timeout"))
 
 
 def test_snowflake_acquire_migration_lock_returns_false_on_timeout() -> None:
@@ -602,6 +628,28 @@ def test_snowflake_release_migration_lock_commit_and_failure_paths() -> None:
     assert failed_conn.closed is True
     assert provider._migration_lock_transaction is None
     assert provider._migration_lock_connection is None
+
+
+def test_snowflake_close_releases_held_lock(monkeypatch) -> None:
+    provider = _SnowflakeProvider()
+    transaction = _FakeTransaction()
+    connection = _FakeConnection(transaction)
+    base_close_calls: list[SnowflakeProvider] = []
+
+    def fake_base_close(self):
+        base_close_calls.append(self)
+
+    monkeypatch.setattr(SqlAlchemyProvider, "close", fake_base_close)
+    provider._migration_lock_transaction = transaction
+    provider._migration_lock_connection = connection
+
+    provider.close()
+
+    assert transaction.committed is True
+    assert connection.closed is True
+    assert provider._migration_lock_transaction is None
+    assert provider._migration_lock_connection is None
+    assert base_close_calls == [provider]
 
 
 def test_snowflake_applied_migrations_require_history_table() -> None:

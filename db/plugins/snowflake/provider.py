@@ -18,8 +18,20 @@ def _quote_identifier(identifier: str) -> str:
 
 
 def _is_lock_timeout_error(error: Exception) -> bool:
-    message = str(error).lower()
-    markers = ("lock timeout", "timed out", "timeout")
+    message = " ".join(
+        str(value or "").lower()
+        for value in (
+            getattr(error, "msg", None),
+            getattr(error, "raw_msg", None),
+            str(error),
+        )
+    )
+    markers = (
+        "lock timeout",
+        "lock wait timeout",
+        "waiting for this lock",
+        "waited too long for a lock",
+    )
     return any(marker in message for marker in markers)
 
 
@@ -183,12 +195,19 @@ class SnowflakeProvider(SqlAlchemyProvider):
         self.execute_statement(self.create_migration_lock_table_sql(schema))
         lock_table = self.MIGRATION_LOCK_TABLE
         qualified = self.get_schema_qualified_name(schema, lock_table)
+        # Snowflake accepts UNIQUE/PRIMARY KEY syntax on standard tables but
+        # does not enforce it, so seed the singleton lock row with one MERGE.
         self.execute_statement(f"""
-            INSERT INTO {qualified} (lock_name, locked_at)
-            SELECT 'migration', CURRENT_TIMESTAMP()
-            WHERE NOT EXISTS (
-                SELECT 1 FROM {qualified} WHERE lock_name = 'migration'
-            )
+            MERGE INTO {qualified} target
+            USING (
+                SELECT
+                    'migration' AS lock_name,
+                    CURRENT_TIMESTAMP() AS locked_at
+            ) source
+            ON target.lock_name = source.lock_name
+            WHEN NOT MATCHED THEN
+                INSERT (lock_name, locked_at)
+                VALUES (source.lock_name, source.locked_at)
             """)
 
     def acquire_migration_lock(
@@ -244,6 +263,13 @@ class SnowflakeProvider(SqlAlchemyProvider):
             finally:
                 self._migration_lock_connection = None
                 self._migration_lock_transaction = None
+
+    def close(self) -> None:
+        """Close SQLAlchemy resources and release any held migration lock."""
+        try:
+            self.release_migration_lock("")
+        finally:
+            super().close()
 
     def get_applied_migrations(
         self, schema: str, table_name: str = "dblift_schema_history"
