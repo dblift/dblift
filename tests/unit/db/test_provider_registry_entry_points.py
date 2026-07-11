@@ -147,5 +147,6 @@ def test_first_party_plugins_round_trip_through_full_discovery(_reset_registry):
         "citus",
         "cockroachdb",
         "redshift",
+        "snowflake",
     ):
         assert dialect in ProviderRegistry._plugins, f"{dialect} not registered"

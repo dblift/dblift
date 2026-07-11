@@ -63,6 +63,7 @@ timescaledb = "db.plugins.timescaledb.plugin:PLUGIN"
 citus = "db.plugins.citus.plugin:PLUGIN"
 cockroachdb = "db.plugins.cockroachdb.plugin:PLUGIN"
 redshift = "db.plugins.redshift.plugin:PLUGIN"
+snowflake = "db.plugins.snowflake.plugin:PLUGIN"
 
 # CLI command parser extensions (third-party packages can add subcommands
 # by loading a function that receives the top-level ArgumentParser).
@@ -135,6 +136,7 @@ timescaledb = ["psycopg[binary]>=3.1"]
 citus = ["psycopg[binary]>=3.1"]
 cockroachdb = ["psycopg[binary]>=3.1"]
 redshift = ["sqlalchemy-redshift>=1.0.0", "redshift-connector>=2.1.0"]
+snowflake = ["snowflake-sqlalchemy>=1.11.0"]
 fastapi = ["fastapi>=0.100"]
 flask = ["flask>=2.3"]
 django = ["Django>=4.2"]
