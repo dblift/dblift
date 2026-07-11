@@ -71,7 +71,10 @@ class NativeDriverManager:
         """Return whether the plugin's optional native driver can be imported."""
         if not plugin.native_driver_module:
             return True
-        return importlib.util.find_spec(plugin.native_driver_module) is not None
+        try:
+            return importlib.util.find_spec(plugin.native_driver_module) is not None
+        except ModuleNotFoundError:
+            return False
 
     @staticmethod
     def validate_driver_for_type(
