@@ -78,6 +78,7 @@ DBLift supports the following databases:
 - **PostgreSQL** - Native SQLAlchemy support
 - **CockroachDB** - PostgreSQL-compatible SQLAlchemy support
 - **Redshift** - PostgreSQL-compatible SQLAlchemy support
+- **Snowflake** - Native SQLAlchemy support
 - **MySQL** - Native SQLAlchemy support
 - **SQL Server** - Native SQLAlchemy support
 - **Oracle** - Native SQLAlchemy support
