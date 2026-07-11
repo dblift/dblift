@@ -15,6 +15,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
+## [2.6.0] - 2026-07-11
+
+### Added
+
+- Snowflake (`dblift[snowflake]`) first-party provider plugin with
+  Snowflake-specific configuration, SQLAlchemy URL construction, native schema
+  cleanup, migration history storage, and migration locking support.
+
+### Changed
+
+### Fixed
+
+- Native driver diagnostics now treat missing dotted parent modules as an
+  uninstalled driver instead of raising `ModuleNotFoundError`, so connection
+  diagnosis still works when optional drivers such as `snowflake.connector` are
+  not installed.
+- Snowflake migration locking seeds its singleton lock row with `MERGE`, limits
+  lock-timeout detection to lock-specific failures, and releases a held lock
+  when the provider is closed.
+
+### Removed
+
 ## [2.5.2] - 2026-07-10
 
 ### Added
