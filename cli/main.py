@@ -23,6 +23,7 @@ _mask_database_url = mask_database_url
 from cli._command_handlers import (  # noqa: F401
     _AVAILABLE_COMMANDS,
     _COMMAND_HANDLERS,
+    PREMIUM_STUB_COMMANDS,
     CliCommandContext,
     _extract_version_filters,
     _handle_baseline,
@@ -51,9 +52,11 @@ from cli._config_helpers import (  # noqa: F401
     _validate_db_config,
     _validate_log_format_for_cli,
 )
+from cli._constants import EXIT_LICENSE_REQUIRED
 from cli._output import CommandOutput, from_args
 from cli._parser_setup import create_parser, parse_with_selective_errors
 from cli.extensions import load_terminal_commands
+from cli.premium_manifest import render_upsell
 from core.seams.feature_loading import load_feature_extensions
 from core.seams.license_info import get_license_info
 
@@ -308,6 +311,17 @@ def _parse_argv_and_load_config(argv: List[str]) -> _CliContext:
             print(_format_version())  # lint: allow-print  --version terminal action
             sys.exit(0)
         sys.exit(terminal_commands[commands[0]](args))
+
+    # Premium-command stubs short-circuit here — before argparse builds the
+    # namespace and before any config/database work — because the stub's only
+    # behaviour is the upsell message: subcommand flags the OSS parser doesn't
+    # know (e.g. ``diff --snapshot-model``) must not fail as usage errors, and
+    # a missing database config must not bury the message. Chained invocations
+    # (stub not in first position) are covered by the gap-fill handlers in
+    # cli/_command_handlers.py instead.
+    if commands and commands[0] in PREMIUM_STUB_COMMANDS:
+        CommandOutput("console").error(render_upsell(PREMIUM_STUB_COMMANDS[commands[0]]))
+        sys.exit(EXIT_LICENSE_REQUIRED)
 
     args, _unknown_args = _build_args_namespace(commands, global_arguments, subcommand_args)
 

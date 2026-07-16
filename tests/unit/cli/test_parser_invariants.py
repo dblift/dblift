@@ -242,13 +242,35 @@ def test_import_flyway_accepts_source_table_override():
     assert args.flyway_table == "custom_flyway_history"
 
 
-def test_oss_parser_has_no_paid_commands(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_oss_parser_lists_paid_commands_only_as_labeled_stubs(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Premium commands appear in OSS help as labeled stubs — and nothing more.
+
+    2026-07 amendment to the naming invariant: OSS advertises premium commands
+    through the declarative catalog in ``cli/premium_manifest.py`` instead of
+    silently omitting them. The invariant this test still enforces is that no
+    premium *implementation* leaks: every manifest entry must render with its
+    edition label (proving the line comes from the stub registration), and a
+    stub subparser must expose zero option flags.
+    """
+    import argparse
+
+    from cli.premium_manifest import PREMIUM_COMMANDS
+
     monkeypatch.setenv("DBLIFT_DISABLE_CLI_EXTENSIONS", "1")
     parser = create_parser()
 
     help_text = parser.format_help()
-    for command in ("diff", "export-schema", "snapshot", "validate-sql", "plan", "preflight"):
-        assert command not in help_text
+    subparsers = next(
+        action for action in parser._actions if isinstance(action, argparse._SubParsersAction)
+    )
+    for cmd in PREMIUM_COMMANDS:
+        assert cmd.name in help_text
+        assert f"[{cmd.edition}]" in help_text
+        stub = subparsers.choices[cmd.name]
+        leaked_flags = [s for action in stub._actions for s in action.option_strings]
+        assert leaked_flags == [], f"premium flags leaked into the OSS stub for '{cmd.name}'"
 
 
 @pytest.mark.parametrize(

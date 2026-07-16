@@ -22,6 +22,7 @@ from cli.handlers.migrate import _handle_migrate
 from cli.handlers.repair import _handle_repair
 from cli.handlers.undo import _handle_undo
 from cli.handlers.validate import _handle_validate
+from cli.premium_manifest import PremiumCommand, premium_stub_index, render_upsell
 from core.seams.tier_resolver import resolve_tier
 
 _COMMAND_HANDLERS: Dict[str, Callable[[CliCommandContext], Tuple[bool, Any]]] = {
@@ -43,6 +44,31 @@ if _builtin_conflicts:
     )
 _COMMAND_HANDLERS.update(_extension_handlers)
 del _extension_handlers, _builtin_conflicts
+
+
+def _make_premium_stub_handler(
+    cmd: "PremiumCommand",
+) -> Callable[[CliCommandContext], Tuple[bool, Any]]:
+    """Build a handler that reports the upsell message and fails.
+
+    Only reachable in chained invocations (``dblift migrate diff``): a stub
+    in first position short-circuits in ``cli/main.py`` before any config
+    or database work, with the dedicated ``EXIT_LICENSE_REQUIRED`` code.
+    """
+
+    def _handle_premium_stub(ctx: CliCommandContext) -> Tuple[bool, Any]:
+        ctx.log.error(render_upsell(cmd))
+        return False, None
+
+    return _handle_premium_stub
+
+
+# Gap-fill AFTER extension merge so entry-point registrations always win:
+# with the paid runtime installed, the real handlers already own these
+# names and PREMIUM_STUB_COMMANDS is empty.
+PREMIUM_STUB_COMMANDS: Dict[str, "PremiumCommand"] = premium_stub_index(_COMMAND_HANDLERS)
+for _stub_cmd in PREMIUM_STUB_COMMANDS.values():
+    _COMMAND_HANDLERS[_stub_cmd.name] = _make_premium_stub_handler(_stub_cmd)
 
 _AVAILABLE_COMMANDS = (
     list(_COMMAND_HANDLERS.keys()) + ["db", "config"] + list(load_terminal_commands())
