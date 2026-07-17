@@ -342,15 +342,26 @@ def migrate(context: MigrationContext) -> None:
             f"INSERT INTO {schema_prefix}roles (code, label) VALUES (?, ?)",
             [code, label],
         )
+```
 
-def undo(context: MigrationContext) -> None:
-    """Optional rollback for `dblift undo`."""
+> **Undo is a separate script, not a function.** DBLift does not call an
+> `undo()` function inside a `V*.py` migration. To make a Python migration
+> reversible, add a companion undo script `U2__seed_lookup_tables.py` that
+> exposes its own `migrate(context)` performing the reverse change — exactly
+> like the `U*.sql` undo files described in
+> [Rolling Back Changes](#rolling-back-changes). `dblift undo` runs that
+> companion script; the `Undoable` column in `dblift info` reflects whether a
+> matching `U*` file exists.
+
+```python
+# migrations/U2__seed_lookup_tables.py  (undo companion for V2)
+from api import MigrationContext
+
+def migrate(context: MigrationContext) -> None:
+    """Reverse V2 by removing the seeded lookup rows."""
     if context.dry_run:
         return
-    context.execute(
-        "DELETE FROM roles WHERE code IN (?, ?)",
-        ["admin", "user"],
-    )
+    context.execute("DELETE FROM roles WHERE code IN (?, ?)", ["admin", "user"])
 ```
 
 ---
@@ -621,6 +632,53 @@ migrations:
     - ./migrations/core                    # String format (uses global recursive)
     - path: ./migrations/features
       recursive: false                     # Dict format (per-directory setting)
+```
+
+### Configuration Sources and Precedence
+
+The `dblift.yaml` file is only one of three ways to supply configuration. Every
+setting can also be passed as a **command-line flag** or an **environment
+variable**, which is convenient for CI pipelines and for keeping secrets out of
+files. When the same setting comes from more than one source, the higher-priority
+source wins:
+
+```
+command-line flag  >  environment variable  >  dblift.yaml  >  values embedded in the database URL
+```
+
+The database connection settings are the most common to override:
+
+| Setting | `dblift.yaml` key | Environment variable | CLI flag |
+|---------|-------------------|----------------------|----------|
+| Connection URL | `database.url` | `DBLIFT_DB_URL` | `--db-url` |
+| Username | `database.username` | `DBLIFT_DB_USERNAME` | `--db-username` |
+| Password | `database.password` | `DBLIFT_DB_PASSWORD` | `--db-password` |
+| Schema | `database.schema` | `DBLIFT_DB_SCHEMA` | `--db-schema` |
+| Scripts directory | `migrations.directory` | — | `--scripts` |
+| Strict ordering | `strict_mode` (top level) | `DBLIFT_STRICT_MODE` | `--strict` |
+
+For example, the same run configured three ways:
+
+```bash
+# 1. Everything from dblift.yaml
+dblift migrate
+
+# 2. Connection from the environment (nothing sensitive on disk)
+export DBLIFT_DB_URL="postgresql+psycopg://localhost:5432/mydb"
+export DBLIFT_DB_PASSWORD="s3cret"
+dblift migrate
+
+# 3. Overriding a file-based config on the command line (e.g. targeting staging)
+dblift migrate --db-url "postgresql+psycopg://staging:5432/mydb" --scripts ./migrations
+```
+
+Non-database settings follow the same pattern: the environment variable is the
+setting name upper-cased with a `DBLIFT_` prefix (for example `--installed-by` ↔
+`DBLIFT_INSTALLED_BY`). For the authoritative, always-current list of every
+setting and its three surfaces, run:
+
+```bash
+dblift config --list
 ```
 
 ### Supported Databases
