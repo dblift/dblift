@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+### Changed
+
+### Fixed
+
+### Removed
+
+## [2.6.1] - 2026-07-17
+
+### Added
+
 - Paid commands (`diff`, `export-schema`, `validate-sql`, `data`, `snapshot`,
   `plan`, `preflight`) now appear in the OSS CLI as discoverable stubs. They
   are listed in `--help` with an edition label (e.g. `diff … [Pro]`) and, when
