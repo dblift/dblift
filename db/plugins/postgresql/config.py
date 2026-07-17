@@ -30,6 +30,8 @@ class PostgreSqlConfig(BaseDatabaseConfig):
             "yugabytedb",
             "timescaledb",
             "citus",
+            "cockroachdb",
+            "redshift",
         }
     )
 

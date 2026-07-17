@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "dblift"
-version = "2.4.2"
+version = "2.6.0"
 description = "A database migration tool that supports multiple databases with native Python drivers"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -61,6 +61,9 @@ alloydb = "db.plugins.alloydb.plugin:PLUGIN"
 yugabytedb = "db.plugins.yugabytedb.plugin:PLUGIN"
 timescaledb = "db.plugins.timescaledb.plugin:PLUGIN"
 citus = "db.plugins.citus.plugin:PLUGIN"
+cockroachdb = "db.plugins.cockroachdb.plugin:PLUGIN"
+redshift = "db.plugins.redshift.plugin:PLUGIN"
+snowflake = "db.plugins.snowflake.plugin:PLUGIN"
 
 # CLI command parser extensions (third-party packages can add subcommands
 # by loading a function that receives the top-level ArgumentParser).
@@ -131,6 +134,9 @@ alloydb = ["psycopg[binary]>=3.1"]
 yugabytedb = ["psycopg[binary]>=3.1"]
 timescaledb = ["psycopg[binary]>=3.1"]
 citus = ["psycopg[binary]>=3.1"]
+cockroachdb = ["psycopg[binary]>=3.1"]
+redshift = ["sqlalchemy-redshift>=1.0.0", "redshift-connector>=2.1.0"]
+snowflake = ["snowflake-sqlalchemy>=1.11.0"]
 fastapi = ["fastapi>=0.100"]
 flask = ["flask>=2.3"]
 django = ["Django>=4.2"]
@@ -672,9 +678,9 @@ warn_unused_ignores = true
 strict_equality = true
 
 # strict db/plugins/<pg-compatible> — thin PostgreSQL-derived plugins (Neon,
-# Supabase, Aurora PostgreSQL, AlloyDB, YugabyteDB, TimescaleDB, Citus). Each
-# subclasses the (strict) PostgreSQL provider/quirks, so disallow_subclassing_any
-# is safe.
+# Supabase, Aurora PostgreSQL, AlloyDB, YugabyteDB, TimescaleDB, Citus,
+# CockroachDB, Redshift). Each subclasses the (strict) PostgreSQL provider/
+# quirks, so disallow_subclassing_any is safe.
 [[tool.mypy.overrides]]
 module = [
     "db.plugins.neon",
@@ -705,6 +711,15 @@ module = [
     "db.plugins.citus.plugin",
     "db.plugins.citus.provider",
     "db.plugins.citus.quirks",
+    "db.plugins.cockroachdb",
+    "db.plugins.cockroachdb.plugin",
+    "db.plugins.cockroachdb.provider",
+    "db.plugins.cockroachdb.quirks",
+    "db.plugins.redshift",
+    "db.plugins.redshift.plugin",
+    "db.plugins.redshift.provider",
+    "db.plugins.redshift.quirks",
+    "db.plugins.redshift.sqlalchemy_url",
 ]
 disallow_any_generics = true
 disallow_subclassing_any = true

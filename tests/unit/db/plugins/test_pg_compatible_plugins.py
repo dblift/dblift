@@ -1,5 +1,7 @@
-"""PostgreSQL-compatible distribution plugins (Neon, Supabase, Aurora PostgreSQL,
-AlloyDB, YugabyteDB, TimescaleDB, Citus).
+"""PostgreSQL-compatible distribution plugins.
+
+Includes Neon, Supabase, Aurora PostgreSQL, AlloyDB, YugabyteDB, TimescaleDB,
+Citus, CockroachDB, and Redshift.
 
 Each is a thin plugin that reuses the PostgreSQL provider/config/URL-builder/
 driver and only carries a distinct identity + a quirks subclass. The tests pin
@@ -14,7 +16,8 @@ import pytest
 
 from db.plugins.postgresql.provider import PostgreSqlProvider
 from db.plugins.postgresql.quirks import PostgresqlQuirks
-from db.plugins.postgresql.sqlalchemy_url import build_sqlalchemy_url
+from db.plugins.postgresql.sqlalchemy_url import build_sqlalchemy_url as build_postgresql_url
+from db.plugins.redshift.sqlalchemy_url import build_sqlalchemy_url as build_redshift_url
 from db.provider_registry import ProviderRegistry
 
 # (plugin dir/module, canonical dialect name, provider cls, quirks cls)
@@ -31,6 +34,8 @@ PG_COMPATIBLE = [
     ("yugabytedb", "yugabytedb", "YugabytedbProvider", "YugabytedbQuirks"),
     ("timescaledb", "timescaledb", "TimescaledbProvider", "TimescaledbQuirks"),
     ("citus", "citus", "CitusProvider", "CitusQuirks"),
+    ("cockroachdb", "cockroachdb", "CockroachdbProvider", "CockroachdbQuirks"),
+    ("redshift", "redshift", "RedshiftProvider", "RedshiftQuirks"),
 ]
 
 
@@ -46,10 +51,16 @@ class TestPgCompatiblePlugin:
         assert plugin.name == dialect
         assert plugin.dialects == [dialect]
         assert plugin.transport == "native"
-        # Reuse contract: PostgreSQL config + URL builder + psycopg driver.
+        # Reuse contract: PG-wire engines share PostgreSQL config. Redshift
+        # uses a dedicated SQLAlchemy dialect/driver because Redshift does not
+        # implement every PostgreSQL connection bootstrap query.
         assert plugin.config_dialect == "postgresql"
-        assert plugin.sqlalchemy_url_builder is build_sqlalchemy_url
-        assert plugin.native_driver_module == "psycopg"
+        if dialect == "redshift":
+            assert plugin.sqlalchemy_url_builder is build_redshift_url
+            assert plugin.native_driver_module == "redshift_connector"
+        else:
+            assert plugin.sqlalchemy_url_builder is build_postgresql_url
+            assert plugin.native_driver_module == "psycopg"
 
     def test_provider_subclasses_postgresql(self, module_dir, dialect, provider_name, quirks_name):
         plugin = _plugin(module_dir)

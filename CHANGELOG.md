@@ -15,6 +15,72 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
+## [2.6.0] - 2026-07-11
+
+### Added
+
+- Snowflake (`dblift[snowflake]`) first-party provider plugin with
+  Snowflake-specific configuration, SQLAlchemy URL construction, native schema
+  cleanup, migration history storage, and migration locking support.
+
+### Changed
+
+### Fixed
+
+- Native driver diagnostics now treat missing dotted parent modules as an
+  uninstalled driver instead of raising `ModuleNotFoundError`, so connection
+  diagnosis still works when optional drivers such as `snowflake.connector` are
+  not installed.
+- Snowflake migration locking seeds its singleton lock row with `MERGE`, limits
+  lock-timeout detection to lock-specific failures, and releases a held lock
+  when the provider is closed.
+
+### Removed
+
+## [2.5.2] - 2026-07-10
+
+### Added
+
+### Changed
+
+### Fixed
+
+- Redshift schema cleanup now uses Redshift-safe `information_schema` queries
+  instead of PostgreSQL-only catalogs, so clean migrations and integration
+  setup do not fail on missing catalog relations such as `pg_extension`.
+
+### Removed
+
+## [2.5.1] - 2026-07-10
+
+### Added
+
+### Changed
+
+### Fixed
+
+- Redshift now uses the native `redshift+redshift_connector` SQLAlchemy
+  dialect/driver and stores schema snapshot payloads in `VARCHAR(MAX)`, so
+  fresh migrations and snapshot capture work on Redshift Serverless targets.
+
+### Removed
+
+## [2.5.0] - 2026-07-08
+
+### Added
+
+- CockroachDB (`dblift[cockroachdb]`) and Redshift (`dblift[redshift]`)
+  PostgreSQL-compatible provider plugins. They follow the existing
+  PostgreSQL-derived plugin pattern: same provider/config/SQLAlchemy URL builder
+  and `psycopg` driver, with distinct `type: cockroachdb` / `type: redshift`
+  identities.
+
+### Changed
+
+### Fixed
+
+### Removed
+
 ## [2.4.2] - 2026-07-06
 
 ### Fixed

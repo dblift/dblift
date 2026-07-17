@@ -168,3 +168,19 @@ class TestNativeDriverManager(unittest.TestCase):
 
         result = NativeDriverManager.get_available_drivers([])
         self.assertIsInstance(result, dict)
+
+    def test_missing_dotted_driver_module_returns_false(self):
+        """A missing parent package must not crash optional driver checks."""
+        from db.base_provider import BaseProvider
+        from db.provider_registry import NativeDriverManager, PluginInfo
+
+        plugin = PluginInfo(
+            name="missingdb",
+            version="0.0.0",
+            description="Missing driver test plugin",
+            dialects=["missingdb"],
+            provider_class=BaseProvider,
+            native_driver_module="definitely_missing_parent.driver",
+        )
+
+        self.assertFalse(NativeDriverManager.check_driver_installed(plugin))

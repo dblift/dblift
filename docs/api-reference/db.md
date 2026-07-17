@@ -24,6 +24,9 @@ See the [Database Providers Architecture](../architecture/database-providers.md)
 ## Supported Databases
 
 - **PostgreSQL** (`db.plugins.postgresql`) - Native SQLAlchemy provider
+- **CockroachDB** (`db.plugins.cockroachdb`) - PostgreSQL-compatible provider
+- **Redshift** (`db.plugins.redshift`) - PostgreSQL-compatible provider
+- **Snowflake** (`db.plugins.snowflake`) - Native SQLAlchemy provider
 - **MySQL** (`db.plugins.mysql`) - Native SQLAlchemy provider
 - **SQL Server** (`db.plugins.sqlserver`) - Native SQLAlchemy provider
 - **Oracle** (`db.plugins.oracle`) - Native SQLAlchemy provider
