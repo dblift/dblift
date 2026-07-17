@@ -19,6 +19,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Collapsed the seven PostgreSQL-wire-compatible provider plugins (`neon`,
+  `supabase`, `alloydb`, `aurora-postgresql`, `citus`, `timescaledb`,
+  `yugabytedb`) onto a shared factory (`db/plugins/_pg_compatible.py`),
+  removing 14 near-identical `provider.py`/`quirks.py` files that differed only
+  by a name string. Each engine is now a single `make_pg_compatible_plugin(...)`
+  declaration in its `plugin.py`. Plugin discovery now falls back to the
+  provider/quirks classes declared on `plugin.py:PLUGIN` when a package ships no
+  `provider.py`/`quirks.py`, so the entry-point and filesystem discovery paths
+  behave identically. No behavior change: dialect identities, the single ANSI
+  reference-dialect owner (PostgreSQL), and all connection/config reuse are
+  preserved. Engines with real per-dialect logic (`cockroachdb`, `redshift`)
+  are unchanged. The per-engine provider/quirks classes are now built by the
+  factory and exposed as `db.plugins._pg_compatible.<Engine>Provider` /
+  `<Engine>Quirks` (picklable); the previous direct-import paths
+  (`from db.plugins.neon import NeonProvider`, etc.) are removed — use the
+  engine's `PLUGIN` or the factory module instead.
+
 ### Fixed
 
 ### Removed
