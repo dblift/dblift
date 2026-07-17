@@ -30,7 +30,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   behave identically. No behavior change: dialect identities, the single ANSI
   reference-dialect owner (PostgreSQL), and all connection/config reuse are
   preserved. Engines with real per-dialect logic (`cockroachdb`, `redshift`)
-  are unchanged.
+  are unchanged. The per-engine provider/quirks classes are now built by the
+  factory and exposed as `db.plugins._pg_compatible.<Engine>Provider` /
+  `<Engine>Quirks` (picklable); the previous direct-import paths
+  (`from db.plugins.neon import NeonProvider`, etc.) are removed — use the
+  engine's `PLUGIN` or the factory module instead.
 
 ### Fixed
 

@@ -118,6 +118,51 @@ def test_factory_engines_resolve_classes_from_declared_plugin(
 
 
 @pytest.mark.unit
+def test_broken_plugin_py_is_logged_not_silently_dropped(monkeypatch, caplog):
+    """A ``plugin.py`` that raises on import must be logged loudly.
+
+    For a factory-built engine, ``PLUGIN`` is the only source of the
+    provider/quirks classes, so a failed import drops the engine from
+    discovery — that must be visible, not swallowed.
+    """
+    import importlib
+    import logging
+
+    from db import provider_registry
+
+    package = importlib.import_module("db.plugins.neon")
+    plugin_dir = Path(package.__file__).resolve().parent
+    real_import_module = importlib.import_module
+
+    def _fail_on_plugin(name, *args, **kwargs):
+        if name.endswith(".plugin"):
+            raise RuntimeError("boom in plugin.py")
+        return real_import_module(name, *args, **kwargs)
+
+    monkeypatch.setattr(importlib, "import_module", _fail_on_plugin)
+
+    with caplog.at_level(logging.WARNING, logger=provider_registry.__name__):
+        info = provider_registry.ProviderRegistry._load_plugin(plugin_dir)
+
+    assert info is None  # no provider.py to fall back to → engine drops
+    assert any("db.plugins.neon.plugin" in rec.message for rec in caplog.records)
+
+
+@pytest.mark.unit
+def test_factory_built_classes_are_picklable():
+    """Factory classes are registered as module globals so ``pickle`` (and
+    multiprocessing ``spawn``) can resolve them by qualified name."""
+    import pickle
+
+    import db.plugins.neon.plugin as neon_plugin
+
+    provider_cls = neon_plugin.PLUGIN.provider_class
+    quirks_cls = neon_plugin.PLUGIN.quirks_class
+    assert pickle.loads(pickle.dumps(provider_cls)) is provider_cls
+    assert pickle.loads(pickle.dumps(quirks_cls)) is quirks_cls
+
+
+@pytest.mark.unit
 def test_reference_dialect_invariant_survives_pg_derived_plugins():
     """Registering every PG-derived plugin must not create a second ANSI-reference
     owner — ``reference_dialect_name`` requires exactly one (PostgreSQL)."""

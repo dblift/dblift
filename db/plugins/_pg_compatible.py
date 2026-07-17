@@ -44,20 +44,36 @@ def _class_stem(dialect: str) -> str:
     return "".join(part.capitalize() for part in dialect.split("-"))
 
 
+def _register_global(cls: type) -> type:
+    """Expose a factory-built class as a module global.
+
+    ``type(...)`` sets ``__module__`` to this module, so ``pickle`` (and
+    anything resolving a class by qualified name, e.g. multiprocessing in
+    ``spawn`` mode) looks the class up as ``db.plugins._pg_compatible.<Name>``.
+    Registering it here makes that lookup succeed instead of raising
+    ``AttributeError``, and also lets callers ``from db.plugins._pg_compatible
+    import NeonProvider`` if they need the class directly.
+    """
+    globals()[cls.__name__] = cls
+    return cls
+
+
 def make_pg_compatible_provider(dialect: str) -> Type[PostgreSqlProvider]:
     """Build a PostgreSQL provider subclass carrying only a distinct identity."""
     stem = _class_stem(dialect)
-    return type(
-        f"{stem}Provider",
-        (PostgreSqlProvider,),
-        {
-            "__module__": __name__,
-            "__doc__": (
-                f"{stem} provider — wire-compatible with PostgreSQL; reuses the "
-                "PostgreSQL provider with a distinct dialect identity."
-            ),
-            "canonical_dialect_key": dialect,
-        },
+    return _register_global(
+        type(
+            f"{stem}Provider",
+            (PostgreSqlProvider,),
+            {
+                "__module__": __name__,
+                "__doc__": (
+                    f"{stem} provider — wire-compatible with PostgreSQL; reuses the "
+                    "PostgreSQL provider with a distinct dialect identity."
+                ),
+                "canonical_dialect_key": dialect,
+            },
+        )
     )
 
 
@@ -77,20 +93,22 @@ def make_pg_compatible_quirks(dialect: str) -> Type[PostgresqlQuirks]:
         # unavailable — call the base initializer explicitly.
         PostgresqlQuirks.__init__(self, dialect_name=dialect_name)
 
-    return type(
-        f"{stem}Quirks",
-        (PostgresqlQuirks,),
-        {
-            "__module__": __name__,
-            "__doc__": (
-                f"{stem} quirks, inheriting every PostgreSQL quirk. Only the "
-                "reference-dialect flags are reset so PostgreSQL stays the sole "
-                "owner of each."
-            ),
-            "is_ansi_reference_dialect": False,
-            "is_default_sqlglot_read_fallback": False,
-            "__init__": __init__,
-        },
+    return _register_global(
+        type(
+            f"{stem}Quirks",
+            (PostgresqlQuirks,),
+            {
+                "__module__": __name__,
+                "__doc__": (
+                    f"{stem} quirks, inheriting every PostgreSQL quirk. Only the "
+                    "reference-dialect flags are reset so PostgreSQL stays the sole "
+                    "owner of each."
+                ),
+                "is_ansi_reference_dialect": False,
+                "is_default_sqlglot_read_fallback": False,
+                "__init__": __init__,
+            },
+        )
     )
 
 

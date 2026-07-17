@@ -237,13 +237,19 @@ class ProviderRegistry:
         plugin_py = plugin_dir / "plugin.py"
         if plugin_py.exists():
             try:
-                import importlib as _il
-
-                pm = _il.import_module(f"db.plugins.{plugin_name}.plugin")
+                pm = importlib.import_module(f"db.plugins.{plugin_name}.plugin")
                 candidate = getattr(pm, "PLUGIN", None)
                 if isinstance(candidate, PluginInfo):
                     declared = candidate
-            except Exception:
+            except Exception as exc:
+                # A broken ``plugin.py`` must not silently drop the plugin: for
+                # factory-built engines ``PLUGIN`` is the only source of the
+                # provider/quirks classes, so failing to import it means the
+                # engine disappears from discovery. Log loudly rather than
+                # swallow it.
+                _logger.warning(
+                    f"Failed to load PLUGIN from db.plugins.{plugin_name}.plugin: {exc}"
+                )
                 declared = None
 
         # Get provider class: prefer ``__plugin_class__`` / ``__all__`` /
@@ -264,12 +270,11 @@ class ProviderRegistry:
                         break
 
         if not (isinstance(provider_class, type) and issubclass(provider_class, BaseProvider)):
+            # Package derivation found nothing usable — fall back to the class
+            # declared on PLUGIN, then validate once.
             provider_class = declared.provider_class if declared else None
-
-        if provider_class is None or not (
-            isinstance(provider_class, type) and issubclass(provider_class, BaseProvider)
-        ):
-            return None
+            if not (isinstance(provider_class, type) and issubclass(provider_class, BaseProvider)):
+                return None
 
         # Epic 26: optional quirks class. Resolve by importing
         # ``db/plugins/<X>/quirks.py`` and picking the first class whose name
