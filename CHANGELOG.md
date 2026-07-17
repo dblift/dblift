@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Paid commands (`diff`, `export-schema`, `validate-sql`, `data`, `snapshot`,
+  `plan`, `preflight`) now appear in the OSS CLI as discoverable stubs. They
+  are listed in `--help` with an edition label (e.g. `diff … [Pro]`) and, when
+  invoked, print an upgrade message and exit with the dedicated code `4`
+  (`EXIT_LICENSE_REQUIRED`). When the paid runtime is installed its real
+  commands take precedence and no stub is created. Advertised commands are
+  declared in `cli/premium_manifest.py`.
+
 ### Changed
 
 ### Fixed

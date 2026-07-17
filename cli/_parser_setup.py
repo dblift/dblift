@@ -308,6 +308,34 @@ def _register_builtin_command_parsers(
     return registered
 
 
+def _register_premium_stub_parsers(parser: argparse.ArgumentParser) -> None:
+    """Add stub subparsers for paid commands with no registered extension.
+
+    Must run AFTER ``load_command_extensions`` so real entry-point parsers
+    always win: with the paid runtime installed the manifest entries are
+    already in ``subparsers.choices`` and no stub is created. The stub
+    swallows any arguments via ``REMAINDER`` (and disables ``-h``) so every
+    invocation shape — ``dblift diff``, ``dblift diff --anything``,
+    ``dblift diff --help`` — reaches the upsell message instead of an
+    argparse usage error.
+    """
+    from cli.premium_manifest import premium_commands_missing_from
+
+    subparser_actions = [
+        action for action in parser._actions if isinstance(action, argparse._SubParsersAction)
+    ]
+    if not subparser_actions:
+        return
+    subparsers = subparser_actions[0]
+    for cmd in premium_commands_missing_from(subparsers.choices):
+        stub = subparsers.add_parser(
+            cmd.name,
+            help=f"{cmd.summary} [{cmd.edition}]",
+            add_help=False,
+        )
+        stub.add_argument("stub_args", nargs=argparse.REMAINDER, help=argparse.SUPPRESS)
+
+
 def create_parser(
     exit_on_error: bool = True, suppress_errors: bool = False
 ) -> argparse.ArgumentParser:
@@ -485,6 +513,8 @@ def create_parser(
         help="List all properties and how to set them (config key / env var / CLI flag)",
     )
     import_module("cli.extensions").load_command_extensions(parser)
+    # Stubs fill whatever gaps the extensions left — never the reverse.
+    _register_premium_stub_parsers(parser)
     # Emit registry-derived flags LAST, after every subparser (built-in and
     # extension) is registered, so the tree walk in _add_registry_flags can see
     # subcommand-only flags and skip them instead of shadowing them on the root.

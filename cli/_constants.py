@@ -22,3 +22,9 @@ from __future__ import annotations
 MACHINE_READABLE_FORMATS: frozenset[str] = frozenset(
     {"json", "sarif", "github-actions", "gitlab", "compact"}
 )
+
+# Exit code for "this command needs a paid edition or a higher license
+# tier": returned by the OSS premium-command stubs (cli/premium_manifest.py)
+# so scripts and CI pipelines can branch on entitlement without parsing
+# stderr. Distinct from 1 (command failure) and 2 (argparse usage error).
+EXIT_LICENSE_REQUIRED: int = 4
