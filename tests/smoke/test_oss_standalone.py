@@ -55,6 +55,12 @@ if leaks:
 
 
 def _oss_builtin_command_choices(monkeypatch):
+    """Subparser choices map (name -> parser) for a pure-OSS install.
+
+    Entry points are patched empty so this reflects OSS builtins only: the
+    lifecycle commands plus the premium-command stubs registered natively by
+    ``_register_premium_stub_parsers``.
+    """
     from cli import extensions
     from cli._parser_setup import create_parser
 
@@ -63,18 +69,36 @@ def _oss_builtin_command_choices(monkeypatch):
     subparser = next(
         action for action in parser._actions if isinstance(action, argparse._SubParsersAction)
     )
-    return set(subparser.choices)
+    return subparser.choices
 
 
-def test_oss_builtin_cli_excludes_relocated_paid_commands(monkeypatch):
+def _assert_present_only_as_stub(choices, word):
+    """A paid command may appear in OSS, but only as a no-op advertising stub.
+
+    The anti-leak contract is now "no paid *implementation* in OSS", not "no
+    paid command *name*": since 2026-07 the OSS CLI advertises paid commands as
+    labeled stubs (see ``cli/premium_manifest.py``). A stub carries zero option
+    flags; a real relocated parser would expose its flags, so this still catches
+    an accidental leak of a functional paid command into OSS builtins.
+    """
+    assert word in choices, f"premium command '{word}' should appear as an OSS stub"
+    stub = choices[word]
+    leaked_flags = [s for action in stub._actions for s in action.option_strings]
+    assert leaked_flags == [], (
+        f"paid command '{word}' exposes option flags {leaked_flags} in the OSS CLI — "
+        f"it must appear only as a no-op stub, not a real implementation"
+    )
+
+
+def test_oss_builtin_cli_exposes_relocated_paid_commands_only_as_stubs(monkeypatch):
     choices = _oss_builtin_command_choices(monkeypatch)
 
     for word in ("diff", "export-schema", "snapshot"):
-        assert word not in choices, f"PRO/Enterprise command '{word}' present in OSS CLI"
+        _assert_present_only_as_stub(choices, word)
 
 
-def test_oss_builtin_cli_excludes_remaining_paid_commands(monkeypatch):
+def test_oss_builtin_cli_exposes_remaining_paid_commands_only_as_stubs(monkeypatch):
     choices = _oss_builtin_command_choices(monkeypatch)
 
     for word in ("validate-sql", "plan", "preflight"):
-        assert word not in choices, f"PRO/Enterprise command '{word}' present in OSS CLI"
+        _assert_present_only_as_stub(choices, word)
