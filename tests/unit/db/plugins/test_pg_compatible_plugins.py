@@ -11,6 +11,7 @@ the reuse contract and — critically — that every PG-derived quirks resets
 """
 
 import importlib
+from pathlib import Path
 
 import pytest
 
@@ -80,6 +81,40 @@ class TestPgCompatiblePlugin:
         assert quirks.dialect_name == dialect
         # Only PostgreSQL may own the ANSI reference dialect.
         assert quirks.is_ansi_reference_dialect is False
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    "module_dir,dialect,provider_name,quirks_name",
+    [row for row in PG_COMPATIBLE if row[0] not in ("cockroachdb", "redshift")],
+)
+def test_factory_engines_resolve_classes_from_declared_plugin(
+    module_dir, dialect, provider_name, quirks_name
+):
+    """Factory-built PG-compatible engines ship no ``provider.py`` / ``quirks.py``.
+
+    ``ProviderRegistry._load_plugin`` must therefore resolve their provider and
+    quirks classes from the ``PLUGIN`` declared in ``plugin.py``. This guards
+    the discovery fallback that lets the shared factory replace the per-engine
+    boilerplate files — a regression here would silently strip these engines of
+    their PostgreSQL quirks (and re-break the single ANSI-reference invariant).
+    """
+    package = importlib.import_module(f"db.plugins.{module_dir}")
+    plugin_dir = Path(package.__file__).resolve().parent
+    # Precondition: the boilerplate files are gone, so the fallback is the
+    # only path that can supply the classes.
+    assert not (plugin_dir / "provider.py").exists()
+    assert not (plugin_dir / "quirks.py").exists()
+
+    info = ProviderRegistry._load_plugin(plugin_dir)
+    assert info is not None
+    assert info.provider_class.__name__ == provider_name
+    assert issubclass(info.provider_class, PostgreSqlProvider)
+    assert info.provider_class.canonical_dialect_key == dialect
+    assert info.quirks_class is not None
+    assert info.quirks_class.__name__ == quirks_name
+    assert issubclass(info.quirks_class, PostgresqlQuirks)
+    assert info.quirks_class.is_ansi_reference_dialect is False
 
 
 @pytest.mark.unit
