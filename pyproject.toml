@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=78.1.1", "wheel>=0.46.2"]
+requires = ["setuptools>=83.0.0", "wheel>=0.46.2"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -111,6 +111,9 @@ dev = [
     "Cython>=3.0.0",
     # Security and quality tooling (see .github/workflows/security.yml,
     # complexity.yml). Versions floored at known-good releases.
+    # setuptools floored at 83.0.0 to clear PYSEC-2026-3447 (pip-audit gate):
+    # earlier releases ship in the build/runtime env and fail the audit.
+    "setuptools>=83.0.0",
     "bandit>=1.7.9",
     "pip-audit>=2.7.3",
     "radon>=6.0.1",

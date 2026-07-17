@@ -21,6 +21,8 @@ types-setuptools
 pre-commit>=4.0.0
 Cython>=3.0.0
 # Security and quality tooling
+# setuptools floored at 83.0.0 to clear PYSEC-2026-3447 (pip-audit gate).
+setuptools>=83.0.0
 bandit>=1.7.9
 pip-audit>=2.7.3
 radon>=6.0.1

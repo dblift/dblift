@@ -23,6 +23,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
+### Security
+
+- Floored `setuptools` at `>=83.0.0` (build-system requirement, `dev` extra, and
+  `requirements-dev.txt`) to clear PYSEC-2026-3447, which the `pip-audit`
+  dependency gate flagged against the previously resolved `setuptools 79.0.1`.
+
 ## [2.6.0] - 2026-07-11
 
 ### Added
