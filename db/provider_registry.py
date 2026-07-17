@@ -225,26 +225,46 @@ class ProviderRegistry:
         dialects = getattr(module, "__plugin_dialects__", [name])
         transport: ProviderTransport = "native"
 
-        # Get provider class
+        # Epic 27 + action #11: read the exported ``plugin.py:PLUGIN`` constant
+        # (entry-point-style declaration) up front. Importing plugin.py also
+        # triggers any ``@register_database_type`` decorators on the config
+        # class so the legacy ``BaseDatabaseConfig._registry`` lookup keeps
+        # working. This declaration is also the fallback source for the
+        # provider/quirks classes below, so factory-built engines that ship no
+        # ``provider.py`` / ``quirks.py`` (the PostgreSQL-compatible family) are
+        # discovered identically to how the entry-point path loads them.
+        declared: Optional[PluginInfo] = None
+        plugin_py = plugin_dir / "plugin.py"
+        if plugin_py.exists():
+            try:
+                import importlib as _il
+
+                pm = _il.import_module(f"db.plugins.{plugin_name}.plugin")
+                candidate = getattr(pm, "PLUGIN", None)
+                if isinstance(candidate, PluginInfo):
+                    declared = candidate
+            except Exception:
+                declared = None
+
+        # Get provider class: prefer ``__plugin_class__`` / ``__all__`` /
+        # naming convention from the package, then fall back to the class
+        # declared on ``PLUGIN``.
+        provider_class: Optional[Type[BaseProvider]] = None
         provider_class_name = getattr(module, "__plugin_class__", None)
         if provider_class_name:
             provider_class = getattr(module, provider_class_name, None)
+        elif hasattr(module, "__all__") and module.__all__:
+            provider_class = getattr(module, module.__all__[0], None)
         else:
-            # Try to find provider class in __all__ or by naming convention
-            if hasattr(module, "__all__") and module.__all__:
-                provider_class_name = module.__all__[0]
-                provider_class = getattr(module, provider_class_name, None)
-            else:
-                # Try common naming patterns
-                for attr_name in dir(module):
-                    if attr_name.endswith("Provider") and not attr_name.startswith("_"):
-                        provider_class = getattr(module, attr_name)
-                        if isinstance(provider_class, type) and issubclass(
-                            provider_class, BaseProvider
-                        ):
-                            break
-                else:
-                    return None
+            for attr_name in dir(module):
+                if attr_name.endswith("Provider") and not attr_name.startswith("_"):
+                    maybe = getattr(module, attr_name)
+                    if isinstance(maybe, type) and issubclass(maybe, BaseProvider):
+                        provider_class = maybe
+                        break
+
+        if not (isinstance(provider_class, type) and issubclass(provider_class, BaseProvider)):
+            provider_class = declared.provider_class if declared else None
 
         if provider_class is None or not (
             isinstance(provider_class, type) and issubclass(provider_class, BaseProvider)
@@ -252,34 +272,20 @@ class ProviderRegistry:
             return None
 
         # Epic 26: optional quirks class. Resolve by importing
-        # ``db/plugins/<X>/quirks.py`` and picking the first class
-        # whose name ends in ``Quirks``. Plugins without a quirks
-        # module fall back to BaseQuirks (no overrides).
+        # ``db/plugins/<X>/quirks.py`` and picking the first class whose name
+        # ends in ``Quirks``; fall back to the quirks class declared on
+        # ``PLUGIN`` (factory-built engines carry it there and ship no
+        # ``quirks.py``). Plugins declaring neither fall back to BaseQuirks.
         quirks_class = cls._discover_quirks_class(plugin_dir, plugin_name)
+        if quirks_class is None and declared is not None:
+            quirks_class = declared.quirks_class
 
-        # Epic 27 + action #11: read config_dialect AND config_class from
-        # plugin.py if it exports a PluginInfo PLUGIN constant (entry-point
-        # style). Importing plugin.py also triggers any
-        # ``@register_database_type`` decorators on the config class itself
-        # so the legacy ``BaseDatabaseConfig._registry`` lookup keeps working.
-        config_dialect: Optional[str] = None
-        config_class: Optional[Type[Any]] = None
-        sqlalchemy_url_builder: Optional[Callable[[Any], str]] = None
-        native_driver_module: Optional[str] = None
-        plugin_py = plugin_dir / "plugin.py"
-        if plugin_py.exists():
-            try:
-                import importlib as _il
-
-                pm = _il.import_module(f"db.plugins.{plugin_name}.plugin")
-                pi = getattr(pm, "PLUGIN", None)
-                if isinstance(pi, PluginInfo):
-                    config_dialect = pi.config_dialect
-                    config_class = pi.config_class
-                    sqlalchemy_url_builder = pi.sqlalchemy_url_builder
-                    native_driver_module = pi.native_driver_module
-            except Exception:
-                pass
+        config_dialect: Optional[str] = declared.config_dialect if declared else None
+        config_class: Optional[Type[Any]] = declared.config_class if declared else None
+        sqlalchemy_url_builder: Optional[Callable[[Any], str]] = (
+            declared.sqlalchemy_url_builder if declared else None
+        )
+        native_driver_module: Optional[str] = declared.native_driver_module if declared else None
 
         return PluginInfo(
             name=name,
