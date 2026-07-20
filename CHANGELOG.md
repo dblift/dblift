@@ -15,6 +15,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
+## [2.7.0] - 2026-07-20
+
+### Added
+
+- New `EventType.SCRIPT_RISK_DETECTED` (`"script.risk.detected"`) event. It
+  signals that a generated or pending SQL script contains a high-risk statement
+  (lock/duration/data-loss) and is emitted by the paid impact-analysis layer.
+  Additive and backward compatible — existing consumers of other event types
+  are unaffected.
+- New `SqlStatement.impact` field (`Optional[Any]`, defaults to `None`). This is
+  a declared, supported extension point for per-statement annotations set by the
+  paid impact-analysis layer; the core neither populates nor interprets it.
+  Declaring it as a real dataclass field (rather than relying on attribute
+  injection on the unslotted dataclass) makes it a stable boundary so a future
+  `__slots__` cannot silently break downstream consumers. Positional
+  construction of `SqlStatement` is unaffected — the field is appended last.
+
 ## [2.6.1] - 2026-07-17
 
 ### Added

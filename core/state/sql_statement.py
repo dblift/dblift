@@ -19,6 +19,10 @@ class SqlStatement:
     depends_on: Optional[List[str]] = None  # List of object names this depends on
     sdk_operation: Optional[Dict[str, Any]] = None  # For CosmosDB: SDK operation details
     requires_sdk: bool = False  # Whether this statement requires SDK execution
+    # Opaque per-statement annotation set by the paid impact-analysis layer;
+    # the core neither populates nor interprets it. Declared as a stable
+    # extension point so a future ``__slots__`` cannot silently break it.
+    impact: Optional[Any] = None
 
     def __post_init__(self):
         """Initialize default values."""
