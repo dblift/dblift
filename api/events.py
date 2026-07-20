@@ -82,7 +82,7 @@ class EventType(Enum):
     VALIDATION_RULE_VIOLATION = "validation.rule.violation"
     VALIDATION_RULE_PASSED = "validation.rule.passed"
 
-    # ===== Schema & Diff Events (7 events) =====
+    # ===== Schema & Diff Events (8 events) =====
     SCHEMA_DIFF_DETECTED = "schema.diff.detected"
     SCHEMA_INTROSPECTION_STARTED = "schema.introspection.started"
     SCHEMA_INTROSPECTION_COMPLETED = "schema.introspection.completed"
@@ -90,6 +90,9 @@ class EventType(Enum):
     SCHEMA_OBJECT_DETECTED = "schema.object.detected"
     DIFF_ANALYSIS_STARTED = "diff.analysis.started"
     DIFF_ANALYSIS_COMPLETED = "diff.analysis.completed"
+    # A generated or pending SQL script contains a high-risk statement
+    # (lock/duration/data-loss). Emitted by the paid impact-analysis layer.
+    SCRIPT_RISK_DETECTED = "script.risk.detected"
 
     # ===== Connection & Provider Events (6 events) =====
     CONNECTION_ESTABLISHED = "connection.established"

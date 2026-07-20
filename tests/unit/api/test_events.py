@@ -293,6 +293,7 @@ class TestEventType:
         assert EventType.VALIDATION_STARTED.value == "validation.started"
         assert EventType.VALIDATION_COMPLETED.value == "validation.completed"
         assert EventType.SCHEMA_DIFF_DETECTED.value == "schema.diff.detected"
+        assert EventType.SCRIPT_RISK_DETECTED.value == "script.risk.detected"
 
     def test_snapshot_event_type_compat_members(self):
         """Snapshot event names remain importable for API compatibility."""
