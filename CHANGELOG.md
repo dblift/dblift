@@ -15,6 +15,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
+## [2.9.0] - 2026-07-23
+
+### Added
+
+- New feature gate `set_not_null_reuses_validated_check` on
+  `PostgresqlQuirks` (`min_version="12.0+"`): whether `SET NOT NULL` can
+  reuse a validated `CHECK (col IS NOT NULL)` constraint to skip the
+  full-table re-scan. Inherited by the true-PostgreSQL compatible family
+  (Aurora, AlloyDB, Neon, Supabase, TimescaleDB, Citus); Redshift and
+  CockroachDB redeclare `feature_gates = {}` to opt out — CockroachDB
+  versions its own engine (v23.x would wrongly read as ">= 12") and
+  Redshift's banner reports PostgreSQL 8.0.x. `KNOWN_FEATURES` gains the
+  new name (MINOR).
+
 ## [2.8.0] - 2026-07-23
 
 ### Added

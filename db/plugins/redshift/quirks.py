@@ -11,6 +11,12 @@ class RedshiftQuirks(PostgresqlQuirks):
     is_ansi_reference_dialect = False
     is_default_sqlglot_read_fallback = False
 
+    # Opt out of PostgreSQL's feature gates: Redshift's engine diverged long
+    # ago (its version() banner even reports PostgreSQL 8.0.x), so PG
+    # version-gated semantics do not transfer. ``feature_gates`` replaces the
+    # parent dict wholesale — Redshift declares no gates.
+    feature_gates = {}
+
     def __init__(self, dialect_name: str = "redshift") -> None:
         super().__init__(dialect_name=dialect_name)
 
