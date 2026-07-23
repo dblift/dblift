@@ -7,8 +7,10 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Type
 
 from db.base_quirks import BaseQuirks
 from db.error import ErrorCategory
+from db.feature_gate import FeatureGate
 
 if TYPE_CHECKING:
+    from core.introspection.version_detector import DatabaseVersion
     from core.sql_generator.alter.base_alter_generator import BaseAlterGenerator
     from core.sql_generator.base_generator import BaseSqlGenerator
 
@@ -818,6 +820,32 @@ class OracleQuirks(BaseQuirks):
         }
 
     version_specific_type_mappings = {("oracle", "12.2+"): {"JSON": "JSON"}}
+
+    # Edition-gated features (see core.sql_model.feature_gates). The pattern
+    # matches the v$version banner, which doubles as the captured edition.
+    feature_gates = {
+        "online_index_build": FeatureGate(
+            edition_pattern=r"enterprise",
+            description="CREATE INDEX ... ONLINE",
+        ),
+    }
+
+    _MARKETING_VERSION_RE = re.compile(r"\b(\d{2})(?:c|g|ai)\b", re.IGNORECASE)
+
+    def parse_server_version(self, raw: "Optional[str]") -> "Optional[DatabaseVersion]":
+        """Oracle banners without a ``Release x.y.z`` clause (e.g. ``"Oracle
+        Database 23ai Free"``) still carry a marketing version — fall back
+        to its major number when the generic dotted-run parse finds nothing.
+        """
+        from core.introspection.version_detector import DatabaseVersion, parse_version
+
+        version = parse_version(raw)
+        if version is not None or not raw:
+            return version
+        match = self._MARKETING_VERSION_RE.search(raw)
+        if match is None:
+            return None
+        return DatabaseVersion(major=int(match.group(1)), full_version=raw)
 
     def type_preferences(self) -> "dict[str, str]":
         """Oracle prefers ``NUMBER`` (for ``INTEGER``) and ``VARCHAR2`` (not ``VARCHAR``)."""

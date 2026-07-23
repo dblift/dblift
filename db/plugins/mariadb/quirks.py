@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from typing import Optional
 
+from db.feature_gate import FeatureGate
 from db.plugins.mysql.quirks import MysqlQuirks
 
 
@@ -28,6 +29,16 @@ class MariadbQuirks(MysqlQuirks):
     version_specific_type_mappings = {
         **MysqlQuirks.version_specific_type_mappings,
         ("mariadb", "10.2+"): {"JSON": "JSON"},
+    }
+
+    # Version-gated features. ``feature_gates`` replaces the parent dict
+    # wholesale (no MRO merging) — every gate MariaDB wants must be
+    # restated here with its own thresholds.
+    feature_gates = {
+        "rename_column": FeatureGate(
+            min_version="10.5.2+",
+            description="ALTER TABLE ... RENAME COLUMN",
+        ),
     }
 
     # MariaDB historically did not need post-introspection rollback in dblift;

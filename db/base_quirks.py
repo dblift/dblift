@@ -26,6 +26,7 @@ from db.dml_analysis import (
     is_full_table_dml,
     updates_restore_key,
 )
+from db.feature_gate import FeatureGate
 
 if TYPE_CHECKING:
     from core.sql_generator.alter.base_alter_generator import BaseAlterGenerator
@@ -49,6 +50,15 @@ class BaseQuirks:
     #: such as ``("postgresql", "9.4+")``. Plugins override with non-empty
     #: dicts; base default is empty.
     version_specific_type_mappings: ClassVar[dict[tuple[str, str], dict[str, str]]] = {}
+
+    #: Version/edition feature gates, keyed by feature name (the shared
+    #: vocabulary lives in ``core.sql_model.feature_gates.KNOWN_FEATURES``).
+    #: Resolved by ``core.sql_model.feature_gates.supports_feature``. Read
+    #: as a plain class attribute: a subclass redeclaring this dict
+    #: replaces it wholesale (no MRO merging) — an inheriting dialect such
+    #: as MariaDB must restate every gate it wants. Base default is empty
+    #: ("core doesn't know" for every feature).
+    feature_gates: ClassVar[Dict[str, FeatureGate]] = {}
 
     # ------------------------------------------------------------------
     # Capability matrix (Epic 26 followup — capabilities-onto-quirks).
@@ -698,6 +708,19 @@ class BaseQuirks:
         All hooks return their generic defaults in that case. (PR #241 Bugbot.)
         """
         self.dialect_name = dialect_name
+
+    def parse_server_version(self, raw: Optional[str]) -> Optional[object]:
+        """Vendor-specific parse of a captured server version banner.
+
+        Returns a ``DatabaseVersion`` (from the version-detector module —
+        typed as ``object`` here because quirks stay decoupled from the
+        introspection subsystem) or ``None`` to let the caller fall back
+        to the generic dotted-run parse
+        (``core.sql_model.server_info.ServerInfo.from_mapping``). Plugins
+        whose banners need vendor handling (e.g. Oracle ``"23ai Free"``
+        without a ``Release`` clause) override this. Never raises.
+        """
+        return None
 
     # ------------------------------------------------------------------
     # Migration-script preprocessing hooks (Tier 1 plugin-isolation).

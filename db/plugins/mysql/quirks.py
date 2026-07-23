@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Type
 from core.utils.database_url_parser import DatabaseUrlParser
 from db.base_quirks import BaseQuirks
 from db.error import ErrorCategory
+from db.feature_gate import FeatureGate
 
 if TYPE_CHECKING:
     from core.sql_generator.alter.base_alter_generator import BaseAlterGenerator
@@ -643,6 +644,14 @@ class MysqlQuirks(BaseQuirks):
         }
 
     version_specific_type_mappings = {("mysql", "5.7+"): {"JSON": "JSON"}}
+
+    # Version-gated features (see core.sql_model.feature_gates).
+    feature_gates = {
+        "rename_column": FeatureGate(
+            min_version="8.0+",
+            description="ALTER TABLE ... RENAME COLUMN",
+        ),
+    }
 
     def type_preferences(self) -> "dict[str, str]":
         """MySQL prefers ``INT`` (not ``INTEGER``) and ``DATETIME`` (not ``TIMESTAMP``)."""

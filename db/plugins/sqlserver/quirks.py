@@ -6,6 +6,7 @@ import re
 from typing import TYPE_CHECKING, Any, Dict, Optional, Tuple, Type
 
 from db.base_quirks import BaseQuirks
+from db.feature_gate import FeatureGate
 
 _PK_CLUSTERED_RE = re.compile(r"(PRIMARY\s+KEY)\s+(CLUSTERED|NONCLUSTERED)", re.IGNORECASE)
 _UNIQUE_CLUSTERED_RE = re.compile(r"(UNIQUE)\s+(CLUSTERED|NONCLUSTERED)", re.IGNORECASE)
@@ -484,6 +485,16 @@ class SqlserverQuirks(BaseQuirks):
         }
 
     version_specific_type_mappings = {("sqlserver", "13.0+"): {"JSON": "JSON"}}
+
+    # Edition-gated features (see core.sql_model.feature_gates). The edition
+    # pattern matches SERVERPROPERTY('Edition') strings; Azure SQL always
+    # supports online index builds.
+    feature_gates = {
+        "online_index_build": FeatureGate(
+            edition_pattern=r"enterprise|developer|evaluation|azure",
+            description="WITH (ONLINE = ON) index builds",
+        ),
+    }
 
     def type_preferences(self) -> "dict[str, str]":
         """SQL Server prefers ``INT`` (not ``INTEGER``) and ``DATETIME2`` (not ``TIMESTAMP``).
