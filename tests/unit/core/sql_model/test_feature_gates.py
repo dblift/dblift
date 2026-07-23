@@ -92,8 +92,28 @@ class TestDeclaredGates:
         gate = get_feature_gates("mariadb")["rename_column"]
         assert gate.min_version == "10.5.2+"
 
+    def test_postgresql_declares_set_not_null_reuses_validated_check(self):
+        gate = get_feature_gates("postgresql")["set_not_null_reuses_validated_check"]
+        assert gate.min_version == "12.0+"
+
+    @pytest.mark.parametrize(
+        "alias", ["aurora-postgresql", "neon", "supabase", "alloydb", "timescaledb", "citus"]
+    )
+    def test_true_pg_family_inherits_postgresql_gates(self, alias):
+        """Factory-built PG-compatible quirks inherit PostgreSQL's gates —
+        these engines run a real PostgreSQL server, so PG version semantics
+        transfer."""
+        assert "set_not_null_reuses_validated_check" in get_feature_gates(alias)
+
     def test_redshift_declares_no_gates(self):
+        """Redshift opts out (redeclared empty): its engine diverged from PG
+        long ago and its version() banner even reports PostgreSQL 8.0.x."""
         assert dict(get_feature_gates("redshift")) == {}
+
+    def test_cockroachdb_declares_no_gates(self):
+        """CockroachDB opts out (redeclared empty): v23.x would read as
+        ">= 12" to a naive comparison — the wrong-signal guard."""
+        assert dict(get_feature_gates("cockroachdb")) == {}
 
 
 # --- Resolver tri-state matrix -----------------------------------------------
@@ -155,6 +175,30 @@ class TestSupportsFeature:
     )
     def test_mariadb_rename_column_by_version(self, version, expected):
         assert supports_feature("mariadb", "rename_column", {"version": version}) is expected
+
+    @pytest.mark.parametrize(
+        "version,expected",
+        [
+            ("PostgreSQL 12.0 on x86_64", True),  # exact boundary
+            ("PostgreSQL 12.4 on x86_64-pc-linux-gnu", True),
+            ("PostgreSQL 16.2 on x86_64", True),
+            ("PostgreSQL 11.9 on x86_64", False),
+            (None, None),
+        ],
+    )
+    def test_postgresql_set_not_null_by_version(self, version, expected):
+        server_info = {"version": version} if version is not None else None
+        result = supports_feature("postgresql", "set_not_null_reuses_validated_check", server_info)
+        assert result is expected
+
+    def test_cockroachdb_own_versioning_never_matches_pg_gate(self):
+        """CockroachDB v23.x must NOT resolve the PG gate to True (opted out)."""
+        result = supports_feature(
+            "cockroachdb",
+            "set_not_null_reuses_validated_check",
+            {"version": "CockroachDB CCL v23.1.11"},
+        )
+        assert result is None
 
     def test_unknown_dialect_is_unknown(self):
         assert supports_feature("nosuchdb", "online_index_build", {"edition": "x"}) is None

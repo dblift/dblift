@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Type
 
 from db.base_quirks import BaseQuirks
 from db.error import ErrorCategory
+from db.feature_gate import FeatureGate
 
 # Each entry: (compiled regex, ErrorCategory). Sourced by
 # ``DatabaseErrorClassifier`` via ``error_patterns()`` (ADR-26 A2).
@@ -741,6 +742,19 @@ class PostgresqlQuirks(BaseQuirks):
         }
 
     version_specific_type_mappings = {("postgresql", "9.4+"): {"JSONB": "JSON"}}
+
+    # Version-gated features (see core.sql_model.feature_gates). Inherited by
+    # the PG-compatible family; divergent engines with their own quirks class
+    # (Redshift, CockroachDB) redeclare ``feature_gates`` to opt out.
+    feature_gates = {
+        "set_not_null_reuses_validated_check": FeatureGate(
+            min_version="12.0+",
+            description=(
+                "SET NOT NULL reuses a validated CHECK (col IS NOT NULL) "
+                "to skip the full-table re-scan"
+            ),
+        ),
+    }
 
     def type_preferences(self) -> "dict[str, str]":
         """PostgreSQL keeps ANSI names — ``INTEGER`` / ``VARCHAR`` / ``TIMESTAMP`` unchanged."""
