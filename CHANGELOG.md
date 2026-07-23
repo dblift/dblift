@@ -15,6 +15,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
+## [2.8.0] - 2026-07-23
+
+### Added
+
+- Version/edition-gated feature support. Plugins can declare `FeatureGate`
+  entries (`db/feature_gate.py`) on their quirks classes via the new
+  `BaseQuirks.feature_gates` ClassVar; the tri-state resolver
+  `core.sql_model.feature_gates.supports_feature(dialect, feature,
+  server_info)` answers True (server provably supports the feature), False
+  (provably not), or None (unknown — callers keep their conservative
+  fallback). First gates: `online_index_build` (SQL Server, Oracle —
+  edition-gated) and `rename_column` (MySQL 8.0+, MariaDB 10.5.2+).
+- `core.sql_model.server_info.ServerInfo` — typed parse of the captured
+  `{"edition", "version"}` server-identity mapping, producing a comparable
+  `DatabaseVersion` through the new overridable
+  `BaseQuirks.parse_server_version` hook (Oracle overrides it to handle
+  `"23ai"`-style banners without a `Release` clause).
+- Shared version-string helpers `parse_version` and `version_matches_spec`
+  in `core.introspection.version_detector`, extracted from
+  `CanonicalTypeMapper` (which now delegates). Banner-tolerant: parses the
+  first dotted numeric run of vendor strings such as
+  `"PostgreSQL 16.2 on x86_64..."`.
+
+All additions are backward compatible (MINOR): two new modules, two new
+`BaseQuirks` members with inert defaults, no changed signatures.
+
 ## [2.7.0] - 2026-07-20
 
 ### Added

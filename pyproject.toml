@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "dblift"
-version = "2.7.0"
+version = "2.8.0"
 description = "A database migration tool that supports multiple databases with native Python drivers"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -362,8 +362,11 @@ strict_equality = true
 module = [
     "core.dialect_boundary",
     "core.sql_model.dialect",
+    "core.sql_model.feature_gates",
+    "core.sql_model.server_info",
     "db.base_quirks",
     "db.base_provider",
+    "db.feature_gate",
     "db.provider_registry",
     "db.plugins.cosmosdb.introspection",
     "db.plugins.db2.introspection",

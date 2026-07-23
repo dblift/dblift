@@ -5,13 +5,10 @@ Provides a canonical form for all SQL data types across dialects,
 enabling consistent type representation regardless of source dialect.
 """
 
-import logging
 import re
 from typing import TYPE_CHECKING, Any, Dict, Optional, Set
 
 from db.provider_registry import ProviderRegistry
-
-_logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     pass
@@ -124,29 +121,22 @@ class CanonicalTypeMapper:
         return base_type
 
     def _version_matches(self, version: str, pattern: str) -> bool:
-        """Check if version matches pattern (e.g., "9.4+", "12.2+")."""
-        if pattern.endswith("+"):
-            min_version = pattern[:-1]
-            try:
-                min_ver = self._parse_version(min_version)
-                actual_ver = self._parse_version(version)
-                # Compare DatabaseVersion objects - mypy doesn't understand the comparison
-                result: bool = bool(actual_ver >= min_ver)  # type: ignore[operator]
-                return result
-            except Exception as e:
-                _logger.debug(f"Version comparison failed: {e}")
-                return False
-        return version == pattern
+        """Check if version matches pattern (e.g., "9.4+", "12.2+").
+
+        Delegates to :func:`core.introspection.version_detector.version_matches_spec`.
+        """
+        from core.introspection.version_detector import version_matches_spec
+
+        return version_matches_spec(version, pattern)
 
     def _parse_version(self, version_str: str) -> Any:  # DatabaseVersion
-        """Parse version string to DatabaseVersion."""
-        from core.introspection.version_detector import DatabaseVersion
+        """Parse version string to DatabaseVersion.
 
-        parts = version_str.split(".")
-        major = int(parts[0]) if len(parts) > 0 else 0
-        minor = int(parts[1]) if len(parts) > 1 else 0
-        patch = int(parts[2]) if len(parts) > 2 else 0
-        return DatabaseVersion(major, minor, patch)
+        Delegates to :func:`core.introspection.version_detector.parse_version`.
+        """
+        from core.introspection.version_detector import parse_version
+
+        return parse_version(version_str)
 
     def get_canonical_variants(self, canonical_type: str) -> Set[str]:
         """Get all variant names for a canonical type.
