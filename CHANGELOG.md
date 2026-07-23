@@ -19,6 +19,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `zero_downtime` added to the paid raw-config allowlist
+  (`_PAID_RAW_CONFIG_KEYS`): a `zero_downtime:` section in the YAML config
+  is now preserved verbatim into `_paid_config_data` for the paid tier,
+  instead of being dropped during parsing — mirroring the existing
+  `data_sets` / `validation` passthrough.
 - Version/edition-gated feature support. Plugins can declare `FeatureGate`
   entries (`db/feature_gate.py`) on their quirks classes via the new
   `BaseQuirks.feature_gates` ClassVar; the tri-state resolver
