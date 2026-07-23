@@ -25,7 +25,7 @@ _CONFIG_LOAD_EXC: Tuple[Type[Exception], ...] = (
     AttributeError,
     IndexError,
 )
-_PAID_RAW_CONFIG_KEYS: Tuple[str, ...] = ("data_sets", "datasets", "validation")
+_PAID_RAW_CONFIG_KEYS: Tuple[str, ...] = ("data_sets", "datasets", "validation", "zero_downtime")
 
 
 # ``validate-sql`` only needs a dialect-typed DbliftConfig; connection is never opened.
