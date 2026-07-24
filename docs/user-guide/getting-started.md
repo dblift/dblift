@@ -40,6 +40,10 @@ migrations:
 
 dblift does not auto-discover `dblift.yaml`. When using a config file, pass `--config dblift.yaml` with every command (e.g. `dblift --config dblift.yaml info`). The env var approach skips that flag.
 
+**More than one environment?** One file can describe them all — declare
+`environments:` blocks (dev, staging, prod, …) and select with `--env <name>`.
+See [Configuration → Environments](configuration.md#environments).
+
 ## Step 3: Create your first migration
 
 ```bash

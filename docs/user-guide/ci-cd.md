@@ -7,6 +7,12 @@ dblift is a pip package with no system dependencies, so CI is just
 All commands need a reachable database. Below, the DB connection is supplied
 via the `DBLIFT_DB_URL` environment variable (overrides `dblift.yaml`).
 
+> **Tip — one config for all stages:** instead of exporting a different
+> `DBLIFT_DB_URL` per stage, declare your stages once under `environments:` in
+> `dblift.yaml` and select with `--env <stage>` (or `DBLIFT_ENV`, or a branch
+> mapping via `resolve.branch_map`). See
+> [Configuration → Environments](configuration.md#environments).
+
 ## GitHub Actions
 
 ```yaml

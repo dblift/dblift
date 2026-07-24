@@ -30,7 +30,13 @@ def _config_with(extra):
 class TestAllowlist:
     def test_allowlist_contents(self):
         """The allowlist is cross-tier API: paid tiers key on these names."""
-        assert _PAID_RAW_CONFIG_KEYS == ("data_sets", "datasets", "validation", "zero_downtime")
+        assert _PAID_RAW_CONFIG_KEYS == (
+            "data_sets",
+            "datasets",
+            "snapshot",
+            "validation",
+            "zero_downtime",
+        )
 
 
 class TestPassthrough:

@@ -368,6 +368,15 @@ def create_parser(
     parser.add_argument("--version", action="store_true", help="Show version and exit")
     parser.add_argument("--config", help="Path to config file")
     parser.add_argument(
+        "--env",
+        dest="env",
+        metavar="NAME",
+        help=(
+            "Named environment from the config file's environments: section "
+            "(overrides DBLIFT_ENV / resolve.branch_map selection)"
+        ),
+    )
+    parser.add_argument(
         "--scripts",
         action="append",
         dest="scripts_list",

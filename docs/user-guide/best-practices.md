@@ -51,16 +51,22 @@ One change per migration makes them easier to:
 
 ## 5. Test in Development First
 
-Always test migrations on a development database before production:
+Always test migrations on a development database before production. Declare
+both targets once in `dblift.yaml` under `environments:` and switch with
+`--env` instead of maintaining one config file per environment:
+
 ```bash
 # On dev database
-dblift info
-dblift migrate --dry-run
-dblift migrate
+dblift info --env dev
+dblift migrate --dry-run --env dev
+dblift migrate --env dev
 
-# Verify everything works
-# Then apply to production
+# Verify everything works, then apply to production
+dblift migrate --env prod
 ```
+
+See [Configuration → Environments](configuration.md#environments) for the
+`environments:` block, selection precedence, and branch mapping.
 
 ## 6. Use Descriptive Names
 

@@ -88,6 +88,9 @@ _GLOBAL_ONLY_ARGS: List[str] = [
     # work: without this, --config ends up in subcommand_args and the `db` parser
     # consumes its value as the `db_command` positional (BUG-01).
     "--config",
+    # --env selects the active environments: block; like --config it is
+    # configuration selection, root-only, and takes a value.
+    "--env",
     "--scripts",
     "--dry-run",
     # B8-BUG-01: --recursive / --no-recursive live on the top-level parser

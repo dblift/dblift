@@ -2,6 +2,20 @@
 
 This guide covers all DBLift commands and their usage.
 
+## Global Flags
+
+Every command accepts these configuration-selection flags before the command
+name:
+
+| Flag | Purpose |
+|---|---|
+| `--config <path>` | Path to the configuration file |
+| `--env <name>` | Active environment from the file's `environments:` section (see [Configuration → Environments](configuration.md#environments)) |
+
+```bash
+dblift --env prod migrate     # or: dblift migrate --env prod
+```
+
 ## Common Tasks
 
 ### Applying Changes to Your Database

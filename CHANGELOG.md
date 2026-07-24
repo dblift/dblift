@@ -15,6 +15,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
+## [2.10.0] - 2026-07-24
+
+### Added
+
+- **Multi-environment configuration.** One `dblift.yaml` can now describe every
+  environment: root-level sections are the shared base, and each
+  `environments.<name>` block deep-merges over them (mappings merge
+  recursively; scalars and lists replace) — for any section, `database` and
+  `migrations` included. Selection precedence: `--env <name>` (new top-level
+  CLI flag on every command) > the `DBLIFT_ENV` environment variable
+  (renameable via `resolve.env_var`) > `resolve.branch_map` fnmatch patterns
+  matched against the branch name read from `resolve.branch_var` > none (root
+  sections only — a file without `environments:` behaves exactly as before).
+  The merge happens before environment variables, CLI flags, secrets
+  resolution, and the paid raw-config passthrough, so the effective precedence
+  is: defaults → root sections → active environment → env vars → CLI flags.
+  Unknown environment names fail fast listing the configured ones.
+- `DBLiftClient.from_config_file(..., environment="prod")` and
+  `ConfigBuilder.build(..., environment=...)` — programmatic environment
+  selection (MINOR API addition); the same selection chain applies when the
+  keyword is omitted.
+- `snapshot` added to the paid raw-config allowlist (preserved verbatim into
+  `_paid_config_data`, per-environment mergeable like the other paid
+  sections).
+
+All additions are backward compatible (MINOR): configs without
+`environments:` produce byte-identical effective configuration.
+
 ## [2.9.0] - 2026-07-23
 
 ### Added

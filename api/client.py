@@ -861,9 +861,22 @@ class DBLiftClient:
         cls,
         config_path: str,
         logger: Optional[Any] = None,
+        environment: Optional[str] = None,
         **overrides: Any,
     ) -> Self:
-        """Create a client instance from config file path."""
+        """Create a client instance from config file path.
+
+        Args:
+            config_path: Path to the configuration file.
+            logger: Optional logger instance.
+            environment: Named environment from the file's ``environments:``
+                section, deep-merged over the root sections before overrides.
+                When ``None``, selection still honors ``DBLIFT_ENV`` (or
+                ``resolve.env_var``) and ``resolve.branch_map``.
+            **overrides: Configuration overrides (database_url, ...).
+        """
+        if environment is not None:
+            overrides["environment"] = environment
         return cast(
             Self,
             client_from_config_file(config_path, logger, client_cls=cls, **overrides),
