@@ -63,6 +63,73 @@ migrations:
       recursive: false                     # Dict format (per-directory setting)
 ```
 
+## Environments
+
+One `dblift.yaml` can describe **all** your environments. Root-level sections are
+the shared base; each `environments.<name>` block specializes any section —
+`database`, `migrations`, logging, anything — for that environment:
+
+```yaml
+database:                       # shared base
+  type: postgresql
+  username: dblift_app
+migrations:
+  directories: [migrations]
+
+environments:
+  prod:
+    database:
+      url: "${DBLIFT_PROD_URL}"
+  uat:
+    database:
+      url: "${DBLIFT_UAT_URL}"
+    migrations:
+      directories: [migrations, migrations_uat]
+
+resolve:                        # optional selection helpers
+  branch_var: GITHUB_REF_NAME   # env var holding the CI branch name
+  branch_map:
+    "env/prod": prod            # fnmatch-style patterns are supported ("env/*")
+    "env/uat": uat
+```
+
+### Selecting the active environment
+
+Highest to lowest:
+
+1. `--env <name>` on any command (`dblift migrate --env prod`)
+2. The `DBLIFT_ENV` environment variable (rename it via `resolve.env_var`)
+3. `resolve.branch_map` matched against the branch name read from
+   `resolve.branch_var`
+4. None — only the root sections apply (a file without `environments:` behaves
+   exactly as before)
+
+An unknown name fails fast, listing the configured environments.
+
+### Merge semantics and precedence
+
+The active environment's block is **deep-merged** over the root sections:
+mappings merge recursively, scalars and lists replace. The full configuration
+precedence, highest to lowest, is:
+
+**CLI flag → environment variable → active `environments.<name>` block → root
+config sections → built-in default**
+
+So a `DBLIFT_DB_URL` export still overrides the active environment's
+`database.url`, and `--db-url` overrides both.
+
+### Programmatic use
+
+```python
+from api import DBLiftClient
+
+with DBLiftClient.from_config_file("dblift.yaml", environment="prod") as client:
+    client.migrate()
+```
+
+When `environment` is omitted, the same selection chain applies (`DBLIFT_ENV`,
+then `resolve.branch_map`).
+
 ## Supported Databases
 
 DBLift works with these databases:
@@ -159,7 +226,11 @@ export DBLIFT_DB_USERNAME="myuser"
 export DBLIFT_DB_PASSWORD="mypassword"
 export DBLIFT_SNAPSHOT_TABLE="dblift_schema_snapshots"  # Optional: custom snapshot table name
 export DBLIFT_MAX_SNAPSHOTS="5"  # Optional: keep up to 5 snapshots (default: 1)
+export DBLIFT_ENV="prod"  # Optional: select the active environments: block (see Environments)
 ```
+
+> `DBLIFT_ENV` is a **selector**, not a config property: like `--config`, it
+> chooses which configuration applies rather than setting a value inside it.
 
 !!! warning "Security Best Practice"
     Never commit passwords or sensitive credentials to version control. Always use environment variables for production deployments.

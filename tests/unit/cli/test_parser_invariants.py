@@ -123,6 +123,7 @@ def test_no_subparser_redefines_ancestor_dest():
 
 PARENT_FLAG_CASES = [
     ("--config", "/tmp/x.yaml", "config", "/tmp/x.yaml"),
+    ("--env", "prod", "env", "prod"),
     ("--scripts", "/tmp/scripts", "scripts_list", ["/tmp/scripts"]),
     ("--db-url", "postgresql+psycopg://h/db", "database_url", "postgresql+psycopg://h/db"),
     ("--db-username", "alice", "database_username", "alice"),

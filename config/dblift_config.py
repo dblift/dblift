@@ -1,9 +1,10 @@
+import fnmatch
 import json
 import os
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple, Type, Union, cast
+from typing import Any, Dict, List, Mapping, Optional, Tuple, Type, Union, cast
 
 import yaml
 
@@ -25,7 +26,23 @@ _CONFIG_LOAD_EXC: Tuple[Type[Exception], ...] = (
     AttributeError,
     IndexError,
 )
-_PAID_RAW_CONFIG_KEYS: Tuple[str, ...] = ("data_sets", "datasets", "validation", "zero_downtime")
+_PAID_RAW_CONFIG_KEYS: Tuple[str, ...] = (
+    "data_sets",
+    "datasets",
+    "snapshot",
+    "validation",
+    "zero_downtime",
+)
+
+# Top-level keys that define the multi-environment layer. They are consumed by
+# environment selection/merge and stripped from the effective config before any
+# other consumer (typed sections, paid passthrough, validation) sees the data.
+_ENVIRONMENT_SECTION_KEYS: Tuple[str, ...] = ("environments", "resolve")
+
+#: Environment variable naming the active environment (overridable via
+#: ``resolve.env_var``). Deliberately NOT a registry property: like
+#: ``--config``, it selects configuration rather than being configuration.
+DEFAULT_ENV_SELECTOR_VAR = "DBLIFT_ENV"
 
 
 # ``validate-sql`` only needs a dialect-typed DbliftConfig; connection is never opened.
@@ -129,6 +146,74 @@ def _resolve_env_placeholders(data: Any) -> Any:
     return data
 
 
+def select_environment(
+    config_data: Dict[str, Any],
+    explicit: Optional[str] = None,
+    env: Optional[Mapping[str, str]] = None,
+) -> Optional[str]:
+    """Return the active environment name, or ``None`` when none is selected.
+
+    Precedence: *explicit* (``--env`` / API keyword) > the selector environment
+    variable (``DBLIFT_ENV`` by default, overridable via ``resolve.env_var``) >
+    ``resolve.branch_map`` matched (``fnmatch``-style) against the branch name
+    read from ``resolve.branch_var``. A selected name that is not declared
+    under ``environments:`` raises :class:`ConfigurationError` listing the
+    configured names — including when no ``environments:`` section exists.
+    """
+    environ: Mapping[str, str] = os.environ if env is None else env
+    environments = config_data.get("environments")
+    resolve = config_data.get("resolve") or {}
+    if not isinstance(resolve, dict):
+        resolve = {}
+
+    selector_var = resolve.get("env_var") or DEFAULT_ENV_SELECTOR_VAR
+    name: Optional[str] = explicit or environ.get(selector_var) or None
+
+    if not name:
+        branch_var = resolve.get("branch_var")
+        branch_map = resolve.get("branch_map") or {}
+        branch = environ.get(branch_var) if branch_var else None
+        if branch and isinstance(branch_map, dict):
+            for pattern, target in branch_map.items():
+                if fnmatch.fnmatchcase(branch, str(pattern)):
+                    name = str(target)
+                    break
+
+    if not name:
+        return None
+
+    if not isinstance(environments, dict) or name not in environments:
+        known = sorted(environments) if isinstance(environments, dict) else []
+        raise ConfigurationError(
+            f"Unknown environment '{name}'. Configured environments: "
+            f"{', '.join(known) if known else '(none — add an environments: section)'}"
+        )
+    return name
+
+
+def apply_environment(config_data: Dict[str, Any], environment: Optional[str]) -> Dict[str, Any]:
+    """Return the effective config: root sections with the environment merged in.
+
+    Root-level sections are the shared base; ``environments.<environment>`` is
+    deep-merged over them (dicts merge recursively, scalars and lists replace).
+    The ``environments:`` / ``resolve:`` keys are always stripped from the
+    result — with or without an active environment — so no downstream consumer
+    (typed sections, paid passthrough, validation) ever sees the selector layer.
+    """
+    effective = {k: v for k, v in config_data.items() if k not in _ENVIRONMENT_SECTION_KEYS}
+    if environment is None:
+        return effective
+    block = (config_data.get("environments") or {}).get(environment)
+    if block is None:
+        return effective
+    if not isinstance(block, dict):
+        raise ConfigurationError(
+            f"environments.{environment} must be a mapping of config sections, "
+            f"got {type(block).__name__}"
+        )
+    return deep_merge_dicts(effective, block)
+
+
 def _extract_paid_raw_config(data: Dict[str, Any]) -> Dict[str, Any]:
     paid_raw: Dict[str, Any] = {}
     for key in _PAID_RAW_CONFIG_KEYS:
@@ -161,6 +246,16 @@ def load_config(config_file_path: Optional[str], args: Optional[Any] = None) -> 
             config_data = DbliftConfig.merge_config_data(config_data, file_data)
         except _CONFIG_LOAD_EXC as e:
             raise RuntimeError(f"Error loading config file {config_file_path}: {e}") from e
+
+    # Multi-environment layer: select the active environment (--env >
+    # DBLIFT_ENV / resolve.env_var > resolve.branch_map > none) and merge its
+    # block over the root sections BEFORE env vars and CLI args, so the
+    # effective precedence is: defaults -> root sections -> active environment
+    # -> environment variables -> CLI flags. The environments:/resolve: keys
+    # are stripped here in every case.
+    explicit_env = getattr(args, "env", None) if args else None
+    active_environment = select_environment(config_data, explicit=explicit_env)
+    config_data = apply_environment(config_data, active_environment)
 
     # Override with environment variables.
     # Env vars are partial overrides — merge them directly into the already-typed
@@ -203,6 +298,8 @@ def load_config(config_file_path: Optional[str], args: Optional[Any] = None) -> 
         command in ("validate-sql", "plan") and commands_list and len(commands_list) == 1
     )
     config = DbliftConfig.from_dict(config_data, resolve_secrets=not is_offline_cmd)
+    if active_environment:
+        setattr(config, "_active_environment", active_environment)
     if config_file_path:
         setattr(config, "_config_file_path", config_file_path)
     if args:

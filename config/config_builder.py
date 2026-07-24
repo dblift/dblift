@@ -15,7 +15,7 @@ from config.database_config import (
     _detect_dialect_from_url,
     _native_canonical_from_scheme,
 )
-from config.dblift_config import DbliftConfig
+from config.dblift_config import DbliftConfig, apply_environment, select_environment
 from config.errors import ConfigurationError
 
 
@@ -76,6 +76,7 @@ class ConfigBuilder:
             "log_dir",
             "log_format",
             "env_overrides",
+            "environment",
         }
     )
 
@@ -217,18 +218,28 @@ class ConfigBuilder:
 
     @classmethod
     def build(
-        cls, file_path: Optional[Union[str, Path]] = None, env_overrides: bool = True, **kwargs: Any
+        cls,
+        file_path: Optional[Union[str, Path]] = None,
+        env_overrides: bool = True,
+        environment: Optional[str] = None,
+        **kwargs: Any,
     ) -> DbliftConfig:
         """Unified configuration builder.
 
         Builds configuration from multiple sources with precedence:
         1. kwargs (highest priority)
         2. Environment variables (if env_overrides=True)
-        3. Config file (if file_path provided)
+        3. Active environment block (``environments.<name>`` — see below)
+        4. Root config file sections (if file_path provided)
 
         Args:
             file_path: Path to config file
             env_overrides: Whether to apply environment variable overrides
+            environment: Named environment from the file's ``environments:``
+                section to merge over the root sections. When ``None``, the
+                selection chain still honors ``DBLIFT_ENV`` (or
+                ``resolve.env_var``) and ``resolve.branch_map`` — mirroring
+                ``load_config``. Unknown names raise ``ConfigurationError``.
             **kwargs: Configuration overrides (database_url, database_schema, etc.)
 
         Returns:
@@ -270,6 +281,12 @@ class ConfigBuilder:
                     f"Failed to load config file '{file_path_str}': {e}",
                     stacklevel=2,
                 )
+
+        # Multi-environment layer (same semantics and ordering as load_config):
+        # merge the active environments.<name> block over the root sections
+        # BEFORE env vars and kwargs, and strip the selector keys.
+        active_environment = select_environment(config_data, explicit=environment)
+        config_data = apply_environment(config_data, active_environment)
 
         # Apply environment variables if enabled.
         # Merge the raw env dict directly — bypassing from_env() which requires
@@ -348,7 +365,10 @@ class ConfigBuilder:
                 "No configuration source provided. Pass --config, --db-url, or set DBLIFT_DB_URL."
             )
 
-        return cls.from_dict(config_data)
+        config = cls.from_dict(config_data)
+        if active_environment:
+            setattr(config, "_active_environment", active_environment)
+        return config
 
     @classmethod
     def from_dict(cls, config_dict: Dict[str, Any]) -> DbliftConfig:
