@@ -19,6 +19,7 @@ from typing import TYPE_CHECKING, Optional
 
 from core.constants import DEFAULT_MIGRATION_LOCK_TIMEOUT_SECONDS
 from core.logger import Log, NullLog
+from db.plugins.nosql_base import DocumentLockingManager
 
 from .query_executor import CosmosDbQueryExecutor
 
@@ -26,7 +27,7 @@ if TYPE_CHECKING:
     from azure.cosmos import ContainerProxy
 
 
-class CosmosDbLockingManager:
+class CosmosDbLockingManager(DocumentLockingManager):
     """Manages migration locks using Cosmos DB optimistic concurrency and document-based locking.
 
     Uses CosmosDB's native optimistic concurrency (ETag-based conditional updates) as the

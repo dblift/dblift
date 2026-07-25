@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 from config import DbliftConfig
 from core.logger import Log
-from db.plugins.base_history_manager import BaseHistoryManager
+from db.plugins.nosql_base import DocumentHistoryManager
 
 from .query_executor import CosmosDbQueryExecutor
 from .schema_operations import CosmosDbSchemaOperations
@@ -21,7 +21,7 @@ if TYPE_CHECKING:
     from azure.cosmos import ContainerProxy
 
 
-class CosmosDbHistoryManager(BaseHistoryManager):
+class CosmosDbHistoryManager(DocumentHistoryManager):
     """Manages migration history in Cosmos DB."""
 
     # CosmosDB uses container names as-is (case-sensitive)
