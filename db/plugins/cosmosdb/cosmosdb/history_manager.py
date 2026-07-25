@@ -436,17 +436,23 @@ class CosmosDbHistoryManager(DocumentHistoryManager):
         return deleted
 
     def create_history_table(self, schema: str, table_name: str) -> str:
-        """Generate SQL to create the migration history container.
+        """Describe how the history container is created — not executable DDL.
+
+        Cosmos has no CREATE statement to hand back. The container is made
+        by :meth:`create_history_container_if_not_exists` through the SDK;
+        callers only log this string.
 
         Args:
             schema: Schema name (not used in Cosmos DB)
             table_name: Container name
 
         Returns:
-            SQL string to create the history container
+            A comment describing the SDK call that creates the container.
         """
-        # Return CREATE CONTAINER statement for Cosmos DB
-        return f"CREATE CONTAINER {table_name} (id STRING) WITH (partitionKey='/version')"
+        return (
+            f"-- CosmosDB: database.create_container_if_not_exists("
+            f"id={table_name!r}, partition_key=PartitionKey(path='/version'))"
+        )
 
     def create_migration_history_table_if_not_exists(
         self,

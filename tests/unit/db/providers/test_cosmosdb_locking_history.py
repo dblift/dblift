@@ -457,18 +457,26 @@ class TestCosmosDbHistoryManagerInit(unittest.TestCase):
 
 
 class TestCreateHistoryTable(unittest.TestCase):
-    """Test create_history_table SQL generation."""
+    """create_history_table describes the SDK call; it is not runnable DDL."""
 
-    def test_returns_create_container_statement(self):
+    def test_describes_the_sdk_call_and_names_the_container(self):
         mgr, _, _ = _make_history_manager()
-        sql = mgr.create_history_table("public", "my_history")
-        self.assertIn("CREATE CONTAINER", sql)
-        self.assertIn("my_history", sql)
+        described = mgr.create_history_table("public", "my_history")
+        self.assertTrue(described.lstrip().startswith("--"))
+        self.assertIn("create_container_if_not_exists", described)
+        self.assertIn("my_history", described)
 
-    def test_contains_partition_key(self):
+    def test_names_the_partition_key_path(self):
         mgr, _, _ = _make_history_manager()
-        sql = mgr.create_history_table("public", "dblift_schema_history")
-        self.assertIn("partitionKey", sql)
+        described = mgr.create_history_table("public", "dblift_schema_history")
+        self.assertIn("/version", described)
+
+    def test_emits_no_pseudo_ddl(self):
+        """The old CREATE CONTAINER string looked runnable but never was."""
+        mgr, _, _ = _make_history_manager()
+        described = mgr.create_history_table("public", "dblift_schema_history").upper()
+        self.assertNotIn("CREATE CONTAINER ", described)
+        self.assertNotIn("CREATE TABLE", described)
 
 
 class TestCreateHistoryContainerIfNotExists(unittest.TestCase):

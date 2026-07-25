@@ -42,8 +42,6 @@ class CosmosdbQuirks(BaseQuirks):
     # NoSQL: identifiers are JSON keys, not SQL identifiers — no quoting.
     quote_open = ""
     quote_close = ""
-    # Table DDL (story 26-5). CosmosDB uses CREATE CONTAINER.
-    table_create_keyword = "CONTAINER"
     # Wave B hooks.
     native_driver_display = "Azure Cosmos DB SDK for Python"
     requires_credentials = False
