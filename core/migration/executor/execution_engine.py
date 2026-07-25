@@ -1040,6 +1040,11 @@ class ExecutionEngine:
             self.log.info(f"Python callback {callback.script_name} executed successfully")
             return
 
+        # A SQL callback on a dialect with no SQL DDL is the same mistake as a
+        # SQL migration, and must read the same way (DBLIFT-NOSQL-001) rather
+        # than surfacing as a parser or driver error further down.
+        self.executor_factory.ensure_format_supported(callback, MigrationFormat.SQL)
+
         # Pass our dialect to the migration to ensure proper SQL parsing
         dialect = self.sql_analyzer.dialect
 

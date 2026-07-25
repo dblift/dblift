@@ -9,6 +9,7 @@ and directs it to the correct executor.
 import logging
 from typing import Any, Dict, List, Optional, Type
 
+from core.exceptions import UnsupportedMigrationFormatError
 from core.logger import NullLog
 from core.migration.formats import MigrationFormat
 from core.migration.migration import Migration
@@ -126,6 +127,8 @@ class MigrationExecutorFactory:
             # Default to SQL for backward compatibility
             format = MigrationFormat.SQL
 
+        self.ensure_format_supported(migration, format)
+
         # Check if format is supported
         if format not in self._executor_classes:
             self.log.warning(
@@ -156,6 +159,34 @@ class MigrationExecutorFactory:
             self.log.debug(f"Created executor instance: {executor}")
 
         return self._executor_instances[format]
+
+    def ensure_format_supported(self, migration: Migration, format: MigrationFormat) -> None:
+        """Raise when the target dialect cannot run migrations of *format*.
+
+        Document stores declare ``supports_sql_migrations = False``: they
+        have no SQL DDL, so a ``.sql`` migration is a mistake to surface
+        rather than something to translate.
+
+        Public because callbacks do not route through :meth:`get_executor`
+        — ``ExecutionEngine.execute_callback`` runs SQL callbacks itself and
+        needs the same verdict, or a ``.sql`` callback on a document store
+        would fail later with an opaque parser/driver error instead of
+        ``DBLIFT-NOSQL-001``.
+        """
+        if format is not MigrationFormat.SQL:
+            return
+        quirks = getattr(self.provider, "quirks", None)
+        if quirks is None or getattr(quirks, "supports_sql_migrations", True):
+            return
+
+        dialect = getattr(quirks, "dialect_name", "") or "this dialect"
+        raise UnsupportedMigrationFormatError(
+            f"{UnsupportedMigrationFormatError.code}: '{migration.script_name}' is a SQL "
+            f"migration, but the '{dialect}' dialect does not execute SQL migrations. "
+            "Rewrite it as a Python migration exposing 'def migrate(context)' and drive "
+            "the vendor SDK through 'context.db' / 'context.raw_client'. "
+            "See docs/user-guide/nosql-python-migrations.md."
+        )
 
     def execute(
         self, migration: Migration, dry_run: bool = False, **kwargs: Any

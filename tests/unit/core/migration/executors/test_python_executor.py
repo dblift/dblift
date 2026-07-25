@@ -58,27 +58,27 @@ def _make_migration(content, suffix=".py", script_path=None):
 
 @pytest.mark.unit
 class TestMigrationContext:
-    def test_database_property_with_connection_manager(self):
+    def test_db_property_with_connection_manager(self):
         provider = MagicMock()
         provider.connection_manager.database = "test_db"
         ctx = MigrationContext(provider=provider, log=MagicMock())
-        assert ctx.database == "test_db"
+        assert ctx.db == "test_db"
 
-    def test_database_property_without_connection_manager(self):
+    def test_db_property_without_connection_manager(self):
         provider = MagicMock(spec=[])  # no attributes
         ctx = MigrationContext(provider=provider, log=MagicMock())
-        assert ctx.database is None
+        assert ctx.db is None
 
-    def test_client_property_with_connection_manager(self):
+    def test_raw_client_property_with_connection_manager(self):
         provider = MagicMock()
         provider.connection_manager.client = "cosmos_client"
         ctx = MigrationContext(provider=provider, log=MagicMock())
-        assert ctx.client == "cosmos_client"
+        assert ctx.raw_client == "cosmos_client"
 
-    def test_client_property_without_connection_manager(self):
+    def test_raw_client_property_without_connection_manager(self):
         provider = MagicMock(spec=[])
         ctx = MigrationContext(provider=provider, log=MagicMock())
-        assert ctx.client is None
+        assert ctx.raw_client is None
 
     def test_dry_run_default_false(self):
         ctx = MigrationContext(provider=MagicMock(), log=MagicMock())
@@ -96,8 +96,8 @@ class TestMigrationContext:
 
         message = str(exc.value)
         assert "context.execute() expects a SQL string" in message
-        assert "context.database" in message
-        assert "context.client" in message
+        assert "context.db" in message
+        assert "context.raw_client" in message
 
 
 # ---------- can_execute ----------

@@ -547,14 +547,6 @@ class TestBuildTableModelFromRegex:
         parser = HybridParser("db2")
         assert parser._build_table_model_from_regex("SELECT 1", None) is None
 
-    def test_cosmosdb_partition_key_extracted(self):
-        parser = HybridParser("cosmosdb")
-        table = parser._build_table_model_from_regex(
-            "CREATE CONTAINER orders WITH PARTITION KEY /customerId (id STRING)", None
-        )
-        assert table is not None
-        assert table.metadata == {"partition_key": "/customerId"}
-
 
 class TestExtractColumnBlock:
     def test_no_opening_paren_returns_none(self):

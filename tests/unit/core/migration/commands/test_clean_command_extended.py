@@ -314,7 +314,8 @@ class TestCleanCommandCleanSchema(unittest.TestCase):
 
         self.assertTrue(result.success)
         self.assertIn("users", result.tables_dropped)
-        provider.execute_statement.assert_called_once_with('DROP TABLE "users"')
+        provider.drop_object.assert_called_once()
+        assert provider.drop_object.call_args.args[0].drop_sql == 'DROP TABLE "users"'
 
     def test_clean_with_drop_errors_marks_result_failed(self):
         """Failed DROP execution should mark result as failed."""
@@ -326,7 +327,7 @@ class TestCleanCommandCleanSchema(unittest.TestCase):
                 drop_sql='DROP TABLE "locked_table"',
             )
         ]
-        provider.execute_statement.side_effect = RuntimeError("permission denied")
+        provider.drop_object.side_effect = RuntimeError("permission denied")
         provider.commit_transaction.return_value = None
 
         cmd = _make_cmd(provider=provider, clean_disabled=False)
@@ -366,6 +367,7 @@ class TestCleanCommandCleanSchema(unittest.TestCase):
         provider = MagicMock(
             spec=[
                 "execute_statement",
+                "drop_object",
                 "commit_transaction",
                 "is_connected",
                 "connect",
@@ -402,7 +404,7 @@ class TestCleanCommandCleanSchema(unittest.TestCase):
                         result = cmd.execute(dry_run=False)
 
         self.assertFalse(result.success)
-        provider.execute_statement.assert_not_called()
+        provider.drop_object.assert_not_called()
 
     def test_before_clean_callback_failure_returns_error(self):
         provider = MagicMock()

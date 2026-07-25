@@ -449,70 +449,16 @@ class RepairCommand(BaseCommand):
             # on Oracle, and Oracle reads that as a literally-named
             # lowercase table → ORA-00942. ``normalized_history_table``
             # returns ``"DBLIFT_SCHEMA_HISTORY"`` for UPPERCASE dialects.
-            table_name = self.history_manager.normalized_history_table
-            schema = self.config.database.schema
-            qualified_table = self.provider.get_schema_qualified_name(schema, table_name)
-
             self.log.debug(f"Removing failed migration entry: {script_name} (version: {version})")
 
             # Ensure connection is ready
             ensure_provider_connection(self.provider)
 
-            # Non-transactional providers (e.g. CosmosDB) don't support '?' placeholders and use
-            # JS-style booleans (false not FALSE). Database providers (and mocks with query_executor)
-            # use '?' params.
-            is_non_transactional = (
-                isinstance(self.provider, TransactionalProvider)
-                and not self.provider.supports_transactions()
-            )
-
-            # Story 26-9: false literal comes from plugin Quirks
-            # (``boolean_false_literal``). Oracle/SQLServer/SQLite use
-            # ``"0"``; CosmosDB uses lowercase ``"false"``; the rest
-            # default to ``"FALSE"``.
-            from db.provider_registry import ProviderRegistry
-
-            db_type_raw = getattr(getattr(self.config, "database", None), "type", None)
-            db_type = (str(db_type_raw) if db_type_raw else "").lower()
-            false_literal = ProviderRegistry.get_quirks(db_type).boolean_false_literal
-
-            if is_non_transactional:
-                safe_script = script_name.replace("'", "''")
-                delete_sql = (
-                    f"DELETE FROM {qualified_table} "
-                    f"WHERE script = '{safe_script}' AND success = {false_literal}"
-                )
-                rows_affected = self.provider.execute_statement(delete_sql)
-            elif hasattr(self.provider, "query_executor"):
-                delete_sql = (
-                    f"DELETE FROM {qualified_table} "
-                    f"WHERE script = ? AND success = {false_literal}"
-                )
-                rows_affected = self.provider.query_executor.execute_statement(
-                    self.provider.connection, delete_sql, [script_name]  # type: ignore[attr-defined]
-                )
-            else:
-                rows_affected = self.provider.execute_statement(
-                    f"DELETE FROM {qualified_table} "
-                    f"WHERE script = ? AND success = {false_literal}",
-                    params=[script_name],
-                )
-
-            row_removed = rows_affected > 0
-            if (
-                rows_affected < 0
-                and not is_non_transactional
-                and hasattr(self.provider, "execute_query")
-            ):
-                # Some DBAPIs report an "unknown" rowcount of -1 for DML
-                # (e.g. duckdb_engine), so ``rows_affected > 0`` would wrongly
-                # read as "nothing removed". Verify the failed row is gone.
-                remaining = self.provider.execute_query(
-                    f"SELECT 1 FROM {qualified_table} "
-                    f"WHERE script = ? AND success = {false_literal}",
-                    [script_name],
-                )
-                row_removed = not remaining
+            # The backend owns the delete: relational dialects emit a
+            # parameterised DELETE, document stores remove the history
+            # document through their SDK. The command stays dialect-free and
+            # composes no SQL of its own.
+            row_removed = self.history_manager.delete_failed_migration_entry(script_name)
 
             if row_removed:
                 result.failed_migrations_removed = (

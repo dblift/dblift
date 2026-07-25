@@ -1,6 +1,6 @@
 """Tests for MigrationContext properties with CosmosDB provider (story 11-4, AC#2/#3/#4).
 
-Validates that context.database and context.client correctly delegate to
+Validates that context.db and context.raw_client correctly delegate to
 provider.connection_manager attributes, and that dry_run is properly propagated.
 """
 
@@ -25,55 +25,55 @@ def _cosmos_provider():
 
 
 # ---------------------------------------------------------------------------
-# AC#2 — context.database
+# AC#2 — context.db
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.unit
 class TestMigrationContextDatabase:
-    """context.database returns the DatabaseProxy from CosmosDB connection_manager."""
+    """context.db returns the DatabaseProxy from CosmosDB connection_manager."""
 
     def test_context_database_returns_cosmos_database_proxy(self):
         provider = _cosmos_provider()
         ctx = MigrationContext(provider=provider, log=MagicMock())
-        assert ctx.database is provider.connection_manager.database
+        assert ctx.db is provider.connection_manager.database
 
     def test_context_database_none_for_provider_without_connection_manager(self):
         provider = MagicMock(spec=[])  # No attributes at all
         ctx = MigrationContext(provider=provider, log=MagicMock())
-        assert ctx.database is None
+        assert ctx.db is None
 
     def test_context_database_none_for_connection_manager_without_database_attr(self):
         provider = MagicMock()
         provider.connection_manager = MagicMock(spec=[])  # No database attr
         ctx = MigrationContext(provider=provider, log=MagicMock())
-        assert ctx.database is None
+        assert ctx.db is None
 
 
 # ---------------------------------------------------------------------------
-# AC#3 — context.client
+# AC#3 — context.raw_client
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.unit
-class TestMigrationContextClient:
-    """context.client returns the CosmosClient from connection_manager."""
+class TestMigrationContextRawClient:
+    """context.raw_client returns the CosmosClient from connection_manager."""
 
     def test_context_client_returns_cosmos_client(self):
         provider = _cosmos_provider()
         ctx = MigrationContext(provider=provider, log=MagicMock())
-        assert ctx.client is provider.connection_manager.client
+        assert ctx.raw_client is provider.connection_manager.client
 
-    def test_context_client_none_for_provider_without_connection_manager(self):
+    def test_context_raw_client_none_for_provider_without_connection_manager(self):
         provider = MagicMock(spec=[])
         ctx = MigrationContext(provider=provider, log=MagicMock())
-        assert ctx.client is None
+        assert ctx.raw_client is None
 
-    def test_context_client_none_for_connection_manager_without_client_attr(self):
+    def test_context_raw_client_none_for_connection_manager_without_client_attr(self):
         provider = MagicMock()
         provider.connection_manager = MagicMock(spec=[])
         ctx = MigrationContext(provider=provider, log=MagicMock())
-        assert ctx.client is None
+        assert ctx.raw_client is None
 
 
 # ---------------------------------------------------------------------------
@@ -106,7 +106,7 @@ class TestMigrationContextFullCosmosMock:
     def test_context_with_full_cosmos_provider_mock(self):
         provider = _cosmos_provider()
         ctx = MigrationContext(provider=provider, log=MagicMock())
-        assert ctx.database is provider.connection_manager.database
-        assert ctx.client is provider.connection_manager.client
-        assert ctx.database is not None
-        assert ctx.client is not None
+        assert ctx.db is provider.connection_manager.database
+        assert ctx.raw_client is provider.connection_manager.client
+        assert ctx.db is not None
+        assert ctx.raw_client is not None

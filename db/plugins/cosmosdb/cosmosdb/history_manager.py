@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 from config import DbliftConfig
 from core.logger import Log
-from db.plugins.base_history_manager import BaseHistoryManager
+from db.plugins.nosql_base import DocumentHistoryManager
 
 from .query_executor import CosmosDbQueryExecutor
 from .schema_operations import CosmosDbSchemaOperations
@@ -21,7 +21,7 @@ if TYPE_CHECKING:
     from azure.cosmos import ContainerProxy
 
 
-class CosmosDbHistoryManager(BaseHistoryManager):
+class CosmosDbHistoryManager(DocumentHistoryManager):
     """Manages migration history in Cosmos DB."""
 
     # CosmosDB uses container names as-is (case-sensitive)
@@ -379,18 +379,100 @@ class CosmosDbHistoryManager(BaseHistoryManager):
             self.log.error(f"Error repairing history document for {script_name}: {e}")
             return False
 
+    @staticmethod
+    def _history_partition_key(doc: Dict[str, Any]) -> Any:
+        """Partition-key value for a history document.
+
+        The container is partitioned on ``/version``. Repeatable (``R__``)
+        migrations carry no version, so their documents live in the
+        partition-keyless partition and need the SDK's sentinel rather than
+        ``None`` — passing ``None`` addresses a different partition and the
+        delete silently 404s.
+        """
+        from ._sdk import NONE_PARTITION_KEY
+
+        version = doc.get("version")
+        return version if version else NONE_PARTITION_KEY
+
+    def delete_failed_migration_entry(
+        self,
+        connection: Any,
+        schema: str,
+        script_name: str,
+        table_name: Optional[str] = None,
+    ) -> int:
+        """Delete the failed history document(s) for *script_name* via the SDK.
+
+        Cosmos has no SQL ``DELETE``: the rows are located with a native
+        query and removed with ``delete_item``. Documents are keyed by
+        ``id`` == script name, but the query is kept general so a
+        historical duplicate is cleaned up rather than left behind.
+        """
+        container_name = table_name or self.HISTORY_CONTAINER_NAME
+
+        if not self.history_container:
+            self.history_container = self.connection_manager.get_container_client(container_name)
+        if self.history_container is None:
+            raise RuntimeError("History container not initialized")
+
+        # ``version`` is the partition key path, so it must come back with the
+        # row: a point delete addressed by the wrong partition key returns 404,
+        # which would read as "already deleted" and remove nothing.
+        query = "SELECT c.id, c.script, c.success, c.version FROM c WHERE c.script = @script"
+        parameters = [{"name": "@script", "value": script_name}]
+        try:
+            failed_docs = [
+                doc
+                for doc in self.history_container.query_items(
+                    query=query,
+                    parameters=parameters,
+                    enable_cross_partition_query=True,
+                )
+                if not doc.get("success", False)
+            ]
+        except Exception as e:
+            self.log.error(f"Error querying failed history documents for {script_name}: {e}")
+            raise
+
+        deleted = 0
+        for doc in failed_docs:
+            doc_id = doc.get("id")
+            if not doc_id:
+                continue
+            try:
+                self.history_container.delete_item(
+                    item=doc_id, partition_key=self._history_partition_key(doc)
+                )
+                deleted += 1
+            except Exception as e:
+                error_str = str(e).lower()
+                if "not found" in error_str or "notfound" in error_str or "404" in error_str:
+                    self.log.debug(f"History document {doc_id} already deleted")
+                    continue
+                self.log.error(f"Error deleting history document {doc_id}: {e}")
+                raise
+
+        self.log.debug(f"Deleted {deleted} failed history document(s) for {script_name}")
+        return deleted
+
     def create_history_table(self, schema: str, table_name: str) -> str:
-        """Generate SQL to create the migration history container.
+        """Describe how the history container is created — not executable DDL.
+
+        Cosmos has no CREATE statement to hand back. The container is made
+        by :meth:`create_history_container_if_not_exists` through the SDK;
+        callers only log this string.
 
         Args:
             schema: Schema name (not used in Cosmos DB)
             table_name: Container name
 
         Returns:
-            SQL string to create the history container
+            A comment describing the SDK call that creates the container.
         """
-        # Return CREATE CONTAINER statement for Cosmos DB
-        return f"CREATE CONTAINER {table_name} (id STRING) WITH (partitionKey='/version')"
+        return (
+            f"-- CosmosDB: database.create_container_if_not_exists("
+            f"id={table_name!r}, partition_key=PartitionKey(path='/version'))"
+        )
 
     def create_migration_history_table_if_not_exists(
         self,

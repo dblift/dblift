@@ -199,49 +199,6 @@ class BaseQuirks:
         """
         return self.default_schema_name
 
-    def requires_sdk_for_drop(self) -> bool:
-        """Return True if DROP statements require SDK execution rather than SQL.
-
-        CosmosDB containers cannot be dropped through SQL execution; the Azure
-        SDK must be used instead. All other dialects return False.
-        """
-        return False
-
-    def sdk_operation_hint_prefix(self) -> "Optional[str]":
-        """Return the comment prefix to inject before SDK-executed statements, or None.
-
-        Used by ``script_formatter`` to annotate CosmosDB SDK operations in
-        generated SQL scripts. Default: None (no annotation).
-        """
-        return None
-
-    def build_sdk_drop_operation(self, statement: object) -> "Optional[dict[str, Any]]":
-        """Build the SDK operation dict for a DROP statement, or None.
-
-        Called by ``generate_sql_script`` for each DROP statement when
-        ``requires_sdk_for_drop()`` is True. The returned dict is stored as
-        ``statement.sdk_operation`` and later passed to ``generate_sdk_script``.
-
-        ``statement`` is a ``SqlStatement``; access attributes via ``getattr``.
-        Return ``None`` to leave ``sdk_operation`` unset (no-op for this
-        statement).
-
-        Default: None (no SDK operation).
-        """
-        return None
-
-    def generate_sdk_script(self, sdk_statements: "list[Any]") -> "Optional[str]":
-        """Generate a dialect-specific SDK script block for ``sdk_statements``.
-
-        Called by ``generate_sql_script`` after SQL formatting when there are
-        statements with ``requires_sdk=True``. Return the full text to append
-        to the generated script (including headers/comments), or ``None`` to
-        skip appending.
-
-        Default: None (no SDK script appended).
-        """
-        return None
-
     def unwrap_default_value(self, default_str: str, column: object) -> str:
         """Strip dialect-specific wrapping from a DEFAULT value string.
 
@@ -420,6 +377,14 @@ class BaseQuirks:
     requires_cloud_account_auth: bool = False
     #: NoSQL / document-store dialect (no relational DDL).
     is_nosql: bool = False
+    #: ``.sql`` migration files can be executed against this dialect.
+    #: Document stores (Cosmos DB, and future NoSQL plugins) have no SQL
+    #: DDL and drive their schema through the vendor SDK, so they run
+    #: Python migrations only and set this False; the executor factory
+    #: then rejects SQL migrations with ``DBLIFT-NOSQL-001`` instead of
+    #: handing them to a translator. Kept separate from :attr:`is_nosql`
+    #: so a future NoSQL dialect with a genuine SQL surface can opt back in.
+    supports_sql_migrations: bool = True
     #: How metadata queries treat the catalog argument:
     #:   ``"catalog"``   — schema arg becomes catalog (MySQL).
     #:   ``"catalog+schema"`` — separate catalog (database) and schema
@@ -652,8 +617,9 @@ class BaseQuirks:
     #: Whether ``CREATE TABLE`` supports a native ``IF NOT EXISTS`` clause.
     #: Default False; Oracle (23ai+/19.28+) and SQLite opt in.
     table_create_supports_if_not_exists: bool = False
-    #: CREATE TABLE header for non-temporary tables uses
-    #: ``CREATE CONTAINER`` (CosmosDB NoSQL quirk).
+    #: Object keyword in the CREATE header for non-temporary tables. Every
+    #: current dialect says ``TABLE``; the hook stays so a dialect that
+    #: names the object differently can say so without a core branch.
     table_create_keyword: str = "TABLE"
     #: Temporary table syntax. ``"global_temporary"`` for Oracle,
     #: ``"hash_prefix"`` for SQL Server, ``"temporary"`` for standard.

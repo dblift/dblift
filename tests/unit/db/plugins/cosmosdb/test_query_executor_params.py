@@ -114,37 +114,6 @@ class TestExecuteQueryParamSubstitution:
 
 
 @pytest.mark.unit
-class TestExecuteInsertParamSubstitution:
-    def test_question_mark_params_substituted_in_insert(self):
-        """? placeholders in INSERT VALUES must be inlined before VALUES parsing."""
-        executor = _make_executor()
-
-        created_docs = []
-        mock_container = MagicMock()
-        mock_container.create_item.side_effect = lambda body, **kw: created_docs.append(body)
-        # read() must not raise so the container-readiness check passes
-        mock_container.read.return_value = {}
-        executor.connection_manager.get_container_client.return_value = mock_container
-
-        executor._execute_insert(
-            sql=(
-                "INSERT INTO app_events "
-                "(event_id, captured_at, checksum, model_data) "
-                "VALUES (?, ?, ?, ?)"
-            ),
-            params=["event-uuid", "2026-04-25T00:00:00", "abc123", "bW9kZWw="],
-        )
-
-        assert created_docs, "create_item was not called"
-        doc = created_docs[0]
-        assert doc["event_id"] == "event-uuid"
-        assert doc["captured_at"] == "2026-04-25T00:00:00"
-        assert doc["checksum"] == "abc123"
-        assert doc["model_data"] == "bW9kZWw="
-        assert doc["id"] == "event-uuid"  # auto-set from first column (event_id)
-
-
-@pytest.mark.unit
 class TestCosmosParameterPlaceholderContract:
     def test_provider_uses_question_mark_placeholders(self):
         from db.plugins.cosmosdb.provider import CosmosDbProvider
@@ -159,67 +128,3 @@ class TestCosmosParameterPlaceholderContract:
         operations = CosmosDbSchemaOperations.__new__(CosmosDbSchemaOperations)
 
         assert operations.get_parameter_placeholders(2) == "?, ?"
-
-
-@pytest.mark.unit
-class TestExecuteDeleteParamSubstitution:
-    def test_in_clause_params_are_substituted_and_aliased(self):
-        """Event pruning DELETE ... IN (?, ?) must reach Cosmos as valid SQL."""
-        executor = _make_executor()
-
-        captured_sql = []
-        mock_container = MagicMock()
-        # app_events uses /id as its partition key path
-        mock_container.read.return_value = {"partitionKey": {"paths": ["/id"]}}
-        mock_container.query_items.side_effect = lambda query, **kw: captured_sql.append(query) or [
-            {"id": "event-1"},
-            {"id": "event-2"},
-        ]
-        executor.connection_manager.get_container_client.return_value = mock_container
-
-        deleted = executor._execute_delete(
-            sql="DELETE FROM app_events WHERE event_id IN (?, ?)",
-            params=["event-1", "event-2"],
-        )
-
-        assert deleted == 2
-        assert captured_sql
-        assert "?" not in captured_sql[0]
-        assert "c.event_id IN ('event-1', 'event-2')" in captured_sql[0]
-        mock_container.delete_item.assert_any_call(item="event-1", partition_key="event-1")
-        mock_container.delete_item.assert_any_call(item="event-2", partition_key="event-2")
-
-
-@pytest.mark.unit
-class TestExecuteDeleteNotFoundHandling:
-    def test_404_on_delete_item_logs_debug_not_warning(self):
-        """When delete_item raises a 404-like exception (stale read after repair),
-        the exception must be logged at DEBUG, not WARNING."""
-        import logging
-        from unittest.mock import call, patch
-
-        executor = _make_executor()
-
-        mock_log = MagicMock()
-        executor.log = mock_log
-
-        mock_container = MagicMock()
-        # query_items returns one document
-        mock_container.query_items.return_value = [{"id": "d58f1692-stale", "_partitionKey": None}]
-        # delete_item raises a 404-style exception
-        mock_container.delete_item.side_effect = Exception("(None) Resource Not Found. 404")
-        executor.connection_manager.get_container_client.return_value = mock_container
-
-        with patch(
-            "db.plugins.cosmosdb.cosmosdb.query_executor.NONE_PARTITION_KEY",
-            None,
-            create=True,
-        ):
-            executor._execute_delete("DELETE FROM c WHERE c.type = 'stale'")
-
-        # debug must be called for the 404; warning must NOT be called
-        warning_calls = [str(c) for c in mock_log.warning.call_args_list]
-        assert mock_log.debug.called, "Expected log.debug for 404 (already-deleted doc)"
-        assert not any(
-            "Error deleting" in w for w in warning_calls
-        ), f"log.warning must not contain 'Error deleting' for a 404 — got: {warning_calls}"

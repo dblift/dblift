@@ -305,6 +305,43 @@ class MigrationHistoryManager:
             )
         )
 
+    def delete_failed_migration_entry(self, script_name: str) -> bool:
+        """Remove the failed history row for *script_name*.
+
+        ``repair`` calls this so a failed migration can be re-applied. The
+        statement (or SDK call) belongs to the backend, so this only
+        delegates and interprets the answer.
+
+        Some drivers report an unknown row count of ``-1`` for DML rather
+        than the number affected; in that case the row is re-read to decide
+        whether it is really gone.
+
+        Returns:
+            True when a failed row was removed.
+        """
+        rows_affected = int(
+            self.provider.delete_failed_migration_entry(
+                self.schema, script_name, self.normalized_history_table
+            )
+        )
+        if rows_affected >= 0:
+            return rows_affected > 0
+        return not self._failed_row_still_present(script_name)
+
+    def _failed_row_still_present(self, script_name: str) -> bool:
+        """Re-read the failed row after an unknown-rowcount delete."""
+        if not hasattr(self.provider, "execute_query"):
+            return False
+        qualified = self.provider.get_schema_qualified_name(
+            self.schema, self.normalized_history_table
+        )
+        false_literal = self.provider.quirks.boolean_false_literal
+        remaining = self.provider.execute_query(
+            f"SELECT 1 FROM {qualified} WHERE script = ? AND success = {false_literal}",
+            [script_name],
+        )
+        return bool(remaining)
+
     def repair_checksum(self, script_name: str, new_checksum: Union[int, str]) -> bool:
         """Repair the checksum of a migration in the history table.
 

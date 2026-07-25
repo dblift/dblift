@@ -57,7 +57,7 @@ class TestCleanCommandDisabled:
 
         assert result.success is True
         provider.list_droppable_objects.assert_called_once_with("myschema")
-        provider.execute_statement.assert_not_called()
+        provider.drop_object.assert_not_called()
 
     def test_clean_runs_when_explicitly_enabled(self):
         command, provider, _ = _make_command(clean_disabled=False)
@@ -69,7 +69,9 @@ class TestCleanCommandDisabled:
 
         assert result.success is True
         provider.list_droppable_objects.assert_called_once_with("myschema")
-        provider.execute_statement.assert_called_once_with('DROP TABLE "t"')
+        provider.drop_object.assert_called_once_with(
+            DroppableObject(name="t", object_type="table", drop_sql='DROP TABLE "t"')
+        )
 
     def test_clean_enabled_kwarg_overrides_default_guardrail(self):
         command, provider, _ = _make_command(clean_disabled=True)
@@ -81,7 +83,9 @@ class TestCleanCommandDisabled:
 
         assert result.success is True
         provider.list_droppable_objects.assert_called_once_with("myschema")
-        provider.execute_statement.assert_called_once_with('DROP TABLE "t"')
+        provider.drop_object.assert_called_once_with(
+            DroppableObject(name="t", object_type="table", drop_sql='DROP TABLE "t"')
+        )
 
     def test_top_level_clean_help_mentions_explicit_opt_in(self):
         parser = create_parser()

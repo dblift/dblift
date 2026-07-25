@@ -1,7 +1,7 @@
 """SQL Statement models for diff-to-SQL generation."""
 
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional
+from typing import Any, List, Optional
 
 
 @dataclass
@@ -17,8 +17,6 @@ class SqlStatement:
     error_if_check_fails: bool = False
     error_message: Optional[str] = None
     depends_on: Optional[List[str]] = None  # List of object names this depends on
-    sdk_operation: Optional[Dict[str, Any]] = None  # For CosmosDB: SDK operation details
-    requires_sdk: bool = False  # Whether this statement requires SDK execution
     # Opaque per-statement annotation set by the paid impact-analysis layer;
     # the core neither populates nor interprets it. Declared as a stable
     # extension point so a future ``__slots__`` cannot silently break it.

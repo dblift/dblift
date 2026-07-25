@@ -318,7 +318,7 @@ class CosmosDbSchemaOperations(BaseSchemaOperations):
             for container_name in container_names:
                 try:
                     if self.delete_container(container_name):
-                        drop_sql = f"DROP CONTAINER {container_name}"
+                        drop_sql = f"database.delete_container({container_name!r})"
                         summary.record_drop(
                             sql=drop_sql,
                             object_type="CONTAINER",
@@ -351,7 +351,7 @@ class CosmosDbSchemaOperations(BaseSchemaOperations):
 
         for container_name in container_names:
             summary.record_drop(
-                sql=f"DROP CONTAINER {container_name}",
+                sql=f"database.delete_container({container_name!r})",
                 object_type="CONTAINER",
                 name=container_name,
                 schema=None,

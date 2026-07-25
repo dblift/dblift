@@ -33,21 +33,29 @@ pytestmark = [pytest.mark.unit]
 class TestRepairDeletesFailedMigrations:
     """Regression: repair must DELETE failed migration entries, not UPDATE to NULL."""
 
-    def test_repair_uses_delete_not_update(self):
-        """BUG-REPAIR-02: The SQL used by repair for failed migrations must be DELETE, not UPDATE."""
-        # Read the source to verify DELETE is used (belt-and-suspenders with unit test below)
+    def test_repair_removes_the_row_rather_than_nulling_it(self):
+        """BUG-REPAIR-02: a failed migration is deleted from history, never UPDATEd to NULL.
+
+        The statement itself now lives in the history manager (relational
+        backends emit DELETE, document stores call their SDK), so the
+        regression is guarded on the delete API rather than on SQL text
+        composed inside the command.
+        """
         import inspect
 
         from core.migration.commands.repair_command import RepairCommand
+        from db.plugins.base_history_manager import BaseHistoryManager
 
         source = inspect.getsource(RepairCommand)
-        # The handler for FAILED_MIGRATION should use DELETE, never SET success = NULL
         assert (
             "SET success = NULL" not in source
         ), "BUG-REPAIR-02 regression: repair must not SET success = NULL on failed migrations"
         assert (
-            "DELETE FROM" in source
-        ), "BUG-REPAIR-02 regression: repair must use DELETE for failed migrations"
+            "delete_failed_migration_entry" in source
+        ), "BUG-REPAIR-02 regression: repair must delete the failed history row"
+        assert "DELETE FROM" in inspect.getsource(
+            BaseHistoryManager.delete_failed_migration_entry
+        ), "BUG-REPAIR-02 regression: the relational delete must be a DELETE"
 
     def test_repair_failed_migration_calls_delete(self):
         """BUG-REPAIR-02: repair execute() must issue DELETE for failed migrations."""
@@ -71,6 +79,7 @@ class TestRepairDeletesFailedMigrations:
         history_manager = Mock()
         history_manager.create_schema_and_history_table = Mock()
         history_manager.history_table = "dblift_schema_history"
+        history_manager.delete_failed_migration_entry = Mock(return_value=True)
 
         failed = Mock()
         failed.script_name = "V1__broken.sql"
@@ -106,15 +115,11 @@ class TestRepairDeletesFailedMigrations:
 
         result = command.execute(Path("/tmp/migrations"))
 
-        # Verify DELETE was called, not UPDATE
-        call_args = provider.query_executor.execute_statement.call_args
-        sql_executed = call_args[0][1]  # second positional arg is the SQL
-        assert (
-            "DELETE FROM" in sql_executed
-        ), f"BUG-REPAIR-02: Expected DELETE but got: {sql_executed}"
-        assert (
-            "SET success" not in sql_executed
-        ), f"BUG-REPAIR-02: Must not use SET success, got: {sql_executed}"
+        # The failed row is deleted, and the "mark as needing reapplication"
+        # UPDATE path is never taken.
+        history_manager.delete_failed_migration_entry.assert_called_once()
+        assert history_manager.delete_failed_migration_entry.call_args[0][0] == "V1__broken.sql"
+        history_manager.repair_migration_history.assert_not_called()
         assert result.failed_migrations_removed == 1
 
 

@@ -80,6 +80,7 @@ DEFAULT_ROOTS: Tuple[str, ...] = ("api", "cli", "config", "core", "db")
 ALLOW_PRINT_MARKER = "lint: allow-print"
 ALLOW_ENUM_STR_MARKER = "lint: allow-enum-str"
 ALLOW_DIALECT_STRING_MARKER = "lint: allow-dialect-string"
+ALLOW_PSEUDO_SQL_MARKER = "lint: allow-pseudo-sql"
 
 # Canonical dialect identifiers. Lowercased on comparison. Includes
 # legitimate aliases (``postgres`` for ``postgresql``) and dialects we
@@ -348,6 +349,84 @@ def _check_dialect_string_literal(
 # ---------------------------------------------------------------------------
 
 
+# ---------------------------------------------------------------------------
+# Rule 4: pseudo-sql-translator
+# ---------------------------------------------------------------------------
+
+#: Names that only ever belong to a pseudo-SQL-to-SDK translation layer.
+#: CosmosDB used to ship one: a SQL-shaped grammar
+#: (``DROP CONTAINER``, ``SET THROUGHPUT``, …) regex-parsed and replayed as
+#: SDK calls. It cost a private, unspecified dialect and leaked dialect
+#: branches across the parser, and it was deleted. NoSQL backends drive
+#: their SDK from Python migrations instead, so nothing should reintroduce
+#: the shape — least of all a second copy for a new document store.
+PSEUDO_SQL_TRANSLATOR_NAMES: Tuple[str, ...] = (
+    "SDK_PATTERNS",
+    "translate_to_sdk_operation",
+    "execute_sdk_operation",
+    "generate_sdk_script",
+    "build_sdk_drop_operation",
+    "requires_sdk_for_drop",
+    "sdk_operation_hint_prefix",
+)
+
+#: Pseudo-DDL verbs that have no place in a NoSQL plugin.
+PSEUDO_SQL_STATEMENT_PREFIXES: Tuple[str, ...] = (
+    "DROP CONTAINER",
+    "ALTER CONTAINER",
+    "SET THROUGHPUT",
+    "SET AUTOSCALE",
+    "SHOW THROUGHPUT",
+    "EXCLUDE INDEX PATH",
+    "INCLUDE INDEX PATH",
+    "SET TTL ON CONTAINER",
+)
+
+
+def _has_pseudo_sql_marker(source: List[str], lineno: int) -> bool:
+    """True when the line (or the one above) carries the allow marker."""
+    line_text = source[lineno - 1] if 0 < lineno <= len(source) else ""
+    prev_text = source[lineno - 2] if 1 < lineno <= len(source) else ""
+    return ALLOW_PSEUDO_SQL_MARKER in line_text or ALLOW_PSEUDO_SQL_MARKER in prev_text
+
+
+def _check_pseudo_sql_translator(
+    path: Path, tree: ast.AST, source: List[str]
+) -> Iterator[Violation]:
+    """Flag any attempt to reintroduce a pseudo-SQL -> SDK translation layer."""
+    for node in ast.walk(tree):
+        name: Optional[str] = None
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            name = node.name
+        elif isinstance(node, ast.Name) and isinstance(node.ctx, ast.Store):
+            name = node.id
+        if name and name.lstrip("_") in PSEUDO_SQL_TRANSLATOR_NAMES:
+            if _has_pseudo_sql_marker(source, node.lineno):
+                continue
+            yield Violation(
+                path,
+                node.lineno,
+                node.col_offset,
+                "pseudo-sql-translator",
+                f"{name!r} revives the pseudo-SQL/SDK translation layer. NoSQL "
+                "backends run Python migrations against their SDK; they do not "
+                "translate SQL-shaped statements.",
+            )
+        if isinstance(node, ast.Constant) and isinstance(node.value, str):
+            upper = node.value.strip().upper()
+            if any(upper.startswith(p) for p in PSEUDO_SQL_STATEMENT_PREFIXES):
+                if _has_pseudo_sql_marker(source, node.lineno):
+                    continue
+                yield Violation(
+                    path,
+                    node.lineno,
+                    node.col_offset,
+                    "pseudo-sql-translator",
+                    f"{node.value[:40]!r} is pseudo-DDL for a document store. "
+                    "Express the operation as an SDK call in a Python migration.",
+                )
+
+
 def _iter_py_files(roots: List[Path]) -> Iterator[Path]:
     skip = {"__pycache__", ".git", "build", "dist", ".venv", "venv", "antlr"}
     for root in roots:
@@ -375,6 +454,7 @@ def _lint_file(path: Path) -> List[Violation]:
     out.extend(_check_cli_print_stdout(path, tree, lines))
     out.extend(_check_enum_str_conversion(path, tree, lines))
     out.extend(_check_dialect_string_literal(path, tree, lines))
+    out.extend(_check_pseudo_sql_translator(path, tree, lines))
     return out
 
 

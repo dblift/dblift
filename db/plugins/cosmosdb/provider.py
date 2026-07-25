@@ -202,7 +202,7 @@ class CosmosDbProvider(NativeProvider):
                 try:
                     deleted = self.schema_operations.delete_container(container_name)
                     if deleted:
-                        drop_sql = f"DROP CONTAINER {container_name}"
+                        drop_sql = f"database.delete_container({container_name!r})"
                         summary.record_drop(
                             sql=drop_sql,
                             object_type="CONTAINER",
@@ -227,15 +227,29 @@ class CosmosDbProvider(NativeProvider):
         return summary
 
     def list_droppable_objects(self, schema: str) -> List[DroppableObject]:
-        """Return CosmosDB containers in the order clean would drop them."""
+        """Return CosmosDB containers in the order clean would drop them.
+
+        ``drop_sql`` records the SDK call clean will make; it is a
+        human-readable audit line, not a statement anyone can execute.
+        :meth:`drop_object` performs the deletion.
+        """
         return [
             DroppableObject(
                 name=container_name,
                 object_type="CONTAINER",
-                drop_sql=f"DROP CONTAINER {container_name}",
+                drop_sql=f"database.delete_container({container_name!r})",
             )
             for container_name in self.schema_operations.list_containers()
         ]
+
+    def drop_object(self, obj: DroppableObject) -> None:
+        """Delete the container through the Azure SDK.
+
+        Cosmos containers are not droppable with SQL, so clean must not
+        route ``drop_sql`` through ``execute_statement``.
+        """
+        if not self.schema_operations.delete_container(obj.name):
+            raise RuntimeError(f"Failed to delete container {obj.name}")
 
     def get_clean_preview(self, schema: str) -> CleanExecutionSummary:
         """Return what a Cosmos DB clean would remove without deleting data."""
@@ -322,11 +336,18 @@ class CosmosDbProvider(NativeProvider):
         schema: str,
         table_name: Optional[str] = None,
     ) -> None:
-        """Wrap base snapshot-container creation with CosmosDB 503 retry.
+        """Create the snapshot container through the SDK, retrying on 503.
 
-        CosmosDB emulator returns ServiceUnavailable / 503 during warmup;
-        retry with exponential backoff so snapshot persistence doesn't fail
-        on the first migrate after a fresh container start.
+        The inherited implementation renders ``CREATE TABLE`` DDL and sends
+        it to ``execute_statement``. Cosmos has no DDL — that only ever
+        worked because the pseudo-SQL emulator recognised ``CREATE TABLE``
+        and turned it into a container create. With the emulator gone the
+        statement would raise ``NoSqlWriteNotSupportedError``, so the
+        container is created directly here instead.
+
+        The emulator also returns ServiceUnavailable / 503 during warmup, so
+        the create is retried with exponential backoff and snapshot
+        persistence survives the first migrate after a fresh container start.
         """
         from core.constants import DBLIFT_SCHEMA_SNAPSHOTS_TABLE
 
@@ -334,7 +355,11 @@ class CosmosDbProvider(NativeProvider):
         last_exc: Optional[Exception] = None
         for attempt in range(self._SNAPSHOT_CREATE_MAX_RETRIES):
             try:
-                super().create_snapshot_table_if_not_exists(schema, resolved_name)
+                # Snapshots are keyed by ``snapshot_id``; partition on it so
+                # a point read can find one without a cross-partition query.
+                self.schema_operations.create_container_if_not_exists(
+                    resolved_name, partition_key="/snapshot_id"
+                )
                 return
             except Exception as e:
                 last_exc = e

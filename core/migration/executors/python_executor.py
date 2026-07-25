@@ -34,8 +34,8 @@ def _is_query_statement(sql: Any) -> bool:
     if not isinstance(sql, str):
         raise TypeError(
             f"context.execute() expects a SQL string, got {type(sql).__name__}. "
-            "For CosmosDB DDL/data operations, use context.database or "
-            "context.client SDK methods directly."
+            "For document-store DDL/data operations, use the context.db or "
+            "context.raw_client SDK methods directly."
         )
     if not sql:
         return False
@@ -80,12 +80,15 @@ class MigrationContext:
 
     * ``execute(sql, params=None)`` — run SQL via the active provider connection.
       Automatically routes SELECT to ``execute_query`` and DML/DDL to
-      ``execute_statement``, so a single call works for both. For CosmosDB
-      SDK operations, use ``context.database`` or ``context.client`` directly.
+      ``execute_statement``, so a single call works for both. On a document
+      store only SELECT is executable; everything else is an SDK call
+      through ``context.db``.
     * ``log`` — logger with ``.info()``, ``.debug()``, ``.warning()``, ``.error()``.
     * ``dry_run`` (bool) — True when called with ``--dry-run``; skip writes.
-    * ``database`` — CosmosDB ``DatabaseProxy`` (``None`` for SQL dialects).
-    * ``client``   — CosmosDB ``CosmosClient`` (``None`` for SQL dialects).
+    * ``db`` — native database handle of an SDK-backed provider, e.g. Cosmos
+      DB's ``DatabaseProxy`` (``None`` for SQL dialects).
+    * ``raw_client`` — the underlying SDK client, e.g. Cosmos DB's
+      ``CosmosClient`` (``None`` for SQL dialects).
 
     Attributes:
         provider: Database provider instance (BaseProvider)
@@ -173,14 +176,25 @@ class MigrationContext:
         return None
 
     @property
-    def database(self) -> Optional[Any]:
-        """Cosmos DB DatabaseProxy (None for non-SDK providers)."""
+    def db(self) -> Optional[Any]:
+        """Native database handle of an SDK-backed provider, else ``None``.
+
+        Provider-neutral by design: Cosmos DB yields an
+        ``azure.cosmos.DatabaseProxy``, and a future document store yields
+        whatever its driver calls a database. Relational providers have no
+        SDK handle and return ``None`` — they use :meth:`execute`.
+        """
         cm = getattr(self.provider, "connection_manager", None)
         return getattr(cm, "database", None) if cm else None
 
     @property
-    def client(self) -> Optional[Any]:
-        """Cosmos DB client (None for non-SDK providers)."""
+    def raw_client(self) -> Optional[Any]:
+        """Underlying SDK client of an SDK-backed provider, else ``None``.
+
+        Cosmos DB yields an ``azure.cosmos.CosmosClient``. Reach for this
+        only when the operation lives above the database handle (account
+        level), otherwise prefer :attr:`db`.
+        """
         cm = getattr(self.provider, "connection_manager", None)
         return getattr(cm, "client", None) if cm else None
 
@@ -190,7 +204,7 @@ class MigrationContext:
         Earlier CosmosDB Python migration samples passed a raw ``dict`` to
         ``migrate(client_config)`` with keys like ``account_endpoint`` and
         ``account_key``. The API now injects a typed ``MigrationContext``
-        exposing ``context.database`` / ``context.client`` / ``context.provider``
+        exposing ``context.db`` / ``context.raw_client`` / ``context.provider``
         / ``context.log`` / ``context.dry_run``. Without this guard, old
         scripts crashed with the opaque ``TypeError: 'MigrationContext' object
         is not subscriptable`` and callers had no hint about the new API.
@@ -199,10 +213,10 @@ class MigrationContext:
             f"MigrationContext is not a dict (tried context[{key!r}]). "
             "The dblift Python migration API injects a typed MigrationContext "
             "instead of the legacy dict. Replace 'client_config[\"account_endpoint\"]' "
-            "with 'context.client' (azure.cosmos.CosmosClient) or "
-            "'context.database' (DatabaseProxy). Available attributes: "
-            "provider, log, dry_run, database, client. "
-            "Run 'context.execute(sql)' for raw statements."
+            "with 'context.raw_client' (azure.cosmos.CosmosClient) or "
+            "'context.db' (DatabaseProxy). Available attributes: "
+            "provider, log, dry_run, db, raw_client. "
+            "Run 'context.execute(sql)' for raw SELECT statements."
         )
 
 

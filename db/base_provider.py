@@ -280,6 +280,45 @@ class BaseProvider(
             history_manager.record_undo(connection, schema, version, table_name, script_name)
         )
 
+    def delete_failed_migration_entry(
+        self,
+        schema: str,
+        script_name: str,
+        table_name: Optional[str] = None,
+    ) -> int:
+        """Delete the failed history row for *script_name*; return rows removed.
+
+        Delegates to ``self.history_manager`` the same way :meth:`record_undo`
+        does, so each backend expresses the delete in its own terms — a
+        parameterised ``DELETE`` for relational dialects, an SDK
+        ``delete_item`` for document stores. ``repair`` calls this instead of
+        composing SQL of its own.
+
+        Returns the number of rows removed, or ``-1`` when the driver reports
+        an unknown row count.
+        """
+        history_manager = getattr(self, "history_manager", None)
+        if history_manager is not None:
+            connection = getattr(self, "connection", None)
+            return int(
+                history_manager.delete_failed_migration_entry(
+                    connection, schema, script_name, table_name
+                )
+            )
+
+        # Most relational plugins compose their history SQL on the provider
+        # itself and own no ``history_manager`` component (only SQLite and
+        # CosmosDB do), so the parameterised DELETE lives here for them —
+        # the same statement ``repair`` used to build inline.
+        resolved = self.get_normalized_object_name(table_name or "dblift_schema_history")
+        qualified_table = self.get_schema_qualified_name(schema, resolved)
+        false_literal = self.quirks.boolean_false_literal
+        affected = self.execute_statement(
+            f"DELETE FROM {qualified_table} " f"WHERE script = ? AND success = {false_literal}",
+            params=[script_name],
+        )
+        return int(affected) if affected is not None else 0
+
     def close(self) -> None:
         """Close the database connection if it exists.
 

@@ -63,6 +63,18 @@ KNOWN_DB_TO_CORE_VIOLATIONS: dict[str, set[str]] = {}
 # SQL dialect for ~95% of cases). CosmosDB SQL is T-SQL-flavoured enough
 # that its regex parser inherits the SQL Server parser. Both relations
 # are documented in docs/architecture/database-providers.md.
+#: Directories under ``db/plugins/`` that are shared foundations rather
+#: than dialect plugins. ``db.plugins.base_*`` modules play the same role
+#: but are single files, so the ``other_plugin not in plugin_names`` check
+#: already lets them through; these are packaged as directories because
+#: they span several modules, and must be excluded explicitly.
+#:
+#: ``nosql_base`` holds the document-store contracts (history, locking,
+#: sampling introspection) that every NoSQL plugin implements. Importing it
+#: is not cross-plugin coupling — it is the same relationship every
+#: relational plugin has with ``BaseHistoryManager``.
+SHARED_PLUGIN_FOUNDATIONS: set[str] = {"nosql_base"}
+
 ALLOWED_CROSS_PLUGIN_IMPORTS: dict[str, set[str]] = {
     "db/plugins/mariadb": {"db.plugins.mysql"},
     "db/plugins/cosmosdb": {"db.plugins.sqlserver.parser"},
@@ -264,7 +276,11 @@ class TestNoCrossPluginImports:
         if not plugins_dir.is_dir():
             pytest.skip("db/plugins/ not present")
 
-        plugin_names = {p.name for p in plugins_dir.iterdir() if p.is_dir()}
+        plugin_names = {
+            p.name
+            for p in plugins_dir.iterdir()
+            if p.is_dir() and p.name not in SHARED_PLUGIN_FOUNDATIONS
+        }
 
         violations: dict[str, set[str]] = {}
         for plugin in plugin_names:

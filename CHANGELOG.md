@@ -18,6 +18,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **BREAKING — CosmosDB migrations are Python only.** The CosmosDB pseudo-SQL
+  layer and its Azure SDK translator were removed outright; there is no
+  deprecation window, no compatibility flag, and no conversion tool. A `.sql`
+  migration targeting CosmosDB now fails with `DBLIFT-NOSQL-001`
+  (`core.exceptions.UnsupportedMigrationFormatError`), and a write statement
+  reaching the query executor raises
+  `core.exceptions.NoSqlWriteNotSupportedError` — only native Cosmos `SELECT`
+  still executes (available to migrations via `context.execute()`). Write
+  CosmosDB migrations as `.py` files exposing `def migrate(context)` and drive
+  the Azure SDK directly. Migration history rows for previously applied `.sql`
+  migrations remain valid: checksums are untouched, and neither `repair` nor a
+  re-baseline is required. See
+  [`docs/user-guide/nosql-python-migrations.md`](docs/user-guide/nosql-python-migrations.md)
+  for the statement-by-statement conversion table.
+- **BREAKING — `MigrationContext` CosmosDB attributes renamed**:
+  `context.database` → `context.db` (`azure.cosmos.DatabaseProxy`) and
+  `context.client` → `context.raw_client` (`azure.cosmos.CosmosClient`). No
+  aliases are kept; existing CosmosDB `.py` migrations using the old names
+  raise `AttributeError`.
+
 ### Fixed
 
 - **The `_dblift_config_only_client` handler marker is honored again**: a
@@ -28,6 +48,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   no longer trigger a database client construction.
 
 ### Removed
+
+- **CosmosDB pseudo-SQL statements**: `DROP CONTAINER`,
+  `ALTER CONTAINER ... SET (...)`, `SET THROUGHPUT ON CONTAINER ... TO n`,
+  `SET AUTOSCALE ON CONTAINER ... MAX n [MIN m]`,
+  `SHOW THROUGHPUT ON CONTAINER`, `CREATE INDEX ... ON <container> (...)`,
+  `DROP INDEX ... ON <container>`, `EXCLUDE INDEX PATH '<p>' ON CONTAINER`,
+  `INCLUDE INDEX PATH '<p>' ON CONTAINER`, `SET TTL ON CONTAINER ... TO n|OFF`,
+  plus plain SQL `CREATE TABLE` / `CREATE CONTAINER` / `INSERT` / `UPDATE` /
+  `DELETE` against Cosmos. The SDK translator that executed them and the
+  CosmosDB pseudo-SQL parser are gone with them.
 
 ## [2.10.0] - 2026-07-24
 

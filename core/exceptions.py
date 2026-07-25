@@ -40,6 +40,16 @@ class CallbackExecutionError(ExecutionError):
     """Raised when a migration callback fails."""
 
 
+class NoSqlWriteNotSupportedError(ExecutionError):
+    """Raised when a write statement is sent to a document store's query API.
+
+    NoSQL backends expose a read-only query language (Cosmos DB's SQL API,
+    and the equivalents in other document stores). Schema and data changes
+    go through the vendor SDK from a Python migration, so a write statement
+    arriving at the query executor is surfaced rather than translated.
+    """
+
+
 # --- Validation exceptions ---
 
 
@@ -49,6 +59,19 @@ class ValidationError(DbliftError):
 
 class ConnectionClosedError(ValidationError):
     """Raised when a database connection is unexpectedly closed."""
+
+
+class UnsupportedMigrationFormatError(ValidationError):
+    """Raised when a migration's format cannot run on the target dialect.
+
+    The concrete case is a ``.sql`` migration aimed at a NoSQL dialect —
+    one whose quirks declare ``supports_sql_migrations = False``. Document
+    stores such as Cosmos DB have no SQL DDL, so their migrations are
+    written as Python scripts driving the vendor SDK.
+    """
+
+    #: Stable diagnostic code quoted in the message and in the docs.
+    code = "DBLIFT-NOSQL-001"
 
 
 class SchemaCreationError(ValidationError):
