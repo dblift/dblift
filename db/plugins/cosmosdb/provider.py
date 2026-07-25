@@ -202,7 +202,7 @@ class CosmosDbProvider(NativeProvider):
                 try:
                     deleted = self.schema_operations.delete_container(container_name)
                     if deleted:
-                        drop_sql = f"DROP CONTAINER {container_name}"
+                        drop_sql = f"database.delete_container({container_name!r})"
                         summary.record_drop(
                             sql=drop_sql,
                             object_type="CONTAINER",
@@ -227,15 +227,29 @@ class CosmosDbProvider(NativeProvider):
         return summary
 
     def list_droppable_objects(self, schema: str) -> List[DroppableObject]:
-        """Return CosmosDB containers in the order clean would drop them."""
+        """Return CosmosDB containers in the order clean would drop them.
+
+        ``drop_sql`` records the SDK call clean will make; it is a
+        human-readable audit line, not a statement anyone can execute.
+        :meth:`drop_object` performs the deletion.
+        """
         return [
             DroppableObject(
                 name=container_name,
                 object_type="CONTAINER",
-                drop_sql=f"DROP CONTAINER {container_name}",
+                drop_sql=f"database.delete_container({container_name!r})",
             )
             for container_name in self.schema_operations.list_containers()
         ]
+
+    def drop_object(self, obj: DroppableObject) -> None:
+        """Delete the container through the Azure SDK.
+
+        Cosmos containers are not droppable with SQL, so clean must not
+        route ``drop_sql`` through ``execute_statement``.
+        """
+        if not self.schema_operations.delete_container(obj.name):
+            raise RuntimeError(f"Failed to delete container {obj.name}")
 
     def get_clean_preview(self, schema: str) -> CleanExecutionSummary:
         """Return what a Cosmos DB clean would remove without deleting data."""

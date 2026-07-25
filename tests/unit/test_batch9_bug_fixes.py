@@ -84,8 +84,8 @@ class TestNote01MigrationContextNotSubscriptable(unittest.TestCase):
         # The key that was tried is echoed so users can grep their script.
         self.assertIn("account_endpoint", msg)
         # And the message points at the new API.
-        self.assertIn("context.client", msg)
-        self.assertIn("context.database", msg)
+        self.assertIn("context.raw_client", msg)
+        self.assertIn("context.db", msg)
 
     def test_new_api_attributes_still_work(self) -> None:
         """Sanity: __getitem__ doesn't shadow the typed attribute accessors."""
@@ -95,8 +95,8 @@ class TestNote01MigrationContextNotSubscriptable(unittest.TestCase):
         provider.connection_manager.database = "DB_PROXY"
         provider.connection_manager.client = "COSMOS_CLIENT"
         ctx = MigrationContext(provider=provider, log=MagicMock(), dry_run=True)
-        self.assertEqual(ctx.database, "DB_PROXY")
-        self.assertEqual(ctx.client, "COSMOS_CLIENT")
+        self.assertEqual(ctx.db, "DB_PROXY")
+        self.assertEqual(ctx.raw_client, "COSMOS_CLIENT")
         self.assertTrue(ctx.dry_run)
 
 

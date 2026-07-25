@@ -75,6 +75,11 @@ def test_sqlite_clean_command_emits_foreign_key_control_statements(tmp_path: Pat
     assert objects[-1].record_result is False
 
 
+def _dropped(provider):
+    """DroppableObjects the command actually asked the provider to drop."""
+    return [call.args[0] for call in provider.drop_object.call_args_list]
+
+
 def test_clean_command_executes_provider_droppable_objects():
     provider = MagicMock()
     provider.list_droppable_objects.return_value = [
@@ -102,7 +107,7 @@ def test_clean_command_executes_provider_droppable_objects():
     result = cmd.execute()
 
     assert result.success
-    provider.execute_statement.assert_called_once_with('DROP TABLE "t"')
+    assert [o.drop_sql for o in _dropped(provider)] == ['DROP TABLE "t"']
     provider.clean_schema.assert_not_called()
     assert "t" in result.tables_dropped
 
@@ -140,8 +145,9 @@ def test_clean_command_executes_unrecorded_control_statements_without_result_ent
     result = cmd.execute()
 
     assert result.success
-    provider.execute_statement.assert_any_call("SET FOREIGN_KEY_CHECKS = 0")
-    provider.execute_statement.assert_any_call('DROP TABLE "t"')
+    dropped = [o.drop_sql for o in _dropped(provider)]
+    assert "SET FOREIGN_KEY_CHECKS = 0" in dropped
+    assert 'DROP TABLE "t"' in dropped
     assert "clean_control" not in result.get_objects_by_type()
     assert "t" in result.tables_dropped
 
@@ -179,6 +185,6 @@ def test_clean_command_dry_run_hides_unrecorded_control_statements():
     result = cmd.execute(dry_run=True)
 
     assert result.success
-    provider.execute_statement.assert_not_called()
+    provider.drop_object.assert_not_called()
     log.info.assert_any_call("  Would drop table: t")
     assert all("clean_control" not in call.args[0] for call in log.info.call_args_list if call.args)

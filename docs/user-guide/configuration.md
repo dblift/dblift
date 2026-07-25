@@ -216,6 +216,22 @@ export DBLIFT_DB_ACCOUNT_KEY="your-account-key"
 export DBLIFT_DB_DATABASE_NAME="your-database"
 ```
 
+### CosmosDB Migrations Are Python
+
+Cosmos DB has no SQL DDL, so DBLift runs **Python migrations only** against it.
+A `.py` migration receives `context.db` (`azure.cosmos.DatabaseProxy`) and
+`context.raw_client` (`azure.cosmos.CosmosClient`) and calls the Azure SDK
+directly; `context.execute()` runs native Cosmos `SELECT` and nothing else.
+
+A `.sql` migration aimed at a Cosmos DB target fails with `DBLIFT-NOSQL-001`
+before anything executes. File naming, ordering, checksums and `--dry-run` are
+otherwise identical to SQL migrations.
+
+See **[NoSQL (Cosmos DB) Python migrations](nosql-python-migrations.md)** for
+the migration contract, the full context reference, and how to convert the
+removed pseudo-SQL statements (`DROP CONTAINER`, `SET THROUGHPUT`,
+`CREATE INDEX`, `SET TTL`, …) into SDK calls.
+
 ## Using Environment Variables
 
 Instead of putting passwords in `dblift.yaml`, use environment variables:

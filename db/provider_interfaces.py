@@ -171,6 +171,16 @@ class SchemaProvider(ABC):
         """Return schema objects in the order clean should drop them."""
         raise NotImplementedError(f"{type(self).__name__} must implement list_droppable_objects()")
 
+    def drop_object(self, obj: DroppableObject) -> None:
+        """Drop one object enumerated by :meth:`list_droppable_objects`.
+
+        Relational providers execute ``obj.drop_sql``. Providers whose
+        objects cannot be dropped with SQL — document stores, where
+        ``drop_sql`` is a human-readable record of the SDK call rather
+        than a runnable statement — override this and call their SDK.
+        """
+        self.execute_statement(obj.drop_sql)  # type: ignore[attr-defined]
+
     @abstractmethod
     def create_snapshot_table_if_not_exists(
         self, schema: str, table_name: str = "dblift_schema_snapshots"

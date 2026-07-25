@@ -128,9 +128,9 @@ class TestCosmosDbCleanPreview:
             ("CONTAINER", "orders"),
             ("CONTAINER", "users"),
         ]
-        assert "DROP CONTAINER users" in summary.statements
-        assert "DROP CONTAINER dblift_schema_history" in summary.statements
-        assert "DROP CONTAINER dblift_migration_lock" in summary.statements
+        assert "database.delete_container('users')" in summary.statements
+        assert "database.delete_container('dblift_schema_history')" in summary.statements
+        assert "database.delete_container('dblift_migration_lock')" in summary.statements
 
     def test_preview_includes_only_internal_containers_when_they_are_all_that_exists(self):
         from db.plugins.cosmosdb.cosmosdb.schema_operations import CosmosDbSchemaOperations

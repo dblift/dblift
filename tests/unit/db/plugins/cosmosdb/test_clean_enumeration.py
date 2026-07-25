@@ -34,22 +34,22 @@ class TestCosmosDbDroppableObjectEnumeration:
             DroppableObject(
                 name="users",
                 object_type="CONTAINER",
-                drop_sql="DROP CONTAINER users",
+                drop_sql="database.delete_container('users')",
             ),
             DroppableObject(
                 name="orders",
                 object_type="CONTAINER",
-                drop_sql="DROP CONTAINER orders",
+                drop_sql="database.delete_container('orders')",
             ),
             DroppableObject(
                 name="dblift_schema_history",
                 object_type="CONTAINER",
-                drop_sql="DROP CONTAINER dblift_schema_history",
+                drop_sql="database.delete_container('dblift_schema_history')",
             ),
             DroppableObject(
                 name="dblift_migration_lock",
                 object_type="CONTAINER",
-                drop_sql="DROP CONTAINER dblift_migration_lock",
+                drop_sql="database.delete_container('dblift_migration_lock')",
             ),
         ]
         _cosmos_provider.schema_operations.list_containers.assert_called_once_with()

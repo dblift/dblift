@@ -135,7 +135,7 @@ class CleanCommand(BaseCommand):
             drop_errors: List[str] = []
             for obj in self.provider.list_droppable_objects(self.config.database.schema):
                 try:
-                    self.provider.execute_statement(obj.drop_sql)
+                    self.provider.drop_object(obj)
                     executed_statements.append(obj.drop_sql)
                     if obj.record_result:
                         result.add_cleaned_object(
