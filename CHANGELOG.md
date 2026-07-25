@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Tests for the `pseudo-sql-translator` lint rule** (27 cases). The rule
+  shipped in 3.0.0 with no test of its own: every banned translator name and
+  pseudo-DDL verb, the `# lint: allow-pseudo-sql` marker, the negative cases
+  (a native Cosmos `SELECT`, a relational `DROP TABLE`), and — the one that
+  matters — that the rule is actually wired into `_lint_file`, plus that
+  `DEFAULT_ROOTS` resolves to directories that exist. A root that does not
+  resolve makes the whole gate pass vacuously, because `Path.rglob` on a
+  missing directory yields nothing rather than raising.
+
+### Fixed
+
+- **Stale `mypy` per-module overrides** in `pyproject.toml` naming
+  `db.plugins.cosmosdb.sdk_translator.*` and `db.plugins.cosmosdb.parser.*` —
+  eight modules 3.0.0 deleted. Harmless to type checking, but they described a
+  subsystem that no longer exists.
+
 ## [3.0.0] - 2026-07-25
 
 ### Changed
