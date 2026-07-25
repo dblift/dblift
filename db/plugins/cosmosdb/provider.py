@@ -336,11 +336,18 @@ class CosmosDbProvider(NativeProvider):
         schema: str,
         table_name: Optional[str] = None,
     ) -> None:
-        """Wrap base snapshot-container creation with CosmosDB 503 retry.
+        """Create the snapshot container through the SDK, retrying on 503.
 
-        CosmosDB emulator returns ServiceUnavailable / 503 during warmup;
-        retry with exponential backoff so snapshot persistence doesn't fail
-        on the first migrate after a fresh container start.
+        The inherited implementation renders ``CREATE TABLE`` DDL and sends
+        it to ``execute_statement``. Cosmos has no DDL — that only ever
+        worked because the pseudo-SQL emulator recognised ``CREATE TABLE``
+        and turned it into a container create. With the emulator gone the
+        statement would raise ``NoSqlWriteNotSupportedError``, so the
+        container is created directly here instead.
+
+        The emulator also returns ServiceUnavailable / 503 during warmup, so
+        the create is retried with exponential backoff and snapshot
+        persistence survives the first migrate after a fresh container start.
         """
         from core.constants import DBLIFT_SCHEMA_SNAPSHOTS_TABLE
 
@@ -348,7 +355,11 @@ class CosmosDbProvider(NativeProvider):
         last_exc: Optional[Exception] = None
         for attempt in range(self._SNAPSHOT_CREATE_MAX_RETRIES):
             try:
-                super().create_snapshot_table_if_not_exists(schema, resolved_name)
+                # Snapshots are keyed by ``snapshot_id``; partition on it so
+                # a point read can find one without a cross-partition query.
+                self.schema_operations.create_container_if_not_exists(
+                    resolved_name, partition_key="/snapshot_id"
+                )
                 return
             except Exception as e:
                 last_exc = e

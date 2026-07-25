@@ -78,8 +78,8 @@ def test_cosmos_history_manager_deletes_documents_via_sdk():
     manager = CosmosDbHistoryManager(executor, None, None)
     container = MagicMock()
     container.query_items.return_value = [
-        {"id": "doc-1", "script": "V1__x.sql", "success": False},
-        {"id": "doc-2", "script": "V1__x.sql", "success": False},
+        {"id": "doc-1", "script": "V1__x.sql", "success": False, "version": "1.0.0"},
+        {"id": "doc-2", "script": "V1__x.sql", "success": False, "version": "1.0.1"},
     ]
     manager.history_container = container
 
@@ -100,3 +100,45 @@ def test_cosmos_history_manager_returns_zero_when_no_failed_row():
 
     assert manager.delete_failed_migration_entry(None, "default", "V1__x.sql") == 0
     container.delete_item.assert_not_called()
+
+
+def test_delete_addresses_the_version_partition_key():
+    """The container is partitioned on /version, not on the document id.
+
+    Addressing a point delete with the wrong partition key returns 404,
+    which the handler reads as "already deleted" — so the row would survive
+    while repair reported nothing to remove.
+    """
+    executor = _QueryExecutor("cosmosdb")
+    manager = CosmosDbHistoryManager(executor, None, None)
+    container = MagicMock()
+    container.query_items.return_value = [
+        {"id": "V1__x.sql", "script": "V1__x.sql", "success": False, "version": "1.0.0"}
+    ]
+    manager.history_container = container
+
+    assert manager.delete_failed_migration_entry(None, "default", "V1__x.sql") == 1
+
+    kwargs = container.delete_item.call_args.kwargs
+    assert kwargs["item"] == "V1__x.sql"
+    assert kwargs["partition_key"] == "1.0.0"
+
+    # The query must project the partition-key field, or it cannot be used.
+    query = container.query_items.call_args.kwargs["query"]
+    assert "c.version" in query
+
+
+def test_repeatable_migration_uses_the_none_partition_sentinel():
+    """R__ rows carry no version and live in the partition-keyless partition."""
+    from db.plugins.cosmosdb.cosmosdb._sdk import NONE_PARTITION_KEY
+
+    executor = _QueryExecutor("cosmosdb")
+    manager = CosmosDbHistoryManager(executor, None, None)
+    container = MagicMock()
+    container.query_items.return_value = [
+        {"id": "R__seed.sql", "script": "R__seed.sql", "success": False, "version": None}
+    ]
+    manager.history_container = container
+
+    assert manager.delete_failed_migration_entry(None, "default", "R__seed.sql") == 1
+    assert container.delete_item.call_args.kwargs["partition_key"] is NONE_PARTITION_KEY

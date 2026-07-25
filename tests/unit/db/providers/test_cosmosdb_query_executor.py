@@ -102,19 +102,16 @@ class TestExtractContainerFromQuery(unittest.TestCase):
     def test_select_from(self):
         self.assertEqual("orders", self._ext("SELECT * FROM orders WHERE id = 1"))
 
-    def test_insert_into(self):
-        self.assertEqual("history", self._ext("INSERT INTO history (id, val) VALUES (1, 2)"))
+    def test_select_from_with_alias(self):
+        self.assertEqual("orders", self._ext("SELECT c.id FROM orders c WHERE c.id = 1"))
 
-    def test_update_container(self):
-        self.assertEqual("users", self._ext("UPDATE users SET name = 'x'"))
+    def test_returns_none_without_a_from_clause(self):
+        self.assertIsNone(self._ext("SELECT VALUE 1"))
 
-    def test_delete_from(self):
-        self.assertEqual("log", self._ext("DELETE FROM log WHERE id = 1"))
-
-    def test_returns_none_for_unrecognized(self):
-        # EXEC has neither FROM nor INTO
-        result = self._ext("EXEC myproc")
-        self.assertIsNone(result)
+    def test_write_forms_are_not_recognised(self):
+        """Only reads reach this executor; INTO/UPDATE are not container hints."""
+        self.assertIsNone(self._ext("INSERT INTO history (id, val) VALUES (1, 2)"))
+        self.assertIsNone(self._ext("UPDATE users SET name = 'x'"))
 
 
 # ---------------------------------------------------------------------------

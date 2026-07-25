@@ -298,18 +298,26 @@ class BaseProvider(
         an unknown row count.
         """
         history_manager = getattr(self, "history_manager", None)
-        if history_manager is None:
-            raise NotImplementedError(
-                f"{type(self).__name__} has no history_manager; "
-                "override delete_failed_migration_entry or attach a "
-                "history_manager component."
+        if history_manager is not None:
+            connection = getattr(self, "connection", None)
+            return int(
+                history_manager.delete_failed_migration_entry(
+                    connection, schema, script_name, table_name
+                )
             )
-        connection = getattr(self, "connection", None)
-        return int(
-            history_manager.delete_failed_migration_entry(
-                connection, schema, script_name, table_name
-            )
+
+        # Most relational plugins compose their history SQL on the provider
+        # itself and own no ``history_manager`` component (only SQLite and
+        # CosmosDB do), so the parameterised DELETE lives here for them —
+        # the same statement ``repair`` used to build inline.
+        resolved = self.get_normalized_object_name(table_name or "dblift_schema_history")
+        qualified_table = self.get_schema_qualified_name(schema, resolved)
+        false_literal = self.quirks.boolean_false_literal
+        affected = self.execute_statement(
+            f"DELETE FROM {qualified_table} " f"WHERE script = ? AND success = {false_literal}",
+            params=[script_name],
         )
+        return int(affected) if affected is not None else 0
 
     def close(self) -> None:
         """Close the database connection if it exists.

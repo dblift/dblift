@@ -339,55 +339,26 @@ class CosmosDbQueryExecutor(BaseQueryExecutor):
         return sql
 
     def _extract_container_from_query(self, sql: str) -> Optional[str]:
-        """Extract container name from SQL query.
+        """Return the container a ``SELECT`` reads from, or ``None``.
+
+        Only the ``FROM`` clause is inspected: this executor runs reads and
+        nothing else, so the ``INTO`` / ``UPDATE`` / ``DELETE FROM`` forms the
+        deleted write path needed no longer occur.
 
         Args:
-            sql: SQL query
+            sql: Native Cosmos SQL query
 
         Returns:
             Container name if found, None otherwise (preserves original case)
         """
-        # Simple extraction - look for FROM clause (SELECT), INTO clause (INSERT), or UPDATE
-        # Use case-insensitive search but preserve original case
         sql_upper = sql.upper()
-        if "FROM" in sql_upper:
-            # Find position in original string
-            from_pos = sql_upper.find("FROM")
-            after_from = sql[from_pos + 4 :].strip()
-            container_part = after_from.split()[0] if after_from else None
-            if container_part:
-                # Remove any trailing punctuation
-                container_part = container_part.rstrip(";.,")
-                return container_part
-        elif "INTO" in sql_upper:
-            # INSERT INTO container_name ...
-            into_pos = sql_upper.find("INTO")
-            after_into = sql[into_pos + 4 :].strip()
-            # Skip to container name (might have parentheses after)
-            container_part = after_into.split()[0] if after_into else None
-            if container_part:
-                # Remove any trailing punctuation
-                container_part = container_part.rstrip(";.,")
-                return container_part
-        elif "UPDATE" in sql_upper:
-            # UPDATE container_name SET ...
-            update_pos = sql_upper.find("UPDATE")
-            after_update = sql[update_pos + 6 :].strip()
-            container_part = after_update.split()[0] if after_update else None
-            if container_part:
-                # Remove any trailing punctuation
-                container_part = container_part.rstrip(";.,")
-                return container_part
-        elif "DELETE" in sql_upper and "FROM" in sql_upper:
-            # DELETE FROM container_name ...
-            from_pos = sql_upper.find("FROM")
-            after_from = sql[from_pos + 4 :].strip()
-            container_part = after_from.split()[0] if after_from else None
-            if container_part:
-                # Remove any trailing punctuation
-                container_part = container_part.rstrip(";.,")
-                return container_part
-        return None
+        if "FROM" not in sql_upper:
+            return None
+        from_pos = sql_upper.find("FROM")
+        after_from = sql[from_pos + 4 :].strip()
+        if not after_from:
+            return None
+        return after_from.split()[0].rstrip(";.,") or None
 
     @staticmethod
     def _substitute_params(sql_fragment: str, params: List[Any]) -> str:

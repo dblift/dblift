@@ -379,6 +379,21 @@ class CosmosDbHistoryManager(DocumentHistoryManager):
             self.log.error(f"Error repairing history document for {script_name}: {e}")
             return False
 
+    @staticmethod
+    def _history_partition_key(doc: Dict[str, Any]) -> Any:
+        """Partition-key value for a history document.
+
+        The container is partitioned on ``/version``. Repeatable (``R__``)
+        migrations carry no version, so their documents live in the
+        partition-keyless partition and need the SDK's sentinel rather than
+        ``None`` — passing ``None`` addresses a different partition and the
+        delete silently 404s.
+        """
+        from ._sdk import NONE_PARTITION_KEY
+
+        version = doc.get("version")
+        return version if version else NONE_PARTITION_KEY
+
     def delete_failed_migration_entry(
         self,
         connection: Any,
@@ -400,7 +415,10 @@ class CosmosDbHistoryManager(DocumentHistoryManager):
         if self.history_container is None:
             raise RuntimeError("History container not initialized")
 
-        query = "SELECT c.id, c.script, c.success FROM c WHERE c.script = @script"
+        # ``version`` is the partition key path, so it must come back with the
+        # row: a point delete addressed by the wrong partition key returns 404,
+        # which would read as "already deleted" and remove nothing.
+        query = "SELECT c.id, c.script, c.success, c.version FROM c WHERE c.script = @script"
         parameters = [{"name": "@script", "value": script_name}]
         try:
             failed_docs = [
@@ -422,7 +440,9 @@ class CosmosDbHistoryManager(DocumentHistoryManager):
             if not doc_id:
                 continue
             try:
-                self.history_container.delete_item(item=doc_id, partition_key=doc_id)
+                self.history_container.delete_item(
+                    item=doc_id, partition_key=self._history_partition_key(doc)
+                )
                 deleted += 1
             except Exception as e:
                 error_str = str(e).lower()
