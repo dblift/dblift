@@ -127,7 +127,7 @@ class MigrationExecutorFactory:
             # Default to SQL for backward compatibility
             format = MigrationFormat.SQL
 
-        self._reject_format_unsupported_by_dialect(migration, format)
+        self.ensure_format_supported(migration, format)
 
         # Check if format is supported
         if format not in self._executor_classes:
@@ -160,14 +160,18 @@ class MigrationExecutorFactory:
 
         return self._executor_instances[format]
 
-    def _reject_format_unsupported_by_dialect(
-        self, migration: Migration, format: MigrationFormat
-    ) -> None:
+    def ensure_format_supported(self, migration: Migration, format: MigrationFormat) -> None:
         """Raise when the target dialect cannot run migrations of *format*.
 
         Document stores declare ``supports_sql_migrations = False``: they
         have no SQL DDL, so a ``.sql`` migration is a mistake to surface
         rather than something to translate.
+
+        Public because callbacks do not route through :meth:`get_executor`
+        — ``ExecutionEngine.execute_callback`` runs SQL callbacks itself and
+        needs the same verdict, or a ``.sql`` callback on a document store
+        would fail later with an opaque parser/driver error instead of
+        ``DBLIFT-NOSQL-001``.
         """
         if format is not MigrationFormat.SQL:
             return
