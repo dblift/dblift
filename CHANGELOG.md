@@ -9,9 +9,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`dblift.client` entry-point seam** (`core.seams.client_factory`): the CLI
+  now resolves the client class it constructs through the new entry-point
+  group, so distribution add-ons can substitute a `DBLiftClient` subclass
+  carrying their commands. Without a registration the OSS client is used —
+  behavior is unchanged for OSS-only installs. A broken registration logs a
+  warning and falls back to the OSS client.
+
 ### Changed
 
 ### Fixed
+
+- **The `_dblift_config_only_client` handler marker is honored again**: a
+  single marked command receives a `ConfigOnlyClient` (no provider, no
+  database connection) instead of a fully constructed client. The dispatch
+  logic existed before the repository split and was lost in the export;
+  add-on commands that declare themselves config-only (offline analysis)
+  no longer trigger a database client construction.
 
 ### Removed
 
