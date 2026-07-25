@@ -6,9 +6,10 @@ lowercase. Oracle stores the table as unquoted ``DBLIFT_SCHEMA_HISTORY``
 (folded uppercase) so the quoted lowercase reference resolves to a
 literally-named table that does not exist → ORA-00942.
 
-This test pins the fix end to end: the command hands the *normalized*
-table name to the history manager, and the history manager — which now
-owns the DELETE — qualifies it with that name.
+The delete now travels command → history facade → provider → plugin
+history manager, and only the last hop composes SQL. This test drives the
+whole chain so the regression stays pinned end to end rather than at
+whichever layer happens to hold the string today.
 """
 
 from __future__ import annotations
@@ -20,15 +21,16 @@ import pytest
 
 from core.logger.results import RepairResult
 from core.migration.commands.repair_command import RepairCommand
+from core.migration.history.migration_history_manager import MigrationHistoryManager
 from db.plugins.base_history_manager import BaseHistoryManager
 
 
 class _OracleQueryExecutorStub:
-    """Mirrors the part of the real Oracle query executor the DELETE path touches."""
+    """Mirrors the part of the real Oracle query executor the delete touches."""
 
     dialect_name = "oracle"
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.statements: list[tuple[str, list]] = []
 
     def get_schema_qualified_name(self, schema: str, table: str) -> str:
@@ -45,8 +47,6 @@ class _OracleQueryExecutorStub:
 class _OracleHistoryManager(BaseHistoryManager):
     """Concrete subclass — only the inherited delete path is exercised."""
 
-    normalized_history_table = "DBLIFT_SCHEMA_HISTORY"
-
     def create_migration_history_table_if_not_exists(self, *args, **kwargs):
         raise NotImplementedError
 
@@ -61,14 +61,22 @@ class _OracleHistoryManager(BaseHistoryManager):
 
 
 class _OracleProviderStub:
-    def __init__(self):
+    """Provider seam: normalises the name and delegates to its history manager."""
+
+    def __init__(self, query_executor: _OracleQueryExecutorStub) -> None:
         self.connection = object()
+        self.history_manager = _OracleHistoryManager(query_executor, None, None)
 
     def get_normalized_object_name(self, name: str) -> str:
         return name.upper()
 
     def get_schema_qualified_name(self, schema: str, table: str) -> str:
         return f'"{schema}"."{table}"'
+
+    def delete_failed_migration_entry(self, schema, script_name, table_name=None):
+        return self.history_manager.delete_failed_migration_entry(
+            self.connection, schema, script_name, table_name
+        )
 
     def _ensure_connection(self):
         return None
@@ -79,13 +87,16 @@ class _OracleProviderStub:
 
 def _make_repair_command() -> tuple[RepairCommand, _OracleQueryExecutorStub]:
     """Bypass BaseCommand.__init__; we only exercise _delete_failed_migration_entry."""
+    query_executor = _OracleQueryExecutorStub()
+    provider = _OracleProviderStub(query_executor)
+
     cmd = RepairCommand.__new__(RepairCommand)
     cmd.log = MagicMock()
     cmd.config = SimpleNamespace(database=SimpleNamespace(schema="DBLIFT_TEST", type="oracle"))
-    cmd.provider = _OracleProviderStub()
-
-    query_executor = _OracleQueryExecutorStub()
-    cmd.history_manager = _OracleHistoryManager(query_executor, None, None)
+    cmd.provider = provider
+    cmd.history_manager = MigrationHistoryManager(
+        provider=provider, schema="DBLIFT_TEST", installed_by="tester", logger=MagicMock()
+    )
     return cmd, query_executor
 
 
@@ -123,4 +134,3 @@ class TestRepairUsesNormalizedHistoryTableForOracle:
 
         delete_sql, _params = query_executor.statements[0]
         assert "success = 0" in delete_sql
-        assert "FALSE" not in delete_sql.upper().replace("V1__CREATE_USERS.SQL", "")

@@ -79,7 +79,7 @@ class TestRepairDeletesFailedMigrations:
         history_manager = Mock()
         history_manager.create_schema_and_history_table = Mock()
         history_manager.history_table = "dblift_schema_history"
-        history_manager.delete_failed_migration_entry = Mock(return_value=1)
+        history_manager.delete_failed_migration_entry = Mock(return_value=True)
 
         failed = Mock()
         failed.script_name = "V1__broken.sql"
@@ -118,7 +118,7 @@ class TestRepairDeletesFailedMigrations:
         # The failed row is deleted, and the "mark as needing reapplication"
         # UPDATE path is never taken.
         history_manager.delete_failed_migration_entry.assert_called_once()
-        assert history_manager.delete_failed_migration_entry.call_args[0][2] == "V1__broken.sql"
+        assert history_manager.delete_failed_migration_entry.call_args[0][0] == "V1__broken.sql"
         history_manager.repair_migration_history.assert_not_called()
         assert result.failed_migrations_removed == 1
 

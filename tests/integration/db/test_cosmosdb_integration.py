@@ -1,8 +1,14 @@
 """
-Integration tests for Cosmos DB provider.
+Integration tests for the Cosmos DB provider.
 
-These tests validate that Cosmos DB provider works correctly against real Cosmos DB instances.
-They test connection, query execution, migration history, and container operations.
+Cosmos DB has no SQL DDL. Containers, throughput, indexing policy, TTL and
+documents are changed through ``azure-cosmos`` from a **Python migration**
+(``def migrate(context)``), reaching the SDK via ``context.db`` (DatabaseProxy)
+and ``context.raw_client`` (CosmosClient). The Cosmos SQL API is read-only:
+``SELECT`` runs, every write raises ``NoSqlWriteNotSupportedError``, and a
+``.sql`` migration is rejected up front with ``DBLIFT-NOSQL-001``.
+
+See ``docs/user-guide/nosql-python-migrations.md``.
 
 Prerequisites:
 - Azure Cosmos DB Emulator running in Docker (see tests/integration/docker-compose.yml)
@@ -24,904 +30,876 @@ Usage:
 """
 
 import datetime
+import time
 from pathlib import Path
+from typing import Any, Dict
 
 import pytest
+from azure.cosmos import PartitionKey
 
 from config import DbliftConfig
-from core.logger import DbliftLogger, LogFormat, LogLevel
-from db.plugins.cosmosdb.provider import CosmosDbProvider
+from core.exceptions import NoSqlWriteNotSupportedError
 from db.provider_registry import ProviderRegistry
+from tests.integration.helpers.cli_runner_direct import DBLiftCLIDirect as DBLiftCLI
+from tests.integration.helpers.migration_helper import create_config, create_migration
+
+# Cosmos DB has a single logical schema; dblift addresses it as "default".
+SCHEMA = "default"
+
+
+# ---------------------------------------------------------------------------
+# Python migration scripts used as test fixtures
+#
+# These are written verbatim into the migrations directory, so they are the
+# supported authoring model exactly as a user would write it.
+# ---------------------------------------------------------------------------
+
+PY_CREATE_USERS = '''
+"""Create the users container with an explicit partition key."""
+
+from azure.cosmos import PartitionKey
+
+CONTAINER = "users"
+PARTITION_KEY = "/tenant_id"
+
+
+def migrate(context):
+    if context.dry_run:
+        context.log.info(f"[DRY-RUN] would create container '{CONTAINER}'")
+        return
+
+    context.db.create_container(
+        id=CONTAINER,
+        partition_key=PartitionKey(path=PARTITION_KEY),
+        offer_throughput=400,
+    )
+    context.log.info(f"Created container '{CONTAINER}'")
+
+
+def undo(context):
+    if context.dry_run:
+        context.log.info(f"[DRY-RUN] would delete container '{CONTAINER}'")
+        return
+
+    context.db.delete_container(CONTAINER)
+    context.log.info(f"Deleted container '{CONTAINER}'")
+'''
+
+
+PY_SET_THROUGHPUT = '''
+"""Raise manual throughput on the users container."""
+
+
+def migrate(context):
+    container = context.db.get_container_client("users")
+    if context.dry_run:
+        context.log.info("[DRY-RUN] would set throughput to 1000 RU/s")
+        return
+
+    container.replace_throughput(1000)
+    context.log.info("Set throughput to 1000 RU/s")
+'''
+
+
+PY_SET_AUTOSCALE = '''
+"""Switch the users container to autoscale throughput."""
+
+from azure.cosmos import ThroughputProperties
+
+
+def migrate(context):
+    container = context.db.get_container_client("users")
+    if context.dry_run:
+        context.log.info("[DRY-RUN] would set autoscale max to 4000 RU/s")
+        return
+
+    container.replace_throughput(ThroughputProperties(auto_scale_max_throughput=4000))
+    context.log.info("Set autoscale max throughput to 4000 RU/s")
+'''
+
+
+PY_SET_TTL = '''
+"""Enable a default TTL on the users container."""
+
+from azure.cosmos import PartitionKey
+
+TTL_SECONDS = 3600
+
+
+def migrate(context):
+    container = context.db.get_container_client("users")
+    properties = container.read()
+
+    if context.dry_run:
+        context.log.info(f"[DRY-RUN] would set default TTL to {TTL_SECONDS}s")
+        return
+
+    context.db.replace_container(
+        container,
+        partition_key=PartitionKey(path=properties["partitionKey"]["paths"][0]),
+        indexing_policy=properties["indexingPolicy"],
+        default_ttl=TTL_SECONDS,
+    )
+    context.log.info(f"Set default TTL to {TTL_SECONDS}s")
+'''
+
+
+PY_DISABLE_TTL = '''
+"""Turn the default TTL back off."""
+
+from azure.cosmos import PartitionKey
+
+
+def migrate(context):
+    container = context.db.get_container_client("users")
+    properties = container.read()
+
+    if context.dry_run:
+        context.log.info("[DRY-RUN] would disable default TTL")
+        return
+
+    context.db.replace_container(
+        container,
+        partition_key=PartitionKey(path=properties["partitionKey"]["paths"][0]),
+        indexing_policy=properties["indexingPolicy"],
+        default_ttl=None,
+    )
+    context.log.info("Disabled default TTL")
+'''
+
+
+PY_EXCLUDE_INDEX_PATH = '''
+"""Exclude a large blob property from indexing."""
+
+from azure.cosmos import PartitionKey
+
+EXCLUDED_PATH = "/profile_blob/*"
+
+
+def migrate(context):
+    container = context.db.get_container_client("users")
+    properties = container.read()
+
+    indexing_policy = properties["indexingPolicy"]
+    excluded = indexing_policy.setdefault("excludedPaths", [])
+    if not any(entry.get("path") == EXCLUDED_PATH for entry in excluded):
+        excluded.append({"path": EXCLUDED_PATH})
+
+    if context.dry_run:
+        context.log.info(f"[DRY-RUN] would exclude '{EXCLUDED_PATH}' from indexing")
+        return
+
+    context.db.replace_container(
+        container,
+        partition_key=PartitionKey(path=properties["partitionKey"]["paths"][0]),
+        indexing_policy=indexing_policy,
+    )
+    context.log.info(f"Excluded '{EXCLUDED_PATH}' from indexing")
+'''
+
+
+PY_CREATE_SPARSE_INDEX_CONTAINER = '''
+"""Create a container that indexes only the paths it is told to."""
+
+from azure.cosmos import PartitionKey
+
+CONTAINER = "events"
+
+
+def migrate(context):
+    if context.dry_run:
+        context.log.info(f"[DRY-RUN] would create container '{CONTAINER}'")
+        return
+
+    context.db.create_container(
+        id=CONTAINER,
+        partition_key=PartitionKey(path="/tenant_id"),
+        indexing_policy={
+            "indexingMode": "consistent",
+            "automatic": True,
+            "includedPaths": [{"path": "/tenant_id/?"}],
+            "excludedPaths": [{"path": "/*"}],
+        },
+    )
+    context.log.info(f"Created container '{CONTAINER}'")
+'''
+
+
+PY_INCLUDE_INDEX_PATH = '''
+"""Add an indexed path to the events container."""
+
+from azure.cosmos import PartitionKey
+
+INCLUDED_PATH = "/kind/?"
+
+
+def migrate(context):
+    container = context.db.get_container_client("events")
+    properties = container.read()
+
+    indexing_policy = properties["indexingPolicy"]
+    included = indexing_policy.setdefault("includedPaths", [])
+    if not any(entry.get("path") == INCLUDED_PATH for entry in included):
+        included.append({"path": INCLUDED_PATH})
+
+    if context.dry_run:
+        context.log.info(f"[DRY-RUN] would index '{INCLUDED_PATH}'")
+        return
+
+    context.db.replace_container(
+        container,
+        partition_key=PartitionKey(path=properties["partitionKey"]["paths"][0]),
+        indexing_policy=indexing_policy,
+    )
+    context.log.info(f"Indexed '{INCLUDED_PATH}'")
+'''
+
+
+PY_SEED_USERS = '''
+"""Insert seed documents (the INSERT replacement)."""
+
+DOCUMENTS = [
+    {"id": "1", "tenant_id": "acme", "name": "Alice", "status": "active", "count": 10},
+    {"id": "2", "tenant_id": "acme", "name": "Bob", "status": "active", "count": 20},
+    {"id": "3", "tenant_id": "globex", "name": "Carol", "status": "active", "count": 30},
+]
+
+
+def migrate(context):
+    container = context.db.get_container_client("users")
+    if context.dry_run:
+        context.log.info(f"[DRY-RUN] would create {len(DOCUMENTS)} documents")
+        return
+
+    for document in DOCUMENTS:
+        container.create_item(body=document)
+    context.log.info(f"Created {len(DOCUMENTS)} documents")
+'''
+
+
+PY_UPDATE_USER = '''
+"""Replace a document in place (the UPDATE replacement)."""
+
+
+def migrate(context):
+    container = context.db.get_container_client("users")
+
+    # Conditional work still reads through the Cosmos SQL API.
+    existing = context.execute("SELECT * FROM users c WHERE c.id = '1'")
+    if not existing:
+        raise RuntimeError("expected document '1' to exist")
+
+    document = dict(existing[0])
+    document["status"] = "inactive"
+    document["name"] = "Alice Updated"
+
+    if context.dry_run:
+        context.log.info("[DRY-RUN] would replace document '1'")
+        return
+
+    container.replace_item(item=document["id"], body=document)
+    context.log.info("Replaced document '1'")
+'''
+
+
+PY_DELETE_USER = '''
+"""Delete a document (the DELETE replacement)."""
+
+
+def migrate(context):
+    container = context.db.get_container_client("users")
+    if context.dry_run:
+        context.log.info("[DRY-RUN] would delete document '3'")
+        return
+
+    container.delete_item(item="3", partition_key="globex")
+    context.log.info("Deleted document '3'")
+'''
+
+
+PY_UNDO_USERS = '''
+"""Undo companion for V1_0_0 — drops the users container."""
+
+
+def migrate(context):
+    """Undo scripts are only ever driven through ``undo``."""
+    undo(context)
+
+
+def undo(context):
+    if context.dry_run:
+        context.log.info("[DRY-RUN] would delete container 'users'")
+        return
+
+    context.db.delete_container("users")
+    context.log.info("Deleted container 'users'")
+'''
+
+
+SQL_MIGRATION_REJECTED = """
+CREATE TABLE users (
+    id VARCHAR(64) NOT NULL PRIMARY KEY
+);
+"""
+
+
+# ---------------------------------------------------------------------------
+# Fixtures
+# ---------------------------------------------------------------------------
+
+
+def _skip_if_unavailable(cosmosdb_container: Dict[str, Any]) -> None:
+    """Skip the test when no Cosmos DB emulator/account is reachable."""
+    if "_skip_reason" in cosmosdb_container:
+        pytest.skip(cosmosdb_container["_skip_reason"])
+
+
+@pytest.fixture
+def cosmos_config(cosmosdb_container):
+    """Build a DbliftConfig pointed at the emulator (or external account)."""
+    _skip_if_unavailable(cosmosdb_container)
+
+    return DbliftConfig.from_dict(
+        {
+            "database": {
+                "type": "cosmosdb",
+                "url": cosmosdb_container["account_endpoint"],
+                "account_endpoint": cosmosdb_container["account_endpoint"],
+                "account_key": cosmosdb_container["account_key"],
+                "database_name": cosmosdb_container["database_name"],
+                "container_name": cosmosdb_container.get("container_name", SCHEMA),
+            },
+            "migrations": {"directory": str(Path("/tmp")), "table": "schema_version"},
+            "logging": {"level": "DEBUG", "file": "dblift_cosmosdb_integration.log"},
+        }
+    )
+
+
+@pytest.fixture
+def cosmos_provider(cosmos_config, integration_logger):
+    """A connected CosmosDbProvider, closed at teardown."""
+    provider = ProviderRegistry.create_provider(cosmos_config, integration_logger)
+    provider.create_connection()
+    yield provider
+    provider.close()
+
+
+@pytest.fixture
+def cosmos_db(cosmos_provider):
+    """The raw ``azure.cosmos.DatabaseProxy`` used for direct SDK assertions."""
+    return cosmos_provider.connection_manager.database
+
+
+@pytest.fixture
+def migrations_dir(tmp_path):
+    """An empty migrations directory for a Python-migration test."""
+    directory = tmp_path / "migrations"
+    directory.mkdir()
+    return directory
+
+
+@pytest.fixture
+def cosmos_cli(cosmosdb_container, migrations_dir, tmp_path):
+    """The production CLI wired to a Cosmos DB config and migrations dir."""
+    _skip_if_unavailable(cosmosdb_container)
+
+    config_file = create_config(tmp_path, cosmosdb_container, migrations_dir=migrations_dir)
+    return DBLiftCLI(config_file, migrations_dir)
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+
+def _wait_for_container(provider, name: str, should_exist: bool = True, timeout: float = 10.0):
+    """Poll until *name* reaches the expected existence state (emulator lag)."""
+    deadline = time.monotonic() + timeout
+    exists = provider.table_exists(SCHEMA, name)
+    while exists is not should_exist and time.monotonic() < deadline:
+        time.sleep(0.5)
+        exists = provider.table_exists(SCHEMA, name)
+    return exists
+
+
+def _read_throughput(container):
+    """Read throughput across ``azure-cosmos`` releases."""
+    if hasattr(container, "get_throughput"):
+        return container.get_throughput()
+    return container.read_offer()
+
+
+def _index_paths(properties, key: str):
+    """Return the indexing-policy paths under *key* (included/excluded)."""
+    return {entry.get("path") for entry in properties["indexingPolicy"].get(key, [])}
 
 
 @pytest.mark.integration
-class TestCosmosDbIntegration:
-    """Integration tests for Cosmos DB provider."""
+@pytest.mark.cosmosdb
+class TestCosmosDbProvider:
+    """Provider-level behaviour: connection, native SELECT, history, locking."""
 
-    def _check_cosmosdb_available(self, cosmosdb_container):
-        """Check if CosmosDB is available, skip test if not."""
-        if "_skip_reason" in cosmosdb_container:
-            pytest.skip(cosmosdb_container["_skip_reason"])
+    def test_connection(self, cosmos_provider):
+        """The provider connects and reports itself connected."""
+        assert cosmos_provider.connection is not None
+        assert cosmos_provider.is_connected() is True
 
-    def test_cosmosdb_connection(self, cosmosdb_container, integration_logger):
-        """Test connecting to Cosmos DB."""
-        self._check_cosmosdb_available(cosmosdb_container)
+    def test_database_version(self, cosmos_provider):
+        """The provider reports a Cosmos DB version string."""
+        assert "Cosmos DB" in cosmos_provider.get_database_version()
 
-        # Build config
-        config_dict = {
-            "database": {
-                "type": "cosmosdb",
-                "url": cosmosdb_container["account_endpoint"],
-                "account_endpoint": cosmosdb_container["account_endpoint"],
-                "account_key": cosmosdb_container["account_key"],
-                "database_name": cosmosdb_container["database_name"],
-                "container_name": cosmosdb_container.get("container_name", "default"),
-            },
-            "migrations": {"directory": str(Path("/tmp")), "table": "schema_version"},
-            "logging": {"level": "DEBUG", "file": "dblift_cosmosdb_integration.log"},
-        }
+    def test_native_select_query(self, cosmos_provider, cosmos_db):
+        """``execute_query`` runs native Cosmos SQL against a container."""
+        cosmos_db.create_container(id="items", partition_key=PartitionKey(path="/id"))
+        assert _wait_for_container(cosmos_provider, "items") is True
 
-        config = DbliftConfig.from_dict(config_dict)
-        provider = ProviderRegistry.create_provider(config, integration_logger)
+        container = cosmos_db.get_container_client("items")
+        container.create_item(body={"id": "1", "name": "test", "value": 100})
 
-        # Test connection
-        connection = provider.create_connection()
-        assert connection is not None
-        assert provider.is_connected() is True
-
-        # Clean up
-        provider.close()
-
-    def test_cosmosdb_query_execution(self, cosmosdb_container, integration_logger):
-        """Test executing queries against Cosmos DB."""
-        self._check_cosmosdb_available(cosmosdb_container)
-
-        config_dict = {
-            "database": {
-                "type": "cosmosdb",
-                "url": cosmosdb_container["account_endpoint"],
-                "account_endpoint": cosmosdb_container["account_endpoint"],
-                "account_key": cosmosdb_container["account_key"],
-                "database_name": cosmosdb_container["database_name"],
-                "container_name": cosmosdb_container.get("container_name", "default"),
-            },
-            "migrations": {"directory": str(Path("/tmp")), "table": "schema_version"},
-            "logging": {"level": "DEBUG", "file": "dblift_cosmosdb_integration.log"},
-        }
-
-        config = DbliftConfig.from_dict(config_dict)
-        provider = ProviderRegistry.create_provider(config, integration_logger)
-        provider.create_connection()
-
-        # Create a test container
-        create_sql = "CREATE CONTAINER test_items (id STRING) WITH (partitionKey='/id')"
-        result = provider.execute_statement(create_sql)
-        assert result >= 0  # 0 if already exists, 1 if created
-
-        # Wait for container to be ready and verify it exists
-        # Use direct container check via schema_operations for more reliable checking
-        import time
-
-        max_wait = 10  # Increased wait time for emulator
-        wait_interval = 0.5
-        waited = 0
-        exists = False
-
-        while waited < max_wait:
-            # Try multiple methods to check existence
-            exists = provider.table_exists("default", "test_items")
-            if not exists:
-                # Also try direct check via schema operations
-                exists = provider.schema_operations.container_exists("test_items")
-            if exists:
-                break
-            time.sleep(wait_interval)
-            waited += wait_interval
-
-        # If still not found, list all containers for debugging
-        if not exists:
-            try:
-                database = provider.connection_manager.database
-                containers = list(database.list_containers())
-                container_names = [c.get("id") for c in containers]
-                integration_logger.debug(f"Available containers: {container_names}")
-            except Exception:
-                pass
-
-        assert (
-            exists is True
-        ), f"Container test_items should exist but check returned False after {waited}s. Created with result={result}"
-
-        # Insert test data
-        insert_sql = "INSERT INTO test_items (id, name, value) VALUES ('1', 'test', 100)"
-        result = provider.execute_statement(insert_sql)
-        assert result == 1
-
-        # Query test data
-        # Cosmos DB SQL API uses c.id or c['id'] syntax
-        query_sql = "SELECT * FROM test_items c WHERE c.id = '1'"
-        results = provider.execute_query(query_sql)
+        results = cosmos_provider.execute_query("SELECT * FROM items c WHERE c.id = '1'")
         assert len(results) == 1
         assert results[0]["id"] == "1"
         assert results[0]["name"] == "test"
         assert results[0]["value"] == 100
 
-        # Clean up
-        provider.close()
+    def test_execute_statement_accepts_select(self, cosmos_provider, cosmos_db):
+        """``execute_statement`` runs a SELECT and returns the document count."""
+        cosmos_db.create_container(id="items", partition_key=PartitionKey(path="/id"))
+        assert _wait_for_container(cosmos_provider, "items") is True
 
-    def test_cosmosdb_container_exists(self, cosmosdb_container, integration_logger):
-        """Test checking if container exists."""
-        self._check_cosmosdb_available(cosmosdb_container)
+        container = cosmos_db.get_container_client("items")
+        container.create_item(body={"id": "1", "value": 1})
+        container.create_item(body={"id": "2", "value": 2})
 
-        config_dict = {
-            "database": {
-                "type": "cosmosdb",
-                "url": cosmosdb_container["account_endpoint"],
-                "account_endpoint": cosmosdb_container["account_endpoint"],
-                "account_key": cosmosdb_container["account_key"],
-                "database_name": cosmosdb_container["database_name"],
-                "container_name": cosmosdb_container.get("container_name", "default"),
-            },
-            "migrations": {"directory": str(Path("/tmp")), "table": "schema_version"},
-            "logging": {"level": "DEBUG", "file": "dblift_cosmosdb_integration.log"},
-        }
+        assert cosmos_provider.execute_statement("SELECT * FROM items c") == 2
 
-        config = DbliftConfig.from_dict(config_dict)
-        provider = ProviderRegistry.create_provider(config, integration_logger)
-        provider.create_connection()
+    @pytest.mark.parametrize(
+        "write_sql",
+        [
+            "INSERT INTO items (id, name) VALUES ('1', 'test')",
+            "UPDATE items SET name='updated' WHERE id='1'",
+            "DELETE FROM items WHERE id='1'",
+            "CREATE TABLE items (id STRING)",
+        ],
+        ids=["insert", "update", "delete", "create-table"],
+    )
+    def test_execute_statement_rejects_writes(self, cosmos_provider, write_sql):
+        """Any write reaching the query API raises NoSqlWriteNotSupportedError.
 
-        # Create a test container
-        create_sql = "CREATE CONTAINER test_exists (id STRING) WITH (partitionKey='/id')"
-        result = provider.execute_statement(create_sql)
-        assert result >= 0  # 0 if already exists, 1 if created
+        The Cosmos SQL API reads only — writes belong in a Python migration
+        driving ``context.db``, so they are surfaced, never translated.
+        """
+        with pytest.raises(NoSqlWriteNotSupportedError):
+            cosmos_provider.execute_statement(write_sql)
 
-        # Wait for container to be ready and verify it exists
-        import time
+    def test_container_exists(self, cosmos_provider, cosmos_db):
+        """``table_exists`` reflects containers created through the SDK."""
+        cosmos_db.create_container(id="test_exists", partition_key=PartitionKey(path="/id"))
 
-        max_wait = 10  # Increased wait time for emulator
-        wait_interval = 0.5
-        waited = 0
-        exists = False
+        assert _wait_for_container(cosmos_provider, "test_exists") is True
+        assert cosmos_provider.table_exists(SCHEMA, "non_existent") is False
 
-        while waited < max_wait:
-            # Try multiple methods to check existence
-            exists = provider.table_exists("default", "test_exists")
-            if not exists:
-                # Also try direct check via schema operations
-                exists = provider.schema_operations.container_exists("test_exists")
-            if exists:
-                break
-            time.sleep(wait_interval)
-            waited += wait_interval
+    def test_list_containers(self, cosmos_provider, cosmos_db):
+        """``list_containers`` reports every container in the database."""
+        for name in ("list_test1", "list_test2"):
+            cosmos_db.create_container(id=name, partition_key=PartitionKey(path="/id"))
+            assert _wait_for_container(cosmos_provider, name) is True
 
-        # If still not found, list all containers for debugging
-        if not exists:
-            try:
-                database = provider.connection_manager.database
-                containers = list(database.list_containers())
-                container_names = [c.get("id") for c in containers]
-                integration_logger.debug(f"Available containers: {container_names}")
-            except Exception:
-                pass
+        containers = cosmos_provider.schema_operations.list_containers()
+        names = [c if isinstance(c, str) else c.get("id", c) for c in containers]
+        assert "list_test1" in names
+        assert "list_test2" in names
 
-        assert (
-            exists is True
-        ), f"Container test_exists should exist but check returned False after {waited}s. Created with result={result}"
+    def test_drop_object_deletes_container(self, cosmos_provider, cosmos_db):
+        """``drop_object`` deletes through the SDK — the path ``clean`` uses."""
+        cosmos_db.create_container(id="drop_me", partition_key=PartitionKey(path="/id"))
+        assert _wait_for_container(cosmos_provider, "drop_me") is True
 
-        # Check non-existent container
-        exists = provider.table_exists("default", "non_existent")
-        assert exists is False
+        droppable = cosmos_provider.list_droppable_objects(SCHEMA)
+        target = next(obj for obj in droppable if obj.name == "drop_me")
+        assert target.object_type == "CONTAINER"
 
-        # Clean up
-        provider.close()
+        cosmos_provider.drop_object(target)
+        assert _wait_for_container(cosmos_provider, "drop_me", should_exist=False) is False
 
-    def test_cosmosdb_database_version(self, cosmosdb_container, integration_logger):
-        """Test getting database version."""
-        self._check_cosmosdb_available(cosmosdb_container)
+    def test_aggregate_and_ordered_queries(self, cosmos_provider, cosmos_db):
+        """Aggregations and ORDER BY run natively on Cosmos."""
+        cosmos_db.create_container(id="orders", partition_key=PartitionKey(path="/id"))
+        assert _wait_for_container(cosmos_provider, "orders") is True
 
-        config_dict = {
-            "database": {
-                "type": "cosmosdb",
-                "url": cosmosdb_container["account_endpoint"],
-                "account_endpoint": cosmosdb_container["account_endpoint"],
-                "account_key": cosmosdb_container["account_key"],
-                "database_name": cosmosdb_container["database_name"],
-                "container_name": cosmosdb_container.get("container_name", "default"),
-            },
-            "migrations": {"directory": str(Path("/tmp")), "table": "schema_version"},
-            "logging": {"level": "DEBUG", "file": "dblift_cosmosdb_integration.log"},
-        }
+        orders = cosmos_db.get_container_client("orders")
+        for document in (
+            {"id": "1", "customerId": "1", "total": 100},
+            {"id": "2", "customerId": "1", "total": 200},
+            {"id": "3", "customerId": "2", "total": 150},
+        ):
+            orders.create_item(body=document)
 
-        config = DbliftConfig.from_dict(config_dict)
-        provider = ProviderRegistry.create_provider(config, integration_logger)
-        provider.create_connection()
+        grouped = cosmos_provider.execute_query(
+            "SELECT c.customerId, SUM(c.total) as total FROM orders c GROUP BY c.customerId"
+        )
+        assert len(grouped) > 0
 
-        version = provider.get_database_version()
-        assert "Cosmos DB" in version
+        ordered = cosmos_provider.execute_query(
+            "SELECT * FROM orders c WHERE c.total > 100 ORDER BY c.total DESC"
+        )
+        assert [row["total"] for row in ordered] == [200, 150]
 
-        # Clean up
-        provider.close()
-
-    def test_cosmosdb_migration_lock(self, cosmosdb_container, integration_logger):
-        """Test migration locking mechanism."""
-        self._check_cosmosdb_available(cosmosdb_container)
-
-        config_dict = {
-            "database": {
-                "type": "cosmosdb",
-                "url": cosmosdb_container["account_endpoint"],
-                "account_endpoint": cosmosdb_container["account_endpoint"],
-                "account_key": cosmosdb_container["account_key"],
-                "database_name": cosmosdb_container["database_name"],
-                "container_name": cosmosdb_container.get("container_name", "default"),
-            },
-            "migrations": {"directory": str(Path("/tmp")), "table": "schema_version"},
-            "logging": {"level": "DEBUG", "file": "dblift_cosmosdb_integration.log"},
-        }
-
-        config = DbliftConfig.from_dict(config_dict)
-        provider = ProviderRegistry.create_provider(config, integration_logger)
-        provider.create_connection()
-
-        # Create lock container
-        provider.create_migration_lock_table_if_not_exists("default")
-
-        # Wait a moment for container to be ready
-        import time
-
+    def test_migration_lock_acquire_and_release(self, cosmos_provider):
+        """The SDK-backed migration lock can be taken and released."""
+        cosmos_provider.create_migration_lock_table_if_not_exists(SCHEMA)
         time.sleep(0.5)
 
-        # Clean up any existing lock from previous test runs
         try:
-            provider.release_migration_lock("default")
+            cosmos_provider.release_migration_lock(SCHEMA)
         except Exception:
-            # Lock might not exist, that's fine
-            pass
+            pass  # No lock held from a previous run — fine.
 
-        # Small delay after cleanup
+        assert cosmos_provider.acquire_migration_lock(SCHEMA, wait_timeout_seconds=10) is True
+        assert cosmos_provider.release_migration_lock(SCHEMA) is True
+
+    def test_migration_lock_timeout(self, cosmos_config, integration_logger):
+        """A second holder times out until the first releases the lock."""
+        provider1 = ProviderRegistry.create_provider(cosmos_config, integration_logger)
+        provider1.create_connection()
+        provider1.create_migration_lock_table_if_not_exists(SCHEMA)
+        time.sleep(0.5)
+
+        provider2 = ProviderRegistry.create_provider(cosmos_config, integration_logger)
+        provider2.create_connection()
+        provider2.create_migration_lock_table_if_not_exists(SCHEMA)
+
+        try:
+            assert provider1.acquire_migration_lock(SCHEMA, wait_timeout_seconds=1) is True
+            assert provider2.acquire_migration_lock(SCHEMA, wait_timeout_seconds=2) is False
+
+            provider1.release_migration_lock(SCHEMA)
+            assert provider2.acquire_migration_lock(SCHEMA, wait_timeout_seconds=5) is True
+            provider2.release_migration_lock(SCHEMA)
+        finally:
+            provider1.close()
+            provider2.close()
+
+    def test_migration_lock_expired_is_reclaimed(self, cosmos_provider, cosmos_db):
+        """An expired lock document is cleaned up and the lock re-acquired."""
+        cosmos_provider.create_migration_lock_table_if_not_exists(SCHEMA)
+        time.sleep(0.5)
+
+        now = datetime.datetime.now(datetime.timezone.utc)
+        lock_container = cosmos_db.get_container_client("dblift_migration_lock")
+        lock_container.upsert_item(
+            body={
+                "id": "migration_lock",
+                "schema": SCHEMA,
+                "locked_by": "test@host",
+                "locked_at": (now - datetime.timedelta(hours=1)).isoformat(),
+                "expires_at": (now - datetime.timedelta(minutes=1)).isoformat(),
+            }
+        )
         time.sleep(0.3)
 
-        # Acquire lock (with shorter timeout for tests)
-        acquired = provider.acquire_migration_lock("default", wait_timeout_seconds=10)
-        assert acquired is True, "Failed to acquire migration lock"
+        assert cosmos_provider.acquire_migration_lock(SCHEMA, wait_timeout_seconds=10) is True
+        cosmos_provider.release_migration_lock(SCHEMA)
 
-        # Release lock
-        released = provider.release_migration_lock("default")
-        assert released is True, "Failed to release migration lock"
-
-        # Clean up
-        provider.close()
-
-    def test_cosmosdb_migration_history(self, cosmosdb_container, integration_logger):
-        """Test migration history management."""
-        self._check_cosmosdb_available(cosmosdb_container)
-
-        config_dict = {
-            "database": {
-                "type": "cosmosdb",
-                "url": cosmosdb_container["account_endpoint"],
-                "account_endpoint": cosmosdb_container["account_endpoint"],
-                "account_key": cosmosdb_container["account_key"],
-                "database_name": cosmosdb_container["database_name"],
-                "container_name": cosmosdb_container.get("container_name", "default"),
-            },
-            "migrations": {"directory": str(Path("/tmp")), "table": "schema_version"},
-            "logging": {"level": "DEBUG", "file": "dblift_cosmosdb_integration.log"},
-        }
-
-        config = DbliftConfig.from_dict(config_dict)
-        provider = ProviderRegistry.create_provider(config, integration_logger)
-        provider.create_connection()
-
-        # Create history container using the proper method (handles conflicts)
-        # The method checks existence first and handles conflicts gracefully
-        provider.history_manager.create_history_container_if_not_exists(
-            "default", "dblift_schema_history"
+    def test_migration_history_record_and_read(self, cosmos_provider):
+        """History rows are written and read back through the SDK."""
+        cosmos_provider.history_manager.create_history_container_if_not_exists(
+            SCHEMA, "dblift_schema_history"
         )
-
-        # Wait for container to be ready
-        import time
-
         time.sleep(0.5)
 
-        # Record a migration
         migration_info = {
             "version": "1.0.0",
             "description": "test_migration",
-            "type": "SQL",
-            "script": "V1_0_0__test_migration.sql",
+            "type": "PYTHON",
+            "script": "V1_0_0__test_migration.py",
             "checksum": "abc123",
             "execution_time": 100,
             "success": True,
         }
-        provider.record_migration("default", migration_info)
+        cosmos_provider.record_migration(SCHEMA, migration_info)
 
-        # Get applied migrations
-        migrations = provider.get_applied_migrations("default")
-        assert len(migrations) >= 1
-        assert any(m["version"] == "1.0.0" for m in migrations)
+        applied = cosmos_provider.get_applied_migrations(SCHEMA)
+        assert any(m["version"] == "1.0.0" for m in applied)
 
-        # Clean up
-        provider.close()
+    def test_migration_history_record_is_idempotent(self, cosmos_provider):
+        """Recording the same migration twice upserts rather than duplicating."""
+        cosmos_provider.history_manager.create_history_container_if_not_exists(
+            SCHEMA, "dblift_schema_history"
+        )
+        time.sleep(0.5)
 
-    def test_cosmosdb_update_operation(self, cosmosdb_container, integration_logger):
-        """Test UPDATE statement execution."""
-        self._check_cosmosdb_available(cosmosdb_container)
-
-        config_dict = {
-            "database": {
-                "type": "cosmosdb",
-                "url": cosmosdb_container["account_endpoint"],
-                "account_endpoint": cosmosdb_container["account_endpoint"],
-                "account_key": cosmosdb_container["account_key"],
-                "database_name": cosmosdb_container["database_name"],
-                "container_name": cosmosdb_container.get("container_name", "default"),
-            },
-            "migrations": {"directory": str(Path("/tmp")), "table": "schema_version"},
-            "logging": {"level": "DEBUG", "file": "dblift_cosmosdb_integration.log"},
+        migration_info = {
+            "version": "1.0.0",
+            "description": "test_migration",
+            "type": "PYTHON",
+            "script": "V1_0_0__test_migration.py",
+            "checksum": "abc123",
+            "execution_time": 100,
+            "success": True,
         }
+        cosmos_provider.record_migration(SCHEMA, migration_info)
+        cosmos_provider.record_migration(SCHEMA, migration_info)
 
-        config = DbliftConfig.from_dict(config_dict)
-        provider = ProviderRegistry.create_provider(config, integration_logger)
-        provider.create_connection()
+        applied = cosmos_provider.get_applied_migrations(SCHEMA)
+        assert len([m for m in applied if m["version"] == "1.0.0"]) == 1
 
-        # Create a test container
-        container_name = "test_update"
-        create_sql = f"CREATE CONTAINER {container_name} (id STRING) WITH (partitionKey='/id')"
-        provider.execute_statement(create_sql)
+    def test_clean_schema_drops_every_container(self, cosmos_provider, cosmos_db):
+        """``clean_schema`` drops user and dblift-managed containers alike."""
+        user_containers = ["clean_test1", "clean_test2", "clean_test3"]
+        for name in user_containers:
+            cosmos_db.create_container(id=name, partition_key=PartitionKey(path="/id"))
 
-        import time
+        cosmos_provider.create_migration_history_table_if_not_exists(SCHEMA)
+        cosmos_provider.create_migration_lock_table_if_not_exists(SCHEMA)
+        cosmos_provider.create_snapshot_table_if_not_exists(SCHEMA)
 
-        time.sleep(0.5)
-
-        # Insert test data
-        insert_sql = f"INSERT INTO {container_name} (id, name, status, count) VALUES ('1', 'original', 'active', 10)"
-        result = provider.execute_statement(insert_sql)
-        assert result == 1
-
-        # Update single field
-        update_sql = f"UPDATE {container_name} SET status='inactive' WHERE id='1'"
-        result = provider.execute_statement(update_sql)
-        assert result == 1
-
-        # Verify update
-        query_sql = f"SELECT * FROM {container_name} c WHERE c.id = '1'"
-        results = provider.execute_query(query_sql)
-        assert len(results) == 1
-        assert results[0]["status"] == "inactive"
-        assert results[0]["name"] == "original"  # Other fields unchanged
-
-        # Update multiple fields
-        update_sql = f"UPDATE {container_name} SET name='updated', count=20 WHERE id='1'"
-        result = provider.execute_statement(update_sql)
-        assert result == 1
-
-        # Verify multiple updates
-        results = provider.execute_query(query_sql)
-        assert len(results) == 1
-        assert results[0]["name"] == "updated"
-        assert results[0]["count"] == 20
-        assert results[0]["status"] == "inactive"
-
-        # Update with WHERE clause that matches no documents
-        update_sql = f"UPDATE {container_name} SET name='notfound' WHERE id='999'"
-        result = provider.execute_statement(update_sql)
-        assert result == 0  # No documents updated
-
-        # Clean up
-        try:
-            provider.schema_operations.delete_container(container_name)
-        except Exception:
-            pass
-        provider.close()
-
-    def test_cosmosdb_delete_operation(self, cosmosdb_container, integration_logger):
-        """Test DELETE statement execution."""
-        self._check_cosmosdb_available(cosmosdb_container)
-
-        config_dict = {
-            "database": {
-                "type": "cosmosdb",
-                "url": cosmosdb_container["account_endpoint"],
-                "account_endpoint": cosmosdb_container["account_endpoint"],
-                "account_key": cosmosdb_container["account_key"],
-                "database_name": cosmosdb_container["database_name"],
-                "container_name": cosmosdb_container.get("container_name", "default"),
-            },
-            "migrations": {"directory": str(Path("/tmp")), "table": "schema_version"},
-            "logging": {"level": "DEBUG", "file": "dblift_cosmosdb_integration.log"},
-        }
-
-        config = DbliftConfig.from_dict(config_dict)
-        provider = ProviderRegistry.create_provider(config, integration_logger)
-        provider.create_connection()
-
-        # Create a test container
-        container_name = "test_delete"
-        create_sql = f"CREATE CONTAINER {container_name} (id STRING) WITH (partitionKey='/id')"
-        provider.execute_statement(create_sql)
-
-        import time
-
-        time.sleep(0.5)
-
-        # Insert multiple test documents
-        for i in range(1, 4):
-            insert_sql = f"INSERT INTO {container_name} (id, name, value) VALUES ('{i}', 'item{i}', {i * 10})"
-            provider.execute_statement(insert_sql)
-
-        # Verify all documents exist
-        query_sql = f"SELECT * FROM {container_name} c"
-        results = provider.execute_query(query_sql)
-        assert len(results) == 3
-
-        # Delete single document
-        delete_sql = f"DELETE FROM {container_name} WHERE id='1'"
-        result = provider.execute_statement(delete_sql)
-        assert result == 1
-
-        # Verify deletion
-        results = provider.execute_query(query_sql)
-        assert len(results) == 2
-        remaining_ids = {r["id"] for r in results}
-        assert "1" not in remaining_ids
-        assert "2" in remaining_ids
-        assert "3" in remaining_ids
-
-        # Delete with WHERE clause that matches no documents
-        delete_sql = f"DELETE FROM {container_name} WHERE id='999'"
-        result = provider.execute_statement(delete_sql)
-        assert result == 0  # No documents deleted
-
-        # Clean up
-        try:
-            provider.schema_operations.delete_container(container_name)
-        except Exception:
-            pass
-        provider.close()
-
-    def test_cosmosdb_advanced_create_container(self, cosmosdb_container, integration_logger):
-        """Test CREATE CONTAINER with advanced options."""
-        self._check_cosmosdb_available(cosmosdb_container)
-
-        config_dict = {
-            "database": {
-                "type": "cosmosdb",
-                "url": cosmosdb_container["account_endpoint"],
-                "account_endpoint": cosmosdb_container["account_endpoint"],
-                "account_key": cosmosdb_container["account_key"],
-                "database_name": cosmosdb_container["database_name"],
-                "container_name": cosmosdb_container.get("container_name", "default"),
-            },
-            "migrations": {"directory": str(Path("/tmp")), "table": "schema_version"},
-            "logging": {"level": "DEBUG", "file": "dblift_cosmosdb_integration.log"},
-        }
-
-        config = DbliftConfig.from_dict(config_dict)
-        provider = ProviderRegistry.create_provider(config, integration_logger)
-        provider.create_connection()
-
-        import time
-
-        # Test CREATE CONTAINER with throughput
-        container_name = "test_throughput"
-        create_sql = f"CREATE CONTAINER {container_name} (id STRING) WITH (partitionKey='/id', throughput=400)"
-        result = provider.execute_statement(create_sql)
-        assert result >= 0
-        time.sleep(0.5)
-
-        # Verify container exists
-        exists = provider.table_exists("default", container_name)
-        assert exists is True
-
-        # Clean up
-        try:
-            provider.schema_operations.delete_container(container_name)
-        except Exception:
-            pass
-
-        # Test CREATE CONTAINER with indexing policy
-        container_name = "test_indexing"
-        indexing_policy = '{"indexingMode":"consistent","automatic":true,"includedPaths":[{"path":"/*"}],"excludedPaths":[{"path":"/\\"_etag\\"/?"}]}'
-        create_sql = f"CREATE CONTAINER {container_name} (id STRING) WITH (partitionKey='/id', indexingPolicy='{indexing_policy}')"
-        result = provider.execute_statement(create_sql)
-        assert result >= 0
-        time.sleep(0.5)
-
-        # Verify container exists
-        exists = provider.table_exists("default", container_name)
-        assert exists is True
-
-        # Clean up
-        try:
-            provider.schema_operations.delete_container(container_name)
-        except Exception:
-            pass
-
-        # Test CREATE CONTAINER with unique key policy
-        container_name = "test_unique"
-        unique_key_policy = '{"uniqueKeys":[{"paths":["/email"]}]}'
-        create_sql = f"CREATE CONTAINER {container_name} (id STRING) WITH (partitionKey='/id', uniqueKeyPolicy='{unique_key_policy}')"
-        result = provider.execute_statement(create_sql)
-        assert result >= 0
-        time.sleep(0.5)
-
-        # Verify container exists
-        exists = provider.table_exists("default", container_name)
-        assert exists is True
-
-        # Clean up
-        try:
-            provider.schema_operations.delete_container(container_name)
-        except Exception:
-            pass
-
-        # Test CREATE CONTAINER with default TTL
-        container_name = "test_ttl"
-        create_sql = f"CREATE CONTAINER {container_name} (id STRING) WITH (partitionKey='/id', defaultTtl=3600)"
-        result = provider.execute_statement(create_sql)
-        assert result >= 0
-        time.sleep(0.5)
-
-        # Verify container exists
-        exists = provider.table_exists("default", container_name)
-        assert exists is True
-
-        # Clean up
-        try:
-            provider.schema_operations.delete_container(container_name)
-        except Exception:
-            pass
-
-        # Test CREATE CONTAINER with multiple options
-        container_name = "test_multiple"
-        create_sql = f"CREATE CONTAINER {container_name} (id STRING) WITH (partitionKey='/id', throughput=400, defaultTtl=7200)"
-        result = provider.execute_statement(create_sql)
-        assert result >= 0
-        time.sleep(0.5)
-
-        # Verify container exists
-        exists = provider.table_exists("default", container_name)
-        assert exists is True
-
-        # Clean up
-        try:
-            provider.schema_operations.delete_container(container_name)
-        except Exception:
-            pass
-
-        provider.close()
-
-    def test_cosmosdb_clean_schema(self, cosmosdb_container, integration_logger):
-        """Test clean_schema operation."""
-        self._check_cosmosdb_available(cosmosdb_container)
-
-        config_dict = {
-            "database": {
-                "type": "cosmosdb",
-                "url": cosmosdb_container["account_endpoint"],
-                "account_endpoint": cosmosdb_container["account_endpoint"],
-                "account_key": cosmosdb_container["account_key"],
-                "database_name": cosmosdb_container["database_name"],
-                "container_name": cosmosdb_container.get("container_name", "default"),
-            },
-            "migrations": {"directory": str(Path("/tmp")), "table": "schema_version"},
-            "logging": {"level": "DEBUG", "file": "dblift_cosmosdb_integration.log"},
-        }
-
-        config = DbliftConfig.from_dict(config_dict)
-        provider = ProviderRegistry.create_provider(config, integration_logger)
-        provider.create_connection()
-
-        # Create multiple user containers plus dblift-managed internal containers.
-        test_containers = ["clean_test1", "clean_test2", "clean_test3"]
-        for container_name in test_containers:
-            create_sql = f"CREATE CONTAINER {container_name} (id STRING) WITH (partitionKey='/id')"
-            provider.execute_statement(create_sql)
-        provider.create_migration_history_table_if_not_exists("default")
-        provider.create_migration_lock_table_if_not_exists("default")
-        provider.create_snapshot_table_if_not_exists("default")
-
-        import time
-
-        time.sleep(1)  # Wait for containers to be ready
-
-        # Verify containers exist
-        internal_containers = [
+        all_containers = user_containers + [
             "dblift_schema_history",
             "dblift_migration_lock",
             "dblift_schema_snapshots",
         ]
-        all_containers = test_containers + internal_containers
-        for container_name in all_containers:
-            exists = provider.table_exists("default", container_name)
-            assert exists is True, f"Container {container_name} should exist before clean"
+        for name in all_containers:
+            assert _wait_for_container(cosmos_provider, name) is True, f"{name} should exist"
 
-        # Run clean_schema
-        summary = provider.clean_schema("default")
+        summary = cosmos_provider.clean_schema(SCHEMA)
 
-        # Verify every container is deleted (may take a moment)
-        time.sleep(0.5)
-        for container_name in all_containers:
-            exists = provider.table_exists("default", container_name)
-            assert exists is False, f"Container {container_name} should be deleted after clean"
+        for name in all_containers:
+            assert (
+                _wait_for_container(cosmos_provider, name, should_exist=False) is False
+            ), f"{name} should be gone after clean"
 
-        # Verify summary
         assert summary is not None
-        assert len(summary.objects) >= len(
-            all_containers
-        ), "Summary should record dropped containers"
         assert sorted(obj.name for obj in summary.objects) == sorted(all_containers)
 
-        provider.close()
 
-    def test_cosmosdb_migration_lock_timeout(self, cosmosdb_container, integration_logger):
-        """Test lock acquisition timeout when lock is held."""
-        self._check_cosmosdb_available(cosmosdb_container)
+@pytest.mark.integration
+@pytest.mark.cosmosdb
+class TestCosmosDbPythonMigrations:
+    """Container, throughput, TTL, indexing and document changes via ``.py``."""
 
-        config_dict = {
-            "database": {
-                "type": "cosmosdb",
-                "url": cosmosdb_container["account_endpoint"],
-                "account_endpoint": cosmosdb_container["account_endpoint"],
-                "account_key": cosmosdb_container["account_key"],
-                "database_name": cosmosdb_container["database_name"],
-                "container_name": cosmosdb_container.get("container_name", "default"),
-            },
-            "migrations": {"directory": str(Path("/tmp")), "table": "schema_version"},
-            "logging": {"level": "DEBUG", "file": "dblift_cosmosdb_integration.log"},
-        }
+    def test_migrate_creates_container_with_partition_key(
+        self, cosmos_cli, migrations_dir, cosmos_provider, cosmos_db
+    ):
+        """A Python migration creates a container with the declared partition key."""
+        create_migration(migrations_dir, "V1_0_0__create_users.py", PY_CREATE_USERS)
 
-        config = DbliftConfig.from_dict(config_dict)
-        provider1 = ProviderRegistry.create_provider(config, integration_logger)
-        provider1.create_connection()
-        provider1.create_migration_lock_table_if_not_exists("default")
+        result = cosmos_cli.migrate()
+        assert result.success, f"migrate failed: {result.output}"
 
-        import time
+        assert _wait_for_container(cosmos_provider, "users") is True
+        properties = cosmos_db.get_container_client("users").read()
+        assert properties["partitionKey"]["paths"] == ["/tenant_id"]
 
-        time.sleep(0.5)
+    def test_migrate_sets_manual_throughput(
+        self, cosmos_cli, migrations_dir, cosmos_provider, cosmos_db
+    ):
+        """``replace_throughput`` replaces the removed SET THROUGHPUT statement."""
+        create_migration(migrations_dir, "V1_0_0__create_users.py", PY_CREATE_USERS)
+        create_migration(migrations_dir, "V1_1_0__users_throughput.py", PY_SET_THROUGHPUT)
 
-        # Acquire lock with first provider
-        acquired1 = provider1.acquire_migration_lock("default", wait_timeout_seconds=1)
-        assert acquired1 is True, "First provider should acquire lock"
+        result = cosmos_cli.migrate()
+        assert result.success, f"migrate failed: {result.output}"
+        assert _wait_for_container(cosmos_provider, "users") is True
 
-        # Try to acquire lock with second provider (should timeout)
-        provider2 = ProviderRegistry.create_provider(config, integration_logger)
-        provider2.create_connection()
-        provider2.create_migration_lock_table_if_not_exists("default")
+        throughput = _read_throughput(cosmos_db.get_container_client("users"))
+        assert throughput.offer_throughput == 1000
 
-        acquired2 = provider2.acquire_migration_lock("default", wait_timeout_seconds=2)
-        assert acquired2 is False, "Second provider should fail to acquire lock (timeout)"
+    def test_migrate_sets_autoscale_throughput(
+        self, cosmos_cli, migrations_dir, cosmos_provider, cosmos_db
+    ):
+        """``ThroughputProperties`` replaces the removed SET AUTOSCALE statement."""
+        create_migration(migrations_dir, "V1_0_0__create_users.py", PY_CREATE_USERS)
+        create_migration(migrations_dir, "V1_1_0__users_autoscale.py", PY_SET_AUTOSCALE)
 
-        # Release lock from first provider
-        provider1.release_migration_lock("default")
+        result = cosmos_cli.migrate()
+        assert result.success, f"migrate failed: {result.output}"
+        assert _wait_for_container(cosmos_provider, "users") is True
 
-        # Now second provider should be able to acquire
-        acquired2_retry = provider2.acquire_migration_lock("default", wait_timeout_seconds=5)
-        assert acquired2_retry is True, "Second provider should acquire lock after release"
+        throughput = _read_throughput(cosmos_db.get_container_client("users"))
+        assert throughput.auto_scale_max_throughput == 4000
 
-        provider2.release_migration_lock("default")
-        provider1.close()
-        provider2.close()
+    def test_migrate_sets_and_clears_default_ttl(
+        self, cosmos_cli, migrations_dir, cosmos_provider, cosmos_db
+    ):
+        """``replace_container(default_ttl=...)`` replaces SET TTL ON CONTAINER."""
+        create_migration(migrations_dir, "V1_0_0__create_users.py", PY_CREATE_USERS)
+        create_migration(migrations_dir, "V1_1_0__users_ttl.py", PY_SET_TTL)
 
-    def test_cosmosdb_migration_lock_expired(self, cosmosdb_container, integration_logger):
-        """Test handling of expired locks."""
-        self._check_cosmosdb_available(cosmosdb_container)
+        result = cosmos_cli.migrate()
+        assert result.success, f"migrate failed: {result.output}"
+        assert _wait_for_container(cosmos_provider, "users") is True
 
-        config_dict = {
-            "database": {
-                "type": "cosmosdb",
-                "url": cosmosdb_container["account_endpoint"],
-                "account_endpoint": cosmosdb_container["account_endpoint"],
-                "account_key": cosmosdb_container["account_key"],
-                "database_name": cosmosdb_container["database_name"],
-                "container_name": cosmosdb_container.get("container_name", "default"),
-            },
-            "migrations": {"directory": str(Path("/tmp")), "table": "schema_version"},
-            "logging": {"level": "DEBUG", "file": "dblift_cosmosdb_integration.log"},
-        }
+        container = cosmos_db.get_container_client("users")
+        assert container.read()["defaultTtl"] == 3600
 
-        config = DbliftConfig.from_dict(config_dict)
-        provider = ProviderRegistry.create_provider(config, integration_logger)
-        provider.create_connection()
-        provider.create_migration_lock_table_if_not_exists("default")
+        create_migration(migrations_dir, "V1_2_0__users_ttl_off.py", PY_DISABLE_TTL)
+        result = cosmos_cli.migrate()
+        assert result.success, f"migrate failed: {result.output}"
 
-        import time
+        assert container.read().get("defaultTtl") is None
 
-        time.sleep(0.5)
+    def test_migrate_excludes_indexing_path(
+        self, cosmos_cli, migrations_dir, cosmos_provider, cosmos_db
+    ):
+        """Appending to ``excludedPaths`` replaces EXCLUDE INDEX PATH."""
+        create_migration(migrations_dir, "V1_0_0__create_users.py", PY_CREATE_USERS)
+        create_migration(migrations_dir, "V1_1_0__users_indexing.py", PY_EXCLUDE_INDEX_PATH)
 
-        # Manually create an expired lock document
-        database = provider.connection_manager.database
-        lock_container = database.get_container_client("dblift_migration_lock")
-        expired_lock = {
-            "id": "migration_lock",
-            "schema": "default",
-            "locked_by": "test@host",
-            "locked_at": (
-                datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(hours=1)
-            ).isoformat(),
-            "expires_at": (
-                datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(minutes=1)
-            ).isoformat(),
-        }
-        try:
-            lock_container.upsert_item(body=expired_lock)
-        except Exception:
-            pass  # May already exist
+        result = cosmos_cli.migrate()
+        assert result.success, f"migrate failed: {result.output}"
+        assert _wait_for_container(cosmos_provider, "users") is True
 
-        time.sleep(0.3)
+        properties = cosmos_db.get_container_client("users").read()
+        assert "/profile_blob/*" in _index_paths(properties, "excludedPaths")
 
-        # Try to acquire lock - should clean up expired lock and succeed
-        acquired = provider.acquire_migration_lock("default", wait_timeout_seconds=10)
-        assert acquired is True, "Should acquire lock after cleaning up expired lock"
+    def test_migrate_includes_indexing_path(
+        self, cosmos_cli, migrations_dir, cosmos_provider, cosmos_db
+    ):
+        """Appending to ``includedPaths`` replaces CREATE INDEX / INCLUDE INDEX PATH."""
+        create_migration(
+            migrations_dir, "V1_0_0__create_events.py", PY_CREATE_SPARSE_INDEX_CONTAINER
+        )
+        create_migration(migrations_dir, "V1_1_0__events_indexing.py", PY_INCLUDE_INDEX_PATH)
 
-        provider.release_migration_lock("default")
-        provider.close()
+        result = cosmos_cli.migrate()
+        assert result.success, f"migrate failed: {result.output}"
+        assert _wait_for_container(cosmos_provider, "events") is True
 
-    def test_cosmosdb_migration_history_duplicate(self, cosmosdb_container, integration_logger):
-        """Test recording duplicate migration (should use upsert)."""
-        self._check_cosmosdb_available(cosmosdb_container)
+        included = _index_paths(cosmos_db.get_container_client("events").read(), "includedPaths")
+        assert "/tenant_id/?" in included
+        assert "/kind/?" in included
 
-        config_dict = {
-            "database": {
-                "type": "cosmosdb",
-                "url": cosmosdb_container["account_endpoint"],
-                "account_endpoint": cosmosdb_container["account_endpoint"],
-                "account_key": cosmosdb_container["account_key"],
-                "database_name": cosmosdb_container["database_name"],
-                "container_name": cosmosdb_container.get("container_name", "default"),
-            },
-            "migrations": {"directory": str(Path("/tmp")), "table": "schema_version"},
-            "logging": {"level": "DEBUG", "file": "dblift_cosmosdb_integration.log"},
-        }
+    def test_migrate_document_crud(self, cosmos_cli, migrations_dir, cosmos_provider):
+        """create_item / replace_item / delete_item replace INSERT / UPDATE / DELETE."""
+        create_migration(migrations_dir, "V1_0_0__create_users.py", PY_CREATE_USERS)
+        create_migration(migrations_dir, "V1_1_0__seed_users.py", PY_SEED_USERS)
 
-        config = DbliftConfig.from_dict(config_dict)
-        provider = ProviderRegistry.create_provider(config, integration_logger)
-        provider.create_connection()
+        result = cosmos_cli.migrate()
+        assert result.success, f"migrate failed: {result.output}"
+        assert _wait_for_container(cosmos_provider, "users") is True
 
-        provider.history_manager.create_history_container_if_not_exists(
-            "default", "dblift_schema_history"
+        assert len(cosmos_provider.execute_query("SELECT * FROM users c")) == 3
+
+        create_migration(migrations_dir, "V1_2_0__update_user.py", PY_UPDATE_USER)
+        result = cosmos_cli.migrate()
+        assert result.success, f"migrate failed: {result.output}"
+
+        updated = cosmos_provider.execute_query("SELECT * FROM users c WHERE c.id = '1'")
+        assert len(updated) == 1
+        assert updated[0]["status"] == "inactive"
+        assert updated[0]["name"] == "Alice Updated"
+
+        create_migration(migrations_dir, "V1_3_0__delete_user.py", PY_DELETE_USER)
+        result = cosmos_cli.migrate()
+        assert result.success, f"migrate failed: {result.output}"
+
+        remaining = cosmos_provider.execute_query("SELECT * FROM users c")
+        assert {row["id"] for row in remaining} == {"1", "2"}
+
+    def test_migrate_dry_run_makes_no_changes(self, cosmos_cli, migrations_dir, cosmos_provider):
+        """``--dry-run`` leaves the account untouched; the script honours the flag."""
+        create_migration(migrations_dir, "V1_0_0__create_users.py", PY_CREATE_USERS)
+
+        result = cosmos_cli.migrate(dry_run=True)
+        assert result.success, f"dry-run migrate failed: {result.output}"
+
+        assert cosmos_provider.table_exists(SCHEMA, "users") is False
+
+    def test_undo_python_migration(self, cosmos_cli, migrations_dir, cosmos_provider):
+        """``undo`` runs the ``U…`` companion, which deletes the container."""
+        create_migration(migrations_dir, "V1_0_0__create_users.py", PY_CREATE_USERS)
+        create_migration(migrations_dir, "U1_0_0__drop_users.py", PY_UNDO_USERS)
+
+        result = cosmos_cli.migrate()
+        assert result.success, f"migrate failed: {result.output}"
+        assert _wait_for_container(cosmos_provider, "users") is True
+
+        result = cosmos_cli.undo()
+        assert result.success, f"undo failed: {result.output}"
+        assert _wait_for_container(cosmos_provider, "users", should_exist=False) is False
+
+    def test_sql_migration_is_rejected(self, cosmos_cli, migrations_dir, cosmos_provider):
+        """A ``.sql`` migration on Cosmos fails with DBLIFT-NOSQL-001.
+
+        The dialect declares ``supports_sql_migrations = False``, so the
+        executor factory rejects the file before anything executes.
+        """
+        create_migration(migrations_dir, "V1_0_0__create_users.sql", SQL_MIGRATION_REJECTED)
+
+        result = cosmos_cli.migrate()
+
+        assert result.failed, f"SQL migration should not succeed: {result.output}"
+        assert "DBLIFT-NOSQL-001" in result.output
+        assert cosmos_provider.table_exists(SCHEMA, "users") is False
+
+
+@pytest.mark.integration
+@pytest.mark.cosmosdb
+class TestCosmosDbCommandFlows:
+    """info / validate / repair / clean / baseline over Python migrations."""
+
+    def test_info_lists_applied_python_migration(self, cosmos_cli, migrations_dir):
+        """``info`` reports the applied Python migration."""
+        create_migration(migrations_dir, "V1_0_0__create_users.py", PY_CREATE_USERS)
+
+        assert cosmos_cli.migrate().success
+
+        result = cosmos_cli.info()
+        assert result.success, f"info failed: {result.output}"
+        assert "1.0.0" in result.output
+
+    def test_validate_passes_after_migrate(self, cosmos_cli, migrations_dir):
+        """``validate`` passes when history matches the migration files."""
+        create_migration(migrations_dir, "V1_0_0__create_users.py", PY_CREATE_USERS)
+
+        assert cosmos_cli.migrate().success
+
+        result = cosmos_cli.validate()
+        assert result.success, f"validate failed: {result.output}"
+
+    def test_repair_fixes_modified_checksum(self, cosmos_cli, migrations_dir):
+        """Editing an applied ``.py`` breaks validate; ``repair`` restores it."""
+        script = create_migration(migrations_dir, "V1_0_0__create_users.py", PY_CREATE_USERS)
+
+        assert cosmos_cli.migrate().success
+        assert cosmos_cli.validate().success
+
+        # Change the file without changing what it does — checksum drifts.
+        script.write_text(PY_CREATE_USERS + "\n# checksum drift\n")
+        assert cosmos_cli.validate().failed
+
+        result = cosmos_cli.repair()
+        assert result.success, f"repair failed: {result.output}"
+        assert cosmos_cli.validate().success
+
+    def test_clean_removes_migrated_containers(self, cosmos_cli, migrations_dir, cosmos_provider):
+        """``clean`` drops every container via ``provider.drop_object``."""
+        create_migration(migrations_dir, "V1_0_0__create_users.py", PY_CREATE_USERS)
+        create_migration(
+            migrations_dir, "V1_1_0__create_events.py", PY_CREATE_SPARSE_INDEX_CONTAINER
         )
 
-        import time
+        assert cosmos_cli.migrate().success
+        assert _wait_for_container(cosmos_provider, "users") is True
+        assert _wait_for_container(cosmos_provider, "events") is True
 
-        time.sleep(0.5)
+        result = cosmos_cli.clean()
+        assert result.success, f"clean failed: {result.output}"
 
-        migration_info = {
-            "version": "1.0.0",
-            "description": "test_migration",
-            "type": "SQL",
-            "script": "V1_0_0__test_migration.sql",
-            "checksum": "abc123",
-            "execution_time": 100,
-            "success": True,
-        }
+        assert _wait_for_container(cosmos_provider, "users", should_exist=False) is False
+        assert _wait_for_container(cosmos_provider, "events", should_exist=False) is False
 
-        # Record migration first time
-        provider.record_migration("default", migration_info)
+    def test_baseline_marks_version_applied(self, cosmos_cli, migrations_dir, cosmos_provider):
+        """``baseline`` records the version without running the migration."""
+        create_migration(migrations_dir, "V1_0_0__create_users.py", PY_CREATE_USERS)
 
-        # Record same migration again (should use upsert, not fail)
-        provider.record_migration("default", migration_info)
+        result = cosmos_cli.baseline("1.0.0", baseline_description="initial baseline")
+        assert result.success, f"baseline failed: {result.output}"
 
-        # Should still have only one migration
-        migrations = provider.get_applied_migrations("default")
-        assert len([m for m in migrations if m["version"] == "1.0.0"]) == 1
+        # Baselined, so the script never runs and the container is not created.
+        assert cosmos_provider.table_exists(SCHEMA, "users") is False
 
-        provider.close()
-
-    def test_cosmosdb_complex_query(self, cosmosdb_container, integration_logger):
-        """Test complex queries with JOINs and aggregations."""
-        self._check_cosmosdb_available(cosmosdb_container)
-
-        config_dict = {
-            "database": {
-                "type": "cosmosdb",
-                "url": cosmosdb_container["account_endpoint"],
-                "account_endpoint": cosmosdb_container["account_endpoint"],
-                "account_key": cosmosdb_container["account_key"],
-                "database_name": cosmosdb_container["database_name"],
-                "container_name": cosmosdb_container.get("container_name", "default"),
-            },
-            "migrations": {"directory": str(Path("/tmp")), "table": "schema_version"},
-            "logging": {"level": "DEBUG", "file": "dblift_cosmosdb_integration.log"},
-        }
-
-        config = DbliftConfig.from_dict(config_dict)
-        provider = ProviderRegistry.create_provider(config, integration_logger)
-        provider.create_connection()
-
-        # Create test containers
-        create_sql1 = "CREATE CONTAINER orders (id STRING) WITH (partitionKey='/id')"
-        create_sql2 = "CREATE CONTAINER customers (id STRING) WITH (partitionKey='/id')"
-        provider.execute_statement(create_sql1)
-        provider.execute_statement(create_sql2)
-
-        import time
-
-        time.sleep(0.5)
-
-        # Insert test data
-        provider.execute_statement(
-            "INSERT INTO customers (id, name, email) VALUES ('1', 'Alice', 'alice@test.com')"
-        )
-        provider.execute_statement(
-            "INSERT INTO customers (id, name, email) VALUES ('2', 'Bob', 'bob@test.com')"
-        )
-        provider.execute_statement(
-            "INSERT INTO orders (id, customerId, total) VALUES ('1', '1', 100)"
-        )
-        provider.execute_statement(
-            "INSERT INTO orders (id, customerId, total) VALUES ('2', '1', 200)"
-        )
-        provider.execute_statement(
-            "INSERT INTO orders (id, customerId, total) VALUES ('3', '2', 150)"
-        )
-
-        # Test aggregation query
-        query_sql = "SELECT c.customerId, SUM(c.total) as total FROM orders c GROUP BY c.customerId"
-        results = provider.execute_query(query_sql)
-        assert len(results) > 0
-
-        # Test query with WHERE and ORDER BY
-        query_sql = "SELECT * FROM orders c WHERE c.total > 100 ORDER BY c.total DESC"
-        results = provider.execute_query(query_sql)
-        assert len(results) > 0
-
-        # Clean up
-        try:
-            provider.schema_operations.delete_container("orders")
-            provider.schema_operations.delete_container("customers")
-        except Exception:
-            pass
-        provider.close()
-
-    def test_cosmosdb_list_containers(self, cosmosdb_container, integration_logger):
-        """Test listing all containers."""
-        self._check_cosmosdb_available(cosmosdb_container)
-
-        config_dict = {
-            "database": {
-                "type": "cosmosdb",
-                "url": cosmosdb_container["account_endpoint"],
-                "account_endpoint": cosmosdb_container["account_endpoint"],
-                "account_key": cosmosdb_container["account_key"],
-                "database_name": cosmosdb_container["database_name"],
-                "container_name": cosmosdb_container.get("container_name", "default"),
-            },
-            "migrations": {"directory": str(Path("/tmp")), "table": "schema_version"},
-            "logging": {"level": "DEBUG", "file": "dblift_cosmosdb_integration.log"},
-        }
-
-        config = DbliftConfig.from_dict(config_dict)
-        provider = ProviderRegistry.create_provider(config, integration_logger)
-        provider.create_connection()
-
-        # Create test containers
-        test_containers = ["list_test1", "list_test2"]
-        for container_name in test_containers:
-            create_sql = f"CREATE CONTAINER {container_name} (id STRING) WITH (partitionKey='/id')"
-            provider.execute_statement(create_sql)
-
-        import time
-
-        time.sleep(0.5)
-
-        # List containers
-        containers = provider.schema_operations.list_containers()
-        assert isinstance(containers, list)
-        assert len(containers) > 0
-
-        # Verify test containers are in the list
-        container_names = [c if isinstance(c, str) else c.get("id", c) for c in containers]
-        for test_container in test_containers:
-            assert (
-                test_container in container_names
-            ), f"Container {test_container} should be in list"
-
-        # Clean up
-        for container_name in test_containers:
-            try:
-                provider.schema_operations.delete_container(container_name)
-            except Exception:
-                pass
-        provider.close()
+        info = cosmos_cli.info()
+        assert info.success, f"info failed: {info.output}"
+        assert "1.0.0" in info.output

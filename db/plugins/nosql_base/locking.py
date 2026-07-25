@@ -29,7 +29,10 @@ class DocumentLockingManager(ABC):
     def __init__(self, query_executor: Any, log: Optional[Log] = None) -> None:
         """Store the executor (for its connection manager) and the logger."""
         self.query_executor = query_executor
-        self.connection_manager = getattr(query_executor, "connection_manager", None)
+        #: Typed ``Any`` deliberately — each SDK exposes a different
+        #: connection-manager shape, and the contract here does not
+        #: constrain it.
+        self.connection_manager: Any = getattr(query_executor, "connection_manager", None)
         self.log: Log = log if log is not None else NullLog()
 
     @abstractmethod

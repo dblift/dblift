@@ -365,7 +365,7 @@ class TestDeleteFailedMigrationEntry(unittest.TestCase):
 
         history_manager = MagicMock()
         history_manager.normalized_history_table = "dblift_schema_history"
-        history_manager.delete_failed_migration_entry.return_value = rows_deleted
+        history_manager.delete_failed_migration_entry.return_value = bool(rows_deleted)
 
         with patch("core.migration.commands.repair_command.ensure_provider_connection"):
             cmd = _make_cmd(provider=provider, config=config, history_manager=history_manager)
@@ -381,11 +381,7 @@ class TestDeleteFailedMigrationEntry(unittest.TestCase):
 
         self.assertTrue(deleted)
         self.assertEqual(result.failed_migrations_removed, 1)
-        history_manager.delete_failed_migration_entry.assert_called_once()
-        args = history_manager.delete_failed_migration_entry.call_args[0]
-        self.assertEqual(args[1], "public")
-        self.assertEqual(args[2], "V1__a.sql")
-        self.assertEqual(args[3], "dblift_schema_history")
+        history_manager.delete_failed_migration_entry.assert_called_once_with("V1__a.sql")
 
     def test_command_builds_no_sql_of_its_own(self):
         """No DELETE text is composed in the command any more."""
@@ -430,24 +426,15 @@ class TestDeleteFailedMigrationEntry(unittest.TestCase):
         self.assertFalse(deleted)
         self.assertEqual(result.failed_migrations_removed, 0)
 
-    def test_unknown_rowcount_is_verified_with_a_follow_up_read(self):
-        """duckdb-style drivers report -1; the row is re-checked before reporting."""
-        provider = MagicMock()
-        provider.connection = MagicMock()
-        provider.get_schema_qualified_name.return_value = '"public"."dblift_schema_history"'
-        provider.execute_query.return_value = []
-        cmd, _provider, history_manager = self._make_cmd_with_history_manager(
-            rows_deleted=-1, provider=provider
-        )
-        history_manager._false_literal.return_value = "FALSE"
+    def test_command_does_not_interpret_row_counts_itself(self):
+        """Unknown-rowcount handling belongs to the facade, not the command."""
+        import inspect
 
-        with patch("core.migration.commands.repair_command.ensure_provider_connection"):
-            deleted = cmd._delete_failed_migration_entry(
-                {"script": "V1__a.sql", "version": "1"}, RepairResult()
-            )
+        from core.migration.commands.repair_command import RepairCommand
 
-        self.assertTrue(deleted)
-        provider.execute_query.assert_called_once()
+        source = inspect.getsource(RepairCommand._delete_failed_migration_entry)
+        self.assertNotIn("SELECT 1 FROM", source)
+        self.assertNotIn("rows_affected", source)
 
     def test_exception_propagates(self):
         cmd, _provider, history_manager = self._make_cmd_with_history_manager()

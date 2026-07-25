@@ -449,37 +449,16 @@ class RepairCommand(BaseCommand):
             # on Oracle, and Oracle reads that as a literally-named
             # lowercase table → ORA-00942. ``normalized_history_table``
             # returns ``"DBLIFT_SCHEMA_HISTORY"`` for UPPERCASE dialects.
-            table_name = self.history_manager.normalized_history_table
-            schema = self.config.database.schema
-            qualified_table = self.provider.get_schema_qualified_name(schema, table_name)
-
             self.log.debug(f"Removing failed migration entry: {script_name} (version: {version})")
 
             # Ensure connection is ready
             ensure_provider_connection(self.provider)
 
-            # The history manager owns the delete: relational backends emit a
+            # The backend owns the delete: relational dialects emit a
             # parameterised DELETE, document stores remove the history
-            # document through their SDK. Either way the command stays
-            # dialect-free.
-            rows_affected = self.history_manager.delete_failed_migration_entry(
-                getattr(self.provider, "connection", None),
-                schema,
-                script_name,
-                table_name,
-            )
-
-            row_removed = rows_affected > 0
-            if rows_affected < 0 and hasattr(self.provider, "execute_query"):
-                # Some DBAPIs report an "unknown" rowcount of -1 for DML
-                # (e.g. duckdb_engine), so ``rows_affected > 0`` would wrongly
-                # read as "nothing removed". Verify the failed row is gone.
-                remaining = self.provider.execute_query(
-                    f"SELECT 1 FROM {qualified_table} "
-                    f"WHERE script = ? AND success = {self.history_manager._false_literal()}",
-                    [script_name],
-                )
-                row_removed = not remaining
+            # document through their SDK. The command stays dialect-free and
+            # composes no SQL of its own.
+            row_removed = self.history_manager.delete_failed_migration_entry(script_name)
 
             if row_removed:
                 result.failed_migrations_removed = (

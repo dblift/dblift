@@ -32,9 +32,32 @@ def cosmosdb_config(tmp_path_factory):
 
 @pytest.fixture(scope="module")
 def migrations_dir(tmp_path_factory):
+    """A Python migration — Cosmos DB does not run ``.sql`` migrations."""
     d = tmp_path_factory.mktemp("mig")
-    (d / "V1__create_items.sql").write_text(
-        "CREATE CONTAINER snap_items (id STRING) WITH (partitionKey='/id')"
+    (d / "V1__create_items.py").write_text(
+        '"""Create the snapshot test container."""\n'
+        "\n"
+        "from azure.cosmos import PartitionKey\n"
+        "\n"
+        'CONTAINER = "snap_items"\n'
+        "\n"
+        "\n"
+        "def migrate(context):\n"
+        "    if context.dry_run:\n"
+        "        context.log.info(f\"[DRY-RUN] would create container '{CONTAINER}'\")\n"
+        "        return\n"
+        "\n"
+        "    context.db.create_container(\n"
+        "        id=CONTAINER,\n"
+        '        partition_key=PartitionKey(path="/id"),\n'
+        "    )\n"
+        "\n"
+        "\n"
+        "def undo(context):\n"
+        "    if context.dry_run:\n"
+        "        return\n"
+        "\n"
+        "    context.db.delete_container(CONTAINER)\n"
     )
     return str(d)
 
