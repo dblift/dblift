@@ -617,8 +617,9 @@ class BaseQuirks:
     #: Whether ``CREATE TABLE`` supports a native ``IF NOT EXISTS`` clause.
     #: Default False; Oracle (23ai+/19.28+) and SQLite opt in.
     table_create_supports_if_not_exists: bool = False
-    #: CREATE TABLE header for non-temporary tables uses
-    #: ``CREATE CONTAINER`` (CosmosDB NoSQL quirk).
+    #: Object keyword in the CREATE header for non-temporary tables. Every
+    #: current dialect says ``TABLE``; the hook stays so a dialect that
+    #: names the object differently can say so without a core branch.
     table_create_keyword: str = "TABLE"
     #: Temporary table syntax. ``"global_temporary"`` for Oracle,
     #: ``"hash_prefix"`` for SQL Server, ``"temporary"`` for standard.
