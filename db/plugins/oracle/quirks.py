@@ -98,6 +98,8 @@ class OracleQuirks(BaseQuirks):
     )
     connection_probe_sql = "SELECT 1 FROM DUAL"
     select_supports_limit = False
+    # Trailing ``FETCH FIRST n ROWS ONLY`` (Oracle 12c+); no ``LIMIT``.
+    row_limit_style = "fetch_first"
     boolean_false_literal = "0"
     unquoted_identifier_case = "uppercase"
     # quote_qualified upper-cases idents to match Oracle's catalogue folding.

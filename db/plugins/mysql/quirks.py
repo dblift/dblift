@@ -57,6 +57,12 @@ class MysqlQuirks(BaseQuirks):
     schema_required = True
     uppercase_identifiers = False
     clean_strategy = "introspector"
+    # ``INSERT … ON DUPLICATE KEY UPDATE col = VALUES(col)``. Inherited by MariaDB.
+    upsert_style = "on_duplicate_key"
+    # MySQL's ``json`` column type needs the bound text parameter cast.
+    json_bind_cast_type = "JSON"
+    # Error 1093: "can't specify target table for update in FROM clause".
+    update_subquery_requires_derived_table = True
     connection_identifier_attrs = ("url", "host", "database")
     missing_connection_identifier_hint = "MySQL connection requires url or host/database fields"
     sqlglot_dialect = "mysql"

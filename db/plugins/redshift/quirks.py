@@ -17,6 +17,13 @@ class RedshiftQuirks(PostgresqlQuirks):
     # parent dict wholesale — Redshift declares no gates.
     feature_gates = {}
 
+    # Redshift has no ``INSERT … ON CONFLICT``: the clause was never
+    # implemented, and its own upsert guidance is a staging table (or, since
+    # 2023, ``MERGE``). Inheriting PostgreSQL's ``"on_conflict"`` here would
+    # emit SQL the server rejects, so it reverts to the portable
+    # UPDATE-then-INSERT fallback.
+    upsert_style = "none"
+
     def __init__(self, dialect_name: str = "redshift") -> None:
         super().__init__(dialect_name=dialect_name)
 

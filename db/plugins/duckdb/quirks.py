@@ -29,6 +29,8 @@ class DuckDBQuirks(BaseQuirks):
     sqlglot_dialect = "duckdb"
     default_schema_name = "main"
     boolean_false_literal = "FALSE"  # native BOOLEAN, not 0/1
+    # ``ON CONFLICT (col) DO UPDATE SET`` — DuckDB 0.7+.
+    upsert_style = "on_conflict"
     drop_supports_if_exists = True
     table_drop_style = "cascade"  # DuckDB supports DROP TABLE ... CASCADE
     # Wave B hooks — embedded, file-based, no credentials (mirrors SQLite).

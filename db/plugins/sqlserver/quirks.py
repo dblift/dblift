@@ -59,6 +59,8 @@ class SqlserverQuirks(BaseQuirks):
     quote_close = "]"
     boolean_false_literal = "0"
     select_supports_limit = False  # SQL Server uses TOP, not LIMIT
+    # ``SELECT TOP (n) …`` — a prefix on the select list, not a trailing clause.
+    row_limit_style = "top"
     supports_go_batch_separator = True
 
     def is_batch_separator(self, stmt: str) -> bool:
