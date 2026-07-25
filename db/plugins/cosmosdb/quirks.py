@@ -33,6 +33,9 @@ class CosmosdbQuirks(BaseQuirks):
     default_schema_name = "default"
     boolean_false_literal = "false"
     is_nosql = True
+    # Cosmos containers are created and reshaped through the Azure SDK, so
+    # migrations are Python scripts (``migrate(context)``) rather than SQL.
+    supports_sql_migrations = False
     # Azure account auth (endpoint + key, or managed identity) instead of
     # host/user/password. Gates the auth validation in
     # ``DbliftConfig.validate_complete_data``.

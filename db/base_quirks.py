@@ -420,6 +420,14 @@ class BaseQuirks:
     requires_cloud_account_auth: bool = False
     #: NoSQL / document-store dialect (no relational DDL).
     is_nosql: bool = False
+    #: ``.sql`` migration files can be executed against this dialect.
+    #: Document stores (Cosmos DB, and future NoSQL plugins) have no SQL
+    #: DDL and drive their schema through the vendor SDK, so they run
+    #: Python migrations only and set this False; the executor factory
+    #: then rejects SQL migrations with ``DBLIFT-NOSQL-001`` instead of
+    #: handing them to a translator. Kept separate from :attr:`is_nosql`
+    #: so a future NoSQL dialect with a genuine SQL surface can opt back in.
+    supports_sql_migrations: bool = True
     #: How metadata queries treat the catalog argument:
     #:   ``"catalog"``   — schema arg becomes catalog (MySQL).
     #:   ``"catalog+schema"`` — separate catalog (database) and schema

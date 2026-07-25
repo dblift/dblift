@@ -51,5 +51,18 @@ class ConnectionClosedError(ValidationError):
     """Raised when a database connection is unexpectedly closed."""
 
 
+class UnsupportedMigrationFormatError(ValidationError):
+    """Raised when a migration's format cannot run on the target dialect.
+
+    The concrete case is a ``.sql`` migration aimed at a NoSQL dialect —
+    one whose quirks declare ``supports_sql_migrations = False``. Document
+    stores such as Cosmos DB have no SQL DDL, so their migrations are
+    written as Python scripts driving the vendor SDK.
+    """
+
+    #: Stable diagnostic code quoted in the message and in the docs.
+    code = "DBLIFT-NOSQL-001"
+
+
 class SchemaCreationError(ValidationError):
     """Raised when a test schema cannot be created."""
