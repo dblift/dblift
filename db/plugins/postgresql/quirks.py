@@ -60,6 +60,13 @@ class PostgresqlQuirks(BaseQuirks):
     schema_required = True
     uppercase_identifiers = False
     clean_strategy = "introspector"
+    # ``INSERT … ON CONFLICT (col) DO UPDATE SET … EXCLUDED.x``. Inherited by
+    # every PG-wire engine built by ``_pg_compatible`` (Citus, TimescaleDB,
+    # YugabyteDB, AlloyDB, Aurora, Neon) and by CockroachDB — all of which
+    # genuinely support it. Redshift overrides back to ``"none"``.
+    upsert_style = "on_conflict"
+    # A ``jsonb`` column rejects a bound text parameter without an explicit cast.
+    json_bind_cast_type = "JSONB"
     sqlglot_dialect = "postgres"
     # PostgreSQL's permissive grammar is the last-resort sqlglot read dialect
     # for dialects that declare none of their own (DB2, CosmosDB). See

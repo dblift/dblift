@@ -189,6 +189,30 @@ class BaseQuirks:
         """
         return [schema, table, column]
 
+    def row_limit_clauses(self, row_count: int) -> Tuple[str, str]:
+        """Return ``(select_prefix, query_suffix)`` bounding a SELECT to *row_count* rows.
+
+        The two fragments wrap a query from both ends because the dialects
+        disagree about which end the cap belongs on::
+
+            f"SELECT {prefix}{columns} FROM {table} WHERE {pred}{suffix}"
+
+        ``"limit"`` and ``"fetch_first"`` return an empty prefix; ``"top"``
+        returns an empty suffix. Rendering both here keeps every caller's
+        f-string identical regardless of dialect, which is the point — the
+        alternative is each call site re-deriving the syntax from a dialect
+        name.
+
+        Driven by :attr:`row_limit_style`; an unrecognised value falls back to
+        ``LIMIT``, the majority form, rather than silently emitting no cap at
+        all — an uncapped query is the dangerous outcome here.
+        """
+        if self.row_limit_style == "top":
+            return f"TOP ({row_count}) ", ""
+        if self.row_limit_style == "fetch_first":
+            return "", f" FETCH FIRST {row_count} ROWS ONLY"
+        return "", f" LIMIT {row_count}"
+
     def derive_schema_name(self, database_config: Any) -> "Optional[str]":
         """Return a schema name derived from dialect defaults, or ``None``.
 
@@ -305,6 +329,40 @@ class BaseQuirks:
     #: ``TOP N`` instead. When False, post-commit verification queries
     #: and similar probes omit the ``LIMIT`` clause.
     select_supports_limit: bool = True
+    #: How a SELECT is bounded to N rows. One of:
+    #: ``"limit"`` (trailing ``LIMIT n`` — PostgreSQL family, MySQL,
+    #: SQLite, Snowflake — default), ``"top"`` (``TOP (n)`` prefix on the
+    #: select list — SQL Server family), ``"fetch_first"`` (trailing
+    #: ``FETCH FIRST n ROWS ONLY`` — Oracle, DB2).
+    #: Read through :meth:`row_limit_clauses`, which renders the pair
+    #: rather than making each caller re-derive the syntax. Distinct from
+    #: :attr:`select_supports_limit`, which answers the coarser "may I
+    #: append ``LIMIT`` at all" question for optional probes.
+    row_limit_style: str = "limit"
+    #: How an "insert or update on primary-key conflict" is expressed.
+    #: One of: ``"none"`` (no native upsert — the caller must fall back to
+    #: UPDATE-then-INSERT — default), ``"on_conflict"``
+    #: (``ON CONFLICT (col) DO UPDATE SET … EXCLUDED.x`` — PostgreSQL
+    #: family, SQLite), ``"on_duplicate_key"``
+    #: (``ON DUPLICATE KEY UPDATE … VALUES(x)`` — MySQL, MariaDB).
+    #: Oracle/DB2/SQL Server express it as ``MERGE``, which needs a
+    #: different statement shape entirely, so they stay ``"none"`` and take
+    #: the portable fallback rather than claiming a syntax they cannot use.
+    upsert_style: str = "none"
+    #: SQL type a serialized JSON parameter must be CAST to when bound to a
+    #: JSON column, or ``None`` when the dialect coerces ``text → json``
+    #: implicitly and the value binds directly. ``"JSONB"`` on the
+    #: PostgreSQL family (including CockroachDB and Redshift), ``"JSON"`` on
+    #: MySQL/MariaDB. Without the cast the server rejects the statement
+    #: ("column is of type jsonb but expression is of type text").
+    json_bind_cast_type: Optional[str] = None
+    #: An ``UPDATE`` whose subquery reads the table being updated must have
+    #: that subquery wrapped in a derived table. MySQL and MariaDB reject the
+    #: direct form with error 1093 ("can't specify target table for update in
+    #: FROM clause"); wrapping it (``SELECT pk FROM (<subselect>) AS t``)
+    #: materialises the rows first and is accepted. Everyone else allows the
+    #: direct form, and the extra nesting would only cost a materialisation.
+    update_subquery_requires_derived_table: bool = False
     #: Default schema name when the user supplies none. ``None`` means
     #: the dialect has no default — the framework returns ``""``.
     #: PostgreSQL=``"public"``, CosmosDB=``"default"``, SQLite=``"main"``.

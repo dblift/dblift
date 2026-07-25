@@ -73,6 +73,8 @@ class Db2Quirks(BaseQuirks):
 
     connection_probe_sql = "SELECT 1 FROM SYSIBM.SYSDUMMY1"
     select_supports_limit = False
+    # Trailing ``FETCH FIRST n ROWS ONLY``; no ``LIMIT``.
+    row_limit_style = "fetch_first"
     unquoted_identifier_case = "uppercase"
     connection_identifier_attrs = ("url", "host", "database")
     missing_connection_identifier_hint = "DB2 connection requires url or host/database fields"

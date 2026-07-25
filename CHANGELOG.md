@@ -7,7 +7,49 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.1.0] - 2026-07-25
+
 ### Added
+
+- **Four capability quirks that replace dialect-name branching in callers.**
+  Each one existed as a hand-maintained set of dialect strings in the paid
+  tiers; a set nobody updates when a dialect is added is a latent bug, so the
+  capability moves next to the dialect that owns it.
+  - **`row_limit_style`** (`"limit"` / `"top"` / `"fetch_first"`) with
+    **`quirks.row_limit_clauses(n)`**, which renders the
+    `(select_prefix, query_suffix)` pair so a caller's f-string is identical on
+    every dialect. SQL Server declares `"top"`, Oracle and DB2 `"fetch_first"`,
+    everyone else the default `"limit"`. Distinct from the existing
+    `select_supports_limit`, which answers the coarser "may I append `LIMIT` at
+    all" question for optional probes.
+  - **`upsert_style`** (`"none"` / `"on_conflict"` / `"on_duplicate_key"`).
+    PostgreSQL, SQLite and DuckDB declare `ON CONFLICT`; MySQL and MariaDB
+    `ON DUPLICATE KEY UPDATE`. Oracle, DB2 and SQL Server express upsert as
+    `MERGE`, which needs a different statement shape, so they keep `"none"` and
+    take the portable UPDATE-then-INSERT fallback rather than claiming a syntax
+    they cannot use. **Redshift overrides back to `"none"`** despite
+    subclassing `PostgresqlQuirks`: it has no `ON CONFLICT` clause, and
+    inheriting one would emit SQL the server rejects.
+  - **`json_bind_cast_type`** (`"JSONB"` / `"JSON"` / `None`) — the SQL type a
+    serialized JSON parameter must be CAST to when bound to a JSON column, or
+    `None` where `text → json` coerces implicitly.
+  - **`update_subquery_requires_derived_table`** (bool) — an `UPDATE` whose
+    subquery reads the table being updated must have that subquery wrapped in a
+    derived table. MySQL and MariaDB reject the direct form with error 1093;
+    everyone else takes it, and the extra nesting would only cost a
+    materialisation.
+
+  Because the PostgreSQL-wire engines (Citus, TimescaleDB, YugabyteDB, AlloyDB,
+  Aurora, Neon, Supabase) subclass `PostgresqlQuirks`, they inherit
+  `"on_conflict"` and `"JSONB"` automatically — closing an omission the
+  hand-maintained sets carried: those engines were absent from the JSON-cast
+  set, so a captured JSON value bound without its cast and the restore failed
+  with *"column is of type jsonb but expression is of type text"*.
+
+  Purely additive for the core: nothing in `api/`, `cli/`, `config/`, `core/`
+  or `db/` consumes the new capabilities yet, so behaviour is unchanged for a
+  core-only consumer. `docs/semver-policy.md` §2 puts "add a new public symbol"
+  at MINOR.
 
 - **Tests for the `pseudo-sql-translator` lint rule** (27 cases). The rule
   shipped in 3.0.0 with no test of its own: every banned translator name and

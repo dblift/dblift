@@ -31,6 +31,8 @@ class SqliteQuirks(BaseQuirks):
     sqlglot_dialect = "sqlite"
     default_schema_name = "main"
     boolean_false_literal = "0"
+    # ``ON CONFLICT (col) DO UPDATE SET`` — the "UPSERT" clause, SQLite 3.24+ (2018).
+    upsert_style = "on_conflict"
     drop_supports_if_exists = True  # supported since SQLite 3.3.0 (2006)
     # SQLite has no CASCADE on DROP TABLE; use plain `DROP TABLE IF EXISTS`.
     table_drop_style = "if_exists"
