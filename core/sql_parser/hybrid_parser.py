@@ -582,8 +582,7 @@ class HybridParser(_SqlglotBuildersMixin, SqlParserInterface):
             r"--.*?$", "", sql_no_comments, flags=re.MULTILINE
         )  # Remove line comments
         sql_upper = sql_no_comments.strip().upper()
-        # Handle both CREATE TABLE and CREATE CONTAINER (CosmosDB)
-        if not (sql_upper.startswith("CREATE TABLE") or sql_upper.startswith("CREATE CONTAINER")):
+        if not sql_upper.startswith("CREATE TABLE"):
             return
 
         table_model = self._build_table_model_from_sqlglot(sql_text, default_schema)
@@ -844,13 +843,12 @@ class HybridParser(_SqlglotBuildersMixin, SqlParserInterface):
     def _build_table_model_from_regex(
         self, sql_text: str, default_schema: Optional[str]
     ) -> Optional[Table]:
-        """Create a lightweight Table model from a CREATE TABLE or CREATE CONTAINER statement."""
+        """Create a lightweight Table model from a CREATE TABLE statement."""
         normalized = sql_text.strip()
-        # Handle both CREATE TABLE and CREATE CONTAINER (CosmosDB)
         create_match = re.search(
             r"CREATE\s+(?:OR\s+REPLACE\s+)?"
             r"(?:GLOBAL\s+TEMPORARY\s+)?"
-            r"(?:TABLE|CONTAINER)\s+(?:IF\s+NOT\s+EXISTS\s+)?(?P<identifier>[^\s(]+)",
+            r"TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?(?P<identifier>[^\s(]+)",
             normalized,
             flags=re.IGNORECASE,
         )
@@ -870,17 +868,6 @@ class HybridParser(_SqlglotBuildersMixin, SqlParserInterface):
                 table.add_constraint(constraint)
 
         self._apply_partition_metadata(table, normalized)
-
-        # CosmosDB: extract partition key — two syntaxes:
-        # 1. User-written migrations: WITH PARTITION KEY /path
-        # 2. dblift-generated DDL:    WITH (partitionKey='/path')
-        pk_match = re.search(
-            r"WITH\s+PARTITION\s+KEY\s+(/[^\s;,()]+)" r"|WITH\s*\(\s*partitionKey\s*=\s*'(/[^']+)'",
-            normalized,
-            re.IGNORECASE,
-        )
-        if pk_match:
-            table.metadata = {"partition_key": pk_match.group(1) or pk_match.group(2)}
 
         return table
 

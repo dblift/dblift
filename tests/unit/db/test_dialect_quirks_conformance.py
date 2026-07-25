@@ -194,22 +194,40 @@ def test_fk_reference_bind_params_non_oracle_has_three_items(dialect: str) -> No
     assert params == ["s", "t", "c"], f"{dialect}: fk_reference_bind_params returned {params!r}"
 
 
-def test_cosmosdb_requires_sdk_for_drop() -> None:
-    """Story 27-3: CosmosDB must declare SDK-required drops."""
+def test_cosmosdb_rejects_sql_migrations() -> None:
+    """CosmosDB runs Python migrations only — no SQL DDL to execute."""
     quirks = ProviderRegistry.get_quirks("cosmosdb")
-    assert quirks.requires_sdk_for_drop() is True
+    assert quirks.supports_sql_migrations is False
+    assert quirks.is_nosql is True
 
 
 @pytest.mark.parametrize(
     "dialect",
     [d for d in KNOWN_DIALECTS if d != "cosmosdb"],
 )
-def test_non_cosmosdb_does_not_require_sdk_for_drop(dialect: str) -> None:
-    """Story 27-3: Non-CosmosDB dialects must not require SDK drops."""
+def test_relational_dialects_accept_sql_migrations(dialect: str) -> None:
+    """Every relational dialect keeps executing .sql migrations."""
     quirks = ProviderRegistry.get_quirks(dialect)
     assert (
-        quirks.requires_sdk_for_drop() is False
-    ), f"{dialect}: requires_sdk_for_drop() must return False"
+        quirks.supports_sql_migrations is True
+    ), f"{dialect}: supports_sql_migrations must stay True"
+
+
+@pytest.mark.parametrize("dialect", KNOWN_DIALECTS)
+def test_no_dialect_carries_sdk_translation_hooks(dialect: str) -> None:
+    """The pseudo-SQL/SDK translation hooks are gone for good.
+
+    They existed only to let CosmosDB smuggle SDK calls through generated
+    SQL scripts. Nothing may reintroduce them.
+    """
+    quirks = ProviderRegistry.get_quirks(dialect)
+    for hook in (
+        "requires_sdk_for_drop",
+        "sdk_operation_hint_prefix",
+        "build_sdk_drop_operation",
+        "generate_sdk_script",
+    ):
+        assert not hasattr(quirks, hook), f"{dialect}: {hook} must not come back"
 
 
 def test_unwrap_default_value_sqlserver_strips_parens() -> None:

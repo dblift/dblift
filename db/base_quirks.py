@@ -199,49 +199,6 @@ class BaseQuirks:
         """
         return self.default_schema_name
 
-    def requires_sdk_for_drop(self) -> bool:
-        """Return True if DROP statements require SDK execution rather than SQL.
-
-        CosmosDB containers cannot be dropped through SQL execution; the Azure
-        SDK must be used instead. All other dialects return False.
-        """
-        return False
-
-    def sdk_operation_hint_prefix(self) -> "Optional[str]":
-        """Return the comment prefix to inject before SDK-executed statements, or None.
-
-        Used by ``script_formatter`` to annotate CosmosDB SDK operations in
-        generated SQL scripts. Default: None (no annotation).
-        """
-        return None
-
-    def build_sdk_drop_operation(self, statement: object) -> "Optional[dict[str, Any]]":
-        """Build the SDK operation dict for a DROP statement, or None.
-
-        Called by ``generate_sql_script`` for each DROP statement when
-        ``requires_sdk_for_drop()`` is True. The returned dict is stored as
-        ``statement.sdk_operation`` and later passed to ``generate_sdk_script``.
-
-        ``statement`` is a ``SqlStatement``; access attributes via ``getattr``.
-        Return ``None`` to leave ``sdk_operation`` unset (no-op for this
-        statement).
-
-        Default: None (no SDK operation).
-        """
-        return None
-
-    def generate_sdk_script(self, sdk_statements: "list[Any]") -> "Optional[str]":
-        """Generate a dialect-specific SDK script block for ``sdk_statements``.
-
-        Called by ``generate_sql_script`` after SQL formatting when there are
-        statements with ``requires_sdk=True``. Return the full text to append
-        to the generated script (including headers/comments), or ``None`` to
-        skip appending.
-
-        Default: None (no SDK script appended).
-        """
-        return None
-
     def unwrap_default_value(self, default_str: str, column: object) -> str:
         """Strip dialect-specific wrapping from a DEFAULT value string.
 

@@ -56,27 +56,42 @@ class TestSqlParserFactory:
             "db2",
             "postgresql",
             "mysql",
-            "cosmosdb",
             "sqlite",
         ):
             cls = ProviderRegistry.get_quirks(dialect).parser_class("hybrid")
             assert cls is not None, f"{dialect} hybrid parser_class is None"
+        # CosmosDB is deliberately absent: it has no SQL to parse.
+        assert ProviderRegistry.get_quirks("cosmosdb").parser_class("hybrid") is None
 
-    def test_regex_parser_map_contains_cosmosdb(self):
-        """CosmosDB migrations use the regex parser path during validation."""
+    def test_cosmosdb_has_no_regex_parser(self):
+        """CosmosDB's pseudo-SQL grammar is gone, so no regex parser resolves.
+
+        The dedicated parser existed only to read ``CREATE CONTAINER`` /
+        ``SET THROUGHPUT`` pseudo-DDL for the SDK translator. Cosmos
+        migrations are Python now, so asking for one is an error rather
+        than a silent fallback.
+        """
+        from core.exceptions import UnsupportedDialectError
+
         factory = SqlParserFactory("cosmosdb", parser_type="regex")
 
-        parser = factory.get_parser()
+        with pytest.raises(UnsupportedDialectError):
+            factory.get_parser()
 
-        assert parser.__class__.__name__ == "CosmosDbRegexParser"
-        assert parser.dialect_name == "cosmosdb"
+    @pytest.mark.parametrize("parser_type", ["regex", "hybrid", "sqlglot"])
+    def test_cosmosdb_resolves_no_parser_at_all(self, parser_type):
+        """Cosmos has no SQL for dblift to parse, whichever parser is asked for."""
+        factory = SqlParserFactory("cosmosdb", parser_type=parser_type)
+
+        with pytest.raises((UnsupportedDialectError, ParserNotAvailableError, ValueError)):
+            factory.get_parser()
 
     def test_hybrid_parser_class_is_HybridParser_for_jdbc_dialects(self):
         """Story 26-9: most dialects route ``hybrid`` to HybridParser."""
         from core.sql_parser.hybrid_parser import HybridParser
         from db.provider_registry import ProviderRegistry
 
-        for dialect in ("oracle", "sqlserver", "db2", "postgresql", "mysql", "cosmosdb"):
+        for dialect in ("oracle", "sqlserver", "db2", "postgresql", "mysql"):
             cls = ProviderRegistry.get_quirks(dialect).parser_class("hybrid")
             assert cls is HybridParser, f"{dialect}: expected HybridParser, got {cls!r}"
 

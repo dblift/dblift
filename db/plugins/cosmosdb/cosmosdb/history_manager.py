@@ -379,6 +379,62 @@ class CosmosDbHistoryManager(BaseHistoryManager):
             self.log.error(f"Error repairing history document for {script_name}: {e}")
             return False
 
+    def delete_failed_migration_entry(
+        self,
+        connection: Any,
+        schema: str,
+        script_name: str,
+        table_name: Optional[str] = None,
+    ) -> int:
+        """Delete the failed history document(s) for *script_name* via the SDK.
+
+        Cosmos has no SQL ``DELETE``: the rows are located with a native
+        query and removed with ``delete_item``. Documents are keyed by
+        ``id`` == script name, but the query is kept general so a
+        historical duplicate is cleaned up rather than left behind.
+        """
+        container_name = table_name or self.HISTORY_CONTAINER_NAME
+
+        if not self.history_container:
+            self.history_container = self.connection_manager.get_container_client(container_name)
+        if self.history_container is None:
+            raise RuntimeError("History container not initialized")
+
+        query = "SELECT c.id, c.script, c.success FROM c WHERE c.script = @script"
+        parameters = [{"name": "@script", "value": script_name}]
+        try:
+            failed_docs = [
+                doc
+                for doc in self.history_container.query_items(
+                    query=query,
+                    parameters=parameters,
+                    enable_cross_partition_query=True,
+                )
+                if not doc.get("success", False)
+            ]
+        except Exception as e:
+            self.log.error(f"Error querying failed history documents for {script_name}: {e}")
+            raise
+
+        deleted = 0
+        for doc in failed_docs:
+            doc_id = doc.get("id")
+            if not doc_id:
+                continue
+            try:
+                self.history_container.delete_item(item=doc_id, partition_key=doc_id)
+                deleted += 1
+            except Exception as e:
+                error_str = str(e).lower()
+                if "not found" in error_str or "notfound" in error_str or "404" in error_str:
+                    self.log.debug(f"History document {doc_id} already deleted")
+                    continue
+                self.log.error(f"Error deleting history document {doc_id}: {e}")
+                raise
+
+        self.log.debug(f"Deleted {deleted} failed history document(s) for {script_name}")
+        return deleted
+
     def create_history_table(self, schema: str, table_name: str) -> str:
         """Generate SQL to create the migration history container.
 

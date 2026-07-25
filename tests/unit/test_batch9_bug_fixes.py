@@ -17,11 +17,12 @@ from unittest.mock import MagicMock, patch
 # B9-BUG-01: CosmosDB ``_execute_delete`` must substitute ``?`` placeholders
 # ---------------------------------------------------------------------------
 class TestBug01CosmosDbParamSubstitution(unittest.TestCase):
-    """Repair writes ``WHERE script = ? AND success = false`` and hands the
-    failed-script name in ``params``. CosmosDB SQL has no ``?`` placeholders,
-    so the query used to match zero documents and repair silently left the
-    failed history row in place. The fix inlines the params as quoted/typed
-    literals before composing the SELECT."""
+    """CosmosDB SQL has no ``?`` placeholders, so positional params must be
+    inlined as quoted/typed literals before a query is sent. Repair no
+    longer composes SQL for Cosmos at all (the history manager deletes via
+    the SDK), but ``execute_query`` still takes positional params from
+    callers such as ``info`` and introspection, so the substitution
+    contract stays pinned here."""
 
     def _make_executor(self):
         from db.plugins.cosmosdb.cosmosdb.query_executor import CosmosDbQueryExecutor
@@ -67,30 +68,6 @@ class TestBug01CosmosDbParamSubstitution(unittest.TestCase):
 
         out = CosmosDbQueryExecutor._substitute_params("a = 'x'", [])
         self.assertEqual(out, "a = 'x'")
-
-    # ---- _execute_delete integration --------------------------------------
-    def test_execute_delete_inlines_params_in_query(self) -> None:
-        """The composed CosmosDB SELECT must carry the literal 'V1__foo.py'
-        instead of the raw ``?`` — that was the exact symptom of BUG-01."""
-        executor = self._make_executor()
-        container_client = MagicMock()
-        # Return one matching document so we can also verify delete_item call.
-        container_client.query_items.return_value = iter([{"id": "row-1", "_partitionKey": "pk-1"}])
-        executor.connection_manager.get_container_client.return_value = container_client
-
-        deleted = executor._execute_delete(
-            "DELETE FROM dblift_schema_history WHERE script = ? AND success = false",
-            ["V1__foo.py"],
-        )
-
-        # Query composed with the inlined literal.
-        call = container_client.query_items.call_args
-        composed = call.kwargs.get("query") or call.args[0]
-        self.assertIn("'V1__foo.py'", composed)
-        self.assertNotIn("?", composed)
-        # And the matching row was actually deleted.
-        self.assertEqual(deleted, 1)
-        container_client.delete_item.assert_called_once()
 
 
 # ---------------------------------------------------------------------------

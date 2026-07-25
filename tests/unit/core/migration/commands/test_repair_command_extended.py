@@ -326,10 +326,15 @@ class TestIsFailedMigration(unittest.TestCase):
 
 
 class TestDeleteFailedMigrationEntry(unittest.TestCase):
+    """The command delegates the delete; the history manager owns the statement.
+
+    Which literal a dialect uses for ``False``, and whether the delete is
+    SQL at all, is the history manager's business — relational backends
+    emit a parameterised DELETE, document stores call their SDK.
+    """
+
     class _NonTransactionalDdlProvider(TransactionalProvider):
         def __init__(self):
-            self.query_executor = MagicMock()
-            self.query_executor.execute_statement.return_value = 1
             self.connection = MagicMock()
 
         def begin_transaction(self):
@@ -347,27 +352,27 @@ class TestDeleteFailedMigrationEntry(unittest.TestCase):
         def get_schema_qualified_name(self, schema, table):
             return f'"{schema}"."{table}"'
 
-    def _make_cmd_with_query_executor(self, db_type="postgresql"):
-        provider = MagicMock()
-        # Provider has query_executor
-        provider.query_executor = MagicMock()
-        provider.query_executor.execute_statement.return_value = 1
-        provider.connection = MagicMock()
-        provider.get_schema_qualified_name.return_value = '"public"."dblift_schema_history"'
+    @staticmethod
+    def _make_cmd_with_history_manager(rows_deleted=1, provider=None):
+        if provider is None:
+            provider = MagicMock()
+            provider.connection = MagicMock()
+            provider.get_schema_qualified_name.return_value = '"public"."dblift_schema_history"'
 
         config = MagicMock()
         config.database.schema = "public"
-        config.database.type = db_type
+        config.database.type = "postgresql"
 
         history_manager = MagicMock()
         history_manager.normalized_history_table = "dblift_schema_history"
+        history_manager.delete_failed_migration_entry.return_value = rows_deleted
 
         with patch("core.migration.commands.repair_command.ensure_provider_connection"):
             cmd = _make_cmd(provider=provider, config=config, history_manager=history_manager)
-        return cmd, provider
+        return cmd, provider, history_manager
 
-    def test_postgresql_uses_false_literal(self):
-        cmd, provider = self._make_cmd_with_query_executor("postgresql")
+    def test_delegates_to_the_history_manager(self):
+        cmd, _provider, history_manager = self._make_cmd_with_history_manager()
         repair = {"script": "V1__a.sql", "version": "1"}
         result = RepairResult()
 
@@ -376,31 +381,31 @@ class TestDeleteFailedMigrationEntry(unittest.TestCase):
 
         self.assertTrue(deleted)
         self.assertEqual(result.failed_migrations_removed, 1)
-        # Verify FALSE (not 0) used
-        call_args = provider.query_executor.execute_statement.call_args
-        self.assertIn("FALSE", call_args[0][1])
+        history_manager.delete_failed_migration_entry.assert_called_once()
+        args = history_manager.delete_failed_migration_entry.call_args[0]
+        self.assertEqual(args[1], "public")
+        self.assertEqual(args[2], "V1__a.sql")
+        self.assertEqual(args[3], "dblift_schema_history")
 
-    def test_oracle_uses_0_literal(self):
-        cmd, provider = self._make_cmd_with_query_executor("oracle")
+    def test_command_builds_no_sql_of_its_own(self):
+        """No DELETE text is composed in the command any more."""
+        cmd, provider, _history_manager = self._make_cmd_with_history_manager()
         repair = {"script": "V1__a.sql", "version": "1"}
-        result = RepairResult()
 
         with patch("core.migration.commands.repair_command.ensure_provider_connection"):
-            deleted = cmd._delete_failed_migration_entry(repair, result)
+            cmd._delete_failed_migration_entry(repair, RepairResult())
 
-        self.assertTrue(deleted)
-        call_args = provider.query_executor.execute_statement.call_args
-        self.assertIn(" 0", call_args[0][1])
+        provider.execute_statement.assert_not_called()
 
     def test_non_transactional_ddl_repair_warns_retry_may_hit_existing_objects(self):
         provider = self._NonTransactionalDdlProvider()
-
         config = MagicMock()
         config.database.schema = "DBLIFT_TEST"
         config.database.type = "oracle"
 
         history_manager = MagicMock()
         history_manager.normalized_history_table = "DBLIFT_SCHEMA_HISTORY"
+        history_manager.delete_failed_migration_entry.return_value = 1
 
         cmd = _make_cmd(provider=provider, config=config, history_manager=history_manager)
         repair = {"script": "V1__users.sql", "version": "1"}
@@ -415,22 +420,7 @@ class TestDeleteFailedMigrationEntry(unittest.TestCase):
         self.assertIn("clean --clean-enabled", warning_text)
 
     def test_returns_false_when_no_rows_deleted(self):
-        provider = MagicMock()
-        provider.query_executor = MagicMock()
-        provider.query_executor.execute_statement.return_value = 0
-        provider.connection = MagicMock()
-        provider.get_schema_qualified_name.return_value = '"public"."dblift_schema_history"'
-
-        config = MagicMock()
-        config.database.schema = "public"
-        config.database.type = "postgresql"
-
-        history_manager = MagicMock()
-        history_manager.normalized_history_table = "dblift_schema_history"
-
-        with patch("core.migration.commands.repair_command.ensure_provider_connection"):
-            cmd = _make_cmd(provider=provider, config=config, history_manager=history_manager)
-
+        cmd, _provider, _history_manager = self._make_cmd_with_history_manager(rows_deleted=0)
         repair = {"script": "V1__a.sql", "version": "1"}
         result = RepairResult()
 
@@ -440,52 +430,33 @@ class TestDeleteFailedMigrationEntry(unittest.TestCase):
         self.assertFalse(deleted)
         self.assertEqual(result.failed_migrations_removed, 0)
 
-    def test_exception_propagates(self):
+    def test_unknown_rowcount_is_verified_with_a_follow_up_read(self):
+        """duckdb-style drivers report -1; the row is re-checked before reporting."""
         provider = MagicMock()
-        provider.query_executor = MagicMock()
-        provider.query_executor.execute_statement.side_effect = RuntimeError("DB error")
         provider.connection = MagicMock()
         provider.get_schema_qualified_name.return_value = '"public"."dblift_schema_history"'
+        provider.execute_query.return_value = []
+        cmd, _provider, history_manager = self._make_cmd_with_history_manager(
+            rows_deleted=-1, provider=provider
+        )
+        history_manager._false_literal.return_value = "FALSE"
 
-        config = MagicMock()
-        config.database.schema = "public"
-        config.database.type = "postgresql"
+        with patch("core.migration.commands.repair_command.ensure_provider_connection"):
+            deleted = cmd._delete_failed_migration_entry(
+                {"script": "V1__a.sql", "version": "1"}, RepairResult()
+            )
 
-        history_manager = MagicMock()
-        history_manager.normalized_history_table = "dblift_schema_history"
+        self.assertTrue(deleted)
+        provider.execute_query.assert_called_once()
 
-        cmd = _make_cmd(provider=provider, config=config, history_manager=history_manager)
+    def test_exception_propagates(self):
+        cmd, _provider, history_manager = self._make_cmd_with_history_manager()
+        history_manager.delete_failed_migration_entry.side_effect = RuntimeError("DB error")
         repair = {"script": "V1__a.sql", "version": "1"}
-        result = RepairResult()
 
         with patch("core.migration.commands.repair_command.ensure_provider_connection"):
             with self.assertRaises(RuntimeError):
-                cmd._delete_failed_migration_entry(repair, result)
-
-    def test_fallback_execute_statement_path(self):
-        """Provider without query_executor uses fallback execute_statement path."""
-        provider = MagicMock(
-            spec=["get_schema_qualified_name", "execute_statement", "is_connected", "connect"]
-        )
-        del provider.query_executor  # remove so hasattr returns False
-        provider.get_schema_qualified_name.return_value = '"public"."dblift_schema_history"'
-        provider.execute_statement.return_value = 1
-
-        config = MagicMock()
-        config.database.schema = "public"
-        config.database.type = "postgresql"
-
-        history_manager = MagicMock()
-        history_manager.normalized_history_table = "dblift_schema_history"
-
-        cmd = _make_cmd(provider=provider, config=config, history_manager=history_manager)
-        repair = {"script": "V1__a.sql", "version": "1"}
-        result = RepairResult()
-
-        with patch("core.migration.commands.repair_command.ensure_provider_connection"):
-            deleted = cmd._delete_failed_migration_entry(repair, result)
-
-        self.assertTrue(deleted)
+                cmd._delete_failed_migration_entry(repair, RepairResult())
 
 
 # ---------------------------------------------------------------------------
@@ -617,6 +588,7 @@ class TestExecuteRepairLoop(unittest.TestCase):
 
         history_manager = MagicMock()
         history_manager.normalized_history_table = "dblift_schema_history"
+        history_manager.delete_failed_migration_entry.return_value = 1
 
         config = MagicMock()
         config.database.schema = "public"
@@ -647,6 +619,7 @@ class TestExecuteRepairLoop(unittest.TestCase):
 
         history_manager = MagicMock()
         history_manager.normalized_history_table = "dblift_schema_history"
+        history_manager.delete_failed_migration_entry.return_value = 1
 
         config = MagicMock()
         config.database.schema = "public"

@@ -246,6 +246,52 @@ class BaseHistoryManager(ABC):
             self.log.error(error_msg)
             raise
 
+    def delete_failed_migration_entry(
+        self,
+        connection: Any,
+        schema: str,
+        script_name: str,
+        table_name: Optional[str] = None,
+    ) -> int:
+        """Delete the failed history row for *script_name*; return rows removed.
+
+        ``repair`` calls this to clear a failed migration so the script can
+        be re-applied. Relational backends express it as a parameterised
+        ``DELETE``; document stores override this method and delete the
+        history document through their SDK, which is why the statement is
+        built here rather than in the command.
+
+        Returns the number of rows removed (``0`` when no failed row
+        matched), or ``-1`` when the driver reports an unknown row count.
+        """
+        table_name_to_use = table_name or self._get_default_table_name()
+        qualified_table = self.query_executor.get_schema_qualified_name(schema, table_name_to_use)
+        false_literal = self._false_literal()
+
+        delete_sql = (
+            f"DELETE FROM {qualified_table} " f"WHERE script = ? AND success = {false_literal}"
+        )
+        affected = self.query_executor.execute_statement(
+            connection, delete_sql, params=[script_name]
+        )
+        return int(affected) if affected is not None else 0
+
+    def _false_literal(self) -> str:
+        """Dialect literal for ``False`` in history predicates.
+
+        Resolved from the plugin quirks so no command has to know that
+        Oracle/SQL Server/SQLite spell it ``0``.
+        """
+        from db.provider_registry import ProviderRegistry
+
+        dialect = getattr(self.query_executor, "dialect_name", "") or ""
+        if not dialect:
+            config = getattr(
+                getattr(self.query_executor, "connection_manager", None), "config", None
+            )
+            dialect = str(getattr(getattr(config, "database", None), "type", "") or "")
+        return ProviderRegistry.get_quirks(dialect.lower()).boolean_false_literal
+
     def _validate_migration_info(self, migration_info: Dict[str, Any]) -> None:
         """Validate migration information dictionary.
 

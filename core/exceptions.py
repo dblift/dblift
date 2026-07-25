@@ -40,6 +40,16 @@ class CallbackExecutionError(ExecutionError):
     """Raised when a migration callback fails."""
 
 
+class NoSqlWriteNotSupportedError(ExecutionError):
+    """Raised when a write statement is sent to a document store's query API.
+
+    NoSQL backends expose a read-only query language (Cosmos DB's SQL API,
+    and the equivalents in other document stores). Schema and data changes
+    go through the vendor SDK from a Python migration, so a write statement
+    arriving at the query executor is surfaced rather than translated.
+    """
+
+
 # --- Validation exceptions ---
 
 

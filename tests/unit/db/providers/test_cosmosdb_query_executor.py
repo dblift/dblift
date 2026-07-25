@@ -1,17 +1,18 @@
 """Unit tests for CosmosDbQueryExecutor.
 
 Focus: uncovered paths that don't require a live Azure endpoint.
-- execute_statement routing (scalar SELECT short-circuit, CREATE CONTAINER, INSERT, DELETE, UPDATE)
+- execute_statement (read-only contract: scalar SELECT probe, SELECT
+  delegation, NoSqlWriteNotSupportedError for writes)
 - execute_query routing (scalar SELECT short-circuit, container extraction, params)
 - _substitute_params (various value types, error on mismatch)
-- _normalize_where_clause
 - _extract_container_from_query
 - _normalize_cosmos_sql
-- _parse_container_name, _parse_container_options
 """
 
 import unittest
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
+
+from core.exceptions import NoSqlWriteNotSupportedError
 
 
 def _make_executor(log=None):
@@ -89,30 +90,6 @@ class TestSubstituteParams(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
-# _normalize_where_clause
-# ---------------------------------------------------------------------------
-
-
-class TestNormalizeWhereClause(unittest.TestCase):
-
-    def _norm(self, clause):
-        return _make_executor()._normalize_where_clause(clause)
-
-    def test_already_aliased_c_prefix_unchanged(self):
-        clause = "c.id = '123'"
-        result = self._norm(clause)
-        self.assertEqual(clause, result)
-
-    def test_adds_c_prefix_to_simple_equality(self):
-        result = self._norm("id = '123'")
-        self.assertIn("c.id", result)
-
-    def test_adds_c_prefix_to_in_clause(self):
-        result = self._norm("type IN ('a', 'b')")
-        self.assertIn("c.type", result)
-
-
-# ---------------------------------------------------------------------------
 # _extract_container_from_query
 # ---------------------------------------------------------------------------
 
@@ -166,46 +143,73 @@ class TestExecuteStatementRouting(unittest.TestCase):
         result = ex.execute_statement(None, "-- health check\nSELECT 1")
         self.assertEqual(0, result)
 
-    def test_sdk_pattern_drop_container_routes_to_sdk_operation(self):
-        ex = self._make()
-        # Patch _execute_sdk_operation to avoid real SDK
-        ex._execute_sdk_operation = MagicMock(return_value=1)
-        result = ex.execute_statement(None, "DROP CONTAINER mycontainer")
-        ex._execute_sdk_operation.assert_called_once()
-        self.assertEqual(1, result)
 
-    def test_sdk_pattern_create_index_routes_to_sdk_operation(self):
-        ex = self._make()
-        ex._execute_sdk_operation = MagicMock(return_value=1)
-        result = ex.execute_statement(None, "CREATE INDEX idx ON container (path)")
-        ex._execute_sdk_operation.assert_called_once()
+# ---------------------------------------------------------------------------
+# execute_statement read-only contract
+# ---------------------------------------------------------------------------
 
-    def test_insert_routes_to_execute_insert(self):
-        ex = self._make()
-        ex._execute_insert = MagicMock(return_value=1)
-        result = ex.execute_statement(None, "INSERT INTO tbl (id) VALUES (1)")
-        ex._execute_insert.assert_called_once()
-        self.assertEqual(1, result)
 
-    def test_delete_routes_to_execute_delete(self):
-        ex = self._make()
-        ex._execute_delete = MagicMock(return_value=2)
-        result = ex.execute_statement(None, "DELETE FROM tbl WHERE id = 1")
-        ex._execute_delete.assert_called_once()
-        self.assertEqual(2, result)
+class TestExecuteStatementReadOnlyContract(unittest.TestCase):
+    """execute_statement reads only; writes go through the Azure SDK."""
 
-    def test_update_routes_to_execute_update(self):
+    def _make(self):
+        return _make_executor()
+
+    def test_scalar_select_is_liveness_probe_returning_zero(self):
         ex = self._make()
-        ex._execute_update = MagicMock(return_value=3)
-        result = ex.execute_statement(None, "UPDATE tbl SET name = 'x' WHERE id = 1")
-        ex._execute_update.assert_called_once()
+        ex.execute_query = MagicMock()
+        self.assertEqual(0, ex.execute_statement(None, "SELECT 1"))
+        # A probe must not bind to any container.
+        ex.execute_query.assert_not_called()
+
+    def test_select_from_delegates_to_execute_query_and_returns_row_count(self):
+        ex = self._make()
+        ex.execute_query = MagicMock(return_value=[{"id": "a"}, {"id": "b"}, {"id": "c"}])
+
+        result = ex.execute_statement(None, "SELECT * FROM c")
+
         self.assertEqual(3, result)
+        ex.execute_query.assert_called_once_with(None, "SELECT * FROM c", None)
 
-    def test_exception_is_reraised(self):
+    def test_select_from_with_no_rows_returns_zero(self):
         ex = self._make()
-        ex._execute_insert = MagicMock(side_effect=RuntimeError("insert failed"))
-        with self.assertRaises(RuntimeError):
-            ex.execute_statement(None, "INSERT INTO tbl (id) VALUES (1)")
+        ex.execute_query = MagicMock(return_value=[])
+        self.assertEqual(0, ex.execute_statement(None, "SELECT * FROM users"))
+
+    def test_select_from_passes_params_through(self):
+        ex = self._make()
+        ex.execute_query = MagicMock(return_value=[{"id": "a"}])
+
+        result = ex.execute_statement(None, "SELECT * FROM c WHERE c.id = ?", params=["a"])
+
+        self.assertEqual(1, result)
+        ex.execute_query.assert_called_once_with(None, "SELECT * FROM c WHERE c.id = ?", ["a"])
+
+    def test_insert_raises_nosql_write_not_supported(self):
+        self._assert_write_rejected("INSERT INTO users (id) VALUES ('1')")
+
+    def test_update_raises_nosql_write_not_supported(self):
+        self._assert_write_rejected("UPDATE users SET name = 'x' WHERE id = '1'")
+
+    def test_delete_raises_nosql_write_not_supported(self):
+        self._assert_write_rejected("DELETE FROM users WHERE id = '1'")
+
+    def test_create_raises_nosql_write_not_supported(self):
+        self._assert_write_rejected("CREATE TABLE users (id VARCHAR(255) PRIMARY KEY)")
+
+    def test_write_is_not_delegated_to_execute_query(self):
+        ex = self._make()
+        ex.execute_query = MagicMock()
+        with self.assertRaises(NoSqlWriteNotSupportedError):
+            ex.execute_statement(None, "INSERT INTO users (id) VALUES ('1')")
+        ex.execute_query.assert_not_called()
+
+    def _assert_write_rejected(self, sql):
+        ex = self._make()
+        with self.assertRaises(NoSqlWriteNotSupportedError) as ctx:
+            ex.execute_statement(None, sql)
+        # The error must point the user at the Azure SDK migration path.
+        self.assertIn("azure sdk", str(ctx.exception).lower())
 
 
 # ---------------------------------------------------------------------------
@@ -283,158 +287,6 @@ class TestExecuteQueryRouting(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
-# _execute_delete
-# ---------------------------------------------------------------------------
-
-
-class TestExecuteDelete(unittest.TestCase):
-
-    def test_deletes_matching_documents(self):
-        ex = _make_executor()
-        container = MagicMock()
-        container.read.return_value = {"partitionKey": {"paths": ["/id"]}}
-        container.query_items.return_value = iter([{"id": "doc-1"}, {"id": "doc-2"}])
-        ex.connection_manager.get_container_client.return_value = container
-
-        count = ex._execute_delete("DELETE FROM tbl WHERE id = 'doc-1'")
-
-        self.assertEqual(2, count)
-        self.assertEqual(2, container.delete_item.call_count)
-
-    def test_continues_on_404_not_found(self):
-        ex = _make_executor()
-        container = MagicMock()
-        container.read.return_value = {"partitionKey": {"paths": ["/id"]}}
-        container.query_items.return_value = iter([{"id": "doc-1"}])
-        container.delete_item.side_effect = Exception("404 Not Found")
-        ex.connection_manager.get_container_client.return_value = container
-
-        # Should not raise
-        count = ex._execute_delete("DELETE FROM tbl WHERE id = 'doc-1'")
-        self.assertEqual(0, count)  # delete was skipped due to 404
-
-    def test_substitute_params_called_for_delete_with_params(self):
-        ex = _make_executor()
-        container = MagicMock()
-        container.read.return_value = {"partitionKey": {"paths": ["/id"]}}
-        container.query_items.return_value = iter([])
-        ex.connection_manager.get_container_client.return_value = container
-
-        captured = []
-        original_query_items = container.query_items
-        container.query_items.side_effect = lambda query, **kw: captured.append(query) or []
-
-        ex._execute_delete("DELETE FROM tbl WHERE script = ?", params=["V1.sql"])
-
-        self.assertTrue(len(captured) > 0)
-        self.assertNotIn("?", captured[0])
-        self.assertIn("V1.sql", captured[0])
-
-    def test_raises_on_invalid_sql(self):
-        ex = _make_executor()
-        with self.assertRaises(ValueError):
-            ex._execute_delete("DELETE tbl WHERE id = 1")  # no FROM
-
-    def test_no_where_clause_deletes_all(self):
-        ex = _make_executor()
-        container = MagicMock()
-        container.read.return_value = {"partitionKey": {"paths": ["/id"]}}
-        container.query_items.return_value = iter([{"id": "a"}, {"id": "b"}, {"id": "c"}])
-        ex.connection_manager.get_container_client.return_value = container
-
-        count = ex._execute_delete("DELETE FROM tbl")
-        self.assertEqual(3, count)
-
-
-# ---------------------------------------------------------------------------
-# _execute_update
-# ---------------------------------------------------------------------------
-
-
-class TestExecuteUpdate(unittest.TestCase):
-
-    def test_updates_matching_documents(self):
-        ex = _make_executor()
-        container = MagicMock()
-        doc = {"id": "1", "name": "Alice"}
-        container.query_items.return_value = iter([doc])
-        ex.connection_manager.get_container_client.return_value = container
-
-        count = ex._execute_update("UPDATE users SET name = 'Bob' WHERE id = '1'")
-
-        self.assertEqual(1, count)
-        container.replace_item.assert_called_once()
-
-    def test_raises_on_missing_container_name(self):
-        ex = _make_executor()
-        with self.assertRaises(ValueError):
-            ex._execute_update("SET name = 'x'")  # no UPDATE clause
-
-    def test_raises_on_missing_set_clause(self):
-        ex = _make_executor()
-        with self.assertRaises(ValueError):
-            ex._execute_update("UPDATE users WHERE id = 1")  # no SET
-
-    def test_raises_on_empty_set_clause(self):
-        ex = _make_executor()
-        with self.assertRaises(ValueError):
-            # No SET clause at all triggers the regex mismatch
-            ex._execute_update("UPDATE users WHERE id = 1")
-
-    def test_params_substituted_in_where(self):
-        ex = _make_executor()
-        container = MagicMock()
-        captured = []
-        container.query_items.side_effect = lambda query, **kw: captured.append(query) or []
-        ex.connection_manager.get_container_client.return_value = container
-
-        ex._execute_update("UPDATE users SET name = 'x' WHERE id = ?", params=["user-1"])
-
-        self.assertTrue(len(captured) > 0)
-        self.assertNotIn("?", captured[0])
-        self.assertIn("user-1", captured[0])
-
-
-# ---------------------------------------------------------------------------
-# _parse_container_name, _parse_partition_key, _parse_container_options
-# ---------------------------------------------------------------------------
-
-
-class TestParseContainerName(unittest.TestCase):
-
-    def test_extracts_name(self):
-        ex = _make_executor()
-        name = ex._parse_container_name(
-            "CREATE CONTAINER my_table (id STRING) WITH (partitionKey='/id')"
-        )
-        self.assertEqual("my_table", name)
-
-    def test_raises_when_no_name(self):
-        ex = _make_executor()
-        with self.assertRaises(ValueError):
-            ex._parse_container_name("CREATE CONTAINER")
-
-
-# TestParsePartitionKey removed in Z-4: _parse_partition_key had no
-# production callers. Partition-key parsing is exercised via
-# TestParseContainerOptions below (which is what production actually uses).
-
-
-class TestParseContainerOptions(unittest.TestCase):
-
-    def test_returns_default_when_no_with_clause(self):
-        ex = _make_executor()
-        opts = ex._parse_container_options("CREATE CONTAINER tbl (id STRING)")
-        self.assertEqual("/id", opts["partitionKey"])
-
-    def test_parses_partition_key_from_with_clause(self):
-        ex = _make_executor()
-        sql = "CREATE CONTAINER tbl (id STRING) WITH (partitionKey='/pk', throughput=400)"
-        opts = ex._parse_container_options(sql)
-        self.assertEqual("/pk", opts.get("partitionKey"))
-
-
-# ---------------------------------------------------------------------------
 # _normalize_cosmos_sql
 # ---------------------------------------------------------------------------
 
@@ -468,28 +320,6 @@ class TestNormalizeCosmosSql(unittest.TestCase):
         result = ex._normalize_cosmos_sql(sql, "c")
         # Non-SELECT passthrough
         self.assertEqual(sql, result)
-
-
-# ---------------------------------------------------------------------------
-# SDK_PATTERNS membership
-# ---------------------------------------------------------------------------
-
-
-class TestSdkPatterns(unittest.TestCase):
-
-    def test_all_expected_patterns_present(self):
-        from db.plugins.cosmosdb.cosmosdb.query_executor import CosmosDbQueryExecutor
-
-        patterns = CosmosDbQueryExecutor.SDK_PATTERNS
-        for expected in [
-            "DROP CONTAINER",
-            "ALTER CONTAINER",
-            "SET THROUGHPUT",
-            "CREATE INDEX",
-            "DROP INDEX",
-            "SET TTL",
-        ]:
-            self.assertIn(expected, patterns, f"Missing SDK pattern: {expected}")
 
 
 if __name__ == "__main__":
