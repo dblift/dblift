@@ -18,7 +18,7 @@ import time
 from typing import TYPE_CHECKING, Optional
 
 from core.constants import DEFAULT_MIGRATION_LOCK_TIMEOUT_SECONDS
-from core.logger import Log, NullLog
+from core.logger import Log
 from db.plugins.nosql_base import DocumentLockingManager
 
 from .query_executor import CosmosDbQueryExecutor
@@ -54,9 +54,7 @@ class CosmosDbLockingManager(DocumentLockingManager):
             query_executor: Cosmos DB query executor
             log: Optional logger
         """
-        self.query_executor = query_executor
-        self.connection_manager = query_executor.connection_manager
-        self.log = log if log is not None else NullLog()
+        super().__init__(query_executor, log)
         self.lock_container: Optional["ContainerProxy"] = None
 
     def create_migration_lock_container_if_not_exists(self, schema: str) -> None:

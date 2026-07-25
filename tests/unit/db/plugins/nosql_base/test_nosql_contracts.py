@@ -70,3 +70,41 @@ def test_foundation_carries_no_sql_generation():
         source = inspect.getsource(module).upper()
         for verb in ("INSERT INTO", "DELETE FROM", "UPDATE ", "CREATE TABLE", "DROP CONTAINER"):
             assert verb not in source, f"{module.__name__} composes SQL ({verb})"
+
+
+def test_cosmos_locking_uses_the_shared_constructor():
+    """The base __init__ must actually run, not be shadowed by a copy.
+
+    ``CosmosDbLockingManager`` used to duplicate the base's assignments,
+    leaving ``DocumentLockingManager.__init__`` dead — so a second document
+    store inheriting it would have been relying on untested code.
+    """
+    from unittest.mock import MagicMock
+
+    executor = MagicMock()
+    executor.connection_manager = "connection-manager"
+
+    manager = CosmosDbLockingManager(executor)
+
+    assert manager.query_executor is executor
+    assert manager.connection_manager == "connection-manager"
+    assert manager.log is not None
+    assert manager.lock_container is None
+
+
+def test_locking_base_tolerates_an_executor_without_a_connection_manager():
+    """A driver that exposes no connection manager must not break construction."""
+
+    class _Impl(DocumentLockingManager):
+        def create_migration_lock_container_if_not_exists(self, schema):
+            raise NotImplementedError
+
+        def acquire_migration_lock(self, schema, wait_timeout_seconds=60):
+            raise NotImplementedError
+
+        def release_migration_lock(self, schema):
+            raise NotImplementedError
+
+    manager = _Impl(object())
+
+    assert manager.connection_manager is None
