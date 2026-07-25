@@ -906,7 +906,8 @@ warn_unused_ignores = true
 strict_equality = true
 
 # PR-H9h: strict db/plugins/cosmosdb — complete CosmosDB plugin (non-JDBC,
-# Azure Cosmos SDK + custom SQL→Cosmos sdk_translator subsystem).
+# Azure Cosmos SDK). The `sdk_translator` and `parser` subpackages were listed
+# here until 3.0.0 removed the pseudo-SQL layer they implemented.
 [[tool.mypy.overrides]]
 module = [
     "db.plugins.cosmosdb",
@@ -921,15 +922,6 @@ module = [
     "db.plugins.cosmosdb.cosmosdb.locking_manager",
     "db.plugins.cosmosdb.cosmosdb.query_executor",
     "db.plugins.cosmosdb.cosmosdb.schema_operations",
-    "db.plugins.cosmosdb.sdk_translator",
-    "db.plugins.cosmosdb.sdk_translator._parsing",
-    "db.plugins.cosmosdb.sdk_translator._script_generation",
-    "db.plugins.cosmosdb.sdk_translator._translator",
-    "db.plugins.cosmosdb.sdk_translator._translators",
-    "db.plugins.cosmosdb.sdk_translator._executor",
-    "db.plugins.cosmosdb.sdk_translator._executors",
-    "db.plugins.cosmosdb.parser",
-    "db.plugins.cosmosdb.parser.cosmosdb_regex_parser",
 ]
 disallow_any_generics = true
 disallow_subclassing_any = true
