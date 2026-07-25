@@ -7,14 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Added
-
-- **`dblift.client` entry-point seam** (`core.seams.client_factory`): the CLI
-  now resolves the client class it constructs through the new entry-point
-  group, so distribution add-ons can substitute a `DBLiftClient` subclass
-  carrying their commands. Without a registration the OSS client is used —
-  behavior is unchanged for OSS-only installs. A broken registration logs a
-  warning and falls back to the OSS client.
+## [3.0.0] - 2026-07-25
 
 ### Changed
 
@@ -22,30 +15,64 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   layer and its Azure SDK translator were removed outright; there is no
   deprecation window, no compatibility flag, and no conversion tool. A `.sql`
   migration targeting CosmosDB now fails with `DBLIFT-NOSQL-001`
-  (`core.exceptions.UnsupportedMigrationFormatError`), and a write statement
-  reaching the query executor raises
-  `core.exceptions.NoSqlWriteNotSupportedError` — only native Cosmos `SELECT`
-  still executes (available to migrations via `context.execute()`). Write
-  CosmosDB migrations as `.py` files exposing `def migrate(context)` and drive
-  the Azure SDK directly. Migration history rows for previously applied `.sql`
-  migrations remain valid: checksums are untouched, and neither `repair` nor a
-  re-baseline is required. See
+  (`core.exceptions.UnsupportedMigrationFormatError`) — the same verdict
+  applies to `.sql` callbacks — and a write statement reaching the query
+  executor raises `core.exceptions.NoSqlWriteNotSupportedError`; only native
+  Cosmos `SELECT` still executes (available to migrations via
+  `context.execute()`). Write CosmosDB migrations as `.py` files exposing
+  `def migrate(context)` and drive the Azure SDK directly. Migration history
+  rows for previously applied `.sql` migrations remain valid: checksums are
+  untouched, and neither `repair` nor a re-baseline is required. See
   [`docs/user-guide/nosql-python-migrations.md`](docs/user-guide/nosql-python-migrations.md)
   for the statement-by-statement conversion table.
 - **BREAKING — `MigrationContext` CosmosDB attributes renamed**:
   `context.database` → `context.db` (`azure.cosmos.DatabaseProxy`) and
   `context.client` → `context.raw_client` (`azure.cosmos.CosmosClient`). No
   aliases are kept; existing CosmosDB `.py` migrations using the old names
-  raise `AttributeError`.
+  raise `AttributeError`. The names are provider-neutral so a future document
+  store fills the same slots.
+- `diff` against a NoSQL dialect emits explanatory comments only. It no longer
+  produces pseudo-SQL or an appended "Python SDK operations" script block.
+
+> **Deprecation-policy deviation.** [`docs/semver-policy.md`](docs/semver-policy.md)
+> §3 requires a public symbol to be deprecated in a MINOR release and kept
+> working for at least one further minor before removal in a MAJOR. The
+> CosmosDB pseudo-SQL surface and the `MigrationContext` attributes above were
+> removed without that overlap, as a deliberate decision: the pseudo-SQL
+> dialect had no specification, and shipping a compatibility path would have
+> preserved the regex translator this release exists to delete. Recorded here
+> in lieu of the deprecation window.
+
+### Added
+
+- **NoSQL foundation for document stores** (`db/plugins/nosql_base`):
+  `DocumentHistoryManager`, `DocumentLockingManager` and `SamplingIntrospector`
+  name what a document-store plugin must provide. CosmosDB implements them, so
+  a second such plugin inherits a known surface instead of inventing one.
+- **`supports_sql_migrations` quirks capability** (default `True`). Dialects
+  that set it `False` reject `.sql` migrations with `DBLIFT-NOSQL-001` instead
+  of handing them to a translator.
+- **`provider.drop_object()`** — `clean` asks the provider to drop each
+  enumerated object rather than executing `drop_sql` itself, so a backend whose
+  objects are not SQL-droppable can use its SDK.
+- A `pseudo-sql-translator` lint rule in `scripts/lint_patterns.py`, banning
+  the SQL-shaped-front-end-over-an-SDK pattern for future NoSQL plugins.
 
 ### Fixed
 
-- **The `_dblift_config_only_client` handler marker is honored again**: a
-  single marked command receives a `ConfigOnlyClient` (no provider, no
-  database connection) instead of a fully constructed client. The dispatch
-  logic existed before the repository split and was lost in the export;
-  add-on commands that declare themselves config-only (offline analysis)
-  no longer trigger a database client construction.
+- **`repair` could not clear a failed history row.** The delete moved behind
+  `provider.delete_failed_migration_entry`, which initially required a
+  `history_manager` component that only SQLite and CosmosDB own; every other
+  plugin raised `NotImplementedError`. Relational plugins now get the
+  parameterised `DELETE` by default, and a structural conformance test covers
+  every concrete provider.
+- **CosmosDB schema snapshots** are created through the SDK. They previously
+  relied on the pseudo-SQL emulator turning `CREATE TABLE` into a container
+  create.
+- **CosmosDB history deletes addressed the wrong partition key** (the document
+  `id` rather than `/version`), so Cosmos returned 404, the handler read it as
+  "already deleted", and the row survived while `repair` reported nothing
+  removed.
 
 ### Removed
 
@@ -58,6 +85,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   plus plain SQL `CREATE TABLE` / `CREATE CONTAINER` / `INSERT` / `UPDATE` /
   `DELETE` against Cosmos. The SDK translator that executed them and the
   CosmosDB pseudo-SQL parser are gone with them.
+- The SDK-script quirks hooks (`requires_sdk_for_drop`,
+  `sdk_operation_hint_prefix`, `build_sdk_drop_operation`,
+  `generate_sdk_script`) and the `SqlStatement.sdk_operation` /
+  `SqlStatement.requires_sdk` fields.
+
+## [2.11.0] - 2026-07-25
+
+### Added
+
+- **`dblift.client` entry-point seam** (`core.seams.client_factory`): the CLI
+  now resolves the client class it constructs through the new entry-point
+  group, so distribution add-ons can substitute a `DBLiftClient` subclass
+  carrying their commands. Without a registration the OSS client is used —
+  behavior is unchanged for OSS-only installs. A broken registration logs a
+  warning and falls back to the OSS client.
+
+### Fixed
+
+- **The `_dblift_config_only_client` handler marker is honored again**: a
+  single marked command receives a `ConfigOnlyClient` (no provider, no
+  database connection) instead of a fully constructed client. The dispatch
+  logic existed before the repository split and was lost in the export;
+  add-on commands that declare themselves config-only (offline analysis)
+  no longer trigger a database client construction.
 
 ## [2.10.0] - 2026-07-24
 
