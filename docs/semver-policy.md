@@ -152,8 +152,15 @@ Reference list of MAJOR-triggering changes shipped to date. See
 
 | Version | Change |
 |---|---|
+| 3.0.0 | CosmosDB pseudo-SQL removed — `.sql` migrations and callbacks on a NoSQL dialect fail with `DBLIFT-NOSQL-001` |
+| 3.0.0 | `MigrationContext.database` / `.client` renamed to `.db` / `.raw_client` (public symbol, no aliases) |
 | 1.4.0 (planned) | Minimum Python raised to 3.11 |
 | 1.4.0 (planned) | `cryptography>=46.0.6` and other dep floors |
+
+Both 3.0.0 rows were shipped without the §3 deprecation overlap. The reason is
+recorded in the 3.0.0 CHANGELOG entry: the removed surface was an unspecified
+pseudo-SQL dialect, and a compatibility path would have preserved the regex
+translator the release exists to delete.
 
 Earlier releases predate this policy and are not retroactively
 catalogued here. Their CHANGELOG entries remain the authoritative
