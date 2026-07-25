@@ -14,7 +14,6 @@ _project_root = _script_dir.parent.absolute()
 if str(_project_root) not in sys.path:
     sys.path.insert(0, str(_project_root))
 
-from api import DBLiftClient
 from core.logger import LogFactory
 from core.utils.url_masking import mask_database_url
 
@@ -389,6 +388,26 @@ def _command_handler_attr(command: Optional[str], attr_name: str, default: Any =
     return getattr(handler, attr_name, default)
 
 
+def _build_command_client(ctx: "_CliContext") -> Any:
+    """Build the client the command handlers receive.
+
+    Handlers marked ``_dblift_config_only_client`` (offline commands such as
+    validate-sql, plan) get a config-only stand-in — no provider, no
+    connection. Everything else gets the resolved client class: the
+    ``dblift.client`` seam lets paid tiers substitute their DBLiftClient
+    subclass so tier-provided handlers receive the methods they call.
+    """
+    from cli.handlers._shared import ConfigOnlyClient
+    from core.seams.client_factory import resolve_client_class
+
+    config_only = len(ctx.commands) == 1 and bool(
+        _command_handler_attr(ctx.commands[0], "_dblift_config_only_client", False)
+    )
+    if config_only:
+        return ConfigOnlyClient(config=ctx.config)
+    return resolve_client_class().from_config(ctx.config, logger=ctx.log)
+
+
 def _propagate_license_banner(log: Any, license_info: Optional[Any]) -> None:
     """Set ``license_info`` on every sub-logger's formatter so the banner
     renders. No-op when ``license_info`` is falsy (pure OSS: no provider
@@ -466,7 +485,7 @@ def _dispatch_command(ctx: _CliContext, command_output: CommandOutput) -> int:
         _resolve_scripts_directories(ctx.args, ctx.config, ctx.parser, ctx.commands)
     )
 
-    client = DBLiftClient.from_config(ctx.config, logger=ctx.log)
+    client = _build_command_client(ctx)
     ctx.log.debug(f"scripts_dir: {scripts_dir}")
     ctx.log.debug(
         f"config.migrations.directories: {getattr(ctx.config.migrations, 'directories', None)}"
