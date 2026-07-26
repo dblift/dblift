@@ -88,22 +88,31 @@ class RowLimitClauses(NamedTuple):
     #: Appended after the query, e.g. ``" LIMIT 10"`` or ``" FETCH FIRST 10 ROWS ONLY"``.
     query_suffix: str
 
-    def compose_where(self, predicate: str = "") -> str:
+    def compose_where(self, predicate: "Optional[str]" = "") -> str:
         """Return the complete ``WHERE`` clause, or ``""`` if neither side has one.
 
-        *predicate* is the caller's own condition (no leading ``WHERE``/``AND``);
-        a whitespace-only value is treated the same as an absent one, so a
-        caller that builds its predicate by joining optional fragments doesn't
-        have to special-case the empty-after-strip result itself. When both
-        the caller's predicate and :attr:`where_predicate` are present they are
-        ANDed together, caller's predicate first — matching the order a reader
-        would write by hand. The return value includes the leading space and
-        the ``WHERE`` keyword, so it can be spliced directly after the table
-        name with no extra punctuation at the call site.
+        *predicate* is the caller's own condition (no leading ``WHERE``/``AND``).
+        ``None`` and a whitespace-only value are both treated as absent, so a
+        caller threading an optional predicate through does not have to
+        special-case it.
+
+        When both the caller's predicate and :attr:`where_predicate` are
+        present, the caller's is **parenthesised** before the two are ANDed.
+        That is not cosmetic: ``AND`` binds tighter than ``OR``, so gluing a
+        top-level-``OR`` predicate unparenthesised would read as
+        ``a OR (b AND ROWNUM <= n)`` — the first branch escapes the row cap and
+        the query comes back *unbounded*, which is precisely the failure this
+        helper exists to take away from call sites. The parentheses are applied
+        unconditionally rather than only when an ``OR`` is spotted: one
+        rendering rule is verifiable, whereas a heuristic that inspects the
+        predicate has to parse SQL correctly to be safe.
+
+        The return value includes the leading space and the ``WHERE`` keyword,
+        so it splices directly after the table name with no extra punctuation.
         """
-        caller_predicate = predicate.strip()
+        caller_predicate = (predicate or "").strip()
         if caller_predicate and self.where_predicate:
-            return f" WHERE {caller_predicate} AND {self.where_predicate}"
+            return f" WHERE ({caller_predicate}) AND {self.where_predicate}"
         if caller_predicate:
             return f" WHERE {caller_predicate}"
         if self.where_predicate:

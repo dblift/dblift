@@ -366,8 +366,15 @@ class TestComposeWhere:
         assert quirks("oracle").row_limit_clauses(10).compose_where("") == " WHERE ROWNUM <= 10"
 
     def test_both_are_anded(self) -> None:
+        """The caller's predicate is parenthesised before the AND.
+
+        This test originally asserted the unparenthesised ``id > 5 AND ROWNUM
+        <= 10``, which is correct for *this* predicate and wrong in general —
+        it pinned the precedence bug rather than the behaviour. See
+        ``TestComposeWhereGuardsPrecedence`` for the case that exposed it.
+        """
         assert quirks("oracle").row_limit_clauses(10).compose_where("id > 5") == (
-            " WHERE id > 5 AND ROWNUM <= 10"
+            " WHERE (id > 5) AND ROWNUM <= 10"
         )
 
     def test_a_blank_predicate_is_treated_as_absent(self) -> None:
@@ -417,3 +424,37 @@ class TestOrderedTopNIsRefusedWhereItWouldLie:
 
     def test_unordered_is_the_default_and_still_yields_rownum(self) -> None:
         assert quirks("oracle").row_limit_clauses(10).where_predicate == "ROWNUM <= 10"
+
+
+class TestComposeWhereGuardsPrecedence:
+    """``AND`` binds tighter than ``OR``, so the caller's predicate needs parens.
+
+    Gluing a top-level ``OR`` predicate to the row cap unparenthesised reads as
+    ``a OR (b AND ROWNUM <= n)`` — the first branch escapes the cap entirely and
+    the query is *unbounded*, not merely mis-ordered. That is the exact class of
+    error this helper exists to take away from callers, so it cannot be left to
+    a docstring warning.
+    """
+
+    def test_a_top_level_or_predicate_stays_bounded(self) -> None:
+        clauses = quirks("oracle").row_limit_clauses(10)
+        composed = clauses.compose_where("a = 1 OR b = 2")
+        assert composed == " WHERE (a = 1 OR b = 2) AND ROWNUM <= 10"
+
+    def test_a_simple_predicate_is_also_parenthesised_for_consistency(self) -> None:
+        """One rendering rule beats a heuristic that inspects the predicate."""
+        clauses = quirks("oracle").row_limit_clauses(10)
+        assert clauses.compose_where("id > 5") == " WHERE (id > 5) AND ROWNUM <= 10"
+
+    def test_a_lone_caller_predicate_is_not_parenthesised(self) -> None:
+        """Nothing is being ANDed to it, so parens would be noise."""
+        assert quirks("postgresql").row_limit_clauses(10).compose_where("a = 1 OR b = 2") == (
+            " WHERE a = 1 OR b = 2"
+        )
+
+    def test_none_is_treated_as_no_predicate(self) -> None:
+        """Callers reach for ``None`` when threading an optional predicate."""
+        assert quirks("oracle").row_limit_clauses(10).compose_where(None) == (
+            " WHERE ROWNUM <= 10"
+        )
+        assert quirks("postgresql").row_limit_clauses(10).compose_where(None) == ""
