@@ -18,6 +18,8 @@ from __future__ import annotations
 import pytest
 
 from db.base_quirks import BaseQuirks
+from db.plugins.mariadb.quirks import MariadbQuirks
+from db.plugins.redshift.quirks import RedshiftQuirks
 from db.provider_registry import ProviderRegistry
 
 
@@ -95,6 +97,23 @@ class TestRowLimitStyle:
 
         assert _Odd(dialect_name="odd").row_limit_clauses(7) == ("", " LIMIT 7")
 
+    def test_row_limit_style_and_select_supports_limit_agree(self) -> None:
+        """The two attributes overlap and nothing keeps them in sync.
+
+        A dialect that can't append a bare trailing ``LIMIT``
+        (``select_supports_limit = False``) is exactly a dialect that needs a
+        non-default ``row_limit_style`` (``"top"`` or ``"fetch_first"``), and
+        vice versa. This pins that the two flags are declared consistently
+        for every registered dialect today (SQL Server/``"top"``,
+        Oracle+DB2/``"fetch_first"``); it is not a structural guarantee, so a
+        future dialect could still set one without the other.
+        """
+        for dialect in all_registered_dialects():
+            q = quirks(dialect)
+            non_default_style = q.row_limit_style != "limit"
+            no_bare_limit = q.select_supports_limit is False
+            assert non_default_style == no_bare_limit, dialect
+
 
 # --------------------------------------------------------------------------
 # upsert_style
@@ -150,9 +169,7 @@ class TestJsonBindCastType:
         [
             ("postgresql", "JSONB"),
             ("cockroachdb", "JSONB"),
-            ("redshift", "JSONB"),
             ("mysql", "JSON"),
-            ("mariadb", "JSON"),
             ("sqlite", None),
             ("oracle", None),
             ("sqlserver", None),
@@ -161,6 +178,25 @@ class TestJsonBindCastType:
     )
     def test_declared_cast(self, dialect: str, expected: "str | None") -> None:
         assert quirks(dialect).json_bind_cast_type == expected
+
+    def test_redshift_does_not_inherit_the_jsonb_cast(self) -> None:
+        """Redshift has no JSONB type — semi-structured JSON is ``SUPER``.
+
+        It subclasses ``PostgresqlQuirks`` and so would inherit ``"JSONB"``,
+        but ``CAST(? AS JSONB)`` is rejected outright (*type "jsonb" does not
+        exist*). This is the same reason Redshift overrides ``upsert_style``
+        back to ``"none"``; the JSON cast needs the identical treatment.
+        """
+        assert quirks("redshift").json_bind_cast_type is None
+
+    def test_mariadb_does_not_inherit_the_json_cast(self) -> None:
+        """MariaDB does not implement ``CAST(expr AS JSON)`` (MDEV-26448).
+
+        Its ``JSON`` type is an alias for ``LONGTEXT`` with a validity CHECK,
+        so a serialized value binds as text with no cast at all. Inheriting
+        MySQL's ``"JSON"`` emits SQL the MariaDB parser rejects.
+        """
+        assert quirks("mariadb").json_bind_cast_type is None
 
     @pytest.mark.parametrize("dialect", ["citus", "timescaledb", "yugabytedb"])
     def test_pg_wire_engines_inherit_the_cast(self, dialect: str) -> None:
@@ -172,6 +208,33 @@ class TestJsonBindCastType:
         expression is of type text". Inheritance makes the omission impossible.
         """
         assert quirks(dialect).json_bind_cast_type == "JSONB"
+
+    def test_every_dialect_declares_a_known_cast_type(self) -> None:
+        """The invariant, not the values: no dialect may claim a cast this
+        project doesn't know how to render.
+
+        Per-dialect tables like ``test_declared_cast`` above merely restate
+        the implementation and would happily pass if a new dialect declared,
+        say, ``"JSONB2"``. This sweeps every registered dialect and alias
+        against the closed set of cast types dblift actually supports.
+        """
+        allowed = {None, "JSONB", "JSON"}
+        for dialect in all_registered_dialects():
+            assert quirks(dialect).json_bind_cast_type in allowed, dialect
+
+    def test_redshift_and_mariadb_overrides_are_declared_on_the_subclass(self) -> None:
+        """Pin the override *mechanism*, not just the value it resolves to.
+
+        ``test_redshift_does_not_inherit_the_jsonb_cast`` and
+        ``test_mariadb_does_not_inherit_the_json_cast`` above already fail if
+        the override is deleted, because deletion falls through to the
+        parent's ``"JSONB"``/``"JSON"``. This test checks the same fact a
+        different way — that ``json_bind_cast_type`` is declared directly in
+        each subclass's own body — so the guard does not depend on the
+        parent chain continuing to resolve to a non-``None`` value forever.
+        """
+        assert "json_bind_cast_type" in vars(RedshiftQuirks)
+        assert "json_bind_cast_type" in vars(MariadbQuirks)
 
 
 # --------------------------------------------------------------------------

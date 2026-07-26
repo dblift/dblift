@@ -337,7 +337,13 @@ class BaseQuirks:
     #: Read through :meth:`row_limit_clauses`, which renders the pair
     #: rather than making each caller re-derive the syntax. Distinct from
     #: :attr:`select_supports_limit`, which answers the coarser "may I
-    #: append ``LIMIT`` at all" question for optional probes.
+    #: append ``LIMIT`` at all" question for optional probes — but the two
+    #: overlap in practice: every dialect that sets a non-default
+    #: ``row_limit_style`` (SQL Server, Oracle, DB2) also sets
+    #: ``select_supports_limit = False``, because none of them accept a bare
+    #: trailing ``LIMIT`` either. Nothing in the framework enforces that the
+    #: two stay consistent, so a new dialect could set one without the other;
+    #: see the invariant test in ``tests/unit/db/test_dialect_capability_quirks.py``.
     row_limit_style: str = "limit"
     #: How an "insert or update on primary-key conflict" is expressed.
     #: One of: ``"none"`` (no native upsert — the caller must fall back to
@@ -352,9 +358,16 @@ class BaseQuirks:
     #: SQL type a serialized JSON parameter must be CAST to when bound to a
     #: JSON column, or ``None`` when the dialect coerces ``text → json``
     #: implicitly and the value binds directly. ``"JSONB"`` on the
-    #: PostgreSQL family (including CockroachDB and Redshift), ``"JSON"`` on
-    #: MySQL/MariaDB. Without the cast the server rejects the statement
-    #: ("column is of type jsonb but expression is of type text").
+    #: PostgreSQL family (including CockroachDB), ``"JSON"`` on MySQL. Without
+    #: the cast the server rejects the statement ("column is of type jsonb
+    #: but expression is of type text"). The family is NOT uniform here: two
+    #: subclasses deliberately do not inherit their parent's cast and stay
+    #: ``None`` instead —
+    #: Redshift (subclasses ``PostgresqlQuirks``; has no ``JSONB`` type, only
+    #: ``SUPER``, and ``CAST(? AS JSONB)`` fails with *type "jsonb" does not
+    #: exist*) and MariaDB (subclasses ``MysqlQuirks``; does not implement
+    #: ``CAST(expr AS JSON)`` per MDEV-26448, since its ``JSON`` type is only
+    #: a ``LONGTEXT`` alias with a validity CHECK).
     json_bind_cast_type: Optional[str] = None
     #: An ``UPDATE`` whose subquery reads the table being updated must have
     #: that subquery wrapped in a derived table. MySQL and MariaDB reject the
