@@ -120,12 +120,20 @@ def make_pg_compatible_plugin(
     version: str = "1.0.0",
     sqlalchemy_url_builder: Callable[..., str] = build_sqlalchemy_url,
     native_driver_module: str = "psycopg",
+    install_extra: Optional[str] = None,
 ) -> PluginInfo:
     """Assemble the :class:`PluginInfo` for a PostgreSQL-wire-compatible engine.
 
     Reuses PostgreSQL's config (``config_dialect="postgresql"``), URL builder,
     and driver; only the identity (provider/quirks classes + dialect key) is
     engine-specific. ``dialects`` defaults to ``[dialect]``.
+
+    ``install_extra`` defaults to *dialect* itself: every PostgreSQL-wire-compatible
+    engine built by this factory (``neon``, ``supabase``, ``aurora-postgresql``,
+    ``alloydb``, ``yugabytedb``, ``timescaledb``, ``citus``) declares a
+    ``pyproject.toml`` extra of the same name, each installing ``psycopg``. A
+    caller only needs to pass it explicitly if a future engine's extra name
+    diverges from its dialect key.
     """
     provider_class: Type[BaseProvider] = make_pg_compatible_provider(dialect)
     quirks_class = make_pg_compatible_quirks(dialect)
@@ -140,6 +148,7 @@ def make_pg_compatible_plugin(
         config_dialect="postgresql",  # lint: allow-dialect-string: reuse PG config class
         sqlalchemy_url_builder=sqlalchemy_url_builder,
         native_driver_module=native_driver_module,
+        install_extra=install_extra if install_extra is not None else dialect,
     )
 
 

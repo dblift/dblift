@@ -26,4 +26,5 @@ PLUGIN: PluginInfo = PluginInfo(
     config_class=PostgreSqlConfig,
     sqlalchemy_url_builder=build_sqlalchemy_url,
     native_driver_module="psycopg",
+    install_extra="postgresql",
 )

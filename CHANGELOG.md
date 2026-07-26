@@ -7,6 +7,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **SQLite `sqlite://` URLs now resolve exactly as SQLAlchemy resolves them.**
+  dblift used to strip the `sqlite://` prefix and parse what remained per RFC
+  3986 (empty authority, so the following slash is part of the path), which
+  resolved `sqlite:///release.db` to the **filesystem root** (`/release.db`).
+  SQLAlchemy resolves the same string to `release.db`, relative to the
+  current working directory — and dblift fed the identical URL string to both
+  its own native `sqlite3` connection (RFC-3986 reading) and to SQLAlchemy
+  (relative reading) for anyone using `from_sqlalchemy` or the SQLAlchemy
+  engine path, so the two connections silently addressed **different files**
+  for one config. dblift now adopts SQLAlchemy's convention everywhere:
+  three slashes is relative to cwd, four slashes is absolute,
+  `sqlite:///:memory:` is unchanged. The parsing lives in one place,
+  `db.plugins.sqlite.config.sqlite_path_from_url`, used by both the native
+  connection manager and the config loader, so the two can no longer drift
+  apart.
+
+  **This is a behavior change if you wrote `sqlite:///abs/path.db` meaning an
+  absolute path.** That URL now resolves to `abs/path.db` relative to the
+  working directory, not `/abs/path.db`. If you meant an absolute path, add a
+  fourth slash: `sqlite:////abs/path.db`.
+
+### Added
+
+- **A missing optional database driver now names the `pip install` command
+  that fixes it.** `pip install dblift` intentionally installs no database
+  drivers, so the first real command against, e.g., PostgreSQL failed with
+  SQLAlchemy's raw `No module named 'psycopg'` — accurate, but silent about
+  the fix. Every plugin with a native driver now declares the
+  `pyproject.toml` extra that installs it (`PluginInfo.install_extra`), and
+  the error raised from engine creation is rewritten to
+  `Native driver module 'psycopg' is not installed for postgresql. Install
+  it with: pip install "dblift[postgresql]"` whenever the failure is
+  provably the declared driver's absence — an unrelated `ModuleNotFoundError`
+  (e.g. a typo'd YAML import) is left untouched. SQLite declares no extra,
+  since it needs nothing installed.
+
 ## [3.1.0] - 2026-07-25
 
 ### Added

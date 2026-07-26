@@ -19,4 +19,5 @@ PLUGIN: PluginInfo = PluginInfo(
     config_class=MySqlConfig,
     sqlalchemy_url_builder=build_sqlalchemy_url,
     native_driver_module="pymysql",
+    install_extra="mysql",
 )

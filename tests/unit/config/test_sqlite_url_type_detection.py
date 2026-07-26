@@ -50,13 +50,18 @@ class TestSqliteUrlTypeDetection:
         assert getattr(config.database, "database", None) != "master"
 
     def test_sqlite3_url_prefix_sets_type(self):
-        """sqlite3:///tmp/x.db URL → type = 'sqlite'."""
+        """sqlite3:///tmp/x.db URL → type = 'sqlite'.
+
+        Three slashes is SQLAlchemy's convention for a path relative to cwd
+        (see ``sqlite_path_from_url`` in ``db/plugins/sqlite/config.py``); a
+        fourth slash is required for an absolute path.
+        """
         args = _args(db_url="sqlite3:///tmp/test.db")
         config = load_config(None, args)
         assert (
             config.database.type == "sqlite"
         ), f"Expected type='sqlite', got '{config.database.type}'"
-        assert config.database.path == "/tmp/test.db"
+        assert config.database.path == "tmp/test.db"
 
     def test_jdbc_sqlite_url_prefix_is_rejected(self):
         """Legacy jdbc:sqlite URLs are rejected in v2."""
