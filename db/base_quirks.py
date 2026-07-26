@@ -14,7 +14,18 @@ per-plugin classes override the deltas.
 from __future__ import annotations
 
 import re
-from typing import TYPE_CHECKING, Any, ClassVar, Dict, Optional, Sequence, Tuple, Type
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    ClassVar,
+    Dict,
+    Mapping,
+    NamedTuple,
+    Optional,
+    Sequence,
+    Tuple,
+    Type,
+)
 
 from core.dialect_boundary import DialectQuirks
 from db.dml_analysis import (
@@ -31,6 +42,82 @@ from db.feature_gate import FeatureGate
 if TYPE_CHECKING:
     from core.sql_generator.alter.base_alter_generator import BaseAlterGenerator
     from core.sql_generator.base_generator import BaseSqlGenerator
+
+
+class RowLimitClauses(NamedTuple):
+    """The three fragments that bound a ``SELECT`` to a fixed row count.
+
+    Rendered by :meth:`BaseQuirks.row_limit_clauses` and composed by the
+    caller into its own query::
+
+        f"SELECT {c.select_prefix}{columns} FROM {table}{c.compose_where(pred)}{c.query_suffix}"
+
+    The WHERE-clause glue lives here, on :meth:`compose_where`, rather than
+    being left for each call site to reimplement, because the first draft
+    documented it as an f-string instead: ``f" WHERE {pred}{' AND ' if pred
+    and c.where_predicate else ''}{c.where_predicate}"``. Executed for a
+    dialect with an empty ``where_predicate`` (every dialect except
+    pre-12.1 Oracle) and a caller with no predicate of its own, that example
+    renders ``SELECT cols FROM t WHERE  LIMIT 10`` — a dangling ``WHERE``
+    with nothing after it. A reference implementation that gets its own
+    no-predicate case wrong is evidence the shape is error-prone to copy, so
+    the composition moves into the type that owns the fragments instead of
+    being re-derived — and potentially re-broken — at every call site.
+
+    Three fields, not two, because ``ROWNUM`` (Oracle's pre-12.1 row cap) is
+    neither a ``SELECT``-list prefix nor a trailing suffix — it is a ``WHERE``
+    predicate. Folding it into ``query_suffix`` would only work when the
+    caller's query already has a ``WHERE`` clause with nothing appended after
+    it, which is not a safe assumption to bake into every call site. Keeping
+    the predicate in its own field makes the shape honest: exactly one of the
+    three fields is non-empty for any given dialect/version (see the
+    invariant tests in ``tests/unit/db/test_dialect_capability_quirks.py``).
+
+    Note that ``where_predicate`` is populated only by the ``"rownum"``
+    style, and even then only for an *unordered* cap — see
+    :meth:`BaseQuirks.row_limit_clauses` for why an ordered top-N through
+    ``ROWNUM`` is refused outright rather than rendered here.
+    """
+
+    #: Prepended to the ``SELECT`` column list, e.g. ``"TOP (10) "`` (SQL Server).
+    select_prefix: str
+    #: A bare condition to AND into the query's ``WHERE`` clause, e.g.
+    #: ``"ROWNUM <= 10"`` — no leading ``WHERE``/``AND``, composed by
+    #: :meth:`compose_where` rather than by the caller.
+    where_predicate: str
+    #: Appended after the query, e.g. ``" LIMIT 10"`` or ``" FETCH FIRST 10 ROWS ONLY"``.
+    query_suffix: str
+
+    def compose_where(self, predicate: "Optional[str]" = "") -> str:
+        """Return the complete ``WHERE`` clause, or ``""`` if neither side has one.
+
+        *predicate* is the caller's own condition (no leading ``WHERE``/``AND``).
+        ``None`` and a whitespace-only value are both treated as absent, so a
+        caller threading an optional predicate through does not have to
+        special-case it.
+
+        When both the caller's predicate and :attr:`where_predicate` are
+        present, the caller's is **parenthesised** before the two are ANDed.
+        That is not cosmetic: ``AND`` binds tighter than ``OR``, so gluing a
+        top-level-``OR`` predicate unparenthesised would read as
+        ``a OR (b AND ROWNUM <= n)`` — the first branch escapes the row cap and
+        the query comes back *unbounded*, which is precisely the failure this
+        helper exists to take away from call sites. The parentheses are applied
+        unconditionally rather than only when an ``OR`` is spotted: one
+        rendering rule is verifiable, whereas a heuristic that inspects the
+        predicate has to parse SQL correctly to be safe.
+
+        The return value includes the leading space and the ``WHERE`` keyword,
+        so it splices directly after the table name with no extra punctuation.
+        """
+        caller_predicate = (predicate or "").strip()
+        if caller_predicate and self.where_predicate:
+            return f" WHERE ({caller_predicate}) AND {self.where_predicate}"
+        if caller_predicate:
+            return f" WHERE {caller_predicate}"
+        if self.where_predicate:
+            return f" WHERE {self.where_predicate}"
+        return ""
 
 
 class BaseQuirks:
@@ -189,16 +276,19 @@ class BaseQuirks:
         """
         return [schema, table, column]
 
-    def row_limit_clauses(self, row_count: int) -> Tuple[str, str]:
-        """Return ``(select_prefix, query_suffix)`` bounding a SELECT to *row_count* rows.
+    def row_limit_clauses(
+        self,
+        row_count: int,
+        server_info: Optional[Mapping[str, Any]] = None,
+        ordered: bool = False,
+    ) -> RowLimitClauses:
+        """Return the three fragments bounding a SELECT to *row_count* rows.
 
-        The two fragments wrap a query from both ends because the dialects
-        disagree about which end the cap belongs on::
-
-            f"SELECT {prefix}{columns} FROM {table} WHERE {pred}{suffix}"
-
-        ``"limit"`` and ``"fetch_first"`` return an empty prefix; ``"top"``
-        returns an empty suffix. Rendering both here keeps every caller's
+        See :class:`RowLimitClauses` for why the result has three fields
+        instead of two. Exactly one field is populated for any given
+        dialect: ``"limit"`` and ``"fetch_first"`` populate ``query_suffix``;
+        ``"top"`` populates ``select_prefix``; ``"rownum"`` populates
+        ``where_predicate``. Rendering all three here keeps every caller's
         f-string identical regardless of dialect, which is the point — the
         alternative is each call site re-deriving the syntax from a dialect
         name.
@@ -206,12 +296,33 @@ class BaseQuirks:
         Driven by :attr:`row_limit_style`; an unrecognised value falls back to
         ``LIMIT``, the majority form, rather than silently emitting no cap at
         all — an uncapped query is the dangerous outcome here.
+
+        ``server_info`` is accepted here (and ignored by the base
+        implementation) so that plugins whose row-limit syntax depends on the
+        server version — currently only Oracle, via
+        :meth:`db.plugins.oracle.quirks.OracleQuirks.row_limit_clauses` — can
+        override with the same signature. Dialects with no such dependency
+        never need to look at it.
+
+        ``ordered`` tells the callee whether the capped query also carries an
+        ``ORDER BY`` the caller needs honoured — i.e. whether the caller wants
+        the true top-*row_count* rows by that ordering, as opposed to any
+        *row_count* rows. It matters only for the ``"rownum"`` style: ``WHERE
+        ROWNUM <= n`` is evaluated before ``ORDER BY`` runs, so it caps the
+        rows an arbitrary access path happened to produce and *then* sorts
+        them — not the same rows an ordered top-*n* would select. The base
+        implementation ignores ``ordered`` because none of ``"limit"``,
+        ``"top"`` and ``"fetch_first"`` have this gap: each is applied after
+        sorting. Only :meth:`db.plugins.oracle.quirks.OracleQuirks.row_limit_clauses`
+        inspects it, and only when it has resolved to the ``"rownum"`` form.
         """
         if self.row_limit_style == "top":
-            return f"TOP ({row_count}) ", ""
+            return RowLimitClauses(f"TOP ({row_count}) ", "", "")
         if self.row_limit_style == "fetch_first":
-            return "", f" FETCH FIRST {row_count} ROWS ONLY"
-        return "", f" LIMIT {row_count}"
+            return RowLimitClauses("", "", f" FETCH FIRST {row_count} ROWS ONLY")
+        if self.row_limit_style == "rownum":
+            return RowLimitClauses("", f"ROWNUM <= {row_count}", "")
+        return RowLimitClauses("", "", f" LIMIT {row_count}")
 
     def derive_schema_name(self, database_config: Any) -> "Optional[str]":
         """Return a schema name derived from dialect defaults, or ``None``.
@@ -333,11 +444,30 @@ class BaseQuirks:
     #: ``"limit"`` (trailing ``LIMIT n`` — PostgreSQL family, MySQL,
     #: SQLite, Snowflake — default), ``"top"`` (``TOP (n)`` prefix on the
     #: select list — SQL Server family), ``"fetch_first"`` (trailing
-    #: ``FETCH FIRST n ROWS ONLY`` — Oracle, DB2).
-    #: Read through :meth:`row_limit_clauses`, which renders the pair
+    #: ``FETCH FIRST n ROWS ONLY`` — Oracle, DB2), ``"rownum"`` (``WHERE
+    #: ROWNUM <= n`` predicate — the form valid on every Oracle release;
+    #: not the *declared* style of any dialect today, since Oracle keeps
+    #: declaring ``"fetch_first"`` as its native form and downgrades to
+    #: ``"rownum"`` at render time via a version gate — see
+    #: :meth:`db.plugins.oracle.quirks.OracleQuirks.row_limit_clauses`).
+    #: ``"rownum"`` is a validity fallback ONLY, not a syntax-equivalent
+    #: substitute: ``ROWNUM`` is assigned before ``ORDER BY`` runs, so
+    #: ``WHERE ROWNUM <= n ORDER BY val`` caps *n* rows in access-path order
+    #: and sorts them afterward — it does not return the true top-*n* rows by
+    #: ``val``. A caller that needs an ordered cap must pass
+    #: ``ordered=True`` to :meth:`row_limit_clauses`, which raises rather
+    #: than silently returning the wrong rows when the resolved style is
+    #: ``"rownum"``.
+    #: Read through :meth:`row_limit_clauses`, which renders the triple
     #: rather than making each caller re-derive the syntax. Distinct from
     #: :attr:`select_supports_limit`, which answers the coarser "may I
-    #: append ``LIMIT`` at all" question for optional probes.
+    #: append ``LIMIT`` at all" question for optional probes — but the two
+    #: overlap in practice: every dialect that sets a non-default
+    #: ``row_limit_style`` (SQL Server, Oracle, DB2) also sets
+    #: ``select_supports_limit = False``, because none of them accept a bare
+    #: trailing ``LIMIT`` either. Nothing in the framework enforces that the
+    #: two stay consistent, so a new dialect could set one without the other;
+    #: see the invariant test in ``tests/unit/db/test_dialect_capability_quirks.py``.
     row_limit_style: str = "limit"
     #: How an "insert or update on primary-key conflict" is expressed.
     #: One of: ``"none"`` (no native upsert — the caller must fall back to
@@ -352,10 +482,52 @@ class BaseQuirks:
     #: SQL type a serialized JSON parameter must be CAST to when bound to a
     #: JSON column, or ``None`` when the dialect coerces ``text → json``
     #: implicitly and the value binds directly. ``"JSONB"`` on the
-    #: PostgreSQL family (including CockroachDB and Redshift), ``"JSON"`` on
-    #: MySQL/MariaDB. Without the cast the server rejects the statement
-    #: ("column is of type jsonb but expression is of type text").
+    #: PostgreSQL family (including CockroachDB), ``"JSON"`` on MySQL. Without
+    #: the cast the server rejects the statement ("column is of type jsonb
+    #: but expression is of type text"). The family is NOT uniform here: two
+    #: subclasses deliberately do not inherit their parent's cast and stay
+    #: ``None`` instead —
+    #: Redshift (subclasses ``PostgresqlQuirks``; has no ``JSONB`` type, only
+    #: ``SUPER``, and ``CAST(? AS JSONB)`` fails with *type "jsonb" does not
+    #: exist*) and MariaDB (subclasses ``MysqlQuirks``; does not implement
+    #: ``CAST(expr AS JSON)`` per MDEV-26448, since its ``JSON`` type is only
+    #: a ``LONGTEXT`` alias with a validity CHECK).
     json_bind_cast_type: Optional[str] = None
+
+    def json_bind_cast(self, server_info: Optional[Mapping[str, Any]] = None) -> Optional[str]:
+        """Version-aware read of :attr:`json_bind_cast_type` for the captured server.
+
+        Only MySQL declares a gate for this (feature name ``"json_bind_cast"``,
+        ``min_version="5.7.8+"`` — the release that introduced the native
+        ``JSON`` type ``CAST`` targets). Deliberately the mirror image of
+        :meth:`row_limit_clauses`'s Oracle gate: there, the declared form
+        (``FETCH FIRST``) is invalid SQL on an unproven-old server, so an
+        unresolved gate has to fall back to the narrower ``ROWNUM`` form.
+        Here the declared cast is valid on every MySQL release except one
+        that reached EOL years ago, so an unresolved gate keeps today's
+        behaviour instead of guessing — this only downgrades a server
+        *proven* too old (``False``), never one that's merely unproven
+        (``None``).
+
+        Dialects with no gate declared for ``"json_bind_cast"`` (everyone
+        except MySQL) get ``supports_feature() is None`` unconditionally, so
+        this always returns the declared :attr:`json_bind_cast_type`
+        unchanged for them — the gate mechanism is opt-in per dialect.
+
+        MariaDB and Redshift already declare ``json_bind_cast_type = None``
+        on their own subclasses, so this returns ``None`` for them before
+        ever consulting a gate — there is nothing for MariaDB's inherited
+        ``feature_gates`` (redeclared wholesale, without a ``"json_bind_cast"``
+        entry — see ``MariadbQuirks.feature_gates``) to resurrect.
+        """
+        if self.json_bind_cast_type is None:
+            return None
+        from core.sql_model.feature_gates import supports_feature
+
+        if supports_feature(self.dialect_name, "json_bind_cast", server_info) is False:
+            return None
+        return self.json_bind_cast_type
+
     #: An ``UPDATE`` whose subquery reads the table being updated must have
     #: that subquery wrapped in a derived table. MySQL and MariaDB reject the
     #: direct form with error 1093 ("can't specify target table for update in

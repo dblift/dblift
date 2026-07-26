@@ -16,12 +16,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   tiers; a set nobody updates when a dialect is added is a latent bug, so the
   capability moves next to the dialect that owns it.
   - **`row_limit_style`** (`"limit"` / `"top"` / `"fetch_first"`) with
-    **`quirks.row_limit_clauses(n)`**, which renders the
-    `(select_prefix, query_suffix)` pair so a caller's f-string is identical on
-    every dialect. SQL Server declares `"top"`, Oracle and DB2 `"fetch_first"`,
-    everyone else the default `"limit"`. Distinct from the existing
-    `select_supports_limit`, which answers the coarser "may I append `LIMIT` at
-    all" question for optional probes.
+    **`quirks.row_limit_clauses(n, server_info=None, ordered=False)`**, which
+    returns a `RowLimitClauses` triple — `select_prefix`, `where_predicate`,
+    `query_suffix` — plus a `compose_where(predicate)` method that ANDs the
+    caller's own `WHERE` condition with `where_predicate`, so no call site
+    re-derives the syntax or the join glue from a dialect name. SQL Server
+    declares `"top"`, Oracle and DB2 `"fetch_first"`, everyone else the
+    default `"limit"`. The third field exists because Oracle's pre-12.1
+    fallback, `WHERE ROWNUM <= n`, is a `WHERE` predicate rather than a
+    select-list prefix or trailing suffix: `row_limit_clauses` is
+    version-aware, and a captured `server_info` not proven to be 12.1+ (or
+    absent entirely) downgrades Oracle's declared `"fetch_first"` to
+    `ROWNUM` at render time, since `FETCH FIRST n ROWS ONLY` is invalid SQL
+    on an unproven-old server. `ROWNUM` is a validity fallback only, not a
+    drop-in substitute — it is assigned before `ORDER BY` runs, so it cannot
+    express an ordered top-N. Passing `ordered=True` tells the callee the
+    caller's query also needs its `ORDER BY` honoured by the cap; when the
+    resolved style is `"rownum"`, that raises `ValueError` instead of
+    silently returning rows in the wrong order. Distinct from the existing
+    `select_supports_limit`, which answers the coarser "may I append `LIMIT`
+    at all" question for optional probes.
   - **`upsert_style`** (`"none"` / `"on_conflict"` / `"on_duplicate_key"`).
     PostgreSQL, SQLite and DuckDB declare `ON CONFLICT`; MySQL and MariaDB
     `ON DUPLICATE KEY UPDATE`. Oracle, DB2 and SQL Server express upsert as
@@ -32,7 +46,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     inheriting one would emit SQL the server rejects.
   - **`json_bind_cast_type`** (`"JSONB"` / `"JSON"` / `None`) — the SQL type a
     serialized JSON parameter must be CAST to when bound to a JSON column, or
-    `None` where `text → json` coerces implicitly.
+    `None` where `text → json` coerces implicitly. Read through
+    `quirks.json_bind_cast(server_info=None)`, which is version-aware on
+    MySQL: the cast requires 5.7.8+, but since the declared cast is valid on
+    every MySQL release except one long past EOL, an unresolved gate keeps
+    today's behaviour rather than guessing, and only a server *proven* older
+    downgrades to `None`. **Not uniform across the PostgreSQL and MySQL
+    families** — **Redshift** (subclasses `PostgresqlQuirks`; has no `JSONB`
+    type, only `SUPER`, and `CAST(? AS JSONB)` fails with *type "jsonb" does
+    not exist*) and **MariaDB** (subclasses `MysqlQuirks`; does not
+    implement `CAST(expr AS JSON)` per MDEV-26448) both override back to
+    `None` rather than inheriting their parent's cast.
   - **`update_subquery_requires_derived_table`** (bool) — an `UPDATE` whose
     subquery reads the table being updated must have that subquery wrapped in a
     derived table. MySQL and MariaDB reject the direct form with error 1093;
