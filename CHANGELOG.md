@@ -45,6 +45,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (e.g. a typo'd YAML import) is left untouched. SQLite declares no extra,
   since it needs nothing installed.
 
+- **A missing SQLAlchemy *dialect* package now names its extra too.** Four
+  extras ship a SQLAlchemy dialect rather than only a DBAPI —
+  `dblift[snowflake]` (`snowflake-sqlalchemy`), `dblift[redshift]`
+  (`sqlalchemy-redshift`), `dblift[db2]` (`ibm_db_sa`), `dblift[duckdb]`
+  (`duckdb_engine`). With one of those absent, engine creation failed earlier
+  than the driver import above and with a different exception:
+  `sqlalchemy.exc.NoSuchModuleError: Can't load plugin:
+  sqlalchemy.dialects:snowflake`, which subclasses `ArgumentError` rather than
+  `ModuleNotFoundError` and so reached the user raw. It is now rewritten to
+  `SQLAlchemy has no dialect registered for 'snowflake', which dblift's
+  snowflake connection URL requires: no installed package provides that
+  dialect. Install it with: pip install "dblift[snowflake]"`. The rewrite is
+  deliberately narrow — it applies only when the plugin SQLAlchemy failed to
+  load is exactly the one dblift's own URL named, so a `NoSuchModuleError`
+  about any other plugin, and any dialect whose plugin declares no extra,
+  still surfaces unchanged. The exception type and its `__cause__` are
+  preserved, so code catching `NoSuchModuleError` or `ArgumentError` keeps
+  working and the original traceback is still attached.
+
 ## [3.1.0] - 2026-07-25
 
 ### Added

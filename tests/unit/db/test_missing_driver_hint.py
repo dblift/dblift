@@ -20,11 +20,17 @@ from pathlib import Path
 from typing import Any, Iterator
 
 import pytest
-from sqlalchemy.exc import NoSuchModuleError
+from sqlalchemy import create_engine
+from sqlalchemy.dialects import registry as dialect_registry
+from sqlalchemy.exc import ArgumentError, NoSuchModuleError
 
 import db.native_connection_manager as connection_manager_module
 import db.plugins
-from db.native_connection_manager import NativeConnectionManager, describe_missing_driver
+from db.native_connection_manager import (
+    NativeConnectionManager,
+    describe_missing_driver,
+    describe_unloadable_dialect,
+)
 from db.provider_registry import NativeDriverManager, PluginInfo, ProviderRegistry
 
 
@@ -232,9 +238,9 @@ class TestTheHintReachesTheUser:
         install — and for any future dotted declaration. It is deliberately
         *not* the claim that this rescues a bare ``pip install dblift``: with
         nothing snowflake installed the dialect does not resolve at all and
-        ``create_engine`` raises ``NoSuchModuleError`` before any of this runs,
-        which ``test_a_dialect_sqlalchemy_cannot_load_is_not_translated``
-        pins.
+        ``create_engine`` raises ``NoSuchModuleError`` before any of this runs.
+        That failure is translated by its own rule, with its own message —
+        see ``TestAnUnloadableDialectNamesTheExtraThatInstallsIt``.
         """
         message = describe_missing_driver(
             "snowflake", ModuleNotFoundError("No module named 'snowflake'", name="snowflake")
@@ -582,16 +588,26 @@ class _Config:
         self.database = _Database(db_type)
 
 
-def _engine_raising(monkeypatch: pytest.MonkeyPatch, exc: BaseException) -> None:
-    """Make ``create_engine`` fail the way SQLAlchemy's dialect loader does."""
+def _engine_raising(
+    monkeypatch: pytest.MonkeyPatch,
+    exc: BaseException,
+    url: str = "postgresql+psycopg://u:p@localhost:5432/db",
+) -> None:
+    """Make ``create_engine`` fail the way SQLAlchemy's dialect loader does.
 
-    def _create_engine(url: str, **kwargs: Any) -> Any:
+    *url* is what ``build_sqlalchemy_url`` is made to return. The dialect-load
+    rule decides on it (the plugin key is derived from its drivername), so
+    those tests have to choose it; the driver-import rule ignores it, which is
+    why the default keeps the older tests reading as they did.
+    """
+
+    def _create_engine(url_: str, **kwargs: Any) -> Any:
         raise exc
 
     monkeypatch.setattr(
         connection_manager_module.ProviderRegistry,
         "build_sqlalchemy_url",
-        lambda database: "postgresql+psycopg://u:p@localhost:5432/db",
+        lambda database: url,
     )
     monkeypatch.setattr(connection_manager_module, "create_engine", _create_engine)
 
@@ -659,35 +675,26 @@ class TestTheHintSurfacesFromTheEngineProperty:
 
         assert 'pip install "dblift[snowflake]"' in str(excinfo.value)
 
-    def test_a_dialect_sqlalchemy_cannot_load_is_not_translated(
+    def test_the_driver_import_hint_wording_is_unchanged(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """A remaining gap, recorded rather than implied to be closed.
+        """Pin the ``ModuleNotFoundError`` path's message in full.
 
-        Snowflake's SQLAlchemy *dialect* lives in ``snowflake-sqlalchemy``,
-        which is what ``dblift[snowflake]`` installs. With nothing snowflake
-        installed at all, ``create_engine("snowflake://...")`` therefore fails
-        while resolving the dialect entry point — ``NoSuchModuleError: Can't
-        load plugin: sqlalchemy.dialects:snowflake`` — which is an
-        ``ArgumentError``, not a ``ModuleNotFoundError``, so neither
-        ``describe_missing_driver`` nor ``engine``'s except clause sees it and
-        the raw error still reaches that user.
-
-        Closing that is a separate decision: a dialect SQLAlchemy cannot load
-        is not in general a missing dblift driver (every built-in dialect
-        resolves without an extra), so it needs its own reasoning rather than a
-        widened except clause. This test exists so the boundary is visible and
-        a future widening has to change a test that states why.
+        The dialect-load rule added alongside it composes a *different*
+        message, on purpose, and shares no composer with this one. Asserting
+        equality rather than a substring is what makes a drift in either
+        wording visible here instead of silently changing what users read.
         """
-        original = NoSuchModuleError("Can't load plugin: sqlalchemy.dialects:snowflake")
-        _engine_raising(monkeypatch, original)
-        manager = NativeConnectionManager(_Config("snowflake"))
+        _engine_raising(monkeypatch, ModuleNotFoundError("No module named 'psycopg'"))
+        manager = NativeConnectionManager(_Config("postgresql"))
 
-        with pytest.raises(NoSuchModuleError) as excinfo:
+        with pytest.raises(ModuleNotFoundError) as excinfo:
             manager.engine
 
-        assert excinfo.value is original
-        assert "pip install" not in str(excinfo.value)
+        assert str(excinfo.value) == (
+            "Native driver module 'psycopg' is not installed for postgresql. "
+            'Install it with: pip install "dblift[postgresql]"'
+        )
 
     def test_an_unrelated_module_error_reaches_the_caller_untouched(
         self, monkeypatch: pytest.MonkeyPatch
@@ -741,3 +748,344 @@ class TestTheHintDoesNotNeedDiscoveryToHaveHappened:
 
         assert message is not None
         assert 'pip install "dblift[postgresql]"' in message
+
+
+class TestTheSQLAlchemyBehaviourTheDialectRuleRestsOn:
+    """Four extras ship a SQLAlchemy *dialect*, not just a DBAPI, and fail earlier.
+
+    ``dblift[snowflake]`` installs ``snowflake-sqlalchemy``,
+    ``dblift[redshift]`` installs ``sqlalchemy-redshift``, ``dblift[db2]``
+    ``ibm_db_sa``, ``dblift[duckdb]`` ``duckdb_engine``. Each registers a
+    ``sqlalchemy.dialects`` entry point, so with the extra absent
+    ``create_engine`` never reaches the DBAPI import: it cannot resolve the
+    dialect at all and raises ``NoSuchModuleError``.
+
+    The translation rule keys on two facts about SQLAlchemy — the entry-point
+    key it derives from a URL's drivername, and the message its plugin loader
+    composes when that key resolves to nothing. Neither is dblift's to
+    guarantee, so both are measured here against the installed SQLAlchemy
+    rather than described. The dialect names used are deliberately synthetic:
+    nothing can ever register them, so these tests say the same thing whatever
+    extras the environment happens to have.
+    """
+
+    @staticmethod
+    def _failed_load(url: str) -> NoSuchModuleError:
+        with pytest.raises(NoSuchModuleError) as excinfo:
+            create_engine(url)
+        return excinfo.value
+
+    def test_a_bare_drivername_is_the_plugin_key_verbatim(self) -> None:
+        """``snowflake`` — the shape snowflake and duckdb URLs use."""
+        url = "dblift_absent_dialect_xyz://"
+        exc = self._failed_load(url)
+
+        # The preconditions the whole rule rests on, and the reason ``engine``
+        # needs a second ``except`` clause rather than a widened first one:
+        # ``NoSuchModuleError`` is an ``ArgumentError``, so the driver-import
+        # clause never saw this and the raw message reached the user.
+        assert isinstance(exc, ArgumentError)
+        assert not isinstance(exc, ModuleNotFoundError)
+
+        assert connection_manager_module._dialect_plugin_key(url) == "dblift_absent_dialect_xyz"
+        assert str(exc) == "Can't load plugin: sqlalchemy.dialects:dblift_absent_dialect_xyz"
+
+    def test_a_plus_driver_drivername_maps_the_plus_to_a_dot(self) -> None:
+        """``redshift+redshift_connector`` → ``redshift.redshift_connector``.
+
+        The shape redshift and db2 URLs use, and the reason the key cannot
+        simply be the drivername.
+        """
+        url = "dblift_absent_dialect_xyz+some_driver://"
+        exc = self._failed_load(url)
+
+        assert connection_manager_module._dialect_plugin_key(url) == (
+            "dblift_absent_dialect_xyz.some_driver"
+        )
+        assert str(exc) == (
+            "Can't load plugin: sqlalchemy.dialects:dblift_absent_dialect_xyz.some_driver"
+        )
+
+    @pytest.mark.parametrize(
+        "url",
+        ["dblift_absent_dialect_xyz://", "dblift_absent_dialect_xyz+some_driver://"],
+    )
+    def test_the_message_dblift_expects_is_the_message_sqlalchemy_composes(self, url: str) -> None:
+        """The rule compares whole messages, so the expected form must be measured.
+
+        If SQLAlchemy ever rewords ``Can't load plugin: %s:%s`` this test goes
+        red. That matters: the comparison fails closed, so without this the
+        translation would quietly stop happening while every test that
+        monkeypatches the exception in still passed.
+        """
+        # The loader dblift reads the group off is the one ``URL._get_entrypoint``
+        # calls, so the group half of the message is not a literal either.
+        assert dialect_registry.group == "sqlalchemy.dialects"
+        key = connection_manager_module._dialect_plugin_key(url)
+        assert key is not None
+        assert str(self._failed_load(url)) == connection_manager_module._unloadable_plugin_message(
+            key
+        )
+
+    def test_an_unparseable_url_yields_no_plugin_key(self) -> None:
+        """``make_url`` raises rather than returning ``None``, and that must not escape.
+
+        Not reachable through ``create_engine`` — it parses the URL before it
+        looks a dialect up, so an unparseable URL raises ``ArgumentError``
+        long before any ``NoSuchModuleError``. Pinned because the rule runs
+        *inside* an except block, where an unexpected raise would replace the
+        real failure with a parse error.
+        """
+        with pytest.raises(ArgumentError):
+            connection_manager_module.make_url("not a sqlalchemy url")
+        assert connection_manager_module._dialect_plugin_key("not a sqlalchemy url") is None
+
+
+class TestAnUnloadableDialectNamesTheExtraThatInstallsIt:
+    """The behaviour change: this failure used to reach the user raw.
+
+    A previous revision of this file recorded it as a known gap
+    (``test_a_dialect_sqlalchemy_cannot_load_is_not_translated``), on the
+    grounds that a dialect SQLAlchemy cannot load is not in general a missing
+    dblift driver — every built-in dialect resolves without an extra, so a
+    widened ``except`` clause would have claimed things it could not know.
+
+    What closes it is a rule narrow enough to know: translate only when the
+    plugin SQLAlchemy failed to load is *exactly* the one dblift's own URL
+    named. dblift built that URL from its own registry, so an entry point it
+    named resolving to nothing means the extra providing it is absent — and
+    the registry already knows which extra that is. A ``NoSuchModuleError``
+    about any other plugin still reaches the user untouched.
+
+    These tests build the engine for real — no monkeypatched
+    ``create_engine`` — because the failure is genuinely reproducible: the
+    snowflake and redshift extras are installed neither here nor in CI, so
+    ``NativeConnectionManager.engine`` really does fail this way.
+    """
+
+    @staticmethod
+    def _engine_failure(dialect: str) -> NoSuchModuleError:
+        """Return the real failure from building *dialect*'s engine.
+
+        Skips rather than fails when the environment happens to have the
+        dialect package installed, since then there is nothing to reproduce.
+        """
+        manager = NativeConnectionManager(_Config(dialect))
+        try:
+            manager.engine
+        except NoSuchModuleError as exc:
+            return exc
+        manager.close()
+        pytest.skip(f"the SQLAlchemy dialect for {dialect} is installed in this environment")
+
+    def test_the_message_names_the_extra_that_installs_the_dialect(self) -> None:
+        exc = self._engine_failure("snowflake")
+
+        assert 'pip install "dblift[snowflake]"' in str(exc)
+
+    def test_the_message_does_not_claim_the_native_driver_module_is_missing(self) -> None:
+        """What is absent is the dialect package, and the message may only say that.
+
+        Reusing ``missing_driver_message`` would have read "Native driver
+        module 'snowflake.connector' is not installed for snowflake" — a claim
+        nothing here establishes. SQLAlchemy never got as far as importing a
+        DBAPI, so the only proven absence is the dialect entry point
+        ``dblift[snowflake]`` supplies.
+        """
+        message = str(self._engine_failure("snowflake"))
+
+        assert 'pip install "dblift[snowflake]"' in message  # a hint was composed at all
+        assert "Native driver module" not in message
+        assert "snowflake.connector" not in message
+
+    def test_the_message_names_the_dialect_plugin_that_could_not_be_loaded(self) -> None:
+        """A user who reads it should be able to tell what SQLAlchemy looked for."""
+        exc = self._engine_failure("redshift")
+
+        assert "redshift.redshift_connector" in str(exc)
+        assert 'pip install "dblift[redshift]"' in str(exc)
+
+    def test_the_original_failure_is_kept_as_the_cause(self) -> None:
+        """Same reason as the driver-import path: the hint must not cost the evidence."""
+        exc = self._engine_failure("snowflake")
+        cause = exc.__cause__
+
+        assert isinstance(cause, NoSuchModuleError)
+        assert str(cause) == "Can't load plugin: sqlalchemy.dialects:snowflake"
+
+    def test_the_exception_type_is_preserved(self) -> None:
+        """Callers catching ``NoSuchModuleError`` / ``ArgumentError`` must keep working.
+
+        Raising a ``ModuleNotFoundError`` carrying the hint — the shape the
+        driver-import path uses — would turn a documented SQLAlchemy error
+        into an unrelated builtin for anyone handling it.
+        """
+        exc = self._engine_failure("snowflake")
+
+        assert 'pip install "dblift[snowflake]"' in str(exc)  # the re-raised one, not the original
+        assert type(exc) is NoSuchModuleError
+        assert isinstance(exc, ArgumentError)
+
+    def test_a_plus_driver_dialect_is_recognised_through_its_dotted_key(self) -> None:
+        """Redshift's URL is ``redshift+redshift_connector://``.
+
+        Comparing against the drivername rather than the derived key would
+        look for ``redshift+redshift_connector``, never match the
+        ``redshift.redshift_connector`` SQLAlchemy reports, and leave this
+        user with the raw error.
+        """
+        exc = self._engine_failure("redshift")
+        cause = exc.__cause__
+
+        assert isinstance(cause, NoSuchModuleError)
+        assert str(cause) == "Can't load plugin: sqlalchemy.dialects:redshift.redshift_connector"
+        assert 'pip install "dblift[redshift]"' in str(exc)
+
+
+class TestTheDialectRuleClaimsNothingItCannotProve:
+    """Everything the narrow rule must decline, and why each would be a wrong claim."""
+
+    @pytest.fixture
+    def _quirks_cache_restored(self, _discovered: None) -> Iterator[None]:
+        """Undo the ``BaseQuirks`` entry a synthetic dialect leaves in the cache."""
+        saved = dict(ProviderRegistry._quirks_cache)
+        yield
+        ProviderRegistry._quirks_cache.clear()
+        ProviderRegistry._quirks_cache.update(saved)
+
+    def test_a_failure_naming_another_plugin_propagates_untouched(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """``NoSuchModuleError`` is raised for lookups that are not dblift's.
+
+        ``DialectKWArgs._kw_reg_for_dialect`` loads a dialect out of the same
+        group by the prefix of a kwarg (``mysql_engine=``), and a third-party
+        dialect can fail to find something of its own. Claiming
+        ``dblift[snowflake]`` fixes that would send the user to install a
+        package unrelated to what failed and bury the plugin actually missing.
+        """
+        original = NoSuchModuleError("Can't load plugin: sqlalchemy.dialects:some_other_plugin")
+        _engine_raising(monkeypatch, original, url="snowflake://")
+        manager = NativeConnectionManager(_Config("snowflake"))
+
+        with pytest.raises(NoSuchModuleError) as excinfo:
+            manager.engine
+
+        assert excinfo.value is original  # same object, re-raised
+        assert excinfo.value.__cause__ is None
+        assert "pip install" not in str(excinfo.value)
+
+    def test_a_failure_from_a_different_entry_point_group_propagates_untouched(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """``sqlalchemy.plugins`` is a different group sharing the message format.
+
+        ``?plugin=`` in a URL, or ``create_engine(plugins=[...])``, loads from
+        it through the same ``PluginLoader``. A plugin there named after the
+        dialect is not the dialect, so the extra would be the wrong fix.
+        """
+        original = NoSuchModuleError("Can't load plugin: sqlalchemy.plugins:snowflake")
+        _engine_raising(monkeypatch, original, url="snowflake://")
+        manager = NativeConnectionManager(_Config("snowflake"))
+
+        with pytest.raises(NoSuchModuleError) as excinfo:
+            manager.engine
+
+        assert excinfo.value is original
+        assert "pip install" not in str(excinfo.value)
+
+    def test_a_dialect_declaring_no_install_extra_propagates_untouched(
+        self, monkeypatch: pytest.MonkeyPatch, _quirks_cache_restored: None
+    ) -> None:
+        """A third-party plugin owes dblift no extra, and none may be invented.
+
+        Registered the way the documented ``dblift.providers`` entry point
+        registers one, with a real URL builder, so this runs the whole
+        ``engine`` path against a dialect SQLAlchemy genuinely cannot load.
+        There is no ``dblift[acme_absent_dialect_xyz]`` to install, so the only
+        honest outcome is the raw error.
+        """
+        host = ProviderRegistry.get_plugin_info("postgresql")
+        assert host is not None
+        third_party = PluginInfo(
+            name="acme_absent_dialect_xyz",
+            version="1.0.0",
+            description="a third-party plugin shipping its own SQLAlchemy dialect",
+            dialects=["acme_absent_dialect_xyz"],
+            provider_class=host.provider_class,
+            sqlalchemy_url_builder=lambda database: "acme_absent_dialect_xyz://host/db",
+            install_extra=None,
+        )
+        monkeypatch.setitem(ProviderRegistry._plugins, "acme_absent_dialect_xyz", third_party)
+        manager = NativeConnectionManager(_Config("acme_absent_dialect_xyz"))
+
+        with pytest.raises(NoSuchModuleError) as excinfo:
+            manager.engine
+
+        assert str(excinfo.value) == (
+            "Can't load plugin: sqlalchemy.dialects:acme_absent_dialect_xyz"
+        )
+        assert excinfo.value.__cause__ is None
+        assert "pip install" not in str(excinfo.value)
+
+    def test_an_unregistered_dialect_propagates_untouched(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """With no ``PluginInfo`` at all there is no extra to name."""
+        original = NoSuchModuleError("Can't load plugin: sqlalchemy.dialects:no_such_dialect_xyz")
+        _engine_raising(monkeypatch, original, url="no_such_dialect_xyz://host/db")
+        manager = NativeConnectionManager(_Config("no_such_dialect_xyz"))
+
+        with pytest.raises(NoSuchModuleError) as excinfo:
+            manager.engine
+
+        assert ProviderRegistry.get_plugin_info("no_such_dialect_xyz") is None
+        assert excinfo.value is original
+        assert "pip install" not in str(excinfo.value)
+
+    @pytest.mark.parametrize("exc_type", [ArgumentError, ModuleNotFoundError])
+    def test_only_the_no_such_module_subclass_is_translated(
+        self, exc_type: type[Exception]
+    ) -> None:
+        """The exception *type* decides, not the message text.
+
+        ``ArgumentError`` is what ``create_engine`` raises for URL problems
+        that imply nothing about installed packages; only the
+        ``NoSuchModuleError`` subclass means "no entry point by that name". A
+        ``ModuleNotFoundError`` belongs to ``describe_missing_driver``, and
+        answering it here would report the dialect package absent when it in
+        fact loaded and only the DBAPI did not.
+
+        Both messages are deliberately the one that *would* match, so each
+        parameter pins the type check rather than the text — the same shape as
+        ``test_a_plain_import_error_is_not_claimed`` above.
+        """
+        assert (
+            describe_unloadable_dialect(
+                "snowflake",
+                "snowflake://",
+                exc_type("Can't load plugin: sqlalchemy.dialects:snowflake"),
+            )
+            is None
+        )
+
+    def test_an_unparseable_url_leaves_the_failure_alone(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A URL that will not parse must not become a parse error from the handler.
+
+        Defensive: ``create_engine`` parses before it resolves a plugin, so it
+        cannot itself produce this pairing. What the test pins is that the rule
+        fails closed — the original failure reaches the caller — rather than
+        raising ``ArgumentError`` from inside the ``except`` block and losing
+        it.
+        """
+        original = NoSuchModuleError("Can't load plugin: sqlalchemy.dialects:snowflake")
+        _engine_raising(monkeypatch, original, url="not a sqlalchemy url")
+        manager = NativeConnectionManager(_Config("snowflake"))
+
+        with pytest.raises(NoSuchModuleError) as excinfo:
+            manager.engine
+
+        assert excinfo.value is original
+        assert "pip install" not in str(excinfo.value)

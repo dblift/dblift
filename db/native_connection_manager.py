@@ -4,7 +4,9 @@ import re
 from typing import Any, Optional
 
 from sqlalchemy import create_engine
-from sqlalchemy.engine import Connection, Engine
+from sqlalchemy.dialects import registry as _dialect_registry
+from sqlalchemy.engine import Connection, Engine, make_url
+from sqlalchemy.exc import ArgumentError, NoSuchModuleError
 
 from core.logger import Log, NullLog
 from db.provider_registry import NativeDriverManager, ProviderRegistry
@@ -97,8 +99,11 @@ def describe_missing_driver(dialect: str, exc: BaseException) -> Optional[str]:
     # ship a SQLAlchemy *dialect* rather than only a DBAPI (snowflake, redshift,
     # db2, duckdb) fail earlier there: ``create_engine`` cannot resolve the
     # dialect entry point at all and raises ``NoSuchModuleError``, an
-    # ``ArgumentError`` that neither this function nor ``engine``'s except clause
-    # sees. Engines on SQLAlchemy's built-in dialects (the PostgreSQL family,
+    # ``ArgumentError`` this function still declines. ``engine`` does now handle
+    # it, in a second ``except`` clause with its own rule and its own message
+    # (``describe_unloadable_dialect``).
+    #
+    # Engines on SQLAlchemy's built-in dialects (the PostgreSQL family,
     # MySQL, MariaDB, Oracle, SQL Server, SQLite) do raise
     # ``ModuleNotFoundError`` for an absent driver and the hint reaches them —
     # but every one of those declares an undotted module, so the widening below
@@ -115,6 +120,113 @@ def describe_missing_driver(dialect: str, exc: BaseException) -> Optional[str]:
     if missing is None or not _is_module_or_ancestor(missing, module):
         return None
     return NativeDriverManager.missing_driver_message(dialect, plugin_info)
+
+
+def _dialect_plugin_key(url: str) -> Optional[str]:
+    """Return the ``sqlalchemy.dialects`` entry-point key *url*'s drivername resolves to.
+
+    SQLAlchemy does not look a dialect up under the drivername verbatim:
+    ``URL._get_entrypoint`` turns every ``+`` into a ``.``, so
+    ``redshift+redshift_connector://`` resolves ``redshift.redshift_connector``
+    while a bare drivername is used as-is. Comparing a failure against the
+    drivername would therefore never match the key SQLAlchemy names for the
+    ``+driver`` shape, so the derivation is reproduced here rather than guessed
+    at — and measured against the installed SQLAlchemy, for both shapes, in
+    ``tests/unit/db/test_missing_driver_hint.py``
+    (``TestTheSQLAlchemyBehaviourTheDialectRuleRestsOn``).
+
+    Returns ``None`` for a URL ``make_url`` cannot parse rather than letting its
+    ``ArgumentError`` escape: the only caller runs inside an ``except`` block,
+    where a parse error raised from here would replace the failure being
+    explained with an unrelated one.
+    """
+    try:
+        drivername = make_url(url).drivername
+    except ArgumentError:
+        return None
+    return drivername.replace("+", ".")
+
+
+def _unloadable_plugin_message(plugin_key: str) -> str:
+    """Compose the message SQLAlchemy raises when *plugin_key* resolves to no dialect.
+
+    ``PluginLoader.load`` formats ``Can't load plugin: <group>:<name>`` for an
+    entry point it cannot find. The group half is read off the very loader
+    ``URL._get_entrypoint`` consults — ``sqlalchemy.dialects.registry`` — rather
+    than spelled out, so it cannot drift from the loader whose message it is
+    compared against.
+
+    ``tests/unit/db/test_missing_driver_hint.py`` asserts this equals what a
+    real ``create_engine`` failure stringifies to. That matters because the
+    comparison in ``describe_unloadable_dialect`` fails closed: were SQLAlchemy
+    to reword the message, the translation would quietly stop happening, and
+    this is the test that would go red instead.
+    """
+    return f"Can't load plugin: {_dialect_registry.group}:{plugin_key}"
+
+
+def describe_unloadable_dialect(dialect: str, url: str, exc: BaseException) -> Optional[str]:
+    """Translate "SQLAlchemy has no such dialect" into the extra that supplies it.
+
+    Some extras ship a SQLAlchemy *dialect*, not merely a DBAPI. With one of
+    them absent ``create_engine`` never reaches the DBAPI import at all: it
+    cannot resolve the dialect entry point and raises ``NoSuchModuleError``,
+    which subclasses ``ArgumentError`` rather than ``ModuleNotFoundError``.
+    Neither ``describe_missing_driver`` nor ``engine``'s driver-import
+    ``except`` clause sees that, so the raw ``Can't load plugin: ...`` used to
+    reach the user.
+
+    A dialect SQLAlchemy cannot load is not in general a missing dblift driver —
+    its built-in dialects all resolve with nothing extra installed — so this
+    translates only when the plugin that failed to load is *exactly* the one
+    dblift's own URL named. It declines unless all three hold:
+
+    * *exc* is a ``NoSuchModuleError``. A plain ``ArgumentError`` carrying the
+      same text is declined, because only the subclass means "no entry point by
+      that name"; ``create_engine`` raises the base class for URL problems that
+      imply nothing about installed packages. A ``ModuleNotFoundError`` is
+      declined too — that is ``describe_missing_driver``'s failure, and it would
+      have the dialect package reported absent when it in fact loaded fine.
+    * ``str(exc)`` equals ``_unloadable_plugin_message`` for the key derived
+      from *url*. Comparing the whole message is deliberate, because
+      ``NoSuchModuleError`` is raised for lookups that are not this one and
+      says so only in its text. Two exist in SQLAlchemy 2.0.51: a second
+      loader over the ``sqlalchemy.plugins`` group, which ``?plugin=`` in the
+      URL and ``create_engine(plugins=[...])`` resolve through the same
+      ``PluginLoader`` and the same message format
+      (``URL._instantiate_plugins``, which runs *before* the dialect is looked
+      up); and ``DialectKWArgs._kw_reg_for_dialect``, which loads a dialect by
+      the prefix of a kwarg such as ``mysql_engine=`` — a different key from
+      the same group. Checking the group and the key together tells all three
+      apart. It fails closed — an unparseable URL yields no key and so no
+      hint, never a wrong one.
+    * the registry holds a ``PluginInfo`` for *dialect* declaring an
+      ``install_extra``. A third-party plugin registered through
+      ``dblift.providers`` owes dblift no extra, and composing
+      ``pip install "dblift[...]"`` for an extra that may not exist is worse
+      than the error it would replace.
+
+    The message shares no composer with
+    ``NativeDriverManager.missing_driver_message``, on purpose. "Native driver
+    module 'X' is not installed" would assert something nothing here
+    establishes: no DBAPI import was attempted, so this says only what is
+    proven — that no installed package provides the dialect SQLAlchemy looked
+    for, and that the registry declares this extra for *dialect*. It names no
+    distribution, since ``PluginInfo`` records none.
+    """
+    if not isinstance(exc, NoSuchModuleError):
+        return None
+    key = _dialect_plugin_key(url)
+    if key is None or str(exc) != _unloadable_plugin_message(key):
+        return None
+    plugin_info = ProviderRegistry.get_plugin_info(dialect)
+    if plugin_info is None or not plugin_info.install_extra:
+        return None
+    return (
+        f"SQLAlchemy has no dialect registered for '{key}', which dblift's {dialect} "
+        f"connection URL requires: no installed package provides that dialect. "
+        f'Install it with: pip install "dblift[{plugin_info.install_extra}]"'
+    )
 
 
 class NativeConnectionManager:
@@ -153,6 +265,11 @@ class NativeConnectionManager:
                 hint = describe_missing_driver(dialect, exc)
                 if hint is not None:
                     raise ModuleNotFoundError(hint) from exc
+                raise
+            except NoSuchModuleError as exc:
+                hint = describe_unloadable_dialect(dialect, url, exc)
+                if hint is not None:
+                    raise NoSuchModuleError(hint) from exc
                 raise
             self._owns_engine = True
         return self._engine
