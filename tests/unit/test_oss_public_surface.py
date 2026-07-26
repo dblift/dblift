@@ -16,6 +16,8 @@ import tomllib
 from pathlib import Path
 
 import pytest
+from packaging.requirements import Requirement
+from packaging.utils import canonicalize_name
 
 pytestmark = [pytest.mark.unit]
 
@@ -288,3 +290,157 @@ def test_core_secrets_docs_do_not_advertise_external_provider_uris():
         "gcp-secrets://",
     ):
         assert scheme not in secrets_init
+
+
+# ── Install extras contract ───────────────────────────────────────────────
+#
+# Two claims live in [project.optional-dependencies] and neither is checkable
+# by reading a single line of it:
+#
+#   1. ``all`` means all. It is a convenience meta-extra users read as
+#      "everything dblift can talk to", so every *engine* extra has to be
+#      reachable from it. It once named seven of seventeen, which meant a
+#      Snowflake user running ``pip install dblift[all]`` got no Snowflake
+#      driver and no warning.
+#   2. A bare ``pip install dblift`` pulls no database client library at all.
+#      Plugin discovery imports every plugin package, so the plugins are
+#      written to import without their driver; shipping one engine's SDK in
+#      [project].dependencies made that promise false for the other 18 and
+#      taxed every install with an SDK it would never use.
+#
+# Extras that install something which is *not* an engine's client library.
+# Everything else under [project.optional-dependencies] is an engine extra and
+# must be covered by ``all``. Adding a non-engine extra means adding it here —
+# deliberately — rather than letting it silently widen ``all``.
+NON_ENGINE_EXTRAS = frozenset(
+    {
+        "all",  # the meta-extra itself
+        "dev",  # test / lint toolchain
+        "django",  # web framework integrations
+        "fastapi",
+        "flask",
+        "otel",  # opentelemetry-api, tracing only
+    }
+)
+
+
+def _optional_dependencies() -> dict[str, list[str]]:
+    data = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+    return data["project"]["optional-dependencies"]
+
+
+def _project_dependencies() -> list[str]:
+    data = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+    return data["project"]["dependencies"]
+
+
+def _extras_reachable_from(extra: str, table: dict[str, list[str]]) -> set[str]:
+    """Extras named by ``extra`` through ``dblift[...]`` self-references.
+
+    Resolved transitively, because that is how pip resolves them: nothing stops
+    a future ``all`` from delegating through an intermediate meta-extra.
+    """
+    seen: set[str] = set()
+    pending = [extra]
+    while pending:
+        current = pending.pop()
+        for spec in table.get(current, []):
+            requirement = Requirement(spec)
+            if canonicalize_name(requirement.name) != canonicalize_name("dblift"):
+                continue
+            for named in requirement.extras:
+                if named not in seen:
+                    seen.add(named)
+                    pending.append(named)
+    return seen
+
+
+def _requirement_names(specs: list[str]) -> set[str]:
+    """Canonical distribution names in ``specs``, ignoring ``dblift`` self-refs."""
+    names = {canonicalize_name(Requirement(spec).name) for spec in specs}
+    return names - {canonicalize_name("dblift")}
+
+
+def test_all_extra_covers_every_engine_extra():
+    """``dblift[all]`` must reach every database-engine extra.
+
+    The engine set is derived from the extras table itself, not from a list
+    maintained alongside it, so a new engine extra that nobody remembers to add
+    to ``all`` fails here instead of shipping as a silently short install.
+    """
+    table = _optional_dependencies()
+    engine_extras = set(table) - NON_ENGINE_EXTRAS
+    covered = _extras_reachable_from("all", table)
+
+    missing = sorted(engine_extras - covered)
+
+    assert missing == [], (
+        f"pip install dblift[all] installs no driver for: {missing}.\n"
+        "Every engine extra must be reachable from the 'all' meta-extra in "
+        "pyproject.toml [project.optional-dependencies]. Add the extra to "
+        "'all', or — if it installs no database client library — to "
+        "NON_ENGINE_EXTRAS in this test."
+    )
+
+
+def test_all_extra_only_names_declared_engine_extras():
+    """``all`` must not name a non-existent extra, nor a non-engine one.
+
+    pip resolves an unknown extra to nothing and only warns, so a typo inside
+    ``all`` degrades to "installs less than it claims" with no failure anywhere.
+    """
+    table = _optional_dependencies()
+    named = _extras_reachable_from("all", table)
+
+    undeclared = sorted(named - set(table))
+    non_engine = sorted(named & (NON_ENGINE_EXTRAS - {"all"}))
+
+    assert undeclared == [], (
+        f"pyproject.toml 'all' extra names extras that do not exist: {undeclared}. "
+        "pip only warns about these, so the install silently comes up short."
+    )
+    assert non_engine == [], (
+        f"pyproject.toml 'all' extra pulls in non-engine extras: {non_engine}. "
+        "'all' is a database-driver meta-extra; framework and tooling extras "
+        "stay opt-in."
+    )
+
+
+def test_no_database_driver_is_a_mandatory_dependency():
+    """A bare ``pip install dblift`` must pull no engine client library.
+
+    Every plugin is written to import without its driver — that is what lets
+    ``ProviderRegistry.discover_plugins()`` register all 19 dialects on a bare
+    install. Promoting one engine's driver to a mandatory dependency breaks the
+    symmetry silently: the install grows for everyone, and the comments in
+    ``db/`` promising "no drivers by default" become false.
+
+    ``requirements.txt`` and ``requirements-runtime.txt`` mirror
+    [project].dependencies (the runtime file says so in its own header), so
+    they are held to the same rule.
+    """
+    table = _optional_dependencies()
+    engine_extras = set(table) - NON_ENGINE_EXTRAS
+    driver_names: set[str] = set()
+    for extra in engine_extras:
+        driver_names |= _requirement_names(table[extra])
+
+    offenders: list[str] = []
+
+    for name in sorted(_requirement_names(_project_dependencies()) & driver_names):
+        offenders.append(f"pyproject.toml [project].dependencies: {name}")
+
+    for filename in ("requirements.txt", "requirements-runtime.txt"):
+        specs: list[str] = []
+        for raw_line in (ROOT / filename).read_text(encoding="utf-8").splitlines():
+            line = raw_line.split("#", 1)[0].strip()
+            if line and not line.startswith("-"):
+                specs.append(line)
+        for name in sorted(_requirement_names(specs) & driver_names):
+            offenders.append(f"{filename}: {name}")
+
+    assert offenders == [], (
+        "Database client libraries must ship only in their engine extra, never "
+        f"as a mandatory dependency: {offenders}. Move each into the matching "
+        "[project.optional-dependencies] entry and add that extra to 'all'."
+    )

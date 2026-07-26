@@ -20,6 +20,13 @@ DBLift therefore drives Cosmos through `azure-cosmos` directly from your
 migration script instead of inventing a SQL-looking syntax for it. What you
 write is what runs — no translation layer, no generated SDK code to review.
 
+Because your migration calls the SDK itself, the SDK has to be installed. It
+ships in the `cosmosdb` extra, like every other engine's driver:
+
+```bash
+pip install "dblift[cosmosdb]"
+```
+
 Two consequences:
 
 - A `.sql` migration targeting Cosmos DB fails with
