@@ -454,7 +454,5 @@ class TestComposeWhereGuardsPrecedence:
 
     def test_none_is_treated_as_no_predicate(self) -> None:
         """Callers reach for ``None`` when threading an optional predicate."""
-        assert quirks("oracle").row_limit_clauses(10).compose_where(None) == (
-            " WHERE ROWNUM <= 10"
-        )
+        assert quirks("oracle").row_limit_clauses(10).compose_where(None) == (" WHERE ROWNUM <= 10")
         assert quirks("postgresql").row_limit_clauses(10).compose_where(None) == ""
