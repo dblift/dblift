@@ -54,6 +54,13 @@ class PluginInfo:
     # config instance and returns the SQLAlchemy URL for ``create_engine``.
     sqlalchemy_url_builder: Optional[Callable[[Any], str]] = None
     native_driver_module: Optional[str] = None
+    # The ``pyproject.toml`` optional-dependencies extra that installs
+    # ``native_driver_module`` (e.g. ``"postgresql"`` for ``psycopg``), so
+    # ``validate_driver_for_type`` can name a real ``pip install`` command
+    # instead of just the bare module. ``None`` for plugins with no driver to
+    # install (SQLite) and must otherwise match ``[project.optional-dependencies]``
+    # exactly — declaring a wrong extra is worse than declaring none.
+    install_extra: Optional[str] = None
 
 
 class NativeDriverManager:
@@ -77,13 +84,37 @@ class NativeDriverManager:
             return False
 
     @staticmethod
+    def missing_driver_message(db_type: str, plugin_info: PluginInfo) -> str:
+        """Compose the "driver not installed" message for *plugin_info*.
+
+        Shared by :meth:`validate_driver_for_type` (which first confirms the
+        driver is actually absent) and
+        ``db.native_connection_manager.describe_missing_driver`` (which
+        already holds proof of absence — the ``ModuleNotFoundError``
+        SQLAlchemy just raised — and only needs the message, not another
+        availability check). One composer keeps both call sites' wording
+        identical.
+
+        When the plugin declares an ``install_extra``, the message names the
+        exact ``pip install`` command that installs it; a plugin with a driver
+        but no declared extra falls back to just naming the module, since
+        that is all that's known.
+        """
+        module = plugin_info.native_driver_module or "unknown"
+        if plugin_info.install_extra:
+            return (
+                f"Native driver module '{module}' is not installed for {db_type}. "
+                f'Install it with: pip install "dblift[{plugin_info.install_extra}]"'
+            )
+        return f"Native driver module '{module}' is not installed for {db_type}"
+
+    @staticmethod
     def validate_driver_for_type(
         db_type: str, plugin_info: Optional[PluginInfo]
     ) -> Tuple[bool, Optional[str]]:
         """Validate plugin-declared native driver availability."""
         if plugin_info and not NativeDriverManager.check_driver_installed(plugin_info):
-            module = plugin_info.native_driver_module or "unknown"
-            return False, f"Native driver module '{module}' is not installed for {db_type}"
+            return False, NativeDriverManager.missing_driver_message(db_type, plugin_info)
         return True, None
 
 
@@ -291,6 +322,7 @@ class ProviderRegistry:
             declared.sqlalchemy_url_builder if declared else None
         )
         native_driver_module: Optional[str] = declared.native_driver_module if declared else None
+        install_extra: Optional[str] = declared.install_extra if declared else None
 
         return PluginInfo(
             name=name,
@@ -304,6 +336,7 @@ class ProviderRegistry:
             config_class=config_class,
             sqlalchemy_url_builder=sqlalchemy_url_builder,
             native_driver_module=native_driver_module,
+            install_extra=install_extra,
         )
 
     @classmethod
@@ -396,6 +429,21 @@ class ProviderRegistry:
             return plugin_info.provider_class
 
         return None
+
+    @classmethod
+    def get_plugin_info(cls, db_type: str) -> Optional[PluginInfo]:
+        """Return the registered :class:`PluginInfo` for a database type, or ``None``.
+
+        Args:
+            db_type: Database type or dialect alias (e.g. ``"postgresql"``,
+                ``"postgres"``, ``"sqlite3"``).
+
+        Returns:
+            The plugin metadata, or ``None`` if *db_type* is unregistered.
+        """
+        if not cls._discovered:
+            cls.discover_plugins()
+        return cls._plugins.get((db_type or "").lower())
 
     @classmethod
     def get_provider_by_url(cls, database_url: str) -> Optional[Type[BaseProvider]]:

@@ -40,8 +40,11 @@ class TestSQLiteConnectionManager:
     def test_get_database_path_from_url(self):
         """Test getting database path from URL config.
 
-        Per RFC 3986, ``sqlite:///path/to/db.sqlite`` has empty authority, so the
-        path is ``/path/to/db.sqlite`` — the leading slash is preserved.
+        Three slashes is SQLAlchemy's convention for a path relative to cwd
+        (``sqlite_path_from_url`` in ``db/plugins/sqlite/config.py`` is the
+        single place this is parsed, and it agrees with
+        ``sqlalchemy.engine.make_url``) — a fourth slash is required for an
+        absolute path.
         """
         from db.plugins.sqlite.sqlite.connection_manager import SQLiteConnectionManager
 
@@ -51,7 +54,7 @@ class TestSQLiteConnectionManager:
         mock_config.database.url = "sqlite:///path/to/db.sqlite"
 
         manager = SQLiteConnectionManager(mock_config)
-        assert manager.db_path == "/path/to/db.sqlite"
+        assert manager.db_path == "path/to/db.sqlite"
 
     def test_create_connection_memory(self):
         """Test creating in-memory database connection."""

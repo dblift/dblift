@@ -12,6 +12,7 @@ from typing import Optional
 
 from config import DbliftConfig
 from core.logger import Log, NullLog
+from db.plugins.sqlite.config import sqlite_path_from_url
 
 
 class SQLiteConnectionManager:
@@ -50,15 +51,15 @@ class SQLiteConnectionManager:
             return self.config.database.database
 
         if hasattr(self.config.database, "url") and self.config.database.url:
-            # Handle sqlite:// URLs. Per RFC 3986, `sqlite:///tmp/x.db` has empty
-            # authority (`//` + `/` = authority-delimiters + absolute path), so the
-            # resolved path is `/tmp/x.db` — the leading slash is part of the path.
+            # Handle sqlite:// URLs through the single shared parser so this
+            # native sqlite3 connection and the SQLAlchemy engine built by
+            # ``build_sqlalchemy_url`` always resolve the same file. See
+            # ``sqlite_path_from_url``'s docstring for why SQLAlchemy's
+            # convention (three slashes relative, four absolute) is the one
+            # to agree with, rather than RFC 3986's.
             url = self.config.database.url
             if url.startswith("sqlite://"):
-                path = url[9:]
-                if path.startswith("//"):
-                    path = "/" + path.lstrip("/")
-                return path
+                return sqlite_path_from_url(url)
 
         raise ValueError(
             "SQLite database path is required. "

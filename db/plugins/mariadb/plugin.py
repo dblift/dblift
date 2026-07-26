@@ -18,4 +18,5 @@ PLUGIN: PluginInfo = PluginInfo(
     config_dialect="mysql",  # MariaDB shares MySQL's config class
     sqlalchemy_url_builder=build_sqlalchemy_url,
     native_driver_module="pymysql",
+    install_extra="mariadb",
 )
