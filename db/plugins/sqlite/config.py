@@ -3,7 +3,36 @@
 from dataclasses import dataclass
 from typing import Any, Dict, Optional
 
+import sqlalchemy
+
 from config.database_config import BaseDatabaseConfig, register_database_type
+
+
+def sqlite_path_from_url(url: str) -> str:
+    """Resolve a ``sqlite://`` URL to a file path, in agreement with SQLAlchemy.
+
+    dblift used to strip the literal ``sqlite://`` prefix and RFC-3986-parse
+    what remained: authority is empty (nothing between the second and third
+    slash), so the leading slash of what follows belongs to the path — that
+    reading resolves ``sqlite:///release.db`` to ``/release.db``, the
+    filesystem root. That reading is defensible in isolation. What is not
+    defensible is that dblift held *both* readings at once:
+    :func:`db.plugins.sqlite.sqlalchemy_url.build_sqlalchemy_url` fed the same
+    string to SQLAlchemy, which resolves it relatively, so the SQLAlchemy
+    engine and the native ``sqlite3`` connection addressed two different
+    files for one config. The disagreement was the bug, not the RFC-3986
+    reading.
+
+    SQLAlchemy's convention wins because it is the one users already know —
+    every SQLAlchemy tutorial writes ``sqlite:///file.db`` meaning "the file
+    next to me" — and because it's the convention dblift's own URL builder
+    already emits. Delegating the parsing to SQLAlchemy's own
+    ``make_url`` — rather than re-implementing "three slashes is relative,
+    four is absolute" by hand — is what makes the two paths structurally
+    unable to drift apart again: there is only one parser now, not two
+    implementations of the same rule.
+    """
+    return sqlalchemy.engine.make_url(url).database or ""
 
 
 @register_database_type("sqlite")  # lint: allow-dialect-string: config type registration
@@ -25,19 +54,14 @@ class SQLiteConfig(BaseDatabaseConfig):
 
         # Determine database path from various sources
         if not self.path:
-            # Check if path is in url field; strip sqlite:// prefix so the path
-            # field always contains a bare file system path (or :memory:).
-            # Per RFC 3986, ``sqlite:///tmp/x.db`` is scheme=sqlite, authority=""
-            # (between the second and third slash), path=/tmp/x.db — i.e. the
-            # leading slash belongs to the path and MUST be preserved.
+            # Check if path is in url field. ``sqlite_path_from_url`` is the
+            # single place dblift parses a ``sqlite://`` URL — see its
+            # docstring for why this must agree with SQLAlchemy's own
+            # resolution rather than RFC 3986's.
             if self.url:
                 url = self.url
                 if url.startswith("sqlite://"):
-                    self.path = url[9:]
-                    if self.path == "/:memory:":
-                        self.path = ":memory:"
-                    if self.path.startswith("//"):
-                        self.path = "/" + self.path.lstrip("/")
+                    self.path = sqlite_path_from_url(url)
                 else:
                     self.path = url
             elif self.database:

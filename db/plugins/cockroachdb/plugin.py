@@ -25,4 +25,5 @@ PLUGIN: PluginInfo = PluginInfo(
     config_dialect="postgresql",
     sqlalchemy_url_builder=build_sqlalchemy_url,
     native_driver_module="psycopg",
+    install_extra="cockroachdb",
 )

@@ -7,6 +7,121 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+### Changed
+
+### Fixed
+
+### Removed
+
+## [3.2.0] - 2026-07-26
+
+### Fixed
+
+- **SQLite `sqlite://` URLs now resolve exactly as SQLAlchemy resolves them.**
+  dblift used to strip the `sqlite://` prefix and parse what remained per RFC
+  3986 (empty authority, so the following slash is part of the path), which
+  resolved `sqlite:///release.db` to the **filesystem root** (`/release.db`).
+  SQLAlchemy resolves the same string to `release.db`, relative to the
+  current working directory — and dblift fed the identical URL string to both
+  its own native `sqlite3` connection (RFC-3986 reading) and to SQLAlchemy
+  (relative reading) for anyone using `from_sqlalchemy` or the SQLAlchemy
+  engine path, so the two connections silently addressed **different files**
+  for one config. dblift now adopts SQLAlchemy's convention everywhere:
+  three slashes is relative to cwd, four slashes is absolute,
+  `sqlite:///:memory:` is unchanged. The parsing lives in one place,
+  `db.plugins.sqlite.config.sqlite_path_from_url`, used by both the native
+  connection manager and the config loader, so the two can no longer drift
+  apart.
+
+  **This is a behavior change if you wrote `sqlite:///abs/path.db` meaning an
+  absolute path.** That URL now resolves to `abs/path.db` relative to the
+  working directory, not `/abs/path.db`. If you meant an absolute path, add a
+  fourth slash: `sqlite:////abs/path.db`.
+
+- **Filesystem plugin discovery no longer overwrites a plugin's declared
+  metadata.** The fallback scan decided whether a plugin was already
+  registered by comparing its *directory name* against the registry, which is
+  keyed by declared name and dialects instead. Python package names cannot
+  contain hyphens, so any plugin whose dialect key has one necessarily lives
+  in a differently-spelled directory (`aurora_postgresql/` declaring
+  `aurora-postgresql`) — the check missed, the plugin was reloaded, and the
+  richer entry-point declaration was replaced by a reconstruction. The check
+  now uses the loaded plugin's own identity, and the reconstruction copies
+  every `PluginInfo` field it did not derive itself rather than naming them
+  one by one, so a field added later cannot be silently dropped.
+
+- **`dblift list-drivers` no longer reports Cosmos DB as available without its
+  SDK.** A plugin declaring no native driver module was treated as always
+  satisfied, which was true by accident while the Azure SDK shipped
+  unconditionally. Cosmos DB now declares `azure.cosmos` and its extra, so
+  `list-drivers` and `db diagnose` tell the truth on a bare install, and the
+  Cosmos DB connection error names `pip install "dblift[cosmosdb]"` instead of
+  the raw PyPI package names. Note that `dblift db validate-config` for a
+  Cosmos DB configuration now **fails** when the SDK is absent, where it
+  previously passed — that command reports whether the configuration *and its
+  driver* are usable.
+
+### Added
+
+- **A missing optional database driver now names the `pip install` command
+  that fixes it.** `pip install dblift` intentionally installs no database
+  drivers, so the first real command against, e.g., PostgreSQL failed with
+  SQLAlchemy's raw `No module named 'psycopg'` — accurate, but silent about
+  the fix. Every plugin with a native driver now declares the
+  `pyproject.toml` extra that installs it (`PluginInfo.install_extra`), and
+  the error raised from engine creation is rewritten to
+  `Native driver module 'psycopg' is not installed for postgresql. Install
+  it with: pip install "dblift[postgresql]"` whenever the failure is
+  provably the declared driver's absence — an unrelated `ModuleNotFoundError`
+  (e.g. a typo'd YAML import) is left untouched. SQLite declares no extra,
+  since it needs nothing installed.
+
+- **A missing SQLAlchemy *dialect* package now names its extra too.** Four
+  extras ship a SQLAlchemy dialect rather than only a DBAPI —
+  `dblift[snowflake]` (`snowflake-sqlalchemy`), `dblift[redshift]`
+  (`sqlalchemy-redshift`), `dblift[db2]` (`ibm_db_sa`), `dblift[duckdb]`
+  (`duckdb_engine`). With one of those absent, engine creation failed earlier
+  than the driver import above and with a different exception:
+  `sqlalchemy.exc.NoSuchModuleError: Can't load plugin:
+  sqlalchemy.dialects:snowflake`, which subclasses `ArgumentError` rather than
+  `ModuleNotFoundError` and so reached the user raw. It is now rewritten to
+  `SQLAlchemy has no dialect registered for 'snowflake', which dblift's
+  snowflake connection URL requires: no installed package provides that
+  dialect. Install it with: pip install "dblift[snowflake]"`. The rewrite is
+  deliberately narrow — it applies only when the plugin SQLAlchemy failed to
+  load is exactly the one dblift's own URL named, so a `NoSuchModuleError`
+  about any other plugin, and any dialect whose plugin declares no extra,
+  still surfaces unchanged. The exception type and its `__cause__` are
+  preserved, so code catching `NoSuchModuleError` or `ArgumentError` keeps
+  working and the original traceback is still attached.
+
+- **`dblift[all]` now installs every engine's driver.** It named seven extras
+  out of eighteen, so `pip install dblift[all]` followed by a Snowflake or
+  Redshift connection installed nothing for it. All eighteen engine extras are
+  named, including the PostgreSQL-compatible aliases — they resolve to the
+  same driver today, but that is a fact about the current dependency table
+  rather than a property of the aliases, and Redshift and Snowflake already
+  show the shape can diverge. A test derives the engine-extra set from
+  `pyproject.toml`, so an extra that `all` forgets now fails the build.
+
+- **New `dblift[cosmosdb]` extra**, installing `azure-cosmos` and
+  `azure-identity`.
+
+### Changed
+
+- **The Azure Cosmos DB SDK is no longer installed by `pip install dblift`.**
+  `azure-cosmos` and `azure-identity` were mandatory dependencies, so every
+  install carried one engine's driver while the other seventeen stayed
+  optional. They now live in the `cosmosdb` extra like every other driver.
+
+  **If you use Cosmos DB, install `dblift[cosmosdb]` when upgrading** —
+  otherwise the first Cosmos DB command fails. It fails with a message naming
+  that exact command, not a bare import error. Everyone else gets a smaller
+  install. `dblift[all]` includes it, and the published Docker image is
+  unaffected because it installs `.[all]`.
+
 ## [3.1.0] - 2026-07-25
 
 ### Added

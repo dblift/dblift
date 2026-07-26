@@ -19,4 +19,5 @@ PLUGIN: PluginInfo = PluginInfo(
     config_class=Db2Config,
     sqlalchemy_url_builder=build_sqlalchemy_url,
     native_driver_module="ibm_db_sa",
+    install_extra="db2",
 )

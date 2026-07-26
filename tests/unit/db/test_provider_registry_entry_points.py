@@ -7,14 +7,32 @@ can opt in without modifying ``core/`` or ``db/plugins/``.
 
 from __future__ import annotations
 
+import dataclasses
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
 import pytest
 
+import db.plugins
 from db.base_provider import BaseProvider
 from db.base_quirks import BaseQuirks
 from db.provider_registry import PluginInfo, ProviderRegistry
+
+# Fields that ``_load_plugin`` derives itself from the filesystem/package
+# scan (module name, dunder attrs, class introspection) and must therefore
+# keep overriding on every load. Every other ``PluginInfo`` field belongs to
+# the plugin's own ``plugin.py:PLUGIN`` declaration and must survive a
+# filesystem-triggered reconstruction unchanged.
+_FILESYSTEM_DERIVED_FIELDS = {
+    "name",
+    "version",
+    "description",
+    "dialects",
+    "provider_class",
+    "transport",
+    "quirks_class",
+}
 
 
 class _FakeProvider(BaseProvider):
@@ -121,6 +139,62 @@ def test_filesystem_fallback_skips_already_registered(_reset_registry):
     ProviderRegistry._discover_via_filesystem()
     # The pre-registered entry must still be ours.
     assert ProviderRegistry._plugins["postgresql"] is _FAKE_PLUGIN
+
+
+def test_filesystem_discovery_does_not_reload_hyphenated_dir_mismatch(_reset_registry):
+    """A plugin directory name that differs from its declared identity only
+    by ``_`` vs ``-`` must not be treated as unregistered.
+
+    ``db/plugins/aurora_postgresql`` (underscore directory) declares
+    ``__plugin_name__ = "aurora-postgresql"`` and ``__plugin_dialects__ =
+    ["aurora-postgresql"]`` (hyphen). The filesystem-discovery skip check in
+    ``_discover_via_filesystem`` compares ``plugin_dir.name.lower()``
+    (``"aurora_postgresql"``) against the registered keys verbatim, so a
+    plugin already registered (e.g. via the entry-point pass) under
+    ``"aurora-postgresql"`` is *not* recognised as already-registered, gets
+    reloaded from the filesystem, and the freshly reconstructed
+    ``PluginInfo`` clobbers the richer, previously-registered one.
+    """
+    from db.plugins.aurora_postgresql.plugin import PLUGIN as declared_aurora
+
+    ProviderRegistry.register_plugin(declared_aurora)
+    ProviderRegistry._discover_via_filesystem()
+
+    assert (
+        ProviderRegistry._plugins["aurora-postgresql"] is declared_aurora
+    ), "filesystem discovery replaced the already-registered PluginInfo"
+
+
+def test_load_plugin_preserves_all_non_filesystem_declared_fields(_reset_registry):
+    """Guard against Defect A: ``_load_plugin``'s ``PluginInfo`` reconstruction
+    must carry every field the filesystem scan does not itself derive.
+
+    ``aurora-postgresql`` ships no ``provider.py`` / ``quirks.py`` of its own
+    — its package-level derivation finds nothing usable, so ``_load_plugin``
+    must fall back to whatever ``plugin.py:PLUGIN`` declared for everything
+    the filesystem doesn't own (``config_dialect``, ``config_class``,
+    ``sqlalchemy_url_builder``, ``native_driver_module``, ``install_extra``,
+    and any field added to ``PluginInfo`` later), not just the ones a manual
+    enumeration happens to remember.
+
+    This iterates ``dataclasses.fields(PluginInfo)`` generically instead of
+    naming each field, so a field added to ``PluginInfo`` after this test is
+    written is still checked automatically — that is exactly the shape of
+    bug that dropped ``install_extra`` previously (a field-by-field
+    reconstruction that wasn't updated when the field was added).
+    """
+    from db.plugins.aurora_postgresql.plugin import PLUGIN as declared_aurora
+
+    plugin_dir = Path(db.plugins.__file__).parent / "aurora_postgresql"
+    loaded = ProviderRegistry._load_plugin(plugin_dir)
+
+    assert loaded is not None
+    for field in dataclasses.fields(PluginInfo):
+        if field.name in _FILESYSTEM_DERIVED_FIELDS:
+            continue
+        assert getattr(loaded, field.name) == getattr(
+            declared_aurora, field.name
+        ), f"field {field.name!r} was dropped by the _load_plugin reconstruction"
 
 
 def test_first_party_plugins_round_trip_through_full_discovery(_reset_registry):

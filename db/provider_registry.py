@@ -1,5 +1,6 @@
 """Provider registry for auto-discovery and registration of database provider plugins."""
 
+import dataclasses
 import importlib.util
 import logging
 from dataclasses import dataclass
@@ -54,6 +55,13 @@ class PluginInfo:
     # config instance and returns the SQLAlchemy URL for ``create_engine``.
     sqlalchemy_url_builder: Optional[Callable[[Any], str]] = None
     native_driver_module: Optional[str] = None
+    # The ``pyproject.toml`` optional-dependencies extra that installs
+    # ``native_driver_module`` (e.g. ``"postgresql"`` for ``psycopg``), so
+    # ``validate_driver_for_type`` can name a real ``pip install`` command
+    # instead of just the bare module. ``None`` for plugins with no driver to
+    # install (SQLite) and must otherwise match ``[project.optional-dependencies]``
+    # exactly — declaring a wrong extra is worse than declaring none.
+    install_extra: Optional[str] = None
 
 
 class NativeDriverManager:
@@ -77,13 +85,37 @@ class NativeDriverManager:
             return False
 
     @staticmethod
+    def missing_driver_message(db_type: str, plugin_info: PluginInfo) -> str:
+        """Compose the "driver not installed" message for *plugin_info*.
+
+        Shared by :meth:`validate_driver_for_type` (which first confirms the
+        driver is actually absent) and
+        ``db.native_connection_manager.describe_missing_driver`` (which
+        already holds proof of absence — the ``ModuleNotFoundError``
+        SQLAlchemy just raised — and only needs the message, not another
+        availability check). One composer keeps both call sites' wording
+        identical.
+
+        When the plugin declares an ``install_extra``, the message names the
+        exact ``pip install`` command that installs it; a plugin with a driver
+        but no declared extra falls back to just naming the module, since
+        that is all that's known.
+        """
+        module = plugin_info.native_driver_module or "unknown"
+        if plugin_info.install_extra:
+            return (
+                f"Native driver module '{module}' is not installed for {db_type}. "
+                f'Install it with: pip install "dblift[{plugin_info.install_extra}]"'
+            )
+        return f"Native driver module '{module}' is not installed for {db_type}"
+
+    @staticmethod
     def validate_driver_for_type(
         db_type: str, plugin_info: Optional[PluginInfo]
     ) -> Tuple[bool, Optional[str]]:
         """Validate plugin-declared native driver availability."""
         if plugin_info and not NativeDriverManager.check_driver_installed(plugin_info):
-            module = plugin_info.native_driver_module or "unknown"
-            return False, f"Native driver module '{module}' is not installed for {db_type}"
+            return False, NativeDriverManager.missing_driver_message(db_type, plugin_info)
         return True, None
 
 
@@ -168,6 +200,21 @@ class ProviderRegistry:
         Used as a fallback in source-checkout scenarios where
         entry-points are not available. Plugins already registered by
         the entry-point pass are skipped.
+
+        The "already registered" check is made against the plugin's own
+        *declared* identity (``PluginInfo.name`` and ``PluginInfo.dialects``,
+        the same keys :meth:`register_plugin` indexes by) rather than the
+        directory name. A directory-name check is only a proxy for identity,
+        and the proxy can be wrong: Python package names can't contain
+        hyphens, so a plugin whose dialect key has one (e.g.
+        ``aurora-postgresql``) necessarily lives in a differently-spelled
+        directory (``aurora_postgresql/``). Comparing the directory name
+        against registered keys verbatim missed that case, so a plugin
+        already registered by the entry-point pass with richer metadata was
+        reloaded from the filesystem and silently overwritten with a plainer
+        reconstruction. Loading first and checking the loaded identity
+        instead makes the skip check correct for any future naming
+        divergence, not just this one.
         """
         plugins_dir = Path(__file__).parent / "plugins"
         if not plugins_dir.exists():
@@ -176,16 +223,23 @@ class ProviderRegistry:
         for plugin_dir in plugins_dir.iterdir():
             if not plugin_dir.is_dir() or plugin_dir.name.startswith("_"):
                 continue
-            # Skip when already registered (by entry-point or earlier scan).
-            if plugin_dir.name.lower() in cls._plugins:
-                continue
 
             try:
                 plugin_info = cls._load_plugin(plugin_dir)
-                if plugin_info:
-                    cls.register_plugin(plugin_info)
             except Exception as e:
                 _logger.warning(f"Failed to load plugin from {plugin_dir}: {e}")
+                continue
+
+            if plugin_info is None:
+                continue
+
+            already_registered = plugin_info.name.lower() in cls._plugins or any(
+                dialect.lower() in cls._plugins for dialect in plugin_info.dialects
+            )
+            if already_registered:
+                continue
+
+            cls.register_plugin(plugin_info)
 
     @classmethod
     def _load_plugin(cls, plugin_dir: Path) -> Optional[PluginInfo]:
@@ -285,14 +339,8 @@ class ProviderRegistry:
         if quirks_class is None and declared is not None:
             quirks_class = declared.quirks_class
 
-        config_dialect: Optional[str] = declared.config_dialect if declared else None
-        config_class: Optional[Type[Any]] = declared.config_class if declared else None
-        sqlalchemy_url_builder: Optional[Callable[[Any], str]] = (
-            declared.sqlalchemy_url_builder if declared else None
-        )
-        native_driver_module: Optional[str] = declared.native_driver_module if declared else None
-
-        return PluginInfo(
+        return cls._merge_declared_metadata(
+            declared,
             name=name,
             version=version,
             description=description,
@@ -300,11 +348,59 @@ class ProviderRegistry:
             provider_class=provider_class,
             transport=transport,
             quirks_class=quirks_class,
-            config_dialect=config_dialect,
-            config_class=config_class,
-            sqlalchemy_url_builder=sqlalchemy_url_builder,
-            native_driver_module=native_driver_module,
         )
+
+    @staticmethod
+    def _merge_declared_metadata(
+        declared: Optional[PluginInfo],
+        *,
+        name: str,
+        version: str,
+        description: str,
+        dialects: List[str],
+        provider_class: Type[BaseProvider],
+        transport: ProviderTransport,
+        quirks_class: Optional[Type[BaseQuirks]],
+    ) -> PluginInfo:
+        """Build the ``PluginInfo`` the filesystem scan registers.
+
+        ``name``, ``version``, ``description``, ``dialects``,
+        ``provider_class``, ``transport`` and ``quirks_class`` are the fields
+        the filesystem/package scan derives itself (module dunder attrs and
+        class introspection, with ``provider_class``/``quirks_class`` already
+        resolved to fall back to ``declared`` by the caller when the package
+        ships no ``provider.py``/``quirks.py`` of its own) — those always come
+        from the arguments here, never from ``declared``.
+
+        Every other field — ``config_dialect``, ``config_class``,
+        ``sqlalchemy_url_builder``, ``native_driver_module``,
+        ``install_extra``, and anything added to ``PluginInfo`` later — is
+        not something the filesystem can derive, so it must come from the
+        plugin's own declaration. Building the result with
+        ``dataclasses.replace(declared, **overrides)`` instead of naming each
+        field threads those fields through automatically: a field added to
+        ``PluginInfo`` in the future is carried without this function needing
+        an update. The previous version named each field individually, which
+        is exactly how ``install_extra`` was silently dropped here before —
+        the enumeration wasn't updated when the field was added.
+
+        When there is no ``declared`` ``PLUGIN`` at all (the plugin ships no
+        ``plugin.py``), there is nothing to replace onto, so a fresh
+        ``PluginInfo`` is built from just the filesystem-derived fields and
+        every other field keeps its ``PluginInfo`` default.
+        """
+        overrides: Dict[str, Any] = dict(
+            name=name,
+            version=version,
+            description=description,
+            dialects=dialects,
+            provider_class=provider_class,
+            transport=transport,
+            quirks_class=quirks_class,
+        )
+        if declared is None:
+            return PluginInfo(**overrides)
+        return dataclasses.replace(declared, **overrides)
 
     @classmethod
     def _discover_quirks_class(
@@ -396,6 +492,21 @@ class ProviderRegistry:
             return plugin_info.provider_class
 
         return None
+
+    @classmethod
+    def get_plugin_info(cls, db_type: str) -> Optional[PluginInfo]:
+        """Return the registered :class:`PluginInfo` for a database type, or ``None``.
+
+        Args:
+            db_type: Database type or dialect alias (e.g. ``"postgresql"``,
+                ``"postgres"``, ``"sqlite3"``).
+
+        Returns:
+            The plugin metadata, or ``None`` if *db_type* is unregistered.
+        """
+        if not cls._discovered:
+            cls.discover_plugins()
+        return cls._plugins.get((db_type or "").lower())
 
     @classmethod
     def get_provider_by_url(cls, database_url: str) -> Optional[Type[BaseProvider]]:

@@ -146,7 +146,7 @@ DBLift works with these databases:
 | MariaDB | `mysql+pymysql://localhost:3306/mydb` | `dblift[mariadb]` |
 | DB2 | `ibm_db_sa://localhost:50000/mydb` | `dblift[db2]` |
 | SQLite | `/path/to/database.db` or `:memory:` (see [SQLite Configuration](#sqlite-configuration)) |
-| Azure Cosmos DB | `https://account.documents.azure.com:443/` (see [CosmosDB Configuration](#cosmosdb-configuration)) |
+| Azure Cosmos DB | `https://account.documents.azure.com:443/` (see [CosmosDB Configuration](#cosmosdb-configuration)) | `dblift[cosmosdb]` |
 
 ## SQLite Configuration
 
@@ -184,6 +184,12 @@ export DBLIFT_DB_PATH="/path/to/database.db"
 - Use `:memory:` for an in-memory database (useful for testing)
 
 ## CosmosDB Configuration
+
+Cosmos DB needs the Azure SDK, which ships in its own extra:
+
+```bash
+pip install "dblift[cosmosdb]"
+```
 
 Azure Cosmos DB uses a different configuration format through the Azure SDK:
 

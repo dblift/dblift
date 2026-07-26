@@ -18,8 +18,9 @@ Jinja2>=3.1.0
 sqlglot>=30.0.0
 packaging>=23.0
 
-# Azure Cosmos DB support
-azure-cosmos>=4.5.0
-
 # Native driver integration
 SQLAlchemy>=2.0.0
+
+# No database drivers here, by design: they live in the pyproject extras
+# (`dblift[postgresql]`, `dblift[cosmosdb]`, … or `dblift[all]`). An image that
+# needs to reach a database installs the extra on top of this file.

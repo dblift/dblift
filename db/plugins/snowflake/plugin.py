@@ -19,4 +19,5 @@ PLUGIN: PluginInfo = PluginInfo(
     config_class=SnowflakeConfig,
     sqlalchemy_url_builder=build_sqlalchemy_url,
     native_driver_module="snowflake.connector",
+    install_extra="snowflake",
 )

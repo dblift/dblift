@@ -23,4 +23,5 @@ PLUGIN: PluginInfo = PluginInfo(
     config_dialect="postgresql",
     sqlalchemy_url_builder=build_sqlalchemy_url,
     native_driver_module="redshift_connector",
+    install_extra="redshift",
 )
