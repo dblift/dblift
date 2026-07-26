@@ -1,5 +1,6 @@
 """Owns a SQLAlchemy Engine and hands out Connections."""
 
+import re
 from typing import Any, Optional
 
 from sqlalchemy import create_engine
@@ -7,6 +8,31 @@ from sqlalchemy.engine import Connection, Engine
 
 from core.logger import Log, NullLog
 from db.provider_registry import NativeDriverManager, ProviderRegistry
+
+# Matches the module name CPython quotes at the start of a ``ModuleNotFoundError``
+# message. Deliberately a prefix match, not a full one: the message can carry a
+# trailing clause (``No module named 'a.b'; 'a' is not a package``) that is not
+# part of the module name.
+_MISSING_MODULE_RE = re.compile(r"No module named '([^']+)'")
+
+
+def _missing_module(exc: ModuleNotFoundError) -> Optional[str]:
+    """Return the module name *exc* reports as missing, or ``None`` if it reports none.
+
+    Read from the message text rather than ``exc.name``: ``name`` is
+    keyword-only, so it is ``None`` on every hand-constructed
+    ``ModuleNotFoundError`` — including the one ``NativeConnectionManager.engine``
+    raises to carry the hint. Nothing is lost by preferring the message: for
+    interpreter-raised failures the two always agree, which
+    ``tests/unit/db/test_missing_driver_hint.py`` measures rather than assumes.
+    """
+    match = _MISSING_MODULE_RE.match(str(exc))
+    return match.group(1) if match else None
+
+
+def _is_module_or_ancestor(candidate: str, module: str) -> bool:
+    """Report whether *candidate* is *module* itself or one of its dot-boundary ancestors."""
+    return candidate == module or module.startswith(f"{candidate}.")
 
 
 def describe_missing_driver(dialect: str, exc: BaseException) -> Optional[str]:
@@ -21,10 +47,12 @@ def describe_missing_driver(dialect: str, exc: BaseException) -> Optional[str]:
     user would otherwise see a raw ``No module named 'psycopg'`` with no clue
     that the fix is ``pip install "dblift[postgresql]"``.
 
-    Only reinterprets the failure when *exc* names the exact module the
-    registered plugin declares as its ``native_driver_module`` for *dialect* —
-    an unrelated ``ModuleNotFoundError`` (a typo'd YAML import, a missing
-    unrelated package) must surface unchanged, so this returns ``None``
+    Only reinterprets the failure when *exc* names the module the registered
+    plugin declares as its ``native_driver_module`` for *dialect*, or a
+    dot-boundary ancestor of it (``snowflake`` for a declared
+    ``snowflake.connector``) — an unrelated ``ModuleNotFoundError`` (a typo'd
+    YAML import, a missing unrelated package, a submodule of the driver package
+    that is not the driver) must surface unchanged, so this returns ``None``
     whenever the failure isn't provably the declared driver's absence.
     """
     if not isinstance(exc, ModuleNotFoundError):
@@ -33,10 +61,21 @@ def describe_missing_driver(dialect: str, exc: BaseException) -> Optional[str]:
     if plugin_info is None or not plugin_info.native_driver_module:
         return None
     module = plugin_info.native_driver_module
-    # ``ModuleNotFoundError`` for a dotted module (e.g. ``snowflake.connector``)
-    # names only the missing leaf in ``.name`` (``"connector"``), so match on
-    # the message text SQLAlchemy/Python actually raises rather than ``.name``.
-    if f"No module named '{module}'" not in str(exc):
+    # For a dotted declaration such as ``snowflake.connector``, CPython does not
+    # necessarily name the declared module: it names the *first* component of the
+    # dotted chain it could not find. With no ``snowflake`` package installed at
+    # all — the common case after a bare ``pip install dblift`` — the failure is
+    # ``No module named 'snowflake'``, and the declared string never appears.
+    #
+    # Hence "the declared module or a dot-boundary ancestor of it": an ancestor
+    # being missing proves the declared module is unreachable, so naming the
+    # extra is right. A *descendant* being missing (``snowflake.other``) proves
+    # the opposite — the declared package was importable — so suggesting
+    # ``pip install`` would be a no-op hiding the real failure. The dot boundary
+    # is what makes this an ancestor test rather than a string-prefix one:
+    # ``snowflake_utils`` is an unrelated distribution.
+    missing = _missing_module(exc)
+    if missing is None or not _is_module_or_ancestor(missing, module):
         return None
     return NativeDriverManager.missing_driver_message(dialect, plugin_info)
 
