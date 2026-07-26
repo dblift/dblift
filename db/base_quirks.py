@@ -14,7 +14,18 @@ per-plugin classes override the deltas.
 from __future__ import annotations
 
 import re
-from typing import TYPE_CHECKING, Any, ClassVar, Dict, Optional, Sequence, Tuple, Type
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    ClassVar,
+    Dict,
+    Mapping,
+    NamedTuple,
+    Optional,
+    Sequence,
+    Tuple,
+    Type,
+)
 
 from core.dialect_boundary import DialectQuirks
 from db.dml_analysis import (
@@ -31,6 +42,35 @@ from db.feature_gate import FeatureGate
 if TYPE_CHECKING:
     from core.sql_generator.alter.base_alter_generator import BaseAlterGenerator
     from core.sql_generator.base_generator import BaseSqlGenerator
+
+
+class RowLimitClauses(NamedTuple):
+    """The three fragments that bound a ``SELECT`` to a fixed row count.
+
+    Rendered by :meth:`BaseQuirks.row_limit_clauses` and composed by the
+    caller into its own query::
+
+        f"SELECT {c.select_prefix}{columns} FROM {table}" \\
+        f" WHERE {pred}{' AND ' if pred and c.where_predicate else ''}{c.where_predicate}" \\
+        f"{c.query_suffix}"
+
+    Three fields, not two, because ``ROWNUM`` (Oracle's pre-12.1 row cap) is
+    neither a ``SELECT``-list prefix nor a trailing suffix — it is a ``WHERE``
+    predicate. Folding it into ``query_suffix`` would only work when the
+    caller's query already has a ``WHERE`` clause with nothing appended after
+    it, which is not a safe assumption to bake into every call site. Keeping
+    the predicate in its own field makes the shape honest: exactly one of the
+    three fields is non-empty for any given dialect/version (see the
+    invariant tests in ``tests/unit/db/test_dialect_capability_quirks.py``).
+    """
+
+    #: Prepended to the ``SELECT`` column list, e.g. ``"TOP (10) "`` (SQL Server).
+    select_prefix: str
+    #: A bare condition to AND into the query's ``WHERE`` clause, e.g.
+    #: ``"ROWNUM <= 10"`` — no leading ``WHERE``/``AND``, the caller composes it.
+    where_predicate: str
+    #: Appended after the query, e.g. ``" LIMIT 10"`` or ``" FETCH FIRST 10 ROWS ONLY"``.
+    query_suffix: str
 
 
 class BaseQuirks:
@@ -189,16 +229,16 @@ class BaseQuirks:
         """
         return [schema, table, column]
 
-    def row_limit_clauses(self, row_count: int) -> Tuple[str, str]:
-        """Return ``(select_prefix, query_suffix)`` bounding a SELECT to *row_count* rows.
+    def row_limit_clauses(
+        self, row_count: int, server_info: Optional[Mapping[str, Any]] = None
+    ) -> RowLimitClauses:
+        """Return the three fragments bounding a SELECT to *row_count* rows.
 
-        The two fragments wrap a query from both ends because the dialects
-        disagree about which end the cap belongs on::
-
-            f"SELECT {prefix}{columns} FROM {table} WHERE {pred}{suffix}"
-
-        ``"limit"`` and ``"fetch_first"`` return an empty prefix; ``"top"``
-        returns an empty suffix. Rendering both here keeps every caller's
+        See :class:`RowLimitClauses` for why the result has three fields
+        instead of two. Exactly one field is populated for any given
+        dialect: ``"limit"`` and ``"fetch_first"`` populate ``query_suffix``;
+        ``"top"`` populates ``select_prefix``; ``"rownum"`` populates
+        ``where_predicate``. Rendering all three here keeps every caller's
         f-string identical regardless of dialect, which is the point — the
         alternative is each call site re-deriving the syntax from a dialect
         name.
@@ -206,12 +246,21 @@ class BaseQuirks:
         Driven by :attr:`row_limit_style`; an unrecognised value falls back to
         ``LIMIT``, the majority form, rather than silently emitting no cap at
         all — an uncapped query is the dangerous outcome here.
+
+        ``server_info`` is accepted here (and ignored by the base
+        implementation) so that plugins whose row-limit syntax depends on the
+        server version — currently only Oracle, via
+        :meth:`db.plugins.oracle.quirks.OracleQuirks.row_limit_clauses` — can
+        override with the same signature. Dialects with no such dependency
+        never need to look at it.
         """
         if self.row_limit_style == "top":
-            return f"TOP ({row_count}) ", ""
+            return RowLimitClauses(f"TOP ({row_count}) ", "", "")
         if self.row_limit_style == "fetch_first":
-            return "", f" FETCH FIRST {row_count} ROWS ONLY"
-        return "", f" LIMIT {row_count}"
+            return RowLimitClauses("", "", f" FETCH FIRST {row_count} ROWS ONLY")
+        if self.row_limit_style == "rownum":
+            return RowLimitClauses("", f"ROWNUM <= {row_count}", "")
+        return RowLimitClauses("", "", f" LIMIT {row_count}")
 
     def derive_schema_name(self, database_config: Any) -> "Optional[str]":
         """Return a schema name derived from dialect defaults, or ``None``.
@@ -333,8 +382,13 @@ class BaseQuirks:
     #: ``"limit"`` (trailing ``LIMIT n`` — PostgreSQL family, MySQL,
     #: SQLite, Snowflake — default), ``"top"`` (``TOP (n)`` prefix on the
     #: select list — SQL Server family), ``"fetch_first"`` (trailing
-    #: ``FETCH FIRST n ROWS ONLY`` — Oracle, DB2).
-    #: Read through :meth:`row_limit_clauses`, which renders the pair
+    #: ``FETCH FIRST n ROWS ONLY`` — Oracle, DB2), ``"rownum"`` (``WHERE
+    #: ROWNUM <= n`` predicate — the form valid on every Oracle release;
+    #: not the *declared* style of any dialect today, since Oracle keeps
+    #: declaring ``"fetch_first"`` as its native form and downgrades to
+    #: ``"rownum"`` at render time via a version gate — see
+    #: :meth:`db.plugins.oracle.quirks.OracleQuirks.row_limit_clauses`).
+    #: Read through :meth:`row_limit_clauses`, which renders the triple
     #: rather than making each caller re-derive the syntax. Distinct from
     #: :attr:`select_supports_limit`, which answers the coarser "may I
     #: append ``LIMIT`` at all" question for optional probes — but the two
@@ -369,6 +423,41 @@ class BaseQuirks:
     #: ``CAST(expr AS JSON)`` per MDEV-26448, since its ``JSON`` type is only
     #: a ``LONGTEXT`` alias with a validity CHECK).
     json_bind_cast_type: Optional[str] = None
+
+    def json_bind_cast(self, server_info: Optional[Mapping[str, Any]] = None) -> Optional[str]:
+        """Version-aware read of :attr:`json_bind_cast_type` for the captured server.
+
+        Only MySQL declares a gate for this (feature name ``"json_bind_cast"``,
+        ``min_version="5.7.8+"`` — the release that introduced the native
+        ``JSON`` type ``CAST`` targets). Deliberately the mirror image of
+        :meth:`row_limit_clauses`'s Oracle gate: there, the declared form
+        (``FETCH FIRST``) is invalid SQL on an unproven-old server, so an
+        unresolved gate has to fall back to the narrower ``ROWNUM`` form.
+        Here the declared cast is valid on every MySQL release except one
+        that reached EOL years ago, so an unresolved gate keeps today's
+        behaviour instead of guessing — this only downgrades a server
+        *proven* too old (``False``), never one that's merely unproven
+        (``None``).
+
+        Dialects with no gate declared for ``"json_bind_cast"`` (everyone
+        except MySQL) get ``supports_feature() is None`` unconditionally, so
+        this always returns the declared :attr:`json_bind_cast_type`
+        unchanged for them — the gate mechanism is opt-in per dialect.
+
+        MariaDB and Redshift already declare ``json_bind_cast_type = None``
+        on their own subclasses, so this returns ``None`` for them before
+        ever consulting a gate — there is nothing for MariaDB's inherited
+        ``feature_gates`` (redeclared wholesale, without a ``"json_bind_cast"``
+        entry — see ``MariadbQuirks.feature_gates``) to resurrect.
+        """
+        if self.json_bind_cast_type is None:
+            return None
+        from core.sql_model.feature_gates import supports_feature
+
+        if supports_feature(self.dialect_name, "json_bind_cast", server_info) is False:
+            return None
+        return self.json_bind_cast_type
+
     #: An ``UPDATE`` whose subquery reads the table being updated must have
     #: that subquery wrapped in a derived table. MySQL and MariaDB reject the
     #: direct form with error 1093 ("can't specify target table for update in

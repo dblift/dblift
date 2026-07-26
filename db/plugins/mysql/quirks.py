@@ -657,6 +657,10 @@ class MysqlQuirks(BaseQuirks):
             min_version="8.0+",
             description="ALTER TABLE ... RENAME COLUMN",
         ),
+        "json_bind_cast": FeatureGate(
+            min_version="5.7.8+",
+            description="CAST(? AS JSON) — native JSON type introduced in 5.7.8",
+        ),
     }
 
     def type_preferences(self) -> "dict[str, str]":

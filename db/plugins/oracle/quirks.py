@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 import re
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Type
+from typing import TYPE_CHECKING, Any, Dict, List, Mapping, Optional, Tuple, Type
 
-from db.base_quirks import BaseQuirks
+from db.base_quirks import BaseQuirks, RowLimitClauses
 from db.error import ErrorCategory
 from db.feature_gate import FeatureGate
 
@@ -830,7 +830,33 @@ class OracleQuirks(BaseQuirks):
             edition_pattern=r"enterprise",
             description="CREATE INDEX ... ONLINE",
         ),
+        "row_limit_fetch_first": FeatureGate(
+            min_version="12.1+",
+            description="FETCH FIRST n ROWS ONLY",
+        ),
     }
+
+    def row_limit_clauses(
+        self, row_count: int, server_info: Optional[Mapping[str, Any]] = None
+    ) -> RowLimitClauses:
+        """Oracle's native ``FETCH FIRST n ROWS ONLY`` is 12.1+ only.
+
+        python-oracledb's default thin mode already requires 12.1, but thick
+        mode reaches back to 11.2, so there is a real window where the
+        declared style (``row_limit_style = "fetch_first"``, Oracle's
+        idiomatic form) would be invalid SQL. ``WHERE ROWNUM <= n`` is valid
+        on every Oracle release ever shipped, so it is the fallback: a gate
+        that cannot be evaluated (no server info captured, or an unparseable
+        version) must pick the form valid on the *widest* range of versions,
+        not the narrower one it merely hopes is safe. Only a gate that
+        resolves to ``True`` — a server proven to be 12.1+ — earns the
+        native form; ``False`` and ``None`` both fall back to ``ROWNUM``.
+        """
+        from core.sql_model.feature_gates import supports_feature
+
+        if supports_feature(self.dialect_name, "row_limit_fetch_first", server_info) is True:
+            return RowLimitClauses("", "", f" FETCH FIRST {row_count} ROWS ONLY")
+        return RowLimitClauses("", f"ROWNUM <= {row_count}", "")
 
     _MARKETING_VERSION_RE = re.compile(r"\b(\d{2})(?:c|g|ai)\b", re.IGNORECASE)
 

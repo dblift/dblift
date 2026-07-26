@@ -64,30 +64,36 @@ class TestRowLimitStyle:
         assert quirks(dialect).row_limit_style == expected
 
     @pytest.mark.parametrize(
-        "dialect, prefix, suffix",
+        "dialect, prefix, predicate, suffix",
         [
-            ("postgresql", "", " LIMIT 500"),
-            ("mysql", "", " LIMIT 500"),
-            ("sqlite", "", " LIMIT 500"),
-            ("sqlserver", "TOP (500) ", ""),
-            ("oracle", "", " FETCH FIRST 500 ROWS ONLY"),
-            ("db2", "", " FETCH FIRST 500 ROWS ONLY"),
+            ("postgresql", "", "", " LIMIT 500"),
+            ("mysql", "", "", " LIMIT 500"),
+            ("sqlite", "", "", " LIMIT 500"),
+            ("sqlserver", "TOP (500) ", "", ""),
+            # Oracle without server_info can't prove the server is 12.1+, so
+            # the version gate resolves to "unknown" and the render falls
+            # back to the universally-valid ROWNUM predicate rather than the
+            # declared (but possibly-invalid-here) FETCH FIRST form — see
+            # TestVersionAwareRowLimit below.
+            ("oracle", "", "ROWNUM <= 500", ""),
+            ("db2", "", "", " FETCH FIRST 500 ROWS ONLY"),
         ],
     )
-    def test_rendered_clauses(self, dialect: str, prefix: str, suffix: str) -> None:
-        assert quirks(dialect).row_limit_clauses(500) == (prefix, suffix)
+    def test_rendered_clauses(self, dialect: str, prefix: str, predicate: str, suffix: str) -> None:
+        assert quirks(dialect).row_limit_clauses(500) == (prefix, predicate, suffix)
 
     def test_exactly_one_end_carries_the_cap(self) -> None:
         """A style that filled both ends would double-bound the query."""
         for dialect in ("postgresql", "mysql", "sqlite", "sqlserver", "oracle", "db2"):
-            prefix, suffix = quirks(dialect).row_limit_clauses(10)
-            assert bool(prefix) != bool(suffix), dialect
+            clauses = quirks(dialect).row_limit_clauses(10)
+            populated = [f for f in clauses if f]
+            assert len(populated) == 1, dialect
 
     def test_every_registered_dialect_produces_a_cap(self) -> None:
         """An uncapped query is the dangerous outcome, so no dialect may render nothing."""
         for dialect in all_registered_dialects():
-            prefix, suffix = quirks(dialect).row_limit_clauses(10)
-            assert "10" in (prefix + suffix), f"{dialect} renders no row cap"
+            clauses = quirks(dialect).row_limit_clauses(10)
+            assert "10" in "".join(clauses), f"{dialect} renders no row cap"
 
     def test_an_unknown_style_falls_back_to_limit(self) -> None:
         """Fail toward the majority form, never toward an unbounded query."""
@@ -95,7 +101,7 @@ class TestRowLimitStyle:
         class _Odd(BaseQuirks):
             row_limit_style = "nonsense"
 
-        assert _Odd(dialect_name="odd").row_limit_clauses(7) == ("", " LIMIT 7")
+        assert _Odd(dialect_name="odd").row_limit_clauses(7) == ("", "", " LIMIT 7")
 
     def test_row_limit_style_and_select_supports_limit_agree(self) -> None:
         """The two attributes overlap and nothing keeps them in sync.
@@ -254,3 +260,79 @@ class TestUpdateSubqueryDerivedTable:
     def test_everyone_else_takes_the_direct_form(self, dialect: str) -> None:
         """The wrapper is not free — it forces a materialisation."""
         assert quirks(dialect).update_subquery_requires_derived_table is False
+
+
+# --------------------------------------------------------------------------
+# Version-aware resolution
+# --------------------------------------------------------------------------
+
+
+class TestVersionAwareRowLimit:
+    """Oracle's row-limit form depends on the *server*, not just the dialect.
+
+    ``FETCH FIRST n ROWS ONLY`` is Oracle 12.1+. python-oracledb's thin mode
+    (the default) already requires 12.1, but thick mode reaches back to 11.2,
+    so there is a real window where the declared form is invalid SQL.
+    ``WHERE ROWNUM <= n`` is valid on *every* Oracle version, so it is what an
+    unproven server gets — a gate that cannot be evaluated must not pick the
+    narrower form.
+    """
+
+    def test_oracle_without_server_info_uses_the_universally_valid_form(self) -> None:
+        clauses = quirks("oracle").row_limit_clauses(50)
+        assert clauses.select_prefix == ""
+        assert clauses.where_predicate == "ROWNUM <= 50"
+        assert clauses.query_suffix == ""
+
+    def test_oracle_on_a_proven_12c_server_uses_fetch_first(self) -> None:
+        clauses = quirks("oracle").row_limit_clauses(50, server_info={"version": "12.1.0.2"})
+        assert clauses.where_predicate == ""
+        assert clauses.query_suffix == " FETCH FIRST 50 ROWS ONLY"
+
+    def test_oracle_on_a_proven_11g_server_stays_on_rownum(self) -> None:
+        clauses = quirks("oracle").row_limit_clauses(50, server_info={"version": "11.2.0.4"})
+        assert clauses.where_predicate == "ROWNUM <= 50"
+        assert clauses.query_suffix == ""
+
+    def test_db2_fetch_first_is_not_version_gated(self) -> None:
+        """Only Oracle carries the gate; DB2's FETCH FIRST predates any release we meet."""
+        clauses = quirks("db2").row_limit_clauses(50)
+        assert clauses.query_suffix == " FETCH FIRST 50 ROWS ONLY"
+        assert clauses.where_predicate == ""
+
+    def test_every_dialect_still_renders_exactly_one_cap(self) -> None:
+        """Across all three fields, exactly one carries the bound."""
+        for dialect in all_registered_dialects():
+            c = quirks(dialect).row_limit_clauses(10)
+            populated = [f for f in (c.select_prefix, c.where_predicate, c.query_suffix) if f]
+            assert len(populated) == 1, f"{dialect} rendered {populated}"
+            assert "10" in populated[0]
+
+
+class TestVersionAwareJsonCast:
+    """MySQL's JSON type — and therefore ``CAST(x AS JSON)`` — is 5.7.8+.
+
+    Unlike the Oracle case, the declared form is valid on everything except an
+    EOL release, so an unproven server keeps the cast. The gate only downgrades
+    a server *proven* too old; it never changes the common path on a guess.
+    """
+
+    def test_mysql_without_server_info_keeps_the_cast(self) -> None:
+        assert quirks("mysql").json_bind_cast(server_info=None) == "JSON"
+
+    def test_mysql_on_a_proven_5_6_server_drops_the_cast(self) -> None:
+        assert quirks("mysql").json_bind_cast(server_info={"version": "5.6.51"}) is None
+
+    def test_mysql_on_a_proven_5_7_server_keeps_the_cast(self) -> None:
+        assert quirks("mysql").json_bind_cast(server_info={"version": "5.7.44"}) == "JSON"
+
+    def test_ungated_dialects_ignore_server_info(self) -> None:
+        """PostgreSQL's JSONB long predates any server we can connect to."""
+        assert quirks("postgresql").json_bind_cast(server_info={"version": "9.4"}) == "JSONB"
+
+    def test_the_accessor_agrees_with_the_attribute_when_ungated(self) -> None:
+        for dialect in all_registered_dialects():
+            q = quirks(dialect)
+            if dialect in {"mysql"}:
+                continue
+            assert q.json_bind_cast(server_info=None) == q.json_bind_cast_type, dialect
