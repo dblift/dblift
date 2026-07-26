@@ -30,6 +30,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   working directory, not `/abs/path.db`. If you meant an absolute path, add a
   fourth slash: `sqlite:////abs/path.db`.
 
+- **Filesystem plugin discovery no longer overwrites a plugin's declared
+  metadata.** The fallback scan decided whether a plugin was already
+  registered by comparing its *directory name* against the registry, which is
+  keyed by declared name and dialects instead. Python package names cannot
+  contain hyphens, so any plugin whose dialect key has one necessarily lives
+  in a differently-spelled directory (`aurora_postgresql/` declaring
+  `aurora-postgresql`) — the check missed, the plugin was reloaded, and the
+  richer entry-point declaration was replaced by a reconstruction. The check
+  now uses the loaded plugin's own identity, and the reconstruction copies
+  every `PluginInfo` field it did not derive itself rather than naming them
+  one by one, so a field added later cannot be silently dropped.
+
+- **`dblift list-drivers` no longer reports Cosmos DB as available without its
+  SDK.** A plugin declaring no native driver module was treated as always
+  satisfied, which was true by accident while the Azure SDK shipped
+  unconditionally. Cosmos DB now declares `azure.cosmos` and its extra, so
+  `list-drivers` and `db diagnose` tell the truth on a bare install, and the
+  Cosmos DB connection error names `pip install "dblift[cosmosdb]"` instead of
+  the raw PyPI package names. Note that `dblift db validate-config` for a
+  Cosmos DB configuration now **fails** when the SDK is absent, where it
+  previously passed — that command reports whether the configuration *and its
+  driver* are usable.
+
 ### Added
 
 - **A missing optional database driver now names the `pip install` command
@@ -63,6 +86,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   still surfaces unchanged. The exception type and its `__cause__` are
   preserved, so code catching `NoSuchModuleError` or `ArgumentError` keeps
   working and the original traceback is still attached.
+
+- **`dblift[all]` now installs every engine's driver.** It named seven extras
+  out of eighteen, so `pip install dblift[all]` followed by a Snowflake or
+  Redshift connection installed nothing for it. All eighteen engine extras are
+  named, including the PostgreSQL-compatible aliases — they resolve to the
+  same driver today, but that is a fact about the current dependency table
+  rather than a property of the aliases, and Redshift and Snowflake already
+  show the shape can diverge. A test derives the engine-extra set from
+  `pyproject.toml`, so an extra that `all` forgets now fails the build.
+
+- **New `dblift[cosmosdb]` extra**, installing `azure-cosmos` and
+  `azure-identity`.
+
+### Changed
+
+- **The Azure Cosmos DB SDK is no longer installed by `pip install dblift`.**
+  `azure-cosmos` and `azure-identity` were mandatory dependencies, so every
+  install carried one engine's driver while the other seventeen stayed
+  optional. They now live in the `cosmosdb` extra like every other driver.
+
+  **If you use Cosmos DB, install `dblift[cosmosdb]` when upgrading** —
+  otherwise the first Cosmos DB command fails. It fails with a message naming
+  that exact command, not a bare import error. Everyone else gets a smaller
+  install. `dblift[all]` includes it, and the published Docker image is
+  unaffected because it installs `.[all]`.
 
 ## [3.1.0] - 2026-07-25
 
