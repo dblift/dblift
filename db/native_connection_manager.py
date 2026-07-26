@@ -19,12 +19,31 @@ _MISSING_MODULE_RE = re.compile(r"No module named '([^']+)'")
 def _missing_module(exc: ModuleNotFoundError) -> Optional[str]:
     """Return the module name *exc* reports as missing, or ``None`` if it reports none.
 
-    Read from the message text rather than ``exc.name``: ``name`` is
-    keyword-only, so it is ``None`` on every hand-constructed
-    ``ModuleNotFoundError`` — including the one ``NativeConnectionManager.engine``
-    raises to carry the hint. Nothing is lost by preferring the message: for
-    interpreter-raised failures the two always agree, which
-    ``tests/unit/db/test_missing_driver_hint.py`` measures rather than assumes.
+    Read from the message text rather than ``exc.name``. ``name`` is
+    keyword-only, so it holds nothing unless a caller passes it:
+    ``ModuleNotFoundError("No module named 'snowflake'")`` reports
+    ``name is None``, while ``ModuleNotFoundError("...", name="snowflake")``
+    reports ``'snowflake'``. Interpreter-raised failures do populate it, but
+    most of this suite constructs the exception without it, so deciding on
+    ``.name`` would tie the translation to how the exception was built rather
+    than to what is missing.
+
+    The two are not interchangeable. For an ordinary not-found import they
+    agree, which ``tests/unit/db/test_missing_driver_hint.py`` measures rather
+    than assumes, but CPython has forms where they do not:
+
+    * ``sys.modules['x'] = None`` blocks an import, and importing ``x`` then
+      raises ``ModuleNotFoundError`` whose message is ``import of x halted;
+      None in sys.modules`` while ``.name`` is still ``'x'``. This returns
+      ``None`` there, so no hint is composed even where ``.name`` would have
+      named the declared driver's ancestor. That is also what the substring
+      check this replaced did, so it is behaviour recorded by a test rather
+      than a regression: a deliberately blocked import is not evidence that a
+      distribution is absent.
+    * The message interpolates the name with ``{!r}``, so one containing an
+      apostrophe is double-quoted (``No module named "wei'rd_xyz"``) and this
+      regex does not match. Such a name is not a Python identifier, so no
+      ``import`` statement can produce it — only ``importlib`` by string.
     """
     match = _MISSING_MODULE_RE.match(str(exc))
     return match.group(1) if match else None
@@ -61,11 +80,29 @@ def describe_missing_driver(dialect: str, exc: BaseException) -> Optional[str]:
     if plugin_info is None or not plugin_info.native_driver_module:
         return None
     module = plugin_info.native_driver_module
-    # For a dotted declaration such as ``snowflake.connector``, CPython does not
-    # necessarily name the declared module: it names the *first* component of the
-    # dotted chain it could not find. With no ``snowflake`` package installed at
-    # all — the common case after a bare ``pip install dblift`` — the failure is
-    # ``No module named 'snowflake'``, and the declared string never appears.
+    # For a dotted declaration such as ``snowflake.connector``, the failure does
+    # not necessarily name the declared module. On a failed ``a.b.c`` CPython
+    # names the dotted prefix *through* the first component it could not find —
+    # ``a.b`` when ``a.b`` is absent, neither ``b`` on its own nor the full
+    # ``a.b.c`` — so a message that never contains the declared string can still
+    # prove the declared module unreachable.
+    #
+    # What actually arrives here that way, for a dotted declaration: a broken or
+    # partial install, where a ``*.dist-info`` still registers the dialect entry
+    # point but the package directory is gone, so SQLAlchemy resolves the dialect
+    # and the ensuing import raises ``No module named 'snowflake'``; and any
+    # future dotted declaration whose chain breaks above the driver.
+    #
+    # Not a bare ``pip install dblift``, despite appearances. The extras that
+    # ship a SQLAlchemy *dialect* rather than only a DBAPI (snowflake, redshift,
+    # db2, duckdb) fail earlier there: ``create_engine`` cannot resolve the
+    # dialect entry point at all and raises ``NoSuchModuleError``, an
+    # ``ArgumentError`` that neither this function nor ``engine``'s except clause
+    # sees. Engines on SQLAlchemy's built-in dialects (the PostgreSQL family,
+    # MySQL, MariaDB, Oracle, SQL Server, SQLite) do raise
+    # ``ModuleNotFoundError`` for an absent driver and the hint reaches them —
+    # but every one of those declares an undotted module, so the widening below
+    # changes nothing for them.
     #
     # Hence "the declared module or a dot-boundary ancestor of it": an ancestor
     # being missing proves the declared module is unreachable, so naming the

@@ -23,6 +23,7 @@ import pytest
 from sqlalchemy.exc import NoSuchModuleError
 
 import db.native_connection_manager as connection_manager_module
+import db.plugins
 from db.native_connection_manager import NativeConnectionManager, describe_missing_driver
 from db.provider_registry import NativeDriverManager, PluginInfo, ProviderRegistry
 
@@ -196,10 +197,13 @@ class TestTheHintReachesTheUser:
     def test_a_dotted_driver_module_is_matched_on_the_message(self) -> None:
         """Snowflake declares ``snowflake.connector``, so the match must span the dot.
 
-        This is the narrow case: the ``snowflake`` package is present (say
-        ``snowflake-sqlalchemy`` was installed on its own) and only the
-        connector submodule is absent, so CPython names the declared module
-        exactly.
+        This is the narrow case: the ``snowflake`` package is present and only
+        the connector submodule is absent, so CPython names the declared module
+        exactly. Reaching it takes deliberate effort — ``dblift[snowflake]``
+        installs ``snowflake-sqlalchemy``, which depends on
+        ``snowflake-connector-python``, so the connector arrives transitively.
+        It takes a ``pip install --no-deps snowflake-sqlalchemy``, or
+        uninstalling the connector afterwards, to leave a tree in this state.
         """
         plugin = ProviderRegistry.get_plugin_info("snowflake")
         assert plugin is not None
@@ -215,15 +219,22 @@ class TestTheHintReachesTheUser:
         assert 'pip install "dblift[snowflake]"' in message
 
     def test_a_missing_root_package_names_the_extra(self) -> None:
-        """The common case for a dotted driver: the distribution is absent entirely.
+        """A missing *ancestor* of the declared module still names the extra.
 
-        Snowflake is the only plugin declaring a dotted
-        ``native_driver_module``, and a user who ran ``pip install dblift``
-        without the extra has no ``snowflake`` package at all. CPython then
-        reports the missing *ancestor* — ``No module named 'snowflake'`` — and
-        never mentions ``snowflake.connector``, so matching only the declared
-        string missed the single scenario this feature exists for and left
-        snowflake users with SQLAlchemy's raw error.
+        Snowflake is the only first-party plugin declaring a dotted
+        ``native_driver_module``. Whenever the package chain breaks above the
+        driver, CPython reports ``No module named 'snowflake'`` and never
+        mentions ``snowflake.connector``, so matching only the declared string
+        returned ``None`` and the raw error reached the user.
+
+        Reachable when a ``*.dist-info`` still registers snowflake's dialect
+        entry point but the package directory is gone — a partial or broken
+        install — and for any future dotted declaration. It is deliberately
+        *not* the claim that this rescues a bare ``pip install dblift``: with
+        nothing snowflake installed the dialect does not resolve at all and
+        ``create_engine`` raises ``NoSuchModuleError`` before any of this runs,
+        which ``test_a_dialect_sqlalchemy_cannot_load_is_not_translated``
+        pins.
         """
         message = describe_missing_driver(
             "snowflake", ModuleNotFoundError("No module named 'snowflake'", name="snowflake")
@@ -232,17 +243,22 @@ class TestTheHintReachesTheUser:
         assert 'pip install "dblift[snowflake]"' in message
 
     def test_the_hint_does_not_depend_on_the_name_attribute(self) -> None:
-        """A hand-constructed ``ModuleNotFoundError`` carries ``name=None``.
+        """A ``ModuleNotFoundError`` built without ``name=`` carries ``name=None``.
 
         ``name`` is keyword-only, so ``ModuleNotFoundError("No module named
-        'snowflake'")`` — what every caller in this suite builds, and what
-        ``NativeConnectionManager.engine`` itself raises when it substitutes
-        the hint — reports ``name is None``. Deciding on ``.name`` alone would
-        make the translation depend on who constructed the exception rather
-        than on what is missing.
+        'snowflake'")`` — the form most of this suite builds — reports ``name
+        is None``. Passing it does populate it, so the reason to read the
+        message is not that ``.name`` is unavailable: it is that deciding on
+        ``.name`` would make the translation depend on how the exception was
+        constructed rather than on what is missing.
         """
         exc = ModuleNotFoundError("No module named 'snowflake'")
         assert exc.name is None  # the precondition this test rests on
+        # Keyword-only is not the same as unavailable, so "``.name`` is always
+        # ``None`` on a hand-constructed exception" would be false.
+        assert ModuleNotFoundError("No module named 'snowflake'", name="snowflake").name == (
+            "snowflake"
+        )
         assert describe_missing_driver("snowflake", exc) is not None
 
     def test_a_not_a_package_suffix_does_not_defeat_the_match(self) -> None:
@@ -349,32 +365,91 @@ class TestTheHintReachesTheUser:
         )
 
 
-class TestOnlyOnePluginDeclaresADottedDriver:
-    def test_snowflake_is_the_only_dotted_declaration(self) -> None:
+class TestOnlyOneFirstPartyPluginDeclaresADottedDriver:
+    """A reminder for dblift maintainers, so it reads dblift's own plugins only.
+
+    Scoped to the ``PLUGIN`` constants under ``db/plugins/*/plugin.py``, not to
+    ``ProviderRegistry.list_plugins()``. The registry also returns plugins
+    registered through the ``dblift.providers`` entry-point group — the
+    documented extension path (``pip install dblift-snowflake``, see
+    ``ProviderRegistry._discover_via_entry_points``). A third-party plugin is
+    entitled to declare a dotted ``native_driver_module``, and reading the
+    registry would let it turn dblift's own suite red with nothing wrong in
+    dblift.
+    """
+
+    @staticmethod
+    def _first_party_plugins() -> list[PluginInfo]:
+        """Read every first-party ``plugin.py:PLUGIN`` straight off the filesystem."""
+        plugins_dir = Path(db.plugins.__file__).parent
+        return [
+            importlib.import_module(f"db.plugins.{plugin_file.parent.name}.plugin").PLUGIN
+            for plugin_file in sorted(plugins_dir.glob("*/plugin.py"))
+        ]
+
+    def test_the_first_party_plugins_are_actually_found(self) -> None:
+        """Guard the guard: a glob matching nothing would make the tripwire vacuous."""
+        plugins = self._first_party_plugins()
+        names = {plugin.name for plugin in plugins}
+        assert len(plugins) >= 15
+        assert {"snowflake", "postgresql", "mysql", "sqlite"} <= names
+
+    def test_snowflake_is_the_only_first_party_dotted_declaration(self) -> None:
         """The ancestor rule only changes behaviour for dotted modules.
 
-        If a second plugin ever declares one, this test is the reminder that
-        the reasoning above (and the snowflake-specific cases) now applies to
-        it too.
+        If a second first-party plugin ever declares one, this test is the
+        reminder that the reasoning in ``describe_missing_driver`` (and the
+        snowflake-specific cases above) now applies to it too.
         """
         dotted = sorted(
             plugin.name
-            for plugin in ProviderRegistry.list_plugins()
+            for plugin in self._first_party_plugins()
             if plugin.native_driver_module and "." in plugin.native_driver_module
         )
         assert dotted == ["snowflake"]
+
+    def test_a_third_party_dotted_declaration_does_not_fail_this_suite(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Registering one must leave the tripwire above green.
+
+        The registry reports it — that is the extension path working — but it is
+        not dblift's to police, so the maintainer reminder must not fire on it.
+        """
+        host = ProviderRegistry.get_plugin_info("postgresql")
+        assert host is not None
+        third_party = PluginInfo(
+            name="acme-warehouse",
+            version="1.0.0",
+            description="a third-party plugin declaring a dotted driver module",
+            dialects=["acme_warehouse"],
+            provider_class=host.provider_class,
+            native_driver_module="acme.connector",
+            install_extra=None,
+        )
+        monkeypatch.setitem(ProviderRegistry._plugins, "acme-warehouse", third_party)
+
+        assert any(
+            plugin.native_driver_module == "acme.connector"
+            for plugin in ProviderRegistry.list_plugins()
+        ), "precondition: the registry must actually see the third-party plugin"
+        self.test_snowflake_is_the_only_first_party_dotted_declaration()
 
 
 class TestTheCPythonBehaviourTheRuleRestsOn:
     """The declared-module-or-ancestor rule is right because of how imports fail.
 
-    CPython names the *first* component of a dotted chain it could not find —
-    so an ancestor being named proves the declared module is unreachable,
-    while a descendant being named proves it was reachable. It reports that
-    component identically in ``.name`` and in the message text. Neither fact
-    is dblift's to guarantee, and the previous implementation carried a
-    comment asserting the opposite (that ``.name`` holds only the missing
-    leaf), so they are measured here instead of described.
+    On a failed ``a.b.c`` CPython names the dotted prefix *through* the first
+    component it could not find — ``a.b`` when ``a.b`` is absent, neither ``b``
+    on its own nor the full ``a.b.c``. So an ancestor being named proves the
+    declared module is unreachable, while a descendant being named proves it
+    was reachable. For these not-found imports it reports the same string in
+    ``.name`` and in the message text.
+
+    Neither fact is dblift's to guarantee, and the previous implementation
+    carried a comment asserting the opposite (that ``.name`` holds only the
+    missing leaf), so they are measured here instead of described — including
+    the forms where the message and ``.name`` part company.
     """
 
     @pytest.fixture
@@ -424,8 +499,17 @@ class TestTheCPythonBehaviourTheRuleRestsOn:
         assert exc.name == "dblift_fake_pkg.present.missing_leaf"
         assert str(exc) == "No module named 'dblift_fake_pkg.present.missing_leaf'"
 
-    def test_name_is_always_the_module_the_message_quotes(self, _package_on_the_path: None) -> None:
-        """The two never disagree, so reading either loses nothing."""
+    def test_a_not_found_import_quotes_in_the_message_what_name_holds(
+        self, _package_on_the_path: None
+    ) -> None:
+        """For these four imports the message and ``.name`` agree.
+
+        Bounded to imports that fail because a module could not be *found*.
+        That is not a general property of ``ModuleNotFoundError`` — see
+        ``test_a_blocked_import_reports_no_quoted_module_though_name_holds_one``
+        for the form where the two part company — so this claims only what it
+        measures.
+        """
         for target in (
             "dblift_absent_pkg_xyz.connector",
             "dblift_fake_pkg.missing_sub",
@@ -435,6 +519,55 @@ class TestTheCPythonBehaviourTheRuleRestsOn:
             exc = self._failed_import(target)
             assert exc.name is not None
             assert str(exc).startswith(f"No module named '{exc.name}'")
+
+    def test_a_blocked_import_reports_no_quoted_module_though_name_holds_one(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """CPython's third form: ``None`` in ``sys.modules`` blocks the import.
+
+        The message is ``import of x halted; None in sys.modules`` — it quotes
+        no module — while ``.name`` is still ``'x'``. It is one of the shapes
+        where reading the message and reading ``.name`` disagree (the other
+        being the apostrophe case below), and it is pinned here because the
+        docstring of ``_missing_module`` asserts it.
+
+        Consequence, deliberately recorded rather than fixed: with snowflake's
+        root blocked, ``.name`` *is* an ancestor of the declared
+        ``snowflake.connector``, yet no hint is composed. The substring check
+        this replaced behaved identically, so this is not a regression — and a
+        deliberately blocked import is not evidence that a distribution is
+        absent, so translating it into ``pip install`` would be a new and
+        wrong claim about the user's environment.
+        """
+        monkeypatch.setitem(sys.modules, "snowflake", None)
+        with pytest.raises(ModuleNotFoundError) as excinfo:
+            importlib.import_module("snowflake")
+        exc = excinfo.value
+
+        assert str(exc) == "import of snowflake halted; None in sys.modules"
+        assert exc.name == "snowflake"
+        assert connection_manager_module._missing_module(exc) is None
+        # ``.name`` would have matched, which is exactly why the docstring may
+        # not claim the two always agree.
+        assert connection_manager_module._is_module_or_ancestor(exc.name, "snowflake.connector")
+        assert describe_missing_driver("snowflake", exc) is None
+
+    def test_an_apostrophe_in_the_name_is_double_quoted_in_the_message(self) -> None:
+        """The message interpolates the name with ``{!r}``, so quoting flips.
+
+        ``No module named "wei'rd_xyz"`` does not match a regex looking for a
+        single-quoted name, so ``_missing_module`` declines. Pinned because
+        ``_missing_module``'s docstring says so; harmless in practice because
+        such a name is not an identifier, so only ``importlib`` called with a
+        string can even attempt it.
+        """
+        with pytest.raises(ModuleNotFoundError) as excinfo:
+            importlib.import_module("wei'rd_xyz")
+        exc = excinfo.value
+
+        assert str(exc) == 'No module named "wei\'rd_xyz"'
+        assert exc.name == "wei'rd_xyz"
+        assert connection_manager_module._missing_module(exc) is None
 
 
 class _Database:
