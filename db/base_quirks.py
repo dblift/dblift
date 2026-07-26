@@ -50,9 +50,19 @@ class RowLimitClauses(NamedTuple):
     Rendered by :meth:`BaseQuirks.row_limit_clauses` and composed by the
     caller into its own query::
 
-        f"SELECT {c.select_prefix}{columns} FROM {table}" \\
-        f" WHERE {pred}{' AND ' if pred and c.where_predicate else ''}{c.where_predicate}" \\
-        f"{c.query_suffix}"
+        f"SELECT {c.select_prefix}{columns} FROM {table}{c.compose_where(pred)}{c.query_suffix}"
+
+    The WHERE-clause glue lives here, on :meth:`compose_where`, rather than
+    being left for each call site to reimplement, because the first draft
+    documented it as an f-string instead: ``f" WHERE {pred}{' AND ' if pred
+    and c.where_predicate else ''}{c.where_predicate}"``. Executed for a
+    dialect with an empty ``where_predicate`` (every dialect except
+    pre-12.1 Oracle) and a caller with no predicate of its own, that example
+    renders ``SELECT cols FROM t WHERE  LIMIT 10`` — a dangling ``WHERE``
+    with nothing after it. A reference implementation that gets its own
+    no-predicate case wrong is evidence the shape is error-prone to copy, so
+    the composition moves into the type that owns the fragments instead of
+    being re-derived — and potentially re-broken — at every call site.
 
     Three fields, not two, because ``ROWNUM`` (Oracle's pre-12.1 row cap) is
     neither a ``SELECT``-list prefix nor a trailing suffix — it is a ``WHERE``
@@ -62,15 +72,43 @@ class RowLimitClauses(NamedTuple):
     the predicate in its own field makes the shape honest: exactly one of the
     three fields is non-empty for any given dialect/version (see the
     invariant tests in ``tests/unit/db/test_dialect_capability_quirks.py``).
+
+    Note that ``where_predicate`` is populated only by the ``"rownum"``
+    style, and even then only for an *unordered* cap — see
+    :meth:`BaseQuirks.row_limit_clauses` for why an ordered top-N through
+    ``ROWNUM`` is refused outright rather than rendered here.
     """
 
     #: Prepended to the ``SELECT`` column list, e.g. ``"TOP (10) "`` (SQL Server).
     select_prefix: str
     #: A bare condition to AND into the query's ``WHERE`` clause, e.g.
-    #: ``"ROWNUM <= 10"`` — no leading ``WHERE``/``AND``, the caller composes it.
+    #: ``"ROWNUM <= 10"`` — no leading ``WHERE``/``AND``, composed by
+    #: :meth:`compose_where` rather than by the caller.
     where_predicate: str
     #: Appended after the query, e.g. ``" LIMIT 10"`` or ``" FETCH FIRST 10 ROWS ONLY"``.
     query_suffix: str
+
+    def compose_where(self, predicate: str = "") -> str:
+        """Return the complete ``WHERE`` clause, or ``""`` if neither side has one.
+
+        *predicate* is the caller's own condition (no leading ``WHERE``/``AND``);
+        a whitespace-only value is treated the same as an absent one, so a
+        caller that builds its predicate by joining optional fragments doesn't
+        have to special-case the empty-after-strip result itself. When both
+        the caller's predicate and :attr:`where_predicate` are present they are
+        ANDed together, caller's predicate first — matching the order a reader
+        would write by hand. The return value includes the leading space and
+        the ``WHERE`` keyword, so it can be spliced directly after the table
+        name with no extra punctuation at the call site.
+        """
+        caller_predicate = predicate.strip()
+        if caller_predicate and self.where_predicate:
+            return f" WHERE {caller_predicate} AND {self.where_predicate}"
+        if caller_predicate:
+            return f" WHERE {caller_predicate}"
+        if self.where_predicate:
+            return f" WHERE {self.where_predicate}"
+        return ""
 
 
 class BaseQuirks:
@@ -230,7 +268,10 @@ class BaseQuirks:
         return [schema, table, column]
 
     def row_limit_clauses(
-        self, row_count: int, server_info: Optional[Mapping[str, Any]] = None
+        self,
+        row_count: int,
+        server_info: Optional[Mapping[str, Any]] = None,
+        ordered: bool = False,
     ) -> RowLimitClauses:
         """Return the three fragments bounding a SELECT to *row_count* rows.
 
@@ -253,6 +294,18 @@ class BaseQuirks:
         :meth:`db.plugins.oracle.quirks.OracleQuirks.row_limit_clauses` — can
         override with the same signature. Dialects with no such dependency
         never need to look at it.
+
+        ``ordered`` tells the callee whether the capped query also carries an
+        ``ORDER BY`` the caller needs honoured — i.e. whether the caller wants
+        the true top-*row_count* rows by that ordering, as opposed to any
+        *row_count* rows. It matters only for the ``"rownum"`` style: ``WHERE
+        ROWNUM <= n`` is evaluated before ``ORDER BY`` runs, so it caps the
+        rows an arbitrary access path happened to produce and *then* sorts
+        them — not the same rows an ordered top-*n* would select. The base
+        implementation ignores ``ordered`` because none of ``"limit"``,
+        ``"top"`` and ``"fetch_first"`` have this gap: each is applied after
+        sorting. Only :meth:`db.plugins.oracle.quirks.OracleQuirks.row_limit_clauses`
+        inspects it, and only when it has resolved to the ``"rownum"`` form.
         """
         if self.row_limit_style == "top":
             return RowLimitClauses(f"TOP ({row_count}) ", "", "")
@@ -388,6 +441,14 @@ class BaseQuirks:
     #: declaring ``"fetch_first"`` as its native form and downgrades to
     #: ``"rownum"`` at render time via a version gate — see
     #: :meth:`db.plugins.oracle.quirks.OracleQuirks.row_limit_clauses`).
+    #: ``"rownum"`` is a validity fallback ONLY, not a syntax-equivalent
+    #: substitute: ``ROWNUM`` is assigned before ``ORDER BY`` runs, so
+    #: ``WHERE ROWNUM <= n ORDER BY val`` caps *n* rows in access-path order
+    #: and sorts them afterward — it does not return the true top-*n* rows by
+    #: ``val``. A caller that needs an ordered cap must pass
+    #: ``ordered=True`` to :meth:`row_limit_clauses`, which raises rather
+    #: than silently returning the wrong rows when the resolved style is
+    #: ``"rownum"``.
     #: Read through :meth:`row_limit_clauses`, which renders the triple
     #: rather than making each caller re-derive the syntax. Distinct from
     #: :attr:`select_supports_limit`, which answers the coarser "may I

@@ -336,3 +336,84 @@ class TestVersionAwareJsonCast:
             if dialect in {"mysql"}:
                 continue
             assert q.json_bind_cast(server_info=None) == q.json_bind_cast_type, dialect
+
+
+# --------------------------------------------------------------------------
+# Composition safety
+# --------------------------------------------------------------------------
+
+
+class TestComposeWhere:
+    """The caller must not have to reimplement WHERE/AND glue.
+
+    The first draft documented the glue as an f-string for each call site to
+    copy. Executed against a dialect with no ``where_predicate`` and a caller
+    with no predicate of its own, that example rendered
+    ``SELECT cols FROM t WHERE  LIMIT 10`` — a dangling WHERE. A reference
+    implementation that is itself wrong is evidence the shape is error-prone,
+    so the glue moves into the type that owns the fragments.
+    """
+
+    def test_no_predicate_on_either_side_yields_nothing(self) -> None:
+        assert quirks("postgresql").row_limit_clauses(10).compose_where("") == ""
+
+    def test_callers_predicate_alone(self) -> None:
+        assert quirks("postgresql").row_limit_clauses(10).compose_where("id > 5") == (
+            " WHERE id > 5"
+        )
+
+    def test_row_cap_predicate_alone(self) -> None:
+        assert quirks("oracle").row_limit_clauses(10).compose_where("") == " WHERE ROWNUM <= 10"
+
+    def test_both_are_anded(self) -> None:
+        assert quirks("oracle").row_limit_clauses(10).compose_where("id > 5") == (
+            " WHERE id > 5 AND ROWNUM <= 10"
+        )
+
+    def test_a_blank_predicate_is_treated_as_absent(self) -> None:
+        assert quirks("oracle").row_limit_clauses(10).compose_where("   ") == (
+            " WHERE ROWNUM <= 10"
+        )
+
+    def test_the_documented_composition_is_valid_for_every_dialect(self) -> None:
+        """Render the documented pattern for all dialects and reject broken SQL."""
+        for dialect in all_registered_dialects():
+            c = quirks(dialect).row_limit_clauses(10)
+            sql = f"SELECT {c.select_prefix}col FROM t{c.compose_where('')}{c.query_suffix}"
+            assert "WHERE  " not in sql, f"{dialect}: dangling WHERE in {sql!r}"
+            assert not sql.rstrip().endswith("WHERE"), f"{dialect}: {sql!r}"
+
+
+class TestOrderedTopNIsRefusedWhereItWouldLie:
+    """ROWNUM is applied *before* ORDER BY — it cannot express an ordered top-N.
+
+    ``SELECT ... WHERE ROWNUM <= n ORDER BY val`` takes n rows in whatever
+    order the access path produced and *then* sorts them, so it does not
+    return the true top-n by ``val``. The correct pre-12.1 form nests the
+    ordered query in a subquery, which this three-fragment shape cannot
+    express. Rather than silently return wrong rows, the call is refused.
+    """
+
+    def test_oracle_refuses_an_ordered_cap_when_the_version_is_unproven(self) -> None:
+        with pytest.raises(ValueError, match="ORDER BY"):
+            quirks("oracle").row_limit_clauses(10, ordered=True)
+
+    def test_oracle_refuses_an_ordered_cap_on_a_proven_11g_server(self) -> None:
+        with pytest.raises(ValueError, match="ORDER BY"):
+            quirks("oracle").row_limit_clauses(
+                10, ordered=True, server_info={"version": "11.2.0.4"}
+            )
+
+    def test_oracle_allows_an_ordered_cap_on_a_proven_12c_server(self) -> None:
+        c = quirks("oracle").row_limit_clauses(10, ordered=True, server_info={"version": "19.3"})
+        assert c.query_suffix == " FETCH FIRST 10 ROWS ONLY"
+
+    @pytest.mark.parametrize("dialect", ["postgresql", "mysql", "sqlite", "sqlserver", "db2"])
+    def test_other_dialects_are_unaffected_by_ordered(self, dialect: str) -> None:
+        """Only the rownum form has the semantic gap; nothing else is restricted."""
+        assert quirks(dialect).row_limit_clauses(10, ordered=True) == quirks(
+            dialect
+        ).row_limit_clauses(10, ordered=False)
+
+    def test_unordered_is_the_default_and_still_yields_rownum(self) -> None:
+        assert quirks("oracle").row_limit_clauses(10).where_predicate == "ROWNUM <= 10"

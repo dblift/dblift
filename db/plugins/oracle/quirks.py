@@ -837,7 +837,10 @@ class OracleQuirks(BaseQuirks):
     }
 
     def row_limit_clauses(
-        self, row_count: int, server_info: Optional[Mapping[str, Any]] = None
+        self,
+        row_count: int,
+        server_info: Optional[Mapping[str, Any]] = None,
+        ordered: bool = False,
     ) -> RowLimitClauses:
         """Oracle's native ``FETCH FIRST n ROWS ONLY`` is 12.1+ only.
 
@@ -851,11 +854,39 @@ class OracleQuirks(BaseQuirks):
         not the narrower one it merely hopes is safe. Only a gate that
         resolves to ``True`` — a server proven to be 12.1+ — earns the
         native form; ``False`` and ``None`` both fall back to ``ROWNUM``.
+
+        ``ordered=True`` tells this method the caller's query also carries an
+        ``ORDER BY`` whose result the cap must respect — i.e. the caller
+        wants the true top-*row_count* rows by that ordering. ``ROWNUM`` is
+        assigned *before* ``ORDER BY`` runs, so ``WHERE ROWNUM <= n ORDER BY
+        val`` takes *n* rows in whatever order the access path produced them
+        and only *then* sorts those *n* — it is not the same result as the
+        true ordered top-*n*. There is no way to fix this within the
+        three-fragment shape :class:`RowLimitClauses` offers: the correct
+        pre-12.1 form nests the ordered query in a subquery (``SELECT * FROM
+        (SELECT ... ORDER BY val) WHERE ROWNUM <= n``), which has no bare
+        predicate or suffix to hand back. So when the resolved style would be
+        ``"rownum"`` and ``ordered`` is ``True``, this raises rather than
+        returning a fragment that silently produces the wrong rows: capture
+        ``server_info`` (to prove the server is 12.1+ and unlock the native
+        ``FETCH FIRST`` form) or restructure the query around the nested
+        subquery form directly.
         """
         from core.sql_model.feature_gates import supports_feature
 
         if supports_feature(self.dialect_name, "row_limit_fetch_first", server_info) is True:
             return RowLimitClauses("", "", f" FETCH FIRST {row_count} ROWS ONLY")
+        if ordered:
+            raise ValueError(
+                "Cannot express an ordered top-N via ROWNUM: ROWNUM is assigned "
+                "before ORDER BY runs, so 'WHERE ROWNUM <= n ORDER BY ...' caps rows "
+                "in access-path order and sorts them afterward, which is not the "
+                "true ordered top-N. Oracle before 12.1 cannot express this through "
+                "row_limit_clauses() at all — capture server_info proving the "
+                "server is 12.1+ (to unlock native FETCH FIRST), or restructure the "
+                "query as 'SELECT * FROM (SELECT ... ORDER BY ...) WHERE ROWNUM <= n' "
+                "directly."
+            )
         return RowLimitClauses("", f"ROWNUM <= {row_count}", "")
 
     _MARKETING_VERSION_RE = re.compile(r"\b(\d{2})(?:c|g|ai)\b", re.IGNORECASE)
