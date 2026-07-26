@@ -193,13 +193,13 @@ class CosmosDbConnectionManager:
                 raise RuntimeError("Database should be initialized after retry loop")
             return self.database
 
-        except ImportError:
+        except ImportError as import_error:
             error_msg = (
                 "Azure Cosmos DB SDK not installed. "
-                "Install it with: pip install azure-cosmos azure-identity"
+                'Install it with: pip install "dblift[cosmosdb]"'
             )
             self.log.error(error_msg)
-            raise ImportError(error_msg)
+            raise ImportError(error_msg) from import_error
         except Exception as e:
             error_msg = f"Failed to connect to Cosmos DB: {str(e)}"
             self.log.error(error_msg)

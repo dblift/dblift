@@ -19,6 +19,14 @@ Cosmos DB.
 The probe therefore runs in a subprocess with a ``sys.meta_path`` finder that
 refuses ``azure``, which is the only way to observe the bare-install behaviour
 from an environment that has the SDK.
+
+The same probe answers the other half of the question: registering is not the
+same as being usable, and ``dblift list-drivers`` must not confuse the two.
+``NativeDriverManager.check_driver_installed`` returns ``True`` for any plugin
+declaring no ``native_driver_module``, so a Cosmos DB that declared none was
+reported "Available" on a machine with no Azure SDK at all — a falsehood the
+CLI printed, and one only visible from an environment where ``azure`` is
+absent.
 """
 
 from __future__ import annotations
@@ -65,6 +73,8 @@ from db.provider_registry import ProviderRegistry
 
 ProviderRegistry.discover_plugins()
 result["dialects"] = sorted(plugin.name for plugin in ProviderRegistry.list_plugins())
+result["drivers"] = ProviderRegistry.get_available_drivers()
+result["cosmosdb_install_extra"] = ProviderRegistry.get_plugin_info("cosmosdb").install_extra
 
 print(json.dumps(result))
 """
@@ -104,4 +114,58 @@ def test_discovery_registers_every_dialect_without_the_azure_sdk():
         "Discovery registered "
         f"{len(result['dialects'])} providers instead of 19 with the Azure SDK "
         f"absent: {result['dialects']}"
+    )
+
+
+def test_the_cosmosdb_plugin_module_itself_imports_without_the_azure_sdk():
+    """Registering is not proof that ``plugin.py`` imported — check the metadata.
+
+    ``discover_plugins`` has a filesystem pass that reconstructs a
+    ``PluginInfo`` from the package layout when ``plugin.py:PLUGIN`` cannot be
+    read. It logs and continues, so a hard ``from azure.cosmos import ...`` at
+    the top of ``db/plugins/cosmosdb/plugin.py`` leaves the count above at 19
+    and the test green — while every field only ``plugin.py`` declares
+    (``install_extra``, ``native_driver_module``, ``config_class``) is silently
+    lost, taking the driver report and the install hint with it.
+
+    Asserting a declared-only field survived is what distinguishes "cosmosdb
+    was registered" from "``plugin.py`` was actually importable".
+    """
+    result = _run_probe()
+
+    assert result["blocker_effective"], (
+        "The probe's import blocker did not take effect, so the run proves "
+        "nothing about a machine without the Azure SDK."
+    )
+    assert result["cosmosdb_install_extra"] == "cosmosdb", (
+        "cosmosdb's declared metadata did not survive discovery without the "
+        "Azure SDK, so `plugin.py` did not import and the filesystem fallback "
+        "registered a degraded plugin in its place."
+    )
+
+
+def test_cosmosdb_is_reported_unavailable_without_the_azure_sdk():
+    """``get_available_drivers`` must not call Cosmos DB available with no SDK.
+
+    This is what ``dblift list-drivers`` and ``dblift db diagnose --format
+    json`` print, so a wrong answer here is a falsehood shown to the user:
+    "cosmosdb : Available" on a machine where the first connect attempt can
+    only raise ``ImportError``. The report is only as truthful as the
+    plugin's ``native_driver_module`` declaration — a plugin declaring none
+    is assumed driverless (correct for SQLite, wrong for Cosmos DB).
+    """
+    result = _run_probe()
+
+    assert result["blocker_effective"], (
+        "The probe's import blocker did not take effect, so the run proves "
+        "nothing about a machine without the Azure SDK."
+    )
+    assert "cosmosdb" in result["drivers"], (
+        "cosmosdb is missing from the driver report entirely — the guarantee "
+        "under test is that it registers and is reported *unavailable*, not "
+        "that it disappears."
+    )
+    assert result["drivers"]["cosmosdb"] is False, (
+        "cosmosdb was reported as an available driver with `azure` "
+        "unimportable. `dblift list-drivers` prints this verbatim."
     )

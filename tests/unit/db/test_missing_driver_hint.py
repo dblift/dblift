@@ -180,15 +180,29 @@ class TestTheHintReachesTheUser:
             is None
         )
 
-    def test_a_driverless_nosql_dialect_gets_no_hint(self) -> None:
-        """Cosmos DB declares no ``native_driver_module`` either."""
+    def test_a_nosql_dialect_never_reaches_this_boundary_at_all(self) -> None:
+        """Cosmos DB declares a driver, but not for ``create_engine``'s benefit.
+
+        ``describe_missing_driver`` is only ever called from
+        ``NativeConnectionManager.engine``. Cosmos DB talks to the account
+        plane through the Azure SDK and declares no ``sqlalchemy_url_builder``,
+        so that path raises before an engine exists and the hint is
+        unreachable for it — declaring ``native_driver_module`` /
+        ``install_extra`` does not change that, and must not be read as
+        having added a hint here.
+
+        What those fields do buy is the truth of the driver *report*
+        (``dblift list-drivers``, ``db diagnose --format json``). The
+        user-facing message on Cosmos DB's own connect path stays where it
+        already was: ``CosmosDbConnectionManager.create_connection``.
+        """
         plugin = ProviderRegistry.get_plugin_info("cosmosdb")
         assert plugin is not None
-        assert plugin.native_driver_module is None
-        assert (
-            describe_missing_driver("cosmosdb", ModuleNotFoundError("No module named 'azure'"))
-            is None
-        )
+        assert plugin.native_driver_module == "azure.cosmos"
+        assert plugin.sqlalchemy_url_builder is None
+
+        with pytest.raises(ValueError, match="sqlalchemy_url_builder"):
+            NativeConnectionManager(_Config("cosmosdb")).engine
 
     def test_an_unregistered_dialect_gets_no_hint(self) -> None:
         """Nothing is known about an unregistered dialect, so nothing is claimed."""
@@ -371,7 +385,14 @@ class TestTheHintReachesTheUser:
         )
 
 
-class TestOnlyOneFirstPartyPluginDeclaresADottedDriver:
+#: The first-party plugins entitled to a dotted ``native_driver_module``, each
+#: because the driver it names genuinely lives inside a package: snowflake's
+#: ``snowflake.connector`` and Cosmos DB's ``azure.cosmos``. Adding a name here
+#: is the deliberate act the tripwire below exists to force.
+EXPECTED_DOTTED_DECLARATIONS = ["cosmosdb", "snowflake"]
+
+
+class TestOnlyTheExpectedFirstPartyPluginsDeclareADottedDriver:
     """A reminder for dblift maintainers, so it reads dblift's own plugins only.
 
     Scoped to the ``PLUGIN`` constants under ``db/plugins/*/plugin.py``, not to
@@ -382,6 +403,10 @@ class TestOnlyOneFirstPartyPluginDeclaresADottedDriver:
     entitled to declare a dotted ``native_driver_module``, and reading the
     registry would let it turn dblift's own suite red with nothing wrong in
     dblift.
+
+    The expected set is a list, not a floor: widening it to "cosmosdb and
+    snowflake are *among* the dotted declarations" would have kept this green
+    while quietly ceasing to notice a third — which is the whole job.
     """
 
     @staticmethod
@@ -393,6 +418,16 @@ class TestOnlyOneFirstPartyPluginDeclaresADottedDriver:
             for plugin_file in sorted(plugins_dir.glob("*/plugin.py"))
         ]
 
+    @staticmethod
+    def _assert_no_unexpected_dotted_declaration(plugins: list[PluginInfo]) -> None:
+        """The tripwire itself, over an explicit plugin list so it can be exercised."""
+        dotted = sorted(
+            plugin.name
+            for plugin in plugins
+            if plugin.native_driver_module and "." in plugin.native_driver_module
+        )
+        assert dotted == EXPECTED_DOTTED_DECLARATIONS
+
     def test_the_first_party_plugins_are_actually_found(self) -> None:
         """Guard the guard: a glob matching nothing would make the tripwire vacuous."""
         plugins = self._first_party_plugins()
@@ -400,19 +435,37 @@ class TestOnlyOneFirstPartyPluginDeclaresADottedDriver:
         assert len(plugins) >= 15
         assert {"snowflake", "postgresql", "mysql", "sqlite"} <= names
 
-    def test_snowflake_is_the_only_first_party_dotted_declaration(self) -> None:
+    def test_only_the_expected_plugins_declare_a_dotted_driver(self) -> None:
         """The ancestor rule only changes behaviour for dotted modules.
 
-        If a second first-party plugin ever declares one, this test is the
+        If a third first-party plugin ever declares one, this test is the
         reminder that the reasoning in ``describe_missing_driver`` (and the
         snowflake-specific cases above) now applies to it too.
         """
-        dotted = sorted(
-            plugin.name
-            for plugin in self._first_party_plugins()
-            if plugin.native_driver_module and "." in plugin.native_driver_module
+        self._assert_no_unexpected_dotted_declaration(self._first_party_plugins())
+
+    def test_the_tripwire_still_fires_on_an_unexpected_dotted_declaration(self) -> None:
+        """Widening the expected set must not have widened it into a no-op.
+
+        Cosmos DB's ``azure.cosmos`` made the expected set two entries long.
+        The failure mode of that edit is a tripwire that now accepts anything
+        dotted, so this feeds it a first-party-shaped plugin it has never been
+        told about and requires it to object.
+        """
+        host = ProviderRegistry.get_plugin_info("postgresql")
+        assert host is not None
+        intruder = PluginInfo(
+            name="zzz-unexpected",
+            version="1.0.0",
+            description="a first-party plugin nobody told the tripwire about",
+            dialects=["zzz_unexpected"],
+            provider_class=host.provider_class,
+            native_driver_module="zzz.connector",
+            install_extra=None,
         )
-        assert dotted == ["snowflake"]
+
+        with pytest.raises(AssertionError):
+            self._assert_no_unexpected_dotted_declaration(self._first_party_plugins() + [intruder])
 
     def test_a_third_party_dotted_declaration_does_not_fail_this_suite(
         self, monkeypatch: pytest.MonkeyPatch
@@ -439,7 +492,7 @@ class TestOnlyOneFirstPartyPluginDeclaresADottedDriver:
             plugin.native_driver_module == "acme.connector"
             for plugin in ProviderRegistry.list_plugins()
         ), "precondition: the registry must actually see the third-party plugin"
-        self.test_snowflake_is_the_only_first_party_dotted_declaration()
+        self.test_only_the_expected_plugins_declare_a_dotted_driver()
 
 
 class TestTheCPythonBehaviourTheRuleRestsOn:
