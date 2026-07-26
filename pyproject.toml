@@ -18,8 +18,6 @@ dependencies = [
     "Jinja2>=3.1.0",
     "sqlglot>=30.0.0",
     "packaging>=23.0",
-    "azure-cosmos>=4.5.0",
-    "azure-identity>=1.15.0",
     # Security floor: Python 3.11 minimum (see CHANGELOG).
     "SQLAlchemy>=2.0.0",
 ]
@@ -129,6 +127,13 @@ oracle = ["oracledb>=2.0"]
 sqlserver = ["pymssql>=2.3"]
 db2 = ["ibm_db>=3.2", "ibm_db_sa>=0.4"]
 duckdb = ["duckdb>=1.0", "duckdb_engine>=0.13"]
+# Cosmos DB talks to the account plane through the Azure SDK, not a DBAPI
+# driver. It is an optional extra like every other engine's driver: a bare
+# ``pip install dblift`` must not pull one engine's SDK for all 19 dialects.
+# Every ``azure`` import in the tree is function-local or TYPE_CHECKING-guarded
+# except ``db/plugins/cosmosdb/cosmosdb/_sdk.py``, which is itself imported
+# lazily — so plugin discovery still registers cosmosdb without the SDK.
+cosmosdb = ["azure-cosmos>=4.5.0", "azure-identity>=1.15.0"]
 # PostgreSQL-compatible distributions share the psycopg driver.
 neon = ["psycopg[binary]>=3.1"]
 supabase = ["psycopg[binary]>=3.1"]
@@ -144,7 +149,24 @@ fastapi = ["fastapi>=0.100"]
 flask = ["flask>=2.3"]
 django = ["Django>=4.2"]
 otel = ["opentelemetry-api>=1.20"]
-all = ["dblift[postgresql,mysql,mariadb,oracle,sqlserver,db2,duckdb]"]
+# ``all`` must name *every* engine extra, not a hand-picked subset: users read
+# it as "whatever dblift can talk to". Enforced by
+# ``tests/unit/test_oss_public_surface.py::
+# test_all_extra_covers_every_engine_extra``, which derives the engine set from
+# this table (everything except dev / django / flask / fastapi / otel / all) and
+# fails if a new engine extra is added without being listed here.
+#
+# The PostgreSQL-compatible distributions are named explicitly even though they
+# all resolve to the same ``psycopg[binary]`` as ``postgresql`` today. Relying
+# on that equivalence would make ``all`` silently wrong the day one of them
+# needs its own package (as redshift and snowflake already do); naming them
+# keeps the coverage claim mechanically checkable instead of argued.
+all = [
+    "dblift[postgresql,mysql,mariadb,oracle,sqlserver,db2,duckdb,cosmosdb]",
+    "dblift[redshift,snowflake]",
+    "dblift[neon,supabase,aurora-postgresql,alloydb]",
+    "dblift[yugabytedb,timescaledb,citus,cockroachdb]",
+]
 
 [tool.setuptools]
 # Use find directive to automatically discover all packages

@@ -53,9 +53,15 @@ the corresponding native drivers or thin integration dependencies.
 | `dblift[postgresql]` | `psycopg[binary]` | Enables PostgreSQL connections. |
 | `dblift[oracle]` | `oracledb` | Enables Oracle connections. |
 | `dblift[mysql]` | `PyMySQL` | Enables MySQL and MariaDB connections. |
+| `dblift[cosmosdb]` | `azure-cosmos`, `azure-identity` | Enables Azure Cosmos DB connections. |
 | `dblift[fastapi]` | `fastapi` | Enables FastAPI integration helpers. |
 | `dblift[flask]` | `flask` | Enables Flask integration helpers. |
-| `dblift[all]` | all supported DB drivers | Convenience meta-extra. |
+| `dblift[all]` | every engine extra above | Convenience meta-extra. |
+
+A bare `pip install dblift` installs **no** database driver or SDK — including
+Cosmos DB's. Every engine's client library sits behind its own extra, so the
+plugins all have to import without their driver present; that is what keeps
+`ProviderRegistry.discover_plugins()` working on a bare install.
 
 ## Provider Packages
 
