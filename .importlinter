@@ -1,0 +1,51 @@
+# Import contracts for the OSS dblift tree, enforced by import-linter
+# (already a declared dev dependency: see `import-linter>=2.0` in
+# requirements-dev.txt) via scripts/check_code_quality.sh.
+#
+# This file is NOT a restoration of the config removed in e5a43797. That one
+# declared tier boundaries over `dblift_pro` / `dblift_enterprise` — packages
+# that do not exist in this repository — so it hard-errored when run and its
+# only other effect was to describe paid-module topology in a public repo.
+# Both objections were correct and neither applies here: every contract below
+# is about layering *within* this tree, and every one is satisfied today.
+#
+# Rule for adding a contract: it must forbid something a contributor could
+# plausibly do by accident, and it must be at zero when committed. A contract
+# that forbids nothing real is worse than no contract, because it reads as
+# coverage while checking nothing.
+
+[importlinter]
+root_packages =
+    api
+    cli
+    config
+    core
+    db
+
+[importlinter:contract:cli-through-api]
+name = cli must reach the database layer through api, not db directly
+type = forbidden
+source_modules =
+    cli
+forbidden_modules =
+    db
+# Only DIRECT cli -> db imports breach this contract. cli legitimately
+# reaches db transitively through api/ and core/ — that is the sanctioned
+# route, so forbidding indirect chains would forbid the architecture rather
+# than protect it. Currently at zero: cli has no direct db import.
+allow_indirect_imports = True
+
+[importlinter:contract:cli-is-topmost]
+name = cli is the top of the stack; no library layer may import it
+type = forbidden
+source_modules =
+    api
+    config
+    core
+    db
+forbidden_modules =
+    cli
+# The complement of the contract above: keeping cli out of db is only
+# meaningful if the lower layers also stay out of cli. api/ is the documented
+# programmatic surface and must stay importable without dragging in the
+# command-line entry points. Currently at zero across all four roots.

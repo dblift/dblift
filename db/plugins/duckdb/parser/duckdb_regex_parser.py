@@ -5,7 +5,7 @@ so statement splitting only needs to respect string literals and comments
 around the ``;`` separator.
 """
 
-from typing import Any, Dict, List, Optional
+from typing import Dict, List, Optional
 
 from core.sql_model.base import SqlObject, SqlObjectType
 from core.sql_parser.enhanced_regex_parser import EnhancedRegexParser

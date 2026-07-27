@@ -419,7 +419,7 @@ class CosmosDbHistoryManager(DocumentHistoryManager):
         # row: a point delete addressed by the wrong partition key returns 404,
         # which would read as "already deleted" and remove nothing.
         query = "SELECT c.id, c.script, c.success, c.version FROM c WHERE c.script = @script"
-        parameters = [{"name": "@script", "value": script_name}]
+        parameters: List[Dict[str, object]] = [{"name": "@script", "value": script_name}]
         try:
             failed_docs = [
                 doc
