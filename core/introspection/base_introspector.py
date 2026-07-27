@@ -387,19 +387,21 @@ class BaseIntrospector:
         # Delegate to index extractor
         return self._get_index_extractor().get_indexes(schema, table)
 
-    def get_all_indexes(self, schema: str) -> List[Index]:
+    def get_all_indexes(self, schema: str) -> Optional[List[Index]]:
         """
         Get all indexes for an entire schema in a single bulk query.
 
-        Delegates to IndexExtractor.get_all_indexes. Returns an empty list
-        if the dialect does not support bulk index retrieval.
+        Delegates to IndexExtractor.get_all_indexes and propagates its
+        three-way answer unchanged.
 
         Args:
             schema: Schema name
 
         Returns:
-            List of Index objects for the entire schema, or [] if the dialect
-            does not support bulk retrieval.
+            ``None`` if the dialect cannot answer in bulk, meaning the caller
+            must fall back to per-table retrieval. ``[]`` if the bulk query ran
+            and the schema genuinely has no indexes. Otherwise the list of
+            Index objects for the entire schema.
         """
         return self._get_index_extractor().get_all_indexes(schema)
 
