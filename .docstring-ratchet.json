@@ -1,0 +1,8 @@
+{
+  "_comment": "Per-root cap on missing-docstring violations, consumed by scripts/check_api_docstrings.py --ratchet. A cap is a ceiling at the CURRENT measured level, not a target: any PR that grows a count fails the gate. When the script reports 'you can lower the cap by N', commit the tighter cap in the same PR. The goal is to drive every root to zero.",
+  "_policy": "Initial OSS measurement on develop 17b03f02 (2026-07-27), taken with --paths api cli core db (the roots the local gate passes). api/, cli/ and core/ measured at 0 and are therefore pinned at zero — the public API surface, the CLI and the domain core admit no new undocumented public names at all. db/ measured at 30, all of them in plugin code: *Quirks/provider __init__ constructors (redshift, cockroachdb, snowflake) and the DuckDB parser_config accessor block. Those 30 are grandfathered, not endorsed; each is a plain deferral to be cleared in follow-up PRs, at which point this cap should be lowered.",
+  "api": 0,
+  "cli": 0,
+  "core": 0,
+  "db": 30
+}

@@ -298,7 +298,7 @@ class View(SqlObject):
         Returns:
             Dictionary with view attributes
         """
-        result = {
+        result: Dict[str, Any] = {
             "name": self.name,
             "schema": self.schema,
             "object_type": self.object_type.value,

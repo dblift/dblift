@@ -28,16 +28,20 @@ echo -e "\n===== Checking imports with isort ====="
 isort --check --diff api/ cli/ config/ core/ db/ tests/ scripts/ || { echo "❌ Import order issues found. Run 'isort .' to fix them."; exit_code=1; }
 
 echo -e "\n===== Checking style with flake8 ====="
-# Use the .flake8 file from the project root
+# Use the .flake8 file from the project root.
+# tests/ and scripts/ are deliberately NOT passed here: .flake8 excludes them
+# (728 legacy violations, see the note in that file), so listing them would
+# claim coverage the run does not have. black and isort below still cover
+# them. To re-enable, drop the exclude in .flake8 and add them back here.
 FLAKE8_CONFIG=".flake8"
 if [ ! -f "$FLAKE8_CONFIG" ]; then
     # Fallback to setup.cfg or default
     FLAKE8_CONFIG="setup.cfg"
 fi
 if [ -f "$FLAKE8_CONFIG" ]; then
-    flake8 --config="$FLAKE8_CONFIG" api/ cli/ config/ core/ db/ tests/ scripts/
+    flake8 --config="$FLAKE8_CONFIG" api/ cli/ config/ core/ db/
 else
-    flake8 api/ cli/ config/ core/ db/ tests/ scripts/
+    flake8 api/ cli/ config/ core/ db/
 fi
 if [ $? -ne 0 ]; then
     exit_code=1
@@ -76,12 +80,15 @@ else
     echo -e "✅ Type checking passed."
 fi
 
-echo -e "\n===== import-linter (tier boundaries) ====="
-# Mirrors .github/workflows/code-quality.yml step. Enforces the
-# tier-boundary contracts in .importlinter (OSS must not import
-# pro/enterprise; pro must not import enterprise). Static analysis
-# only — nothing is imported at runtime.
-lint-imports --config .importlinter || { echo "❌ Import-linter: tier boundary contract broken."; exit_code=1; }
+echo -e "\n===== import-linter (internal layering) ====="
+# Local-only gate — .github/workflows/code-quality.yml does NOT run this.
+# Enforces the intra-tree layering contracts in .importlinter: cli must
+# reach the database layer through api/ rather than importing db directly,
+# and no library layer (api/config/core/db) may import cli. This replaced
+# the tier-boundary contracts (OSS/pro/enterprise), which named packages
+# that do not exist in this repository. Static analysis only — nothing is
+# imported at runtime.
+lint-imports --config .importlinter || { echo "❌ Import-linter: layering contract broken."; exit_code=1; }
 
 echo -e "\n===== AST lint patterns (ratchet) ====="
 # Mirrors .github/workflows/code-quality.yml step. Fails only on NEW
@@ -91,9 +98,10 @@ echo -e "\n===== AST lint patterns (ratchet) ====="
 "$PYTHON_BIN" scripts/lint_patterns.py || { echo "❌ AST lint patterns: new violation(s) detected."; exit_code=1; }
 
 echo -e "\n===== Public-API docstring linter (ratchet) ====="
-# Same gate as CI: api/ + cli/ stay at zero; core/ and db/ are
-# capped by .docstring-ratchet.json. New missing-docstring sites
-# push the count above the cap and fail.
+# Local-only gate — CI does not run this. api/, cli/ and core/ are
+# all pinned at zero in .docstring-ratchet.json; db/ is capped at its
+# measured count. New missing-docstring sites push a count above its
+# cap and fail.
 "$PYTHON_BIN" scripts/check_api_docstrings.py \
     --paths api cli core db \
     --ratchet .docstring-ratchet.json \

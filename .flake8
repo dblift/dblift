@@ -1,0 +1,43 @@
+[flake8]
+# Black owns formatting and is configured at line-length 100 in
+# pyproject.toml. flake8 is kept for the correctness-flavoured checks
+# (pyflakes F-codes, flake8-tidy-imports I-codes) that black cannot see.
+max-line-length = 100
+jobs = 1
+
+# tests/ and scripts/ are excluded from this run. They carry 728 legacy
+# violations (280 F401, 206 E501, 114 W293, 67 F841, ...) measured on
+# develop 17b03f02 (2026-07-27). Linting them would either fail the gate
+# outright or force blanket ignores that would also blind the source
+# roots — so they stay out until the debt is cleared in its own PR.
+# black and isort DO cover tests/ and scripts/; only flake8 skips them.
+exclude =
+    .git,
+    __pycache__,
+    */__pycache__/*,
+    build,
+    dist,
+    venv,
+    .venv,
+    tests/,
+    scripts/
+
+# Ignore policy — two categories, and they are not the same thing:
+#
+#   Permanent (never actionable):
+#     E203  whitespace before ':'        — pycodestyle disagrees with black
+#     W503  line break before binary op  — pycodestyle disagrees with black
+#
+#   Deferred legacy debt, counted on develop 17b03f02 (2026-07-27):
+#     E402  (48)   module-level import not at top of file. Most sites are
+#                  deliberate deferred/lazy imports that break a cycle;
+#                  each needs case-by-case review, not a blanket rewrite.
+#     E501  (501)  line too long. Ignored HERE so the main flake8 run stays
+#                  actionable, and re-enforced per-root under a cap by
+#                  scripts/check_line_length.py + .flake8-e501-ratchet.json.
+#                  That ratchet — not this ignore — is what keeps E501 from
+#                  growing; the two are designed as a pair.
+#
+# F-codes and I-codes are fully enforced at zero on api/ cli/ config/ core/ db/.
+# Do not add an entry here without recording its count and cleanup plan.
+ignore = E203,W503,E402,E501
