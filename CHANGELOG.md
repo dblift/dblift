@@ -29,6 +29,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   dialect. An index-free schema still reports as index-free — "I could not
   answer" and "the answer is none" are now distinct.
 
+- **SQLite schema snapshot capture is enabled again.** The SQLite provider was
+  the only one of the 18 providers to override `supports_snapshots()` to
+  `False` and to raise `NotImplementedError` from
+  `create_snapshot_table_if_not_exists`, so snapshot capture silently did
+  nothing on SQLite. `ProviderInterface` reserves that override for providers
+  whose snapshot repository queries *cannot be executed*; SQLite's execute
+  fine. Both overrides were removed, so SQLite now inherits the shared
+  `BaseSnapshotManager` path and the `BaseQuirks` snapshot DDL that already
+  named SQLite among its intended users. The snapshot table is created in
+  `main`, as `docs/user-guide/configuration.md` already documented. Sibling
+  plugins (MariaDB, MySQL, Oracle, SQL Server, DB2) express snapshot
+  ownership through their quirks and leave the capability alone; SQLite now
+  matches that convention.
+
 ### Removed
 
 ## [3.2.0] - 2026-07-26
