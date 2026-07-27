@@ -1,6 +1,6 @@
 """Index extraction from plugin-owned vendor metadata queries."""
 
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from core.introspection.extractors.base_extractor import BaseExtractor
 from core.sql_model.index import Index
@@ -42,7 +42,7 @@ class IndexExtractor(BaseExtractor):
         # Convert to Index objects
         return self._build_index_objects(schema, table, indexes_data)
 
-    def get_all_indexes(self, schema: str) -> List[Index]:
+    def get_all_indexes(self, schema: str) -> Optional[List[Index]]:
         """
         Get all indexes for an entire schema.
 
@@ -52,17 +52,25 @@ class IndexExtractor(BaseExtractor):
             schema: Schema name
 
         Returns:
-            List of Index objects for the entire schema
+            ``None`` if bulk retrieval is unavailable — either no vendor
+            queries exist for the dialect, or its bulk index query declines —
+            meaning the caller must ask table by table.  ``[]`` if the bulk
+            query ran and the schema genuinely has no indexes.  Otherwise the
+            list of Index objects for the entire schema.
         """
+        # Unlike ColumnExtractor and TableExtractor.get_tables, which raise
+        # RuntimeError when their query is unavailable, this refuses with
+        # None: those two have no fallback, so refusing is the only honest
+        # option, whereas a working per-table path exists here and None routes
+        # the caller to it.  Raising would break callers that legitimately
+        # have that fallback.
         if not self.vendor_queries:
-            return []
+            return None
 
         self.ensure_metadata()
         query_result = self.vendor_queries.get_all_indexes_query(schema)
         if query_result is None:
-            return (
-                []
-            )  # no bulk query; empty for this test path (per-table fallback would be used by callers)
+            return None
 
         query, params = query_result
         rows = self.provider.query_executor.execute_query(self.connection, query, params)

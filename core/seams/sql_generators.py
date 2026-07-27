@@ -35,7 +35,7 @@ def attach_registered_sql_generators() -> None:
 def clear_sql_generator_registrars() -> None:
     """Test hook."""
     global _bootstrapped
-    import core.seams.feature_loading as feature_loading
+    from core.seams import feature_loading
 
     _registrars.clear()
     _bootstrapped = False

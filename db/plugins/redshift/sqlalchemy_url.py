@@ -1,6 +1,6 @@
 """SQLAlchemy URL construction for the Redshift plugin."""
 
-from typing import Any, Dict, cast
+from typing import Any, Dict
 
 from sqlalchemy.engine import URL, make_url
 
@@ -33,18 +33,15 @@ def build_sqlalchemy_url(database_config: Any) -> str:
             query = _query_mapping(database_config, url.query)
             if query != dict(url.query):
                 url = url.set(query=query)
-            return cast(str, url.render_as_string(hide_password=False))
+            return url.render_as_string(hide_password=False)
         raise ValueError("Redshift native connections require a SQLAlchemy URL")
 
-    return cast(
-        str,
-        URL.create(
-            "redshift+redshift_connector",
-            username=getattr(database_config, "username", None) or None,
-            password=getattr(database_config, "password", None) or None,
-            host=getattr(database_config, "host", None) or "localhost",
-            port=getattr(database_config, "port", None),
-            database=getattr(database_config, "database", None),
-            query=_query_mapping(database_config),
-        ).render_as_string(hide_password=False),
-    )
+    return URL.create(
+        "redshift+redshift_connector",
+        username=getattr(database_config, "username", None) or None,
+        password=getattr(database_config, "password", None) or None,
+        host=getattr(database_config, "host", None) or "localhost",
+        port=getattr(database_config, "port", None),
+        database=getattr(database_config, "database", None),
+        query=_query_mapping(database_config),
+    ).render_as_string(hide_password=False)

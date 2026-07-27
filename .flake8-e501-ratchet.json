@@ -1,0 +1,9 @@
+{
+  "_comment": "Per-root cap on flake8 E501 (line too long, >100 chars), consumed by scripts/check_line_length.py. E501 is in the global ignore list in .flake8 because of the legacy volume; this ratchet is the compensating control that re-enforces it under a ceiling. The two are designed as a pair — do not relax one without the other. Counts may stay flat or shrink, never grow.",
+  "_policy": "Initial OSS measurement on develop 17b03f02 (2026-07-27), via flake8 --isolated --select=E501 --max-line-length=100 per root. Totals: api=1, cli=6, config=8, core=280, db=206 (501 overall, matching the aggregate run). black is configured at 100 in pyproject.toml, so every remaining hit is a shape black will not split on its own — long string literals, comment-heavy lines, signatures with long defaults. api/, cli/ and config/ are already near zero and should reach it first.",
+  "api": 1,
+  "cli": 6,
+  "config": 8,
+  "core": 280,
+  "db": 206
+}
