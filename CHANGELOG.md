@@ -13,6 +13,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Schema snapshots no longer record zero indexes on every dialect but SQL
+  Server.** Bulk index retrieval is an optional capability: a dialect that does
+  not implement it was supposed to signal "ask me table by table" so the caller
+  would fall back to per-table introspection. That signal was flattened into an
+  empty list, which reads as "this schema has no indexes" — indistinguishable
+  from the truthful answer. Every dialect without a bulk index query, and every
+  dialect shipping no vendor queries at all (Cosmos DB), therefore captured
+  snapshots containing no indexes, and the per-table fallback never ran.
+
+  The user-visible consequence was silent, confident wrong answers: dropping an
+  index outside of migrations and running `diff` reported a clean comparison at
+  completeness 1.0 and HIGH confidence, because the snapshot on both sides
+  agreed there were no indexes to compare. Index drift is now detected on every
+  dialect. An index-free schema still reports as index-free — "I could not
+  answer" and "the answer is none" are now distinct.
+
 - **SQLite schema snapshot capture is enabled again.** The SQLite provider was
   the only one of the 18 providers to override `supports_snapshots()` to
   `False` and to raise `NotImplementedError` from

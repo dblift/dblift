@@ -235,18 +235,22 @@ class TestGetAllIndexesBulkVendorPath:
 
         assert ext.get_all_indexes("dbo") == []
 
-    def test_bulk_vendor_query_none_returns_empty_list(self):
-        """When get_all_indexes_query returns None, native introspection has no fallback."""
+    def test_bulk_vendor_query_none_returns_none(self):
+        """A declined bulk query is a refusal, not an empty schema.
+
+        Returning None routes the caller to its per-table fallback; returning
+        [] would make it record "no indexes" as fact.
+        """
         vq = MagicMock()
         vq.get_all_indexes_query.return_value = None
         ext = _make_extractor(dialect="mysql", vendor_queries=vq)
 
-        assert ext.get_all_indexes("myschema") == []
+        assert ext.get_all_indexes("myschema") is None
 
-    def test_no_vendor_queries_returns_empty_list(self):
+    def test_no_vendor_queries_returns_none(self):
         ext = _make_extractor(dialect="mysql", vendor_queries=None)
 
-        assert ext.get_all_indexes("myschema") == []
+        assert ext.get_all_indexes("myschema") is None
 
     def test_TABLE_NAME_uppercase_key_is_accepted(self):
         """Rows using uppercase TABLE_NAME key should be grouped correctly."""
