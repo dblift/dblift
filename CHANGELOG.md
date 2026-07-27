@@ -13,6 +13,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+### Removed
+
+## [3.2.1] - 2026-07-27
+
+Two silent-failure fixes in schema drift detection, and the repair of the
+pre-push quality gate that could not have caught either of them.
+
+### Fixed
+
 - **Schema snapshots no longer record zero indexes on every dialect but SQL
   Server.** Bulk index retrieval is an optional capability: a dialect that does
   not implement it was supposed to signal "ask me table by table" so the caller
@@ -43,7 +52,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   ownership through their quirks and leave the capability alone; SQLite now
   matches that convention.
 
-### Removed
+### Changed
+
+- **The pre-push quality gate passes again.** `scripts/check_code_quality.sh`
+  exited non-zero on a clean checkout, because four of the config files it
+  reads had never accompanied it from the monorepo it was copied from. flake8
+  in particular was failing on ~15,800 line-length violations — invisibly,
+  since that stage sets its exit code without printing a failure marker. A
+  gate that cannot pass on an unmodified tree cannot tell a contributor's
+  breakage from its own, so it stops being run. No packaged behaviour changes.
 
 ## [3.2.0] - 2026-07-26
 
