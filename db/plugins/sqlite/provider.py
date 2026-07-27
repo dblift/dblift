@@ -432,17 +432,6 @@ class SQLiteProvider(NativeProvider):
             connection, schema, create_schema, table_name
         )
 
-    def supports_snapshots(self) -> bool:
-        """SQLite does not own schema snapshot persistence."""
-        return False
-
-    def create_snapshot_table_if_not_exists(
-        self, schema: str, table_name: str = "dblift_schema_snapshots"
-    ) -> None:
-        """Satisfy BaseProvider while leaving snapshot storage unsupported."""
-        _ = (schema, table_name)
-        raise NotImplementedError("SQLite provider does not support schema snapshot persistence")
-
     def is_connected(self) -> bool:
         """Return True when an active sqlite3 connection is held.
 
