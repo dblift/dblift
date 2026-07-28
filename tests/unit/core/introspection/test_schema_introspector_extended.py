@@ -833,6 +833,79 @@ class TestEnrichColumnsWithIdentity(unittest.TestCase):
         self.assertTrue(col.is_identity)
         self.assertEqual(col.identity_seed, "1")
 
+    def test_sql_variant_seed_and_increment_decoded_from_bytes(self):
+        """SQL Server's sys.identity_columns.seed_value/increment_value are
+        typed ``sql_variant``. Reproduces run 30342871407 on
+        cmodiano/dblift#claude/diff-snapshot-diagnosis: pymssql returns a
+        sql_variant int as the raw little-endian on-wire bytes rather than
+        a Python int, so an unconverted pass-through leaves
+        ``identity_seed``/``identity_increment`` as ``bytes``. Formatting
+        that straight into DDL produces
+        ``IDENTITY(b'\\x01\\x00\\x00\\x00',b'\\x01\\x00\\x00\\x00')``, which
+        SQL Server rejects with "Incorrect syntax near 'b'." -- this killed
+        every sqlserver round-trip test that creates an IDENTITY column
+        (test_sqlserver_comprehensive.py, test_sqlserver_edge_cases.py x6,
+        test_sqlserver_identity_sequences.py, test_sqlserver_indexed_views.py,
+        test_sqlserver_round_trips_advanced.py, test_sqlserver_triggers.py),
+        invisible until now because those tests used to die earlier on the
+        JDBC-era schema_operations/getAutoCommit calls the validation_stack
+        fixture replaced.
+        """
+        si, _ = _make_si(has_connection=True)
+        si.vendor_queries = MagicMock()
+        si.vendor_queries.get_identity_columns_query.return_value = ("SELECT ...", [])
+        si.provider.query_executor.execute_query.return_value = [
+            {
+                "column_name": "ID",
+                "seed_value": (1).to_bytes(4, byteorder="little"),
+                "increment_value": (1).to_bytes(4, byteorder="little"),
+                "last_value": None,
+            }
+        ]
+
+        col = SqlColumn(name="id", data_type="INTEGER")
+        si.enrich_columns_with_identity("public", "users", [col])
+
+        self.assertTrue(col.is_identity)
+        self.assertEqual(col.identity_seed, 1)
+        self.assertEqual(col.identity_increment, 1)
+        self.assertNotIsInstance(col.identity_seed, bytes)
+        self.assertNotIsInstance(col.identity_increment, bytes)
+
+        # And the SQL Server DDL quirk must render plain integers, not the
+        # bytes repr -- this is the exact string SQL Server rejected in CI.
+        quirks = SqlserverQuirks()
+        clause = quirks.render_identity_clause(col)
+        self.assertEqual(clause, "IDENTITY(1,1)")
+
+    def test_sql_variant_negative_seed_decoded_from_bytes(self):
+        """SQL Server supports negative IDENTITY seed/increment (e.g.
+        ``IDENTITY(-1,-1)`` to count down), and sys.identity_columns.seed_value/
+        increment_value can arrive from pymssql as raw little-endian
+        sql_variant bytes, exactly as in
+        test_sql_variant_seed_and_increment_decoded_from_bytes above. Decoding
+        those bytes without ``signed=True`` treats them as unsigned, turning
+        -1 into 4294967295. Assert the signed decode instead.
+        """
+        si, _ = _make_si(has_connection=True)
+        si.vendor_queries = MagicMock()
+        si.vendor_queries.get_identity_columns_query.return_value = ("SELECT ...", [])
+        si.provider.query_executor.execute_query.return_value = [
+            {
+                "column_name": "ID",
+                "seed_value": (-1).to_bytes(4, byteorder="little", signed=True),
+                "increment_value": (-1).to_bytes(4, byteorder="little", signed=True),
+                "last_value": None,
+            }
+        ]
+
+        col = SqlColumn(name="id", data_type="INTEGER")
+        si.enrich_columns_with_identity("public", "users", [col])
+
+        self.assertTrue(col.is_identity)
+        self.assertEqual(col.identity_seed, -1)
+        self.assertEqual(col.identity_increment, -1)
+
     def test_handles_exception_gracefully(self):
         si, _ = _make_si(has_connection=True)
         si.vendor_queries = MagicMock()
