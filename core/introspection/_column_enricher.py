@@ -16,7 +16,7 @@ The two helpers take the introspector instance as their first parameter
 from __future__ import annotations
 
 import traceback
-from typing import TYPE_CHECKING, List
+from typing import TYPE_CHECKING, Any, List
 
 if TYPE_CHECKING:
     from core.introspection.schema_introspector import SchemaIntrospector
@@ -253,36 +253,75 @@ def enrich_columns_with_identity(
                     ),
                 }
 
+        # sql_variant columns (e.g. SQL Server's
+        # sys.identity_columns.seed_value/increment_value/last_value) can
+        # arrive via pymssql/FreeTDS as raw on-wire bytes rather than an int
+        # (e.g. the int 1 as b'\x01\x00\x00\x00'). Normalize those to a plain
+        # int here so every downstream consumer -- regardless of which
+        # dialect's driver quirks produced the raw value -- can rely on
+        # identity_seed/identity_increment/identity_last_value already being
+        # an int. Non-bytes values (str, int, None) pass through unchanged,
+        # exactly as before.
+        #
+        # Bytes are only decoded when their length matches a standard
+        # two's-complement integer width (1, 2, 4, or 8 bytes --
+        # tinyint/smallint/int/bigint). SQL Server also permits IDENTITY on
+        # decimal/numeric columns, whose sql_variant wire shape is a sign
+        # byte plus an *unsigned* magnitude -- not a plain two's-complement
+        # integer -- so decoding those the same way would silently produce a
+        # plausible-looking but wrong value. For any other byte length,
+        # refuse to guess and raise instead; the outer try/except around
+        # this whole enrichment pass logs a warning for it.
+        def _decode_sql_variant_int(column_name: str, field_name: str, value: Any) -> Any:
+            if not isinstance(value, bytes):
+                return value
+            if len(value) not in (1, 2, 4, 8):
+                raise ValueError(
+                    f"Column {column_name!r}: {field_name} arrived as "
+                    f"{len(value)} raw bytes, which is not a standard "
+                    f"two's-complement integer width (1, 2, 4, or 8 bytes). "
+                    f"This looks like a non-integer sql_variant encoding "
+                    f"(e.g. decimal/numeric IDENTITY) that isn't supported yet."
+                )
+            return int.from_bytes(value, byteorder="little", signed=True)
+
         # Enrich matching columns with detailed metadata
         for column in columns:
             identity_data = identity_map.get(column.name.upper())
             if identity_data:
                 # Mark as identity (may already be marked from the column query)
+                # regardless of whether the seed/increment/last_value decode
+                # below succeeds -- "is this an identity column" and "did we
+                # manage to decode its sql_variant metadata" are independent
+                # facts, and the former is already known to be true here.
                 column.is_identity = True
-                # Add detailed metadata
-                # sql_variant columns (e.g. SQL Server's
-                # sys.identity_columns.seed_value/increment_value) can arrive
-                # via pymssql/FreeTDS as raw on-wire bytes rather than an int
-                # (e.g. the int 1 as b'\x01\x00\x00\x00'). Normalize those to
-                # a plain int here so every downstream consumer -- regardless
-                # of which dialect's driver quirks produced the raw value --
-                # can rely on identity_seed/identity_increment already being
-                # an int. Non-bytes values (str, int, None) pass through
-                # unchanged, exactly as before.
-                seed_value = identity_data["seed_value"]
-                if isinstance(seed_value, bytes):
-                    seed_value = int.from_bytes(seed_value, byteorder="little", signed=True)
-                column.identity_seed = seed_value
-
-                increment_value = identity_data["increment_value"]
-                if isinstance(increment_value, bytes):
-                    increment_value = int.from_bytes(
-                        increment_value, byteorder="little", signed=True
+                # A decode failure (see _decode_sql_variant_int above) is
+                # isolated to THIS column, not the whole table: without this,
+                # one decimal/numeric-typed IDENTITY column sitting alongside
+                # ordinary int-typed ones would raise past this loop into the
+                # table-level except below, silently losing seed/increment/
+                # last_value for every column processed after it too -- a
+                # wider blast radius than the single bad column the raise is
+                # actually about.
+                try:
+                    # Add detailed metadata
+                    column.identity_seed = _decode_sql_variant_int(
+                        column.name, "seed_value", identity_data["seed_value"]
                     )
-                column.identity_increment = increment_value
-                # Note: last_value is not part of SQL Model, store as custom attribute if needed
-                if identity_data["last_value"] is not None:
-                    column.identity_last_value = identity_data["last_value"]  # type: ignore[attr-defined]
+                    column.identity_increment = _decode_sql_variant_int(
+                        column.name, "increment_value", identity_data["increment_value"]
+                    )
+                    # Note: last_value is not part of SQL Model, store as
+                    # custom attribute if needed
+                    if identity_data["last_value"] is not None:
+                        column.identity_last_value = _decode_sql_variant_int(  # type: ignore[attr-defined]
+                            column.name, "last_value", identity_data["last_value"]
+                        )
+                except ValueError as decode_error:
+                    si.log.warning(
+                        f"Could not decode identity metadata for column "
+                        f"{column.name!r} in {schema}.{table}: {decode_error}"
+                    )
 
         if identity_map:
             si.log.debug(

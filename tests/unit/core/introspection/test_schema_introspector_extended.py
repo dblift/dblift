@@ -906,6 +906,139 @@ class TestEnrichColumnsWithIdentity(unittest.TestCase):
         self.assertEqual(col.identity_seed, -1)
         self.assertEqual(col.identity_increment, -1)
 
+    def test_sql_variant_last_value_decoded_from_bytes(self):
+        """``last_value`` has the identical sql_variant-bytes shape as
+        seed_value/increment_value (same source query, same driver), but was
+        left unconverted when those two were fixed -- it is currently inert
+        (nothing in core/sql_model reads it as an int; it isn't even a
+        declared SqlColumn field, only a `# type: ignore[attr-defined]`
+        custom attribute), so the gap was latent rather than a live bug. Fix
+        it anyway, the same way, before a future consumer relies on it being
+        an int and rediscovers the identical bug with no coverage protecting
+        it.
+        """
+        si, _ = _make_si(has_connection=True)
+        si.vendor_queries = MagicMock()
+        si.vendor_queries.get_identity_columns_query.return_value = ("SELECT ...", [])
+        si.provider.query_executor.execute_query.return_value = [
+            {
+                "column_name": "ID",
+                "seed_value": (1).to_bytes(4, byteorder="little"),
+                "increment_value": (1).to_bytes(4, byteorder="little"),
+                "last_value": (42).to_bytes(4, byteorder="little"),
+            }
+        ]
+
+        col = SqlColumn(name="id", data_type="INTEGER")
+        si.enrich_columns_with_identity("public", "users", [col])
+
+        self.assertEqual(col.identity_last_value, 42)
+        self.assertNotIsInstance(col.identity_last_value, bytes)
+
+    def test_sql_variant_negative_last_value_decoded_from_bytes(self):
+        """Same signedness hazard as seed/increment: a negative last_value
+        decoded unsigned would come back as a large positive number instead.
+        """
+        si, _ = _make_si(has_connection=True)
+        si.vendor_queries = MagicMock()
+        si.vendor_queries.get_identity_columns_query.return_value = ("SELECT ...", [])
+        si.provider.query_executor.execute_query.return_value = [
+            {
+                "column_name": "ID",
+                "seed_value": (1).to_bytes(4, byteorder="little"),
+                "increment_value": (1).to_bytes(4, byteorder="little"),
+                "last_value": (-7).to_bytes(4, byteorder="little", signed=True),
+            }
+        ]
+
+        col = SqlColumn(name="id", data_type="INTEGER")
+        si.enrich_columns_with_identity("public", "users", [col])
+
+        self.assertEqual(col.identity_last_value, -7)
+
+    def test_sql_variant_non_integer_byte_length_is_not_silently_misdecoded(self):
+        """SQL Server also permits IDENTITY on numeric/decimal columns (scale
+        0), and TDS encodes DECIMALN/NUMERICN as a sign byte followed by an
+        UNSIGNED magnitude -- not a plain two's-complement integer the way
+        int/bigint/smallint/tinyint are. ``int.from_bytes(..., signed=True)``
+        on a decimal-shaped payload would not just get the sign wrong, it
+        would misinterpret the sign byte as part of the magnitude and
+        produce a materially wrong value -- silently, since nothing about
+        that shape looks invalid to ``int.from_bytes``, which accepts any
+        byte length.
+
+        This case has never been verified against a live server (no decimal-
+        identity fixture reachable in CI yet), so the fix this test pins
+        is narrower than "decode it correctly": for a byte length that does
+        NOT match a standard two's-complement integer width (1, 2, 4, or 8
+        bytes -- tinyint/smallint/int/bigint), refuse to guess. Surface it
+        loudly (a warning log naming the column, matching this function's
+        existing exception-handling convention) rather than silently
+        producing a plausible-looking but wrong integer.
+        """
+        si, _ = _make_si(has_connection=True)
+        si.vendor_queries = MagicMock()
+        si.vendor_queries.get_identity_columns_query.return_value = ("SELECT ...", [])
+        # 5 bytes: sign byte + 4-byte magnitude, the shape TDS uses for a
+        # DECIMALN/NUMERICN sql_variant payload -- not any standard int width.
+        si.provider.query_executor.execute_query.return_value = [
+            {
+                "column_name": "ID",
+                "seed_value": b"\x00\x03\x00\x00\x00",
+                "increment_value": (1).to_bytes(4, byteorder="little"),
+                "last_value": None,
+            }
+        ]
+
+        col = SqlColumn(name="id", data_type="DECIMAL")
+        si.enrich_columns_with_identity("public", "users", [col])
+
+        self.assertFalse(
+            isinstance(col.identity_seed, int),
+            "a non-standard byte width must not be silently decoded as a "
+            "plain integer -- that is exactly the wrong-value risk this "
+            "test exists to catch",
+        )
+        si.log.warning.assert_called()
+
+    def test_a_bad_column_does_not_blank_out_other_columns_in_the_same_table(self):
+        """Regression guard for a review finding on this fix: without
+        per-column isolation, one column's decode ValueError propagates past
+        the whole ``for column in columns`` loop into the table-level
+        ``except``, silently losing seed/increment/last_value for every
+        OTHER column processed after the bad one too -- a much wider blast
+        radius than the single malformed column the raise is actually about.
+        Two columns here, the malformed one processed FIRST (the worst
+        case): the second, perfectly ordinary column must still get its
+        correct metadata.
+        """
+        si, _ = _make_si(has_connection=True)
+        si.vendor_queries = MagicMock()
+        si.vendor_queries.get_identity_columns_query.return_value = ("SELECT ...", [])
+        si.provider.query_executor.execute_query.return_value = [
+            {
+                "column_name": "BAD_ID",
+                "seed_value": b"\x00\x03\x00\x00\x00",  # non-standard width
+                "increment_value": (1).to_bytes(4, byteorder="little"),
+                "last_value": None,
+            },
+            {
+                "column_name": "GOOD_ID",
+                "seed_value": (1).to_bytes(4, byteorder="little"),
+                "increment_value": (1).to_bytes(4, byteorder="little"),
+                "last_value": None,
+            },
+        ]
+
+        bad_col = SqlColumn(name="bad_id", data_type="DECIMAL")
+        good_col = SqlColumn(name="good_id", data_type="INTEGER")
+        si.enrich_columns_with_identity("public", "users", [bad_col, good_col])
+
+        self.assertTrue(good_col.is_identity)
+        self.assertEqual(good_col.identity_seed, 1)
+        self.assertEqual(good_col.identity_increment, 1)
+        si.log.warning.assert_called()
+
     def test_handles_exception_gracefully(self):
         si, _ = _make_si(has_connection=True)
         si.vendor_queries = MagicMock()
