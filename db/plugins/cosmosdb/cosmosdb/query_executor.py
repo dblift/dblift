@@ -3,12 +3,15 @@ Cosmos DB query execution using the SQL API.
 
 The Cosmos DB SQL API is a read-only query language: this module runs
 ``SELECT`` against containers. Everything that changes state — containers,
-documents, throughput, indexing policy, TTL — is an Azure SDK call made
-from a Python migration, not SQL routed through a translator.
+documents, throughput, indexing policy, TTL — is an Azure SDK call, not SQL
+routed through a translator. That SDK call is made either from a
+user-authored Python migration (via ``context.db`` / ``context.raw_client``)
+or, for internal callers that are not a migration, through a native escape
+hatch exposed here (e.g. ``upsert_native_item``).
 """
 
 import re
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, cast
 
 from core.exceptions import NoSqlWriteNotSupportedError
 from core.logger import Log, NullLog
@@ -63,8 +66,11 @@ class CosmosDbQueryExecutor(BaseQueryExecutor):
         The Cosmos DB SQL API reads; it does not write. Containers and
         documents are changed through the Azure SDK, so a write statement
         reaching here is a mistake to surface rather than something to
-        translate. Python migrations get to the SDK through
-        ``context.db`` / ``context.raw_client``.
+        translate. User-authored Python migrations get to the SDK through
+        ``context.db`` / ``context.raw_client``; internal, non-migration
+        callers that need to write a single document use
+        :meth:`upsert_native_item` instead of building SQL for this method
+        to reject.
 
         Returns the number of rows a read produced (``0`` for the scalar
         liveness probe).
@@ -167,6 +173,51 @@ class CosmosDbQueryExecutor(BaseQueryExecutor):
             error_msg = f"Error executing Cosmos DB query: {str(e)}"
             self.log.error(error_msg)
             raise
+
+    def upsert_native_item(self, container_name: str, document: Dict[str, Any]) -> Dict[str, Any]:
+        """Upsert a document directly through the Azure SDK, bypassing SQL.
+
+        ``execute_statement`` only accepts ``SELECT`` — the Cosmos DB SQL API
+        is read-only, and pretending otherwise (the pseudo-SQL emulator this
+        module used to have) was actively wrong, which is why the ADR
+        removing pseudo-SQL deleted it. Container *creation* was ported to a
+        native SDK call at the time (see
+        ``CosmosDbProvider.create_snapshot_table_if_not_exists``, which calls
+        ``CosmosDbSchemaOperations.create_container_if_not_exists`` instead of
+        rendering ``CREATE TABLE``), but the matching write for a single
+        document was missed: an internal caller such as the schema-snapshot
+        repository still built a plain SQL ``INSERT`` and routed it through
+        ``execute_statement``, which now raises
+        ``NoSqlWriteNotSupportedError`` for anything but a ``SELECT``. That
+        exception is swallowed by a best-effort event listener, so
+        ``migrate`` reports success while the snapshot document silently
+        never lands.
+
+        This method provides the native, non-SQL escape hatch a caller needs
+        to close that gap: it calls ``azure.cosmos.ContainerProxy.upsert_item``
+        directly instead of rendering anything this executor — or its
+        SELECT-only ``execute_statement`` — would have to parse as SQL. It is
+        meant for internal dblift callers that hold a provider/query-executor
+        reference and are not a user-authored migration; migrations already
+        reach the SDK through ``context.db`` / ``context.raw_client`` (see
+        ``execute_statement``'s docstring). This change adds the primitive
+        only — the schema-snapshot repository still needs to be updated, in
+        the sibling monorepo where it lives, to call this instead of
+        building an ``INSERT``; until that happens the gap above is not yet
+        closed end-to-end.
+
+        Args:
+            container_name: Name of the Cosmos DB container to upsert into.
+            document: The full document body to upsert. Must include
+                whatever field the container's partition key path points at.
+
+        Returns:
+            The document as returned by the SDK (typically the input body
+            plus Cosmos-assigned system properties such as ``_etag``,
+            ``_ts``, ``_self``).
+        """
+        container_client = self.connection_manager.get_container_client(container_name)
+        return cast(Dict[str, Any], container_client.upsert_item(body=document))
 
     def _normalize_cosmos_sql(self, sql: str, container_name: str) -> str:
         """Normalize Cosmos DB SQL query to use proper container alias.

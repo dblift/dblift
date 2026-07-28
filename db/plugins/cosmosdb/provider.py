@@ -75,6 +75,28 @@ class CosmosDbProvider(NativeProvider):
         connection = self._get_connection_or_raise()
         return self.query_executor.execute_query(connection, sql, params)
 
+    def upsert_native_item(self, container_name: str, document: Dict[str, Any]) -> Dict[str, Any]:
+        """Upsert a document straight through the Azure SDK, bypassing SQL.
+
+        Thin forward to :meth:`CosmosDbQueryExecutor.upsert_native_item` —
+        the same shape as :meth:`execute_statement` and :meth:`execute_query`
+        above, which forward to the query executor's SQL-shaped methods. This
+        one exists for callers (e.g. the schema-snapshot repository) that
+        need to write a single document and hold a provider reference rather
+        than a query-executor one; see
+        :meth:`CosmosDbQueryExecutor.upsert_native_item` for why a native
+        write path exists instead of routing an ``INSERT`` through
+        ``execute_statement``.
+
+        No connection guard here (unlike ``execute_statement`` /
+        ``execute_query``): the query executor reaches the container through
+        ``connection_manager.get_container_client`` rather than the
+        ``connection`` object, the same reason
+        ``create_snapshot_table_if_not_exists`` below calls into
+        ``schema_operations`` directly without fetching one.
+        """
+        return self.query_executor.upsert_native_item(container_name, document)
+
     def create_schema_if_not_exists(self, schema: str) -> None:
         """Create schema if it doesn't exist (Cosmos DB doesn't have schemas)."""
         connection = self._get_connection_or_raise()
