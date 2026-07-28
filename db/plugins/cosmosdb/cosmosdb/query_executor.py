@@ -219,6 +219,28 @@ class CosmosDbQueryExecutor(BaseQueryExecutor):
         container_client = self.connection_manager.get_container_client(container_name)
         return cast(Dict[str, Any], container_client.upsert_item(body=document))
 
+    def delete_native_item(self, container_name: str, item_id: str, partition_key: Any) -> None:
+        """Delete a single document directly through the Azure SDK, bypassing SQL.
+
+        A ``DELETE`` routed through ``execute_statement`` hits the identical
+        ``NoSqlWriteNotSupportedError`` a write does, since Cosmos's SQL API
+        is read-only regardless of which DML verb is used. The monorepo's
+        schema-snapshot repository prunes old snapshots
+        (``delete_old_snapshots`` / ``_delete_all_snapshots``) by rendering a
+        SQL ``DELETE`` today; this is the native path for it to use instead,
+        the delete-side counterpart to :meth:`upsert_native_item`'s
+        write-side fix.
+
+        Args:
+            container_name: Name of the Cosmos DB container to delete from.
+            item_id: The document's ``id`` property.
+            partition_key: The partition key VALUE for this document (not
+                necessarily equal to item_id -- it's whatever value lives at
+                the container's partition key path for this document).
+        """
+        container_client = self.connection_manager.get_container_client(container_name)
+        container_client.delete_item(item=item_id, partition_key=partition_key)
+
     def _normalize_cosmos_sql(self, sql: str, container_name: str) -> str:
         """Normalize Cosmos DB SQL query to use proper container alias.
 

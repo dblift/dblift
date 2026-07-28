@@ -381,5 +381,66 @@ class TestUpsertNativeItem(unittest.TestCase):
         container_client.query_items.assert_not_called()
 
 
+# ---------------------------------------------------------------------------
+# delete_native_item
+# ---------------------------------------------------------------------------
+#
+# upsert_native_item closed the write half of the schema-snapshot gap; the
+# sibling monorepo's SchemaSnapshotRepository also prunes old snapshots
+# (delete_old_snapshots / _delete_all_snapshots) by rendering a plain SQL
+# DELETE and routing it through execute_statement -- which raises the
+# identical NoSqlWriteNotSupportedError for CosmosDB, since a delete is a
+# write like any other. This is the matching native, non-SQL escape hatch for
+# removing a single document by id, so the monorepo's pruning path can be
+# wired the same way the single-document write was.
+
+
+class TestDeleteNativeItem(unittest.TestCase):
+
+    def _make(self):
+        return _make_executor()
+
+    def test_calls_delete_item_on_the_correct_container(self):
+        ex = self._make()
+        container_client = MagicMock()
+        ex.connection_manager.get_container_client.return_value = container_client
+
+        ex.delete_native_item("dblift_schema_snapshots", "abc-123", partition_key="abc-123")
+
+        ex.connection_manager.get_container_client.assert_called_once_with(
+            "dblift_schema_snapshots"
+        )
+        container_client.delete_item.assert_called_once_with(
+            item="abc-123", partition_key="abc-123"
+        )
+
+    def test_partition_key_need_not_match_item_id(self):
+        """The partition key path is a property of the container, not
+        necessarily the same value as the document's own id -- callers must
+        be able to pass whatever the container's actual partition key value
+        is, not have this method assume it always equals item_id."""
+        ex = self._make()
+        container_client = MagicMock()
+        ex.connection_manager.get_container_client.return_value = container_client
+
+        ex.delete_native_item("dblift_schema_snapshots", "abc-123", partition_key="tenant-42")
+
+        container_client.delete_item.assert_called_once_with(
+            item="abc-123", partition_key="tenant-42"
+        )
+
+    def test_does_not_go_through_execute_statement_or_sql(self):
+        """Regression guard: this must be a direct SDK call, not a
+        rendered-SQL path that would hit the same NoSqlWriteNotSupportedError
+        this method exists to avoid."""
+        ex = self._make()
+        container_client = MagicMock()
+        ex.connection_manager.get_container_client.return_value = container_client
+
+        ex.delete_native_item("dblift_schema_snapshots", "abc-123", partition_key="abc-123")
+
+        container_client.query_items.assert_not_called()
+
+
 if __name__ == "__main__":
     unittest.main()
