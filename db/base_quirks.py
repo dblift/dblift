@@ -435,9 +435,15 @@ class BaseQuirks:
     #: Oracle requires ``FROM DUAL``.
     connection_probe_sql: str = "SELECT 1"
     #: ``SELECT … LIMIT N`` syntax is supported. PostgreSQL, MySQL and
-    #: SQLite accept ``LIMIT``; Oracle (``FETCH FIRST N ROWS ONLY``)
-    #: and DB2 (``FETCH FIRST N ROWS ONLY``) do not; SQL Server uses
-    #: ``TOP N`` instead. When False, post-commit verification queries
+    #: SQLite accept ``LIMIT``; Oracle (``FETCH FIRST N ROWS ONLY``) does
+    #: not; SQL Server uses ``TOP N`` instead. DB2's *preferred* rendering
+    #: is also ``FETCH FIRST N ROWS ONLY`` (see :attr:`row_limit_style`),
+    #: but DB2 additionally accepts a bare trailing ``LIMIT`` clause —
+    #: verified against a live db2 12.01.0500 server via the
+    #: capability-probe integration test
+    #: (``tests/integration/capabilities/test_engine_capabilities.py``) —
+    #: so it sets this True even though its declared ``row_limit_style``
+    #: is not ``"limit"``. When False, post-commit verification queries
     #: and similar probes omit the ``LIMIT`` clause.
     select_supports_limit: bool = True
     #: How a SELECT is bounded to N rows. One of:
@@ -461,12 +467,16 @@ class BaseQuirks:
     #: Read through :meth:`row_limit_clauses`, which renders the triple
     #: rather than making each caller re-derive the syntax. Distinct from
     #: :attr:`select_supports_limit`, which answers the coarser "may I
-    #: append ``LIMIT`` at all" question for optional probes — but the two
-    #: overlap in practice: every dialect that sets a non-default
-    #: ``row_limit_style`` (SQL Server, Oracle, DB2) also sets
-    #: ``select_supports_limit = False``, because none of them accept a bare
-    #: trailing ``LIMIT`` either. Nothing in the framework enforces that the
-    #: two stay consistent, so a new dialect could set one without the other;
+    #: append ``LIMIT`` at all" question for optional probes — the two
+    #: usually correlate (SQL Server and Oracle, which set a non-default
+    #: ``row_limit_style``, also set ``select_supports_limit = False``,
+    #: since neither accepts a bare trailing ``LIMIT``) but they are NOT
+    #: guaranteed to: DB2 is a documented exception — it declares
+    #: ``row_limit_style = "fetch_first"`` as its preferred rendering yet
+    #: sets ``select_supports_limit = True`` because the live engine also
+    #: accepts a bare trailing ``LIMIT`` (verified via the capability-probe
+    #: integration test). Nothing in the framework enforces that the two
+    #: stay consistent, so a new dialect could set one without the other;
     #: see the invariant test in ``tests/unit/db/test_dialect_capability_quirks.py``.
     row_limit_style: str = "limit"
     #: How an "insert or update on primary-key conflict" is expressed.

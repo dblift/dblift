@@ -833,6 +833,212 @@ class TestEnrichColumnsWithIdentity(unittest.TestCase):
         self.assertTrue(col.is_identity)
         self.assertEqual(col.identity_seed, "1")
 
+    def test_sql_variant_seed_and_increment_decoded_from_bytes(self):
+        """SQL Server's sys.identity_columns.seed_value/increment_value are
+        typed ``sql_variant``. Reproduces run 30342871407 on
+        cmodiano/dblift#claude/diff-snapshot-diagnosis: pymssql returns a
+        sql_variant int as the raw little-endian on-wire bytes rather than
+        a Python int, so an unconverted pass-through leaves
+        ``identity_seed``/``identity_increment`` as ``bytes``. Formatting
+        that straight into DDL produces
+        ``IDENTITY(b'\\x01\\x00\\x00\\x00',b'\\x01\\x00\\x00\\x00')``, which
+        SQL Server rejects with "Incorrect syntax near 'b'." -- this killed
+        every sqlserver round-trip test that creates an IDENTITY column
+        (test_sqlserver_comprehensive.py, test_sqlserver_edge_cases.py x6,
+        test_sqlserver_identity_sequences.py, test_sqlserver_indexed_views.py,
+        test_sqlserver_round_trips_advanced.py, test_sqlserver_triggers.py),
+        invisible until now because those tests used to die earlier on the
+        JDBC-era schema_operations/getAutoCommit calls the validation_stack
+        fixture replaced.
+        """
+        si, _ = _make_si(has_connection=True)
+        si.vendor_queries = MagicMock()
+        si.vendor_queries.get_identity_columns_query.return_value = ("SELECT ...", [])
+        si.provider.query_executor.execute_query.return_value = [
+            {
+                "column_name": "ID",
+                "seed_value": (1).to_bytes(4, byteorder="little"),
+                "increment_value": (1).to_bytes(4, byteorder="little"),
+                "last_value": None,
+            }
+        ]
+
+        col = SqlColumn(name="id", data_type="INTEGER")
+        si.enrich_columns_with_identity("public", "users", [col])
+
+        self.assertTrue(col.is_identity)
+        self.assertEqual(col.identity_seed, 1)
+        self.assertEqual(col.identity_increment, 1)
+        self.assertNotIsInstance(col.identity_seed, bytes)
+        self.assertNotIsInstance(col.identity_increment, bytes)
+
+        # And the SQL Server DDL quirk must render plain integers, not the
+        # bytes repr -- this is the exact string SQL Server rejected in CI.
+        quirks = SqlserverQuirks()
+        clause = quirks.render_identity_clause(col)
+        self.assertEqual(clause, "IDENTITY(1,1)")
+
+    def test_sql_variant_negative_seed_decoded_from_bytes(self):
+        """SQL Server supports negative IDENTITY seed/increment (e.g.
+        ``IDENTITY(-1,-1)`` to count down), and sys.identity_columns.seed_value/
+        increment_value can arrive from pymssql as raw little-endian
+        sql_variant bytes, exactly as in
+        test_sql_variant_seed_and_increment_decoded_from_bytes above. Decoding
+        those bytes without ``signed=True`` treats them as unsigned, turning
+        -1 into 4294967295. Assert the signed decode instead.
+        """
+        si, _ = _make_si(has_connection=True)
+        si.vendor_queries = MagicMock()
+        si.vendor_queries.get_identity_columns_query.return_value = ("SELECT ...", [])
+        si.provider.query_executor.execute_query.return_value = [
+            {
+                "column_name": "ID",
+                "seed_value": (-1).to_bytes(4, byteorder="little", signed=True),
+                "increment_value": (-1).to_bytes(4, byteorder="little", signed=True),
+                "last_value": None,
+            }
+        ]
+
+        col = SqlColumn(name="id", data_type="INTEGER")
+        si.enrich_columns_with_identity("public", "users", [col])
+
+        self.assertTrue(col.is_identity)
+        self.assertEqual(col.identity_seed, -1)
+        self.assertEqual(col.identity_increment, -1)
+
+    def test_sql_variant_last_value_decoded_from_bytes(self):
+        """``last_value`` has the identical sql_variant-bytes shape as
+        seed_value/increment_value (same source query, same driver), but was
+        left unconverted when those two were fixed -- it is currently inert
+        (nothing in core/sql_model reads it as an int; it isn't even a
+        declared SqlColumn field, only a `# type: ignore[attr-defined]`
+        custom attribute), so the gap was latent rather than a live bug. Fix
+        it anyway, the same way, before a future consumer relies on it being
+        an int and rediscovers the identical bug with no coverage protecting
+        it.
+        """
+        si, _ = _make_si(has_connection=True)
+        si.vendor_queries = MagicMock()
+        si.vendor_queries.get_identity_columns_query.return_value = ("SELECT ...", [])
+        si.provider.query_executor.execute_query.return_value = [
+            {
+                "column_name": "ID",
+                "seed_value": (1).to_bytes(4, byteorder="little"),
+                "increment_value": (1).to_bytes(4, byteorder="little"),
+                "last_value": (42).to_bytes(4, byteorder="little"),
+            }
+        ]
+
+        col = SqlColumn(name="id", data_type="INTEGER")
+        si.enrich_columns_with_identity("public", "users", [col])
+
+        self.assertEqual(col.identity_last_value, 42)
+        self.assertNotIsInstance(col.identity_last_value, bytes)
+
+    def test_sql_variant_negative_last_value_decoded_from_bytes(self):
+        """Same signedness hazard as seed/increment: a negative last_value
+        decoded unsigned would come back as a large positive number instead.
+        """
+        si, _ = _make_si(has_connection=True)
+        si.vendor_queries = MagicMock()
+        si.vendor_queries.get_identity_columns_query.return_value = ("SELECT ...", [])
+        si.provider.query_executor.execute_query.return_value = [
+            {
+                "column_name": "ID",
+                "seed_value": (1).to_bytes(4, byteorder="little"),
+                "increment_value": (1).to_bytes(4, byteorder="little"),
+                "last_value": (-7).to_bytes(4, byteorder="little", signed=True),
+            }
+        ]
+
+        col = SqlColumn(name="id", data_type="INTEGER")
+        si.enrich_columns_with_identity("public", "users", [col])
+
+        self.assertEqual(col.identity_last_value, -7)
+
+    def test_sql_variant_non_integer_byte_length_is_not_silently_misdecoded(self):
+        """SQL Server also permits IDENTITY on numeric/decimal columns (scale
+        0), and TDS encodes DECIMALN/NUMERICN as a sign byte followed by an
+        UNSIGNED magnitude -- not a plain two's-complement integer the way
+        int/bigint/smallint/tinyint are. ``int.from_bytes(..., signed=True)``
+        on a decimal-shaped payload would not just get the sign wrong, it
+        would misinterpret the sign byte as part of the magnitude and
+        produce a materially wrong value -- silently, since nothing about
+        that shape looks invalid to ``int.from_bytes``, which accepts any
+        byte length.
+
+        This case has never been verified against a live server (no decimal-
+        identity fixture reachable in CI yet), so the fix this test pins
+        is narrower than "decode it correctly": for a byte length that does
+        NOT match a standard two's-complement integer width (1, 2, 4, or 8
+        bytes -- tinyint/smallint/int/bigint), refuse to guess. Surface it
+        loudly (a warning log naming the column, matching this function's
+        existing exception-handling convention) rather than silently
+        producing a plausible-looking but wrong integer.
+        """
+        si, _ = _make_si(has_connection=True)
+        si.vendor_queries = MagicMock()
+        si.vendor_queries.get_identity_columns_query.return_value = ("SELECT ...", [])
+        # 5 bytes: sign byte + 4-byte magnitude, the shape TDS uses for a
+        # DECIMALN/NUMERICN sql_variant payload -- not any standard int width.
+        si.provider.query_executor.execute_query.return_value = [
+            {
+                "column_name": "ID",
+                "seed_value": b"\x00\x03\x00\x00\x00",
+                "increment_value": (1).to_bytes(4, byteorder="little"),
+                "last_value": None,
+            }
+        ]
+
+        col = SqlColumn(name="id", data_type="DECIMAL")
+        si.enrich_columns_with_identity("public", "users", [col])
+
+        self.assertFalse(
+            isinstance(col.identity_seed, int),
+            "a non-standard byte width must not be silently decoded as a "
+            "plain integer -- that is exactly the wrong-value risk this "
+            "test exists to catch",
+        )
+        si.log.warning.assert_called()
+
+    def test_a_bad_column_does_not_blank_out_other_columns_in_the_same_table(self):
+        """Regression guard for a review finding on this fix: without
+        per-column isolation, one column's decode ValueError propagates past
+        the whole ``for column in columns`` loop into the table-level
+        ``except``, silently losing seed/increment/last_value for every
+        OTHER column processed after the bad one too -- a much wider blast
+        radius than the single malformed column the raise is actually about.
+        Two columns here, the malformed one processed FIRST (the worst
+        case): the second, perfectly ordinary column must still get its
+        correct metadata.
+        """
+        si, _ = _make_si(has_connection=True)
+        si.vendor_queries = MagicMock()
+        si.vendor_queries.get_identity_columns_query.return_value = ("SELECT ...", [])
+        si.provider.query_executor.execute_query.return_value = [
+            {
+                "column_name": "BAD_ID",
+                "seed_value": b"\x00\x03\x00\x00\x00",  # non-standard width
+                "increment_value": (1).to_bytes(4, byteorder="little"),
+                "last_value": None,
+            },
+            {
+                "column_name": "GOOD_ID",
+                "seed_value": (1).to_bytes(4, byteorder="little"),
+                "increment_value": (1).to_bytes(4, byteorder="little"),
+                "last_value": None,
+            },
+        ]
+
+        bad_col = SqlColumn(name="bad_id", data_type="DECIMAL")
+        good_col = SqlColumn(name="good_id", data_type="INTEGER")
+        si.enrich_columns_with_identity("public", "users", [bad_col, good_col])
+
+        self.assertTrue(good_col.is_identity)
+        self.assertEqual(good_col.identity_seed, 1)
+        self.assertEqual(good_col.identity_increment, 1)
+        si.log.warning.assert_called()
+
     def test_handles_exception_gracefully(self):
         si, _ = _make_si(has_connection=True)
         si.vendor_queries = MagicMock()
@@ -841,6 +1047,97 @@ class TestEnrichColumnsWithIdentity(unittest.TestCase):
 
         col = SqlColumn(name="id", data_type="INTEGER")
         si.enrich_columns_with_identity("public", "users", [col])
+        si.log.warning.assert_called()
+
+    def test_failed_decode_does_not_leave_column_flagged_as_identity(self):
+        """Bugbot finding on PR #67: a decode failure used to leave
+        ``is_identity = True`` with ``identity_seed``/``identity_increment``
+        still ``None`` (never assigned, since the raise happens inside the
+        same try that would have set them). ``SqlserverQuirks.
+        render_identity_clause`` treats a ``None`` seed/increment as "not
+        recorded, use SQL Server's own default" and substitutes ``(1, 1)`` --
+        correct for a column nobody ever queried metadata for, but wrong here:
+        we DID query this column and know its real seed/increment exist, we
+        just could not decode them. Silently emitting ``IDENTITY(1,1)`` is a
+        plausible-looking but potentially wrong value for e.g. a decimal-
+        typed IDENTITY column with a real, different seed.
+
+        The fix must not leave that ambiguous state: a column whose identity
+        metadata failed to decode must not still claim ``is_identity``, so
+        DDL generation omits the IDENTITY clause for it entirely rather than
+        guessing.
+        """
+        si, _ = _make_si(has_connection=True)
+        si.vendor_queries = MagicMock()
+        si.vendor_queries.get_identity_columns_query.return_value = ("SELECT ...", [])
+        si.provider.query_executor.execute_query.return_value = [
+            {
+                "column_name": "ID",
+                "seed_value": b"\x00\x03\x00\x00\x00",  # non-standard width
+                "increment_value": (1).to_bytes(4, byteorder="little"),
+                "last_value": None,
+            }
+        ]
+
+        col = SqlColumn(name="id", data_type="DECIMAL")
+        si.enrich_columns_with_identity("public", "users", [col])
+
+        self.assertFalse(
+            col.is_identity,
+            "a column whose identity metadata could not be decoded must not "
+            "still be flagged is_identity=True -- that is what let "
+            "render_identity_clause's None-means-'use the default' fallback "
+            "substitute a wrong seed/increment for a column it actually has "
+            "(undecodable) data for",
+        )
+        self.assertIsNone(col.identity_seed)
+        self.assertIsNone(col.identity_increment)
+
+        # basic_table_ddl_generator only calls render_identity_clause when
+        # is_identity is truthy -- confirm the gate this column must now
+        # fail, so SqlserverQuirks's "None means use SQL Server's own
+        # default" fallback is never consulted for it.
+        self.assertFalse(getattr(col, "is_identity", False))
+
+    def test_last_value_only_decode_failure_does_not_discard_good_seed_and_increment(self):
+        """Bugbot finding on PR #68: seed_value and increment_value decode
+        fine here -- only last_value has a non-standard byte width and
+        raises. Because all three decodes shared one try/except, the
+        previous fix's reset (is_identity=False, identity_seed=None,
+        identity_increment=None) fired even though seed and increment were
+        already correctly decoded and stored on ``column`` by the time
+        last_value's decode raised.
+
+        last_value has no downstream DDL consumer at all (grep confirms
+        nothing outside this function and its tests reads
+        ``identity_last_value``), so a last_value-only failure carries none
+        of the "silently wrong seed/increment" risk the reset exists to
+        prevent. Discarding a column's otherwise-valid, correctly-decoded
+        identity metadata over an unrelated, unread field is strictly worse
+        than just leaving ``identity_last_value`` unset and moving on.
+        """
+        si, _ = _make_si(has_connection=True)
+        si.vendor_queries = MagicMock()
+        si.vendor_queries.get_identity_columns_query.return_value = ("SELECT ...", [])
+        si.provider.query_executor.execute_query.return_value = [
+            {
+                "column_name": "ID",
+                "seed_value": (1).to_bytes(4, byteorder="little"),
+                "increment_value": (1).to_bytes(4, byteorder="little"),
+                "last_value": b"\x00\x03\x00\x00\x00",  # non-standard width
+            }
+        ]
+
+        col = SqlColumn(name="id", data_type="INTEGER")
+        si.enrich_columns_with_identity("public", "users", [col])
+
+        self.assertTrue(
+            col.is_identity,
+            "seed and increment decoded fine -- a last_value-only failure "
+            "must not un-flag this column as an identity column",
+        )
+        self.assertEqual(col.identity_seed, 1)
+        self.assertEqual(col.identity_increment, 1)
         si.log.warning.assert_called()
 
 

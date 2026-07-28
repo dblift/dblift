@@ -46,7 +46,8 @@ class AlterGeneratorFactory:
         load_feature_extensions()
         attach_registered_sql_generators()
         ProviderRegistry.discover_plugins()
-        for plugin_info in ProviderRegistry.list_plugins():
+        plugin_list = ProviderRegistry.list_plugins()
+        for plugin_info in plugin_list:
             # Per-plugin fault isolation: a broken plugin must not
             # prevent the others from registering. (PR #241 Bugbot.)
             try:
@@ -62,7 +63,14 @@ class AlterGeneratorFactory:
                     plugin_info.name,
                     exc,
                 )
-        cls._populated = True
+        # Latch only when plugin discovery itself found something. An empty
+        # ``plugin_list`` is the documented race (entry points not yet wired
+        # up in this process) and must be retried on a later call. A
+        # non-empty ``plugin_list`` means discovery genuinely completed --
+        # even if every plugin's quirks raised or returned no ALTER
+        # generator class, that is a real, stable outcome and should latch
+        # rather than re-running full discovery on every subsequent call.
+        cls._populated = bool(plugin_list)
 
     @classmethod
     def create_generator(cls, dialect: str) -> BaseAlterGenerator:
