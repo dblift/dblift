@@ -15,6 +15,78 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
+## [3.3.0] - 2026-07-28
+
+A capability-probe catch, a driver-quirk decoding bug across two related
+fixes, a native write path for CosmosDB, and two lazily-populated registries
+that cached an empty result forever.
+
+### Added
+
+- **CosmosDB has a native, non-SQL document-write primitive:**
+  `CosmosDbQueryExecutor.upsert_native_item(container_name, document)`, plus a
+  thin `CosmosDbProvider.upsert_native_item` forward. A prior removal of
+  CosmosDB's pseudo-SQL DML translation (the Cosmos SQL API is read-only, and
+  the emulator that used to fake `INSERT`/`UPDATE`/`DELETE` support was
+  actively wrong) correctly ported container *creation* to a native Azure SDK
+  call, but there was no equivalent native path for writing a single
+  document — an internal caller that needs one had to build a plain SQL
+  `INSERT` and route it through `execute_statement`, which is SELECT-only and
+  raises `NoSqlWriteNotSupportedError` for anything else. This adds the
+  missing primitive (`azure.cosmos.ContainerProxy.upsert_item`, called
+  directly).
+
+### Fixed
+
+- **SQL Server `IDENTITY` seed, increment, and last-value can now be
+  introspected without corrupting generated DDL.** `sys.identity_columns`'
+  `seed_value`/`increment_value`/`last_value` columns are typed
+  `sql_variant`, and pymssql/FreeTDS can return a `sql_variant` int as raw
+  on-wire bytes rather than a Python `int` (e.g. the int `1` as
+  `b'\x01\x00\x00\x00'`). Those bytes were passed straight through onto the
+  column model, and the SQL Server DDL quirk then formatted them into
+  generated `CREATE TABLE` statements as-is —
+  `IDENTITY(b'\x01\x00\x00\x00',b'\x01\x00\x00\x00')` — which SQL Server
+  rejects outright with `Incorrect syntax near 'b'.`, breaking every
+  round-trip test (and, for real users, every round-trip operation) against
+  a table with an `IDENTITY` column. All three fields are now decoded to a
+  signed integer at the point they're first captured (SQL Server genuinely
+  supports negative `IDENTITY` seed/increment — `IDENTITY(-1,-1)` counts
+  down — so the decode has to be signed, not just any decode). SQL Server
+  also permits `IDENTITY` on `decimal`/`numeric` columns, whose `sql_variant`
+  wire shape is a sign byte plus an *unsigned* magnitude rather than a plain
+  two's-complement integer; decoding that shape the same way would silently
+  produce a wrong value, so a byte width that doesn't match a standard
+  integer size (1, 2, 4, or 8 bytes) is now rejected with a clear error
+  instead of guessed at — full decimal/numeric `IDENTITY` support needs
+  live-server verification this fix doesn't have yet.
+
+- **DB2's declared row-limit capability matched only part of what a live
+  server actually does.** `select_supports_limit = False` claimed DB2
+  rejects a bare trailing `SELECT ... LIMIT n` clause; a live DB2 12.01.0500
+  server accepted it, caught by the capability-probe suite that exists
+  specifically to catch a declared dialect capability contradicted by the
+  real engine. DB2 still renders `FETCH FIRST n ROWS ONLY` as its preferred
+  form (unchanged), but it also tolerates a bare `LIMIT`, so the coarser
+  "may an optional probe append `LIMIT` at all" question now answers `True`
+  for DB2. Oracle and SQL Server are untouched — there is no equivalent
+  live-probe evidence for either.
+
+- **Two lazily-populated registries no longer cache an empty result as
+  "done" for the rest of the process.** `AlterGeneratorFactory
+  ._ensure_populated()` and `core.seams.feature_loading
+  .load_feature_extensions()` both set their one-shot "populated" flag
+  unconditionally, even on a call that found nothing to register. In a
+  process where plugin/entry-point discovery hasn't finished wiring up yet —
+  the paid-tier packages' `dblift.features` entry points not yet reachable
+  from this process's view of installed metadata is the documented case —
+  the empty result got latched permanently, and a later call that *would*
+  have found the real registrations short-circuited on the stale flag and
+  never retried. Both now latch only when discovery actually found
+  something to register; a discovery pass that completes and genuinely
+  finds nothing (every OSS-shipped dialect's real, permanent default for
+  `alter_generator_class()`) is unaffected and still latches as before.
+
 ## [3.2.1] - 2026-07-27
 
 Two silent-failure fixes in schema drift detection, and the repair of the
