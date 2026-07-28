@@ -7,6 +7,8 @@ Focus: uncovered paths that don't require a live Azure endpoint.
 - _substitute_params (various value types, error on mismatch)
 - _extract_container_from_query
 - _normalize_cosmos_sql
+- upsert_native_item (the native document-write path callers use instead of
+  routing DML through execute_statement, which only ever reads)
 """
 
 import unittest
@@ -317,6 +319,67 @@ class TestNormalizeCosmosSql(unittest.TestCase):
         result = ex._normalize_cosmos_sql(sql, "c")
         # Non-SELECT passthrough
         self.assertEqual(sql, result)
+
+
+# ---------------------------------------------------------------------------
+# upsert_native_item
+# ---------------------------------------------------------------------------
+#
+# execute_statement's docstring tells callers that writes go through the
+# Azure SDK, not SQL -- but the only SDK escape hatch it names is a
+# user-written Python migration's context.db/context.raw_client. An internal
+# caller like the snapshot repository (dblift_pro/snapshot/schema_snapshot_
+# repository.py in the sibling monorepo) has no such context and, before
+# this method existed, had no native path either: it built a plain SQL
+# INSERT and routed it through execute_statement, which raises
+# NoSqlWriteNotSupportedError for anything but a SELECT. That silently broke
+# CosmosDB snapshot persistence (migrate succeeds, the snapshot write never
+# lands, and the failure is swallowed by the best-effort event listener that
+# calls it) -- see the ADR-0032 pseudo-SQL removal, which ported the
+# container-create seam (create_snapshot_table_if_not_exists) to a native
+# SDK call but missed the row-write seam.
+
+
+class TestUpsertNativeItem(unittest.TestCase):
+
+    def _make(self):
+        return _make_executor()
+
+    def test_calls_upsert_item_on_the_correct_container(self):
+        ex = self._make()
+        container_client = MagicMock()
+        ex.connection_manager.get_container_client.return_value = container_client
+
+        document = {"snapshot_id": "abc-123", "captured_at": "2026-07-28T00:00:00Z"}
+        ex.upsert_native_item("dblift_schema_snapshots", document)
+
+        ex.connection_manager.get_container_client.assert_called_once_with(
+            "dblift_schema_snapshots"
+        )
+        container_client.upsert_item.assert_called_once_with(body=document)
+
+    def test_returns_the_upserted_item_from_the_sdk(self):
+        ex = self._make()
+        container_client = MagicMock()
+        sdk_echo = {"snapshot_id": "abc-123", "_etag": '"0000-abcd"'}
+        container_client.upsert_item.return_value = sdk_echo
+        ex.connection_manager.get_container_client.return_value = container_client
+
+        result = ex.upsert_native_item("dblift_schema_snapshots", {"snapshot_id": "abc-123"})
+
+        self.assertEqual(sdk_echo, result)
+
+    def test_does_not_go_through_execute_statement_or_sql(self):
+        """Regression guard: this must be a direct SDK call, not a
+        rendered-SQL path that would hit the same NoSqlWriteNotSupportedError
+        this method exists to avoid."""
+        ex = self._make()
+        container_client = MagicMock()
+        ex.connection_manager.get_container_client.return_value = container_client
+
+        ex.upsert_native_item("dblift_schema_snapshots", {"snapshot_id": "x"})
+
+        container_client.query_items.assert_not_called()
 
 
 if __name__ == "__main__":
