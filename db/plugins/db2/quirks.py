@@ -72,8 +72,10 @@ class Db2Quirks(BaseQuirks):
         return self.is_data_history_table_already_exists_error(error_message)
 
     connection_probe_sql = "SELECT 1 FROM SYSIBM.SYSDUMMY1"
-    select_supports_limit = False
-    # Trailing ``FETCH FIRST n ROWS ONLY``; no ``LIMIT``.
+    select_supports_limit = True
+    # Canonical rendering is trailing ``FETCH FIRST n ROWS ONLY``, but DB2
+    # also accepts a bare trailing ``LIMIT n`` (verified against a live
+    # db2 12.01.0500 server via the capability-probe integration test).
     row_limit_style = "fetch_first"
     unquoted_identifier_case = "uppercase"
     connection_identifier_attrs = ("url", "host", "database")

@@ -104,20 +104,42 @@ class TestRowLimitStyle:
         assert _Odd(dialect_name="odd").row_limit_clauses(7) == ("", "", " LIMIT 7")
 
     def test_row_limit_style_and_select_supports_limit_agree(self) -> None:
-        """The two attributes overlap and nothing keeps them in sync.
+        """The two attributes overlap, but the overlap is not total -- db2 is
+        a confirmed exception, not a structural guarantee.
 
-        A dialect that can't append a bare trailing ``LIMIT``
-        (``select_supports_limit = False``) is exactly a dialect that needs a
-        non-default ``row_limit_style`` (``"top"`` or ``"fetch_first"``), and
-        vice versa. This pins that the two flags are declared consistently
-        for every registered dialect today (SQL Server/``"top"``,
-        Oracle+DB2/``"fetch_first"``); it is not a structural guarantee, so a
-        future dialect could still set one without the other.
+        A dialect with a non-default ``row_limit_style`` (``"top"`` or
+        ``"fetch_first"``) usually can't append a bare trailing ``LIMIT``
+        either, and this pins that correlation for every dialect except the
+        one now known not to hold it. SQL Server and Oracle still fit: both
+        set a non-default style AND ``select_supports_limit = False``.
+
+        DB2 breaks the pattern: it declares ``row_limit_style =
+        "fetch_first"`` as its PREFERRED rendering (matching Oracle's
+        convention of declaring its native/canonical form), but a live db2
+        12.01.0500 server, probed via
+        tests/integration/capabilities/test_engine_capabilities.py
+        ::test_row_limit_clauses_match_the_engine (CI run 30346957093,
+        cmodiano/dblift), accepted a bare trailing ``LIMIT`` too --
+        contradicting the ``select_supports_limit = False`` this dialect
+        used to declare. The two questions are genuinely different
+        ("what do I render" vs. "may an optional probe append a bare LIMIT
+        at all") and db2 is the first registered dialect where they
+        diverge. Not a structural guarantee before this, and still not one
+        now: a future dialect could align with either db2's shape or the
+        SQL-Server/Oracle shape.
         """
+        # ``ibm_db_sa`` is db2's own alias (see ``all_registered_dialects``'s
+        # docstring: aliases are swept deliberately and must agree with the
+        # dialect they alias) -- it resolves to the same Db2Quirks instance,
+        # so it diverges for the identical reason db2 does.
+        DIVERGES_FROM_THE_USUAL_CORRELATION = {"db2", "ibm_db_sa"}
         for dialect in all_registered_dialects():
             q = quirks(dialect)
             non_default_style = q.row_limit_style != "limit"
             no_bare_limit = q.select_supports_limit is False
+            if dialect in DIVERGES_FROM_THE_USUAL_CORRELATION:
+                assert non_default_style and not no_bare_limit, dialect
+                continue
             assert non_default_style == no_bare_limit, dialect
 
 
