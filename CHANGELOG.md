@@ -15,6 +15,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
+## [3.3.1] - 2026-07-28
+
+A CosmosDB write-path follow-up, and a third instance of the same
+lazily-populated-registry latch bug fixed twice already in 3.3.0.
+
+### Added
+
+- **CosmosDB has a native document-delete primitive:**
+  `CosmosDbQueryExecutor.delete_native_item(container_name, item_id,
+  partition_key)`, plus a thin `CosmosDbProvider.delete_native_item` forward.
+  The delete-side counterpart to 3.3.0's `upsert_native_item`: the sibling
+  monorepo's schema-snapshot repository prunes old snapshots by rendering a
+  SQL `DELETE` and routing it through `execute_statement`, which raises
+  `NoSqlWriteNotSupportedError` for CosmosDB just like the `INSERT`
+  `upsert_native_item` was added to replace — Cosmos's SQL API rejects any
+  DML verb, not only writes. This closes the gap so the monorepo's pruning
+  path can be wired the same way the single-document write already was.
+
+### Fixed
+
+- **`ProviderRegistry.discover_plugins()` had the identical
+  unconditional-latch bug already fixed twice in 3.3.0**
+  (`AlterGeneratorFactory._ensure_populated`,
+  `core.seams.feature_loading.load_feature_extensions`), one layer over
+  third-party `dblift.providers` plugins. `discover_plugins()` runs an
+  entry-point pass and a filesystem fallback that always finds OSS's own 19
+  shipped dialects (they live as directories inside this wheel), which
+  masked the bug: a third-party entry-point package — unreachable by the
+  filesystem scan — whose entry point isn't yet visible via
+  `importlib.metadata` on the first call would never get a second chance,
+  since the latch still closed on the strength of the filesystem-found
+  first-party dialects. The entry-point pass now reports whether it found
+  anything, and the latch is keyed on that instead of closing
+  unconditionally; the common case (entry-points find all first-party
+  dialects) is unaffected.
+
 ## [3.3.0] - 2026-07-28
 
 A capability-probe catch, a driver-quirk decoding bug across two related
