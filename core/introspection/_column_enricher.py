@@ -291,9 +291,9 @@ def enrich_columns_with_identity(
             if identity_data:
                 # Mark as identity (may already be marked from the column
                 # query) for now -- the except block below reverts this if
-                # the seed/increment decode fails, since a column whose real
-                # identity parameters we can't decode must not still claim
-                # is_identity (see that block for why).
+                # decoding seed, increment, OR last_value fails, since a
+                # column whose real identity parameters we can't decode must
+                # not still claim is_identity (see that block for why).
                 column.is_identity = True
                 # A decode failure (see _decode_sql_variant_int above) is
                 # isolated to THIS column, not the whole table: without this,
