@@ -63,4 +63,9 @@ def load_feature_extensions() -> None:
             register()
         except Exception as exc:  # a bad plugin must not break startup
             _log.warning("dblift.features '%s' failed to load: %s", entry_point.name, exc)
-    _features_loaded = True
+    # Latch only when something was actually found. An empty result here is
+    # the documented race (a paid package's dblift.features entry point not
+    # yet reaching this process's importlib.metadata view) and must be
+    # retried on a later call, exactly like the identical latch bug fixed in
+    # AlterGeneratorFactory._ensure_populated.
+    _features_loaded = bool(ordered)
