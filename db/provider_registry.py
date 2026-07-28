@@ -155,18 +155,25 @@ class ProviderRegistry:
         if cls._discovered:
             return
 
-        cls._discover_via_entry_points()
+        found_entry_points = cls._discover_via_entry_points()
         cls._discover_via_filesystem()
 
-        cls._discovered = True
+        cls._discovered = found_entry_points
 
     @classmethod
-    def _discover_via_entry_points(cls) -> None:
-        """Read ``dblift.providers`` entry-points and register each one."""
+    def _discover_via_entry_points(cls) -> bool:
+        """Read ``dblift.providers`` entry-points and register each one.
+
+        Returns whether any entry points were found, so ``discover_plugins``
+        can decide whether this pass is safe to latch (see Defect: a call
+        whose entry-point pass found nothing must not close the
+        ``_discovered`` latch, or a late-arriving third-party plugin never
+        gets a second chance).
+        """
         try:
             from importlib import metadata
         except ImportError:  # pragma: no cover - Python < 3.8
-            return
+            return False
 
         try:
             entry_points: List[Any] = list(metadata.entry_points(group=cls.ENTRY_POINT_GROUP))
@@ -177,7 +184,7 @@ class ProviderRegistry:
             entry_points = list(getter(cls.ENTRY_POINT_GROUP, [])) if getter else []
         except Exception as exc:  # pragma: no cover - defensive
             _logger.warning(f"Failed to read entry-points for {cls.ENTRY_POINT_GROUP}: {exc}")
-            return
+            return False
 
         for ep in entry_points:
             try:
@@ -192,6 +199,8 @@ class ProviderRegistry:
                 )
                 continue
             cls.register_plugin(plugin_info)
+
+        return bool(entry_points)
 
     @classmethod
     def _discover_via_filesystem(cls) -> None:
