@@ -1099,6 +1099,47 @@ class TestEnrichColumnsWithIdentity(unittest.TestCase):
         # default" fallback is never consulted for it.
         self.assertFalse(getattr(col, "is_identity", False))
 
+    def test_last_value_only_decode_failure_does_not_discard_good_seed_and_increment(self):
+        """Bugbot finding on PR #68: seed_value and increment_value decode
+        fine here -- only last_value has a non-standard byte width and
+        raises. Because all three decodes shared one try/except, the
+        previous fix's reset (is_identity=False, identity_seed=None,
+        identity_increment=None) fired even though seed and increment were
+        already correctly decoded and stored on ``column`` by the time
+        last_value's decode raised.
+
+        last_value has no downstream DDL consumer at all (grep confirms
+        nothing outside this function and its tests reads
+        ``identity_last_value``), so a last_value-only failure carries none
+        of the "silently wrong seed/increment" risk the reset exists to
+        prevent. Discarding a column's otherwise-valid, correctly-decoded
+        identity metadata over an unrelated, unread field is strictly worse
+        than just leaving ``identity_last_value`` unset and moving on.
+        """
+        si, _ = _make_si(has_connection=True)
+        si.vendor_queries = MagicMock()
+        si.vendor_queries.get_identity_columns_query.return_value = ("SELECT ...", [])
+        si.provider.query_executor.execute_query.return_value = [
+            {
+                "column_name": "ID",
+                "seed_value": (1).to_bytes(4, byteorder="little"),
+                "increment_value": (1).to_bytes(4, byteorder="little"),
+                "last_value": b"\x00\x03\x00\x00\x00",  # non-standard width
+            }
+        ]
+
+        col = SqlColumn(name="id", data_type="INTEGER")
+        si.enrich_columns_with_identity("public", "users", [col])
+
+        self.assertTrue(
+            col.is_identity,
+            "seed and increment decoded fine -- a last_value-only failure "
+            "must not un-flag this column as an identity column",
+        )
+        self.assertEqual(col.identity_seed, 1)
+        self.assertEqual(col.identity_increment, 1)
+        si.log.warning.assert_called()
+
 
 # ---------------------------------------------------------------------------
 # SchemaIntrospector.enrich_columns_with_computed
