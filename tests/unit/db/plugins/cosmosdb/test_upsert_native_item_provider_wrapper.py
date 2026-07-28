@@ -54,3 +54,23 @@ def test_upsert_native_item_never_reaches_execute_statement():
     provider.upsert_native_item("dblift_schema_snapshots", {"snapshot_id": "x"})
 
     provider.query_executor.execute_statement.assert_not_called()
+
+
+def test_delete_native_item_forwards_to_the_query_executor():
+    provider = _provider()
+
+    provider.delete_native_item("dblift_schema_snapshots", "abc-123", partition_key="abc-123")
+
+    provider.query_executor.delete_native_item.assert_called_once_with(
+        "dblift_schema_snapshots", "abc-123", partition_key="abc-123"
+    )
+
+
+def test_delete_native_item_never_reaches_execute_statement():
+    """Regression guard: this must not become a rendered-SQL path that would
+    hit the same NoSqlWriteNotSupportedError it exists to avoid."""
+    provider = _provider()
+
+    provider.delete_native_item("dblift_schema_snapshots", "abc-123", partition_key="abc-123")
+
+    provider.query_executor.execute_statement.assert_not_called()
