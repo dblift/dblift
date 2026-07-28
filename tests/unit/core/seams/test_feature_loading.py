@@ -106,3 +106,45 @@ def test_entry_points_load_in_tier_order(monkeypatch):
     load_feature_extensions()
 
     assert calls == ["pro", "enterprise"]
+
+
+def test_empty_entry_points_does_not_latch_loaded(monkeypatch):
+    """Same latch bug as AlterGeneratorFactory, one layer up: a container
+    that installs a paid package without its entry points reaching this
+    process yet (documented: entry_points(group='dblift.features') can come
+    back empty depending on install/import timing) must not have that empty
+    result cached forever -- a later call, once the entry point actually
+    resolves, must still be allowed to load it.
+    """
+    monkeypatch.setattr(feature_loading, "entry_points", lambda group: [])
+
+    load_feature_extensions()
+
+    assert feature_loading._features_loaded is False, (
+        "an empty entry-point result must not be latched as loaded, or a "
+        "later call that WOULD find the real entry point never retries"
+    )
+
+
+def test_a_later_call_with_entry_points_available_succeeds_after_an_earlier_empty_call(
+    monkeypatch,
+):
+    """Reproduces the race directly: first call sees no entry points,
+    second call (as if the paid package's metadata resolved in between)
+    must actually load and invoke it -- not stay a no-op because the first
+    call already latched ``_features_loaded``.
+    """
+    calls = []
+    monkeypatch.setattr(feature_loading, "entry_points", lambda group: [])
+    load_feature_extensions()
+    assert calls == []
+
+    monkeypatch.setattr(
+        feature_loading,
+        "entry_points",
+        lambda group: [_entry_point("pro", lambda: calls.append("pro"))],
+    )
+    load_feature_extensions()
+
+    assert calls == ["pro"]
+    assert feature_loading._features_loaded is True
