@@ -197,6 +197,67 @@ def test_load_plugin_preserves_all_non_filesystem_declared_fields(_reset_registr
         ), f"field {field.name!r} was dropped by the _load_plugin reconstruction"
 
 
+def test_empty_entry_points_does_not_latch_discovered(_reset_registry):
+    """Same latch bug as AlterGeneratorFactory and feature_loading, one layer
+    over third-party ``dblift.providers`` plugins: OSS's own 19 dialects are
+    always found by the filesystem fallback regardless of entry-point
+    timing, which masks the fact that ``discover_plugins`` latches
+    ``_discovered = True`` unconditionally -- even on a call where the
+    entry-point pass found nothing. A third-party plugin package whose
+    ``dblift.providers`` entry point isn't yet visible in this process's
+    ``importlib.metadata`` view on the FIRST call would then never get a
+    second chance: the latch closes, and a later call that would have found
+    it short-circuits on ``if cls._discovered: return`` before ever
+    re-running the entry-point pass.
+    """
+    with patch("importlib.metadata.entry_points", return_value=[]):
+        ProviderRegistry.discover_plugins()
+
+    assert ProviderRegistry._discovered is False, (
+        "an empty entry-point result must not be latched as fully "
+        "discovered, or a later call that WOULD find a late-arriving "
+        "third-party plugin never retries"
+    )
+
+
+def test_a_later_call_with_entry_points_available_succeeds_after_an_earlier_empty_call(
+    _reset_registry,
+):
+    """Reproduces the race directly: first call sees no entry points (as if
+    a third-party plugin's package metadata hadn't reached this process's
+    view yet), second call (as if it resolved in between) must actually
+    register it -- not stay unregistered because the first call already
+    latched ``_discovered``.
+    """
+    with patch("importlib.metadata.entry_points", return_value=[]):
+        ProviderRegistry.discover_plugins()
+    assert "fakedb" not in ProviderRegistry._plugins
+
+    fake_ep = SimpleNamespace(name="fakedb", value="x:y", load=lambda: _FAKE_PLUGIN)
+    with patch("importlib.metadata.entry_points", return_value=[fake_ep]):
+        ProviderRegistry.discover_plugins()
+
+    assert "fakedb" in ProviderRegistry._plugins
+    assert ProviderRegistry._discovered is True
+
+
+def test_non_empty_entry_points_still_latches_as_before(_reset_registry):
+    """Regression guard: this fix only targets the empty-entry-points case,
+    not every call -- a normal, successful discovery (the common case: OSS's
+    own dialects are always registered via entry-points in an installed
+    environment) must still latch so a later call does not re-scan
+    ``importlib.metadata`` and the filesystem on every single invocation."""
+    fake_ep = SimpleNamespace(name="fakedb", value="x:y", load=lambda: _FAKE_PLUGIN)
+    with patch("importlib.metadata.entry_points", return_value=[fake_ep]) as mock_eps:
+        ProviderRegistry.discover_plugins()
+        assert ProviderRegistry._discovered is True
+
+        # A second call must NOT re-run entry-point discovery.
+        mock_eps.reset_mock()
+        ProviderRegistry.discover_plugins()
+        mock_eps.assert_not_called()
+
+
 def test_first_party_plugins_round_trip_through_full_discovery(_reset_registry):
     """``discover_plugins`` (entry-point + filesystem) must end up with
     all first-party plugins registered, regardless of which path
