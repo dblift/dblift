@@ -289,11 +289,15 @@ def enrich_columns_with_identity(
         for column in columns:
             identity_data = identity_map.get(column.name.upper())
             if identity_data:
-                # Mark as identity (may already be marked from the column query)
-                # regardless of whether the seed/increment/last_value decode
-                # below succeeds -- "is this an identity column" and "did we
-                # manage to decode its sql_variant metadata" are independent
-                # facts, and the former is already known to be true here.
+                # Mark as identity (may already be marked from the column
+                # query) for now -- the except block below reverts this if
+                # decoding seed OR increment fails, since a column whose real
+                # identity parameters we can't decode must not still claim
+                # is_identity (see that block for why). last_value is decoded
+                # separately below and its failure does NOT revert this: it
+                # has no downstream DDL consumer, so losing it carries none
+                # of the "silently wrong seed/increment" risk the reset here
+                # exists to guard against.
                 column.is_identity = True
                 # A decode failure (see _decode_sql_variant_int above) is
                 # isolated to THIS column, not the whole table: without this,
@@ -311,17 +315,39 @@ def enrich_columns_with_identity(
                     column.identity_increment = _decode_sql_variant_int(
                         column.name, "increment_value", identity_data["increment_value"]
                     )
-                    # Note: last_value is not part of SQL Model, store as
-                    # custom attribute if needed
-                    if identity_data["last_value"] is not None:
-                        column.identity_last_value = _decode_sql_variant_int(  # type: ignore[attr-defined]
-                            column.name, "last_value", identity_data["last_value"]
-                        )
                 except ValueError as decode_error:
                     si.log.warning(
                         f"Could not decode identity metadata for column "
                         f"{column.name!r} in {schema}.{table}: {decode_error}"
                     )
+                    # A decode failure means we cannot reliably tell "seed
+                    # decoded fine, increment failed" apart from "failed
+                    # immediately" -- either way, downstream DDL rendering
+                    # must not mistake a leftover None for "never asked, use
+                    # SQL Server's own default". Reset is_identity and the
+                    # two fields render_identity_clause reads so the column
+                    # falls out of identity handling entirely rather than
+                    # rendering a guessed IDENTITY(1,1).
+                    column.is_identity = False
+                    column.identity_seed = None
+                    column.identity_increment = None
+                else:
+                    # seed/increment decoded fine -- only now attempt
+                    # last_value, in its own try/except so that a
+                    # last_value-only decode failure (e.g. a non-standard
+                    # byte width) doesn't discard the good seed/increment we
+                    # just stored. Note: last_value is not part of SQL Model,
+                    # store as custom attribute if needed.
+                    if identity_data["last_value"] is not None:
+                        try:
+                            column.identity_last_value = _decode_sql_variant_int(  # type: ignore[attr-defined]
+                                column.name, "last_value", identity_data["last_value"]
+                            )
+                        except ValueError as decode_error:
+                            si.log.warning(
+                                f"Could not decode identity metadata for column "
+                                f"{column.name!r} in {schema}.{table}: {decode_error}"
+                            )
 
         if identity_map:
             si.log.debug(
