@@ -328,14 +328,13 @@ class TestNormalizeCosmosSql(unittest.TestCase):
 # execute_statement's docstring tells callers that writes go through the
 # Azure SDK, not SQL -- but the only SDK escape hatch it names is a
 # user-written Python migration's context.db/context.raw_client. An internal
-# caller like the snapshot repository (dblift_pro/snapshot/schema_snapshot_
-# repository.py in the sibling monorepo) has no such context and, before
-# this method existed, had no native path either: it built a plain SQL
-# INSERT and routed it through execute_statement, which raises
-# NoSqlWriteNotSupportedError for anything but a SELECT. That silently broke
-# CosmosDB snapshot persistence (migrate succeeds, the snapshot write never
-# lands, and the failure is swallowed by the best-effort event listener that
-# calls it) -- see the ADR-0032 pseudo-SQL removal, which ported the
+# caller outside a migration (e.g. a snapshot-persistence extension) has no
+# such context and, before this method existed, had no native path either: it
+# built a plain SQL INSERT and routed it through execute_statement, which
+# raises NoSqlWriteNotSupportedError for anything but a SELECT. That silently
+# broke CosmosDB snapshot persistence (migrate succeeds, the snapshot write
+# never lands, and the failure is swallowed by the best-effort event listener
+# that calls it) -- see the ADR-0032 pseudo-SQL removal, which ported the
 # container-create seam (create_snapshot_table_if_not_exists) to a native
 # SDK call but missed the row-write seam.
 
