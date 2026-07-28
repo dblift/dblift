@@ -1049,6 +1049,56 @@ class TestEnrichColumnsWithIdentity(unittest.TestCase):
         si.enrich_columns_with_identity("public", "users", [col])
         si.log.warning.assert_called()
 
+    def test_failed_decode_does_not_leave_column_flagged_as_identity(self):
+        """Bugbot finding on PR #67: a decode failure used to leave
+        ``is_identity = True`` with ``identity_seed``/``identity_increment``
+        still ``None`` (never assigned, since the raise happens inside the
+        same try that would have set them). ``SqlserverQuirks.
+        render_identity_clause`` treats a ``None`` seed/increment as "not
+        recorded, use SQL Server's own default" and substitutes ``(1, 1)`` --
+        correct for a column nobody ever queried metadata for, but wrong here:
+        we DID query this column and know its real seed/increment exist, we
+        just could not decode them. Silently emitting ``IDENTITY(1,1)`` is a
+        plausible-looking but potentially wrong value for e.g. a decimal-
+        typed IDENTITY column with a real, different seed.
+
+        The fix must not leave that ambiguous state: a column whose identity
+        metadata failed to decode must not still claim ``is_identity``, so
+        DDL generation omits the IDENTITY clause for it entirely rather than
+        guessing.
+        """
+        si, _ = _make_si(has_connection=True)
+        si.vendor_queries = MagicMock()
+        si.vendor_queries.get_identity_columns_query.return_value = ("SELECT ...", [])
+        si.provider.query_executor.execute_query.return_value = [
+            {
+                "column_name": "ID",
+                "seed_value": b"\x00\x03\x00\x00\x00",  # non-standard width
+                "increment_value": (1).to_bytes(4, byteorder="little"),
+                "last_value": None,
+            }
+        ]
+
+        col = SqlColumn(name="id", data_type="DECIMAL")
+        si.enrich_columns_with_identity("public", "users", [col])
+
+        self.assertFalse(
+            col.is_identity,
+            "a column whose identity metadata could not be decoded must not "
+            "still be flagged is_identity=True -- that is what let "
+            "render_identity_clause's None-means-'use the default' fallback "
+            "substitute a wrong seed/increment for a column it actually has "
+            "(undecodable) data for",
+        )
+        self.assertIsNone(col.identity_seed)
+        self.assertIsNone(col.identity_increment)
+
+        # basic_table_ddl_generator only calls render_identity_clause when
+        # is_identity is truthy -- confirm the gate this column must now
+        # fail, so SqlserverQuirks's "None means use SQL Server's own
+        # default" fallback is never consulted for it.
+        self.assertFalse(getattr(col, "is_identity", False))
+
 
 # ---------------------------------------------------------------------------
 # SchemaIntrospector.enrich_columns_with_computed

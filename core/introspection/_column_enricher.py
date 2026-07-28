@@ -289,11 +289,11 @@ def enrich_columns_with_identity(
         for column in columns:
             identity_data = identity_map.get(column.name.upper())
             if identity_data:
-                # Mark as identity (may already be marked from the column query)
-                # regardless of whether the seed/increment/last_value decode
-                # below succeeds -- "is this an identity column" and "did we
-                # manage to decode its sql_variant metadata" are independent
-                # facts, and the former is already known to be true here.
+                # Mark as identity (may already be marked from the column
+                # query) for now -- the except block below reverts this if
+                # the seed/increment decode fails, since a column whose real
+                # identity parameters we can't decode must not still claim
+                # is_identity (see that block for why).
                 column.is_identity = True
                 # A decode failure (see _decode_sql_variant_int above) is
                 # isolated to THIS column, not the whole table: without this,
@@ -322,6 +322,17 @@ def enrich_columns_with_identity(
                         f"Could not decode identity metadata for column "
                         f"{column.name!r} in {schema}.{table}: {decode_error}"
                     )
+                    # A decode failure means we cannot reliably tell "seed
+                    # decoded fine, increment failed" apart from "failed
+                    # immediately" -- either way, downstream DDL rendering
+                    # must not mistake a leftover None for "never asked, use
+                    # SQL Server's own default". Reset is_identity and the
+                    # two fields render_identity_clause reads so the column
+                    # falls out of identity handling entirely rather than
+                    # rendering a guessed IDENTITY(1,1).
+                    column.is_identity = False
+                    column.identity_seed = None
+                    column.identity_increment = None
 
         if identity_map:
             si.log.debug(
