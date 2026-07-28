@@ -260,8 +260,26 @@ def enrich_columns_with_identity(
                 # Mark as identity (may already be marked from the column query)
                 column.is_identity = True
                 # Add detailed metadata
-                column.identity_seed = identity_data["seed_value"]
-                column.identity_increment = identity_data["increment_value"]
+                # sql_variant columns (e.g. SQL Server's
+                # sys.identity_columns.seed_value/increment_value) can arrive
+                # via pymssql/FreeTDS as raw on-wire bytes rather than an int
+                # (e.g. the int 1 as b'\x01\x00\x00\x00'). Normalize those to
+                # a plain int here so every downstream consumer -- regardless
+                # of which dialect's driver quirks produced the raw value --
+                # can rely on identity_seed/identity_increment already being
+                # an int. Non-bytes values (str, int, None) pass through
+                # unchanged, exactly as before.
+                seed_value = identity_data["seed_value"]
+                if isinstance(seed_value, bytes):
+                    seed_value = int.from_bytes(seed_value, byteorder="little", signed=True)
+                column.identity_seed = seed_value
+
+                increment_value = identity_data["increment_value"]
+                if isinstance(increment_value, bytes):
+                    increment_value = int.from_bytes(
+                        increment_value, byteorder="little", signed=True
+                    )
+                column.identity_increment = increment_value
                 # Note: last_value is not part of SQL Model, store as custom attribute if needed
                 if identity_data["last_value"] is not None:
                     column.identity_last_value = identity_data["last_value"]  # type: ignore[attr-defined]
