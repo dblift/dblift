@@ -19,10 +19,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 Release-qualification follow-ups after 3.3.1: multi-dialect CLI/API
 edge cases from the OSS functional suite, MariaDB snapshot and
-UPDATE-subquery capability alignment, and a fourth instance of the
-same one-shot registry latch pattern.
+UPDATE-subquery capability alignment, YugabyteDB transactional-DDL
+truthfulness, and a fourth instance of the same one-shot registry latch
+pattern.
 
 ### Fixed
+
+- **YugabyteDB no longer claims transactional DDL.** YSQL auto-commits
+  `CREATE`/`ALTER`/`DROP` (objects survive `ROLLBACK`), so inheriting
+  PostgreSQL's `supports_transactional_ddl=True` over-claimed the engine
+  and misled migration recovery. The PG-wire plugin factory accepts
+  `quirks_overrides` and installs matching provider capability methods;
+  YugabyteDB sets the flag to `False` on both quirks and the provider
+  API so the dialect-capabilities matrix stays consistent.
 
 - **MariaDB can create database-stored snapshot tables again.** The
   dialect had opted out of both managed and provider-compat snapshot
