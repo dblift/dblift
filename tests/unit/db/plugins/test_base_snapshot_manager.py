@@ -94,7 +94,7 @@ class TestDialectSql:
 
     def test_mariadb_opts_out_of_snapshot_table_ddl(self):
         provider = _make_provider("mariadb")
-        with pytest.raises(NotImplementedError, match="MariaDB snapshots are not provider-owned"):
+        with pytest.raises(NotImplementedError, match="MySQL does not support"):
             BaseSnapshotManager(provider).create_snapshot_table_if_not_exists("db")
         assert provider.executed_sqls == []
 
@@ -274,15 +274,15 @@ class TestLiveOracleCompatPath:
 
 @pytest.mark.unit
 class TestLiveMariadbCompatPath:
-    def test_mariadb_compat_reraises_not_implemented(self):
-        # uses_compat gate is True, but MariaDB's compat DDL is None -> re-raise.
-        provider = _compat_provider("mariadb", table_exists=False)
-        with pytest.raises(NotImplementedError):
-            BaseSnapshotManager(provider).create_snapshot_table_if_not_exists("db")
-        assert provider.executed_sqls == []
-
-    def test_mariadb_compat_keeps_existence_check(self):
-        # Skip-flag reset to False, so an existing table short-circuits (no raise).
+    def test_mariadb_compat_emits_innodb_ddl_and_skips_existence_check(self):
         provider = _compat_provider("mariadb", table_exists=True)
         BaseSnapshotManager(provider).create_snapshot_table_if_not_exists("db")
-        assert provider.executed_sqls == []
+        assert any(
+            "ENGINE=InnoDB" in s and "CREATE TABLE IF NOT EXISTS" in s
+            for s in provider.executed_sqls
+        )
+
+    def test_mariadb_compat_ddl_uses_longtext(self):
+        provider = _compat_provider("mariadb", table_exists=False)
+        BaseSnapshotManager(provider).create_snapshot_table_if_not_exists("db")
+        assert any("model_data LONGTEXT NOT NULL" in s for s in provider.executed_sqls)

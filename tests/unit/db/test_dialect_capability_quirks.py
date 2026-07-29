@@ -271,16 +271,18 @@ class TestJsonBindCastType:
 
 
 class TestUpdateSubqueryDerivedTable:
-    @pytest.mark.parametrize("dialect", ["mysql", "mariadb"])
-    def test_mysql_family_requires_the_wrapper(self, dialect: str) -> None:
+    def test_mysql_requires_the_wrapper(self) -> None:
         """MySQL error 1093 rejects an UPDATE reading its own target table."""
-        assert quirks(dialect).update_subquery_requires_derived_table is True
+        assert quirks("mysql").update_subquery_requires_derived_table is True
+
+    def test_mariadb_takes_the_direct_form(self) -> None:
+        """MariaDB accepts the self-referencing form without a derived-table wrap."""
+        assert quirks("mariadb").update_subquery_requires_derived_table is False
 
     @pytest.mark.parametrize(
         "dialect", ["postgresql", "sqlite", "oracle", "db2", "sqlserver", "citus"]
     )
     def test_everyone_else_takes_the_direct_form(self, dialect: str) -> None:
-        """The wrapper is not free — it forces a materialisation."""
         assert quirks(dialect).update_subquery_requires_derived_table is False
 
 
