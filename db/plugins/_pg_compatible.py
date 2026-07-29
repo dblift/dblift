@@ -77,7 +77,11 @@ def make_pg_compatible_provider(dialect: str) -> Type[PostgreSqlProvider]:
     )
 
 
-def make_pg_compatible_quirks(dialect: str) -> Type[PostgresqlQuirks]:
+def make_pg_compatible_quirks(
+    dialect: str,
+    *,
+    quirks_overrides: Optional[dict] = None,
+) -> Type[PostgresqlQuirks]:
     """Build a PostgreSQL quirks subclass that drops the reference-dialect flags.
 
     The two flags are set in the class body (not per instance) because
@@ -85,6 +89,10 @@ def make_pg_compatible_quirks(dialect: str) -> Type[PostgresqlQuirks]:
     ``vars(quirks_class)`` — only a class-level override makes this engine a
     non-owner of the ANSI-reference and sqlglot-read-fallback capabilities,
     preserving PostgreSQL as the single owner of each.
+
+    ``quirks_overrides`` adds extra class attributes for engines that are
+    wire-compatible with PostgreSQL but diverge on a capability (e.g.
+    YugabyteDB does not roll back DDL).
     """
     stem = _class_stem(dialect)
 
@@ -93,21 +101,25 @@ def make_pg_compatible_quirks(dialect: str) -> Type[PostgresqlQuirks]:
         # unavailable — call the base initializer explicitly.
         PostgresqlQuirks.__init__(self, dialect_name=dialect_name)
 
+    class_attrs: dict = {
+        "__module__": __name__,
+        "__doc__": (
+            f"{stem} quirks, inheriting every PostgreSQL quirk. Only the "
+            "reference-dialect flags are reset so PostgreSQL stays the sole "
+            "owner of each."
+        ),
+        "is_ansi_reference_dialect": False,
+        "is_default_sqlglot_read_fallback": False,
+        "__init__": __init__,
+    }
+    if quirks_overrides:
+        class_attrs.update(quirks_overrides)
+
     return _register_global(
         type(
             f"{stem}Quirks",
             (PostgresqlQuirks,),
-            {
-                "__module__": __name__,
-                "__doc__": (
-                    f"{stem} quirks, inheriting every PostgreSQL quirk. Only the "
-                    "reference-dialect flags are reset so PostgreSQL stays the sole "
-                    "owner of each."
-                ),
-                "is_ansi_reference_dialect": False,
-                "is_default_sqlglot_read_fallback": False,
-                "__init__": __init__,
-            },
+            class_attrs,
         )
     )
 
@@ -121,6 +133,7 @@ def make_pg_compatible_plugin(
     sqlalchemy_url_builder: Callable[..., str] = build_sqlalchemy_url,
     native_driver_module: str = "psycopg",
     install_extra: Optional[str] = None,
+    quirks_overrides: Optional[dict] = None,
 ) -> PluginInfo:
     """Assemble the :class:`PluginInfo` for a PostgreSQL-wire-compatible engine.
 
@@ -134,9 +147,12 @@ def make_pg_compatible_plugin(
     ``pyproject.toml`` extra of the same name, each installing ``psycopg``. A
     caller only needs to pass it explicitly if a future engine's extra name
     diverges from its dialect key.
+
+    ``quirks_overrides`` is forwarded to :func:`make_pg_compatible_quirks` for
+    engines that share the wire protocol but not every capability flag.
     """
     provider_class: Type[BaseProvider] = make_pg_compatible_provider(dialect)
-    quirks_class = make_pg_compatible_quirks(dialect)
+    quirks_class = make_pg_compatible_quirks(dialect, quirks_overrides=quirks_overrides)
     return PluginInfo(
         name=dialect,
         version=version,

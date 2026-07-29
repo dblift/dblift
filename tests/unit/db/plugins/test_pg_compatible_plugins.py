@@ -118,6 +118,21 @@ def test_factory_engines_resolve_classes_from_declared_plugin(
 
 
 @pytest.mark.unit
+def test_yugabytedb_does_not_claim_transactional_ddl() -> None:
+    """YSQL auto-commits DDL; inheriting PostgreSQL's True is an over-claim.
+
+    Live capability probes confirm CREATE TABLE survives ROLLBACK on
+    YugabyteDB, so failed migrations would leave partial schema if the
+    framework believed DDL was transactional.
+    """
+    plugin = _plugin("yugabytedb")
+    assert plugin.quirks_class is not None
+    assert "supports_transactional_ddl" in vars(plugin.quirks_class)
+    assert plugin.quirks_class.supports_transactional_ddl is False
+    assert plugin.quirks_class(dialect_name="yugabytedb").supports_transactional_ddl is False
+
+
+@pytest.mark.unit
 def test_broken_plugin_py_is_logged_not_silently_dropped(monkeypatch, caplog):
     """A ``plugin.py`` that raises on import must be logged loudly.
 
