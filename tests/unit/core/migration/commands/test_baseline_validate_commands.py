@@ -16,6 +16,7 @@ ValidateCommand:
   - execute() validation fails — issues list logged as errors
   - execute() validation fails — fallback to error_message when no issues
   - execute() schema history bootstrap failure — fails the command with a clean error
+  - execute() schema history bootstrap failure, error formatter itself raises — falls back to str(e)
   - execute() validator raises unexpectedly — caught, returns error
   - result.target_schema set on start
 """
@@ -506,6 +507,29 @@ class TestValidateCommandConnectionError(unittest.TestCase):
         error_calls = " ".join(str(c) for c in log.error.call_args_list)
         self.assertIn("Could not create schema history table", error_calls)
         self.assertIn("no DB", error_calls)
+
+    def test_history_table_bootstrap_failure_formatter_raises_falls_back_to_str(self):
+        """If _format_execution_error itself raises while formatting the
+        bootstrap failure, the command must still fail using str(e) instead
+        of letting the formatter's exception propagate."""
+        log = MagicMock()
+        hm = MagicMock()
+        hm.create_schema_and_history_table.side_effect = RuntimeError("no DB")
+
+        validator = MagicMock()
+        cmd = _make_validate_cmd(log=log, history_manager=hm, validator=validator)
+
+        with patch(
+            "core.migration.sql.sql_execution_service._format_execution_error",
+            side_effect=ValueError("formatter blew up"),
+        ):
+            with patch.object(cmd, "_populate_database_info"):
+                with patch.object(cmd, "_log_command_completion"):
+                    result = cmd.execute(Path("/migrations"))
+
+        self.assertFalse(result.success)
+        self.assertIn("no DB", result.error_message)
+        validator.validate_migrations.assert_not_called()
 
 
 class TestValidateCommandUnexpectedException(unittest.TestCase):

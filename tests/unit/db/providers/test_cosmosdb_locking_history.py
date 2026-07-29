@@ -588,6 +588,57 @@ class TestCreateHistoryContainerIfNotExists(unittest.TestCase):
                 with self.assertRaises(Exception):
                     mgr.create_history_container_if_not_exists("public")
 
+    def test_conflict_error_after_genuine_not_found_uses_fallback_client(self):
+        """The existence check reports not-found, so creation is attempted;
+        creation then reports a conflict, so the container client must be
+        fetched via the fallback ``get_container_client`` call and cached."""
+        not_found_container = MagicMock()
+        not_found_container.read.side_effect = Exception("not found 404")
+        conflict_fallback_client = MagicMock()
+
+        mock_db = MagicMock()
+        mock_db.get_container_client.side_effect = [
+            not_found_container,
+            conflict_fallback_client,
+        ]
+        mock_db.create_container_if_not_exists.side_effect = Exception(
+            "Conflict: resource already exists"
+        )
+
+        cm = _make_connection_manager(database=mock_db)
+        mgr, _, _ = _make_history_manager(connection_manager=cm)
+
+        with patch("azure.cosmos.PartitionKey", MagicMock()):
+            with patch("time.sleep"):
+                mgr.create_history_container_if_not_exists("public")
+
+        self.assertIs(mgr._history_containers["dblift_schema_history"], conflict_fallback_client)
+
+    def test_unexpected_create_error_found_via_container_listing(self):
+        """When creation fails with an error that isn't a recognised conflict,
+        the container is looked up by listing; if found there, the client is
+        cached instead of re-raising."""
+        not_found_container = MagicMock()
+        not_found_container.read.side_effect = Exception("not found 404")
+        found_via_listing_client = MagicMock()
+
+        mock_db = MagicMock()
+        mock_db.get_container_client.side_effect = [
+            not_found_container,
+            found_via_listing_client,
+        ]
+        mock_db.create_container_if_not_exists.side_effect = Exception("unexpected storage hiccup")
+        mock_db.list_containers.return_value = [{"id": "dblift_schema_history"}]
+
+        cm = _make_connection_manager(database=mock_db)
+        mgr, _, _ = _make_history_manager(connection_manager=cm)
+
+        with patch("azure.cosmos.PartitionKey", MagicMock()):
+            with patch("time.sleep"):
+                mgr.create_history_container_if_not_exists("public")
+
+        self.assertIs(mgr._history_containers["dblift_schema_history"], found_via_listing_client)
+
 
 class TestGetAppliedMigrations(unittest.TestCase):
     """Test get_applied_migrations."""
@@ -819,6 +870,73 @@ class TestRecordMigration(unittest.TestCase):
 
         doc = mock_container.upsert_item.call_args[1]["body"]
         self.assertEqual(doc["installed_rank"], 4)
+
+    def test_gets_container_client_when_not_cached(self):
+        """If create_history_container_if_not_exists doesn't populate the
+        cache (e.g. it's stubbed out), record_migration must fall back to
+        fetching the container client directly."""
+        mock_container = MagicMock()
+        mock_container.query_items.return_value = [None]
+        mock_container.upsert_item.return_value = None
+
+        cm = _make_connection_manager()
+        cm.get_container_client.return_value = mock_container
+
+        mgr, _, _ = _make_history_manager(connection_manager=cm)
+        migration_info = {"script": "V1__init.sql", "version": "1", "type": "SQL"}
+
+        with patch.object(mgr, "create_history_container_if_not_exists"):
+            mgr.record_migration(connection=None, schema="public", migration_info=migration_info)
+
+        cm.get_container_client.assert_called_once_with("dblift_schema_history")
+        self.assertIs(mgr._history_containers["dblift_schema_history"], mock_container)
+        mock_container.upsert_item.assert_called_once()
+
+
+class TestRepairMigrationHistoryContainerCaching(unittest.TestCase):
+    """repair_migration_history must fall back to get_container_client
+    when the container for this table_name isn't cached yet."""
+
+    def test_gets_container_client_when_not_cached(self):
+        mock_container = MagicMock()
+        mock_container.read_item.return_value = {
+            "id": "V1__x.sql",
+            "checksum": 0,
+            "success": True,
+        }
+
+        cm = _make_connection_manager()
+        cm.get_container_client.return_value = mock_container
+
+        mgr, _, _ = _make_history_manager(connection_manager=cm)
+
+        result = mgr.repair_migration_history(
+            connection=None, schema="public", script_name="V1__x.sql", checksum=42
+        )
+
+        self.assertTrue(result)
+        cm.get_container_client.assert_called_once_with("dblift_schema_history")
+        self.assertIs(mgr._history_containers["dblift_schema_history"], mock_container)
+
+
+class TestDeleteFailedMigrationEntryContainerCaching(unittest.TestCase):
+    """delete_failed_migration_entry must fall back to get_container_client
+    when the container for this table_name isn't cached yet."""
+
+    def test_gets_container_client_when_not_cached(self):
+        mock_container = MagicMock()
+        mock_container.query_items.return_value = []
+
+        cm = _make_connection_manager()
+        cm.get_container_client.return_value = mock_container
+
+        mgr, _, _ = _make_history_manager(connection_manager=cm)
+
+        removed = mgr.delete_failed_migration_entry(None, "public", "V1__x.sql")
+
+        self.assertEqual(removed, 0)
+        cm.get_container_client.assert_called_once_with("dblift_schema_history")
+        self.assertIs(mgr._history_containers["dblift_schema_history"], mock_container)
 
 
 class TestCreateMigrationHistoryTableIfNotExists(unittest.TestCase):

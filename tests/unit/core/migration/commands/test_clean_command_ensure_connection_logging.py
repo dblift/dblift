@@ -105,3 +105,26 @@ class TestCleanCommandEnsureConnectionLogging:
 
         debug_calls = [str(c) for c in log.debug.call_args_list]
         assert not any("set_current_schema skipped" in c for c in debug_calls)
+
+    def test_ensure_connected_falls_back_to_connect_when_not_connected(self):
+        """Providers without an ``_ensure_connection`` hook fall back to
+        ``is_connected()``/``connect()`` — ``connect()`` is called when not
+        already connected."""
+        cmd, provider, _log = self._make_command()
+        provider._ensure_connection = None
+        provider.is_connected.return_value = False
+
+        cmd._ensure_connected()
+
+        provider.connect.assert_called_once()
+
+    def test_ensure_connected_skips_connect_when_already_connected(self):
+        """Providers without an ``_ensure_connection`` hook that are already
+        connected don't call ``connect()`` again."""
+        cmd, provider, _log = self._make_command()
+        provider._ensure_connection = None
+        provider.is_connected.return_value = True
+
+        cmd._ensure_connected()
+
+        provider.connect.assert_not_called()

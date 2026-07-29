@@ -691,3 +691,18 @@ class TestCleanSchema:
         assert any("view" in e for e in summary.errors)
         assert any("procedure" in e for e in summary.errors)
         assert any("synonym" in e for e in summary.errors)
+
+    def test_trigger_ora_04080_is_swallowed_because_owning_table_already_dropped(self):
+        p = _Provider()
+        query_map = self._query_map()
+        query_map["DECODE(OBJECT_TYPE"] = [
+            {"object_name": "TRG1", "object_type": "TRIGGER"},
+        ]
+        p.query_results = query_map
+        p.statement_results["DROP TRIGGER"] = Exception("ORA-04080: trigger 'TRG1' does not exist")
+
+        summary = p.clean_schema("MYSCHEMA")
+
+        assert summary.errors == []
+        assert any(obj.object_type == "trigger" and obj.name == "TRG1" for obj in summary.objects)
+        assert any("DROP TRIGGER" in s for s in summary.statements)

@@ -186,8 +186,6 @@ def format_connection_error(error: Exception, db_type: str = "") -> str:
 
     if "refused" in lowered or "timed out" in lowered or "timeout" in lowered:
         return "Connection failed: host unreachable"
-    if _is_auth_error(error, lowered, db_type):
-        return "Connection failed: invalid credentials"
     if "unknown host" in lowered or "name or service not known" in lowered:
         return "Connection failed: host not found"
     return f"Connection failed: {message}"
