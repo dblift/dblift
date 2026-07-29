@@ -22,8 +22,13 @@ def attach_registered_sql_generators() -> None:
     """Run every registered SQL generator registrar."""
     global _bootstrapped
     if not _bootstrapped and not _registrars:
-        _bootstrapped = True
         load_feature_extensions()
+        # Latch only if load_feature_extensions() actually populated
+        # _registrars -- same latch bug as AlterGeneratorFactory._ensure_populated
+        # and feature_loading.load_feature_extensions: an empty result can be
+        # the documented race (a paid package's entry point not yet visible),
+        # so it must not be latched permanently and must retry on a later call.
+        _bootstrapped = bool(_registrars)
 
     for registrar in _registrars:
         try:
