@@ -168,12 +168,14 @@ class TestBaselineCommandHappyPath(unittest.TestCase):
     def test_dry_run_does_not_record_baseline(self):
         provider = MagicMock()
         hm = MagicMock()
+        hm.has_history_table = False
         cmd = _make_baseline_cmd(provider=provider, history_manager=hm)
 
-        with patch.object(cmd, "_populate_database_info"):
-            with patch.object(cmd, "_log_command_header_update"):
-                with patch.object(cmd, "_log_command_completion"):
-                    result = cmd.execute("1.0", "initial baseline", dry_run=True)
+        with patch.object(cmd, "_ensure_connected"):
+            with patch.object(cmd, "_populate_database_info"):
+                with patch.object(cmd, "_log_command_header_update"):
+                    with patch.object(cmd, "_log_command_completion"):
+                        result = cmd.execute("1.0", "initial baseline", dry_run=True)
 
         self.assertTrue(result.success)
         self.assertEqual(result.baseline_version, "1.0")
@@ -181,34 +183,54 @@ class TestBaselineCommandHappyPath(unittest.TestCase):
         provider.begin_transaction.assert_not_called()
         provider.commit_transaction.assert_not_called()
 
-    def test_dry_run_still_runs_precondition_check(self):
-        """dry-run must still call create_schema_and_history_table so the
-        "history already exists" precondition guard runs before reporting success."""
+    def test_dry_run_does_not_create_history_table(self):
+        """dry-run must never call create_schema_and_history_table — that would
+        create real DDL (schema/table) as a side effect of a preview-only run."""
         provider = MagicMock()
         hm = MagicMock()
+        hm.has_history_table = False
         cmd = _make_baseline_cmd(provider=provider, history_manager=hm)
 
-        with patch.object(cmd, "_populate_database_info"):
-            with patch.object(cmd, "_log_command_header_update"):
-                with patch.object(cmd, "_log_command_completion"):
-                    cmd.execute("1.0", "initial baseline", dry_run=True)
+        with patch.object(cmd, "_ensure_connected"):
+            with patch.object(cmd, "_populate_database_info"):
+                with patch.object(cmd, "_log_command_header_update"):
+                    with patch.object(cmd, "_log_command_completion"):
+                        result = cmd.execute("1.0", "initial baseline", dry_run=True)
 
-        hm.create_schema_and_history_table.assert_called_once_with(create_schema=True)
+        hm.create_schema_and_history_table.assert_not_called()
+        self.assertTrue(result.success)
+
+    def test_dry_run_runs_precondition_check_when_table_exists(self):
+        """dry-run must still run the "history already has rows" precondition
+        check when the table already exists, without creating anything."""
+        hm = MagicMock()
+        hm.has_history_table = True
+        hm.get_applied_migration_records.return_value = []
+        cmd = _make_baseline_cmd(history_manager=hm)
+
+        with patch.object(cmd, "_ensure_connected"):
+            with patch.object(cmd, "_populate_database_info"):
+                with patch.object(cmd, "_log_command_completion"):
+                    result = cmd.execute("1.0", "initial baseline", dry_run=True)
+
+        hm.get_applied_migration_records.assert_called_once()
+        hm.create_schema_and_history_table.assert_not_called()
+        self.assertTrue(result.success)
 
     def test_dry_run_fails_when_history_already_exists(self):
         """dry-run should report the same failure the real run would hit when the
         history table already has rows, instead of a false success."""
         hm = MagicMock()
-        hm.create_schema_and_history_table.side_effect = RuntimeError(
-            "Schema public already contains a migration history table "
-            "dblift_schema_history with 1 migration(s)."
-        )
+        hm.has_history_table = True
+        hm.get_applied_migration_records.return_value = [MagicMock()]
         cmd = _make_baseline_cmd(history_manager=hm)
 
-        with patch.object(cmd, "_populate_database_info"):
-            with patch.object(cmd, "_log_command_completion"):
-                result = cmd.execute("6", dry_run=True)
+        with patch.object(cmd, "_ensure_connected"):
+            with patch.object(cmd, "_populate_database_info"):
+                with patch.object(cmd, "_log_command_completion"):
+                    result = cmd.execute("6", dry_run=True)
 
+        hm.create_schema_and_history_table.assert_not_called()
         self.assertFalse(result.success)
         self.assertIn("Baseline operation failed", result.error_message)
 

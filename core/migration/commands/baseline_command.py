@@ -26,13 +26,20 @@ class BaselineCommand(BaseCommand):
         self._populate_database_info(result)
 
         try:
-            # Ensure schema and history table exist before baselining (this establishes the
-            # connection). Runs for dry-run too: when the history table already exists with
-            # rows, this raises the same "cannot baseline a schema with existing migrations"
-            # error the real run would hit, instead of letting dry-run report false success.
-            self.history_manager.create_schema_and_history_table(create_schema=True)
-
             if dry_run:
+                # Don't create the schema/history table as a side effect of dry-run.
+                # If it already exists, run the same "history already has rows"
+                # precondition the real run would hit, so dry-run can't report
+                # false success for a baseline that would actually fail.
+                self._ensure_connected()
+                if self.history_manager.has_history_table:
+                    existing = self.history_manager.get_applied_migration_records()
+                    if existing:
+                        raise RuntimeError(
+                            f"Schema {result.target_schema} already contains a migration "
+                            f"history table with {len(existing)} migration(s). Baseline "
+                            "cannot be applied to a schema with existing migrations."
+                        )
                 result.baseline_version = baseline_version
                 result.message = f"Dry run: baseline {baseline_version} would be created"
                 self._log_command_header_update(
@@ -40,6 +47,10 @@ class BaselineCommand(BaseCommand):
                 )
                 self._log_command_completion("baseline", result)
                 return result
+
+            # Ensure schema and history table exist before baselining (this establishes the
+            # connection).
+            self.history_manager.create_schema_and_history_table(create_schema=True)
 
             # Log command execution with connection info (after connection is established)
             self._log_command_header_update("baseline", baseline_version=baseline_version)
