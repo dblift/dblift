@@ -47,7 +47,7 @@ class CosmosDbHistoryManager(DocumentHistoryManager):
         """
         super().__init__(query_executor, schema_operations, config, log)
         self.connection_manager = query_executor.connection_manager
-        self.history_container: Optional["ContainerProxy"] = None
+        self._history_containers: Dict[str, "ContainerProxy"] = {}
 
     @staticmethod
     def _is_transient_history_error(exc: Exception) -> bool:
@@ -85,7 +85,7 @@ class CosmosDbHistoryManager(DocumentHistoryManager):
                     raise RuntimeError("Database not initialized")
                 existing_container = database.get_container_client(container_name)
                 existing_container.read()
-                self.history_container = existing_container
+                self._history_containers[container_name] = existing_container
                 self.log.debug(f"History container {container_name} already exists")
                 return
             except Exception as read_error:
@@ -113,7 +113,7 @@ class CosmosDbHistoryManager(DocumentHistoryManager):
                         id=container_name,
                         partition_key=PartitionKey(path="/version"),
                     )
-                    self.history_container = history_container
+                    self._history_containers[container_name] = history_container
 
                     # Small delay to ensure container is ready
                     time.sleep(0.3)
@@ -163,7 +163,7 @@ class CosmosDbHistoryManager(DocumentHistoryManager):
                     if database is None:
                         raise RuntimeError("Database not initialized")
                     history_container = database.get_container_client(container_name)
-                    self.history_container = history_container
+                    self._history_containers[container_name] = history_container
                     self.log.debug(
                         f"History container {container_name} already exists (handled conflict)"
                     )
@@ -179,8 +179,8 @@ class CosmosDbHistoryManager(DocumentHistoryManager):
                             if container.get("id") == container_name:
                                 if database is None:
                                     raise RuntimeError("Database not initialized")
-                                self.history_container = database.get_container_client(
-                                    container_name
+                                self._history_containers[container_name] = (
+                                    database.get_container_client(container_name)
                                 )
                                 self.log.debug(
                                     f"History container {container_name} found via list after creation error"
@@ -212,15 +212,17 @@ class CosmosDbHistoryManager(DocumentHistoryManager):
         """
         container_name = table_name or self.HISTORY_CONTAINER_NAME
 
-        if not self.history_container:
-            self.history_container = self.connection_manager.get_container_client(container_name)
+        history_container = self._history_containers.get(container_name)
+        if not history_container:
+            history_container = self.connection_manager.get_container_client(container_name)
+            self._history_containers[container_name] = history_container
 
         try:
             # Query all migration documents, ordered by installed_rank
             query = "SELECT * FROM c ORDER BY c.installed_rank"
-            if self.history_container is None:
+            if history_container is None:
                 raise RuntimeError("History container not initialized")
-            items = self.history_container.query_items(
+            items = history_container.query_items(
                 query=query, enable_cross_partition_query=True
             )
 
@@ -270,16 +272,18 @@ class CosmosDbHistoryManager(DocumentHistoryManager):
         # Ensure history container exists
         self.create_history_container_if_not_exists(schema, container_name)
 
-        if not self.history_container:
-            self.history_container = self.connection_manager.get_container_client(container_name)
+        history_container = self._history_containers.get(container_name)
+        if not history_container:
+            history_container = self.connection_manager.get_container_client(container_name)
+            self._history_containers[container_name] = history_container
 
         try:
             # Get next installed_rank
             query = "SELECT VALUE MAX(c.installed_rank) FROM c"
-            if self.history_container is None:
+            if history_container is None:
                 raise RuntimeError("History container not initialized")
             items = list(
-                self.history_container.query_items(query=query, enable_cross_partition_query=True)
+                history_container.query_items(query=query, enable_cross_partition_query=True)
             )
             # SELECT VALUE returns just the values, so items[0] is the max rank (int), not a dict
             max_rank_raw = items[0] if items and items[0] is not None else None
@@ -319,10 +323,10 @@ class CosmosDbHistoryManager(DocumentHistoryManager):
             }
 
             # Insert or update migration document (use upsert to handle existing documents)
-            if self.history_container is None:
+            if history_container is None:
                 raise RuntimeError("History container not initialized")
             # Use upsert_item instead of create_item to handle existing documents gracefully
-            self.history_container.upsert_item(body=migration_doc)
+            history_container.upsert_item(body=migration_doc)
 
             self.log.debug(f"Migration recorded: {migration_info.get('script')}")
 
@@ -355,19 +359,21 @@ class CosmosDbHistoryManager(DocumentHistoryManager):
         """
         container_name = table_name or self.HISTORY_CONTAINER_NAME
 
-        if not self.history_container:
-            self.history_container = self.connection_manager.get_container_client(container_name)
+        history_container = self._history_containers.get(container_name)
+        if not history_container:
+            history_container = self.connection_manager.get_container_client(container_name)
+            self._history_containers[container_name] = history_container
 
         try:
-            if self.history_container is None:
+            if history_container is None:
                 raise RuntimeError("History container not initialized")
 
             # Document id == script_name; partition key is also /id
-            existing = self.history_container.read_item(item=script_name, partition_key=script_name)
+            existing = history_container.read_item(item=script_name, partition_key=script_name)
             existing["checksum"] = checksum
             if success_value is not None:
                 existing["success"] = success_value
-            self.history_container.upsert_item(body=existing)
+            history_container.upsert_item(body=existing)
             self.log.debug(f"Repaired history document for: {script_name}")
             return True
 
@@ -410,9 +416,11 @@ class CosmosDbHistoryManager(DocumentHistoryManager):
         """
         container_name = table_name or self.HISTORY_CONTAINER_NAME
 
-        if not self.history_container:
-            self.history_container = self.connection_manager.get_container_client(container_name)
-        if self.history_container is None:
+        history_container = self._history_containers.get(container_name)
+        if not history_container:
+            history_container = self.connection_manager.get_container_client(container_name)
+            self._history_containers[container_name] = history_container
+        if history_container is None:
             raise RuntimeError("History container not initialized")
 
         # ``version`` is the partition key path, so it must come back with the
@@ -423,7 +431,7 @@ class CosmosDbHistoryManager(DocumentHistoryManager):
         try:
             failed_docs = [
                 doc
-                for doc in self.history_container.query_items(
+                for doc in history_container.query_items(
                     query=query,
                     parameters=parameters,
                     enable_cross_partition_query=True,
@@ -440,7 +448,7 @@ class CosmosDbHistoryManager(DocumentHistoryManager):
             if not doc_id:
                 continue
             try:
-                self.history_container.delete_item(
+                history_container.delete_item(
                     item=doc_id, partition_key=self._history_partition_key(doc)
                 )
                 deleted += 1

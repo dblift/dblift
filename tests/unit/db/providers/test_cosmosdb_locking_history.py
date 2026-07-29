@@ -448,7 +448,7 @@ class TestCosmosDbHistoryManagerInit(unittest.TestCase):
 
     def test_history_container_is_none_initially(self):
         mgr, _, _ = _make_history_manager()
-        self.assertIsNone(mgr.history_container)
+        self.assertEqual(mgr._history_containers, {})
 
     def test_connection_manager_set_from_query_executor(self):
         cm = _make_connection_manager()
@@ -495,7 +495,7 @@ class TestCreateHistoryContainerIfNotExists(unittest.TestCase):
             with patch("time.sleep"):
                 mgr.create_history_container_if_not_exists("public")
 
-        self.assertIs(mgr.history_container, mock_existing)
+        self.assertIs(mgr._history_containers["dblift_schema_history"], mock_existing)
         mock_db.create_container_if_not_exists.assert_not_called()
 
     def test_creates_container_when_not_found(self):
@@ -534,7 +534,7 @@ class TestCreateHistoryContainerIfNotExists(unittest.TestCase):
             with patch("time.sleep"):
                 mgr.create_history_container_if_not_exists("public")
 
-        self.assertIs(mgr.history_container, mock_new_container)
+        self.assertIs(mgr._history_containers["dblift_schema_history"], mock_new_container)
         self.assertEqual(mock_db.create_container_if_not_exists.call_count, 2)
 
     def test_handles_conflict_error_during_create(self):
@@ -553,7 +553,7 @@ class TestCreateHistoryContainerIfNotExists(unittest.TestCase):
             with patch("time.sleep"):
                 mgr.create_history_container_if_not_exists("public")
 
-        self.assertIs(mgr.history_container, mock_client)
+        self.assertIs(mgr._history_containers["dblift_schema_history"], mock_client)
 
     def test_creates_connection_when_database_is_none(self):
         mock_db = MagicMock()
@@ -611,7 +611,7 @@ class TestGetAppliedMigrations(unittest.TestCase):
         mock_container.query_items.return_value = items
 
         mgr, cm, _ = _make_history_manager()
-        mgr.history_container = mock_container
+        mgr._history_containers["dblift_schema_history"] = mock_container
 
         result = mgr.get_applied_migrations(connection=None, schema="public")
 
@@ -635,7 +635,7 @@ class TestGetAppliedMigrations(unittest.TestCase):
         mock_container.query_items.side_effect = Exception("network failure")
 
         mgr, _, log = _make_history_manager()
-        mgr.history_container = mock_container
+        mgr._history_containers["dblift_schema_history"] = mock_container
 
         result = mgr.get_applied_migrations(connection=None, schema="public")
 
@@ -678,7 +678,7 @@ class TestGetAppliedMigrations(unittest.TestCase):
         mock_container.query_items.return_value = items
 
         mgr, _, _ = _make_history_manager()
-        mgr.history_container = mock_container
+        mgr._history_containers["dblift_schema_history"] = mock_container
 
         result = mgr.get_applied_migrations(connection=None, schema="public")
 
@@ -690,7 +690,7 @@ class TestGetAppliedMigrations(unittest.TestCase):
         mock_container.query_items.return_value = items
 
         mgr, _, _ = _make_history_manager()
-        mgr.history_container = mock_container
+        mgr._history_containers["dblift_schema_history"] = mock_container
 
         result = mgr.get_applied_migrations(connection=None, schema="public")
 
@@ -706,7 +706,7 @@ class TestRecordMigration(unittest.TestCase):
         mock_container.upsert_item.return_value = None
 
         mgr, cm, log = _make_history_manager()
-        mgr.history_container = mock_container
+        mgr._history_containers["dblift_schema_history"] = mock_container
 
         with patch.object(mgr, "create_history_container_if_not_exists"):
             return mgr, mock_container, log
@@ -737,7 +737,7 @@ class TestRecordMigration(unittest.TestCase):
         mock_container.upsert_item.return_value = None
 
         mgr, _, _ = _make_history_manager()
-        mgr.history_container = mock_container
+        mgr._history_containers["dblift_schema_history"] = mock_container
 
         migration_info = {"script": "V1__init.sql", "version": "1", "type": "SQL"}
 
@@ -753,7 +753,7 @@ class TestRecordMigration(unittest.TestCase):
         mock_container.upsert_item.return_value = None
 
         mgr, _, _ = _make_history_manager()
-        mgr.history_container = mock_container
+        mgr._history_containers["dblift_schema_history"] = mock_container
 
         migration_info = {"script": "V6__add.sql", "version": "6", "type": "SQL"}
 
@@ -769,7 +769,7 @@ class TestRecordMigration(unittest.TestCase):
         mock_container.upsert_item.return_value = None
 
         mgr, _, _ = _make_history_manager()
-        mgr.history_container = mock_container
+        mgr._history_containers["dblift_schema_history"] = mock_container
 
         dt = datetime.datetime(2024, 1, 1, 12, 0, 0, tzinfo=datetime.timezone.utc)
         migration_info = {
@@ -791,7 +791,7 @@ class TestRecordMigration(unittest.TestCase):
         mock_container.upsert_item.side_effect = Exception("write failed")
 
         mgr, _, log = _make_history_manager()
-        mgr.history_container = mock_container
+        mgr._history_containers["dblift_schema_history"] = mock_container
 
         migration_info = {"script": "V1.sql", "version": "1", "type": "SQL"}
 
@@ -810,7 +810,7 @@ class TestRecordMigration(unittest.TestCase):
         mock_container.upsert_item.return_value = None
 
         mgr, _, _ = _make_history_manager()
-        mgr.history_container = mock_container
+        mgr._history_containers["dblift_schema_history"] = mock_container
 
         migration_info = {"script": "V4.sql", "version": "4", "type": "SQL"}
 

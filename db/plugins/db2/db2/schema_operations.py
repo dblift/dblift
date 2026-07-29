@@ -293,23 +293,23 @@ class Db2SchemaOperations(BaseSchemaOperations):
             ),
             (
                 "function",
-                "SELECT SPECIFICNAME AS object_name FROM SYSCAT.FUNCTIONS "
-                "WHERE UPPER(FUNCSCHEMA) = UPPER(?) AND ORIGIN = 'U'",
-                ("object_name", "SPECIFICNAME"),
-                lambda name, _row: (
+                "SELECT FUNCNAME AS object_name, SPECIFICNAME FROM SYSCAT.FUNCTIONS "
+                "WHERE UPPER(FUNCSCHEMA) = UPPER(?) AND ORIGIN IN ('U', 'Q')",
+                ("object_name", "FUNCNAME"),
+                lambda name, row: (
                     "DROP SPECIFIC FUNCTION "
-                    f"{self.query_executor.get_schema_qualified_name(schema, name)}"
+                    f"{self.query_executor.get_schema_qualified_name(schema, str(_row_value(row, 'SPECIFICNAME')))}"
                 ),
                 None,
             ),
             (
                 "procedure",
-                "SELECT SPECIFICNAME AS object_name FROM SYSCAT.PROCEDURES "
+                "SELECT PROCNAME AS object_name, SPECIFICNAME FROM SYSCAT.PROCEDURES "
                 "WHERE UPPER(PROCSCHEMA) = UPPER(?)",
-                ("object_name", "SPECIFICNAME"),
-                lambda name, _row: (
+                ("object_name", "PROCNAME"),
+                lambda name, row: (
                     "DROP SPECIFIC PROCEDURE "
-                    f"{self.query_executor.get_schema_qualified_name(schema, name)}"
+                    f"{self.query_executor.get_schema_qualified_name(schema, str(_row_value(row, 'SPECIFICNAME')))}"
                 ),
                 None,
             ),
@@ -697,7 +697,7 @@ class Db2SchemaOperations(BaseSchemaOperations):
         SELECT FUNCNAME, FUNCSCHEMA, SPECIFICNAME
         FROM SYSCAT.FUNCTIONS
         WHERE UPPER(FUNCSCHEMA) = UPPER(?)
-        AND ORIGIN = 'U'
+        AND ORIGIN IN ('U', 'Q')
         """
         functions = self.query_executor.execute_query(connection, functions_query, params=[schema])
 

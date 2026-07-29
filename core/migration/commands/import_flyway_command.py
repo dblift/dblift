@@ -5,6 +5,7 @@ from typing import Any, Dict, List
 
 from core.logger.results import OperationResult
 from core.migration.commands.base_command import BaseCommand
+from db.object_naming import get_normalized_object_name
 from db.provider_registry import ProviderRegistry
 
 
@@ -30,7 +31,16 @@ class ImportFlywayCommand(BaseCommand):
         """
         result = OperationResult()
         result.target_schema = self.config.database.schema
-        source_table = (flyway_table or "flyway_schema_history").strip()
+        default_source_table = "flyway_schema_history"
+        source_table = (flyway_table or default_source_table).strip()
+        db_type = str(getattr(self.config.database, "type", "") or "").lower()
+        if source_table == default_source_table and ProviderRegistry.get_quirks(
+            db_type
+        ).flyway_source_table_case_sensitive:
+            # No explicit --flyway-table override: normalize the default name to
+            # the dialect's unquoted-identifier case so it matches a real Flyway
+            # installation's table (e.g. Oracle/DB2 fold unquoted DDL to uppercase).
+            source_table = get_normalized_object_name(source_table, db_type)
         configured_target = getattr(self.config, "history_table", None)
         target_table = (
             configured_target.strip()
@@ -42,8 +52,10 @@ class ImportFlywayCommand(BaseCommand):
         self._populate_database_info(result)
 
         try:
-            # Ensure schema and history table exist (this establishes the connection)
-            self.history_manager.create_schema_and_history_table(create_schema=False)
+            # Ensure schema and history table exist (this establishes the connection).
+            # Skipped in dry-run so no table is created as a side effect.
+            if not dry_run:
+                self.history_manager.create_schema_and_history_table(create_schema=False)
 
             # Log command execution with connection info (after connection is established)
             self._log_command_header_update("import-flyway", dry_run=dry_run)

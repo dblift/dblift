@@ -52,8 +52,10 @@ def test_list_droppable_objects_matches_db2_clean_order_and_sql() -> None:
                 {"SEQNAME": "SQL260619043933830", "SEQTYPE": "I", "ORIGIN": "S"},
                 {"SEQNAME": "ORDER_SEQ", "SEQTYPE": "S", "ORIGIN": "U"},
             ],
-            "SYSCAT.FUNCTIONS": [{"SPECIFICNAME": "CALC_TOTAL"}],
-            "SYSCAT.PROCEDURES": [{"SPECIFICNAME": "REFRESH_TOTALS"}],
+            "SYSCAT.FUNCTIONS": [{"FUNCNAME": "CALC_TOTAL", "SPECIFICNAME": "SQL260619043933831"}],
+            "SYSCAT.PROCEDURES": [
+                {"PROCNAME": "REFRESH_TOTALS", "SPECIFICNAME": "SQL260619043933832"}
+            ],
             "SYSCAT.DATATYPES": [{"TYPENAME": "MONEY_TYPE"}],
             "SYSCAT.MODULES": [{"MODULENAME": "ORDER_MODULE"}],
             "SYSCAT.INDEXES": [{"INDNAME": "IX_ORDERS_CUSTOMER"}],
@@ -80,8 +82,16 @@ def test_list_droppable_objects_matches_db2_clean_order_and_sql() -> None:
         ),
         ("alias", "CUSTOMER_ALIAS", 'DROP ALIAS "APP"."CUSTOMER_ALIAS"'),
         ("sequence", "ORDER_SEQ", 'DROP SEQUENCE "APP"."ORDER_SEQ"'),
-        ("function", "CALC_TOTAL", 'DROP SPECIFIC FUNCTION "APP"."CALC_TOTAL"'),
-        ("procedure", "REFRESH_TOTALS", 'DROP SPECIFIC PROCEDURE "APP"."REFRESH_TOTALS"'),
+        (
+            "function",
+            "CALC_TOTAL",
+            'DROP SPECIFIC FUNCTION "APP"."SQL260619043933831"',
+        ),
+        (
+            "procedure",
+            "REFRESH_TOTALS",
+            'DROP SPECIFIC PROCEDURE "APP"."SQL260619043933832"',
+        ),
         ("type", "MONEY_TYPE", 'DROP TYPE "APP"."MONEY_TYPE"'),
         ("module", "ORDER_MODULE", 'DROP MODULE "APP"."ORDER_MODULE"'),
     ]

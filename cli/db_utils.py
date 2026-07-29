@@ -5,7 +5,7 @@ import os
 import pprint
 import traceback
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 from api._cli_support import (
     ProviderRegistry,
@@ -14,6 +14,8 @@ from api._cli_support import (
 from cli._output import CommandOutput, from_args
 from config.dblift_config import load_config
 from core.logger import DbliftLogger, LogFormat
+from core.utils.url_masking import mask_database_url
+from db.error import format_connection_error
 
 
 def _to_python(obj: Any) -> Any:
@@ -317,7 +319,7 @@ def check_connection(args: argparse.Namespace) -> int:
         try:
             provider.create_connection()
         except Exception as connection_error:
-            friendly = _format_connection_error(connection_error)
+            friendly = _format_connection_error(connection_error, db_type)
             out.error(friendly)
             results["error"] = friendly
             print_connection_results(results, out)
@@ -332,7 +334,9 @@ def check_connection(args: argparse.Namespace) -> int:
 
             # Update results atomically once all operations succeed
             results["success"] = True
-            results["connection_info"]["database_url"] = database_url
+            results["connection_info"]["database_url"] = (
+                mask_database_url(database_url) if database_url else database_url
+            )
             results["connection_info"]["db_type"] = db_type
             schema = getattr(config.database, "schema", None)
             if schema:
@@ -353,76 +357,11 @@ def check_connection(args: argparse.Namespace) -> int:
         return 1
 
 
-def _format_connection_error(error: Exception) -> str:
-    """Map common database connection errors to a one-line user-facing message.
-
-    Before falling back to substring matching, consult SQLState when available:
-    the 5-character code is set by many drivers and is identical across locales.
-    The substring fallback remains for wrappers and drivers that do not populate
-    SQLState.
-
-    SQLState references:
-        08001 ``sqlclient_unable_to_establish_sqlconnection``
-        08006 ``connection_failure``
-        08S01 ``communication_link_failure`` (MS / TDS)
-        28000 / 28P01 ``invalid_authorization_specification``
-        3D000 ``invalid_catalog_name``
-        08004 ``sqlserver_rejected_establishment_of_sqlconnection``
-    """
-    message = str(error)
-    lowered = message.lower()
-    # SQL Server can report login failures with SQLState 08001, so inspect
-    # explicit auth markers before classifying broad connection SQLStates.
-    if _looks_like_auth_error(lowered):
-        return "Connection failed: invalid credentials"
-
-    sqlstate = _extract_sqlstate(error)
-    if sqlstate in ("08001", "08006", "08S01"):
-        return "Connection failed: host unreachable or connection timed out"
-    if sqlstate in ("28000", "28P01"):
-        return "Connection failed: invalid credentials"
-    if sqlstate in ("3D000", "08004"):
-        return "Connection failed: database not found or connection rejected"
-
-    if "refused" in lowered or "timed out" in lowered or "timeout" in lowered:
-        return "Connection failed: host unreachable"
-    if _looks_like_auth_error(lowered):
-        return "Connection failed: invalid credentials"
-    if "unknown host" in lowered or "name or service not known" in lowered:
-        return "Connection failed: host not found"
-    return f"Connection failed: {message}"
-
-
-def _looks_like_auth_error(lowered_message: str) -> bool:
-    """Return True when an error message clearly describes an auth failure."""
-    auth_markers = (
-        "authentication",
-        "login failed",
-        "password",
-        "error 18456",
-        "18456",
-    )
-    return any(marker in lowered_message for marker in auth_markers)
-
-
-def _extract_sqlstate(error: Exception) -> Optional[str]:
-    """Return the 5-character SQLState of ``error``, or None.
-
-    Some driver exceptions expose ``getSQLState()``. ``sqlstate`` is also
-    sometimes attached as a plain attribute — check both.
-    """
-    get_ss = getattr(error, "getSQLState", None)
-    if callable(get_ss):
-        try:
-            value = get_ss()
-        except Exception:
-            value = None
-        if value:
-            return str(value).strip() or None
-    attr = getattr(error, "sqlstate", None) or getattr(error, "SQLState", None)
-    if attr:
-        return str(attr).strip() or None
-    return None
+# Re-exported so ``db check-connection`` and every other command's own
+# connection-establishment step (``BaseCommand._ensure_connected``) format
+# connection failures identically. See ``db.error.format_connection_error``
+# for the SQLState references and auth-classification rationale.
+_format_connection_error = format_connection_error
 
 
 def print_connection_results(results: Dict[str, Any], out: CommandOutput) -> None:

@@ -36,7 +36,14 @@ class TestCleanCommandEnsureConnectionLogging:
         return cmd, provider, log
 
     def test_ensure_connection_exception_logs_debug(self):
-        """AC#3.1: _ensure_connection raises → log.debug called with '_ensure_connection skipped'."""
+        """AC#3.1: _ensure_connection raises → log.debug called with '_ensure_connection skipped'.
+
+        ``_ensure_connected`` now formats connection failures via
+        ``db.error.format_connection_error`` before re-raising (so every
+        command reports connection errors the same friendly way), so the
+        debug log carries that formatted message rather than the raw
+        driver text.
+        """
         cmd, provider, log = self._make_command()
         provider._ensure_connection.side_effect = RuntimeError("conn refused")
 
@@ -44,7 +51,7 @@ class TestCleanCommandEnsureConnectionLogging:
 
         debug_calls = [str(c) for c in log.debug.call_args_list]
         assert any("_ensure_connection skipped" in c for c in debug_calls)
-        assert any("conn refused" in c for c in debug_calls)
+        assert any("Connection failed" in c for c in debug_calls)
 
     def test_ensure_connection_exception_does_not_raise(self):
         """AC#3.2: _ensure_connection raises → execute() does not propagate."""

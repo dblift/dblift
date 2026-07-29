@@ -26,6 +26,12 @@ class BaselineCommand(BaseCommand):
         self._populate_database_info(result)
 
         try:
+            # Ensure schema and history table exist before baselining (this establishes the
+            # connection). Runs for dry-run too: when the history table already exists with
+            # rows, this raises the same "cannot baseline a schema with existing migrations"
+            # error the real run would hit, instead of letting dry-run report false success.
+            self.history_manager.create_schema_and_history_table(create_schema=True)
+
             if dry_run:
                 result.baseline_version = baseline_version
                 result.message = f"Dry run: baseline {baseline_version} would be created"
@@ -34,9 +40,6 @@ class BaselineCommand(BaseCommand):
                 )
                 self._log_command_completion("baseline", result)
                 return result
-
-            # Ensure schema and history table exist before baselining (this establishes the connection)
-            self.history_manager.create_schema_and_history_table(create_schema=True)
 
             # Log command execution with connection info (after connection is established)
             self._log_command_header_update("baseline", baseline_version=baseline_version)

@@ -15,7 +15,7 @@ ValidateCommand:
   - execute() happy path — validation passes
   - execute() validation fails — issues list logged as errors
   - execute() validation fails — fallback to error_message when no issues
-  - execute() connection error — logs debug, continues without header info
+  - execute() schema history bootstrap failure — fails the command with a clean error
   - execute() validator raises unexpectedly — caught, returns error
   - result.target_schema set on start
 """
@@ -177,10 +177,40 @@ class TestBaselineCommandHappyPath(unittest.TestCase):
 
         self.assertTrue(result.success)
         self.assertEqual(result.baseline_version, "1.0")
-        hm.create_schema_and_history_table.assert_not_called()
         hm.record_migration.assert_not_called()
         provider.begin_transaction.assert_not_called()
         provider.commit_transaction.assert_not_called()
+
+    def test_dry_run_still_runs_precondition_check(self):
+        """dry-run must still call create_schema_and_history_table so the
+        "history already exists" precondition guard runs before reporting success."""
+        provider = MagicMock()
+        hm = MagicMock()
+        cmd = _make_baseline_cmd(provider=provider, history_manager=hm)
+
+        with patch.object(cmd, "_populate_database_info"):
+            with patch.object(cmd, "_log_command_header_update"):
+                with patch.object(cmd, "_log_command_completion"):
+                    cmd.execute("1.0", "initial baseline", dry_run=True)
+
+        hm.create_schema_and_history_table.assert_called_once_with(create_schema=True)
+
+    def test_dry_run_fails_when_history_already_exists(self):
+        """dry-run should report the same failure the real run would hit when the
+        history table already has rows, instead of a false success."""
+        hm = MagicMock()
+        hm.create_schema_and_history_table.side_effect = RuntimeError(
+            "Schema public already contains a migration history table "
+            "dblift_schema_history with 1 migration(s)."
+        )
+        cmd = _make_baseline_cmd(history_manager=hm)
+
+        with patch.object(cmd, "_populate_database_info"):
+            with patch.object(cmd, "_log_command_completion"):
+                result = cmd.execute("6", dry_run=True)
+
+        self.assertFalse(result.success)
+        self.assertIn("Baseline operation failed", result.error_message)
 
 
 class TestBaselineCommandTransactionFailures(unittest.TestCase):
@@ -413,8 +443,9 @@ class TestValidateCommandFailurePaths(unittest.TestCase):
 
 
 class TestValidateCommandConnectionError(unittest.TestCase):
-    def test_connection_failure_logs_debug_and_continues(self):
-        """If create_schema_and_history_table raises, execution continues with just Command info."""
+    def test_history_table_bootstrap_failure_fails_command(self):
+        """If create_schema_and_history_table raises, validate must fail (not
+        silently proceed to report success from the script-only checks)."""
         log = MagicMock()
         hm = MagicMock()
         hm.create_schema_and_history_table.side_effect = RuntimeError("no DB")
@@ -432,32 +463,27 @@ class TestValidateCommandConnectionError(unittest.TestCase):
             with patch.object(cmd, "_log_command_completion"):
                 result = cmd.execute(Path("/migrations"))
 
-        # Should succeed (validation itself succeeded)
-        self.assertTrue(result.success)
-        debug_calls = " ".join(str(c) for c in log.debug.call_args_list)
-        self.assertIn("Could not establish connection", debug_calls)
+        self.assertFalse(result.success)
+        self.assertIn("no DB", result.error_message)
+        validator.validate_migrations.assert_not_called()
 
-    def test_connection_failure_logs_command_info_fallback(self):
-        """When connection fails, log.info should still show 'Command: validate'."""
+    def test_history_table_bootstrap_failure_logs_clean_error_message(self):
+        """The bootstrap failure should be logged as a clean, single-line
+        error rather than a raw driver exception dump."""
         log = MagicMock()
         hm = MagicMock()
         hm.create_schema_and_history_table.side_effect = RuntimeError("no DB")
 
         validator = MagicMock()
-        validation_result = MagicMock()
-        validation_result.success = True
-        validation_result.error_message = ""
-        validation_result.issues = []
-        validator.validate_migrations.return_value = validation_result
-
         cmd = _make_validate_cmd(log=log, history_manager=hm, validator=validator)
 
         with patch.object(cmd, "_populate_database_info"):
             with patch.object(cmd, "_log_command_completion"):
                 cmd.execute(Path("/migrations"))
 
-        info_calls = " ".join(str(c) for c in log.info.call_args_list)
-        self.assertIn("validate", info_calls.lower())
+        error_calls = " ".join(str(c) for c in log.error.call_args_list)
+        self.assertIn("Could not create schema history table", error_calls)
+        self.assertIn("no DB", error_calls)
 
 
 class TestValidateCommandUnexpectedException(unittest.TestCase):

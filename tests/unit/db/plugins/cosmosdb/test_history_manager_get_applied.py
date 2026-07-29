@@ -20,13 +20,13 @@ class TestGetAppliedMigrationsLogging:
         mgr = CosmosDbHistoryManager.__new__(CosmosDbHistoryManager)
         mgr.log = MagicMock()
         mgr.connection_manager = MagicMock()
-        mgr.history_container = MagicMock()
+        mgr._history_containers = {"dblift_schema_history": MagicMock()}
         mgr.HISTORY_CONTAINER_NAME = "dblift_schema_history"
         return mgr
 
     def test_404_not_found_logs_debug_not_error(self):
         mgr = self._manager()
-        mgr.history_container.query_items.side_effect = Exception(
+        mgr._history_containers["dblift_schema_history"].query_items.side_effect = Exception(
             "Collection 'dblift_schema_history' not found in database 'dblift_test'"
         )
         result = mgr.get_applied_migrations(connection=None, schema="dblift_test")
@@ -37,7 +37,7 @@ class TestGetAppliedMigrationsLogging:
 
     def test_404_numeric_string_logs_debug_not_error(self):
         mgr = self._manager()
-        mgr.history_container.query_items.side_effect = Exception("Error code: 404")
+        mgr._history_containers["dblift_schema_history"].query_items.side_effect = Exception("Error code: 404")
         result = mgr.get_applied_migrations(connection=None, schema="dblift_test")
         assert result == []
         mgr.log.debug.assert_called_once()
@@ -45,7 +45,7 @@ class TestGetAppliedMigrationsLogging:
 
     def test_non_404_error_logs_error(self):
         mgr = self._manager()
-        mgr.history_container.query_items.side_effect = Exception("Connection timeout")
+        mgr._history_containers["dblift_schema_history"].query_items.side_effect = Exception("Connection timeout")
         result = mgr.get_applied_migrations(connection=None, schema="dblift_test")
         assert result == []
         mgr.log.error.assert_called_once()
@@ -53,7 +53,7 @@ class TestGetAppliedMigrationsLogging:
 
     def test_success_returns_migration_list(self):
         mgr = self._manager()
-        mgr.history_container.query_items.return_value = [
+        mgr._history_containers["dblift_schema_history"].query_items.return_value = [
             {
                 "script": "V1__init.sql",
                 "installed_rank": 1,
@@ -81,7 +81,7 @@ class TestRepairMigrationHistory:
         mgr = CosmosDbHistoryManager.__new__(CosmosDbHistoryManager)
         mgr.log = MagicMock()
         mgr.connection_manager = MagicMock()
-        mgr.history_container = MagicMock()
+        mgr._history_containers = {"dblift_schema_history": MagicMock()}
         mgr.HISTORY_CONTAINER_NAME = "dblift_schema_history"
         return mgr
 
@@ -93,7 +93,7 @@ class TestRepairMigrationHistory:
             "checksum": 111111,
             "success": True,
         }
-        mgr.history_container.read_item.return_value = existing_doc
+        mgr._history_containers["dblift_schema_history"].read_item.return_value = existing_doc
         result = mgr.repair_migration_history(
             connection=None,
             schema="dblift_test",
@@ -101,16 +101,16 @@ class TestRepairMigrationHistory:
             checksum=999999,
         )
         assert result is True
-        mgr.history_container.read_item.assert_called_once_with(
+        mgr._history_containers["dblift_schema_history"].read_item.assert_called_once_with(
             item="V1__create_containers.sql", partition_key="V1__create_containers.sql"
         )
-        upserted = mgr.history_container.upsert_item.call_args[1]["body"]
+        upserted = mgr._history_containers["dblift_schema_history"].upsert_item.call_args[1]["body"]
         assert upserted["checksum"] == 999999
 
     def test_updates_success_flag_when_provided(self):
         mgr = self._manager()
         existing_doc = {"id": "V1__init.sql", "checksum": 0, "success": False}
-        mgr.history_container.read_item.return_value = existing_doc
+        mgr._history_containers["dblift_schema_history"].read_item.return_value = existing_doc
         mgr.repair_migration_history(
             connection=None,
             schema="dblift_test",
@@ -118,12 +118,12 @@ class TestRepairMigrationHistory:
             checksum=42,
             success_value=True,
         )
-        upserted = mgr.history_container.upsert_item.call_args[1]["body"]
+        upserted = mgr._history_containers["dblift_schema_history"].upsert_item.call_args[1]["body"]
         assert upserted["success"] is True
 
     def test_returns_false_when_document_not_found(self):
         mgr = self._manager()
-        mgr.history_container.read_item.side_effect = Exception("404 Not Found")
+        mgr._history_containers["dblift_schema_history"].read_item.side_effect = Exception("404 Not Found")
         result = mgr.repair_migration_history(
             connection=None,
             schema="dblift_test",
@@ -131,4 +131,4 @@ class TestRepairMigrationHistory:
             checksum=42,
         )
         assert result is False
-        mgr.history_container.upsert_item.assert_not_called()
+        mgr._history_containers["dblift_schema_history"].upsert_item.assert_not_called()
