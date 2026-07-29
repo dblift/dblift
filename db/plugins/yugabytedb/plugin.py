@@ -15,4 +15,8 @@ from db.provider_registry import PluginInfo
 PLUGIN: PluginInfo = make_pg_compatible_plugin(
     "yugabytedb",
     "YugabyteDB (PostgreSQL-compatible) database provider",
+    # YSQL auto-commits DDL (like Oracle/MySQL): a rolled-back migration
+    # still leaves CREATE TABLE objects behind. Do not inherit PostgreSQL's
+    # transactional-DDL claim.
+    quirks_overrides={"supports_transactional_ddl": False},
 )
