@@ -34,9 +34,10 @@ class ImportFlywayCommand(BaseCommand):
         default_source_table = "flyway_schema_history"
         source_table = (flyway_table or default_source_table).strip()
         db_type = str(getattr(self.config.database, "type", "") or "").lower()
-        if source_table == default_source_table and ProviderRegistry.get_quirks(
-            db_type
-        ).flyway_source_table_case_sensitive:
+        if (
+            source_table == default_source_table
+            and ProviderRegistry.get_quirks(db_type).flyway_source_table_case_sensitive
+        ):
             # No explicit --flyway-table override: normalize the default name to
             # the dialect's unquoted-identifier case so it matches a real Flyway
             # installation's table (e.g. Oracle/DB2 fold unquoted DDL to uppercase).

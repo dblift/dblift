@@ -222,9 +222,7 @@ class CosmosDbHistoryManager(DocumentHistoryManager):
             query = "SELECT * FROM c ORDER BY c.installed_rank"
             if history_container is None:
                 raise RuntimeError("History container not initialized")
-            items = history_container.query_items(
-                query=query, enable_cross_partition_query=True
-            )
+            items = history_container.query_items(query=query, enable_cross_partition_query=True)
 
             results = []
             for item in items:

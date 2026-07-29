@@ -144,9 +144,7 @@ class TestImportFlywayCommand:
             "public", "flyway_schema_history"
         )
 
-    def test_oracle_default_flyway_table_normalized_to_uppercase(
-        self, command, mock_dependencies
-    ):
+    def test_oracle_default_flyway_table_normalized_to_uppercase(self, command, mock_dependencies):
         """Default (non-overridden) source table is uppercased for Oracle so it
 
         matches a real Flyway installation's table, which Oracle case-folds to

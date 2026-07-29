@@ -37,7 +37,9 @@ class TestGetAppliedMigrationsLogging:
 
     def test_404_numeric_string_logs_debug_not_error(self):
         mgr = self._manager()
-        mgr._history_containers["dblift_schema_history"].query_items.side_effect = Exception("Error code: 404")
+        mgr._history_containers["dblift_schema_history"].query_items.side_effect = Exception(
+            "Error code: 404"
+        )
         result = mgr.get_applied_migrations(connection=None, schema="dblift_test")
         assert result == []
         mgr.log.debug.assert_called_once()
@@ -45,7 +47,9 @@ class TestGetAppliedMigrationsLogging:
 
     def test_non_404_error_logs_error(self):
         mgr = self._manager()
-        mgr._history_containers["dblift_schema_history"].query_items.side_effect = Exception("Connection timeout")
+        mgr._history_containers["dblift_schema_history"].query_items.side_effect = Exception(
+            "Connection timeout"
+        )
         result = mgr.get_applied_migrations(connection=None, schema="dblift_test")
         assert result == []
         mgr.log.error.assert_called_once()
@@ -123,7 +127,9 @@ class TestRepairMigrationHistory:
 
     def test_returns_false_when_document_not_found(self):
         mgr = self._manager()
-        mgr._history_containers["dblift_schema_history"].read_item.side_effect = Exception("404 Not Found")
+        mgr._history_containers["dblift_schema_history"].read_item.side_effect = Exception(
+            "404 Not Found"
+        )
         result = mgr.repair_migration_history(
             connection=None,
             schema="dblift_test",
