@@ -108,3 +108,7 @@ def test_mariadb_does_not_skip_existence_check():
     # Must override the True it would inherit from MysqlQuirks, else a real
     # MariadbProvider would skip the existence check and then raise.
     assert MariadbQuirks().provider_compat_snapshot_skips_existence_check is False
+
+
+def test_mariadb_update_subquery_does_not_require_derived_table() -> None:
+    assert MariadbQuirks().update_subquery_requires_derived_table is False

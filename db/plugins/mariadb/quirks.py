@@ -51,6 +51,10 @@ class MariadbQuirks(MysqlQuirks):
     # existence check and raises (snapshots are not provider-owned).
     provider_compat_snapshot_skips_existence_check: bool = False
 
+    # MariaDB accepts UPDATE t ... WHERE id IN (SELECT id FROM t ...);
+    # MySQL error 1093 does not apply. Do not inherit MysqlQuirks' True.
+    update_subquery_requires_derived_table: bool = False
+
     # MariaDB does not implement ``CAST(expr AS JSON)`` (MDEV-26448, still
     # open). Its ``JSON`` type is only an alias for ``LONGTEXT`` with a
     # validity CHECK, so inheriting MySQL's ``"JSON"`` here would emit a cast
