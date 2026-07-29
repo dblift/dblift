@@ -68,15 +68,24 @@ def validate_checksums(
     result: "ValidationResult",
     issues: List[str],
     strict_mode: bool = False,
+    all_scripts: Optional[List[Migration]] = None,
 ) -> None:
     """Validate checksums of executed migrations.
 
     Compares each applied migration's stored checksum against the current
     file's checksum, flagging drift either as an error (versioned scripts)
     or a recorded reapply (repeatable scripts).
+
+    ``scripts`` may be scoped by ``--tags``/``--versions`` filters; ``all_scripts``,
+    when provided, is the full unfiltered set of on-disk scripts and is used only to
+    decide whether an applied migration is genuinely missing from the migration
+    directory (as opposed to merely filtered out of the current run's scope).
     """
     checksum_mismatches = []
     script_names = [s.script_name for s in scripts]
+    full_script_names = (
+        [s.script_name for s in all_scripts] if all_scripts is not None else script_names
+    )
 
     for applied in applied_migrations:
         script_name = getattr(applied, "script_name", None)
@@ -98,7 +107,7 @@ def validate_checksums(
         if migration_type == MigrationType.BASELINE:
             continue
 
-        if script_name not in script_names:
+        if script_name not in full_script_names:
             if migration_type != MigrationType.BASELINE and str(version_val).lower() != "baseline":
                 # Check if this script has been marked as deleted
                 is_deleted = any(
@@ -143,6 +152,12 @@ def validate_checksums(
                         f"Migration '{script_name}' is missing from filesystem but "
                         "marked as deleted - OK"
                     )
+            continue
+        if script_name not in script_names:
+            # Present on disk but filtered out of scope by --tags/--versions - not missing.
+            mv.log.debug(
+                f"Migration '{script_name}' is out of scope for this run's filters - skipping"
+            )
             continue
         if migration_type == MigrationType.BASELINE:
             mv.log.debug(f"Skipping checksum verification for {script_name} (baseline)")

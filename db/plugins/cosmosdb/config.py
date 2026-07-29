@@ -27,6 +27,9 @@ class CosmosDbConfig(BaseDatabaseConfig):
         if not self.account_endpoint and not self.url:
             raise ValueError("Either account_endpoint or url must be provided for Cosmos DB")
 
+        if not self.account_key and self.password:
+            self.account_key = self.password
+
         if not self.use_managed_identity and not self.account_key:
             raise ValueError("account_key is required when use_managed_identity is False")
 
@@ -39,9 +42,6 @@ class CosmosDbConfig(BaseDatabaseConfig):
 
         if not self.database_name and self.database:
             self.database_name = self.database
-
-        if not self.account_key and self.password:
-            self.account_key = self.password
 
     def build_connection_string(self) -> str:
         """Build a Cosmos DB connection string.

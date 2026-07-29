@@ -360,6 +360,10 @@ class MigrationExecutor:
             recursive=recursive,
             additional_dirs=additional_dirs,
             dir_recursive_map=dir_recursive_map,
+            tags=tags,
+            exclude_tags=exclude_tags,
+            versions=versions,
+            exclude_versions=exclude_versions,
             display_human=display_human,
         )
 

@@ -707,8 +707,13 @@ class OracleProvider(SqlAlchemyProvider):
                 try:
                     self.execute_statement(stmt)
                 except Exception as e:
-                    summary.add_error(f"Failed to drop {normalized_type} {name}: {e}")
-                    continue
+                    if object_type == "TRIGGER" and "ora-04080" in str(e).lower():
+                        # Owning table was already cascade-dropped above, taking the
+                        # trigger with it; the desired end state is already reached.
+                        pass
+                    else:
+                        summary.add_error(f"Failed to drop {normalized_type} {name}: {e}")
+                        continue
             summary.record_drop(stmt, normalized_type, str(name), schema=schema)
 
         try:

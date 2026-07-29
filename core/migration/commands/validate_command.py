@@ -36,22 +36,35 @@ class ValidateCommand(BaseCommand):
         self._populate_database_info(result)
 
         try:
-            # Validate command may not need connection, but try to establish it for header info
+            # Ensure the schema history table exists before validating. A
+            # failure here (e.g. missing DB privileges) is a real command
+            # failure, not something to swallow: validating scripts against
+            # a history table that couldn't be created would report success
+            # while the schema was left in an unusable state.
             try:
                 self.history_manager.create_schema_and_history_table(create_schema=False)
-                # Log command execution with connection info (after connection is established)
-                self._log_command_header_update(
-                    "validate",
-                    target_version=target_version,
-                    tags=tags,
-                    exclude_tags=exclude_tags,
-                    versions=versions,
-                    exclude_versions=exclude_versions,
-                )
             except Exception as e:
-                # If connection fails, still log without connection info
-                self.log.debug(f"Could not establish connection for validate header: {e}")
-                self.log.info("Command: validate")
+                from core.migration.sql.sql_execution_service import _format_execution_error
+
+                try:
+                    formatted = _format_execution_error(e)
+                except Exception:
+                    formatted = ""
+                error_msg = f"Could not create schema history table: {formatted or str(e)}"
+                self.log.error(error_msg)
+                result.set_error(error_msg)
+                self._log_command_completion("validate", result)
+                return result
+
+            # Log command execution with connection info (after connection is established)
+            self._log_command_header_update(
+                "validate",
+                target_version=target_version,
+                tags=tags,
+                exclude_tags=exclude_tags,
+                versions=versions,
+                exclude_versions=exclude_versions,
+            )
 
             validation_result = self.validator.validate_migrations(
                 scripts_dir,

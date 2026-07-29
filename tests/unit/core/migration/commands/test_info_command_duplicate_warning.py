@@ -6,7 +6,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from core.migration.commands.info_command import InfoCommand
+from core.migration.commands.info_command import InfoCommand, _normalize_filter
 from core.migration.migration import MigrationType
 from core.migration.state.migration_state import MigrationState
 
@@ -93,3 +93,9 @@ def test_execute_display_human_true_calls_display(tmp_path: Path):
     command, _ = _make_command([])
     command.execute(tmp_path, display_human=True)
     command.migration_ui.display_migration_info.assert_called_once()
+
+
+@pytest.mark.unit
+def test_normalize_filter_splits_and_strips_comma_separated_values():
+    """A comma-separated filter value is split into a stripped, non-empty list."""
+    assert _normalize_filter("a, b ,c") == ["a", "b", "c"]

@@ -41,6 +41,13 @@ def _migration_type_name(migration_type: object) -> str:
     return str(migration_type or "").upper()
 
 
+def _normalize_filter(value: Optional[str]) -> Optional[List[str]]:
+    """Split a comma-separated CLI filter value into a clean list."""
+    if value is None:
+        return None
+    return [part.strip() for part in value.split(",") if part.strip()]
+
+
 class InfoCommand(BaseCommand):
     """Handles the 'info' command execution."""
 
@@ -50,11 +57,20 @@ class InfoCommand(BaseCommand):
         recursive: bool = True,
         additional_dirs: Optional[List[Path]] = None,
         dir_recursive_map: Optional[Dict[Path, bool]] = None,
+        tags: Optional[str] = None,
+        exclude_tags: Optional[str] = None,
+        versions: Optional[str] = None,
+        exclude_versions: Optional[str] = None,
         display_human: bool = True,
     ) -> InfoResult:
         """Get information about migrations using migration rules for state determination."""
         result = InfoResult()
         result.target_schema = self.config.database.schema
+
+        normalized_tags = _normalize_filter(tags)
+        normalized_exclude_tags = _normalize_filter(exclude_tags)
+        normalized_versions = _normalize_filter(versions)
+        normalized_exclude_versions = _normalize_filter(exclude_versions)
 
         def _body() -> None:
             # Use MigrationStateManager to get centralized migration state
@@ -122,10 +138,10 @@ class InfoCommand(BaseCommand):
                     all_applied_migrations=all_applied_migrations,
                     scripts_dir=scripts_dir,
                     target_version=None,
-                    tags=None,
-                    exclude_tags=None,
-                    versions=None,
-                    exclude_versions=None,
+                    tags=normalized_tags,
+                    exclude_tags=normalized_exclude_tags,
+                    versions=normalized_versions,
+                    exclude_versions=normalized_exclude_versions,
                 )
 
             # Use the same data processing pipeline as the console output
@@ -135,10 +151,10 @@ class InfoCommand(BaseCommand):
                 all_applied_migrations=all_applied_migrations,
                 scripts_dir=scripts_dir,
                 target_version=None,
-                tags=None,
-                exclude_tags=None,
-                versions=None,
-                exclude_versions=None,
+                tags=normalized_tags,
+                exclude_tags=normalized_exclude_tags,
+                versions=normalized_versions,
+                exclude_versions=normalized_exclude_versions,
             )
 
             # Convert the UI data to MigrationInfo objects for the HTML formatter

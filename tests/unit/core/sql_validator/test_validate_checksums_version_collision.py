@@ -61,3 +61,37 @@ class TestValidateChecksumsVersionCollision:
         assert any(
             "V1__initial_containers.sql" in w for w in warning_calls
         ), f"Warning must mention the alt script name. Got: {warning_calls}"
+
+
+@pytest.mark.unit
+class TestValidateChecksumsTagVersionScope:
+    def test_applied_migration_filtered_out_of_scope_is_skipped_silently(self):
+        """An applied migration whose script is present on disk (``all_scripts``)
+        but excluded from the current --tags/--versions filtered ``scripts`` is
+        merely out of scope, not missing: no warning/issue should be raised, and
+        a debug log should note it was skipped."""
+        validator = _make_validator()
+
+        in_scope_script = _make_migration("V1__create_containers.sql", "1")
+        filtered_out_script = _make_migration("V2__add_index.sql", "2")
+        applied_filtered_out = _make_migration("V2__add_index.sql", "2")
+
+        result = ValidationResult()
+        issues = []
+
+        validator._validate_checksums(
+            scripts=[in_scope_script],
+            applied_migrations=[applied_filtered_out],
+            result=result,
+            issues=issues,
+            strict_mode=False,
+            all_scripts=[in_scope_script, filtered_out_script],
+        )
+
+        assert issues == []
+        assert validator.log.warning.call_args_list == []
+
+        debug_calls = [str(c) for c in validator.log.debug.call_args_list]
+        assert any(
+            "V2__add_index.sql" in c and "out of scope" in c for c in debug_calls
+        ), f"Expected an out-of-scope debug log for V2__add_index.sql. Got: {debug_calls}"

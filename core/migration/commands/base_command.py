@@ -546,11 +546,25 @@ class BaseCommand:
         Providers may expose ``_ensure_connection`` (connect-if-closed).
         Other providers and stubs fall back to ``connect()`` only
         when ``is_connected()`` reports False, to avoid duplicate connections.
+
+        A failed connection attempt is re-raised through
+        ``db.error.format_connection_error`` — the same formatter
+        ``db check-connection`` uses — so every command reports connection
+        failures with the identical friendly one-liner instead of a raw
+        driver/SQLAlchemy exception.
         """
-        if ensure_provider_connection(self.provider):
-            return
-        if not self.provider.is_connected():
-            self.provider.connect()
+        try:
+            if ensure_provider_connection(self.provider):
+                return
+            if not self.provider.is_connected():
+                self.provider.connect()
+        except Exception as exc:
+            from db.error import format_connection_error
+
+            db_type = getattr(self.provider, "canonical_dialect_key", "") or getattr(
+                getattr(self.config, "database", None), "type", ""
+            )
+            raise ConnectionError(format_connection_error(exc, str(db_type or ""))) from exc
 
     def _run_preflight(
         self,

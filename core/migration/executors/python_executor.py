@@ -71,9 +71,11 @@ class MigrationContext:
             context.execute("INSERT INTO t VALUES (1)")
             context.log.info("Row inserted")
 
-    To support undo, add an ``undo`` function with the same signature::
+    A ``U<version>__*.py`` undo script also defines a top-level ``migrate``
+    function — the same entry point as any other migration — describing the
+    action to perform when undoing::
 
-        def undo(context: MigrationContext) -> None:
+        def migrate(context: MigrationContext) -> None:
             context.execute("DELETE FROM t WHERE id = 1")
 
     Public interface:

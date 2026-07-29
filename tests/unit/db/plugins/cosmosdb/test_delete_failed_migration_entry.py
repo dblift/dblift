@@ -81,7 +81,7 @@ def test_cosmos_history_manager_deletes_documents_via_sdk():
         {"id": "doc-1", "script": "V1__x.sql", "success": False, "version": "1.0.0"},
         {"id": "doc-2", "script": "V1__x.sql", "success": False, "version": "1.0.1"},
     ]
-    manager.history_container = container
+    manager._history_containers["dblift_schema_history"] = container
 
     removed = manager.delete_failed_migration_entry(None, "default", "V1__x.sql")
 
@@ -96,7 +96,7 @@ def test_cosmos_history_manager_returns_zero_when_no_failed_row():
     manager = CosmosDbHistoryManager(executor, None, None)
     container = MagicMock()
     container.query_items.return_value = []
-    manager.history_container = container
+    manager._history_containers["dblift_schema_history"] = container
 
     assert manager.delete_failed_migration_entry(None, "default", "V1__x.sql") == 0
     container.delete_item.assert_not_called()
@@ -115,7 +115,7 @@ def test_delete_addresses_the_version_partition_key():
     container.query_items.return_value = [
         {"id": "V1__x.sql", "script": "V1__x.sql", "success": False, "version": "1.0.0"}
     ]
-    manager.history_container = container
+    manager._history_containers["dblift_schema_history"] = container
 
     assert manager.delete_failed_migration_entry(None, "default", "V1__x.sql") == 1
 
@@ -138,7 +138,7 @@ def test_repeatable_migration_uses_the_none_partition_sentinel():
     container.query_items.return_value = [
         {"id": "R__seed.sql", "script": "R__seed.sql", "success": False, "version": None}
     ]
-    manager.history_container = container
+    manager._history_containers["dblift_schema_history"] = container
 
     assert manager.delete_failed_migration_entry(None, "default", "R__seed.sql") == 1
     assert container.delete_item.call_args.kwargs["partition_key"] is NONE_PARTITION_KEY

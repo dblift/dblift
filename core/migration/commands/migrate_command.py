@@ -580,9 +580,14 @@ class MigrateCommand(BaseCommand):
         dir_recursive_map: Optional[Dict[Path, bool]],
     ) -> None:
         """Update final schema version after migrations are applied."""
-        # Rebuild state to get accurate applied migrations after migration
+        # Rebuild state to get accurate applied migrations after migration.
+        # scripts_dir=None so build_state skips pending-migration computation
+        # (only applied_objects is needed here) — this run's tag/version
+        # exclusion filters aren't available at this point, so recomputing
+        # pending here would misreport excluded, never-applied scripts as
+        # out-of-order.
         migration_state_after = self.state_manager.build_state(
-            scripts_dir,
+            None,
             recursive=use_recursive,
             additional_dirs=use_additional_dirs,
             dir_recursive_map=dir_recursive_map,
