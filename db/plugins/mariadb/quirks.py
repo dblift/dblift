@@ -23,6 +23,11 @@ class MariadbQuirks(MysqlQuirks):
     deviations land here as the codebase touches them: native ``JSON``
     type from 10.2+, native sequences and system-versioned tables on
     modern versions.
+
+    Provider-compat snapshot DDL is inherited from :class:`MysqlQuirks`
+    (InnoDB + LONGTEXT, ``CREATE TABLE IF NOT EXISTS``, skip existence
+    probe). Managed snapshot DDL still raises via the MySQL parent so
+    :class:`BaseSnapshotManager` falls through to the compat path.
     """
 
     # MariaDB 10.2+ JSON; keep MySQL-family keys from parent for shared class attrs.
@@ -46,11 +51,6 @@ class MariadbQuirks(MysqlQuirks):
     # Override the parent ``True`` to preserve that behavior.
     requires_rollback_after_introspection: bool = False
 
-    # MariaDB does not keep provider-compat snapshot DDL; reset the values
-    # inherited from MysqlQuirks so a real MariadbProvider keeps the normal
-    # existence check and raises (snapshots are not provider-owned).
-    provider_compat_snapshot_skips_existence_check: bool = False
-
     # MariaDB accepts UPDATE t ... WHERE id IN (SELECT id FROM t ...);
     # MySQL error 1093 does not apply. Do not inherit MysqlQuirks' True.
     update_subquery_requires_derived_table: bool = False
@@ -65,21 +65,6 @@ class MariadbQuirks(MysqlQuirks):
     def __init__(self, dialect_name: str = "mariadb") -> None:
         """Initialize MariaDB quirks with the dialect name."""
         super().__init__(dialect_name=dialect_name)
-
-    def build_snapshot_table_ddl(
-        self,
-        qualified_table: str,
-        snapshot_id_size: int,
-        checksum_size: int,
-    ) -> str:
-        """Reject inherited MySQL snapshot table DDL."""
-        raise NotImplementedError("MariaDB snapshots are not provider-owned")
-
-    def build_provider_compat_snapshot_ddl(
-        self, qualified_table: str, snapshot_id_size: int, checksum_size: int
-    ) -> "Optional[str]":
-        """MariaDB has no provider-compat snapshot DDL (overrides MySQL's)."""
-        return None
 
 
 __all__ = ["MariadbQuirks"]
