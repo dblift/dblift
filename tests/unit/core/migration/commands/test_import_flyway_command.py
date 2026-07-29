@@ -92,6 +92,25 @@ class TestImportFlywayCommand:
         assert any("V1__init.sql" in c for c in info_calls)
         assert any("DRY RUN" in c for c in info_calls)
 
+    def test_dry_run_still_ensures_connection(self, command, mock_dependencies):
+        """dry_run=True must still connect — create_schema_and_history_table is
+        skipped in dry-run, so _ensure_connected is the only thing left that
+        guarantees a live connection before reading the Flyway table."""
+        row = self._make_flyway_row("1.0", "V1__init.sql")
+        mock_dependencies["provider"].get_applied_migrations.side_effect = [[row], []]
+
+        with pytest.MonkeyPatch.context() as mp:
+            ensure_connected_calls = []
+            mp.setattr(
+                command,
+                "_ensure_connected",
+                lambda: ensure_connected_calls.append(True),
+            )
+            result = command.execute(scripts_dir=Path("/scripts"), dry_run=True)
+
+        assert result.success is True
+        assert ensure_connected_calls == [True]
+
     # ------------------------------------------------------------------ AC#6.3
     def test_empty_flyway_table_zero_imports(self, command, mock_dependencies):
         """Empty flyway_schema_history → 0 imports, success=True."""

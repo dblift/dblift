@@ -49,12 +49,18 @@ class ImportFlywayCommand(BaseCommand):
             else "dblift_schema_history"
         )
 
+        # Ensure the provider has a live connection before reading connection
+        # metadata or querying the Flyway table — dry-run skips
+        # create_schema_and_history_table below, which would otherwise be the
+        # only thing establishing the connection for providers that need it.
+        self._ensure_connected()
+
         # Populate database connection information
         self._populate_database_info(result)
 
         try:
-            # Ensure schema and history table exist (this establishes the connection).
-            # Skipped in dry-run so no table is created as a side effect.
+            # Ensure schema and history table exist. Skipped in dry-run so no
+            # table is created as a side effect.
             if not dry_run:
                 self.history_manager.create_schema_and_history_table(create_schema=False)
 
