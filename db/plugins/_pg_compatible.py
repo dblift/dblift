@@ -58,21 +58,56 @@ def _register_global(cls: type) -> type:
     return cls
 
 
-def make_pg_compatible_provider(dialect: str) -> Type[PostgreSqlProvider]:
-    """Build a PostgreSQL provider subclass carrying only a distinct identity."""
+# Quirks class attrs that must also be answered by provider methods so the
+# dialect-capabilities matrix (built from quirks) stays in lockstep with
+# ``TransactionalProvider`` (the contract-matrix test asserts both axes).
+_PROVIDER_CAPABILITY_METHODS = (
+    "supports_transactions",
+    "supports_transactional_ddl",
+)
+
+
+def make_pg_compatible_provider(
+    dialect: str,
+    *,
+    quirks_overrides: Optional[dict] = None,
+) -> Type[PostgreSqlProvider]:
+    """Build a PostgreSQL provider subclass carrying only a distinct identity.
+
+    ``quirks_overrides`` may include capability flags that also exist as
+    ``TransactionalProvider`` methods (``supports_transactions``,
+    ``supports_transactional_ddl``). Those are installed as provider methods
+    returning the override value so a quirks-only change cannot drift from the
+    provider API the runtime and contract matrix call.
+    """
     stem = _class_stem(dialect)
+    class_attrs: dict = {
+        "__module__": __name__,
+        "__doc__": (
+            f"{stem} provider — wire-compatible with PostgreSQL; reuses the "
+            "PostgreSQL provider with a distinct dialect identity."
+        ),
+        "canonical_dialect_key": dialect,
+    }
+    if quirks_overrides:
+        for name in _PROVIDER_CAPABILITY_METHODS:
+            if name not in quirks_overrides:
+                continue
+            value = bool(quirks_overrides[name])
+
+            # Default-arg binding freezes *value* per method (no late binding).
+            def _capability(self: PostgreSqlProvider, _v: bool = value) -> bool:
+                return _v
+
+            _capability.__name__ = name
+            _capability.__qualname__ = f"{stem}Provider.{name}"
+            class_attrs[name] = _capability
+
     return _register_global(
         type(
             f"{stem}Provider",
             (PostgreSqlProvider,),
-            {
-                "__module__": __name__,
-                "__doc__": (
-                    f"{stem} provider — wire-compatible with PostgreSQL; reuses the "
-                    "PostgreSQL provider with a distinct dialect identity."
-                ),
-                "canonical_dialect_key": dialect,
-            },
+            class_attrs,
         )
     )
 
@@ -148,10 +183,13 @@ def make_pg_compatible_plugin(
     caller only needs to pass it explicitly if a future engine's extra name
     diverges from its dialect key.
 
-    ``quirks_overrides`` is forwarded to :func:`make_pg_compatible_quirks` for
-    engines that share the wire protocol but not every capability flag.
+    ``quirks_overrides`` is forwarded to :func:`make_pg_compatible_quirks` and
+    :func:`make_pg_compatible_provider` for engines that share the wire
+    protocol but not every capability flag (quirks matrix + provider methods).
     """
-    provider_class: Type[BaseProvider] = make_pg_compatible_provider(dialect)
+    provider_class: Type[BaseProvider] = make_pg_compatible_provider(
+        dialect, quirks_overrides=quirks_overrides
+    )
     quirks_class = make_pg_compatible_quirks(dialect, quirks_overrides=quirks_overrides)
     return PluginInfo(
         name=dialect,

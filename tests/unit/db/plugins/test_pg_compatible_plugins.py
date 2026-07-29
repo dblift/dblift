@@ -130,6 +130,9 @@ def test_yugabytedb_does_not_claim_transactional_ddl() -> None:
     assert "supports_transactional_ddl" in vars(plugin.quirks_class)
     assert plugin.quirks_class.supports_transactional_ddl is False
     assert plugin.quirks_class(dialect_name="yugabytedb").supports_transactional_ddl is False
+    # Provider API must match quirks/matrix (test_provider_contract_matrix).
+    provider = plugin.provider_class.__new__(plugin.provider_class)
+    assert provider.supports_transactional_ddl() is False
 
 
 @pytest.mark.unit
