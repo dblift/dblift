@@ -425,6 +425,11 @@ class MigrationValidator:
             # Handle baseline filtering
             valid_scripts = self._handle_baseline_filtering(valid_scripts)
 
+            # Full set of on-disk scripts before tag/version scoping, used to tell a
+            # genuinely missing migration apart from one merely out of the current
+            # --tags/--versions filter scope.
+            all_valid_scripts = valid_scripts
+
             valid_scripts = self._apply_filters(
                 valid_scripts,
                 target_version=target_version,
@@ -485,6 +490,7 @@ class MigrationValidator:
                         validation_result,
                         issues,
                         strict_mode,
+                        all_valid_scripts,
                     )
                     if issues:
                         validation_result.success = False
@@ -593,6 +599,7 @@ class MigrationValidator:
                     validation_result,
                     issues,
                     strict_mode,
+                    all_valid_scripts,
                 )
                 self.log.debug(
                     f"[DEBUG] validate_migrations: after _validate_checksums: success={validation_result.success}, error='{validation_result.error_message}', issues={issues}"
@@ -744,6 +751,7 @@ class MigrationValidator:
         result: ValidationResult,
         issues: List[str],
         strict_mode: bool = False,
+        all_scripts: Optional[List[Migration]] = None,
     ) -> None:
         """Delegate to :func:`core.sql_validator._checksum_validator.validate_checksums`.
 
@@ -752,7 +760,7 @@ class MigrationValidator:
         """
         from core.sql_validator._checksum_validator import validate_checksums as _impl
 
-        _impl(self, scripts, applied_migrations, result, issues, strict_mode)
+        _impl(self, scripts, applied_migrations, result, issues, strict_mode, all_scripts)
 
     def _check_repeatable_migrations(
         self,

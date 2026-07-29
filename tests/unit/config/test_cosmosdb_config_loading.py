@@ -51,3 +51,15 @@ database:
 
     assert isinstance(client.config.database, CosmosDbConfig)
     assert client.config.database.database_name == "dblift_test"
+
+
+@pytest.mark.unit
+def test_cosmosdb_config_falls_back_to_password_when_account_key_missing():
+    config = CosmosDbConfig(
+        type="cosmosdb",
+        account_endpoint="http://localhost:8081/",
+        password="secret",
+        database_name="dblift_test",
+    )
+
+    assert config.account_key == "secret"

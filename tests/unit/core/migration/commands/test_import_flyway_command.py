@@ -92,6 +92,25 @@ class TestImportFlywayCommand:
         assert any("V1__init.sql" in c for c in info_calls)
         assert any("DRY RUN" in c for c in info_calls)
 
+    def test_dry_run_still_ensures_connection(self, command, mock_dependencies):
+        """dry_run=True must still connect — create_schema_and_history_table is
+        skipped in dry-run, so _ensure_connected is the only thing left that
+        guarantees a live connection before reading the Flyway table."""
+        row = self._make_flyway_row("1.0", "V1__init.sql")
+        mock_dependencies["provider"].get_applied_migrations.side_effect = [[row], []]
+
+        with pytest.MonkeyPatch.context() as mp:
+            ensure_connected_calls = []
+            mp.setattr(
+                command,
+                "_ensure_connected",
+                lambda: ensure_connected_calls.append(True),
+            )
+            result = command.execute(scripts_dir=Path("/scripts"), dry_run=True)
+
+        assert result.success is True
+        assert ensure_connected_calls == [True]
+
     # ------------------------------------------------------------------ AC#6.3
     def test_empty_flyway_table_zero_imports(self, command, mock_dependencies):
         """Empty flyway_schema_history → 0 imports, success=True."""
@@ -144,10 +163,12 @@ class TestImportFlywayCommand:
             "public", "flyway_schema_history"
         )
 
-    def test_oracle_reads_lowercase_quoted_default_flyway_table_exactly(
-        self, command, mock_dependencies
-    ):
-        """Oracle Flyway source names are exact-case, unlike DBLift history names."""
+    def test_oracle_default_flyway_table_normalized_to_uppercase(self, command, mock_dependencies):
+        """Default (non-overridden) source table is uppercased for Oracle so it
+
+        matches a real Flyway installation's table, which Oracle case-folds to
+        uppercase because Flyway creates it via unquoted DDL.
+        """
         row = {
             "INSTALLED_RANK": 1,
             "VERSION": "1",
@@ -162,7 +183,7 @@ class TestImportFlywayCommand:
         }
         mock_dependencies["config"].database.type = "oracle"
         mock_dependencies["provider"].get_schema_qualified_name.return_value = (
-            '"public"."flyway_schema_history"'
+            '"public"."FLYWAY_SCHEMA_HISTORY"'
         )
         mock_dependencies["provider"].execute_query.return_value = [row]
         mock_dependencies["provider"].get_applied_migrations.return_value = []
@@ -170,15 +191,37 @@ class TestImportFlywayCommand:
         command.execute(scripts_dir=Path("/scripts"), dry_run=False)
 
         mock_dependencies["provider"].get_schema_qualified_name.assert_called_once_with(
-            "public", "flyway_schema_history"
+            "public", "FLYWAY_SCHEMA_HISTORY"
         )
         query = mock_dependencies["provider"].execute_query.call_args.args[0]
-        assert 'FROM "public"."flyway_schema_history"' in query
+        assert 'FROM "public"."FLYWAY_SCHEMA_HISTORY"' in query
         mock_dependencies["provider"].get_applied_migrations.assert_called_once_with(
             "public", "dblift_schema_history"
         )
         imported = mock_dependencies["provider"].record_migration.call_args.args[1]
         assert imported["script"] == "V1__init.sql"
+
+    def test_oracle_explicit_flyway_table_override_preserved_exactly(
+        self, command, mock_dependencies
+    ):
+        """An explicit --flyway-table override is passed through verbatim,
+
+        even on Oracle — only the unspecified default name gets normalized.
+        """
+        mock_dependencies["config"].database.type = "oracle"
+        mock_dependencies["provider"].get_schema_qualified_name.return_value = (
+            '"public"."Custom_Flyway_Tbl"'
+        )
+        mock_dependencies["provider"].execute_query.return_value = []
+        mock_dependencies["provider"].get_applied_migrations.return_value = []
+
+        command.execute(
+            scripts_dir=Path("/scripts"), dry_run=False, flyway_table="Custom_Flyway_Tbl"
+        )
+
+        mock_dependencies["provider"].get_schema_qualified_name.assert_called_once_with(
+            "public", "Custom_Flyway_Tbl"
+        )
 
     # ------------------------------------------------------------------ BUG-05
     def test_missing_flyway_table_reports_error(self, command, mock_dependencies):

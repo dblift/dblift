@@ -15,6 +15,90 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
+## [3.3.2] - 2026-07-29
+
+Release-qualification follow-ups after 3.3.1: multi-dialect CLI/API
+edge cases from the OSS functional suite, MariaDB snapshot and
+UPDATE-subquery capability alignment, YugabyteDB transactional-DDL
+truthfulness, and a fourth instance of the same one-shot registry latch
+pattern.
+
+### Fixed
+
+- **YugabyteDB no longer claims transactional DDL.** YSQL auto-commits
+  `CREATE`/`ALTER`/`DROP` (objects survive `ROLLBACK`), so inheriting
+  PostgreSQL's `supports_transactional_ddl=True` over-claimed the engine
+  and misled migration recovery. The PG-wire plugin factory accepts
+  `quirks_overrides` and installs matching provider capability methods;
+  YugabyteDB sets the flag to `False` on both quirks and the provider
+  API so the dialect-capabilities matrix stays consistent.
+
+- **MariaDB can create database-stored snapshot tables again.** The
+  dialect had opted out of both managed and provider-compat snapshot
+  DDL, so any path that needs a live `dblift_schema_snapshots` table on
+  MariaDB failed at create time. MariaDB now inherits the MySQL-family
+  compat path (`CREATE TABLE IF NOT EXISTS … ENGINE=InnoDB` with a
+  `LONGTEXT` model payload and the matching existence-check skip) so
+  `BaseSnapshotManager` can open the table the same way MySQL does.
+
+- **MariaDB no longer forces a derived-table wrap on self-referencing
+  `UPDATE … WHERE id IN (SELECT … FROM same table)`.** Only MySQL
+  needs that reshape (error 1093). The capability flag
+  `update_subquery_requires_derived_table` is now `False` for MariaDB
+  so generated SQL and the live capability probe match the engine.
+
+- **`attach_registered_sql_generators()` no longer latches “bootstrapped”
+  when nothing registered.** The one-shot `_bootstrapped` flag was set
+  unconditionally before `load_feature_extensions()` ran, even when
+  `_registrars` stayed empty. A later successful extension discovery
+  never retried, so SQL generators that register through that path
+  never attached for the rest of the process. The latch now closes only
+  when `_registrars` is non-empty after discovery (same shape as the
+  `AlterGeneratorFactory`, feature-loading, and
+  `ProviderRegistry.discover_plugins` fixes in 3.3.0 / 3.3.1).
+
+- **Release-qualification fixes across Oracle, DB2, CosmosDB, SQL Server,
+  and PostgreSQL** (OSS functional suite against a clean 3.3.1 wheel):
+  - **CosmosDB** `import-flyway` queried the wrong container because the
+    client cache was keyed by a single attribute instead of table name.
+  - **CosmosDB** `--db-password` → `account_key` fallback was unreachable
+    because validation ran before the fallback assignment.
+  - **`migrate` / `validate` with `--tags` / `--exclude-tags`** falsely
+    warned that applied migrations were missing from disk when they
+    were only filtered out of scope (escalates under `--strict`).
+    Checksum validation now receives the full on-disk script list so
+    filtered-out applied rows are not treated as missing files.
+  - **`info --tags` / `--versions` / `--exclude-tags` /
+    `--exclude-versions`** were silent no-ops; filters now reach the UI.
+  - **Oracle `clean`** reported failure on schemas with triggers whose
+    owning table was already cascade-dropped (`ORA-04080`), even when
+    cleanup fully succeeded.
+  - **Oracle `import-flyway`** failed against a real Flyway history table
+    due to identifier case-folding on the default source table name.
+  - **`import-flyway --dry-run`** created the history table and, for some
+    providers, never opened a connection at all. Dry-run now connects
+    without writing history DDL.
+  - **`baseline --dry-run`** no longer creates the history table as a
+    side effect of its precondition check, and no longer reports success
+    for a baseline that would fail the real precondition on PostgreSQL.
+  - **DB2 `clean`** left SQL-bodied user-defined functions behind (wrong
+    `ORIGIN` filter) and showed internal specific-names instead of real
+    names in preview output.
+  - **DB2 `validate --validate-only`** reported success after silently
+    swallowing a schema-history bootstrap failure (and dumping a raw
+    traceback). Bootstrap failure now fails the command.
+  - **SQL Server `db check-connection`** printed the database password in
+    plaintext; successful connection output now masks credentials in the
+    URL.
+  - **Connection and statement errors** no longer leak raw SQLAlchemy
+    wrapper class names and doc-link trailers into user-facing messages
+    (Oracle, SQL Server, DuckDB, and shared `format_connection_error`
+    paths).
+  - **Oracle** no longer logs a misleading “applying anyway” warning for
+    migrations excluded by a tag/version filter.
+  - **Docs:** Python undo scripts document the `migrate()` entry point,
+    not a non-existent `undo()`.
+
 ## [3.3.1] - 2026-07-28
 
 A CosmosDB write-path follow-up, and a third instance of the same

@@ -36,11 +36,25 @@ def test_mariadb_provider_does_not_own_snapshot_hooks() -> None:
     assert "create_snapshot_table_if_not_exists" not in MariadbProvider.__abstractmethods__
 
 
-def test_mariadb_quirks_reject_snapshot_table_ddl() -> None:
-    """MariaDB quirks do not inherit MySQL snapshot table DDL."""
+def test_mariadb_quirks_inherit_mysql_provider_compat_snapshot_ddl() -> None:
+    """MariaDB uses the MySQL-family InnoDB LONGTEXT snapshot table DDL."""
+    ddl = MariadbQuirks().build_provider_compat_snapshot_ddl("db.snap", 100, 128)
+    assert ddl is not None
+    assert "CREATE TABLE IF NOT EXISTS db.snap" in ddl
+    assert "ENGINE=InnoDB" in ddl
+    assert "model_data LONGTEXT NOT NULL" in ddl
+
+
+def test_mariadb_skips_existence_check_like_mysql() -> None:
+    # Compat path uses IF NOT EXISTS; skip the separate existence probe.
+    assert MariadbQuirks().provider_compat_snapshot_skips_existence_check is True
+
+
+def test_mariadb_managed_snapshot_table_ddl_opts_out() -> None:
+    """Managed DDL still raises; BaseSnapshotManager falls through to compat."""
     import pytest
 
-    with pytest.raises(NotImplementedError, match="MariaDB snapshots are not provider-owned"):
+    with pytest.raises(NotImplementedError):
         MariadbQuirks().build_snapshot_table_ddl("app.dblift_schema_snapshots", 128, 64)
 
 
@@ -96,15 +110,5 @@ def test_mariadb_plugin_sqlalchemy_url_builder_builds_pymysql_url() -> None:
     assert url.username == "maria"
 
 
-def test_mariadb_has_no_provider_compat_snapshot_ddl():
-    from db.plugins.mariadb.quirks import MariadbQuirks
-
-    assert MariadbQuirks().build_provider_compat_snapshot_ddl("db.snap", 100, 128) is None
-
-
-def test_mariadb_does_not_skip_existence_check():
-    from db.plugins.mariadb.quirks import MariadbQuirks
-
-    # Must override the True it would inherit from MysqlQuirks, else a real
-    # MariadbProvider would skip the existence check and then raise.
-    assert MariadbQuirks().provider_compat_snapshot_skips_existence_check is False
+def test_mariadb_update_subquery_does_not_require_derived_table() -> None:
+    assert MariadbQuirks().update_subquery_requires_derived_table is False

@@ -9,6 +9,9 @@ from db.error import (
     DatabaseErrorInfo,
     ErrorCategory,
     RetryManager,
+    _extract_sqlstate,
+    _is_auth_error,
+    format_connection_error,
 )
 
 # ---------------------------------------------------------------------------
@@ -305,6 +308,70 @@ class TestDatabaseErrorClassifier:
     def test_not_retryable_when_max_retries_reached(self):
         c = DatabaseErrorClassifier("generic")
         assert c.is_retryable(ErrorCategory.NETWORK, retry_count=3, max_retries=3) is False
+
+
+# ---------------------------------------------------------------------------
+# format_connection_error
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestFormatConnectionError:
+    """Test the shared connection-error formatter's remaining branches."""
+
+    def test_unknown_host_returns_host_not_found(self):
+        """No auth markers, no SQLState, no refused/timeout substring: the
+        'unknown host' substring branch is reached."""
+        err = Exception("could not translate host name: unknown host db.example.invalid")
+        out = format_connection_error(err, "generic")
+        assert out == "Connection failed: host not found"
+
+    def test_name_or_service_not_known_returns_host_not_found(self):
+        err = Exception("Temporary failure: name or service not known")
+        out = format_connection_error(err, "generic")
+        assert out == "Connection failed: host not found"
+
+
+# ---------------------------------------------------------------------------
+# _is_auth_error
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestIsAuthError:
+    """Test the classifier fallback used by _is_auth_error."""
+
+    def test_returns_false_when_classifier_construction_raises(self):
+        """If DatabaseErrorClassifier(db_type) or categorize_error() raises for
+        any reason, _is_auth_error must swallow it and report 'not an auth
+        error' rather than propagating."""
+        with patch("db.error.DatabaseErrorClassifier", side_effect=RuntimeError("boom")):
+            result = _is_auth_error(
+                Exception("some odd driver failure"), "some odd driver failure", "generic"
+            )
+        assert result is False
+
+
+# ---------------------------------------------------------------------------
+# _extract_sqlstate
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestExtractSqlstate:
+    """Test SQLState extraction edge cases."""
+
+    def test_returns_none_when_getSQLState_raises(self):
+        err = Exception("driver error")
+        err.getSQLState = MagicMock(side_effect=RuntimeError("driver crashed"))  # type: ignore[attr-defined]
+        assert _extract_sqlstate(err) is None
+
+    def test_reads_plain_sqlstate_attribute(self):
+        """Drivers that expose sqlstate as a plain attribute instead of a
+        getSQLState() method are also supported."""
+        err = Exception("driver error")
+        err.sqlstate = "28000"  # type: ignore[attr-defined]
+        assert _extract_sqlstate(err) == "28000"
 
 
 # ---------------------------------------------------------------------------

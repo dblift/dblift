@@ -38,18 +38,33 @@ from db.provider_registry import ProviderRegistry
 from db.value_utils import to_python_string
 
 _DRIVER_EXCEPTION_PREFIX_RE = re.compile(
-    r"^(?:[a-z][a-z0-9_]*(?:\.[a-z][a-z0-9_]*)+Exception:\s*)+" r"(?:ERROR:\s*)?",
+    r"^(?:"
+    r"[a-z][a-z0-9_]*(?:\.[a-z][a-z0-9_]*)+Exception:\s*"  # Java/JDBC: dotted.path.Exception:
+    r"|"
+    r"\([a-z_][a-z0-9_]*(?:\.[a-z0-9_]+)+\)\s*"  # SQLAlchemy: (dotted.path.ExceptionClass)
+    r")+"
+    r"(?:ERROR:\s*)?",
     re.IGNORECASE,
+)
+# SQLAlchemy appends a doc-link pointer for every wrapped DBAPI error, e.g.
+# '(Background on this error at: https://sqlalche.me/e/20/e3q8)'.
+_SQLALCHEMY_DOC_LINK_RE = re.compile(
+    r"\s*\(Background on this error at:.*\)\s*\Z", re.IGNORECASE | re.DOTALL
 )
 
 
 def _strip_driver_exception_prefix(msg: str) -> str:
-    """Strip verbose driver exception class prefixes from error strings.
+    """Strip verbose driver/SQLAlchemy exception wrapping from error strings.
 
     e.g. 'org.postgresql.util.PSQLException: ERROR: column "x" already exists'
          → 'column "x" already exists'
+    e.g. '(_duckdb.IOException) IO Error: Cannot open file "x": No such file or directory
+         (Background on this error at: https://sqlalche.me/e/20/e3q8)'
+         → 'IO Error: Cannot open file "x": No such file or directory'
     """
-    return _DRIVER_EXCEPTION_PREFIX_RE.sub("", str(msg)).strip()
+    text = _DRIVER_EXCEPTION_PREFIX_RE.sub("", str(msg)).strip()
+    text = _SQLALCHEMY_DOC_LINK_RE.sub("", text).strip()
+    return text
 
 
 def _is_ddl_statement_for_success_log(statement: str) -> bool:
