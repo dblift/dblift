@@ -58,26 +58,65 @@ def _register_global(cls: type) -> type:
     return cls
 
 
-def make_pg_compatible_provider(dialect: str) -> Type[PostgreSqlProvider]:
-    """Build a PostgreSQL provider subclass carrying only a distinct identity."""
+# Quirks class attrs that must also be answered by provider methods so the
+# dialect-capabilities matrix (built from quirks) stays in lockstep with
+# ``TransactionalProvider`` (the contract-matrix test asserts both axes).
+_PROVIDER_CAPABILITY_METHODS = (
+    "supports_transactions",
+    "supports_transactional_ddl",
+)
+
+
+def make_pg_compatible_provider(
+    dialect: str,
+    *,
+    quirks_overrides: Optional[dict] = None,
+) -> Type[PostgreSqlProvider]:
+    """Build a PostgreSQL provider subclass carrying only a distinct identity.
+
+    ``quirks_overrides`` may include capability flags that also exist as
+    ``TransactionalProvider`` methods (``supports_transactions``,
+    ``supports_transactional_ddl``). Those are installed as provider methods
+    returning the override value so a quirks-only change cannot drift from the
+    provider API the runtime and contract matrix call.
+    """
     stem = _class_stem(dialect)
+    class_attrs: dict = {
+        "__module__": __name__,
+        "__doc__": (
+            f"{stem} provider — wire-compatible with PostgreSQL; reuses the "
+            "PostgreSQL provider with a distinct dialect identity."
+        ),
+        "canonical_dialect_key": dialect,
+    }
+    if quirks_overrides:
+        for name in _PROVIDER_CAPABILITY_METHODS:
+            if name not in quirks_overrides:
+                continue
+            value = bool(quirks_overrides[name])
+
+            # Default-arg binding freezes *value* per method (no late binding).
+            def _capability(self: PostgreSqlProvider, _v: bool = value) -> bool:
+                return _v
+
+            _capability.__name__ = name
+            _capability.__qualname__ = f"{stem}Provider.{name}"
+            class_attrs[name] = _capability
+
     return _register_global(
         type(
             f"{stem}Provider",
             (PostgreSqlProvider,),
-            {
-                "__module__": __name__,
-                "__doc__": (
-                    f"{stem} provider — wire-compatible with PostgreSQL; reuses the "
-                    "PostgreSQL provider with a distinct dialect identity."
-                ),
-                "canonical_dialect_key": dialect,
-            },
+            class_attrs,
         )
     )
 
 
-def make_pg_compatible_quirks(dialect: str) -> Type[PostgresqlQuirks]:
+def make_pg_compatible_quirks(
+    dialect: str,
+    *,
+    quirks_overrides: Optional[dict] = None,
+) -> Type[PostgresqlQuirks]:
     """Build a PostgreSQL quirks subclass that drops the reference-dialect flags.
 
     The two flags are set in the class body (not per instance) because
@@ -85,6 +124,10 @@ def make_pg_compatible_quirks(dialect: str) -> Type[PostgresqlQuirks]:
     ``vars(quirks_class)`` — only a class-level override makes this engine a
     non-owner of the ANSI-reference and sqlglot-read-fallback capabilities,
     preserving PostgreSQL as the single owner of each.
+
+    ``quirks_overrides`` adds extra class attributes for engines that are
+    wire-compatible with PostgreSQL but diverge on a capability (e.g.
+    YugabyteDB does not roll back DDL).
     """
     stem = _class_stem(dialect)
 
@@ -93,21 +136,25 @@ def make_pg_compatible_quirks(dialect: str) -> Type[PostgresqlQuirks]:
         # unavailable — call the base initializer explicitly.
         PostgresqlQuirks.__init__(self, dialect_name=dialect_name)
 
+    class_attrs: dict = {
+        "__module__": __name__,
+        "__doc__": (
+            f"{stem} quirks, inheriting every PostgreSQL quirk. Only the "
+            "reference-dialect flags are reset so PostgreSQL stays the sole "
+            "owner of each."
+        ),
+        "is_ansi_reference_dialect": False,
+        "is_default_sqlglot_read_fallback": False,
+        "__init__": __init__,
+    }
+    if quirks_overrides:
+        class_attrs.update(quirks_overrides)
+
     return _register_global(
         type(
             f"{stem}Quirks",
             (PostgresqlQuirks,),
-            {
-                "__module__": __name__,
-                "__doc__": (
-                    f"{stem} quirks, inheriting every PostgreSQL quirk. Only the "
-                    "reference-dialect flags are reset so PostgreSQL stays the sole "
-                    "owner of each."
-                ),
-                "is_ansi_reference_dialect": False,
-                "is_default_sqlglot_read_fallback": False,
-                "__init__": __init__,
-            },
+            class_attrs,
         )
     )
 
@@ -121,6 +168,7 @@ def make_pg_compatible_plugin(
     sqlalchemy_url_builder: Callable[..., str] = build_sqlalchemy_url,
     native_driver_module: str = "psycopg",
     install_extra: Optional[str] = None,
+    quirks_overrides: Optional[dict] = None,
 ) -> PluginInfo:
     """Assemble the :class:`PluginInfo` for a PostgreSQL-wire-compatible engine.
 
@@ -134,9 +182,15 @@ def make_pg_compatible_plugin(
     ``pyproject.toml`` extra of the same name, each installing ``psycopg``. A
     caller only needs to pass it explicitly if a future engine's extra name
     diverges from its dialect key.
+
+    ``quirks_overrides`` is forwarded to :func:`make_pg_compatible_quirks` and
+    :func:`make_pg_compatible_provider` for engines that share the wire
+    protocol but not every capability flag (quirks matrix + provider methods).
     """
-    provider_class: Type[BaseProvider] = make_pg_compatible_provider(dialect)
-    quirks_class = make_pg_compatible_quirks(dialect)
+    provider_class: Type[BaseProvider] = make_pg_compatible_provider(
+        dialect, quirks_overrides=quirks_overrides
+    )
+    quirks_class = make_pg_compatible_quirks(dialect, quirks_overrides=quirks_overrides)
     return PluginInfo(
         name=dialect,
         version=version,
