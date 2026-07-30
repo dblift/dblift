@@ -6,8 +6,8 @@
 
 ![Python](https://img.shields.io/badge/Python-3.11%2B-blue)
 ![License](https://img.shields.io/badge/License-Apache--2.0-blue)
-[![Unit Tests](https://github.com/cmodiano/dblift-oss/actions/workflows/unit-tests.yml/badge.svg)](https://github.com/cmodiano/dblift-oss/actions/workflows/unit-tests.yml)
-[![codecov](https://codecov.io/gh/cmodiano/dblift-oss/graph/badge.svg)](https://codecov.io/gh/cmodiano/dblift-oss)
+[![Unit Tests](https://github.com/dblift/dblift/actions/workflows/unit-tests.yml/badge.svg)](https://github.com/dblift/dblift/actions/workflows/unit-tests.yml)
+[![codecov](https://codecov.io/gh/dblift/dblift/graph/badge.svg)](https://codecov.io/gh/dblift/dblift)
 [![Security Policy](https://img.shields.io/badge/Security-Policy-green)](SECURITY.md)
 
 Application code usually has tests, CI pipelines, and pull request review. Database changes often skip one or more of those stages. DBLift is a Python-native migration toolkit that shows you exactly what SQL will run before it runs — and keeps the full migration lifecycle inside your Python workflow. No JVM required.
