@@ -163,3 +163,26 @@ class TestDuckDBRoundTrip:
         )
         provider.clean_schema("main")
         assert provider.get_clean_preview("main").objects == []
+
+
+@pytest.mark.unit
+class TestDuckDBDmlRowcount:
+    def test_update_reports_positive_rowcount(self, tmp_path: Path) -> None:
+        from config import DatabaseConfig, DbliftConfig
+        from db.plugins.duckdb.provider import DuckDBProvider
+
+        db_file = tmp_path / "rc.duckdb"
+        cfg = DbliftConfig(
+            database=DatabaseConfig(
+                type="duckdb",
+                url=f"duckdb:///{db_file}",
+                schema="main",
+            )
+        )
+        provider = DuckDBProvider(cfg)
+        provider.execute_statement("CREATE TABLE t (id INTEGER PRIMARY KEY, v VARCHAR)")
+        provider.execute_statement("INSERT INTO t VALUES (1, 'a'), (2, 'b')")
+        rc = provider.execute_statement("UPDATE t SET v = 'x' WHERE id = 1")
+        assert rc == 1, f"expected rowcount 1, got {rc}"
+        rc0 = provider.execute_statement("UPDATE t SET v = 'y' WHERE id = 99")
+        assert rc0 == 0, f"expected rowcount 0, got {rc0}"
