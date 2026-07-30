@@ -15,6 +15,7 @@ from pathlib import Path
 
 import pytest
 
+from db.plugins.cockroachdb.sqlalchemy_url import build_sqlalchemy_url as build_cockroach_url
 from db.plugins.postgresql.provider import PostgreSqlProvider
 from db.plugins.postgresql.quirks import PostgresqlQuirks
 from db.plugins.postgresql.sqlalchemy_url import build_sqlalchemy_url as build_postgresql_url
@@ -54,11 +55,16 @@ class TestPgCompatiblePlugin:
         assert plugin.transport == "native"
         # Reuse contract: PG-wire engines share PostgreSQL config. Redshift
         # uses a dedicated SQLAlchemy dialect/driver because Redshift does not
-        # implement every PostgreSQL connection bootstrap query.
+        # implement every PostgreSQL connection bootstrap query. CockroachDB
+        # still uses psycopg but needs a thin dialect wrapper so SQLAlchemy
+        # accepts Cockroach ``version()`` banners (not ``PostgreSQL X.Y``).
         assert plugin.config_dialect == "postgresql"
         if dialect == "redshift":
             assert plugin.sqlalchemy_url_builder is build_redshift_url
             assert plugin.native_driver_module == "redshift_connector"
+        elif dialect == "cockroachdb":
+            assert plugin.sqlalchemy_url_builder is build_cockroach_url
+            assert plugin.native_driver_module == "psycopg"
         else:
             assert plugin.sqlalchemy_url_builder is build_postgresql_url
             assert plugin.native_driver_module == "psycopg"

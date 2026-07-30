@@ -11,8 +11,12 @@ from __future__ import annotations
 
 from db.plugins.cockroachdb.provider import CockroachdbProvider
 from db.plugins.cockroachdb.quirks import CockroachdbQuirks
-from db.plugins.postgresql.sqlalchemy_url import build_sqlalchemy_url
+from db.plugins.cockroachdb.sqlalchemy_dialect import register_cockroach_dialect
+from db.plugins.cockroachdb.sqlalchemy_url import build_sqlalchemy_url
 from db.provider_registry import PluginInfo
+
+# Register before any create_engine call can race plugin discovery.
+register_cockroach_dialect()
 
 PLUGIN: PluginInfo = PluginInfo(
     name="cockroachdb",
