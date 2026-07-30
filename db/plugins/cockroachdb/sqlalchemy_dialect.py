@@ -56,6 +56,8 @@ class CockroachDBDialect_psycopg(PGDialect_psycopg):
 
     name = "cockroachdb"
     driver = "psycopg"
+    # Inherit PG caching semantics; SQLAlchemy warns if a subclass omits this.
+    supports_statement_cache = True
 
     def _get_server_version_info(self, connection: Any) -> Tuple[int, ...]:
         raw = connection.exec_driver_sql("select version()").scalar()
