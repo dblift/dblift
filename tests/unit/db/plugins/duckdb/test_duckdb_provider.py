@@ -167,7 +167,7 @@ class TestDuckDBRoundTrip:
 
 @pytest.mark.unit
 class TestDuckDBDmlRowcount:
-    def test_update_reports_positive_rowcount(self, tmp_path: Path) -> None:
+    def _provider(self, tmp_path: Path) -> "DuckDBProvider":
         from config import DatabaseConfig, DbliftConfig
         from db.plugins.duckdb.provider import DuckDBProvider
 
@@ -179,10 +179,29 @@ class TestDuckDBDmlRowcount:
                 schema="main",
             )
         )
-        provider = DuckDBProvider(cfg)
+        return DuckDBProvider(cfg)
+
+    def test_update_reports_positive_rowcount(self, tmp_path: Path) -> None:
+        provider = self._provider(tmp_path)
         provider.execute_statement("CREATE TABLE t (id INTEGER PRIMARY KEY, v VARCHAR)")
         provider.execute_statement("INSERT INTO t VALUES (1, 'a'), (2, 'b')")
         rc = provider.execute_statement("UPDATE t SET v = 'x' WHERE id = 1")
         assert rc == 1, f"expected rowcount 1, got {rc}"
         rc0 = provider.execute_statement("UPDATE t SET v = 'y' WHERE id = 99")
         assert rc0 == 0, f"expected rowcount 0, got {rc0}"
+
+    def test_update_with_leading_directive_comments(self, tmp_path: Path) -> None:
+        provider = self._provider(tmp_path)
+        provider.execute_statement("CREATE TABLE t (id INTEGER PRIMARY KEY, v VARCHAR)")
+        provider.execute_statement("INSERT INTO t VALUES (1, 'a')")
+        sql = "-- dblift:formatted\n-- dblift: expect=1 onfail=halt\nUPDATE t SET v = 'x' WHERE id = 1;"
+        assert provider.execute_statement(sql) == 1
+
+    def test_pk_violation_propagates_root_error(self, tmp_path: Path) -> None:
+        provider = self._provider(tmp_path)
+        provider.execute_statement("CREATE TABLE t (id INTEGER PRIMARY KEY, v VARCHAR)")
+        provider.execute_statement("INSERT INTO t VALUES (1, 'a')")
+        with pytest.raises(Exception) as ei:
+            provider.execute_statement("INSERT INTO t VALUES (1, 'dup')")
+        msg = str(ei.value).lower()
+        assert "aborted" not in msg or "constraint" in msg or "unique" in msg or "primary" in msg

@@ -45,8 +45,14 @@ class DuckDBProvider(SqlAlchemyProvider):
         return super().execute_statement(sql, schema=schema, params=params)
 
     def _try_dml_rowcount_via_returning(self, sql: str) -> Optional[int]:
-        """Return affected-row count using RETURNING, or None if not applicable."""
-        stripped = self._strip_leading_sql_comments(sql.strip()).rstrip(";").strip()
+        """Return affected-row count using RETURNING, or None if not applicable.
+
+        Returns None only when the statement is not rewritten (caller falls back
+        to the default path). Once execution is attempted, errors propagate —
+        do not re-run a failed statement via super() (that masks the root cause
+        as a follow-on \"transaction is aborted\" error).
+        """
+        stripped = self._strip_sql_comments(sql.strip()).rstrip(";").strip()
         if not stripped:
             return None
         # Normalize whitespace for keyword checks only
@@ -61,26 +67,23 @@ class DuckDBProvider(SqlAlchemyProvider):
             return None
 
         # Multi-statement scripts: leave to super (no silent rewrite)
-        if ";" in stripped:
+        if self._has_top_level_semicolon(stripped):
             return None
 
         rewritten = f"{stripped} RETURNING 1"
-        try:
-            conn = self._ensure_connection()
-            driver_sql = self._escape_driver_percent_literals(rewritten, conn.dialect.paramstyle)
-            result = conn.exec_driver_sql(driver_sql)
-            rows = result.fetchall()
-            if self._tx is None and not getattr(self, "_external_connection", False):
-                conn.commit()
-            return len(rows)
-        except Exception:
-            # Fall back to default path (e.g. DDL misclassified, unsupported form)
-            return None
+        conn = self._ensure_connection()
+        driver_sql = self._escape_driver_percent_literals(rewritten, conn.dialect.paramstyle)
+        result = conn.exec_driver_sql(driver_sql)
+        rows = result.fetchall()
+        if self._tx is None and not getattr(self, "_external_connection", False):
+            conn.commit()
+        return len(rows)
 
     @staticmethod
-    def _strip_leading_sql_comments(sql: str) -> str:
-        """Remove leading ``--`` / ``/* */`` comments (data directives sit above DML)."""
+    def _strip_sql_comments(sql: str) -> str:
+        """Remove leading and trailing ``--`` / ``/* */`` comments (and blank lines)."""
         s = sql.lstrip()
+        # Leading comments (data directives sit above DML)
         while s:
             if s.startswith("--"):
                 nl = s.find("\n")
@@ -95,7 +98,45 @@ class DuckDBProvider(SqlAlchemyProvider):
                 s = s[end + 2 :].lstrip()
                 continue
             break
-        return s
+        # Trailing line comments would swallow an appended RETURNING clause
+        lines = s.splitlines()
+        while lines:
+            last = lines[-1].rstrip()
+            if not last or last.lstrip().startswith("--"):
+                lines.pop()
+                continue
+            # Strip trailing block comment on last line only (simple form)
+            if "/*" in last and last.rstrip().endswith("*/"):
+                lines[-1] = last[: last.rfind("/*")].rstrip()
+                if not lines[-1]:
+                    lines.pop()
+                    continue
+            break
+        return "\n".join(lines).strip()
+
+    @staticmethod
+    def _has_top_level_semicolon(sql: str) -> bool:
+        """True if ``sql`` contains a semicolon outside string/identifier quotes."""
+        in_single = in_double = False
+        i = 0
+        n = len(sql)
+        while i < n:
+            ch = sql[i]
+            if ch == "'" and not in_double:
+                # SQL escaped single quote ''
+                if in_single and i + 1 < n and sql[i + 1] == "'":
+                    i += 2
+                    continue
+                in_single = not in_single
+            elif ch == '"' and not in_single:
+                if in_double and i + 1 < n and sql[i + 1] == '"':
+                    i += 2
+                    continue
+                in_double = not in_double
+            elif ch == ";" and not in_single and not in_double:
+                return True
+            i += 1
+        return False
 
     def create_schema_if_not_exists(self, schema: str) -> None:
         """Create a DuckDB schema if it is missing."""
