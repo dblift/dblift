@@ -128,43 +128,11 @@ class JsonFormatter:
 
     def _get_version_info(self) -> Dict[str, Any]:
         """Return a dict with log_format_version and dblift_version."""
-        dblift_version = None
-
-        # Method 1: Try to read from source __init__.py file (most reliable for development)
-        try:
-            init_file = Path(__file__).parent.parent.parent.parent / "__init__.py"
-            if init_file.exists():
-                with open(init_file, "r", encoding="utf-8") as f:
-                    for line in f:
-                        if line.startswith("__version__"):
-                            parts = line.split("=", 1)
-                            if len(parts) == 2:
-                                dblift_version = parts[1].strip().strip('"').strip("'")
-                                break
-        except Exception as e:
-            _logger.debug(f"Could not read version from __init__.py: {e}")
-
-        # Method 2: Try to import directly from package (if source is in path)
-        if not dblift_version:
-            try:
-                import dblift  # type: ignore[import-untyped]
-
-                dblift_version = getattr(dblift, "__version__", None)
-            except (ImportError, AttributeError):
-                pass
-
-        # Method 3: Fallback to pkg_resources (for installed packages)
-        if not dblift_version:
-            try:
-                import pkg_resources  # type: ignore[import-untyped]
-
-                dblift_version = pkg_resources.get_distribution("dblift").version
-            except Exception as e:
-                _logger.debug(f"Could not get version from pkg_resources: {e}")
+        from core.logger._formatters import resolve_dblift_package_version
 
         return {
             "log_format_version": "1.0",
-            "dblift_version": dblift_version,
+            "dblift_version": resolve_dblift_package_version(),
         }
 
     def _build_time_metadata(self, result: OperationResult) -> Dict[str, Any]:
