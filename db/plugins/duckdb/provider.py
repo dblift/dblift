@@ -27,11 +27,149 @@ class DuckDBProvider(SqlAlchemyProvider):
     def execute_statement(
         self, sql: str, schema: Optional[str] = None, params: Optional[List[Any]] = None
     ) -> int:
-        """Execute a SQL statement, optionally preparing the schema first."""
+        """Execute a SQL statement, optionally preparing the schema first.
+
+        DuckDB/SQLAlchemy often reports ``rowcount == -1`` for DML. For single
+        INSERT/UPDATE/DELETE statements without parameters, append
+        ``RETURNING 1`` so callers (e.g. data corrections ``expect=N``) get a
+        real affected-row count.
+        """
         if schema:
             self.create_schema_if_not_exists(schema)
             self.set_current_schema(schema)
+
+        if params is None:
+            counted = self._try_dml_rowcount_via_returning(sql)
+            if counted is not None:
+                return counted
         return super().execute_statement(sql, schema=schema, params=params)
+
+    def _try_dml_rowcount_via_returning(self, sql: str) -> Optional[int]:
+        """Return affected-row count using RETURNING, or None if not applicable.
+
+        Returns None only when the statement is not rewritten (caller falls back
+        to the default path). Once execution is attempted, errors propagate —
+        do not re-run a failed statement via super() (that masks the root cause
+        as a follow-on \"transaction is aborted\" error).
+        """
+        stripped = self._strip_sql_comments(sql.strip()).rstrip(";").strip()
+        if not stripped:
+            return None
+        # Normalize whitespace for keyword checks only
+        upper = " ".join(stripped.upper().split())
+        if " RETURNING " in f" {upper} ":
+            return None
+        if not (
+            upper.startswith("INSERT ")
+            or upper.startswith("UPDATE ")
+            or upper.startswith("DELETE ")
+        ):
+            return None
+
+        # Multi-statement scripts: leave to super (no silent rewrite)
+        if self._has_top_level_semicolon(stripped):
+            return None
+
+        rewritten = f"{stripped} RETURNING 1"
+        conn = self._ensure_connection()
+        driver_sql = self._escape_driver_percent_literals(rewritten, conn.dialect.paramstyle)
+        result = conn.exec_driver_sql(driver_sql)
+        rows = result.fetchall()
+        if self._tx is None and not getattr(self, "_external_connection", False):
+            conn.commit()
+        return len(rows)
+
+    @staticmethod
+    def _strip_sql_comments(sql: str) -> str:
+        """Remove leading/trailing ``--`` / ``/* */`` comments (and blank lines).
+
+        Trailing *inline* ``--`` on the same line as DML must be stripped too:
+        otherwise ``… WHERE id = 1 -- note`` + appended ``RETURNING 1`` becomes
+        a single commented-out ``RETURNING`` and rowcounts go wrong.
+        """
+        s = sql.lstrip()
+        # Leading comments (data directives sit above DML)
+        while s:
+            if s.startswith("--"):
+                nl = s.find("\n")
+                if nl < 0:
+                    return ""
+                s = s[nl + 1 :].lstrip()
+                continue
+            if s.startswith("/*"):
+                end = s.find("*/")
+                if end < 0:
+                    return ""
+                s = s[end + 2 :].lstrip()
+                continue
+            break
+        lines = s.splitlines()
+        while lines:
+            last = DuckDBProvider._strip_inline_trailing_comment(lines[-1])
+            if not last:
+                lines.pop()
+                continue
+            lines[-1] = last
+            break
+        return "\n".join(lines).strip()
+
+    @staticmethod
+    def _strip_inline_trailing_comment(line: str) -> str:
+        """Strip trailing ``--`` or ``/* … */`` outside string/identifier quotes."""
+        in_single = in_double = False
+        i = 0
+        n = len(line)
+        cut: Optional[int] = None
+        while i < n:
+            ch = line[i]
+            if ch == "'" and not in_double:
+                if in_single and i + 1 < n and line[i + 1] == "'":
+                    i += 2
+                    continue
+                in_single = not in_single
+            elif ch == '"' and not in_single:
+                if in_double and i + 1 < n and line[i + 1] == '"':
+                    i += 2
+                    continue
+                in_double = not in_double
+            elif not in_single and not in_double:
+                if ch == "-" and i + 1 < n and line[i + 1] == "-":
+                    cut = i
+                    break
+                if ch == "/" and i + 1 < n and line[i + 1] == "*":
+                    # Only treat as trailing comment if it runs to end of line
+                    close = line.find("*/", i + 2)
+                    if close >= 0 and line[close + 2 :].strip() == "":
+                        cut = i
+                        break
+            i += 1
+        if cut is not None:
+            return line[:cut].rstrip()
+        return line.rstrip()
+
+    @staticmethod
+    def _has_top_level_semicolon(sql: str) -> bool:
+        """True if ``sql`` contains a semicolon outside string/identifier quotes."""
+        in_single = in_double = False
+        i = 0
+        n = len(sql)
+        while i < n:
+            ch = sql[i]
+            if ch == "'" and not in_double:
+                # SQL escaped single quote ''
+                if in_single and i + 1 < n and sql[i + 1] == "'":
+                    i += 2
+                    continue
+                in_single = not in_single
+            elif ch == '"' and not in_single:
+                if in_double and i + 1 < n and sql[i + 1] == '"':
+                    i += 2
+                    continue
+                in_double = not in_double
+            elif ch == ";" and not in_single and not in_double:
+                return True
+            i += 1
+        return False
 
     def create_schema_if_not_exists(self, schema: str) -> None:
         """Create a DuckDB schema if it is missing."""
