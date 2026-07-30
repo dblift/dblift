@@ -55,10 +55,11 @@ class DuckDBProvider(SqlAlchemyProvider):
         stripped = self._strip_sql_comments(sql.strip()).rstrip(";").strip()
         if not stripped:
             return None
-        # Normalize whitespace for keyword checks only
-        upper = " ".join(stripped.upper().split())
-        if " RETURNING " in f" {upper} ":
+        # Already has a top-level RETURNING clause — do not double-append
+        if self._has_top_level_keyword(stripped, "RETURNING"):
             return None
+        # Normalize whitespace for statement-type checks only
+        upper = " ".join(stripped.upper().split())
         if not (
             upper.startswith("INSERT ")
             or upper.startswith("UPDATE ")
@@ -81,37 +82,31 @@ class DuckDBProvider(SqlAlchemyProvider):
 
     @staticmethod
     def _strip_sql_comments(sql: str) -> str:
-        """Remove leading/trailing ``--`` / ``/* */`` comments (and blank lines).
+        """Remove ``--`` / ``/* */`` comments (and blank lines).
 
-        Trailing *inline* ``--`` on the same line as DML must be stripped too:
-        otherwise ``… WHERE id = 1 -- note`` + appended ``RETURNING 1`` becomes
-        a single commented-out ``RETURNING`` and rowcounts go wrong.
+        Strips leading directives, full-line mid-statement comments, and
+        trailing *inline* ``--`` on DML lines so an appended ``RETURNING 1``
+        is not commented out and keyword detection is not confused by the
+        word ``returning`` inside comments.
         """
         s = sql.lstrip()
-        # Leading comments (data directives sit above DML)
-        while s:
-            if s.startswith("--"):
-                nl = s.find("\n")
-                if nl < 0:
-                    return ""
-                s = s[nl + 1 :].lstrip()
+        # Leading block comments only (line comments handled per-line below)
+        while s.startswith("/*"):
+            end = s.find("*/")
+            if end < 0:
+                return ""
+            s = s[end + 2 :].lstrip()
+
+        kept: List[str] = []
+        for raw in s.splitlines():
+            line = DuckDBProvider._strip_inline_trailing_comment(raw)
+            if not line or line.lstrip().startswith("--"):
                 continue
-            if s.startswith("/*"):
-                end = s.find("*/")
-                if end < 0:
-                    return ""
-                s = s[end + 2 :].lstrip()
+            # Drop leftover full-line block comments
+            if line.lstrip().startswith("/*") and line.rstrip().endswith("*/"):
                 continue
-            break
-        lines = s.splitlines()
-        while lines:
-            last = DuckDBProvider._strip_inline_trailing_comment(lines[-1])
-            if not last:
-                lines.pop()
-                continue
-            lines[-1] = last
-            break
-        return "\n".join(lines).strip()
+            kept.append(line)
+        return "\n".join(kept).strip()
 
     @staticmethod
     def _strip_inline_trailing_comment(line: str) -> str:
@@ -168,6 +163,41 @@ class DuckDBProvider(SqlAlchemyProvider):
                 in_double = not in_double
             elif ch == ";" and not in_single and not in_double:
                 return True
+            i += 1
+        return False
+
+    @staticmethod
+    def _has_top_level_keyword(sql: str, keyword: str) -> bool:
+        """True if ``keyword`` appears as a top-level token outside quotes.
+
+        Used instead of a raw substring search so values like
+        ``SET note = ' returning '`` or mid-line comments mentioning
+        ``returning`` do not skip the RETURNING rewrite.
+        """
+        kw = keyword.upper()
+        kw_len = len(kw)
+        in_single = in_double = False
+        i = 0
+        n = len(sql)
+        while i < n:
+            ch = sql[i]
+            if ch == "'" and not in_double:
+                if in_single and i + 1 < n and sql[i + 1] == "'":
+                    i += 2
+                    continue
+                in_single = not in_single
+            elif ch == '"' and not in_single:
+                if in_double and i + 1 < n and sql[i + 1] == '"':
+                    i += 2
+                    continue
+                in_double = not in_double
+            elif not in_single and not in_double:
+                if sql[i : i + kw_len].upper() == kw:
+                    before_ok = i == 0 or not (sql[i - 1].isalnum() or sql[i - 1] == "_")
+                    after = i + kw_len
+                    after_ok = after >= n or not (sql[after].isalnum() or sql[after] == "_")
+                    if before_ok and after_ok:
+                        return True
             i += 1
         return False
 
