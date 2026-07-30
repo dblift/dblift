@@ -235,8 +235,19 @@ class TestDuckDBDmlRowcount:
         provider = self._provider(tmp_path)
         provider.execute_statement("CREATE TABLE t (id INTEGER PRIMARY KEY, v VARCHAR)")
         provider.execute_statement("INSERT INTO t VALUES (1, 'a')")
+        # Bugbot: inline `--` on the same line must not comment out RETURNING 1
         sql = "UPDATE t SET v = 'x' WHERE id = 1  -- trailing note"
         assert provider.execute_statement(sql) == 1
+        rows = provider.execute_query("SELECT v FROM t WHERE id = 1")
+        assert rows[0]["v"] == "x"
+
+    def test_dash_dash_inside_string_is_not_stripped(self, tmp_path: Path) -> None:
+        provider = self._provider(tmp_path)
+        provider.execute_statement("CREATE TABLE t (id INTEGER PRIMARY KEY, v VARCHAR)")
+        provider.execute_statement("INSERT INTO t VALUES (1, 'a')")
+        assert provider.execute_statement("UPDATE t SET v = 'a--b' WHERE id = 1") == 1
+        rows = provider.execute_query("SELECT v FROM t WHERE id = 1")
+        assert rows[0]["v"] == "a--b"
 
     def test_semicolon_inside_string_still_rewrites(self, tmp_path: Path) -> None:
         provider = self._provider(tmp_path)
@@ -262,6 +273,10 @@ class TestDuckDBDmlRowcount:
         assert strip("/* a */\nUPDATE t SET v=1 /* trail */") == "UPDATE t SET v=1"
         assert strip("-- d1\n-- d2\nDELETE FROM t") == "DELETE FROM t"
         assert strip("UPDATE t SET v=1\n-- trail\n") == "UPDATE t SET v=1"
+        # Inline trailing comment on the DML line (Bugbot finding)
+        assert strip("UPDATE t SET v=1  -- note") == "UPDATE t SET v=1"
+        # Dashes inside string literals must remain
+        assert strip("UPDATE t SET v = 'a--b'") == "UPDATE t SET v = 'a--b'"
 
     def test_has_top_level_semicolon_helpers(self) -> None:
         from db.plugins.duckdb.provider import DuckDBProvider

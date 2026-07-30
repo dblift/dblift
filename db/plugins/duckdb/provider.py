@@ -81,7 +81,12 @@ class DuckDBProvider(SqlAlchemyProvider):
 
     @staticmethod
     def _strip_sql_comments(sql: str) -> str:
-        """Remove leading and trailing ``--`` / ``/* */`` comments (and blank lines)."""
+        """Remove leading/trailing ``--`` / ``/* */`` comments (and blank lines).
+
+        Trailing *inline* ``--`` on the same line as DML must be stripped too:
+        otherwise ``… WHERE id = 1 -- note`` + appended ``RETURNING 1`` becomes
+        a single commented-out ``RETURNING`` and rowcounts go wrong.
+        """
         s = sql.lstrip()
         # Leading comments (data directives sit above DML)
         while s:
@@ -98,21 +103,49 @@ class DuckDBProvider(SqlAlchemyProvider):
                 s = s[end + 2 :].lstrip()
                 continue
             break
-        # Trailing line comments would swallow an appended RETURNING clause
         lines = s.splitlines()
         while lines:
-            last = lines[-1].rstrip()
-            if not last or last.lstrip().startswith("--"):
+            last = DuckDBProvider._strip_inline_trailing_comment(lines[-1])
+            if not last:
                 lines.pop()
                 continue
-            # Strip trailing block comment on last line only (simple form)
-            if "/*" in last and last.rstrip().endswith("*/"):
-                lines[-1] = last[: last.rfind("/*")].rstrip()
-                if not lines[-1]:
-                    lines.pop()
-                    continue
+            lines[-1] = last
             break
         return "\n".join(lines).strip()
+
+    @staticmethod
+    def _strip_inline_trailing_comment(line: str) -> str:
+        """Strip trailing ``--`` or ``/* … */`` outside string/identifier quotes."""
+        in_single = in_double = False
+        i = 0
+        n = len(line)
+        cut: Optional[int] = None
+        while i < n:
+            ch = line[i]
+            if ch == "'" and not in_double:
+                if in_single and i + 1 < n and line[i + 1] == "'":
+                    i += 2
+                    continue
+                in_single = not in_single
+            elif ch == '"' and not in_single:
+                if in_double and i + 1 < n and line[i + 1] == '"':
+                    i += 2
+                    continue
+                in_double = not in_double
+            elif not in_single and not in_double:
+                if ch == "-" and i + 1 < n and line[i + 1] == "-":
+                    cut = i
+                    break
+                if ch == "/" and i + 1 < n and line[i + 1] == "*":
+                    # Only treat as trailing comment if it runs to end of line
+                    close = line.find("*/", i + 2)
+                    if close >= 0 and line[close + 2 :].strip() == "":
+                        cut = i
+                        break
+            i += 1
+        if cut is not None:
+            return line[:cut].rstrip()
+        return line.rstrip()
 
     @staticmethod
     def _has_top_level_semicolon(sql: str) -> bool:
