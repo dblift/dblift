@@ -13,6 +13,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **DuckDB parameterized DML reports real affected-row counts.** The 3.3.4
+  ``RETURNING 1`` rewrite only ran when ``params is None``, so bound
+  ``INSERT`` / ``UPDATE`` / ``DELETE`` (including data-correction undo restore
+  and history mark-undone) still saw SQLAlchemy ``rowcount == -1`` and treated
+  successful statements as zero rows affected. The rewrite now applies with or
+  without parameters, binds via the same ``?`` → named-parameter path as the
+  rest of the provider, and returns ``len(fetchall())``. Non-rewritable
+  statements still fall through to the driver (which may report ``-1``).
+
 ### Removed
 
 ## [3.3.4] - 2026-07-30
