@@ -66,8 +66,7 @@ def build_sqlalchemy_url(database_config: Any) -> str:
             )
         ):
             raise ValueError(
-                "CockroachDB native connections require a PostgreSQL/CockroachDB "
-                "SQLAlchemy URL"
+                "CockroachDB native connections require a PostgreSQL/CockroachDB " "SQLAlchemy URL"
             )
         url = make_url(raw_url)
         url = url.set(drivername=ensure_cockroach_drivername(url.drivername))
