@@ -15,6 +15,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
+## [3.3.4] - 2026-07-30
+
+Patch release after release qualification of 3.3.3: DuckDB data-correction
+rowcounts and log-banner version reporting.
+
+### Fixed
+
+- **DuckDB DML reports real affected-row counts.** SQLAlchemy/DuckDB often
+  returned ``rowcount == -1`` for ``INSERT`` / ``UPDATE`` / ``DELETE``, so
+  callers that assert ``expect=N`` (including data-correction apply) failed
+  even when the statement changed the right number of rows. Parameter-free
+  single statements now strip leading/trailing SQL comments (including
+  inline trailing ``--``) and use ``RETURNING 1`` to count affected rows.
+  Execution errors propagate instead of falling back to a second attempt
+  that only surfaces a follow-on aborted-transaction error.
+
+- **Log banners show the installed package version.** The Rich/JSON header
+  preferred a filesystem walk to ``__init__.py``, which under PyInstaller
+  (and some layout edge cases) could print a stale version (e.g. ``2.5.2``)
+  while ``dblift --version`` was correct. Version resolution now prefers
+  ``importlib.metadata.version("dblift")``, then the package attribute, and
+  only falls back to reading ``__init__.py`` in non-frozen checkouts.
+
 ## [3.3.3] - 2026-07-30
 
 CockroachDB connection fix: SQLAlchemy can parse CockroachDB

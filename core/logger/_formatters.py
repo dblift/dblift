@@ -6,6 +6,7 @@ from ``core.logger.log`` for back-compat. JSON / HTML formatters live in
 """
 
 import logging
+import sys
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, Optional
@@ -13,6 +14,51 @@ from typing import Any, Dict, Optional
 from core.logger._levels import LogEvent, LogLevel
 
 _logger = logging.getLogger(__name__)
+
+
+def resolve_dblift_package_version() -> Optional[str]:
+    """Return the installed ``dblift`` distribution version for log banners.
+
+    Prefer ``importlib.metadata`` (correct for wheels and frozen binaries).
+    Avoid walking the filesystem first: under PyInstaller ``Path(__file__)``
+    can resolve to a unrelated ``__init__.py`` and print a stale version.
+    """
+    try:
+        from importlib.metadata import PackageNotFoundError, version
+    except ImportError:  # pragma: no cover - Python <3.8
+        from importlib_metadata import PackageNotFoundError, version  # type: ignore
+
+    try:
+        return version("dblift")
+    except PackageNotFoundError:
+        pass
+    except Exception as e:
+        _logger.debug(f"Could not get dblift version from importlib.metadata: {e}")
+
+    try:
+        import dblift  # type: ignore[import-untyped]
+
+        ver = getattr(dblift, "__version__", None)
+        if ver:
+            return str(ver)
+    except (ImportError, AttributeError):
+        pass
+
+    # Dev checkouts only (skip when frozen — MEIPASS layout is not a git tree)
+    if not getattr(sys, "frozen", False):
+        try:
+            init_file = Path(__file__).parent.parent.parent / "__init__.py"
+            if init_file.exists():
+                with open(init_file, "r", encoding="utf-8") as f:
+                    for line in f:
+                        if line.startswith("__version__"):
+                            parts = line.split("=", 1)
+                            if len(parts) == 2:
+                                return parts[1].strip().strip('"').strip("'")
+        except Exception as e:
+            _logger.debug(f"Could not read version from __init__.py: {e}")
+
+    return None
 
 
 class LogFormatter:
@@ -74,44 +120,7 @@ class TextFormatter(LogFormatter):
         current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         lines.append(f"Timestamp: {current_time}")
 
-        # Add Dblift version if available
-        # Try multiple methods to get the version, prioritizing source code
-        version = None
-
-        # Method 1: Try to read from source __init__.py file (most reliable for development)
-        try:
-            # Path from core/logger/_formatters.py to root __init__.py: up 3 levels
-            init_file = Path(__file__).parent.parent.parent / "__init__.py"
-            if init_file.exists():
-                with open(init_file, "r", encoding="utf-8") as f:
-                    for line in f:
-                        if line.startswith("__version__"):
-                            # Extract version from: __version__ = "x.y.z"
-                            parts = line.split("=", 1)
-                            if len(parts) == 2:
-                                version = parts[1].strip().strip('"').strip("'")
-                                break
-        except Exception as e:
-            _logger.debug(f"Could not read version from __init__.py: {e}")
-
-        # Method 2: Try to import directly from package (if source is in path)
-        if not version:
-            try:
-                import dblift  # type: ignore[import-untyped]
-
-                version = getattr(dblift, "__version__", None)
-            except (ImportError, AttributeError):
-                pass
-
-        # Method 3: Fallback to pkg_resources (for installed packages)
-        if not version:
-            try:
-                import pkg_resources  # type: ignore[import-untyped]
-
-                version = pkg_resources.get_distribution("dblift").version
-            except Exception as e:
-                _logger.debug(f"Could not get version from pkg_resources: {e}")
-
+        version = resolve_dblift_package_version()
         if version:
             lines.append(f"Dblift version: {version}")
 

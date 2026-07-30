@@ -163,3 +163,164 @@ class TestDuckDBRoundTrip:
         )
         provider.clean_schema("main")
         assert provider.get_clean_preview("main").objects == []
+
+
+@pytest.mark.unit
+class TestDuckDBDmlRowcount:
+    def _provider(self, tmp_path: Path) -> "DuckDBProvider":
+        from config import DatabaseConfig, DbliftConfig
+        from db.plugins.duckdb.provider import DuckDBProvider
+
+        db_file = tmp_path / "rc.duckdb"
+        cfg = DbliftConfig(
+            database=DatabaseConfig(
+                type="duckdb",
+                url=f"duckdb:///{db_file}",
+                schema="main",
+            )
+        )
+        return DuckDBProvider(cfg)
+
+    def test_update_reports_positive_rowcount(self, tmp_path: Path) -> None:
+        provider = self._provider(tmp_path)
+        provider.execute_statement("CREATE TABLE t (id INTEGER PRIMARY KEY, v VARCHAR)")
+        provider.execute_statement("INSERT INTO t VALUES (1, 'a'), (2, 'b')")
+        rc = provider.execute_statement("UPDATE t SET v = 'x' WHERE id = 1")
+        assert rc == 1, f"expected rowcount 1, got {rc}"
+        rc0 = provider.execute_statement("UPDATE t SET v = 'y' WHERE id = 99")
+        assert rc0 == 0, f"expected rowcount 0, got {rc0}"
+
+    def test_update_with_leading_directive_comments(self, tmp_path: Path) -> None:
+        provider = self._provider(tmp_path)
+        provider.execute_statement("CREATE TABLE t (id INTEGER PRIMARY KEY, v VARCHAR)")
+        provider.execute_statement("INSERT INTO t VALUES (1, 'a')")
+        sql = "-- dblift:formatted\n-- dblift: expect=1 onfail=halt\nUPDATE t SET v = 'x' WHERE id = 1;"
+        assert provider.execute_statement(sql) == 1
+
+    def test_pk_violation_propagates_root_error(self, tmp_path: Path) -> None:
+        provider = self._provider(tmp_path)
+        provider.execute_statement("CREATE TABLE t (id INTEGER PRIMARY KEY, v VARCHAR)")
+        provider.execute_statement("INSERT INTO t VALUES (1, 'a')")
+        with pytest.raises(Exception) as ei:
+            provider.execute_statement("INSERT INTO t VALUES (1, 'dup')")
+        msg = str(ei.value).lower()
+        assert "aborted" not in msg or "constraint" in msg or "unique" in msg or "primary" in msg
+
+    def test_delete_and_multi_row_insert_rowcounts(self, tmp_path: Path) -> None:
+        provider = self._provider(tmp_path)
+        provider.execute_statement("CREATE TABLE t (id INTEGER PRIMARY KEY, v VARCHAR)")
+        assert provider.execute_statement("INSERT INTO t VALUES (1, 'a'), (2, 'b'), (3, 'c')") == 3
+        assert provider.execute_statement("DELETE FROM t WHERE id >= 2") == 2
+
+    def test_params_path_skips_returning_rewrite(self, tmp_path: Path) -> None:
+        """Parameterized DML is not rewritten; still succeeds (rowcount may be -1)."""
+        provider = self._provider(tmp_path)
+        provider.execute_statement("CREATE TABLE t (id INTEGER PRIMARY KEY, v VARCHAR)")
+        provider.execute_statement("INSERT INTO t VALUES (1, 'a')")
+        rc = provider.execute_statement("UPDATE t SET v = ? WHERE id = ?", params=["x", 1])
+        # Driver may report -1; only assert no exception and value updated
+        assert rc is None or isinstance(rc, int)
+        rows = provider.execute_query("SELECT v FROM t WHERE id = 1")
+        assert rows[0]["v"] == "x"
+
+    def test_existing_returning_not_double_appended(self, tmp_path: Path) -> None:
+        provider = self._provider(tmp_path)
+        provider.execute_statement("CREATE TABLE t (id INTEGER PRIMARY KEY, v VARCHAR)")
+        provider.execute_statement("INSERT INTO t VALUES (1, 'a')")
+        # Already has RETURNING — path returns None from helper, super executes
+        rc = provider.execute_statement("UPDATE t SET v = 'z' WHERE id = 1 RETURNING id")
+        assert isinstance(rc, int)
+
+    def test_trailing_comment_does_not_swallow_returning(self, tmp_path: Path) -> None:
+        provider = self._provider(tmp_path)
+        provider.execute_statement("CREATE TABLE t (id INTEGER PRIMARY KEY, v VARCHAR)")
+        provider.execute_statement("INSERT INTO t VALUES (1, 'a')")
+        # Bugbot: inline `--` on the same line must not comment out RETURNING 1
+        sql = "UPDATE t SET v = 'x' WHERE id = 1  -- trailing note"
+        assert provider.execute_statement(sql) == 1
+        rows = provider.execute_query("SELECT v FROM t WHERE id = 1")
+        assert rows[0]["v"] == "x"
+
+    def test_dash_dash_inside_string_is_not_stripped(self, tmp_path: Path) -> None:
+        provider = self._provider(tmp_path)
+        provider.execute_statement("CREATE TABLE t (id INTEGER PRIMARY KEY, v VARCHAR)")
+        provider.execute_statement("INSERT INTO t VALUES (1, 'a')")
+        assert provider.execute_statement("UPDATE t SET v = 'a--b' WHERE id = 1") == 1
+        rows = provider.execute_query("SELECT v FROM t WHERE id = 1")
+        assert rows[0]["v"] == "a--b"
+
+    def test_semicolon_inside_string_still_rewrites(self, tmp_path: Path) -> None:
+        provider = self._provider(tmp_path)
+        provider.execute_statement("CREATE TABLE t (id INTEGER PRIMARY KEY, v VARCHAR)")
+        provider.execute_statement("INSERT INTO t VALUES (1, 'a')")
+        assert provider.execute_statement("UPDATE t SET v = 'a;b' WHERE id = 1") == 1
+
+    def test_multi_statement_falls_back(self, tmp_path: Path) -> None:
+        provider = self._provider(tmp_path)
+        provider.execute_statement("CREATE TABLE t (id INTEGER PRIMARY KEY, v VARCHAR)")
+        # Top-level semicolon → no RETURNING rewrite; should not crash
+        rc = provider.execute_statement(
+            "INSERT INTO t VALUES (1, 'a'); INSERT INTO t VALUES (2, 'b')"
+        )
+        assert isinstance(rc, int)
+
+    def test_strip_sql_comments_helpers(self) -> None:
+        from db.plugins.duckdb.provider import DuckDBProvider
+
+        strip = DuckDBProvider._strip_sql_comments
+        assert strip("-- only comment") == ""
+        assert strip("/* block */") == ""
+        assert strip("/* a */\nUPDATE t SET v=1 /* trail */") == "UPDATE t SET v=1"
+        assert strip("-- d1\n-- d2\nDELETE FROM t") == "DELETE FROM t"
+        assert strip("UPDATE t SET v=1\n-- trail\n") == "UPDATE t SET v=1"
+        # Inline trailing comment on the DML line (Bugbot finding)
+        assert strip("UPDATE t SET v=1  -- note") == "UPDATE t SET v=1"
+        # Dashes inside string literals must remain
+        assert strip("UPDATE t SET v = 'a--b'") == "UPDATE t SET v = 'a--b'"
+
+    def test_has_top_level_semicolon_helpers(self) -> None:
+        from db.plugins.duckdb.provider import DuckDBProvider
+
+        has = DuckDBProvider._has_top_level_semicolon
+        assert has("UPDATE t SET v = 1") is False
+        assert has("UPDATE t SET v = 'a;b'") is False
+        assert has('UPDATE t SET v = "a;b"') is False
+        assert has("UPDATE t SET v = 'it''s;ok'") is False
+        assert has("INSERT INTO t VALUES (1); INSERT INTO t VALUES (2)") is True
+
+    def test_returning_word_in_string_still_rewrites(self, tmp_path: Path) -> None:
+        """Bugbot: substring ' RETURNING ' inside a literal must not skip rewrite."""
+        provider = self._provider(tmp_path)
+        provider.execute_statement("CREATE TABLE t (id INTEGER PRIMARY KEY, v VARCHAR)")
+        provider.execute_statement("INSERT INTO t VALUES (1, 'a')")
+        assert provider.execute_statement("UPDATE t SET v = ' returning ' WHERE id = 1") == 1
+        rows = provider.execute_query("SELECT v FROM t WHERE id = 1")
+        assert rows[0]["v"] == " returning "
+
+    def test_returning_word_in_mid_comment_still_rewrites(self, tmp_path: Path) -> None:
+        provider = self._provider(tmp_path)
+        provider.execute_statement("CREATE TABLE t (id INTEGER PRIMARY KEY, v VARCHAR)")
+        provider.execute_statement("INSERT INTO t VALUES (1, 'a')")
+        sql = "UPDATE t SET v = 'x'\n-- returning users later\nWHERE id = 1"
+        assert provider.execute_statement(sql) == 1
+
+    def test_has_top_level_keyword_helpers(self) -> None:
+        from db.plugins.duckdb.provider import DuckDBProvider
+
+        has = DuckDBProvider._has_top_level_keyword
+        strip = DuckDBProvider._strip_sql_comments
+        assert has("UPDATE t SET v = 1 RETURNING id", "RETURNING") is True
+        assert has("UPDATE t SET v = ' returning ' WHERE id = 1", "RETURNING") is False
+        # After comment strip, mid-line/full-line comments mentioning returning are gone
+        cleaned = strip("UPDATE t SET v = 1  -- returning\nWHERE id = 1")
+        assert "returning" not in cleaned.lower()
+        assert has(cleaned, "RETURNING") is False
+
+    def test_schema_kwarg_path_with_dml_rowcount(self, tmp_path: Path) -> None:
+        provider = self._provider(tmp_path)
+        provider.execute_statement("CREATE SCHEMA IF NOT EXISTS s")
+        provider.execute_statement(
+            "CREATE TABLE s.t (id INTEGER PRIMARY KEY, v VARCHAR)", schema="s"
+        )
+        provider.execute_statement("INSERT INTO s.t VALUES (1, 'a')", schema="s")
+        assert provider.execute_statement("UPDATE s.t SET v = 'x' WHERE id = 1", schema="s") == 1
