@@ -49,6 +49,16 @@ def test_ensure_cockroach_drivername_rewrites_postgresql_family():
 
 
 @pytest.mark.unit
+def test_ensure_cockroach_drivername_rejects_unregistered_drivers():
+    with pytest.raises(ValueError, match="psycopg"):
+        ensure_cockroach_drivername("postgresql+asyncpg")
+    with pytest.raises(ValueError, match="psycopg"):
+        ensure_cockroach_drivername("cockroachdb+asyncpg")
+    with pytest.raises(ValueError, match="PostgreSQL/CockroachDB"):
+        ensure_cockroach_drivername("mysql+pymysql")
+
+
+@pytest.mark.unit
 def test_build_sqlalchemy_url_rewrites_postgresql_raw_url():
     class _Cfg:
         url = "postgresql+psycopg://root:root@localhost:26257/defaultdb?sslmode=disable"
@@ -67,6 +77,17 @@ def test_build_sqlalchemy_url_rewrites_postgresql_raw_url():
     assert url.startswith("cockroachdb+psycopg://")
     assert "sslmode=disable" in url
     assert "root" in url
+
+
+@pytest.mark.unit
+def test_build_sqlalchemy_url_rejects_non_postgres_scheme():
+    class _Cfg:
+        url = "mysql+pymysql://root@localhost/db"
+        username = password = host = port = database = schema = None
+        extra_params = options = connection_timeout = ssl_mode = None
+
+    with pytest.raises(ValueError, match="PostgreSQL/CockroachDB"):
+        build_sqlalchemy_url(_Cfg())
 
 
 @pytest.mark.unit

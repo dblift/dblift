@@ -53,6 +53,22 @@ def build_sqlalchemy_url(database_config: Any) -> str:
 
     raw_url = getattr(database_config, "url", None)
     if isinstance(raw_url, str) and raw_url:
+        # Same scheme gate as the PostgreSQL builder, plus cockroachdb:// so a
+        # pre-rewritten URL still validates. Other schemes raise immediately.
+        if not raw_url.startswith(
+            (
+                "postgresql://",
+                "postgresql+",
+                "postgres://",
+                "postgres+",
+                "cockroachdb://",
+                "cockroachdb+",
+            )
+        ):
+            raise ValueError(
+                "CockroachDB native connections require a PostgreSQL/CockroachDB "
+                "SQLAlchemy URL"
+            )
         url = make_url(raw_url)
         url = url.set(drivername=ensure_cockroach_drivername(url.drivername))
         username = getattr(database_config, "username", None) or url.username or None

@@ -85,16 +85,35 @@ def register_cockroach_dialect() -> None:
 
 
 def ensure_cockroach_drivername(drivername: str) -> str:
-    """Map a PostgreSQL-family drivername onto the CockroachDB dialect entry."""
-    if drivername in ("cockroachdb", "cockroachdb+psycopg"):
+    """Map a PostgreSQL-family drivername onto ``cockroachdb+psycopg``.
+
+    Only the ``psycopg`` DBAPI is registered for CockroachDB. Bare
+    ``postgresql`` / ``postgres`` / ``cockroachdb`` names and ``+psycopg``
+    variants rewrite cleanly; any other driver suffix (e.g. ``asyncpg``)
+    raises so ``create_engine`` does not fail later with an unloadable dialect.
+    """
+    if drivername in (
+        "cockroachdb",
+        "cockroachdb+psycopg",
+        "postgresql",
+        "postgres",
+        "postgresql+psycopg",
+        "postgres+psycopg",
+    ):
         return "cockroachdb+psycopg"
-    if drivername in ("postgresql", "postgres"):
+    if drivername.startswith(("postgresql+", "postgres+", "cockroachdb+")):
+        suffix = drivername.split("+", 1)[1]
+        if suffix != "psycopg":
+            raise ValueError(
+                "CockroachDB native connections require the psycopg driver "
+                f"(got {drivername!r}); use cockroachdb+psycopg or "
+                "postgresql+psycopg"
+            )
         return "cockroachdb+psycopg"
-    if drivername.startswith("postgresql+"):
-        return f"cockroachdb+{drivername.split('+', 1)[1]}"
-    if drivername.startswith("postgres+"):
-        return f"cockroachdb+{drivername.split('+', 1)[1]}"
-    return "cockroachdb+psycopg"
+    raise ValueError(
+        "CockroachDB native connections require a PostgreSQL/CockroachDB "
+        f"SQLAlchemy URL (got drivername {drivername!r})"
+    )
 
 
 __all__ = [
