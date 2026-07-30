@@ -288,6 +288,34 @@ class TestDuckDBDmlRowcount:
         assert has("UPDATE t SET v = 'it''s;ok'") is False
         assert has("INSERT INTO t VALUES (1); INSERT INTO t VALUES (2)") is True
 
+    def test_returning_word_in_string_still_rewrites(self, tmp_path: Path) -> None:
+        """Bugbot: substring ' RETURNING ' inside a literal must not skip rewrite."""
+        provider = self._provider(tmp_path)
+        provider.execute_statement("CREATE TABLE t (id INTEGER PRIMARY KEY, v VARCHAR)")
+        provider.execute_statement("INSERT INTO t VALUES (1, 'a')")
+        assert provider.execute_statement("UPDATE t SET v = ' returning ' WHERE id = 1") == 1
+        rows = provider.execute_query("SELECT v FROM t WHERE id = 1")
+        assert rows[0]["v"] == " returning "
+
+    def test_returning_word_in_mid_comment_still_rewrites(self, tmp_path: Path) -> None:
+        provider = self._provider(tmp_path)
+        provider.execute_statement("CREATE TABLE t (id INTEGER PRIMARY KEY, v VARCHAR)")
+        provider.execute_statement("INSERT INTO t VALUES (1, 'a')")
+        sql = "UPDATE t SET v = 'x'\n-- returning users later\nWHERE id = 1"
+        assert provider.execute_statement(sql) == 1
+
+    def test_has_top_level_keyword_helpers(self) -> None:
+        from db.plugins.duckdb.provider import DuckDBProvider
+
+        has = DuckDBProvider._has_top_level_keyword
+        strip = DuckDBProvider._strip_sql_comments
+        assert has("UPDATE t SET v = 1 RETURNING id", "RETURNING") is True
+        assert has("UPDATE t SET v = ' returning ' WHERE id = 1", "RETURNING") is False
+        # After comment strip, mid-line/full-line comments mentioning returning are gone
+        cleaned = strip("UPDATE t SET v = 1  -- returning\nWHERE id = 1")
+        assert "returning" not in cleaned.lower()
+        assert has(cleaned, "RETURNING") is False
+
     def test_schema_kwarg_path_with_dml_rowcount(self, tmp_path: Path) -> None:
         provider = self._provider(tmp_path)
         provider.execute_statement("CREATE SCHEMA IF NOT EXISTS s")
