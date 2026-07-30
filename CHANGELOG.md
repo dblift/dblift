@@ -15,6 +15,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
+## [3.3.3] - 2026-07-30
+
+CockroachDB connection fix: SQLAlchemy can parse CockroachDB
+``version()`` banners so migrate and other commands connect successfully.
+
+### Fixed
+
+- **CockroachDB connections no longer fail on SQLAlchemy version parsing.**
+  SQLAlchemy's stock PostgreSQL dialect requires a ``PostgreSQL X.Y`` banner
+  from ``select version()``. CockroachDB returns banners such as
+  ``CockroachDB CCL v24.3.18 (... go1.22.8 ...)`` (and newer v26.x forms),
+  which raised ``AssertionError: Could not determine version from string`` on
+  every ``create_engine`` connect. A thin ``cockroachdb+psycopg`` dialect
+  reuses the psycopg PostgreSQL dialect and extracts the product ``vX.Y.Z``
+  token (never the trailing Go version). The URL builder rewrites
+  ``postgresql://`` / ``postgresql+psycopg://`` URLs onto that dialect,
+  rejects non-PostgreSQL/Cockroach schemes, and only accepts the registered
+  ``psycopg`` driver.
+
 ## [3.3.2] - 2026-07-29
 
 Release-qualification follow-ups after 3.3.1: multi-dialect CLI/API
