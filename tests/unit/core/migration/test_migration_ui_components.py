@@ -57,7 +57,6 @@ def _make_migration(
 # ===========================================================================
 
 
-
 class TestTableRendererFormatMigrationTable(unittest.TestCase):
 
     def setUp(self):
@@ -143,7 +142,6 @@ class TestTableRendererPrintMigrationTable(unittest.TestCase):
         assert "Initial schema" in out  # cell value visible
 
 
-
 class TestTableRendererFormatSummaryStats(unittest.TestCase):
 
     def setUp(self):
@@ -163,7 +161,6 @@ class TestTableRendererFormatSummaryStats(unittest.TestCase):
         assert "=" * 25 in result
 
 
-
 # ===========================================================================
 # MigrationUI orchestrator tests
 # ===========================================================================
@@ -181,7 +178,6 @@ class TestMigrationUIInit(unittest.TestCase):
 
         ui = MigrationUI(None)
         assert isinstance(ui.log, NullLog)
-
 
 
 class TestMigrationUIGetMigrationData(unittest.TestCase):
@@ -213,7 +209,6 @@ class TestMigrationUIGetMigrationData(unittest.TestCase):
             all_applied_migrations=all_applied,
         )
         assert isinstance(result, list)
-
 
 
 if __name__ == "__main__":

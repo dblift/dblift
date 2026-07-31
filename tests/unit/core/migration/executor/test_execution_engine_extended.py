@@ -887,7 +887,6 @@ class TestExecuteCallback(unittest.TestCase):
         engine.provider.execute_query.assert_called_once()
 
 
-
 # ---------------------------------------------------------------------------
 # _execute_via_factory — edge cases
 # ---------------------------------------------------------------------------

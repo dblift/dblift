@@ -136,7 +136,6 @@ class TestTableExists:
         assert params == ["MYSCHEMA", "MixedCase"]
 
 
-
 class TestIsSystemGeneratedSequence:
     def test_true(self):
         p = _Provider()

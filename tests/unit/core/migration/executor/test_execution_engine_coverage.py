@@ -957,6 +957,5 @@ class TestExecuteCallbackAdditional(unittest.TestCase):
         self.assertTrue(any("Could not rollback" in c for c in warning_calls))
 
 
-
 if __name__ == "__main__":
     unittest.main()

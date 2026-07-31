@@ -467,7 +467,6 @@ class TestValidateSql(unittest.TestCase):
         self.assertIsNone(error)
 
 
-
 class TestSqlAnalyzerInit(unittest.TestCase):
     """Tests for SqlAnalyzer initialization paths."""
 

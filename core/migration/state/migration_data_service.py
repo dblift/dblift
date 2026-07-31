@@ -66,8 +66,6 @@ class MigrationDataService:
             "scripts_dir": self.scripts_dir,
         }
 
-
-
     def _get_undone_versions(self, migrations: List[Migration]) -> Set[str]:
         """Get set of versions that have been undone.
 
@@ -268,9 +266,6 @@ class MigrationDataService:
             List of migrations sorted by installed rank
         """
         return sorted(applied_migrations, key=lambda m: getattr(m, "installed_rank", 0))
-
-
-
 
     def _get_migration_type(self, migration: Any) -> str:
         """Get the migration type as uppercase string.

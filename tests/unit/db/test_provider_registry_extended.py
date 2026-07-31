@@ -148,7 +148,6 @@ class TestProviderRegistryListPlugins(unittest.TestCase):
         self.assertGreater(len(plugins), 0)
 
 
-
 class TestNativeDriverManager(unittest.TestCase):
     def test_get_available_drivers(self):
         from db.provider_registry import NativeDriverManager

@@ -484,7 +484,6 @@ class TestIsSystemGeneratedSequenceExtended:
         assert any("Identity column query failed" in c for c in debug_calls)
 
 
-
 class TestGetSchemasExtended:
     def test_query_exception_returns_empty_list(self):
         qe = _make_qe()

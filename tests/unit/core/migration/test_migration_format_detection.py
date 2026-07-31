@@ -75,12 +75,6 @@ class TestMigrationFormatDetector:
         format = MigrationFormatDetector.detect_from_filename("test.sql")
         assert format == MigrationFormat.SQL
 
-
-
-
-
-
-
     def test_is_migration_file(self):
         """Test checking if a file is a migration file."""
         assert MigrationFormatDetector.is_migration_file(Path("test.sql")) is True
@@ -390,7 +384,6 @@ class TestMigrationDetermineType:
         'R1__setup.sql' ne commence pas par 'r__' → UNKNOWN.
         """
         assert Migration(script_name="R1__setup.sql").type == MigrationType.UNKNOWN
-
 
 
 class TestMigrationTypeSqlRename:

@@ -245,6 +245,5 @@ class TestBug06SqliteRecordUndo(unittest.TestCase):
         warning.assert_not_called()
 
 
-
 if __name__ == "__main__":
     unittest.main()

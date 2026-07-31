@@ -145,5 +145,3 @@ def builtin_namespace_for(capability: str) -> Optional[str]:
             capability
         )
     return _namespace_cache[capability]
-
-

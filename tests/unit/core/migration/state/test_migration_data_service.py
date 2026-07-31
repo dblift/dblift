@@ -47,7 +47,6 @@ def service(logger):
     return MigrationDataService(logger, scripts_dir=Path("/tmp/scripts"), target_version="5")
 
 
-
 # ---------- _get_migration_type ----------
 
 
@@ -346,7 +345,6 @@ class TestGetCurrentVersion:
         assert service._get_current_version([]) is None
 
 
-
 # ---------- _build_analysis_context ----------
 
 
@@ -373,7 +371,6 @@ class TestBuildAnalysisContext:
         ctx = service._build_analysis_context([])
         assert ctx["target_version"] == "5"
         assert ctx["scripts_dir"] == Path("/tmp/scripts")
-
 
 
 # ---------- Constructor ----------

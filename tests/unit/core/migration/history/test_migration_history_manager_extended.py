@@ -43,7 +43,6 @@ def _make_migration(migration_type=MigrationType.SQL, name="V1__test.sql"):
     return m
 
 
-
 class TestGetAppliedMigrations(unittest.TestCase):
     def test_returns_migration_list_from_records(self):
         mgr = _make_manager()
@@ -92,7 +91,6 @@ class TestGetAppliedMigrationRecords(unittest.TestCase):
         mgr.provider.get_applied_migrations.return_value = []
         records = mgr.get_applied_migration_records()
         self.assertEqual(records, [])
-
 
 
 class TestRecordMigration(unittest.TestCase):
@@ -149,9 +147,6 @@ class TestRecordMigration(unittest.TestCase):
         mgr.record_migration(migration, success=True, execution_time=10)
 
         mgr.provider.record_migration.assert_called_once()
-
-
-
 
 
 class TestCreateSchemaAndHistoryTable(unittest.TestCase):
@@ -229,7 +224,6 @@ class TestCreateSchemaAndHistoryTable(unittest.TestCase):
         mgr.provider.rollback_transaction.assert_called()
 
 
-
 class TestRepairChecksum(unittest.TestCase):
     def test_returns_true_on_success(self):
         mgr = _make_manager()
@@ -263,9 +257,6 @@ class TestRepairChecksum(unittest.TestCase):
 
         self.assertFalse(result)
         mgr.logger.error.assert_called_once()
-
-
-
 
 
 if __name__ == "__main__":

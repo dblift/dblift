@@ -81,7 +81,6 @@ def test_migration_state_manager_uses_is_migration_failure():
     assert "is_migration_failure" in src
 
 
-
 def test_data_collector_uses_is_migration_success_and_failure():
     import inspect
 

@@ -76,7 +76,6 @@ class TestJournalEntry:
         assert entry.error_message == "column already exists"
 
 
-
 # ---------------------------------------------------------------------------
 # MigrationJournal — disabled journal
 # ---------------------------------------------------------------------------
@@ -112,7 +111,6 @@ class TestMigrationJournalDisabled:
         j = MigrationJournal(enabled=False)
         j.record_statement_failed("SELECT 1", 0, "err")
         assert j.entries == []
-
 
     def test_record_object_changes_noop(self):
         j = MigrationJournal(enabled=False)
@@ -152,7 +150,6 @@ class TestMigrationJournalGuards:
         j = self._make_journal()
         j.record_statement_failed("SELECT 1", 0, "err")
         assert j.entries == []
-
 
     def test_record_object_changes_no_migration(self):
         j = self._make_journal()
@@ -206,7 +203,6 @@ class TestMigrationJournalLifecycle:
         assert len(fail_entries) == 1
         assert fail_entries[0].success is False
         assert fail_entries[0].error_message == "migration failed"
-
 
 
 # ---------------------------------------------------------------------------
@@ -376,7 +372,6 @@ class TestRecordObjectChanges:
         assert oc[0].details["objects_affected"] == objects
         assert oc[0].statement == "CREATE TABLE users (id INT)"
         assert oc[0].statement_index == 0
-
 
 
 # ---------------------------------------------------------------------------
