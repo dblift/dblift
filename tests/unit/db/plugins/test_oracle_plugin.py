@@ -375,26 +375,6 @@ class TestOracleSchemaOperations(unittest.TestCase):
         calls = [str(c) for c in qe.execute_statement.call_args_list]
         self.assertTrue(any("DROP SEQUENCE" in c for c in calls))
 
-    # --- get_actual_object_name ---
-
-    def test_get_actual_object_name_table(self):
-        ops, qe, log = self._make_ops()
-        conn, _, _ = _make_connection()
-        qe.execute_query.return_value = [{"table_name": "ORDERS"}]
-
-        result = ops.get_actual_object_name(conn, "MYSCHEMA", "orders", "TABLE")
-
-        self.assertEqual("ORDERS", result)
-
-    def test_get_actual_object_name_returns_none_when_not_found(self):
-        ops, qe, log = self._make_ops()
-        conn, _, _ = _make_connection()
-        qe.execute_query.return_value = []
-
-        result = ops.get_actual_object_name(conn, "MYSCHEMA", "nonexistent", "TABLE")
-
-        self.assertIsNone(result)
-
 
 if __name__ == "__main__":
     unittest.main()

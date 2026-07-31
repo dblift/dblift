@@ -464,17 +464,6 @@ class ProviderRegistry:
             cls._plugins[dialect.lower()] = plugin_info
 
     @classmethod
-    def get_provider_transport(cls, db_type: str) -> ProviderTransport:
-        """Return the registered transport family for a database type.
-
-        Unknown providers still return ``"native"`` because v2 has a single
-        provider transport family.
-        """
-        if not cls._discovered:
-            cls.discover_plugins()
-        return "native"
-
-    @classmethod
     def get_provider_class(cls, db_type: str) -> Optional[Type[BaseProvider]]:
         """Get provider class for a database type.
 
@@ -694,18 +683,6 @@ class ProviderRegistry:
         return plugins
 
     @classmethod
-    def is_supported(cls, db_type: str) -> bool:
-        """Check if a database type is supported.
-
-        Args:
-            db_type: Database type
-
-        Returns:
-            True if supported, False otherwise
-        """
-        return cls.get_provider_class(db_type) is not None
-
-    @classmethod
     def create_provider(cls, config: "DbliftConfig", log: Optional["Log"] = None) -> "BaseProvider":
         """Create and return the appropriate database provider based on configuration.
 
@@ -751,16 +728,6 @@ class ProviderRegistry:
             Dictionary mapping database types to boolean availability status
         """
         return NativeDriverManager.get_available_drivers(cls.list_plugins())
-
-    @classmethod
-    def check_driver_installed(cls, db_type: str) -> bool:
-        """Return whether the native driver for *db_type* is importable."""
-        if not cls._discovered:
-            cls.discover_plugins()
-        plugin_info = cls._plugins.get(db_type.lower())
-        if plugin_info is None:
-            return False
-        return NativeDriverManager.check_driver_installed(plugin_info)
 
     @classmethod
     def validate_database_configuration(cls, config: "DbliftConfig") -> Tuple[bool, Optional[str]]:
