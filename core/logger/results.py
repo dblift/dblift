@@ -10,7 +10,7 @@ from datetime import datetime
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Set, Union
 
 if TYPE_CHECKING:
-    from core.migration.migration_journal import MigrationJournal
+    from core.migration.journals.migration_journal import MigrationJournal
 
 
 # Base class for all operation results
