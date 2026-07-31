@@ -93,16 +93,3 @@ class SqlFormatter:
             # - Any parsing errors
             logger.debug(f"SQL formatting failed: {e}, using original SQL")
             return sql
-
-    def format_batch(self, sql_statements: list[str], separator: str = "\n\n") -> str:
-        """Format multiple SQL statements.
-
-        Args:
-            sql_statements: List of SQL statements to format
-            separator: Separator between statements (default: double newline)
-
-        Returns:
-            Formatted SQL string with all statements
-        """
-        formatted_statements = [self.format(stmt) for stmt in sql_statements]
-        return separator.join(stmt for stmt in formatted_statements if stmt.strip())
