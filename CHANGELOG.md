@@ -13,6 +13,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Placeholders in SQL callbacks are substituted before the SQL is parsed.**
+  ``execute_callback`` handed the raw file content to the statement parser and
+  substituted afterwards, per statement. Tokenisers that do not recognise ``$``
+  drop it and pad the braces with whitespace, so a callback containing
+  ``CREATE TABLE ${schema}.callback_log (...)`` reached the server as
+  ``CREATE TABLE {schema }.callback_log (...)`` — rejected as an invalid table
+  name, aborting the whole ``migrate`` run before any versioned migration ran.
+  Oracle, SQL Server, MySQL and PostgreSQL were affected; SQLite, DuckDB and
+  DB2 leave ``${...}`` intact and were not. Callbacks now substitute the full
+  content first and pass the result to the parser, as versioned migrations
+  already did. Substitution happens exactly once, so an unresolved ``${NAME}``
+  still passes through as a literal and warns once.
 - **``clean`` no longer fails on a schema holding a TimescaleDB continuous
   aggregate.** A continuous aggregate's user-facing name is a plain
   ``relkind='v'`` row, so it is listed by ``pg_views`` and never by

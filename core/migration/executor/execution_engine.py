@@ -1069,9 +1069,20 @@ class ExecutionEngine:
         # where it might try to create its own DbliftLogger
         callback.dialect = dialect
 
+        # Substitute placeholders in the content BEFORE parsing, exactly as the
+        # migration path does in `_parse_sql_statements`. Tokenisers that do not
+        # recognise `$` otherwise split `${...}` from adjacent characters and
+        # produce un-executable SQL (`${schema}.t` -> `{schema }.t`). The result is
+        # passed as content_override so it is not cached on the callback.
+        content_override: Optional[str] = None
+        if self.placeholder_service:
+            content_override = self.placeholder_service.replace_placeholders(callback.content)
+
         # Parse SQL statements, ensuring we use our logger
         try:
-            sql_statements = callback.parse_sql_statements(dialect=dialect)
+            sql_statements = callback.parse_sql_statements(
+                dialect=dialect, content_override=content_override
+            )
         except Exception as e:
             self.log.error(
                 f"Error parsing SQL in callback {callback.script_name}: {to_python_string(e)}"
@@ -1097,9 +1108,11 @@ class ExecutionEngine:
         # Execute SQL statements in the callback
         try:
             for statement in sql_statements:
-                # Replace placeholders in the statement
-                if self.placeholder_service:
-                    statement = self.placeholder_service.replace_placeholders(statement)
+                # Placeholders were already substituted on the full content above,
+                # before tokenisation. Re-substituting here would warn twice about the
+                # same unresolved token and re-interpret `${...}` text that legitimately
+                # came out of a resolved placeholder value (same rationale as the
+                # migration path in `_execute_statements`).
 
                 # Check what kind of SQL statement this is (DDL, DML, or query)
                 statement_type = self.sql_analyzer.get_statement_type(statement)
