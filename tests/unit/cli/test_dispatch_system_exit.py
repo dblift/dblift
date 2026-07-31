@@ -29,7 +29,6 @@ def _ctx(*, strict_on_args: bool = False, strict_on_config: bool = False):
         parser=MagicMock(),
         log=log,
         config=config,
-        license_info=None,
     )
 
 
