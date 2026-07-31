@@ -140,11 +140,7 @@ def _make_migration(version, mtype, success=True, has_undo_fn=False, tags=None):
     if tags is not None:
         m.tags = tags
     if mtype == MigrationType.PYTHON:
-        m.content = (
-            "def migrate(ctx): pass\ndef undo(ctx): pass"
-            if has_undo_fn
-            else "def migrate(ctx): pass"
-        )
+        m.content = "def migrate(ctx): pass" if has_undo_fn else "def migrate(ctx): pass"
     else:
         m.content = None
     return m

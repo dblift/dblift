@@ -4,6 +4,7 @@ import pytest
 
 from db.plugins.postgresql.postgresql.locking_manager import _get_advisory_lock_key
 from db.plugins.postgresql.provider import PostgreSqlProvider
+from db.sqlalchemy_provider import SqlAlchemyProvider
 
 
 class _Provider(PostgreSqlProvider):
@@ -170,6 +171,42 @@ def test_missing_schema_executes_create_schema_statement(monkeypatch):
     PostgreSqlProvider.create_schema_if_not_exists(provider, "tenant_a")
 
     assert provider.statements[-1][0] == 'CREATE SCHEMA IF NOT EXISTS "tenant_a"'
+
+
+def test_set_current_schema_keeps_public_resolvable(monkeypatch):
+    """``SET search_path`` keeps ``public`` after the target schema.
+
+    Extensions install their callable API into ``public``; a schema-only path
+    makes those functions unresolvable for anything dblift runs through this
+    seam (callbacks, schema-scoped statements, and Redshift, whose URL builder
+    sets no search path at all).
+    """
+    executed = []
+    monkeypatch.setattr(
+        SqlAlchemyProvider,
+        "execute_statement",
+        lambda self, sql, schema=None, params=None: executed.append(sql),
+    )
+    provider = _Provider()
+
+    PostgreSqlProvider.set_current_schema(provider, "tenant_a")
+
+    assert executed == ['SET search_path TO "tenant_a", "public"']
+
+
+def test_set_current_schema_does_not_repeat_public_schema(monkeypatch):
+    """A ``public`` target schema is not listed twice."""
+    executed = []
+    monkeypatch.setattr(
+        SqlAlchemyProvider,
+        "execute_statement",
+        lambda self, sql, schema=None, params=None: executed.append(sql),
+    )
+    provider = _Provider()
+
+    PostgreSqlProvider.set_current_schema(provider, "public")
+
+    assert executed == ['SET search_path TO "public"']
 
 
 def test_release_uses_same_deterministic_advisory_key():

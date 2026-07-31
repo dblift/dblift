@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import pytest
+from sqlalchemy.engine import make_url
 
 from db.plugins.cockroachdb.sqlalchemy_dialect import (
     ensure_cockroach_drivername,
@@ -77,6 +78,54 @@ def test_build_sqlalchemy_url_rewrites_postgresql_raw_url():
     assert url.startswith("cockroachdb+psycopg://")
     assert "sslmode=disable" in url
     assert "root" in url
+
+
+@pytest.mark.unit
+def test_build_sqlalchemy_url_keeps_public_on_search_path():
+    """CockroachDB gets the same extension-resolvable search path as PostgreSQL.
+
+    CockroachDB has a ``public`` schema and honours ``search_path``, so a
+    schema-only path hides anything installed there just as it does upstream.
+    """
+
+    class _Cfg:
+        url = None
+        username = "root"
+        password = "root"
+        host = "localhost"
+        port = 26257
+        database = "defaultdb"
+        schema = "tenant_a"
+        extra_params = None
+        options = None
+        connection_timeout = None
+        ssl_mode = None
+
+    url = make_url(build_sqlalchemy_url(_Cfg()))
+
+    assert dict(url.query)["options"] == "-csearch_path=tenant_a,public"
+
+
+@pytest.mark.unit
+def test_build_sqlalchemy_url_does_not_repeat_public_schema():
+    """A ``public`` target schema is not listed twice."""
+
+    class _Cfg:
+        url = None
+        username = "root"
+        password = "root"
+        host = "localhost"
+        port = 26257
+        database = "defaultdb"
+        schema = "public"
+        extra_params = None
+        options = None
+        connection_timeout = None
+        ssl_mode = None
+
+    url = make_url(build_sqlalchemy_url(_Cfg()))
+
+    assert dict(url.query)["options"] == "-csearch_path=public"
 
 
 @pytest.mark.unit

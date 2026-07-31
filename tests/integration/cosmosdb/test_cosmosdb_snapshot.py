@@ -51,13 +51,6 @@ def migrations_dir(tmp_path_factory):
         "        id=CONTAINER,\n"
         '        partition_key=PartitionKey(path="/id"),\n'
         "    )\n"
-        "\n"
-        "\n"
-        "def undo(context):\n"
-        "    if context.dry_run:\n"
-        "        return\n"
-        "\n"
-        "    context.db.delete_container(CONTAINER)\n"
     )
     return str(d)
 

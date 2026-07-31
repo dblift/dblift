@@ -142,7 +142,7 @@ def migrate(context: MigrationContext) -> None:
         info_after = client.info()
         print(f"Pending after: {getattr(info_after, 'pending_count', 0)}")
 
-        # Undo example (the separate U1__demo_python_migration.py supplies the undo function)
+        # Undo example (U1__demo_python_migration.py: separate migrate() that reverses V1)
         print("=== Running undo ===")
         undo_result = client.undo()
         print(f"Undo success: {undo_result.success}")

@@ -13,6 +13,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **PostgreSQL extension functions installed in ``public`` are resolvable
+  again.** dblift set a schema-only ``search_path``, so anything an extension
+  installs into ``public`` — ``gen_random_uuid`` and ``digest`` (pgcrypto),
+  ``ST_MakePoint`` (PostGIS), ``uuid_generate_v4`` (uuid-ossp), ``hstore``,
+  ``create_hypertable`` and ``by_range`` (TimescaleDB) — was invisible to
+  anything dblift executed. A migration calling one of them unqualified failed
+  with ``function ... does not exist`` while the identical file replayed
+  cleanly through ``psql``, whose default ``search_path`` ends in ``public``.
+  A schema dblift had exported itself could therefore not be replayed through
+  ``dblift migrate``. ``public`` is now appended to the search path — *after*
+  the target schema, so an object in the target still shadows a same-named
+  object in ``public``, and an unqualified ``CREATE`` still lands in the
+  target. A ``public`` target schema is not listed twice, and a database whose
+  ``public`` schema has been dropped is unaffected: PostgreSQL ignores search
+  path entries that do not exist. dblift's own ``dblift_schema_history`` and
+  ``dblift_migration_lock`` tables are always schema-qualified and were never
+  resolved through the search path. Applies both to the connection URL and to
+  the explicit ``SET search_path`` issued before callbacks, and so to every
+  PostgreSQL-compatible engine — CockroachDB, Redshift, TimescaleDB, Citus,
+  YugabyteDB, Neon, Supabase, Aurora PostgreSQL and AlloyDB.
 - **One failing ``DROP`` no longer turns a PostgreSQL ``clean`` into a total
   no-op.** PostgreSQL aborts the *entire* transaction on any statement error,
   so the first object that could not be dropped — a permission-denied object,
