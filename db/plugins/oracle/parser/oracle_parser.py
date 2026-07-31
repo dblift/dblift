@@ -260,38 +260,3 @@ class OracleParser(RegexBasedParser):
                 return SqlStatementType.QUERY
 
         return SqlStatementType.UNKNOWN
-
-    @property
-    def is_valid(self) -> bool:
-        """Check if parser is properly configured."""
-        return True
-
-    def is_valid_script_name(self, filename: str) -> bool:
-        """Check if filename follows Oracle naming conventions."""
-        if not filename:
-            return False
-
-        # Oracle script patterns
-        valid_patterns = [
-            r"^V\d+(\.\d+)*__.*\.sql$",  # Versioned migration
-            r"^R__.*\.sql$",  # Repeatable migration
-            r"^.*\.sql$",  # Any SQL file
-        ]
-
-        for pattern in valid_patterns:
-            if re.match(pattern, filename, re.IGNORECASE):
-                return True
-
-        return False
-
-    def extract_version_from_filename(self, filename: str) -> Optional[str]:
-        """Extract version number from Oracle migration filename."""
-        if not filename:
-            return None
-
-        # Extract version from V1.2.3__description.sql format
-        match = re.match(r"^V(\d+(?:\.\d+)*)__.*\.sql$", filename, re.IGNORECASE)
-        if match:
-            return match.group(1)
-
-        return None
