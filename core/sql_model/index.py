@@ -116,30 +116,6 @@ class Index(SqlObject):
         except (ValueError, ImportError, AttributeError):
             return ""
 
-    def _render_with_options(self, style: str) -> str:
-        """Render the ``WITH (...)`` storage-options clause.
-
-        Style is ``"lowercase"`` (PG: ``fillfactor=...``),
-        ``"uppercase"`` (SQL Server: ``FILLFACTOR=...``), or ``""``
-        (no options supported — empty string).
-        """
-        if not style or (self.fillfactor is None and not self.compression):
-            return ""
-        if style == "uppercase":
-            opts = []
-            if self.fillfactor is not None:
-                opts.append(f"FILLFACTOR = {self.fillfactor}")
-            if self.compression:
-                opts.append(f"DATA_COMPRESSION = {self.format_identifier(self.compression)}")
-            return f" WITH ({', '.join(opts)})"
-        # ``lowercase`` (PG)
-        opts = []
-        if self.fillfactor is not None:
-            opts.append(f"fillfactor = {self.fillfactor}")
-        if self.compression:
-            opts.append(f"compression = {self.format_identifier(self.compression)}")
-        return f" WITH ({', '.join(opts)})"
-
     @property
     def drop_statement(self) -> str:
         """Generate DROP INDEX statement.

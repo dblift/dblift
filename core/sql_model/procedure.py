@@ -179,47 +179,6 @@ class Procedure(SqlObject):
         except (ValueError, ImportError, AttributeError):
             return ""
 
-    def _render_body(self, style: str) -> str:
-        """Render procedure body for the given wrap *style*.
-
-        Styles correspond to ``BaseQuirks.proc_body_wrap_style`` values
-        — opaque internal vocabulary, not dialect names.
-        """
-        if style == "begin_end":
-            return f"\nAS\nBEGIN\n{self.body}\nEND"
-        if style == "dollar_quotes":
-            return f"\nAS $$\n{self.body}\n$$"
-        if style == "mysql_characteristics":
-            return self._render_mysql_body()
-        # ``plain`` is the default shape (also used by Oracle).
-        return f"\nAS\n{self.body}"
-
-    def _render_mysql_body(self) -> str:
-        """MySQL body wrap: characteristics block + BEGIN/END."""
-        characteristics: List[str] = []
-        if self.volatility:
-            if self.volatility.upper() == "IMMUTABLE":
-                characteristics.append("DETERMINISTIC")
-            else:
-                characteristics.append("NOT DETERMINISTIC")
-        elif self.is_function:
-            characteristics.append("NOT DETERMINISTIC")
-        if self.security_definer is not None:
-            characteristics.append(
-                "SQL SECURITY DEFINER" if self.security_definer else "SQL SECURITY INVOKER"
-            )
-        if self.data_access:
-            characteristics.append(self.data_access.upper())
-        if self.comment:
-            escaped_comment = self.comment.replace("'", "''")
-            characteristics.append(f"COMMENT '{escaped_comment}'")
-
-        prefix = "\n    " + "\n    ".join(characteristics) if characteristics else ""
-        body_text = (self.body or "").strip()
-        if body_text.upper().startswith("BEGIN"):
-            return f"{prefix}\n{body_text}"
-        return f"{prefix}\nBEGIN\n{self.body}\nEND"
-
     @property
     def drop_statement(self) -> str:
         """Generate DROP PROCEDURE or DROP FUNCTION statement.
