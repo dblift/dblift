@@ -22,6 +22,7 @@ from typing import TYPE_CHECKING, List, Optional, Sequence, Tuple
 
 from packaging.version import parse as parse_version
 
+from core.migration import is_versioned
 from core.migration.migration import Migration, MigrationType
 
 if TYPE_CHECKING:
@@ -72,7 +73,9 @@ def handle_baseline_filtering(
         # Filter out versioned migrations <= baseline version
         filtered_scripts = []
         for script in valid_scripts:
-            if script.type == MigrationType.SQL:
+            # Role, not format: MigrationType.SQL means "versioned", and a
+            # versioned .py script carries MigrationType.PYTHON instead.
+            if is_versioned(script.type):
                 if parse_version(str(script.version)) > parse_version(str(baseline_version)):
                     filtered_scripts.append(script)
             else:
