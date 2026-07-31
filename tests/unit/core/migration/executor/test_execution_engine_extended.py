@@ -864,17 +864,25 @@ class TestExecuteCallback(unittest.TestCase):
         with self.assertRaises(Exception):
             engine.execute_callback(cb)
 
-    def test_callback_with_placeholder_service_replaces_placeholders(self):
+    def test_callback_content_is_substituted_once_before_parsing(self):
         engine = _make_engine()
         engine.sql_analyzer.get_statement_type.return_value = "DML"
         engine.provider.execute_statement.return_value = 0
         engine.placeholder_service = MagicMock()
         engine.placeholder_service.replace_placeholders.return_value = "INSERT INTO t VALUES (42)"
-        cb = self._make_callback(sql_statements=["INSERT INTO t VALUES (${val})"])
+        cb = self._make_callback(sql_statements=["INSERT INTO t VALUES (42)"])
+        cb.content = "INSERT INTO t VALUES (${val})"
 
         engine.execute_callback(cb)
 
-        engine.placeholder_service.replace_placeholders.assert_called()
+        # Substitution runs once, on the whole file, and the parser gets the result.
+        engine.placeholder_service.replace_placeholders.assert_called_once_with(
+            "INSERT INTO t VALUES (${val})"
+        )
+        assert (
+            cb.parse_sql_statements.call_args.kwargs["content_override"]
+            == "INSERT INTO t VALUES (42)"
+        )
 
     def test_query_result_zero_rows_logs_info(self):
         engine = _make_engine()
