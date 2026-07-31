@@ -5,7 +5,7 @@ extracted from DB2 grammar files and existing parser implementation.
 """
 
 import re
-from typing import Any, Dict, List, Pattern, Set
+from typing import Any, Dict, List, Optional, Pattern, Set
 
 from core.sql_parser.dialects.base_config import DialectConfig
 
@@ -498,6 +498,147 @@ class DB2Config(DialectConfig):
 
         return identifier
 
+    def _find_block_end(self, sql: str, begin_pos: int) -> Optional[int]:
+        """Find where the BEGIN block opened at ``begin_pos`` closes.
+
+        Scans forward counting nested ``BEGIN``/``END`` pairs, ignoring string
+        literals and comments, and skipping ``END`` keywords that close a
+        control structure (``END IF``, ``END WHILE``, ``END LOOP``, ...) or a
+        ``CASE`` expression rather than a block.
+
+        A regex cannot express "the ``END`` that closes *this* block" — a lazy
+        match stops at the first candidate and a greedy one runs to the last —
+        so every caller that needs a block's real boundary uses this scan.
+
+        Args:
+            sql: SQL content being scanned
+            begin_pos: Offset of the ``BEGIN`` keyword that opens the block
+
+        Returns:
+            Offset just past the block, including the trailing ``@`` or ``;``
+            when one is present, or None if the block is never closed.
+        """
+        i = begin_pos + 5  # Start after "BEGIN"
+        depth = 1
+        case_depth = 0  # Track CASE expressions separately
+        in_string = False
+        in_comment = False
+        string_char = None
+
+        while i < len(sql) and depth > 0:
+            # Handle string literals
+            if not in_comment:
+                if not in_string and sql[i] in ("'", '"'):
+                    in_string = True
+                    string_char = sql[i]
+                elif in_string and sql[i] == string_char:
+                    # Check for escaped quotes
+                    if i + 1 < len(sql) and sql[i + 1] == string_char:
+                        i += 2
+                        continue
+                    in_string = False
+                    string_char = None
+
+            # Handle comments
+            if not in_string:
+                if sql[i : i + 2] == "--":
+                    # Line comment - skip to end of line
+                    while i < len(sql) and sql[i] not in ("\n", "\r"):
+                        i += 1
+                    continue
+                elif sql[i : i + 2] == "/*":
+                    # Block comment
+                    in_comment = True
+                    i += 2
+                    continue
+                elif sql[i : i + 2] == "*/" and in_comment:
+                    in_comment = False
+                    i += 2
+                    continue
+
+            # Count BEGIN/END and CASE/END pairs outside strings and comments
+            if not in_string and not in_comment:
+                # Check for CASE keyword (starts a CASE expression)
+                if sql[i : i + 4].upper() == "CASE":
+                    if (i == 0 or not sql[i - 1].isalnum()) and (
+                        i + 4 >= len(sql) or not sql[i + 4].isalnum()
+                    ):
+                        case_depth += 1
+                        i += 4
+                        continue
+                # Check for BEGIN keyword
+                elif sql[i : i + 5].upper() == "BEGIN":
+                    # Make sure it's a word boundary
+                    if (i == 0 or not sql[i - 1].isalnum()) and (
+                        i + 5 >= len(sql) or not sql[i + 5].isalnum()
+                    ):
+                        depth += 1
+                        i += 5
+                        continue
+                elif sql[i : i + 3].upper() == "END":
+                    # Make sure it's a word boundary before END
+                    if i == 0 or not sql[i - 1].isalnum():
+                        # Check what comes after END
+                        # Skip whitespace after END
+                        j = i + 3
+                        while j < len(sql) and sql[j] in (" ", "\t"):
+                            j += 1
+
+                        # Check if this is "END IF", "END WHILE", "END FOR", "END LOOP", "END CASE", etc.
+                        # These are control structure endings, not block endings
+                        is_control_end = False
+                        if j < len(sql):
+                            next_word_upper = ""
+                            k = j
+                            while k < len(sql) and sql[k].isalpha():
+                                next_word_upper += sql[k].upper()
+                                k += 1
+
+                            # Control structure keywords that follow END
+                            if next_word_upper in (
+                                "IF",
+                                "WHILE",
+                                "FOR",
+                                "LOOP",
+                                "CASE",
+                                "REPEAT",
+                            ):
+                                is_control_end = True
+                                # Special case: END CASE decrements case_depth
+                                if next_word_upper == "CASE":
+                                    case_depth -= 1
+
+                        # Check if this END matches a CASE expression (not END CASE)
+                        # CASE expressions have END without a following keyword
+                        is_case_expression_end = False
+                        if not is_control_end and case_depth > 0:
+                            # This END might close a CASE expression
+                            # Check if the next non-whitespace char is ; or ,
+                            if j < len(sql) and sql[j] in (";", ",", ")"):
+                                case_depth -= 1
+                                is_case_expression_end = True
+
+                        # Only count as block END if it's not a control structure end or CASE expression end
+                        if not is_control_end and not is_case_expression_end:
+                            depth -= 1
+                            if depth == 0:
+                                # Found the matching END, now look for delimiter (@ or ;)
+                                j = i + 3
+                                while j < len(sql) and sql[j] in (" ", "\t", "\n", "\r"):
+                                    j += 1
+
+                                # Accept either @ or ; as delimiter
+                                if j < len(sql) and sql[j] in ("@", ";"):
+                                    return j + 1
+                                # No explicit delimiter, use position after END
+                                return j
+                        i += 3
+                        continue
+
+            i += 1
+
+        return None
+
     def extract_sqlpl_blocks(self, sql: str) -> List[Dict[str, Any]]:
         """Extract SQL/PL blocks from SQL content.
 
@@ -522,140 +663,18 @@ class DB2Config(DialectConfig):
             if not begin_match:
                 continue
 
-            begin_pos = start_pos + begin_match.start()
+            end_pos = self._find_block_end(sql, start_pos + begin_match.start())
+            if end_pos is None:
+                continue
 
-            # Manually count BEGIN/END pairs to find the matching END
-            i = begin_pos + 5  # Start after "BEGIN"
-            depth = 1
-            case_depth = 0  # Track CASE expressions separately
-            in_string = False
-            in_comment = False
-            string_char = None
-
-            while i < len(sql) and depth > 0:
-                # Handle string literals
-                if not in_comment:
-                    if not in_string and sql[i] in ("'", '"'):
-                        in_string = True
-                        string_char = sql[i]
-                    elif in_string and sql[i] == string_char:
-                        # Check for escaped quotes
-                        if i + 1 < len(sql) and sql[i + 1] == string_char:
-                            i += 2
-                            continue
-                        in_string = False
-                        string_char = None
-
-                # Handle comments
-                if not in_string:
-                    if sql[i : i + 2] == "--":
-                        # Line comment - skip to end of line
-                        while i < len(sql) and sql[i] not in ("\n", "\r"):
-                            i += 1
-                        continue
-                    elif sql[i : i + 2] == "/*":
-                        # Block comment
-                        in_comment = True
-                        i += 2
-                        continue
-                    elif sql[i : i + 2] == "*/" and in_comment:
-                        in_comment = False
-                        i += 2
-                        continue
-
-                # Count BEGIN/END and CASE/END pairs outside strings and comments
-                if not in_string and not in_comment:
-                    # Check for CASE keyword (starts a CASE expression)
-                    if sql[i : i + 4].upper() == "CASE":
-                        if (i == 0 or not sql[i - 1].isalnum()) and (
-                            i + 4 >= len(sql) or not sql[i + 4].isalnum()
-                        ):
-                            case_depth += 1
-                            i += 4
-                            continue
-                    # Check for BEGIN keyword
-                    elif sql[i : i + 5].upper() == "BEGIN":
-                        # Make sure it's a word boundary
-                        if (i == 0 or not sql[i - 1].isalnum()) and (
-                            i + 5 >= len(sql) or not sql[i + 5].isalnum()
-                        ):
-                            depth += 1
-                            i += 5
-                            continue
-                    elif sql[i : i + 3].upper() == "END":
-                        # Make sure it's a word boundary before END
-                        if i == 0 or not sql[i - 1].isalnum():
-                            # Check what comes after END
-                            # Skip whitespace after END
-                            j = i + 3
-                            while j < len(sql) and sql[j] in (" ", "\t"):
-                                j += 1
-
-                            # Check if this is "END IF", "END WHILE", "END FOR", "END LOOP", "END CASE", etc.
-                            # These are control structure endings, not block endings
-                            is_control_end = False
-                            if j < len(sql):
-                                next_word_upper = ""
-                                k = j
-                                while k < len(sql) and sql[k].isalpha():
-                                    next_word_upper += sql[k].upper()
-                                    k += 1
-
-                                # Control structure keywords that follow END
-                                if next_word_upper in (
-                                    "IF",
-                                    "WHILE",
-                                    "FOR",
-                                    "LOOP",
-                                    "CASE",
-                                    "REPEAT",
-                                ):
-                                    is_control_end = True
-                                    # Special case: END CASE decrements case_depth
-                                    if next_word_upper == "CASE":
-                                        case_depth -= 1
-
-                            # Check if this END matches a CASE expression (not END CASE)
-                            # CASE expressions have END without a following keyword
-                            is_case_expression_end = False
-                            if not is_control_end and case_depth > 0:
-                                # This END might close a CASE expression
-                                # Check if the next non-whitespace char is ; or ,
-                                if j < len(sql) and sql[j] in (";", ",", ")"):
-                                    case_depth -= 1
-                                    is_case_expression_end = True
-
-                            # Only count as block END if it's not a control structure end or CASE expression end
-                            if not is_control_end and not is_case_expression_end:
-                                depth -= 1
-                                if depth == 0:
-                                    # Found the matching END, now look for delimiter (@ or ;)
-                                    j = i + 3
-                                    while j < len(sql) and sql[j] in (" ", "\t", "\n", "\r"):
-                                        j += 1
-
-                                    # Accept either @ or ; as delimiter
-                                    if j < len(sql) and sql[j] in ("@", ";"):
-                                        end_pos = j + 1
-                                        content = sql[start_pos:end_pos].rstrip("@;").strip()
-                                    else:
-                                        # No explicit delimiter, use position after END
-                                        end_pos = j
-                                        content = sql[start_pos:end_pos].strip()
-
-                                    blocks.append(
-                                        {
-                                            "type": "sqlpl_block",
-                                            "content": content,
-                                            "start": start_pos,
-                                            "end": end_pos,
-                                        }
-                                    )
-                                    break
-                            i += 3
-                            continue
-
-                i += 1
+            blocks.append(
+                {
+                    "type": "sqlpl_block",
+                    "content": sql[start_pos:end_pos].rstrip("@;").strip(),
+                    "start": start_pos,
+                    "end": end_pos,
+                }
+            )
 
         return blocks
 
@@ -670,22 +689,32 @@ class DB2Config(DialectConfig):
         """
         blocks = []
 
-        # Pattern to match compound statements with @ delimiter
-        compound_pattern = re.compile(
-            r"\bBEGIN\s+(?:ATOMIC|NOT\s+ATOMIC).*?\bEND\s*[@;]", re.IGNORECASE | re.DOTALL
-        )
+        # The span returned here is what the splitter cuts on, so the closing END
+        # has to be the one that actually belongs to this block. Match only the
+        # opening keyword and count depth from there — a pattern reaching for the
+        # END itself either stops at a nested one or runs past the block.
+        start_pattern = re.compile(r"\bBEGIN\s+(?:ATOMIC|NOT\s+ATOMIC)\b", re.IGNORECASE)
 
-        matches = compound_pattern.finditer(sql)
-        for match in matches:
-            content = match.group(0).rstrip(";@").strip()  # Remove trailing delimiter
+        search_from = 0
+        for match in start_pattern.finditer(sql):
+            # Skip BEGIN ATOMIC blocks nested inside one already extracted, so the
+            # blocks stay ordered and non-overlapping for the caller.
+            if match.start() < search_from:
+                continue
+
+            end_pos = self._find_block_end(sql, match.start())
+            if end_pos is None:
+                continue
+
             blocks.append(
                 {
                     "type": "compound_statement",
-                    "content": content,
+                    "content": sql[match.start() : end_pos].rstrip(";@").strip(),
                     "start": match.start(),
-                    "end": match.end(),
+                    "end": end_pos,
                 }
             )
+            search_from = end_pos
 
         return blocks
 
