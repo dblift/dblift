@@ -431,7 +431,12 @@ class _RecordingConnection:
 
     def __init__(self, isolation_level: str = "READ COMMITTED", in_tx: bool = False) -> None:
         self.closed = False
+        # The *server* isolation level. Deliberately NOT changed by an
+        # AUTOCOMMIT execution option: on a real driver AUTOCOMMIT is a DBAPI
+        # flag, and get_isolation_level() keeps reporting READ COMMITTED while
+        # dbapi_connection.autocommit is True. Verified against psycopg.
         self._isolation_level = isolation_level
+        self.autocommit = False
         self._in_tx = in_tx
         self.calls: List[str] = []
 
@@ -440,7 +445,9 @@ class _RecordingConnection:
 
     def execution_options(self, **kwargs: Any) -> None:
         level = kwargs["isolation_level"]
-        self._isolation_level = level
+        self.autocommit = level == "AUTOCOMMIT"
+        if not self.autocommit:
+            self._isolation_level = level
         self.calls.append(f"isolation={level}")
 
     def in_transaction(self) -> bool:
@@ -463,9 +470,9 @@ def test_autocommit_execution_switches_and_restores(cfg: DbliftConfig) -> None:
     provider = _provider_with(conn, cfg)
 
     with provider.autocommit_execution():
-        assert conn.get_isolation_level() == "AUTOCOMMIT"
+        assert conn.autocommit is True
 
-    assert conn.get_isolation_level() == "READ COMMITTED"
+    assert conn.autocommit is False
     assert conn.calls == ["isolation=AUTOCOMMIT", "isolation=READ COMMITTED"]
 
 
@@ -482,7 +489,8 @@ def test_autocommit_execution_restores_after_an_exception(cfg: DbliftConfig) -> 
         with provider.autocommit_execution():
             raise RuntimeError("statement failed")
 
-    assert conn.get_isolation_level() == "REPEATABLE READ"
+    assert conn.autocommit is False
+    assert conn.calls == ["isolation=AUTOCOMMIT", "isolation=REPEATABLE READ"]
 
 
 def test_autocommit_execution_ends_an_open_transaction_first(cfg: DbliftConfig) -> None:
