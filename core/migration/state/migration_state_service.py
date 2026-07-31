@@ -6,7 +6,7 @@ based on their execution history and context.
 """
 
 from pathlib import Path
-from typing import Any, Dict, List, Union
+from typing import Any, Dict, Union
 
 from core.logger import Log
 from core.migration.state.migration_display_state import MigrationDisplayState
@@ -192,29 +192,6 @@ class MigrationStateService:
     def _compare_versions(self, version1: str, version2: str) -> int:
         """Compare two version strings. Delegates to shared compare_versions utility."""
         return _compare_versions_shared(version1, version2)
-
-    def _compare_version_parts(self, v1_parts: List[int], v2_parts: List[int]) -> int:
-        """Compare version part lists.
-
-        Args:
-            v1_parts: First version parts
-            v2_parts: Second version parts
-
-        Returns:
-            int: Comparison result
-        """
-        # Pad shorter version with zeros
-        max_len = max(len(v1_parts), len(v2_parts))
-        v1_parts.extend([0] * (max_len - len(v1_parts)))
-        v2_parts.extend([0] * (max_len - len(v2_parts)))
-
-        for i in range(max_len):
-            if v1_parts[i] < v2_parts[i]:
-                return -1
-            elif v1_parts[i] > v2_parts[i]:
-                return 1
-
-        return 0
 
     def _version_has_undo_script(self, version: str, scripts_dir: Union[Path, str]) -> bool:
         """Check if a version has a corresponding undo script.

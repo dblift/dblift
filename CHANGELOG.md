@@ -36,6 +36,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   flag when no explicit value is given, and the real ``UPDATE`` rowcount
   reports whether a row matched. A conformance test now requires every
   provider to expose the method, since no base class declared it.
+- **Callback events no longer collide on shared name prefixes.** Callback files
+  were matched to an event with a bare ``startswith()``, and five event prefixes
+  are substrings of others (``afterMigrate`` / ``afterMigrateError``,
+  ``beforeEach`` / ``beforeEachMigrate``, ``afterEach`` / ``afterEachMigrate``,
+  ``afterClean`` / ``afterCleanError``, ``afterUndo`` / ``afterUndoError``). So
+  ``afterMigrateError__notify.sql`` executed on a fully successful ``migrate``
+  — alerting or compensating SQL firing when nothing had failed — and
+  ``beforeEachMigrate__mark.sql`` executed twice per script, once for each of
+  the two events it matched. The ``__`` separator is now required immediately
+  after the prefix, so ``afterMigrate__finalize.sql`` runs on ``afterMigrate``
+  and nothing else does.
+
+- **Callback names missing ``__`` are rejected instead of silently accepted.**
+  The naming convention is ``<eventPrefix>__<description>.<ext>``, but any name
+  merely *starting* with an event prefix was classified as a callback — so
+  ``afterMigrate.sql``, and the single-underscore typo
+  ``afterMigrate_notify.sql``, were loaded as callbacks. Such names are no
+  longer callbacks anywhere (script discovery, ``parse_filename`` and
+  ``Migration.type`` now agree), and are reported as a naming-convention
+  violation once per run instead of sitting in the migrations directory looking
+  like a working callback.
+
+- **Tagged callbacks run again regardless of where the tag sits.** Script names
+  are classified with their ``[tag1,tag2]`` group stripped, but callback event
+  matching read the raw name, so a callback tagged anywhere before the ``__``
+  separator — ``afterMigrate[prod]__notify.sql`` — was filed as a callback and
+  then dispatched to no event. It never ran and drew no warning, since the name
+  itself is valid. Tag stripping is now a single shared step used by both
+  classification and event matching, so every tag position the one accepts the
+  other resolves to the same event.
 
 - **DuckDB parameterized DML reports real affected-row counts.** The 3.3.4
   ``RETURNING 1`` rewrite only ran when ``params is None``, so bound

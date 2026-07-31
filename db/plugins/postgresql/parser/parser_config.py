@@ -413,18 +413,6 @@ class PostgreSqlConfig(DialectConfig):
 
         return blocks
 
-    def is_copy_statement(self, statement: str) -> bool:
-        """Check if statement is a COPY statement."""
-        return bool(self.copy_statement_pattern.match(statement.strip()))
-
-    def is_function_or_procedure(self, statement: str) -> bool:
-        """Check if statement creates a function or procedure."""
-        return bool(self.function_with_dollar_pattern.match(statement.strip()))
-
-    def is_plpgsql_block(self, statement: str) -> bool:
-        """Check if statement is a PL/pgSQL block."""
-        return bool(self.plpgsql_block_pattern.match(statement.strip()))
-
     def normalize_identifier(self, identifier: str, is_quoted: bool = False) -> str:
         """Normalize identifier according to PostgreSQL rules.
 

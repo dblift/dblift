@@ -671,24 +671,6 @@ class MigrationDataCollector:
         """Sort applied migrations by installed_rank."""
         return sorted(applied_migrations, key=lambda m: getattr(m, "installed_rank", 0) or 0)
 
-    def _mark_reapplied_duplicates(
-        self, sorted_applied_migrations: List[Migration], reapplied_versions: Set[str]
-    ) -> Set[Migration]:
-        """Mark duplicate migrations that should be kept for reapplication display."""
-        keep_duplicates = set()
-        script_counts: dict[str, int] = {}
-
-        for migration in sorted_applied_migrations:
-            script_name = migration.script_name
-            version = getattr(migration, "version", None)
-
-            if version in reapplied_versions:
-                script_counts[script_name] = script_counts.get(script_name, 0) + 1
-                if script_counts[script_name] > 1:
-                    keep_duplicates.add(migration)
-
-        return keep_duplicates
-
     def _detect_out_of_order_migrations(
         self, versioned_migrations: List[Dict[str, Any]]
     ) -> Set[str]:
