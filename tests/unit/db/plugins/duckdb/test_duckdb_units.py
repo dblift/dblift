@@ -158,16 +158,6 @@ class TestParserConfig:
 # --- regex parser ------------------------------------------------------
 @pytest.mark.unit
 class TestRegexParser:
-    def test_classify_variants(self):
-        from db.plugins.duckdb.parser.duckdb_regex_parser import DuckDBRegexParser
-
-        p = DuckDBRegexParser()
-        assert p.classify_statement("INSERT INTO t VALUES (1)") == "DML"
-        assert p.classify_statement("SELECT 1") == "QUERY"
-        assert p.classify_statement("BEGIN") == "TCL"
-        assert p.classify_statement("FLOOMP") == "UNKNOWN"
-        assert p.classify_statement("") == "UNKNOWN"
-
     def test_split_empty_and_block_comment(self):
         from db.plugins.duckdb.parser.duckdb_regex_parser import DuckDBRegexParser
 

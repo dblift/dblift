@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
+from cli._constants import EXIT_LICENSE_REQUIRED
 from cli.extensions import load_command_handlers, load_terminal_commands
 from cli.handlers._shared import (  # noqa: F401
     _MIGRATION_FILENAME_RE,
@@ -23,6 +24,7 @@ from cli.handlers.repair import _handle_repair
 from cli.handlers.undo import _handle_undo
 from cli.handlers.validate import _handle_validate
 from cli.premium_manifest import PremiumCommand, premium_stub_index, render_upsell
+from core.seams.capabilities import CapabilityDeniedError
 from core.seams.tier_resolver import resolve_tier
 
 _COMMAND_HANDLERS: Dict[str, Callable[[CliCommandContext], Tuple[bool, Any]]] = {
@@ -104,7 +106,14 @@ def execute_single_command(
         # pure-OSS install no resolver is registered and this is ``None``.
         license_tier=resolve_tier(args),
     )
-    return handler(ctx)
+    try:
+        return handler(ctx)
+    except CapabilityDeniedError as e:
+        # Capability rejections map to the same exit code as premium stubs so
+        # scripts/CI can branch on entitlement without parsing stderr.
+        message = str(e).strip() or "This command requires a license that is not available."
+        log.error(message)
+        raise SystemExit(EXIT_LICENSE_REQUIRED) from e
 
 
 def _validate_migrate_options(cmd_args: Any, parser: Any) -> None:

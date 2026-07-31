@@ -145,3 +145,35 @@ def test_main_short_circuit_runs_before_config_and_db_load(monkeypatch):
 
     assert excinfo.value.code == EXIT_LICENSE_REQUIRED
     load_config.assert_not_called()
+
+
+def test_capability_denied_maps_to_license_exit_code():
+    """CapabilityDeniedError from a handler uses EXIT_LICENSE_REQUIRED."""
+    import cli._command_handlers as handlers
+    from cli._command_handlers import execute_single_command
+    from core.seams.capabilities import CapabilityDeniedError
+
+    def _deny(_ctx):
+        raise CapabilityDeniedError("feature requires a higher license tier")
+
+    log = Mock()
+    original = handlers._COMMAND_HANDLERS["migrate"]
+    handlers._COMMAND_HANDLERS["migrate"] = _deny
+    try:
+        with pytest.raises(SystemExit) as excinfo:
+            execute_single_command(
+                client=Mock(),
+                command="migrate",
+                args=Mock(),
+                log=log,
+                scripts_dir=None,
+                additional_scripts_dirs=[],
+                recursive=True,
+                placeholders={},
+                dir_recursive_map={},
+            )
+        assert excinfo.value.code == EXIT_LICENSE_REQUIRED
+        logged = log.error.call_args[0][0]
+        assert "license" in logged.lower()
+    finally:
+        handlers._COMMAND_HANDLERS["migrate"] = original

@@ -13,6 +13,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **One failing ``DROP`` no longer turns a PostgreSQL ``clean`` into a total
+  no-op.** PostgreSQL aborts the *entire* transaction on any statement error,
+  so the first object that could not be dropped — a permission-denied object,
+  a dependency, an object type the enumeration misclassifies — left the
+  connection unusable and every remaining ``DROP`` failed with
+  ``InFailedSqlTransaction``. The command reported the failures but had
+  dropped nothing at all, including its own ``dblift_schema_history`` and
+  ``dblift_migration_lock`` tables, leaving a schema that could not be cleaned
+  again without manual repair. Each drop now runs inside a savepoint that is
+  unwound on failure, so the loop genuinely continues and only the objects
+  that really could not be dropped are left behind. A partial clean is still
+  reported as a failure. Dialects that keep the transaction alive after a
+  statement error, or that commit DDL implicitly, are unchanged — no savepoint
+  statement is sent to them.
+- **Placeholders in SQL callbacks are substituted before the SQL is parsed.**
+  ``execute_callback`` handed the raw file content to the statement parser and
+  substituted afterwards, per statement. Tokenisers that do not recognise ``$``
+  drop it and pad the braces with whitespace, so a callback containing
+  ``CREATE TABLE ${schema}.callback_log (...)`` reached the server as
+  ``CREATE TABLE {schema }.callback_log (...)`` — rejected as an invalid table
+  name, aborting the whole ``migrate`` run before any versioned migration ran.
+  Oracle, SQL Server, MySQL and PostgreSQL were affected; SQLite, DuckDB and
+  DB2 leave ``${...}`` intact and were not. Callbacks now substitute the full
+  content first and pass the result to the parser, as versioned migrations
+  already did. Substitution happens exactly once, so an unresolved ``${NAME}``
+  still passes through as a literal and warns once.
 - **``clean`` no longer fails on a schema holding a TimescaleDB continuous
   aggregate.** A continuous aggregate's user-facing name is a plain
   ``relkind='v'`` row, so it is listed by ``pg_views`` and never by
@@ -26,6 +52,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   with ``DROP MATERIALIZED VIEW``. The lookup is gated on a ``pg_class``
   probe, so servers without TimescaleDB never touch the
   ``timescaledb_information`` catalog.
+- **``repair`` fixes checksum drift on SQLite.** ``SQLiteProvider`` never
+  defined ``repair_migration_history``, which every other provider implements
+  and which ``repair`` calls to rewrite a drifted checksum. The resulting
+  ``AttributeError`` was swallowed, so the command reported "No history entry
+  updated … Repair may require manual intervention", left the stored checksum
+  unchanged and exited failed. SQLite now updates the row like the other
+  relational providers — ``COALESCE(?, success)`` preserves the stored success
+  flag when no explicit value is given, and the real ``UPDATE`` rowcount
+  reports whether a row matched. A conformance test now requires every
+  provider to expose the method, since no base class declared it.
 - **Per-call placeholders reach Python migrations.** ``migrate(placeholders=...)``
   and ``undo(placeholders=...)`` are applied to the placeholder service that the
   SQL path substitutes from, but the Python executor built

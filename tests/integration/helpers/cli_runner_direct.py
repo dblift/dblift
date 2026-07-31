@@ -285,9 +285,6 @@ class DBLiftCLIDirect:
         if kwargs.get("ignore_unmanaged"):
             argv.append("--ignore-unmanaged")
 
-        if kwargs.get("skip_validation"):
-            argv.append("--skip-validation")
-
         if kwargs.get("clean_enabled"):
             argv.append("--clean-enabled")
 
@@ -349,7 +346,6 @@ class DBLiftCLIDirect:
         dry_run: bool = False,
         mark_as_executed: bool = False,
         show_sql: bool = False,
-        skip_validation: bool = False,
         additional_scripts: Optional[List[Path]] = None,
         log_level: Optional[str] = "debug",
         log_format: Optional[List[str]] = None,
@@ -367,7 +363,6 @@ class DBLiftCLIDirect:
             dry_run=dry_run,
             mark_as_executed=mark_as_executed,
             show_sql=show_sql,
-            skip_validation=skip_validation,
             additional_scripts=additional_scripts,
             log_level=log_level,
             log_format=log_format,
@@ -436,9 +431,9 @@ class DBLiftCLIDirect:
             **kwargs,
         )
 
-    def validate(self, skip_validation: bool = False, **kwargs) -> CommandResult:
+    def validate(self, **kwargs) -> CommandResult:
         """Run validate command."""
-        return self._run_command("validate", skip_validation=skip_validation, **kwargs)
+        return self._run_command("validate", **kwargs)
 
     def clean(self, dry_run: bool = False, **kwargs) -> CommandResult:
         """Run clean command."""
