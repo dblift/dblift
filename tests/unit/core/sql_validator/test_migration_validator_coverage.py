@@ -543,21 +543,6 @@ class TestValidateResolvedMigrations(unittest.TestCase):
         result = v.validate_resolved_migrations([s1])
         self.assertTrue(result.success)
 
-    def test_history_table_with_callback_in_history_fails(self):
-        from core.migration.migration import MigrationType
-
-        v, sm, hm, _ = _make_validator()
-        hm.has_history_table = True
-        callback = SimpleNamespace(
-            type="CALLBACK",
-            script_name="callback.sql",
-            version=None,
-        )
-        hm.get_applied_migrations.return_value = [callback]
-        s1 = self._sql_script()
-        result = v.validate_resolved_migrations([s1])
-        self.assertFalse(result.success)
-
     def test_exception_returns_failure(self):
         v, sm, hm, _ = _make_validator()
         hm.has_history_table = True
@@ -658,24 +643,6 @@ class TestValidateMigrations(unittest.TestCase):
             result = v.validate_migrations(Path(tmpdir))
         self.assertFalse(result.success)
 
-    def test_callback_in_history_fails(self):
-        import tempfile
-
-        from core.migration.migration import MigrationType
-
-        v, sm, hm, _ = _make_validator()
-        hm.has_history_table = True
-        callback = SimpleNamespace(
-            type="CALLBACK",
-            script_name="callback.sql",
-            version=None,
-        )
-        hm.get_applied_migrations.return_value = [callback]
-        with tempfile.TemporaryDirectory() as tmpdir:
-            sm.get_migration_scripts.return_value = [self._sql_script()]
-            result = v.validate_migrations(Path(tmpdir))
-        self.assertFalse(result.success)
-
     def test_strict_mode_missing_applied_scripts_fails(self):
         import tempfile
 
@@ -746,38 +713,6 @@ class TestValidateMigrations(unittest.TestCase):
             sm.get_migration_scripts.return_value = [s1, s2]
             result = v.validate_migrations(Path(tmpdir), target_version="1")
         self.assertTrue(result.success)
-
-
-# ---------------------------------------------------------------------------
-# Lines 1048-1054: _get_undone_versions
-# ---------------------------------------------------------------------------
-
-
-class TestGetUndoneVersions(unittest.TestCase):
-    def test_no_undo_migrations(self):
-        v, *_ = _make_validator()
-        result = v._get_undone_versions([])
-        self.assertEqual(result, set())
-
-    def test_undo_migration_adds_version(self):
-        v, *_ = _make_validator()
-        m = SimpleNamespace(type="UNDO_SQL", success=True, version="1")
-        result = v._get_undone_versions([m])
-        self.assertIn("1", result)
-
-    def test_failed_undo_not_added(self):
-        v, *_ = _make_validator()
-        m = SimpleNamespace(type="UNDO_SQL", success=False, version="1")
-        result = v._get_undone_versions([m])
-        self.assertNotIn("1", result)
-
-    def test_non_undo_not_added(self):
-        from core.migration.migration import MigrationType
-
-        v, *_ = _make_validator()
-        m = SimpleNamespace(type=MigrationType.SQL, success=True, version="1")
-        result = v._get_undone_versions([m])
-        self.assertNotIn("1", result)
 
 
 # ---------------------------------------------------------------------------

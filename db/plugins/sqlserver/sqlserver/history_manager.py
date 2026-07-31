@@ -11,7 +11,11 @@ from typing import Any, Dict, List, Optional, Union, cast
 
 from core.logger import Log
 from db.object_naming import get_normalized_object_name
-from db.plugins.base_history_manager import BaseHistoryManager
+from db.plugins.base_history_manager import (
+    UNDO_HISTORY_TYPE,
+    VERSIONED_HISTORY_TYPES_SQL_IN,
+    BaseHistoryManager,
+)
 
 
 class SqlServerHistoryManager(BaseHistoryManager):
@@ -242,7 +246,7 @@ class SqlServerHistoryManager(BaseHistoryManager):
             )
             query = f"""
             SELECT description, installed_rank FROM {qualified_table}
-            WHERE version = ? AND type IN ('SQL', 'PYTHON') AND success = 1
+            WHERE version = ? AND type IN {VERSIONED_HISTORY_TYPES_SQL_IN} AND success = 1
             ORDER BY installed_rank DESC
             """
             results = self.query_executor.execute_query(connection, query, params=[version])
@@ -258,7 +262,7 @@ class SqlServerHistoryManager(BaseHistoryManager):
                 "script": script_name,
                 "version": version,
                 "description": description,
-                "type": "UNDO_SQL",
+                "type": UNDO_HISTORY_TYPE,
                 # Batch-6 BUG-02: typed NULL on an INT column fails on strict
                 # drivers; ``0`` is the existing sentinel for "no checksum".
                 "checksum": 0,

@@ -565,15 +565,17 @@ class TestGetCurrentVersion(unittest.TestCase):
 
     def test_uses_custom_table_name(self):
         m = self._m()
+        connection = MagicMock()
         m.query_executor.table_exists.return_value = False
-        m.get_current_version(MagicMock(), "s", table_name="custom_table")
-        m.query_executor.table_exists.assert_called_with("s", "custom_table")
+        m.get_current_version(connection, "s", table_name="custom_table")
+        m.query_executor.table_exists.assert_called_with(connection, "s", "custom_table")
 
     def test_uses_default_table_name_when_none(self):
         m = self._m()
+        connection = MagicMock()
         m.query_executor.table_exists.return_value = False
-        m.get_current_version(MagicMock(), "s", table_name=None)
-        m.query_executor.table_exists.assert_called_with("s", "dblift_schema_history")
+        m.get_current_version(connection, "s", table_name=None)
+        m.query_executor.table_exists.assert_called_with(connection, "s", "dblift_schema_history")
 
     def test_returns_none_on_exception(self):
         m = self._m()
@@ -600,7 +602,7 @@ class TestGetCurrentVersion(unittest.TestCase):
         m.query_executor.get_schema_qualified_name.return_value = "s.dblift_schema_history"
         captured = []
 
-        def capture(sql):
+        def capture(connection, sql):
             captured.append(sql)
             return []
 
@@ -608,6 +610,7 @@ class TestGetCurrentVersion(unittest.TestCase):
         m.get_current_version(MagicMock(), "s")
         assert len(captured) == 1
         assert "LIMIT 1" in captured[0]
+        assert "type IN ('PYTHON', 'SQL')" in captured[0]
 
 
 # ===========================================================================

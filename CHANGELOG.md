@@ -37,6 +37,56 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   classifies a file as a baseline (baselines are command-generated history
   entries, not script files). Corrected so the code reads as intended, and so
   the branch is right if it is ever wired up.
+- **``undo``, ``validate`` and ``repair`` now treat versioned Python
+  migrations like versioned SQL ones.** Three checks tested the recorded
+  migration type against ``SQL``, which is the type of a versioned *SQL*
+  script — a versioned Python script is recorded as ``PYTHON``, so each check
+  silently excluded it. ``migrate → undo → migrate → undo`` refused the second
+  undo with *"Version N has already been undone"* and walked down to the
+  previous version instead, because the re-apply was not counted; out-of-order
+  detection could never flag a Python migration; and ``repair`` skipped a
+  Python migration's checksum drift while still reporting success, leaving
+  ``validate`` failing afterwards. All three now use the shared versioned-type
+  predicate, so any versioned script format is handled identically. The
+  "next version to undo" suggestion that accompanies a refused undo was dead
+  code (it compared an enum member to a string) and never appeared; it is now
+  live, ignores failed and already-undone versions, and orders versions
+  semantically so it names the version ``undo`` would actually pick.
+
+- **Two safety gates that had been silently skipping Python migrations now
+  run. Behaviour changes on upgrade for any project with ``.py`` migrations —
+  read this before upgrading.** Internally, ``MigrationType.SQL`` names a
+  migration's *role* — versioned, run-once — and not its file format; a
+  versioned ``.py`` script is labelled ``MigrationType.PYTHON`` instead. Two
+  checks compared against ``MigrationType.SQL`` directly and therefore applied
+  to ``.sql`` migrations only. Nothing needs to be configured or opted into:
+  both gates take effect as soon as you upgrade.
+  - **Baseline filtering now suppresses pre-baseline Python migrations.**
+    Versioned scripts at or below the baseline version are dropped before
+    validation, because a baseline declares them already applied. Python
+    migrations were never dropped, so a pre-baseline ``.py`` migration stayed
+    in scope and was re-executed against the very schema that had been
+    baselined to say it had already run — re-running arbitrary migration code
+    against live data. After upgrading, those migrations are correctly
+    suppressed: ``info`` and ``validate`` list fewer migrations than before,
+    and ``migrate`` stops re-running them. If a pre-baseline ``.py`` migration
+    genuinely still needs to run, renumber it above the baseline version.
+  - **Strict-mode out-of-order detection now runs on Python migrations.**
+    Strict mode fails validation when a pending versioned script has a version
+    lower than the highest applied version. Both halves of the check — the
+    pending set and the applied set — were restricted to ``.sql``, so on a
+    project whose versioned migrations are all ``.py`` the check found nothing
+    to compare and returned a pass without examining anything. Because
+    validation also runs as ``migrate``'s pre-flight, this gated ``migrate``
+    and not only ``validate``. After upgrading, ``validate --strict``,
+    ``migrate --strict`` and any command run with ``strict_mode`` enabled in
+    configuration **will start failing** on Python projects that have a real
+    out-of-order migration and that passed yesterday. That failure is correct
+    and the migration order was already wrong — the gate simply was not
+    running. Resolve it exactly as on a SQL project: renumber the
+    out-of-order migration above the highest applied version, or drop
+    ``--strict`` / ``strict_mode`` if applying migrations out of order is
+    intended.
 - **PostgreSQL extension functions installed in ``public`` are resolvable
   again.** dblift set a schema-only ``search_path``, so anything an extension
   installs into ``public`` — ``gen_random_uuid`` and ``digest`` (pgcrypto),

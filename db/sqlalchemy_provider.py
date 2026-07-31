@@ -9,7 +9,7 @@ are left abstract for per-DB subclasses (e.g. SqliteNativeProvider).
 """
 
 import re
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Mapping, Optional, Tuple
 
 from sqlalchemy import text
 from sqlalchemy.engine import Connection, Engine, Transaction
@@ -382,34 +382,55 @@ class SqlAlchemyProvider(NativeProvider):
         """
         conn = self._ensure_connection()
         self._end_open_transaction(conn)
-        previous_isolation_level = conn.get_execution_options().get("isolation_level")
+        previous_execution_options = conn.get_execution_options()
         conn.execution_options(isolation_level="AUTOCOMMIT")
         try:
             return self.execute_statement(sql, schema=schema, params=params)
         finally:
             if not conn.closed:
                 self._end_open_transaction(conn)
-                self._restore_isolation_level(conn, previous_isolation_level)
+                self._restore_isolation_level(conn, previous_execution_options)
 
     @staticmethod
-    def _restore_isolation_level(conn: Connection, previous: Optional[str]) -> None:
-        """Put *conn* back on the isolation level it had before the autocommit switch.
+    def _restore_isolation_level(conn: Connection, previous: Mapping[str, Any]) -> None:
+        """Put *conn* back exactly as it stood before the autocommit switch.
 
-        ``get_isolation_level()`` cannot be used to capture that level: it
-        reports the *server* level and never returns ``AUTOCOMMIT``, so a
-        connection handed to dblift by ``from_sqlalchemy`` on an engine built
-        with ``isolation_level="AUTOCOMMIT"`` would come back downgraded to a
-        transactional level and stay that way — the caller's session silently
-        changed behaviour after one flagged statement.
+        *previous* is the connection's whole execution-option mapping, captured
+        before the switch. ``Connection.get_execution_options()`` hands back the
+        live ``immutabledict`` and ``execution_options()`` rebinds it rather
+        than mutating it, so keeping that reference is a true snapshot.
 
-        A level the caller set on the connection itself shows up in its
-        execution options and is reapplied directly. Otherwise the level came
-        from the engine or the dialect default, and SQLAlchemy's own
-        return-to-pool hook restores exactly that, ``AUTOCOMMIT`` included.
+        Two things have to go back, and only one of them has a public setter:
+
+        * **The DBAPI connection.** A level the caller set on the connection
+          itself is in *previous* and is reapplied through
+          ``execution_options``. Otherwise the level came from the engine or the
+          dialect default, which no accessor reports:
+          ``get_isolation_level()`` reads the *server* level and never returns
+          ``AUTOCOMMIT``, so replaying it would downgrade a session handed to
+          dblift by ``from_sqlalchemy`` on an engine built with
+          ``isolation_level="AUTOCOMMIT"`` and leave it transactional for good.
+          SQLAlchemy's ``reset_isolation_level`` restores exactly what the
+          connection was configured with, ``AUTOCOMMIT`` included.
+
+        * **The recorded execution option.** ``reset_isolation_level`` touches
+          the DBAPI connection only — ``get_execution_options()`` keeps
+          reporting ``AUTOCOMMIT`` after it runs — and SQLAlchemy offers no
+          supported way to unset an option: ``isolation_level=None`` raises, and
+          the mapping is immutable so the key cannot be popped. Left behind, the
+          option is read back by the *next* call as though the caller had
+          configured it, and the restore reapplies ``AUTOCOMMIT`` permanently:
+          the second ``CREATE INDEX CONCURRENTLY`` of an ordinary index
+          migration would disarm rollback for every migration after it in the
+          same run. Rebinding the private attribute to the captured mapping is
+          what puts it back; restoring the mapping wholesale rather than
+          editing one key also leaves the caller's unrelated options intact.
         """
-        if previous is not None:
-            conn.execution_options(isolation_level=previous)
-            return
-        dbapi_connection = conn.connection.dbapi_connection
-        if dbapi_connection is not None:
-            conn.dialect.reset_isolation_level(dbapi_connection)
+        previous_level = previous.get("isolation_level")
+        if previous_level is not None:
+            conn.execution_options(isolation_level=previous_level)
+        else:
+            dbapi_connection = conn.connection.dbapi_connection
+            if dbapi_connection is not None:
+                conn.dialect.reset_isolation_level(dbapi_connection)
+        conn._execution_options = previous  # type: ignore[assignment]

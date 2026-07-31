@@ -463,11 +463,19 @@ class _RecordingConnection:
         return self._isolation_level
 
     def get_execution_options(self) -> Dict[str, Any]:
-        return dict(self._execution_options)
+        # SQLAlchemy returns the live mapping, not a copy — safe there because
+        # it is immutable and rebound on every change. Handing back a copy here
+        # would let a caller that snapshots it drift from what the real object
+        # does.
+        return self._execution_options
 
     def execution_options(self, **kwargs: Any) -> None:
         level = kwargs["isolation_level"]
-        self._execution_options["isolation_level"] = level
+        # Replaces the mapping rather than mutating it, as SQLAlchemy does:
+        # Connection._execution_options is an immutabledict and the real method
+        # rebinds it to ``old.union(opt)``. A snapshot taken beforehand must
+        # therefore keep describing the state before the switch.
+        self._execution_options = {**self._execution_options, "isolation_level": level}
         self.autocommit = level == "AUTOCOMMIT"
         if not self.autocommit:
             self._isolation_level = level
@@ -479,8 +487,14 @@ class _RecordingConnection:
         The real hook restores whatever the connection was configured with —
         engine-level AUTOCOMMIT included — which is why production code calls
         it instead of replaying a level read back from the server.
+
+        It touches the *DBAPI* connection only. It deliberately does **not**
+        clear ``isolation_level`` from the execution options: verified against
+        SQLAlchemy 2.0, ``get_execution_options()`` still reports
+        ``AUTOCOMMIT`` afterwards. A fake that cleared it would be
+        self-healing where the real object latches, and would hide any
+        capture that reads its own leftover back as the caller's setting.
         """
-        self._execution_options.pop("isolation_level", None)
         self.autocommit = self._configured_autocommit
         self.calls.append("reset_isolation_level")
 
@@ -653,3 +667,148 @@ def test_autocommit_statement_default_delegates_to_plain_execution() -> None:
 
     assert p.execute_autocommit_statement("CREATE THING", schema="s") == 3
     assert p.executed == [("CREATE THING", "s", None)]
+
+
+def test_autocommit_statement_does_not_latch_on_a_second_call(cfg: DbliftConfig) -> None:
+    """Two flagged statements on one connection must not leave it autocommitting.
+
+    One index migration normally carries several ``CREATE INDEX CONCURRENTLY``
+    statements. If the switch is restored by replaying whatever the execution
+    options report, the second call reads back the option the *first* call
+    wrote and reapplies ``AUTOCOMMIT`` — disarming rollback for every migration
+    that follows in the same run.
+    """
+    conn = _RecordingConnection(isolation_level="READ COMMITTED")
+    provider = _provider_with(conn, cfg)
+
+    provider.execute_autocommit_statement("CREATE INDEX CONCURRENTLY ix_a ON t (a)")
+    provider.execute_autocommit_statement("CREATE INDEX CONCURRENTLY ix_b ON t (b)")
+
+    assert conn.autocommit is False
+    assert conn.get_execution_options().get("isolation_level") is None
+
+
+# ---------------------------------------------------------------------------
+# execute_autocommit_statement against real SQLAlchemy — no fake in the way.
+#
+# The latch is a fact about sqlalchemy.engine.Connection, not about any
+# database: reset_isolation_level restores the DBAPI flag and leaves
+# isolation_level sitting in the connection's execution options. SQLite is
+# enough to pin it, and pysqlite maps AUTOCOMMIT onto dbapi.isolation_level.
+# ---------------------------------------------------------------------------
+
+
+def _sqlite_provider(cfg: DbliftConfig, **engine_kwargs: Any) -> _Concrete:
+    """Return a provider on a real in-memory SQLite engine."""
+    from sqlalchemy import create_engine
+
+    engine = create_engine("sqlite://", **engine_kwargs)
+    return _Concrete.from_engine(cfg, engine, owns_engine=True)  # type: ignore[return-value]
+
+
+def _dbapi_autocommitting(conn: Any) -> bool:
+    """Report the real DBAPI autocommit state of *conn*.
+
+    pysqlite expresses AUTOCOMMIT as ``dbapi_connection.isolation_level is
+    None``; any transactional level leaves it a string. This is the flag that
+    decides whether a failed migration can still be rolled back, so it is what
+    the assertions are made against — not the execution options, which are
+    only how the level was asked for.
+    """
+    return bool(conn.connection.dbapi_connection.isolation_level is None)
+
+
+def test_autocommit_statement_does_not_latch_a_real_connection(cfg: DbliftConfig) -> None:
+    """Repeated flagged statements leave a real connection transactional."""
+    provider = _sqlite_provider(cfg)
+    try:
+        provider.execute_autocommit_statement("CREATE TABLE a (c INTEGER)")
+        conn = provider.connection
+        assert _dbapi_autocommitting(conn) is False
+
+        provider.execute_autocommit_statement("CREATE TABLE b (c INTEGER)")
+
+        assert conn is provider.connection
+        assert _dbapi_autocommitting(conn) is False
+        # The option must be gone, not merely overridden: leaving it behind is
+        # what makes the *next* capture read dblift's own switch back as the
+        # caller's configuration.
+        assert conn.get_execution_options().get("isolation_level") is None
+    finally:
+        provider.close()
+
+
+def test_autocommit_statement_keeps_an_autocommit_engine_autocommitting(
+    cfg: DbliftConfig,
+) -> None:
+    """An engine built with ``isolation_level="AUTOCOMMIT"`` stays autocommitting.
+
+    ``from_sqlalchemy`` accepts such an engine. Nothing in the connection's
+    execution options records it, and ``get_isolation_level()`` reports the
+    server level, so restoring what either reports would silently downgrade
+    the caller's session.
+    """
+    provider = _sqlite_provider(cfg, isolation_level="AUTOCOMMIT")
+    try:
+        conn = provider._ensure_connection()
+        assert _dbapi_autocommitting(conn) is True
+
+        provider.execute_autocommit_statement("CREATE TABLE a (c INTEGER)")
+        assert _dbapi_autocommitting(conn) is True
+
+        provider.execute_autocommit_statement("CREATE TABLE b (c INTEGER)")
+        assert _dbapi_autocommitting(conn) is True
+        assert conn.get_execution_options().get("isolation_level") is None
+    finally:
+        provider.close()
+
+
+def test_autocommit_statement_preserves_a_caller_set_autocommit_connection(
+    cfg: DbliftConfig,
+) -> None:
+    """A caller who set AUTOCOMMIT on the connection itself keeps it."""
+    provider = _sqlite_provider(cfg)
+    try:
+        conn = provider.create_connection()
+        conn.execution_options(isolation_level="AUTOCOMMIT")
+
+        provider.execute_autocommit_statement("CREATE TABLE a (c INTEGER)")
+        provider.execute_autocommit_statement("CREATE TABLE b (c INTEGER)")
+
+        assert _dbapi_autocommitting(conn) is True
+        assert conn.get_execution_options().get("isolation_level") == "AUTOCOMMIT"
+    finally:
+        provider.close()
+
+
+def test_autocommit_statement_preserves_a_caller_set_transactional_connection(
+    cfg: DbliftConfig,
+) -> None:
+    """A transactional level set on the connection is restored, not cleared."""
+    provider = _sqlite_provider(cfg)
+    try:
+        conn = provider.create_connection()
+        conn.execution_options(isolation_level="SERIALIZABLE")
+
+        provider.execute_autocommit_statement("CREATE TABLE a (c INTEGER)")
+        provider.execute_autocommit_statement("CREATE TABLE b (c INTEGER)")
+
+        assert _dbapi_autocommitting(conn) is False
+        assert conn.get_execution_options().get("isolation_level") == "SERIALIZABLE"
+    finally:
+        provider.close()
+
+
+def test_autocommit_statement_keeps_unrelated_execution_options(cfg: DbliftConfig) -> None:
+    """Restoring the isolation level must not discard the caller's other options."""
+    provider = _sqlite_provider(cfg)
+    try:
+        conn = provider.create_connection()
+        conn.execution_options(logging_token="caller")
+
+        provider.execute_autocommit_statement("CREATE TABLE a (c INTEGER)")
+
+        assert conn.get_execution_options().get("logging_token") == "caller"
+        assert conn.get_execution_options().get("isolation_level") is None
+    finally:
+        provider.close()
