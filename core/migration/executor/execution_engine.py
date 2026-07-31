@@ -7,8 +7,9 @@ callbacks, and SQL statements.
 
 import re
 import time
+from contextlib import nullcontext
 from enum import Enum
-from typing import Any, Dict, List, Optional
+from typing import Any, ContextManager, Dict, List, Optional
 
 from config.dblift_config import DbliftConfig
 from core.constants import (
@@ -162,6 +163,7 @@ class ExecutionEngine:
             return
 
         transaction_started = False
+        autocommit_scope: ContextManager[Any] = nullcontext()
         if policy.transactional:
             transaction_started = self._prepare_transaction(migration)
             if not transaction_started:
@@ -171,12 +173,16 @@ class ExecutionEngine:
                 return
         elif policy.autocommit_required:
             self.log.warning(
-                f"Executing {migration.script_name} without an explicit transaction: {policy.reason}"
+                f"Executing {migration.script_name} in autocommit mode: {policy.reason}. "
+                "Every statement commits on its own, so a later failure leaves the "
+                "earlier statements applied."
             )
-            self._ensure_autocommit_for_policy(migration)
+            self._rollback_before_autocommit(migration)
+            autocommit_scope = self._autocommit_scope()
 
         try:
-            success = self._execute_statements(statements, migration, result, start_time)
+            with autocommit_scope:
+                success = self._execute_statements(statements, migration, result, start_time)
             if not success:
                 return  # _handle_statement_failure already rolled back
 
@@ -281,7 +287,7 @@ class ExecutionEngine:
             return []
         return executable
 
-    def _ensure_autocommit_for_policy(self, migration: Migration) -> None:
+    def _rollback_before_autocommit(self, migration: Migration) -> None:
         """Best-effort rollback so autocommit-only statements are not inside an old transaction."""
         if not isinstance(self.provider, TransactionalProvider):
             return
@@ -291,12 +297,20 @@ class ExecutionEngine:
             self.log.debug(
                 f"Could not rollback before autocommit execution for {migration.script_name}: {exc}"
             )
-        conn = getattr(self.provider, "connection", None)
-        if conn is not None and hasattr(conn, "setAutoCommit"):
-            try:
-                conn.setAutoCommit(True)
-            except Exception as exc:
-                self.log.debug(f"Could not force autocommit before {migration.script_name}: {exc}")
+
+    def _autocommit_scope(self) -> ContextManager[Any]:
+        """Session scope in which flagged statements really run outside a transaction.
+
+        Ending the engine's own transaction is not enough: the driver opens one
+        per statement on its own, which is what the vendor then rejects. The
+        provider owns the connection and therefore the mechanism — the engine
+        only asks for the scope, so no dialect knowledge lands in core.
+        Providers that do not implement it inherit the no-op default on
+        :class:`db.provider_interfaces.TransactionalProvider`.
+        """
+        if not isinstance(self.provider, TransactionalProvider):
+            return nullcontext()
+        return self.provider.autocommit_execution()
 
     def _parse_sql_statements(
         self,

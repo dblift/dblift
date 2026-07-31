@@ -9,7 +9,8 @@ are left abstract for per-DB subclasses (e.g. SqliteNativeProvider).
 """
 
 import re
-from typing import Any, Dict, List, Optional, Tuple
+from contextlib import contextmanager
+from typing import Any, Dict, Iterator, List, Optional, Tuple
 
 from sqlalchemy import text
 from sqlalchemy.engine import Connection, Engine, Transaction
@@ -346,3 +347,41 @@ class SqlAlchemyProvider(NativeProvider):
             self._tx = None
         elif self._connection is not None and not getattr(self._connection, "closed", False):
             self._connection.rollback()
+
+    def _end_open_transaction(self, conn: Connection) -> None:
+        """Discard any open transaction so the connection sits on a clean boundary."""
+        if self._tx is not None:
+            self._tx.rollback()
+            self._tx = None
+        if conn.in_transaction():
+            conn.rollback()
+
+    @contextmanager
+    def autocommit_execution(self) -> Iterator[None]:
+        """Switch the session to real autocommit for the duration of the block.
+
+        :meth:`execute_statement` commits *after* the statement, which is too
+        late for DDL the server refuses to run inside a transaction block: at
+        SQLAlchemy's default isolation level the DBAPI connection has
+        ``autocommit=False``, so the driver opens a block for the statement
+        itself and PostgreSQL rejects e.g. ``CREATE INDEX CONCURRENTLY`` before
+        the commit is ever reached. ``isolation_level="AUTOCOMMIT"`` is the
+        mechanism that actually flips the DBAPI connection.
+
+        SQLAlchemy refuses to change the isolation level while a transaction is
+        in progress, and will not retroactively autocommit one that is already
+        open — hence the rollback to a clean boundary on the way in. The level
+        is restored on the way out so the *next* migration keeps its
+        all-or-nothing rollback; leaving the session autocommitting would
+        silently disarm it.
+        """
+        conn = self._ensure_connection()
+        self._end_open_transaction(conn)
+        previous_isolation_level = conn.get_isolation_level()
+        conn.execution_options(isolation_level="AUTOCOMMIT")
+        try:
+            yield
+        finally:
+            if not conn.closed:
+                self._end_open_transaction(conn)
+                conn.execution_options(isolation_level=previous_isolation_level)

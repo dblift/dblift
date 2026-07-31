@@ -198,7 +198,7 @@ class TestExecuteMigrationMainFlow(unittest.TestCase):
 
         with patch.object(engine, "_parse_sql_statements", return_value=["SELECT 1"]):
             with patch.object(engine, "_classify_execution_statements", return_value=[]):
-                with patch.object(engine, "_ensure_autocommit_for_policy") as mock_ac:
+                with patch.object(engine, "_rollback_before_autocommit") as mock_ac:
                     with patch.object(engine, "_execute_statements", return_value=True):
                         with patch.object(
                             engine, "_record_autocommit_migration_history"
@@ -446,42 +446,23 @@ class TestTransactionLivenessProbeSQL(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
-# _ensure_autocommit_for_policy
+# _rollback_before_autocommit
 # ---------------------------------------------------------------------------
 
 
-class TestEnsureAutocommitForPolicy(unittest.TestCase):
-    def test_sets_autocommit_on_connection(self):
-        engine = _make_engine()
-        migration = _make_sql_migration()
-        engine.provider.connection.setAutoCommit = MagicMock()
-
-        engine._ensure_autocommit_for_policy(migration)
-
-        engine.provider.connection.setAutoCommit.assert_called_once_with(True)
-
+class TestRollbackBeforeAutocommit(unittest.TestCase):
     def test_rollback_failure_logs_debug(self):
         engine = _make_engine()
         migration = _make_sql_migration()
         engine.provider.rollback_transaction.side_effect = Exception("rollback failed")
 
-        engine._ensure_autocommit_for_policy(migration)
+        engine._rollback_before_autocommit(migration)
 
         debug_calls = [str(c) for c in engine.log.debug.call_args_list]
         self.assertTrue(any("Could not rollback before autocommit" in c for c in debug_calls))
 
-    def test_setautocommit_failure_logs_debug(self):
-        engine = _make_engine()
-        migration = _make_sql_migration()
-        engine.provider.connection.setAutoCommit.side_effect = Exception("setAutoCommit failed")
-
-        engine._ensure_autocommit_for_policy(migration)
-
-        debug_calls = [str(c) for c in engine.log.debug.call_args_list]
-        self.assertTrue(any("Could not force autocommit" in c for c in debug_calls))
-
     def test_non_transactional_provider_skips(self):
-        """Provider that doesn't implement TransactionalProvider: skip rollback/setAutoCommit."""
+        """Provider that doesn't implement TransactionalProvider: skip the rollback."""
         from db.base_provider import BaseProvider
 
         engine = _make_engine()
@@ -489,7 +470,7 @@ class TestEnsureAutocommitForPolicy(unittest.TestCase):
         migration = _make_sql_migration()
 
         # Should not raise
-        engine._ensure_autocommit_for_policy(migration)
+        engine._rollback_before_autocommit(migration)
 
 
 # ---------------------------------------------------------------------------

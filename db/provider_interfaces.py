@@ -7,8 +7,9 @@ isinstance(provider, TransactionalProvider) pour vérifier le support.
 """
 
 from abc import ABC, abstractmethod
+from contextlib import contextmanager
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Iterator, List, Optional
 
 
 @dataclass(frozen=True)
@@ -231,6 +232,25 @@ class TransactionalProvider(ABC):
     def rollback_transaction(self) -> None:
         """Rollback the current transaction."""
         ...
+
+    @contextmanager
+    def autocommit_execution(self) -> Iterator[None]:
+        """Scope in which statements must reach the server outside a transaction.
+
+        ``TransactionPolicy`` flags statements the vendor refuses to run inside
+        a transaction block (``CREATE INDEX CONCURRENTLY``,
+        ``CREATE FULLTEXT CATALOG``, ...). Not opening an explicit transaction
+        is not enough when the driver opens one of its own per statement, so
+        the provider — which owns the connection — is asked for a session that
+        genuinely autocommits.
+
+        The default is a no-op: it fits providers whose driver already
+        autocommits, and every dialect whose
+        ``non_transactional_sql_patterns`` is empty never enters this scope at
+        all. See :meth:`db.sqlalchemy_provider.SqlAlchemyProvider.autocommit_execution`
+        for the SQLAlchemy implementation.
+        """
+        yield
 
     def supports_transactions(self) -> bool:
         """Retourne True si ce provider supporte les transactions traditionnelles.
