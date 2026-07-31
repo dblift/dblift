@@ -17,6 +17,10 @@ class RedshiftProvider(PostgreSqlProvider):
     """Redshift provider with Redshift-specific history and locking SQL."""
 
     canonical_dialect_key = "redshift"
+    #: Redshift does not implement ``SAVEPOINT``, so ``clean`` cannot isolate
+    #: a failed drop the way PostgreSQL does — issue the drop directly rather
+    #: than sending a statement the engine will reject.
+    clean_drop_uses_savepoint: bool = False
     _migration_lock_connection: Any | None = None
     _migration_lock_transaction: Any | None = None
 

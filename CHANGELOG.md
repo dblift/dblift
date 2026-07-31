@@ -13,6 +13,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **One failing ``DROP`` no longer turns a PostgreSQL ``clean`` into a total
+  no-op.** PostgreSQL aborts the *entire* transaction on any statement error,
+  so the first object that could not be dropped — a permission-denied object,
+  a dependency, an object type the enumeration misclassifies — left the
+  connection unusable and every remaining ``DROP`` failed with
+  ``InFailedSqlTransaction``. The command reported the failures but had
+  dropped nothing at all, including its own ``dblift_schema_history`` and
+  ``dblift_migration_lock`` tables, leaving a schema that could not be cleaned
+  again without manual repair. Each drop now runs inside a savepoint that is
+  unwound on failure, so the loop genuinely continues and only the objects
+  that really could not be dropped are left behind. A partial clean is still
+  reported as a failure. Dialects that keep the transaction alive after a
+  statement error, or that commit DDL implicitly, are unchanged — no savepoint
+  statement is sent to them.
 - **Placeholders in SQL callbacks are substituted before the SQL is parsed.**
   ``execute_callback`` handed the raw file content to the statement parser and
   substituted afterwards, per statement. Tokenisers that do not recognise ``$``
