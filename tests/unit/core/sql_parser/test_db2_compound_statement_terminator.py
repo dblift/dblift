@@ -83,6 +83,88 @@ class TestDB2CompoundStatementTerminator:
 
 
 @pytest.mark.unit
+class TestDB2CompoundBlockBoundaries:
+    """A compound block ends at its own END, never at a later one.
+
+    ``extract_compound_statements`` returns the span it matched, so unlike the
+    boolean detection gates its boundary is what the splitter actually cuts on.
+    """
+
+    def test_unterminated_compound_does_not_swallow_a_trailing_case_expression(self):
+        parser = DB2RegexParser()
+        compound = "BEGIN ATOMIC\n  INSERT INTO audit_log VALUES (1);\nEND"
+        query = "SELECT CASE WHEN id = 1 THEN 'x' ELSE 'y' END"
+
+        statements = parser.split_statements(f"{compound}\n{query}")
+
+        assert statements == [compound, query]
+
+    def test_unterminated_compound_does_not_swallow_trailing_sql(self):
+        parser = DB2RegexParser()
+        compound = "BEGIN ATOMIC\n  INSERT INTO audit_log VALUES (1);\nEND"
+        query = "SELECT * FROM audit_log"
+
+        statements = parser.split_statements(f"{compound}\n{query}")
+
+        assert statements == [compound, query]
+
+    def test_two_compounds_with_the_second_unterminated(self):
+        parser = DB2RegexParser()
+        first = "BEGIN ATOMIC\n  INSERT INTO audit_log VALUES (1);\nEND"
+        second = "BEGIN ATOMIC\n  UPDATE counters SET c = c + 1;\nEND"
+
+        statements = parser.split_statements(f"{first};\n{second}")
+
+        assert statements == [first, second]
+
+    def test_case_expression_inside_a_compound_does_not_close_it(self):
+        parser = DB2RegexParser()
+        compound = (
+            "BEGIN ATOMIC\n"
+            "  SET g = CASE WHEN s > 90 THEN 'A' ELSE 'B' END;\n"
+            "  INSERT INTO audit_log VALUES (g);\n"
+            "END"
+        )
+
+        assert parser.split_statements(compound) == [compound]
+
+    def test_nested_block_inside_a_compound_does_not_close_it(self):
+        parser = DB2RegexParser()
+        compound = (
+            "BEGIN ATOMIC\n"
+            "  BEGIN\n"
+            "    INSERT INTO audit_log VALUES (1);\n"
+            "  END;\n"
+            "  UPDATE counters SET c = c + 1;\n"
+            "END"
+        )
+
+        assert parser.split_statements(compound) == [compound]
+
+    def test_end_if_inside_a_compound_does_not_close_it(self):
+        parser = DB2RegexParser()
+        compound = (
+            "BEGIN ATOMIC\n"
+            "  IF s = 1 THEN\n"
+            "    INSERT INTO audit_log VALUES (1);\n"
+            "  END IF;\n"
+            "END"
+        )
+
+        assert parser.split_statements(compound) == [compound]
+
+    def test_end_while_inside_a_compound_does_not_close_it(self):
+        parser = DB2RegexParser()
+        compound = """BEGIN ATOMIC
+  WHILE s < 10 DO
+    SET s = s + 1;
+  END WHILE;
+END"""
+
+        assert parser.split_statements(compound) == [compound]
+
+
+@pytest.mark.unit
 class TestDB2CompoundDetectionStaysNarrow:
     """Ordinary statements ending in the word END must not be treated as blocks."""
 

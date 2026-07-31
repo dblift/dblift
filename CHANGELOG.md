@@ -85,9 +85,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   was stricter than the code it guarded: an unterminated block fell through to
   plain semicolon splitting and was cut at the first semicolon inside its body,
   which DB2 rejected with ``SQL0104N ... unexpected token "END-OF-STATEMENT"``.
-  The terminator is now optional when ``END`` ends the script, so the whole
-  block is submitted as one statement. Scripts that do end with ``;`` or ``@``
-  are matched exactly as before.
+  The trigger and procedure detectors now accept an ``END`` that ends the
+  script; they only decide which splitter runs, so the block boundary still
+  comes from depth counting. Compound ``BEGIN ATOMIC`` blocks are now located
+  by that same depth counting instead of by a pattern reaching for the closing
+  ``END`` — a pattern cannot tell a block's own ``END`` from a nested one, so
+  it truncated a compound at an inner ``END;`` or at a ``CASE ... END``, and
+  could run past the block to a later ``END`` and swallow the statement after
+  it. Scripts that end with ``;`` or ``@`` are unaffected.
 
 ### Removed
 
