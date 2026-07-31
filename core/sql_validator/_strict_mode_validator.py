@@ -17,6 +17,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, List
 
+from core.migration import is_versioned
 from core.migration.migration import Migration, MigrationType
 from core.migration.version_utils import is_migration_success
 
@@ -69,10 +70,12 @@ def validate_strict_mode_rules(
         result.error_message = error_message
         return False
 
+    # Role, not format: MigrationType.SQL means "versioned", and a versioned
+    # .py script carries MigrationType.PYTHON instead.
     pending_versioned = [
         s
         for s in scripts
-        if s.type == MigrationType.SQL
+        if is_versioned(s.type)
         and s.script_name
         not in [
             getattr(a, "script_name", None)
@@ -87,7 +90,7 @@ def validate_strict_mode_rules(
     applied_versions = [
         getattr(a, "version", None)
         for a in applied_migrations
-        if getattr(a, "type", None) == MigrationType.SQL
+        if is_versioned(getattr(a, "type", None))
         and is_migration_success(getattr(a, "success", None))
     ]
 
