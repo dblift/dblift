@@ -9,6 +9,7 @@ from core.migration.clean_summary import CleanExecutionSummary
 from db.plugins.postgresql._provider_query_executor import ProviderQueryExecutor
 from db.plugins.postgresql.postgresql.locking_manager import _get_advisory_lock_key
 from db.plugins.postgresql.postgresql.schema_operations import PostgreSqlSchemaOperations
+from db.plugins.postgresql.search_path import search_path_schemas
 from db.provider_interfaces import DroppableObject
 from db.sqlalchemy_provider import SqlAlchemyProvider
 
@@ -104,8 +105,14 @@ class PostgreSqlProvider(SqlAlchemyProvider):
         return str(rows[0]["version"]) if rows else "Unknown PostgreSQL Version"
 
     def set_current_schema(self, schema: str) -> None:
-        """Set the PostgreSQL search path for this connection."""
-        super().execute_statement(f"SET search_path TO {_quote_identifier(schema)}")
+        """Set the PostgreSQL search path for this connection.
+
+        ``public`` follows the target schema so extension functions installed
+        there stay callable unqualified — see
+        :mod:`db.plugins.postgresql.search_path`.
+        """
+        path = ", ".join(_quote_identifier(name) for name in search_path_schemas(schema))
+        super().execute_statement(f"SET search_path TO {path}")
 
     def get_schema_qualified_name(self, schema: str, object_name: str) -> str:
         """Return a quoted schema-qualified object name."""

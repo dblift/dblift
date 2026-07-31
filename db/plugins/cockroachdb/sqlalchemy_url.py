@@ -16,6 +16,7 @@ from db.plugins.cockroachdb.sqlalchemy_dialect import (
     ensure_cockroach_drivername,
     register_cockroach_dialect,
 )
+from db.plugins.postgresql.search_path import search_path_option
 
 
 def _string_mapping(values: Any) -> Dict[str, str]:
@@ -39,7 +40,7 @@ def _query_mapping(database_config: Any, base_query: Any = None) -> Dict[str, st
 
     schema = getattr(database_config, "schema", None)
     if schema:
-        schema_option = f"-csearch_path={schema}"
+        schema_option = search_path_option(str(schema))
         query["options"] = (
             f"{query['options']} {schema_option}" if query.get("options") else schema_option
         )
