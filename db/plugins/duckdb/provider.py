@@ -8,6 +8,7 @@ from sqlalchemy import text
 from config import DbliftConfig
 from core.logger import Log
 from core.migration.clean_summary import CleanExecutionSummary
+from db.plugins.base_history_manager import UNDO_HISTORY_TYPE
 from db.provider_interfaces import DroppableObject
 from db.sqlalchemy_provider import SqlAlchemyProvider
 
@@ -485,7 +486,7 @@ class DuckDBProvider(SqlAlchemyProvider):
             {
                 "version": version,
                 "description": f"Undo migration {version}",
-                "type": "UNDO_SQL",
+                "type": UNDO_HISTORY_TYPE,
                 "script": undo_script,
                 "checksum": 0,
                 "success": True,

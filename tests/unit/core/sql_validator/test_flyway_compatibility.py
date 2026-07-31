@@ -118,3 +118,42 @@ class TestFlywayCompatibilityHistoryColumns:
 
         assert result.success is False
         assert "Flyway has 1 migrations" in result.error_message
+
+
+@pytest.mark.unit
+class TestFlywayCompatibilityAcceptedTypes:
+    """The two sides of the type gate accept different vocabularies.
+
+    A dblift history legitimately contains ``PYTHON`` rows — that is what a
+    versioned ``.py`` migration is stored as. Flyway has no such type and never
+    writes one, so widening both sides would weaken a real check.
+    """
+
+    def test_dblift_python_row_is_compatible(self):
+        provider = MagicMock()
+        provider.table_exists.side_effect = [True, True]
+        provider.execute_query.side_effect = [[_row()], [{**_row(), "type": "PYTHON"}]]
+
+        result = _make_validator(provider).validate_flyway_compatibility()
+
+        assert result["compatible"] is True, result["error_message"]
+
+    def test_flyway_python_row_is_still_rejected(self):
+        provider = MagicMock()
+        provider.table_exists.side_effect = [True, True]
+        provider.execute_query.side_effect = [[{**_row(), "type": "PYTHON"}], [_row()]]
+
+        result = _make_validator(provider).validate_flyway_compatibility()
+
+        assert result["compatible"] is False
+        assert "Unsupported migration type" in str(result["error_message"])
+
+    def test_dblift_unknown_row_is_still_rejected(self):
+        provider = MagicMock()
+        provider.table_exists.side_effect = [True, True]
+        provider.execute_query.side_effect = [[_row()], [{**_row(), "type": "NONSENSE"}]]
+
+        result = _make_validator(provider).validate_flyway_compatibility()
+
+        assert result["compatible"] is False
+        assert "Migration type mismatch" in str(result["error_message"])

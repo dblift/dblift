@@ -21,7 +21,27 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Dict, List
 
-from core.migration.migration import normalize_migration_checksum
+from core.migration.migration import MigrationType, normalize_migration_checksum
+
+# The two histories accept different type vocabularies, so one set cannot serve
+# both sides of the comparison.
+#
+# Flyway writes ``SQL`` for a versioned script, ``BASELINE`` for a baseline
+# marker and ``UNDO_SQL`` for an undo. It has no notion of a Python migration
+# and never writes ``PYTHON``; accepting it here would weaken a real check.
+FLYWAY_VALID_TYPES = frozenset(
+    {
+        MigrationType.SQL.name,
+        MigrationType.BASELINE.name,
+        MigrationType.UNDO_SQL.name,
+    }
+)
+
+# Dblift additionally stores ``PYTHON`` for versioned scripts in a non-SQL
+# format (``MigrationType.SQL`` means "versioned", not "SQL format"). Without
+# it a single Python migration made a dblift history declare itself
+# Flyway-incompatible.
+DBLIFT_VALID_TYPES = FLYWAY_VALID_TYPES | {MigrationType.PYTHON.name}
 
 if TYPE_CHECKING:
     from core.sql_validator.migration_validator import (
@@ -154,9 +174,7 @@ def validate_flyway_compatibility(mv: "MigrationValidator") -> Dict[str, object]
             flyway_type = flyway_migration.get("type", "").upper()
             Dblift_type = Dblift_migration.get("type", "").upper()
 
-            valid_types = {"SQL", "BASELINE", "UNDO_SQL"}
-            # Allow SQL and BASELINE for versioned/repeatable, UNDO_SQL for undo
-            if flyway_type not in valid_types:
+            if flyway_type not in FLYWAY_VALID_TYPES:
                 result["compatible"] = False
                 result["error_message"] = (
                     f"Unsupported migration type at position {i+1}: "
@@ -164,7 +182,7 @@ def validate_flyway_compatibility(mv: "MigrationValidator") -> Dict[str, object]
                 )
                 mv.log.error(str(result["error_message"]))
                 break
-            if Dblift_type not in valid_types:
+            if Dblift_type not in DBLIFT_VALID_TYPES:
                 result["compatible"] = False
                 result["error_message"] = (
                     f"Migration type mismatch at position {i+1}: "

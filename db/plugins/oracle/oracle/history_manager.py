@@ -8,7 +8,11 @@ creation, recording migrations, retrieving applied migrations, and repair operat
 from typing import Any, Dict, List, Optional, Union, cast
 
 from core.logger import Log
-from db.plugins.base_history_manager import BaseHistoryManager
+from db.plugins.base_history_manager import (
+    UNDO_HISTORY_TYPE,
+    VERSIONED_HISTORY_TYPES,
+    BaseHistoryManager,
+)
 
 
 class OracleHistoryManager(BaseHistoryManager):
@@ -209,7 +213,7 @@ class OracleHistoryManager(BaseHistoryManager):
             undo_info = {
                 "version": version,
                 "description": f"Undo migration {version}",
-                "type": "UNDO_SQL",
+                "type": UNDO_HISTORY_TYPE,
                 "script": self._undo_script_name(version, script_name),
                 # Batch-6 BUG-02: typed NULL on an INT column fails on strict
                 # drivers; ``0`` is the existing sentinel for "no checksum".
@@ -378,8 +382,11 @@ class OracleHistoryManager(BaseHistoryManager):
             if row.get("installed_rank", 0) > version_highest_rank.get(version, 0):
                 version_highest_rank[version] = row.get("installed_rank", 0)
 
-            # Track latest success status for each version (only for SQL type)
-            if row.get("type") == "SQL":
+            # Track latest success status for each version (versioned rows only).
+            # ``SQL`` is the versioned type for .sql scripts and ``PYTHON`` for
+            # scripted formats; both must be tracked, or a Python migration's
+            # attempts are invisible here and it can never be reported UNDONE.
+            if row.get("type") in VERSIONED_HISTORY_TYPES:
                 # Initialize if not already present
                 if version not in version_latest_success:
                     version_latest_success[version] = False
@@ -401,7 +408,7 @@ class OracleHistoryManager(BaseHistoryManager):
             elif row["success"] is True or row["success"] == 1:
                 if row.get("type") == "UNDO_SQL":
                     row["status"] = "SUCCESS"
-                elif row.get("type") == "SQL":
+                elif row.get("type") in VERSIONED_HISTORY_TYPES:
                     if version in undone_versions and not version_latest_success.get(version):
                         if row.get("installed_rank") == version_highest_rank.get(version, 0):
                             row["status"] = "UNDONE"
