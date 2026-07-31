@@ -174,36 +174,6 @@ class SQLiteRegexParser(EnhancedRegexParser):
 
         return statements
 
-    def classify_statement(self, statement: str) -> str:
-        """Classify a SQL statement type.
-
-        Args:
-            statement: SQL statement to classify
-
-        Returns:
-            Classification: 'DDL', 'DML', 'QUERY', or 'UNKNOWN'
-        """
-        if not statement:
-            return "UNKNOWN"
-
-        statement = statement.strip()
-
-        # SQLiteConfig has these methods, but mypy sees DialectConfig type
-        sqlite_config = self.config
-        if sqlite_config.is_ddl_statement(statement):  # type: ignore[attr-defined]
-            return "DDL"
-        elif sqlite_config.is_dml_statement(statement):  # type: ignore[attr-defined]
-            return "DML"
-        elif sqlite_config.is_query_statement(statement):  # type: ignore[attr-defined]
-            return "QUERY"
-
-        # Check for transaction control
-        upper_stmt = statement.upper()
-        if upper_stmt.startswith(("BEGIN", "COMMIT", "ROLLBACK", "SAVEPOINT", "RELEASE")):
-            return "TCL"  # Transaction Control Language
-
-        return "UNKNOWN"
-
     def extract_objects(
         self, sql_content: str, default_schema: Optional[str] = None
     ) -> List[SqlObject]:
