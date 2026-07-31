@@ -402,6 +402,38 @@ class SQLiteProvider(NativeProvider):
         connection = self._get_connection()
         self.history_manager.record_migration(connection, schema, migration_info, table_name)
 
+    def repair_migration_history(
+        self,
+        schema: str,
+        script_name: str,
+        checksum: Any,
+        table_name: str = "dblift_schema_history",
+        success_value: Optional[Any] = None,
+    ) -> bool:
+        """Update checksum and success state for an existing migration row.
+
+        Args:
+            schema: Schema name (ignored for SQLite)
+            script_name: Script whose history row is repaired
+            checksum: New checksum value
+            table_name: Custom history table name
+            success_value: New success flag, or None to keep the stored one
+
+        Returns:
+            bool: True if a history row was updated
+        """
+        if not self.table_exists(schema, table_name):
+            return False
+        affected = self.execute_statement(
+            f"""
+            UPDATE {self.get_schema_qualified_name(schema, table_name)}
+            SET checksum = ?, success = COALESCE(?, success)
+            WHERE script = ?
+            """,
+            params=[checksum, success_value, script_name],
+        )
+        return affected > 0
+
     def create_history_table(self, schema: str, table_name: str) -> str:
         """Generate the SQL to create a migration history table.
 

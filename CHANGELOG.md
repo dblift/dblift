@@ -26,6 +26,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   with ``DROP MATERIALIZED VIEW``. The lookup is gated on a ``pg_class``
   probe, so servers without TimescaleDB never touch the
   ``timescaledb_information`` catalog.
+- **``repair`` fixes checksum drift on SQLite.** ``SQLiteProvider`` never
+  defined ``repair_migration_history``, which every other provider implements
+  and which ``repair`` calls to rewrite a drifted checksum. The resulting
+  ``AttributeError`` was swallowed, so the command reported "No history entry
+  updated … Repair may require manual intervention", left the stored checksum
+  unchanged and exited failed. SQLite now updates the row like the other
+  relational providers — ``COALESCE(?, success)`` preserves the stored success
+  flag when no explicit value is given, and the real ``UPDATE`` rowcount
+  reports whether a row matched. A conformance test now requires every
+  provider to expose the method, since no base class declared it.
 - **Per-call placeholders reach Python migrations.** ``migrate(placeholders=...)``
   and ``undo(placeholders=...)`` are applied to the placeholder service that the
   SQL path substitutes from, but the Python executor built
