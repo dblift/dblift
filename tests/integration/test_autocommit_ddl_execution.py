@@ -217,6 +217,56 @@ def test_transactional_guarantee_survives_an_earlier_autocommit_migration(
     assert "later_table" not in _tables(admin)
 
 
+def test_transactional_guarantee_survives_two_autocommit_statements(pg_schema, tmp_path) -> None:
+    """Two flagged statements in one migration must not disarm the next migration.
+
+    An index migration ordinarily carries several ``CREATE INDEX
+    CONCURRENTLY`` statements, and each one is switched and restored
+    separately. Restoring by replaying whatever the connection's execution
+    options report makes the *second* statement read back the switch the first
+    one left behind and reapply ``AUTOCOMMIT`` — permanently, because nothing
+    clears it again. The migration after it then keeps its first statement
+    after its second one fails, while history records it FAILED: a half-applied
+    schema dblift believes was never run.
+
+    The single-statement case above cannot see this; the latch needs two.
+    """
+    admin = pg_schema
+    migrations_dir = tmp_path / "migrations"
+    create_versioned_migration(
+        migrations_dir,
+        "1.0.0",
+        "create_docs",
+        f'CREATE TABLE "{SCHEMA}"."docs" (id INT PRIMARY KEY, body TEXT, title TEXT);',
+    )
+    create_versioned_migration(
+        migrations_dir,
+        "2.0.0",
+        "index_docs",
+        f'CREATE INDEX CONCURRENTLY "ix_docs_body" ON "{SCHEMA}"."docs" (body);\n'
+        f'CREATE INDEX CONCURRENTLY "ix_docs_title" ON "{SCHEMA}"."docs" (title);',
+    )
+    create_versioned_migration(
+        migrations_dir,
+        "3.0.0",
+        "half_applied",
+        f'CREATE TABLE "{SCHEMA}"."later_table" (id INT);\n'
+        f'CREATE TABLE "{SCHEMA}"."later_table" (id INT);',
+    )
+
+    result = _migrate_as_schema_owner(migrations_dir)
+
+    assert result.success is False
+    assert "ix_docs_body" in _indexes(admin)
+    assert "ix_docs_title" in _indexes(admin)
+    assert "later_table" not in _tables(admin)
+    history = admin.execute_query(
+        f'SELECT script, success FROM "{SCHEMA}"."dblift_schema_history" ORDER BY installed_rank'
+    )
+    by_script = {row["script"]: row["success"] for row in history}
+    assert by_script.get("V3_0_0__half_applied.sql") is False
+
+
 def test_dialect_without_non_transactional_patterns_is_unaffected(tmp_path) -> None:
     """SQLite declares no non-transactional patterns; its rollback must be untouched."""
     db_path = tmp_path / "ac_test.db"
