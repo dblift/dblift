@@ -24,6 +24,7 @@ import pytest
 from core.migration.sql.sql_execution_service import SqlExecutionService
 from core.sql_model.base import SqlStatementType
 from db.plugins.sqlserver.quirks import SqlserverQuirks
+from db.provider_interfaces import TransactionalProvider
 
 pytestmark = [pytest.mark.unit]
 
@@ -484,6 +485,105 @@ class TestJournalWithoutOptionalMethods(unittest.TestCase):
 
         svc = SqlExecutionService(provider=provider, sql_analyzer=sql_analyzer, journal=journal)
         svc.execute_statement("CREATE TABLE t (id INT)")  # Should not raise
+
+
+# ---------------------------------------------------------------------------
+# Autocommit routing — statements flagged by TransactionPolicy
+# ---------------------------------------------------------------------------
+
+
+class _AutocommitRecordingProvider(TransactionalProvider):
+    """Provider recording which execution path each statement takes.
+
+    Not a ``MagicMock`` on purpose: the routing must fail loudly if the
+    service calls a method this contract does not have.
+    """
+
+    def __init__(self):
+        self.calls = []
+
+    def begin_transaction(self):  # noqa: D102
+        pass
+
+    def commit_transaction(self):  # noqa: D102
+        pass
+
+    def rollback_transaction(self):  # noqa: D102
+        pass
+
+    def execute_statement(self, sql, schema=None, params=None):
+        self.calls.append(("execute", sql, schema))
+        return 1
+
+    def execute_autocommit_statement(self, sql, schema=None, params=None):
+        self.calls.append(("autocommit", sql, schema))
+        return 1
+
+
+class TestAutocommitRouting(unittest.TestCase):
+    """``autocommit=True`` routes through ``execute_autocommit_statement``.
+
+    The switch is per statement: only the migration's own statements are
+    flagged, so journal writes and everything else the service does keep
+    their normal execution path.
+    """
+
+    def _service_with(self, provider, stmt_type):
+        sql_analyzer = MagicMock()
+        sql_analyzer.get_statement_type.return_value = stmt_type
+        del sql_analyzer.parser_factory
+        return SqlExecutionService(
+            provider=provider,
+            sql_analyzer=sql_analyzer,
+            logger=MagicMock(),
+            schema="public",
+            quirks=SqlserverQuirks(),
+        )
+
+    def test_ddl_statement_routes_to_autocommit_call(self):
+        provider = _AutocommitRecordingProvider()
+        svc = self._service_with(provider, SqlStatementType.DDL.value)
+
+        is_query, rows = svc.execute_statement(
+            "CREATE INDEX CONCURRENTLY ix ON t (c)", autocommit=True
+        )
+
+        self.assertFalse(is_query)
+        self.assertEqual(rows, 1)
+        self.assertEqual(
+            provider.calls, [("autocommit", "CREATE INDEX CONCURRENTLY ix ON t (c)", "public")]
+        )
+
+    def test_unknown_statement_type_routes_to_autocommit_call(self):
+        """The unknown-type fallback (e.g. VACUUM) must route identically."""
+        provider = _AutocommitRecordingProvider()
+        svc = self._service_with(provider, "UNKNOWN")
+
+        is_query, rows = svc.execute_statement("VACUUM", autocommit=True)
+
+        self.assertFalse(is_query)
+        self.assertEqual(provider.calls, [("autocommit", "VACUUM", "public")])
+
+    def test_default_keeps_the_plain_execution_path(self):
+        provider = _AutocommitRecordingProvider()
+        svc = self._service_with(provider, SqlStatementType.DDL.value)
+
+        svc.execute_statement("CREATE TABLE t (id INT)")
+
+        self.assertEqual(provider.calls, [("execute", "CREATE TABLE t (id INT)", "public")])
+
+    def test_provider_outside_the_contract_falls_back_to_plain_execution(self):
+        """autocommit=True on a non-TransactionalProvider must not crash."""
+        provider = MagicMock(spec=["execute_query", "execute_statement"])
+        provider.execute_statement.return_value = 1
+        svc = self._service_with(provider, SqlStatementType.DDL.value)
+
+        is_query, rows = svc.execute_statement("CREATE THING", autocommit=True)
+
+        self.assertFalse(is_query)
+        provider.execute_statement.assert_called_once_with(
+            "CREATE THING", schema="public", params=None
+        )
 
 
 if __name__ == "__main__":

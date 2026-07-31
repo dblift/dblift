@@ -12,6 +12,7 @@ from core.constants import (
 from core.logger import NullLog
 from core.sql_model.base import SqlStatementType
 from db.base_quirks import BaseQuirks
+from db.provider_interfaces import TransactionalProvider
 
 
 def _format_execution_error(exc: BaseException) -> str:
@@ -114,7 +115,11 @@ class SqlExecutionService:
         return self._quirks
 
     def execute_statement(
-        self, statement: str, stmt_index: Optional[int] = None, params: Optional[List[Any]] = None
+        self,
+        statement: str,
+        stmt_index: Optional[int] = None,
+        params: Optional[List[Any]] = None,
+        autocommit: bool = False,
     ) -> Tuple[bool, Union[List[Dict[str, Any]], int]]:
         """Execute a SQL statement.
 
@@ -122,6 +127,10 @@ class SqlExecutionService:
             statement: SQL statement to execute
             stmt_index: Optional index for journal tracking
             params: Optional parameters for prepared statements
+            autocommit: Route the statement through the provider's
+                ``execute_autocommit_statement`` so it reaches the server
+                outside a transaction block (statements flagged by
+                ``TransactionPolicy``, e.g. ``CREATE INDEX CONCURRENTLY``)
 
         Returns:
             Tuple of (is_query_result, result) where:
@@ -175,9 +184,7 @@ class SqlExecutionService:
                         statement = normalized_sql
 
                 # Execute the statement, providing schema context so providers can ensure readiness
-                rows_affected = self.provider.execute_statement(
-                    statement, schema=self.schema, params=params
-                )
+                rows_affected = self._provider_execute(statement, params, autocommit)
 
                 # Record statement completion in journal
                 if self.journal and hasattr(self.journal, "record_statement_complete"):
@@ -328,9 +335,7 @@ class SqlExecutionService:
                     f"Unknown statement type '{statement_type}' - using execute_statement"
                 )
 
-                rows_affected = self.provider.execute_statement(
-                    statement, schema=self.schema, params=params
-                )
+                rows_affected = self._provider_execute(statement, params, autocommit)
 
                 # Record statement completion in journal
                 if self.journal and hasattr(self.journal, "record_statement_complete"):
@@ -361,6 +366,22 @@ class SqlExecutionService:
 
             # Re-raise the exception
             raise
+
+    def _provider_execute(
+        self, statement: str, params: Optional[List[Any]], autocommit: bool
+    ) -> int:
+        """Send a non-query statement to the provider.
+
+        Autocommit routing lives here so the DDL/DML branch and the
+        unknown-type fallback treat flagged statements identically.
+        """
+        if autocommit and isinstance(self.provider, TransactionalProvider):
+            return int(
+                self.provider.execute_autocommit_statement(
+                    statement, schema=self.schema, params=params
+                )
+            )
+        return int(self.provider.execute_statement(statement, schema=self.schema, params=params))
 
     @staticmethod
     def _extract_simple_table_name(identifier: str) -> str:
