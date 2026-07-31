@@ -328,7 +328,6 @@ database:
         mark_as_executed = True
         strict_mode = True
         history_table = "h"
-        journal_enabled = True
 
     with patch("os.path.exists", return_value=True):
         config = load_config(str(config_file), Args())
@@ -344,4 +343,3 @@ database:
         assert config.mark_as_executed is True
         assert config.strict_mode is True
         assert config.history_table == "h"
-        assert config.journal_enabled is True

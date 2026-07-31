@@ -8,7 +8,6 @@ def test_registry_scalar_arg_flows_through():
 
 def test_arg_only_extras_preserved():
     assert DbliftConfig.from_args_dict({"undo": True})["undo"] is True
-    assert DbliftConfig.from_args_dict({"journal_enabled": False})["journal_enabled"] is False
 
 
 def test_empty_and_none_args_skipped():

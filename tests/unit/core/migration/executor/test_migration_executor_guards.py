@@ -42,7 +42,6 @@ class TestGetInstalledBy(unittest.TestCase):
         config.database.username = "testuser"
         config.database.type = "postgresql"
         config.database.schema = "public"
-        config.journal_enabled = False
         config.history_table = None
         config.migrations.script_encoding = "utf-8"
         config.migrations.detect_encoding = False
