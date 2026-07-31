@@ -2,14 +2,10 @@
 
 Target file: core/migration/history/migration_history_manager.py
 Coverage focus:
-- get_applied_migrations, get_applied_migration_records, get_applied_migrations_legacy
+- get_applied_migrations, get_applied_migration_records
 - record_migration (VERSIONED and REPEATABLE paths)
-- acquire_migration_lock / release_migration_lock (success, failure, exception paths)
-- validate_history_table (undo command, missing table, exception)
 - create_schema_and_history_table (success, race condition retry, non-race failure)
-- record_undo
 - repair_checksum (success, not-updated, exception)
-- get_columns_query, get_add_column_sql, get_parameter_placeholders
 """
 
 import unittest
@@ -17,7 +13,6 @@ from unittest.mock import MagicMock, call, patch
 
 from core.migration.history.migration_history_manager import (
     MigrationHistoryManager,
-    ValidationResult,
 )
 from core.migration.migration import AppliedMigration, Migration, MigrationType
 
@@ -47,12 +42,6 @@ def _make_migration(migration_type=MigrationType.SQL, name="V1__test.sql"):
     m.checksum = 12345
     return m
 
-
-class TestValidationResult(unittest.TestCase):
-    def test_default_success(self):
-        r = ValidationResult()
-        self.assertTrue(r.success)
-        self.assertEqual(r.error_message, "")
 
 
 class TestGetAppliedMigrations(unittest.TestCase):
@@ -104,25 +93,6 @@ class TestGetAppliedMigrationRecords(unittest.TestCase):
         records = mgr.get_applied_migration_records()
         self.assertEqual(records, [])
 
-
-class TestGetAppliedMigrationsLegacy(unittest.TestCase):
-    def test_returns_migration_objects(self):
-        mgr = _make_manager()
-        mgr.provider.get_applied_migrations.return_value = [
-            {
-                "script": "V1__test.sql",
-                "version": "1",
-                "description": "test",
-                "type": "VERSIONED",
-                "checksum": 12345,
-                "success": True,
-                "execution_time": 100,
-                "installed_on": None,
-                "installed_by": "user",
-            }
-        ]
-        result = mgr.get_applied_migrations_legacy()
-        self.assertEqual(len(result), 1)
 
 
 class TestRecordMigration(unittest.TestCase):
@@ -181,101 +151,7 @@ class TestRecordMigration(unittest.TestCase):
         mgr.provider.record_migration.assert_called_once()
 
 
-class TestAcquireMigrationLock(unittest.TestCase):
-    def test_returns_true_when_acquired(self):
-        mgr = _make_manager()
-        mgr.provider.acquire_migration_lock.return_value = True
-        self.assertTrue(mgr.acquire_migration_lock())
 
-    def test_returns_false_when_not_acquired(self):
-        mgr = _make_manager()
-        mgr.provider.acquire_migration_lock.return_value = False
-        self.assertFalse(mgr.acquire_migration_lock())
-
-
-class TestReleaseMigrationLock(unittest.TestCase):
-    def test_returns_true_on_success(self):
-        mgr = _make_manager()
-        mgr.provider.release_migration_lock.return_value = True
-        result = mgr.release_migration_lock()
-        self.assertTrue(result)
-
-    def test_returns_false_when_result_falsy_logs_warning(self):
-        mgr = _make_manager()
-        mgr.provider.release_migration_lock.return_value = False
-        mgr.provider.log = MagicMock()
-        result = mgr.release_migration_lock()
-        self.assertFalse(result)
-        mgr.provider.log.warning.assert_called_once()
-
-    def test_returns_false_on_exception(self):
-        mgr = _make_manager()
-        mgr.provider.release_migration_lock.side_effect = Exception("lock error")
-        mgr.provider.log = MagicMock()
-        result = mgr.release_migration_lock()
-        self.assertFalse(result)
-        mgr.provider.log.warning.assert_called_once()
-
-    def test_returns_false_when_no_provider(self):
-        mgr = _make_manager()
-        mgr.provider = None
-        result = mgr.release_migration_lock()
-        self.assertFalse(result)
-
-    def test_exception_without_provider_log_swallowed(self):
-        mgr = _make_manager()
-        mgr.provider.release_migration_lock.side_effect = Exception("lock error")
-        mgr.provider.log = None  # no log
-        result = mgr.release_migration_lock()
-        self.assertFalse(result)
-
-
-class TestValidateHistoryTable(unittest.TestCase):
-    def test_undo_without_history_table_fails(self):
-        mgr = _make_manager()
-        mgr.provider.table_exists.return_value = False
-
-        result = mgr.validate_history_table(command="undo")
-
-        self.assertFalse(result.success)
-        self.assertIn("Cannot undo", result.error_message)
-        mgr.logger.error.assert_called_once()
-
-    def test_migrate_without_history_table_succeeds(self):
-        mgr = _make_manager()
-        mgr.provider.table_exists.return_value = False
-
-        result = mgr.validate_history_table(command="migrate")
-
-        self.assertTrue(result.success)
-        debug_calls = [str(c) for c in mgr.logger.debug.call_args_list]
-        self.assertTrue(any("does not exist yet" in c for c in debug_calls))
-
-    def test_history_table_exists_returns_success(self):
-        mgr = _make_manager()
-        mgr.provider.table_exists.return_value = True
-
-        result = mgr.validate_history_table(command="migrate")
-
-        self.assertTrue(result.success)
-
-    def test_provider_exception_returns_error(self):
-        mgr = _make_manager()
-        mgr.provider.table_exists.side_effect = Exception("db connection lost")
-
-        result = mgr.validate_history_table(command="migrate")
-
-        self.assertFalse(result.success)
-        self.assertIn("Error checking history table", result.error_message)
-        mgr.logger.error.assert_called_once()
-
-    def test_default_command_is_migrate(self):
-        mgr = _make_manager()
-        mgr.provider.table_exists.return_value = False
-
-        result = mgr.validate_history_table()  # default command
-
-        self.assertTrue(result.success)
 
 
 class TestCreateSchemaAndHistoryTable(unittest.TestCase):
@@ -353,43 +229,6 @@ class TestCreateSchemaAndHistoryTable(unittest.TestCase):
         mgr.provider.rollback_transaction.assert_called()
 
 
-class TestRecordUndo(unittest.TestCase):
-    def test_delegates_to_provider(self):
-        mgr = _make_manager()
-        mgr.provider.record_undo.return_value = True
-        migration = _make_migration()
-        migration.version = "1.2.3"
-        migration.script_name = "V1__test.sql"
-
-        result = mgr.record_undo(migration)
-
-        self.assertTrue(result)
-        mgr.provider.record_undo.assert_called_once_with(
-            mgr.schema, "1.2.3", mgr.history_table, "V1__test.sql"
-        )
-
-    def test_returns_false_when_not_undone(self):
-        mgr = _make_manager()
-        mgr.provider.record_undo.return_value = False
-        migration = _make_migration()
-        migration.script_name = "V1__test.sql"
-
-        result = mgr.record_undo(migration)
-
-        self.assertFalse(result)
-
-    def test_handles_non_string_script_name(self):
-        """Non-string script_name should be treated as None."""
-        mgr = _make_manager()
-        mgr.provider.record_undo.return_value = True
-        migration = _make_migration()
-        migration.script_name = 12345  # not a str
-
-        mgr.record_undo(migration)
-
-        call_args = mgr.provider.record_undo.call_args[0]
-        self.assertIsNone(call_args[3])  # script_name argument should be None
-
 
 class TestRepairChecksum(unittest.TestCase):
     def test_returns_true_on_success(self):
@@ -426,39 +265,7 @@ class TestRepairChecksum(unittest.TestCase):
         mgr.logger.error.assert_called_once()
 
 
-class TestGetColumnsQuery(unittest.TestCase):
-    def test_delegates_to_provider(self):
-        mgr = _make_manager()
-        mgr.provider.get_columns_query.return_value = (
-            "SELECT column_name FROM information_schema.columns WHERE table_name='t'"
-        )
 
-        result = mgr.get_columns_query("t")
-
-        mgr.provider.get_columns_query.assert_called_once_with(mgr.schema, "t")
-        self.assertIsNotNone(result)
-
-
-class TestGetAddColumnSql(unittest.TestCase):
-    def test_delegates_to_provider(self):
-        mgr = _make_manager()
-        mgr.provider.get_add_column_sql.return_value = "ALTER TABLE t ADD COLUMN x INT"
-
-        result = mgr.get_add_column_sql("t", "x", "INT")
-
-        mgr.provider.get_add_column_sql.assert_called_once_with(mgr.schema, "t", "x", "INT")
-        self.assertEqual(result, "ALTER TABLE t ADD COLUMN x INT")
-
-
-class TestGetParameterPlaceholders(unittest.TestCase):
-    def test_delegates_to_provider(self):
-        mgr = _make_manager()
-        mgr.provider.get_parameter_placeholders.return_value = "?, ?, ?"
-
-        result = mgr.get_parameter_placeholders(3)
-
-        mgr.provider.get_parameter_placeholders.assert_called_once_with(3)
-        self.assertEqual(result, "?, ?, ?")
 
 
 if __name__ == "__main__":

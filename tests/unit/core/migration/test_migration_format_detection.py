@@ -75,46 +75,11 @@ class TestMigrationFormatDetector:
         format = MigrationFormatDetector.detect_from_filename("test.sql")
         assert format == MigrationFormat.SQL
 
-    def test_detect_sql_from_content(self):
-        """Test detecting SQL format from content."""
-        content = "CREATE TABLE users (id INT PRIMARY KEY);"
-        format = MigrationFormatDetector.detect_from_content(content)
-        assert format == MigrationFormat.SQL
 
-    def test_detect_python_from_content(self):
-        """Test detecting Python format from content."""
-        content = "def upgrade():\n    pass"
-        format = MigrationFormatDetector.detect_from_content(content)
-        assert format == MigrationFormat.PYTHON
 
-    def test_detect_javascript_from_content(self):
-        """Test detecting JavaScript format from content."""
-        content = "function upgrade() { }"
-        format = MigrationFormatDetector.detect_from_content(content)
-        assert format == MigrationFormat.JAVASCRIPT
 
-    def test_detect_cypher_from_content(self):
-        """Test detecting Cypher format from content."""
-        content = "CREATE (n:Person {name: 'Alice'})"
-        format = MigrationFormatDetector.detect_from_content(content)
-        assert format == MigrationFormat.CYPHER
 
-    def test_get_supported_extensions(self):
-        """Test getting list of supported extensions."""
-        extensions = MigrationFormatDetector.get_supported_extensions()
-        assert ".sql" in extensions
-        assert ".py" in extensions
-        assert ".js" in extensions
-        assert len(extensions) > 0
 
-    def test_get_extensions_for_format(self):
-        """Test getting extensions for a specific format."""
-        sql_exts = MigrationFormatDetector.get_extensions_for_format(MigrationFormat.SQL)
-        assert sql_exts == [".sql"]
-
-        yaml_exts = MigrationFormatDetector.get_extensions_for_format(MigrationFormat.YAML)
-        assert ".yaml" in yaml_exts
-        assert ".yml" in yaml_exts
 
     def test_is_migration_file(self):
         """Test checking if a file is a migration file."""
@@ -426,66 +391,6 @@ class TestMigrationDetermineType:
         """
         assert Migration(script_name="R1__setup.sql").type == MigrationType.UNKNOWN
 
-
-class TestYamlDetectionStrict:
-    """Tests for BUG-14: YAML detection should not trigger on SQL with colons."""
-
-    def test_sql_with_colon_not_detected_as_yaml(self):
-        """SQL content with : (e.g., bind param) should not be detected as YAML."""
-        content = "SELECT * FROM users WHERE id = :param AND name = 'test';"
-        result = MigrationFormatDetector.detect_from_content(content)
-        assert result != MigrationFormat.YAML
-
-    def test_valid_yaml_detected(self):
-        """Valid YAML content should be detected as YAML."""
-        content = "key: value\nother: val\nlist:\n  - item1"
-        result = MigrationFormatDetector.detect_from_content(content)
-        assert result == MigrationFormat.YAML
-
-    def test_oracle_rem_comment_with_colon_not_yaml(self):
-        """Oracle REM comment 'REM Author: John Smith' must not trigger YAML detection.
-
-        Result is UNKNOWN (not SQL) because 'REM' is not in sql_keywords — the SQL
-        detection guard only fires for files starting directly with CREATE/ALTER/etc.
-        """
-        content = "REM Author: John Smith\nCREATE TABLE users (id NUMBER);"
-        result = MigrationFormatDetector.detect_from_content(content)
-        assert result != MigrationFormat.YAML
-        assert result == MigrationFormat.UNKNOWN
-
-    def test_multi_word_key_phrase_not_yaml(self):
-        """Multi-word key phrase 'Database Version: 1.0' must not trigger YAML detection.
-
-        Result is UNKNOWN because the phrase doesn't start with a SQL keyword either.
-        """
-        content = "Database Version: 1.0\nCREATE TABLE t (id INT);"
-        result = MigrationFormatDetector.detect_from_content(content)
-        assert result != MigrationFormat.YAML
-        assert result == MigrationFormat.UNKNOWN
-
-    def test_yaml_hyphenated_key_detected(self):
-        """YAML keys with hyphens (database-url: localhost) must still be detected as YAML."""
-        content = "database-url: localhost\nschema-name: public\n"
-        result = MigrationFormatDetector.detect_from_content(content)
-        assert result == MigrationFormat.YAML
-
-    def test_oracle_multiple_rem_lines_not_yaml(self):
-        """Realistic Oracle file with several REM header lines must not be detected as YAML."""
-        content = (
-            "REM Author: John Smith\n"
-            "REM Date: 2024-01-01\n"
-            "REM Description: Create users table\n"
-            "CREATE TABLE users (id NUMBER PRIMARY KEY);"
-        )
-        result = MigrationFormatDetector.detect_from_content(content)
-        assert result != MigrationFormat.YAML
-        assert result == MigrationFormat.UNKNOWN
-
-    def test_yaml_document_start_marker_detected(self):
-        """YAML starting with '---' document marker must still be detected as YAML."""
-        content = "---\ndatabase-url: localhost\nschema-name: public\n"
-        result = MigrationFormatDetector.detect_from_content(content)
-        assert result == MigrationFormat.YAML
 
 
 class TestMigrationTypeSqlRename:

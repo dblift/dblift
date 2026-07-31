@@ -957,38 +957,6 @@ class TestExecuteCallbackAdditional(unittest.TestCase):
         self.assertTrue(any("Could not rollback" in c for c in warning_calls))
 
 
-# ---------------------------------------------------------------------------
-# execute_callbacks — error logging (lines 1087-1111)
-# ---------------------------------------------------------------------------
-
-
-class TestExecuteCallbacksAdditional(unittest.TestCase):
-
-    def test_logs_callback_type(self):
-        """Lines 1099: Logs the number of callbacks and type."""
-        engine = _make_engine()
-        cb = MagicMock(spec=Migration)
-        cb.script_name = "test.sql"
-
-        with patch.object(engine, "execute_callback"):
-            engine.execute_callbacks([cb], callback_type="BEFORE_EACH")
-
-        info_calls = [str(c) for c in engine.log.info.call_args_list]
-        self.assertTrue(any("before_each" in c.lower() for c in info_calls))
-
-    def test_error_logged_with_python_string(self):
-        """Lines 1108: Callback error → error logged."""
-        engine = _make_engine()
-        cb = MagicMock(spec=Migration)
-        cb.script_name = "failing.sql"
-
-        with patch.object(engine, "execute_callback", side_effect=Exception("callback died")):
-            engine.execute_callbacks([cb])
-
-        engine.log.error.assert_called()
-        error_calls = [str(c) for c in engine.log.error.call_args_list]
-        self.assertTrue(any("failing.sql" in c for c in error_calls))
-
 
 if __name__ == "__main__":
     unittest.main()

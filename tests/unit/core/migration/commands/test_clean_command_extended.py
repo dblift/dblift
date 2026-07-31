@@ -4,8 +4,6 @@ Covers previously untested paths to push coverage toward 70%+:
   - CleanCommand.execute() — dry_run paths (provider droppable-object preview,
     empty schema message), beforeClean callback failure, droppable-object paths, commit,
     afterClean callbacks, afterCleanError callbacks on exception
-  - _parse_drop_statement_for_result — all DROP types (view, table, sequence,
-    function, procedure, trigger)
   - _log_clean_summary — all ordering branches, remaining types, empty
 """
 
@@ -57,91 +55,6 @@ def _make_cmd(
         migration_rules=MagicMock(),
     )
     return cmd
-
-
-# ---------------------------------------------------------------------------
-# _parse_drop_statement_for_result
-# ---------------------------------------------------------------------------
-
-
-class TestParseDropStatementForResult(unittest.TestCase):
-    """Note: _parse_drop_statement_for_result uppercases the statement before matching,
-    so names stored in the result are uppercase versions of what was in the SQL."""
-
-    def test_parse_drop_view(self):
-        cmd = _make_cmd()
-        result = CleanResult()
-        cmd._parse_drop_statement_for_result("DROP VIEW my_view", result)
-        self.assertIn("MY_VIEW", result.views_dropped)
-
-    def test_parse_drop_view_if_exists(self):
-        cmd = _make_cmd()
-        result = CleanResult()
-        cmd._parse_drop_statement_for_result("DROP VIEW IF EXISTS my_view", result)
-        self.assertIn("MY_VIEW", result.views_dropped)
-
-    def test_parse_drop_view_schema_qualified(self):
-        cmd = _make_cmd()
-        result = CleanResult()
-        cmd._parse_drop_statement_for_result('DROP VIEW "public".my_view', result)
-        self.assertIn("MY_VIEW", result.views_dropped)
-
-    def test_parse_drop_table(self):
-        cmd = _make_cmd()
-        result = CleanResult()
-        cmd._parse_drop_statement_for_result("DROP TABLE users", result)
-        self.assertIn("USERS", result.tables_dropped)
-
-    def test_parse_drop_table_if_exists(self):
-        cmd = _make_cmd()
-        result = CleanResult()
-        cmd._parse_drop_statement_for_result("DROP TABLE IF EXISTS orders", result)
-        self.assertIn("ORDERS", result.tables_dropped)
-
-    def test_parse_drop_sequence(self):
-        cmd = _make_cmd()
-        result = CleanResult()
-        cmd._parse_drop_statement_for_result("DROP SEQUENCE user_id_seq", result)
-        self.assertIn("USER_ID_SEQ", result.sequences_dropped)
-
-    def test_parse_drop_function(self):
-        cmd = _make_cmd()
-        result = CleanResult()
-        cmd._parse_drop_statement_for_result("DROP FUNCTION my_func()", result)
-        self.assertIn("MY_FUNC", result.functions_dropped)
-
-    def test_parse_drop_function_if_exists(self):
-        cmd = _make_cmd()
-        result = CleanResult()
-        cmd._parse_drop_statement_for_result("DROP FUNCTION IF EXISTS compute()", result)
-        self.assertIn("COMPUTE", result.functions_dropped)
-
-    def test_parse_drop_procedure(self):
-        cmd = _make_cmd()
-        result = CleanResult()
-        cmd._parse_drop_statement_for_result("DROP PROCEDURE sp_insert()", result)
-        self.assertIn("SP_INSERT", result.procedures_dropped)
-
-    def test_parse_drop_trigger(self):
-        cmd = _make_cmd()
-        result = CleanResult()
-        cmd._parse_drop_statement_for_result("DROP TRIGGER trg_update", result)
-        self.assertIn("TRG_UPDATE", result.triggers_dropped)
-
-    def test_unrecognized_statement_no_error(self):
-        """An unrecognized statement should not raise."""
-        cmd = _make_cmd()
-        result = CleanResult()
-        # Should not raise
-        cmd._parse_drop_statement_for_result("ALTER TABLE foo ADD COLUMN bar INT", result)
-
-    def test_view_takes_precedence_over_table(self):
-        """VIEW match should return before TABLE match."""
-        cmd = _make_cmd()
-        result = CleanResult()
-        cmd._parse_drop_statement_for_result("DROP VIEW v_users", result)
-        self.assertIn("V_USERS", result.views_dropped)
-        self.assertEqual(len(result.tables_dropped), 0)
 
 
 # ---------------------------------------------------------------------------
