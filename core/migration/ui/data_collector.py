@@ -33,7 +33,6 @@ class MigrationDataCollector:
         """
         self.log = log if log is not None else NullLog()
         self.script_manager = script_manager
-        self._target_version: Optional[str] = None
 
     def _format_installed_on(self, installed_on: Any) -> str:
         """Format installed_on timestamp for display.
@@ -158,7 +157,6 @@ class MigrationDataCollector:
             )
 
         # Legacy signature
-        self._target_version = target_version
         if pending_migrations is None:
             pending_migrations = []
         if applied_migrations is None:
@@ -409,8 +407,6 @@ class MigrationDataCollector:
         Returns:
             List of migration data dictionaries
         """
-        self._target_version = target_version
-
         if self.script_manager is None:
             logger = self.log
             self.script_manager = MigrationScriptManager(logger, "utf-8")

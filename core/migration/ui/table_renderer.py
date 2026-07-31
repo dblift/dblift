@@ -1,8 +1,8 @@
 """
 Table rendering and display utilities.
 
-This module handles the formatting and display of migration data in table format,
-query results, and other structured display formats.
+This module handles the formatting and display of migration data in table format
+and other structured display formats.
 """
 
 import sys
@@ -27,38 +27,6 @@ class TableRenderer:
             log: Logger instance
         """
         self.log = log if log is not None else NullLog()
-
-    def display_query_results(self, results: List[Dict[str, Any]]) -> None:
-        """Display query results in a formatted table.
-
-        Args:
-            results: List of dictionaries representing query results
-        """
-        if not results:
-            self.log.info("No results found.")
-            return
-
-        all_columns: set[str] = set()
-        for result in results:
-            if isinstance(result, dict):
-                all_columns.update(result.keys())
-
-        if not all_columns:
-            self.log.info("No columns found in results.")
-            return
-
-        columns = sorted(list(all_columns))
-
-        table = Table(box=box.ROUNDED, show_header=True, header_style="bold")
-        for col in columns:
-            table.add_column(str(col))
-
-        for result in results:
-            if isinstance(result, dict):
-                table.add_row(*[str(result.get(col, "")) for col in columns])
-
-        self.log.info(render_table_to_str(table))
-        self.log.info(f"Total rows: {len(results)}")
 
     def _build_rich_table(self, migrations_data: List[Dict[str, Any]]) -> Table:
         """Build a Rich Table with colored State column."""
@@ -158,71 +126,6 @@ class TableRenderer:
         con.print()
         con.print(table)
         con.print(f"Total migrations: {len(migrations_data)}")
-
-    def display_migration_status(self, migration: Any) -> None:
-        """Display the status of a single migration.
-
-        Args:
-            migration: Migration object to display
-        """
-        self.log.info(f"Migration: {migration.script_name}")
-        self.log.info(f"  Version: {getattr(migration, 'version', 'N/A')}")
-        self.log.info(f"  Description: {getattr(migration, 'description', 'N/A')}")
-        self.log.info(f"  Type: {getattr(migration, 'type', 'N/A')}")
-        self.log.info(f"  State: {getattr(migration, 'state', 'N/A')}")
-
-        installed_on = getattr(migration, "installed_on", None)
-        if installed_on:
-            self.log.info(f"  Installed On: {installed_on}")
-
-        execution_time = getattr(migration, "execution_time", None)
-        if execution_time is not None:
-            self.log.info(f"  Execution Time: {execution_time}ms")
-
-    def display_migration_details(self, migration: Any) -> None:
-        """Display detailed information about a migration.
-
-        Args:
-            migration: Migration object to display details for
-        """
-        self.log.info(f"=== Migration Details: {migration.script_name} ===")
-
-        # Basic information
-        self.log.info(f"Script Name: {migration.script_name}")
-        self.log.info(f"Version: {getattr(migration, 'version', 'N/A')}")
-        self.log.info(f"Description: {getattr(migration, 'description', 'N/A')}")
-        self.log.info(f"Type: {getattr(migration, 'type', 'N/A')}")
-
-        # File information
-        filepath = getattr(migration, "filepath", None)
-        if filepath:
-            self.log.info(f"File Path: {filepath}")
-
-        # Execution information
-        installed_on = getattr(migration, "installed_on", None)
-        if installed_on:
-            self.log.info(f"Installed On: {installed_on}")
-
-        execution_time = getattr(migration, "execution_time", None)
-        if execution_time is not None:
-            self.log.info(f"Execution Time: {execution_time}ms")
-
-        installed_rank = getattr(migration, "installed_rank", None)
-        if installed_rank is not None:
-            self.log.info(f"Installed Rank: {installed_rank}")
-
-        # Success status
-        success = getattr(migration, "success", None)
-        if success is not None:
-            status = "Success" if success else "Failed"
-            self.log.info(f"Status: {status}")
-
-        # Checksum information
-        checksum = getattr(migration, "checksum", None)
-        if checksum:
-            self.log.info(f"Checksum: {checksum}")
-
-        self.log.info("=" * 50)
 
     def format_summary_stats(self, stats: Dict[str, Any]) -> str:
         """Format summary statistics as a readable string.

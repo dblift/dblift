@@ -81,14 +81,6 @@ def test_migration_state_manager_uses_is_migration_failure():
     assert "is_migration_failure" in src
 
 
-def test_migration_analyzer_uses_is_migration_success():
-    import inspect
-
-    import core.migration.ui.migration_analyzer as mod
-
-    src = inspect.getsource(mod)
-    assert "is_migration_success" in src
-
 
 def test_data_collector_uses_is_migration_success_and_failure():
     import inspect

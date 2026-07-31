@@ -6,7 +6,7 @@ to use specialized components for better separation of concerns.
 """
 
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set, Tuple, Union
+from typing import Any, Dict, List, Optional, Union
 
 from core.logger import Log, NullLog
 from core.migration.migration import Migration
@@ -14,8 +14,6 @@ from core.migration.scripting.migration_script_manager import MigrationScriptMan
 from core.migration.state.migration_state import MigrationState
 
 from .data_collector import MigrationDataCollector
-from .display_formatters import DisplayFormatters
-from .migration_analyzer import MigrationAnalyzer
 from .table_renderer import TableRenderer
 
 
@@ -30,12 +28,9 @@ class MigrationUI:
         """
         self.log = log if log is not None else NullLog()
         self.script_manager: Optional[MigrationScriptManager] = None
-        self._target_version: Optional[str] = None
 
         # Initialize specialized components
         self.data_collector = MigrationDataCollector(log)
-        self.display_formatters = DisplayFormatters(log)
-        self.migration_analyzer = MigrationAnalyzer(log)
         self.table_renderer = TableRenderer(log)
 
     def get_migration_data(
@@ -132,9 +127,6 @@ class MigrationUI:
         if pending_migrations is None:
             pending_migrations = []
 
-        # Store target version for use in other methods
-        self._target_version = target_version
-
         # Get structured migration data
         migrations_data = self.get_migration_data(
             applied_migrations=applied_migrations,
@@ -153,30 +145,6 @@ class MigrationUI:
         # Store the structured data in the logger for formatters to use
         for log in getattr(self.log, "logs", [self.log]):
             setattr(log, "migration_data", migrations_data)
-
-    def display_query_results(self, results: List[Dict[str, Any]]) -> None:
-        """Display query results in a formatted table.
-
-        Args:
-            results: List of dictionaries representing query results
-        """
-        self.table_renderer.display_query_results(results)
-
-    def display_migration_status(self, migration: Migration) -> None:
-        """Display the status of a single migration.
-
-        Args:
-            migration: Migration object to display
-        """
-        self.table_renderer.display_migration_status(migration)
-
-    def display_migration_details(self, migration: Migration) -> None:
-        """Display detailed information about a migration.
-
-        Args:
-            migration: Migration object to display details for
-        """
-        self.table_renderer.display_migration_details(migration)
 
     def display_migration_info(
         self,
@@ -279,84 +247,3 @@ class MigrationUI:
                 versions=versions,
                 exclude_versions=exclude_versions,
             )
-
-    # Delegate formatting methods to display_formatters
-    def _format_state(self, state: str) -> str:
-        """Format migration state for display."""
-        return self.display_formatters.format_state(state)
-
-    def _format_category(self, category: str) -> str:
-        """Format migration category for display."""
-        return self.display_formatters.format_category(category)
-
-    def _format_version(self, version: Optional[str]) -> str:
-        """Format version string for display."""
-        return self.display_formatters.format_version(version)
-
-    def _get_category_and_display_type(self, m_type: str) -> Tuple[str, str]:
-        """Get the category and display type for a migration type."""
-        return self.display_formatters.get_category_and_display_type(m_type)
-
-    def _determine_pending_migration_status(
-        self,
-        migration: Any,
-        target_version: Optional[str] = None,
-        current_version: Optional[str] = None,
-        baseline_version: Optional[str] = None,
-    ) -> str:
-        """Determine the status of a pending migration."""
-        return self.display_formatters.determine_pending_migration_status(
-            migration, target_version, current_version, baseline_version
-        )
-
-    # Delegate analysis methods to migration_analyzer
-    def _get_undone_versions(self, applied_migrations: List[Migration]) -> Set[str]:
-        """Get versions that have been undone."""
-        return self.migration_analyzer.get_undone_versions(applied_migrations)
-
-    def _get_reapplied_versions(self, applied_migrations: List[Migration]) -> Set[str]:
-        """Get versions that have been reapplied."""
-        return self.migration_analyzer.get_reapplied_versions(applied_migrations)
-
-    def _detect_out_of_order_migrations(
-        self, versioned_migrations: List[Dict[str, Any]]
-    ) -> Set[str]:
-        """Detect migrations that were applied out of order."""
-        return self.migration_analyzer.detect_out_of_order_migrations(versioned_migrations)
-
-    def _build_repeatable_checksums(self, applied_migrations: List[Migration]) -> Dict[str, str]:
-        """Build a mapping of repeatable migration script names to their latest checksums."""
-        return self.migration_analyzer.build_repeatable_checksums(applied_migrations)
-
-    def _sort_applied_migrations(self, applied_migrations: List[Migration]) -> List[Migration]:
-        """Sort applied migrations by installed_rank."""
-        return self.migration_analyzer.sort_applied_migrations(applied_migrations)
-
-    def _mark_reapplied_duplicates(
-        self, sorted_applied_migrations: List[Migration], reapplied_versions: Set[str]
-    ) -> Set[Migration]:
-        """Mark duplicate migrations that should be kept for reapplication display."""
-        return self.migration_analyzer.mark_reapplied_duplicates(
-            sorted_applied_migrations, reapplied_versions
-        )
-
-    # Helper methods that may be used by data collector
-    def _find_undo_versions(self, scripts_dir: Optional[Path]) -> Set[str]:
-        """Find versions that have undo scripts available."""
-        return self.data_collector._find_undo_versions(scripts_dir)
-
-    def _find_current_and_baseline_version(
-        self, applied_migrations: List[Migration]
-    ) -> Tuple[Optional[str], Optional[str]]:
-        """Find the current version and baseline version."""
-        return self.data_collector._find_current_and_baseline_version(applied_migrations)
-
-    def _collect_versioned_migrations(
-        self, applied_migrations: List[Migration]
-    ) -> List[Dict[str, Any]]:
-        """Collect versioned migrations for analysis."""
-        return self.data_collector._collect_versioned_migrations(applied_migrations)
-
-    def _compare_versions(self, version1: Optional[str], version2: Optional[str]) -> int:
-        """Compare two version strings."""
-        return self.migration_analyzer._compare_versions(version1 or "", version2 or "")

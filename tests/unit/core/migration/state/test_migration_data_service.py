@@ -1,12 +1,12 @@
 """Tests for MigrationDataService."""
 
 from pathlib import Path
-from unittest.mock import MagicMock, Mock, PropertyMock, patch
+from unittest.mock import MagicMock, Mock
 
 import pytest
 
 from core.migration.state.migration_data_service import MigrationDataService
-from core.migration.state.migration_display_state import MigrationDisplayState
+from core.migration.state.migration_state_service import MigrationStateService
 
 
 def make_migration(
@@ -46,96 +46,6 @@ def logger():
 def service(logger):
     return MigrationDataService(logger, scripts_dir=Path("/tmp/scripts"), target_version="5")
 
-
-# ---------- _format_version ----------
-
-
-@pytest.mark.unit
-class TestFormatVersion:
-    def test_none_returns_empty(self, service):
-        assert service._format_version(None) == ""
-
-    def test_empty_string_returns_empty(self, service):
-        assert service._format_version("") == ""
-
-    def test_underscores_replaced_with_dots(self, service):
-        assert service._format_version("1_2") == "1.2"
-
-    def test_no_underscores_unchanged(self, service):
-        assert service._format_version("1") == "1"
-
-    def test_multiple_underscores(self, service):
-        assert service._format_version("1_2_3") == "1.2.3"
-
-
-# ---------- _get_migration_category ----------
-
-
-@pytest.mark.unit
-class TestGetMigrationCategory:
-    def test_sql_returns_versioned(self, service):
-        m = make_migration(type="SQL")
-        assert service._get_migration_category(m) == "Versioned"
-
-    def test_repeatable(self, service):
-        m = make_migration(type="REPEATABLE")
-        assert service._get_migration_category(m) == "Repeatable"
-
-    def test_undo_sql(self, service):
-        m = make_migration(type="UNDO_SQL")
-        assert service._get_migration_category(m) == "Undo"
-
-    def test_baseline(self, service):
-        m = make_migration(type="BASELINE")
-        assert service._get_migration_category(m) == "Baseline"
-
-    def test_delete_with_description_tag_sql(self, service):
-        m = make_migration(
-            type="DELETE", description="[DELETE:SQL] removed", script_name="V1__x.sql"
-        )
-        assert service._get_migration_category(m) == "Versioned"
-
-    def test_delete_with_description_tag_repeatable(self, service):
-        m = make_migration(
-            type="DELETE", description="[DELETE:REPEATABLE] removed", script_name="R__x.sql"
-        )
-        assert service._get_migration_category(m) == "Repeatable"
-
-    def test_delete_with_description_tag_undo_sql(self, service):
-        m = make_migration(
-            type="DELETE", description="[DELETE:UNDO_SQL] removed", script_name="U1__x.sql"
-        )
-        assert service._get_migration_category(m) == "Undo"
-
-    def test_delete_with_description_tag_other(self, service):
-        m = make_migration(
-            type="DELETE", description="[DELETE:CUSTOM] removed", script_name="X.sql"
-        )
-        assert service._get_migration_category(m) == "Custom"
-
-    def test_delete_fallback_script_prefix_v(self, service):
-        m = make_migration(type="DELETE", description="no tag", script_name="V1__init.sql")
-        assert service._get_migration_category(m) == "Versioned"
-
-    def test_delete_fallback_script_prefix_r(self, service):
-        m = make_migration(type="DELETE", description="no tag", script_name="R__seed.sql")
-        assert service._get_migration_category(m) == "Repeatable"
-
-    def test_delete_fallback_script_prefix_u(self, service):
-        m = make_migration(type="DELETE", description="no tag", script_name="U1__undo.sql")
-        assert service._get_migration_category(m) == "Undo"
-
-    def test_delete_no_tag_no_prefix_returns_deleted(self, service):
-        m = make_migration(type="DELETE", description="no tag", script_name="x.sql")
-        assert service._get_migration_category(m) == "Deleted"
-
-    def test_unknown_type_capitalized(self, service):
-        m = make_migration(type="SPECIAL")
-        assert service._get_migration_category(m) == "Special"
-
-    def test_empty_type_returns_unknown(self, service):
-        m = make_migration(type="")
-        assert service._get_migration_category(m) == "Unknown"
 
 
 # ---------- _get_migration_type ----------
@@ -436,34 +346,6 @@ class TestGetCurrentVersion:
         assert service._get_current_version([]) is None
 
 
-# ---------- _version_has_undo_script ----------
-
-
-@pytest.mark.unit
-class TestVersionHasUndoScript:
-    def test_returns_true_when_file_exists(self, service):
-        mock_dir = MagicMock(spec=Path)
-        mock_dir.glob.return_value = [Path("/tmp/scripts/U1__undo.sql")]
-        assert service._version_has_undo_script("1", mock_dir) is True
-        mock_dir.glob.assert_called_once_with("U1*.sql")
-
-    def test_returns_false_when_no_file(self, service):
-        mock_dir = MagicMock(spec=Path)
-        mock_dir.glob.return_value = []
-        assert service._version_has_undo_script("1", mock_dir) is False
-
-    def test_returns_false_when_no_scripts_dir(self, service):
-        assert service._version_has_undo_script("1", None) is False
-
-    def test_returns_false_when_no_version(self, service):
-        mock_dir = MagicMock(spec=Path)
-        assert service._version_has_undo_script("", mock_dir) is False
-
-    def test_glob_exception_returns_false(self, service):
-        mock_dir = MagicMock(spec=Path)
-        mock_dir.glob.side_effect = OSError("permission denied")
-        assert service._version_has_undo_script("1", mock_dir) is False
-
 
 # ---------- _build_analysis_context ----------
 
@@ -493,140 +375,6 @@ class TestBuildAnalysisContext:
         assert ctx["scripts_dir"] == Path("/tmp/scripts")
 
 
-# ---------- prepare_migration_data ----------
-
-
-@pytest.mark.unit
-class TestPrepareMigrationData:
-    def test_applied_migration_processed(self, service):
-        m = make_migration(version="1", type="SQL", description="init", installed_rank=1)
-        with patch.object(
-            service.state_service, "determine_state", return_value=MigrationDisplayState.SUCCESS
-        ):
-            result = service.prepare_migration_data([m])
-        assert len(result) == 1
-        assert result[0]["source"] == "applied"
-        assert result[0]["version"] == "1"
-        assert result[0]["state"] == "Success"
-        assert result[0]["category"] == "Versioned"
-
-    def test_pending_migration_processed(self, service):
-        applied = make_migration(version="1", type="SQL", installed_rank=1)
-        pending = make_migration(
-            version="2", type="SQL", script_name="V2__add.sql", description="add table"
-        )
-        with (
-            patch.object(
-                service.state_service, "determine_state", return_value=MigrationDisplayState.SUCCESS
-            ),
-            patch.object(
-                service.state_service,
-                "determine_pending_state",
-                return_value=MigrationDisplayState.PENDING,
-            ),
-        ):
-            result = service.prepare_migration_data([applied], pending_migrations=[pending])
-        pending_items = [r for r in result if r["source"] == "pending"]
-        assert len(pending_items) == 1
-        assert pending_items[0]["state"] == "Pending"
-        assert pending_items[0]["installed_on"] is None
-
-    def test_error_in_applied_logs_warning_and_continues(self, service):
-        good = make_migration(version="1", type="SQL", installed_rank=1)
-        bad = make_migration(version="2", type="SQL", installed_rank=2)
-        with patch.object(service.state_service, "determine_state") as mock_state:
-            mock_state.side_effect = [RuntimeError("boom"), MigrationDisplayState.SUCCESS]
-            # bad is first in list but has lower rank — doesn't matter, iteration order is list order
-            result = service.prepare_migration_data([bad, good])
-        assert len(result) == 1
-        service.logger.warning.assert_called_once()
-
-    def test_delete_description_cleaned(self, service):
-        m = make_migration(
-            version="1",
-            type="DELETE",
-            description="[DELETE:SQL] original desc",
-            script_name="V1__init.sql",
-            installed_rank=1,
-        )
-        with patch.object(
-            service.state_service, "determine_state", return_value=MigrationDisplayState.DELETED
-        ):
-            result = service.prepare_migration_data([m])
-        assert result[0]["description"] == "original desc"
-
-    def test_empty_applied_and_pending(self, service):
-        result = service.prepare_migration_data([])
-        assert result == []
-
-
-# ---------- _ensure_undone_migrations_in_pending ----------
-
-
-@pytest.mark.unit
-class TestEnsureUndoneMigrationsInPending:
-    def test_adds_undo_when_script_exists(self, service):
-        context = {
-            "undone_versions": {"1"},
-            "scripts_dir": MagicMock(spec=Path),
-        }
-        context["scripts_dir"].glob.return_value = [Path("/tmp/U1__undo.sql")]
-        migration_data = [
-            {"version": "1", "type": "SQL", "source": "applied", "description": "init"},
-        ]
-        result = service._ensure_undone_migrations_in_pending(migration_data, context)
-        undo_items = [r for r in result if r.get("category") == "Undo" and r["source"] == "pending"]
-        assert len(undo_items) == 1
-        assert undo_items[0]["state"] == MigrationDisplayState.AVAILABLE.value
-        assert undo_items[0]["description"] == "init"
-
-    def test_skips_when_already_pending(self, service):
-        context = {
-            "undone_versions": {"1"},
-            "scripts_dir": MagicMock(spec=Path),
-        }
-        context["scripts_dir"].glob.return_value = [Path("/tmp/U1__undo.sql")]
-        migration_data = [
-            {"version": "1", "type": "SQL", "source": "applied", "description": "init"},
-            {"version": "1", "source": "pending", "category": "Undo"},
-        ]
-        result = service._ensure_undone_migrations_in_pending(migration_data, context)
-        undo_pending = [r for r in result if r.get("source") == "pending"]
-        assert len(undo_pending) == 1  # no duplicate added
-
-    def test_no_undone_versions_returns_unchanged(self, service):
-        context = {"undone_versions": set(), "scripts_dir": Path("/tmp")}
-        data = [{"version": "1", "source": "applied"}]
-        result = service._ensure_undone_migrations_in_pending(data, context)
-        assert result == data
-
-    def test_no_scripts_dir_returns_unchanged(self, service):
-        context = {"undone_versions": {"1"}, "scripts_dir": None}
-        data = [{"version": "1", "source": "applied"}]
-        result = service._ensure_undone_migrations_in_pending(data, context)
-        assert result == data
-
-    def test_no_undo_script_file_skips(self, service):
-        context = {
-            "undone_versions": {"1"},
-            "scripts_dir": MagicMock(spec=Path),
-        }
-        context["scripts_dir"].glob.return_value = []
-        data = [{"version": "1", "type": "SQL", "source": "applied"}]
-        result = service._ensure_undone_migrations_in_pending(data, context)
-        assert len(result) == 1  # nothing added
-
-    def test_fallback_description_when_no_original(self, service):
-        context = {
-            "undone_versions": {"1"},
-            "scripts_dir": MagicMock(spec=Path),
-        }
-        context["scripts_dir"].glob.return_value = [Path("/tmp/U1__undo.sql")]
-        migration_data = []  # no original migration to reference
-        result = service._ensure_undone_migrations_in_pending(migration_data, context)
-        assert len(result) == 1
-        assert result[0]["description"] == "Undo migration 1"
-
 
 # ---------- Constructor ----------
 
@@ -647,7 +395,3 @@ class TestConstructor:
     def test_state_service_created(self, logger):
         svc = MigrationDataService(logger)
         assert isinstance(svc.state_service, MigrationStateService)
-
-
-# Need import for isinstance check
-from core.migration.state.migration_state_service import MigrationStateService

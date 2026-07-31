@@ -327,8 +327,6 @@ module = [
     "core.migration.executor.transaction_policy",
     "core.migration.commands.validate_command",
 
-    "core.migration.ui.display_formatters",
-    "core.migration.ui.migration_analyzer",
     "core.migration.scripting.undo_script_generator._extractors",
     "core.migration.scripting.undo_script_generator._helpers",
     "core.migration.rules.migration_rules",
@@ -1039,8 +1037,6 @@ module = [
     "core.migration.executor",
     "core.migration.executor.migration_executor",
     "core.migration.scripting.undo_script_generator",
-    "core.migration.scripting.undo_script_generator._ddl_reversers",
-    "core.migration.scripting.undo_script_generator._dml_reversers",
     "core.migration.scripting.undo_script_generator._generator",
     "core.migration.scripting.undo_script_generator._models",
     "core.migration.scripting.undo_script_generator._reversers",

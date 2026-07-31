@@ -32,7 +32,6 @@ if TYPE_CHECKING:
     # at import sites. Without these stubs, mypy's cache occasionally widens
     # the inferred type to ``Any | None``, breaking ``x in SCHEMA_OPTIONAL_DIALECTS``.
     SCHEMA_OPTIONAL_DIALECTS: FrozenSet[str]
-    CASCADE_DROP_DIALECTS: FrozenSet[str]
 
 # ---------------------------------------------------------------------------
 # SIMP-37 Phase 0 — DialectGroup frozensets
@@ -48,7 +47,6 @@ if TYPE_CHECKING:
 # access. Listed here for ``grep``-ability:
 #
 #   SCHEMA_OPTIONAL_DIALECTS      -> not quirks.schema_required
-#   CASCADE_DROP_DIALECTS         -> quirks.drop_table_default_cascade
 
 
 # ---------------------------------------------------------------------------
@@ -213,7 +211,6 @@ def _dialects_where(predicate: Callable[[Any], bool]) -> FrozenSet[str]:
 
 _LAZY_DIALECT_SETS = {
     "SCHEMA_OPTIONAL_DIALECTS": lambda q: not q.schema_required,
-    "CASCADE_DROP_DIALECTS": lambda q: q.drop_table_default_cascade,
 }
 
 # Cache of resolved sets. Filled on first access; auto-invalidated when
