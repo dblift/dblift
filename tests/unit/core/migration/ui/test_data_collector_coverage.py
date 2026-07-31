@@ -796,7 +796,8 @@ class TestFindUndoVersionsCoverage(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             scripts_dir = Path(tmpdir)
             py_file = scripts_dir / "V3__migrate.py"
-            py_file.write_text("def undo(conn):\n    pass\n", encoding="utf-8")
+            # Inline leftover is not an undo companion (U*.py / U*.sql only).
+            py_file.write_text("def migrate(conn):\n    pass\n", encoding="utf-8")
 
             result = coll._find_undo_versions(scripts_dir)
             assert "3.0" not in result
@@ -1198,13 +1199,12 @@ class TestOSErrorInFindUndoVersions(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             scripts_dir = Path(tmpdir)
             py_file = scripts_dir / "V2__migrate.py"
-            py_file.write_text("def undo(conn):\n    pass\n", encoding="utf-8")
+            # Only U*.py companions count; a V*.py file is not scanned for content.
+            py_file.write_text("def migrate(conn):\n    pass\n", encoding="utf-8")
 
-            # Patch read_text to raise OSError
-            with mock_patch.object(Path, "read_text", side_effect=OSError("permission denied")):
-                result = coll._find_undo_versions(scripts_dir)
-            # Should not raise; result may be empty since read_text failed
+            result = coll._find_undo_versions(scripts_dir)
             assert isinstance(result, set)
+            assert "2.0" not in result
 
 
 class TestCleanDeleteDescriptionEdgeCases(unittest.TestCase):

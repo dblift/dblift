@@ -1,16 +1,10 @@
-"""Regression tests for B-1/B-2/B-3 Python migration pipeline reform.
+"""Regression tests for B-1/B-2 Python migration pipeline reform.
 
 B-1: Migration.load_content() reads script body from disk when content is empty,
      enabling all downstream code that inspects content to work for DB-loaded migrations.
 
 B-2: _validate_checksums() now includes MigrationType.PYTHON in checksum validation
      (previously it was silently skipped via an allowlist that omitted PYTHON).
-
-B-3: Migration.load_content() populates self.content from disk so that
-     PythonMigrationExecutor.supports_rollback() (which inspects content for a
-     ``def undo(`` function) works for DB-loaded Python migrations. (The historical
-     UndoCommand selection call site was removed when Python undo moved to separate
-     U*.py scripts; this exercises the retained executor-level behavior directly.)
 """
 
 from __future__ import annotations
@@ -32,11 +26,11 @@ class TestMigrationLoadContent:
 
     def test_load_content_from_scripts_dir(self, tmp_path):
         script = tmp_path / "V2__create_orders.py"
-        script.write_text("def migrate(ctx): pass\ndef undo(ctx): pass\n")
+        script.write_text("def migrate(ctx): pass\n")
         m = Migration(script_name="V2__create_orders.py", content="", type=MigrationType.PYTHON)
         assert m.content == ""
         m.load_content(tmp_path)
-        assert "def undo(" in m.content
+        assert "def migrate(" in m.content
 
     def test_load_content_noop_when_already_populated(self, tmp_path):
         script = tmp_path / "V1__init.py"
@@ -65,11 +59,11 @@ class TestMigrationLoadContent:
 
     def test_load_content_reads_self_path_when_no_scripts_dir(self, tmp_path):
         script = tmp_path / "V5__x.py"
-        script.write_text("def migrate(ctx): pass\ndef undo(ctx): pass\n")
+        script.write_text("def migrate(ctx): pass\n")
         m = Migration(script_path=script)
         m.content = ""  # simulate DB-load erasure
         m.load_content(None)
-        assert "def undo(" in m.content
+        assert "def migrate(" in m.content
 
 
 class TestChecksumValidationIncludesPython:
@@ -180,45 +174,3 @@ class TestChecksumValidationIncludesPython:
         )
 
         assert not any("has been modified" in issue for issue in issues)
-
-
-class TestSupportsRollbackAfterLoadContent:
-    """B-3: PythonMigrationExecutor.supports_rollback() works after load_content()."""
-
-    def _make_executor(self):
-        from core.migration.executors.python_executor import PythonMigrationExecutor
-
-        return PythonMigrationExecutor(provider=MagicMock(), config=MagicMock(), log=MagicMock())
-
-    def test_python_migration_with_undo_fn_is_undoable(self, tmp_path):
-        """DB-loaded Python migration (content='') with def undo() on disk is undoable."""
-        script = tmp_path / "V2__orders.py"
-        script.write_text("def migrate(ctx): pass\ndef undo(ctx): pass\n")
-
-        from core.migration.migration import Migration, MigrationType
-
-        m = Migration(script_name="V2__orders.py", content="", type=MigrationType.PYTHON)
-        assert not m.content  # simulates DB-loaded state
-
-        m.load_content(tmp_path)
-        executor = self._make_executor()
-        assert executor.supports_rollback(m) is True
-
-    def test_python_migration_without_undo_fn_is_not_undoable(self, tmp_path):
-        script = tmp_path / "V3__products.py"
-        script.write_text("def migrate(ctx): pass\n")
-
-        from core.migration.migration import Migration, MigrationType
-
-        m = Migration(script_name="V3__products.py", content="", type=MigrationType.PYTHON)
-        m.load_content(tmp_path)
-
-        executor = self._make_executor()
-        assert executor.supports_rollback(m) is False
-
-    def test_supports_rollback_false_when_content_empty(self):
-        from core.migration.migration import Migration, MigrationType
-
-        m = Migration(script_name="V4__x.py", content="", type=MigrationType.PYTHON)
-        executor = self._make_executor()
-        assert executor.supports_rollback(m) is False
