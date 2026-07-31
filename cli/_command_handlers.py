@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
+from cli._constants import EXIT_LICENSE_REQUIRED
 from cli.extensions import load_command_handlers, load_terminal_commands
 from cli.handlers._shared import (  # noqa: F401
     _MIGRATION_FILENAME_RE,
@@ -22,7 +23,6 @@ from cli.handlers.migrate import _handle_migrate
 from cli.handlers.repair import _handle_repair
 from cli.handlers.undo import _handle_undo
 from cli.handlers.validate import _handle_validate
-from cli._constants import EXIT_LICENSE_REQUIRED
 from cli.premium_manifest import PremiumCommand, premium_stub_index, render_upsell
 from core.seams.capabilities import CapabilityDeniedError
 from core.seams.tier_resolver import resolve_tier

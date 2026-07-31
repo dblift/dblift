@@ -259,7 +259,7 @@ class DBLiftClient:
                 "dry_run": dry_run,
                 "show_sql": show_sql,
                 "tags": tags,
-                "dialect": self.dialect,
+                "dialect": getattr(self, "dialect", None),
             },
         )
 
@@ -295,7 +295,7 @@ class DBLiftClient:
                         "provider": self.provider,
                         "history_manager": self.executor.history_manager,
                         "log": self.logger,
-                        "dialect": self.dialect,
+                        "dialect": getattr(self, "dialect", None),
                     },
                 )
             else:
@@ -304,7 +304,7 @@ class DBLiftClient:
                     {
                         "error": getattr(result, "error_message", None),
                         "target_version": target_version,
-                        "dialect": self.dialect,
+                        "dialect": getattr(self, "dialect", None),
                     },
                 )
 
@@ -315,7 +315,7 @@ class DBLiftClient:
                 {
                     "error": str(e),
                     "target_version": target_version,
-                    "dialect": self.dialect,
+                    "dialect": getattr(self, "dialect", None),
                 },
             )
             raise
@@ -410,7 +410,7 @@ class DBLiftClient:
             ValidateResult with validation status
         """
         self._guard_scripts_dir_kwarg(kwargs)
-        self.events.emit(EventType.VALIDATION_STARTED, {"dialect": self.dialect})
+        self.events.emit(EventType.VALIDATION_STARTED, {"dialect": getattr(self, "dialect", None)})
 
         try:
             result = self.executor.validate(
@@ -427,14 +427,14 @@ class DBLiftClient:
 
             self.events.emit(
                 EventType.VALIDATION_COMPLETED,
-                {"result": result, "dialect": self.dialect},
+                {"result": result, "dialect": getattr(self, "dialect", None)},
             )
 
             return result
         except Exception as e:
             self.events.emit(
                 EventType.VALIDATION_FAILED,
-                {"error": str(e), "dialect": self.dialect},
+                {"error": str(e), "dialect": getattr(self, "dialect", None)},
             )
             raise
 
