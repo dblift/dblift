@@ -3,7 +3,6 @@
 from abc import ABC, abstractmethod
 from typing import Any, Dict, List, Optional, Tuple
 
-from core.constants import truncate_sql_for_logging
 from core.logger import Log, NullLog
 
 
@@ -131,15 +130,6 @@ class BaseQueryExecutor(ABC):
         """
         return ('"', '"', '""')
 
-    # Common utility methods that can be shared across implementations
-
-    def _truncate_sql_for_logging(self, sql: str, max_length: int = 200) -> str:
-        """Truncate SQL statement for logging purposes.
-
-        Delegates to truncate_sql_for_logging() from core.constants.
-        """
-        return truncate_sql_for_logging(sql, max_length)
-
     def _validate_connection(self, connection: Any) -> None:
         """Validate that a connection is provided and open.
 
@@ -162,92 +152,3 @@ class BaseQueryExecutor(ABC):
                 "Database connection is closed. Provider must ensure connection is open "
                 "before calling QueryExecutor methods."
             )
-
-    def _format_identifier(self, identifier: str) -> str:
-        """Format identifier for SQL queries.
-
-        Default implementation returns the identifier as-is. Database-specific
-        implementations can override this to add quotes, case conversion, etc.
-
-        Args:
-            identifier: Identifier to format
-
-        Returns:
-            Formatted identifier
-        """
-        return identifier
-
-    def _get_parameter_placeholder(self) -> str:
-        """Get the parameter placeholder character for this database.
-
-        Most databases use '?' but some may use different formats.
-        Default implementation returns '?'.
-
-        Returns:
-            Parameter placeholder string
-        """
-        return "?"
-
-    def _build_parameter_placeholders(self, count: int) -> str:
-        """Build parameter placeholder string for prepared statements.
-
-        Args:
-            count: Number of placeholders needed
-
-        Returns:
-            Comma-separated placeholder string (e.g., "?, ?, ?")
-        """
-        placeholder = self._get_parameter_placeholder()
-        return ", ".join([placeholder] * count)
-
-    def _is_connection_error(self, error: Exception) -> bool:
-        """Check if an exception indicates a connection error.
-
-        Default implementation checks for common connection error patterns.
-        Database-specific implementations can override for more precise detection.
-
-        Args:
-            error: Exception to check
-
-        Returns:
-            True if error appears to be connection-related
-        """
-        error_str = str(error).lower()
-        connection_indicators = [
-            "connection",
-            "network",
-            "timeout",
-            "closed",
-            "broken",
-            "unreachable",
-            "refused",
-            "reset",
-            "lost",
-            "disconnected",
-        ]
-        return any(indicator in error_str for indicator in connection_indicators)
-
-    def _log_execution_error(
-        self,
-        error: Exception,
-        sql: str,
-        params: Optional[List[Any]] = None,
-        *,
-        debug_sql: bool = False,
-        log: Optional[Log] = None,
-    ) -> None:
-        """Log a SQL execution error with statement details.
-
-        Args:
-            error: The exception that occurred.
-            sql: SQL statement that failed.
-            params: Parameters that were bound (if any).
-            debug_sql: If True, log SQL/params at debug level instead of error.
-            log: If provided, use this logger instead of self.log (allows callers
-                 to suppress error output without mutating shared state).
-        """
-        _log = log if log is not None else self.log
-        _log.debug(f"Error executing SQL statement: {error}")
-        _log.debug(f"SQL: {sql}")
-        if params:
-            _log.debug(f"Parameters: {params}")

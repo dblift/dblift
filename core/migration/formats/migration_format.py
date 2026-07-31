@@ -42,26 +42,6 @@ class MigrationFormat(Enum):
     UNKNOWN = "unknown"
     """Unknown or unsupported format"""
 
-    @property
-    def file_extension(self) -> str:
-        """Get the primary file extension for this format."""
-        extension_map = {
-            MigrationFormat.SQL: ".sql",
-            MigrationFormat.PYTHON: ".py",
-            MigrationFormat.JAVASCRIPT: ".js",
-            MigrationFormat.CYPHER: ".cypher",
-            MigrationFormat.CQL: ".cql",
-            MigrationFormat.GREMLIN: ".gremlin",
-            MigrationFormat.JSON: ".json",
-            MigrationFormat.YAML: ".yaml",
-        }
-        return extension_map.get(self, "")
-
-    @property
-    def is_supported(self) -> bool:
-        """Check if this format is currently supported."""
-        return self in (MigrationFormat.SQL, MigrationFormat.PYTHON)
-
     def __str__(self) -> str:
         """String representation of the format."""
         return self.value

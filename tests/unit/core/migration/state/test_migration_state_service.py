@@ -333,26 +333,6 @@ class TestMigrationStateService:
         # Should fallback to string comparison
         assert isinstance(result, int)
 
-    def test_compare_version_parts_equal(self, service):
-        """Test _compare_version_parts with equal parts."""
-        result = service._compare_version_parts([1, 0, 0], [1, 0, 0])
-        assert result == 0
-
-    def test_compare_version_parts_first_greater(self, service):
-        """Test _compare_version_parts with first greater."""
-        result = service._compare_version_parts([2, 0, 0], [1, 0, 0])
-        assert result == 1
-
-    def test_compare_version_parts_first_lesser(self, service):
-        """Test _compare_version_parts with first lesser."""
-        result = service._compare_version_parts([1, 0, 0], [2, 0, 0])
-        assert result == -1
-
-    def test_compare_version_parts_different_lengths(self, service):
-        """Test _compare_version_parts with different lengths."""
-        result = service._compare_version_parts([1, 0, 0, 1], [1, 0, 0])
-        assert result == 1
-
     def test_version_has_undo_script_true(self, service, tmp_path):
         """Test _version_has_undo_script returns True when script exists."""
         undo_file = tmp_path / "U1.0.0__undo.sql"

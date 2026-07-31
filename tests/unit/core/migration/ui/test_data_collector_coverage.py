@@ -4,7 +4,7 @@ Targets the uncovered lines around _format_installed_on, _get_migration_type_str
 _status_to_display_state, _is_migration_type_equal, _is_versioned_type,
 get_migration_data, _get_migration_data_from_state, _find_undo_versions,
 _find_current_and_baseline_version, _collect_versioned_migrations,
-_build_repeatable_checksums, _sort_applied_migrations, _mark_reapplied_duplicates,
+_build_repeatable_checksums, _sort_applied_migrations,
 _detect_out_of_order_migrations, _get_undone_versions, _get_reapplied_versions,
 _should_exclude_migration, _clean_delete_description, _get_category_from_type,
 _get_type_from_migration_type, _format_version, _determine_pending_migration_status,
@@ -364,35 +364,6 @@ class TestSortAppliedMigrationsCoverage(unittest.TestCase):
         m2 = _make_migration("2.0", installed_rank=1)
         result = coll._sort_applied_migrations([m1, m2])
         assert len(result) == 2
-
-
-# ===========================================================================
-# _mark_reapplied_duplicates  (lines 684-700)
-# ===========================================================================
-
-
-class TestMarkReappliedDuplicatesCoverage(unittest.TestCase):
-    def _c(self):
-        return _make_collector()[0]
-
-    def test_empty_returns_empty_set(self):
-        coll = self._c()
-        result = coll._mark_reapplied_duplicates([], set())
-        assert result == set()
-
-    def test_no_reapplied_versions_returns_empty(self):
-        coll = self._c()
-        m = _make_migration("1.0")
-        result = coll._mark_reapplied_duplicates([m], set())
-        assert result == set()
-
-    def test_marks_duplicate_entries(self):
-        coll = self._c()
-        m1 = _make_migration("1.0", installed_rank=1)
-        m2 = _make_migration("1.0", installed_rank=2)
-        result = coll._mark_reapplied_duplicates([m1, m2], {"1.0"})
-        # The second occurrence should be marked as duplicate
-        assert m2 in result
 
 
 # ===========================================================================
