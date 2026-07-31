@@ -34,10 +34,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   ``afterMigrateError__notify.sql`` executed on a fully successful ``migrate``
   — alerting or compensating SQL firing when nothing had failed — and
   ``beforeEachMigrate__mark.sql`` executed twice per script, once for each of
-  the two events it matched. Matching now requires the ``__`` description
-  separator or the file extension immediately after the prefix, so
-  ``afterMigrate__finalize.sql`` and the description-less ``afterMigrate.sql``
-  still run on ``afterMigrate`` and nothing else does.
+  the two events it matched. The ``__`` separator is now required immediately
+  after the prefix, so ``afterMigrate__finalize.sql`` runs on ``afterMigrate``
+  and nothing else does.
+
+- **Callback names missing ``__`` are rejected instead of silently accepted.**
+  The naming convention is ``<eventPrefix>__<description>.<ext>``, but any name
+  merely *starting* with an event prefix was classified as a callback — so
+  ``afterMigrate.sql``, and the single-underscore typo
+  ``afterMigrate_notify.sql``, were loaded as callbacks. Such names are no
+  longer callbacks anywhere (script discovery, ``parse_filename`` and
+  ``Migration.type`` now agree), and are reported as a naming-convention
+  violation once per run instead of sitting in the migrations directory looking
+  like a working callback.
 
 - **DuckDB parameterized DML reports real affected-row counts.** The 3.3.4
   ``RETURNING 1`` rewrite only ran when ``params is None``, so bound

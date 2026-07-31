@@ -12,6 +12,9 @@ Observable end-to-end on SQLite:
   ``MigrateCommand`` dispatches ``beforeEach`` and ``beforeEachMigrate`` as two
   separate events and the file matched both.
 
+Callback names are ``<eventPrefix>__<description>.<ext>``; the ``__`` separator
+is mandatory, and a name lacking it is rejected with a reported reason.
+
 Runs ``python -m cli.main migrate`` as a subprocess against a local SQLite file
 so the whole path — script discovery, event dispatch, execution — is exercised.
 No mocks. See ``tests/integration/matrix/README.md`` doctrine #2 and #4.
@@ -133,3 +136,32 @@ def test_each_migrate_callback_runs_once_per_script(tmp_path: Path):
         "beforeEachMigrate callback executed the wrong number of times for "
         f"2 migrations: {events}"
     )
+
+
+@pytest.mark.integration
+@pytest.mark.sqlite
+def test_callback_name_without_separator_is_rejected_and_reported(tmp_path: Path):
+    """``afterMigrate.sql`` is not a callback — the ``__`` separator is required.
+
+    It must not execute, and the user must be told why rather than left with a
+    file that looks like a callback and quietly does nothing.
+    """
+    config, migrations_dir, db_file = _make_sqlite_config(tmp_path)
+    migrations_dir.joinpath("V1__widgets.sql").write_text(
+        "CREATE TABLE widgets (id INTEGER PRIMARY KEY);"
+    )
+    _log_callback(migrations_dir, "afterMigrate.sql", "afterMigrate")
+
+    exit_code, stdout, stderr = _run(["--config", str(config), "migrate"])
+
+    assert exit_code == 0, f"migrate failed: exit={exit_code}, stdout={stdout}, stderr={stderr}"
+    with sqlite3.connect(str(db_file)) as conn:
+        tables = {
+            row[0]
+            for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
+        }
+    assert "callback_log" not in tables, "a name without '__' was executed as a callback"
+
+    output = stdout + stderr
+    assert "afterMigrate.sql" in output, f"rejection was not reported. output={output!r}"
+    assert "naming convention" in output, f"rejection was not explained. output={output!r}"

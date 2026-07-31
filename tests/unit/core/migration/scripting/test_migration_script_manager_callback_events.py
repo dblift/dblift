@@ -20,9 +20,9 @@ Two observable consequences:
    dispatches ``beforeEach`` and ``beforeEachMigrate`` as two distinct events
    and the file matched both.
 
-Callback names are ``<eventPrefix>__<description>.<ext>`` or the
-description-less ``<eventPrefix>.<ext>``; matching requires one of those two
-boundaries right after the prefix.
+Callback names are ``<eventPrefix>__<description>.<ext>``. The ``__``
+separator is mandatory: matching requires it right after the prefix, and a
+name that starts with a callback prefix without it is not a callback at all.
 """
 
 from pathlib import Path
@@ -31,7 +31,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from core.migration.migration import _CALLBACK_PREFIXES
+from core.migration.migration import _CALLBACK_PREFIXES, Migration, MigrationType
 from core.migration.scripting.migration_script_manager import MigrationScriptManager
 
 pytestmark = [pytest.mark.unit]
@@ -125,17 +125,17 @@ def test_described_callback_still_matches_its_own_event(tmp_path: Path, prefix: 
 
 
 @pytest.mark.parametrize("prefix", _CALLBACK_PREFIXES)
-def test_description_less_callback_still_matches_its_own_event(tmp_path: Path, prefix: str):
-    """``<prefix>.sql`` (no description) must still be selected for ``<prefix>``.
+def test_description_less_name_matches_no_event(tmp_path: Path, prefix: str):
+    """``<prefix>.sql`` has no ``__`` separator, so it is not a callback.
 
-    The description is optional, so the extension boundary counts as a
-    delimiter too — requiring ``__`` alone would stop these from ever running.
+    The documented convention is ``<eventPrefix>__<description>.<ext>``; the
+    description is not optional.
     """
     (tmp_path / f"{prefix}.sql").write_text("SELECT 1;")
 
     callbacks = _manager().get_callbacks_by_event(tmp_path, prefix, recursive=False)
 
-    assert _names(callbacks) == [f"{prefix}.sql"]
+    assert _names(callbacks) == []
 
 
 def test_event_matching_stays_case_insensitive(tmp_path: Path):
@@ -154,16 +154,100 @@ def test_event_matching_stays_case_insensitive(tmp_path: Path):
 
 
 def test_single_underscore_is_not_a_delimiter(tmp_path: Path):
-    """``afterMigrate_notify.sql`` does not use the ``__`` separator, so it is not
-    an ``afterMigrate`` callback.
-
-    Tradeoff worth naming: such a file is still *classified* as a callback by
-    ``parse_filename``, so after this fix it is loaded but dispatched to no
-    event. It previously ran on ``afterMigrate``. Both behaviours are silent;
-    tightening the classifier as well is a separate change.
-    """
+    """``afterMigrate_notify.sql`` does not use the ``__`` separator."""
     (tmp_path / "afterMigrate_notify.sql").write_text("SELECT 1;")
 
     callbacks = _manager().get_callbacks_by_event(tmp_path, "afterMigrate", recursive=False)
 
     assert _names(callbacks) == []
+
+
+# --- Classification: a name without ``__`` is not a callback at all ----------
+
+
+MALFORMED_CALLBACK_NAMES = [
+    "afterMigrate.sql",
+    "afterMigrate_notify.sql",
+    "beforeEachMigrate.sql",
+    "afterMigrateError.py",
+    "AFTERCLEAN.sql",
+]
+
+
+@pytest.mark.parametrize("filename", MALFORMED_CALLBACK_NAMES)
+def test_parse_filename_does_not_classify_a_delimiterless_name_as_callback(filename: str):
+    """``parse_filename`` must not report CALLBACK without the ``__`` separator."""
+    migration_type, _, _, _ = _manager().parse_filename(filename)
+
+    assert migration_type is not MigrationType.CALLBACK
+
+
+@pytest.mark.parametrize("filename", MALFORMED_CALLBACK_NAMES)
+def test_delimiterless_name_is_not_a_valid_script_name(filename: str):
+    """Discovery must reject the name outright, like any other malformed script."""
+    assert _manager().is_valid_script_name(filename) is False
+
+
+@pytest.mark.parametrize("filename", MALFORMED_CALLBACK_NAMES)
+def test_migration_type_does_not_classify_a_delimiterless_name_as_callback(filename: str):
+    """``Migration._determine_type`` must agree with ``parse_filename``.
+
+    The model and the script manager are consulted by different call sites
+    (the validator reads ``Migration.type``); one answering CALLBACK while the
+    other rejects the file is how a script ends up loaded but never run.
+    """
+    assert Migration(script_name=filename).type is not MigrationType.CALLBACK
+
+
+@pytest.mark.parametrize("filename", MALFORMED_CALLBACK_NAMES)
+def test_delimiterless_name_is_not_loaded_as_a_callback(tmp_path: Path, filename: str):
+    """End of the loader path: the file lands in no migration bucket."""
+    (tmp_path / filename).write_text("SELECT 1;")
+
+    migrations = _manager().load_migration_scripts(tmp_path, recursive=False)
+
+    assert all(loaded == [] for loaded in migrations.values())
+
+
+def test_delimiterless_callback_name_is_reported_as_a_naming_violation(tmp_path: Path):
+    """Rejection must be visible, not silent.
+
+    A file named for a callback event but missing ``__`` is a typo the user
+    needs told about — otherwise it sits in the migrations directory looking
+    like a callback and never runs.
+    """
+    (tmp_path / "afterMigrate.sql").write_text("SELECT 1;")
+    logger = MagicMock()
+
+    MigrationScriptManager(logger).load_migration_scripts(tmp_path, recursive=False)
+
+    warnings = " ".join(str(call) for call in logger.warning.call_args_list)
+    assert "afterMigrate.sql" in warnings
+    assert "naming convention" in warnings
+
+
+def test_naming_violation_is_reported_once_per_manager(tmp_path: Path):
+    """``get_callbacks_by_event`` reloads the directory for every event.
+
+    A migrate dispatches a dozen events, so a per-load warning would repeat the
+    same filename a dozen times in one run.
+    """
+    (tmp_path / "afterMigrate.sql").write_text("SELECT 1;")
+    logger = MagicMock()
+    manager = MigrationScriptManager(logger)
+
+    for _ in range(3):
+        manager.load_migration_scripts(tmp_path, recursive=False)
+
+    reports = [call for call in logger.warning.call_args_list if "afterMigrate.sql" in str(call)]
+    assert len(reports) == 1
+
+
+def test_well_formed_callback_is_not_reported_as_a_violation(tmp_path: Path):
+    """No false positives: a correctly named callback warns about nothing."""
+    (tmp_path / "afterMigrate__finalize.sql").write_text("SELECT 1;")
+    logger = MagicMock()
+
+    MigrationScriptManager(logger).load_migration_scripts(tmp_path, recursive=False)
+
+    assert logger.warning.call_args_list == []

@@ -725,7 +725,7 @@ class TestCommitAndVerify(unittest.TestCase):
 
 
 class TestExecuteCallback(unittest.TestCase):
-    def _make_callback(self, sql_statements=None, name="afterEach.sql"):
+    def _make_callback(self, sql_statements=None, name="afterEach__log.sql"):
         cb = MagicMock(spec=Migration)
         cb.format = MigrationFormat.SQL
         cb.script_name = name
@@ -827,7 +827,7 @@ class TestExecuteCallback(unittest.TestCase):
         engine = _make_engine()
         cb = MagicMock(spec=Migration)
         cb.format = MigrationFormat.PYTHON
-        cb.script_name = "afterEach.py"
+        cb.script_name = "afterEach__log.py"
 
         exec_result = MagicMock()
         exec_result.success = True
@@ -845,7 +845,7 @@ class TestExecuteCallback(unittest.TestCase):
         engine = _make_engine()
         cb = MagicMock(spec=Migration)
         cb.format = MigrationFormat.PYTHON
-        cb.script_name = "afterEach.py"
+        cb.script_name = "afterEach__log.py"
 
         exec_result = MagicMock()
         exec_result.success = False
