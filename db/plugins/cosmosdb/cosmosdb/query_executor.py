@@ -34,26 +34,6 @@ class CosmosDbQueryExecutor(BaseQueryExecutor):
         self.log = log if log is not None else NullLog()
         self.container_client = None
 
-    @staticmethod
-    def _is_transient_cosmos_error(exc: Exception) -> bool:
-        message = str(exc).lower()
-        return (
-            "serviceunavailable" in message
-            or "service unavailable" in message
-            or "503" in message
-            or "timeout" in message
-            or "timed out" in message
-        )
-
-    def _is_emulator_connection(self) -> bool:
-        database_config = getattr(self.connection_manager.config, "database", None)
-        endpoint = getattr(database_config, "account_endpoint", None) or getattr(
-            database_config, "url", None
-        )
-        if not endpoint:
-            return False
-        return bool(self.connection_manager._is_emulator_endpoint(endpoint))
-
     def execute_statement(
         self,
         connection: Any,

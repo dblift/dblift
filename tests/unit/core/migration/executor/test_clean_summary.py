@@ -34,14 +34,6 @@ class TestCleanedObjectInfo:
 
         assert obj.details == details
 
-    def test_normalized_type(self):
-        """Test normalized_type method."""
-        obj = CleanedObjectInfo(object_type="  TABLE  ", name="users")
-        assert obj.normalized_type() == "table"
-
-        obj2 = CleanedObjectInfo(object_type="VIEW", name="user_view")
-        assert obj2.normalized_type() == "view"
-
     def test_immutable(self):
         """Test that CleanedObjectInfo is immutable (frozen dataclass)."""
         obj = CleanedObjectInfo(object_type="TABLE", name="users")
@@ -150,27 +142,6 @@ class TestCleanExecutionSummary:
         summary1.extend(summary2)
 
         assert len(summary1.statements) == 1
-
-    def test_add_objects(self):
-        """Test add_objects method."""
-        summary = CleanExecutionSummary()
-        objects = [
-            CleanedObjectInfo(object_type="TABLE", name="users"),
-            CleanedObjectInfo(object_type="TABLE", name="orders"),
-        ]
-
-        summary.add_objects(objects)
-
-        assert len(summary.objects) == 2
-        assert summary.objects[0].name == "users"
-        assert summary.objects[1].name == "orders"
-
-    def test_add_objects_empty_list(self):
-        """Test add_objects with empty list."""
-        summary = CleanExecutionSummary()
-        summary.add_objects([])
-
-        assert len(summary.objects) == 0
 
     def test_multiple_operations(self):
         """Test multiple operations on summary."""

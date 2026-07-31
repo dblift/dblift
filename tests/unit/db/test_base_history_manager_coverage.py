@@ -2,7 +2,7 @@
 
 Targets the uncovered lines: _validate_migration_info, _normalize_migration_results,
 _to_int, _to_boolean, _convert_timestamp,
-_get_first_value, _build_migration_params, _undo_script_name, migration_exists,
+_get_first_value, _build_migration_params, _undo_script_name,
 get_row_limit_clause, get_current_version, record_undo, create_history_table,
 _get_default_table_name.
 
@@ -513,68 +513,6 @@ class TestUndoScriptName(unittest.TestCase):
     def test_script_name_without_extension_gets_sql(self):
         result = self._m()._undo_script_name("1.0", "U1__undo")
         assert result == "U1__undo.sql"
-
-
-# ===========================================================================
-# migration_exists  (lines 447-465)
-# ===========================================================================
-
-
-class TestMigrationExists(unittest.TestCase):
-    def _m(self):
-        return _make_manager()
-
-    def test_returns_false_when_table_does_not_exist(self):
-        m = self._m()
-        m.query_executor.table_exists.return_value = False
-        assert m.migration_exists(MagicMock(), "myschema", "1.0") is False
-
-    def test_returns_true_when_count_positive(self):
-        m = self._m()
-        m.query_executor.table_exists.return_value = True
-        m.query_executor.get_schema_qualified_name.return_value = "myschema.dblift_schema_history"
-        m.query_executor.execute_query.return_value = [{"count": 1}]
-        assert m.migration_exists(MagicMock(), "myschema", "1.0") is True
-
-    def test_returns_false_when_count_zero(self):
-        m = self._m()
-        m.query_executor.table_exists.return_value = True
-        m.query_executor.get_schema_qualified_name.return_value = "myschema.dblift_schema_history"
-        m.query_executor.execute_query.return_value = [{"count": 0}]
-        assert m.migration_exists(MagicMock(), "myschema", "1.0") is False
-
-    def test_returns_false_when_no_results(self):
-        m = self._m()
-        m.query_executor.table_exists.return_value = True
-        m.query_executor.get_schema_qualified_name.return_value = "myschema.dblift_schema_history"
-        m.query_executor.execute_query.return_value = []
-        assert m.migration_exists(MagicMock(), "myschema", "1.0") is False
-
-    def test_uses_custom_table_name(self):
-        m = self._m()
-        m.query_executor.table_exists.return_value = True
-        m.query_executor.get_schema_qualified_name.return_value = "s.custom_table"
-        m.query_executor.execute_query.return_value = [{"count": 0}]
-        m.migration_exists(MagicMock(), "s", "1.0", table_name="custom_table")
-        m.query_executor.table_exists.assert_called_with("s", "custom_table")
-
-    def test_uses_default_table_name_when_none(self):
-        m = self._m()
-        m.query_executor.table_exists.return_value = False
-        m.migration_exists(MagicMock(), "s", "1.0", table_name=None)
-        m.query_executor.table_exists.assert_called_with("s", "dblift_schema_history")
-
-    def test_returns_false_on_exception(self):
-        m = self._m()
-        m.query_executor.table_exists.side_effect = RuntimeError("db error")
-        assert m.migration_exists(MagicMock(), "s", "1.0") is False
-
-    def test_logs_error_on_exception(self):
-        log = MagicMock()
-        m = _make_manager(log=log)
-        m.query_executor.table_exists.side_effect = RuntimeError("db error")
-        m.migration_exists(MagicMock(), "s", "1.0")
-        log.error.assert_called_once()
 
 
 # ===========================================================================

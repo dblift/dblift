@@ -492,27 +492,6 @@ class TestDb2HistoryManager(unittest.TestCase):
 
         self.assertIsNone(result)
 
-    # --- migration_exists ---
-
-    def test_migration_exists_returns_true(self):
-        mgr, qe, schema_ops, log = self._make_manager()
-        conn = self._make_connection()
-        qe.table_exists.return_value = True
-        qe.execute_query.return_value = [{"1": 1}]
-
-        result = mgr.migration_exists(conn, "myschema", "1.0")
-
-        self.assertTrue(result)
-
-    def test_migration_exists_returns_false_when_no_table(self):
-        mgr, qe, schema_ops, log = self._make_manager()
-        conn = self._make_connection()
-        qe.table_exists.return_value = False
-
-        result = mgr.migration_exists(conn, "myschema", "1.0")
-
-        self.assertFalse(result)
-
 
 if __name__ == "__main__":
     unittest.main()
