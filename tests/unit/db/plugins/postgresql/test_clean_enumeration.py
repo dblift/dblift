@@ -92,4 +92,10 @@ def test_list_droppable_objects_returns_preview_order_without_executing_drops():
         ),
     ]
     assert not provider.statements
-    assert all(params == ["tenant_a"] for _sql, params in provider.queries)
+    # Queries carrying a placeholder are schema-scoped and must bind the schema.
+    # The continuous-aggregate catalog probe asks a global question and so
+    # correctly takes no parameters; it must still never interpolate a name.
+    schema_scoped = [(sql, params) for sql, params in provider.queries if "?" in sql]
+    assert schema_scoped
+    assert all(params == ["tenant_a"] for _sql, params in schema_scoped)
+    assert all("tenant_a" not in sql for sql, _params in provider.queries)
