@@ -102,9 +102,11 @@ class DB2RegexParser(EnhancedRegexParser):
         """Check if SQL contains SQL/PL blocks."""
         # Check for CREATE/ALTER PROCEDURE or FUNCTION with BEGIN...END
         # LANGUAGE SQL is optional in DB2
+        # The trailing terminator is optional at the end of the script: the block
+        # extractor handles an END with no delimiter, so this gate must too.
         return bool(
             re.search(
-                r"\b(?:CREATE|ALTER)\s+(?:OR\s+REPLACE\s+)?(?:PROCEDURE|FUNCTION)\s+\S+.*?BEGIN.*?END\s*[@;]",
+                r"\b(?:CREATE|ALTER)\s+(?:OR\s+REPLACE\s+)?(?:PROCEDURE|FUNCTION)\s+\S+.*?BEGIN.*?END\s*(?:[@;]|$)",
                 sql,
                 re.IGNORECASE | re.DOTALL,
             )
@@ -118,9 +120,11 @@ class DB2RegexParser(EnhancedRegexParser):
         """Check if SQL contains trigger blocks."""
         # Check for CREATE/ALTER TRIGGER with BEGIN (ATOMIC optional)...END
         # DB2 triggers can use BEGIN ATOMIC or just BEGIN
+        # The trailing terminator is optional at the end of the script: the block
+        # extractor handles an END with no delimiter, so this gate must too.
         return bool(
             re.search(
-                r"\b(?:CREATE|ALTER)\s+(?:OR\s+REPLACE\s+)?TRIGGER\s+\S+.*?(?:BEFORE|AFTER|INSTEAD\s+OF).*?BEGIN\s+(?:ATOMIC\s+)?.*?END\s*[@;]",
+                r"\b(?:CREATE|ALTER)\s+(?:OR\s+REPLACE\s+)?TRIGGER\s+\S+.*?(?:BEFORE|AFTER|INSTEAD\s+OF).*?BEGIN\s+(?:ATOMIC\s+)?.*?END\s*(?:[@;]|$)",
                 sql,
                 re.IGNORECASE | re.DOTALL,
             )

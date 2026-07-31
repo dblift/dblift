@@ -670,9 +670,11 @@ class DB2Config(DialectConfig):
         """
         blocks = []
 
-        # Pattern to match compound statements with @ delimiter
+        # Pattern to match compound statements with @ delimiter. The delimiter is
+        # optional on the last statement of the script, so an END that runs to the
+        # end of the input also closes the block.
         compound_pattern = re.compile(
-            r"\bBEGIN\s+(?:ATOMIC|NOT\s+ATOMIC).*?\bEND\s*[@;]", re.IGNORECASE | re.DOTALL
+            r"\bBEGIN\s+(?:ATOMIC|NOT\s+ATOMIC).*?\bEND\s*(?:[@;]|$)", re.IGNORECASE | re.DOTALL
         )
 
         matches = compound_pattern.finditer(sql)

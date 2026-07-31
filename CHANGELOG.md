@@ -76,6 +76,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   rest of the provider, and returns ``len(fetchall())``. Non-rewritable
   statements still fall through to the driver (which may report ``-1``).
 
+- **DB2 compound bodies survive a missing trailing terminator.** A migration
+  whose last statement is a trigger, a procedure or a bare ``BEGIN ATOMIC``
+  block is valid DB2 without a closing ``;`` or ``@``, but the detection
+  patterns that route such a script to the block-aware splitter all required
+  ``END`` to be followed by a delimiter. The block extractors themselves count
+  ``BEGIN``/``END`` depth and already handled a bare ``END``, so the detection
+  was stricter than the code it guarded: an unterminated block fell through to
+  plain semicolon splitting and was cut at the first semicolon inside its body,
+  which DB2 rejected with ``SQL0104N ... unexpected token "END-OF-STATEMENT"``.
+  The terminator is now optional when ``END`` ends the script, so the whole
+  block is submitted as one statement. Scripts that do end with ``;`` or ``@``
+  are matched exactly as before.
+
 ### Removed
 
 ## [3.3.4] - 2026-07-30
