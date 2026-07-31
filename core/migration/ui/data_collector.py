@@ -596,9 +596,9 @@ class MigrationDataCollector:
         """Find versions that have undo capability available.
 
         A version is undoable if it has a separate undo companion script:
-        ``U*.sql`` for SQL migrations or ``U*.py`` for Python migrations. An inline
-        ``def undo(`` inside a versioned ``V*.py`` does NOT make a version undoable —
-        undo is always the job of the separate ``U*`` script.
+        ``U*.sql`` for SQL migrations or ``U*.py`` for Python migrations.
+        Python undo companions use the same ``def migrate(context)`` contract
+        as versioned scripts; they are not selected by an inline ``undo`` on ``V*``.
         """
         undo_versions = set()
         if scripts_dir and scripts_dir.exists() and self.script_manager is not None:

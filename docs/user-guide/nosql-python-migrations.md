@@ -56,19 +56,15 @@ migration directories all behave exactly as they do for `.sql` migrations.
 
 ## The migration contract
 
-Each file defines a top-level `migrate` function taking one argument. An
-`undo` function with the same signature is optional and is what `dblift undo`
-runs from the `U…` file.
+Each file — versioned (`V…`) or undo companion (`U…`) — defines a top-level
+`migrate` function taking one argument. Undo is a separate `U<version>__*.py`
+script with its own `migrate`; it is not an inline `undo` on the versioned file.
 
 ```python
 from api import MigrationContext
 
 
 def migrate(context: MigrationContext) -> None:
-    ...
-
-
-def undo(context: MigrationContext) -> None:
     ...
 ```
 
@@ -151,9 +147,17 @@ def migrate(context: MigrationContext) -> None:
         offer_throughput=400,
     )
     context.log.info(f"Created container '{CONTAINER}'")
+```
+
+Companion undo script `migrations/U1_0_0__drop_users_container.py`:
+
+```python
+from api import MigrationContext
+
+CONTAINER = "users"
 
 
-def undo(context: MigrationContext) -> None:
+def migrate(context: MigrationContext) -> None:
     if context.dry_run:
         context.log.info(f"[DRY-RUN] would delete container '{CONTAINER}'")
         return
@@ -199,30 +203,6 @@ def migrate(context: MigrationContext) -> None:
         default_ttl=TTL_SECONDS,
     )
     context.log.info(f"Updated indexing policy and TTL on '{CONTAINER}'")
-
-
-def undo(context: MigrationContext) -> None:
-    container = context.db.get_container_client(CONTAINER)
-    properties = container.read()
-
-    indexing_policy = properties["indexingPolicy"]
-    indexing_policy["excludedPaths"] = [
-        entry
-        for entry in indexing_policy.get("excludedPaths", [])
-        if entry.get("path") != EXCLUDED_PATH
-    ]
-
-    if context.dry_run:
-        context.log.info(f"[DRY-RUN] would restore indexing and TTL on '{CONTAINER}'")
-        return
-
-    context.db.replace_container(
-        container,
-        partition_key=PartitionKey(path=properties["partitionKey"]["paths"][0]),
-        indexing_policy=indexing_policy,
-        default_ttl=None,
-    )
-    context.log.info(f"Restored indexing policy and disabled TTL on '{CONTAINER}'")
 ```
 
 ## Reading data

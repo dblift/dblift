@@ -74,15 +74,6 @@ def migrate(context):
         offer_throughput=400,
     )
     context.log.info(f"Created container '{CONTAINER}'")
-
-
-def undo(context):
-    if context.dry_run:
-        context.log.info(f"[DRY-RUN] would delete container '{CONTAINER}'")
-        return
-
-    context.db.delete_container(CONTAINER)
-    context.log.info(f"Deleted container '{CONTAINER}'")
 '''
 
 
@@ -322,11 +313,6 @@ PY_UNDO_USERS = '''
 
 
 def migrate(context):
-    """Undo scripts are only ever driven through ``undo``."""
-    undo(context)
-
-
-def undo(context):
     if context.dry_run:
         context.log.info("[DRY-RUN] would delete container 'users'")
         return
