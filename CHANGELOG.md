@@ -13,6 +13,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **``validate --strict`` now runs out-of-order detection on Python
+  migrations.** Internally ``MigrationType.SQL`` names a migration's *role* —
+  versioned, run-once — and not its file format; a versioned ``.py`` script is
+  labelled ``MigrationType.PYTHON`` instead. Strict mode fails validation when
+  a pending versioned script has a version lower than the highest applied
+  version, but both halves of the check — the pending set and the applied set
+  — compared against ``MigrationType.SQL`` directly. On a project whose
+  versioned migrations are all ``.py`` the check found nothing to compare and
+  returned a pass without examining anything. After upgrading,
+  ``validate --strict`` **will start failing** on such a project if it has a
+  genuine out-of-order migration and passed yesterday. That failure is correct
+  and the ordering was already wrong — the gate simply was not running.
+  Resolve it exactly as on a SQL project: renumber the out-of-order migration
+  above the highest applied version, or drop ``--strict``.
+
+  ``migrate --strict`` is unaffected: it was already rejecting out-of-order
+  Python migrations through a separate, format-agnostic check in the migration
+  state manager, and its behaviour and error message are unchanged.
+- **Internal consistency:** baseline filtering in the validator now recognises
+  versioned Python scripts. No observable behaviour change — the branch is
+  unreachable from the current validation path, because the script loader never
+  classifies a file as a baseline (baselines are command-generated history
+  entries, not script files). Corrected so the code reads as intended, and so
+  the branch is right if it is ever wired up.
 - **``undo``, ``validate`` and ``repair`` now treat versioned Python
   migrations like versioned SQL ones.** Three checks tested the recorded
   migration type against ``SQL``, which is the type of a versioned *SQL*
