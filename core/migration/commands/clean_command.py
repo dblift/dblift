@@ -20,7 +20,6 @@ class CleanCommand(BaseCommand):
         recursive: bool = True,
         additional_dirs: Optional[List[Path]] = None,
         dir_recursive_map: Optional[Dict[Path, bool]] = None,
-        snapshot_model_path: Optional[Path] = None,
         **kwargs: Any,
     ) -> CleanResult:
         """Clean the database by dropping all objects in the schema.
@@ -31,7 +30,6 @@ class CleanCommand(BaseCommand):
             recursive: If True, search scripts recursively.
             additional_dirs: Additional directories to search for scripts.
             dir_recursive_map: Map of directories to their recursive setting.
-            snapshot_model_path: Path to snapshot model file.
             **kwargs: Reserved for forward compatibility; passed through from API/executor.
         """
         result = CleanResult()

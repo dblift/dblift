@@ -37,12 +37,11 @@ def get_provider_display_url(
 
     connection_manager = getattr(provider, "connection_manager", None)
     if connection_manager is not None:
-        for method_name in ("get_database_url", "get_database_url"):
-            method = getattr(connection_manager, method_name, None)
-            if callable(method):
-                url = method()
-                if url:
-                    return str(url)
+        get_url = getattr(connection_manager, "get_database_url", None)
+        if callable(get_url):
+            url = get_url()
+            if url:
+                return str(url)
 
     db = getattr(config, "database", None) if config is not None else None
     if db is not None:

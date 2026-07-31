@@ -468,26 +468,6 @@ class PostgreSqlRegexParser(EnhancedRegexParser):
 
         return SqlStatementType.UNKNOWN
 
-    def is_valid_script_name(self, filename: str) -> bool:
-        """Check if script name follows Dblift naming convention."""
-        if not filename:
-            return False
-
-        # Valid patterns: V1__description.sql, V1.2.3__description.sql, R__description.sql
-        pattern = r"^(V\d+(?:\.\d+)*|R)__.*\.sql$"
-        return bool(re.match(pattern, filename, re.IGNORECASE))
-
-    def extract_version_from_filename(self, filename: str) -> Optional[str]:
-        """Extract version from filename."""
-        if not filename:
-            return None
-
-        # Extract version from patterns like V1__description.sql or V1.2.3__description.sql
-        match = re.match(r"^V(\d+(?:\.\d+)*)__.*\.sql$", filename, re.IGNORECASE)
-        if match:
-            return match.group(1)
-        return None
-
     def parse_sql(
         self,
         sql_content: str,

@@ -17,27 +17,6 @@ class TestPostgreSqlParser:
         assert parser is not None
         assert parser._dialect == "postgresql"
 
-    def test_is_valid_script_name_valid(self):
-        """Test valid script name validation."""
-        parser = PostgreSqlRegexParser()
-        assert parser.is_valid_script_name("V1__test.sql") is True
-        assert parser.is_valid_script_name("V2.1__update.sql") is True
-        assert parser.is_valid_script_name("R__repeatable.sql") is True
-
-    def test_is_valid_script_name_invalid(self):
-        """Test invalid script name validation."""
-        parser = PostgreSqlRegexParser()
-        assert parser.is_valid_script_name("invalid.sql") is False
-        assert parser.is_valid_script_name("V1_missing_double_underscore.sql") is False
-        assert parser.is_valid_script_name("") is False
-
-    def test_extract_version_from_filename(self):
-        """Test version extraction from filename."""
-        parser = PostgreSqlRegexParser()
-        assert parser.extract_version_from_filename("V1__test.sql") == "1"
-        assert parser.extract_version_from_filename("V2.1.5__update.sql") == "2.1.5"
-        assert parser.extract_version_from_filename("R__repeatable.sql") is None
-
     def test_parse_sql_simple(self):
         """Test parsing simple SQL."""
         parser = PostgreSqlRegexParser()
@@ -254,8 +233,6 @@ class TestPostgreSqlParser:
         # Should have methods from base parser
         assert hasattr(parser, "parse_sql")
         assert hasattr(parser, "split_statements")
-        assert hasattr(parser, "is_valid_script_name")
-        assert hasattr(parser, "extract_version_from_filename")
 
     def test_parser_configuration(self):
         """Test parser configuration and setup."""

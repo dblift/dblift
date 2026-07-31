@@ -10,7 +10,6 @@ Covers:
 - _is_empty_or_comment
 - _remove_comments
 - _identify_statement_type (DDL / DML / QUERY / transaction / unknown)
-- is_valid_script_name / extract_version_from_filename
 - parse_sql (placeholders, errors)
 - validate_sql
 - _has_unmatched_quotes / _has_unmatched_parentheses / _has_unmatched_dollar_quotes
@@ -431,56 +430,6 @@ class TestIdentifyStatementType(unittest.TestCase):
     def test_create_function_is_ddl(self):
         sql = "CREATE FUNCTION f() RETURNS INT AS $$ BEGIN RETURN 1; END; $$ LANGUAGE plpgsql;"
         self.assertEqual(self.parser._identify_statement_type(sql), SqlStatementType.DDL)
-
-
-class TestIsValidScriptName(unittest.TestCase):
-    def setUp(self):
-        self.parser = PostgreSqlRegexParser()
-
-    def test_valid_versioned(self):
-        self.assertTrue(self.parser.is_valid_script_name("V1__description.sql"))
-
-    def test_valid_versioned_multi_part(self):
-        self.assertTrue(self.parser.is_valid_script_name("V2.1.3__create_tables.sql"))
-
-    def test_valid_repeatable(self):
-        self.assertTrue(self.parser.is_valid_script_name("R__repeatable_view.sql"))
-
-    def test_invalid_no_double_underscore(self):
-        self.assertFalse(self.parser.is_valid_script_name("V1_description.sql"))
-
-    def test_invalid_wrong_extension(self):
-        self.assertFalse(self.parser.is_valid_script_name("V1__description.txt"))
-
-    def test_invalid_empty_string(self):
-        self.assertFalse(self.parser.is_valid_script_name(""))
-
-    def test_invalid_no_prefix(self):
-        self.assertFalse(self.parser.is_valid_script_name("description.sql"))
-
-    def test_case_insensitive(self):
-        # The pattern uses re.IGNORECASE
-        self.assertTrue(self.parser.is_valid_script_name("v1__description.SQL"))
-
-
-class TestExtractVersionFromFilename(unittest.TestCase):
-    def setUp(self):
-        self.parser = PostgreSqlRegexParser()
-
-    def test_simple_version(self):
-        self.assertEqual(self.parser.extract_version_from_filename("V1__test.sql"), "1")
-
-    def test_multi_part_version(self):
-        self.assertEqual(self.parser.extract_version_from_filename("V2.1.5__update.sql"), "2.1.5")
-
-    def test_repeatable_returns_none(self):
-        self.assertIsNone(self.parser.extract_version_from_filename("R__repeatable.sql"))
-
-    def test_invalid_name_returns_none(self):
-        self.assertIsNone(self.parser.extract_version_from_filename("invalid.sql"))
-
-    def test_empty_returns_none(self):
-        self.assertIsNone(self.parser.extract_version_from_filename(""))
 
 
 class TestParseSql(unittest.TestCase):

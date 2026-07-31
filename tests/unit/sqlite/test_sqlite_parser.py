@@ -166,36 +166,6 @@ class TestSQLiteRegexParser:
         assert objects[0].object_type == SqlObjectType.VIRTUAL_TABLE
         assert objects[0].name == "docs"
 
-    def test_validate_valid_statement(self):
-        """Test validating a valid SQL statement."""
-        from db.plugins.sqlite.parser.sqlite_regex_parser import SQLiteRegexParser
-
-        parser = SQLiteRegexParser()
-
-        result = parser.validate_syntax("SELECT * FROM users WHERE id = 1")
-        assert result["valid"] is True
-        assert result.get("errors") is None
-
-    def test_validate_unclosed_string(self):
-        """Test validating statement with unclosed string."""
-        from db.plugins.sqlite.parser.sqlite_regex_parser import SQLiteRegexParser
-
-        parser = SQLiteRegexParser()
-
-        result = parser.validate_syntax("SELECT * FROM users WHERE name = 'test")
-        assert result["valid"] is False
-        assert any("string" in e.lower() for e in result["errors"])
-
-    def test_validate_unclosed_parenthesis(self):
-        """Test validating statement with unclosed parenthesis."""
-        from db.plugins.sqlite.parser.sqlite_regex_parser import SQLiteRegexParser
-
-        parser = SQLiteRegexParser()
-
-        result = parser.validate_syntax("SELECT * FROM (SELECT id FROM users")
-        assert result["valid"] is False
-        assert any("parenthesis" in e.lower() for e in result["errors"])
-
     def test_handle_comments(self):
         """Test handling of SQL comments."""
         from db.plugins.sqlite.parser.sqlite_regex_parser import SQLiteRegexParser
