@@ -15,7 +15,6 @@ from cli._output import CommandOutput
 def _ctx(*, strict_on_args: bool = False, strict_on_config: bool = False):
     log = MagicMock()
     config = MagicMock()
-    config.journal_enabled = False
     config.strict_mode = strict_on_config
     config.database = SimpleNamespace(database_name="db", schema="public", database=None)
     config.migrations = SimpleNamespace(directories=None)
@@ -33,7 +32,7 @@ def _ctx(*, strict_on_args: bool = False, strict_on_config: bool = False):
 
 
 @pytest.mark.unit
-def test_dispatch_forces_journal_and_honors_strict_mode_from_args():
+def test_dispatch_honors_strict_mode_from_args():
     ctx = _ctx(strict_on_args=True)
     output = CommandOutput("table")
 
@@ -54,7 +53,6 @@ def test_dispatch_forces_journal_and_honors_strict_mode_from_args():
         code = cli_main._dispatch_command(ctx, output)
 
     assert code == 0
-    assert ctx.config.journal_enabled is True
     assert ctx.config.strict_mode is True
     ctx.log.info.assert_any_call(
         "Strict mode is enabled. All migrations will be validated against strict rules."

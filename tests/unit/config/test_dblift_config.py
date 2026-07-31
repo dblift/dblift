@@ -141,12 +141,10 @@ class TestDbliftConfig:
         base.merge(
             {
                 "strict_mode": True,
-                "journal_enabled": False,
                 "log_format": "json",
             }
         )
         assert base.strict_mode is True
-        assert base.journal_enabled is False
         assert base.log_format == "json"
 
     def test_invalid_log_level(self):

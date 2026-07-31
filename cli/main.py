@@ -485,8 +485,6 @@ def _dispatch_command(ctx: _CliContext, command_output: CommandOutput) -> int:
     if placeholders:
         ctx.log.debug(f"Using placeholders: {placeholders}")
 
-    # Journal is always on for CLI runs; config cannot disable it.
-    ctx.config.journal_enabled = True
     if getattr(ctx.config, "strict_mode", False) or getattr(ctx.args, "strict_mode", False):
         ctx.config.strict_mode = True
         ctx.log.info(

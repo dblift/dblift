@@ -454,13 +454,12 @@ class DbliftConfig:
     # SQL Placeholders for variable substitution in migrations
     placeholders: Optional[Dict[str, str]] = None
 
-    # Migration history and journal configuration
+    # Migration history configuration
     history_table: str = "dblift_schema_history"
     snapshot_table: str = "dblift_schema_snapshots"
     max_snapshots: int = (
         1  # Maximum number of snapshots to keep (oldest are deleted when limit exceeded)
     )
-    journal_enabled: bool = True
 
     # Secrets providers configuration
     secrets: SecretsConfig = field(default_factory=SecretsConfig)
@@ -556,7 +555,6 @@ class DbliftConfig:
         for scalar_key in (
             "strict_mode",
             "clean_disabled",
-            "journal_enabled",
         ):
             if scalar_key in other_config:
                 setattr(self, scalar_key, other_config[scalar_key])
@@ -732,8 +730,6 @@ class DbliftConfig:
         migrations_directories = migrations.get("directories", [])
         migrations_recursive = migrations.get("recursive", True)
 
-        # Journal settings are always in-memory only
-        # journal_enabled defaults to True
         config = cls(
             database=database_config,
             migrations=MigrationsConfig(
@@ -762,7 +758,6 @@ class DbliftConfig:
             history_table=data.get("history_table", "dblift_schema_history"),
             snapshot_table=data.get("snapshot_table", "dblift_schema_snapshots"),
             max_snapshots=data.get("max_snapshots", 1),
-            journal_enabled=data.get("journal_enabled", True),
             log_file=data.get("log_file"),
             log_format=data.get("log_format"),
             log_level=data.get("log_level"),
@@ -1007,10 +1002,9 @@ class DbliftConfig:
 
         from config.property_registry import PROPERTY_REGISTRY
 
-        # Registry covers the persistent scalar properties; these two are
-        # arg-only keys not modeled in the registry (undo is subcommand-driven,
-        # journal_enabled is internal).
-        _arg_only_keys = ("undo", "journal_enabled")
+        # Registry covers the persistent scalar properties; undo is arg-only
+        # (subcommand-driven) and not modeled in the registry.
+        _arg_only_keys = ("undo",)
         registry_keys = [
             spec.name for spec in PROPERTY_REGISTRY if not spec.cli_only and "." not in spec.name
         ]
@@ -1124,7 +1118,6 @@ class DbliftConfig:
             "history_table": self.history_table,
             "snapshot_table": self.snapshot_table,
             "max_snapshots": self.max_snapshots,
-            "journal_enabled": self.journal_enabled,
         }
 
         # Include optional fields if they have values
