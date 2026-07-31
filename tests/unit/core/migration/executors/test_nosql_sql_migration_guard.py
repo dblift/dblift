@@ -101,17 +101,17 @@ def test_sql_callbacks_get_the_same_verdict(tmp_path):
     """Callbacks bypass get_executor, so the engine must ask for the verdict.
 
     ``ExecutionEngine.execute_callback`` runs SQL callbacks itself. Without
-    an explicit check, an ``afterMigrate.sql`` on a document store would
+    an explicit check, an ``afterMigrate__log.sql`` on a document store would
     fail later with an opaque parser or driver error instead of
     DBLIFT-NOSQL-001.
     """
-    callback = _migration(tmp_path, "afterMigrate.sql", "SELECT 1;")
+    callback = _migration(tmp_path, "afterMigrate__log.sql", "SELECT 1;")
 
     with pytest.raises(UnsupportedMigrationFormatError) as excinfo:
         _factory(_NoSqlQuirks("cosmosdb")).ensure_format_supported(callback, MigrationFormat.SQL)
 
     assert "DBLIFT-NOSQL-001" in str(excinfo.value)
-    assert "afterMigrate.sql" in str(excinfo.value)
+    assert "afterMigrate__log.sql" in str(excinfo.value)
 
 
 def test_execution_engine_asks_before_running_a_sql_callback():
@@ -125,7 +125,7 @@ def test_execution_engine_asks_before_running_a_sql_callback():
 
 
 def test_python_callbacks_are_unaffected(tmp_path):
-    callback = _migration(tmp_path, "afterMigrate.py", "def migrate(context):\n    pass\n")
+    callback = _migration(tmp_path, "afterMigrate__log.py", "def migrate(context):\n    pass\n")
 
     # No raise: Python callbacks route through the factory as before.
     _factory(_NoSqlQuirks("cosmosdb")).ensure_format_supported(callback, MigrationFormat.PYTHON)
