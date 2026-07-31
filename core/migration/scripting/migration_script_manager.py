@@ -274,19 +274,6 @@ class MigrationScriptManager:
         _, _, _, tags = self.parse_filename(script_name)
         return tags
 
-    def get_migration_type(self, script_name: str) -> str:
-        """Get the type of a migration script.
-
-        Args:
-            script_name: Name of the migration script
-
-        Returns:
-            Type of the migration script as uppercase string
-        """
-        # Use the parse_filename method for consistency
-        migration_type, _, _, _ = self.parse_filename(script_name)
-        return self._get_migration_type_string(migration_type)
-
     def has_script_changed(
         self,
         script_name: str,

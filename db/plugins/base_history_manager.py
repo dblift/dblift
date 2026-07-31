@@ -572,42 +572,6 @@ class BaseHistoryManager(ABC):
             return script_name if os.path.splitext(script_name)[1] else f"{script_name}.sql"
         return f"UNDO_{version}.sql"
 
-    def migration_exists(
-        self, connection: Any, schema: str, version: str, table_name: Optional[str] = None
-    ) -> bool:
-        """Check if a migration with the given version exists in the history.
-
-        Default implementation queries the history table.
-        Database-specific implementations can override for optimization.
-
-        Args:
-            schema: Schema name
-            version: Migration version to check
-            table_name: Custom history table name
-
-        Returns:
-            True if migration exists, False otherwise
-        """
-        try:
-            table_name = table_name or self._get_default_table_name()
-
-            if not self.query_executor.table_exists(schema, table_name):
-                return False
-
-            qualified_table = self.query_executor.get_schema_qualified_name(schema, table_name)
-            query = f"SELECT COUNT(*) as count FROM {qualified_table} WHERE version = ?"
-
-            results = self.query_executor.execute_query(query, [version])
-            if results:
-                count = self._get_first_value(results)
-                return self._to_int(count) > 0
-
-            return False
-
-        except Exception as e:
-            self.log.error(f"Error checking if migration {version} exists: {str(e)}")
-            return False
-
     def get_row_limit_clause(self, n: int = 1) -> str:
         """Return SQL clause to limit the number of rows returned.
 
