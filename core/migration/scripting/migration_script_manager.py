@@ -17,6 +17,7 @@ from core.migration.migration import (
     _callback_prefix_missing_separator,
     calculate_migration_script_checksum,
     normalize_migration_checksum,
+    strip_migration_tags,
 )
 from core.migration.version_utils import compare_versions as _compare_versions_shared
 from core.migration.version_utils import is_migration_success
@@ -78,15 +79,10 @@ class MigrationScriptManager:
         Returns:
             Tuple of (MigrationType, version, description, tags)
         """
-        # Extract tags if present - they can be in any valid filename
-        tags = []
-        tag_match = re.search(r"\[(.*?)\]", filename)
-        if tag_match:
-            tags = [tag.strip() for tag in tag_match.group(1).split(",") if tag.strip()]
-            # Remove the tag part from the filename for further parsing
-            filename_without_tags = filename.replace(tag_match.group(0), "")
-        else:
-            filename_without_tags = filename
+        # Extract tags if present - they can be in any valid filename.
+        # Shared with the callback event helpers so classification and event
+        # matching normalize a name identically; see strip_migration_tags.
+        filename_without_tags, tags = strip_migration_tags(filename)
 
         # MULTI-FORMAT SUPPORT: Get the file extension to support multiple formats
         from pathlib import Path

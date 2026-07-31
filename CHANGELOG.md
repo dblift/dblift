@@ -48,6 +48,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   violation once per run instead of sitting in the migrations directory looking
   like a working callback.
 
+- **Tagged callbacks run again regardless of where the tag sits.** Script names
+  are classified with their ``[tag1,tag2]`` group stripped, but callback event
+  matching read the raw name, so a callback tagged anywhere before the ``__``
+  separator — ``afterMigrate[prod]__notify.sql`` — was filed as a callback and
+  then dispatched to no event. It never ran and drew no warning, since the name
+  itself is valid. Tag stripping is now a single shared step used by both
+  classification and event matching, so every tag position the one accepts the
+  other resolves to the same event.
+
 - **DuckDB parameterized DML reports real affected-row counts.** The 3.3.4
   ``RETURNING 1`` rewrite only ran when ``params is None``, so bound
   ``INSERT`` / ``UPDATE`` / ``DELETE`` (including data-correction undo restore

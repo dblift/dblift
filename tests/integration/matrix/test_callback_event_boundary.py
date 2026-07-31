@@ -165,3 +165,34 @@ def test_callback_name_without_separator_is_rejected_and_reported(tmp_path: Path
     output = stdout + stderr
     assert "afterMigrate.sql" in output, f"rejection was not reported. output={output!r}"
     assert "naming convention" in output, f"rejection was not explained. output={output!r}"
+
+
+@pytest.mark.integration
+@pytest.mark.sqlite
+@pytest.mark.parametrize(
+    "filename",
+    [
+        "afterMigrate__notify[prod].sql",
+        "afterMigrate[prod]__notify.sql",
+    ],
+)
+def test_tagged_callback_still_runs(tmp_path: Path, filename: str):
+    """A tagged callback must still execute for its event.
+
+    Tags are stripped when a script name is classified. Event matching read the
+    raw name instead, so a callback tagged before the ``__`` separator was filed
+    as a callback and then dispatched to nothing — it never ran, and drew no
+    warning either because the name is valid.
+    """
+    config, migrations_dir, db_file = _make_sqlite_config(tmp_path)
+    migrations_dir.joinpath("V1__widgets.sql").write_text(
+        "CREATE TABLE widgets (id INTEGER PRIMARY KEY);"
+    )
+    _log_callback(migrations_dir, filename, "afterMigrate")
+
+    exit_code, stdout, stderr = _run(["--config", str(config), "migrate"])
+
+    assert exit_code == 0, f"migrate failed: exit={exit_code}, stdout={stdout}, stderr={stderr}"
+    assert _logged_events(db_file) == [
+        "afterMigrate"
+    ], f"tagged callback {filename} did not run. stdout={stdout}, stderr={stderr}"

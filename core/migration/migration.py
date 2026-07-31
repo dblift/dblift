@@ -13,7 +13,7 @@ import zlib
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Union, cast
+from typing import Any, Dict, List, Optional, Tuple, Union, cast
 
 from core.logger import Log
 from core.migration.encoding import read_migration_text
@@ -73,19 +73,43 @@ _CALLBACK_PREFIXES = [
 _CALLBACK_SEPARATOR = "__"
 
 
+def strip_migration_tags(filename: str) -> Tuple[str, List[str]]:
+    """Split ``filename`` into its untagged form and its ``[tag1,tag2]`` tags.
+
+    The single implementation of the tag syntax. Every path that reasons about
+    a script name — ``MigrationScriptManager.parse_filename`` for classification,
+    the callback helpers below for event matching — normalizes through this, so
+    the two cannot disagree about what a name means. They did once: matching
+    read the raw name while classification read the stripped one, so
+    ``afterMigrate[prod]__notify.sql`` was filed as a callback and then
+    dispatched to no event, running silently never.
+
+    The pattern is deliberately positionless, matching the documented
+    ``<name>__<description>[tag1,tag2].<ext>`` form and also the tag groups
+    users have been able to place elsewhere in the name.
+    """
+    tag_match = re.search(r"\[(.*?)\]", filename)
+    if not tag_match:
+        return filename, []
+
+    tags = [tag.strip() for tag in tag_match.group(1).split(",") if tag.strip()]
+    return filename.replace(tag_match.group(0), ""), tags
+
+
 def _callback_event_prefix(base_name: str) -> Optional[str]:
     """Return the callback event ``base_name`` is a well-formed file for, else None.
 
-    Requires ``__`` right after the prefix. Without that boundary, five prefixes
-    are literal substrings of others (``afterMigrate`` / ``afterMigrateError``,
-    ``beforeEach`` / ``beforeEachMigrate``, ``afterEach`` / ``afterEachMigrate``,
-    ``afterClean`` / ``afterCleanError``, ``afterUndo`` / ``afterUndoError``) and
-    a file for the longer event also answers to the shorter one.
+    Requires ``__`` right after the prefix, on the tag-stripped name. Without
+    that boundary, five prefixes are literal substrings of others
+    (``afterMigrate`` / ``afterMigrateError``, ``beforeEach`` /
+    ``beforeEachMigrate``, ``afterEach`` / ``afterEachMigrate``, ``afterClean``
+    / ``afterCleanError``, ``afterUndo`` / ``afterUndoError``) and a file for
+    the longer event also answers to the shorter one.
 
     At most one prefix can match: every longer prefix continues with a letter
     where the shorter one requires ``__``.
     """
-    lowered = base_name.lower()
+    lowered = strip_migration_tags(base_name)[0].lower()
     for prefix in _CALLBACK_PREFIXES:
         if lowered.startswith(prefix.lower() + _CALLBACK_SEPARATOR):
             return prefix
@@ -103,7 +127,7 @@ def _callback_prefix_missing_separator(base_name: str) -> Optional[str]:
     if _callback_event_prefix(base_name) is not None:
         return None
 
-    lowered = base_name.lower()
+    lowered = strip_migration_tags(base_name)[0].lower()
     candidates = [prefix for prefix in _CALLBACK_PREFIXES if lowered.startswith(prefix.lower())]
     # Longest wins, so "afterMigrateError.sql" is reported against the event it
     # was plainly meant to be, not against "afterMigrate".

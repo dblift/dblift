@@ -251,3 +251,117 @@ def test_well_formed_callback_is_not_reported_as_a_violation(tmp_path: Path):
     MigrationScriptManager(logger).load_migration_scripts(tmp_path, recursive=False)
 
     assert logger.warning.call_args_list == []
+
+
+# --- Tags: matching must normalize the name the same way classification does --
+
+
+# ``parse_filename`` strips a ``[...]`` group with a positionless regex, so it
+# accepts tags anywhere in the name, not only in the documented
+# ``<prefix>__<description>[tag1,tag2].<ext>`` position. Event matching has to
+# accept every position classification does, or the file is filed as a callback
+# and then dispatched to nothing.
+TAGGED_CALLBACK_NAMES = [
+    "afterMigrate__notify[prod].sql",  # documented position
+    "afterMigrate[prod]__notify.sql",  # between prefix and separator
+    "[prod]afterMigrate__notify.sql",  # leading
+    "afterMigrate[prod,eu]__notify.sql",  # multiple tags
+]
+
+
+@pytest.mark.parametrize("filename", TAGGED_CALLBACK_NAMES)
+def test_tagged_callback_is_dispatched_to_its_event(tmp_path: Path, filename: str):
+    """A tagged callback must reach its event, through the real load path.
+
+    Asserts dispatch rather than the matcher return value: the failure this
+    guards against is classification and matching disagreeing, which only shows
+    up when both run.
+    """
+    (tmp_path / filename).write_text("SELECT 1;")
+
+    callbacks = _manager().get_callbacks_by_event(tmp_path, "afterMigrate", recursive=False)
+
+    assert _names(callbacks) == [filename]
+
+
+@pytest.mark.parametrize("filename", TAGGED_CALLBACK_NAMES)
+def test_tagged_callback_does_not_reach_a_colliding_event(tmp_path: Path, filename: str):
+    """Stripping tags must not reopen the prefix collision."""
+    tagged_error_callback = filename.replace("afterMigrate", "afterMigrateError")
+    (tmp_path / tagged_error_callback).write_text("SELECT 1;")
+
+    callbacks = _manager().get_callbacks_by_event(tmp_path, "afterMigrate", recursive=False)
+
+    assert _names(callbacks) == []
+
+
+@pytest.mark.parametrize("filename", TAGGED_CALLBACK_NAMES)
+def test_tagged_callback_type_agrees_between_model_and_manager(filename: str):
+    """``Migration.type`` and ``parse_filename`` must not disagree about tags."""
+    assert Migration(script_name=filename).type is MigrationType.CALLBACK
+    assert _manager().parse_filename(filename)[0] is MigrationType.CALLBACK
+
+
+MALFORMED_TAGGED_NAMES = [
+    "afterMigrate[prod]notify.sql",  # tags, but no separator anywhere
+    "afterMigrate[prod].sql",  # tags standing in for the description
+    "afterMigrate[prod]_notify.sql",  # single underscore
+]
+
+
+@pytest.mark.parametrize("filename", MALFORMED_TAGGED_NAMES)
+def test_malformed_tagged_name_is_rejected_and_reported(tmp_path: Path, filename: str):
+    """Tags must not smuggle a separator-less name past the naming check."""
+    (tmp_path / filename).write_text("SELECT 1;")
+    logger = MagicMock()
+    manager = MigrationScriptManager(logger)
+
+    migrations = manager.load_migration_scripts(tmp_path, recursive=False)
+
+    assert all(loaded == [] for loaded in migrations.values())
+    warnings = " ".join(str(call) for call in logger.warning.call_args_list)
+    assert filename in warnings
+    assert "naming convention" in warnings
+
+
+# --- The invariant the tag bug violated --------------------------------------
+
+
+AGREEMENT_SAMPLE = (
+    TAGGED_CALLBACK_NAMES
+    + MALFORMED_TAGGED_NAMES
+    + MALFORMED_CALLBACK_NAMES
+    + [
+        "afterMigrate__notify.sql",
+        "afterMigrateError__notify.sql",
+        "beforeEachMigrate__mark.py",
+        "AFTERMIGRATE__SHOUTING.sql",
+        "V1__not_a_callback.sql",
+        "R__not_a_callback.sql",
+    ]
+)
+
+
+@pytest.mark.parametrize("filename", AGREEMENT_SAMPLE)
+def test_a_file_classified_as_a_callback_always_reaches_an_event(tmp_path: Path, filename: str):
+    """Classification and matching must never disagree.
+
+    Every file the loader files under CALLBACK must be dispatched by exactly
+    one event, and nothing else may be. When the two paths normalize names
+    differently — as they did for tags — a file lands in the callback bucket
+    and is then dispatched to no event: it never runs, and because it is a
+    *valid* script name it draws no naming-convention warning either. Silent.
+    """
+    (tmp_path / filename).write_text("SELECT 1;")
+    manager = _manager()
+
+    classified_as_callback = _names(
+        manager.load_migration_scripts(tmp_path, recursive=False)[MigrationType.CALLBACK]
+    )
+    dispatched = [
+        name
+        for prefix in _CALLBACK_PREFIXES
+        for name in _names(manager.get_callbacks_by_event(tmp_path, prefix, recursive=False))
+    ]
+
+    assert dispatched == classified_as_callback
