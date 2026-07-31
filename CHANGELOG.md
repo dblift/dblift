@@ -13,40 +13,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- **Two safety gates that had been silently skipping Python migrations now
-  run. Behaviour changes on upgrade for any project with ``.py`` migrations —
-  read this before upgrading.** Internally, ``MigrationType.SQL`` names a
-  migration's *role* — versioned, run-once — and not its file format; a
-  versioned ``.py`` script is labelled ``MigrationType.PYTHON`` instead. Two
-  checks compared against ``MigrationType.SQL`` directly and therefore applied
-  to ``.sql`` migrations only. Nothing needs to be configured or opted into:
-  both gates take effect as soon as you upgrade.
-  - **Baseline filtering now suppresses pre-baseline Python migrations.**
-    Versioned scripts at or below the baseline version are dropped before
-    validation, because a baseline declares them already applied. Python
-    migrations were never dropped, so a pre-baseline ``.py`` migration stayed
-    in scope and was re-executed against the very schema that had been
-    baselined to say it had already run — re-running arbitrary migration code
-    against live data. After upgrading, those migrations are correctly
-    suppressed: ``info`` and ``validate`` list fewer migrations than before,
-    and ``migrate`` stops re-running them. If a pre-baseline ``.py`` migration
-    genuinely still needs to run, renumber it above the baseline version.
-  - **Strict-mode out-of-order detection now runs on Python migrations.**
-    Strict mode fails validation when a pending versioned script has a version
-    lower than the highest applied version. Both halves of the check — the
-    pending set and the applied set — were restricted to ``.sql``, so on a
-    project whose versioned migrations are all ``.py`` the check found nothing
-    to compare and returned a pass without examining anything. Because
-    validation also runs as ``migrate``'s pre-flight, this gated ``migrate``
-    and not only ``validate``. After upgrading, ``validate --strict``,
-    ``migrate --strict`` and any command run with ``strict_mode`` enabled in
-    configuration **will start failing** on Python projects that have a real
-    out-of-order migration and that passed yesterday. That failure is correct
-    and the migration order was already wrong — the gate simply was not
-    running. Resolve it exactly as on a SQL project: renumber the
-    out-of-order migration above the highest applied version, or drop
-    ``--strict`` / ``strict_mode`` if applying migrations out of order is
-    intended.
+- **``validate --strict`` now runs out-of-order detection on Python
+  migrations.** Internally ``MigrationType.SQL`` names a migration's *role* —
+  versioned, run-once — and not its file format; a versioned ``.py`` script is
+  labelled ``MigrationType.PYTHON`` instead. Strict mode fails validation when
+  a pending versioned script has a version lower than the highest applied
+  version, but both halves of the check — the pending set and the applied set
+  — compared against ``MigrationType.SQL`` directly. On a project whose
+  versioned migrations are all ``.py`` the check found nothing to compare and
+  returned a pass without examining anything. After upgrading,
+  ``validate --strict`` **will start failing** on such a project if it has a
+  genuine out-of-order migration and passed yesterday. That failure is correct
+  and the ordering was already wrong — the gate simply was not running.
+  Resolve it exactly as on a SQL project: renumber the out-of-order migration
+  above the highest applied version, or drop ``--strict``.
+
+  ``migrate --strict`` is unaffected: it was already rejecting out-of-order
+  Python migrations through a separate, format-agnostic check in the migration
+  state manager, and its behaviour and error message are unchanged.
+- **Internal consistency:** baseline filtering in the validator now recognises
+  versioned Python scripts. No observable behaviour change — the branch is
+  unreachable from the current validation path, because the script loader never
+  classifies a file as a baseline (baselines are command-generated history
+  entries, not script files). Corrected so the code reads as intended, and so
+  the branch is right if it is ever wired up.
 - **PostgreSQL extension functions installed in ``public`` are resolvable
   again.** dblift set a schema-only ``search_path``, so anything an extension
   installs into ``public`` — ``gen_random_uuid`` and ``digest`` (pgcrypto),
