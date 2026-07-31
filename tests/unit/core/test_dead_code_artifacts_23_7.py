@@ -31,21 +31,6 @@ def test_log_py_jinja_available_is_true():
     assert JINJA_AVAILABLE is True
 
 
-def test_type_mapper_version_matches_no_pass():
-    """DEAD-NEW-04: _version_matches() try block no longer starts with bare pass."""
-    from core.normalization.type_mapper import CanonicalTypeMapper
-
-    src = inspect.getsource(CanonicalTypeMapper._version_matches)
-    lines = [l.strip() for l in src.splitlines() if l.strip()]
-    # Find the try: line and check what follows
-    for i, line in enumerate(lines):
-        if line == "try:":
-            assert (
-                lines[i + 1] != "pass"
-            ), "Dead 'pass' still present in try: block of _version_matches"
-            break
-
-
 def test_repair_command_execute_no_pass_in_try():
     """DEAD-NEW-04: repair_command execute() MISSING_SCRIPT try block no longer starts with bare pass."""
     from core.migration.commands.repair_command import RepairCommand

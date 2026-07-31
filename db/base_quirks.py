@@ -131,13 +131,10 @@ class BaseQuirks:
 
     dialect_name: str = ""
 
-    #: Per-version vendor→canonical type aliases for
-    #: :class:`core.normalization.type_mapper.CanonicalTypeMapper` (built
-    #: from plugins at import time). Keys are ``(dialect, version_spec)``
-    #: such as ``("postgresql", "9.4+")``. Plugins override with non-empty
-    #: dicts; base default is empty.
+    #: Per-version vendor→canonical type aliases. Keys are
+    #: ``(dialect, version_spec)`` such as ``("postgresql", "9.4+")``.
+    #: Plugins override with non-empty dicts; base default is empty.
     version_specific_type_mappings: ClassVar[dict[tuple[str, str], dict[str, str]]] = {}
-
     #: Version/edition feature gates, keyed by feature name (the shared
     #: vocabulary lives in ``core.sql_model.feature_gates.KNOWN_FEATURES``).
     #: Resolved by ``core.sql_model.feature_gates.supports_feature``. Read
