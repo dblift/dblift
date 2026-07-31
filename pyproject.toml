@@ -453,10 +453,9 @@ no_implicit_optional = true
 warn_unused_ignores = true
 strict_equality = true
 
-# PR-H3: strict db/ error model and error handler.
+# PR-H3: strict db/ error model.
 [[tool.mypy.overrides]]
 module = [
-    "db.error_handler",
     "db.error",
 ]
 disallow_any_generics = true

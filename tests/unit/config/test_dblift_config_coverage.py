@@ -329,12 +329,6 @@ database:
         strict_mode = True
         history_table = "h"
         journal_enabled = True
-        error_handling_enabled = False
-        max_retries = 5
-        retry_delay = 2.0
-        retry_backoff = 3.0
-        retry_jitter = 0.5
-        retryable_error_categories = ["foo", "bar"]
 
     with patch("os.path.exists", return_value=True):
         config = load_config(str(config_file), Args())
@@ -351,10 +345,3 @@ database:
         assert config.strict_mode is True
         assert config.history_table == "h"
         assert config.journal_enabled is True
-        assert config.error_handling_enabled is False
-        assert config.max_retries == 5
-        assert config.retry_delay == 2.0
-        if hasattr(Args, "retry_backoff") and getattr(Args, "retry_backoff", None) is not None:
-            assert config.retry_backoff == 3.0
-        assert config.retry_jitter == 0.5
-        assert config.retryable_error_categories == ["foo", "bar"]

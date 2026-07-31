@@ -127,7 +127,7 @@ class TestDbliftConfig:
         assert base.logging.level == "DEBUG"
         assert base.dry_run is True
 
-    def test_merge_applies_strict_mode_and_retry_fields(self):
+    def test_merge_applies_strict_mode_and_scalar_fields(self):
         base = DbliftConfig.from_dict(
             {
                 "database": {
@@ -141,15 +141,11 @@ class TestDbliftConfig:
         base.merge(
             {
                 "strict_mode": True,
-                "max_retries": 9,
-                "retry_delay": 0.5,
                 "journal_enabled": False,
                 "log_format": "json",
             }
         )
         assert base.strict_mode is True
-        assert base.max_retries == 9
-        assert base.retry_delay == 0.5
         assert base.journal_enabled is False
         assert base.log_format == "json"
 

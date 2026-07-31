@@ -462,14 +462,6 @@ class DbliftConfig:
     )
     journal_enabled: bool = True
 
-    # Error handling and retry configuration
-    error_handling_enabled: bool = True
-    max_retries: int = 3
-    retry_delay: float = 1.0
-    retry_backoff: float = 2.0
-    retry_jitter: float = 0.2
-    retryable_error_categories: Optional[List[str]] = None
-
     # Secrets providers configuration
     secrets: SecretsConfig = field(default_factory=SecretsConfig)
 
@@ -565,17 +557,9 @@ class DbliftConfig:
             "strict_mode",
             "clean_disabled",
             "journal_enabled",
-            "error_handling_enabled",
-            "max_retries",
-            "retry_delay",
-            "retry_backoff",
-            "retry_jitter",
         ):
             if scalar_key in other_config:
                 setattr(self, scalar_key, other_config[scalar_key])
-
-        if "retryable_error_categories" in other_config:
-            self.retryable_error_categories = other_config["retryable_error_categories"]
 
         if "secrets" in other_config:
             raw = other_config["secrets"]
@@ -779,12 +763,6 @@ class DbliftConfig:
             snapshot_table=data.get("snapshot_table", "dblift_schema_snapshots"),
             max_snapshots=data.get("max_snapshots", 1),
             journal_enabled=data.get("journal_enabled", True),
-            error_handling_enabled=data.get("error_handling_enabled", True),
-            max_retries=data.get("max_retries", 3),
-            retry_delay=data.get("retry_delay", 1.0),
-            retry_backoff=data.get("retry_backoff", 2.0),
-            retry_jitter=data.get("retry_jitter", 0.2),
-            retryable_error_categories=data.get("retryable_error_categories"),
             log_file=data.get("log_file"),
             log_format=data.get("log_format"),
             log_level=data.get("log_level"),
@@ -1029,10 +1007,10 @@ class DbliftConfig:
 
         from config.property_registry import PROPERTY_REGISTRY
 
-        # Registry covers the persistent scalar properties; these three are
+        # Registry covers the persistent scalar properties; these two are
         # arg-only keys not modeled in the registry (undo is subcommand-driven,
-        # journal_enabled/retryable_error_categories are non-scalar/internal).
-        _arg_only_keys = ("undo", "journal_enabled", "retryable_error_categories")
+        # journal_enabled is internal).
+        _arg_only_keys = ("undo", "journal_enabled")
         registry_keys = [
             spec.name for spec in PROPERTY_REGISTRY if not spec.cli_only and "." not in spec.name
         ]
@@ -1147,12 +1125,6 @@ class DbliftConfig:
             "snapshot_table": self.snapshot_table,
             "max_snapshots": self.max_snapshots,
             "journal_enabled": self.journal_enabled,
-            # Error handling configuration
-            "error_handling_enabled": self.error_handling_enabled,
-            "max_retries": self.max_retries,
-            "retry_delay": self.retry_delay,
-            "retry_backoff": self.retry_backoff,
-            "retry_jitter": self.retry_jitter,
         }
 
         # Include optional fields if they have values
@@ -1183,11 +1155,6 @@ class DbliftConfig:
 
         if self.log_dir:
             result["log_dir"] = self.log_dir
-
-        if self.retryable_error_categories:
-            from typing import cast
-
-            result["retryable_error_categories"] = cast(Any, self.retryable_error_categories)
 
         return result
 
