@@ -1,6 +1,5 @@
-"""Migration rules — status enums and ordering/validation helpers shared across migration logic."""
+"""Migration rules — ordering/validation helpers shared across migration logic."""
 
-from enum import Enum
 from typing import Any, List, Tuple
 
 from core.logger import Log
@@ -9,18 +8,6 @@ from core.migration.migration import Migration, MigrationType
 from core.migration.version_utils import (
     is_migration_success,
 )
-
-# MigrationStatus is defined in this file (CoreMigrationStatus)
-# No need to import it
-
-
-class CoreMigrationStatus(Enum):
-    """Core migration statuses for business logic."""
-
-    SUCCESS = "SUCCESS"  # Migration was applied successfully
-    FAILED = "FAILED"  # Migration failed during execution
-    PENDING = "PENDING"  # Migration hasn't been applied yet
-    BASELINE = "BASELINE"  # Migration established a baseline
 
 
 class MigrationRules:

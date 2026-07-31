@@ -20,21 +20,19 @@ class TestMigrationFormatEnum:
 
     def test_sql_format_properties(self):
         """Test SQL format properties."""
-        assert MigrationFormat.SQL.file_extension == ".sql"
-        assert MigrationFormat.SQL.is_supported is True
+        assert MigrationFormat.SQL.value == "sql"
         assert str(MigrationFormat.SQL) == "sql"
 
     def test_python_format_properties(self):
         """Test Python format properties."""
-        assert MigrationFormat.PYTHON.file_extension == ".py"
-        assert MigrationFormat.PYTHON.is_supported is True
+        assert MigrationFormat.PYTHON.value == "python"
         assert str(MigrationFormat.PYTHON) == "python"
 
-    def test_all_formats_have_extensions(self):
-        """Test that all formats have file extensions."""
+    def test_all_formats_have_values(self):
+        """Test that all formats have non-empty values."""
         for format in MigrationFormat:
             if format != MigrationFormat.UNKNOWN:
-                assert format.file_extension != ""
+                assert format.value != ""
 
 
 class TestMigrationFormatDetector:
@@ -155,7 +153,6 @@ class TestMigrationExecutorArchitecture:
         )
 
         # Verify SQL is supported
-        assert factory.is_format_supported(MigrationFormat.SQL)
         assert MigrationFormat.SQL in factory.get_supported_formats()
 
     def test_executor_factory_can_get_sql_executor(self):
@@ -212,7 +209,6 @@ class TestMigrationExecutorArchitecture:
         factory.register_executor_class(MigrationFormat.PYTHON, MockPythonExecutor)
 
         # Verify it's registered
-        assert factory.is_format_supported(MigrationFormat.PYTHON)
         assert MigrationFormat.PYTHON in factory.get_supported_formats()
 
         # Create a Python migration (without file, just for testing)

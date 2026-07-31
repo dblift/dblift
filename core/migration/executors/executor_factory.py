@@ -250,23 +250,6 @@ class MigrationExecutorFactory:
         # Execute
         return executor.execute_migration(migration, dry_run=dry_run, **kwargs)
 
-    def validate(self, migration: Migration) -> tuple[bool, list[str]]:
-        """
-        Validate a migration using the appropriate executor.
-
-        Args:
-            migration: Migration to validate
-
-        Returns:
-            Tuple of (is_valid, list of error messages)
-        """
-        executor = self.get_executor(migration)
-
-        if executor is None:
-            return False, [f"No executor available for migration {migration.script_name}"]
-
-        return executor.validate_migration(migration)
-
     def get_supported_formats(self) -> List[MigrationFormat]:
         """
         Get list of all supported migration formats.
@@ -275,18 +258,6 @@ class MigrationExecutorFactory:
             List of MigrationFormat values that have registered executors
         """
         return list(self._executor_classes.keys())
-
-    def is_format_supported(self, format: MigrationFormat) -> bool:
-        """
-        Check if a migration format is supported.
-
-        Args:
-            format: Migration format to check
-
-        Returns:
-            True if an executor is registered for this format
-        """
-        return format in self._executor_classes
 
     def __str__(self) -> str:
         """String representation of the factory."""

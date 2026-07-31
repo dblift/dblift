@@ -885,7 +885,7 @@ class TestValidateDuplicateVersions(unittest.TestCase):
         result = ValidationResult()
         issues = []
         r = v._validate_duplicate_versions(
-            [self._sql_script("V1__a.sql", "1"), self._callback_script("afterMigrate.sql")],
+            [self._sql_script("V1__a.sql", "1"), self._callback_script("afterMigrate__log.sql")],
             result,
             issues,
         )

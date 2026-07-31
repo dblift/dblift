@@ -102,13 +102,3 @@ class TestMigrationRulesShouldUndoVersion(unittest.TestCase):
         m = self._make_migration("2.0", "SQL", rank=1)
         can, msg = rules.should_undo_version("1.0", [m])
         self.assertTrue(can)
-
-
-class TestCoreStatus(unittest.TestCase):
-    def test_enum_values(self):
-        from core.migration.rules.migration_rules import CoreMigrationStatus
-
-        self.assertEqual(CoreMigrationStatus.SUCCESS.value, "SUCCESS")
-        self.assertEqual(CoreMigrationStatus.FAILED.value, "FAILED")
-        self.assertEqual(CoreMigrationStatus.PENDING.value, "PENDING")
-        self.assertEqual(CoreMigrationStatus.BASELINE.value, "BASELINE")

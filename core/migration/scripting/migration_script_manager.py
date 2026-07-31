@@ -13,11 +13,25 @@ from core.migration.migration import (
     MigrationResource,
     MigrationType,
     ResolvedMigration,
+    _callback_event_prefix,
+    _callback_prefix_missing_separator,
     calculate_migration_script_checksum,
     normalize_migration_checksum,
+    strip_migration_tags,
 )
 from core.migration.version_utils import compare_versions as _compare_versions_shared
 from core.migration.version_utils import is_migration_success
+
+
+def _matches_callback_event(base_name: str, event_prefix: str) -> bool:
+    """Return True if ``base_name`` is a callback file for ``event_prefix``.
+
+    Delegates the boundary rule to :func:`_callback_event_prefix`, so a file
+    resolves to exactly one event and never also to a shorter prefix of it.
+    Both arguments are compared case-insensitively.
+    """
+    matched = _callback_event_prefix(base_name)
+    return matched is not None and matched.lower() == event_prefix.lower()
 
 
 class MigrationScriptManager:
@@ -28,6 +42,8 @@ class MigrationScriptManager:
         self.logger = logger
         self.script_encoding = script_encoding
         self.detect_encoding = detect_encoding
+        # Filenames already reported by _report_callback_naming_violation.
+        self._reported_naming_violations: Set[str] = set()
 
     def _get_migration_type_string(self, migration_type: Any) -> str:
         """Safely get migration type as string, handling both enum and string types.
@@ -63,15 +79,10 @@ class MigrationScriptManager:
         Returns:
             Tuple of (MigrationType, version, description, tags)
         """
-        # Extract tags if present - they can be in any valid filename
-        tags = []
-        tag_match = re.search(r"\[(.*?)\]", filename)
-        if tag_match:
-            tags = [tag.strip() for tag in tag_match.group(1).split(",") if tag.strip()]
-            # Remove the tag part from the filename for further parsing
-            filename_without_tags = filename.replace(tag_match.group(0), "")
-        else:
-            filename_without_tags = filename
+        # Extract tags if present - they can be in any valid filename.
+        # Shared with the callback event helpers so classification and event
+        # matching normalize a name identically; see strip_migration_tags.
+        filename_without_tags, tags = strip_migration_tags(filename)
 
         # MULTI-FORMAT SUPPORT: Get the file extension to support multiple formats
         from pathlib import Path
@@ -90,12 +101,12 @@ class MigrationScriptManager:
         # Escape the extension for use in regex patterns
         extension_escaped = re.escape(file_extension)
 
-        # Check for callback scripts first (before the generic baseline catch-all)
-        for prefix in _CALLBACK_PREFIXES:
-            # Case-insensitive matching for callback prefixes (supports any extension)
-            if filename_without_tags.lower().startswith(prefix.lower()):
-                description = filename_without_tags.replace(file_extension, "")
-                return MigrationType.CALLBACK, None, description, tags
+        # Check for callback scripts first (before the generic baseline catch-all).
+        # Case-insensitive, and the "__" separator is mandatory: a name without it
+        # is not a callback and falls through to the UNKNOWN catch-all below.
+        if _callback_event_prefix(filename_without_tags) is not None:
+            description = filename_without_tags.replace(file_extension, "")
+            return MigrationType.CALLBACK, None, description, tags
 
         # Versioned migration: V{version}__{description}[tag1,tag2].<extension>
         # Handle numeric versions with dots or underscores, and letter-based versions
@@ -273,19 +284,6 @@ class MigrationScriptManager:
         # Use the parse_filename method for consistency
         _, _, _, tags = self.parse_filename(script_name)
         return tags
-
-    def get_migration_type(self, script_name: str) -> str:
-        """Get the type of a migration script.
-
-        Args:
-            script_name: Name of the migration script
-
-        Returns:
-            Type of the migration script as uppercase string
-        """
-        # Use the parse_filename method for consistency
-        migration_type, _, _, _ = self.parse_filename(script_name)
-        return self._get_migration_type_string(migration_type)
 
     def has_script_changed(
         self,
@@ -514,8 +512,30 @@ class MigrationScriptManager:
                             # For the primary directory, use the relative path as-is
                             rel_path = script_path.relative_to(dir_path)
                             scripts.append(str(rel_path))
+                    else:
+                        self._report_callback_naming_violation(script_path.name)
 
         return scripts
+
+    def _report_callback_naming_violation(self, script_name: str) -> None:
+        """Warn once when a rejected file was plainly meant to be a callback.
+
+        Every other malformed name is dropped silently here, but a file named
+        for a callback event is worth calling out: it looks like a working
+        callback sitting in the migrations directory and never runs. Reported
+        once per manager because ``get_callbacks_by_event`` re-scans the
+        directory for each of the dozen-odd events a command dispatches.
+        """
+        prefix = _callback_prefix_missing_separator(script_name)
+        if prefix is None or script_name in self._reported_naming_violations:
+            return
+
+        self._reported_naming_violations.add(script_name)
+        self.logger.warning(
+            f"Script '{script_name}' is named for the '{prefix}' callback event but does "
+            f"not follow the Dblift naming convention '{prefix}__<description>' — the "
+            f"'__' separator is missing. It will be excluded from migration."
+        )
 
     def load_migration_scripts(
         self,
@@ -603,9 +623,7 @@ class MigrationScriptManager:
             try:
                 # Check if it's a callback script (case-insensitive matching)
                 script_name = script_path.name
-                if any(
-                    script_name.lower().startswith(prefix.lower()) for prefix in _CALLBACK_PREFIXES
-                ):
+                if _callback_event_prefix(script_name) is not None:
                     # Create Migration object with the logger and encoding
                     migration = Migration(
                         script_path,
@@ -706,13 +724,11 @@ class MigrationScriptManager:
 
         callbacks = migrations[MigrationType.CALLBACK]
 
-        # Filter callbacks by event prefix (case-insensitive matching)
-        event_prefix_lower = event_prefix.lower()
+        # Filter callbacks by event prefix (case-insensitive, delimiter-aware matching)
         filtered_callbacks: List[Migration] = []
         for cb in callbacks:
-            script_name_lower = cb.script_name.lower()
-            base_name = Path(script_name_lower).name
-            if base_name.startswith(event_prefix_lower):
+            base_name = Path(cb.script_name).name
+            if _matches_callback_event(base_name, event_prefix):
                 filtered_callbacks.append(cb)
 
         # Sort alphabetically (case-insensitive) to ensure consistent execution order
