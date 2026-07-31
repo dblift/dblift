@@ -29,6 +29,7 @@ class _FakeProvider:
         self.dialect = dialect.lower()
         self.config = SimpleNamespace(database=SimpleNamespace(type=self.dialect))
         self.table_exists_calls = []
+        self.repair_calls: list = []
         self.returns_exists = True
 
     def get_normalized_object_name(self, name: str) -> str:
@@ -39,6 +40,10 @@ class _FakeProvider:
     def table_exists(self, schema: str, table_name: str) -> bool:
         self.table_exists_calls.append((schema, table_name))
         return self.returns_exists
+
+    def repair_migration_history(self, schema, script_name, checksum, **kwargs):
+        self.repair_calls.append((schema, script_name, checksum, kwargs.get("table_name")))
+        return True
 
 
 def _make_history_manager(dialect: str, table_name: str) -> MigrationHistoryManager:
@@ -120,3 +125,29 @@ class TestCreateSchemaAndHistoryTableGate:
         mgr.create_schema_and_history_table(create_schema=True)
         mgr.provider.create_schema_if_not_exists.assert_called_once_with("public")
         mgr.provider.create_history_table_if_not_exists.assert_called_once()
+
+
+@pytest.mark.unit
+class TestRepairChecksumUsesNormalizedName:
+    """ADR-0015, fourth call site: ``repair_checksum`` passed the raw name.
+
+    Providers qualify the table via ``get_schema_qualified_name`` and probe it
+    with ``table_exists``, so the same normalization the other call sites apply
+    is required here. Without it, a custom history table on Oracle/DB2 is
+    referenced as a literally-lowercase identifier that does not exist —
+    ``validate`` reports drift and ``repair`` silently updates nothing.
+    """
+
+    @pytest.mark.parametrize(
+        ("dialect", "expected"),
+        [("oracle", "MY_HISTORY"), ("db2", "MY_HISTORY"), ("postgresql", "my_history")],
+    )
+    def test_repair_receives_the_normalized_table_name(self, dialect: str, expected: str):
+        mgr = _make_history_manager(dialect, "My_History")
+        assert mgr.repair_checksum("V1__a.sql", 123) is True
+        assert mgr.provider.repair_calls == [("DBLIFT_TEST", "V1__a.sql", 123, expected)]
+
+    def test_default_table_still_normalized_per_dialect(self):
+        mgr = _make_history_manager("oracle", "dblift_schema_history")
+        mgr.repair_checksum("V1__a.sql", 7)
+        assert mgr.provider.repair_calls[0][3] == "DBLIFT_SCHEMA_HISTORY"
