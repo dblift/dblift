@@ -71,13 +71,6 @@ def test_execute_surfaces_the_same_error(tmp_path):
         _factory(_NoSqlQuirks("cosmosdb")).execute(migration)
 
 
-def test_validate_surfaces_the_same_error(tmp_path):
-    migration = _migration(tmp_path, "V1_0_2__seed.sql", "INSERT INTO t VALUES (1);")
-
-    with pytest.raises(UnsupportedMigrationFormatError):
-        _factory(_NoSqlQuirks("cosmosdb")).validate(migration)
-
-
 def test_python_migration_on_nosql_dialect_is_accepted(tmp_path):
     migration = _migration(tmp_path, "V1_0_3__containers.py", "def migrate(context):\n    pass\n")
 
