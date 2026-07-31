@@ -116,6 +116,7 @@ class ExecutionEngine:
             log=self.log,
             sql_analyzer=sql_analyzer,
             sql_execution_service=sql_execution_service,
+            placeholder_service=placeholder_service,
         )
 
     @staticmethod
@@ -901,8 +902,9 @@ class ExecutionEngine:
 
         Placeholder substitution (``placeholder_service``) is intentionally not applied
         here.  Non-SQL formats (Python scripts) are executed as code, not SQL text, so
-        ``${...}`` SQL-style placeholders are not meaningful.  Python migrations receive
-        the full config via ``MigrationContext`` and resolve values programmatically.
+        ``${...}`` SQL-style placeholders are not meaningful.  Python migrations instead
+        receive the effective placeholder mapping — the same one the SQL path substitutes
+        from — as ``MigrationContext.placeholders`` and resolve values programmatically.
         Any SQL they issue should apply placeholders through that context, not via the
         pre-parse substitution used by the SQL path.
         """
