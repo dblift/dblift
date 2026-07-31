@@ -429,26 +429,60 @@ class _RecordingConnection:
     ``setAutoCommit`` branch this method replaces kept a green test.
     """
 
-    def __init__(self, isolation_level: str = "READ COMMITTED", in_tx: bool = False) -> None:
+    def __init__(
+        self,
+        isolation_level: str = "READ COMMITTED",
+        in_tx: bool = False,
+        execution_option: Optional[str] = None,
+        configured_autocommit: bool = False,
+    ) -> None:
         self.closed = False
+        # How the connection was built — an engine created with
+        # isolation_level="AUTOCOMMIT" hands out connections whose DBAPI flag
+        # is already True, with nothing in the execution options to say so.
+        self._configured_autocommit = configured_autocommit
         # The *server* isolation level. Deliberately NOT changed by an
         # AUTOCOMMIT execution option: on a real driver AUTOCOMMIT is a DBAPI
         # flag, and get_isolation_level() keeps reporting READ COMMITTED while
         # dbapi_connection.autocommit is True. Verified against psycopg.
         self._isolation_level = isolation_level
-        self.autocommit = False
+        # A level the caller set on this connection itself, as
+        # Connection.get_execution_options() would report it. Empty when the
+        # level came from the engine or the dialect default — the case
+        # get_isolation_level() cannot describe, since it never says AUTOCOMMIT.
+        self._execution_options: Dict[str, Any] = (
+            {"isolation_level": execution_option} if execution_option else {}
+        )
+        self.autocommit = configured_autocommit or execution_option == "AUTOCOMMIT"
         self._in_tx = in_tx
         self.calls: List[str] = []
+        self.dialect = SimpleNamespace(reset_isolation_level=self._reset_isolation_level)
+        self.connection = SimpleNamespace(dbapi_connection=object())
 
     def get_isolation_level(self) -> str:
         return self._isolation_level
 
+    def get_execution_options(self) -> Dict[str, Any]:
+        return dict(self._execution_options)
+
     def execution_options(self, **kwargs: Any) -> None:
         level = kwargs["isolation_level"]
+        self._execution_options["isolation_level"] = level
         self.autocommit = level == "AUTOCOMMIT"
         if not self.autocommit:
             self._isolation_level = level
         self.calls.append(f"isolation={level}")
+
+    def _reset_isolation_level(self, dbapi_connection: Any) -> None:
+        """Stand-in for SQLAlchemy's return-to-pool hook.
+
+        The real hook restores whatever the connection was configured with —
+        engine-level AUTOCOMMIT included — which is why production code calls
+        it instead of replaying a level read back from the server.
+        """
+        self._execution_options.pop("isolation_level", None)
+        self.autocommit = self._configured_autocommit
+        self.calls.append("reset_isolation_level")
 
     def in_transaction(self) -> bool:
         return self._in_tx
@@ -479,7 +513,7 @@ def _provider_with(connection: _RecordingConnection, cfg: DbliftConfig) -> _Conc
 
 
 def test_autocommit_statement_switches_and_restores(cfg: DbliftConfig) -> None:
-    """The statement itself runs in AUTOCOMMIT; the previous level is restored after."""
+    """The statement itself runs in AUTOCOMMIT; the connection is restored after."""
     conn = _RecordingConnection(isolation_level="READ COMMITTED")
     provider = _provider_with(conn, cfg)
 
@@ -490,7 +524,7 @@ def test_autocommit_statement_switches_and_restores(cfg: DbliftConfig) -> None:
     assert conn.calls == [
         "isolation=AUTOCOMMIT",
         "execute(autocommit=True)",
-        "isolation=READ COMMITTED",
+        "reset_isolation_level",
     ]
 
 
@@ -512,7 +546,42 @@ def test_autocommit_statement_restores_after_an_exception(cfg: DbliftConfig) -> 
         provider.execute_autocommit_statement("CREATE INDEX CONCURRENTLY ix ON t (c)")
 
     assert conn.autocommit is False
-    assert conn.calls == ["isolation=AUTOCOMMIT", "isolation=REPEATABLE READ"]
+    assert conn.calls == ["isolation=AUTOCOMMIT", "reset_isolation_level"]
+
+
+def test_autocommit_statement_replays_a_caller_set_isolation_level(cfg: DbliftConfig) -> None:
+    """A level the caller put on the connection itself is reapplied verbatim."""
+    conn = _RecordingConnection(execution_option="SERIALIZABLE")
+    provider = _provider_with(conn, cfg)
+
+    provider.execute_autocommit_statement("CREATE INDEX CONCURRENTLY ix ON t (c)")
+
+    assert conn.calls == [
+        "isolation=AUTOCOMMIT",
+        "execute(autocommit=True)",
+        "isolation=SERIALIZABLE",
+    ]
+    assert conn.autocommit is False
+
+
+def test_autocommit_statement_leaves_an_autocommit_engine_autocommitting(
+    cfg: DbliftConfig,
+) -> None:
+    """A caller's AUTOCOMMIT engine must not be downgraded by one flagged statement.
+
+    ``from_sqlalchemy`` accepts an engine built with
+    ``isolation_level="AUTOCOMMIT"``. Nothing in the connection's execution
+    options records that, and ``get_isolation_level()`` reports the server
+    level (``READ COMMITTED``) — so restoring what it returns would silently
+    switch the caller's session to transactional behaviour for good.
+    """
+    conn = _RecordingConnection(configured_autocommit=True)
+    provider = _provider_with(conn, cfg)
+
+    provider.execute_autocommit_statement("CREATE INDEX CONCURRENTLY ix ON t (c)")
+
+    assert conn.calls[-1] == "reset_isolation_level"
+    assert conn.autocommit is True
 
 
 def test_autocommit_statement_ends_an_open_transaction_first(cfg: DbliftConfig) -> None:

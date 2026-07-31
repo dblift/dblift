@@ -382,11 +382,34 @@ class SqlAlchemyProvider(NativeProvider):
         """
         conn = self._ensure_connection()
         self._end_open_transaction(conn)
-        previous_isolation_level = conn.get_isolation_level()
+        previous_isolation_level = conn.get_execution_options().get("isolation_level")
         conn.execution_options(isolation_level="AUTOCOMMIT")
         try:
             return self.execute_statement(sql, schema=schema, params=params)
         finally:
             if not conn.closed:
                 self._end_open_transaction(conn)
-                conn.execution_options(isolation_level=previous_isolation_level)
+                self._restore_isolation_level(conn, previous_isolation_level)
+
+    @staticmethod
+    def _restore_isolation_level(conn: Connection, previous: Optional[str]) -> None:
+        """Put *conn* back on the isolation level it had before the autocommit switch.
+
+        ``get_isolation_level()`` cannot be used to capture that level: it
+        reports the *server* level and never returns ``AUTOCOMMIT``, so a
+        connection handed to dblift by ``from_sqlalchemy`` on an engine built
+        with ``isolation_level="AUTOCOMMIT"`` would come back downgraded to a
+        transactional level and stay that way — the caller's session silently
+        changed behaviour after one flagged statement.
+
+        A level the caller set on the connection itself shows up in its
+        execution options and is reapplied directly. Otherwise the level came
+        from the engine or the dialect default, and SQLAlchemy's own
+        return-to-pool hook restores exactly that, ``AUTOCOMMIT`` included.
+        """
+        if previous is not None:
+            conn.execution_options(isolation_level=previous)
+            return
+        dbapi_connection = conn.connection.dbapi_connection
+        if dbapi_connection is not None:
+            conn.dialect.reset_isolation_level(dbapi_connection)
