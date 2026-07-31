@@ -74,6 +74,39 @@ class TestMigrationRulesShouldUndoVersion(unittest.TestCase):
         can, msg = rules.should_undo_version("1.0", [applied1, undone, applied2])
         self.assertTrue(can)
 
+    def test_undone_reapplied_python_can_undo_again(self):
+        """A re-applied PYTHON migration is undoable again, exactly like SQL.
+
+        Document stores have no SQL DDL, so every one of their migrations is a
+        ``V*__*.py``. Counting only ``SQL`` rows leaves the versioned rank at 0,
+        so the undo row always looks newer and the version stays flagged as
+        undone forever.
+        """
+        rules = self._make_rules()
+        applied1 = self._make_migration("1.0", "PYTHON", rank=1)
+        undone = self._make_migration("1.0", "UNDO_SQL", rank=2)
+        applied2 = self._make_migration("1.0", "PYTHON", rank=3)
+        can, msg = rules.should_undo_version("1.0", [applied1, undone, applied2])
+        self.assertTrue(can, msg)
+
+    def test_undone_python_without_reapply_cannot_undo(self):
+        rules = self._make_rules()
+        applied = self._make_migration("1.0", "PYTHON", rank=1)
+        undone = self._make_migration("1.0", "UNDO_SQL", rank=2)
+        can, msg = rules.should_undo_version("1.0", [applied, undone])
+        self.assertFalse(can)
+        self.assertIn("already been undone", msg)
+
+    def test_next_python_version_suggested_when_already_undone(self):
+        """The "undo this one instead" hint must see PYTHON versions too."""
+        rules = self._make_rules()
+        v1_applied = self._make_migration("1.0", "PYTHON", rank=1)
+        v1_undone = self._make_migration("1.0", "UNDO_SQL", rank=2)
+        v2_applied = self._make_migration("2.0", "PYTHON", rank=3)
+        can, msg = rules.should_undo_version("1.0", [v1_applied, v1_undone, v2_applied])
+        self.assertFalse(can)
+        self.assertIn("2.0", msg)
+
     def test_next_version_suggested_when_already_undone(self):
         rules = self._make_rules()
         v1_applied = self._make_migration("1.0", "SQL", rank=1)

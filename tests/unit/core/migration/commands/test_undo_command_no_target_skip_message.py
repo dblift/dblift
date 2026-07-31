@@ -96,3 +96,32 @@ def test_no_target_version_skips_past_message_to_next_undoable_migration():
         call.args[0] for call in cmd.migration_rules.should_undo_version.call_args_list
     ]
     assert checked_versions == ["2", "1"]
+
+
+@pytest.mark.unit
+def test_no_target_version_announces_which_version_it_retargeted():
+    """Stepping back to an older version is announced at warning level.
+
+    The fall-through is the command's contract, but it changes which
+    migration gets destroyed, so it must not be buried at info level: the
+    warning names both the skipped version and the one now being undone.
+    """
+    # Relational vendors insert a fresh history row per apply, so a re-applied
+    # version appears more than once — it must still be named once.
+    v2_first = _make_migration(2)
+    v2_reapplied = _make_migration(2)
+    v1 = _make_migration(1)
+
+    def rules(version, applied):
+        if version == "2":
+            return (False, "Version 2 has already been undone.")
+        return (True, "")
+
+    cmd = _make_command([v1, v2_first, v2_reapplied], rules_side_effect=rules)
+    cmd.execute(scripts_dir=MagicMock())
+
+    warnings = [call.args[0] for call in cmd.log.warning.call_args_list]
+    assert any(
+        "Version(s) 2 cannot be undone" in msg and "undoing version 1" in msg.lower()
+        for msg in warnings
+    ), f"retarget was not announced exactly once per version: {warnings}"

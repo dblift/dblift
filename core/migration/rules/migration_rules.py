@@ -3,7 +3,7 @@
 from typing import Any, List, Tuple
 
 from core.logger import Log
-from core.migration._type_match import is_migration_type
+from core.migration._type_match import is_migration_type, is_versioned
 from core.migration.migration import Migration, MigrationType
 from core.migration.version_utils import (
     is_migration_success,
@@ -33,6 +33,47 @@ class MigrationRules:
         success_value = getattr(migration, "success", False)
         return is_migration_success(success_value)
 
+    @staticmethod
+    def _latest_ranks(version: Any, applied_migrations: List[Migration]) -> Tuple[int, int]:
+        """Highest successful undo rank and versioned rank recorded for *version*.
+
+        Every versioned type counts towards the versioned rank, not just
+        ``SQL``: a document store has no SQL DDL, so all of its migrations are
+        ``V*__*.py`` and are recorded as ``PYTHON``. Counting only ``SQL``
+        leaves the versioned rank at 0, which makes the undo row look
+        permanently newer than any later re-apply.
+        """
+        latest_undo_rank = 0
+        latest_versioned_rank = 0
+
+        for m in applied_migrations:
+            if getattr(m, "version", None) != version:
+                continue
+            if not is_migration_success(getattr(m, "success", False)):
+                continue
+
+            m_type = getattr(m, "type", None)
+            m_rank = getattr(m, "installed_rank", 0) or 0
+
+            if is_migration_type(m_type, MigrationType.UNDO_SQL):
+                latest_undo_rank = max(latest_undo_rank, m_rank)
+            elif is_versioned(m_type):
+                latest_versioned_rank = max(latest_versioned_rank, m_rank)
+
+        return latest_undo_rank, latest_versioned_rank
+
+    def _is_undone(self, version: Any, applied_migrations: List[Migration]) -> bool:
+        """True when *version* was undone and has not been re-applied since.
+
+        A re-apply supersedes the undo by recording the versioned migration
+        again with a higher ``installed_rank`` — relational vendors insert a
+        fresh history row, document stores rewrite the document with a new
+        rank. Either way the ranks, not the mere presence of an undo row,
+        decide whether the version is currently undone.
+        """
+        latest_undo_rank, latest_versioned_rank = self._latest_ranks(version, applied_migrations)
+        return latest_undo_rank > 0 and latest_undo_rank > latest_versioned_rank
+
     def should_undo_version(
         self, version: str, applied_migrations: List[Migration]
     ) -> Tuple[bool, str]:
@@ -53,80 +94,34 @@ class MigrationRules:
         if not applied_migrations:
             return True, ""
 
-        # Find all successful undo operations for this version
-        successful_undo_count = 0
-        successful_versioned_count = 0
-        latest_undo_rank = 0
-        latest_versioned_rank = 0
+        if not self._is_undone(version, applied_migrations):
+            return True, ""
 
-        for m in applied_migrations:
-            m_type = getattr(m, "type", None)
-            m_version = getattr(m, "version", None)
-            if m_type is not None:
-                from core.migration._type_match import migration_type_name
+        self.logger.warning(
+            f"Version {version} has already been undone - cannot undo multiple times without reapplying"
+        )
 
-                m_type = migration_type_name(m_type)
+        # Find the next version to undo instead
+        next_version_to_undo = None
+        versioned_migrations = [
+            m for m in applied_migrations if is_versioned(getattr(m, "type", None))
+        ]
+        # Sort by version in reverse order (newest first) for undo operations
+        versioned_migrations.sort(key=lambda m: getattr(m, "version", "") or "", reverse=True)
 
-            # Convert the success value to boolean
-            m_success = getattr(m, "success", False)
-            is_success = is_migration_success(m_success)
+        for v in versioned_migrations:
+            v_version = getattr(v, "version", None)
+            if v_version != version and not self._is_undone(v_version, applied_migrations):
+                next_version_to_undo = v_version
+                self.logger.info(f"Found next version to undo: {next_version_to_undo}")
+                break
 
-            if m_version == version:
-                m_rank = getattr(m, "installed_rank", 0)
-
-                if m_type == MigrationType.UNDO_SQL.name and is_success:
-                    successful_undo_count += 1
-                    if m_rank > latest_undo_rank:
-                        latest_undo_rank = m_rank
-
-                if m_type == MigrationType.SQL.name and is_success:
-                    successful_versioned_count += 1
-                    if m_rank > latest_versioned_rank:
-                        latest_versioned_rank = m_rank
-
-        # Skip if this version was already undone and not reapplied
-        if successful_undo_count > 0 and latest_undo_rank > latest_versioned_rank:
-            self.logger.warning(
-                f"Version {version} has already been undone - cannot undo multiple times without reapplying"
+        if next_version_to_undo:
+            return (
+                False,
+                f"Version {version} has already been undone. Please specify version {next_version_to_undo} to undo it.",
             )
-
-            # Find the next version to undo instead
-            next_version_to_undo = None
-            versioned_migrations = [
-                m for m in applied_migrations if getattr(m, "type", None) == MigrationType.SQL.name
-            ]
-            # Sort by version in reverse order (newest first) for undo operations
-            versioned_migrations.sort(key=lambda m: getattr(m, "version", "") or "", reverse=True)
-
-            for v in versioned_migrations:
-                v_version = getattr(v, "version", None)
-                if v_version != version:
-                    # Check if this version has been undone
-                    is_undone = False
-                    for m in applied_migrations:
-                        m_type = getattr(m, "type", None)
-                        m_version = getattr(m, "version", None)
-                        if (
-                            is_migration_type(m_type, MigrationType.UNDO_SQL)
-                            and m_version == v_version
-                        ):
-                            is_undone = True
-                            break
-
-                    if not is_undone:
-                        next_version_to_undo = v_version
-                        self.logger.info(f"Found next version to undo: {next_version_to_undo}")
-                        break
-
-            if next_version_to_undo:
-                return (
-                    False,
-                    f"Version {version} has already been undone. Please specify version {next_version_to_undo} to undo it.",
-                )
-            else:
-                return (
-                    False,
-                    f"Version {version} has already been undone and no other versions are available to undo.",
-                )
-
-        return True, ""
+        return (
+            False,
+            f"Version {version} has already been undone and no other versions are available to undo.",
+        )

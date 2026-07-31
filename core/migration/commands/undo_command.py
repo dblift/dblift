@@ -267,6 +267,13 @@ class UndoCommand(BaseCommand):
                     reverse=True,
                 )
 
+                # Versions skipped because they cannot be undone. Stepping back
+                # to an older version is this command's contract — "undo the
+                # latest still-undoable migration" — but it changes which
+                # migration gets destroyed, so it is announced rather than
+                # merely noted at info level.
+                skipped_versions: List[str] = []
+
                 for migration in versioned_migrations:
                     version = str(migration.version) if migration.version else None
                     if not version:
@@ -280,11 +287,22 @@ class UndoCommand(BaseCommand):
                         version, applied_migrations
                     )
                     if can_undo:
+                        if skipped_versions:
+                            self.log.warning(
+                                f"Version(s) {', '.join(skipped_versions)} cannot be undone; "
+                                f"undoing version {version} instead"
+                            )
+                            skipped_versions.clear()
                         migrations_to_undo.append(migration)
                         if not tag_filter_active:
                             break  # Only undo the most recent undoable migration
                     elif message:
                         self.log.info(message)
+                        # Relational vendors record a fresh history row per
+                        # apply, so a re-applied version shows up more than
+                        # once — name it once.
+                        if version not in skipped_versions:
+                            skipped_versions.append(version)
             else:
                 # Target version specified - find all migrations newer than target that can be undone
                 for migration in reversed(applied_migrations):
