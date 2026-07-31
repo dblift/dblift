@@ -310,7 +310,6 @@ class MigrationExecutor:
     def validate(
         self,
         scripts_dir: Path,
-        skip_validation: bool = False,
         target_version: Optional[str] = None,
         tags: Optional[str] = None,
         exclude_tags: Optional[str] = None,

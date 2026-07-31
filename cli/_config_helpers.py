@@ -45,7 +45,6 @@ _SUBCOMMAND_BOOLEAN_FLAGS = frozenset(
         "--show-sql",
         "--rehearse-rollback",
         "--skip-replay",
-        "--skip-validation",
         "--skip-validate-sql",
         "--split-by-type",
         "--strict",

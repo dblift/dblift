@@ -252,10 +252,6 @@ def _add_diff_and_target_options(
     migrate_parser.add_argument("--target-version", help="Target version to migrate to")
     undo_parser.add_argument("--target-version", help="Target version to roll back to")
     validate_parser.add_argument("--target-version", help="Validate migrations up to this version")
-    # Validate specific options
-    validate_parser.add_argument(
-        "--skip-validation", action="store_true", help="Skip validation checks"
-    )
     # Migrate specific options
     migrate_parser.add_argument(
         "--validate-only",
