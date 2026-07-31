@@ -32,6 +32,29 @@ def test_display_url_falls_back_to_config_without_jdbc_hook():
 
 
 @pytest.mark.unit
+def test_display_url_uses_connection_manager_get_database_url():
+    """Providers without get_display_url can surface URL via connection_manager."""
+    connection_manager = MagicMock()
+    connection_manager.get_database_url.return_value = "postgresql://from-cm/db"
+    provider = SimpleNamespace(connection_manager=connection_manager)
+    # Prefer connection manager over config fallback.
+    config = SimpleNamespace(database=SimpleNamespace(url="postgresql://config/db"))
+
+    assert get_provider_display_url(provider, config) == "postgresql://from-cm/db"
+    connection_manager.get_database_url.assert_called_once_with()
+
+
+@pytest.mark.unit
+def test_display_url_skips_empty_connection_manager_url():
+    connection_manager = MagicMock()
+    connection_manager.get_database_url.return_value = ""
+    provider = SimpleNamespace(connection_manager=connection_manager)
+    config = SimpleNamespace(database=SimpleNamespace(url="postgresql://config/db"))
+
+    assert get_provider_display_url(provider, config) == "postgresql://config/db"
+
+
+@pytest.mark.unit
 def test_ensure_provider_connection_calls_optional_hook_only_when_present():
     provider = MagicMock()
 

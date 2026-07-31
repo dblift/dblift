@@ -6,7 +6,7 @@ without requiring database containers.
 
 import tempfile
 from pathlib import Path
-from unittest.mock import Mock, patch
+from unittest.mock import Mock
 
 import pytest
 
@@ -87,32 +87,25 @@ class TestCallbackPlaceholderReplacement:
             "beforemigrate__test_callback.sql", callback_content
         )
 
-        # Mock the parse_sql_statements method to return our test statements
-        with patch.object(callback, "parse_sql_statements") as mock_parse:
-            mock_parse.return_value = [
-                'CREATE TABLE "${dblift_schema}".callback_test (id SERIAL PRIMARY KEY, schema_name VARCHAR(100), database_name VARCHAR(100), username VARCHAR(100));',
-                "INSERT INTO \"${dblift_schema}\".callback_test (schema_name, database_name, username) VALUES ('${dblift_schema}', '${dblift_database}', '${dblift_username}');",
-            ]
+        # Execute the callback
+        self.execution_engine.execute_callback(callback)
 
-            # Execute the callback
-            self.execution_engine.execute_callback(callback)
+        # Verify that execute_statement was called with replaced placeholders
+        calls = self.mock_provider.execute_statement.call_args_list
 
-            # Verify that execute_statement was called with replaced placeholders
-            calls = self.mock_provider.execute_statement.call_args_list
+        # First call should be CREATE TABLE with replaced schema
+        create_call = calls[0][0][0]  # First argument of first call
+        assert '"TEST_SCHEMA".callback_test' in create_call
+        assert "${dblift_schema}" not in create_call
 
-            # First call should be CREATE TABLE with replaced schema
-            create_call = calls[0][0][0]  # First argument of first call
-            assert '"TEST_SCHEMA".callback_test' in create_call
-            assert "${dblift_schema}" not in create_call
-
-            # Second call should be INSERT with all placeholders replaced
-            insert_call = calls[1][0][0]  # First argument of second call
-            assert "TEST_SCHEMA" in insert_call
-            assert "testdb" in insert_call
-            assert "testuser" in insert_call
-            assert "${dblift_schema}" not in insert_call
-            assert "${dblift_database}" not in insert_call
-            assert "${dblift_username}" not in insert_call
+        # Second call should be INSERT with all placeholders replaced
+        insert_call = calls[1][0][0]  # First argument of second call
+        assert "TEST_SCHEMA" in insert_call
+        assert "testdb" in insert_call
+        assert "testuser" in insert_call
+        assert "${dblift_schema}" not in insert_call
+        assert "${dblift_database}" not in insert_call
+        assert "${dblift_username}" not in insert_call
 
     def test_callback_with_complex_placeholders(self):
         """Test callbacks with complex placeholder scenarios."""
@@ -135,37 +128,30 @@ class TestCallbackPlaceholderReplacement:
             "beforeeach__complex_callback.sql", callback_content
         )
 
-        with patch.object(callback, "parse_sql_statements") as mock_parse:
-            mock_parse.return_value = [
-                'CREATE SCHEMA IF NOT EXISTS "${dblift_schema}";',
-                "CREATE TABLE \"${dblift_schema}\".complex_test (id SERIAL PRIMARY KEY, schema_name VARCHAR(100) DEFAULT '${dblift_schema}', database_name VARCHAR(100) DEFAULT '${dblift_database}', created_by VARCHAR(100) DEFAULT '${dblift_username}', description TEXT DEFAULT 'Created by ${dblift_username} in ${dblift_schema}');",
-                "COMMENT ON TABLE \"${dblift_schema}\".complex_test IS 'Test table created by ${dblift_username}';",
-            ]
+        # Execute the callback
+        self.execution_engine.execute_callback(callback)
 
-            # Execute the callback
-            self.execution_engine.execute_callback(callback)
+        # Verify all statements were executed with placeholders replaced
+        calls = self.mock_provider.execute_statement.call_args_list
+        assert len(calls) == 3
 
-            # Verify all statements were executed with placeholders replaced
-            calls = self.mock_provider.execute_statement.call_args_list
-            assert len(calls) == 3
+        for i, call in enumerate(calls):
+            statement = call[0][0]
+            # All placeholders should be replaced
+            assert "${dblift_schema}" not in statement
+            assert "${dblift_database}" not in statement
+            assert "${dblift_username}" not in statement
 
-            for i, call in enumerate(calls):
-                statement = call[0][0]
-                # All placeholders should be replaced
-                assert "${dblift_schema}" not in statement
-                assert "${dblift_database}" not in statement
-                assert "${dblift_username}" not in statement
+            # Values should be present
+            assert "TEST_SCHEMA" in statement
 
-                # Values should be present
-                assert "TEST_SCHEMA" in statement
-
-                # Only the CREATE TABLE statement should have database values
-                if i == 1:  # CREATE TABLE statement
-                    assert "testdb" in statement
-                    assert "testuser" in statement
-                # COMMENT statement only has username
-                elif i == 2:  # COMMENT statement
-                    assert "testuser" in statement
+            # Only the CREATE TABLE statement should have database values
+            if i == 1:  # CREATE TABLE statement
+                assert "testdb" in statement
+                assert "testuser" in statement
+            # COMMENT statement only has username
+            elif i == 2:  # COMMENT statement
+                assert "testuser" in statement
 
     def test_callback_without_placeholder_service(self):
         """Test callback execution when no placeholder service is available."""
@@ -184,16 +170,13 @@ class TestCallbackPlaceholderReplacement:
 
         callback = self.create_callback_migration("beforemigrate__no_service.sql", callback_content)
 
-        with patch.object(callback, "parse_sql_statements") as mock_parse:
-            mock_parse.return_value = ['CREATE TABLE "${dblift_schema}".no_service_test (id INT);']
+        # Execute the callback
+        execution_engine_no_service.execute_callback(callback)
 
-            # Execute the callback
-            execution_engine_no_service.execute_callback(callback)
-
-            # Verify statement was executed without placeholder replacement
-            calls = self.mock_provider.execute_statement.call_args_list
-            statement = calls[0][0][0]
-            assert "${dblift_schema}" in statement  # Placeholder should remain
+        # Verify statement was executed without placeholder replacement
+        calls = self.mock_provider.execute_statement.call_args_list
+        statement = calls[0][0][0]
+        assert "${dblift_schema}" in statement  # Placeholder should remain
 
     def test_callback_execution_order_with_placeholders(self):
         """Test that multiple callbacks execute in correct order with placeholder replacement."""
@@ -218,10 +201,7 @@ class TestCallbackPlaceholderReplacement:
 
         created_callbacks = []
         for filename, content in callbacks:
-            callback = self.create_callback_migration(filename, content)
-            with patch.object(callback, "parse_sql_statements") as mock_parse:
-                mock_parse.return_value = [content]
-            created_callbacks.append(callback)
+            created_callbacks.append(self.create_callback_migration(filename, content))
 
         # Execute callbacks in order
         for callback in created_callbacks:
@@ -248,31 +228,25 @@ class TestCallbackPlaceholderReplacement:
             "beforemigrate__error_callback.sql", callback_content
         )
 
-        with patch.object(callback, "parse_sql_statements") as mock_parse:
-            mock_parse.return_value = [
-                'CREATE TABLE "${dblift_schema}".error_test (id INT);',
-                "INVALID SQL STATEMENT;",
-            ]
+        # Mock provider to raise exception on second statement
+        def mock_execute(statement):
+            if "INVALID SQL" in statement:
+                raise Exception("Invalid SQL syntax")
+            return 1
 
-            # Mock provider to raise exception on second statement
-            def mock_execute(statement):
-                if "INVALID SQL" in statement:
-                    raise Exception("Invalid SQL syntax")
-                return 1
+        self.mock_provider.execute_statement.side_effect = mock_execute
 
-            self.mock_provider.execute_statement.side_effect = mock_execute
+        # Execute callback - should raise exception
+        with pytest.raises(Exception, match="Invalid SQL syntax"):
+            self.execution_engine.execute_callback(callback)
 
-            # Execute callback - should raise exception
-            with pytest.raises(Exception, match="Invalid SQL syntax"):
-                self.execution_engine.execute_callback(callback)
+        # Verify first statement was executed with placeholders replaced
+        calls = self.mock_provider.execute_statement.call_args_list
+        assert len(calls) == 2  # Both statements were executed before error occurred
+        first_statement = calls[0][0][0]
+        assert "${dblift_schema}" not in first_statement
+        assert "TEST_SCHEMA" in first_statement
 
-            # Verify first statement was executed with placeholders replaced
-            calls = self.mock_provider.execute_statement.call_args_list
-            assert len(calls) == 2  # Both statements were executed before error occurred
-            first_statement = calls[0][0][0]
-            assert "${dblift_schema}" not in first_statement
-            assert "TEST_SCHEMA" in first_statement
-
-            # Verify second statement was also executed (and failed)
-            second_statement = calls[1][0][0]
-            assert "INVALID SQL STATEMENT" in second_statement
+        # Verify second statement was also executed (and failed)
+        second_statement = calls[1][0][0]
+        assert "INVALID SQL STATEMENT" in second_statement

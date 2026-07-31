@@ -12,7 +12,7 @@ SQLite has simpler SQL syntax compared to enterprise databases:
 """
 
 import re
-from typing import Any, Dict, List, Optional, Set
+from typing import Dict, List, Optional
 
 from core.sql_model.base import SqlObject, SqlObjectType
 from core.sql_parser.enhanced_regex_parser import EnhancedRegexParser
@@ -267,72 +267,3 @@ class SQLiteRegexParser(EnhancedRegexParser):
             "drop_trigger": SqlObjectType.TRIGGER,
         }
         return type_mapping.get(pattern_name, SqlObjectType.UNKNOWN)
-
-    def validate_syntax(self, statement: str) -> Dict[str, Any]:
-        """Perform basic syntax validation.
-
-        Args:
-            statement: SQL statement to validate
-
-        Returns:
-            Validation result with 'valid' flag and optional 'errors'
-        """
-        if not statement:
-            return {"valid": False, "errors": ["Empty statement"]}
-
-        statement = statement.strip()
-        errors = []
-
-        # Check for unclosed strings
-        single_quote_count = 0
-        i = 0
-        while i < len(statement):
-            if statement[i] == "'":
-                if i + 1 < len(statement) and statement[i + 1] == "'":
-                    i += 2  # Skip escaped quote
-                    continue
-                single_quote_count += 1
-            i += 1
-
-        if single_quote_count % 2 != 0:
-            errors.append("Unclosed string literal")
-
-        # Check for unclosed parentheses
-        paren_count = 0
-        for char in statement:
-            if char == "(":
-                paren_count += 1
-            elif char == ")":
-                paren_count -= 1
-            if paren_count < 0:
-                errors.append("Unmatched closing parenthesis")
-                break
-
-        if paren_count > 0:
-            errors.append("Unclosed parenthesis")
-
-        # Check for unclosed block comments
-        if "/*" in statement and "*/" not in statement:
-            errors.append("Unclosed block comment")
-
-        return {"valid": len(errors) == 0, "errors": errors if errors else None}
-
-    def get_supported_features(self) -> Set[str]:
-        """Get set of SQLite features supported by this parser.
-
-        Returns:
-            Set of supported feature names
-        """
-        return {
-            "tables",
-            "views",
-            "indexes",
-            "triggers",
-            "virtual_tables",
-            "cte",
-            "cte_recursive",
-            "on_conflict",
-            "returning",  # SQLite 3.35+
-            "fts",  # Full-text search
-            "json",  # JSON functions
-        }

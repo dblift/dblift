@@ -485,8 +485,9 @@ def _dispatch_command(ctx: _CliContext, command_output: CommandOutput) -> int:
     if placeholders:
         ctx.log.debug(f"Using placeholders: {placeholders}")
 
+    # Journal is always on for CLI runs; config cannot disable it.
     ctx.config.journal_enabled = True
-    if getattr(ctx.args, "strict", False):
+    if getattr(ctx.config, "strict_mode", False) or getattr(ctx.args, "strict_mode", False):
         ctx.config.strict_mode = True
         ctx.log.info(
             "Strict mode is enabled. All migrations will be validated against strict rules."
@@ -567,6 +568,11 @@ def _dispatch_command(ctx: _CliContext, command_output: CommandOutput) -> int:
         _close_logs(ctx.log)
         return 1 if any_command_failed else 0
 
+    except SystemExit:
+        # CapabilityDeniedError (and other intentional exits) re-raise
+        # SystemExit with a dedicated code; flush logs then propagate.
+        _close_logs(ctx.log)
+        raise
     except Exception as e:
         ctx.log.error(f"Unexpected error: {str(e)}")
         ctx.log.error_with_exception("Command execution failed", e)

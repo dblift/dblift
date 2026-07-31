@@ -246,7 +246,7 @@ class MigrationHistoryManager:
                 script_name,
                 new_checksum,
                 success_value=True,
-                table_name=self.history_table,
+                table_name=self.normalized_history_table,
             )
             if not updated and self.logger:
                 self.logger.warning(
