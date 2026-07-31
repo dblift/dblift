@@ -11,10 +11,19 @@ from pathlib import Path
 
 import pytest
 
+from db.plugins.base_history_manager import VERSIONED_HISTORY_TYPES_SQL_IN
+
 
 @pytest.mark.unit
 class TestSqlServerRecordUndoPython:
     def test_sqlserver_record_undo_query_accepts_python_type(self):
+        """The predicate now comes from the shared constant, not a local literal.
+
+        SQL Server was widened in isolation first. Every dialect now
+        interpolates ``VERSIONED_HISTORY_TYPES_SQL_IN``, so the widening cannot
+        drift back to being one dialect's private fix.
+        """
         src = Path("db/plugins/sqlserver/sqlserver/history_manager.py").read_text(encoding="utf-8")
         assert "type = 'SQL'" not in src, "sqlserver record_undo still uses type='SQL' exclusively"
-        assert "type IN ('SQL', 'PYTHON')" in src
+        assert "type IN {VERSIONED_HISTORY_TYPES_SQL_IN}" in src
+        assert VERSIONED_HISTORY_TYPES_SQL_IN == "('PYTHON', 'SQL')"

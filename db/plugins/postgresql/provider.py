@@ -6,6 +6,7 @@ from typing import Any, Dict, List, Optional
 from config import DbliftConfig
 from core.logger import Log
 from core.migration.clean_summary import CleanExecutionSummary
+from db.plugins.base_history_manager import UNDO_HISTORY_TYPE
 from db.plugins.postgresql._provider_query_executor import ProviderQueryExecutor
 from db.plugins.postgresql.postgresql.locking_manager import _get_advisory_lock_key
 from db.plugins.postgresql.postgresql.schema_operations import PostgreSqlSchemaOperations
@@ -244,7 +245,7 @@ class PostgreSqlProvider(SqlAlchemyProvider):
             {
                 "version": version,
                 "description": f"Undo migration {version}",
-                "type": "UNDO_SQL",
+                "type": UNDO_HISTORY_TYPE,
                 "script": undo_script,
                 "checksum": 0,
                 "success": True,

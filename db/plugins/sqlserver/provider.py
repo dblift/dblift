@@ -6,6 +6,7 @@ from typing import Any, Dict, List, Optional
 from config import DbliftConfig
 from core.logger import Log
 from core.migration.clean_summary import CleanExecutionSummary
+from db.plugins.base_history_manager import UNDO_HISTORY_TYPE
 from db.plugins.sqlserver.sqlserver.schema_operations import SqlServerSchemaOperations
 from db.provider_interfaces import DroppableObject
 from db.sqlalchemy_provider import SqlAlchemyProvider
@@ -274,7 +275,7 @@ class SqlServerProvider(SqlAlchemyProvider):
             {
                 "version": version,
                 "description": f"Undo migration {version}",
-                "type": "UNDO_SQL",
+                "type": UNDO_HISTORY_TYPE,
                 "script": undo_script,
                 "checksum": 0,
                 "installed_by": os.environ.get("USER", os.environ.get("USERNAME", "dblift")),
