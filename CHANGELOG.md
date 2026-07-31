@@ -13,6 +13,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **``clean`` no longer fails on a schema holding a TimescaleDB continuous
+  aggregate.** A continuous aggregate's user-facing name is a plain
+  ``relkind='v'`` row, so it is listed by ``pg_views`` and never by
+  ``pg_matviews``. Clean enumeration therefore emitted ``DROP VIEW`` for it,
+  which PostgreSQL rejects with *cannot drop continuous aggregate using DROP
+  VIEW*. Because every drop shares one transaction, that single rejection
+  aborted the transaction and every remaining object failed with
+  ``InFailedSqlTransaction`` — leaving the whole schema, including
+  ``dblift_schema_history`` and ``dblift_migration_lock``, undropped and
+  needing manual cleanup. Continuous aggregates are now detected and dropped
+  with ``DROP MATERIALIZED VIEW``. The lookup is gated on a ``pg_class``
+  probe, so servers without TimescaleDB never touch the
+  ``timescaledb_information`` catalog.
+
 - **DuckDB parameterized DML reports real affected-row counts.** The 3.3.4
   ``RETURNING 1`` rewrite only ran when ``params is None``, so bound
   ``INSERT`` / ``UPDATE`` / ``DELETE`` (including data-correction undo restore

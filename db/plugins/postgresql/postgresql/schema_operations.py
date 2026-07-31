@@ -5,7 +5,7 @@ This module handles PostgreSQL-specific schema operations including schema creat
 cleaning, and metadata queries for tables, columns, and other database objects.
 """
 
-from typing import Any, List, Optional, Tuple
+from typing import Any, List, Optional, Set, Tuple
 
 from core.logger import Log, NullLog
 from core.migration.clean_summary import CleanExecutionSummary
@@ -289,6 +289,52 @@ class PostgreSqlSchemaOperations(BaseSchemaOperations):
             self.log.error(error_msg)
             raise
 
+    def _get_continuous_aggregate_names(self, connection: Any, schema: str) -> Set[str]:
+        """Return lower-cased TimescaleDB continuous aggregate names in ``schema``.
+
+        A continuous aggregate's user-facing name is a genuine ``relkind='v'``
+        row, so it is listed by ``pg_views`` and is absent from ``pg_matviews``
+        -- yet PostgreSQL rejects ``DROP VIEW`` for it and requires
+        ``DROP MATERIALIZED VIEW``. Callers use this set to pick the verb.
+
+        ``timescaledb_information`` only exists where the extension is
+        installed, and on PostgreSQL a query against a missing relation aborts
+        the surrounding transaction. Enumeration shares that transaction, so a
+        ``try``/``except`` here would catch the error too late to help: every
+        later enumeration query then fails too, each swallowed by its own
+        handler, leaving an empty preview. Clean would drop nothing and still
+        report success. The probe below therefore establishes existence with a
+        ``pg_class`` lookup that is valid on every PostgreSQL server, and the
+        TimescaleDB view is read only once that probe finds it. The
+        ``except`` is a backstop for unexpected failures, not the guard.
+        """
+        probe_query = """
+        SELECT 1 AS present
+        FROM pg_class c
+        JOIN pg_namespace n ON c.relnamespace = n.oid
+        WHERE n.nspname = 'timescaledb_information'
+          AND c.relname = 'continuous_aggregates'
+        """
+        aggregates_query = """
+        SELECT view_name
+        FROM timescaledb_information.continuous_aggregates
+        WHERE view_schema = ?
+        """
+        try:
+            if not self.query_executor.execute_query(connection, probe_query):
+                return set()
+            rows = self.query_executor.execute_query(connection, aggregates_query, params=[schema])
+        except Exception as e:
+            self.log.debug(f"Could not query continuous aggregates: {str(e)}")
+            return set()
+
+        names = set()
+        for row in rows:
+            name = row.get("view_name", row.get("VIEW_NAME"))
+            if name:
+                names.add(str(name).lower())
+        return names
+
     def get_clean_preview(self, connection: Any, schema: str) -> CleanExecutionSummary:
         """Return the objects a PG clean would drop, without executing the DROPs.
 
@@ -325,7 +371,9 @@ class PostgreSqlSchemaOperations(BaseSchemaOperations):
         except Exception as e:
             self.log.debug(f"Could not query extensions for preview: {str(e)}")
 
-        # Views
+        # Views. TimescaleDB continuous aggregates are relkind='v' rows, so
+        # they arrive here mixed in with plain views and need the other verb.
+        continuous_aggregates = self._get_continuous_aggregate_names(connection, schema)
         views_query = """
         SELECT viewname as view_name
         FROM pg_views
@@ -339,8 +387,15 @@ class PostgreSqlSchemaOperations(BaseSchemaOperations):
                 if name:
                     relation_type_names.add(str(name).lower())
                     qualified = self.query_executor.get_schema_qualified_name(schema, name)
-                    drop_sql = f"DROP VIEW IF EXISTS {qualified} CASCADE"
-                    summary.record_drop(drop_sql, object_type="view", name=name, schema=schema)
+                    if str(name).lower() in continuous_aggregates:
+                        drop_sql = f"DROP MATERIALIZED VIEW IF EXISTS {qualified} CASCADE"
+                        recorded_type = "materialized_view"
+                    else:
+                        drop_sql = f"DROP VIEW IF EXISTS {qualified} CASCADE"
+                        recorded_type = "view"
+                    summary.record_drop(
+                        drop_sql, object_type=recorded_type, name=name, schema=schema
+                    )
         except Exception as e:
             self.log.debug(f"Could not query views for preview: {str(e)}")
 
