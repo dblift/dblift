@@ -7,9 +7,8 @@ callbacks, and SQL statements.
 
 import re
 import time
-from contextlib import nullcontext
 from enum import Enum
-from typing import Any, ContextManager, Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 from config.dblift_config import DbliftConfig
 from core.constants import (
@@ -163,7 +162,6 @@ class ExecutionEngine:
             return
 
         transaction_started = False
-        autocommit_scope: ContextManager[Any] = nullcontext()
         if policy.transactional:
             transaction_started = self._prepare_transaction(migration)
             if not transaction_started:
@@ -177,12 +175,11 @@ class ExecutionEngine:
                 "Every statement commits on its own, so a later failure leaves the "
                 "earlier statements applied."
             )
-            self._rollback_before_autocommit(migration)
-            autocommit_scope = self._autocommit_scope()
 
         try:
-            with autocommit_scope:
-                success = self._execute_statements(statements, migration, result, start_time)
+            success = self._execute_statements(
+                statements, migration, result, start_time, autocommit=policy.autocommit_required
+            )
             if not success:
                 return  # _handle_statement_failure already rolled back
 
@@ -286,31 +283,6 @@ class ExecutionEngine:
             )
             return []
         return executable
-
-    def _rollback_before_autocommit(self, migration: Migration) -> None:
-        """Best-effort rollback so autocommit-only statements are not inside an old transaction."""
-        if not isinstance(self.provider, TransactionalProvider):
-            return
-        try:
-            self.provider.rollback_transaction()
-        except Exception as exc:
-            self.log.debug(
-                f"Could not rollback before autocommit execution for {migration.script_name}: {exc}"
-            )
-
-    def _autocommit_scope(self) -> ContextManager[Any]:
-        """Session scope in which flagged statements really run outside a transaction.
-
-        Ending the engine's own transaction is not enough: the driver opens one
-        per statement on its own, which is what the vendor then rejects. The
-        provider owns the connection and therefore the mechanism — the engine
-        only asks for the scope, so no dialect knowledge lands in core.
-        Providers that do not implement it inherit the no-op default on
-        :class:`db.provider_interfaces.TransactionalProvider`.
-        """
-        if not isinstance(self.provider, TransactionalProvider):
-            return nullcontext()
-        return self.provider.autocommit_execution()
 
     def _parse_sql_statements(
         self,
@@ -496,8 +468,15 @@ class ExecutionEngine:
         migration: Migration,
         result: OperationResult,
         start_time: float,
+        autocommit: bool = False,
     ) -> bool:
         """Execute all SQL statements in order.
+
+        With ``autocommit=True`` each statement is routed through the
+        provider's ``execute_autocommit_statement`` so it reaches the server
+        outside a transaction block. The switch is per statement — failure
+        handling and history writes triggered from here still run at the
+        session's normal isolation level.
 
         Returns:
             True if all statements executed successfully, False if any failed
@@ -606,7 +585,7 @@ class ExecutionEngine:
 
                 if self.sql_execution_service:
                     is_query, result_data = self.sql_execution_service.execute_statement(
-                        statement, i
+                        statement, i, autocommit=autocommit
                     )
                     if is_query:
                         if not isinstance(result_data, list):
@@ -620,6 +599,8 @@ class ExecutionEngine:
                                 f"Expected int for rows affected, got {type(result_data).__name__}"
                             )
                         rows_affected = result_data
+                elif autocommit and isinstance(self.provider, TransactionalProvider):
+                    rows_affected = self.provider.execute_autocommit_statement(statement)
                 else:
                     rows_affected = self.provider.execute_statement(statement)
 

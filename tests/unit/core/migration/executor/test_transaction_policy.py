@@ -41,6 +41,10 @@ class RecordingTransactionalProvider(TransactionalProvider):
         self.events.append(f"execute:{sql.strip()}")
         return 0
 
+    def execute_autocommit_statement(self, sql, schema=None, params=None):
+        self.events.append(f"autocommit:{sql.strip()}")
+        return 0
+
 
 @pytest.mark.unit
 def test_postgresql_create_index_concurrently_requires_autocommit():
@@ -108,8 +112,9 @@ def test_execution_engine_runs_autocommit_only_statement_without_migration_trans
     engine.execute_migration(migration, result)
 
     assert result.success is True
-    assert provider.events[0] == "rollback"
-    assert "execute:CREATE INDEX CONCURRENTLY idx_users_id ON users(id);" in provider.events
+    # The flagged statement goes through the provider's autocommit call — the
+    # provider owns how it reaches the server outside a transaction block.
+    assert "autocommit:CREATE INDEX CONCURRENTLY idx_users_id ON users(id);" in provider.events
     assert provider.events[-2:] == ["begin", "commit"]
     assert provider.events.count("begin") == 1
     history_manager.record_migration.assert_called_once()
@@ -137,8 +142,7 @@ def test_execution_engine_runs_sqlserver_fulltext_catalog_without_migration_tran
     engine.execute_migration(migration, result)
 
     assert result.success is True
-    assert provider.events[0] == "rollback"
-    assert "execute:CREATE FULLTEXT CATALOG dblift_ft_catalog AS DEFAULT;" in provider.events
+    assert "autocommit:CREATE FULLTEXT CATALOG dblift_ft_catalog AS DEFAULT;" in provider.events
     assert provider.events[-2:] == ["begin", "commit"]
     assert provider.events.count("begin") == 1
     history_manager.record_migration.assert_called_once()

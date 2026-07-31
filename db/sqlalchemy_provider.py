@@ -9,8 +9,7 @@ are left abstract for per-DB subclasses (e.g. SqliteNativeProvider).
 """
 
 import re
-from contextlib import contextmanager
-from typing import Any, Dict, Iterator, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from sqlalchemy import text
 from sqlalchemy.engine import Connection, Engine, Transaction
@@ -356,9 +355,10 @@ class SqlAlchemyProvider(NativeProvider):
         if conn.in_transaction():
             conn.rollback()
 
-    @contextmanager
-    def autocommit_execution(self) -> Iterator[None]:
-        """Switch the session to real autocommit for the duration of the block.
+    def execute_autocommit_statement(
+        self, sql: str, schema: Optional[str] = None, params: Optional[List[Any]] = None
+    ) -> int:
+        """Execute *sql* with the DBAPI connection genuinely autocommitting.
 
         :meth:`execute_statement` commits *after* the statement, which is too
         late for DDL the server refuses to run inside a transaction block: at
@@ -368,10 +368,15 @@ class SqlAlchemyProvider(NativeProvider):
         the commit is ever reached. ``isolation_level="AUTOCOMMIT"`` is the
         mechanism that actually flips the DBAPI connection.
 
+        The switch is scoped to this single statement: everything around it —
+        failure records, history writes, liveness probes — runs at the
+        session's normal isolation level, and on the *same* connection, so the
+        ``search_path`` set by :meth:`set_current_schema` still applies.
+
         SQLAlchemy refuses to change the isolation level while a transaction is
         in progress, and will not retroactively autocommit one that is already
         open — hence the rollback to a clean boundary on the way in. The level
-        is restored on the way out so the *next* migration keeps its
+        is restored on the way out so surrounding statements keep their
         all-or-nothing rollback; leaving the session autocommitting would
         silently disarm it.
         """
@@ -380,7 +385,7 @@ class SqlAlchemyProvider(NativeProvider):
         previous_isolation_level = conn.get_isolation_level()
         conn.execution_options(isolation_level="AUTOCOMMIT")
         try:
-            yield
+            return self.execute_statement(sql, schema=schema, params=params)
         finally:
             if not conn.closed:
                 self._end_open_transaction(conn)

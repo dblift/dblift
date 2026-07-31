@@ -107,28 +107,6 @@ class TestExecuteMigrationParseFailureEarlyReturn(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
-# _rollback_before_autocommit short-circuit for non-transactional provider
-# ---------------------------------------------------------------------------
-
-
-class TestRollbackBeforeAutocommitNonTransactional(unittest.TestCase):
-    """Early return when the provider is not a ``TransactionalProvider``."""
-
-    def test_non_transactional_provider_skips_entirely(self):
-        engine = _make_engine()
-        # Replace provider with a plain MagicMock (no provider spec → not a
-        # TransactionalProvider). The method must return immediately without
-        # touching rollback.
-        engine.provider = MagicMock()
-        engine.provider.rollback_transaction = MagicMock()
-        migration = _make_sql_migration()
-
-        engine._rollback_before_autocommit(migration)
-
-        engine.provider.rollback_transaction.assert_not_called()
-
-
-# ---------------------------------------------------------------------------
 # _probe_dialect_key Enum normalisation + empty-string return-None
 # ---------------------------------------------------------------------------
 

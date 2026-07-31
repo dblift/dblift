@@ -416,7 +416,7 @@ def test_provider_engine_property_returns_injected_engine():
 
 
 # ---------------------------------------------------------------------------
-# autocommit_execution — the scope in which non-transactional DDL runs
+# execute_autocommit_statement — one statement outside a transaction block
 # ---------------------------------------------------------------------------
 
 
@@ -426,7 +426,7 @@ class _RecordingConnection:
     Deliberately not a ``MagicMock``: a mock grows whatever attribute is asked
     of it, so a test written against one passes even when the production code
     calls something that does not exist. That is exactly how the dead
-    ``setAutoCommit`` branch this scope replaces kept a green test.
+    ``setAutoCommit`` branch this method replaces kept a green test.
     """
 
     def __init__(self, isolation_level: str = "READ COMMITTED", in_tx: bool = False) -> None:
@@ -459,83 +459,128 @@ class _RecordingConnection:
 
 
 def _provider_with(connection: _RecordingConnection, cfg: DbliftConfig) -> _Concrete:
+    """Provider whose connection *and* statement execution are both recorded.
+
+    ``execute_statement`` is stubbed on the instance so the test can observe
+    the connection's autocommit flag at the moment the statement runs — the
+    whole point of the per-statement switch.
+    """
     p = _Concrete(cfg)
     p._ensure_connection = lambda: connection  # type: ignore[method-assign,assignment]
+
+    def _record_execute(
+        sql: str, schema: Optional[str] = None, params: Optional[List[Any]] = None
+    ) -> int:
+        connection.calls.append(f"execute(autocommit={connection.autocommit})")
+        return 7
+
+    p.execute_statement = _record_execute  # type: ignore[method-assign,assignment]
     return p
 
 
-def test_autocommit_execution_switches_and_restores(cfg: DbliftConfig) -> None:
-    """The block runs in AUTOCOMMIT; the previous level is restored on exit."""
+def test_autocommit_statement_switches_and_restores(cfg: DbliftConfig) -> None:
+    """The statement itself runs in AUTOCOMMIT; the previous level is restored after."""
     conn = _RecordingConnection(isolation_level="READ COMMITTED")
     provider = _provider_with(conn, cfg)
 
-    with provider.autocommit_execution():
-        assert conn.autocommit is True
+    rows = provider.execute_autocommit_statement("CREATE INDEX CONCURRENTLY ix ON t (c)")
 
+    assert rows == 7
     assert conn.autocommit is False
-    assert conn.calls == ["isolation=AUTOCOMMIT", "isolation=READ COMMITTED"]
+    assert conn.calls == [
+        "isolation=AUTOCOMMIT",
+        "execute(autocommit=True)",
+        "isolation=READ COMMITTED",
+    ]
 
 
-def test_autocommit_execution_restores_after_an_exception(cfg: DbliftConfig) -> None:
+def test_autocommit_statement_restores_after_an_exception(cfg: DbliftConfig) -> None:
     """A failing statement must not leave the session autocommitting.
 
     Leaving it switched would silently disarm all-or-nothing rollback for every
-    later migration — a worse defect than the one the scope exists to fix.
+    later statement — a worse defect than the one this method exists to fix.
     """
     conn = _RecordingConnection(isolation_level="REPEATABLE READ")
     provider = _provider_with(conn, cfg)
 
+    def _boom(sql: str, schema: Optional[str] = None, params: Optional[List[Any]] = None) -> int:
+        raise RuntimeError("statement failed")
+
+    provider.execute_statement = _boom  # type: ignore[method-assign,assignment]
+
     with pytest.raises(RuntimeError):
-        with provider.autocommit_execution():
-            raise RuntimeError("statement failed")
+        provider.execute_autocommit_statement("CREATE INDEX CONCURRENTLY ix ON t (c)")
 
     assert conn.autocommit is False
     assert conn.calls == ["isolation=AUTOCOMMIT", "isolation=REPEATABLE READ"]
 
 
-def test_autocommit_execution_ends_an_open_transaction_first(cfg: DbliftConfig) -> None:
+def test_autocommit_statement_ends_an_open_transaction_first(cfg: DbliftConfig) -> None:
     """SQLAlchemy refuses to change isolation level mid-transaction."""
     conn = _RecordingConnection(in_tx=True)
     provider = _provider_with(conn, cfg)
 
-    with provider.autocommit_execution():
-        pass
+    provider.execute_autocommit_statement("VACUUM")
 
     assert conn.calls[0] == "rollback"
     assert conn.calls[1] == "isolation=AUTOCOMMIT"
 
 
-def test_autocommit_execution_rolls_back_a_provider_transaction(cfg: DbliftConfig) -> None:
+def test_autocommit_statement_rolls_back_a_provider_transaction(cfg: DbliftConfig) -> None:
     """A provider-owned transaction is discarded and cleared, not left dangling."""
     conn = _RecordingConnection()
     provider = _provider_with(conn, cfg)
     tx = MagicMock()
     provider._tx = tx
 
-    with provider.autocommit_execution():
-        pass
+    provider.execute_autocommit_statement("VACUUM")
 
     tx.rollback.assert_called_once()
     assert provider._tx is None
 
 
-def test_autocommit_execution_skips_restore_on_a_closed_connection(cfg: DbliftConfig) -> None:
-    """A connection closed inside the block must not be touched on the way out."""
+def test_autocommit_statement_skips_restore_on_a_closed_connection(cfg: DbliftConfig) -> None:
+    """A connection closed by the statement must not be touched on the way out."""
     conn = _RecordingConnection()
     provider = _provider_with(conn, cfg)
 
-    with provider.autocommit_execution():
+    def _close_during(
+        sql: str, schema: Optional[str] = None, params: Optional[List[Any]] = None
+    ) -> int:
         conn.closed = True
+        return 0
+
+    provider.execute_statement = _close_during  # type: ignore[method-assign,assignment]
+
+    provider.execute_autocommit_statement("VACUUM")
 
     assert conn.calls == ["isolation=AUTOCOMMIT"]
 
 
-def test_autocommit_execution_default_is_a_no_op() -> None:
-    """The base contract does nothing — dialects that never flag DDL pay nothing."""
+def test_autocommit_statement_default_delegates_to_plain_execution() -> None:
+    """Base contract: providers whose driver already autocommits change nothing."""
     from db.provider_interfaces import TransactionalProvider
 
-    class _Plain(TransactionalProvider):  # type: ignore[misc]
-        pass
+    class _Plain(TransactionalProvider):
+        def __init__(self) -> None:
+            self.executed: List[Any] = []
 
-    with _Plain.autocommit_execution(object()):  # type: ignore[arg-type]
-        pass
+        def begin_transaction(self) -> None:  # noqa: D102
+            pass
+
+        def commit_transaction(self) -> None:  # noqa: D102
+            pass
+
+        def rollback_transaction(self) -> None:  # noqa: D102
+            pass
+
+        def execute_statement(
+            self, sql: str, schema: Optional[str] = None, params: Optional[List[Any]] = None
+        ) -> int:
+            self.executed.append((sql, schema, params))
+            return 3
+
+    p = _Plain()
+
+    assert p.execute_autocommit_statement("CREATE THING", schema="s") == 3
+    assert p.executed == [("CREATE THING", "s", None)]

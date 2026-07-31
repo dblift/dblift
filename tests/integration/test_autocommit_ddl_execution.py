@@ -126,6 +126,41 @@ def test_create_index_concurrently_migration_succeeds(pg_schema, tmp_path) -> No
     assert "ix_docs_body" in _indexes(admin)
 
 
+def test_failed_autocommit_migration_still_records_failure_history(pg_schema, tmp_path) -> None:
+    """A flagged migration failing mid-way still gets its failure row in history.
+
+    The autocommit switch is scoped to each statement, so by the time the
+    failure handler opens its history transaction the session is back at its
+    normal isolation level — the failure record rides a real transaction, not
+    a driver-specific tolerance for ``begin()`` under autocommit.
+    """
+    admin = pg_schema
+    migrations_dir = tmp_path / "migrations"
+    create_versioned_migration(
+        migrations_dir,
+        "1.0.0",
+        "create_docs",
+        f'CREATE TABLE "{SCHEMA}"."docs" (id INT PRIMARY KEY, body TEXT);',
+    )
+    create_versioned_migration(
+        migrations_dir,
+        "2.0.0",
+        "index_then_fail",
+        f'CREATE INDEX CONCURRENTLY "ix_ok" ON "{SCHEMA}"."docs" (body);\n'
+        f'CREATE INDEX CONCURRENTLY "ix_bad" ON "{SCHEMA}"."nonexistent_table" (col);',
+    )
+
+    result = _migrate_as_schema_owner(migrations_dir)
+
+    assert result.success is False
+    assert "ix_ok" in _indexes(admin)  # per-statement commit: the first one stays
+    history = admin.execute_query(
+        f'SELECT script, success FROM "{SCHEMA}"."dblift_schema_history" ORDER BY installed_rank'
+    )
+    by_script = {row["script"]: row["success"] for row in history}
+    assert by_script.get("V2_0_0__index_then_fail.sql") is False
+
+
 def test_ordinary_ddl_still_rolls_back_on_failure(pg_schema, tmp_path) -> None:
     """A migration with no flagged statement keeps its all-or-nothing guarantee."""
     admin = pg_schema
