@@ -13,6 +13,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **``undo``, ``validate`` and ``repair`` now treat versioned Python
+  migrations like versioned SQL ones.** Three checks tested the recorded
+  migration type against ``SQL``, which is the type of a versioned *SQL*
+  script — a versioned Python script is recorded as ``PYTHON``, so each check
+  silently excluded it. ``migrate → undo → migrate → undo`` refused the second
+  undo with *"Version N has already been undone"* and walked down to the
+  previous version instead, because the re-apply was not counted; out-of-order
+  detection could never flag a Python migration; and ``repair`` skipped a
+  Python migration's checksum drift while still reporting success, leaving
+  ``validate`` failing afterwards. All three now use the shared versioned-type
+  predicate, so any versioned script format is handled identically. The
+  "next version to undo" suggestion that accompanies a refused undo was dead
+  code (it compared an enum member to a string) and never appeared; it is now
+  live, ignores failed and already-undone versions, and orders versions
+  semantically so it names the version ``undo`` would actually pick.
+
 - **Two safety gates that had been silently skipping Python migrations now
   run. Behaviour changes on upgrade for any project with ``.py`` migrations —
   read this before upgrading.** Internally, ``MigrationType.SQL`` names a

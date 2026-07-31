@@ -6,7 +6,7 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
 
 from core.constants import TEST_PLACEHOLDER_TIME_MS
 from core.logger import Log, NullLog
-from core.migration._type_match import is_migration_type
+from core.migration._type_match import is_migration_type, is_versioned
 from core.migration.history.migration_history_manager import MigrationHistoryManager
 from core.migration.migration import (
     Migration,
@@ -819,8 +819,8 @@ class MigrationValidator:
         if not applied_migration:
             return False
 
-        # Check if this is a versioned migration
-        if migration.type != MigrationType.SQL or not migration.version:
+        # Check if this is a versioned migration (any format, not SQL only)
+        if not is_versioned(migration.type) or not migration.version:
             return False
 
         # Get all migrations with higher version numbers

@@ -10,7 +10,7 @@ if TYPE_CHECKING:
 
 from core.exceptions import ExecutionError
 from core.logger.results import RepairResult
-from core.migration._type_match import is_migration_type
+from core.migration._type_match import is_versioned
 from core.migration.migration import Migration
 from core.migration.state.migration_state import MigrationState
 from db.provider_capabilities import ensure_provider_connection
@@ -354,7 +354,8 @@ class RepairCommand(BaseCommand):
         """Detect checksum drift for applied versioned migrations not already in repairs.
 
         MigrationState currently only tracks repeatable checksum changes, so this
-        performs an explicit comparison against the filesystem for all applied SQL migrations.
+        performs an explicit comparison against the filesystem for all applied versioned
+        migrations, in every script format.
 
         Args:
             migration_state: Current migration state
@@ -399,7 +400,9 @@ class RepairCommand(BaseCommand):
             if not isinstance(all_applied, list):
                 all_applied = []
         for applied_migration in all_applied:
-            if not is_migration_type(getattr(applied_migration, "type", None), "SQL"):
+            # Versioned migrations of any format: the history records versioned
+            # Python scripts as PYTHON, and their checksums drift the same way.
+            if not is_versioned(getattr(applied_migration, "type", None)):
                 continue
 
             script_name = getattr(applied_migration, "script_name", "")
