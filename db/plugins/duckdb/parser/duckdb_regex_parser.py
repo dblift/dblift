@@ -124,22 +124,6 @@ class DuckDBRegexParser(EnhancedRegexParser):
             statements.append(final)
         return statements
 
-    def classify_statement(self, statement: str) -> str:
-        """Classify a SQL statement as DDL / DML / QUERY / TCL / UNKNOWN."""
-        if not statement:
-            return "UNKNOWN"
-        statement = statement.strip()
-        cfg = self.config
-        if cfg.is_ddl_statement(statement):  # type: ignore[attr-defined]
-            return "DDL"
-        if cfg.is_dml_statement(statement):  # type: ignore[attr-defined]
-            return "DML"
-        if cfg.is_query_statement(statement):  # type: ignore[attr-defined]
-            return "QUERY"
-        if statement.upper().startswith(("BEGIN", "COMMIT", "ROLLBACK", "ABORT", "START")):
-            return "TCL"
-        return "UNKNOWN"
-
     def extract_objects(
         self, sql_content: str, default_schema: Optional[str] = None
     ) -> List[SqlObject]:

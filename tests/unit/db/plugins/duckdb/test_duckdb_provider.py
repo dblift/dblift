@@ -82,11 +82,10 @@ class TestDuckDBSplitter:
         stmts = parser.split_statements("CREATE TABLE t (a INT);", strict_tokenizer=True)
         assert stmts == ["CREATE TABLE t (a INT);"]
 
-    def test_classify_and_extract(self) -> None:
+    def test_extract_objects_from_create(self) -> None:
         from db.plugins.duckdb.parser.duckdb_regex_parser import DuckDBRegexParser
 
         parser = DuckDBRegexParser()
-        assert parser.classify_statement("CREATE TABLE x (a int)") == "DDL"
         objs = parser.extract_objects("CREATE TABLE main.foo (a int)")
         assert [(o.object_type.value, o.name) for o in objs] == [("TABLE", "foo")]
 

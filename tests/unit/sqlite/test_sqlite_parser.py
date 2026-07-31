@@ -49,56 +49,6 @@ class TestSQLiteRegexParser:
         assert "END" in statements[0]
         assert "SELECT" in statements[1]
 
-    def test_classify_ddl_statements(self):
-        """Test classifying DDL statements."""
-        from db.plugins.sqlite.parser.sqlite_regex_parser import SQLiteRegexParser
-
-        parser = SQLiteRegexParser()
-
-        ddl_statements = [
-            "CREATE TABLE users (id INTEGER PRIMARY KEY)",
-            "CREATE VIEW user_view AS SELECT * FROM users",
-            "CREATE INDEX idx_name ON users(name)",
-            "DROP TABLE users",
-            "ALTER TABLE users ADD COLUMN email TEXT",
-            "DROP INDEX idx_name",
-        ]
-
-        for stmt in ddl_statements:
-            assert parser.classify_statement(stmt) == "DDL", f"Failed for: {stmt}"
-
-    def test_classify_dml_statements(self):
-        """Test classifying DML statements."""
-        from db.plugins.sqlite.parser.sqlite_regex_parser import SQLiteRegexParser
-
-        parser = SQLiteRegexParser()
-
-        dml_statements = [
-            "INSERT INTO users (name) VALUES ('test')",
-            "UPDATE users SET name = 'new' WHERE id = 1",
-            "DELETE FROM users WHERE id = 1",
-            "REPLACE INTO users (id, name) VALUES (1, 'test')",
-        ]
-
-        for stmt in dml_statements:
-            assert parser.classify_statement(stmt) == "DML", f"Failed for: {stmt}"
-
-    def test_classify_query_statements(self):
-        """Test classifying query statements."""
-        from db.plugins.sqlite.parser.sqlite_regex_parser import SQLiteRegexParser
-
-        parser = SQLiteRegexParser()
-
-        query_statements = [
-            "SELECT * FROM users",
-            "SELECT id, name FROM users WHERE active = 1",
-            "WITH cte AS (SELECT * FROM users) SELECT * FROM cte",
-            "EXPLAIN SELECT * FROM users",
-        ]
-
-        for stmt in query_statements:
-            assert parser.classify_statement(stmt) == "QUERY", f"Failed for: {stmt}"
-
     def test_extract_table_from_create(self):
         """Test extracting table object from CREATE TABLE."""
         from db.plugins.sqlite.parser.sqlite_regex_parser import SQLiteRegexParser
