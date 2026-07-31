@@ -20,6 +20,28 @@ from core.migration.version_utils import compare_versions as _compare_versions_s
 from core.migration.version_utils import is_migration_success
 
 
+def _matches_callback_event(base_name: str, event_prefix: str) -> bool:
+    """Return True if ``base_name`` is a callback file for ``event_prefix``.
+
+    Callback files are named ``<eventPrefix>__<description>.<ext>`` or, when the
+    description is omitted, ``<eventPrefix>.<ext>``. The prefix must therefore be
+    followed by ``__`` or by the extension separator — a bare ``startswith()``
+    also matches every longer prefix that begins with this one
+    (``afterMigrate`` / ``afterMigrateError``, ``beforeEach`` /
+    ``beforeEachMigrate``, …), which fired error callbacks on successful runs
+    and executed per-script callbacks twice.
+
+    Both arguments are compared case-insensitively.
+    """
+    base_name_lower = base_name.lower()
+    event_prefix_lower = event_prefix.lower()
+    if not base_name_lower.startswith(event_prefix_lower):
+        return False
+
+    remainder = base_name_lower[len(event_prefix_lower) :]
+    return remainder == "" or remainder.startswith("__") or remainder.startswith(".")
+
+
 class MigrationScriptManager:
     """Resolves on-disk migration scripts, computes checksums, and orders them by version."""
 
@@ -706,13 +728,11 @@ class MigrationScriptManager:
 
         callbacks = migrations[MigrationType.CALLBACK]
 
-        # Filter callbacks by event prefix (case-insensitive matching)
-        event_prefix_lower = event_prefix.lower()
+        # Filter callbacks by event prefix (case-insensitive, delimiter-aware matching)
         filtered_callbacks: List[Migration] = []
         for cb in callbacks:
-            script_name_lower = cb.script_name.lower()
-            base_name = Path(script_name_lower).name
-            if base_name.startswith(event_prefix_lower):
+            base_name = Path(cb.script_name).name
+            if _matches_callback_event(base_name, event_prefix):
                 filtered_callbacks.append(cb)
 
         # Sort alphabetically (case-insensitive) to ensure consistent execution order

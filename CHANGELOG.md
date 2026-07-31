@@ -26,6 +26,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   with ``DROP MATERIALIZED VIEW``. The lookup is gated on a ``pg_class``
   probe, so servers without TimescaleDB never touch the
   ``timescaledb_information`` catalog.
+- **Callback events no longer collide on shared name prefixes.** Callback files
+  were matched to an event with a bare ``startswith()``, and five event prefixes
+  are substrings of others (``afterMigrate`` / ``afterMigrateError``,
+  ``beforeEach`` / ``beforeEachMigrate``, ``afterEach`` / ``afterEachMigrate``,
+  ``afterClean`` / ``afterCleanError``, ``afterUndo`` / ``afterUndoError``). So
+  ``afterMigrateError__notify.sql`` executed on a fully successful ``migrate``
+  — alerting or compensating SQL firing when nothing had failed — and
+  ``beforeEachMigrate__mark.sql`` executed twice per script, once for each of
+  the two events it matched. Matching now requires the ``__`` description
+  separator or the file extension immediately after the prefix, so
+  ``afterMigrate__finalize.sql`` and the description-less ``afterMigrate.sql``
+  still run on ``afterMigrate`` and nothing else does.
 
 - **DuckDB parameterized DML reports real affected-row counts.** The 3.3.4
   ``RETURNING 1`` rewrite only ran when ``params is None``, so bound
