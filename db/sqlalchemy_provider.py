@@ -346,3 +346,70 @@ class SqlAlchemyProvider(NativeProvider):
             self._tx = None
         elif self._connection is not None and not getattr(self._connection, "closed", False):
             self._connection.rollback()
+
+    def _end_open_transaction(self, conn: Connection) -> None:
+        """Discard any open transaction so the connection sits on a clean boundary."""
+        if self._tx is not None:
+            self._tx.rollback()
+            self._tx = None
+        if conn.in_transaction():
+            conn.rollback()
+
+    def execute_autocommit_statement(
+        self, sql: str, schema: Optional[str] = None, params: Optional[List[Any]] = None
+    ) -> int:
+        """Execute *sql* with the DBAPI connection genuinely autocommitting.
+
+        :meth:`execute_statement` commits *after* the statement, which is too
+        late for DDL the server refuses to run inside a transaction block: at
+        SQLAlchemy's default isolation level the DBAPI connection has
+        ``autocommit=False``, so the driver opens a block for the statement
+        itself and PostgreSQL rejects e.g. ``CREATE INDEX CONCURRENTLY`` before
+        the commit is ever reached. ``isolation_level="AUTOCOMMIT"`` is the
+        mechanism that actually flips the DBAPI connection.
+
+        The switch is scoped to this single statement: everything around it —
+        failure records, history writes, liveness probes — runs at the
+        session's normal isolation level, and on the *same* connection, so the
+        ``search_path`` set by :meth:`set_current_schema` still applies.
+
+        SQLAlchemy refuses to change the isolation level while a transaction is
+        in progress, and will not retroactively autocommit one that is already
+        open — hence the rollback to a clean boundary on the way in. The level
+        is restored on the way out so surrounding statements keep their
+        all-or-nothing rollback; leaving the session autocommitting would
+        silently disarm it.
+        """
+        conn = self._ensure_connection()
+        self._end_open_transaction(conn)
+        previous_isolation_level = conn.get_execution_options().get("isolation_level")
+        conn.execution_options(isolation_level="AUTOCOMMIT")
+        try:
+            return self.execute_statement(sql, schema=schema, params=params)
+        finally:
+            if not conn.closed:
+                self._end_open_transaction(conn)
+                self._restore_isolation_level(conn, previous_isolation_level)
+
+    @staticmethod
+    def _restore_isolation_level(conn: Connection, previous: Optional[str]) -> None:
+        """Put *conn* back on the isolation level it had before the autocommit switch.
+
+        ``get_isolation_level()`` cannot be used to capture that level: it
+        reports the *server* level and never returns ``AUTOCOMMIT``, so a
+        connection handed to dblift by ``from_sqlalchemy`` on an engine built
+        with ``isolation_level="AUTOCOMMIT"`` would come back downgraded to a
+        transactional level and stay that way — the caller's session silently
+        changed behaviour after one flagged statement.
+
+        A level the caller set on the connection itself shows up in its
+        execution options and is reapplied directly. Otherwise the level came
+        from the engine or the dialect default, and SQLAlchemy's own
+        return-to-pool hook restores exactly that, ``AUTOCOMMIT`` included.
+        """
+        if previous is not None:
+            conn.execution_options(isolation_level=previous)
+            return
+        dbapi_connection = conn.connection.dbapi_connection
+        if dbapi_connection is not None:
+            conn.dialect.reset_isolation_level(dbapi_connection)

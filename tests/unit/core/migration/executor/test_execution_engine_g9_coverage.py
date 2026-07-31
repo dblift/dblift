@@ -107,29 +107,6 @@ class TestExecuteMigrationParseFailureEarlyReturn(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
-# _ensure_autocommit_for_policy short-circuit for non-transactional provider
-# ---------------------------------------------------------------------------
-
-
-class TestEnsureAutocommitNonTransactional(unittest.TestCase):
-    """Covers line 220: early return when the provider is not
-    a ``TransactionalProvider``."""
-
-    def test_non_transactional_provider_skips_entirely(self):
-        engine = _make_engine()
-        # Replace provider with a plain MagicMock (no JdbcProvider spec → not a
-        # TransactionalProvider). The method must return immediately without
-        # touching rollback / setAutoCommit.
-        engine.provider = MagicMock()
-        engine.provider.rollback_transaction = MagicMock()
-        migration = _make_sql_migration()
-
-        engine._ensure_autocommit_for_policy(migration)
-
-        engine.provider.rollback_transaction.assert_not_called()
-
-
-# ---------------------------------------------------------------------------
 # _probe_dialect_key Enum normalisation + empty-string return-None
 # ---------------------------------------------------------------------------
 

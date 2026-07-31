@@ -171,12 +171,15 @@ class ExecutionEngine:
                 return
         elif policy.autocommit_required:
             self.log.warning(
-                f"Executing {migration.script_name} without an explicit transaction: {policy.reason}"
+                f"Executing {migration.script_name} in autocommit mode: {policy.reason}. "
+                "Every statement commits on its own, so a later failure leaves the "
+                "earlier statements applied."
             )
-            self._ensure_autocommit_for_policy(migration)
 
         try:
-            success = self._execute_statements(statements, migration, result, start_time)
+            success = self._execute_statements(
+                statements, migration, result, start_time, autocommit=policy.autocommit_required
+            )
             if not success:
                 return  # _handle_statement_failure already rolled back
 
@@ -280,23 +283,6 @@ class ExecutionEngine:
             )
             return []
         return executable
-
-    def _ensure_autocommit_for_policy(self, migration: Migration) -> None:
-        """Best-effort rollback so autocommit-only statements are not inside an old transaction."""
-        if not isinstance(self.provider, TransactionalProvider):
-            return
-        try:
-            self.provider.rollback_transaction()
-        except Exception as exc:
-            self.log.debug(
-                f"Could not rollback before autocommit execution for {migration.script_name}: {exc}"
-            )
-        conn = getattr(self.provider, "connection", None)
-        if conn is not None and hasattr(conn, "setAutoCommit"):
-            try:
-                conn.setAutoCommit(True)
-            except Exception as exc:
-                self.log.debug(f"Could not force autocommit before {migration.script_name}: {exc}")
 
     def _parse_sql_statements(
         self,
@@ -482,8 +468,15 @@ class ExecutionEngine:
         migration: Migration,
         result: OperationResult,
         start_time: float,
+        autocommit: bool = False,
     ) -> bool:
         """Execute all SQL statements in order.
+
+        With ``autocommit=True`` each statement is routed through the
+        provider's ``execute_autocommit_statement`` so it reaches the server
+        outside a transaction block. The switch is per statement — failure
+        handling and history writes triggered from here still run at the
+        session's normal isolation level.
 
         Returns:
             True if all statements executed successfully, False if any failed
@@ -592,7 +585,7 @@ class ExecutionEngine:
 
                 if self.sql_execution_service:
                     is_query, result_data = self.sql_execution_service.execute_statement(
-                        statement, i
+                        statement, i, autocommit=autocommit
                     )
                     if is_query:
                         if not isinstance(result_data, list):
@@ -606,6 +599,8 @@ class ExecutionEngine:
                                 f"Expected int for rows affected, got {type(result_data).__name__}"
                             )
                         rows_affected = result_data
+                elif autocommit and isinstance(self.provider, TransactionalProvider):
+                    rows_affected = self.provider.execute_autocommit_statement(statement)
                 else:
                     rows_affected = self.provider.execute_statement(statement)
 
