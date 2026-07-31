@@ -82,7 +82,7 @@ def undo(context: MigrationContext) -> None:
 | `context.dry_run` | `bool` | `True` under `--dry-run`. Your script must not write when it is set. |
 | `context.execute(sql)` | callable | Runs a **native Cosmos `SELECT`** and returns the documents. Any write statement raises `NoSqlWriteNotSupportedError`. |
 | `context.schema` | `str \| None` | Target schema from config. Cosmos is schemaless; present for parity. |
-| `context.placeholders` | `Mapping[str, str]` | Placeholder values from config / `--placeholders`. No automatic substitution happens — read them yourself. |
+| `context.placeholders` | `Mapping[str, str]` | Effective placeholder values: `dblift_*` system placeholders, then config, then `--placeholders` / `migrate(placeholders=...)`. No automatic substitution happens — read them yourself. |
 
 !!! note "`dry_run` is yours to honor"
     DBLift cannot intercept SDK calls you make directly, so nothing stops a

@@ -36,6 +36,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   flag when no explicit value is given, and the real ``UPDATE`` rowcount
   reports whether a row matched. A conformance test now requires every
   provider to expose the method, since no base class declared it.
+- **Per-call placeholders reach Python migrations.** ``migrate(placeholders=...)``
+  and ``undo(placeholders=...)`` are applied to the placeholder service that the
+  SQL path substitutes from, but the Python executor built
+  ``MigrationContext.placeholders`` from the placeholders baked into the config
+  at construction time. A ``.py`` migration therefore never saw a value passed
+  per call — on any dialect — and silently ran with the default instead of
+  failing. The executor now resolves the context mapping from the shared
+  placeholder service at execution time, so Python and SQL migrations see the
+  same effective set: ``dblift_*`` system placeholders, then configured
+  placeholders, then per-call ones.
 - **Callback events no longer collide on shared name prefixes.** Callback files
   were matched to an event with a bare ``startswith()``, and five event prefixes
   are substrings of others (``afterMigrate`` / ``afterMigrateError``,
