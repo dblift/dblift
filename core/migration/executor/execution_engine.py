@@ -1189,29 +1189,3 @@ class ExecutionEngine:
                     )
             # Re-raise the original exception
             raise
-
-    def execute_callbacks(
-        self, callbacks: List[Migration], callback_type: str = "AFTER_EACH"
-    ) -> None:
-        """Execute a list of callback migrations.
-
-        Args:
-            callbacks: List of callback migrations to execute
-            callback_type: Type of callback (BEFORE_EACH, AFTER_EACH, etc.)
-        """
-        if not callbacks:
-            return
-
-        self.log.info(f"Executing {len(callbacks)} {callback_type.lower()} callback(s)")
-
-        for callback in callbacks:
-            try:
-                self.log.info(f"Executing {callback_type.lower()} callback: {callback.script_name}")
-                self.execute_callback(callback)
-                self.log.info(f"Callback {callback.script_name} executed successfully")
-
-            except Exception as e:
-                self.log.error(f"Callback {callback.script_name} failed: {to_python_string(e)}")
-                # For callbacks, we typically want to continue execution
-                # rather than failing the entire migration
-                continue

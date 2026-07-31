@@ -327,8 +327,6 @@ module = [
     "core.migration.executor.transaction_policy",
     "core.migration.commands.validate_command",
 
-    "core.migration.ui.display_formatters",
-    "core.migration.ui.migration_analyzer",
     "core.migration.scripting.undo_script_generator._extractors",
     "core.migration.scripting.undo_script_generator._helpers",
     "core.migration.rules.migration_rules",
@@ -360,7 +358,6 @@ module = [
     "cli.handlers.info",
     "cli._command_handlers",
     "cli.db_utils",
-    "cli.export_schema_command",
     "cli._parser_setup",
     "cli._config_helpers",
     "cli.main",
@@ -455,10 +452,9 @@ no_implicit_optional = true
 warn_unused_ignores = true
 strict_equality = true
 
-# PR-H3: strict db/ error model and error handler.
+# PR-H3: strict db/ error model.
 [[tool.mypy.overrides]]
 module = [
-    "db.error_handler",
     "db.error",
 ]
 disallow_any_generics = true
@@ -591,7 +587,6 @@ module = [
     "core.introspection._vendor_property_applier",
     "core.introspection.vendor_queries_factory",
     "core.introspection.introspector_factory",
-    "core.introspection.validation_integration",
     "core.introspection.base_introspector",
     "core.introspection.extractors.base_extractor",
     "core.introspection.extractors.column_extractor",
@@ -620,7 +615,6 @@ strict_equality = true
 [[tool.mypy.overrides]]
 module = [
     "core.introspection.schema_introspector",
-    "core.introspection.capability_matrix",
     "core.introspection.vendor_queries_base",
     "core.introspection.vendor_queries_protocols",
     "core.introspection.version_detector",
@@ -1012,7 +1006,6 @@ module = [
     "config.database_config",
     "config.dblift_config",
     "config.errors",
-    "config.validation_config",
     "config._subclasses",
     "config._subclasses.dummy_config",
 ]
@@ -1039,8 +1032,6 @@ module = [
     "core.migration.executor",
     "core.migration.executor.migration_executor",
     "core.migration.scripting.undo_script_generator",
-    "core.migration.scripting.undo_script_generator._ddl_reversers",
-    "core.migration.scripting.undo_script_generator._dml_reversers",
     "core.migration.scripting.undo_script_generator._generator",
     "core.migration.scripting.undo_script_generator._models",
     "core.migration.scripting.undo_script_generator._reversers",

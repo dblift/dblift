@@ -258,67 +258,6 @@ class TestDb2SchemaOperations(unittest.TestCase):
 
         conn.rollback.assert_called()
 
-    # --- private drop helpers ---
-
-    def test_drop_triggers_drops_each_trigger(self):
-        ops, qe, log = self._make_ops()
-        conn = _make_connection()
-        from core.migration.clean_summary import CleanExecutionSummary
-
-        summary = CleanExecutionSummary()
-
-        qe.execute_query.return_value = [{"TRIGNAME": "TR1"}, {"TRIGNAME": "TR2"}]
-
-        ops._drop_triggers(conn, "myschema", summary)
-
-        calls = [str(c) for c in qe.execute_statement.call_args_list]
-        drop_calls = [c for c in calls if "DROP TRIGGER" in c]
-        self.assertEqual(2, len(drop_calls))
-
-    def test_drop_views_drops_each_view(self):
-        ops, qe, log = self._make_ops()
-        conn = _make_connection()
-        from core.migration.clean_summary import CleanExecutionSummary
-
-        summary = CleanExecutionSummary()
-
-        qe.execute_query.return_value = [{"TABNAME": "V1"}]
-
-        ops._drop_views(conn, "myschema", summary)
-
-        calls = [str(c) for c in qe.execute_statement.call_args_list]
-        self.assertTrue(any("DROP VIEW" in c for c in calls))
-
-    def test_drop_sequences_drops_each_sequence(self):
-        ops, qe, log = self._make_ops()
-        conn = _make_connection()
-        from core.migration.clean_summary import CleanExecutionSummary
-
-        summary = CleanExecutionSummary()
-
-        qe.execute_query.return_value = [{"SEQNAME": "SEQ1"}]
-
-        ops._drop_sequences(conn, "myschema", summary)
-
-        calls = [str(c) for c in qe.execute_statement.call_args_list]
-        self.assertTrue(any("DROP SEQUENCE" in c for c in calls))
-
-    def test_drop_tables_skips_none_name(self):
-        ops, qe, log = self._make_ops()
-        conn = _make_connection()
-        from core.migration.clean_summary import CleanExecutionSummary
-
-        summary = CleanExecutionSummary()
-
-        # Row with None TABNAME should be skipped
-        qe.execute_query.return_value = [{"TABNAME": None}, {"TABNAME": "T1"}]
-
-        ops._drop_tables(conn, "myschema", summary)
-
-        calls = [str(c) for c in qe.execute_statement.call_args_list]
-        drop_calls = [c for c in calls if "DROP TABLE" in c]
-        self.assertEqual(1, len(drop_calls))
-
     def test_commit_if_needed_commits_when_auto_commit_false(self):
         ops, qe, log = self._make_ops()
         conn = _make_connection(auto_commit=False)

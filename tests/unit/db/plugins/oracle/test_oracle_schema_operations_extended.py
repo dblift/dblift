@@ -484,66 +484,6 @@ class TestIsSystemGeneratedSequenceExtended:
         assert any("Identity column query failed" in c for c in debug_calls)
 
 
-class TestGetActualObjectNameExtended:
-    def test_view_object_type(self):
-        qe = _make_qe()
-        qe.execute_query.return_value = [{"table_name": "MY_VIEW"}]
-        ops, qe, log = _make_ops(qe)
-
-        result = ops.get_actual_object_name(MagicMock(), "MYSCHEMA", "my_view", object_type="VIEW")
-
-        assert result == "MY_VIEW"
-        sql = qe.execute_query.call_args[0][1]
-        assert "ALL_VIEWS" in sql
-
-    def test_sequence_object_type(self):
-        qe = _make_qe()
-        qe.execute_query.return_value = [{"table_name": "MY_SEQ"}]
-        ops, qe, log = _make_ops(qe)
-
-        result = ops.get_actual_object_name(
-            MagicMock(), "MYSCHEMA", "my_seq", object_type="SEQUENCE"
-        )
-
-        assert result == "MY_SEQ"
-        sql = qe.execute_query.call_args[0][1]
-        assert "ALL_SEQUENCES" in sql
-
-    def test_generic_object_type_found(self):
-        qe = _make_qe()
-        qe.execute_query.return_value = [{"table_name": "MY_TRIGGER"}]
-        ops, qe, log = _make_ops(qe)
-
-        result = ops.get_actual_object_name(
-            MagicMock(), "MYSCHEMA", "my_trigger", object_type="TRIGGER"
-        )
-
-        assert result == "MY_TRIGGER"
-        sql = qe.execute_query.call_args[0][1]
-        assert "ALL_OBJECTS" in sql
-
-    def test_generic_object_type_not_found(self):
-        qe = _make_qe()
-        qe.execute_query.return_value = []
-        ops, qe, log = _make_ops(qe)
-
-        result = ops.get_actual_object_name(
-            MagicMock(), "MYSCHEMA", "my_trigger", object_type="TRIGGER"
-        )
-
-        assert result is None
-
-    def test_query_exception_returns_none(self):
-        qe = _make_qe()
-        qe.execute_query.side_effect = RuntimeError("query failed")
-        ops, qe, log = _make_ops(qe)
-
-        result = ops.get_actual_object_name(MagicMock(), "MYSCHEMA", "my_table")
-
-        assert result is None
-        log.error.assert_called()
-
-
 class TestGetSchemasExtended:
     def test_query_exception_returns_empty_list(self):
         qe = _make_qe()

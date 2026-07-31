@@ -8,9 +8,7 @@ isinstance(provider, TransactionalProvider) pour vérifier le support.
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Protocol, runtime_checkable
-
-from core.migration.clean_summary import CleanExecutionSummary
+from typing import Any, Dict, List, Optional
 
 
 @dataclass(frozen=True)
@@ -349,31 +347,4 @@ class MigrationProvider(ABC):
         Returns:
             True if lock released successfully, False otherwise
         """
-        ...
-
-
-@runtime_checkable
-class ConnectionStateProvider(Protocol):
-    """Optional hook for providers that can eagerly open or refresh a connection."""
-
-    def _ensure_connection(self) -> None:
-        """Ensure the provider has an active connection."""
-        ...
-
-
-@runtime_checkable
-class ProviderUrlProvider(Protocol):
-    """Optional neutral display URL contract for providers."""
-
-    def get_display_url(self) -> str:
-        """Return a user-facing connection URL suitable for masking and logs."""
-        ...
-
-
-@runtime_checkable
-class CleanPreviewProvider(Protocol):
-    """Optional native clean dry-run contract."""
-
-    def get_clean_preview(self, schema: str) -> CleanExecutionSummary:
-        """Return the objects a clean operation would remove without dropping them."""
         ...

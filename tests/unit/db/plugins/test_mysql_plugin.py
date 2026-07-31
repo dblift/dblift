@@ -526,28 +526,6 @@ class TestMySqlHistoryManager(unittest.TestCase):
 
         self.assertFalse(mgr.migration_exists(conn, "mydb", "99.0"))
 
-    # --- repair_history_table ---
-
-    def test_repair_history_table_returns_empty_when_no_table(self):
-        mgr, qe, schema_ops, log = self._make_manager()
-        conn = self._make_connection()
-        qe.table_exists.return_value = False
-
-        result = mgr.repair_history_table(conn, "mydb")
-
-        self.assertEqual([], result)
-        qe.execute_query.assert_not_called()
-
-    def test_repair_history_table_returns_empty_when_no_duplicates(self):
-        mgr, qe, schema_ops, log = self._make_manager()
-        conn = self._make_connection()
-        qe.table_exists.return_value = True
-        qe.execute_query.return_value = []  # no duplicates
-
-        result = mgr.repair_history_table(conn, "mydb")
-
-        self.assertEqual([], result)
-
 
 if __name__ == "__main__":
     unittest.main()

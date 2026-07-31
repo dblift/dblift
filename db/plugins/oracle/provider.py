@@ -224,24 +224,6 @@ class OracleProvider(SqlAlchemyProvider):
         )
         return bool(rows and int(_row_value(rows[0], "cnt", default=0)) > 0)
 
-    def get_actual_object_name(
-        self, schema: str, object_name: str, object_type: str = "TABLE"
-    ) -> Optional[str]:
-        """Return the actual Oracle dictionary object name, if present."""
-        rows = self.execute_query(
-            """
-            SELECT OBJECT_NAME
-            FROM ALL_OBJECTS
-            WHERE OWNER = ? AND UPPER(OBJECT_NAME) = UPPER(?) AND OBJECT_TYPE = ?
-            FETCH FIRST 1 ROWS ONLY
-            """,
-            [_clean_identifier(schema), _clean_identifier(object_name), object_type.upper()],
-        )
-        if not rows:
-            return None
-        value = _row_value(rows[0], "object_name")
-        return str(value) if value is not None else None
-
     def is_system_generated_sequence(self, schema: str, sequence_name: str) -> bool:
         """Return True for Oracle identity-column generated sequences."""
         rows = self.execute_query(

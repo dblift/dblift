@@ -2,7 +2,6 @@
 Clean command implementation.
 """
 
-import re
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -215,70 +214,6 @@ class CleanCommand(BaseCommand):
                     )  # Ignore errors in error callbacks during exception handling
             self._log_command_completion("clean", result)
             return result
-
-    def _parse_drop_statement_for_result(self, statement: str, result: CleanResult) -> None:
-        """Parse a DROP statement to track what objects were dropped.
-
-        Args:
-            statement: SQL DROP statement
-            result: CleanResult to update with dropped objects
-        """
-        # Normalize statement for parsing
-        stmt = statement.upper().strip()
-
-        # Parse DROP VIEW statements
-        view_match = re.search(
-            r'DROP\s+VIEW\s+(?:IF\s+EXISTS\s+)?(?:"?[^"]*"?\.)?"?([^"\s]+)"?', stmt
-        )
-        if view_match:
-            view_name = view_match.group(1)
-            result.add_view_dropped(view_name)
-            return
-
-        # Parse DROP TABLE statements
-        table_match = re.search(
-            r'DROP\s+TABLE\s+(?:IF\s+EXISTS\s+)?(?:"?[^"]*"?\.)?"?([^"\s]+)"?', stmt
-        )
-        if table_match:
-            table_name = table_match.group(1)
-            result.add_table_dropped(table_name)
-            return
-
-        # Parse DROP SEQUENCE statements
-        sequence_match = re.search(
-            r'DROP\s+SEQUENCE\s+(?:IF\s+EXISTS\s+)?(?:"?[^"]*"?\.)?"?([^"\s]+)"?', stmt
-        )
-        if sequence_match:
-            sequence_name = sequence_match.group(1)
-            result.add_sequence_dropped(sequence_name)
-            return
-
-        # Parse DROP FUNCTION statements
-        function_match = re.search(
-            r'DROP\s+FUNCTION\s+(?:IF\s+EXISTS\s+)?(?:"?[^"]*"?\.)?"?([^"\s(]+)', stmt
-        )
-        if function_match:
-            function_name = function_match.group(1)
-            result.add_function_dropped(function_name)
-            return
-
-        # Parse DROP PROCEDURE statements
-        procedure_match = re.search(
-            r'DROP\s+PROCEDURE\s+(?:IF\s+EXISTS\s+)?(?:"?[^"]*"?\.)?"?([^"\s(]+)', stmt
-        )
-        if procedure_match:
-            procedure_name = procedure_match.group(1)
-            result.add_procedure_dropped(procedure_name)
-            return
-
-        # Parse DROP TRIGGER statements
-        trigger_match = re.search(
-            r'DROP\s+TRIGGER\s+(?:IF\s+EXISTS\s+)?(?:"?[^"]*"?\.)?"?([^"\s]+)"?', stmt
-        )
-        if trigger_match:
-            trigger_name = trigger_match.group(1)
-            result.add_trigger_dropped(trigger_name)
-            return
 
     def _log_clean_summary(self, result: CleanResult) -> None:
         """Log summary of cleaned objects grouped by type."""

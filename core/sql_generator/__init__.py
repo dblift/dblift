@@ -4,7 +4,6 @@ from core.sql_generator.alter import (
     AlterGeneratorFactory,
     BaseAlterGenerator,
 )
-from core.sql_generator.alter_generator import AlterGenerator
 from core.sql_generator.base_generator import BaseSqlGenerator
 from core.sql_generator.basic_table_ddl_generator import BasicTableDdlGenerator
 from core.sql_generator.dependency_analyzer import (
@@ -23,7 +22,6 @@ from core.sql_generator.sql_generator import SqlGenerator
 from core.sql_generator.sql_statement import GenerationOptions, SqlStatement
 
 __all__ = [
-    "AlterGenerator",
     "AlterGeneratorFactory",
     "BaseAlterGenerator",
     "BaseSqlGenerator",

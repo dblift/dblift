@@ -145,18 +145,3 @@ def builtin_namespace_for(capability: str) -> Optional[str]:
             capability
         )
     return _namespace_cache[capability]
-
-
-def builtin_option_namespaces() -> Dict[str, Tuple[Tuple[Any, str], ...]]:
-    """Map each built-in ``dialect_options`` namespace → its ``(default, key)`` options.
-
-    Namespaces with no resolvable owner plugin are skipped, so the result only
-    contains live canonical names (``mysql`` / ``sqlserver`` / ``postgresql`` /
-    ``oracle`` for the first-party plugin set).
-    """
-    out: Dict[str, Tuple[Tuple[Any, str], ...]] = {}
-    for capability, options in _BUILTIN_OPTION_GROUPS:
-        namespace = builtin_namespace_for(capability)
-        if namespace is not None:
-            out[namespace] = options
-    return out

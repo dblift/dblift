@@ -51,7 +51,6 @@ class TestBug02UndoChecksumZeroSentinel(unittest.TestCase):
         from pathlib import Path
 
         return [
-            Path("db/plugins/base_undo_manager.py"),
             Path("db/plugins/base_history_manager.py"),
             Path("db/plugins/oracle/oracle/history_manager.py"),
             Path("db/plugins/sqlserver/sqlserver/history_manager.py"),

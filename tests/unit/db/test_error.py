@@ -1,4 +1,4 @@
-"""Tests for db.error — error classification, retry logic, and data classes."""
+"""Tests for db.error — error classification and connection error formatting."""
 
 from unittest.mock import MagicMock, patch
 
@@ -6,9 +6,7 @@ import pytest
 
 from db.error import (
     DatabaseErrorClassifier,
-    DatabaseErrorInfo,
     ErrorCategory,
-    RetryManager,
     _extract_sqlstate,
     _is_auth_error,
     format_connection_error,
@@ -48,51 +46,6 @@ class TestErrorCategory:
     def test_value_attribute(self):
         assert ErrorCategory.NETWORK.value == "network"
         assert ErrorCategory.SQL_SYNTAX.value == "sql_syntax"
-
-
-# ---------------------------------------------------------------------------
-# DatabaseErrorInfo
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.unit
-class TestDatabaseErrorInfo:
-    """Test DatabaseErrorInfo dataclass."""
-
-    def test_defaults(self):
-        info = DatabaseErrorInfo(exception=ValueError("boom"))
-        assert info.category == ErrorCategory.UNKNOWN
-        assert info.retry_count == 0
-        assert info.context == {}
-        assert info.sql is None
-        assert info.params is None
-        assert info.schema is None
-
-    def test_str_basic(self):
-        info = DatabaseErrorInfo(exception=RuntimeError("oops"))
-        result = str(info)
-        assert "[UNKNOWN]" in result
-        assert "oops" in result
-
-    def test_str_with_sql_and_schema(self):
-        info = DatabaseErrorInfo(
-            exception=RuntimeError("fail"),
-            sql="SELECT 1",
-            schema="public",
-            category=ErrorCategory.NETWORK,
-            retry_count=2,
-        )
-        result = str(info)
-        assert "[NETWORK]" in result
-        assert "SELECT 1" in result
-        assert "public" in result
-        assert "Retry: 2" in result
-
-    def test_str_truncates_long_sql(self):
-        long_sql = "SELECT " + "x" * 200
-        info = DatabaseErrorInfo(exception=RuntimeError("e"), sql=long_sql)
-        result = str(info)
-        assert "..." in result
 
 
 # ---------------------------------------------------------------------------
@@ -283,32 +236,6 @@ class TestDatabaseErrorClassifier:
             c.categorize_error(Exception("something unexpected happened")) == ErrorCategory.UNKNOWN
         )
 
-    # -- is_retryable --
-
-    def test_is_retryable_network(self):
-        c = DatabaseErrorClassifier("generic")
-        assert c.is_retryable(ErrorCategory.NETWORK, retry_count=0, max_retries=3) is True
-
-    def test_is_retryable_timeout(self):
-        c = DatabaseErrorClassifier("generic")
-        assert c.is_retryable(ErrorCategory.TIMEOUT, retry_count=0, max_retries=3) is True
-
-    def test_is_retryable_locking(self):
-        c = DatabaseErrorClassifier("generic")
-        assert c.is_retryable(ErrorCategory.LOCKING, retry_count=0, max_retries=3) is True
-
-    def test_not_retryable_authentication(self):
-        c = DatabaseErrorClassifier("generic")
-        assert c.is_retryable(ErrorCategory.AUTHENTICATION) is False
-
-    def test_not_retryable_unknown(self):
-        c = DatabaseErrorClassifier("generic")
-        assert c.is_retryable(ErrorCategory.UNKNOWN) is False
-
-    def test_not_retryable_when_max_retries_reached(self):
-        c = DatabaseErrorClassifier("generic")
-        assert c.is_retryable(ErrorCategory.NETWORK, retry_count=3, max_retries=3) is False
-
 
 # ---------------------------------------------------------------------------
 # format_connection_error
@@ -372,155 +299,3 @@ class TestExtractSqlstate:
         err = Exception("driver error")
         err.sqlstate = "28000"  # type: ignore[attr-defined]
         assert _extract_sqlstate(err) == "28000"
-
-
-# ---------------------------------------------------------------------------
-# RetryManager
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.unit
-class TestRetryManager:
-    """Test RetryManager retry logic."""
-
-    @pytest.fixture
-    def classifier(self):
-        return DatabaseErrorClassifier("generic")
-
-    @pytest.fixture
-    def manager(self, classifier):
-        return RetryManager(
-            classifier, log=None, max_retries=3, base_delay=0.01, max_delay=0.1, jitter=0.0
-        )
-
-    def test_success_on_first_try(self, manager):
-        result = manager.execute_with_retry(lambda: "ok")
-        assert result == "ok"
-
-    def test_retry_on_transient_error_then_succeed(self, manager):
-        call_count = 0
-
-        def flaky():
-            nonlocal call_count
-            call_count += 1
-            if call_count < 3:
-                raise Exception("connection reset by peer")
-            return "recovered"
-
-        result = manager.execute_with_retry(flaky)
-        assert result == "recovered"
-        assert call_count == 3
-
-    def test_raise_after_max_retries(self, manager):
-        def always_fail():
-            raise Exception("connection reset by peer")
-
-        with pytest.raises(Exception, match="connection reset"):
-            manager.execute_with_retry(always_fail)
-
-    def test_no_retry_on_non_retryable_error(self, manager):
-        call_count = 0
-
-        def bad_sql():
-            nonlocal call_count
-            call_count += 1
-            raise Exception("something unexpected happened")
-
-        with pytest.raises(Exception, match="something unexpected"):
-            manager.execute_with_retry(bad_sql)
-        assert call_count == 1
-
-    def test_args_and_kwargs_forwarded(self, manager):
-        def add(a, b, extra=0):
-            return a + b + extra
-
-        result = manager.execute_with_retry(add, 1, 2, extra=10)
-        assert result == 13
-
-    def test_exponential_backoff(self, classifier):
-        mgr = RetryManager(
-            classifier,
-            log=None,
-            max_retries=3,
-            base_delay=1.0,
-            max_delay=100.0,
-            backoff_multiplier=2.0,
-            jitter=0.0,
-        )
-        assert mgr._compute_delay(0) == pytest.approx(1.0)
-        assert mgr._compute_delay(1) == pytest.approx(2.0)
-        assert mgr._compute_delay(2) == pytest.approx(4.0)
-
-    def test_max_delay_cap(self, classifier):
-        mgr = RetryManager(
-            classifier,
-            log=None,
-            max_retries=10,
-            base_delay=1.0,
-            max_delay=5.0,
-            backoff_multiplier=10.0,
-            jitter=0.0,
-        )
-        assert mgr._compute_delay(5) == pytest.approx(5.0)
-
-    def test_jitter_applied(self, classifier):
-        mgr = RetryManager(
-            classifier,
-            log=None,
-            max_retries=3,
-            base_delay=1.0,
-            max_delay=100.0,
-            backoff_multiplier=2.0,
-            jitter=0.5,
-        )
-        delays = {mgr._compute_delay(0) for _ in range(20)}
-        # With 50% jitter on a 1.0 base, values should vary
-        assert len(delays) > 1
-
-    # -- Decorator --
-
-    def test_decorator_success(self, manager):
-        @manager.retry_on_db_error()
-        def good_func():
-            return 42
-
-        assert good_func() == 42
-
-    def test_decorator_retries(self, classifier):
-        mgr = RetryManager(
-            classifier,
-            log=None,
-            max_retries=2,
-            base_delay=0.01,
-            max_delay=0.1,
-            jitter=0.0,
-        )
-        call_count = 0
-
-        @mgr.retry_on_db_error()
-        def flaky_func():
-            nonlocal call_count
-            call_count += 1
-            if call_count < 2:
-                raise Exception("connection reset by peer")
-            return "done"
-
-        assert flaky_func() == "done"
-        assert call_count == 2
-
-    def test_custom_exception_types(self, manager):
-        """Only specified exception types trigger retry."""
-        call_count = 0
-
-        def fails_with_value_error():
-            nonlocal call_count
-            call_count += 1
-            raise ValueError("connection reset by peer")
-
-        with pytest.raises(ValueError):
-            manager.execute_with_retry(
-                fails_with_value_error,
-                exception_types=ValueError,
-            )
-        # Should retry because it's retryable + matches exception_types
-        assert call_count > 1

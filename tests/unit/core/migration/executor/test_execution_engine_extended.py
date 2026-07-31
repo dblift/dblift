@@ -4,7 +4,7 @@ Target file: core/migration/executor/execution_engine.py
 Focuses on: execute_migration full path, _is_comment_only_statement, _prepare_transaction,
 _probe_dialect_key, _transaction_liveness_probe_sql, _record_migration_history,
 _record_autocommit_migration_history, _commit_and_verify, _handle_statement_failure,
-execute_callback, execute_callbacks, _execute_via_factory, _ensure_autocommit_for_policy.
+execute_callback, _execute_via_factory, _ensure_autocommit_for_policy.
 """
 
 import unittest
@@ -885,62 +885,6 @@ class TestExecuteCallback(unittest.TestCase):
         engine.execute_callback(cb)
 
         engine.provider.execute_query.assert_called_once()
-
-
-# ---------------------------------------------------------------------------
-# execute_callbacks
-# ---------------------------------------------------------------------------
-
-
-class TestExecuteCallbacks(unittest.TestCase):
-    def test_empty_callbacks_list_does_nothing(self):
-        engine = _make_engine()
-        engine.execute_callbacks([])
-        engine.log.info.assert_not_called()
-
-    def test_executes_all_callbacks(self):
-        engine = _make_engine()
-        engine.sql_analyzer.get_statement_type.return_value = "DML"
-        engine.provider.execute_statement.return_value = 0
-
-        cb1 = MagicMock(spec=Migration)
-        cb1.format = MigrationFormat.SQL
-        cb1.script_name = "cb1.sql"
-        cb1.parse_sql_statements.return_value = ["INSERT INTO t VALUES (1)"]
-        cb1.dialect = "postgresql"
-
-        cb2 = MagicMock(spec=Migration)
-        cb2.format = MigrationFormat.SQL
-        cb2.script_name = "cb2.sql"
-        cb2.parse_sql_statements.return_value = ["INSERT INTO t VALUES (2)"]
-        cb2.dialect = "postgresql"
-
-        with patch.object(engine, "execute_callback") as mock_exec:
-            engine.execute_callbacks([cb1, cb2], callback_type="AFTER_EACH")
-
-        self.assertEqual(mock_exec.call_count, 2)
-
-    def test_callback_failure_does_not_stop_remaining_callbacks(self):
-        engine = _make_engine()
-
-        cb1 = MagicMock(spec=Migration)
-        cb1.script_name = "cb1.sql"
-        cb2 = MagicMock(spec=Migration)
-        cb2.script_name = "cb2.sql"
-
-        call_order = []
-
-        def side_effect(cb):
-            call_order.append(cb.script_name)
-            if cb.script_name == "cb1.sql":
-                raise Exception("cb1 failed")
-
-        with patch.object(engine, "execute_callback", side_effect=side_effect):
-            engine.execute_callbacks([cb1, cb2])
-
-        self.assertIn("cb1.sql", call_order)
-        self.assertIn("cb2.sql", call_order)
-        engine.log.error.assert_called()
 
 
 # ---------------------------------------------------------------------------

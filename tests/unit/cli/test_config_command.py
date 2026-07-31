@@ -13,7 +13,7 @@ def test_installed_by_shows_all_surfaces():
 
 
 def test_cli_exempt_property_shows_no_cli_flag():
-    assert _by_name()["max_retries"]["cli"] == "(none)"
+    assert _by_name()["database.type"]["cli"] == "(none)"
 
 
 def test_aliased_property_shows_legacy_flag_not_derived():
