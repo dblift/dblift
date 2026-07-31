@@ -309,15 +309,6 @@ class MigrationValidator:
             validation_result.migrations = valid_scripts
 
             if history_table_exists:
-                callback_in_history = [m for m in applied_migrations if m.type == "CALLBACK"]
-                if callback_in_history:
-                    validation_result.success = False
-                    validation_result.error_message = (
-                        " " f"{', '.join(m.script_name for m in callback_in_history)}. " "."
-                    )
-                    validation_result.issues = issues
-                    return validation_result
-
                 config = getattr(self.history_manager.provider, "config", None)
                 strict_mode = bool(getattr(config, "strict_mode", False))
                 if strict_mode and command in ("migrate", "validate"):
@@ -553,21 +544,6 @@ class MigrationValidator:
 
             # If history table exists, validate checksums and other constraints
             if history_table_exists:
-                callback_in_history = [m for m in applied_migrations if m.type == "CALLBACK"]
-                if callback_in_history:
-                    validation_result.success = False
-                    validation_result.error_message = (
-                        " " f"{', '.join(m.script_name for m in callback_in_history)}. " "."
-                    )
-                    self.log.debug(
-                        f"[DEBUG] validate_migrations: after callback_in_history check: success={validation_result.success}, error='{validation_result.error_message}', issues={issues}"
-                    )
-                    self.log.debug(
-                        f"[DEBUG] RETURN (callback in history): success={validation_result.success}, error='{validation_result.error_message}'"
-                    )
-                    validation_result.issues = issues
-                    return validation_result
-
                 # Check if strict mode is enabled and validate accordingly
                 config = getattr(self.history_manager.provider, "config", None)
                 strict_mode = bool(getattr(config, "strict_mode", False))
@@ -673,14 +649,6 @@ class MigrationValidator:
             )
             validation_result.issues = issues
             return validation_result
-
-    def _get_undone_versions(self, applied_migrations: List[Migration]) -> set:
-        """Get versions that have been undone."""
-        undone_versions = set()
-        for m in applied_migrations:
-            if getattr(m, "type", None) == "UNDO_SQL" and getattr(m, "success", False):
-                undone_versions.add(getattr(m, "version", None))
-        return undone_versions
 
     def _validate_duplicate_versions(
         self, scripts: List[Migration], result: ValidationResult, issues: List[str]
@@ -896,10 +864,13 @@ class MigrationValidator:
         filtered_failed = []
         specific_repeatable_errors = []
         for m in failed_migrations:
-            if getattr(m, "type", None) == "REPEATABLE":
+            if is_migration_type(getattr(m, "type", None), "REPEATABLE"):
+                # Keyed by script name alone: ``check_repeatable_migrations``
+                # only schedules a repeatable it has already decided to reapply,
+                # and refuses to schedule one that failed and has not changed.
+                # A scheduled repeatable is therefore not a blocking failure.
                 scheduled = any(
                     rep["script"] == getattr(m, "script_name", None)
-                    and rep["old_checksum"] == getattr(m, "checksum", None)
                     for rep in getattr(result, "repeatable_migrations_to_reapply", [])
                 )
                 if scheduled:
