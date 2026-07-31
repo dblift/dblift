@@ -358,7 +358,6 @@ module = [
     "cli.handlers.info",
     "cli._command_handlers",
     "cli.db_utils",
-    "cli.export_schema_command",
     "cli._parser_setup",
     "cli._config_helpers",
     "cli.main",
@@ -588,7 +587,6 @@ module = [
     "core.introspection._vendor_property_applier",
     "core.introspection.vendor_queries_factory",
     "core.introspection.introspector_factory",
-    "core.introspection.validation_integration",
     "core.introspection.base_introspector",
     "core.introspection.extractors.base_extractor",
     "core.introspection.extractors.column_extractor",
@@ -617,7 +615,6 @@ strict_equality = true
 [[tool.mypy.overrides]]
 module = [
     "core.introspection.schema_introspector",
-    "core.introspection.capability_matrix",
     "core.introspection.vendor_queries_base",
     "core.introspection.vendor_queries_protocols",
     "core.introspection.version_detector",
@@ -1009,7 +1006,6 @@ module = [
     "config.database_config",
     "config.dblift_config",
     "config.errors",
-    "config.validation_config",
     "config._subclasses",
     "config._subclasses.dummy_config",
 ]
