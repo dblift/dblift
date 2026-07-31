@@ -8,12 +8,14 @@ execute_callback, _execute_via_factory, _ensure_autocommit_for_policy.
 """
 
 import unittest
+from contextlib import nullcontext
 from unittest.mock import MagicMock, patch
 
 from core.exceptions import CallbackExecutionError
 from core.migration.executor.execution_engine import ExecutionEngine
 from core.migration.formats import MigrationFormat
 from core.migration.migration import Migration
+from db.provider_interfaces import TransactionalProvider
 
 
 def _make_engine(dialect="postgresql", with_history=False, with_config=True):
@@ -957,3 +959,42 @@ class TestExecuteViaFactory(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestAutocommitScope(unittest.TestCase):
+    """_autocommit_scope asks the provider for the scope, or falls back to a no-op.
+
+    The engine deliberately holds no dialect knowledge: which statements need
+    autocommit is policy, and *how* to obtain it belongs to whichever provider
+    owns the connection.
+    """
+
+    @staticmethod
+    def _engine_with(provider):
+        return ExecutionEngine(
+            provider=provider,
+            sql_analyzer=MagicMock(),
+            log=MagicMock(),
+            config=None,
+            history_manager=None,
+        )
+
+    def test_delegates_to_a_transactional_provider(self):
+        """A provider implementing the contract supplies the scope itself."""
+        sentinel = nullcontext()
+        provider = MagicMock(spec=TransactionalProvider)
+        provider.autocommit_execution.return_value = sentinel
+
+        self.assertIs(self._engine_with(provider)._autocommit_scope(), sentinel)
+        provider.autocommit_execution.assert_called_once_with()
+
+    def test_falls_back_to_a_no_op_for_other_providers(self):
+        """A provider outside the contract must still be usable, not crash.
+
+        ``spec=object`` matters: a bare MagicMock satisfies any duck-typing and
+        would hide a missing implementation behind a passing test.
+        """
+        scope = self._engine_with(MagicMock(spec=object))._autocommit_scope()
+        with scope:
+            pass
+        self.assertIsInstance(scope, nullcontext)
