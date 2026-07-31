@@ -23,10 +23,7 @@ def resolve_dblift_package_version() -> Optional[str]:
     Avoid walking the filesystem first: under PyInstaller ``Path(__file__)``
     can resolve to a unrelated ``__init__.py`` and print a stale version.
     """
-    try:
-        from importlib.metadata import PackageNotFoundError, version
-    except ImportError:  # pragma: no cover - Python <3.8
-        from importlib_metadata import PackageNotFoundError, version  # type: ignore
+    from importlib.metadata import PackageNotFoundError, version
 
     try:
         return version("dblift")

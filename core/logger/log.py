@@ -40,15 +40,10 @@ from core.logger._levels import (  # noqa: F401  re-export
 )
 from core.logger._multi import MultiLog  # noqa: F401  re-export
 from core.logger._null import NullLog  # noqa: F401  re-export
+from core.logger.formatters.jsonformatter import JsonFormatter  # noqa: F401  re-export
 
 JINJA_AVAILABLE = True
-
-try:
-    from .formatters.jsonformatter import JsonFormatter
-
-    JSON_AVAILABLE = True
-except ImportError:
-    JSON_AVAILABLE = False
+JSON_AVAILABLE = True
 
 
 # Abstract base implementation with common functionality

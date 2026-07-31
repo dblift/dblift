@@ -73,9 +73,6 @@ class ConfigOnlyClient:
     config: Any
 
 
-ValidateSqlConfigClient = ConfigOnlyClient
-
-
 def _set_command_completed(log: Any, result: Any, command_type: str) -> None:
     """Helper to report command completion to the logger (eliminates SMELL-04 duplication)."""
     if result is None:

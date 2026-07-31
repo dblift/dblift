@@ -977,13 +977,6 @@ class DbliftConfig:
         return config
 
     @classmethod
-    def collect_env_diagnostics(cls) -> ConfigEnvDiagnostics:
-        """Return diagnostics for current DBLIFT_* env without changing config output."""
-        diagnostics = ConfigEnvDiagnostics()
-        cls.from_env_dict(diagnostics=diagnostics)
-        return diagnostics
-
-    @classmethod
     def from_args_dict(cls, args: Any) -> Dict[str, Any]:
         """Return config dict from command line arguments (for merging)."""
         if hasattr(args, "items"):

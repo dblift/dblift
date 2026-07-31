@@ -8,7 +8,6 @@ from typing import Any, Callable, Dict
 COMMAND_ENTRY_POINT_GROUP = "dblift.commands"
 HANDLER_ENTRY_POINT_GROUP = "dblift.command_handlers"
 TERMINAL_ENTRY_POINT_GROUP = "dblift.terminal_commands"
-CommandExtension = Callable[[ArgumentParser], None]
 CommandHandler = Callable[[Any], tuple[bool, Any]]
 TerminalCommand = Callable[[Any], int]
 

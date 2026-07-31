@@ -67,11 +67,7 @@ class SqlFormatter:
             logger.debug(f"{self.dialect} has no sqlglot dialect — returning unformatted SQL")
             return sql
 
-        try:
-            import sqlglot
-        except ImportError:
-            logger.warning("sqlglot not available, returning unformatted SQL")
-            return sql
+        import sqlglot
 
         try:
             # Parse SQL using sqlglot

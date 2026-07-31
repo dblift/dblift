@@ -11,6 +11,7 @@ This file was extracted from the monolithic
 from pathlib import Path
 from typing import Any, Dict, Optional, Type
 
+from core.logger.formatters.jsonformatter import JsonFormatter
 from core.logger.results import (
     BaselineResult,
     CleanResult,
@@ -24,14 +25,7 @@ from core.logger.results import (
 
 _HTML_FORMATTER_UNLOADED = object()
 HtmlFormatter: Any = _HTML_FORMATTER_UNLOADED
-
-try:
-    from core.logger.formatters.jsonformatter import JsonFormatter
-
-    JSON_AVAILABLE = True
-except ImportError:
-    JSON_AVAILABLE = False
-    JsonFormatter = None  # type: ignore
+JSON_AVAILABLE = True
 
 
 class OutputFormatter:

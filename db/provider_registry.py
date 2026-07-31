@@ -170,18 +170,10 @@ class ProviderRegistry:
         ``_discovered`` latch, or a late-arriving third-party plugin never
         gets a second chance).
         """
-        try:
-            from importlib import metadata
-        except ImportError:  # pragma: no cover - Python < 3.8
-            return False
+        from importlib import metadata
 
         try:
             entry_points: List[Any] = list(metadata.entry_points(group=cls.ENTRY_POINT_GROUP))
-        except TypeError:
-            # Python < 3.10 didn't accept the keyword form; fall back.
-            all_eps = metadata.entry_points()
-            getter = getattr(all_eps, "get", None)
-            entry_points = list(getter(cls.ENTRY_POINT_GROUP, [])) if getter else []
         except Exception as exc:  # pragma: no cover - defensive
             _logger.warning(f"Failed to read entry-points for {cls.ENTRY_POINT_GROUP}: {exc}")
             return False

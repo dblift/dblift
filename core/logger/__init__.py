@@ -1,6 +1,13 @@
 """dblift logger package — log levels, sinks, formatters, and result aggregates."""
 
+import os
+import traceback
+from contextlib import contextmanager
+from pathlib import Path
+from typing import Any, Callable, Dict, Generator, List, Optional
+
 from core.logger.formatters import OutputFormatter, OutputFormatterFactory
+from core.logger.formatters.htmlformatter import HtmlFormatter
 from core.logger.log import (
     AbstractLog,
     ConsoleLog,
@@ -25,27 +32,6 @@ from core.logger.results import (
     ValidateResult,
 )
 from core.utils.url_masking import mask_database_url
-
-# Import HtmlFormatter conditionally
-try:
-    from .formatters.htmlformatter import HtmlFormatter
-
-    JINJA_AVAILABLE = True
-except ImportError:
-
-    class DummyHtmlFormatter:
-        """Placeholder stand-in for HtmlFormatter when Jinja2 is not installed."""
-
-        def __init__(self, *args, **kwargs):
-            pass
-
-    HtmlFormatter = DummyHtmlFormatter  # type: ignore
-    JINJA_AVAILABLE = False
-import os
-import traceback
-from contextlib import contextmanager
-from pathlib import Path
-from typing import Any, Callable, Dict, Generator, List, Optional
 
 
 class DbliftLogger(Log):
