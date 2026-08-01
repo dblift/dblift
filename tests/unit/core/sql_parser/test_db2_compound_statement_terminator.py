@@ -210,6 +210,141 @@ END"""
 
         assert parser.split_statements(procedure) == [procedure]
 
+    def test_procedural_case_end_case_does_not_poison_the_enclosing_end(self):
+        """A procedural ``CASE ... END CASE`` must not re-open a CASE depth.
+
+        The scanner only advanced past the three letters of ``END`` when it
+        recognised ``END CASE`` as closing the CASE statement, so the ``CASE``
+        keyword right after it was re-read on the next iteration and matched
+        by the generic CASE-expression-open detector - poisoning case_depth
+        and making the block's own terminating ``END`` look like it belongs
+        to a still-open CASE expression instead of closing the block.
+        """
+        parser = DB2RegexParser()
+        procedure = """CREATE PROCEDURE classify(IN p_score INTEGER)
+LANGUAGE SQL
+BEGIN
+    DECLARE v_grade CHAR(1);
+    CASE
+        WHEN p_score >= 90 THEN SET v_grade = 'A';
+        WHEN p_score >= 80 THEN SET v_grade = 'B';
+        ELSE SET v_grade = 'F';
+    END CASE;
+    INSERT INTO grades VALUES (v_grade);
+END"""
+
+        assert parser.split_statements(procedure) == [procedure]
+
+    def test_end_case_immediately_followed_by_enclosing_end_with_semicolons(self):
+        """A pre-existing bug that predates PR #115's condition widening.
+
+        With explicit ``;`` terminators on both the CASE statement's own
+        ``END CASE`` and the block's own ``END`` (``...END CASE; END;``),
+        the block was already reported as unterminated before PR #115 - the
+        same missing skip-past-the-matched-keyword after a recognised
+        control-end poisons the scan here too, and the fix for the CASE
+        self-poisoning regression above resolves it as a side effect.
+        """
+        parser = DB2RegexParser()
+        procedure = """CREATE PROCEDURE classify(IN p_score INTEGER)
+LANGUAGE SQL
+BEGIN
+    DECLARE v_grade CHAR(1);
+    CASE
+        WHEN p_score >= 90 THEN SET v_grade = 'A';
+        ELSE SET v_grade = 'F';
+    END CASE;
+    INSERT INTO grades VALUES (v_grade);
+END;"""
+
+        assert parser.split_statements(procedure) == [procedure.rstrip(";")]
+
+
+@pytest.mark.unit
+class TestDB2ControlEndKeywordsDoNotSelfPoison:
+    """``END IF``/``END WHILE``/``END LOOP``/``END FOR``/``END REPEAT`` are safe.
+
+    The CASE self-poisoning bug above happens because CASE has *two* roles in
+    the scanner: a generic CASE-expression-open detector (incrementing
+    ``case_depth`` on any bare ``CASE`` token) and the control-end lookahead
+    that recognises ``END CASE``. Re-scanning the word ``CASE`` after only
+    skipping ``END`` therefore re-triggers the opener. IF/WHILE/FOR/LOOP/
+    REPEAT have no such generic opener anywhere in ``_find_block_end`` - only
+    ``BEGIN`` and ``CASE`` increment a depth counter - so re-scanning those
+    keywords after their own control-end is inert. These tests pin that down
+    so a future opener added for one of them doesn't silently reintroduce the
+    same class of bug.
+    """
+
+    def test_end_if_does_not_poison_the_enclosing_end(self):
+        parser = DB2RegexParser()
+        procedure = """CREATE PROCEDURE p(IN x INTEGER)
+LANGUAGE SQL
+BEGIN
+    IF x > 0 THEN
+        SET x = x + 1;
+    END IF;
+    INSERT INTO t VALUES (x);
+END"""
+
+        assert parser.split_statements(procedure) == [procedure]
+
+    def test_end_while_does_not_poison_the_enclosing_end(self):
+        parser = DB2RegexParser()
+        procedure = """CREATE PROCEDURE p(IN x INTEGER)
+LANGUAGE SQL
+BEGIN
+    WHILE x < 10 DO
+        SET x = x + 1;
+    END WHILE;
+    INSERT INTO t VALUES (x);
+END"""
+
+        assert parser.split_statements(procedure) == [procedure]
+
+    def test_end_loop_does_not_poison_the_enclosing_end(self):
+        parser = DB2RegexParser()
+        procedure = """CREATE PROCEDURE p(IN x INTEGER)
+LANGUAGE SQL
+BEGIN
+    lbl: LOOP
+        SET x = x + 1;
+        IF x >= 10 THEN
+            LEAVE lbl;
+        END IF;
+    END LOOP;
+    INSERT INTO t VALUES (x);
+END"""
+
+        assert parser.split_statements(procedure) == [procedure]
+
+    def test_end_for_does_not_poison_the_enclosing_end(self):
+        parser = DB2RegexParser()
+        procedure = """CREATE PROCEDURE p()
+LANGUAGE SQL
+BEGIN
+    FOR v AS SELECT id FROM t DO
+        INSERT INTO log VALUES (v.id);
+    END FOR;
+    INSERT INTO t VALUES (1);
+END"""
+
+        assert parser.split_statements(procedure) == [procedure]
+
+    def test_end_repeat_does_not_poison_the_enclosing_end(self):
+        parser = DB2RegexParser()
+        procedure = """CREATE PROCEDURE p(IN x INTEGER)
+LANGUAGE SQL
+BEGIN
+    REPEAT
+        SET x = x + 1;
+    UNTIL x >= 10
+    END REPEAT;
+    INSERT INTO t VALUES (x);
+END"""
+
+        assert parser.split_statements(procedure) == [procedure]
+
 
 @pytest.mark.unit
 class TestDB2TriggerControlStructureLookahead:

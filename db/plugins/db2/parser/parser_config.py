@@ -637,7 +637,18 @@ class DB2Config(DialectConfig):
                                     return j + 1
                                 # No explicit delimiter, use position after END
                                 return j
-                        i += 3
+                        if is_control_end:
+                            # Advance past the entire matched keyword (e.g. "CASE"),
+                            # not just "END". Otherwise the next scan iteration
+                            # re-reads that keyword as a fresh token - and for CASE,
+                            # which also has a generic open detector above, that
+                            # means re-matching it as a brand-new CASE expression
+                            # and double-counting case_depth for a CASE that
+                            # already closed, poisoning the depth state used to
+                            # find the enclosing block's own terminating END.
+                            i = k
+                        else:
+                            i += 3
                         continue
 
             i += 1
