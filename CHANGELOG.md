@@ -95,6 +95,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   ``validate`` report the migration as renamed. The override is removed;
   ``script_name`` is now the bare filename regardless of which configured
   directory a migration came from.
+
+  **Upgrade note:** history rows written *before* this fix (any project that
+  used ``--scripts``/multi-directory support previously) still have the old,
+  directory-qualified value stored in the ``script`` column. On upgrade, those
+  rows are matched against their now-bare-named script on disk with a
+  basename fallback, the same way an equivalent legacy-name mismatch is
+  already handled for versioned migrations — so an already-applied migration
+  from a secondary directory continues to resolve correctly: ``migrate`` does
+  not re-execute it and ``validate --strict`` does not fail on it. Two
+  repeatable migrations in different directories that happen to share a
+  filename are now also caught as a naming conflict during validation, since
+  removing the directory qualification means they'd otherwise be
+  indistinguishable by name.
 - **``validate --strict`` now runs out-of-order detection on Python
   migrations.** Internally ``MigrationType.SQL`` names a migration's *role* —
   versioned, run-once — and not its file format; a versioned ``.py`` script is

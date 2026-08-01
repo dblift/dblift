@@ -277,3 +277,76 @@ class TestIsRepeatablePendingNestedPath:
             repeatable_checksums=checksums,
         )
         assert result is True  # Pending: checksum changed
+
+
+class TestIsRepeatablePendingLegacyQualifiedHistory:
+    """PR #129 removed the override that stored a directory-qualified
+    ``script_name`` for migrations found in a secondary ``--scripts``
+    directory, so freshly-loaded migrations now always get the bare
+    filename. A history row written *before* that fix (any installation
+    using ``--scripts`` prior to this PR) still has the old qualified
+    value stored as ``script_name`` (e.g. ``extra-migrations/R__cleanup.sql``).
+
+    Without a basename fallback on the "never executed" check,
+    ``_is_repeatable_pending`` treats the exact-match miss between the old
+    qualified history row and the new bare script_name as "never executed"
+    and re-runs an already-applied repeatable migration on upgrade.
+
+    ``_is_versioned_pending`` already solves the equivalent problem for
+    versioned migrations (see "Also check script_name for backward
+    compatibility" in its docstring/comments) — this is the same fix for
+    the repeatable path.
+    """
+
+    def _make_manager(self):
+        log = DummyLog()
+        rules = MigrationRules(log)
+        script_manager = StubScriptManager([])
+        history_manager = StubHistoryManager([])
+        return MigrationStateManager(
+            log,
+            history_manager=history_manager,
+            script_manager=script_manager,
+            migration_rules=rules,
+        )
+
+    def test_old_qualified_history_row_not_re_executed_for_bare_fresh_name(self):
+        """A repeatable migration already applied under the old scheme must
+        not be treated as pending just because the fresh Migration now
+        computes a bare script_name."""
+        manager = self._make_manager()
+        migration = Migration(
+            script_name="R__cleanup.sql",  # bare, as computed post-PR#129
+            content="SELECT 1;",
+            type=MigrationType.REPEATABLE,
+        )
+        checksums = {"extra-migrations/R__cleanup.sql": migration.checksum}
+        result = manager._is_repeatable_pending(
+            "R__cleanup.sql",
+            migration,
+            executed_scripts={"extra-migrations/R__cleanup.sql"},  # old qualified history row
+            repeatable_checksums=checksums,
+        )
+        assert result is False, (
+            "An already-applied repeatable migration whose history row still has the "
+            "pre-PR#129 directory-qualified script_name must not be re-executed just "
+            "because the fresh in-memory Migration now computes the bare filename."
+        )
+
+    def test_old_qualified_history_row_with_changed_checksum_is_still_pending(self):
+        """The basename fallback must not suppress genuine checksum drift
+        detection for a legacy-scheme row."""
+        manager = self._make_manager()
+        migration = Migration(
+            script_name="R__cleanup.sql",
+            content="new_content",
+            type=MigrationType.REPEATABLE,
+        )
+        checksums = {"extra-migrations/R__cleanup.sql": "old_checksum"}
+        result = manager._is_repeatable_pending(
+            "R__cleanup.sql",
+            migration,
+            executed_scripts={"extra-migrations/R__cleanup.sql"},
+            repeatable_checksums=checksums,
+        )
+        assert result is True  # Pending: checksum changed
