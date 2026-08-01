@@ -14,6 +14,14 @@ from db.plugins.db2.parser.parser_config import DB2Config
 
 logger = logging.getLogger(__name__)
 
+# Trailing trivia (whitespace, line comments, block comments) that may follow
+# a block's undelimited closing END before the true end of the script. The
+# gates below already treat a missing @/; terminator as fine when END is the
+# last thing in the input; a comment after that END is not whitespace, so
+# without this alternative the $ anchor never matched and the gate missed a
+# block the matching extractor would otherwise find without any trouble.
+_TRAILING_TRIVIA = r"(?:\s|--[^\n]*|/\*.*?\*/)*"
+
 
 class DB2RegexParser(EnhancedRegexParser):
     """DB2-specific regex parser with enhanced DB2 feature support."""
@@ -103,10 +111,13 @@ class DB2RegexParser(EnhancedRegexParser):
         # Check for CREATE/ALTER PROCEDURE or FUNCTION with BEGIN...END
         # LANGUAGE SQL is optional in DB2
         # The trailing terminator is optional at the end of the script: the block
-        # extractor handles an END with no delimiter, so this gate must too.
+        # extractor handles an END with no delimiter, so this gate must too - and
+        # so must a trailing comment after that undelimited END, see
+        # _TRAILING_TRIVIA.
         return bool(
             re.search(
-                r"\b(?:CREATE|ALTER)\s+(?:OR\s+REPLACE\s+)?(?:PROCEDURE|FUNCTION)\s+\S+.*?BEGIN.*?END\s*(?:[@;]|$)",
+                r"\b(?:CREATE|ALTER)\s+(?:OR\s+REPLACE\s+)?(?:PROCEDURE|FUNCTION)\s+\S+.*?BEGIN.*?END\s*"
+                r"(?:[@;]|" + _TRAILING_TRIVIA + r"$)",
                 sql,
                 re.IGNORECASE | re.DOTALL,
             )
@@ -121,10 +132,13 @@ class DB2RegexParser(EnhancedRegexParser):
         # Check for CREATE/ALTER TRIGGER with BEGIN (ATOMIC optional)...END
         # DB2 triggers can use BEGIN ATOMIC or just BEGIN
         # The trailing terminator is optional at the end of the script: the block
-        # extractor handles an END with no delimiter, so this gate must too.
+        # extractor handles an END with no delimiter, so this gate must too - and
+        # so must a trailing comment after that undelimited END, see
+        # _TRAILING_TRIVIA.
         return bool(
             re.search(
-                r"\b(?:CREATE|ALTER)\s+(?:OR\s+REPLACE\s+)?TRIGGER\s+\S+.*?(?:BEFORE|AFTER|INSTEAD\s+OF).*?BEGIN\s+(?:ATOMIC\s+)?.*?END\s*(?:[@;]|$)",
+                r"\b(?:CREATE|ALTER)\s+(?:OR\s+REPLACE\s+)?TRIGGER\s+\S+.*?(?:BEFORE|AFTER|INSTEAD\s+OF)"
+                r".*?BEGIN\s+(?:ATOMIC\s+)?.*?END\s*(?:[@;]|" + _TRAILING_TRIVIA + r"$)",
                 sql,
                 re.IGNORECASE | re.DOTALL,
             )

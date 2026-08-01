@@ -708,6 +708,11 @@ class TestDB2BlockDetectionGateAgreesWithExtractor:
             "CREATE TRIGGER t AFTER INSERT ON tbl FOR EACH ROW BEGIN ATOMIC SELECT 1; END;",
             "CREATE TRIGGER t AFTER INSERT ON tbl FOR EACH ROW "
             "BEGIN ATOMIC IF 1=1 THEN SELECT 1; END IF; END;",
+            # Confirmed live against DB2 12.1.5.0: a trigger body may open
+            # with plain BEGIN (no ATOMIC) and compiles/fires correctly, so
+            # the gate is right to accept it - the extractor used to require
+            # literal "BEGIN ATOMIC" and silently skip this shape instead.
+            "CREATE TRIGGER t AFTER INSERT ON tbl FOR EACH ROW BEGIN SELECT 1; END;",
         ],
     )
     def test_trigger_gate_agrees_with_extractor(self, sql):
@@ -853,3 +858,130 @@ BEGIN
 END"""
 
         assert parser.split_statements(sql) == [sql]
+
+
+@pytest.mark.unit
+class TestDB2TriggerCaseTracking:
+    """A CASE expression inside a trigger body must not truncate it.
+
+    ``extract_trigger_blocks`` used to keep a private depth counter that
+    decremented on any ``END``, with no CASE-expression awareness - unlike
+    ``extract_sqlpl_blocks``, which tracked ``case_depth`` via the shared
+    ``_find_block_end`` scan procedures and compound statements already used.
+    A ``CASE ... END`` inside a trigger body closed the trigger's own block
+    early instead of just closing the CASE expression. Both extractors now
+    delegate to ``_find_block_end``, so this is confirmed live against DB2
+    12.1.5.0 and is a regression lock, not a live bug.
+    """
+
+    def test_case_expression_inside_a_trigger_does_not_close_it(self):
+        parser = DB2RegexParser()
+        trigger = """CREATE TRIGGER trg_audit
+AFTER INSERT ON employees
+REFERENCING NEW AS n
+FOR EACH ROW
+BEGIN ATOMIC
+    INSERT INTO audit_log (id, msg) VALUES (n.id, CASE WHEN n.id > 0 THEN 'pos' ELSE 'neg' END);
+    UPDATE counters SET c = c + 1;
+END"""
+
+        assert parser.split_statements(trigger) == [trigger]
+
+
+@pytest.mark.unit
+class TestDB2TriggerPlainBeginIsExtracted:
+    """A trigger body may open with plain ``BEGIN``, not just ``BEGIN ATOMIC``.
+
+    Confirmed live against DB2 12.1.5.0: a trigger declared with a bare
+    ``BEGIN ... END`` (no ``ATOMIC``) compiles and fires correctly - DB2 does
+    not require a trigger's compound statement to be atomic. ``_has_trigger_
+    blocks`` already accepted plain ``BEGIN`` (the gate was right), but
+    ``extract_trigger_blocks`` required the literal keyword ``ATOMIC`` and
+    silently skipped any trigger that lacked it, dropping the whole trigger
+    to naive semicolon splitting and truncating it at its first internal
+    ``;`` - even with a trailing ``;`` present, so this one was never
+    delimiter-dependent.
+    """
+
+    @TERMINATORS
+    def test_plain_begin_trigger_is_one_statement(self, terminator):
+        parser = DB2RegexParser()
+        trigger = """CREATE TRIGGER trg_audit
+AFTER INSERT ON employees
+REFERENCING NEW AS n
+FOR EACH ROW
+BEGIN
+    INSERT INTO audit_log (id, msg) VALUES (n.id, 'inserted');
+    UPDATE counters SET c = c + 1;
+END"""
+
+        assert parser.split_statements(f"{trigger}{terminator}") == [trigger]
+
+    def test_plain_begin_trigger_with_control_structure_does_not_truncate(self):
+        """The same control-structure lookahead already proven for
+        ``BEGIN ATOMIC`` triggers must hold for plain ``BEGIN`` too, since
+        both now resolve their boundary through the same ``_find_block_end``
+        scan once the extractor stops requiring ``ATOMIC``."""
+        parser = DB2RegexParser()
+        trigger = """CREATE TRIGGER trg_audit
+AFTER INSERT ON employees
+REFERENCING NEW AS n
+FOR EACH ROW
+BEGIN
+    IF n.id > 0 THEN
+        INSERT INTO audit_log (id, msg) VALUES (n.id, 'inserted');
+    END IF;
+    UPDATE counters SET c = c + 1;
+END"""
+
+        assert parser.split_statements(trigger) == [trigger]
+
+
+@pytest.mark.unit
+class TestDB2TrailingCommentAfterEndDoesNotDefeatTheGate:
+    """A comment after the block's closing ``END`` must not defeat detection.
+
+    ``_has_sqlpl_blocks`` and ``_has_trigger_blocks`` anchor their closing
+    ``END`` on a delimiter (``@``/``;``) or the true end of input, mirroring
+    the 'terminator optional on the final statement' handling the extractors
+    already give an undelimited ``END``. Trailing whitespace after that
+    ``END`` was already fine, but a trailing comment is not whitespace, so
+    the gate's ``$`` anchor never matched and the whole block silently fell
+    back to naive semicolon splitting - cutting the body at its first
+    internal ``;``. ``_find_block_end``, which the extractors delegate to for
+    the actual boundary, was never the problem: it already stops right after
+    ``END`` and never swallows a trailing comment into the block's content.
+    """
+
+    def test_line_comment_after_procedure_end_does_not_defeat_the_gate(self):
+        parser = DB2RegexParser()
+        sql = f"{PROCEDURE_BODY}\n-- done\n"
+
+        assert parser.split_statements(sql) == [PROCEDURE_BODY]
+
+    def test_block_comment_after_procedure_end_does_not_defeat_the_gate(self):
+        parser = DB2RegexParser()
+        sql = f"{PROCEDURE_BODY}\n/* done */\n"
+
+        assert parser.split_statements(sql) == [PROCEDURE_BODY]
+
+    def test_comment_with_no_trailing_newline_after_end_does_not_defeat_the_gate(self):
+        parser = DB2RegexParser()
+        sql = f"{PROCEDURE_BODY}\n-- done"
+
+        assert parser.split_statements(sql) == [PROCEDURE_BODY]
+
+    def test_line_comment_after_trigger_end_does_not_defeat_the_gate(self):
+        parser = DB2RegexParser()
+        sql = f"{TRIGGER_BODY}\n-- done\n"
+
+        assert parser.split_statements(sql) == [TRIGGER_BODY]
+
+    def test_trailing_comment_after_an_explicit_delimiter_still_works(self):
+        """Not just an omitted delimiter followed by a comment - a real
+        delimiter followed by a comment must keep working too, since the
+        ``[@;]`` branch of the anchor was never the broken one."""
+        parser = DB2RegexParser()
+        sql = f"{PROCEDURE_BODY};\n-- done\n"
+
+        assert parser.split_statements(sql) == [PROCEDURE_BODY]

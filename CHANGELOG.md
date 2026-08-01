@@ -359,6 +359,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   character helper instead of five independent character enumerations that
   could drift out of sync.
 
+- **Two more DB2 detection/extraction mismatches, found while auditing the
+  fix above.** Each detector that decides "is this a block?" must agree with
+  the extractor that then carves it out, or the script silently falls back to
+  plain semicolon splitting and is cut at the first internal ``;``.
+
+  - A trigger body may open with a plain ``BEGIN`` and not just ``BEGIN
+    ATOMIC`` — confirmed live, DB2 compiles and fires such a trigger without
+    complaint. The detector already accepted plain ``BEGIN``, but the
+    extractor required the literal keyword ``ATOMIC`` and silently skipped
+    any trigger that didn't have it, even with a trailing ``;`` present.
+  - A comment following a block's closing ``END`` (when the script has no
+    explicit ``;``/``@`` after it) defeated the procedure and trigger
+    detectors, which anchored an undelimited ``END`` on end-of-input and
+    treated a trailing comment as disqualifying rather than as trailing
+    trivia to skip over. The extractors themselves were never affected —
+    they already stop right at ``END`` and never absorb a trailing comment
+    into the statement text.
+
 ### Removed
 
 ## [3.3.4] - 2026-07-30

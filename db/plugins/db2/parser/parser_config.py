@@ -794,10 +794,15 @@ class DB2Config(DialectConfig):
         for match in trigger_start_pattern.finditer(sql):
             start_pos = match.start()
 
-            # Find the BEGIN ATOMIC keyword after the trigger start
-            begin_atomic_match = re.search(r"\bBEGIN\s+ATOMIC\b", sql[start_pos:], re.IGNORECASE)
+            # Find the BEGIN keyword after the trigger start. ATOMIC is
+            # optional here: confirmed live against DB2 12.1.5.0, a trigger
+            # body opened with plain BEGIN (no ATOMIC) compiles and fires
+            # correctly, so requiring the literal keyword ATOMIC (as this
+            # used to) silently skipped every trigger that didn't have it,
+            # falling back to naive semicolon splitting for the whole thing.
+            begin_match = re.search(r"\bBEGIN\b", sql[start_pos:], re.IGNORECASE)
 
-            if not begin_atomic_match:
+            if not begin_match:
                 continue
 
             # Use the shared depth-counting scan so a trigger body gets the same
@@ -805,7 +810,7 @@ class DB2Config(DialectConfig):
             # procedures and compound statements - a private copy of this scan
             # previously decremented depth on any END, truncating trigger bodies
             # that contained a control structure like IF ... END IF.
-            begin_pos = start_pos + begin_atomic_match.start()
+            begin_pos = start_pos + begin_match.start()
             end_pos = self._find_block_end(sql, begin_pos)
             if end_pos is None:
                 continue
