@@ -279,6 +279,15 @@ class TestImportFlywayCommand:
             ("SQL", "SQL"),
             ("BASELINE", "BASELINE"),
             ("UNDO_SQL", "UNDO_SQL"),
+            # Flyway 9.0 renamed UNDO_SQL to UNDO_SCRIPT; every Flyway
+            # version from 9.x through current 12.x writes UNDO_SCRIPT for
+            # undo migrations, not UNDO_SQL. Without this mapping a real,
+            # currently-supported Flyway undo-migration row hits the
+            # unrecognised-type error and aborts the import.
+            ("UNDO_SCRIPT", "UNDO_SQL"),
+            # Flyway also writes DELETE for a script-removal audit-trail
+            # entry, which matches MigrationType.DELETE exactly.
+            ("DELETE", "DELETE"),
         ],
     )
     def test_flyway_type_mapped_to_recognised_dblift_migration_type(

@@ -28,6 +28,14 @@ from core.migration.migration import MigrationType, normalize_migration_checksum
 # and ``SCRIPT`` are Flyway's Java-based/generic migration resolvers; they
 # still describe a versioned migration, so they map to ``SQL`` rather than
 # being treated as unsupported.
+#
+# ``UNDO_SQL`` was renamed to ``UNDO_SCRIPT`` in Flyway 9.0; every Flyway
+# version from 9.x through the current 12.x writes ``UNDO_SCRIPT`` for undo
+# migrations. Both keys are kept so rows written by Flyway 8.x and earlier
+# still map correctly.
+#
+# ``DELETE`` marks a script-removal audit-trail entry and matches
+# ``MigrationType.DELETE`` exactly.
 FLYWAY_TYPE_TO_MIGRATION_TYPE: Dict[str, str] = {
     "SQL": MigrationType.SQL.name,
     "JDBC": MigrationType.SQL.name,
@@ -35,6 +43,8 @@ FLYWAY_TYPE_TO_MIGRATION_TYPE: Dict[str, str] = {
     "SCRIPT": MigrationType.SQL.name,
     "BASELINE": MigrationType.BASELINE.name,
     "UNDO_SQL": MigrationType.UNDO_SQL.name,
+    "UNDO_SCRIPT": MigrationType.UNDO_SQL.name,
+    "DELETE": MigrationType.DELETE.name,
 }
 
 # The two histories accept different type vocabularies, so one set cannot serve
