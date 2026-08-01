@@ -121,6 +121,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   reported as a failure. Dialects that keep the transaction alive after a
   statement error, or that commit DDL implicitly, are unchanged — no savepoint
   statement is sent to them.
+- **Non-transactional DDL — ``CREATE INDEX CONCURRENTLY`` and similar
+  statements PostgreSQL refuses to run inside a transaction block — now
+  actually executes in autocommit, and no longer leaves the connection
+  permanently autocommitting afterwards.** At SQLAlchemy's default isolation
+  level the DBAPI connection has ``autocommit=False``: not opening dblift's
+  own explicit transaction was not enough, because the driver still opened
+  one of its own per statement, and PostgreSQL rejected the statement before
+  dblift's trailing commit was ever reached. ``SqlAlchemyProvider`` now
+  exposes ``execute_autocommit_statement()``, which switches the connection
+  to ``isolation_level="AUTOCOMMIT"`` for the one statement and restores the
+  previous state afterwards, so the rest of the migration keeps its normal
+  all-or-nothing rollback. A second defect, found in review, meant the
+  restore was incomplete: it put the DBAPI connection back, but the switch's
+  own ``AUTOCOMMIT`` execution option stayed recorded on the connection, so
+  the *next* flagged statement read that back as though the caller had
+  configured it and reapplied ``AUTOCOMMIT`` permanently. Two
+  ``CREATE INDEX CONCURRENTLY`` statements in one migration — the ordinary
+  way to write an index migration — therefore disarmed rollback for every
+  migration that followed in the same run: a later migration failing
+  partway left its earlier statements applied while history recorded it
+  ``FAILED``. The restore now captures and reapplies the connection's whole
+  execution-option mapping instead of just the isolation level, so the
+  recorded option is cleared rather than latched.
 - **Placeholders in SQL callbacks are substituted before the SQL is parsed.**
   ``execute_callback`` handed the raw file content to the statement parser and
   substituted afterwards, per statement. Tokenisers that do not recognise ``$``
@@ -133,6 +156,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   content first and pass the result to the parser, as versioned migrations
   already did. Substitution happens exactly once, so an unresolved ``${NAME}``
   still passes through as a literal and warns once.
+- **Unrecognised characters in SQL are preserved instead of silently
+  dropped — a missing ``%`` or ``@`` could change which statement actually
+  ran while ``migrate`` reported success.** ``_handle_unknown_char`` consumed
+  and discarded any character no tokenizer rule claimed, and the token
+  stream is reserialized into the statement that gets executed, so the drop
+  changed the SQL sent to the database. ``CREATE TABLE res AS SELECT id,
+  a % b FROM t`` executed as ``SELECT id, a b FROM t``, which PostgreSQL
+  reads as ``a AS b`` — a different column entirely; ``WHERE j @>
+  '{"a":1}'`` executed as ``WHERE j > '{"a":1}'``, a different containment
+  operator that matched the wrong rows. The unclaimed character is now
+  emitted verbatim, so a gap in a dialect's rules produces odd tokenization
+  or a database error rather than silently different SQL, and the base
+  symbol set gained ``%``, ``&``, ``#``, ``?``, ``^`` and ``@`` so these
+  tokenize correctly instead of merely surviving.
 - **``clean`` no longer fails on a schema holding a TimescaleDB continuous
   aggregate.** A continuous aggregate's user-facing name is a plain
   ``relkind='v'`` row, so it is listed by ``pg_views`` and never by
@@ -197,6 +234,55 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   classification and event matching, so every tag position the one accepts the
   other resolves to the same event.
 
+- **Internal consistency: the persisted ``MigrationType`` vocabulary is now
+  pinned against silent drift.** The characterization-lock test for the type
+  names dblift persists to history was parametrized from the
+  ``MigrationType`` enum under test itself, so renaming or removing a member
+  shrank or renamed the parametrization along with it and still passed — 35
+  to 37 out of 37, either way. It now pins a literal roster, so a rename or
+  removal shows up as a mismatch instead of a quietly smaller test.
+  ``repair_command.py``'s ``[DELETE:{type}]`` description marker had a
+  second, untested copy of the same vocabulary — hardcoded string literals
+  in its script-name-inference fallback — and now derives from
+  ``MigrationType`` itself, with a round-trip test covering the write and
+  the read path together.
+
+- **``import-flyway`` no longer causes ``migrate`` to silently re-execute
+  already-applied migrations.** Flyway's own ``flyway_schema_history.type``
+  vocabulary (``JDBC``, ``SPRING_JDBC``, ``SCRIPT``, ``UNDO_SCRIPT`` /
+  ``UNDO_SQL``, ``DELETE``, ...) was written straight into
+  ``dblift_schema_history``. None of those are ``MigrationType`` members, so
+  ``AppliedMigration.from_history_row`` silently degraded every imported row
+  to ``UNKNOWN`` on read; ``UNKNOWN`` is not a versioned type, so
+  ``migrate`` stopped treating the row as already applied and re-ran it
+  against a schema that already had it — live data loss, not a display
+  quirk. Flyway's type is now mapped to the matching ``MigrationType``
+  member before the row reaches ``record_migration``
+  (``core/sql_validator/_flyway_compatibility.py``'s
+  ``FLYWAY_TYPE_TO_MIGRATION_TYPE``): ``JDBC`` / ``SPRING_JDBC`` / ``SCRIPT``
+  all describe a versioned migration executed by a non-``.sql`` resolver and
+  map to ``SQL``; ``UNDO_SCRIPT`` (Flyway 9.0 renamed ``UNDO_SQL``, and every
+  9.x-12.x install writes it) and ``DELETE`` map to their matching members;
+  ``SQL`` / ``BASELINE`` / ``UNDO_SQL`` already round-trip unchanged. A type
+  with no defined mapping now aborts the import with a clear error and a
+  full rollback, instead of writing a value that would later silently read
+  back as ``UNKNOWN``.
+
+- **Schema export works again on every dialect.** An OSS-only dead-code
+  sweep removed ``generate_schema_script`` from ``BaseSqlGenerator`` because
+  no caller in this repository referenced it — but ``core/sql_generator`` is
+  an extension point: dialect generators are supplied by external packages
+  that subclass ``BaseSqlGenerator``, and reach this method through
+  ``SqlGeneratorFactory.create()``. A repository-wide search therefore
+  cannot tell whether a public method on that class is dead, because its
+  callers live outside this repository. Removing it broke schema export on
+  every dialect with ``'SQLiteSqlGenerator' object has no attribute
+  'generate_schema_script'``. The method is restored byte-for-byte from
+  before the removal. A new contract test now exercises every public method
+  of the generator through the factory for each supported dialect and pins
+  the method-name set, so a future cleanup sweep that can't see the
+  external caller fails loudly instead of removing it again.
+
 - **DuckDB parameterized DML reports real affected-row counts.** The 3.3.4
   ``RETURNING 1`` rewrite only ran when ``params is None``, so bound
   ``INSERT`` / ``UPDATE`` / ``DELETE`` (including data-correction undo restore
@@ -223,6 +309,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   it truncated a compound at an inner ``END;`` or at a ``CASE ... END``, and
   could run past the block to a later ``END`` and swallow the statement after
   it. Scripts that end with ``;`` or ``@`` are unaffected.
+- **DB2 ``CASE...END CASE`` and trigger ``IF...END IF`` bodies are no longer
+  truncated mid-statement — a compiled procedure or trigger could silently
+  ship missing its tail.** The block-boundary scanner only recognised a
+  ``CASE`` expression's closing ``END`` when it was followed by ``;``, ``,``
+  or ``)``; any other legal continuation (``INTO``, ``AS``, a bare
+  ``FROM``, ...) was mistaken for the enclosing block's own ``END`` and cut
+  a procedure short partway through a ``CASE``. Triggers had a second,
+  independent bug: their extractor kept a private depth counter with no
+  control-structure lookahead, so an ``IF...END IF`` inside a trigger body
+  truncated the trigger early even though the identical body worked inside
+  a procedure. Closing that surfaced four more gaps, each confirmed live
+  against DB2 12.1.5.0: advancing past only the three letters of ``END``
+  instead of the full matched keyword let a closed ``END CASE`` re-open as
+  a fresh ``CASE`` and poison depth tracking for everything after it; the
+  whitespace skip before a control keyword handled only space and tab, so
+  ``END`` and ``CASE`` on separate lines reproduced the original
+  truncation; ``END`` itself had no right-boundary check, so identifiers
+  merely starting with the letters ``END`` (``ENDDATE``, ``END_IF``) were
+  misread as the closing keyword; and the ``--`` / ``/* */`` comment
+  detectors weren't guarded against already being inside an open block
+  comment, so a decorative dash divider inside a header comment truncated
+  the block — DB2 block comments nest, confirmed live. Triggers now share
+  the same control-structure-aware scanner procedures already use, and
+  every boundary check in the scanner routes through one identifier-
+  character helper instead of five independent character enumerations that
+  could drift out of sync.
 
 ### Removed
 
