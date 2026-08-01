@@ -261,6 +261,177 @@ END;"""
 
 
 @pytest.mark.unit
+class TestDB2EndControlKeywordSeparatorWhitespace:
+    """The whitespace between ``END`` and a control keyword can be any SQL
+    whitespace, not just a space or a tab.
+
+    ``_find_block_end`` recognises ``END CASE``/``END IF``/... by skipping
+    whitespace after ``END`` and reading the next word. That skip only
+    checked ``sql[j] in (" ", "\\t")`` - a newline or CRLF between ``END``
+    and the keyword defeated the lookahead entirely, so the control-end went
+    unrecognised and was counted as the block's own terminating ``END``
+    instead, truncating the block early (the same self-poisoning regression
+    the previous round's fix addressed, reappearing for this input shape).
+    """
+
+    def test_end_case_separated_by_newline_is_still_recognised(self):
+        from db.plugins.db2.parser.parser_config import DB2Config
+
+        sql = "CREATE PROCEDURE p() BEGIN CASE x WHEN 1 THEN SET y=1; END\nCASE; END"
+
+        assert DB2Config()._find_block_end(sql, sql.index("BEGIN")) == 68
+
+    def test_end_case_separated_by_crlf_is_still_recognised(self):
+        from db.plugins.db2.parser.parser_config import DB2Config
+
+        sql = "CREATE PROCEDURE p() BEGIN CASE x WHEN 1 THEN SET y=1; END\r\nCASE; END"
+
+        assert DB2Config()._find_block_end(sql, sql.index("BEGIN")) is not None
+
+    SEPARATORS = pytest.mark.parametrize(
+        "separator",
+        [" ", "\t", "\n", "\r\n", "   ", " \n ", "\n\t"],
+        ids=[
+            "space",
+            "tab",
+            "newline",
+            "crlf",
+            "multi-space",
+            "space-newline-space",
+            "newline-tab",
+        ],
+    )
+
+    KEYWORDS = pytest.mark.parametrize(
+        "keyword,body",
+        [
+            ("CASE", "    CASE\n        WHEN x = 1 THEN SET y = 1;\n    END"),
+            ("IF", "    IF x > 0 THEN\n        SET x = x + 1;\n    END"),
+            ("WHILE", "    WHILE x < 10 DO\n        SET x = x + 1;\n    END"),
+            (
+                "LOOP",
+                "    lbl: LOOP\n        SET x = x + 1;\n        IF x >= 10 THEN LEAVE lbl; END IF;\n    END",
+            ),
+            (
+                "FOR",
+                "    FOR v AS SELECT id FROM t DO\n        INSERT INTO log VALUES (v.id);\n    END",
+            ),
+            ("REPEAT", "    REPEAT\n        SET x = x + 1;\n    UNTIL x >= 10\n    END"),
+        ],
+        ids=["case", "if", "while", "loop", "for", "repeat"],
+    )
+
+    @SEPARATORS
+    @KEYWORDS
+    def test_end_keyword_recognised_across_separators(self, separator, keyword, body):
+        parser = DB2RegexParser()
+        procedure = (
+            f"CREATE PROCEDURE p(IN x INTEGER)\n"
+            f"LANGUAGE SQL\n"
+            f"BEGIN\n"
+            f"{body}{separator}{keyword};\n"
+            f"    INSERT INTO t VALUES (x);\n"
+            f"END"
+        )
+
+        assert parser.split_statements(procedure) == [procedure]
+
+
+@pytest.mark.unit
+class TestDB2ControlEndKeywordRequiresWordBoundary:
+    """The keyword read after ``END`` must be a whole word, not a prefix.
+
+    ``_find_block_end`` reads the word following ``END`` by scanning
+    ``.isalpha()`` characters and comparing the result against the control
+    keyword list. That scan has no *right-hand* word-boundary check, unlike
+    the ``BEGIN``/``CASE``-open detectors earlier in the same function (which
+    both check the character just past the match isn't alnum). So
+    ``END IF1`` reads only ``IF`` (stopping at the digit), matches it as
+    ``END IF``, and treats a CASE expression's real closing ``END`` as a
+    control-structure end instead - leaving ``case_depth`` open and making
+    the enclosing block's own terminating ``END`` look like it still belongs
+    to that phantom-open CASE.
+    """
+
+    def test_end_immediately_followed_by_identifier_starting_with_if_is_not_end_if(self):
+        from db.plugins.db2.parser.parser_config import DB2Config
+
+        sql = (
+            "CREATE PROCEDURE p(IN x INTEGER)\nLANGUAGE SQL\nBEGIN\n"
+            "    SET x = (SELECT CASE WHEN x = 1 THEN 1 END IF1 FROM t);\n"
+            "    SET x = x + 1;\nEND"
+        )
+
+        assert DB2Config()._find_block_end(sql, sql.index("BEGIN")) == len(sql)
+
+    def test_case_expression_alias_starting_with_a_control_keyword_does_not_truncate_the_procedure(
+        self,
+    ):
+        parser = DB2RegexParser()
+        procedure = (
+            "CREATE PROCEDURE p(IN x INTEGER)\nLANGUAGE SQL\nBEGIN\n"
+            "    SET x = (SELECT CASE WHEN x = 1 THEN 1 END IF1 FROM t);\n"
+            "    SET x = x + 1;\nEND"
+        )
+
+        assert parser.split_statements(procedure) == [procedure]
+
+    @pytest.mark.parametrize(
+        "alias",
+        [
+            "IF1",
+            "LOOP2",
+            "WHILE_FLAG",
+            "CASE9",
+            "FOR3",
+            "REPEAT7",
+            # DB2 also permits '#' and '$' in unquoted identifiers - the
+            # word-boundary check has to recognise those as identifier
+            # characters too, not just alnum/underscore.
+            "IF#1",
+            "LOOP$2",
+        ],
+    )
+    def test_case_expression_alias_prefixed_by_a_control_keyword_does_not_truncate_the_procedure(
+        self, alias
+    ):
+        parser = DB2RegexParser()
+        procedure = (
+            "CREATE PROCEDURE p(IN x INTEGER)\nLANGUAGE SQL\nBEGIN\n"
+            f"    SET x = (SELECT CASE WHEN x = 1 THEN 1 END {alias} FROM t);\n"
+            "    SET x = x + 1;\nEND"
+        )
+
+        assert parser.split_statements(procedure) == [procedure]
+
+    @pytest.mark.parametrize("identifier", ["CASE_STATUS", "CASE9_FLAG", "CASE#X"])
+    def test_identifier_prefixed_by_case_does_not_open_a_phantom_case_expression(self, identifier):
+        """A variable/column named e.g. ``CASE_STATUS`` is not the ``CASE`` keyword.
+
+        The ``CASE``-open detector's own word-boundary check had the same
+        ``isalnum()``-only gap as the ``END``-lookahead above - it lives a
+        few lines earlier in the same function and was never exercised by
+        rounds 1-2, but it's the identical bug class.
+        """
+        parser = DB2RegexParser()
+        procedure = f"CREATE PROCEDURE p(IN v INTEGER)\nLANGUAGE SQL\nBEGIN\n    SET v = {identifier} + 1;\nEND"
+
+        assert parser.split_statements(procedure) == [procedure]
+
+    @pytest.mark.parametrize("identifier", ["BEGIN_DATE", "BEGIN9_TS", "BEGIN#X"])
+    def test_identifier_prefixed_by_begin_does_not_open_a_phantom_block(self, identifier):
+        """A variable/column named e.g. ``BEGIN_DATE`` is not the ``BEGIN`` keyword.
+
+        Same bug class as ``CASE_STATUS`` above, for the ``BEGIN``-open
+        detector's word-boundary check.
+        """
+        parser = DB2RegexParser()
+        procedure = f"CREATE PROCEDURE p(IN v INTEGER)\nLANGUAGE SQL\nBEGIN\n    SET v = {identifier} + 1;\nEND"
+
+        assert parser.split_statements(procedure) == [procedure]
+
+
+@pytest.mark.unit
 class TestDB2ControlEndKeywordsDoNotSelfPoison:
     """``END IF``/``END WHILE``/``END LOOP``/``END FOR``/``END REPEAT`` are safe.
 

@@ -10,6 +10,17 @@ from typing import Any, Dict, List, Optional, Pattern, Set
 from core.sql_parser.dialects.base_config import DialectConfig
 
 
+def _is_identifier_char(char: str) -> bool:
+    """Whether ``char`` can continue a SQL identifier/keyword.
+
+    Matches the identifier-continuation character set already used by
+    ``BaseTokenizer._handle_keyword`` (``core/sql_parser/base_tokenizer.py``)
+    so that a word-boundary check in one place doesn't drift from the same
+    check elsewhere in the codebase.
+    """
+    return char.isalnum() or char in ("_", "$", "#")
+
+
 class DB2Config(DialectConfig):
     """DB2 dialect configuration with comprehensive regex patterns."""
 
@@ -560,8 +571,8 @@ class DB2Config(DialectConfig):
             if not in_string and not in_comment:
                 # Check for CASE keyword (starts a CASE expression)
                 if sql[i : i + 4].upper() == "CASE":
-                    if (i == 0 or not sql[i - 1].isalnum()) and (
-                        i + 4 >= len(sql) or not sql[i + 4].isalnum()
+                    if (i == 0 or not _is_identifier_char(sql[i - 1])) and (
+                        i + 4 >= len(sql) or not _is_identifier_char(sql[i + 4])
                     ):
                         case_depth += 1
                         i += 4
@@ -569,19 +580,23 @@ class DB2Config(DialectConfig):
                 # Check for BEGIN keyword
                 elif sql[i : i + 5].upper() == "BEGIN":
                     # Make sure it's a word boundary
-                    if (i == 0 or not sql[i - 1].isalnum()) and (
-                        i + 5 >= len(sql) or not sql[i + 5].isalnum()
+                    if (i == 0 or not _is_identifier_char(sql[i - 1])) and (
+                        i + 5 >= len(sql) or not _is_identifier_char(sql[i + 5])
                     ):
                         depth += 1
                         i += 5
                         continue
                 elif sql[i : i + 3].upper() == "END":
                     # Make sure it's a word boundary before END
-                    if i == 0 or not sql[i - 1].isalnum():
+                    if i == 0 or not _is_identifier_char(sql[i - 1]):
                         # Check what comes after END
-                        # Skip whitespace after END
+                        # Skip whitespace after END. A comment (-- or /* */)
+                        # between END and the control keyword is not skipped
+                        # here and is out of scope for this lookahead - it
+                        # falls through to being treated as a block-closing
+                        # END, same as before this fix.
                         j = i + 3
-                        while j < len(sql) and sql[j] in (" ", "\t"):
+                        while j < len(sql) and sql[j].isspace():
                             j += 1
 
                         # Check if this is "END IF", "END WHILE", "END FOR", "END LOOP", "END CASE", etc.
@@ -602,7 +617,7 @@ class DB2Config(DialectConfig):
                                 "LOOP",
                                 "CASE",
                                 "REPEAT",
-                            ):
+                            ) and (k >= len(sql) or not _is_identifier_char(sql[k])):
                                 is_control_end = True
                                 # Special case: END CASE decrements case_depth
                                 if next_word_upper == "CASE":
@@ -629,7 +644,7 @@ class DB2Config(DialectConfig):
                             if depth == 0:
                                 # Found the matching END, now look for delimiter (@ or ;)
                                 j = i + 3
-                                while j < len(sql) and sql[j] in (" ", "\t", "\n", "\r"):
+                                while j < len(sql) and sql[j].isspace():
                                     j += 1
 
                                 # Accept either @ or ; as delimiter
