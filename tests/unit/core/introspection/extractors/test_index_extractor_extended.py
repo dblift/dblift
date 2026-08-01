@@ -156,6 +156,27 @@ class TestGetIndexes:
 
         assert ext.get_indexes("s", "t") == []
 
+    def test_none_query_sentinel_skips_silently(self):
+        """A vendor query class may decline per-table index retrieval by
+        returning ``(None, [])`` from ``get_indexes_query`` (e.g. a dialect
+        where secondary-index introspection isn't implemented, so returning
+        no query skips indexes rather than emitting wrong data). That decline
+        must be a silent no-op: no query executed, no warning logged, no
+        error tracked. Previously the ``None`` query was passed straight to
+        ``execute_query``, which raised a ``TypeError`` that the outer
+        try/except caught and downgraded to a warning + tracked error on
+        every single call, on every table.
+        """
+        vq = MagicMock()
+        vq.get_indexes_query.return_value = (None, [])
+        ext = _make_extractor(dialect="duckdb", vendor_queries=vq)
+
+        result = ext.get_indexes("s", "t")
+
+        assert result == []
+        ext.provider.query_executor.execute_query.assert_not_called()
+        ext.log.warning.assert_not_called()
+
 
 # ---------------------------------------------------------------------------
 # get_all_indexes — bulk vendor query path
