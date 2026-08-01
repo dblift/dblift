@@ -165,6 +165,156 @@ END"""
 
 
 @pytest.mark.unit
+class TestDB2CaseEndContinuations:
+    """A CASE expression's ``END`` can be followed by almost anything.
+
+    ``_find_block_end`` used to only recognise a CASE's closing ``END`` when
+    the next token was ``;``, ``,`` or ``)``. Any other legal continuation —
+    ``INTO``, ``AS``, or a bare ``FROM`` — was mistaken for the *enclosing*
+    block's own ``END``, truncating the block early.
+    """
+
+    def test_case_end_into_inside_a_procedure_does_not_close_it(self):
+        parser = DB2RegexParser()
+        procedure = """CREATE PROCEDURE do_thing()
+LANGUAGE SQL
+BEGIN
+    DECLARE v INTEGER;
+    SELECT CASE WHEN id = 1 THEN 10 ELSE 20 END INTO v FROM t;
+    INSERT INTO audit_log VALUES (v);
+END"""
+
+        assert parser.split_statements(procedure) == [procedure]
+
+    def test_case_end_as_inside_a_procedure_does_not_close_it(self):
+        parser = DB2RegexParser()
+        procedure = """CREATE PROCEDURE do_thing()
+LANGUAGE SQL
+BEGIN
+    DECLARE v VARCHAR(10);
+    SET v = (SELECT CASE WHEN id = 1 THEN 'x' ELSE 'y' END AS label FROM t);
+    INSERT INTO audit_log VALUES (v);
+END"""
+
+        assert parser.split_statements(procedure) == [procedure]
+
+    def test_case_end_from_inside_a_procedure_does_not_close_it(self):
+        parser = DB2RegexParser()
+        procedure = """CREATE PROCEDURE do_thing()
+LANGUAGE SQL
+BEGIN
+    DECLARE v INTEGER;
+    SET v = (SELECT CASE WHEN id = 1 THEN 10 ELSE 20 END FROM t);
+    INSERT INTO audit_log VALUES (v);
+END"""
+
+        assert parser.split_statements(procedure) == [procedure]
+
+
+@pytest.mark.unit
+class TestDB2TriggerControlStructureLookahead:
+    """Triggers must recognise ``END IF`` / ``END WHILE`` like other blocks.
+
+    ``extract_trigger_blocks`` used to keep its own depth counter that
+    decremented on *any* ``END``, with no lookahead for control structures.
+    An ``IF ... END IF`` inside a trigger body therefore truncated the
+    trigger early, even though the identical body works inside a procedure.
+    """
+
+    def test_end_if_inside_a_trigger_does_not_close_it(self):
+        parser = DB2RegexParser()
+        trigger = """CREATE TRIGGER trg_audit
+AFTER INSERT ON employees
+REFERENCING NEW AS n
+FOR EACH ROW
+BEGIN ATOMIC
+    IF n.id > 0 THEN
+        INSERT INTO audit_log (id, msg) VALUES (n.id, 'inserted');
+    END IF;
+    UPDATE counters SET c = c + 1;
+END"""
+
+        assert parser.split_statements(trigger) == [trigger]
+
+    def test_identical_if_end_if_body_works_in_both_procedure_and_trigger(self):
+        parser = DB2RegexParser()
+        procedure = """CREATE PROCEDURE do_thing()
+LANGUAGE SQL
+BEGIN
+    IF 1 > 0 THEN
+        INSERT INTO audit_log VALUES (1);
+    END IF;
+    UPDATE counters SET c = c + 1;
+END"""
+        trigger = """CREATE TRIGGER trg_audit
+AFTER INSERT ON employees
+REFERENCING NEW AS n
+FOR EACH ROW
+BEGIN ATOMIC
+    IF 1 > 0 THEN
+        INSERT INTO audit_log VALUES (1);
+    END IF;
+    UPDATE counters SET c = c + 1;
+END"""
+
+        assert parser.split_statements(procedure) == [procedure]
+        assert parser.split_statements(trigger) == [trigger]
+
+
+@pytest.mark.unit
+class TestDB2BlockDetectionGateAgreesWithExtractor:
+    """A gate that accepts an input must have the extractor return one block.
+
+    ``_has_sqlpl_blocks`` / ``_has_compound_statements`` / ``_has_trigger_blocks``
+    decide whether ``split_statements`` treats the input as a block at all; the
+    matching ``extract_*_blocks`` then has to actually find it. If the gate says
+    yes and the extractor comes back empty (or splits it into more than one
+    piece), the block silently falls through to semicolon-splitting and gets
+    truncated — exactly how both bugs above were previously invisible to the
+    boolean gates.
+    """
+
+    @pytest.mark.parametrize(
+        "sql",
+        [
+            "CREATE PROCEDURE p() LANGUAGE SQL BEGIN SELECT 1; END;",
+            "CREATE PROCEDURE p() LANGUAGE SQL BEGIN SELECT CASE WHEN 1=1 THEN 1 END INTO v FROM t; END",
+            "CREATE FUNCTION f() RETURNS INTEGER LANGUAGE SQL BEGIN RETURN 1; END;",
+        ],
+    )
+    def test_sqlpl_gate_agrees_with_extractor(self, sql):
+        parser = DB2RegexParser()
+        assert parser._has_sqlpl_blocks(sql)
+        assert len(parser.config.extract_sqlpl_blocks(sql)) == 1
+
+    @pytest.mark.parametrize(
+        "sql",
+        [
+            "BEGIN ATOMIC SELECT 1; END;",
+            "BEGIN ATOMIC SELECT CASE WHEN 1=1 THEN 1 END FROM t; END",
+            "BEGIN ATOMIC IF 1=1 THEN SELECT 1; END IF; END;",
+        ],
+    )
+    def test_compound_gate_agrees_with_extractor(self, sql):
+        parser = DB2RegexParser()
+        assert parser._has_compound_statements(sql)
+        assert len(parser.config.extract_compound_statements(sql)) == 1
+
+    @pytest.mark.parametrize(
+        "sql",
+        [
+            "CREATE TRIGGER t AFTER INSERT ON tbl FOR EACH ROW BEGIN ATOMIC SELECT 1; END;",
+            "CREATE TRIGGER t AFTER INSERT ON tbl FOR EACH ROW "
+            "BEGIN ATOMIC IF 1=1 THEN SELECT 1; END IF; END;",
+        ],
+    )
+    def test_trigger_gate_agrees_with_extractor(self, sql):
+        parser = DB2RegexParser()
+        assert parser._has_trigger_blocks(sql)
+        assert len(parser.config.extract_trigger_blocks(sql)) == 1
+
+
+@pytest.mark.unit
 class TestDB2CompoundDetectionStaysNarrow:
     """Ordinary statements ending in the word END must not be treated as blocks."""
 

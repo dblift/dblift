@@ -609,14 +609,19 @@ class DB2Config(DialectConfig):
                                     case_depth -= 1
 
                         # Check if this END matches a CASE expression (not END CASE)
-                        # CASE expressions have END without a following keyword
+                        # A CASE expression is a *scalar expression*, so its closing
+                        # END can be legally followed by almost anything a SQL
+                        # expression permits (INTO, AS, FROM, an alias, ), ,, ;, or
+                        # end of input) - there is no fixed set of continuation
+                        # tokens to allow-list. The only ENDs that do NOT close the
+                        # innermost open CASE are the control-structure endings
+                        # already recognised above (END IF, END WHILE, END CASE,
+                        # ...), so once those are ruled out, any END while a CASE is
+                        # still open must be that CASE's own END.
                         is_case_expression_end = False
                         if not is_control_end and case_depth > 0:
-                            # This END might close a CASE expression
-                            # Check if the next non-whitespace char is ; or ,
-                            if j < len(sql) and sql[j] in (";", ",", ")"):
-                                case_depth -= 1
-                                is_case_expression_end = True
+                            case_depth -= 1
+                            is_case_expression_end = True
 
                         # Only count as block END if it's not a control structure end or CASE expression end
                         if not is_control_end and not is_case_expression_end:
@@ -745,96 +750,25 @@ class DB2Config(DialectConfig):
             if not begin_atomic_match:
                 continue
 
-            # Start counting BEGIN/END pairs from the BEGIN ATOMIC position
+            # Use the shared depth-counting scan so a trigger body gets the same
+            # control-structure lookahead (END IF, END WHILE, CASE...END, ...) as
+            # procedures and compound statements - a private copy of this scan
+            # previously decremented depth on any END, truncating trigger bodies
+            # that contained a control structure like IF ... END IF.
             begin_pos = start_pos + begin_atomic_match.start()
-            i = begin_pos
-            depth = 0
-            in_string = False
-            in_comment = False
-            string_char = None
+            end_pos = self._find_block_end(sql, begin_pos)
+            if end_pos is None:
+                continue
 
-            while i < len(sql):
-                char = sql[i]
-
-                # Handle string literals
-                if char in ("'", '"') and not in_comment:
-                    if not in_string:
-                        in_string = True
-                        string_char = char
-                    elif char == string_char:
-                        in_string = False
-                        string_char = None
-                    i += 1
-                    continue
-
-                # Handle comments
-                if not in_string:
-                    # Line comment
-                    if sql[i : i + 2] == "--":
-                        in_comment = True
-                        i += 2
-                        continue
-                    # Block comment
-                    if sql[i : i + 2] == "/*":
-                        in_comment = True
-                        i += 2
-                        continue
-                    if sql[i : i + 2] == "*/" and in_comment:
-                        in_comment = False
-                        i += 2
-                        continue
-                    # End of line comment
-                    if char == "\n" and in_comment:
-                        in_comment = False
-
-                # Count BEGIN/END pairs (only outside strings and comments)
-                if not in_string and not in_comment:
-                    # Check for BEGIN keyword
-                    if re.match(r"\bBEGIN\b", sql[i:], re.IGNORECASE):
-                        depth += 1
-                        i += 5  # len("BEGIN")
-                        continue
-
-                    # Check for END keyword
-                    if re.match(r"\bEND\b", sql[i:], re.IGNORECASE):
-                        depth -= 1
-                        i += 3  # len("END")
-
-                        # If we've closed all BEGIN blocks, look for terminator
-                        if depth == 0:
-                            # Skip whitespace
-                            while i < len(sql) and sql[i] in (" ", "\t", "\n", "\r"):
-                                i += 1
-
-                            # Check for terminator (semicolon or @)
-                            if i < len(sql) and sql[i] in (";", "@"):
-                                end_pos = i + 1
-                                content = sql[start_pos:end_pos].rstrip(";@").strip()
-                                blocks.append(
-                                    {
-                                        "type": "trigger_block",
-                                        "content": content,
-                                        "start": start_pos,
-                                        "end": end_pos,
-                                    }
-                                )
-                                break
-                            else:
-                                # No terminator found, use END position
-                                end_pos = i
-                                content = sql[start_pos:end_pos].strip()
-                                blocks.append(
-                                    {
-                                        "type": "trigger_block",
-                                        "content": content,
-                                        "start": start_pos,
-                                        "end": end_pos,
-                                    }
-                                )
-                                break
-                        continue
-
-                i += 1
+            content = sql[start_pos:end_pos].rstrip("@;").strip()
+            blocks.append(
+                {
+                    "type": "trigger_block",
+                    "content": content,
+                    "start": start_pos,
+                    "end": end_pos,
+                }
+            )
 
         return blocks
 
