@@ -291,6 +291,36 @@ class TestDetectChecksumDrift(unittest.TestCase):
         self.assertEqual(repairs, [])
         log.warning.assert_called()
 
+    def test_returns_mismatch_when_db_checksum_failed_to_parse(self):
+        """A stored checksum that isn't parseable as an int (e.g. a manually
+        corrupted history row) surfaces as ``None`` after normalization —
+        see ``normalize_migration_checksum``. That row must still be flagged
+        for repair, not silently skipped because one side of the comparison
+        is ``None``.
+        """
+        from core.migration.migration import MigrationType
+
+        script_manager = MagicMock()
+        fs_migration = SimpleNamespace(script_name="V1__a.sql", checksum=1223190650)
+        script_manager.load_migration_scripts.return_value = {"1": [fs_migration]}
+
+        cmd = _make_cmd(script_manager=script_manager)
+        applied = SimpleNamespace(
+            script_name="V1__a.sql",
+            version="1",
+            type=MigrationType.SQL,
+            checksum=None,  # normalize_migration_checksum("deadbeef") -> None
+        )
+        state = MigrationState()
+        state.all_applied_objects = [applied]
+
+        repairs = cmd._detect_checksum_drift(state, [], Path("/migrations"))
+        self.assertEqual(len(repairs), 1)
+        self.assertEqual(repairs[0]["type"], "CHECKSUM_MISMATCH")
+        self.assertEqual(repairs[0]["script"], "V1__a.sql")
+        self.assertIsNone(repairs[0]["old_checksum"])
+        self.assertEqual(repairs[0]["new_checksum"], 1223190650)
+
 
 # ---------------------------------------------------------------------------
 # _is_failed_migration
