@@ -25,6 +25,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the same migration, tripped dblift's guard against mixing autocommit and
   transactional statements in one file. All four full-text DDL forms are now
   classified identically and run through autocommit.
+- **Index introspection no longer logs a spurious error when a dialect's
+  vendor queries decline per-table index retrieval.** A vendor queries class
+  may signal "no per-table indexes query for this dialect" by returning a
+  ``None`` query. ``IndexExtractor`` passed that ``None`` straight into query
+  execution instead of checking for it first, which raised a ``TypeError``
+  caught by the surrounding error handling and reported as a warning plus a
+  tracked error — appearing as an ``[ERROR]`` log line on every affected
+  table, even though the migration or snapshot itself succeeded. The
+  ``None`` query is now treated as "no indexes to report" and skipped
+  silently, matching how the same extractor already handles a declined bulk
+  index query.
 - **``validate --strict`` now runs out-of-order detection on Python
   migrations.** Internally ``MigrationType.SQL`` names a migration's *role* —
   versioned, run-once — and not its file format; a versioned ``.py`` script is
