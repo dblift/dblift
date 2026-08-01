@@ -332,6 +332,18 @@ class SqlserverQuirks(BaseQuirks):
             r"^CREATE\s+FULLTEXT\s+CATALOG\b",
             "SQL Server CREATE FULLTEXT CATALOG cannot run inside a user transaction",
         ),
+        (
+            r"^CREATE\s+FULLTEXT\s+INDEX\b",
+            "SQL Server CREATE FULLTEXT INDEX cannot run inside a user transaction",
+        ),
+        (
+            r"^DROP\s+FULLTEXT\s+INDEX\b",
+            "SQL Server DROP FULLTEXT INDEX cannot run inside a user transaction",
+        ),
+        (
+            r"^DROP\s+FULLTEXT\s+CATALOG\b",
+            "SQL Server DROP FULLTEXT CATALOG cannot run inside a user transaction",
+        ),
     )
 
     def apply_vendor_table_properties(self, table: Any, row: Dict[str, Any]) -> None:
