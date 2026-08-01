@@ -19,12 +19,11 @@ def _provider_with_catalog_rows():
 
     def execute_query(query_connection, sql, params=None):
         assert query_connection is connection
-        # Full-text catalogs are not schema-owned, so that query alone is
-        # unparameterized — every other query here is scoped to "dbo".
-        if "sys.fulltext_catalogs" in sql:
-            assert params is None
-        else:
-            assert params == ["dbo"]
+        # Full-text catalogs are not schema-owned, but the catalog query is
+        # scoped indirectly via a join through fulltext_indexes -> tables ->
+        # schemas, so it is parameterized by schema just like every other
+        # query here.
+        assert params == ["dbo"]
         if "sys.foreign_keys" in sql:
             return [{"constraint_name": "fk_orders_customer", "table_name": "orders"}]
         if "INFORMATION_SCHEMA.VIEWS" in sql:
@@ -45,7 +44,10 @@ def _provider_with_catalog_rows():
         if "sys.synonyms" in sql:
             return [{"synonym_name": "remote_orders"}]
         if "sys.fulltext_catalogs" in sql:
-            return [{"catalog_name": "ft_catalog"}]
+            is_scoped_join = "sys.fulltext_indexes" in sql and "sys.schemas" in sql
+            if is_scoped_join:
+                return [{"catalog_name": "ft_catalog"}]
+            return []
         raise AssertionError(f"Unexpected query: {sql}")
 
     provider.query_executor.execute_query.side_effect = execute_query

@@ -33,7 +33,10 @@ def _make_query_executor():
         if "sys.synonyms" in query:
             return [{"synonym_name": "remote_orders"}]
         if "sys.fulltext_catalogs" in query:
-            return [{"catalog_name": "ft_catalog"}]
+            is_scoped_join = "sys.fulltext_indexes" in query and "sys.schemas" in query
+            if is_scoped_join and params == ["dbo"]:
+                return [{"catalog_name": "ft_catalog"}]
+            return []
         raise AssertionError(f"Unexpected query: {query}")
 
     query_executor.execute_query.side_effect = execute_query

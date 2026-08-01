@@ -276,13 +276,23 @@ class SqlServerSchemaOperations(BaseSchemaOperations):
         # held them is a separate object that survives the table drop and
         # must be dropped explicitly, after the tables that might reference
         # it. sys.fulltext_catalogs has no schema_id — catalogs are not
-        # schema-owned in SQL Server — so unlike every other object type
-        # above this can't be filtered to the schema being cleaned; all
-        # catalogs in the database are enumerated here.
-        fulltext_catalogs_query = "SELECT name AS catalog_name FROM sys.fulltext_catalogs"
+        # schema-owned in SQL Server — so it can't be filtered directly like
+        # every other object type above. Instead it is scoped indirectly,
+        # via the only path that connects a catalog to a schema:
+        # sys.fulltext_indexes.object_id -> sys.tables.schema_id ->
+        # sys.schemas. Only a catalog referenced by at least one full-text
+        # index on a table in the target schema is enumerated here.
+        fulltext_catalogs_query = """
+        SELECT DISTINCT fc.name AS catalog_name
+        FROM sys.fulltext_catalogs fc
+        INNER JOIN sys.fulltext_indexes fi ON fi.fulltext_catalog_id = fc.fulltext_catalog_id
+        INNER JOIN sys.tables t ON fi.object_id = t.object_id
+        INNER JOIN sys.schemas s ON t.schema_id = s.schema_id
+        WHERE s.name = ?
+        """
         try:
             fulltext_catalogs = self.query_executor.execute_query(
-                connection, fulltext_catalogs_query
+                connection, fulltext_catalogs_query, params=[schema]
             )
             for catalog_row in fulltext_catalogs:
                 catalog_name = catalog_row.get("catalog_name", catalog_row.get("CATALOG_NAME"))
