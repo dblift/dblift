@@ -68,6 +68,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   now establishes its own connection up front, the same way ``migrate`` and
   ``info`` do, so it correctly finds and processes pending undos on a fresh
   client instead of reporting a false success.
+- **A concurrent-migrate race on a brand-new schema no longer crashes with a
+  raw driver traceback on DB2, Oracle, or SQL Server.** When two ``migrate``
+  processes bootstrap the migration-history table for the first time at once,
+  the loser used to get a graceful retry only on PostgreSQL and MySQL — the
+  retry loop recognised the race by matching driver error text against a
+  short, PostgreSQL-shaped list of English substrings (``"already exists"``,
+  ``"duplicate key"``, ...). DB2 reports the same race as ``SQL0601N``
+  (SQLSTATE 42710), Oracle as ``ORA-00955``, and SQL Server as
+  ``"already an object named ..."`` (Msg 2714) — none of which matched, so
+  the loser's raw exception propagated as an uncaught crash instead of a
+  clean retry. Race detection is now a dialect hook
+  (``is_schema_history_race_error``) so each engine classifies its own error
+  by a stable vendor code where one exists, instead of by driver message
+  text that can also be locale-translated.
 - **``validate --strict`` now runs out-of-order detection on Python
   migrations.** Internally ``MigrationType.SQL`` names a migration's *role* —
   versioned, run-once — and not its file format; a versioned ``.py`` script is

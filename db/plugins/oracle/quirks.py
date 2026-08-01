@@ -91,6 +91,16 @@ class OracleQuirks(BaseQuirks):
         """Same ORA-00955 detection as the data history table."""
         return self.is_data_history_table_already_exists_error(error_message)
 
+    def is_schema_history_race_error(self, error_message: str) -> bool:
+        """Oracle's ``CREATE TABLE`` for the migration history table has no
+        ``IF NOT EXISTS`` guard; a concurrent migration bootstrap loses with
+        ORA-00955 ("name is already used by an existing object"), which the
+        base English markers don't contain (they look for "already
+        exists")."""
+        if "ORA-00955" in (error_message or ""):
+            return True
+        return super().is_schema_history_race_error(error_message)
+
     sqlglot_unsupported_sql_patterns = (
         "PARTITION BY REFERENCE",
         "PARTITION BY RANGE",
