@@ -86,10 +86,21 @@ class DB2RegexParser(EnhancedRegexParser):
 
     def _has_package_blocks(self, sql: str) -> bool:
         """Check if SQL contains package blocks."""
-        # Check for CREATE/ALTER PACKAGE with AS...END
+        # Check for CREATE/ALTER PACKAGE [BODY] with AS...END. BODY is
+        # optional: confirmed live against DB2 12.1.5.0 with
+        # DB2_COMPATIBILITY_VECTOR=ORA set, both the declaration-only
+        # ``CREATE PACKAGE name AS`` and the implementation-bearing
+        # ``CREATE PACKAGE BODY name AS`` compile - requiring exactly one
+        # token between PACKAGE and AS (as this used to) missed the BODY
+        # form entirely, falling back to naive semicolon splitting.
+        # The trailing terminator is optional at the end of the script: the
+        # block extractor handles an END with no delimiter, so this gate
+        # must too - and so must a trailing comment after that undelimited
+        # END, see _TRAILING_TRIVIA.
         return bool(
             re.search(
-                r"\b(?:CREATE|ALTER)\s+(?:OR\s+REPLACE\s+)?PACKAGE\s+\S+\s+AS\b.*?\bEND\b",
+                r"\b(?:CREATE|ALTER)\s+(?:OR\s+REPLACE\s+)?PACKAGE\s+(?:BODY\s+)?\S+\s+AS\b"
+                r".*?\bEND\b\s*(?:\S+\s*)?(?:[@;]|" + _TRAILING_TRIVIA + r"$)",
                 sql,
                 re.IGNORECASE | re.DOTALL,
             )
@@ -152,36 +163,38 @@ class DB2RegexParser(EnhancedRegexParser):
         """Split SQL with package block awareness.
 
         Packages have the pattern:
-        CREATE [OR REPLACE] PACKAGE package_name AS
+        CREATE [OR REPLACE] PACKAGE [BODY] package_name AS
             PROCEDURE proc_name(...);
             FUNCTION func_name(...) RETURN type;
         END [package_name];
+
+        The BODY form's procedures/functions carry their own BEGIN...END
+        bodies, so finding the package's real closing END needs the same
+        depth-tracking scan used for other block types (see
+        ``DB2Config.extract_package_blocks``) rather than a regex, which
+        would either stop at the first nested END or run past the block.
         """
         statements = []
-        # Find package blocks using regex
-        package_pattern = (
-            r"(CREATE\s+(?:OR\s+REPLACE\s+)?PACKAGE\s+\S+\s+AS\b.*?\bEND\s+(?:\S+\s*)?;)"
-        )
+        package_blocks = self.config.extract_package_blocks(sql)
+
+        if not package_blocks:
+            return self._split_by_semicolon_db2(sql)
 
         current_pos = 0
-        for match in re.finditer(package_pattern, sql, re.IGNORECASE | re.DOTALL):
-            # Add any SQL before this package
-            before_package = sql[current_pos : match.start()].strip()
-            if before_package:
-                statements.extend(self._split_by_semicolon_db2(before_package))
+        for block in package_blocks:
+            # Add any SQL before this block
+            before_block = sql[current_pos : int(block["start"])].strip()
+            if before_block:
+                statements.extend(self._split_by_semicolon_db2(before_block))
 
-            # Add the entire package as one statement
-            statements.append(match.group(1).strip())
-            current_pos = match.end()
+            # Add the package block as a single statement
+            statements.append(block["content"])
+            current_pos = int(block["end"])
 
-        # Add any remaining SQL after the last package
+        # Add any remaining SQL after the last block
         remaining_sql = sql[current_pos:].strip()
         if remaining_sql:
             statements.extend(self._split_by_semicolon_db2(remaining_sql))
-
-        # If no packages found, fall back to regular splitting
-        if not statements:
-            return self._split_by_semicolon_db2(sql)
 
         return statements
 

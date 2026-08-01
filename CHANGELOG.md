@@ -377,6 +377,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     they already stop right at ``END`` and never absorb a trailing comment
     into the statement text.
 
+- **DB2 ``CREATE PACKAGE`` (with or without ``BODY``) is no longer shredded
+  into fragments at its first internal ``END``.** The remaining detector/
+  extractor mismatch from the audit above: ``_has_package_blocks``'s pattern
+  required exactly one token between ``PACKAGE`` and ``AS``, so ``CREATE
+  PACKAGE BODY name AS`` — two tokens, ``BODY`` and the name — never matched
+  and the whole block fell back to naive semicolon splitting. Separately, the
+  extractor used a non-greedy match for the closing ``END``, so any package
+  with more than one internal procedure or function stopped at the first
+  nested ``END`` and silently dropped everything after it, including the
+  package's real closing ``END``. The extractor now finds the package's true
+  closing ``END`` via the same depth-tracking scan the trigger/procedure/
+  compound-statement extractors already use, rather than a regex, and the
+  detector accepts the optional ``BODY`` keyword, an optional repeated
+  package name before the terminator, and the same trailing-comment/
+  undelimited-end-of-input handling given to the procedure and trigger
+  detectors above, for consistency.
+
 ### Removed
 
 ## [3.3.4] - 2026-07-30
