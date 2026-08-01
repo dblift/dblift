@@ -260,3 +260,51 @@ class TestImportFlywayCommand:
         mock_dependencies["provider"].record_migration.assert_called_once_with(
             "public", row2, "dblift_schema_history"
         )
+
+    # ------------------------------------------------------------------ Flyway type vocabulary mapping
+    @pytest.mark.parametrize(
+        "flyway_type, expected_dblift_type",
+        [
+            # Flyway types that describe a versioned migration executed by a
+            # non-SQL-file resolver. Writing them verbatim leaves a row that
+            # AppliedMigration.from_history_row cannot recognise by exact
+            # member name; it silently degrades to MigrationType.UNKNOWN on
+            # read, which is not versioned, so migrate() re-offers the
+            # already-applied script as pending and re-executes it.
+            ("JDBC", "SQL"),
+            ("SPRING_JDBC", "SQL"),
+            ("SCRIPT", "SQL"),
+            # Types that already match a Dblift MigrationType member name
+            # pass through unchanged.
+            ("SQL", "SQL"),
+            ("BASELINE", "BASELINE"),
+            ("UNDO_SQL", "UNDO_SQL"),
+        ],
+    )
+    def test_flyway_type_mapped_to_recognised_dblift_migration_type(
+        self, command, mock_dependencies, flyway_type, expected_dblift_type
+    ):
+        row = self._make_flyway_row("1.0", "V1__a.sql", type_val=flyway_type)
+        mock_dependencies["provider"].get_applied_migrations.side_effect = [[row], []]
+
+        result = command.execute(scripts_dir=Path("/scripts"), dry_run=False)
+
+        assert result.success is True
+        provider = mock_dependencies["provider"]
+        recorded_row = provider.record_migration.call_args[0][1]
+        assert recorded_row["type"] == expected_dblift_type
+
+    def test_flyway_unrecognised_type_fails_import_loudly(self, command, mock_dependencies):
+        """A Flyway type with no defined mapping must abort the import with a
+        clear, caller-visible error rather than writing a value that would
+        later silently degrade to MigrationType.UNKNOWN on read."""
+        row = self._make_flyway_row("1.0", "V1__a.sql", type_val="CUSTOM_RESOLVER")
+        mock_dependencies["provider"].get_applied_migrations.side_effect = [[row], []]
+
+        result = command.execute(scripts_dir=Path("/scripts"), dry_run=False)
+
+        assert result.success is False
+        assert result.error_message is not None
+        assert "CUSTOM_RESOLVER" in result.error_message
+        mock_dependencies["provider"].record_migration.assert_not_called()
+        mock_dependencies["log"].error.assert_called()
