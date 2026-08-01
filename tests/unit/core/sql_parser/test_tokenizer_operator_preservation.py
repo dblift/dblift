@@ -227,3 +227,50 @@ def test_strict_mode_still_rejects_unclaimed_characters() -> None:
 
     with pytest.raises(TokenizerError):
         BaseTokenizer("SELECT a \\ b;", strict_unknown_chars=True).tokenize()
+
+
+# core/sql_validator._sql_syntax_validator.validate_sql_syntax calls
+# ``sql_analyzer.split_statements(script_content, strict_tokenizer=True)`` --
+# the path behind `dblift validate-sql` / `migrate --strict`. Only these three
+# dialect parsers actually wire ``strict_tokenizer`` through to the
+# tokenizer's ``strict_unknown_chars`` (and re-raise on failure); Oracle's
+# `split_statements` ignores the flag and always falls back to regex.
+STRICT_MODE_OPERATOR_CASES = [
+    ("postgresql", "UPDATE t SET n = n % 7 WHERE id = 1;"),
+    ("postgresql", """SELECT id FROM t WHERE j @> '{"a":1}';"""),
+    ("postgresql", "SELECT a & b FROM t;"),
+    ("postgresql", "SELECT a ^ b FROM t;"),
+    ("mysql", "UPDATE t SET n = n % 7 WHERE id = 1;"),
+    ("mysql", "SELECT a & b FROM t;"),
+    ("mysql", "SELECT a ^ b FROM t;"),
+    ("sqlserver", "UPDATE t SET n = n % 7 WHERE id = 1;"),
+    ("sqlserver", "SELECT a & b FROM t;"),
+    ("sqlserver", "SELECT a ^ b FROM t;"),
+]
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("dialect,sql", STRICT_MODE_OPERATOR_CASES)
+def test_strict_tokenizer_accepts_widened_operator_characters(dialect: str, sql: str) -> None:
+    """``validate-sql`` / ``migrate --strict`` must not choke on ordinary operator SQL.
+
+    ``strict_tokenizer=True`` sets the dialect tokenizer's
+    ``strict_unknown_chars=True``, where ``_handle_unknown_char`` raises
+    ``TokenizerError`` instead of warning. If ``SYMBOL_CHARS`` ever lost the
+    operator characters SQL engines build ``%``, ``&``, ``^`` and the jsonb
+    family (``@>``) from, ``_is_symbol`` would stop claiming them and strict
+    mode would start raising on ordinary SQL that uses them as operators --
+    exactly the statements in this corpus, and exactly the path
+    ``core/sql_validator`` uses to certify a migration script.
+    """
+    from core.sql_parser.base_tokenizer import TokenizerWarning
+
+    parser = TOKENIZING_PARSERS[dialect]()
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        statements = parser.split_statements(sql, strict_tokenizer=True)
+
+    assert statements, f"{dialect}: strict-tokenizer split produced no statements for {sql!r}"
+    assert not any(
+        issubclass(w.category, TokenizerWarning) for w in caught
+    ), f"{dialect}: strict-tokenizer split warned about an unclaimed character for {sql!r}"
