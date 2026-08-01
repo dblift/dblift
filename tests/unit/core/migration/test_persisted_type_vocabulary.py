@@ -27,8 +27,29 @@ from typing import Any, Dict, List, Tuple
 
 import pytest
 
+from core.migration._type_match import is_versioned
 from core.migration.history.migration_history_manager import MigrationHistoryManager
 from core.migration.migration import AppliedMigration, Migration, MigrationType
+
+# The persisted vocabulary, spelled out literally rather than derived from
+# ``MigrationType`` itself. A parametrization built from ``list(MigrationType)``
+# renames and shrinks in lockstep with the enum, so it cannot detect a rename or
+# a removed member — see ``test_every_member_name_round_trips_from_history_row``
+# below, which does exactly that and passes 35-37/37 whether ``BASELINE`` is
+# renamed to ``BASE``, ``CALLBACK`` to ``CB``, or ``DELETE`` is deleted outright.
+# This tuple only changes when someone deliberately edits it, so a rename or
+# removal in the enum shows up as a mismatch here instead of a silently smaller
+# parametrization.
+PERSISTED_TYPE_NAMES = (
+    "SQL",
+    "PYTHON",
+    "REPEATABLE",
+    "UNDO_SQL",
+    "BASELINE",
+    "CALLBACK",
+    "DELETE",
+    "UNKNOWN",
+)
 
 
 class RecordingProvider:
@@ -165,6 +186,31 @@ def test_recorded_migration_info_carries_enum_member_name(
 # ---------------------------------------------------------------------------
 
 
+def test_vocabulary_is_exactly_these_names() -> None:
+    """Pin the full member roster against a literal list, not a derived one.
+
+    Unlike a ``list(MigrationType)``-derived parametrization, this comparison
+    has one side that does not move when the enum changes: renaming a member,
+    adding one, or deleting one all show up here as a list mismatch, which is
+    exactly the drift ``test_every_member_name_round_trips_from_history_row``
+    below cannot see because both of its sides are derived from the same enum.
+    """
+    assert [member.name for member in MigrationType] == list(PERSISTED_TYPE_NAMES)
+
+
+@pytest.mark.parametrize("stored", PERSISTED_TYPE_NAMES)
+def test_stored_name_round_trips_from_literal_roster(stored: str) -> None:
+    """Every name in the literal roster still reads back as the matching member.
+
+    Parametrized over ``PERSISTED_TYPE_NAMES`` rather than ``list(MigrationType)``
+    so that removing a member shrinks the enum but not this parametrization: the
+    missing name is still looked up here and fails loudly (``KeyError`` /
+    assertion failure) instead of the test file quietly reporting fewer cases.
+    """
+    applied = AppliedMigration.from_history_row({"type": stored, "script": "V1__x.sql"})
+    assert applied.type.name == stored
+
+
 @pytest.mark.parametrize("member", list(MigrationType), ids=lambda m: m.name)
 def test_every_member_name_round_trips_from_history_row(member: MigrationType) -> None:
     """Every persisted member name reads back as the same member.
@@ -172,6 +218,13 @@ def test_every_member_name_round_trips_from_history_row(member: MigrationType) -
     This is the invariant the whole file exists for: history rows are matched by
     ``MigrationType[type_str]``, so a renamed or removed member turns existing
     rows into ``UNKNOWN``.
+
+    Kept alongside ``test_stored_name_round_trips_from_literal_roster`` above:
+    this parametrization is derived from the enum under test
+    (``list(MigrationType)``), so it is a tautology on its own — rename a member
+    and the parametrization renames with it, delete one and it shrinks. It still
+    round-trips whatever members exist *today*, which is useful, but the literal
+    roster is what actually locks the vocabulary against drift.
     """
     applied = AppliedMigration.from_history_row({"type": member.name, "script": "V1__x.sql"})
     assert applied.type is member
@@ -217,6 +270,19 @@ def test_unrecognised_history_type_degrades_to_unknown(stored_value: str) -> Non
     assert applied.type is MigrationType.UNKNOWN
 
 
+def test_leading_whitespace_is_not_tolerated() -> None:
+    """``" SQL"`` (leading space) degrades to ``UNKNOWN``, not ``MigrationType.SQL``.
+
+    ``from_history_row`` does no ``.strip()`` today. A ``CHAR``-padding storage
+    engine or a CSV-import path could plausibly introduce padding, so this pins
+    that padding must NOT be silently tolerated — a later change that adds
+    ``.strip()`` to make padded values round-trip has to touch this test on
+    purpose, not slip in as an unrelated tidy-up.
+    """
+    applied = AppliedMigration.from_history_row({"type": " SQL", "script": "V1__x.sql"})
+    assert applied.type is MigrationType.UNKNOWN
+
+
 # ---------------------------------------------------------------------------
 # 4. Column-width invariant
 # ---------------------------------------------------------------------------
@@ -241,3 +307,36 @@ def test_member_names_fit_the_history_type_column() -> None:
     """
     too_long = [member.name for member in MigrationType if len(member.name) > 20]
     assert not too_long, f"member names exceed the VARCHAR(20) history column: {too_long}"
+
+
+# ---------------------------------------------------------------------------
+# 5. Meaning, not just spelling
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "member, versioned",
+    [
+        (MigrationType.SQL, True),
+        (MigrationType.PYTHON, True),
+        (MigrationType.REPEATABLE, False),
+        (MigrationType.UNDO_SQL, False),
+        (MigrationType.BASELINE, False),
+        (MigrationType.CALLBACK, False),
+        (MigrationType.DELETE, False),
+        (MigrationType.UNKNOWN, False),
+    ],
+    ids=lambda p: p.name if isinstance(p, MigrationType) else str(p),
+)
+def test_versioned_semantics_are_frozen(member: MigrationType, versioned: bool) -> None:
+    """``is_versioned`` classifies every member as pinned here, not merely spelled correctly.
+
+    The tests above pin the *name* that gets persisted and pin the *enum* out
+    against renames/deletions, but nothing previously asserted what a member
+    *means*. A plausible-looking "tidy-up" like rebuilding
+    ``VERSIONED_SCRIPT_TYPES`` from ``{MigrationType.SQL.value}`` (dropping
+    ``PYTHON``) would pass every test above — the name ``"PYTHON"`` still
+    round-trips fine — while silently making ``migrate`` stop counting Python
+    migrations as versioned. This test fails that change directly.
+    """
+    assert is_versioned(member) is versioned

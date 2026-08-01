@@ -11,7 +11,7 @@ if TYPE_CHECKING:
 from core.exceptions import ExecutionError
 from core.logger.results import RepairResult
 from core.migration._type_match import is_versioned
-from core.migration.migration import Migration
+from core.migration.migration import Migration, MigrationType
 from core.migration.state.migration_state import MigrationState
 from db.provider_capabilities import ensure_provider_connection
 from db.provider_interfaces import TransactionalProvider
@@ -582,13 +582,13 @@ class RepairCommand(BaseCommand):
                         else:
                             # Infer from script name
                             if script_name.startswith("V"):
-                                original_type_name = "SQL"
+                                original_type_name = MigrationType.SQL.name
                             elif script_name.startswith("R"):
-                                original_type_name = "REPEATABLE"
+                                original_type_name = MigrationType.REPEATABLE.name
                             elif script_name.startswith("U"):
-                                original_type_name = "UNDO_SQL"
+                                original_type_name = MigrationType.UNDO_SQL.name
                             else:
-                                original_type_name = "SQL"
+                                original_type_name = MigrationType.SQL.name
 
                         # Create DELETE entry with original type embedded in description
                         delete_reason = description or "Marked as deleted via repair command"
