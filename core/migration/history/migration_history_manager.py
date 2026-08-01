@@ -139,6 +139,13 @@ class MigrationHistoryManager:
         cascades "transaction is aborted" errors onto every subsequent
         statement. BUG-07.
 
+        Race detection is delegated to ``provider.quirks.is_schema_history_race_error``
+        instead of a single hard-coded marker list: dialects whose bare
+        ``CREATE TABLE`` (no ``IF NOT EXISTS``) reports the race in wording
+        the default English substrings don't cover — DB2 (SQL0601N), Oracle
+        (ORA-00955), SQL Server (Msg 2714) — override it with a stable
+        vendor error-code check instead of driver message text.
+
         Args:
             create_schema: True when called from baseline command, False for regular migrations
         """
@@ -146,13 +153,6 @@ class MigrationHistoryManager:
         import time
 
         MAX_ATTEMPTS = 3
-        RACE_MARKERS = (
-            "already exists",
-            "duplicate key",
-            "tuple concurrently updated",
-            "transaction is aborted",
-            "concurrently",
-        )
 
         for attempt in range(MAX_ATTEMPTS):
             try:
@@ -169,8 +169,7 @@ class MigrationHistoryManager:
                 )
                 return
             except Exception as e:
-                err_str = str(e).lower()
-                is_race = any(marker in err_str for marker in RACE_MARKERS)
+                is_race = self.provider.quirks.is_schema_history_race_error(str(e))
                 if not is_race or attempt == MAX_ATTEMPTS - 1:
                     raise
                 if self.logger:
