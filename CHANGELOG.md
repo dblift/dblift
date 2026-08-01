@@ -36,6 +36,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   ``None`` query is now treated as "no indexes to report" and skipped
   silently, matching how the same extractor already handles a declined bulk
   index query.
+- **A failing ``beforeEach``/``beforeEachMigrate`` callback now reports its own
+  error instead of an unrelated ``UnboundLocalError``.** The per-migration
+  timing variable used to report execution time on failure was assigned
+  *after* these callbacks ran, but read in the exception handler that a
+  callback failure unwinds through. When a callback raised, the handler tried
+  to read a variable that had never been set, so the surfaced error was
+  ``cannot access local variable 'start_time'`` rather than the callback's
+  actual failure. The real cause was still logged just above it, but the
+  message in the FAILED banner pointed at a Python internals bug instead of
+  the broken callback. The timing variable is now initialised before the
+  callback dispatch, so a failing callback surfaces as the callback failure it
+  is.
+
 - **``validate --strict`` now runs out-of-order detection on Python
   migrations.** Internally ``MigrationType.SQL`` names a migration's *role* —
   versioned, run-once — and not its file format; a versioned ``.py`` script is

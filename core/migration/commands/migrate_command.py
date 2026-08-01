@@ -383,6 +383,12 @@ class MigrateCommand(BaseCommand):
             True if migration succeeded, False if it failed
         """
         try:
+            # start_time must be bound before any fallible call in this block: if a
+            # beforeEach/beforeEachMigrate callback raises, the except clause below
+            # reports it via _handle_failed_migration(..., start_time, ...), and that
+            # read must not itself fail.
+            start_time = time.time()
+
             # Execute beforeEach callbacks
             self._execute_callbacks(
                 scripts_dir,
@@ -410,7 +416,6 @@ class MigrateCommand(BaseCommand):
                     },
                 )
 
-            start_time = time.time()
             _script_event_data = {
                 "script": migration.script_name,
                 "version": migration.version,
