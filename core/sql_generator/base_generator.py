@@ -15,6 +15,7 @@ if TYPE_CHECKING:
     from core.sql_model.view import View
 
 from core.sql_generator.formatter import SqlFormatter
+from core.sql_generator.options import ScriptOptions
 from core.sql_generator.script_organizer import ScriptOrganizer
 from core.sql_model.base import SqlObject, SqlObjectType, get_object_type_name
 
@@ -323,6 +324,72 @@ class BaseSqlGenerator(ABC):
 
         # Use dialect-specific formatting
         return self._format_statements(statements, dialect)
+
+    def generate_schema_script(
+        self,
+        schema: Dict[str, List[SqlObject]],
+        target_dialect: Optional[str] = None,
+        options: Optional[ScriptOptions] = None,
+    ) -> Dict[str, str]:
+        """
+        Generate complete schema script with organization.
+
+        Takes a schema dictionary (from SchemaIntrospector) and generates
+        organized SQL scripts based on options with dependency ordering.
+
+        Args:
+            schema: Dictionary mapping object types to lists of objects
+            target_dialect: SQL dialect for generation
+            options: Script organization options
+
+        Returns:
+            Dictionary mapping file names to SQL content
+        """
+        if options is None:
+            options = ScriptOptions()
+
+        dialect = target_dialect or self.default_dialect
+
+        # Flatten schema dictionary into a single list
+        all_objects: List[SqlObject] = []
+        for object_list in schema.values():
+            all_objects.extend(object_list)
+
+        # Organize objects into files first
+        organized_files = self.script_organizer.organize(all_objects, options)
+
+        # Generate SQL for each organized file
+        result: Dict[str, str] = {}
+        for filename, objects in organized_files.items():
+            # Generate CREATE statements
+            create_sql = self.generate_ddl(
+                objects,
+                target_dialect=dialect,
+                include_comments=options.include_comments,
+                format_sql=options.format_sql,
+                order_by_dependencies=True,
+            )
+
+            # Generate DROP statements if requested
+            drop_sql = ""
+            if options.include_drops:
+                drop_sql = self.generate_drop_statements(
+                    objects,
+                    target_dialect=dialect,
+                    format_sql=options.format_sql,
+                    order_by_dependencies=True,
+                )
+
+            # Combine CREATE and DROP SQL
+            file_content = ""
+            if drop_sql:
+                file_content += f"-- DROP statements\n{drop_sql}\n\n"
+            if create_sql:
+                file_content += f"-- CREATE statements\n{create_sql}"
+
+            result[filename] = file_content
+
+        return result
 
     # Helper methods with default implementations
 
