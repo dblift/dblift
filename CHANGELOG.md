@@ -391,6 +391,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   character helper instead of five independent character enumerations that
   could drift out of sync.
 
+- **MySQL history-table bootstrap no longer crashes on a concurrent race.**
+  The migration lock table has always been created with
+  ``CREATE TABLE IF NOT EXISTS``, but the history table used a bare
+  ``CREATE TABLE``, so two processes bootstrapping the same schema at once
+  raced: the loser's ``CREATE TABLE`` failed with a duplicate-table error
+  that propagated uncaught, crashing that process outright. The history
+  table now uses ``IF NOT EXISTS`` too, matching the lock table, so the
+  statement itself is safe under a concurrent race rather than failing and
+  needing a catch. MariaDB, which shares this provider, gets the same fix.
+
 ### Removed
 
 ## [3.3.4] - 2026-07-30

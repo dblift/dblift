@@ -176,7 +176,7 @@ class MySqlProvider(SqlAlchemyProvider):
     def create_history_table(self, schema: str, table_name: str) -> str:
         """Return SQL for the MySQL migration history table."""
         return f"""
-            CREATE TABLE {self.get_schema_qualified_name(schema, table_name)} (
+            CREATE TABLE IF NOT EXISTS {self.get_schema_qualified_name(schema, table_name)} (
                 installed_rank INT NOT NULL AUTO_INCREMENT,
                 version VARCHAR(50),
                 description VARCHAR(200) NOT NULL,
