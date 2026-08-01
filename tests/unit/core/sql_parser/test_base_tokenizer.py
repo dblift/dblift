@@ -1,8 +1,10 @@
 """Tests for BaseTokenizer — streaming character-by-character SQL tokenizer."""
 
+import warnings
+
 import pytest
 
-from core.sql_parser.base_tokenizer import BaseTokenizer
+from core.sql_parser.base_tokenizer import BaseTokenizer, TokenizerWarning
 from core.sql_parser.tokens import Token, TokenType
 
 # ---------------------------------------------------------------------------
@@ -151,7 +153,9 @@ class TestBooleanChecks:
 
     def test_is_symbol_all_symbols(self):
         t = BaseTokenizer("")
-        for ch in "().,+-*/<>=![]{}:|~":
+        # Punctuation, plus every character SQL engines build operator names
+        # from: modulo/bitwise (% & ^ #) and the jsonb/hstore family (@ ? #).
+        for ch in "().,+-*/<>=![]{}:|~%&^#@?":
             assert t._is_symbol(ch) is True
 
     def test_is_symbol_letter(self):
@@ -383,12 +387,26 @@ class TestFullTokenization:
         assert tokens[1].line == 2
         assert tokens[1].col == 1
 
-    def test_unknown_character_skipped(self):
+    def test_at_sign_is_a_symbol(self):
+        # '@' opens PostgreSQL's jsonb operators (@>, @@) and Oracle db links.
+        # It used to reach _handle_unknown_char and be deleted.
         tokens = BaseTokenizer("@SELECT").tokenize()
-        # @ is skipped, SELECT is tokenized
-        assert len(tokens) == 1
-        assert tokens[0].type == TokenType.KEYWORD
-        assert tokens[0].text == "SELECT"
+        assert [(t.type, t.text) for t in tokens] == [
+            (TokenType.SYMBOL, "@"),
+            (TokenType.KEYWORD, "SELECT"),
+        ]
+
+    def test_unclaimed_character_is_passed_through(self):
+        # No rule claims '\'. It must still reach the token stream: that stream
+        # is reserialized into the SQL that actually gets executed, so dropping
+        # a character silently rewrites the user's statement.
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", TokenizerWarning)
+            tokens = BaseTokenizer("\\SELECT").tokenize()
+        assert [(t.type, t.text) for t in tokens] == [
+            (TokenType.SYMBOL, "\\"),
+            (TokenType.KEYWORD, "SELECT"),
+        ]
 
     def test_complex_sql(self):
         sql = "SELECT a, b FROM t WHERE a = 'x' AND b > 1; -- done"

@@ -260,6 +260,17 @@ class BaseStatementParser:
         ):
             return False
 
+        # Whenever a symbol is involved, reproduce the author's spacing exactly.
+        #
+        # Engines lex operators greedily out of runs of operator characters, so
+        # both directions change meaning. Dropping a space merges two operators
+        # into one: ``a - -b`` rendered as ``a --b`` makes the rest of the line
+        # a comment. Adding one splits a single operator in two: ``j @> x``
+        # rendered as ``j @ > x`` is a different expression. Neither is a syntax
+        # error the database will reject on the user's behalf.
+        if TokenType.SYMBOL in (prev_token.type, current_token.type):
+            return current_token.pos > prev_token.pos + len(prev_token.text)
+
         # Need space between keywords/identifiers
         if prev_token.type in (TokenType.KEYWORD, TokenType.IDENTIFIER):
             if current_token.type in (TokenType.KEYWORD, TokenType.IDENTIFIER):
