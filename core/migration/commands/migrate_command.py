@@ -386,7 +386,11 @@ class MigrateCommand(BaseCommand):
             # start_time must be bound before any fallible call in this block: if a
             # beforeEach/beforeEachMigrate callback raises, the except clause below
             # reports it via _handle_failed_migration(..., start_time, ...), and that
-            # read must not itself fail.
+            # read must not itself fail. As a side effect, reported execution_time
+            # now includes beforeEach/beforeEachMigrate callback dispatch time for
+            # every migration (previously only the migration script itself was
+            # timed) - relevant if you monitor migration duration and have callbacks
+            # with non-trivial runtime.
             start_time = time.time()
 
             # Execute beforeEach callbacks

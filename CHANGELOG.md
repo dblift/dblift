@@ -47,7 +47,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   message in the FAILED banner pointed at a Python internals bug instead of
   the broken callback. The timing variable is now initialised before the
   callback dispatch, so a failing callback surfaces as the callback failure it
-  is.
+  is. As a side effect, the reported execution time for a successful migration
+  now includes ``beforeEach``/``beforeEachMigrate`` callback dispatch time,
+  where previously only the migration script itself was timed.
 
 - **``validate --strict`` now runs out-of-order detection on Python
   migrations.** Internally ``MigrationType.SQL`` names a migration's *role* —
