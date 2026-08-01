@@ -359,6 +359,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   character helper instead of five independent character enumerations that
   could drift out of sync.
 
+- **MySQL history-table bootstrap no longer depends on error-text matching.**
+  The migration lock table has always been created with
+  ``CREATE TABLE IF NOT EXISTS``, but the history table used a bare
+  ``CREATE TABLE``, so a concurrent bootstrap race relied on the caller
+  catching the resulting duplicate-table error and retrying based on its
+  message text. The history table now uses ``IF NOT EXISTS`` too, matching
+  the lock table, so the ``CREATE TABLE`` itself is safe under a concurrent
+  race instead of depending on error-message wording. MariaDB, which shares
+  this provider, gets the same fix.
+
 ### Removed
 
 ## [3.3.4] - 2026-07-30

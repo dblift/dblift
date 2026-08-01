@@ -216,6 +216,14 @@ def test_create_migration_history_table_if_not_exists_skips_when_present():
     assert provider.statements == []
 
 
+def test_create_history_table_sql_uses_if_not_exists():
+    provider = _Provider()
+
+    sql = provider.create_history_table("mydb", "dblift_schema_history")
+
+    assert "CREATE TABLE IF NOT EXISTS" in sql
+
+
 def test_create_migration_history_table_with_create_schema_runs_baseline_check():
     provider = _Provider()
     provider.table_exists_value = True
