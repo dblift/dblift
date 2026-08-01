@@ -547,12 +547,12 @@ class DB2Config(DialectConfig):
         depth = 1
         case_depth = 0  # Track CASE expressions separately
         in_string = False
-        in_comment = False
+        comment_depth = 0  # DB2 block comments nest; see /* below
         string_char = None
 
         while i < len(sql) and depth > 0:
             # Handle string literals
-            if not in_comment:
+            if comment_depth == 0:
                 if not in_string and sql[i] in ("'", '"'):
                     in_string = True
                     string_char = sql[i]
@@ -566,23 +566,27 @@ class DB2Config(DialectConfig):
 
             # Handle comments
             if not in_string:
-                if sql[i : i + 2] == "--":
+                if sql[i : i + 2] == "--" and comment_depth == 0:
                     # Line comment - skip to end of line
                     while i < len(sql) and sql[i] not in ("\n", "\r"):
                         i += 1
                     continue
                 elif sql[i : i + 2] == "/*":
-                    # Block comment
-                    in_comment = True
+                    # Block comment. DB2 nests these (confirmed live: a
+                    # /* /* */ */ pair only closes at the balancing outer
+                    # */, and content in between - even a bare -- line -
+                    # stays comment text), so every /* opens another level
+                    # regardless of whether one is already open.
+                    comment_depth += 1
                     i += 2
                     continue
-                elif sql[i : i + 2] == "*/" and in_comment:
-                    in_comment = False
+                elif sql[i : i + 2] == "*/" and comment_depth > 0:
+                    comment_depth -= 1
                     i += 2
                     continue
 
             # Count BEGIN/END and CASE/END pairs outside strings and comments
-            if not in_string and not in_comment:
+            if not in_string and comment_depth == 0:
                 # Check for CASE keyword (starts a CASE expression)
                 if sql[i : i + 4].upper() == "CASE":
                     if (i == 0 or not _is_identifier_char(sql[i - 1])) and (

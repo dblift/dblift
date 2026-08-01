@@ -758,3 +758,98 @@ BEGIN ATOMIC
 END"""
 
         assert parser.split_statements(trigger) == [trigger]
+
+
+@pytest.mark.unit
+class TestDB2CommentDetectorsRespectInComment:
+    """``--`` must not be recognised as a fresh line-comment opener while a
+    block comment is already open; ``/*`` must be, because DB2 nests block
+    comments.
+
+    ``_find_block_end`` used to guard its ``--`` and ``/*`` detectors with
+    only ``not in_string`` - unlike the ``*/`` detector, which was correctly
+    guarded with ``and in_comment``. A dashed divider line (a common
+    convention for a section header inside a block comment, e.g. a decorative
+    ``-- ----------`` rule) was mistaken for the start of a *new* line
+    comment, which skips to end-of-line. If the real closing ``*/`` sits on
+    that same line, the scan jumped clean over it and the comment state never
+    closed, leaving the whole rest of the block unterminated. ``--`` is fixed
+    by ignoring it while already inside a block comment (line comments don't
+    nest). ``/*`` is fixed the other way: confirmed live against DB2 12.1.5.0,
+    block comments genuinely nest, so a ``/*`` seen while already inside a
+    comment must open another level rather than being ignored - see
+    ``comment_depth`` in ``_find_block_end``.
+    """
+
+    def test_dashes_immediately_before_closing_marker_do_not_truncate(self):
+        parser = DB2RegexParser()
+        sql = """CREATE PROCEDURE P1()
+BEGIN
+  /* --------------------------------------------------
+     Procedure description
+     -------------------------------------------------- */
+  SELECT 1 FROM SYSIBM.SYSDUMMY1;
+END"""
+
+        assert parser.split_statements(sql) == [sql]
+
+    def test_dashes_mid_comment_not_on_the_closing_line_do_not_truncate(self):
+        """The same class of bug, without the same-line jump-over: the ``--``
+        content appears well before the ``*/`` that ends the comment, on a
+        line of its own with ordinary prose after it."""
+        parser = DB2RegexParser()
+        sql = """CREATE PROCEDURE P1()
+BEGIN
+  /* -- this dash marks a sub-heading, not a real line comment
+     Procedure description continues here.
+  */
+  SELECT 1 FROM SYSIBM.SYSDUMMY1;
+END"""
+
+        assert parser.split_statements(sql) == [sql]
+
+    def test_nested_block_comment_stays_open_until_the_balancing_close(self):
+        """DB2 block comments nest - confirmed live against DB2 12.1.5.0: a
+        ``CREATE PROCEDURE`` body containing ``/* outer /* inner */ garbage
+        */`` compiles and runs, while the same ``garbage`` text left exposed
+        by a single-level comment (no inner ``/*``) fails to compile as
+        invalid SQL. So a ``/*`` written while a block comment is already
+        open must start a *deeper* comment level, and only the ``*/`` that
+        balances the outermost ``/*`` may close it - the first ``*/``
+        encountered (which only balances the inner ``/*``) must not end the
+        comment early."""
+        parser = DB2RegexParser()
+        sql = """CREATE PROCEDURE P1()
+BEGIN
+  /* outer /* inner */ garbage_that_would_be_invalid_sql_if_exposed */
+  SELECT 1 FROM SYSIBM.SYSDUMMY1;
+END"""
+
+        assert parser.split_statements(sql) == [sql]
+
+    def test_unbalanced_nested_block_comment_is_correctly_unterminated(self):
+        """The flip side of nesting: a second ``/*`` without a matching
+        second ``*/`` leaves the outer comment level open, so the block
+        really is unterminated - matching live DB2, which refuses to
+        compile this exact body (missing closing comment)."""
+        sql = """CREATE PROCEDURE P1()
+BEGIN
+  /* looks like nesting: /* inner */ still inside the outer comment
+  SELECT 1 FROM SYSIBM.SYSDUMMY1;
+END"""
+
+        from db.plugins.db2.parser.parser_config import DB2Config
+
+        assert DB2Config()._find_block_end(sql, sql.index("BEGIN")) is None
+
+    def test_standalone_line_comment_outside_a_block_comment_still_works(self):
+        """Ordinary ``--`` line comments, entirely outside any block comment,
+        must keep skipping to end-of-line as before."""
+        parser = DB2RegexParser()
+        sql = """CREATE PROCEDURE P1()
+BEGIN
+  -- plain line comment, no block comment involved
+  SELECT 1 FROM SYSIBM.SYSDUMMY1;
+END"""
+
+        assert parser.split_statements(sql) == [sql]
