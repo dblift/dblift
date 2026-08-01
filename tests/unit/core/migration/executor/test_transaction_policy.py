@@ -71,6 +71,42 @@ def test_sqlserver_create_fulltext_catalog_requires_autocommit():
 
 
 @pytest.mark.unit
+def test_sqlserver_create_fulltext_index_requires_autocommit():
+    statement = classify_execution_statement(
+        "CREATE FULLTEXT INDEX ON dbo.articles(body) KEY INDEX pk_articles",
+        dialect="sqlserver",
+        statement_type="DDL",
+    )
+
+    assert statement.can_execute_in_transaction is False
+    assert "FULLTEXT" in (statement.transaction_reason or "")
+
+
+@pytest.mark.unit
+def test_sqlserver_drop_fulltext_index_requires_autocommit():
+    statement = classify_execution_statement(
+        "DROP FULLTEXT INDEX ON dbo.articles",
+        dialect="sqlserver",
+        statement_type="DDL",
+    )
+
+    assert statement.can_execute_in_transaction is False
+    assert "FULLTEXT" in (statement.transaction_reason or "")
+
+
+@pytest.mark.unit
+def test_sqlserver_drop_fulltext_catalog_requires_autocommit():
+    statement = classify_execution_statement(
+        "DROP FULLTEXT CATALOG dblift_ft_catalog",
+        dialect="sqlserver",
+        statement_type="DDL",
+    )
+
+    assert statement.can_execute_in_transaction is False
+    assert "FULLTEXT CATALOG" in (statement.transaction_reason or "")
+
+
+@pytest.mark.unit
 def test_transaction_policy_rejects_mixed_autocommit_and_transactional_statements():
     policy = TransactionPolicy()
 

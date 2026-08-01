@@ -13,6 +13,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **SQL Server ``CREATE FULLTEXT INDEX``, ``DROP FULLTEXT INDEX``, and
+  ``DROP FULLTEXT CATALOG`` failed with SQL Server's own error instead of
+  running.** SQL Server refuses to run any of these statements inside a user
+  transaction, the same restriction dblift already worked around for
+  ``CREATE FULLTEXT CATALOG`` by routing it through autocommit. The other
+  three full-text DDL forms carry the identical restriction but weren't
+  recognized, so a migration containing one ran inside dblift's normal
+  transaction and failed with SQL Server's own "cannot run inside a user
+  transaction" error — or, if combined with a ``CREATE FULLTEXT CATALOG`` in
+  the same migration, tripped dblift's guard against mixing autocommit and
+  transactional statements in one file. All four full-text DDL forms are now
+  classified identically and run through autocommit.
 - **``validate --strict`` now runs out-of-order detection on Python
   migrations.** Internally ``MigrationType.SQL`` names a migration's *role* —
   versioned, run-once — and not its file format; a versioned ``.py`` script is
