@@ -5,6 +5,7 @@ from typing import Any, Dict, List
 
 from core.logger.results import OperationResult
 from core.migration.commands.base_command import BaseCommand
+from core.sql_validator._flyway_compatibility import FLYWAY_TYPE_TO_MIGRATION_TYPE
 from db.object_naming import get_normalized_object_name
 from db.provider_registry import ProviderRegistry
 
@@ -118,7 +119,9 @@ class ImportFlywayCommand(BaseCommand):
             imported_count = 0
             for row in rows_to_import:
                 if not dry_run:
-                    self.provider.record_migration(schema, row, target_table)
+                    self.provider.record_migration(
+                        schema, self._row_with_mapped_type(row), target_table
+                    )
                 imported_count += 1
 
             if not dry_run and imported_count:
@@ -188,6 +191,34 @@ class ImportFlywayCommand(BaseCommand):
                 continue
             rows_to_import.append(row)
         return rows_to_import, skipped_count
+
+    def _row_with_mapped_type(self, row: Dict[str, Any]) -> Dict[str, Any]:
+        """Return a copy of ``row`` with Flyway's ``type`` vocabulary translated to a Dblift ``MigrationType`` member name.
+
+        Flyway writes values like ``JDBC``/``SPRING_JDBC``/``SCRIPT`` that are
+        not Dblift ``MigrationType`` members. Writing them verbatim would
+        later read back as ``MigrationType.UNKNOWN`` (see
+        ``AppliedMigration.from_history_row``), which is not a versioned
+        type, so ``migrate`` would re-offer and re-execute an already-applied
+        script. Raises if a type has no defined mapping, so the import aborts
+        loudly instead of writing a value that would silently degrade.
+
+        A row with no ``type`` value at all is left untouched rather than
+        raising: real Flyway rows always populate this column, so an absent
+        value means the caller isn't describing genuine Flyway vocabulary
+        (e.g. a partial row from another code path) rather than an
+        unrecognised one.
+        """
+        flyway_type = row.get("type")
+        if not flyway_type:
+            return dict(row)
+        mapped_type = FLYWAY_TYPE_TO_MIGRATION_TYPE.get(str(flyway_type))
+        if mapped_type is None:
+            raise ValueError(
+                f"Unrecognised Flyway migration type '{flyway_type}' for script "
+                f"'{row.get('script')}': no mapping to a Dblift MigrationType is defined."
+            )
+        return {**row, "type": mapped_type}
 
     @staticmethod
     def _normalize_flyway_row(row: Dict[str, Any]) -> Dict[str, Any]:

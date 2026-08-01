@@ -23,19 +23,36 @@ from typing import TYPE_CHECKING, Dict, List
 
 from core.migration.migration import MigrationType, normalize_migration_checksum
 
+# Maps Flyway's ``flyway_schema_history.type`` vocabulary to the Dblift
+# ``MigrationType`` member name it corresponds to. ``JDBC``, ``SPRING_JDBC``
+# and ``SCRIPT`` are Flyway's Java-based/generic migration resolvers; they
+# still describe a versioned migration, so they map to ``SQL`` rather than
+# being treated as unsupported.
+#
+# ``UNDO_SQL`` was renamed to ``UNDO_SCRIPT`` in Flyway 9.0; every Flyway
+# version from 9.x through the current 12.x writes ``UNDO_SCRIPT`` for undo
+# migrations. Both keys are kept so rows written by Flyway 8.x and earlier
+# still map correctly.
+#
+# ``DELETE`` marks a script-removal audit-trail entry and matches
+# ``MigrationType.DELETE`` exactly.
+FLYWAY_TYPE_TO_MIGRATION_TYPE: Dict[str, str] = {
+    "SQL": MigrationType.SQL.name,
+    "JDBC": MigrationType.SQL.name,
+    "SPRING_JDBC": MigrationType.SQL.name,
+    "SCRIPT": MigrationType.SQL.name,
+    "BASELINE": MigrationType.BASELINE.name,
+    "UNDO_SQL": MigrationType.UNDO_SQL.name,
+    "UNDO_SCRIPT": MigrationType.UNDO_SQL.name,
+    "DELETE": MigrationType.DELETE.name,
+}
+
 # The two histories accept different type vocabularies, so one set cannot serve
 # both sides of the comparison.
 #
-# Flyway writes ``SQL`` for a versioned script, ``BASELINE`` for a baseline
-# marker and ``UNDO_SQL`` for an undo. It has no notion of a Python migration
-# and never writes ``PYTHON``; accepting it here would weaken a real check.
-FLYWAY_VALID_TYPES = frozenset(
-    {
-        MigrationType.SQL.name,
-        MigrationType.BASELINE.name,
-        MigrationType.UNDO_SQL.name,
-    }
-)
+# Flyway has no notion of a Python migration and never writes ``PYTHON``;
+# accepting it here would weaken a real check.
+FLYWAY_VALID_TYPES = frozenset(FLYWAY_TYPE_TO_MIGRATION_TYPE)
 
 # Dblift additionally stores ``PYTHON`` for versioned scripts in a non-SQL
 # format (``MigrationType.SQL`` means "versioned", not "SQL format"). Without
