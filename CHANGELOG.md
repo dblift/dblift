@@ -51,6 +51,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   now includes ``beforeEach``/``beforeEachMigrate`` callback dispatch time,
   where previously only the migration script itself was timed.
 
+- **``undo`` no longer silently no-ops when it is the first call on a fresh
+  client.** ``migrate`` and ``info`` both establish the database connection
+  as an explicit first step before touching migration history; ``undo`` did
+  not — it assumed a connection already existed and relied on history-table
+  creation to establish one as a side effect. That assumption held for
+  providers that reconnect lazily on demand, but not for CosmosDB, whose
+  history-table creation talks to a lower-level connection manager without
+  updating the provider's own connection state. On a brand-new client whose
+  very first operation was ``undo()``, this meant every subsequent read of
+  the migration history failed with a connection error — and that failure
+  was swallowed by a broad exception handler (added to tolerate mocked
+  dependencies in tests) that treated *any* history-read failure as "no
+  applied migrations found," reporting ``No migrations to undo`` and
+  ``success=True`` even though migrations were, in fact, applied. ``undo``
+  now establishes its own connection up front, the same way ``migrate`` and
+  ``info`` do, so it correctly finds and processes pending undos on a fresh
+  client instead of reporting a false success.
 - **``validate --strict`` now runs out-of-order detection on Python
   migrations.** Internally ``MigrationType.SQL`` names a migration's *role* —
   versioned, run-once — and not its file format; a versioned ``.py`` script is
