@@ -404,9 +404,9 @@ class TestOracleParser:
         # The || concatenation operator must be preserved (not lost or mangled)
         full_stmt = " ".join(statements)
         assert "||" in full_stmt, "Concatenation operator || must be preserved"
-        assert (
-            "v_max" in full_stmt and "+1" in full_stmt
-        ), "Expression (v_max + 1) must be preserved"
+        # "+1" here would be the reserializer dropping the author's spacing;
+        # the expression must come back exactly as written.
+        assert "(v_max + 1)" in full_stmt, "Expression (v_max + 1) must be preserved verbatim"
 
     def test_extract_plsql_block_methods(self):
         """Test PL/SQL block extraction methods."""

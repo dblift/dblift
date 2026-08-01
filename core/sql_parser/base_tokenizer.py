@@ -11,15 +11,13 @@ from core.sql_parser.tokens import Token, TokenType
 
 
 class TokenizerWarning(UserWarning):
-    """Emitted when ``_handle_unknown_char`` swallows a character.
+    """Emitted when ``_handle_unknown_char`` meets a character no rule claims.
 
-    Batch 11 ``BUG-01`` traced back to ``@`` falling through to the
-    silent-drop branch. The previous code returned ``None`` and moved on,
-    so ``SET @stmt_count`` quietly became ``SET stmt_count``. Routing
-    drop-through chars through ``_handle_unknown_char`` and surfacing them
-    as a warning makes the behaviour visible: tests can be configured to
-    promote this warning to an error (and the structural test
-    ``tests/unit/test_tokenizer_alphabet_coverage.py`` does exactly that).
+    The character itself is preserved verbatim (see ``_handle_unknown_char``);
+    the warning exists so the *gap in the dialect's rules* stays visible and
+    gets closed, rather than being discovered later as odd tokenization. Tests
+    can promote this warning to an error, and the structural test
+    ``tests/unit/test_tokenizer_alphabet_coverage.py`` does exactly that.
     """
 
 
@@ -99,6 +97,21 @@ class BaseTokenizer:
         "TYPE",
     }
 
+    #: Characters emitted as standalone SYMBOL tokens.
+    #:
+    #: Punctuation (``().,[]{}:``) plus the operator characters SQL engines
+    #: build their operator names from. PostgreSQL composes multi-character
+    #: operators out of ``+-*/<>=~!@#%^&|?`` — ``@>``, ``#>>``, ``?|``, ``&&``
+    #: and the rest of the jsonb/hstore/array family are ordinary SQL, and
+    #: ``%``, ``&``, ``^``, ``#`` are modulo and bitwise operators in most
+    #: engines. A character missing from this set is not rejected, but it does
+    #: reach ``_handle_unknown_char`` and warn, so keep the set complete.
+    #:
+    #: Backtick is deliberately absent: it delimits identifiers in MySQL, which
+    #: claims it before the symbol check. Subclasses narrow this set when a
+    #: character is punctuation for them rather than an operator.
+    SYMBOL_CHARS = "().,+-*/<>=!?[]{}:|~%&^#@"
+
     #: Identifies the dialect for diagnostic messages emitted by
     #: ``_handle_unknown_char``. Subclasses set this to a short label
     #: (``"mysql"``, ``"oracle"``, ...) so warnings/errors are searchable.
@@ -162,26 +175,43 @@ class BaseTokenizer:
             return self._handle_unknown_char(char)
 
     def _handle_unknown_char(self, char: str) -> Optional[Token]:
-        """Handle a character that no dialect rule claimed.
+        """Handle a character that no dialect rule claimed — by preserving it.
 
-        Default behaviour: emit a ``TokenizerWarning`` (so the silent drop
-        is visible) and consume the character. Subclasses may override to
-        either claim the character (return a real ``Token``) or escalate
-        the warning to an error.
+        The token stream produced here is reserialized by
+        ``BaseStatementParser._tokens_to_string`` into the text that is
+        actually sent to the database. Discarding a character therefore
+        rewrites the user's SQL, and a rewritten statement is frequently
+        still *valid* — ``SELECT a % b`` without the ``%`` reads as
+        ``SELECT a AS b`` — so the migration succeeds and writes wrong data
+        with nothing to catch it.
 
-        Tests in ``test_tokenizer_alphabet_coverage`` filter
-        ``TokenizerWarning`` to ``error`` and run a representative corpus
-        per dialect, which is what catches new ``BUG-01`` regressions.
+        A tokenizer that does not understand a character has no business
+        deleting it. Emitting it verbatim keeps the database the authority on
+        what is valid SQL: the next gap in the rules surfaces as a database
+        error or as a statement that simply works, never as silent corruption.
+
+        The ``TokenizerWarning`` is still raised — the character is safe, but
+        the gap in the dialect's rules is a defect worth fixing — and
+        ``strict_unknown_chars`` still escalates it, which is how
+        ``core/sql_validator`` reports such gaps as findings.
+
+        Returns:
+            A SYMBOL token holding the character unchanged.
         """
         message = (
-            f"Tokenizer ({self.dialect_name}) skipped unknown character "
-            f"{char!r} at line {self.line}, col {self.col}"
+            f"Tokenizer ({self.dialect_name}) found unclaimed character "
+            f"{char!r} at line {self.line}, col {self.col}; "
+            f"passing it through verbatim"
         )
         if self.strict_unknown_chars:
             raise TokenizerError(message)
         warnings.warn(message, TokenizerWarning, stacklevel=2)
-        self.read()
-        return None
+
+        start_pos = self.pos
+        start_line = self.line
+        start_col = self.col
+        text = self.read()
+        return Token(TokenType.SYMBOL, text, start_pos, start_line, start_col, self.parens_depth)
 
     def peek(self, n: int = 1) -> str:
         """Look ahead n characters without consuming them.
@@ -262,9 +292,7 @@ class BaseTokenizer:
         Returns:
             True if character is a symbol
         """
-        # Include | for Oracle || concatenation operator; ~ for PostgreSQL regex
-        # operators (e.g. CHECK (VALUE ~ 'pattern')) and related SQL operators.
-        return char in "().,+-*/<>=![]{}:|~"
+        return char in self.SYMBOL_CHARS
 
     def _is_keyword_start(self) -> bool:
         """Check if current position starts a keyword or identifier.

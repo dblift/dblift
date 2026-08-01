@@ -15,22 +15,18 @@ class SQLServerTokenizer(BaseTokenizer):
     - GO batch delimiter
     - Bracket [identifiers]
     - Double-quoted identifiers (if QUOTED_IDENTIFIER is ON)
-    - Parameters and variables: @name, @@ROWCOUNT (base tokenizer otherwise drops @)
+    - Parameters and variables: @name, @@ROWCOUNT
     """
 
     dialect_name = "sqlserver"  # lint: allow-dialect-string: dialect dispatch
 
-    def _is_symbol(self, char: str) -> bool:
-        """Override to exclude brackets which are identifier delimiters in SQL Server.
-
-        Args:
-            char: Character to check
-
-        Returns:
-            True if character is a symbol (but not [ or ])
-        """
-        # Exclude [ and ] as they are identifier delimiters
-        return char in "().,+-*/<>=!{}:"
+    #: ``[``/``]`` delimit identifiers and ``@`` introduces parameters and
+    #: system functions; all three are claimed by ``_is_keyword_start`` /
+    #: ``_handle_keyword``, which run after the symbol check, so they must not
+    #: be symbols here. Everything else in the base set is T-SQL: ``%``, ``&``,
+    #: ``^``, ``|``, ``~`` are modulo and the bitwise operators, and ``#``
+    #: prefixes temporary table names.
+    SYMBOL_CHARS = "".join(c for c in BaseTokenizer.SYMBOL_CHARS if c not in "[]@")
 
     def _is_keyword_start(self) -> bool:
         """Override to include bracket and double-quote as identifier starts.

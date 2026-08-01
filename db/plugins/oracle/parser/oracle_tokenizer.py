@@ -22,9 +22,8 @@ class OracleTokenizer(BaseTokenizer):
 
     dialect_name = "oracle"  # lint: allow-dialect-string: dialect dispatch
 
-    def _is_symbol(self, char: str) -> bool:
-        """Include SQL*Plus markers and PL/SQL attribute prefix in Oracle token streams."""
-        return char in ("%", "@") or super()._is_symbol(char)
+    # ``%`` and ``@`` were added here when only Oracle needed them; both are in
+    # ``BaseTokenizer.SYMBOL_CHARS`` now, so the override would be a no-op.
 
     def _is_string_start(self) -> bool:
         """Treat double quotes like string starts so _handle_string runs.
