@@ -82,6 +82,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (``is_schema_history_race_error``) so each engine classifies its own error
   by a stable vendor code where one exists, instead of by driver message
   text that can also be locale-translated.
+- **Migrations from a secondary ``--scripts`` directory now record the same
+  bare filename in history as migrations from the primary directory.**
+  ``load_migration_scripts`` computed a correct bare ``script_name`` for every
+  migration by default, then overwrote it with the full source-directory path
+  for anything found outside the primary directory — an absolute path on most
+  setups. That value is what gets persisted into the schema history table's
+  ``script`` column, so a migration from a secondary directory was recorded
+  there as, say, ``/home/ci/project/extra-migrations/V2__add_col.sql`` instead
+  of ``V2__add_col.sql``. Moving the checkout, running on a different machine,
+  or even a ``/tmp`` vs ``/private/tmp`` path difference on macOS then made
+  ``validate`` report the migration as renamed. The override is removed;
+  ``script_name`` is now the bare filename regardless of which configured
+  directory a migration came from.
 - **``validate --strict`` now runs out-of-order detection on Python
   migrations.** Internally ``MigrationType.SQL`` names a migration's *role* —
   versioned, run-once — and not its file format; a versioned ``.py`` script is
