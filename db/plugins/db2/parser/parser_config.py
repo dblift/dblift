@@ -21,6 +21,20 @@ def _is_identifier_char(char: str) -> bool:
     return char.isalnum() or char in ("_", "$", "#")
 
 
+_DB2_WHITESPACE = (" ", "\t", "\n", "\r", "\f", "\v")
+
+
+def _is_db2_whitespace(char: str) -> bool:
+    """Whether ``char`` is whitespace DB2's lexer treats as a token separator.
+
+    Deliberately narrower than ``str.isspace()``, which also accepts Unicode
+    whitespace (e.g. a non-breaking space, U+00A0) that real DB2 does not -
+    ``END<NBSP>CASE`` is a syntax error on DB2 even though ``str.isspace()``
+    considers U+00A0 a separator.
+    """
+    return char in _DB2_WHITESPACE
+
+
 class DB2Config(DialectConfig):
     """DB2 dialect configuration with comprehensive regex patterns."""
 
@@ -587,8 +601,14 @@ class DB2Config(DialectConfig):
                         i += 5
                         continue
                 elif sql[i : i + 3].upper() == "END":
-                    # Make sure it's a word boundary before END
-                    if i == 0 or not _is_identifier_char(sql[i - 1]):
+                    # Make sure it's a word boundary on both sides of END -
+                    # otherwise an identifier that merely *starts* with the
+                    # letters END ("ENDDATE", "END_IF", "ENDPOINT", ...) has
+                    # its first 3 characters mistaken for a genuine closing
+                    # END token, mirroring the BEGIN/CASE-open checks above.
+                    if (i == 0 or not _is_identifier_char(sql[i - 1])) and (
+                        i + 3 >= len(sql) or not _is_identifier_char(sql[i + 3])
+                    ):
                         # Check what comes after END
                         # Skip whitespace after END. A comment (-- or /* */)
                         # between END and the control keyword is not skipped
@@ -596,7 +616,7 @@ class DB2Config(DialectConfig):
                         # falls through to being treated as a block-closing
                         # END, same as before this fix.
                         j = i + 3
-                        while j < len(sql) and sql[j].isspace():
+                        while j < len(sql) and _is_db2_whitespace(sql[j]):
                             j += 1
 
                         # Check if this is "END IF", "END WHILE", "END FOR", "END LOOP", "END CASE", etc.
@@ -644,7 +664,7 @@ class DB2Config(DialectConfig):
                             if depth == 0:
                                 # Found the matching END, now look for delimiter (@ or ;)
                                 j = i + 3
-                                while j < len(sql) and sql[j].isspace():
+                                while j < len(sql) and _is_db2_whitespace(sql[j]):
                                     j += 1
 
                                 # Accept either @ or ; as delimiter

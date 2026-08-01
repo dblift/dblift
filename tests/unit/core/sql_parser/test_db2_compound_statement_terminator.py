@@ -336,6 +336,93 @@ class TestDB2EndControlKeywordSeparatorWhitespace:
 
         assert parser.split_statements(procedure) == [procedure]
 
+    def test_nbsp_between_end_and_control_keyword_is_not_treated_as_separator(self):
+        """A non-breaking space (U+00A0) is not DB2 whitespace.
+
+        DB2's lexer rejects ``END<NBSP>WHILE`` with a syntax error - unlike
+        an ordinary space, tab, or newline, NBSP is not a legal separator
+        between ``END`` and a control keyword. ``_find_block_end`` doesn't
+        validate DB2 syntax, it only locates block boundaries, so the
+        correct behaviour here isn't to raise: the lookahead simply doesn't
+        skip the NBSP, doesn't recognise "WHILE" as following it, and falls
+        through to treating this ``END`` as the block's own terminating
+        ``END`` - closing the block right there, before the real one.
+        """
+        from db.plugins.db2.parser.parser_config import DB2Config
+
+        sql = (
+            "CREATE PROCEDURE p(IN x INTEGER)\nLANGUAGE SQL\nBEGIN\n"
+            "    WHILE x < 10 DO\n"
+            "        SET x = x + 1;\n"
+            "    END WHILE;\n"
+            "    INSERT INTO t VALUES (x);\n"
+            "END"
+        )
+        inner_end = sql.index("END WHILE")
+
+        end_pos = DB2Config()._find_block_end(sql, sql.index("BEGIN"))
+
+        assert end_pos == inner_end + 3
+
+
+@pytest.mark.unit
+class TestDB2EndKeywordRequiresRightWordBoundary:
+    """The literal ``END`` match itself needs a right-hand word boundary too.
+
+    ``_find_block_end``'s ``BEGIN``- and ``CASE``-open detectors already check
+    both sides of their match (the character before *and* the character just
+    past it isn't an identifier character). The ``END`` detector only ever
+    checked the left side. So an identifier that merely *starts* with the
+    letters ``END`` - ``ENDDATE``, ``END_IF``, ``ENDLESS``, ``ENDPOINT``,
+    ``ENDCASE`` - had its first three characters mistaken for a genuine
+    closing ``END`` token, corrupting ``depth``/``case_depth`` mid-scan and
+    truncating the rest of the block. Confirmed live on DB2 12.1: a procedure
+    declaring ``ENDDATE`` as a variable name compiles and runs unmodified.
+    """
+
+    def test_variable_named_enddate_does_not_truncate_the_procedure(self):
+        from db.plugins.db2.parser.parser_config import DB2Config
+
+        sql = """CREATE PROCEDURE P1()
+BEGIN
+  DECLARE ENDDATE DATE;
+  SET ENDDATE = CURRENT DATE;
+  SELECT 1 FROM SYSIBM.SYSDUMMY1;
+END
+"""
+
+        assert DB2Config()._find_block_end(sql, sql.index("BEGIN")) == len(sql)
+
+    def test_variable_named_enddate_survives_split_statements(self):
+        parser = DB2RegexParser()
+        procedure = """CREATE PROCEDURE P1()
+BEGIN
+  DECLARE ENDDATE DATE;
+  SET ENDDATE = CURRENT DATE;
+  SELECT 1 FROM SYSIBM.SYSDUMMY1;
+END"""
+
+        assert parser.split_statements(procedure) == [procedure]
+
+    @pytest.mark.parametrize(
+        "identifier",
+        [
+            "ENDDATE",
+            "END_IF",
+            "ENDLESS",
+            "ENDPOINT",
+            "ENDCASE",
+            # DB2 also permits '#' and '$' in unquoted identifiers.
+            "END#X",
+            "END$Y",
+        ],
+    )
+    def test_identifier_starting_with_end_does_not_truncate_the_procedure(self, identifier):
+        parser = DB2RegexParser()
+        procedure = f"CREATE PROCEDURE p(IN v INTEGER)\nLANGUAGE SQL\nBEGIN\n    SET v = {identifier} + 1;\nEND"
+
+        assert parser.split_statements(procedure) == [procedure]
+
 
 @pytest.mark.unit
 class TestDB2ControlEndKeywordRequiresWordBoundary:
@@ -390,6 +477,15 @@ class TestDB2ControlEndKeywordRequiresWordBoundary:
             # characters too, not just alnum/underscore.
             "IF#1",
             "LOOP$2",
+            # Whole extra words glued on with no separator at all, not just
+            # a single trailing character - the lookahead reads the entire
+            # alpha run before comparing, so these must be rejected too.
+            "IFSTATUS",
+            "WHILECOUNT",
+            "LOOPINDEX",
+            "FORNAME",
+            "REPEATCOUNT",
+            "CASETYPE",
         ],
     )
     def test_case_expression_alias_prefixed_by_a_control_keyword_does_not_truncate_the_procedure(
@@ -404,7 +500,7 @@ class TestDB2ControlEndKeywordRequiresWordBoundary:
 
         assert parser.split_statements(procedure) == [procedure]
 
-    @pytest.mark.parametrize("identifier", ["CASE_STATUS", "CASE9_FLAG", "CASE#X"])
+    @pytest.mark.parametrize("identifier", ["CASE_STATUS", "CASE9_FLAG", "CASE#X", "CASETYPE"])
     def test_identifier_prefixed_by_case_does_not_open_a_phantom_case_expression(self, identifier):
         """A variable/column named e.g. ``CASE_STATUS`` is not the ``CASE`` keyword.
 
@@ -418,7 +514,7 @@ class TestDB2ControlEndKeywordRequiresWordBoundary:
 
         assert parser.split_statements(procedure) == [procedure]
 
-    @pytest.mark.parametrize("identifier", ["BEGIN_DATE", "BEGIN9_TS", "BEGIN#X"])
+    @pytest.mark.parametrize("identifier", ["BEGIN_DATE", "BEGIN9_TS", "BEGIN#X", "BEGINDATE"])
     def test_identifier_prefixed_by_begin_does_not_open_a_phantom_block(self, identifier):
         """A variable/column named e.g. ``BEGIN_DATE`` is not the ``BEGIN`` keyword.
 
