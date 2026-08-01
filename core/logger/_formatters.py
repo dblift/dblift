@@ -19,11 +19,32 @@ _logger = logging.getLogger(__name__)
 def resolve_dblift_package_version() -> Optional[str]:
     """Return the installed ``dblift`` distribution version for log banners.
 
-    Prefer ``importlib.metadata`` (correct for wheels and frozen binaries).
-    Avoid walking the filesystem first: under PyInstaller ``Path(__file__)``
-    can resolve to a unrelated ``__init__.py`` and print a stale version.
+    In a dev checkout, ``importlib.metadata.version("dblift")`` scans
+    ``sys.path`` for ANY distribution metadata matching the name "dblift" —
+    it does not verify that metadata belongs to the code actually executing,
+    so a stale or shadowing install elsewhere on ``sys.path`` can win over the
+    running source. The bundled ``__init__.py`` is the freshest, least
+    ambiguous ground truth for "what version is this code", so it is tried
+    first. Under PyInstaller, though, ``Path(__file__)`` resolves under the
+    MEIPASS extraction layout rather than a real source tree, so the
+    filesystem walk is skipped entirely when frozen and ``importlib.metadata``
+    is tried first instead.
     """
     from importlib.metadata import PackageNotFoundError, version
+
+    # Dev checkouts only (skip when frozen — MEIPASS layout is not a git tree)
+    if not getattr(sys, "frozen", False):
+        try:
+            init_file = Path(__file__).parent.parent.parent / "__init__.py"
+            if init_file.exists():
+                with open(init_file, "r", encoding="utf-8") as f:
+                    for line in f:
+                        if line.startswith("__version__"):
+                            parts = line.split("=", 1)
+                            if len(parts) == 2:
+                                return parts[1].strip().strip('"').strip("'")
+        except Exception as e:
+            _logger.debug(f"Could not read version from __init__.py: {e}")
 
     try:
         return version("dblift")
@@ -40,20 +61,6 @@ def resolve_dblift_package_version() -> Optional[str]:
             return str(ver)
     except (ImportError, AttributeError):
         pass
-
-    # Dev checkouts only (skip when frozen — MEIPASS layout is not a git tree)
-    if not getattr(sys, "frozen", False):
-        try:
-            init_file = Path(__file__).parent.parent.parent / "__init__.py"
-            if init_file.exists():
-                with open(init_file, "r", encoding="utf-8") as f:
-                    for line in f:
-                        if line.startswith("__version__"):
-                            parts = line.split("=", 1)
-                            if len(parts) == 2:
-                                return parts[1].strip().strip('"').strip("'")
-        except Exception as e:
-            _logger.debug(f"Could not read version from __init__.py: {e}")
 
     return None
 

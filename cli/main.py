@@ -185,6 +185,41 @@ class _CliContext:
     license_info: Optional[Any] = None
 
 
+def _resolve_core_version() -> Optional[str]:
+    """Return the installed ``dblift`` core distribution version.
+
+    In a dev checkout, ``importlib.metadata.version("dblift")`` scans
+    ``sys.path`` for ANY distribution metadata matching the name "dblift" —
+    it does not verify that metadata belongs to the code actually executing,
+    so a stale or shadowing install elsewhere on ``sys.path`` can win over the
+    running source. The bundled ``__init__.py`` at the project root is the
+    freshest, least ambiguous ground truth for "what version is this code",
+    so it is tried first. Under a frozen build, though, the filesystem layout
+    is unreliable, so the walk is skipped entirely and ``importlib.metadata``
+    is used instead.
+    """
+    from importlib.metadata import PackageNotFoundError
+    from importlib.metadata import version as _version
+
+    if not getattr(sys, "frozen", False):
+        try:
+            init_file = _project_root / "__init__.py"
+            if init_file.exists():
+                with open(init_file, "r", encoding="utf-8") as f:
+                    for line in f:
+                        if line.startswith("__version__"):
+                            parts = line.split("=", 1)
+                            if len(parts) == 2:
+                                return parts[1].strip().strip('"').strip("'")
+        except Exception:
+            pass
+
+    try:
+        return _version("dblift")
+    except PackageNotFoundError:
+        return None
+
+
 def _format_version() -> str:
     """Render the ``--version`` output.
 
@@ -206,7 +241,7 @@ def _format_version() -> str:
         except PackageNotFoundError:
             return None
 
-    core = _get("dblift")
+    core = _resolve_core_version()
     pro = _get("dblift-pro")
     enterprise = _get("dblift-enterprise")
 
