@@ -753,7 +753,7 @@ class MigrationDataCollector:
     ) -> bool:
         """Check if migration should be excluded based on filters."""
         # Versions inclusion filter
-        if versions and version not in versions:
+        if versions and version and version not in versions:
             return True
 
         # Versions exclusion filter

@@ -517,6 +517,16 @@ class TestShouldExcludeMigrationCoverage(unittest.TestCase):
         result = coll._should_exclude_migration("1.0", "V1.sql", [], ["skip"], [], [])
         assert result is False
 
+    def test_include_filter_does_not_exclude_versionless_migration(self):
+        """F-6 regression: a repeatable migration (version=None) must not be
+        excluded by a --versions inclusion filter aimed at versioned migrations.
+        """
+        coll = self._c()
+        result = coll._should_exclude_migration(
+            None, "R__untagged.sql", [], [], ["1.0", "2.0"], []
+        )
+        assert result is False
+
 
 # ===========================================================================
 # _clean_delete_description  (lines 818-823)
@@ -1084,6 +1094,32 @@ class TestGetMigrationDataFromStateCoverage(unittest.TestCase):
             exclude_versions=[],
         )
         assert len(result) == 1
+
+    def test_versions_filter_does_not_exclude_repeatable(self):
+        """F-6 regression: repeatable migrations (version=None) must not be
+        excluded by --versions — that filter only applies to versioned migrations.
+        """
+        sm = MagicMock()
+        sm.extract_tags.return_value = []
+        coll = _make_collector(sm)[0]
+        m = _make_migration(
+            None,
+            mtype=MigrationType.REPEATABLE,
+            success=True,
+            installed_rank=1,
+            checksum="abc",
+        )
+        m.script_name = "R__untagged.sql"
+        state = MigrationState(pending_objects=[])
+        result = coll._get_migration_data_from_state(
+            migration_state=state,
+            all_applied_migrations=[m],
+            tags=[],
+            exclude_tags=[],
+            versions=["1.0", "2.0"],
+            exclude_versions=[],
+        )
+        assert len(result) == 1, "repeatable must not be excluded by an unrelated --versions filter"
 
 
 # ===========================================================================
