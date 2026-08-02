@@ -36,6 +36,64 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   ``None`` query is now treated as "no indexes to report" and skipped
   silently, matching how the same extractor already handles a declined bulk
   index query.
+- **A failing ``beforeEach``/``beforeEachMigrate`` callback now reports its own
+  error instead of an unrelated ``UnboundLocalError``.** The per-migration
+  timing variable used to report execution time on failure was assigned
+  *after* these callbacks ran, but read in the exception handler that a
+  callback failure unwinds through. When a callback raised, the handler tried
+  to read a variable that had never been set, so the surfaced error was
+  ``cannot access local variable 'start_time'`` rather than the callback's
+  actual failure. The real cause was still logged just above it, but the
+  message in the FAILED banner pointed at a Python internals bug instead of
+  the broken callback. The timing variable is now initialised before the
+  callback dispatch, so a failing callback surfaces as the callback failure it
+  is. As a side effect, the reported execution time for a successful migration
+  now includes ``beforeEach``/``beforeEachMigrate`` callback dispatch time,
+  where previously only the migration script itself was timed.
+
+- **``undo`` no longer silently no-ops when it is the first call on a fresh
+  client.** ``migrate`` and ``info`` both establish the database connection
+  as an explicit first step before touching migration history; ``undo`` did
+  not — it assumed a connection already existed and relied on history-table
+  creation to establish one as a side effect. That assumption held for
+  providers that reconnect lazily on demand, but not for CosmosDB, whose
+  history-table creation talks to a lower-level connection manager without
+  updating the provider's own connection state. On a brand-new client whose
+  very first operation was ``undo()``, this meant every subsequent read of
+  the migration history failed with a connection error — and that failure
+  was swallowed by a broad exception handler (added to tolerate mocked
+  dependencies in tests) that treated *any* history-read failure as "no
+  applied migrations found," reporting ``No migrations to undo`` and
+  ``success=True`` even though migrations were, in fact, applied. ``undo``
+  now establishes its own connection up front, the same way ``migrate`` and
+  ``info`` do, so it correctly finds and processes pending undos on a fresh
+  client instead of reporting a false success.
+- **A concurrent-migrate race on a brand-new schema no longer crashes with a
+  raw driver traceback on DB2, Oracle, or SQL Server.** When two ``migrate``
+  processes bootstrap the migration-history table for the first time at once,
+  the loser used to get a graceful retry only on PostgreSQL and MySQL — the
+  retry loop recognised the race by matching driver error text against a
+  short, PostgreSQL-shaped list of English substrings (``"already exists"``,
+  ``"duplicate key"``, ...). DB2 reports the same race as ``SQL0601N``
+  (SQLSTATE 42710), Oracle as ``ORA-00955``, and SQL Server as
+  ``"already an object named ..."`` (Msg 2714) — none of which matched, so
+  the loser's raw exception propagated as an uncaught crash instead of a
+  clean retry. Race detection is now a dialect hook
+  (``is_schema_history_race_error``) so each engine classifies its own error
+  by a stable vendor code where one exists, instead of by driver message
+  text that can also be locale-translated.
+- **``repair`` now fixes a corrupted or non-numeric stored checksum instead of
+  silently doing nothing.** A history row's checksum is normalized to an
+  integer before any comparison; when the stored value can't be parsed (for
+  example a manually edited row), normalization returns ``None``. The drift
+  check in ``repair`` required both the stored and the filesystem checksum to
+  be non-``None`` before flagging a mismatch, so a stored checksum that failed
+  to parse was silently excluded from repair — the command reported no issues
+  found while ``validate`` kept failing on that same migration, with no
+  CLI-only way to recover. The check no longer requires the stored checksum to
+  have parsed successfully: a row whose stored checksum is unreadable is now
+  treated as drifted whenever a matching migration script exists on disk, and
+  ``repair`` rewrites it like any other checksum mismatch.
 - **``validate --strict`` now runs out-of-order detection on Python
   migrations.** Internally ``MigrationType.SQL`` names a migration's *role* —
   versioned, run-once — and not its file format; a versioned ``.py`` script is
@@ -393,6 +451,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   package name before the terminator, and the same trailing-comment/
   undelimited-end-of-input handling given to the procedure and trigger
   detectors above, for consistency.
+- **MySQL history-table bootstrap no longer crashes on a concurrent race.**
+  The migration lock table has always been created with
+  ``CREATE TABLE IF NOT EXISTS``, but the history table used a bare
+  ``CREATE TABLE``, so two processes bootstrapping the same schema at once
+  raced: the loser's ``CREATE TABLE`` failed with a duplicate-table error
+  that propagated uncaught, crashing that process outright. The history
+  table now uses ``IF NOT EXISTS`` too, matching the lock table, so the
+  statement itself is safe under a concurrent race rather than failing and
+  needing a catch. MariaDB, which shares this provider, gets the same fix.
 
 ### Removed
 

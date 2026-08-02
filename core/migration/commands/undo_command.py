@@ -151,12 +151,23 @@ class UndoCommand(BaseCommand):
         result.show_sql = show_sql
         result.target_schema = self.config.database.schema
 
-        # Populate database connection information
-        self._populate_database_info(result)
-
         try:
-            # Ensure schema and history table exist (this establishes the connection)
+            # Ensure the provider connection exists before any state or
+            # history read. undo() has no prior migrate()/info() call to
+            # rely on, so it must establish the connection itself -- some
+            # providers (e.g. CosmosDB) have no lazy-reconnect hook and
+            # raise instead of connecting on demand, which previously left
+            # this command reading an empty, connection-less history and
+            # reporting a false "nothing to undo" (mirrors _run_preflight's
+            # connect-before-history-before-info ordering used by
+            # migrate/info).
+            self._ensure_connected()
+
+            # Ensure schema and history table exist
             self.history_manager.create_schema_and_history_table(create_schema=False)
+
+            # Populate database connection information (after connection is established)
+            self._populate_database_info(result)
 
             # Log command execution with connection info (after connection is established)
             self._log_command_header_update(
