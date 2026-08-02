@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+### Changed
+
+### Fixed
+
+### Removed
+
+## [3.4.0] - 2026-08-02
+
+### Added
+
 - **`DBLiftClient` now exposes paid-tier stub methods for `diff`,
   `export_schema`, `snapshot`, `plan`, and `preflight`.** Previously these
   didn't exist on the OSS class at all, so calling them raised a bare
