@@ -89,6 +89,11 @@ PREMIUM_COMMANDS: Tuple[PremiumCommand, ...] = (
         "Run deployment preflight checks from a snapshot model",
         api_method="preflight",
     ),
+    PremiumCommand(
+        "license",
+        "Enterprise",
+        "Manage the dblift license (activate, info, check)",
+    ),
 )
 
 

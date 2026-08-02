@@ -33,6 +33,22 @@ def test_manifest_names_are_unique():
     assert len(names) == len(set(names))
 
 
+def test_manifest_includes_license_as_enterprise_only():
+    """issue #746: the `license` subcommand is enterprise-only administrative
+    surface (activate/info/check against ~/.dblift/license.key), not a
+    feature OSS users would want a programmatic-API stub for — unlike
+    diff/export_schema/snapshot/plan/preflight, it has no api_method."""
+    by_name = {cmd.name: cmd for cmd in PREMIUM_COMMANDS}
+    assert "license" in by_name, (
+        "PREMIUM_COMMANDS is missing a 'license' entry — without it, OSS users "
+        "get argparse's generic 'unrecognized arguments: license' instead of "
+        "a proper upsell stub naming the command and the upgrade URL."
+    )
+    cmd = by_name["license"]
+    assert cmd.edition == "Enterprise"
+    assert cmd.api_method is None
+
+
 def test_missing_from_excludes_registered_names():
     registered = {"diff", "data"}
     missing = {cmd.name for cmd in premium_commands_missing_from(registered)}
