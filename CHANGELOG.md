@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+### Changed
+
+### Fixed
+
+### Removed
+
+## [3.4.0] - 2026-08-02
+
+### Added
+
 - **`DBLiftClient` now exposes paid-tier stub methods for `diff`,
   `export_schema`, `snapshot`, `plan`, and `preflight`.** Previously these
   didn't exist on the OSS class at all, so calling them raised a bare
@@ -25,6 +35,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A handler can now opt a command out of project-config loading
+  entirely.** Routing any command through the standard CLI pipeline forced
+  a full project config (`dblift.yaml`/`--db-url`/`DBLIFT_DB_URL`) to load
+  before the handler ever ran, even for a command that has nothing to do
+  with a database — e.g. a paid-tier `license` command checking
+  `~/.dblift/license.key`. The OSS-native `config`/`db` commands already
+  skip this by hardcoded literal name in
+  `cli/main.py::_parse_argv_and_load_config`, but OSS code may not name a
+  paid-edition command anywhere outside `core/premium_manifest.py`, so
+  that route wasn't available to a paid command. A registered handler
+  marked `_dblift_zero_config_command = True` is now dispatched directly
+  with a minimal context, bypassing config/db-url loading and the full
+  logging-and-client-build pipeline — the same handler-attribute pattern
+  already used for `_dblift_config_only_client`/
+  `_dblift_skip_secret_resolution`. Guarded to single-command invocations
+  only, so a chained command (e.g. `dblift license migrate`) falls through
+  to the normal pipeline instead of silently running only the zero-config
+  command and dropping the rest. (#746)
+- **`dblift license` in a pure open-source install failed with argparse's
+  generic "unrecognized arguments" instead of naming the command.** The
+  premium-command catalog that lets the OSS CLI show a proper upsell for
+  paid-only commands (`diff`, `export-schema`, `snapshot`, `plan`,
+  `preflight`, ...) had no entry for `license`, so it fell through to
+  argparse's default error instead of the same "this is an Enterprise
+  command, here's how to upgrade" message every other paid command gets.
+  `license` is CLI-only administrative surface — unlike the other entries,
+  it has no corresponding `DBLiftClient` method. (#746)
 - **SQL Server ``CREATE FULLTEXT INDEX``, ``DROP FULLTEXT INDEX``, and
   ``DROP FULLTEXT CATALOG`` failed with SQL Server's own error instead of
   running.** SQL Server refuses to run any of these statements inside a user
