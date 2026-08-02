@@ -1037,6 +1037,54 @@ class TestGetMigrationDataFromStateCoverage(unittest.TestCase):
         )
         assert len(result) == 0
 
+    def test_tags_filter_excludes_non_matching_repeatable(self):
+        """F-6: repeatable migrations (version=None) must still be tag-filtered."""
+        sm = MagicMock()
+        sm.extract_tags.return_value = ["alpha"]
+        coll = _make_collector(sm)[0]
+        m = _make_migration(
+            None,
+            mtype=MigrationType.REPEATABLE,
+            success=True,
+            installed_rank=1,
+            checksum="abc",
+        )
+        m.script_name = "R__tagged[alpha].sql"
+        state = MigrationState(pending_objects=[])
+        result = coll._get_migration_data_from_state(
+            migration_state=state,
+            all_applied_migrations=[m],
+            tags=["beta"],
+            exclude_tags=[],
+            versions=[],
+            exclude_versions=[],
+        )
+        assert result == [], "repeatable tagged 'alpha' must be excluded when filtering --tags beta"
+
+    def test_tags_filter_includes_matching_repeatable(self):
+        """F-6: a repeatable migration matching --tags must still be included."""
+        sm = MagicMock()
+        sm.extract_tags.return_value = ["alpha"]
+        coll = _make_collector(sm)[0]
+        m = _make_migration(
+            None,
+            mtype=MigrationType.REPEATABLE,
+            success=True,
+            installed_rank=1,
+            checksum="abc",
+        )
+        m.script_name = "R__tagged[alpha].sql"
+        state = MigrationState(pending_objects=[])
+        result = coll._get_migration_data_from_state(
+            migration_state=state,
+            all_applied_migrations=[m],
+            tags=["alpha"],
+            exclude_tags=[],
+            versions=[],
+            exclude_versions=[],
+        )
+        assert len(result) == 1
+
 
 # ===========================================================================
 # Additional tests to cover remaining lines
