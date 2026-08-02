@@ -8,6 +8,7 @@ The missing guard is for files discovered via directory symlinks — those files
 files (is_symlink() == False), but their resolved path is outside the migrations directory.
 """
 
+import os
 import tempfile
 from pathlib import Path
 from unittest.mock import patch
@@ -133,3 +134,31 @@ class TestPathTraversalGuard:
         assert (
             "V99__secret.sql" not in script_names
         ), "File outside the directory must be rejected by the path traversal guard"
+
+
+class TestGetAllScriptsUnreadableDirectory:
+    """Tests that an unreadable --scripts directory fails loudly instead of silently returning no results."""
+
+    def setup_method(self):
+        """Set up test fixtures."""
+        self.unreadable_dir = tempfile.mkdtemp()
+        with open(os.path.join(self.unreadable_dir, "V1__test.sql"), "w") as f:
+            f.write("CREATE TABLE t(id INTEGER PRIMARY KEY);")
+        os.chmod(self.unreadable_dir, 0o000)
+        logger = DbliftLogger("test", LogFormat.TEXT)
+        self.script_manager = MigrationScriptManager(logger)
+
+    def teardown_method(self):
+        """Clean up test fixtures."""
+        import shutil
+
+        os.chmod(self.unreadable_dir, 0o755)
+        shutil.rmtree(self.unreadable_dir, ignore_errors=True)
+
+    @pytest.mark.skipif(
+        os.name == "nt" or os.getuid() == 0,
+        reason="permission bits aren't enforced for root or on Windows",
+    )
+    def test_unreadable_scripts_dir_raises_permission_error(self):
+        with pytest.raises(PermissionError, match="Cannot read migrations directory"):
+            self.script_manager.get_all_scripts(Path(self.unreadable_dir))
