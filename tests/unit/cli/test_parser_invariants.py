@@ -243,6 +243,25 @@ def test_import_flyway_accepts_source_table_override():
     assert args.flyway_table == "custom_flyway_history"
 
 
+def test_db_url_flag_documented_in_migrate_help():
+    """F-13: --db-url/--db-schema must appear in `dblift migrate --help`.
+
+    These 4 flags are parsed globally (before the subcommand) but were only
+    ever attached to the root parser, so a user reading `dblift migrate
+    --help` had no way to discover them.
+    """
+    parser = create_parser()
+    subparsers = next(
+        action for action in parser._actions if isinstance(action, argparse._SubParsersAction)
+    )
+    migrate_parser = subparsers.choices["migrate"]
+
+    help_text = migrate_parser.format_help()
+
+    assert "--db-url" in help_text
+    assert "--db-schema" in help_text
+
+
 def test_oss_parser_lists_paid_commands_only_as_labeled_stubs(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
