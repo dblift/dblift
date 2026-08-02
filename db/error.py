@@ -42,6 +42,12 @@ class ErrorCategory(str, Enum):
 # generic passthrough.
 _PYMSSQL_TUPLE_RE = re.compile(r"^\(\d+,\s*b?['\"](.+?)['\"]\)$")
 
+# SQLAlchemy appends the failing statement to statement-bound errors, e.g.
+# '...\n[SQL: CREATE TABLE dblift_schema_history (...)]\n[parameters: ...]'.
+# format_connection_error() strips this trailing block so a schema/table
+# setup failure never leaks internal DDL to the user.
+_SQL_STATEMENT_BLOCK_RE = re.compile(r"\s*\[SQL:.*", re.IGNORECASE | re.DOTALL)
+
 # Generic fallback patterns (checked for all database types)
 _GENERIC_PATTERNS: List[Tuple[re.Pattern[str], ErrorCategory]] = [
     (
@@ -128,6 +134,14 @@ def format_connection_error(error: Exception, db_type: str = "") -> str:
     from core.migration.executor.execution_engine import _strip_driver_exception_prefix
 
     message = _strip_driver_exception_prefix(str(error))
+    # SQLAlchemy appends the failing statement for statement-bound errors
+    # (e.g. our own internal schema-history CREATE TABLE), e.g.
+    # 'ORA-01435: user does not exist\n[SQL: CREATE TABLE ...]'. Unlike the
+    # execution-engine's own statement-failure reporting (which shows a
+    # user's migration SQL on purpose), a connection/setup failure has
+    # nothing to do with the caller's SQL, so strip it here to avoid
+    # leaking internal DDL.
+    message = _SQL_STATEMENT_BLOCK_RE.sub("", message).strip()
     lowered = message.lower()
     # SQL Server can report login failures with SQLState 08001, so inspect
     # explicit auth markers before classifying broad connection SQLStates.

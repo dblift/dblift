@@ -19,6 +19,8 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock, call, patch
 
+from sqlalchemy.exc import OperationalError
+
 from core.logger.results import MigrateResult, MigrationInfo
 from core.migration.commands.migrate_command import MigrateCommand
 from core.migration.migration import MigrationType
@@ -678,6 +680,31 @@ class TestMigrateCommandExecute(unittest.TestCase):
 
         self.assertFalse(result.success)
         self.assertIn("Migration operation failed", result.error_message)
+
+    def test_nonexistent_schema_error_is_formatted_cleanly(self):
+        """F-14: a schema-creation failure in preflight phase 2 (e.g. a
+        nonexistent Oracle schema) must not leak the raw SQLAlchemy
+        exception — including the generated CREATE TABLE SQL text — into
+        the user-facing error message.
+        """
+        m = _make_migration("V1__a.sql")
+        cmd = self._make_execute_cmd(pending=[m])
+        raw_error = OperationalError(
+            "CREATE TABLE dblift_schema_history (...)",
+            None,
+            Exception("ORA-01435: user does not exist"),
+        )
+        cmd.history_manager.create_schema_and_history_table.side_effect = raw_error
+
+        with patch.object(cmd, "_log_command_completion"):
+            result = cmd.execute(Path("/migrations"))
+
+        self.assertFalse(result.success)
+        self.assertNotIn("CREATE TABLE", result.error_message or "")
+        self.assertTrue(
+            "ORA-01435" in (result.error_message or "")
+            or "does not exist" in (result.error_message or "")
+        )
 
 
 class TestStrictModeWarningSupression(unittest.TestCase):

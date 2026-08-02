@@ -607,7 +607,15 @@ class BaseCommand:
         """
         self._ensure_connected()
         if ensure_history and not dry_run:
-            self.history_manager.create_schema_and_history_table(create_schema=False)
+            try:
+                self.history_manager.create_schema_and_history_table(create_schema=False)
+            except Exception as exc:
+                from db.error import format_connection_error
+
+                db_type = getattr(self.provider, "canonical_dialect_key", "") or getattr(
+                    getattr(self.config, "database", None), "type", ""
+                )
+                raise ConnectionError(format_connection_error(exc, str(db_type or ""))) from exc
         self._populate_database_info(result)
 
     def _run_command_lifecycle(
