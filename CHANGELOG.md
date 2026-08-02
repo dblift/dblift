@@ -108,6 +108,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   filename are now also caught as a naming conflict during validation, since
   removing the directory qualification means they'd otherwise be
   indistinguishable by name.
+- **``repair`` now fixes a corrupted or non-numeric stored checksum instead of
+  silently doing nothing.** A history row's checksum is normalized to an
+  integer before any comparison; when the stored value can't be parsed (for
+  example a manually edited row), normalization returns ``None``. The drift
+  check in ``repair`` required both the stored and the filesystem checksum to
+  be non-``None`` before flagging a mismatch, so a stored checksum that failed
+  to parse was silently excluded from repair — the command reported no issues
+  found while ``validate`` kept failing on that same migration, with no
+  CLI-only way to recover. The check no longer requires the stored checksum to
+  have parsed successfully: a row whose stored checksum is unreadable is now
+  treated as drifted whenever a matching migration script exists on disk, and
+  ``repair`` rewrites it like any other checksum mismatch.
 - **``validate --strict`` now runs out-of-order detection on Python
   migrations.** Internally ``MigrationType.SQL`` names a migration's *role* —
   versioned, run-once — and not its file format; a versioned ``.py`` script is

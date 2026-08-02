@@ -413,7 +413,7 @@ class RepairCommand(BaseCommand):
             fs_migration = filesystem_lookup.get(script_name)
             fs_checksum = getattr(fs_migration, "checksum", None) if fs_migration else None
 
-            if fs_checksum is not None and db_checksum is not None and fs_checksum != db_checksum:
+            if fs_checksum is not None and fs_checksum != db_checksum:
                 repairs.append(
                     {
                         "type": "CHECKSUM_MISMATCH",
