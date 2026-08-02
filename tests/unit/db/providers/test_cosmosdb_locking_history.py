@@ -899,11 +899,15 @@ class TestRepairMigrationHistoryContainerCaching(unittest.TestCase):
 
     def test_gets_container_client_when_not_cached(self):
         mock_container = MagicMock()
-        mock_container.read_item.return_value = {
-            "id": "V1__x.sql",
-            "checksum": 0,
-            "success": True,
-        }
+        mock_container.query_items.return_value = [
+            {
+                "id": "V1__x.sql",
+                "script": "V1__x.sql",
+                "checksum": 0,
+                "success": True,
+                "version": "1",
+            }
+        ]
 
         cm = _make_connection_manager()
         cm.get_container_client.return_value = mock_container
