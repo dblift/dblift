@@ -71,34 +71,6 @@ class TestBaseQueryExecutor:
                 name not in BaseQueryExecutor.__dict__
             ), f"Log wrapper {name!r} must be removed from BaseQueryExecutor (story 18-4)"
 
-    def test_truncate_sql_for_logging_returns_full_sql_when_short(self, query_executor):
-        """Test _truncate_sql_for_logging() returns full SQL when short."""
-        sql = "SELECT * FROM users"
-
-        result = query_executor._truncate_sql_for_logging(sql)
-
-        assert result == sql
-
-    def test_truncate_sql_for_logging_truncates_long_sql(self, query_executor):
-        """Test _truncate_sql_for_logging() truncates long SQL."""
-        sql = "SELECT " + ", ".join([f"col{i}" for i in range(100)])
-        max_length = 50
-
-        result = query_executor._truncate_sql_for_logging(sql, max_length=max_length)
-
-        # max_length + len("...") = 53
-        assert len(result) <= max_length + len("...")
-        assert result.endswith("...")
-
-    def test_truncate_sql_for_logging_delegates_to_module_level(self, query_executor):
-        """AC#2 structural: _truncate_sql_for_logging() must delegate to truncate_sql_for_logging() (story 18-12)."""
-        import inspect
-
-        src = inspect.getsource(query_executor._truncate_sql_for_logging)
-        assert (
-            "truncate_sql_for_logging" in src
-        ), "_truncate_sql_for_logging must delegate to module-level truncate_sql_for_logging()"
-
     def test_validate_connection_raises_on_none(self, query_executor):
         """Test _validate_connection() raises on None."""
         with pytest.raises(RuntimeError, match="No database connection provided"):
@@ -116,38 +88,3 @@ class TestBaseQueryExecutor:
         """Test _validate_connection() passes on open connection."""
         # Should not raise exception
         query_executor._validate_connection(mock_connection)
-
-    def test_format_identifier_returns_as_is(self, query_executor):
-        """Test _format_identifier() returns identifier as-is by default."""
-        assert query_executor._format_identifier("users") == "users"
-        assert query_executor._format_identifier("MyTable") == "MyTable"
-
-    def test_get_parameter_placeholder_returns_question_mark(self, query_executor):
-        """Test _get_parameter_placeholder() returns '?' by default."""
-        assert query_executor._get_parameter_placeholder() == "?"
-
-    def test_build_parameter_placeholders_creates_placeholders(self, query_executor):
-        """Test _build_parameter_placeholders() creates comma-separated placeholders."""
-        result = query_executor._build_parameter_placeholders(3)
-
-        assert result == "?, ?, ?"
-
-        result = query_executor._build_parameter_placeholders(1)
-        assert result == "?"
-
-        result = query_executor._build_parameter_placeholders(0)
-        assert result == ""
-
-    def test_is_connection_error_detects_connection_errors(self, query_executor):
-        """Test _is_connection_error() detects connection-related errors."""
-        assert query_executor._is_connection_error(Exception("Connection timeout")) is True
-        assert query_executor._is_connection_error(Exception("Network unreachable")) is True
-        assert query_executor._is_connection_error(Exception("Connection closed")) is True
-        assert query_executor._is_connection_error(Exception("Connection broken")) is True
-        assert query_executor._is_connection_error(Exception("Connection refused")) is True
-
-    def test_is_connection_error_returns_false_for_other_errors(self, query_executor):
-        """Test _is_connection_error() returns False for non-connection errors."""
-        assert query_executor._is_connection_error(Exception("Syntax error")) is False
-        assert query_executor._is_connection_error(Exception("Table not found")) is False
-        assert query_executor._is_connection_error(ValueError("Invalid value")) is False

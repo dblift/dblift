@@ -1,19 +1,14 @@
 """
-Database error classification and retry logic.
+Database error classification.
 
-Provides pattern-based error classification along with exponential-backoff
-retry for transient errors. Dialect-specific error patterns are supplied by
-each dialect's quirks (``error_patterns()``); this module owns only the
-generic, dialect-agnostic fallback patterns.
+Provides pattern-based error classification. Dialect-specific error patterns
+are supplied by each dialect's quirks (``error_patterns()``); this module owns
+only the generic, dialect-agnostic fallback patterns.
 """
 
-import functools
-import random
 import re
-import time
-from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Callable, Dict, List, Optional, Tuple, Type, Union
+from typing import Any, List, Optional, Tuple
 
 from core.logger import NullLog
 
@@ -32,31 +27,6 @@ class ErrorCategory(str, Enum):
     RESOURCE = "resource"
     INTERNAL = "internal"
     UNKNOWN = "unknown"
-
-
-@dataclass
-class DatabaseErrorInfo:
-    """Detailed information about a database error."""
-
-    exception: Exception
-    sql: Optional[str] = None
-    params: Optional[List[Any]] = None
-    schema: Optional[str] = None
-    category: ErrorCategory = ErrorCategory.UNKNOWN
-    retry_count: int = 0
-    context: Dict[str, Any] = field(default_factory=dict)
-
-    def __str__(self) -> str:
-        parts = [f"[{self.category.value.upper()}]", str(self.exception)]
-        if self.sql:
-            # Truncate long SQL for readability
-            sql_preview = self.sql[:120] + "..." if len(self.sql) > 120 else self.sql
-            parts.append(f"SQL: {sql_preview}")
-        if self.schema:
-            parts.append(f"Schema: {self.schema}")
-        if self.retry_count > 0:
-            parts.append(f"Retry: {self.retry_count}")
-        return " | ".join(parts)
 
 
 # ---------------------------------------------------------------------------
@@ -84,15 +54,6 @@ _GENERIC_PATTERNS: List[Tuple[re.Pattern[str], ErrorCategory]] = [
     (re.compile(r"authentication\s+fail", re.IGNORECASE), ErrorCategory.AUTHENTICATION),
     (re.compile(r"permission\s+denied", re.IGNORECASE), ErrorCategory.AUTHORIZATION),
 ]
-
-# Categories eligible for retry
-_RETRYABLE_CATEGORIES = frozenset(
-    {
-        ErrorCategory.NETWORK,
-        ErrorCategory.TIMEOUT,
-        ErrorCategory.LOCKING,
-    }
-)
 
 
 class DatabaseErrorClassifier:
@@ -132,15 +93,6 @@ class DatabaseErrorClassifier:
                 return category
 
         return ErrorCategory.UNKNOWN
-
-    def is_retryable(
-        self,
-        category: ErrorCategory,
-        retry_count: int = 0,
-        max_retries: int = 3,
-    ) -> bool:
-        """Return True if the error category is retryable and retries remain."""
-        return category in _RETRYABLE_CATEGORIES and retry_count < max_retries
 
 
 def format_connection_error(error: Exception, db_type: str = "") -> str:
@@ -234,115 +186,3 @@ def _extract_sqlstate(error: Exception) -> Optional[str]:
     if attr:
         return str(attr).strip() or None
     return None
-
-
-class RetryManager:
-    """Executes operations with exponential-backoff retry on transient errors."""
-
-    def __init__(
-        self,
-        error_classifier: DatabaseErrorClassifier,
-        log: Optional[Any] = None,
-        *,
-        max_retries: int = 3,
-        base_delay: float = 1.0,
-        max_delay: float = 60.0,
-        backoff_multiplier: float = 2.0,
-        jitter: float = 0.2,
-    ):
-        """Initialize the retry manager with classifier and backoff parameters.
-
-        Defaults give exponential backoff doubling from 1s up to 60s, with
-        +/-20% jitter to avoid thundering-herd retries. ``error_classifier``
-        decides which categories are retryable.
-        """
-        self.error_classifier = error_classifier
-        self.log = log if log is not None else NullLog()
-        self.max_retries = max_retries
-        self.base_delay = base_delay
-        self.max_delay = max_delay
-        self.backoff_multiplier = backoff_multiplier
-        self.jitter = jitter
-
-    def _compute_delay(self, attempt: int) -> float:
-        """Compute delay with exponential backoff and jitter."""
-        delay = min(self.base_delay * (self.backoff_multiplier**attempt), self.max_delay)
-        jitter_amount = delay * self.jitter
-        delay += random.uniform(-jitter_amount, jitter_amount)
-        return max(0, delay)
-
-    def execute_with_retry(
-        self,
-        operation: Callable[..., Any],
-        *args: Any,
-        **kwargs: Any,
-    ) -> Any:
-        """Execute *operation* with retry on transient database errors.
-
-        Special kwargs consumed (not forwarded to *operation*):
-            sql, schema, context, exception_types
-        """
-        sql = kwargs.pop("sql", None)
-        kwargs.pop("schema", None)
-        kwargs.pop("context", None)
-        exception_types = kwargs.pop("exception_types", Exception)
-
-        last_exception: Optional[Exception] = None
-
-        for attempt in range(self.max_retries + 1):
-            try:
-                return operation(*args, **kwargs)
-            except exception_types as exc:
-                last_exception = exc
-                category = self.error_classifier.categorize_error(exc, sql)
-
-                if not self.error_classifier.is_retryable(category, attempt, self.max_retries):
-                    raise
-
-                delay = self._compute_delay(attempt)
-                self.log.info(
-                    f"Retryable {category.value} error (attempt {attempt + 1}/{self.max_retries}), "
-                    f"retrying in {delay:.1f}s: {exc}"
-                )
-                time.sleep(delay)
-
-        # Should not be reached, but just in case
-        raise last_exception  # type: ignore[misc]
-
-    def retry_on_db_error(
-        self,
-        *,
-        max_retries: Optional[int] = None,
-        exception_types: Union[Type[Exception], Tuple[Type[Exception], ...]] = Exception,
-        sql: Optional[str] = None,
-        schema: Optional[str] = None,
-        context: Optional[Dict[str, Any]] = None,
-    ) -> Callable[..., Any]:
-        """Return a decorator that wraps a function with retry logic."""
-        effective_max = max_retries if max_retries is not None else self.max_retries
-
-        def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
-            @functools.wraps(func)
-            def wrapper(*args: Any, **kw: Any) -> Any:
-                mgr = RetryManager(
-                    self.error_classifier,
-                    self.log,
-                    max_retries=effective_max,
-                    base_delay=self.base_delay,
-                    max_delay=self.max_delay,
-                    backoff_multiplier=self.backoff_multiplier,
-                    jitter=self.jitter,
-                )
-                return mgr.execute_with_retry(
-                    func,
-                    *args,
-                    sql=sql,
-                    schema=schema,
-                    context=context,
-                    exception_types=exception_types,
-                    **kw,
-                )
-
-            return wrapper
-
-        return decorator

@@ -3,9 +3,12 @@
 import time
 from typing import Any, Dict, List, Optional
 
+from sqlalchemy import text
+
 from config import DbliftConfig
 from core.logger import Log
 from core.migration.clean_summary import CleanExecutionSummary
+from db.plugins.base_history_manager import UNDO_HISTORY_TYPE
 from db.provider_interfaces import DroppableObject
 from db.sqlalchemy_provider import SqlAlchemyProvider
 
@@ -29,28 +32,35 @@ class DuckDBProvider(SqlAlchemyProvider):
     ) -> int:
         """Execute a SQL statement, optionally preparing the schema first.
 
-        DuckDB/SQLAlchemy often reports ``rowcount == -1`` for DML. For single
-        INSERT/UPDATE/DELETE statements without parameters, append
-        ``RETURNING 1`` so callers (e.g. data corrections ``expect=N``) get a
-        real affected-row count.
+        DuckDB/SQLAlchemy often reports ``rowcount == -1`` for DML (duckdb_engine
+        sets ``supports_sane_rowcount = False``). For single INSERT/UPDATE/DELETE
+        statements — with or without bound parameters — append ``RETURNING 1``
+        and return ``len(fetchall())`` so callers that assert ``expect=N``
+        (data-correction apply) or check restore counts (data undo) get a real
+        affected-row count.
         """
         if schema:
             self.create_schema_if_not_exists(schema)
             self.set_current_schema(schema)
 
-        if params is None:
-            counted = self._try_dml_rowcount_via_returning(sql)
-            if counted is not None:
-                return counted
+        counted = self._try_dml_rowcount_via_returning(sql, params=params)
+        if counted is not None:
+            return counted
         return super().execute_statement(sql, schema=schema, params=params)
 
-    def _try_dml_rowcount_via_returning(self, sql: str) -> Optional[int]:
+    def _try_dml_rowcount_via_returning(
+        self, sql: str, params: Optional[List[Any]] = None
+    ) -> Optional[int]:
         """Return affected-row count using RETURNING, or None if not applicable.
 
         Returns None only when the statement is not rewritten (caller falls back
         to the default path). Once execution is attempted, errors propagate —
         do not re-run a failed statement via super() (that masks the root cause
         as a follow-on \"transaction is aborted\" error).
+
+        Parameterized DML uses the same ``?`` → named ``:pN`` binding as
+        :meth:`SqlAlchemyProvider.execute_statement` so undo restore and other
+        bind-using paths get accurate counts.
         """
         stripped = self._strip_sql_comments(sql.strip()).rstrip(";").strip()
         if not stripped:
@@ -73,8 +83,12 @@ class DuckDBProvider(SqlAlchemyProvider):
 
         rewritten = f"{stripped} RETURNING 1"
         conn = self._ensure_connection()
-        driver_sql = self._escape_driver_percent_literals(rewritten, conn.dialect.paramstyle)
-        result = conn.exec_driver_sql(driver_sql)
+        if params is None:
+            driver_sql = self._escape_driver_percent_literals(rewritten, conn.dialect.paramstyle)
+            result = conn.exec_driver_sql(driver_sql)
+        else:
+            named_sql, bound_params = self._bind(rewritten, params)
+            result = conn.execute(text(named_sql), bound_params)
         rows = result.fetchall()
         if self._tx is None and not getattr(self, "_external_connection", False):
             conn.commit()
@@ -472,7 +486,7 @@ class DuckDBProvider(SqlAlchemyProvider):
             {
                 "version": version,
                 "description": f"Undo migration {version}",
-                "type": "UNDO_SQL",
+                "type": UNDO_HISTORY_TYPE,
                 "script": undo_script,
                 "checksum": 0,
                 "success": True,

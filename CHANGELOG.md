@@ -15,6 +15,561 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
+## [3.4.0] - 2026-08-02
+
+### Added
+
+- **`DBLiftClient` now exposes paid-tier stub methods for `diff`,
+  `export_schema`, `snapshot`, `plan`, and `preflight`.** Previously these
+  didn't exist on the OSS class at all, so calling them raised a bare
+  `AttributeError` with no indication the feature exists in a paid edition.
+  They now exist as callables (accepting arbitrary arguments) and raise
+  `core.seams.capabilities.CapabilityDeniedError` with a message naming the
+  command, its edition, and the upgrade URL — mirroring the upsell the CLI
+  already shows for the equivalent commands (`cli/premium_manifest.py`).
+  The shared catalog backing both surfaces now lives in
+  `core/premium_manifest.py` (`cli/premium_manifest.py` re-exports it
+  unchanged for backward compatibility). (#753)
+
+### Changed
+
+### Fixed
+
+- **A handler can now opt a command out of project-config loading
+  entirely.** Routing any command through the standard CLI pipeline forced
+  a full project config (`dblift.yaml`/`--db-url`/`DBLIFT_DB_URL`) to load
+  before the handler ever ran, even for a command that has nothing to do
+  with a database — e.g. a paid-tier `license` command checking
+  `~/.dblift/license.key`. The OSS-native `config`/`db` commands already
+  skip this by hardcoded literal name in
+  `cli/main.py::_parse_argv_and_load_config`, but OSS code may not name a
+  paid-edition command anywhere outside `core/premium_manifest.py`, so
+  that route wasn't available to a paid command. A registered handler
+  marked `_dblift_zero_config_command = True` is now dispatched directly
+  with a minimal context, bypassing config/db-url loading and the full
+  logging-and-client-build pipeline — the same handler-attribute pattern
+  already used for `_dblift_config_only_client`/
+  `_dblift_skip_secret_resolution`. Guarded to single-command invocations
+  only, so a chained command (e.g. `dblift license migrate`) falls through
+  to the normal pipeline instead of silently running only the zero-config
+  command and dropping the rest. (#746)
+- **`dblift license` in a pure open-source install failed with argparse's
+  generic "unrecognized arguments" instead of naming the command.** The
+  premium-command catalog that lets the OSS CLI show a proper upsell for
+  paid-only commands (`diff`, `export-schema`, `snapshot`, `plan`,
+  `preflight`, ...) had no entry for `license`, so it fell through to
+  argparse's default error instead of the same "this is an Enterprise
+  command, here's how to upgrade" message every other paid command gets.
+  `license` is CLI-only administrative surface — unlike the other entries,
+  it has no corresponding `DBLiftClient` method. (#746)
+- **SQL Server ``CREATE FULLTEXT INDEX``, ``DROP FULLTEXT INDEX``, and
+  ``DROP FULLTEXT CATALOG`` failed with SQL Server's own error instead of
+  running.** SQL Server refuses to run any of these statements inside a user
+  transaction, the same restriction dblift already worked around for
+  ``CREATE FULLTEXT CATALOG`` by routing it through autocommit. The other
+  three full-text DDL forms carry the identical restriction but weren't
+  recognized, so a migration containing one ran inside dblift's normal
+  transaction and failed with SQL Server's own "cannot run inside a user
+  transaction" error — or, if combined with a ``CREATE FULLTEXT CATALOG`` in
+  the same migration, tripped dblift's guard against mixing autocommit and
+  transactional statements in one file. All four full-text DDL forms are now
+  classified identically and run through autocommit.
+- **SQL Server ``clean`` now drops full-text catalogs.** ``clean
+  --clean-enabled`` enumerated tables, views, sequences, types and synonyms
+  but never queried ``sys.fulltext_catalogs``, so it reported success while
+  leaving any full-text catalog in place. A subsequent migration that
+  recreated a same-named catalog then failed with SQL Server error 7642
+  ("catalog already exists"). Full-text catalogs are not schema-owned in SQL
+  Server — unlike every other object type ``clean`` enumerates, there is no
+  ``schema_id`` column to filter on directly — but a catalog is only ever
+  populated by full-text indexes, and every full-text index belongs to a
+  table, and every table belongs to a schema, so the catalog is scoped
+  indirectly: only a catalog referenced by at least one full-text index on a
+  table in the schema being cleaned is dropped, and only after the tables
+  that may reference it (a table's full-text index disappears implicitly
+  with the table; the catalog that held it is a separate object and needs
+  its own explicit drop). Dropping a full-text catalog also cannot run
+  inside a transaction — the same restriction the entry above now handles
+  for the other full-text DDL forms.
+- **Index introspection no longer logs a spurious error when a dialect's
+  vendor queries decline per-table index retrieval.** A vendor queries class
+  may signal "no per-table indexes query for this dialect" by returning a
+  ``None`` query. ``IndexExtractor`` passed that ``None`` straight into query
+  execution instead of checking for it first, which raised a ``TypeError``
+  caught by the surrounding error handling and reported as a warning plus a
+  tracked error — appearing as an ``[ERROR]`` log line on every affected
+  table, even though the migration or snapshot itself succeeded. The
+  ``None`` query is now treated as "no indexes to report" and skipped
+  silently, matching how the same extractor already handles a declined bulk
+  index query.
+- **A failing ``beforeEach``/``beforeEachMigrate`` callback now reports its own
+  error instead of an unrelated ``UnboundLocalError``.** The per-migration
+  timing variable used to report execution time on failure was assigned
+  *after* these callbacks ran, but read in the exception handler that a
+  callback failure unwinds through. When a callback raised, the handler tried
+  to read a variable that had never been set, so the surfaced error was
+  ``cannot access local variable 'start_time'`` rather than the callback's
+  actual failure. The real cause was still logged just above it, but the
+  message in the FAILED banner pointed at a Python internals bug instead of
+  the broken callback. The timing variable is now initialised before the
+  callback dispatch, so a failing callback surfaces as the callback failure it
+  is. As a side effect, the reported execution time for a successful migration
+  now includes ``beforeEach``/``beforeEachMigrate`` callback dispatch time,
+  where previously only the migration script itself was timed.
+
+- **``undo`` no longer silently no-ops when it is the first call on a fresh
+  client.** ``migrate`` and ``info`` both establish the database connection
+  as an explicit first step before touching migration history; ``undo`` did
+  not — it assumed a connection already existed and relied on history-table
+  creation to establish one as a side effect. That assumption held for
+  providers that reconnect lazily on demand, but not for CosmosDB, whose
+  history-table creation talks to a lower-level connection manager without
+  updating the provider's own connection state. On a brand-new client whose
+  very first operation was ``undo()``, this meant every subsequent read of
+  the migration history failed with a connection error — and that failure
+  was swallowed by a broad exception handler (added to tolerate mocked
+  dependencies in tests) that treated *any* history-read failure as "no
+  applied migrations found," reporting ``No migrations to undo`` and
+  ``success=True`` even though migrations were, in fact, applied. ``undo``
+  now establishes its own connection up front, the same way ``migrate`` and
+  ``info`` do, so it correctly finds and processes pending undos on a fresh
+  client instead of reporting a false success.
+
+- **A concurrent-migrate race on a brand-new schema no longer crashes with a
+  raw driver traceback on DB2, Oracle, or SQL Server.** When two ``migrate``
+  processes bootstrap the migration-history table for the first time at once,
+  the loser used to get a graceful retry only on PostgreSQL and MySQL — the
+  retry loop recognised the race by matching driver error text against a
+  short, PostgreSQL-shaped list of English substrings (``"already exists"``,
+  ``"duplicate key"``, ...). DB2 reports the same race as ``SQL0601N``
+  (SQLSTATE 42710), Oracle as ``ORA-00955``, and SQL Server as
+  ``"already an object named ..."`` (Msg 2714) — none of which matched, so
+  the loser's raw exception propagated as an uncaught crash instead of a
+  clean retry. Race detection is now a dialect hook
+  (``is_schema_history_race_error``) so each engine classifies its own error
+  by a stable vendor code where one exists, instead of by driver message
+  text that can also be locale-translated.
+- **``--version`` and the log banner no longer report a stale, unrelated
+  ``dblift`` version.** Both resolvers called
+  ``importlib.metadata.version("dblift")`` first, which scans ``sys.path``
+  for *any* distribution metadata named ``dblift`` without checking that it
+  belongs to the code actually executing. In a dev checkout or an extracted
+  source tree, that lookup can resolve to a stale or otherwise unrelated
+  ``dblift`` distribution recorded elsewhere on ``sys.path`` — for example an
+  editable install whose metadata was captured at an earlier version and
+  never refreshed after subsequent source edits — silently shadowing the
+  version of the code that's actually running. Both resolvers now read the
+  bundled ``__init__.py`` first when not running from a frozen build, since
+  that file unambiguously is the code being executed; ``importlib.metadata``
+  is used as the fallback there and remains first under a frozen build,
+  where the filesystem layout is unreliable.
+- **Migrations from a secondary ``--scripts`` directory now record the same
+  bare filename in history as migrations from the primary directory.**
+  ``load_migration_scripts`` computed a correct bare ``script_name`` for every
+  migration by default, then overwrote it with the full source-directory path
+  for anything found outside the primary directory — an absolute path on most
+  setups. That value is what gets persisted into the schema history table's
+  ``script`` column, so a migration from a secondary directory was recorded
+  there as, say, ``/home/ci/project/extra-migrations/V2__add_col.sql`` instead
+  of ``V2__add_col.sql``. Moving the checkout, running on a different machine,
+  or even a ``/tmp`` vs ``/private/tmp`` path difference on macOS then made
+  ``validate`` report the migration as renamed. The override is removed;
+  ``script_name`` is now the bare filename regardless of which configured
+  directory a migration came from.
+
+  **Upgrade note:** history rows written *before* this fix (any project that
+  used ``--scripts``/multi-directory support previously) still have the old,
+  directory-qualified value stored in the ``script`` column. On upgrade, those
+  rows are matched against their now-bare-named script on disk with a
+  basename fallback, the same way an equivalent legacy-name mismatch is
+  already handled for versioned migrations — so an already-applied migration
+  from a secondary directory continues to resolve correctly: ``migrate`` does
+  not re-execute it and ``validate --strict`` does not fail on it. Two
+  repeatable migrations in different directories that happen to share a
+  filename are now also caught as a naming conflict during validation, since
+  removing the directory qualification means they'd otherwise be
+  indistinguishable by name.
+- **``repair`` now fixes a corrupted or non-numeric stored checksum instead of
+  silently doing nothing.** A history row's checksum is normalized to an
+  integer before any comparison; when the stored value can't be parsed (for
+  example a manually edited row), normalization returns ``None``. The drift
+  check in ``repair`` required both the stored and the filesystem checksum to
+  be non-``None`` before flagging a mismatch, so a stored checksum that failed
+  to parse was silently excluded from repair — the command reported no issues
+  found while ``validate`` kept failing on that same migration, with no
+  CLI-only way to recover. The check no longer requires the stored checksum to
+  have parsed successfully: a row whose stored checksum is unreadable is now
+  treated as drifted whenever a matching migration script exists on disk, and
+  ``repair`` rewrites it like any other checksum mismatch.
+- **``validate --strict`` now runs out-of-order detection on Python
+  migrations.** Internally ``MigrationType.SQL`` names a migration's *role* —
+  versioned, run-once — and not its file format; a versioned ``.py`` script is
+  labelled ``MigrationType.PYTHON`` instead. Strict mode fails validation when
+  a pending versioned script has a version lower than the highest applied
+  version, but both halves of the check — the pending set and the applied set
+  — compared against ``MigrationType.SQL`` directly. On a project whose
+  versioned migrations are all ``.py`` the check found nothing to compare and
+  returned a pass without examining anything. After upgrading,
+  ``validate --strict`` **will start failing** on such a project if it has a
+  genuine out-of-order migration and passed yesterday. That failure is correct
+  and the ordering was already wrong — the gate simply was not running.
+  Resolve it exactly as on a SQL project: renumber the out-of-order migration
+  above the highest applied version, or drop ``--strict``.
+
+  ``migrate --strict`` is unaffected: it was already rejecting out-of-order
+  Python migrations through a separate, format-agnostic check in the migration
+  state manager, and its behaviour and error message are unchanged.
+- **Internal consistency:** baseline filtering in the validator now recognises
+  versioned Python scripts. No observable behaviour change — the branch is
+  unreachable from the current validation path, because the script loader never
+  classifies a file as a baseline (baselines are command-generated history
+  entries, not script files). Corrected so the code reads as intended, and so
+  the branch is right if it is ever wired up.
+- **``undo``, ``validate`` and ``repair`` now treat versioned Python
+  migrations like versioned SQL ones.** Three checks tested the recorded
+  migration type against ``SQL``, which is the type of a versioned *SQL*
+  script — a versioned Python script is recorded as ``PYTHON``, so each check
+  silently excluded it. ``migrate → undo → migrate → undo`` refused the second
+  undo with *"Version N has already been undone"* and walked down to the
+  previous version instead, because the re-apply was not counted; out-of-order
+  detection could never flag a Python migration; and ``repair`` skipped a
+  Python migration's checksum drift while still reporting success, leaving
+  ``validate`` failing afterwards. All three now use the shared versioned-type
+  predicate, so any versioned script format is handled identically. The
+  "next version to undo" suggestion that accompanies a refused undo was dead
+  code (it compared an enum member to a string) and never appeared; it is now
+  live, ignores failed and already-undone versions, and orders versions
+  semantically so it names the version ``undo`` would actually pick.
+
+- **Two safety gates that had been silently skipping Python migrations now
+  run. Behaviour changes on upgrade for any project with ``.py`` migrations —
+  read this before upgrading.** Internally, ``MigrationType.SQL`` names a
+  migration's *role* — versioned, run-once — and not its file format; a
+  versioned ``.py`` script is labelled ``MigrationType.PYTHON`` instead. Two
+  checks compared against ``MigrationType.SQL`` directly and therefore applied
+  to ``.sql`` migrations only. Nothing needs to be configured or opted into:
+  both gates take effect as soon as you upgrade.
+  - **Baseline filtering now suppresses pre-baseline Python migrations.**
+    Versioned scripts at or below the baseline version are dropped before
+    validation, because a baseline declares them already applied. Python
+    migrations were never dropped, so a pre-baseline ``.py`` migration stayed
+    in scope and was re-executed against the very schema that had been
+    baselined to say it had already run — re-running arbitrary migration code
+    against live data. After upgrading, those migrations are correctly
+    suppressed: ``info`` and ``validate`` list fewer migrations than before,
+    and ``migrate`` stops re-running them. If a pre-baseline ``.py`` migration
+    genuinely still needs to run, renumber it above the baseline version.
+  - **Strict-mode out-of-order detection now runs on Python migrations.**
+    Strict mode fails validation when a pending versioned script has a version
+    lower than the highest applied version. Both halves of the check — the
+    pending set and the applied set — were restricted to ``.sql``, so on a
+    project whose versioned migrations are all ``.py`` the check found nothing
+    to compare and returned a pass without examining anything. Because
+    validation also runs as ``migrate``'s pre-flight, this gated ``migrate``
+    and not only ``validate``. After upgrading, ``validate --strict``,
+    ``migrate --strict`` and any command run with ``strict_mode`` enabled in
+    configuration **will start failing** on Python projects that have a real
+    out-of-order migration and that passed yesterday. That failure is correct
+    and the migration order was already wrong — the gate simply was not
+    running. Resolve it exactly as on a SQL project: renumber the
+    out-of-order migration above the highest applied version, or drop
+    ``--strict`` / ``strict_mode`` if applying migrations out of order is
+    intended.
+- **PostgreSQL extension functions installed in ``public`` are resolvable
+  again.** dblift set a schema-only ``search_path``, so anything an extension
+  installs into ``public`` — ``gen_random_uuid`` and ``digest`` (pgcrypto),
+  ``ST_MakePoint`` (PostGIS), ``uuid_generate_v4`` (uuid-ossp), ``hstore``,
+  ``create_hypertable`` and ``by_range`` (TimescaleDB) — was invisible to
+  anything dblift executed. A migration calling one of them unqualified failed
+  with ``function ... does not exist`` while the identical file replayed
+  cleanly through ``psql``, whose default ``search_path`` ends in ``public``.
+  A schema dblift had exported itself could therefore not be replayed through
+  ``dblift migrate``. ``public`` is now appended to the search path — *after*
+  the target schema, so an object in the target still shadows a same-named
+  object in ``public``, and an unqualified ``CREATE`` still lands in the
+  target. A ``public`` target schema is not listed twice, and a database whose
+  ``public`` schema has been dropped is unaffected: PostgreSQL ignores search
+  path entries that do not exist. dblift's own ``dblift_schema_history`` and
+  ``dblift_migration_lock`` tables are always schema-qualified and were never
+  resolved through the search path. Applies both to the connection URL and to
+  the explicit ``SET search_path`` issued before callbacks, and so to every
+  PostgreSQL-compatible engine — CockroachDB, Redshift, TimescaleDB, Citus,
+  YugabyteDB, Neon, Supabase, Aurora PostgreSQL and AlloyDB.
+- **One failing ``DROP`` no longer turns a PostgreSQL ``clean`` into a total
+  no-op.** PostgreSQL aborts the *entire* transaction on any statement error,
+  so the first object that could not be dropped — a permission-denied object,
+  a dependency, an object type the enumeration misclassifies — left the
+  connection unusable and every remaining ``DROP`` failed with
+  ``InFailedSqlTransaction``. The command reported the failures but had
+  dropped nothing at all, including its own ``dblift_schema_history`` and
+  ``dblift_migration_lock`` tables, leaving a schema that could not be cleaned
+  again without manual repair. Each drop now runs inside a savepoint that is
+  unwound on failure, so the loop genuinely continues and only the objects
+  that really could not be dropped are left behind. A partial clean is still
+  reported as a failure. Dialects that keep the transaction alive after a
+  statement error, or that commit DDL implicitly, are unchanged — no savepoint
+  statement is sent to them.
+- **Non-transactional DDL — ``CREATE INDEX CONCURRENTLY`` and similar
+  statements PostgreSQL refuses to run inside a transaction block — now
+  actually executes in autocommit, and no longer leaves the connection
+  permanently autocommitting afterwards.** At SQLAlchemy's default isolation
+  level the DBAPI connection has ``autocommit=False``: not opening dblift's
+  own explicit transaction was not enough, because the driver still opened
+  one of its own per statement, and PostgreSQL rejected the statement before
+  dblift's trailing commit was ever reached. ``SqlAlchemyProvider`` now
+  exposes ``execute_autocommit_statement()``, which switches the connection
+  to ``isolation_level="AUTOCOMMIT"`` for the one statement and restores the
+  previous state afterwards, so the rest of the migration keeps its normal
+  all-or-nothing rollback. A second defect, found in review, meant the
+  restore was incomplete: it put the DBAPI connection back, but the switch's
+  own ``AUTOCOMMIT`` execution option stayed recorded on the connection, so
+  the *next* flagged statement read that back as though the caller had
+  configured it and reapplied ``AUTOCOMMIT`` permanently. Two
+  ``CREATE INDEX CONCURRENTLY`` statements in one migration — the ordinary
+  way to write an index migration — therefore disarmed rollback for every
+  migration that followed in the same run: a later migration failing
+  partway left its earlier statements applied while history recorded it
+  ``FAILED``. The restore now captures and reapplies the connection's whole
+  execution-option mapping instead of just the isolation level, so the
+  recorded option is cleared rather than latched.
+- **Placeholders in SQL callbacks are substituted before the SQL is parsed.**
+  ``execute_callback`` handed the raw file content to the statement parser and
+  substituted afterwards, per statement. Tokenisers that do not recognise ``$``
+  drop it and pad the braces with whitespace, so a callback containing
+  ``CREATE TABLE ${schema}.callback_log (...)`` reached the server as
+  ``CREATE TABLE {schema }.callback_log (...)`` — rejected as an invalid table
+  name, aborting the whole ``migrate`` run before any versioned migration ran.
+  Oracle, SQL Server, MySQL and PostgreSQL were affected; SQLite, DuckDB and
+  DB2 leave ``${...}`` intact and were not. Callbacks now substitute the full
+  content first and pass the result to the parser, as versioned migrations
+  already did. Substitution happens exactly once, so an unresolved ``${NAME}``
+  still passes through as a literal and warns once.
+- **Unrecognised characters in SQL are preserved instead of silently
+  dropped — a missing ``%`` or ``@`` could change which statement actually
+  ran while ``migrate`` reported success.** ``_handle_unknown_char`` consumed
+  and discarded any character no tokenizer rule claimed, and the token
+  stream is reserialized into the statement that gets executed, so the drop
+  changed the SQL sent to the database. ``CREATE TABLE res AS SELECT id,
+  a % b FROM t`` executed as ``SELECT id, a b FROM t``, which PostgreSQL
+  reads as ``a AS b`` — a different column entirely; ``WHERE j @>
+  '{"a":1}'`` executed as ``WHERE j > '{"a":1}'``, a different containment
+  operator that matched the wrong rows. The unclaimed character is now
+  emitted verbatim, so a gap in a dialect's rules produces odd tokenization
+  or a database error rather than silently different SQL, and the base
+  symbol set gained ``%``, ``&``, ``#``, ``?``, ``^`` and ``@`` so these
+  tokenize correctly instead of merely surviving.
+- **``clean`` no longer fails on a schema holding a TimescaleDB continuous
+  aggregate.** A continuous aggregate's user-facing name is a plain
+  ``relkind='v'`` row, so it is listed by ``pg_views`` and never by
+  ``pg_matviews``. Clean enumeration therefore emitted ``DROP VIEW`` for it,
+  which PostgreSQL rejects with *cannot drop continuous aggregate using DROP
+  VIEW*. Because every drop shares one transaction, that single rejection
+  aborted the transaction and every remaining object failed with
+  ``InFailedSqlTransaction`` — leaving the whole schema, including
+  ``dblift_schema_history`` and ``dblift_migration_lock``, undropped and
+  needing manual cleanup. Continuous aggregates are now detected and dropped
+  with ``DROP MATERIALIZED VIEW``. The lookup is gated on a ``pg_class``
+  probe, so servers without TimescaleDB never touch the
+  ``timescaledb_information`` catalog.
+- **``repair`` fixes checksum drift on SQLite.** ``SQLiteProvider`` never
+  defined ``repair_migration_history``, which every other provider implements
+  and which ``repair`` calls to rewrite a drifted checksum. The resulting
+  ``AttributeError`` was swallowed, so the command reported "No history entry
+  updated … Repair may require manual intervention", left the stored checksum
+  unchanged and exited failed. SQLite now updates the row like the other
+  relational providers — ``COALESCE(?, success)`` preserves the stored success
+  flag when no explicit value is given, and the real ``UPDATE`` rowcount
+  reports whether a row matched. A conformance test now requires every
+  provider to expose the method, since no base class declared it.
+- **Per-call placeholders reach Python migrations.** ``migrate(placeholders=...)``
+  and ``undo(placeholders=...)`` are applied to the placeholder service that the
+  SQL path substitutes from, but the Python executor built
+  ``MigrationContext.placeholders`` from the placeholders baked into the config
+  at construction time. A ``.py`` migration therefore never saw a value passed
+  per call — on any dialect — and silently ran with the default instead of
+  failing. The executor now resolves the context mapping from the shared
+  placeholder service at execution time, so Python and SQL migrations see the
+  same effective set: ``dblift_*`` system placeholders, then configured
+  placeholders, then per-call ones.
+- **Callback events no longer collide on shared name prefixes.** Callback files
+  were matched to an event with a bare ``startswith()``, and five event prefixes
+  are substrings of others (``afterMigrate`` / ``afterMigrateError``,
+  ``beforeEach`` / ``beforeEachMigrate``, ``afterEach`` / ``afterEachMigrate``,
+  ``afterClean`` / ``afterCleanError``, ``afterUndo`` / ``afterUndoError``). So
+  ``afterMigrateError__notify.sql`` executed on a fully successful ``migrate``
+  — alerting or compensating SQL firing when nothing had failed — and
+  ``beforeEachMigrate__mark.sql`` executed twice per script, once for each of
+  the two events it matched. The ``__`` separator is now required immediately
+  after the prefix, so ``afterMigrate__finalize.sql`` runs on ``afterMigrate``
+  and nothing else does.
+
+- **Callback names missing ``__`` are rejected instead of silently accepted.**
+  The naming convention is ``<eventPrefix>__<description>.<ext>``, but any name
+  merely *starting* with an event prefix was classified as a callback — so
+  ``afterMigrate.sql``, and the single-underscore typo
+  ``afterMigrate_notify.sql``, were loaded as callbacks. Such names are no
+  longer callbacks anywhere (script discovery, ``parse_filename`` and
+  ``Migration.type`` now agree), and are reported as a naming-convention
+  violation once per run instead of sitting in the migrations directory looking
+  like a working callback.
+
+- **Tagged callbacks run again regardless of where the tag sits.** Script names
+  are classified with their ``[tag1,tag2]`` group stripped, but callback event
+  matching read the raw name, so a callback tagged anywhere before the ``__``
+  separator — ``afterMigrate[prod]__notify.sql`` — was filed as a callback and
+  then dispatched to no event. It never ran and drew no warning, since the name
+  itself is valid. Tag stripping is now a single shared step used by both
+  classification and event matching, so every tag position the one accepts the
+  other resolves to the same event.
+
+- **Internal consistency: the persisted ``MigrationType`` vocabulary is now
+  pinned against silent drift.** The characterization-lock test for the type
+  names dblift persists to history was parametrized from the
+  ``MigrationType`` enum under test itself, so renaming or removing a member
+  shrank or renamed the parametrization along with it and still passed — 35
+  to 37 out of 37, either way. It now pins a literal roster, so a rename or
+  removal shows up as a mismatch instead of a quietly smaller test.
+  ``repair_command.py``'s ``[DELETE:{type}]`` description marker had a
+  second, untested copy of the same vocabulary — hardcoded string literals
+  in its script-name-inference fallback — and now derives from
+  ``MigrationType`` itself, with a round-trip test covering the write and
+  the read path together.
+
+- **``import-flyway`` no longer causes ``migrate`` to silently re-execute
+  already-applied migrations.** Flyway's own ``flyway_schema_history.type``
+  vocabulary (``JDBC``, ``SPRING_JDBC``, ``SCRIPT``, ``UNDO_SCRIPT`` /
+  ``UNDO_SQL``, ``DELETE``, ...) was written straight into
+  ``dblift_schema_history``. None of those are ``MigrationType`` members, so
+  ``AppliedMigration.from_history_row`` silently degraded every imported row
+  to ``UNKNOWN`` on read; ``UNKNOWN`` is not a versioned type, so
+  ``migrate`` stopped treating the row as already applied and re-ran it
+  against a schema that already had it — live data loss, not a display
+  quirk. Flyway's type is now mapped to the matching ``MigrationType``
+  member before the row reaches ``record_migration``
+  (``core/sql_validator/_flyway_compatibility.py``'s
+  ``FLYWAY_TYPE_TO_MIGRATION_TYPE``): ``JDBC`` / ``SPRING_JDBC`` / ``SCRIPT``
+  all describe a versioned migration executed by a non-``.sql`` resolver and
+  map to ``SQL``; ``UNDO_SCRIPT`` (Flyway 9.0 renamed ``UNDO_SQL``, and every
+  9.x-12.x install writes it) and ``DELETE`` map to their matching members;
+  ``SQL`` / ``BASELINE`` / ``UNDO_SQL`` already round-trip unchanged. A type
+  with no defined mapping now aborts the import with a clear error and a
+  full rollback, instead of writing a value that would later silently read
+  back as ``UNKNOWN``.
+
+- **Schema export works again on every dialect.** An OSS-only dead-code
+  sweep removed ``generate_schema_script`` from ``BaseSqlGenerator`` because
+  no caller in this repository referenced it — but ``core/sql_generator`` is
+  an extension point: dialect generators are supplied by external packages
+  that subclass ``BaseSqlGenerator``, and reach this method through
+  ``SqlGeneratorFactory.create()``. A repository-wide search therefore
+  cannot tell whether a public method on that class is dead, because its
+  callers live outside this repository. Removing it broke schema export on
+  every dialect with ``'SQLiteSqlGenerator' object has no attribute
+  'generate_schema_script'``. The method is restored byte-for-byte from
+  before the removal. A new contract test now exercises every public method
+  of the generator through the factory for each supported dialect and pins
+  the method-name set, so a future cleanup sweep that can't see the
+  external caller fails loudly instead of removing it again.
+
+- **DuckDB parameterized DML reports real affected-row counts.** The 3.3.4
+  ``RETURNING 1`` rewrite only ran when ``params is None``, so bound
+  ``INSERT`` / ``UPDATE`` / ``DELETE`` (including data-correction undo restore
+  and history mark-undone) still saw SQLAlchemy ``rowcount == -1`` and treated
+  successful statements as zero rows affected. The rewrite now applies with or
+  without parameters, binds via the same ``?`` → named-parameter path as the
+  rest of the provider, and returns ``len(fetchall())``. Non-rewritable
+  statements still fall through to the driver (which may report ``-1``).
+
+- **DB2 compound bodies survive a missing trailing terminator.** A migration
+  whose last statement is a trigger, a procedure or a bare ``BEGIN ATOMIC``
+  block is valid DB2 without a closing ``;`` or ``@``, but the detection
+  patterns that route such a script to the block-aware splitter all required
+  ``END`` to be followed by a delimiter. The block extractors themselves count
+  ``BEGIN``/``END`` depth and already handled a bare ``END``, so the detection
+  was stricter than the code it guarded: an unterminated block fell through to
+  plain semicolon splitting and was cut at the first semicolon inside its body,
+  which DB2 rejected with ``SQL0104N ... unexpected token "END-OF-STATEMENT"``.
+  The trigger and procedure detectors now accept an ``END`` that ends the
+  script; they only decide which splitter runs, so the block boundary still
+  comes from depth counting. Compound ``BEGIN ATOMIC`` blocks are now located
+  by that same depth counting instead of by a pattern reaching for the closing
+  ``END`` — a pattern cannot tell a block's own ``END`` from a nested one, so
+  it truncated a compound at an inner ``END;`` or at a ``CASE ... END``, and
+  could run past the block to a later ``END`` and swallow the statement after
+  it. Scripts that end with ``;`` or ``@`` are unaffected.
+- **DB2 ``CASE...END CASE`` and trigger ``IF...END IF`` bodies are no longer
+  truncated mid-statement — a compiled procedure or trigger could silently
+  ship missing its tail.** The block-boundary scanner only recognised a
+  ``CASE`` expression's closing ``END`` when it was followed by ``;``, ``,``
+  or ``)``; any other legal continuation (``INTO``, ``AS``, a bare
+  ``FROM``, ...) was mistaken for the enclosing block's own ``END`` and cut
+  a procedure short partway through a ``CASE``. Triggers had a second,
+  independent bug: their extractor kept a private depth counter with no
+  control-structure lookahead, so an ``IF...END IF`` inside a trigger body
+  truncated the trigger early even though the identical body worked inside
+  a procedure. Closing that surfaced four more gaps, each confirmed live
+  against DB2 12.1.5.0: advancing past only the three letters of ``END``
+  instead of the full matched keyword let a closed ``END CASE`` re-open as
+  a fresh ``CASE`` and poison depth tracking for everything after it; the
+  whitespace skip before a control keyword handled only space and tab, so
+  ``END`` and ``CASE`` on separate lines reproduced the original
+  truncation; ``END`` itself had no right-boundary check, so identifiers
+  merely starting with the letters ``END`` (``ENDDATE``, ``END_IF``) were
+  misread as the closing keyword; and the ``--`` / ``/* */`` comment
+  detectors weren't guarded against already being inside an open block
+  comment, so a decorative dash divider inside a header comment truncated
+  the block — DB2 block comments nest, confirmed live. Triggers now share
+  the same control-structure-aware scanner procedures already use, and
+  every boundary check in the scanner routes through one identifier-
+  character helper instead of five independent character enumerations that
+  could drift out of sync.
+
+- **Two more DB2 detection/extraction mismatches, found while auditing the
+  fix above.** Each detector that decides "is this a block?" must agree with
+  the extractor that then carves it out, or the script silently falls back to
+  plain semicolon splitting and is cut at the first internal ``;``.
+
+  - A trigger body may open with a plain ``BEGIN`` and not just ``BEGIN
+    ATOMIC`` — confirmed live, DB2 compiles and fires such a trigger without
+    complaint. The detector already accepted plain ``BEGIN``, but the
+    extractor required the literal keyword ``ATOMIC`` and silently skipped
+    any trigger that didn't have it, even with a trailing ``;`` present.
+  - A comment following a block's closing ``END`` (when the script has no
+    explicit ``;``/``@`` after it) defeated the procedure and trigger
+    detectors, which anchored an undelimited ``END`` on end-of-input and
+    treated a trailing comment as disqualifying rather than as trailing
+    trivia to skip over. The extractors themselves were never affected —
+    they already stop right at ``END`` and never absorb a trailing comment
+    into the statement text.
+
+- **DB2 ``CREATE PACKAGE`` (with or without ``BODY``) is no longer shredded
+  into fragments at its first internal ``END``.** The remaining detector/
+  extractor mismatch from the audit above: ``_has_package_blocks``'s pattern
+  required exactly one token between ``PACKAGE`` and ``AS``, so ``CREATE
+  PACKAGE BODY name AS`` — two tokens, ``BODY`` and the name — never matched
+  and the whole block fell back to naive semicolon splitting. Separately, the
+  extractor used a non-greedy match for the closing ``END``, so any package
+  with more than one internal procedure or function stopped at the first
+  nested ``END`` and silently dropped everything after it, including the
+  package's real closing ``END``. The extractor now finds the package's true
+  closing ``END`` via the same depth-tracking scan the trigger/procedure/
+  compound-statement extractors already use, rather than a regex, and the
+  detector accepts the optional ``BODY`` keyword, an optional repeated
+  package name before the terminator, and the same trailing-comment/
+  undelimited-end-of-input handling given to the procedure and trigger
+  detectors above, for consistency.
+- **MySQL history-table bootstrap no longer crashes on a concurrent race.**
+  The migration lock table has always been created with
+  ``CREATE TABLE IF NOT EXISTS``, but the history table used a bare
+  ``CREATE TABLE``, so two processes bootstrapping the same schema at once
+  raced: the loser's ``CREATE TABLE`` failed with a duplicate-table error
+  that propagated uncaught, crashing that process outright. The history
+  table now uses ``IF NOT EXISTS`` too, matching the lock table, so the
+  statement itself is safe under a concurrent race rather than failing and
+  needing a catch. MariaDB, which shares this provider, gets the same fix.
+
+### Removed
+
 ## [3.3.4] - 2026-07-30
 
 Patch release after release qualification of 3.3.3: DuckDB data-correction

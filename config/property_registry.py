@@ -90,12 +90,6 @@ PROPERTY_REGISTRY: List[PropertySpec] = [
     PropertySpec("exclude_tags", "str", None),
     PropertySpec("versions", "str", None),
     PropertySpec("exclude_versions", "str", None),
-    # --- retry / error handling (config+env, no CLI flag) ---
-    PropertySpec("error_handling_enabled", "bool", True, coerce=_bool, cli_exempt=True),
-    PropertySpec("max_retries", "int", 3, coerce=int, cli_exempt=True),
-    PropertySpec("retry_delay", "float", 1.0, coerce=float, cli_exempt=True),
-    PropertySpec("retry_backoff", "float", 2.0, coerce=float, cli_exempt=True),
-    PropertySpec("retry_jitter", "float", 0.2, coerce=float, cli_exempt=True),
     # --- logging ---
     PropertySpec("log_level", "str", None),
     PropertySpec("log_format", "str", None),

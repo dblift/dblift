@@ -6,6 +6,8 @@ from typing import Any, Dict, List, Optional
 from config import DbliftConfig
 from core.logger import Log
 from core.migration.clean_summary import CleanExecutionSummary
+from core.migration.sql.execution_statement import classify_execution_statement
+from db.plugins.base_history_manager import UNDO_HISTORY_TYPE
 from db.plugins.sqlserver.sqlserver.schema_operations import SqlServerSchemaOperations
 from db.provider_interfaces import DroppableObject
 from db.sqlalchemy_provider import SqlAlchemyProvider
@@ -274,7 +276,7 @@ class SqlServerProvider(SqlAlchemyProvider):
             {
                 "version": version,
                 "description": f"Undo migration {version}",
-                "type": "UNDO_SQL",
+                "type": UNDO_HISTORY_TYPE,
                 "script": undo_script,
                 "checksum": 0,
                 "installed_by": os.environ.get("USER", os.environ.get("USERNAME", "dblift")),
@@ -495,6 +497,23 @@ class SqlServerProvider(SqlAlchemyProvider):
             )
 
         return objects
+
+    def drop_object(self, obj: DroppableObject) -> None:
+        """Drop one object enumerated by :meth:`list_droppable_objects`.
+
+        Most drops run through the base implementation inside the clean
+        operation's ambient transaction. ``DROP FULLTEXT CATALOG`` is a
+        documented exception (paired with ``CREATE FULLTEXT CATALOG``, see
+        ``SqlserverQuirks.non_transactional_sql_patterns``): SQL Server
+        refuses to run it inside a transaction block at all, so it has to go
+        through :meth:`execute_autocommit_statement` instead of the plain
+        transactional ``execute_statement`` the base ``drop_object`` uses.
+        """
+        statement = classify_execution_statement(obj.drop_sql, dialect=self.canonical_dialect_key)
+        if not statement.can_execute_in_transaction:
+            self.execute_autocommit_statement(obj.drop_sql)
+            return
+        super().drop_object(obj)
 
     def get_clean_preview(self, schema: str) -> CleanExecutionSummary:
         """Return what a clean would drop, without executing anything."""

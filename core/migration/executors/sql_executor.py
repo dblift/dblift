@@ -202,46 +202,6 @@ class SqlMigrationExecutor(BaseMigrationExecutor):
 
         return True, []
 
-    def supports_rollback(self, migration: Migration) -> bool:
-        """
-        Check if rollback is supported.
-
-        For SQL migrations, rollback is supported through undo scripts (U*.sql files).
-        This method checks if an undo script exists for the migration.
-
-        Args:
-            migration: Migration to check
-
-        Returns:
-            True if an undo script exists
-        """
-        # Rollback is handled by undo scripts, not programmatically
-        # This would need to check if a corresponding U*.sql file exists
-        # For now, return False - rollback is handled at a higher level
-        return False
-
-    def rollback_migration(
-        self, migration: Migration, dry_run: bool = False, **kwargs: Any
-    ) -> MigrationExecutionResult:
-        """
-        Rollback not supported for SQL migrations via this executor.
-
-        SQL rollbacks are handled via undo scripts (U*.sql), not programmatically.
-        Use supports_rollback() to check availability before calling this method.
-
-        Returns:
-            MigrationExecutionResult with success=False indicating rollback is not supported.
-        """
-        return MigrationExecutionResult(
-            success=False,
-            migration=migration,
-            execution_time_ms=0,
-            error=(
-                f"{self.__class__.__name__} does not support programmatic rollback. "
-                "Use undo scripts (U*.sql) for SQL migration rollback."
-            ),
-        )
-
     def _execute_via_service(self, migration: Migration, statements: List[str]) -> None:
         """
         Execute statements via the SQL execution service.

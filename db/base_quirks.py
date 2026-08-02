@@ -131,13 +131,10 @@ class BaseQuirks:
 
     dialect_name: str = ""
 
-    #: Per-version vendor→canonical type aliases for
-    #: :class:`core.normalization.type_mapper.CanonicalTypeMapper` (built
-    #: from plugins at import time). Keys are ``(dialect, version_spec)``
-    #: such as ``("postgresql", "9.4+")``. Plugins override with non-empty
-    #: dicts; base default is empty.
+    #: Per-version vendor→canonical type aliases. Keys are
+    #: ``(dialect, version_spec)`` such as ``("postgresql", "9.4+")``.
+    #: Plugins override with non-empty dicts; base default is empty.
     version_specific_type_mappings: ClassVar[dict[tuple[str, str], dict[str, str]]] = {}
-
     #: Version/edition feature gates, keyed by feature name (the shared
     #: vocabulary lives in ``core.sql_model.feature_gates.KNOWN_FEATURES``).
     #: Resolved by ``core.sql_model.feature_gates.supports_feature``. Read
@@ -1727,6 +1724,34 @@ class BaseQuirks:
         locale-translated message text) when the table already exists.
         """
         return False
+
+    #: English-locale substrings indicating a concurrent process won the
+    #: race to create the migration-history schema/table (see
+    #: ``MigrationHistoryManager.create_schema_and_history_table``, BUG-07).
+    #: Covers PostgreSQL's aborted-transaction cascade and the generic
+    #: "already exists" wording MySQL and PostgreSQL both use. Dialects with
+    #: a bare ``CREATE TABLE`` (no ``IF NOT EXISTS``) whose driver message
+    #: doesn't contain any of these — DB2, Oracle, SQL Server — override
+    #: ``is_schema_history_race_error`` with a stable vendor error-code
+    #: check instead, since driver message text is locale-translated.
+    schema_history_race_markers: ClassVar[tuple[str, ...]] = (
+        "already exists",
+        "duplicate key",
+        "tuple concurrently updated",
+        "transaction is aborted",
+        "concurrently",
+    )
+
+    def is_schema_history_race_error(self, error_message: str) -> bool:
+        """Whether ``error_message`` indicates a concurrent process won the
+        race to create the migration-history schema or table.
+
+        Returning ``True`` lets ``MigrationHistoryManager`` retry instead of
+        propagating the raw driver error. Default is an English-locale
+        substring match against ``schema_history_race_markers``.
+        """
+        err = (error_message or "").lower()
+        return any(marker in err for marker in self.schema_history_race_markers)
 
     # --- Data sets / Lane B table DDL (per spec: reuse snapshot codec pattern for change_set) ---
 

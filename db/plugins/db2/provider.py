@@ -9,6 +9,7 @@ from config import DbliftConfig
 from core.logger import Log
 from core.migration.clean_summary import CleanExecutionSummary
 from db.object_naming import get_normalized_object_name
+from db.plugins.base_history_manager import UNDO_HISTORY_TYPE
 from db.plugins.db2.db2.schema_operations import Db2SchemaOperations
 from db.provider_interfaces import DroppableObject
 from db.sqlalchemy_provider import SqlAlchemyProvider
@@ -363,7 +364,7 @@ class Db2Provider(SqlAlchemyProvider):
             {
                 "version": version,
                 "description": f"Undo migration {version}",
-                "type": "UNDO_SQL",
+                "type": UNDO_HISTORY_TYPE,
                 "script": script_name or f"UNDO_{version}.sql",
                 "checksum": 0,
                 "execution_time": 0,

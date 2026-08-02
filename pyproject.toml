@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "dblift"
-version = "3.3.4"
+version = "3.4.0"
 description = "A database migration tool that supports multiple databases with native Python drivers"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -327,8 +327,6 @@ module = [
     "core.migration.executor.transaction_policy",
     "core.migration.commands.validate_command",
 
-    "core.migration.ui.display_formatters",
-    "core.migration.ui.migration_analyzer",
     "core.migration.scripting.undo_script_generator._extractors",
     "core.migration.scripting.undo_script_generator._helpers",
     "core.migration.rules.migration_rules",
@@ -354,13 +352,11 @@ module = [
     "core.sql_generator.formatter",
     "core.sql_generator.sql_generator",
     "core.normalization",
-    "core.normalization.identifier_normalizer",
     "core.sql_model.view_options",
     "cli.handlers._shared",
     "cli.handlers.info",
     "cli._command_handlers",
     "cli.db_utils",
-    "cli.export_schema_command",
     "cli._parser_setup",
     "cli._config_helpers",
     "cli.main",
@@ -455,39 +451,10 @@ no_implicit_optional = true
 warn_unused_ignores = true
 strict_equality = true
 
-# PR-H3: strict db/ error model and error handler.
+# PR-H3: strict db/ error model.
 [[tool.mypy.overrides]]
 module = [
-    "db.error_handler",
     "db.error",
-]
-disallow_any_generics = true
-disallow_subclassing_any = true
-disallow_untyped_calls = true
-disallow_untyped_defs = true
-disallow_incomplete_defs = true
-disallow_untyped_decorators = true
-no_implicit_optional = true
-warn_unused_ignores = true
-strict_equality = true
-
-# PR-H4: strict core/comparison — all 31 modules in core/comparison/
-# (the 7 _diff_* sibling modules + diff_models façade from the PR-G4
-# split, plus comparator.py, comparison_utils.py, type_normalizer.py,
-# diff_reporter.py, and the 15 object-type comparators). Fixes were
-# mechanical: bare ``Optional[tuple]`` → ``Optional[Tuple[Any, Any]]``
-# on the (expected, actual) diff fields, ``def _calculate_diffs(self):``
-# → ``-> None`` on the per-class overrides, untyped
-# ``__init__(self, type_normalizer=None):`` → ``Optional[object]``
-# (or the real ``DataTypeNormalizer`` where actually used), bare
-# ``list`` / ``set`` parameterised, and 15 stale
-# ``# type: ignore[attr-defined,no-any-return]`` comments on the
-# ObjectComparator delegating methods trimmed to just
-# ``[no-any-return]`` (the ``attr-defined`` half is no longer needed
-# now that ``_COMPARATOR_REGISTRY`` is ``Dict[str, Type[Any]]``).
-# Same flag set as the api/* carve-outs above.
-[[tool.mypy.overrides]]
-module = [
 ]
 disallow_any_generics = true
 disallow_subclassing_any = true
@@ -511,7 +478,6 @@ module = [
     "core.migration.state",
     "core.migration.state.migration_data_service",
     "core.migration.state.migration_display_state",
-    "core.migration.state.migration_formatter",
     "core.migration.state.migration_state",
     "core.migration.state.migration_state_manager",
     "core.migration.state.migration_state_service",
@@ -591,7 +557,6 @@ module = [
     "core.introspection._vendor_property_applier",
     "core.introspection.vendor_queries_factory",
     "core.introspection.introspector_factory",
-    "core.introspection.validation_integration",
     "core.introspection.base_introspector",
     "core.introspection.extractors.base_extractor",
     "core.introspection.extractors.column_extractor",
@@ -620,7 +585,6 @@ strict_equality = true
 [[tool.mypy.overrides]]
 module = [
     "core.introspection.schema_introspector",
-    "core.introspection.capability_matrix",
     "core.introspection.vendor_queries_base",
     "core.introspection.vendor_queries_protocols",
     "core.introspection.version_detector",
@@ -840,7 +804,6 @@ module = [
     "db.plugins.oracle.oracle.locking_manager",
     "db.plugins.oracle.oracle.schema_operations",
     "db.plugins.oracle.parser",
-    "db.plugins.oracle.parser.parser_config",
     "db.plugins.oracle.parser.oracle_parser",
     "db.plugins.oracle.parser.oracle_statement_parser",
     "db.plugins.oracle.parser.oracle_tokenizer",
@@ -1012,7 +975,6 @@ module = [
     "config.database_config",
     "config.dblift_config",
     "config.errors",
-    "config.validation_config",
     "config._subclasses",
     "config._subclasses.dummy_config",
 ]
@@ -1039,8 +1001,6 @@ module = [
     "core.migration.executor",
     "core.migration.executor.migration_executor",
     "core.migration.scripting.undo_script_generator",
-    "core.migration.scripting.undo_script_generator._ddl_reversers",
-    "core.migration.scripting.undo_script_generator._dml_reversers",
     "core.migration.scripting.undo_script_generator._generator",
     "core.migration.scripting.undo_script_generator._models",
     "core.migration.scripting.undo_script_generator._reversers",

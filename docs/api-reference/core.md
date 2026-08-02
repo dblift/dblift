@@ -100,26 +100,6 @@ See `core/sql_parser/` for implementation details.
 - Dependency ordering
 - Safety checks
 
-## Schema Comparison
-
-Compares database schemas and identifies differences.
-
-::: core.comparison
-    options:
-      show_root_heading: true
-      show_source: true
-
-**Capabilities**:
-- Compare schemas
-- Detect differences
-- Generate diff reports
-- Support multiple object types
-
-See `core/comparison/` for implementation details including:
-- `comparator.py` - Schema comparison logic
-- `diff_models.py` - Difference models
-- `diff_reporter.py` - Report generation
-
 ## Related Documentation
 
 - [Migration Engine Architecture](../architecture/migration-engine.md)

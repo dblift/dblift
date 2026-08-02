@@ -33,7 +33,6 @@ class MigrationDataCollector:
         """
         self.log = log if log is not None else NullLog()
         self.script_manager = script_manager
-        self._target_version: Optional[str] = None
 
     def _format_installed_on(self, installed_on: Any) -> str:
         """Format installed_on timestamp for display.
@@ -158,7 +157,6 @@ class MigrationDataCollector:
             )
 
         # Legacy signature
-        self._target_version = target_version
         if pending_migrations is None:
             pending_migrations = []
         if applied_migrations is None:
@@ -409,8 +407,6 @@ class MigrationDataCollector:
         Returns:
             List of migration data dictionaries
         """
-        self._target_version = target_version
-
         if self.script_manager is None:
             logger = self.log
             self.script_manager = MigrationScriptManager(logger, "utf-8")
@@ -600,9 +596,9 @@ class MigrationDataCollector:
         """Find versions that have undo capability available.
 
         A version is undoable if it has a separate undo companion script:
-        ``U*.sql`` for SQL migrations or ``U*.py`` for Python migrations. An inline
-        ``def undo(`` inside a versioned ``V*.py`` does NOT make a version undoable —
-        undo is always the job of the separate ``U*`` script.
+        ``U*.sql`` for SQL migrations or ``U*.py`` for Python migrations.
+        Python undo companions use the same ``def migrate(context)`` contract
+        as versioned scripts; they are not selected by an inline ``undo`` on ``V*``.
         """
         undo_versions = set()
         if scripts_dir and scripts_dir.exists() and self.script_manager is not None:
@@ -674,24 +670,6 @@ class MigrationDataCollector:
     def _sort_applied_migrations(self, applied_migrations: List[Migration]) -> List[Migration]:
         """Sort applied migrations by installed_rank."""
         return sorted(applied_migrations, key=lambda m: getattr(m, "installed_rank", 0) or 0)
-
-    def _mark_reapplied_duplicates(
-        self, sorted_applied_migrations: List[Migration], reapplied_versions: Set[str]
-    ) -> Set[Migration]:
-        """Mark duplicate migrations that should be kept for reapplication display."""
-        keep_duplicates = set()
-        script_counts: dict[str, int] = {}
-
-        for migration in sorted_applied_migrations:
-            script_name = migration.script_name
-            version = getattr(migration, "version", None)
-
-            if version in reapplied_versions:
-                script_counts[script_name] = script_counts.get(script_name, 0) + 1
-                if script_counts[script_name] > 1:
-                    keep_duplicates.add(migration)
-
-        return keep_duplicates
 
     def _detect_out_of_order_migrations(
         self, versioned_migrations: List[Dict[str, Any]]

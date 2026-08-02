@@ -116,6 +116,7 @@ class ExecutionEngine:
             log=self.log,
             sql_analyzer=sql_analyzer,
             sql_execution_service=sql_execution_service,
+            placeholder_service=placeholder_service,
         )
 
     @staticmethod
@@ -170,12 +171,15 @@ class ExecutionEngine:
                 return
         elif policy.autocommit_required:
             self.log.warning(
-                f"Executing {migration.script_name} without an explicit transaction: {policy.reason}"
+                f"Executing {migration.script_name} in autocommit mode: {policy.reason}. "
+                "Every statement commits on its own, so a later failure leaves the "
+                "earlier statements applied."
             )
-            self._ensure_autocommit_for_policy(migration)
 
         try:
-            success = self._execute_statements(statements, migration, result, start_time)
+            success = self._execute_statements(
+                statements, migration, result, start_time, autocommit=policy.autocommit_required
+            )
             if not success:
                 return  # _handle_statement_failure already rolled back
 
@@ -279,23 +283,6 @@ class ExecutionEngine:
             )
             return []
         return executable
-
-    def _ensure_autocommit_for_policy(self, migration: Migration) -> None:
-        """Best-effort rollback so autocommit-only statements are not inside an old transaction."""
-        if not isinstance(self.provider, TransactionalProvider):
-            return
-        try:
-            self.provider.rollback_transaction()
-        except Exception as exc:
-            self.log.debug(
-                f"Could not rollback before autocommit execution for {migration.script_name}: {exc}"
-            )
-        conn = getattr(self.provider, "connection", None)
-        if conn is not None and hasattr(conn, "setAutoCommit"):
-            try:
-                conn.setAutoCommit(True)
-            except Exception as exc:
-                self.log.debug(f"Could not force autocommit before {migration.script_name}: {exc}")
 
     def _parse_sql_statements(
         self,
@@ -481,8 +468,15 @@ class ExecutionEngine:
         migration: Migration,
         result: OperationResult,
         start_time: float,
+        autocommit: bool = False,
     ) -> bool:
         """Execute all SQL statements in order.
+
+        With ``autocommit=True`` each statement is routed through the
+        provider's ``execute_autocommit_statement`` so it reaches the server
+        outside a transaction block. The switch is per statement — failure
+        handling and history writes triggered from here still run at the
+        session's normal isolation level.
 
         Returns:
             True if all statements executed successfully, False if any failed
@@ -591,7 +585,7 @@ class ExecutionEngine:
 
                 if self.sql_execution_service:
                     is_query, result_data = self.sql_execution_service.execute_statement(
-                        statement, i
+                        statement, i, autocommit=autocommit
                     )
                     if is_query:
                         if not isinstance(result_data, list):
@@ -605,6 +599,8 @@ class ExecutionEngine:
                                 f"Expected int for rows affected, got {type(result_data).__name__}"
                             )
                         rows_affected = result_data
+                elif autocommit and isinstance(self.provider, TransactionalProvider):
+                    rows_affected = self.provider.execute_autocommit_statement(statement)
                 else:
                     rows_affected = self.provider.execute_statement(statement)
 
@@ -901,8 +897,9 @@ class ExecutionEngine:
 
         Placeholder substitution (``placeholder_service``) is intentionally not applied
         here.  Non-SQL formats (Python scripts) are executed as code, not SQL text, so
-        ``${...}`` SQL-style placeholders are not meaningful.  Python migrations receive
-        the full config via ``MigrationContext`` and resolve values programmatically.
+        ``${...}`` SQL-style placeholders are not meaningful.  Python migrations instead
+        receive the effective placeholder mapping — the same one the SQL path substitutes
+        from — as ``MigrationContext.placeholders`` and resolve values programmatically.
         Any SQL they issue should apply placeholders through that context, not via the
         pre-parse substitution used by the SQL path.
         """
@@ -1067,9 +1064,20 @@ class ExecutionEngine:
         # where it might try to create its own DbliftLogger
         callback.dialect = dialect
 
+        # Substitute placeholders in the content BEFORE parsing, exactly as the
+        # migration path does in `_parse_sql_statements`. Tokenisers that do not
+        # recognise `$` otherwise split `${...}` from adjacent characters and
+        # produce un-executable SQL (`${schema}.t` -> `{schema }.t`). The result is
+        # passed as content_override so it is not cached on the callback.
+        content_override: Optional[str] = None
+        if self.placeholder_service:
+            content_override = self.placeholder_service.replace_placeholders(callback.content)
+
         # Parse SQL statements, ensuring we use our logger
         try:
-            sql_statements = callback.parse_sql_statements(dialect=dialect)
+            sql_statements = callback.parse_sql_statements(
+                dialect=dialect, content_override=content_override
+            )
         except Exception as e:
             self.log.error(
                 f"Error parsing SQL in callback {callback.script_name}: {to_python_string(e)}"
@@ -1095,9 +1103,11 @@ class ExecutionEngine:
         # Execute SQL statements in the callback
         try:
             for statement in sql_statements:
-                # Replace placeholders in the statement
-                if self.placeholder_service:
-                    statement = self.placeholder_service.replace_placeholders(statement)
+                # Placeholders were already substituted on the full content above,
+                # before tokenisation. Re-substituting here would warn twice about the
+                # same unresolved token and re-interpret `${...}` text that legitimately
+                # came out of a resolved placeholder value (same rationale as the
+                # migration path in `_execute_statements`).
 
                 # Check what kind of SQL statement this is (DDL, DML, or query)
                 statement_type = self.sql_analyzer.get_statement_type(statement)
@@ -1189,29 +1199,3 @@ class ExecutionEngine:
                     )
             # Re-raise the original exception
             raise
-
-    def execute_callbacks(
-        self, callbacks: List[Migration], callback_type: str = "AFTER_EACH"
-    ) -> None:
-        """Execute a list of callback migrations.
-
-        Args:
-            callbacks: List of callback migrations to execute
-            callback_type: Type of callback (BEFORE_EACH, AFTER_EACH, etc.)
-        """
-        if not callbacks:
-            return
-
-        self.log.info(f"Executing {len(callbacks)} {callback_type.lower()} callback(s)")
-
-        for callback in callbacks:
-            try:
-                self.log.info(f"Executing {callback_type.lower()} callback: {callback.script_name}")
-                self.execute_callback(callback)
-                self.log.info(f"Callback {callback.script_name} executed successfully")
-
-            except Exception as e:
-                self.log.error(f"Callback {callback.script_name} failed: {to_python_string(e)}")
-                # For callbacks, we typically want to continue execution
-                # rather than failing the entire migration
-                continue

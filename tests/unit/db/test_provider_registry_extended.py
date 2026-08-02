@@ -148,20 +148,6 @@ class TestProviderRegistryListPlugins(unittest.TestCase):
         self.assertGreater(len(plugins), 0)
 
 
-class TestProviderRegistryGetTransport(unittest.TestCase):
-    def test_postgresql_is_native(self):
-        from db.provider_registry import ProviderRegistry
-
-        transport = ProviderRegistry.get_provider_transport("postgresql")
-        self.assertEqual(transport, "native")
-
-    def test_cosmosdb_is_native(self):
-        from db.provider_registry import ProviderRegistry
-
-        transport = ProviderRegistry.get_provider_transport("cosmosdb")
-        self.assertEqual(transport, "native")
-
-
 class TestNativeDriverManager(unittest.TestCase):
     def test_get_available_drivers(self):
         from db.provider_registry import NativeDriverManager

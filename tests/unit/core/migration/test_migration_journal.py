@@ -24,8 +24,6 @@ class TestEntryType:
             "MIGRATION_START",
             "MIGRATION_COMPLETE",
             "MIGRATION_FAILED",
-            "METADATA",
-            "PERFORMANCE",
             "OBJECT_CHANGE",
         }
         assert {e.value for e in EntryType} == expected
@@ -42,7 +40,7 @@ class TestEntryType:
 
 @pytest.mark.unit
 class TestJournalEntry:
-    """Tests for JournalEntry construction, to_dict and from_dict."""
+    """Tests for JournalEntry construction."""
 
     def test_constructor_defaults(self):
         before = datetime.now()
@@ -76,86 +74,6 @@ class TestJournalEntry:
         assert entry.details == {"affected_rows": 0}
         assert entry.success is False
         assert entry.error_message == "column already exists"
-
-    def test_to_dict(self):
-        ts = datetime(2026, 3, 1, 12, 0, 0)
-        entry = JournalEntry(
-            migration_id="V1__init.sql",
-            entry_type=EntryType.MIGRATION_START,
-            timestamp=ts,
-            details={"version": "1"},
-        )
-        d = entry.to_dict()
-        assert d["migration_id"] == "V1__init.sql"
-        assert d["entry_type"] == "MIGRATION_START"
-        assert d["timestamp"] == ts.isoformat()
-        assert d["details"] == {"version": "1"}
-        assert d["success"] is True
-        assert d["error_message"] == ""
-
-    def test_from_dict_string_timestamp(self):
-        ts = datetime(2026, 4, 1, 8, 0, 0)
-        data = {
-            "migration_id": "V1__init.sql",
-            "entry_type": "STATEMENT_COMPLETE",
-            "statement_index": 2,
-            "statement": "CREATE TABLE t (id INT)",
-            "execution_time": 42,
-            "timestamp": ts.isoformat(),
-            "details": {},
-            "success": True,
-            "error_message": "",
-        }
-        entry = JournalEntry.from_dict(data)
-        assert entry.migration_id == "V1__init.sql"
-        assert entry.entry_type == EntryType.STATEMENT_COMPLETE
-        assert entry.timestamp == ts
-        assert entry.execution_time == 42
-
-    def test_from_dict_datetime_timestamp(self):
-        ts = datetime(2026, 5, 1, 9, 0, 0)
-        data = {
-            "migration_id": "V2__seed.sql",
-            "entry_type": "METADATA",
-            "timestamp": ts,
-        }
-        entry = JournalEntry.from_dict(data)
-        assert entry.timestamp == ts
-
-    def test_from_dict_none_timestamp_defaults_to_now(self):
-        before = datetime.now()
-        data = {
-            "migration_id": "V3__fix.sql",
-            "entry_type": "MIGRATION_FAILED",
-            "timestamp": None,
-        }
-        entry = JournalEntry.from_dict(data)
-        after = datetime.now()
-        assert before <= entry.timestamp <= after
-
-    def test_to_dict_from_dict_round_trip(self):
-        ts = datetime(2026, 6, 15, 14, 30, 0)
-        original = JournalEntry(
-            migration_id="V5__views.sql",
-            entry_type=EntryType.OBJECT_CHANGE,
-            statement_index=1,
-            statement="CREATE VIEW v AS SELECT 1",
-            execution_time=10,
-            timestamp=ts,
-            details={"objects_affected": [{"object_type": "VIEW", "object_name": "v"}]},
-            success=True,
-            error_message="",
-        )
-        rebuilt = JournalEntry.from_dict(original.to_dict())
-        assert rebuilt.migration_id == original.migration_id
-        assert rebuilt.entry_type == original.entry_type
-        assert rebuilt.statement_index == original.statement_index
-        assert rebuilt.statement == original.statement
-        assert rebuilt.execution_time == original.execution_time
-        assert rebuilt.timestamp == original.timestamp
-        assert rebuilt.details == original.details
-        assert rebuilt.success == original.success
-        assert rebuilt.error_message == original.error_message
 
 
 # ---------------------------------------------------------------------------
@@ -192,11 +110,6 @@ class TestMigrationJournalDisabled:
     def test_record_statement_failed_noop(self):
         j = MigrationJournal(enabled=False)
         j.record_statement_failed("SELECT 1", 0, "err")
-        assert j.entries == []
-
-    def test_record_metadata_noop(self):
-        j = MigrationJournal(enabled=False)
-        j.record_metadata({"key": "val"})
         assert j.entries == []
 
     def test_record_object_changes_noop(self):
@@ -236,11 +149,6 @@ class TestMigrationJournalGuards:
     def test_record_statement_failed_no_migration(self):
         j = self._make_journal()
         j.record_statement_failed("SELECT 1", 0, "err")
-        assert j.entries == []
-
-    def test_record_metadata_no_migration(self):
-        j = self._make_journal()
-        j.record_metadata({"key": "val"})
         assert j.entries == []
 
     def test_record_object_changes_no_migration(self):
@@ -295,16 +203,6 @@ class TestMigrationJournalLifecycle:
         assert len(fail_entries) == 1
         assert fail_entries[0].success is False
         assert fail_entries[0].error_message == "migration failed"
-
-    def test_get_all_journal_entries(self):
-        j = MigrationJournal()
-        j.start_migration("V1__a.sql")
-        j.record_statement_start("SELECT 1", 0)
-        j.end_migration("V1__a.sql", success=True)
-
-        all_entries = j.get_all_journal_entries()
-        assert len(all_entries) == 3
-        assert all_entries is j.entries
 
 
 # ---------------------------------------------------------------------------
@@ -474,24 +372,6 @@ class TestRecordObjectChanges:
         assert oc[0].details["objects_affected"] == objects
         assert oc[0].statement == "CREATE TABLE users (id INT)"
         assert oc[0].statement_index == 0
-
-
-# ---------------------------------------------------------------------------
-# record_metadata
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.unit
-class TestRecordMetadata:
-    def test_records_metadata_entry(self):
-        j = MigrationJournal()
-        j.start_migration("V1__init.sql")
-        j.record_metadata({"schema_size": 1024})
-
-        entries = j.get_migration_journal("V1__init.sql")
-        meta = [e for e in entries if e.entry_type == EntryType.METADATA]
-        assert len(meta) == 1
-        assert meta[0].details == {"schema_size": 1024}
 
 
 # ---------------------------------------------------------------------------

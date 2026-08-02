@@ -25,16 +25,6 @@ from cli._command_handlers import (  # noqa: F401
     PREMIUM_STUB_COMMANDS,
     CliCommandContext,
     _extract_version_filters,
-    _handle_baseline,
-    _handle_clean,
-    _handle_import_flyway,
-    _handle_info,
-    _handle_migrate,
-    _handle_repair,
-    _handle_undo,
-    _handle_validate,
-    _minimal_result,
-    _set_command_completed,
     _validate_migrate_options,
     execute_single_command,
 )
@@ -195,6 +185,41 @@ class _CliContext:
     license_info: Optional[Any] = None
 
 
+def _resolve_core_version() -> Optional[str]:
+    """Return the installed ``dblift`` core distribution version.
+
+    In a dev checkout, ``importlib.metadata.version("dblift")`` scans
+    ``sys.path`` for ANY distribution metadata matching the name "dblift" —
+    it does not verify that metadata belongs to the code actually executing,
+    so a stale or shadowing install elsewhere on ``sys.path`` can win over the
+    running source. The bundled ``__init__.py`` at the project root is the
+    freshest, least ambiguous ground truth for "what version is this code",
+    so it is tried first. Under a frozen build, though, the filesystem layout
+    is unreliable, so the walk is skipped entirely and ``importlib.metadata``
+    is used instead.
+    """
+    from importlib.metadata import PackageNotFoundError
+    from importlib.metadata import version as _version
+
+    if not getattr(sys, "frozen", False):
+        try:
+            init_file = _project_root / "__init__.py"
+            if init_file.exists():
+                with open(init_file, "r", encoding="utf-8") as f:
+                    for line in f:
+                        if line.startswith("__version__"):
+                            parts = line.split("=", 1)
+                            if len(parts) == 2:
+                                return parts[1].strip().strip('"').strip("'")
+        except Exception:
+            pass
+
+    try:
+        return _version("dblift")
+    except PackageNotFoundError:
+        return None
+
+
 def _format_version() -> str:
     """Render the ``--version`` output.
 
@@ -216,7 +241,7 @@ def _format_version() -> str:
         except PackageNotFoundError:
             return None
 
-    core = _get("dblift")
+    core = _resolve_core_version()
     pro = _get("dblift-pro")
     enterprise = _get("dblift-enterprise")
 
@@ -345,6 +370,27 @@ def _parse_argv_and_load_config(argv: List[str]) -> _CliContext:
         from cli.commands.config_command import run_config_command
 
         sys.exit(run_config_command(args))
+
+    # A handler marked ``_dblift_zero_config_command`` needs no project
+    # config at all (e.g. a paid `license` command checking
+    # ~/.dblift/license.key — nothing to do with a database). Unlike the
+    # `config`/`db` short-circuits above, OSS can't spell the command name
+    # here: only core/premium_manifest.py may name a paid-edition command.
+    # So this is driven purely by a handler attribute, read generically off
+    # whatever's registered for the command — same pattern as
+    # ``_dblift_config_only_client``/``_dblift_skip_secret_resolution``.
+    # Single-command only: firing on ``commands[0]`` unconditionally would
+    # silently drop the rest of a chained invocation (e.g. `dblift license
+    # migrate`) instead of running it. A chained zero-config command falls
+    # through to the normal config-requiring pipeline instead — consistent
+    # with how ``_build_command_client`` already gates its own
+    # single-command-only optimization the same way.
+    if len(commands) == 1 and _command_handler_attr(
+        commands[0], "_dblift_zero_config_command", False
+    ):
+        handler = _COMMAND_HANDLERS[commands[0]]
+        success, _payload = handler(CliCommandContext(args=args))
+        sys.exit(0 if success else 1)
 
     log = LogFactory.get_log("Dblift")
     parser = create_parser()
@@ -495,8 +541,7 @@ def _dispatch_command(ctx: _CliContext, command_output: CommandOutput) -> int:
     if placeholders:
         ctx.log.debug(f"Using placeholders: {placeholders}")
 
-    ctx.config.journal_enabled = True
-    if getattr(ctx.args, "strict", False):
+    if getattr(ctx.config, "strict_mode", False) or getattr(ctx.args, "strict_mode", False):
         ctx.config.strict_mode = True
         ctx.log.info(
             "Strict mode is enabled. All migrations will be validated against strict rules."
@@ -577,6 +622,11 @@ def _dispatch_command(ctx: _CliContext, command_output: CommandOutput) -> int:
         _close_logs(ctx.log)
         return 1 if any_command_failed else 0
 
+    except SystemExit:
+        # CapabilityDeniedError (and other intentional exits) re-raise
+        # SystemExit with a dedicated code; flush logs then propagate.
+        _close_logs(ctx.log)
+        raise
     except Exception as e:
         ctx.log.error(f"Unexpected error: {str(e)}")
         ctx.log.error_with_exception("Command execution failed", e)

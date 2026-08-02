@@ -8,9 +8,7 @@ isinstance(provider, TransactionalProvider) pour vérifier le support.
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Protocol, runtime_checkable
-
-from core.migration.clean_summary import CleanExecutionSummary
+from typing import Any, Dict, List, Optional, cast
 
 
 @dataclass(frozen=True)
@@ -234,6 +232,32 @@ class TransactionalProvider(ABC):
         """Rollback the current transaction."""
         ...
 
+    def execute_autocommit_statement(
+        self, sql: str, schema: Optional[str] = None, params: Optional[List[Any]] = None
+    ) -> int:
+        """Execute one statement that must reach the server outside a transaction.
+
+        ``TransactionPolicy`` flags statements the vendor refuses to run inside
+        a transaction block (``CREATE INDEX CONCURRENTLY``,
+        ``CREATE FULLTEXT CATALOG``, ...). Not opening an explicit transaction
+        is not enough when the driver opens one of its own per statement, so
+        the provider — which owns the connection — sends the flagged statement
+        through a session that genuinely autocommits.
+
+        Statement-scoped on purpose: only the flagged statement runs in
+        autocommit, so surrounding work on the same connection (history
+        writes, failure records) keeps its normal transactional guarantees.
+
+        The default delegates to plain ``execute_statement``: it fits
+        providers whose driver already autocommits, and every dialect whose
+        ``non_transactional_sql_patterns`` is empty never reaches this call at
+        all. See :meth:`db.sqlalchemy_provider.SqlAlchemyProvider.execute_autocommit_statement`
+        for the SQLAlchemy implementation.
+        """
+        # Every concrete provider also implements QueryProvider; the cast keeps
+        # this interface free of an execute_statement redeclaration.
+        return cast(QueryProvider, self).execute_statement(sql, schema=schema, params=params)
+
     def supports_transactions(self) -> bool:
         """Retourne True si ce provider supporte les transactions traditionnelles.
 
@@ -349,31 +373,4 @@ class MigrationProvider(ABC):
         Returns:
             True if lock released successfully, False otherwise
         """
-        ...
-
-
-@runtime_checkable
-class ConnectionStateProvider(Protocol):
-    """Optional hook for providers that can eagerly open or refresh a connection."""
-
-    def _ensure_connection(self) -> None:
-        """Ensure the provider has an active connection."""
-        ...
-
-
-@runtime_checkable
-class ProviderUrlProvider(Protocol):
-    """Optional neutral display URL contract for providers."""
-
-    def get_display_url(self) -> str:
-        """Return a user-facing connection URL suitable for masking and logs."""
-        ...
-
-
-@runtime_checkable
-class CleanPreviewProvider(Protocol):
-    """Optional native clean dry-run contract."""
-
-    def get_clean_preview(self, schema: str) -> CleanExecutionSummary:
-        """Return the objects a clean operation would remove without dropping them."""
         ...

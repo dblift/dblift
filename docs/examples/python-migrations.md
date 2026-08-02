@@ -142,7 +142,7 @@ def migrate(context: MigrationContext) -> None:
         info_after = client.info()
         print(f"Pending after: {getattr(info_after, 'pending_count', 0)}")
 
-        # Undo example (the separate U1__demo_python_migration.py supplies the undo function)
+        # Undo example (U1__demo_python_migration.py: separate migrate() that reverses V1)
         print("=== Running undo ===")
         undo_result = client.undo()
         print(f"Undo success: {undo_result.success}")
@@ -184,7 +184,7 @@ undo companion — you receive a `MigrationContext` with:
 - `context.connection` — the active provider connection object (if exposed by the provider).
 - `context.engine` — the SQLAlchemy `Engine` when you used `DBLiftClient.from_sqlalchemy(engine=...)` (None otherwise).
 - `context.schema` — the target schema string from config (or None).
-- `context.placeholders` — read-only `Mapping[str, str]` coming from your `dblift.yaml` / CLI `--placeholders` / config (see D5: **no automatic `${...}` substitution happens inside `execute()`** — substitute manually in your Python code if you need the values in generated SQL).
+- `context.placeholders` — read-only `Mapping[str, str]` holding the same effective set the SQL path substitutes from: `dblift_*` system placeholders, then your `dblift.yaml` placeholders, then CLI `--placeholders` / `migrate(placeholders=...)` (see D5: **no automatic `${...}` substitution happens inside `execute()`** — substitute manually in your Python code if you need the values in generated SQL).
 - `context.config` — the full resolved `DbliftConfig`.
 - `context.db` / `context.raw_client` — CosmosDB `DatabaseProxy` / `CosmosClient` (always None for relational/SQLAlchemy providers). Cosmos DB runs Python migrations only; see [NoSQL (Cosmos DB) Python migrations](../user-guide/nosql-python-migrations.md).
 - `context.cursor()`, `context.commit()`, `context.rollback()`, `context.close()` — no-op / self-returning shims so classic DBAPI-style code (`cur = conn.cursor(); cur.execute(...); cur.close()`) continues to work without changes.

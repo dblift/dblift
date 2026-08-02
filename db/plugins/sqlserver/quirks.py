@@ -50,6 +50,15 @@ class SqlserverQuirks(BaseQuirks):
         """Same Msg 2714 detection as the data history table."""
         return self.is_data_history_table_already_exists_error(error_message)
 
+    def is_schema_history_race_error(self, error_message: str) -> bool:
+        """SQL Server's ``CREATE TABLE`` for the migration history table has
+        no ``IF NOT EXISTS`` guard; a concurrent migration bootstrap loses
+        with Msg 2714 ("There is already an object named ..."), which the
+        base English markers don't contain."""
+        if "already an object named" in (error_message or "").lower():
+            return True
+        return super().is_schema_history_race_error(error_message)
+
     pygments_lexer = "tsql"
     connection_identifier_attrs = ("url", "host", "database")
     missing_connection_identifier_hint = (
@@ -331,6 +340,18 @@ class SqlserverQuirks(BaseQuirks):
         (
             r"^CREATE\s+FULLTEXT\s+CATALOG\b",
             "SQL Server CREATE FULLTEXT CATALOG cannot run inside a user transaction",
+        ),
+        (
+            r"^CREATE\s+FULLTEXT\s+INDEX\b",
+            "SQL Server CREATE FULLTEXT INDEX cannot run inside a user transaction",
+        ),
+        (
+            r"^DROP\s+FULLTEXT\s+INDEX\b",
+            "SQL Server DROP FULLTEXT INDEX cannot run inside a user transaction",
+        ),
+        (
+            r"^DROP\s+FULLTEXT\s+CATALOG\b",
+            "SQL Server DROP FULLTEXT CATALOG cannot run inside a user transaction",
         ),
     )
 

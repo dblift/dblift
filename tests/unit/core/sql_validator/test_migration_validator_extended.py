@@ -208,10 +208,13 @@ class TestValidateFlywayCaching(unittest.TestCase):
         self.assertIn("Error", result["error_message"])
 
     def test_invalid_type_in_flyway(self):
+        # BOGUS_TYPE, not JDBC: JDBC is a legitimate Flyway vocabulary value
+        # (Java-based migration resolver) and FLYWAY_VALID_TYPES now accepts
+        # it, so it no longer exercises the "unsupported type" branch here.
         v, _, hm, _ = _make_validator()
         hm.provider.table_exists.return_value = True
         hm.provider.execute_query.side_effect = [
-            [{"version": "1", "type": "JDBC", "script": "V1.sql", "checksum": 1}],
+            [{"version": "1", "type": "BOGUS_TYPE", "script": "V1.sql", "checksum": 1}],
             [{"version": "1", "type": "SQL", "script": "V1.sql", "checksum": 1}],
         ]
         result = v.validate_flyway_compatibility()

@@ -6,7 +6,6 @@ This test suite covers all migrate command options:
 - Target version (--target-version)
 - Dry run (--dry-run)
 - Mark as executed (--mark-as-executed)
-- Skip validation (--skip-validation)
 - Tag filtering (--tags, --exclude-tags)
 - Version filtering (--versions, --exclude-versions)
 

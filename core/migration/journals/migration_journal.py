@@ -15,8 +15,6 @@ class EntryType(Enum):
     MIGRATION_START = "MIGRATION_START"
     MIGRATION_COMPLETE = "MIGRATION_COMPLETE"
     MIGRATION_FAILED = "MIGRATION_FAILED"
-    METADATA = "METADATA"
-    PERFORMANCE = "PERFORMANCE"
     OBJECT_CHANGE = "OBJECT_CHANGE"
 
 
@@ -57,42 +55,6 @@ class JournalEntry:
         self.details = details or {}
         self.success = success
         self.error_message = error_message
-
-    def to_dict(self) -> Dict[str, Any]:
-        """Convert entry to dictionary for storage"""
-        return {
-            "migration_id": self.migration_id,
-            "entry_type": self.entry_type.value,
-            "statement_index": self.statement_index,
-            "statement": self.statement,
-            "execution_time": self.execution_time,
-            "timestamp": self.timestamp.isoformat(),
-            "details": self.details,
-            "success": self.success,
-            "error_message": self.error_message,
-        }
-
-    @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "JournalEntry":
-        """Create entry from dictionary"""
-        ts = data.get("timestamp")
-        if isinstance(ts, str):
-            timestamp = datetime.fromisoformat(ts)
-        elif isinstance(ts, datetime):
-            timestamp = ts
-        else:
-            timestamp = datetime.now()
-        return cls(
-            migration_id=data.get("migration_id", ""),
-            entry_type=EntryType(data.get("entry_type", "")),
-            statement_index=data.get("statement_index", 0),
-            statement=data.get("statement", ""),
-            execution_time=data.get("execution_time", 0),
-            timestamp=timestamp,
-            details=data.get("details", {}),
-            success=data.get("success", True),
-            error_message=data.get("error_message", ""),
-        )
 
 
 class MigrationJournal:
@@ -257,24 +219,6 @@ class MigrationJournal:
 
         self._write_entry(entry)
 
-    def record_metadata(self, details: Dict[str, Any]) -> None:
-        """Record additional metadata about the migration
-
-        Args:
-            details: Metadata details (e.g., schema size before/after)
-        """
-        if not self.enabled or not self.current_migration_id:
-            return
-
-        entry = JournalEntry(
-            migration_id=self.current_migration_id,
-            entry_type=EntryType.METADATA,
-            details=details,
-            timestamp=datetime.now(),
-        )
-
-        self._write_entry(entry)
-
     def _write_entry(self, entry: JournalEntry) -> None:
         """Store entry in memory
 
@@ -329,14 +273,6 @@ class MigrationJournal:
 
         # Return in-memory journal entries
         return self.migration_journals.get(migration_id, [])
-
-    def get_all_journal_entries(self) -> List[JournalEntry]:
-        """Get all journal entries from memory
-
-        Returns:
-            List of all journal entries
-        """
-        return self.entries
 
     def record_object_changes(
         self, statement: str, statement_index: int, objects_affected: List[Dict[str, Any]]

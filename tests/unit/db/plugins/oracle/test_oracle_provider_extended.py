@@ -136,17 +136,6 @@ class TestTableExists:
         assert params == ["MYSCHEMA", "MixedCase"]
 
 
-class TestGetActualObjectName:
-    def test_found(self):
-        p = _Provider()
-        p.query_results["FETCH FIRST 1 ROWS ONLY"] = [{"object_name": "ORDERS"}]
-        assert p.get_actual_object_name("MYSCHEMA", "orders") == "ORDERS"
-
-    def test_not_found(self):
-        p = _Provider()
-        assert p.get_actual_object_name("MYSCHEMA", "orders") is None
-
-
 class TestIsSystemGeneratedSequence:
     def test_true(self):
         p = _Provider()

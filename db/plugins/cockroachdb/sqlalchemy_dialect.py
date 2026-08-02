@@ -15,7 +15,7 @@ used — never the trailing ``go1.x.y`` fragment.
 from __future__ import annotations
 
 import re
-from typing import Any, Optional, Tuple
+from typing import Any, Tuple
 
 from sqlalchemy.dialects.postgresql.psycopg import PGDialect_psycopg
 

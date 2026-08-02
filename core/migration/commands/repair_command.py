@@ -10,8 +10,8 @@ if TYPE_CHECKING:
 
 from core.exceptions import ExecutionError
 from core.logger.results import RepairResult
-from core.migration._type_match import is_migration_type
-from core.migration.migration import Migration
+from core.migration._type_match import is_versioned
+from core.migration.migration import Migration, MigrationType
 from core.migration.state.migration_state import MigrationState
 from db.provider_capabilities import ensure_provider_connection
 from db.provider_interfaces import TransactionalProvider
@@ -354,7 +354,8 @@ class RepairCommand(BaseCommand):
         """Detect checksum drift for applied versioned migrations not already in repairs.
 
         MigrationState currently only tracks repeatable checksum changes, so this
-        performs an explicit comparison against the filesystem for all applied SQL migrations.
+        performs an explicit comparison against the filesystem for all applied versioned
+        migrations, in every script format.
 
         Args:
             migration_state: Current migration state
@@ -399,7 +400,9 @@ class RepairCommand(BaseCommand):
             if not isinstance(all_applied, list):
                 all_applied = []
         for applied_migration in all_applied:
-            if not is_migration_type(getattr(applied_migration, "type", None), "SQL"):
+            # Versioned migrations of any format: the history records versioned
+            # Python scripts as PYTHON, and their checksums drift the same way.
+            if not is_versioned(getattr(applied_migration, "type", None)):
                 continue
 
             script_name = getattr(applied_migration, "script_name", "")
@@ -410,7 +413,7 @@ class RepairCommand(BaseCommand):
             fs_migration = filesystem_lookup.get(script_name)
             fs_checksum = getattr(fs_migration, "checksum", None) if fs_migration else None
 
-            if fs_checksum is not None and db_checksum is not None and fs_checksum != db_checksum:
+            if fs_checksum is not None and fs_checksum != db_checksum:
                 repairs.append(
                     {
                         "type": "CHECKSUM_MISMATCH",
@@ -579,13 +582,13 @@ class RepairCommand(BaseCommand):
                         else:
                             # Infer from script name
                             if script_name.startswith("V"):
-                                original_type_name = "SQL"
+                                original_type_name = MigrationType.SQL.name
                             elif script_name.startswith("R"):
-                                original_type_name = "REPEATABLE"
+                                original_type_name = MigrationType.REPEATABLE.name
                             elif script_name.startswith("U"):
-                                original_type_name = "UNDO_SQL"
+                                original_type_name = MigrationType.UNDO_SQL.name
                             else:
-                                original_type_name = "SQL"
+                                original_type_name = MigrationType.SQL.name
 
                         # Create DELETE entry with original type embedded in description
                         delete_reason = description or "Marked as deleted via repair command"

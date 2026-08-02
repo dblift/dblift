@@ -170,18 +170,10 @@ class ProviderRegistry:
         ``_discovered`` latch, or a late-arriving third-party plugin never
         gets a second chance).
         """
-        try:
-            from importlib import metadata
-        except ImportError:  # pragma: no cover - Python < 3.8
-            return False
+        from importlib import metadata
 
         try:
             entry_points: List[Any] = list(metadata.entry_points(group=cls.ENTRY_POINT_GROUP))
-        except TypeError:
-            # Python < 3.10 didn't accept the keyword form; fall back.
-            all_eps = metadata.entry_points()
-            getter = getattr(all_eps, "get", None)
-            entry_points = list(getter(cls.ENTRY_POINT_GROUP, [])) if getter else []
         except Exception as exc:  # pragma: no cover - defensive
             _logger.warning(f"Failed to read entry-points for {cls.ENTRY_POINT_GROUP}: {exc}")
             return False
@@ -472,17 +464,6 @@ class ProviderRegistry:
             cls._plugins[dialect.lower()] = plugin_info
 
     @classmethod
-    def get_provider_transport(cls, db_type: str) -> ProviderTransport:
-        """Return the registered transport family for a database type.
-
-        Unknown providers still return ``"native"`` because v2 has a single
-        provider transport family.
-        """
-        if not cls._discovered:
-            cls.discover_plugins()
-        return "native"
-
-    @classmethod
     def get_provider_class(cls, db_type: str) -> Optional[Type[BaseProvider]]:
         """Get provider class for a database type.
 
@@ -702,18 +683,6 @@ class ProviderRegistry:
         return plugins
 
     @classmethod
-    def is_supported(cls, db_type: str) -> bool:
-        """Check if a database type is supported.
-
-        Args:
-            db_type: Database type
-
-        Returns:
-            True if supported, False otherwise
-        """
-        return cls.get_provider_class(db_type) is not None
-
-    @classmethod
     def create_provider(cls, config: "DbliftConfig", log: Optional["Log"] = None) -> "BaseProvider":
         """Create and return the appropriate database provider based on configuration.
 
@@ -759,16 +728,6 @@ class ProviderRegistry:
             Dictionary mapping database types to boolean availability status
         """
         return NativeDriverManager.get_available_drivers(cls.list_plugins())
-
-    @classmethod
-    def check_driver_installed(cls, db_type: str) -> bool:
-        """Return whether the native driver for *db_type* is importable."""
-        if not cls._discovered:
-            cls.discover_plugins()
-        plugin_info = cls._plugins.get(db_type.lower())
-        if plugin_info is None:
-            return False
-        return NativeDriverManager.check_driver_installed(plugin_info)
 
     @classmethod
     def validate_database_configuration(cls, config: "DbliftConfig") -> Tuple[bool, Optional[str]]:

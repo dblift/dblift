@@ -97,6 +97,10 @@ class IndexExtractor(BaseExtractor):
     ) -> Dict[str, Dict[str, Any]]:
         """Get indexes using vendor-specific queries."""
         query, params = self.vendor_queries.get_indexes_query(schema, table)
+        # (None, []) is the sentinel for "no per-table indexes query for this
+        # dialect" — skip silently rather than passing None to execute_query.
+        if query is None:
+            return {}
         rows = self.provider.query_executor.execute_query(self.connection, query, params)
         return self._parse_vendor_rows(table, rows)
 

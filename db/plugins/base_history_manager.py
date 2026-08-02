@@ -6,6 +6,34 @@ from abc import ABC, abstractmethod
 from typing import Any, Dict, List, Optional
 
 from core.logger import Log, NullLog
+from core.migration.migration import MigrationType
+
+# Migration type names that identify a *versioned* history row, whichever
+# script format produced it. ``MigrationType.SQL`` does not mean "SQL format":
+# ``parse_filename`` returns it for every versioned extension, and ``Migration``
+# then relabels non-SQL formats as ``MigrationType.PYTHON``. A history predicate
+# spelled ``type = 'SQL'`` therefore drops every Python migration.
+#
+# Built from ``.name``, not ``.value``: history rows are written with
+# ``migration.type.name`` and read back by ``AppliedMigration.from_history_row``
+# through the name-based ``MigrationType[...]`` lookup. The two spellings
+# coincide for every member today, but only the name is the persisted contract.
+#
+# The persisted vocabulary is frozen. Widen predicates against it; never rename
+# or add stored values — historical rows would silently degrade to ``UNKNOWN``.
+VERSIONED_HISTORY_TYPES: frozenset[str] = frozenset(
+    {MigrationType.SQL.name, MigrationType.PYTHON.name}
+)
+
+#: ``VERSIONED_HISTORY_TYPES`` rendered as a SQL ``IN`` list, e.g. ``('PYTHON', 'SQL')``.
+#: Sorted so the emitted SQL is stable. Dialects must interpolate this rather
+#: than hand-rolling a literal, so a new dialect cannot invent its own predicate.
+VERSIONED_HISTORY_TYPES_SQL_IN: str = (
+    "(" + ", ".join(f"'{name}'" for name in sorted(VERSIONED_HISTORY_TYPES)) + ")"
+)
+
+#: History ``type`` written for a synthetic undo row, derived rather than typed.
+UNDO_HISTORY_TYPE: str = MigrationType.UNDO_SQL.name
 
 
 class BaseHistoryManager(ABC):
@@ -546,7 +574,7 @@ class BaseHistoryManager(ABC):
             undo_info = {
                 "version": version,
                 "description": f"Undo migration {version}",
-                "type": "UNDO_SQL",
+                "type": UNDO_HISTORY_TYPE,
                 "script": undo_script_name,
                 # Batch-6 BUG-02: ``checksum`` is INT; typed NULL on an INT
                 # column breaks PostgreSQL. ``0`` is the existing sentinel for
@@ -572,42 +600,6 @@ class BaseHistoryManager(ABC):
             return script_name if os.path.splitext(script_name)[1] else f"{script_name}.sql"
         return f"UNDO_{version}.sql"
 
-    def migration_exists(
-        self, connection: Any, schema: str, version: str, table_name: Optional[str] = None
-    ) -> bool:
-        """Check if a migration with the given version exists in the history.
-
-        Default implementation queries the history table.
-        Database-specific implementations can override for optimization.
-
-        Args:
-            schema: Schema name
-            version: Migration version to check
-            table_name: Custom history table name
-
-        Returns:
-            True if migration exists, False otherwise
-        """
-        try:
-            table_name = table_name or self._get_default_table_name()
-
-            if not self.query_executor.table_exists(schema, table_name):
-                return False
-
-            qualified_table = self.query_executor.get_schema_qualified_name(schema, table_name)
-            query = f"SELECT COUNT(*) as count FROM {qualified_table} WHERE version = ?"
-
-            results = self.query_executor.execute_query(query, [version])
-            if results:
-                count = self._get_first_value(results)
-                return self._to_int(count) > 0
-
-            return False
-
-        except Exception as e:
-            self.log.error(f"Error checking if migration {version} exists: {str(e)}")
-            return False
-
     def get_row_limit_clause(self, n: int = 1) -> str:
         """Return SQL clause to limit the number of rows returned.
 
@@ -626,10 +618,14 @@ class BaseHistoryManager(ABC):
     ) -> Optional[str]:
         """Get the current schema version from the history table.
 
-        Default implementation finds the highest version number.
+        Default implementation finds the highest version number among versioned
+        rows — ``SQL`` for ``.sql`` scripts and ``PYTHON`` for scripted formats.
+        Undo rows are deliberately outside the predicate, so the version they
+        refer to is still reported by its own row.
         Database-specific implementations can override for custom logic.
 
         Args:
+            connection: Active database connection (provided by Provider)
             schema: Schema name
             table_name: Custom history table name
 
@@ -639,18 +635,18 @@ class BaseHistoryManager(ABC):
         try:
             table_name = table_name or self._get_default_table_name()
 
-            if not self.query_executor.table_exists(schema, table_name):
+            if not self.query_executor.table_exists(connection, schema, table_name):
                 return None
 
             qualified_table = self.query_executor.get_schema_qualified_name(schema, table_name)
             query = f"""
                 SELECT version FROM {qualified_table}
-                WHERE type = 'SQL' AND success = TRUE
+                WHERE type IN {VERSIONED_HISTORY_TYPES_SQL_IN} AND success = TRUE
                 ORDER BY installed_rank DESC
                 {self.get_row_limit_clause(1)}
             """
 
-            results = self.query_executor.execute_query(query)
+            results = self.query_executor.execute_query(connection, query)
             if results:
                 version = self._get_first_value(results)
                 return str(version) if version is not None else None

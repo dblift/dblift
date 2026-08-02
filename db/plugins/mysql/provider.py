@@ -5,6 +5,7 @@ from typing import Any, Dict, List, Optional
 from config import DbliftConfig
 from core.logger import Log
 from core.migration.clean_summary import CleanExecutionSummary
+from db.plugins.base_history_manager import UNDO_HISTORY_TYPE
 from db.plugins.mysql.mysql.schema_operations import MySqlSchemaOperations
 from db.provider_interfaces import DroppableObject
 from db.sqlalchemy_provider import SqlAlchemyProvider
@@ -175,7 +176,7 @@ class MySqlProvider(SqlAlchemyProvider):
     def create_history_table(self, schema: str, table_name: str) -> str:
         """Return SQL for the MySQL migration history table."""
         return f"""
-            CREATE TABLE {self.get_schema_qualified_name(schema, table_name)} (
+            CREATE TABLE IF NOT EXISTS {self.get_schema_qualified_name(schema, table_name)} (
                 installed_rank INT NOT NULL AUTO_INCREMENT,
                 version VARCHAR(50),
                 description VARCHAR(200) NOT NULL,
@@ -245,7 +246,7 @@ class MySqlProvider(SqlAlchemyProvider):
             {
                 "version": version,
                 "description": f"Undo migration {version}",
-                "type": "UNDO_SQL",
+                "type": UNDO_HISTORY_TYPE,
                 "script": undo_script,
                 "checksum": 0,
                 "success": True,

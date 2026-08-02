@@ -6,9 +6,11 @@ from typing import Any, Dict, List, Optional
 from config import DbliftConfig
 from core.logger import Log
 from core.migration.clean_summary import CleanExecutionSummary
+from db.plugins.base_history_manager import UNDO_HISTORY_TYPE
 from db.plugins.postgresql._provider_query_executor import ProviderQueryExecutor
 from db.plugins.postgresql.postgresql.locking_manager import _get_advisory_lock_key
 from db.plugins.postgresql.postgresql.schema_operations import PostgreSqlSchemaOperations
+from db.plugins.postgresql.search_path import search_path_schemas
 from db.provider_interfaces import DroppableObject
 from db.sqlalchemy_provider import SqlAlchemyProvider
 
@@ -23,9 +25,46 @@ class PostgreSqlProvider(SqlAlchemyProvider):
     canonical_dialect_key = "postgresql"
     MIGRATION_LOCK_TABLE = "dblift_migration_lock"
 
+    #: Wrap every ``clean`` drop in a savepoint — see :meth:`drop_object`.
+    #: Redshift inherits this provider but has no ``SAVEPOINT`` statement,
+    #: so it turns this off.
+    clean_drop_uses_savepoint: bool = True
+
     def __init__(self, config: DbliftConfig, log: Optional[Log] = None) -> None:
         """Initialize the native PostgreSQL provider."""
         super().__init__(config, log)
+
+    def drop_object(self, obj: DroppableObject) -> None:
+        """Drop one object without letting a failure abort the whole clean.
+
+        ``CleanCommand`` logs a failed drop and moves on to the next object.
+        On PostgreSQL that only works with a savepoint: the backend aborts the
+        *entire* transaction on any statement error, so catching the Python
+        exception leaves the connection unusable and every later DROP fails
+        with ``InFailedSqlTransaction`` — including dblift's own history and
+        lock tables. Statement-level rollback is the norm elsewhere (Oracle,
+        DB2 and SQL Server keep the transaction alive, MySQL commits DDL
+        implicitly), which is why the base provider issues the drop directly.
+
+        The savepoint is released only while it is still active. In the
+        provider's default auto-commit-per-statement mode a successful drop
+        commits the transaction outright, which ends the savepoint with it —
+        a stronger guarantee than a release, and SQLAlchemy raises if an
+        already-finished nested transaction is committed again.
+        """
+        if not self.clean_drop_uses_savepoint:
+            super().drop_object(obj)
+            return
+
+        savepoint = self._ensure_connection().begin_nested()
+        try:
+            super().drop_object(obj)
+        except Exception:
+            if savepoint.is_active:
+                savepoint.rollback()
+            raise
+        if savepoint.is_active:
+            savepoint.commit()
 
     def execute_statement(
         self, sql: str, schema: Optional[str] = None, params: Optional[List[Any]] = None
@@ -67,8 +106,14 @@ class PostgreSqlProvider(SqlAlchemyProvider):
         return str(rows[0]["version"]) if rows else "Unknown PostgreSQL Version"
 
     def set_current_schema(self, schema: str) -> None:
-        """Set the PostgreSQL search path for this connection."""
-        super().execute_statement(f"SET search_path TO {_quote_identifier(schema)}")
+        """Set the PostgreSQL search path for this connection.
+
+        ``public`` follows the target schema so extension functions installed
+        there stay callable unqualified — see
+        :mod:`db.plugins.postgresql.search_path`.
+        """
+        path = ", ".join(_quote_identifier(name) for name in search_path_schemas(schema))
+        super().execute_statement(f"SET search_path TO {path}")
 
     def get_schema_qualified_name(self, schema: str, object_name: str) -> str:
         """Return a quoted schema-qualified object name."""
@@ -200,7 +245,7 @@ class PostgreSqlProvider(SqlAlchemyProvider):
             {
                 "version": version,
                 "description": f"Undo migration {version}",
-                "type": "UNDO_SQL",
+                "type": UNDO_HISTORY_TYPE,
                 "script": undo_script,
                 "checksum": 0,
                 "success": True,

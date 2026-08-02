@@ -101,16 +101,6 @@ class AlterGeneratorFactory:
         return generator_class(dialect)
 
     @classmethod
-    def get_supported_dialects(cls) -> list[str]:
-        """Get list of supported database dialects.
-
-        Returns:
-            List of supported dialect names
-        """
-        cls._ensure_populated()
-        return sorted(cls._generators.keys())
-
-    @classmethod
     def register_generator(cls, dialect: str, generator_class: Type[BaseAlterGenerator]) -> None:
         """Register a new ALTER generator for a dialect.
 

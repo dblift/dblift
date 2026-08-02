@@ -82,11 +82,10 @@ class TestDuckDBSplitter:
         stmts = parser.split_statements("CREATE TABLE t (a INT);", strict_tokenizer=True)
         assert stmts == ["CREATE TABLE t (a INT);"]
 
-    def test_classify_and_extract(self) -> None:
+    def test_extract_objects_from_create(self) -> None:
         from db.plugins.duckdb.parser.duckdb_regex_parser import DuckDBRegexParser
 
         parser = DuckDBRegexParser()
-        assert parser.classify_statement("CREATE TABLE x (a int)") == "DDL"
         objs = parser.extract_objects("CREATE TABLE main.foo (a int)")
         assert [(o.object_type.value, o.name) for o in objs] == [("TABLE", "foo")]
 
@@ -212,16 +211,30 @@ class TestDuckDBDmlRowcount:
         assert provider.execute_statement("INSERT INTO t VALUES (1, 'a'), (2, 'b'), (3, 'c')") == 3
         assert provider.execute_statement("DELETE FROM t WHERE id >= 2") == 2
 
-    def test_params_path_skips_returning_rewrite(self, tmp_path: Path) -> None:
-        """Parameterized DML is not rewritten; still succeeds (rowcount may be -1)."""
+    def test_params_update_reports_positive_rowcount(self, tmp_path: Path) -> None:
+        """Parameterized DML uses RETURNING rewrite (undo restore / bind paths)."""
         provider = self._provider(tmp_path)
         provider.execute_statement("CREATE TABLE t (id INTEGER PRIMARY KEY, v VARCHAR)")
-        provider.execute_statement("INSERT INTO t VALUES (1, 'a')")
+        provider.execute_statement("INSERT INTO t VALUES (1, 'a'), (2, 'b')")
         rc = provider.execute_statement("UPDATE t SET v = ? WHERE id = ?", params=["x", 1])
-        # Driver may report -1; only assert no exception and value updated
-        assert rc is None or isinstance(rc, int)
+        assert rc == 1, f"expected rowcount 1 for matching param UPDATE, got {rc}"
         rows = provider.execute_query("SELECT v FROM t WHERE id = 1")
         assert rows[0]["v"] == "x"
+        rc0 = provider.execute_statement("UPDATE t SET v = ? WHERE id = ?", params=["y", 99])
+        assert rc0 == 0, f"expected rowcount 0 for non-matching param UPDATE, got {rc0}"
+
+    def test_params_delete_and_insert_rowcounts(self, tmp_path: Path) -> None:
+        provider = self._provider(tmp_path)
+        provider.execute_statement("CREATE TABLE t (id INTEGER PRIMARY KEY, v VARCHAR)")
+        assert (
+            provider.execute_statement(
+                "INSERT INTO t (id, v) VALUES (?, ?), (?, ?)",
+                params=[1, "a", 2, "b"],
+            )
+            == 2
+        )
+        assert provider.execute_statement("DELETE FROM t WHERE id = ?", params=[1]) == 1
+        assert provider.execute_statement("DELETE FROM t WHERE id = ?", params=[99]) == 0
 
     def test_existing_returning_not_double_appended(self, tmp_path: Path) -> None:
         provider = self._provider(tmp_path)

@@ -8,7 +8,7 @@ parsing raw SQL to determine which objects were dropped.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Dict, Iterable, List, Optional
+from typing import Dict, List, Optional
 
 
 @dataclass(frozen=True)
@@ -19,10 +19,6 @@ class CleanedObjectInfo:
     name: str
     schema: Optional[str] = None
     details: Dict[str, str] = field(default_factory=dict)
-
-    def normalized_type(self) -> str:
-        """Return a normalized object type identifier."""
-        return self.object_type.lower().strip()
 
 
 @dataclass
@@ -75,10 +71,6 @@ class CleanExecutionSummary:
         self.objects.extend(other.objects)
         if hasattr(other, "errors"):
             self.errors.extend(other.errors)
-
-    def add_objects(self, objects: Iterable[CleanedObjectInfo]) -> None:
-        """Add an iterable of object metadata."""
-        self.objects.extend(objects)
 
     def add_error(self, error: str) -> None:
         """Record an error that occurred during clean operation."""

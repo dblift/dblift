@@ -118,8 +118,8 @@ strategy in an older dblift version.
        SET checksum = '<new-sha256>'
        WHERE version = '<V>';
 
-   This is also what `dblift repair --fix-checksums` (or equivalent
-   provider command, check `dblift repair --help`) does.
+   This is also what `dblift repair` does for checksum drift (see
+   `dblift repair --help`).
 2. If the file edit was unintentional / a regression: restore the
    original file from git history and don't touch the audit table.
 

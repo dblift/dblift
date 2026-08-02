@@ -1,35 +1,7 @@
-"""
-Normalization utilities for schema objects.
+"""Normalization utilities for schema objects.
 
-This module provides utilities for:
-- Canonical ordering of objects
-- Type normalization
-- Identifier normalization
-- Dependency resolution
+This package provides data type normalization helpers used when comparing
+SQL objects across dialects.
 """
 
-from typing import TYPE_CHECKING, Any
-
-from core.normalization.dependency_resolver import DependencyResolver
-from core.normalization.object_orderer import ObjectOrderer
-
-if TYPE_CHECKING:
-    from core.normalization.type_mapper import CanonicalTypeMapper
-
-__all__ = [
-    "CanonicalTypeMapper",
-    "DependencyResolver",
-    "ObjectOrderer",
-]
-
-
-def __getattr__(name: str) -> Any:
-    if name == "CanonicalTypeMapper":
-        from core.normalization.type_mapper import CanonicalTypeMapper
-
-        return CanonicalTypeMapper
-    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
-
-
-def __dir__() -> list[str]:
-    return list(__all__)
+__all__: list[str] = []

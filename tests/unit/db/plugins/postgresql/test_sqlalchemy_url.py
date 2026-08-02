@@ -144,7 +144,28 @@ def test_postgresql_sqlalchemy_url_includes_schema_search_path(_reset_registry) 
 
     url = make_url(ProviderRegistry.build_sqlalchemy_url(database_config))
 
-    assert dict(url.query)["options"] == "-csearch_path=tenant_a"
+    assert dict(url.query)["options"] == "-csearch_path=tenant_a,public"
+
+
+def test_postgresql_sqlalchemy_url_does_not_repeat_public_schema(_reset_registry) -> None:
+    """A ``public`` target schema is not listed twice on the search path."""
+    ProviderRegistry._plugins["postgresql"] = PLUGIN
+    ProviderRegistry._discovered = True
+    database_config = SimpleNamespace(
+        type="postgresql",
+        host="db.example.com",
+        port=5432,
+        database="app",
+        username="pg",
+        password="secret",
+        schema="public",
+        extra_params={},
+        options={},
+    )
+
+    url = make_url(ProviderRegistry.build_sqlalchemy_url(database_config))
+
+    assert dict(url.query)["options"] == "-csearch_path=public"
 
 
 def test_postgresql_raw_sqlalchemy_url_merges_schema_search_path(_reset_registry) -> None:
@@ -171,7 +192,7 @@ def test_postgresql_raw_sqlalchemy_url_merges_schema_search_path(_reset_registry
     assert dict(url.query) == {
         "application_name": "dblift",
         "connect_timeout": "12",
-        "options": "-cexisting=1 -csearch_path=tenant_a",
+        "options": "-cexisting=1 -csearch_path=tenant_a,public",
         "sslmode": "require",
         "target_session_attrs": "read-write",
     }

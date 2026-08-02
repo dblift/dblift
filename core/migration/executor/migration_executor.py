@@ -117,7 +117,8 @@ class MigrationExecutor:
 
         # Initialize SQL analyzer and execution engine
         self.sql_analyzer = SqlAnalyzer(dialect=config.database.type)
-        self.journal = MigrationJournal(enabled=config.journal_enabled)
+        # In-process statement journal is always on (not user-configurable).
+        self.journal = MigrationJournal(enabled=True)
 
         # Initialize SqlExecutionService for journal support
         from ..sql.sql_execution_service import SqlExecutionService
@@ -310,7 +311,6 @@ class MigrationExecutor:
     def validate(
         self,
         scripts_dir: Path,
-        skip_validation: bool = False,
         target_version: Optional[str] = None,
         tags: Optional[str] = None,
         exclude_tags: Optional[str] = None,

@@ -404,9 +404,9 @@ class TestOracleParser:
         # The || concatenation operator must be preserved (not lost or mangled)
         full_stmt = " ".join(statements)
         assert "||" in full_stmt, "Concatenation operator || must be preserved"
-        assert (
-            "v_max" in full_stmt and "+1" in full_stmt
-        ), "Expression (v_max + 1) must be preserved"
+        # "+1" here would be the reserializer dropping the author's spacing;
+        # the expression must come back exactly as written.
+        assert "(v_max + 1)" in full_stmt, "Expression (v_max + 1) must be preserved verbatim"
 
     def test_extract_plsql_block_methods(self):
         """Test PL/SQL block extraction methods."""
@@ -603,41 +603,3 @@ class TestOracleParser:
 
         # Test dialect property
         assert parser.dialect_name == "oracle"
-
-    def test_is_valid_script_name(self):
-        """Test script name validation."""
-        parser = OracleParser()
-
-        # Valid versioned scripts
-        assert parser.is_valid_script_name("V1__create_table.sql")
-        assert parser.is_valid_script_name("V1.0__create_table.sql")
-        assert parser.is_valid_script_name("V1.2.3__create_table.sql")
-        assert parser.is_valid_script_name("v1__create_table.sql")  # case insensitive
-
-        # Valid repeatable scripts
-        assert parser.is_valid_script_name("R__create_view.sql")
-        assert parser.is_valid_script_name("r__create_view.sql")  # case insensitive
-
-        # Any SQL file should be valid
-        assert parser.is_valid_script_name("any_script.sql")
-
-        # Invalid formats
-        assert not parser.is_valid_script_name("create_table.txt")  # wrong extension
-        assert not parser.is_valid_script_name("")
-        assert not parser.is_valid_script_name(None)
-
-    def test_extract_version_from_filename(self):
-        """Test version extraction from filenames."""
-        parser = OracleParser()
-
-        # Valid versions
-        assert parser.extract_version_from_filename("V1__create_table.sql") == "1"
-        assert parser.extract_version_from_filename("V1.0__create_table.sql") == "1.0"
-        assert parser.extract_version_from_filename("V1.2.3__create_table.sql") == "1.2.3"
-        assert parser.extract_version_from_filename("v2.1__create_table.sql") == "2.1"
-
-        # No version (repeatable or invalid)
-        assert parser.extract_version_from_filename("R__create_view.sql") is None
-        assert parser.extract_version_from_filename("invalid.sql") is None
-        assert parser.extract_version_from_filename("") is None
-        assert parser.extract_version_from_filename(None) is None

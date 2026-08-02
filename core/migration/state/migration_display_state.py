@@ -15,7 +15,6 @@ class MigrationDisplayState(Enum):
     FAILED = "Failed"
     PENDING = "Pending"
     UNDONE = "Undone"
-    IGNORED = "Ignored"  # Migration will not be considered
     DELETED = "Deleted"  # Migration marked as deleted by repair
     AVAILABLE = "Available"  # Undo migration ready to be applied
     ABOVE_TARGET = "Above target"  # Migration not applied and won't be (target version lower)
@@ -27,10 +26,5 @@ class MigrationDisplayState(Enum):
     FUTURE = "Future"  # Migration succeeded but version higher than current
     OUT_OF_ORDER = "Out of order"  # Migration succeeded but applied out of order
     OUTDATED = "Outdated"  # Repeatable migration outdated and should be re-applied
-    SUPERSEDED = "Superseded"  # Repeatable migration outdated and superseded by newer one
     UNKNOWN = "Unknown"  # Migration state cannot be determined
     NEEDS_REPAIR = "Needs repair"  # Migration requires repair action
-
-
-# For backward compatibility
-MigrationStatus = MigrationDisplayState

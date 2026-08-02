@@ -93,7 +93,7 @@ class TestGetCurrentVersionDialect:
         manager = _make_history_manager()
         captured_queries = []
 
-        def capture_query(sql):
+        def capture_query(connection, sql):
             captured_queries.append(sql)
             return [{"version": "1.0.0"}]
 
@@ -110,7 +110,7 @@ class TestGetCurrentVersionDialect:
         manager = _make_history_manager(cls=OracleLikeHistoryManager)
         captured_queries = []
 
-        def capture_query(sql):
+        def capture_query(connection, sql):
             captured_queries.append(sql)
             return [{"version": "1.0.0"}]
 

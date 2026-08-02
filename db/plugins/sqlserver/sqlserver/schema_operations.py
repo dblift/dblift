@@ -271,6 +271,43 @@ class SqlServerSchemaOperations(BaseSchemaOperations):
         except Exception as e:
             self.log.debug(f"Could not query synonyms: {str(e)}")
 
+        # 8. Drop full-text catalogs. Full-text indexes are dropped implicitly
+        # when their owning table is dropped (step 3), but the catalog that
+        # held them is a separate object that survives the table drop and
+        # must be dropped explicitly, after the tables that might reference
+        # it. sys.fulltext_catalogs has no schema_id — catalogs are not
+        # schema-owned in SQL Server — so it can't be filtered directly like
+        # every other object type above. Instead it is scoped indirectly,
+        # via the only path that connects a catalog to a schema:
+        # sys.fulltext_indexes.object_id -> sys.tables.schema_id ->
+        # sys.schemas. Only a catalog referenced by at least one full-text
+        # index on a table in the target schema is enumerated here.
+        fulltext_catalogs_query = """
+        SELECT DISTINCT fc.name AS catalog_name
+        FROM sys.fulltext_catalogs fc
+        INNER JOIN sys.fulltext_indexes fi ON fi.fulltext_catalog_id = fc.fulltext_catalog_id
+        INNER JOIN sys.tables t ON fi.object_id = t.object_id
+        INNER JOIN sys.schemas s ON t.schema_id = s.schema_id
+        WHERE s.name = ?
+        """
+        try:
+            fulltext_catalogs = self.query_executor.execute_query(
+                connection, fulltext_catalogs_query, params=[schema]
+            )
+            for catalog_row in fulltext_catalogs:
+                catalog_name = catalog_row.get("catalog_name", catalog_row.get("CATALOG_NAME"))
+                if catalog_name:
+                    candidates.append(
+                        _CleanCandidate(
+                            sql=f"DROP FULLTEXT CATALOG [{catalog_name}]",
+                            object_type="fulltext_catalog",
+                            name=catalog_name,
+                        )
+                    )
+        except Exception as e:
+            # Full-text search might not be installed/enabled on this instance.
+            self.log.debug(f"Could not query full-text catalogs: {str(e)}")
+
         return candidates
 
     def get_clean_preview(self, connection: Any, schema: str) -> CleanExecutionSummary:

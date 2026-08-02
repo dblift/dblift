@@ -53,6 +53,7 @@ class MigrationExecutorFactory:
         log: Any,
         sql_analyzer: Any = None,
         sql_execution_service: Any = None,
+        placeholder_service: Any = None,
     ):
         """
         Initialize the executor factory.
@@ -63,12 +64,15 @@ class MigrationExecutorFactory:
             log: Logger instance
             sql_analyzer: Optional SQL analyzer
             sql_execution_service: Optional SQL execution service
+            placeholder_service: Optional placeholder service holding the effective
+                placeholder set, for executors that expose it to migration scripts
         """
         self.provider = provider
         self.config = config
         self.log = log if log is not None else NullLog()
         self.sql_analyzer = sql_analyzer
         self.sql_execution_service = sql_execution_service
+        self.placeholder_service = placeholder_service
 
         # Registry of executor classes by format
         self._executor_classes: Dict[MigrationFormat, Type[BaseMigrationExecutor]] = {}
@@ -155,6 +159,14 @@ class MigrationExecutorFactory:
                 # Other executors use standard constructor
                 executor = executor_class(self.provider, self.config, self.log)
 
+            # Python scripts read placeholders off the migration context, so they
+            # need the same service the SQL path substitutes from. Injected after
+            # construction rather than as a constructor argument so that any
+            # BaseMigrationExecutor subclass can still be registered for a format
+            # with the plain (provider, config, log) signature.
+            if isinstance(executor, PythonMigrationExecutor):
+                executor.placeholder_service = self.placeholder_service
+
             self._executor_instances[format] = executor
             self.log.debug(f"Created executor instance: {executor}")
 
@@ -238,23 +250,6 @@ class MigrationExecutorFactory:
         # Execute
         return executor.execute_migration(migration, dry_run=dry_run, **kwargs)
 
-    def validate(self, migration: Migration) -> tuple[bool, list[str]]:
-        """
-        Validate a migration using the appropriate executor.
-
-        Args:
-            migration: Migration to validate
-
-        Returns:
-            Tuple of (is_valid, list of error messages)
-        """
-        executor = self.get_executor(migration)
-
-        if executor is None:
-            return False, [f"No executor available for migration {migration.script_name}"]
-
-        return executor.validate_migration(migration)
-
     def get_supported_formats(self) -> List[MigrationFormat]:
         """
         Get list of all supported migration formats.
@@ -263,18 +258,6 @@ class MigrationExecutorFactory:
             List of MigrationFormat values that have registered executors
         """
         return list(self._executor_classes.keys())
-
-    def is_format_supported(self, format: MigrationFormat) -> bool:
-        """
-        Check if a migration format is supported.
-
-        Args:
-            format: Migration format to check
-
-        Returns:
-            True if an executor is registered for this format
-        """
-        return format in self._executor_classes
 
     def __str__(self) -> str:
         """String representation of the factory."""

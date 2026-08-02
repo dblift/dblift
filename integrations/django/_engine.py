@@ -5,8 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from django.core.exceptions import ImproperlyConfigured
-from sqlalchemy import create_engine
-from sqlalchemy.engine import URL, Engine
+from sqlalchemy.engine import URL
 
 _DRIVERS = {
     "postgresql": "postgresql+psycopg",
@@ -46,8 +45,3 @@ def build_url(db: dict[str, Any]) -> URL:
         port=(int(port) if port else None),
         database=name,
     )
-
-
-def build_engine(db: dict[str, Any]) -> Engine:
-    """Build a SQLAlchemy Engine from one Django ``DATABASES`` entry."""
-    return create_engine(build_url(db))

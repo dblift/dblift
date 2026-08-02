@@ -124,7 +124,7 @@ The repair command will:
 
 **Problem**: You expected a durable per-statement journal file after a crash.
 
-**Explanation**: DBLift's `MigrationJournal` is in-memory only. It is used to enrich command results and log reports during a process, but `journal_dir` is intentionally ignored and no separate statement-journal file is written.
+**Explanation**: The in-process statement journal enriches command results and log reports during a run only. It is not persisted to disk; use command logs and the schema history table as durable evidence.
 
 **Recommended evidence to retain**:
 - DBLift text/JSON/HTML command logs.

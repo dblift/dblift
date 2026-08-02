@@ -154,12 +154,11 @@ class TestBug02SqlplusDirectiveTermination(unittest.TestCase):
 
 class TestBug06SqliteRecordUndo(unittest.TestCase):
     """``SQLiteProvider`` previously declared ``record_migration`` but no
-    ``record_undo``. ``MigrationHistoryManager.record_undo`` calls
-    ``provider.record_undo(...)`` and crashed with ``AttributeError`` on
-    SQLite while Oracle/SQL Server shipped the same delegation. The default
-    ``BaseHistoryManager.record_undo`` already creates a synthetic
-    ``UNDO_SQL`` row through ``record_migration`` — the provider just needed
-    to expose it. Fix: thin delegating method on ``SQLiteProvider``.
+    ``record_undo``. Callers that invoke ``provider.record_undo(...)`` crashed
+    with ``AttributeError`` on SQLite while Oracle/SQL Server shipped the same
+    delegation. The default ``BaseHistoryManager.record_undo`` already creates
+    a synthetic ``UNDO_SQL`` row through ``record_migration`` — the provider
+    just needed to expose it. Fix: thin delegating method on ``SQLiteProvider``.
     """
 
     def _make_provider(self):
@@ -204,29 +203,6 @@ class TestBug06SqliteRecordUndo(unittest.TestCase):
         provider.history_manager.record_undo.return_value = False
         self.assertFalse(provider.record_undo("main", "3.0.0"))
 
-    def test_migration_history_manager_can_invoke_record_undo(self) -> None:
-        from core.migration.history.migration_history_manager import MigrationHistoryManager
-
-        provider = self._make_provider()
-        history = MigrationHistoryManager.__new__(MigrationHistoryManager)
-        history.provider = provider
-        history.schema = "main"
-        history.history_table = "dblift_schema_history"
-        history.log = MagicMock()
-
-        migration = MagicMock()
-        migration.version = "9.9.9"
-        migration.script_name = "V9_9_9__python_migration.py"
-        history.record_undo(migration)
-
-        provider.history_manager.record_undo.assert_called_once_with(
-            provider.connection,
-            "main",
-            "9.9.9",
-            "dblift_schema_history",
-            "V9_9_9__python_migration.py",
-        )
-
     def test_base_history_manager_records_python_script_name_for_undo(self) -> None:
         from core.migration.formats import MigrationFormat
         from core.migration.migration import AppliedMigration
@@ -267,31 +243,6 @@ class TestBug06SqliteRecordUndo(unittest.TestCase):
             migration = applied.to_migration()
         self.assertEqual(migration.format, MigrationFormat.PYTHON)
         warning.assert_not_called()
-
-    def test_jdbc_undo_manager_records_python_script_name_for_undo(self) -> None:
-        from db.plugins.base_undo_manager import BaseUndoManager
-
-        provider = MagicMock()
-        provider.table_exists.return_value = True
-        provider.get_schema_qualified_name.return_value = "public.dblift_schema_history"
-        provider.execute_query.side_effect = [
-            [],
-            [{"description": "pyfeed", "installed_rank": 7}],
-        ]
-
-        manager = BaseUndoManager(provider)
-
-        self.assertTrue(
-            manager.record_undo(
-                "public",
-                "7",
-                "dblift_schema_history",
-                "V7__pyfeed.py",
-            )
-        )
-
-        undo_info = provider.record_migration.call_args.args[1]
-        self.assertEqual(undo_info["script"], "V7__pyfeed.py")
 
 
 if __name__ == "__main__":

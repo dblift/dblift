@@ -33,6 +33,22 @@ def test_manifest_names_are_unique():
     assert len(names) == len(set(names))
 
 
+def test_manifest_includes_license_as_enterprise_only():
+    """issue #746: the `license` subcommand is enterprise-only administrative
+    surface (activate/info/check against ~/.dblift/license.key), not a
+    feature OSS users would want a programmatic-API stub for — unlike
+    diff/export_schema/snapshot/plan/preflight, it has no api_method."""
+    by_name = {cmd.name: cmd for cmd in PREMIUM_COMMANDS}
+    assert "license" in by_name, (
+        "PREMIUM_COMMANDS is missing a 'license' entry — without it, OSS users "
+        "get argparse's generic 'unrecognized arguments: license' instead of "
+        "a proper upsell stub naming the command and the upgrade URL."
+    )
+    cmd = by_name["license"]
+    assert cmd.edition == "Enterprise"
+    assert cmd.api_method is None
+
+
 def test_missing_from_excludes_registered_names():
     registered = {"diff", "data"}
     missing = {cmd.name for cmd in premium_commands_missing_from(registered)}
@@ -145,3 +161,35 @@ def test_main_short_circuit_runs_before_config_and_db_load(monkeypatch):
 
     assert excinfo.value.code == EXIT_LICENSE_REQUIRED
     load_config.assert_not_called()
+
+
+def test_capability_denied_maps_to_license_exit_code():
+    """CapabilityDeniedError from a handler uses EXIT_LICENSE_REQUIRED."""
+    import cli._command_handlers as handlers
+    from cli._command_handlers import execute_single_command
+    from core.seams.capabilities import CapabilityDeniedError
+
+    def _deny(_ctx):
+        raise CapabilityDeniedError("feature requires a higher license tier")
+
+    log = Mock()
+    original = handlers._COMMAND_HANDLERS["migrate"]
+    handlers._COMMAND_HANDLERS["migrate"] = _deny
+    try:
+        with pytest.raises(SystemExit) as excinfo:
+            execute_single_command(
+                client=Mock(),
+                command="migrate",
+                args=Mock(),
+                log=log,
+                scripts_dir=None,
+                additional_scripts_dirs=[],
+                recursive=True,
+                placeholders={},
+                dir_recursive_map={},
+            )
+        assert excinfo.value.code == EXIT_LICENSE_REQUIRED
+        logged = log.error.call_args[0][0]
+        assert "license" in logged.lower()
+    finally:
+        handlers._COMMAND_HANDLERS["migrate"] = original

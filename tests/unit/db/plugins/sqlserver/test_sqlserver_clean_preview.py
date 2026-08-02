@@ -32,6 +32,11 @@ def _make_query_executor():
             return [{"type_name": "EmailAddress"}]
         if "sys.synonyms" in query:
             return [{"synonym_name": "remote_orders"}]
+        if "sys.fulltext_catalogs" in query:
+            is_scoped_join = "sys.fulltext_indexes" in query and "sys.schemas" in query
+            if is_scoped_join and params == ["dbo"]:
+                return [{"catalog_name": "ft_catalog"}]
+            return []
         raise AssertionError(f"Unexpected query: {query}")
 
     query_executor.execute_query.side_effect = execute_query
@@ -59,10 +64,18 @@ def test_sqlserver_clean_preview_matches_explicit_clean_objects():
         ("sequence", "order_seq", "dbo"),
         ("type", "EmailAddress", "dbo"),
         ("synonym", "remote_orders", "dbo"),
+        ("fulltext_catalog", "ft_catalog", "dbo"),
     ]
     assert "trigger" not in {obj.object_type for obj in preview.objects}
     assert executed.statements == preview.statements
     assert all("TRIGGER" not in statement.upper() for statement in preview.statements)
+
+    # The catalog drop must come after the table drop: a fulltext index on
+    # "orders" implicitly disappears when the table is dropped, but the
+    # catalog it lived in is a separate object that DROP TABLE never touches.
+    table_drop_index = preview.statements.index("DROP TABLE [dbo].[orders]")
+    catalog_drop_index = preview.statements.index("DROP FULLTEXT CATALOG [ft_catalog]")
+    assert table_drop_index < catalog_drop_index
 
 
 @pytest.mark.unit

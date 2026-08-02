@@ -4,7 +4,7 @@ Target file: core/migration/executor/execution_engine.py
 Focuses on: execute_migration full path, _is_comment_only_statement, _prepare_transaction,
 _probe_dialect_key, _transaction_liveness_probe_sql, _record_migration_history,
 _record_autocommit_migration_history, _commit_and_verify, _handle_statement_failure,
-execute_callback, execute_callbacks, _execute_via_factory, _ensure_autocommit_for_policy.
+execute_callback, _execute_via_factory, autocommit statement routing.
 """
 
 import unittest
@@ -14,6 +14,7 @@ from core.exceptions import CallbackExecutionError
 from core.migration.executor.execution_engine import ExecutionEngine
 from core.migration.formats import MigrationFormat
 from core.migration.migration import Migration
+from db.provider_interfaces import TransactionalProvider
 
 
 def _make_engine(dialect="postgresql", with_history=False, with_config=True):
@@ -198,14 +199,11 @@ class TestExecuteMigrationMainFlow(unittest.TestCase):
 
         with patch.object(engine, "_parse_sql_statements", return_value=["SELECT 1"]):
             with patch.object(engine, "_classify_execution_statements", return_value=[]):
-                with patch.object(engine, "_ensure_autocommit_for_policy") as mock_ac:
-                    with patch.object(engine, "_execute_statements", return_value=True):
-                        with patch.object(
-                            engine, "_record_autocommit_migration_history"
-                        ) as mock_rec:
-                            engine.execute_migration(migration, result)
+                with patch.object(engine, "_execute_statements", return_value=True) as mock_exec:
+                    with patch.object(engine, "_record_autocommit_migration_history") as mock_rec:
+                        engine.execute_migration(migration, result)
 
-        mock_ac.assert_called_once_with(migration)
+        self.assertTrue(mock_exec.call_args.kwargs.get("autocommit"))
         mock_rec.assert_called_once()
 
     def test_transactional_path_calls_record_and_commit(self):
@@ -446,53 +444,6 @@ class TestTransactionLivenessProbeSQL(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
-# _ensure_autocommit_for_policy
-# ---------------------------------------------------------------------------
-
-
-class TestEnsureAutocommitForPolicy(unittest.TestCase):
-    def test_sets_autocommit_on_connection(self):
-        engine = _make_engine()
-        migration = _make_sql_migration()
-        engine.provider.connection.setAutoCommit = MagicMock()
-
-        engine._ensure_autocommit_for_policy(migration)
-
-        engine.provider.connection.setAutoCommit.assert_called_once_with(True)
-
-    def test_rollback_failure_logs_debug(self):
-        engine = _make_engine()
-        migration = _make_sql_migration()
-        engine.provider.rollback_transaction.side_effect = Exception("rollback failed")
-
-        engine._ensure_autocommit_for_policy(migration)
-
-        debug_calls = [str(c) for c in engine.log.debug.call_args_list]
-        self.assertTrue(any("Could not rollback before autocommit" in c for c in debug_calls))
-
-    def test_setautocommit_failure_logs_debug(self):
-        engine = _make_engine()
-        migration = _make_sql_migration()
-        engine.provider.connection.setAutoCommit.side_effect = Exception("setAutoCommit failed")
-
-        engine._ensure_autocommit_for_policy(migration)
-
-        debug_calls = [str(c) for c in engine.log.debug.call_args_list]
-        self.assertTrue(any("Could not force autocommit" in c for c in debug_calls))
-
-    def test_non_transactional_provider_skips(self):
-        """Provider that doesn't implement TransactionalProvider: skip rollback/setAutoCommit."""
-        from db.base_provider import BaseProvider
-
-        engine = _make_engine()
-        engine.provider = MagicMock(spec=BaseProvider)  # NOT a TransactionalProvider
-        migration = _make_sql_migration()
-
-        # Should not raise
-        engine._ensure_autocommit_for_policy(migration)
-
-
-# ---------------------------------------------------------------------------
 # _record_migration_history
 # ---------------------------------------------------------------------------
 
@@ -725,7 +676,7 @@ class TestCommitAndVerify(unittest.TestCase):
 
 
 class TestExecuteCallback(unittest.TestCase):
-    def _make_callback(self, sql_statements=None, name="afterEach.sql"):
+    def _make_callback(self, sql_statements=None, name="afterEach__log.sql"):
         cb = MagicMock(spec=Migration)
         cb.format = MigrationFormat.SQL
         cb.script_name = name
@@ -827,7 +778,7 @@ class TestExecuteCallback(unittest.TestCase):
         engine = _make_engine()
         cb = MagicMock(spec=Migration)
         cb.format = MigrationFormat.PYTHON
-        cb.script_name = "afterEach.py"
+        cb.script_name = "afterEach__log.py"
 
         exec_result = MagicMock()
         exec_result.success = True
@@ -845,7 +796,7 @@ class TestExecuteCallback(unittest.TestCase):
         engine = _make_engine()
         cb = MagicMock(spec=Migration)
         cb.format = MigrationFormat.PYTHON
-        cb.script_name = "afterEach.py"
+        cb.script_name = "afterEach__log.py"
 
         exec_result = MagicMock()
         exec_result.success = False
@@ -864,17 +815,25 @@ class TestExecuteCallback(unittest.TestCase):
         with self.assertRaises(Exception):
             engine.execute_callback(cb)
 
-    def test_callback_with_placeholder_service_replaces_placeholders(self):
+    def test_callback_content_is_substituted_once_before_parsing(self):
         engine = _make_engine()
         engine.sql_analyzer.get_statement_type.return_value = "DML"
         engine.provider.execute_statement.return_value = 0
         engine.placeholder_service = MagicMock()
         engine.placeholder_service.replace_placeholders.return_value = "INSERT INTO t VALUES (42)"
-        cb = self._make_callback(sql_statements=["INSERT INTO t VALUES (${val})"])
+        cb = self._make_callback(sql_statements=["INSERT INTO t VALUES (42)"])
+        cb.content = "INSERT INTO t VALUES (${val})"
 
         engine.execute_callback(cb)
 
-        engine.placeholder_service.replace_placeholders.assert_called()
+        # Substitution runs once, on the whole file, and the parser gets the result.
+        engine.placeholder_service.replace_placeholders.assert_called_once_with(
+            "INSERT INTO t VALUES (${val})"
+        )
+        assert (
+            cb.parse_sql_statements.call_args.kwargs["content_override"]
+            == "INSERT INTO t VALUES (42)"
+        )
 
     def test_query_result_zero_rows_logs_info(self):
         engine = _make_engine()
@@ -885,62 +844,6 @@ class TestExecuteCallback(unittest.TestCase):
         engine.execute_callback(cb)
 
         engine.provider.execute_query.assert_called_once()
-
-
-# ---------------------------------------------------------------------------
-# execute_callbacks
-# ---------------------------------------------------------------------------
-
-
-class TestExecuteCallbacks(unittest.TestCase):
-    def test_empty_callbacks_list_does_nothing(self):
-        engine = _make_engine()
-        engine.execute_callbacks([])
-        engine.log.info.assert_not_called()
-
-    def test_executes_all_callbacks(self):
-        engine = _make_engine()
-        engine.sql_analyzer.get_statement_type.return_value = "DML"
-        engine.provider.execute_statement.return_value = 0
-
-        cb1 = MagicMock(spec=Migration)
-        cb1.format = MigrationFormat.SQL
-        cb1.script_name = "cb1.sql"
-        cb1.parse_sql_statements.return_value = ["INSERT INTO t VALUES (1)"]
-        cb1.dialect = "postgresql"
-
-        cb2 = MagicMock(spec=Migration)
-        cb2.format = MigrationFormat.SQL
-        cb2.script_name = "cb2.sql"
-        cb2.parse_sql_statements.return_value = ["INSERT INTO t VALUES (2)"]
-        cb2.dialect = "postgresql"
-
-        with patch.object(engine, "execute_callback") as mock_exec:
-            engine.execute_callbacks([cb1, cb2], callback_type="AFTER_EACH")
-
-        self.assertEqual(mock_exec.call_count, 2)
-
-    def test_callback_failure_does_not_stop_remaining_callbacks(self):
-        engine = _make_engine()
-
-        cb1 = MagicMock(spec=Migration)
-        cb1.script_name = "cb1.sql"
-        cb2 = MagicMock(spec=Migration)
-        cb2.script_name = "cb2.sql"
-
-        call_order = []
-
-        def side_effect(cb):
-            call_order.append(cb.script_name)
-            if cb.script_name == "cb1.sql":
-                raise Exception("cb1 failed")
-
-        with patch.object(engine, "execute_callback", side_effect=side_effect):
-            engine.execute_callbacks([cb1, cb2])
-
-        self.assertIn("cb1.sql", call_order)
-        self.assertIn("cb2.sql", call_order)
-        engine.log.error.assert_called()
 
 
 # ---------------------------------------------------------------------------
@@ -1024,3 +927,106 @@ class TestExecuteViaFactory(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class _RoutingProvider(TransactionalProvider):
+    """Minimal provider recording which execution path each statement takes.
+
+    Not a ``MagicMock`` on purpose: routing must fail loudly if the engine
+    calls a method this contract does not have.
+    """
+
+    def __init__(self):
+        self.connection = None
+        self.calls = []
+
+    def begin_transaction(self):  # noqa: D102
+        pass
+
+    def commit_transaction(self):  # noqa: D102
+        pass
+
+    def rollback_transaction(self):  # noqa: D102
+        pass
+
+    def execute_query(self, sql, params=None):
+        self.calls.append(("query", sql))
+        return []
+
+    def execute_statement(self, sql, schema=None, params=None):
+        self.calls.append(("execute", sql))
+        return 1
+
+    def execute_autocommit_statement(self, sql, schema=None, params=None):
+        self.calls.append(("autocommit", sql))
+        return 1
+
+
+class _PlainProvider:
+    """Provider outside the TransactionalProvider contract."""
+
+    def __init__(self):
+        self.calls = []
+
+    def execute_statement(self, sql, schema=None, params=None):
+        self.calls.append(("execute", sql))
+        return 1
+
+
+class TestAutocommitStatementRouting(unittest.TestCase):
+    """_execute_statements routes flagged migrations through the provider's autocommit call.
+
+    The engine deliberately holds no dialect knowledge: which statements need
+    autocommit is policy, and *how* to run one outside a transaction block
+    belongs to whichever provider owns the connection. The switch is per
+    statement, so nothing else the engine does inherits it.
+    """
+
+    @staticmethod
+    def _engine_with(provider):
+        analyzer = MagicMock()
+        analyzer.dialect = "postgresql"
+        return ExecutionEngine(
+            provider=provider,
+            sql_analyzer=analyzer,
+            log=MagicMock(),
+            config=None,
+            history_manager=None,
+        )
+
+    def test_autocommit_migration_uses_the_autocommit_call(self):
+        provider = _RoutingProvider()
+        engine = self._engine_with(provider)
+        statement = "CREATE INDEX CONCURRENTLY ix ON t (c)"
+
+        ok = engine._execute_statements(
+            [statement], _make_sql_migration(), MagicMock(), 0.0, autocommit=True
+        )
+
+        self.assertTrue(ok)
+        self.assertIn(("autocommit", statement), provider.calls)
+        self.assertNotIn(("execute", statement), provider.calls)
+
+    def test_ordinary_migration_uses_plain_execution(self):
+        provider = _RoutingProvider()
+        engine = self._engine_with(provider)
+        statement = "CREATE TABLE t (id INT)"
+
+        ok = engine._execute_statements([statement], _make_sql_migration(), MagicMock(), 0.0)
+
+        self.assertTrue(ok)
+        self.assertIn(("execute", statement), provider.calls)
+        self.assertTrue(all(kind != "autocommit" for kind, _ in provider.calls))
+
+    def test_provider_outside_the_contract_falls_back_to_plain_execution(self):
+        """A provider without the contract must still be usable, not crash."""
+        provider = _PlainProvider()
+        engine = self._engine_with(provider)
+        statement = "CREATE THING"
+
+        ok = engine._execute_statements(
+            [statement], _make_sql_migration(), MagicMock(), 0.0, autocommit=True
+        )
+
+        self.assertTrue(ok)
+        self.assertEqual(provider.calls, [("execute", statement)])

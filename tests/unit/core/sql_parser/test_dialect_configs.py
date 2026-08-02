@@ -7,7 +7,6 @@ import pytest
 from core.sql_parser.dialects.base_config import DialectConfig
 from db.plugins.db2.parser.parser_config import DB2Config
 from db.plugins.mysql.parser.parser_config import MySqlConfig
-from db.plugins.oracle.parser.parser_config import OracleConfig
 from db.plugins.postgresql.parser.parser_config import PostgreSqlConfig
 from db.plugins.sqlserver.parser.parser_config import SqlServerConfig
 
@@ -237,96 +236,6 @@ class TestDialectConfigBase:
         schema = config.get_default_schema()
 
         assert schema is None
-
-
-@pytest.mark.unit
-class TestOracleConfig:
-    """Test OracleConfig class - OracleConfig is abstract and incomplete."""
-
-    def test_oracle_config_is_abstract(self):
-        """Test that OracleConfig cannot be instantiated (missing abstract methods)."""
-        # OracleConfig doesn't implement all abstract methods from DialectConfig
-        # So it cannot be instantiated directly
-        with pytest.raises(TypeError):
-            OracleConfig()
-
-    def test_oracle_config_properties_exist(self):
-        """Test that OracleConfig properties exist (via class inspection)."""
-        # Check that properties are defined
-        assert hasattr(OracleConfig, "name")
-        assert hasattr(OracleConfig, "batch_separators")
-        assert hasattr(OracleConfig, "quoted_identifiers")
-        assert hasattr(OracleConfig, "comment_patterns")
-        assert hasattr(OracleConfig, "block_keywords")
-        assert hasattr(OracleConfig, "ddl_patterns")
-        assert hasattr(OracleConfig, "dml_patterns")
-        assert hasattr(OracleConfig, "query_patterns")
-        assert hasattr(OracleConfig, "object_patterns")
-        assert hasattr(OracleConfig, "get_default_schema")
-        assert hasattr(OracleConfig, "get_identifier_pattern")
-        assert hasattr(OracleConfig, "get_qualified_identifier_pattern")
-        assert hasattr(OracleConfig, "normalize_identifier")
-
-    def test_oracle_config_via_concrete_subclass(self):
-        """Test OracleConfig properties via a concrete subclass."""
-
-        # Create a concrete subclass that implements missing abstract methods
-        class ConcreteOracleConfig(OracleConfig):
-            def get_ddl_keywords(self):
-                return {"CREATE", "ALTER", "DROP"}
-
-            def get_dml_keywords(self):
-                return {"INSERT", "UPDATE", "DELETE"}
-
-            def get_query_keywords(self):
-                return {"SELECT"}
-
-            def get_string_literal_pattern(self):
-                return re.compile(r"'[^']*'")
-
-            def get_comment_pattern(self):
-                return re.compile(r"--.*")
-
-            def get_statement_separator_pattern(self):
-                return re.compile(r";")
-
-            def is_ddl_statement(self, statement: str) -> bool:
-                return False
-
-            def is_dml_statement(self, statement: str) -> bool:
-                return False
-
-            def is_query_statement(self, statement: str) -> bool:
-                return False
-
-            def get_batch_separator(self) -> str:
-                return "/"
-
-            def supports_block_comments(self) -> bool:
-                return True
-
-            def supports_line_comments(self) -> bool:
-                return True
-
-        config = ConcreteOracleConfig()
-
-        # Test properties
-        assert config.name == "oracle"
-        assert len(config.batch_separators) == 1
-        assert len(config.quoted_identifiers) == 1
-        assert len(config.comment_patterns) == 2
-        assert "CREATE PROCEDURE" in config.block_keywords
-        assert "create_table" in config.ddl_patterns
-        assert "insert" in config.dml_patterns
-        assert "select" in config.query_patterns
-        assert "table_create" in config.object_patterns
-
-        # Test methods
-        assert config.get_default_schema() == "DEFAULT_SCHEMA"
-        assert isinstance(config.get_identifier_pattern(), re.Pattern)
-        assert isinstance(config.get_qualified_identifier_pattern(), re.Pattern)
-        assert config.normalize_identifier("TestName", is_quoted=True) == "TestName"
-        assert config.normalize_identifier("TestName", is_quoted=False) == "TESTNAME"
 
 
 @pytest.mark.unit

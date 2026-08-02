@@ -9,12 +9,15 @@ import importlib.util
 import inspect
 import time
 from dataclasses import dataclass, field
-from typing import Any, List, Mapping, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Mapping, Optional
 
 from core.migration.formats import MigrationFormat
 from core.migration.migration import Migration
 
 from .base_executor import BaseMigrationExecutor, MigrationExecutionResult
+
+if TYPE_CHECKING:
+    from core.migration.placeholders.placeholder_service import PlaceholderService
 
 # B10-BUG-09: prefixes that return a result set on every supported
 # dialect. Keep this list narrow — ``CALL`` / ``EXEC`` / ``EXECUTE`` may
@@ -91,6 +94,10 @@ class MigrationContext:
       DB's ``DatabaseProxy`` (``None`` for SQL dialects).
     * ``raw_client`` — the underlying SDK client, e.g. Cosmos DB's
       ``CosmosClient`` (``None`` for SQL dialects).
+    * ``placeholders`` — the effective placeholder mapping, identical to the
+      one substituted into SQL migrations: the ``dblift_*`` system
+      placeholders, then the configured placeholders, then the per-call
+      ones passed to ``migrate()`` / ``undo()``, each overriding the former.
 
     Attributes:
         provider: Database provider instance (BaseProvider)
@@ -227,7 +234,45 @@ class PythonMigrationExecutor(BaseMigrationExecutor):
     Executor for Python-based migration scripts.
 
     Loads and executes .py migration files that define a `migrate(context)` function.
+
+    Attributes:
+        placeholder_service: Optional placeholder service shared with the SQL
+            path. When injected, ``context.placeholders`` is resolved from it at
+            execution time so per-call placeholders are visible; without it the
+            executor falls back to the placeholders baked into the config.
     """
+
+    def __init__(
+        self,
+        provider: Any,
+        config: Any,
+        log: Any,
+        placeholder_service: Optional["PlaceholderService"] = None,
+    ):
+        """Initialize the Python executor.
+
+        Args:
+            provider: Database provider instance
+            config: DBLIFT configuration
+            log: Logger instance
+            placeholder_service: Optional placeholder service holding the
+                effective placeholder set (system + config + per-call)
+        """
+        super().__init__(provider, config, log)
+        self.placeholder_service = placeholder_service
+
+    def _resolve_placeholders(self) -> Dict[str, Any]:
+        """Return the placeholder mapping to expose on the migration context.
+
+        Read at execution time rather than at construction: per-call
+        placeholders from ``migrate(placeholders=...)`` / ``undo(placeholders=...)``
+        are added to the shared service after the executor tree is built, so a
+        value cached in ``__init__`` would miss them. ``config.placeholders`` is
+        only a fallback for executors constructed without the service.
+        """
+        if self.placeholder_service is not None:
+            return dict(self.placeholder_service.placeholders)
+        return dict(getattr(getattr(self, "config", None), "placeholders", None) or {})
 
     def can_execute(self, migration: Migration) -> bool:
         """Check if this executor can handle the given migration."""
@@ -274,9 +319,7 @@ class PythonMigrationExecutor(BaseMigrationExecutor):
             log=self.log,
             dry_run=dry_run,
             config=getattr(self, "config", None),
-            placeholders=dict(
-                getattr(self, "config", None) and getattr(self.config, "placeholders", {}) or {}
-            ),
+            placeholders=self._resolve_placeholders(),
         )
         try:
             spec = importlib.util.spec_from_file_location(
@@ -316,72 +359,6 @@ class PythonMigrationExecutor(BaseMigrationExecutor):
             elapsed_ms = int((time.time() - start) * 1000)
             error_msg = f"{type(e).__name__}: {e}"
             self.log.error(f"Python migration failed {migration.script_name}: {error_msg}")
-            return MigrationExecutionResult(
-                success=False,
-                migration=migration,
-                execution_time_ms=elapsed_ms,
-                statements_executed=0,
-                error=error_msg,
-            )
-
-    def supports_rollback(self, migration: Migration) -> bool:
-        """Check if this migration has an undo function."""
-        return bool(migration.content and "def undo(" in migration.content)
-
-    def rollback_migration(
-        self, migration: Migration, dry_run: bool = False, **kwargs: Any
-    ) -> MigrationExecutionResult:
-        """Rollback a Python migration by calling its undo(context) function."""
-        if not self.supports_rollback(migration):
-            return MigrationExecutionResult(
-                success=False,
-                migration=migration,
-                execution_time_ms=0,
-                error=f"Script {migration.script_name} does not define an 'undo' function",
-            )
-
-        start = time.time()
-
-        if migration.path is None:
-            elapsed_ms = int((time.time() - start) * 1000)
-            return MigrationExecutionResult(
-                success=False,
-                migration=migration,
-                execution_time_ms=elapsed_ms,
-                error=f"Python script has no file path: {migration.script_name}.",
-            )
-
-        context = MigrationContext(
-            provider=self.provider,
-            log=self.log,
-            dry_run=dry_run,
-            config=getattr(self, "config", None),
-            placeholders=dict(
-                getattr(self, "config", None) and getattr(self.config, "placeholders", {}) or {}
-            ),
-        )
-        try:
-            spec = importlib.util.spec_from_file_location(
-                migration.script_name, str(migration.path)
-            )
-            if spec is None or spec.loader is None:
-                raise RuntimeError(
-                    f"Cannot load module spec for migration script: {migration.path}"
-                )
-            mod = importlib.util.module_from_spec(spec)
-            spec.loader.exec_module(mod)
-            mod.undo(context)
-            elapsed_ms = int((time.time() - start) * 1000)
-            return MigrationExecutionResult(
-                success=True,
-                migration=migration,
-                execution_time_ms=elapsed_ms,
-                statements_executed=1,
-            )
-        except Exception as e:
-            elapsed_ms = int((time.time() - start) * 1000)
-            error_msg = f"{type(e).__name__}: {e}"
-            self.log.error(f"Python rollback failed {migration.script_name}: {error_msg}")
             return MigrationExecutionResult(
                 success=False,
                 migration=migration,

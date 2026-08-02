@@ -472,8 +472,6 @@ class TestConfigBuilderMerge:
                 "  username: u\n"
                 "  password: p\n"
                 "strict_mode: true\n"
-                "max_retries: 7\n"
-                "journal_enabled: false\n"
                 "log_level: ERROR\n"
             )
             tmp_path = tmp.name
@@ -481,8 +479,6 @@ class TestConfigBuilderMerge:
         try:
             config = ConfigBuilder.build(file_path=tmp_path, env_overrides=False)
             assert config.strict_mode is True
-            assert config.max_retries == 7
-            assert config.journal_enabled is False
             assert config.log_level == "ERROR"
         finally:
             os.unlink(tmp_path)

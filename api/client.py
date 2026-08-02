@@ -39,6 +39,8 @@ from core.logger.results import (
     ValidateResult,
 )
 from core.migration.executor.migration_executor import MigrationExecutor
+from core.premium_manifest import PREMIUM_COMMANDS, UPGRADE_URL, render_upsell
+from core.seams.capabilities import CapabilityDeniedError
 from core.seams.event_listeners import attach_registered_listeners
 from core.seams.feature_loading import load_feature_extensions
 from db.base_provider import BaseProvider
@@ -47,6 +49,42 @@ from db.provider_interfaces import ConnectionProvider, TransactionalProvider
 __all__ = ["DBLiftClient"]
 
 _F = TypeVar("_F", bound=Callable[..., Any])
+
+# Paid-tier commands that have a corresponding OSS-visible DBLiftClient
+# method name (issue #753). Keyed by ``api_method`` so
+# ``_make_premium_stub_method`` can look up the right upsell text per stub.
+_PREMIUM_COMMANDS_BY_API_METHOD = {
+    cmd.api_method: cmd for cmd in PREMIUM_COMMANDS if cmd.api_method is not None
+}
+
+
+def _make_premium_stub_method(api_method_name: str) -> Callable[..., Any]:
+    """Build a paid-tier stub method for the OSS ``DBLiftClient``.
+
+    Mirrors the CLI's ``_make_premium_stub_handler``
+    (``cli/_command_handlers.py``): rather than the method being entirely
+    absent (a bare ``AttributeError`` on call), it exists, accepts
+    whatever arguments a paid caller would pass, and raises
+    ``CapabilityDeniedError`` with the same upsell message the CLI shows
+    for the equivalent command. Not decorated with ``@_with_client_emitter``
+    — it never runs an operation, so there is nothing to bind an emitter
+    around (see ``EXPECTED_DECORATED_OPERATIONS`` in
+    ``tests/unit/api/test_public_api_surface.py``).
+    """
+    cmd = _PREMIUM_COMMANDS_BY_API_METHOD[api_method_name]
+
+    def _stub(self: "DBLiftClient", *args: Any, **kwargs: Any) -> Any:
+        raise CapabilityDeniedError(render_upsell(cmd))
+
+    _stub.__name__ = api_method_name
+    _stub.__doc__ = (
+        f"Paid-tier stub: '{cmd.name}' is a dblift {cmd.edition} command, "
+        f"not available in the open-source edition.\n\n"
+        f"Raises:\n"
+        f"    CapabilityDeniedError: always, with an upgrade message. "
+        f"See {UPGRADE_URL}."
+    )
+    return _stub
 
 
 def _with_client_emitter(method: _F) -> _F:
@@ -259,6 +297,7 @@ class DBLiftClient:
                 "dry_run": dry_run,
                 "show_sql": show_sql,
                 "tags": tags,
+                "dialect": getattr(self, "dialect", None),
             },
         )
 
@@ -294,6 +333,7 @@ class DBLiftClient:
                         "provider": self.provider,
                         "history_manager": self.executor.history_manager,
                         "log": self.logger,
+                        "dialect": getattr(self, "dialect", None),
                     },
                 )
             else:
@@ -302,6 +342,7 @@ class DBLiftClient:
                     {
                         "error": getattr(result, "error_message", None),
                         "target_version": target_version,
+                        "dialect": getattr(self, "dialect", None),
                     },
                 )
 
@@ -312,6 +353,7 @@ class DBLiftClient:
                 {
                     "error": str(e),
                     "target_version": target_version,
+                    "dialect": getattr(self, "dialect", None),
                 },
             )
             raise
@@ -406,7 +448,7 @@ class DBLiftClient:
             ValidateResult with validation status
         """
         self._guard_scripts_dir_kwarg(kwargs)
-        self.events.emit(EventType.VALIDATION_STARTED, {})
+        self.events.emit(EventType.VALIDATION_STARTED, {"dialect": getattr(self, "dialect", None)})
 
         try:
             result = self.executor.validate(
@@ -421,11 +463,17 @@ class DBLiftClient:
                 **kwargs,
             )
 
-            self.events.emit(EventType.VALIDATION_COMPLETED, {"result": result})
+            self.events.emit(
+                EventType.VALIDATION_COMPLETED,
+                {"result": result, "dialect": getattr(self, "dialect", None)},
+            )
 
             return result
         except Exception as e:
-            self.events.emit(EventType.VALIDATION_FAILED, {"error": str(e)})
+            self.events.emit(
+                EventType.VALIDATION_FAILED,
+                {"error": str(e), "dialect": getattr(self, "dialect", None)},
+            )
             raise
 
     @_with_client_emitter
@@ -822,6 +870,18 @@ class DBLiftClient:
                 },
             )
             raise
+
+    # Paid-tier stubs (issue #753): visible on the OSS class so
+    # ``hasattr``/``dir()`` finds them, mirroring the CLI's premium command
+    # stubs. Calling any of these raises ``CapabilityDeniedError`` with an
+    # upsell message instead of a bare ``AttributeError``. Deliberately not
+    # decorated with ``@_with_client_emitter`` — see
+    # ``_make_premium_stub_method`` above.
+    diff = _make_premium_stub_method("diff")
+    export_schema = _make_premium_stub_method("export_schema")
+    snapshot = _make_premium_stub_method("snapshot")
+    plan = _make_premium_stub_method("plan")
+    preflight = _make_premium_stub_method("preflight")
 
     @classmethod
     def from_config(

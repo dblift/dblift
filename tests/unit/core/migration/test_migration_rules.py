@@ -104,11 +104,101 @@ class TestMigrationRulesShouldUndoVersion(unittest.TestCase):
         self.assertTrue(can)
 
 
-class TestCoreStatus(unittest.TestCase):
-    def test_enum_values(self):
-        from core.migration.rules.migration_rules import CoreMigrationStatus
+class TestShouldUndoVersionWithEnumTypes(unittest.TestCase):
+    """History rows carry ``MigrationType`` members, not bare strings.
 
-        self.assertEqual(CoreMigrationStatus.SUCCESS.value, "SUCCESS")
-        self.assertEqual(CoreMigrationStatus.FAILED.value, "FAILED")
-        self.assertEqual(CoreMigrationStatus.PENDING.value, "PENDING")
-        self.assertEqual(CoreMigrationStatus.BASELINE.value, "BASELINE")
+    The class above builds rows whose ``type`` is a string, which is not the
+    shape ``should_undo_version`` sees in production. These use the enum, and
+    cover both versioned formats.
+    """
+
+    def _make_rules(self):
+        from core.migration.rules.migration_rules import MigrationRules
+
+        return MigrationRules(logger=MagicMock())
+
+    def _row(self, version, mtype, success=True, rank=1):
+        return SimpleNamespace(
+            version=version,
+            type=mtype,
+            success="1" if success else "0",
+            installed_rank=rank,
+        )
+
+    def _versioned_types(self):
+        from core.migration.migration import MigrationType
+
+        return [MigrationType.SQL, MigrationType.PYTHON]
+
+    def test_reapplied_version_can_be_undone_again(self):
+        from core.migration.migration import MigrationType
+
+        for versioned in self._versioned_types():
+            with self.subTest(type=versioned):
+                rules = self._make_rules()
+                rows = [
+                    self._row("2", versioned, rank=1),
+                    self._row("2", MigrationType.UNDO_SQL, rank=2),
+                    self._row("2", versioned, rank=3),
+                ]
+                can, msg = rules.should_undo_version("2", rows)
+                self.assertTrue(can, msg)
+
+    def test_next_version_to_undo_is_suggested(self):
+        from core.migration.migration import MigrationType
+
+        for versioned in self._versioned_types():
+            with self.subTest(type=versioned):
+                rules = self._make_rules()
+                rows = [
+                    self._row("1", versioned, rank=1),
+                    self._row("2", versioned, rank=2),
+                    self._row("2", MigrationType.UNDO_SQL, rank=3),
+                ]
+                can, msg = rules.should_undo_version("2", rows)
+                self.assertFalse(can)
+                self.assertIn("specify version 1", msg)
+
+    def test_failed_version_is_not_suggested(self):
+        from core.migration.migration import MigrationType
+
+        rules = self._make_rules()
+        rows = [
+            self._row("1", MigrationType.SQL, success=False, rank=1),
+            self._row("2", MigrationType.SQL, rank=2),
+            self._row("2", MigrationType.UNDO_SQL, rank=3),
+        ]
+        can, msg = rules.should_undo_version("2", rows)
+        self.assertFalse(can)
+        self.assertIn("no other versions", msg.lower())
+
+    def test_reapplied_candidate_is_suggested(self):
+        """A version undone *and re-applied* is applied, so it is undoable."""
+        from core.migration.migration import MigrationType
+
+        rules = self._make_rules()
+        rows = [
+            self._row("1", MigrationType.SQL, rank=1),
+            self._row("1", MigrationType.UNDO_SQL, rank=2),
+            self._row("1", MigrationType.SQL, rank=3),
+            self._row("2", MigrationType.SQL, rank=4),
+            self._row("2", MigrationType.UNDO_SQL, rank=5),
+        ]
+        can, msg = rules.should_undo_version("2", rows)
+        self.assertFalse(can)
+        self.assertIn("specify version 1", msg)
+
+    def test_suggestion_uses_semantic_version_order(self):
+        """A suggestion of "10" over "2" — must match what undo would pick."""
+        from core.migration.migration import MigrationType
+
+        rules = self._make_rules()
+        rows = [
+            self._row("2", MigrationType.SQL, rank=1),
+            self._row("10", MigrationType.SQL, rank=2),
+            self._row("11", MigrationType.SQL, rank=3),
+            self._row("11", MigrationType.UNDO_SQL, rank=4),
+        ]
+        can, msg = rules.should_undo_version("11", rows)
+        self.assertFalse(can)
+        self.assertIn("specify version 10", msg)

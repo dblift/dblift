@@ -14,17 +14,13 @@ SIMP-37 — Phase 0: DialectGroup constants + SQLGLOT_DIALECT_MAP centralized he
   so that all clusters (Phase 1–5) can import frozensets instead of repeating
   inline string comparisons.
 
-Story 25-19 — Phase 5: dispatch_by_dialect utility for replacing scattered if/elif chains.
-
 Story 26-5 — Removed the ``DialectEnum`` canonical-name vocabulary; the
   quoting statics became the module-level ``quote_identifier`` /
   ``quote_qualified`` functions and canonical-name resolution moved to
   ``ProviderRegistry.canonical_dialect_name``.
 """
 
-from typing import TYPE_CHECKING, Any, Callable, Dict, FrozenSet, Optional, TypeVar
-
-T = TypeVar("T")
+from typing import TYPE_CHECKING, Any, Callable, Dict, FrozenSet, Optional
 
 if TYPE_CHECKING:
     # Lazy module-level constants resolved via ``__getattr__`` (PEP 562).
@@ -32,7 +28,6 @@ if TYPE_CHECKING:
     # at import sites. Without these stubs, mypy's cache occasionally widens
     # the inferred type to ``Any | None``, breaking ``x in SCHEMA_OPTIONAL_DIALECTS``.
     SCHEMA_OPTIONAL_DIALECTS: FrozenSet[str]
-    CASCADE_DROP_DIALECTS: FrozenSet[str]
 
 # ---------------------------------------------------------------------------
 # SIMP-37 Phase 0 — DialectGroup frozensets
@@ -48,7 +43,6 @@ if TYPE_CHECKING:
 # access. Listed here for ``grep``-ability:
 #
 #   SCHEMA_OPTIONAL_DIALECTS      -> not quirks.schema_required
-#   CASCADE_DROP_DIALECTS         -> quirks.drop_table_default_cascade
 
 
 # ---------------------------------------------------------------------------
@@ -213,7 +207,6 @@ def _dialects_where(predicate: Callable[[Any], bool]) -> FrozenSet[str]:
 
 _LAZY_DIALECT_SETS = {
     "SCHEMA_OPTIONAL_DIALECTS": lambda q: not q.schema_required,
-    "CASCADE_DROP_DIALECTS": lambda q: q.drop_table_default_cascade,
 }
 
 # Cache of resolved sets. Filled on first access; auto-invalidated when
@@ -383,43 +376,3 @@ def quote_qualified(
         return ident_q
     schema_q = quote_identifier(dialect, schema)
     return f"{schema_q}.{ident_q}"
-
-
-def dispatch_by_dialect(
-    dialect: Optional[str],
-    handlers: Dict[str, Callable[[], T]],
-    default: Optional[Callable[[], T]] = None,
-) -> Optional[T]:
-    """Execute the handler for the given dialect, falling back to default.
-
-    Replaces scattered ``if dialect == "x": ... elif dialect == "y": ...``
-    chains with a single registry lookup.  Each handler is a zero-argument
-    callable (typically a lambda) so that expensive computations are only
-    evaluated for the matched dialect.
-
-    Args:
-        dialect: SQL dialect string (any case; None treated as empty string).
-        handlers: Mapping of normalised dialect key → zero-arg callable.
-        default: Fallback callable when dialect is not in *handlers*.
-                 If None and dialect has no handler, returns None.
-
-    Returns:
-        The return value of the matched handler, or None if no match and no
-        default is provided.
-
-    Example::
-
-        query = dispatch_by_dialect(
-            self.dialect,
-            {
-                "oracle": lambda: "SELECT 1 FROM DUAL",
-                "db2":    lambda: "SELECT 1 FROM SYSIBM.SYSDUMMY1",
-            },
-            default=lambda: "SELECT 1",
-        )
-    """
-    key = (dialect or "").lower().strip()
-    handler = handlers.get(key) or default
-    if handler is None:
-        return None
-    return handler()

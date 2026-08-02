@@ -9,7 +9,6 @@ from config._url_builder_mixin import UrlBuilderMixin
 
 # Constants will be ported separately if needed
 DEFAULT_CONNECTION_TIMEOUT_SECONDS = 30
-ORACLE_DEFAULT_PORT = 1521
 
 
 def _detect_dialect_from_url(url: str) -> str:
@@ -380,11 +379,6 @@ class BaseDatabaseConfig(UrlBuilderMixin, ABC):
 
     # Registry of database types to their config classes
     _registry: ClassVar[Dict[str, Type["BaseDatabaseConfig"]]] = {}
-
-    @staticmethod
-    def _safe_str(value: Optional[str], default: str = "") -> str:
-        """Safely handle optional string values."""
-        return value if value is not None else default
 
     # Common parameters across all database types
     type: str

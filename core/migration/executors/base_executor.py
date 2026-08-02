@@ -50,7 +50,8 @@ class BaseMigrationExecutor(ABC):
     Abstract base class for migration executors.
 
     Each migration format (SQL, Python, JavaScript, etc.) must implement
-    this interface to execute migrations and handle rollbacks.
+    this interface to execute migrations. Undo is handled at a higher level
+    via companion ``U*`` scripts executed through ``execute_migration``.
 
     Attributes:
         provider: Database provider instance
@@ -124,45 +125,6 @@ class BaseMigrationExecutor(ABC):
             >>> if not is_valid:
             ...     print(f"Validation errors: {errors}")
         """
-
-    def supports_rollback(self, migration: Migration) -> bool:
-        """
-        Check if this executor supports rollback for the given migration.
-
-        Default implementation returns False. Subclasses should override
-        if they support rollback.
-
-        Args:
-            migration: Migration to check
-
-        Returns:
-            True if rollback is supported for this migration
-        """
-        return False
-
-    def rollback_migration(
-        self, migration: Migration, dry_run: bool = False, **kwargs: Any
-    ) -> MigrationExecutionResult:
-        """
-        Rollback a migration.
-
-        Default implementation returns a failed result indicating rollback is not
-        supported.  Subclasses that support rollback must override this method.
-
-        Args:
-            migration: Migration to rollback
-            dry_run: If True, simulate rollback without making changes
-            **kwargs: Additional executor-specific parameters
-
-        Returns:
-            Result of the rollback execution (success=False when not supported)
-        """
-        return MigrationExecutionResult(
-            success=False,
-            migration=migration,
-            execution_time_ms=0,
-            error=f"{self.__class__.__name__} does not support rollback",
-        )
 
     def get_supported_formats(self) -> List[MigrationFormat]:
         """
