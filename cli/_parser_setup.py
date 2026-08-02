@@ -348,6 +348,17 @@ def create_parser(
     # (e.g. `dblift --db-url X migrate` with no --db-url after "migrate").
     # SUPPRESS keeps the dest off the subnamespace entirely when the flag
     # isn't repeated after the subcommand, so the root-parsed value survives.
+    #
+    # Side effect: because this same parent is used on the root parser too,
+    # ``database_url``/``database_username``/``database_password``/
+    # ``database_schema`` may be entirely ABSENT from ``args`` (not merely
+    # ``None``) for ANY subcommand — not just migrate/info/validate/undo —
+    # whenever the flag isn't passed anywhere on the command line. Any new
+    # code reading these must use ``hasattr``/``getattr(..., None)`` (as
+    # ``cli/_config_helpers.py`` already does); a bare ``args.database_url``
+    # will raise ``AttributeError`` when unset. See
+    # tests/unit/cli/test_parser_invariants.py::
+    # test_db_flags_absent_from_namespace_when_unset_for_non_db_subcommand.
     db_parent = argparse.ArgumentParser(add_help=False)
     db_parent.add_argument(
         "--db-url", dest="database_url", default=argparse.SUPPRESS, help="Database URL"
