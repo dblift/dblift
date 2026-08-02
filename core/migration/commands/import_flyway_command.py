@@ -5,6 +5,7 @@ from typing import Any, Dict, List
 
 from core.logger.results import OperationResult
 from core.migration.commands.base_command import BaseCommand
+from core.migration.migration import MigrationType
 from core.sql_validator._flyway_compatibility import FLYWAY_TYPE_TO_MIGRATION_TYPE
 from db.object_naming import get_normalized_object_name
 from db.provider_registry import ProviderRegistry
@@ -218,6 +219,10 @@ class ImportFlywayCommand(BaseCommand):
                 f"Unrecognised Flyway migration type '{flyway_type}' for script "
                 f"'{row.get('script')}': no mapping to a Dblift MigrationType is defined."
             )
+        if mapped_type == MigrationType.SQL.name and not row.get("version"):
+            # Flyway's convention for a repeatable migration is type=SQL with
+            # no version — dblift models this as its own REPEATABLE type.
+            mapped_type = MigrationType.REPEATABLE.name
         return {**row, "type": mapped_type}
 
     @staticmethod

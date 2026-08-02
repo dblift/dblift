@@ -29,7 +29,7 @@ import pytest
 from sqlalchemy import create_engine, text
 
 from api import DBLiftClient
-from core.migration.migration import calculate_migration_script_checksum
+from core.migration.migration import MigrationType, calculate_migration_script_checksum
 
 pytestmark = [pytest.mark.unit, pytest.mark.sqlite]
 
@@ -43,12 +43,20 @@ _SCRIPT_CONTENT = "CREATE TABLE t (id INTEGER PRIMARY KEY);\n"
 _SCRIPT_CHECKSUM = calculate_migration_script_checksum(_SCRIPT_CONTENT)
 
 
-def _seed_flyway_history(engine: Any, *, migration_type: str) -> None:
+def _seed_flyway_history(
+    engine: Any,
+    *,
+    migration_type: str,
+    version: "str | None" = "1",
+    script: str = "V1__a.sql",
+) -> None:
     """Create a table Flyway already migrated, plus its own history row.
 
     Mirrors what a real Flyway installation leaves behind: the schema change
     already applied, and a ``flyway_schema_history`` row describing it with
-    Flyway's own ``type`` vocabulary.
+    Flyway's own ``type`` vocabulary. ``version`` defaults to a versioned
+    migration's Flyway convention; pass ``None`` to mirror Flyway's own
+    convention for a repeatable migration.
     """
     with engine.begin() as conn:
         conn.execute(text("CREATE TABLE t (id INTEGER PRIMARY KEY)"))
@@ -71,20 +79,27 @@ def _seed_flyway_history(engine: Any, *, migration_type: str) -> None:
                 INSERT INTO flyway_schema_history
                 (installed_rank, version, description, type, script, checksum,
                  installed_by, installed_on, execution_time, success)
-                VALUES (1, '1', 'a', :type, 'V1__a.sql', :checksum, 'flyway',
+                VALUES (1, :version, 'a', :type, :script, :checksum, 'flyway',
                         '2026-01-01 00:00:00', 0, 1)
                 """),
-            {"type": migration_type, "checksum": _SCRIPT_CHECKSUM},
+            {
+                "type": migration_type,
+                "checksum": _SCRIPT_CHECKSUM,
+                "version": version,
+                "script": script,
+            },
         )
 
 
-def _make_client(tmp_path: Path) -> "DBLiftClient":
+def _make_client(
+    tmp_path: Path, *, migration_type: str = "JDBC", version: "str | None" = "1", script: str = "V1__a.sql"
+) -> "DBLiftClient":
     migrations_dir = tmp_path / "migrations"
     migrations_dir.mkdir()
-    (migrations_dir / "V1__a.sql").write_text(_SCRIPT_CONTENT)
+    (migrations_dir / script).write_text(_SCRIPT_CONTENT)
 
     engine = create_engine(f"sqlite:///{tmp_path / 'db.sqlite'}")
-    _seed_flyway_history(engine, migration_type="JDBC")
+    _seed_flyway_history(engine, migration_type=migration_type, version=version, script=script)
     return DBLiftClient.from_sqlalchemy(engine, migrations_dir=str(migrations_dir))
 
 
@@ -125,3 +140,45 @@ class TestImportFlywayJdbcTypeMapping:
         )
         assert len(rows) == 1
         assert rows[0]["type"] == "SQL"
+
+
+class TestImportFlywayRepeatableTypeMapping:
+    """Flyway's own convention for a repeatable migration is ``type=SQL`` with
+    no ``version`` — not a distinct ``type`` value. Before this fix,
+    ``_row_with_mapped_type`` sent every ``type=SQL`` Flyway row straight to
+    Dblift's own ``SQL`` type regardless of ``version``, so a repeatable row
+    was imported as if it were versioned, and ``info`` displayed it under
+    "Versioned" instead of "Repeatable".
+    """
+
+    def test_versionless_sql_row_maps_to_repeatable(self, tmp_path: Path) -> None:
+        client = _make_client(
+            tmp_path, migration_type="SQL", version=None, script="R__refresh_view.sql"
+        )
+
+        import_result = client.import_flyway()
+        assert import_result.success is True
+
+        rows = client.provider.execute_query(
+            "SELECT script, type FROM dblift_schema_history WHERE script = ?",
+            ["R__refresh_view.sql"],
+        )
+        assert len(rows) == 1
+        assert rows[0]["type"] == MigrationType.REPEATABLE.name
+
+    def test_versioned_sql_row_still_maps_to_sql(self, tmp_path: Path) -> None:
+        """A genuinely versioned ``type=SQL`` row must still map to ``SQL``,
+        not be swept up by the version-less-repeatable override."""
+        client = _make_client(
+            tmp_path, migration_type="SQL", version="1", script="V1__a.sql"
+        )
+
+        import_result = client.import_flyway()
+        assert import_result.success is True
+
+        rows = client.provider.execute_query(
+            "SELECT script, type FROM dblift_schema_history WHERE script = ?",
+            ["V1__a.sql"],
+        )
+        assert len(rows) == 1
+        assert rows[0]["type"] == MigrationType.SQL.name
