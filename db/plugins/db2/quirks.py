@@ -71,6 +71,15 @@ class Db2Quirks(BaseQuirks):
         """Same SQLSTATE 42710 detection as the data history table."""
         return self.is_data_history_table_already_exists_error(error_message)
 
+    def is_schema_history_race_error(self, error_message: str) -> bool:
+        """DB2 has no ``CREATE TABLE IF NOT EXISTS``; a concurrent migration
+        bootstrap loses with SQL0601N ("the name of the object to be
+        created is identical to the existing name"), SQLSTATE 42710 — text
+        the base English markers don't contain."""
+        if "42710" in (error_message or ""):
+            return True
+        return super().is_schema_history_race_error(error_message)
+
     connection_probe_sql = "SELECT 1 FROM SYSIBM.SYSDUMMY1"
     select_supports_limit = True
     # Canonical rendering is trailing ``FETCH FIRST n ROWS ONLY``, but DB2

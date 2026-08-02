@@ -15,6 +15,7 @@ from core.migration.history.migration_history_manager import (
     MigrationHistoryManager,
 )
 from core.migration.migration import AppliedMigration, Migration, MigrationType
+from db.base_quirks import BaseQuirks
 
 
 def _make_manager(schema="public", table="dblift_schema_history", installed_by="test_user"):
@@ -22,6 +23,10 @@ def _make_manager(schema="public", table="dblift_schema_history", installed_by="
     provider = MagicMock()
     provider.get_normalized_object_name.side_effect = lambda name: name.lower()
     provider.table_exists.return_value = True
+    # Race detection (create_schema_and_history_table) delegates to
+    # provider.quirks.is_schema_history_race_error; use a real default
+    # BaseQuirks so it does real marker matching, not an always-truthy mock.
+    provider.quirks = BaseQuirks()
     logger = MagicMock()
 
     return MigrationHistoryManager(
