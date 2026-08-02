@@ -100,6 +100,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (``is_schema_history_race_error``) so each engine classifies its own error
   by a stable vendor code where one exists, instead of by driver message
   text that can also be locale-translated.
+- **``--version`` and the log banner no longer report a stale, unrelated
+  ``dblift`` version.** Both resolvers called
+  ``importlib.metadata.version("dblift")`` first, which scans ``sys.path``
+  for *any* distribution metadata named ``dblift`` without checking that it
+  belongs to the code actually executing. In a dev checkout or an extracted
+  source tree, that lookup can resolve to a stale or otherwise unrelated
+  ``dblift`` distribution recorded elsewhere on ``sys.path`` — for example an
+  editable install whose metadata was captured at an earlier version and
+  never refreshed after subsequent source edits — silently shadowing the
+  version of the code that's actually running. Both resolvers now read the
+  bundled ``__init__.py`` first when not running from a frozen build, since
+  that file unambiguously is the code being executed; ``importlib.metadata``
+  is used as the fallback there and remains first under a frozen build,
+  where the filesystem layout is unreliable.
 - **Migrations from a secondary ``--scripts`` directory now record the same
   bare filename in history as migrations from the primary directory.**
   ``load_migration_scripts`` computed a correct bare ``script_name`` for every
