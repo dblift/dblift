@@ -9,6 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`DBLiftClient` now exposes paid-tier stub methods for `diff`,
+  `export_schema`, `snapshot`, `plan`, and `preflight`.** Previously these
+  didn't exist on the OSS class at all, so calling them raised a bare
+  `AttributeError` with no indication the feature exists in a paid edition.
+  They now exist as callables (accepting arbitrary arguments) and raise
+  `core.seams.capabilities.CapabilityDeniedError` with a message naming the
+  command, its edition, and the upgrade URL — mirroring the upsell the CLI
+  already shows for the equivalent commands (`cli/premium_manifest.py`).
+  The shared catalog backing both surfaces now lives in
+  `core/premium_manifest.py` (`cli/premium_manifest.py` re-exports it
+  unchanged for backward compatibility). (#753)
+
 ### Changed
 
 ### Fixed

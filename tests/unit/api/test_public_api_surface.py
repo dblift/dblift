@@ -422,7 +422,7 @@ class TestDBLiftClientPremiumStubs:
                 method()
 
     def test_stub_error_message_names_command_edition_and_upgrade_url(self):
-        from core.premium_manifest import UPGRADE_URL, PREMIUM_COMMANDS
+        from core.premium_manifest import PREMIUM_COMMANDS, UPGRADE_URL
 
         by_api_method = {cmd.api_method: cmd for cmd in PREMIUM_COMMANDS if cmd.api_method}
         assert set(by_api_method) == self.STUB_METHOD_NAMES, (
