@@ -75,7 +75,7 @@ def test_list_droppable_objects_returns_oracle_clean_order_without_executing_dro
         DroppableObject(
             name="APP_TABLE",
             object_type="table",
-            drop_sql='DROP TABLE "APP"."APP_TABLE" CASCADE CONSTRAINTS',
+            drop_sql='DROP TABLE "APP"."APP_TABLE" CASCADE CONSTRAINTS PURGE',
         ),
         DroppableObject(
             name="APP_SEQ",

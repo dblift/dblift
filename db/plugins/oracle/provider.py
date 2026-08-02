@@ -626,7 +626,7 @@ class OracleProvider(SqlAlchemyProvider):
                 "      AND mv.MVIEW_NAME = t.TABLE_NAME"
                 ") "
                 "ORDER BY t.TABLE_NAME",
-                " CASCADE CONSTRAINTS",
+                " CASCADE CONSTRAINTS PURGE",
             ),
             (
                 "sequence",
