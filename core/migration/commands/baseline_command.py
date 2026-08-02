@@ -42,6 +42,7 @@ class BaselineCommand(BaseCommand):
                         )
                 result.baseline_version = baseline_version
                 result.message = f"Dry run: baseline {baseline_version} would be created"
+                self.log.info(f"DRY RUN: Would create baseline {baseline_version}")
                 self._log_command_header_update(
                     "baseline", baseline_version=baseline_version, dry_run=True
                 )

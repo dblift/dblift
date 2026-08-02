@@ -218,6 +218,25 @@ class TestBaselineCommandHappyPath(unittest.TestCase):
         hm.create_schema_and_history_table.assert_not_called()
         self.assertTrue(result.success)
 
+    def test_dry_run_logs_a_dry_run_line(self):
+        """dry-run must print a visible DRY RUN line via log.info, matching
+        migrate/undo/clean/import-flyway/repair — otherwise the console gives
+        no indication a baseline run was a dry-run."""
+        provider = MagicMock()
+        hm = MagicMock()
+        hm.has_history_table = False
+        log = MagicMock()
+        cmd = _make_baseline_cmd(provider=provider, history_manager=hm, log=log)
+
+        with patch.object(cmd, "_ensure_connected"):
+            with patch.object(cmd, "_populate_database_info"):
+                with patch.object(cmd, "_log_command_header_update"):
+                    with patch.object(cmd, "_log_command_completion"):
+                        cmd.execute("1.0", "initial baseline", dry_run=True)
+
+        info_calls = [str(c) for c in log.info.call_args_list]
+        assert any("DRY RUN" in c for c in info_calls)
+
     def test_dry_run_fails_when_history_already_exists(self):
         """dry-run should report the same failure the real run would hit when the
         history table already has rows, instead of a false success."""
