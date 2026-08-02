@@ -631,9 +631,6 @@ class MigrationScriptManager:
                         script_encoding=self.script_encoding,
                         detect_encoding=self.detect_encoding,
                     )
-                    # For callbacks from additional directories, preserve the relative path
-                    if "/" in rel_script_path:
-                        migration.script_name = rel_script_path
                     callbacks.append(migration)
                     continue
 
@@ -651,9 +648,6 @@ class MigrationScriptManager:
                     script_encoding=self.script_encoding,
                     detect_encoding=self.detect_encoding,
                 )
-                # For migrations from additional directories, preserve the relative path in script_name
-                if "/" in rel_script_path:
-                    migration.script_name = rel_script_path
                 migrations[migration_type].append(migration)
             except ValueError as e:
                 invalid_files.append((rel_script_path, str(e)))

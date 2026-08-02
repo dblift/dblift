@@ -134,6 +134,35 @@ class TestMigrationScriptManagerPerDirectoryRecursive:
         assert any("V1_0_2__add1.sql" in name for name in script_names)
         assert not any("V1_0_3__add1_sub.sql" in name for name in script_names)
 
+    def test_load_migration_scripts_script_name_matches_primary_dir_convention(self):
+        """A migration from an additional directory must get the same bare
+        filename as script_name that a migration from the primary directory
+        gets — not a directory-qualified (and on Unix absolute) path.
+
+        script_name is what gets persisted into the schema history "script"
+        column, so a directory-qualified value there makes history rows
+        dependent on the absolute path the migrations directory happened to
+        be mounted at, breaking validate/repair after a move.
+        """
+        (self.primary_dir / "V1_0_0__primary.sql").write_text("CREATE TABLE primary;")
+        (self.additional_dir1 / "V1_0_2__add1.sql").write_text("CREATE TABLE add1;")
+
+        migrations = self.script_manager.load_migration_scripts(
+            self.primary_dir,
+            recursive=False,
+            additional_dirs=[self.additional_dir1],
+        )
+
+        all_migrations = [m for migration_list in migrations.values() for m in migration_list]
+        by_name = {m.script_name: m for m in all_migrations}
+
+        assert "V1_0_0__primary.sql" in by_name
+        assert "V1_0_2__add1.sql" in by_name, (
+            "script_name for a migration from an additional directory should be the "
+            f"bare filename, matching the primary directory convention; got "
+            f"{[m.script_name for m in all_migrations]}"
+        )
+
     def test_get_callbacks_by_event_with_per_directory_recursive(self):
         """Test get_callbacks_by_event with per-directory recursive settings."""
         # Create callback files

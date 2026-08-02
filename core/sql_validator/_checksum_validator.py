@@ -19,6 +19,7 @@ continue to work.
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import TYPE_CHECKING, List, Optional
 
 from core.migration.encoding import read_migration_text
@@ -107,7 +108,9 @@ def validate_checksums(
         if migration_type == MigrationType.BASELINE:
             continue
 
-        if script_name not in full_script_names:
+        if script_name not in full_script_names and (
+            not script_name or Path(script_name).name not in full_script_names
+        ):
             if migration_type != MigrationType.BASELINE and str(version_val).lower() != "baseline":
                 # Check if this script has been marked as deleted
                 is_deleted = any(
@@ -153,7 +156,9 @@ def validate_checksums(
                         "marked as deleted - OK"
                     )
             continue
-        if script_name not in script_names:
+        if script_name not in script_names and (
+            not script_name or Path(script_name).name not in script_names
+        ):
             # Present on disk but filtered out of scope by --tags/--versions - not missing.
             mv.log.debug(
                 f"Migration '{script_name}' is out of scope for this run's filters - skipping"
@@ -166,6 +171,11 @@ def validate_checksums(
         script_obj = next(
             (s for s in scripts if getattr(s, "script_name", None) == script_name), None
         )
+        if script_obj is None and script_name:
+            script_basename = Path(script_name).name
+            script_obj = next(
+                (s for s in scripts if getattr(s, "script_name", None) == script_basename), None
+            )
         script_path = script_obj.path if script_obj is not None else None
         script_changed = mv.script_manager.has_script_changed(
             script_name=script_name,

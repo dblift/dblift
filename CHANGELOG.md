@@ -100,6 +100,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (``is_schema_history_race_error``) so each engine classifies its own error
   by a stable vendor code where one exists, instead of by driver message
   text that can also be locale-translated.
+- **Migrations from a secondary ``--scripts`` directory now record the same
+  bare filename in history as migrations from the primary directory.**
+  ``load_migration_scripts`` computed a correct bare ``script_name`` for every
+  migration by default, then overwrote it with the full source-directory path
+  for anything found outside the primary directory — an absolute path on most
+  setups. That value is what gets persisted into the schema history table's
+  ``script`` column, so a migration from a secondary directory was recorded
+  there as, say, ``/home/ci/project/extra-migrations/V2__add_col.sql`` instead
+  of ``V2__add_col.sql``. Moving the checkout, running on a different machine,
+  or even a ``/tmp`` vs ``/private/tmp`` path difference on macOS then made
+  ``validate`` report the migration as renamed. The override is removed;
+  ``script_name`` is now the bare filename regardless of which configured
+  directory a migration came from.
+
+  **Upgrade note:** history rows written *before* this fix (any project that
+  used ``--scripts``/multi-directory support previously) still have the old,
+  directory-qualified value stored in the ``script`` column. On upgrade, those
+  rows are matched against their now-bare-named script on disk with a
+  basename fallback, the same way an equivalent legacy-name mismatch is
+  already handled for versioned migrations — so an already-applied migration
+  from a secondary directory continues to resolve correctly: ``migrate`` does
+  not re-execute it and ``validate --strict`` does not fail on it. Two
+  repeatable migrations in different directories that happen to share a
+  filename are now also caught as a naming conflict during validation, since
+  removing the directory qualification means they'd otherwise be
+  indistinguishable by name.
 - **``repair`` now fixes a corrupted or non-numeric stored checksum instead of
   silently doing nothing.** A history row's checksum is normalized to an
   integer before any comparison; when the stored value can't be parsed (for
