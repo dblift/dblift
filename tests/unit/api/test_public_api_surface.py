@@ -53,18 +53,18 @@ class TestApiPackageSurface:
 
         assert EventType is not None
 
-    def test_oss_client_does_not_expose_paid_methods(self) -> None:
+    def test_oss_client_does_not_expose_paid_methods_without_a_stub(self) -> None:
+        """Paid methods with no ``core.premium_manifest`` entry stay fully absent.
+
+        ``generate_sql_from_diff`` has no OSS-visible CLI command counterpart
+        (it's reached only via the paid ``diff`` command's own options), so it
+        gets no upsell stub — unlike ``diff``/``export_schema``/``plan``/
+        ``snapshot``/``preflight``, which issue #753 requires to exist as
+        stubs. See ``TestDBLiftClientPremiumStubs`` for those.
+        """
         from api import DBLiftClient
 
-        paid_methods = {
-            "diff",
-            "export_schema",
-            "generate_sql_from_diff",
-            "plan",
-            "snapshot",
-        }
-
-        assert paid_methods.isdisjoint(dir(DBLiftClient))
+        assert "generate_sql_from_diff" not in dir(DBLiftClient)
 
     def test_all_lists_exactly_four_symbols(self):
         """``api.__all__`` is the contract. Additions (e.g. MigrationContext) are MINOR bumps
@@ -267,6 +267,16 @@ class TestDBLiftClientPublicMethods:
             "baseline",
             "repair",
             "import_flyway",
+            # Paid-tier stubs (issue #753): visible on the OSS class so
+            # ``hasattr``/``dir()`` finds them, mirroring the CLI's premium
+            # command stubs (cli/premium_manifest.py) — every call raises
+            # CapabilityDeniedError with an upsell message instead of a bare
+            # AttributeError. See TestDBLiftClientPremiumStubs below.
+            "diff",
+            "export_schema",
+            "snapshot",
+            "plan",
+            "preflight",
             # Construction helpers
             "from_config",
             "from_config_file",
@@ -369,6 +379,82 @@ class TestDBLiftClientPublicMethods:
                 f"DBLiftClient.{name} called use_client_emitter but with "
                 f"{calls[0]!r}, not the client's own ``self.events``."
             )
+
+
+class TestDBLiftClientPremiumStubs:
+    """Issue #753: paid API methods must mirror the CLI's premium stubs.
+
+    Before this fix, ``client.export_schema(...)`` etc. raised a bare
+    ``AttributeError`` with no indication the method exists in a paid tier.
+    The CLI already solves this for commands (``cli/premium_manifest.py`` +
+    ``cli/_command_handlers.py``'s ``_make_premium_stub_handler``): a stub is
+    visible, and invoking it names the command, its edition, and the
+    upgrade URL. These tests require the same treatment on the API surface,
+    via a catalog shared with the CLI in ``core/premium_manifest.py`` (an
+    ``api/`` -> ``cli/`` import would violate the ``cli-is-topmost``
+    .importlinter contract, so the catalog must live somewhere both layers
+    can reach).
+    """
+
+    STUB_METHOD_NAMES = frozenset({"diff", "export_schema", "snapshot", "plan", "preflight"})
+
+    def _stub_client(self):
+        from api.client import DBLiftClient
+
+        return DBLiftClient.__new__(DBLiftClient)
+
+    def test_every_stub_method_exists(self):
+        from api import DBLiftClient
+
+        for name in self.STUB_METHOD_NAMES:
+            assert callable(getattr(DBLiftClient, name, None)), (
+                f"DBLiftClient.{name} must exist as a paid-tier stub "
+                f"(issue #753), not be entirely absent."
+            )
+
+    def test_calling_a_stub_raises_capability_denied_error(self):
+        from core.seams.capabilities import CapabilityDeniedError
+
+        client = self._stub_client()
+        for name in self.STUB_METHOD_NAMES:
+            method = getattr(client, name)
+            with pytest.raises(CapabilityDeniedError):
+                method()
+
+    def test_stub_error_message_names_command_edition_and_upgrade_url(self):
+        from core.premium_manifest import UPGRADE_URL, PREMIUM_COMMANDS
+
+        by_api_method = {cmd.api_method: cmd for cmd in PREMIUM_COMMANDS if cmd.api_method}
+        assert set(by_api_method) == self.STUB_METHOD_NAMES, (
+            "core.premium_manifest.PREMIUM_COMMANDS must map an api_method "
+            "for exactly the stubbed API methods."
+        )
+
+        client = self._stub_client()
+        for name in self.STUB_METHOD_NAMES:
+            cmd = by_api_method[name]
+            method = getattr(client, name)
+            from core.seams.capabilities import CapabilityDeniedError
+
+            with pytest.raises(CapabilityDeniedError) as excinfo:
+                method()
+
+            message = str(excinfo.value)
+            assert cmd.name in message
+            assert cmd.edition in message
+            assert UPGRADE_URL in message
+
+    def test_stub_methods_accept_arbitrary_arguments(self):
+        """Callers pass paid-only kwargs (e.g. ``snapshot_model=...``); the
+        stub must reject on entitlement grounds, not with a TypeError from
+        an unexpected argument, so the upsell message is what surfaces."""
+        from core.seams.capabilities import CapabilityDeniedError
+
+        client = self._stub_client()
+        for name in self.STUB_METHOD_NAMES:
+            method = getattr(client, name)
+            with pytest.raises(CapabilityDeniedError):
+                method("positional", keyword="value", another=123)
 
 
 class TestClientInfoDisplayHuman:
