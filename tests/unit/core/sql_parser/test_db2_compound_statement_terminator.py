@@ -708,6 +708,11 @@ class TestDB2BlockDetectionGateAgreesWithExtractor:
             "CREATE TRIGGER t AFTER INSERT ON tbl FOR EACH ROW BEGIN ATOMIC SELECT 1; END;",
             "CREATE TRIGGER t AFTER INSERT ON tbl FOR EACH ROW "
             "BEGIN ATOMIC IF 1=1 THEN SELECT 1; END IF; END;",
+            # Confirmed live against DB2 12.1.5.0: a trigger body may open
+            # with plain BEGIN (no ATOMIC) and compiles/fires correctly, so
+            # the gate is right to accept it - the extractor used to require
+            # literal "BEGIN ATOMIC" and silently skip this shape instead.
+            "CREATE TRIGGER t AFTER INSERT ON tbl FOR EACH ROW BEGIN SELECT 1; END;",
         ],
     )
     def test_trigger_gate_agrees_with_extractor(self, sql):
@@ -853,3 +858,230 @@ BEGIN
 END"""
 
         assert parser.split_statements(sql) == [sql]
+
+
+@pytest.mark.unit
+class TestDB2TriggerCaseTracking:
+    """A CASE expression inside a trigger body must not truncate it.
+
+    ``extract_trigger_blocks`` used to keep a private depth counter that
+    decremented on any ``END``, with no CASE-expression awareness - unlike
+    ``extract_sqlpl_blocks``, which tracked ``case_depth`` via the shared
+    ``_find_block_end`` scan procedures and compound statements already used.
+    A ``CASE ... END`` inside a trigger body closed the trigger's own block
+    early instead of just closing the CASE expression. Both extractors now
+    delegate to ``_find_block_end``, so this is confirmed live against DB2
+    12.1.5.0 and is a regression lock, not a live bug.
+    """
+
+    def test_case_expression_inside_a_trigger_does_not_close_it(self):
+        parser = DB2RegexParser()
+        trigger = """CREATE TRIGGER trg_audit
+AFTER INSERT ON employees
+REFERENCING NEW AS n
+FOR EACH ROW
+BEGIN ATOMIC
+    INSERT INTO audit_log (id, msg) VALUES (n.id, CASE WHEN n.id > 0 THEN 'pos' ELSE 'neg' END);
+    UPDATE counters SET c = c + 1;
+END"""
+
+        assert parser.split_statements(trigger) == [trigger]
+
+
+@pytest.mark.unit
+class TestDB2TriggerPlainBeginIsExtracted:
+    """A trigger body may open with plain ``BEGIN``, not just ``BEGIN ATOMIC``.
+
+    Confirmed live against DB2 12.1.5.0: a trigger declared with a bare
+    ``BEGIN ... END`` (no ``ATOMIC``) compiles and fires correctly - DB2 does
+    not require a trigger's compound statement to be atomic. ``_has_trigger_
+    blocks`` already accepted plain ``BEGIN`` (the gate was right), but
+    ``extract_trigger_blocks`` required the literal keyword ``ATOMIC`` and
+    silently skipped any trigger that lacked it, dropping the whole trigger
+    to naive semicolon splitting and truncating it at its first internal
+    ``;`` - even with a trailing ``;`` present, so this one was never
+    delimiter-dependent.
+    """
+
+    @TERMINATORS
+    def test_plain_begin_trigger_is_one_statement(self, terminator):
+        parser = DB2RegexParser()
+        trigger = """CREATE TRIGGER trg_audit
+AFTER INSERT ON employees
+REFERENCING NEW AS n
+FOR EACH ROW
+BEGIN
+    INSERT INTO audit_log (id, msg) VALUES (n.id, 'inserted');
+    UPDATE counters SET c = c + 1;
+END"""
+
+        assert parser.split_statements(f"{trigger}{terminator}") == [trigger]
+
+    def test_plain_begin_trigger_with_control_structure_does_not_truncate(self):
+        """The same control-structure lookahead already proven for
+        ``BEGIN ATOMIC`` triggers must hold for plain ``BEGIN`` too, since
+        both now resolve their boundary through the same ``_find_block_end``
+        scan once the extractor stops requiring ``ATOMIC``."""
+        parser = DB2RegexParser()
+        trigger = """CREATE TRIGGER trg_audit
+AFTER INSERT ON employees
+REFERENCING NEW AS n
+FOR EACH ROW
+BEGIN
+    IF n.id > 0 THEN
+        INSERT INTO audit_log (id, msg) VALUES (n.id, 'inserted');
+    END IF;
+    UPDATE counters SET c = c + 1;
+END"""
+
+        assert parser.split_statements(trigger) == [trigger]
+
+
+@pytest.mark.unit
+class TestDB2TrailingCommentAfterEndDoesNotDefeatTheGate:
+    """A comment after the block's closing ``END`` must not defeat detection.
+
+    ``_has_sqlpl_blocks`` and ``_has_trigger_blocks`` anchor their closing
+    ``END`` on a delimiter (``@``/``;``) or the true end of input, mirroring
+    the 'terminator optional on the final statement' handling the extractors
+    already give an undelimited ``END``. Trailing whitespace after that
+    ``END`` was already fine, but a trailing comment is not whitespace, so
+    the gate's ``$`` anchor never matched and the whole block silently fell
+    back to naive semicolon splitting - cutting the body at its first
+    internal ``;``. ``_find_block_end``, which the extractors delegate to for
+    the actual boundary, was never the problem: it already stops right after
+    ``END`` and never swallows a trailing comment into the block's content.
+    """
+
+    def test_line_comment_after_procedure_end_does_not_defeat_the_gate(self):
+        parser = DB2RegexParser()
+        sql = f"{PROCEDURE_BODY}\n-- done\n"
+
+        assert parser.split_statements(sql) == [PROCEDURE_BODY]
+
+    def test_block_comment_after_procedure_end_does_not_defeat_the_gate(self):
+        parser = DB2RegexParser()
+        sql = f"{PROCEDURE_BODY}\n/* done */\n"
+
+        assert parser.split_statements(sql) == [PROCEDURE_BODY]
+
+    def test_comment_with_no_trailing_newline_after_end_does_not_defeat_the_gate(self):
+        parser = DB2RegexParser()
+        sql = f"{PROCEDURE_BODY}\n-- done"
+
+        assert parser.split_statements(sql) == [PROCEDURE_BODY]
+
+    def test_line_comment_after_trigger_end_does_not_defeat_the_gate(self):
+        parser = DB2RegexParser()
+        sql = f"{TRIGGER_BODY}\n-- done\n"
+
+        assert parser.split_statements(sql) == [TRIGGER_BODY]
+
+    def test_trailing_comment_after_an_explicit_delimiter_still_works(self):
+        """Not just an omitted delimiter followed by a comment - a real
+        delimiter followed by a comment must keep working too, since the
+        ``[@;]`` branch of the anchor was never the broken one."""
+        parser = DB2RegexParser()
+        sql = f"{PROCEDURE_BODY};\n-- done\n"
+
+        assert parser.split_statements(sql) == [PROCEDURE_BODY]
+
+
+@pytest.mark.unit
+class TestDB2PackageBodyGateExtractorMismatch:
+    """``CREATE PACKAGE BODY`` must be recognized and extracted as one block.
+
+    Confirmed live against DB2 12.1.5.0 with ``DB2_COMPATIBILITY_VECTOR=ORA``
+    set (an IBM-documented Oracle-compatibility mode): both a declaration-only
+    ``CREATE PACKAGE ... AS ... END`` and an implementation-bearing
+    ``CREATE PACKAGE BODY ... AS ... END`` compile successfully. This is not
+    fictional syntax - a prior version of this PR claimed otherwise based on
+    verification that never set the compatibility vector.
+
+    Two independent, compounding bugs existed:
+
+    1. ``_has_package_blocks``'s regex, ``PACKAGE\\s+\\S+\\s+AS``, requires
+       exactly one token between ``PACKAGE`` and ``AS``. ``BODY`` breaks that
+       match, so the gate never recognized the realistic, implementation-
+       bearing form at all and fell through to naive semicolon splitting.
+    2. ``_split_with_package_awareness``'s extractor used a non-greedy
+       ``.*?\\bEND\\s+(?:\\S+\\s*)?;``, which stops at the FIRST ``END`` -
+       a nested ``END proc1;`` inside the body, not the package's real
+       closing ``END pk1;`` - truncating any package with more than one
+       internal procedure or function.
+    """
+
+    @TERMINATORS
+    def test_package_body_with_one_procedure_is_one_statement(self, terminator):
+        parser = DB2RegexParser()
+        package_body = """CREATE OR REPLACE PACKAGE BODY pk1 AS
+PROCEDURE proc1(x INT) IS
+BEGIN
+    INSERT INTO pkgtest VALUES(x);
+END proc1;
+END pk1"""
+
+        assert parser.split_statements(f"{package_body}{terminator}") == [package_body]
+
+    @TERMINATORS
+    def test_package_body_with_two_procedures_is_not_truncated_at_first_end(self, terminator):
+        """A naive first-``END`` match would stop at ``END proc1;`` and
+        report the package as ending there, silently dropping ``proc2`` and
+        the real closing ``END pk1;``. The extractor must find the
+        package's TRUE closing END via depth tracking, not the first
+        nested one a non-greedy regex would land on."""
+        parser = DB2RegexParser()
+        package_body = """CREATE OR REPLACE PACKAGE BODY pk1 AS
+PROCEDURE proc1(x INT) IS
+BEGIN
+    INSERT INTO pkgtest VALUES(x);
+END proc1;
+PROCEDURE proc2(y INT) IS
+BEGIN
+    INSERT INTO pkgtest VALUES(y);
+END proc2;
+END pk1"""
+
+        assert parser.split_statements(f"{package_body}{terminator}") == [package_body]
+
+    @TERMINATORS
+    def test_declaration_only_package_is_one_statement(self, terminator):
+        """The bare declaration-only form (no BODY, no implementation) is
+        the shape the PR was originally tested with. Using ``@`` - the
+        standard DB2 CLP terminator this codebase already treats as
+        equivalent to ``;`` for the sibling procedure/trigger gates - must
+        keep working too: the gate fired ``True`` for this form even before
+        the ``BODY`` fix (since it has no ``BODY`` token), but the old
+        extractor's ``;``-only regex returned zero matches for the ``@``
+        form, the exact 'gate says yes, extractor says no' mismatch shape
+        the original issue described."""
+        parser = DB2RegexParser()
+        package_decl = """CREATE OR REPLACE PACKAGE pk1 AS
+PROCEDURE proc1(x INT);
+END pk1"""
+
+        assert parser.split_statements(f"{package_decl}{terminator}") == [package_decl]
+
+    def test_package_end_with_no_name_and_no_space_before_semicolon_is_recognized(self):
+        """``END;`` - no repeated package name, no whitespace before the
+        delimiter - must still be recognized by the gate.
+
+        ``_has_package_blocks`` anchored its closing ``END`` on
+        ``END\\s+(?:\\S+\\s*)?...``, which requires at least one whitespace
+        character between ``END`` and whatever follows. ``END;`` has none,
+        so the gate returned ``False`` and the whole package fell through to
+        naive semicolon splitting - the exact "gate says no, extractor would
+        say yes" mismatch this PR exists to fix: ``extract_package_blocks``
+        (which the extractor delegates to) already finds this block
+        correctly via depth tracking when reached directly; only the gate
+        was blind to it.
+        """
+        parser = DB2RegexParser()
+        package_body = """CREATE PACKAGE BODY pk1 AS
+PROCEDURE p1(x INT)
+BEGIN
+    INSERT INTO t VALUES(x);
+END;
+END"""
+
+        assert parser.split_statements(f"{package_body};") == [package_body]

@@ -543,8 +543,30 @@ class DB2Config(DialectConfig):
             Offset just past the block, including the trailing ``@`` or ``;``
             when one is present, or None if the block is never closed.
         """
-        i = begin_pos + 5  # Start after "BEGIN"
-        depth = 1
+        return self._scan_block_end(sql, begin_pos + 5, 1)
+
+    def _scan_block_end(self, sql: str, start_pos: int, initial_depth: int) -> Optional[int]:
+        """Scan forward from ``start_pos`` for the ``END`` that closes a block.
+
+        This is the depth-counting scan ``_find_block_end`` uses, generalized
+        to a caller-supplied starting offset and depth so it can also serve a
+        block that does not open with a literal ``BEGIN`` token - a package
+        body opens with ``... PACKAGE [BODY] name AS``, with the package's
+        own implicit block already "open" (``initial_depth=1``) at the
+        position right after ``AS``.
+
+        Args:
+            sql: SQL content being scanned
+            start_pos: Offset to begin scanning from
+            initial_depth: Depth to start counting from (1 for a block whose
+                opening token was already consumed by the caller)
+
+        Returns:
+            Offset just past the block, including the trailing ``@`` or ``;``
+            when one is present, or None if the block is never closed.
+        """
+        i = start_pos
+        depth = initial_depth
         case_depth = 0  # Track CASE expressions separately
         in_string = False
         comment_depth = 0  # DB2 block comments nest; see /* below
@@ -794,10 +816,15 @@ class DB2Config(DialectConfig):
         for match in trigger_start_pattern.finditer(sql):
             start_pos = match.start()
 
-            # Find the BEGIN ATOMIC keyword after the trigger start
-            begin_atomic_match = re.search(r"\bBEGIN\s+ATOMIC\b", sql[start_pos:], re.IGNORECASE)
+            # Find the BEGIN keyword after the trigger start. ATOMIC is
+            # optional here: confirmed live against DB2 12.1.5.0, a trigger
+            # body opened with plain BEGIN (no ATOMIC) compiles and fires
+            # correctly, so requiring the literal keyword ATOMIC (as this
+            # used to) silently skipped every trigger that didn't have it,
+            # falling back to naive semicolon splitting for the whole thing.
+            begin_match = re.search(r"\bBEGIN\b", sql[start_pos:], re.IGNORECASE)
 
-            if not begin_atomic_match:
+            if not begin_match:
                 continue
 
             # Use the shared depth-counting scan so a trigger body gets the same
@@ -805,7 +832,7 @@ class DB2Config(DialectConfig):
             # procedures and compound statements - a private copy of this scan
             # previously decremented depth on any END, truncating trigger bodies
             # that contained a control structure like IF ... END IF.
-            begin_pos = start_pos + begin_atomic_match.start()
+            begin_pos = start_pos + begin_match.start()
             end_pos = self._find_block_end(sql, begin_pos)
             if end_pos is None:
                 continue
@@ -815,6 +842,70 @@ class DB2Config(DialectConfig):
                 {
                     "type": "trigger_block",
                     "content": content,
+                    "start": start_pos,
+                    "end": end_pos,
+                }
+            )
+
+        return blocks
+
+    def extract_package_blocks(self, sql: str) -> List[Dict[str, Any]]:
+        """Extract package blocks from SQL content.
+
+        Args:
+            sql: SQL content to parse
+
+        Returns:
+            List of package blocks with their content
+        """
+        blocks = []
+
+        # Pattern to find the start of a package statement, through the
+        # ``AS`` that opens its body. ``BODY`` is optional: confirmed live
+        # against DB2 12.1.5.0 with DB2_COMPATIBILITY_VECTOR=ORA set, both
+        # the declaration-only ``CREATE PACKAGE name AS`` and the
+        # implementation-bearing ``CREATE PACKAGE BODY name AS`` compile.
+        package_start_pattern = re.compile(
+            r"\b(?:CREATE|ALTER)\s+(?:OR\s+REPLACE\s+)?PACKAGE\s+(?:BODY\s+)?\S+\s+AS\b",
+            re.IGNORECASE,
+        )
+
+        # Unlike BEGIN...END blocks, a package doesn't open with a literal
+        # BEGIN - everything between AS and the package's own closing END is
+        # either declarations (bare form) or procedure/function bodies that
+        # themselves contain BEGIN...END pairs (BODY form). So the package
+        # body itself is treated as an implicitly-open block (depth 1)
+        # starting right after AS, and the shared scan finds the END that
+        # closes it - not the first nested END inside a procedure body.
+        for match in package_start_pattern.finditer(sql):
+            start_pos = match.start()
+
+            end_pos = self._scan_block_end(sql, match.end(), 1)
+            if end_pos is None:
+                continue
+
+            # A package's closing END may repeat the package name before the
+            # terminator (``END pk1;``), a shape none of the generic
+            # BEGIN/END blocks use. ``_scan_block_end`` only skips whitespace
+            # after END before checking for a bare @/; delimiter, so when a
+            # name is present it stops just short of it - extend end_pos to
+            # also swallow that optional name and its own optional
+            # delimiter, matching what the extractor's gate
+            # (``_has_package_blocks``) already accepts. Skip this when the
+            # scan already consumed a delimiter directly after END (no name
+            # present), or the greedy ``\S+`` below would eat into whatever
+            # SQL follows.
+            if end_pos == 0 or sql[end_pos - 1] not in ("@", ";"):
+                trailing_match = re.match(r"\S+\s*[@;]", sql[end_pos:]) or re.match(
+                    r"\S+", sql[end_pos:]
+                )
+                if trailing_match:
+                    end_pos += trailing_match.end()
+
+            blocks.append(
+                {
+                    "type": "package_block",
+                    "content": sql[start_pos:end_pos].rstrip("@;").strip(),
                     "start": start_pos,
                     "end": end_pos,
                 }
