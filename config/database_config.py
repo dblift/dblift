@@ -360,7 +360,9 @@ def _resolve_config_or_stub(
         return config_class
     if data.get("_allow_incomplete"):
         return _build_incomplete_stub(data, db_type)
-    raise ValueError(f"Unsupported database type: {db_type}")
+    if db_type:
+        raise ValueError(f"Unsupported database type: {db_type}")
+    raise ValueError(f"Unsupported database type: {data.get('url', '')!r}")
 
 
 def _instantiate_config(
