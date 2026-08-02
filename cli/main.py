@@ -371,6 +371,27 @@ def _parse_argv_and_load_config(argv: List[str]) -> _CliContext:
 
         sys.exit(run_config_command(args))
 
+    # A handler marked ``_dblift_zero_config_command`` needs no project
+    # config at all (e.g. a paid `license` command checking
+    # ~/.dblift/license.key — nothing to do with a database). Unlike the
+    # `config`/`db` short-circuits above, OSS can't spell the command name
+    # here: only core/premium_manifest.py may name a paid-edition command.
+    # So this is driven purely by a handler attribute, read generically off
+    # whatever's registered for the command — same pattern as
+    # ``_dblift_config_only_client``/``_dblift_skip_secret_resolution``.
+    # Single-command only: firing on ``commands[0]`` unconditionally would
+    # silently drop the rest of a chained invocation (e.g. `dblift license
+    # migrate`) instead of running it. A chained zero-config command falls
+    # through to the normal config-requiring pipeline instead — consistent
+    # with how ``_build_command_client`` already gates its own
+    # single-command-only optimization the same way.
+    if len(commands) == 1 and _command_handler_attr(
+        commands[0], "_dblift_zero_config_command", False
+    ):
+        handler = _COMMAND_HANDLERS[commands[0]]
+        success, _payload = handler(CliCommandContext(args=args))
+        sys.exit(0 if success else 1)
+
     log = LogFactory.get_log("Dblift")
     parser = create_parser()
     # Validate log format before any config load so bogus --log-format fails with argparse
