@@ -25,6 +25,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the same migration, tripped dblift's guard against mixing autocommit and
   transactional statements in one file. All four full-text DDL forms are now
   classified identically and run through autocommit.
+- **SQL Server ``clean`` now drops full-text catalogs.** ``clean
+  --clean-enabled`` enumerated tables, views, sequences, types and synonyms
+  but never queried ``sys.fulltext_catalogs``, so it reported success while
+  leaving any full-text catalog in place. A subsequent migration that
+  recreated a same-named catalog then failed with SQL Server error 7642
+  ("catalog already exists"). Full-text catalogs are not schema-owned in SQL
+  Server — unlike every other object type ``clean`` enumerates, there is no
+  ``schema_id`` column to filter on directly — but a catalog is only ever
+  populated by full-text indexes, and every full-text index belongs to a
+  table, and every table belongs to a schema, so the catalog is scoped
+  indirectly: only a catalog referenced by at least one full-text index on a
+  table in the schema being cleaned is dropped, and only after the tables
+  that may reference it (a table's full-text index disappears implicitly
+  with the table; the catalog that held it is a separate object and needs
+  its own explicit drop). Dropping a full-text catalog also cannot run
+  inside a transaction — the same restriction the entry above now handles
+  for the other full-text DDL forms.
 - **Index introspection no longer logs a spurious error when a dialect's
   vendor queries decline per-table index retrieval.** A vendor queries class
   may signal "no per-table indexes query for this dialect" by returning a
@@ -68,6 +85,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   now establishes its own connection up front, the same way ``migrate`` and
   ``info`` do, so it correctly finds and processes pending undos on a fresh
   client instead of reporting a false success.
+
 - **A concurrent-migrate race on a brand-new schema no longer crashes with a
   raw driver traceback on DB2, Oracle, or SQL Server.** When two ``migrate``
   processes bootstrap the migration-history table for the first time at once,
@@ -96,6 +114,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   that file unambiguously is the code being executed; ``importlib.metadata``
   is used as the fallback there and remains first under a frozen build,
   where the filesystem layout is unreliable.
+- **Migrations from a secondary ``--scripts`` directory now record the same
+  bare filename in history as migrations from the primary directory.**
+  ``load_migration_scripts`` computed a correct bare ``script_name`` for every
+  migration by default, then overwrote it with the full source-directory path
+  for anything found outside the primary directory — an absolute path on most
+  setups. That value is what gets persisted into the schema history table's
+  ``script`` column, so a migration from a secondary directory was recorded
+  there as, say, ``/home/ci/project/extra-migrations/V2__add_col.sql`` instead
+  of ``V2__add_col.sql``. Moving the checkout, running on a different machine,
+  or even a ``/tmp`` vs ``/private/tmp`` path difference on macOS then made
+  ``validate`` report the migration as renamed. The override is removed;
+  ``script_name`` is now the bare filename regardless of which configured
+  directory a migration came from.
+
+  **Upgrade note:** history rows written *before* this fix (any project that
+  used ``--scripts``/multi-directory support previously) still have the old,
+  directory-qualified value stored in the ``script`` column. On upgrade, those
+  rows are matched against their now-bare-named script on disk with a
+  basename fallback, the same way an equivalent legacy-name mismatch is
+  already handled for versioned migrations — so an already-applied migration
+  from a secondary directory continues to resolve correctly: ``migrate`` does
+  not re-execute it and ``validate --strict`` does not fail on it. Two
+  repeatable migrations in different directories that happen to share a
+  filename are now also caught as a naming conflict during validation, since
+  removing the directory qualification means they'd otherwise be
+  indistinguishable by name.
 - **``repair`` now fixes a corrupted or non-numeric stored checksum instead of
   silently doing nothing.** A history row's checksum is normalized to an
   integer before any comparison; when the stored value can't be parsed (for
@@ -431,6 +475,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   character helper instead of five independent character enumerations that
   could drift out of sync.
 
+- **Two more DB2 detection/extraction mismatches, found while auditing the
+  fix above.** Each detector that decides "is this a block?" must agree with
+  the extractor that then carves it out, or the script silently falls back to
+  plain semicolon splitting and is cut at the first internal ``;``.
+
+  - A trigger body may open with a plain ``BEGIN`` and not just ``BEGIN
+    ATOMIC`` — confirmed live, DB2 compiles and fires such a trigger without
+    complaint. The detector already accepted plain ``BEGIN``, but the
+    extractor required the literal keyword ``ATOMIC`` and silently skipped
+    any trigger that didn't have it, even with a trailing ``;`` present.
+  - A comment following a block's closing ``END`` (when the script has no
+    explicit ``;``/``@`` after it) defeated the procedure and trigger
+    detectors, which anchored an undelimited ``END`` on end-of-input and
+    treated a trailing comment as disqualifying rather than as trailing
+    trivia to skip over. The extractors themselves were never affected —
+    they already stop right at ``END`` and never absorb a trailing comment
+    into the statement text.
+
+- **DB2 ``CREATE PACKAGE`` (with or without ``BODY``) is no longer shredded
+  into fragments at its first internal ``END``.** The remaining detector/
+  extractor mismatch from the audit above: ``_has_package_blocks``'s pattern
+  required exactly one token between ``PACKAGE`` and ``AS``, so ``CREATE
+  PACKAGE BODY name AS`` — two tokens, ``BODY`` and the name — never matched
+  and the whole block fell back to naive semicolon splitting. Separately, the
+  extractor used a non-greedy match for the closing ``END``, so any package
+  with more than one internal procedure or function stopped at the first
+  nested ``END`` and silently dropped everything after it, including the
+  package's real closing ``END``. The extractor now finds the package's true
+  closing ``END`` via the same depth-tracking scan the trigger/procedure/
+  compound-statement extractors already use, rather than a regex, and the
+  detector accepts the optional ``BODY`` keyword, an optional repeated
+  package name before the terminator, and the same trailing-comment/
+  undelimited-end-of-input handling given to the procedure and trigger
+  detectors above, for consistency.
 - **MySQL history-table bootstrap no longer crashes on a concurrent race.**
   The migration lock table has always been created with
   ``CREATE TABLE IF NOT EXISTS``, but the history table used a bare

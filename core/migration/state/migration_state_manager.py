@@ -258,6 +258,8 @@ class MigrationStateManager:
                 if not recorded or self._installed_rank(migration) > self._installed_rank(recorded):
                     repeatable_successes[script_name] = migration
                 executed_scripts.add(script_name)
+                if "/" in script_name:
+                    executed_scripts.add(Path(script_name).name)
             elif migration_type == "CALLBACK" and is_success:
                 executed_scripts.add(script_name)
 
@@ -397,9 +399,16 @@ class MigrationStateManager:
         if script_name in checksums:
             return checksums[script_name]
 
-        # Fallback to basename for historical records stored without directory prefixes
+        # Fallback to basename comparison for backward compatibility: either
+        # script_name or a checksums key may carry a pre-PR #129
+        # directory-qualified script_name while the other side is bare.
         basename = Path(script_name).name
-        return checksums.get(basename)
+        if basename in checksums:
+            return checksums[basename]
+        for key, value in checksums.items():
+            if Path(key).name == basename:
+                return value
+        return None
 
     # ------------------------------------------------------------------
     # Pending migration computation (NEW - Phase 1)
@@ -708,8 +717,19 @@ class MigrationStateManager:
         repeatable_checksums: Dict[str, str],
     ) -> bool:
         """Check if a repeatable migration is pending."""
-        # Never executed
-        if script_name not in executed_scripts:
+        # Never executed — check script_name directly, falling back to a
+        # basename comparison for backward compatibility. A history row
+        # written before PR #129 still has a directory-qualified
+        # script_name (e.g. "extra-migrations/R__cleanup.sql"), while the
+        # freshly-loaded Migration now always computes the bare filename;
+        # compare basenames on both sides so either an already-bare or an
+        # already-qualified executed_scripts entry matches. Mirrors
+        # _is_versioned_pending's fallback.
+        script_basename = Path(script_name).name
+        is_executed = script_name in executed_scripts or any(
+            Path(executed).name == script_basename for executed in executed_scripts
+        )
+        if not is_executed:
             return True
 
         # Check if checksum changed

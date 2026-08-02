@@ -289,6 +289,12 @@ class MigrationValidator:
                 valid_scripts, applied_migrations, validation_result, command
             )
 
+            if not self._validate_duplicate_repeatable_names(
+                valid_scripts, validation_result, issues
+            ):
+                validation_result.issues = issues
+                return validation_result
+
             if all(
                 s.type in (MigrationType.REPEATABLE, MigrationType.CALLBACK) for s in valid_scripts
             ):
@@ -506,6 +512,12 @@ class MigrationValidator:
                 validation_result.issues = issues
                 return validation_result
 
+            if not self._validate_duplicate_repeatable_names(
+                valid_scripts, validation_result, issues
+            ):
+                validation_result.issues = issues
+                return validation_result
+
             # If all valid scripts are repeatable or callback, validation should succeed
             if all(
                 s.type in (MigrationType.REPEATABLE, MigrationType.CALLBACK) for s in valid_scripts
@@ -710,6 +722,51 @@ class MigrationValidator:
         self.log.debug(
             f"[DEBUG] _validate_duplicate_versions END: success={result.success}, error='{result.error_message}'"
         )
+        return result.success
+
+    def _validate_duplicate_repeatable_names(
+        self, scripts: List[Migration], result: ValidationResult, issues: List[str]
+    ) -> bool:
+        """Detect repeatable migrations that collide on script name across directories.
+
+        ``script_name`` is always the bare filename now (PR #129), so a repeatable
+        migration in the primary directory and one with the same filename in a
+        secondary ``--scripts`` directory are indistinguishable by name alone.
+        Two REPEATABLE scripts sharing a name but backed by different files is a
+        genuine cross-directory naming collision — mirrors how
+        ``_validate_duplicate_versions`` flags two versioned scripts sharing a
+        version.
+        """
+        name_map: Dict[str, Migration] = {}
+        for script in scripts:
+            if script.type != MigrationType.REPEATABLE:
+                continue
+            existing = name_map.get(script.script_name)
+            if existing is None:
+                name_map[script.script_name] = script
+                continue
+            existing_path = getattr(existing, "path", None)
+            script_path = getattr(script, "path", None)
+            if (
+                existing_path is not None
+                and script_path is not None
+                and existing_path == script_path
+            ):
+                # Same file resolved twice — not a cross-directory collision.
+                continue
+            if result.success:
+                result.success = False
+                result.error_message = (
+                    f"Repeatable migration name {script.script_name} is used by scripts "
+                    f"in more than one directory: {existing_path} and {script_path}"
+                )
+            issues.append(
+                "Validation failed: Found repeatable migration scripts with duplicate names"
+            )
+            issues.append(
+                f"Repeatable migration name {script.script_name} is used by scripts in "
+                f"more than one directory: {existing_path} and {script_path}"
+            )
         return result.success
 
     def _validate_checksums(

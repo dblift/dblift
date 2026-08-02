@@ -19,6 +19,10 @@ def _provider_with_catalog_rows():
 
     def execute_query(query_connection, sql, params=None):
         assert query_connection is connection
+        # Full-text catalogs are not schema-owned, but the catalog query is
+        # scoped indirectly via a join through fulltext_indexes -> tables ->
+        # schemas, so it is parameterized by schema just like every other
+        # query here.
         assert params == ["dbo"]
         if "sys.foreign_keys" in sql:
             return [{"constraint_name": "fk_orders_customer", "table_name": "orders"}]
@@ -39,6 +43,11 @@ def _provider_with_catalog_rows():
             return [{"type_name": "EmailAddress"}]
         if "sys.synonyms" in sql:
             return [{"synonym_name": "remote_orders"}]
+        if "sys.fulltext_catalogs" in sql:
+            is_scoped_join = "sys.fulltext_indexes" in sql and "sys.schemas" in sql
+            if is_scoped_join:
+                return [{"catalog_name": "ft_catalog"}]
+            return []
         raise AssertionError(f"Unexpected query: {sql}")
 
     provider.query_executor.execute_query.side_effect = execute_query
@@ -91,6 +100,11 @@ def test_sqlserver_provider_lists_droppable_objects_in_clean_order():
             name="remote_orders",
             object_type="synonym",
             drop_sql="DROP SYNONYM [dbo].[remote_orders]",
+        ),
+        DroppableObject(
+            name="ft_catalog",
+            object_type="fulltext_catalog",
+            drop_sql="DROP FULLTEXT CATALOG [ft_catalog]",
         ),
     ]
     provider.execute_statement.assert_not_called()
