@@ -25,6 +25,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the same migration, tripped dblift's guard against mixing autocommit and
   transactional statements in one file. All four full-text DDL forms are now
   classified identically and run through autocommit.
+- **SQL Server ``clean`` now drops full-text catalogs.** ``clean
+  --clean-enabled`` enumerated tables, views, sequences, types and synonyms
+  but never queried ``sys.fulltext_catalogs``, so it reported success while
+  leaving any full-text catalog in place. A subsequent migration that
+  recreated a same-named catalog then failed with SQL Server error 7642
+  ("catalog already exists"). Full-text catalogs are not schema-owned in SQL
+  Server — unlike every other object type ``clean`` enumerates, there is no
+  ``schema_id`` column to filter on directly — but a catalog is only ever
+  populated by full-text indexes, and every full-text index belongs to a
+  table, and every table belongs to a schema, so the catalog is scoped
+  indirectly: only a catalog referenced by at least one full-text index on a
+  table in the schema being cleaned is dropped, and only after the tables
+  that may reference it (a table's full-text index disappears implicitly
+  with the table; the catalog that held it is a separate object and needs
+  its own explicit drop). Dropping a full-text catalog also cannot run
+  inside a transaction — the same restriction the entry above now handles
+  for the other full-text DDL forms.
 - **Index introspection no longer logs a spurious error when a dialect's
   vendor queries decline per-table index retrieval.** A vendor queries class
   may signal "no per-table indexes query for this dialect" by returning a
@@ -68,6 +85,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   now establishes its own connection up front, the same way ``migrate`` and
   ``info`` do, so it correctly finds and processes pending undos on a fresh
   client instead of reporting a false success.
+
 - **A concurrent-migrate race on a brand-new schema no longer crashes with a
   raw driver traceback on DB2, Oracle, or SQL Server.** When two ``migrate``
   processes bootstrap the migration-history table for the first time at once,

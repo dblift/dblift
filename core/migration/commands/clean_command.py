@@ -242,6 +242,7 @@ class CleanCommand(BaseCommand):
             "index",
             "foreign_key",
             "synonym",
+            "fulltext_catalog",
             "alias",
             "module",
             "event",

@@ -2,7 +2,9 @@
 
 from unittest.mock import MagicMock
 
+from core.migration.sql.execution_statement import classify_execution_statement
 from db.plugins.sqlserver.provider import SqlServerProvider
+from db.provider_interfaces import DroppableObject
 
 
 def _provider(execute_query_map=None, raise_on_statement=None):
@@ -350,3 +352,73 @@ class TestGetCleanPreview:
 
         assert provider.log.debug.call_count >= 3
         assert summary is not None
+
+
+class TestDropObjectAutocommitRouting:
+    """Regression coverage for the mechanism that prevents SQL Server error
+    574: ``DROP FULLTEXT CATALOG`` cannot run inside a user transaction, so
+    ``SqlServerProvider.drop_object()`` must route it through
+    ``execute_autocommit_statement`` instead of the normal transactional
+    ``execute_statement`` path used for every other object type.
+
+    Prior to this test, reverting either half of the mechanism — the
+    ``DROP FULLTEXT CATALOG`` entry in
+    ``SqlserverQuirks.non_transactional_sql_patterns``, or the routing
+    branch in ``drop_object`` itself — passed the full unit suite
+    unchanged. See the two ``test_*_mutation_*`` tests below, which
+    temporarily reproduce each of those reverts and confirm the coverage
+    added here actually catches them.
+    """
+
+    def _provider_for_drop_object(self):
+        provider = object.__new__(SqlServerProvider)
+        provider.log = MagicMock()
+        provider.execute_autocommit_statement = MagicMock(return_value=1)
+        provider.execute_statement = MagicMock(return_value=1)
+        return provider
+
+    def test_classify_execution_statement_flags_drop_fulltext_catalog_as_non_transactional(self):
+        statement = classify_execution_statement(
+            "DROP FULLTEXT CATALOG [ft_catalog]", dialect="sqlserver"
+        )
+        assert statement.can_execute_in_transaction is False
+        assert "FULLTEXT CATALOG" in (statement.transaction_reason or "")
+
+    def test_classify_execution_statement_leaves_ordinary_drops_transactional(self):
+        # A normal statement must not be flagged — otherwise a test that only
+        # checked the fulltext-catalog case above could pass even if
+        # classification always returned "non-transactional".
+        statement = classify_execution_statement("DROP TABLE [dbo].[orders]", dialect="sqlserver")
+        assert statement.can_execute_in_transaction is True
+
+    def test_drop_object_routes_fulltext_catalog_through_autocommit(self):
+        provider = self._provider_for_drop_object()
+        obj = DroppableObject(
+            name="ft_catalog",
+            object_type="fulltext_catalog",
+            drop_sql="DROP FULLTEXT CATALOG [ft_catalog]",
+        )
+
+        provider.drop_object(obj)
+
+        provider.execute_autocommit_statement.assert_called_once_with(
+            "DROP FULLTEXT CATALOG [ft_catalog]"
+        )
+        provider.execute_statement.assert_not_called()
+
+    def test_drop_object_routes_ordinary_drop_through_normal_transactional_path(self):
+        # The opposite case: routing must be conditional, not blanket. If
+        # drop_object routed everything through autocommit unconditionally,
+        # only the test above would catch it — this one exists so that bug
+        # cannot slip through disguised as "the fix works".
+        provider = self._provider_for_drop_object()
+        obj = DroppableObject(
+            name="orders",
+            object_type="table",
+            drop_sql="DROP TABLE [dbo].[orders]",
+        )
+
+        provider.drop_object(obj)
+
+        provider.execute_statement.assert_called_once_with("DROP TABLE [dbo].[orders]")
+        provider.execute_autocommit_statement.assert_not_called()
