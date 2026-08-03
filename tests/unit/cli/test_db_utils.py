@@ -597,9 +597,7 @@ class TestCheckConnectionLogFile:
     @patch("cli.db_utils.ProviderRegistry.create_provider")
     @patch("cli.db_utils.load_config")
     @patch("cli.db_utils.DbliftLogger")
-    def test_closes_logger_on_success(
-        self, mock_logger, mock_load_config, mock_create_provider
-    ):
+    def test_closes_logger_on_success(self, mock_logger, mock_load_config, mock_create_provider):
         mock_config_instance = Mock()
         mock_config_instance.database.url = "mssql+pymssql://localhost:1433/test"
         mock_config_instance.database.type = "sqlserver"

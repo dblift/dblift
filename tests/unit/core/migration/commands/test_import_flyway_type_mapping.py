@@ -92,7 +92,11 @@ def _seed_flyway_history(
 
 
 def _make_client(
-    tmp_path: Path, *, migration_type: str = "JDBC", version: "str | None" = "1", script: str = "V1__a.sql"
+    tmp_path: Path,
+    *,
+    migration_type: str = "JDBC",
+    version: "str | None" = "1",
+    script: str = "V1__a.sql",
 ) -> "DBLiftClient":
     migrations_dir = tmp_path / "migrations"
     migrations_dir.mkdir()
@@ -169,9 +173,7 @@ class TestImportFlywayRepeatableTypeMapping:
     def test_versioned_sql_row_still_maps_to_sql(self, tmp_path: Path) -> None:
         """A genuinely versioned ``type=SQL`` row must still map to ``SQL``,
         not be swept up by the version-less-repeatable override."""
-        client = _make_client(
-            tmp_path, migration_type="SQL", version="1", script="V1__a.sql"
-        )
+        client = _make_client(tmp_path, migration_type="SQL", version="1", script="V1__a.sql")
 
         import_result = client.import_flyway()
         assert import_result.success is True

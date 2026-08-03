@@ -281,9 +281,7 @@ def check_connection(args: argparse.Namespace) -> int:
                     and not _has_endpoint
                     and (not config.database.type or not _has_connection_identifier)
                 ):
-                    error_message = (
-                        "Missing required connection parameters. Either provide --db-url or --config."
-                    )
+                    error_message = "Missing required connection parameters. Either provide --db-url or --config."
                     out.error(error_message)
                     results["error"] = error_message
                     print_connection_results(results, out)

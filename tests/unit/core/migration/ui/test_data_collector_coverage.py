@@ -522,9 +522,7 @@ class TestShouldExcludeMigrationCoverage(unittest.TestCase):
         excluded by a --versions inclusion filter aimed at versioned migrations.
         """
         coll = self._c()
-        result = coll._should_exclude_migration(
-            None, "R__untagged.sql", [], [], ["1.0", "2.0"], []
-        )
+        result = coll._should_exclude_migration(None, "R__untagged.sql", [], [], ["1.0", "2.0"], [])
         assert result is False
 
 
