@@ -13,6 +13,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A repeatable migration could fail or silently double-apply when two
+  `migrate()` processes raced for the migration lock.** The losing process
+  already re-checks and skips versioned migrations another process applied
+  while it waited for the lock, but never re-checked repeatable (`R__`)
+  migrations the same way — it unconditionally re-executed them. Against a
+  non-idempotent repeatable script this produced a genuine failed migration
+  even though the schema was already fully and correctly migrated by the
+  winner; against an idempotent one it wrote a duplicate history row.
+  `_filter_already_applied` now re-verifies pending repeatables against the
+  post-lock history snapshot by script name and checksum, mirroring the
+  existing versioned-migration re-check. (#811)
+
 ### Removed
 
 ## [3.4.0] - 2026-08-02
