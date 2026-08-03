@@ -728,6 +728,52 @@ class TestResolveScriptsDirectories:
         sd, add, rec, drm = _resolve_scripts_directories(args, config, parser, ["migrate"])
         assert rec is True
 
+    def test_scripts_list_with_preexisting_directories_list_does_not_drop_first_value(
+        self, tmp_path
+    ):
+        """Issue #812: when the config already has a plural
+        ``migrations.directories`` list configured, ``--scripts dir1 --scripts
+        dir2`` must not silently drop dir1.
+
+        Uses a real ``MigrationsConfig`` (not a MagicMock) because the bug is
+        in the interaction between ``_resolve_scripts_directories`` mutating
+        ``config.migrations.directory`` and the real
+        ``MigrationsConfig.get_directory_configs()`` unconditionally
+        preferring a non-empty ``directories`` list over ``directory``.
+        """
+        from config.dblift_config import MigrationsConfig
+
+        config_dir = tmp_path / "config_migrations"
+        config_dir.mkdir()
+        dir1 = tmp_path / "dir1"
+        dir2 = tmp_path / "dir2"
+        dir1.mkdir()
+        dir2.mkdir()
+
+        config = SimpleNamespace(migrations=MigrationsConfig(directories=[str(config_dir)]))
+        args = self._make_args(scripts_list=[str(dir1), str(dir2)])
+        parser = MagicMock()
+
+        sd, add, rec, drm = _resolve_scripts_directories(args, config, parser, ["migrate"])
+
+        # _resolve_scripts_directories's own return values correctly identify
+        # dir1 as primary and dir2 as additional...
+        assert sd == dir1
+        assert dir2 in add
+
+        # ...but api._client_factory.client_from_config() re-derives the
+        # client's primary migrations_dir straight from
+        # config.migrations.get_directory_configs() whenever the caller
+        # doesn't pass migrations_dir explicitly (which the CLI never does).
+        # That must agree with dir1, not the stale pre-existing directories
+        # list from the config file.
+        resolved_paths = [dc.path for dc in config.migrations.get_directory_configs()]
+        assert str(dir1) in resolved_paths, (
+            "dir1 (the first --scripts value) was dropped from "
+            f"get_directory_configs(): {resolved_paths}"
+        )
+        assert str(config_dir) not in resolved_paths
+
 
 # ---------------------------------------------------------------------------
 # _ensure_connection — uncovered branches (lines 529-543)
