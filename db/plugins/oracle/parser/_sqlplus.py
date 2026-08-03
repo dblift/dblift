@@ -150,7 +150,14 @@ SQLPLUS_DIRECTIVES: Tuple[SqlplusDirective, ...] = (
     ),
     SqlplusDirective(
         name="CONNECT",
-        pattern=re.compile(r"^CONNECT\s+"),
+        # Negative lookahead excludes "CONNECT TO ...": the SQL*Plus CONNECT
+        # command is always "CONNECT [user][/password][@identifier]" and never
+        # uses TO, whereas "CONNECT TO user IDENTIFIED BY password" is Oracle
+        # DDL syntax for CREATE DATABASE LINK. Without this, a multi-line
+        # CREATE DATABASE LINK ... CONNECT TO ... USING '...' statement gets a
+        # spurious ";" inserted after the CONNECT TO line, splitting the
+        # statement in two.
+        pattern=re.compile(r"^CONNECT\s+(?!TO\b)"),
         examples=("CONNECT user/pass@db",),
     ),
     SqlplusDirective(
