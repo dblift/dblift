@@ -558,10 +558,11 @@ def _resolve_scripts_directories(
 
         config.migrations.directory = str(scripts_dir)
         # --scripts fully replaces any config-file migrations.directories
-        # list. Without this, get_directory_configs() below (and the
-        # identical resolution in api._client_factory.client_from_config())
-        # would keep preferring the stale plural list over the singular
-        # `directory` set above, silently dropping this first --scripts value.
+        # list. Without this, get_directory_configs() (called later by
+        # api._client_factory.client_from_config(), the CLI's actual path
+        # to resolving the primary migrations dir) would keep preferring the
+        # stale plural list over the singular `directory` set above, silently
+        # dropping this first --scripts value.
         config.migrations.directories = []
 
         if len(args.scripts_list) > 1:

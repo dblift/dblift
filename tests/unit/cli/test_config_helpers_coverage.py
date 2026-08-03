@@ -768,11 +768,10 @@ class TestResolveScriptsDirectories:
         # That must agree with dir1, not the stale pre-existing directories
         # list from the config file.
         resolved_paths = [dc.path for dc in config.migrations.get_directory_configs()]
-        assert str(dir1) in resolved_paths, (
-            "dir1 (the first --scripts value) was dropped from "
-            f"get_directory_configs(): {resolved_paths}"
+        assert resolved_paths == [str(dir1)], (
+            "dir1 (the first --scripts value) should be the sole resolved "
+            f"directory (dir2 is handled separately via additional_dirs): {resolved_paths}"
         )
-        assert str(config_dir) not in resolved_paths
 
 
 # ---------------------------------------------------------------------------
