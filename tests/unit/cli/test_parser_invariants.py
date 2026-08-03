@@ -243,6 +243,68 @@ def test_import_flyway_accepts_source_table_override():
     assert args.flyway_table == "custom_flyway_history"
 
 
+def test_db_url_flag_documented_in_migrate_help():
+    """F-13: --db-url/--db-schema must appear in `dblift migrate --help`.
+
+    These 4 flags are parsed globally (before the subcommand) but were only
+    ever attached to the root parser, so a user reading `dblift migrate
+    --help` had no way to discover them.
+    """
+    parser = create_parser()
+    subparsers = next(
+        action for action in parser._actions if isinstance(action, argparse._SubParsersAction)
+    )
+    migrate_parser = subparsers.choices["migrate"]
+
+    help_text = migrate_parser.format_help()
+
+    assert "--db-url" in help_text
+    assert "--db-schema" in help_text
+
+
+def test_db_url_flag_accepted_after_subcommand():
+    """New grammar surface introduced by attaching db_parent to migrate: the
+    flag can now also be given AFTER the subcommand (previously an
+    "unrecognized arguments" error), not just before it.
+    """
+    parser = create_parser()
+
+    args = parser.parse_args(["migrate", "--db-url", "postgresql+psycopg://h/db"])
+
+    assert args.database_url == "postgresql+psycopg://h/db"
+
+
+def test_db_url_flag_after_subcommand_wins_over_before():
+    """When --db-url is given both before and after the subcommand, the
+    after-subcommand value wins. This is the precedence the SUPPRESS default
+    on db_parent is specifically built around: the subparser's own parsed
+    value, when present, always overwrites whatever the root parser parsed.
+    """
+    parser = create_parser()
+
+    args = parser.parse_args(
+        ["--db-url", "postgresql+psycopg://before/db", "migrate", "--db-url", "sqlite:///after.db"]
+    )
+
+    assert args.database_url == "sqlite:///after.db"
+
+
+def test_db_flags_absent_from_namespace_when_unset_for_non_db_subcommand():
+    """SUPPRESS default means these dests may be entirely absent from args
+    (not just None) whenever unset — including for subcommands that don't
+    even inherit db_parent, like `clean`. Locks in the hasattr-guarded
+    behavior cli/_config_helpers.py already relies on.
+    """
+    parser = create_parser()
+
+    args = parser.parse_args(["clean"])
+
+    assert not hasattr(args, "database_url")
+    assert not hasattr(args, "database_username")
+    assert not hasattr(args, "database_password")
+    assert not hasattr(args, "database_schema")
+
+
 def test_oss_parser_lists_paid_commands_only_as_labeled_stubs(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

@@ -96,8 +96,9 @@ class TestRepairMigrationHistory:
             "script": "V1__create_containers.sql",
             "checksum": 111111,
             "success": True,
+            "version": "1",
         }
-        mgr._history_containers["dblift_schema_history"].read_item.return_value = existing_doc
+        mgr._history_containers["dblift_schema_history"].query_items.return_value = [existing_doc]
         result = mgr.repair_migration_history(
             connection=None,
             schema="dblift_test",
@@ -105,16 +106,18 @@ class TestRepairMigrationHistory:
             checksum=999999,
         )
         assert result is True
-        mgr._history_containers["dblift_schema_history"].read_item.assert_called_once_with(
-            item="V1__create_containers.sql", partition_key="V1__create_containers.sql"
-        )
+        mgr._history_containers["dblift_schema_history"].query_items.assert_called_once()
+        called_kwargs = mgr._history_containers["dblift_schema_history"].query_items.call_args[1]
+        assert called_kwargs["parameters"] == [
+            {"name": "@script", "value": "V1__create_containers.sql"}
+        ]
         upserted = mgr._history_containers["dblift_schema_history"].upsert_item.call_args[1]["body"]
         assert upserted["checksum"] == 999999
 
     def test_updates_success_flag_when_provided(self):
         mgr = self._manager()
-        existing_doc = {"id": "V1__init.sql", "checksum": 0, "success": False}
-        mgr._history_containers["dblift_schema_history"].read_item.return_value = existing_doc
+        existing_doc = {"id": "V1__init.sql", "checksum": 0, "success": False, "version": "1"}
+        mgr._history_containers["dblift_schema_history"].query_items.return_value = [existing_doc]
         mgr.repair_migration_history(
             connection=None,
             schema="dblift_test",
@@ -127,9 +130,7 @@ class TestRepairMigrationHistory:
 
     def test_returns_false_when_document_not_found(self):
         mgr = self._manager()
-        mgr._history_containers["dblift_schema_history"].read_item.side_effect = Exception(
-            "404 Not Found"
-        )
+        mgr._history_containers["dblift_schema_history"].query_items.return_value = []
         result = mgr.repair_migration_history(
             connection=None,
             schema="dblift_test",

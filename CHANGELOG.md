@@ -567,6 +567,89 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   table now uses ``IF NOT EXISTS`` too, matching the lock table, so the
   statement itself is safe under a concurrent race rather than failing and
   needing a catch. MariaDB, which shares this provider, gets the same fix.
+- **CosmosDB ``repair`` always failed with "no history document found",**
+  even when the document genuinely existed. The lookup addressed the
+  history container by ``partition_key=script_name``, but the container is
+  actually partitioned on ``/version`` — every ``read_item`` call missed.
+  ``repair`` now queries by ``script`` and updates the matching document
+  directly, so a checksum drift or failed-migration entry can actually be
+  repaired. (#134)
+- **CosmosDB ``.sql`` migrations were executed instead of rejected.** The
+  documented ``DBLIFT-NOSQL-001`` upfront guard only ran for non-SQL
+  migrations and SQL callbacks; a plain ``.sql`` script fell through both
+  checks and failed deep in SQL parsing with a confusing, unrelated error
+  instead of the clear "this dialect doesn't execute SQL migrations"
+  message. (#134)
+- **Oracle ``clean`` left orphaned sequences behind indefinitely.** ``DROP
+  TABLE`` never included ``PURGE``, so a dropped table (and any
+  ``IDENTITY``-column sequence backing it) only moved into Oracle's
+  recycle bin instead of being fully removed — invisible to every
+  subsequent ``clean`` run. (#134)
+- **Oracle ``clean`` still failed outright on schemas with triggers,
+  after the ``PURGE`` fix above.** The real drop path a live ``clean``
+  run takes (``list_droppable_objects`` + ``drop_object``, per-object) had
+  no Oracle override and no awareness that ``DROP TABLE ... CASCADE
+  CONSTRAINTS`` already takes a table's triggers with it — the follow-up
+  explicit ``DROP TRIGGER`` then failed with ``ORA-04080`` ("trigger does
+  not exist"). ``OracleProvider.drop_object`` now recognizes that specific
+  error, by its real numeric Oracle error code rather than string-matching
+  the exception text, and treats an already-gone trigger as the desired
+  end state rather than a failure. (#135)
+- **DB2 leaked raw Python tracebacks to stdout on any SQL error.** The
+  ``ibm_db_sa`` driver logs (and thus prints, via Python's default
+  stderr fallback) the full exception internally before re-raising it,
+  so every DB2 statement failure showed ~25 lines of driver-internal
+  traceback ahead of dblift's own formatted error panel. The driver's
+  logger is now disabled on connection setup. (#134)
+- **``db check-connection``/``diagnose-connection``/``list-drivers``
+  never finalized their log file** under ``--log-format``/``--log-file``
+  — these commands run before the CLI's normal log-dispatch path, which is
+  what actually closes and flushes the log elsewhere, so a JSON log file
+  was left empty and an HTML one never got its closing footer.
+  ``check-connection`` now always closes its logger, on every exit path.
+  (#134)
+- **``info --tags``/``--exclude-tags`` never filtered repeatable
+  migrations,** always showing every applied ``R__`` script regardless of
+  its tags — even though ``migrate --tags`` filtered the same fixtures
+  correctly. A stray ``version and`` guard skipped the whole filter check
+  for any version-less migration. (#134)
+- **``migrate`` silently reported "no pending migrations" (exit 0)
+  instead of failing when a ``--scripts`` directory existed but was
+  unreadable.** Both ``pathlib``'s directory-exists check and its glob
+  scan succeed on a permission-denied directory without raising, so a lost
+  read permission on a mounted migrations volume degraded to a false "all
+  good" instead of failing the deployment. (#134)
+- **``baseline --dry-run`` gave no visible indication it was a dry
+  run,** unlike every other dry-run-aware command — the write was
+  correctly skipped, but the console output was identical to a real run.
+  (#134)
+- **Flyway-imported repeatable migrations (``type=SQL``, no version) were
+  categorized as "Versioned" instead of "Repeatable"** in ``info``, since
+  ``import-flyway`` copied Flyway's ``type`` field verbatim without
+  checking for its version-less-repeatable convention. (#134)
+- **SQL Server connection failures could leak a raw pymssql error tuple**
+  (e.g. a byte-string literal) instead of a clean message, when the
+  failure didn't match any of the already-handled error shapes. (#134)
+- **"Unsupported database type" errors gave no clue which value was
+  unsupported** — an unrecognized URL scheme produced the bare, unhelpful
+  ``Unsupported database type: ``. The message now names the offending
+  value. (#134)
+- **Top-level ``--db-url``/``--db-username``/``--db-password``/
+  ``--db-schema`` flags worked but weren't documented** in ``migrate``/
+  ``info``/``validate``/``undo --help`` — only ``db check-connection
+  --help`` showed them. (#134)
+- **A nonexistent schema produced a raw SQLAlchemy exception** — including
+  the full generated ``CREATE TABLE`` SQL text and a documentation link —
+  instead of a clean connection-style error message, because only the
+  first of two connection-setup phases was wrapped in dblift's own error
+  formatting. (#134)
+- **``migrate`` skipped the boxed FAILED panel on a duplicate-version
+  validation failure,** showing only a bare ``ERROR:`` line while every
+  other failure path renders the usual panel — a presentation
+  inconsistency, not a correctness bug. (#134)
+- **``import-flyway`` logged a spurious "Unknown migration file
+  extension" warning for Flyway ``BASELINE`` marker rows,** which have no
+  real file extension by nature. (#134)
 
 ### Removed
 

@@ -147,6 +147,11 @@ class ExecutionEngine:
             self._execute_via_factory(migration, result)
             return
 
+        # A SQL migration on a dialect with no SQL DDL must read the same way
+        # (DBLIFT-NOSQL-001) as a SQL callback does, rather than surfacing as
+        # a parser or driver error further down (mirrors execute_callback).
+        self.executor_factory.ensure_format_supported(migration, MigrationFormat.SQL)
+
         statements = self._parse_sql_statements(
             migration, result, placeholder_service=self.placeholder_service
         )

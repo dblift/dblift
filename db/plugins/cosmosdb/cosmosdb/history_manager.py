@@ -366,8 +366,24 @@ class CosmosDbHistoryManager(DocumentHistoryManager):
             if history_container is None:
                 raise RuntimeError("History container not initialized")
 
-            # Document id == script_name; partition key is also /id
-            existing = history_container.read_item(item=script_name, partition_key=script_name)
+            # The container is partitioned on /version, not /id, so a point
+            # read keyed on script_name always misses. Query by script
+            # instead and let upsert_item derive the partition from the
+            # returned document body.
+            query = "SELECT * FROM c WHERE c.script = @script"
+            parameters: List[Dict[str, object]] = [{"name": "@script", "value": script_name}]
+            docs = list(
+                history_container.query_items(
+                    query=query,
+                    parameters=parameters,
+                    enable_cross_partition_query=True,
+                )
+            )
+            if not docs:
+                self.log.warning(f"No history document found for {script_name}")
+                return False
+
+            existing = docs[0]
             existing["checksum"] = checksum
             if success_value is not None:
                 existing["success"] = success_value
@@ -376,10 +392,6 @@ class CosmosDbHistoryManager(DocumentHistoryManager):
             return True
 
         except Exception as e:
-            error_str = str(e).lower()
-            if "not found" in error_str or "notfound" in error_str or "404" in error_str:
-                self.log.warning(f"No history document found for {script_name}: {e}")
-                return False
             self.log.error(f"Error repairing history document for {script_name}: {e}")
             return False
 

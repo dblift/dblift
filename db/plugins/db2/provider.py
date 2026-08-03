@@ -103,6 +103,15 @@ class Db2Provider(SqlAlchemyProvider):
 
     def __init__(self, config: DbliftConfig, log: Optional[Log] = None) -> None:
         """Initialize the native DB2 provider."""
+        # ibm_db_sa's log_entry_exit decorator calls logger.exception() on every
+        # driver-call failure, printing a raw traceback to stderr before dblift's
+        # own exception handling ever runs, bypassing dblift's clean FAILED-panel
+        # error formatting. Disable that logger so only dblift's own formatting
+        # surfaces SQL errors. This mutates a process-wide logging singleton for
+        # the life of the process, not just this connection/provider instance.
+        from ibm_db_sa.logger import configure_ibmdbsa_logging
+
+        configure_ibmdbsa_logging(False)
         super().__init__(config, log)
         self.schema_operations = _Db2NativeSchemaOperations(self)
 
