@@ -134,13 +134,7 @@ def format_connection_error(error: Exception, db_type: str = "") -> str:
     from core.migration.executor.execution_engine import _strip_driver_exception_prefix
 
     message = _strip_driver_exception_prefix(str(error))
-    # SQLAlchemy appends the failing statement for statement-bound errors
-    # (e.g. our own internal schema-history CREATE TABLE), e.g.
-    # 'ORA-01435: user does not exist\n[SQL: CREATE TABLE ...]'. Unlike the
-    # execution-engine's own statement-failure reporting (which shows a
-    # user's migration SQL on purpose), a connection/setup failure has
-    # nothing to do with the caller's SQL, so strip it here to avoid
-    # leaking internal DDL.
+    # See _SQL_STATEMENT_BLOCK_RE above for why this is stripped here only.
     message = _SQL_STATEMENT_BLOCK_RE.sub("", message).strip()
     lowered = message.lower()
     # SQL Server can report login failures with SQLState 08001, so inspect
