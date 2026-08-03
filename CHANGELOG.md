@@ -32,11 +32,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   callbacks. It now aligns the connecting login's `DEFAULT_SCHEMA` via
   `ALTER USER ... WITH DEFAULT_SCHEMA`, the only mechanism SQL Server
   offers — unlike every other supported dialect, this is catalog-level
-  state on the login rather than scoped to the connection, so it's cached
-  per-connection to avoid redundant writes and a mismatch against what
-  dblift last set is logged as a warning. See the troubleshooting guide for
-  the resulting constraint: don't share one SQL Server login across
-  concurrent dblift runs targeting different schemas. (#806)
+  state on the login rather than scoped to the connection, so it's visible
+  to and overwritable by any other connection using the same login. The
+  login's actual `DEFAULT_SCHEMA` is now read back and compared against
+  what dblift last set on every call (not only when `--db-schema` itself
+  changes), logging a warning the moment it disagrees; only the redundant
+  `ALTER USER` write is skipped once the connection already holds the
+  requested schema. This makes a shared login getting clobbered by a
+  concurrent dblift run visible in the logs — it does not, and cannot,
+  retroactively fix DDL that already ran against the wrong schema in that
+  window. See the troubleshooting guide for the resulting recommendation:
+  don't share one SQL Server login across concurrent dblift runs targeting
+  different schemas. (#806)
 
 ### Removed
 

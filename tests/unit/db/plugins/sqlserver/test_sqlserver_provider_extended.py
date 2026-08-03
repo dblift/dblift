@@ -161,6 +161,48 @@ def test_set_current_schema_alters_only_once_per_connection(monkeypatch):
     provider.log.warning.assert_not_called()
 
 
+def test_set_current_schema_detects_interference_even_when_target_schema_is_unchanged(monkeypatch):
+    """The interference check must not be gated behind the cache-hit skip.
+
+    ``--db-schema`` is one fixed value for an entire process run, so after
+    the first call every later call (i.e. every subsequent statement) asks
+    for the SAME schema again. If the catalog read only ran when the
+    requested schema changed, a concurrent process clobbering DEFAULT_SCHEMA
+    in between two identical calls would never be noticed — exactly the
+    steady-state scenario the whole check exists to catch. The read+compare
+    must run on every call; only the ALTER USER write is skipped on a cache
+    hit (see issue #806 review follow-up).
+    """
+    provider = object.__new__(SqlServerProvider)
+    provider.log = MagicMock()
+    provider._current_schema_set = "sales"  # as if set earlier on this connection
+
+    def fake_execute_query(sql, params=None):
+        if "USER_NAME()" in sql:
+            return [{"db_user": "dblift_test"}]
+        if "sys.database_principals" in sql:
+            return [{"default_schema": "orders"}]  # someone else silently overwrote it
+        return []
+
+    provider.execute_query = fake_execute_query
+    executed = []
+    monkeypatch.setattr(
+        SqlAlchemyProvider,
+        "execute_statement",
+        lambda self, sql, schema=None, params=None: executed.append(sql),
+    )
+
+    provider.set_current_schema("sales")  # same schema as before -- a cache hit
+
+    provider.log.warning.assert_called_once()
+    warning_msg = provider.log.warning.call_args[0][0]
+    assert "orders" in warning_msg
+    assert "sales" in warning_msg
+    # The write is still skipped on the cache hit -- only detection changed.
+    assert executed == []
+    assert provider._current_schema_set == "sales"
+
+
 def test_execute_statement_alters_default_schema_once_across_multiple_statements(monkeypatch):
     """Exercises the real per-statement call path (SqlExecutionService calls
     ``execute_statement(statement, schema=...)`` once per statement in a

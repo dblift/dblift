@@ -189,7 +189,12 @@ against `--db-schema` by setting the connecting login's `DEFAULT_SCHEMA`
 `SET search_path`, MySQL's `USE`, or Oracle's `ALTER SESSION SET CURRENT_SCHEMA`, this setting is
 catalog-level state on the *login* (`sys.database_principals`), not scoped to the connection — it is
 shared with, and overwritable by, any other connection authenticating as that same login, and it
-outlives the connection that set it.
+outlives the connection that set it. dblift checks the login's actual `DEFAULT_SCHEMA` against what
+it last set on every statement (not only when `--db-schema` changes) and logs the warning above the
+moment another connection has changed it — but the warning is a detection signal, not a repair: DDL
+that already ran while the schema was wrong stays wrong, and this connection's own unqualified DDL
+can keep landing in whatever schema the other connection left behind until `--db-schema` changes
+again.
 
 **Fix**: Use a dedicated SQL Server login per `--db-schema` you run migrations against — never share
 one login across multiple concurrently-running dblift configurations with different schemas.
