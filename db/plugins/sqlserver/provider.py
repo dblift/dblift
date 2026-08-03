@@ -29,9 +29,19 @@ class SqlServerProvider(SqlAlchemyProvider):
     canonical_dialect_key = "sqlserver"
     MIGRATION_LOCK_TABLE = "dblift_migration_lock"
 
+    #: Schema this connection's login was last aligned to via ``set_current_schema``.
+    #: SQL Server's DEFAULT_SCHEMA is catalog-level state on the *login*
+    #: (``sys.database_principals``), not connection-scoped like every other
+    #: dialect's search-path mechanism — this cache avoids re-issuing ``ALTER
+    #: USER`` (a shared-state write) on every statement, limiting the window
+    #: for a concurrent process sharing the same login to interfere. Class-level
+    #: default so tests constructing via ``object.__new__`` still see ``None``.
+    _current_schema_set: Optional[str] = None
+
     def __init__(self, config: DbliftConfig, log: Optional[Log] = None) -> None:
         """Initialize the native SQL Server provider."""
         super().__init__(config, log)
+        self._current_schema_set = None
 
     # ------------------------------------------------------------------
     # SchemaProvider
@@ -105,15 +115,51 @@ class SqlServerProvider(SqlAlchemyProvider):
         MySQL's ``USE``. Without this, unqualified DDL (dblift's own
         documented usage pattern) silently lands in whatever schema the
         login already defaults to instead of ``--db-schema``.
+
+        Unlike every other dialect's mechanism, though, DEFAULT_SCHEMA is
+        catalog-level state on the login (``sys.database_principals``) —
+        not connection-scoped — so it is visible to and overwritable by any
+        other connection authenticating as the same login. Two things limit
+        the blast radius of that: (1) once this connection has set the
+        schema, further calls with the same value are a no-op — no repeated
+        writes to the shared catalog row; (2) before writing, the login's
+        current DEFAULT_SCHEMA is compared against what this connection set
+        it to last — a mismatch means another process sharing this login
+        changed it, which is logged loudly since it means unqualified DDL
+        placement is no longer reliable. A dedicated SQL Server login per
+        ``--db-schema`` avoids this entirely.
         """
+        if self._current_schema_set == schema:
+            return
         try:
             rows = self.execute_query("SELECT USER_NAME() AS db_user")
             current_user = rows[0].get("db_user") if rows else None
             if not current_user:
                 raise RuntimeError("could not determine the connecting database user")
+
+            catalog_rows = self.execute_query(
+                "SELECT DEFAULT_SCHEMA_NAME AS default_schema "
+                "FROM sys.database_principals WHERE name = ?",
+                [current_user],
+            )
+            catalog_schema = catalog_rows[0].get("default_schema") if catalog_rows else None
+            if (
+                self._current_schema_set is not None
+                and catalog_schema is not None
+                and catalog_schema != self._current_schema_set
+            ):
+                self.log.warning(
+                    f"SQL Server login '{current_user}' DEFAULT_SCHEMA is '{catalog_schema}' "
+                    f"but dblift set it to '{self._current_schema_set}' earlier on this "
+                    f"connection — another process changed it. If this login is shared across "
+                    f"concurrent dblift runs with different --db-schema values, unqualified DDL "
+                    f"placement is not reliable; use a dedicated login per schema."
+                )
+
             super().execute_statement(
                 f"ALTER USER {_q(current_user)} WITH DEFAULT_SCHEMA = {_q(schema)}"
             )
+            self._current_schema_set = schema
         except Exception as e:
             self.log.warning(
                 f"SQL Server: could not set the connecting user's default schema to "

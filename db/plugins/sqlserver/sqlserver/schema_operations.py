@@ -33,6 +33,10 @@ class SqlServerSchemaOperations(BaseSchemaOperations):
         """
         self.query_executor = query_executor
         self.log = log if log is not None else NullLog()
+        # Schema last applied via set_current_schema — see that method's
+        # docstring for why this cache exists (DEFAULT_SCHEMA is catalog-level
+        # state on the login, not connection-scoped).
+        self._current_schema_set: Optional[str] = None
 
     def create_schema_if_not_exists(self, connection: Any, schema: str) -> None:
         """Create schema if it doesn't exist in SQL Server.
@@ -438,19 +442,55 @@ class SqlServerSchemaOperations(BaseSchemaOperations):
         DEFAULT_SCHEMA. ``ALTER USER ... WITH DEFAULT_SCHEMA`` takes effect
         immediately within the current session (no reconnect required).
 
+        Unlike every other dialect's mechanism, DEFAULT_SCHEMA is
+        catalog-level state on the login (``sys.database_principals``), not
+        connection-scoped, so it is visible to and overwritable by any other
+        connection authenticating as the same login. To limit the blast
+        radius of that: (1) a call with the same schema already applied is a
+        no-op — no repeated writes to the shared catalog row; (2) before
+        writing, the login's current DEFAULT_SCHEMA is compared against what
+        was set here last — a mismatch means another process sharing this
+        login changed it, which is logged loudly since unqualified DDL
+        placement is no longer reliable in that case. A dedicated SQL Server
+        login per ``--db-schema`` avoids this entirely.
+
         Args:
             schema: Schema name to make the connecting user's default
         """
+        if self._current_schema_set == schema:
+            return
         try:
             rows = self.query_executor.execute_query(connection, "SELECT USER_NAME() AS db_user")
             current_user = rows[0].get("db_user") if rows else None
             if not current_user:
                 raise RuntimeError("could not determine the connecting database user")
+
+            catalog_rows = self.query_executor.execute_query(
+                connection,
+                "SELECT DEFAULT_SCHEMA_NAME AS default_schema "
+                "FROM sys.database_principals WHERE name = ?",
+                params=[current_user],
+            )
+            catalog_schema = catalog_rows[0].get("default_schema") if catalog_rows else None
+            if (
+                self._current_schema_set is not None
+                and catalog_schema is not None
+                and catalog_schema != self._current_schema_set
+            ):
+                self.log.warning(
+                    f"SQL Server login '{current_user}' DEFAULT_SCHEMA is '{catalog_schema}' "
+                    f"but dblift set it to '{self._current_schema_set}' earlier on this "
+                    f"connection — another process changed it. If this login is shared across "
+                    f"concurrent dblift runs with different --db-schema values, unqualified DDL "
+                    f"placement is not reliable; use a dedicated login per schema."
+                )
+
             quoted_user = self.query_executor.get_quoted_schema_name(current_user)
             quoted_schema = self.query_executor.get_quoted_schema_name(schema)
             self.query_executor.execute_statement(
                 connection, f"ALTER USER {quoted_user} WITH DEFAULT_SCHEMA = {quoted_schema}"
             )
+            self._current_schema_set = schema
         except Exception as e:
             self.log.warning(
                 f"SQL Server: could not set the connecting user's default schema to "

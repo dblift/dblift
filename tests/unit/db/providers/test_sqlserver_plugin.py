@@ -166,6 +166,60 @@ class TestSqlServerSchemaOperations(unittest.TestCase):
         qe.execute_statement.assert_not_called()
         log.warning.assert_called_once()
 
+    def test_set_current_schema_alters_only_once_for_same_schema(self):
+        """DEFAULT_SCHEMA is catalog-level state on the login, not
+        connection-scoped like every other dialect's mechanism — repeated
+        calls with the same schema must not re-issue ALTER USER.
+        """
+        ops, qe, log = self._make_ops()
+        conn, _, _ = _make_connection()
+
+        def fake_execute_query(connection, sql, params=None):
+            if "USER_NAME()" in sql:
+                return [{"db_user": "dblift_test"}]
+            if "sys.database_principals" in sql:
+                return [{"default_schema": ops._current_schema_set}]
+            return []
+
+        qe.execute_query.side_effect = fake_execute_query
+
+        ops.set_current_schema(conn, "dbo")
+        ops.set_current_schema(conn, "dbo")
+        ops.set_current_schema(conn, "dbo")
+
+        qe.execute_statement.assert_called_once_with(
+            conn, "ALTER USER [dblift_test] WITH DEFAULT_SCHEMA = [dbo]"
+        )
+        log.warning.assert_not_called()
+
+    def test_set_current_schema_warns_on_external_interference(self):
+        """A concurrent process sharing this login changing DEFAULT_SCHEMA
+        between our own writes must be surfaced loudly, not silently trusted.
+        """
+        ops, qe, log = self._make_ops()
+        conn, _, _ = _make_connection()
+        ops._current_schema_set = "schema_a"  # as if set earlier on this connection
+
+        def fake_execute_query(connection, sql, params=None):
+            if "USER_NAME()" in sql:
+                return [{"db_user": "dblift_test"}]
+            if "sys.database_principals" in sql:
+                return [{"default_schema": "schema_hijacked"}]  # someone else changed it
+            return []
+
+        qe.execute_query.side_effect = fake_execute_query
+
+        ops.set_current_schema(conn, "schema_b")
+
+        log.warning.assert_called_once()
+        warning_msg = log.warning.call_args[0][0]
+        assert "schema_hijacked" in warning_msg
+        assert "schema_a" in warning_msg
+        qe.execute_statement.assert_called_once_with(
+            conn, "ALTER USER [dblift_test] WITH DEFAULT_SCHEMA = [schema_b]"
+        )
+        assert ops._current_schema_set == "schema_b"
+
     def test_get_columns_query_returns_tuple(self):
         ops, qe, log = self._make_ops()
         sql, params = ops.get_columns_query("dbo", "orders")
