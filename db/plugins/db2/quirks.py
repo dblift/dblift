@@ -71,6 +71,33 @@ class Db2Quirks(BaseQuirks):
         """Same SQLSTATE 42710 detection as the data history table."""
         return self.is_data_history_table_already_exists_error(error_message)
 
+    def build_data_history_table_ddl(
+        self,
+        qualified_table: str,
+        id_size: int = 100,
+        checksum_size: int = 128,
+    ) -> str:
+        """Render the ``CREATE TABLE`` SQL for a per-dataset data history ledger.
+
+        DB2 requires an explicit ``NOT NULL`` on a ``PRIMARY KEY`` column
+        (SQL0542N otherwise) — unlike the base dialects, where ``PRIMARY KEY``
+        implies it. Otherwise identical to :meth:`BaseQuirks.build_data_history_table_ddl`.
+        """
+        return (
+            f"CREATE TABLE {qualified_table} ("
+            f"id VARCHAR({id_size}) NOT NULL PRIMARY KEY, "
+            f"dataset VARCHAR(100), "
+            f"sql_checksum VARCHAR({checksum_size}), "
+            f"installed_by VARCHAR(100), "
+            f"installed_on {self.data_timestamp_column_ddl}, "
+            f"status VARCHAR(20), "
+            f"plan_fingerprint VARCHAR(128), "
+            f"summary {self.data_history_text_type}, "
+            f"vcs_ref VARCHAR(200), "
+            f"note {self.data_history_text_type}"
+            ")"
+        )
+
     def is_schema_history_race_error(self, error_message: str) -> bool:
         """DB2 has no ``CREATE TABLE IF NOT EXISTS``; a concurrent migration
         bootstrap loses with SQL0601N ("the name of the object to be
