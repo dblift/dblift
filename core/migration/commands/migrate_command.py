@@ -239,8 +239,7 @@ class MigrateCommand(BaseCommand):
                     and applied_rec.checksum == current_checksum
                 ):
                     self.log.info(
-                        f"Skipping {migration.script_name} — applied by "
-                        "concurrent process"
+                        f"Skipping {migration.script_name} — applied by " "concurrent process"
                     )
                     continue
             filtered.append(migration)
