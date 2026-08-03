@@ -776,3 +776,18 @@ class TestDropObject:
 
         with pytest.raises(DatabaseError):
             p.drop_object(obj)
+
+    def test_trigger_with_unrecognized_exception_shape_still_raises(self):
+        """A malformed/generic exception (no .orig, no numeric .code) must not
+        be mistaken for ORA-04080. _oracle_error_code's None fallback has to
+        fall through to re-raise, not silently swallow the error."""
+        p = _Provider()
+        p.statement_results['DROP TRIGGER "SCHEMA"."PRODUCTS_BIR"'] = Exception("network reset")
+        obj = DroppableObject(
+            name="PRODUCTS_BIR",
+            object_type="trigger",
+            drop_sql='DROP TRIGGER "SCHEMA"."PRODUCTS_BIR"',
+        )
+
+        with pytest.raises(Exception, match="network reset"):
+            p.drop_object(obj)
