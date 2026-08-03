@@ -37,6 +37,19 @@ def _apply_sql_script_warning_scan(
                     result.add_warning(warning_msg)
 
 
+def _resolve_configured_schema(client: Any) -> Optional[str]:
+    """Get the actually-configured database schema from a client, if any.
+
+    Used so undo statements are qualified with the schema the client is
+    really connected to instead of a dialect-specific guess. Returns
+    ``None`` when ``client.config.database.schema`` isn't a usable string
+    (e.g. unset, or a test double without real config).
+    """
+    database = getattr(getattr(client, "config", None), "database", None)
+    schema = getattr(database, "schema", None)
+    return schema if isinstance(schema, str) and schema else None
+
+
 def generate_undo_script_operation(
     client: Any,
     *,
@@ -211,7 +224,11 @@ def _generate_undo_script_for_migration(
     if output_dir_path is None:
         output_dir_path = migration_path.parent
 
-    generator = UndoScriptGenerator(dialect=client.dialect, logger=client.logger)
+    generator = UndoScriptGenerator(
+        dialect=client.dialect,
+        logger=client.logger,
+        default_schema=_resolve_configured_schema(client),
+    )
     expected_undo_path = generator.get_undo_script_path_for_migration(
         migration,
         output_dir=output_dir_path,

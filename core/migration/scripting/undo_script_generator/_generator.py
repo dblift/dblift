@@ -26,15 +26,19 @@ class UndoScriptGenerator(_UndoReversersMixin, _UndoExtractorsMixin):
         self,
         dialect: str,
         logger: Optional[Log] = None,
+        default_schema: Optional[str] = None,
     ):
         """Initialize the undo script generator.
 
         Args:
             dialect: SQL dialect (postgresql, oracle, mysql, sqlserver)
             logger: Optional logger instance
+            default_schema: Schema to qualify undo statements with when the
+                original migration SQL did not specify one explicitly
         """
         self.dialect = dialect
         self.logger = logger
+        self.default_schema = default_schema
         self.sql_analyzer = SqlAnalyzer(dialect=dialect, logger=logger)
         # Use parser factory to get the appropriate parser for this dialect
         parser_factory = SqlParserFactory(dialect=dialect, parser_type="hybrid")
@@ -185,7 +189,7 @@ class UndoScriptGenerator(_UndoReversersMixin, _UndoExtractorsMixin):
             List of undo statements (in reverse order)
         """
         # Parse SQL using the parser to get structured statements with types
-        parse_result = self.parser.parse_sql(migration.content, default_schema=None)
+        parse_result = self.parser.parse_sql(migration.content, default_schema=self.default_schema)
 
         if not parse_result.success or not parse_result.statements:
             # Fallback to simple statement splitting
