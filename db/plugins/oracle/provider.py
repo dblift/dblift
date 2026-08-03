@@ -75,6 +75,9 @@ class OracleProvider(SqlAlchemyProvider):
     provider_transport = "native"
     LOCK_X_MODE = 6
     MIGRATION_LOCK_TABLE = "DBLIFT_MIGRATION_LOCK"
+    # ORA-04080: "trigger does not exist" — raised when dropping a trigger
+    # whose owning table/view was already removed (e.g. by CASCADE CONSTRAINTS).
+    _ORA_TRIGGER_DOES_NOT_EXIST = 4080
 
     def __init__(self, config: DbliftConfig, log: Optional[Log] = None) -> None:
         """Initialize the native Oracle provider."""
@@ -574,6 +577,35 @@ class OracleProvider(SqlAlchemyProvider):
         """Return what Oracle clean would drop without executing drops."""
         return self._clean_schema(schema, execute=False)
 
+    @staticmethod
+    def _oracle_error_code(exc: Exception) -> Optional[int]:
+        """Extract the numeric ORA-NNNNN code from a driver/SQLAlchemy exception, or None."""
+        orig = getattr(exc, "orig", exc)
+        args = getattr(orig, "args", None)
+        if args:
+            code = getattr(args[0], "code", None)
+            if isinstance(code, int):
+                return code
+        return None
+
+    def drop_object(self, obj: DroppableObject) -> None:
+        """Drop one object enumerated by list_droppable_objects.
+
+        A trigger's owning table or view is often already gone by the time we
+        get here — DROP TABLE ... CASCADE CONSTRAINTS takes its triggers with
+        it — so ORA-04080 ("trigger does not exist") on a trigger drop means
+        clean's postcondition is already satisfied, not a real failure.
+        """
+        try:
+            self.execute_statement(obj.drop_sql)
+        except Exception as exc:
+            if (
+                obj.object_type == "trigger"
+                and self._oracle_error_code(exc) == self._ORA_TRIGGER_DOES_NOT_EXIST
+            ):
+                return
+            raise
+
     def _clean_schema(self, schema: str, execute: bool) -> CleanExecutionSummary:
         """Shared Oracle clean implementation for execution and preview."""
         summary = CleanExecutionSummary()
@@ -690,7 +722,10 @@ class OracleProvider(SqlAlchemyProvider):
                 try:
                     self.execute_statement(stmt)
                 except Exception as e:
-                    if object_type == "TRIGGER" and "ora-04080" in str(e).lower():
+                    if (
+                        object_type == "TRIGGER"
+                        and self._oracle_error_code(e) == self._ORA_TRIGGER_DOES_NOT_EXIST
+                    ):
                         # Owning table was already cascade-dropped above, taking the
                         # trigger with it; the desired end state is already reached.
                         pass

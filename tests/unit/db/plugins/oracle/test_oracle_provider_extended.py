@@ -4,9 +4,10 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
+from sqlalchemy.exc import DatabaseError
 
 import db.plugins.oracle.provider as oracle_provider_module
-from db.plugins.oracle.provider import OracleProvider, _oracle_name, _schema_object
+from db.plugins.oracle.provider import DroppableObject, OracleProvider, _oracle_name, _schema_object
 
 
 def _raise(exc):
@@ -14,6 +15,30 @@ def _raise(exc):
         raise exc
 
     return _fn
+
+
+def _ora_error(code: int, full_code: str, message: str) -> DatabaseError:
+    """Build a fake exception shaped like the real driver/SQLAlchemy error.
+
+    ``sqlalchemy.exc.DatabaseError`` wraps the underlying ``oracledb`` driver
+    exception in ``.orig``; the driver exception itself wraps an
+    ``oracledb.errors._Error``-like object (with a numeric ``.code``) as
+    ``.orig.args[0]``. This mirrors that shape without depending on the
+    ``oracledb`` package being installed.
+    """
+
+    class _FakeOraErrorObj:
+        def __init__(self, code: int, full_code: str, message: str) -> None:
+            self.code = code
+            self.full_code = full_code
+            self.message = message
+
+    class _FakeDriverError(Exception):
+        def __init__(self, code: int, full_code: str, message: str) -> None:
+            super().__init__(message)
+            self.args = (_FakeOraErrorObj(code, full_code, message),)
+
+    return DatabaseError("DROP TRIGGER x", None, _FakeDriverError(code, full_code, message))
 
 
 class _Provider(OracleProvider):
@@ -695,10 +720,74 @@ class TestCleanSchema:
             {"object_name": "TRG1", "object_type": "TRIGGER"},
         ]
         p.query_results = query_map
-        p.statement_results["DROP TRIGGER"] = Exception("ORA-04080: trigger 'TRG1' does not exist")
+        p.statement_results["DROP TRIGGER"] = _ora_error(
+            4080, "ORA-04080", "ORA-04080: trigger 'TRG1' does not exist"
+        )
 
         summary = p.clean_schema("MYSCHEMA")
 
         assert summary.errors == []
         assert any(obj.object_type == "trigger" and obj.name == "TRG1" for obj in summary.objects)
         assert any("DROP TRIGGER" in s for s in summary.statements)
+
+
+class TestDropObject:
+    """Tests for OracleProvider.drop_object, the path the live CLI `clean`
+    command actually drives (via list_droppable_objects + drop_object),
+    unlike clean_schema()/_clean_schema(execute=True) above."""
+
+    def test_trigger_ora_04080_is_swallowed(self):
+        p = _Provider()
+        p.statement_results['DROP TRIGGER "SCHEMA"."PRODUCTS_BIR"'] = _ora_error(
+            4080, "ORA-04080", "ORA-04080: trigger 'PRODUCTS_BIR' does not exist"
+        )
+        obj = DroppableObject(
+            name="PRODUCTS_BIR",
+            object_type="trigger",
+            drop_sql='DROP TRIGGER "SCHEMA"."PRODUCTS_BIR"',
+        )
+
+        p.drop_object(obj)  # must not raise
+
+    def test_non_trigger_object_type_with_same_error_still_raises(self):
+        p = _Provider()
+        p.statement_results['DROP TABLE "SCHEMA"."PRODUCTS"'] = _ora_error(
+            4080, "ORA-04080", "ORA-04080: trigger does not exist"
+        )
+        obj = DroppableObject(
+            name="PRODUCTS",
+            object_type="table",
+            drop_sql='DROP TABLE "SCHEMA"."PRODUCTS"',
+        )
+
+        with pytest.raises(DatabaseError):
+            p.drop_object(obj)
+
+    def test_trigger_with_different_error_code_still_raises(self):
+        p = _Provider()
+        p.statement_results['DROP TRIGGER "SCHEMA"."PRODUCTS_BIR"'] = _ora_error(
+            1031, "ORA-01031", "ORA-01031: insufficient privileges"
+        )
+        obj = DroppableObject(
+            name="PRODUCTS_BIR",
+            object_type="trigger",
+            drop_sql='DROP TRIGGER "SCHEMA"."PRODUCTS_BIR"',
+        )
+
+        with pytest.raises(DatabaseError):
+            p.drop_object(obj)
+
+    def test_trigger_with_unrecognized_exception_shape_still_raises(self):
+        """A malformed/generic exception (no .orig, no numeric .code) must not
+        be mistaken for ORA-04080. _oracle_error_code's None fallback has to
+        fall through to re-raise, not silently swallow the error."""
+        p = _Provider()
+        p.statement_results['DROP TRIGGER "SCHEMA"."PRODUCTS_BIR"'] = Exception("network reset")
+        obj = DroppableObject(
+            name="PRODUCTS_BIR",
+            object_type="trigger",
+            drop_sql='DROP TRIGGER "SCHEMA"."PRODUCTS_BIR"',
+        )
+
+        with pytest.raises(Exception, match="network reset"):
+            p.drop_object(obj)
