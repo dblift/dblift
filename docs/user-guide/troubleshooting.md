@@ -173,6 +173,32 @@ V1__create_tables.sql          ← standard DDL (transactional)
 V2__create_fulltext_index.sql  ← FULLTEXT DDL only (autocommit)
 ```
 
+## SQL Server: Unqualified DDL Lands in the Wrong Schema Under a Shared Login
+
+**Problem**: Unqualified DDL (e.g. `CREATE TABLE foo (...)`, dblift's own documented style) lands in a
+different schema than `--db-schema`, or you see warnings like:
+
+```
+SQL Server login 'x' DEFAULT_SCHEMA is 'a' but dblift set it to 'b' earlier on this connection —
+another process changed it.
+```
+
+**Cause**: SQL Server has no session-scoped search path. dblift makes unqualified DDL resolve
+against `--db-schema` by setting the connecting login's `DEFAULT_SCHEMA`
+(`ALTER USER ... WITH DEFAULT_SCHEMA`), the only mechanism SQL Server offers. Unlike PostgreSQL's
+`SET search_path`, MySQL's `USE`, or Oracle's `ALTER SESSION SET CURRENT_SCHEMA`, this setting is
+catalog-level state on the *login* (`sys.database_principals`), not scoped to the connection — it is
+shared with, and overwritable by, any other connection authenticating as that same login, and it
+outlives the connection that set it. dblift checks the login's actual `DEFAULT_SCHEMA` against what
+it last set on every statement (not only when `--db-schema` changes) and logs the warning above the
+moment another connection has changed it — but the warning is a detection signal, not a repair: DDL
+that already ran while the schema was wrong stays wrong, and this connection's own unqualified DDL
+can keep landing in whatever schema the other connection left behind until `--db-schema` changes
+again.
+
+**Fix**: Use a dedicated SQL Server login per `--db-schema` you run migrations against — never share
+one login across multiple concurrently-running dblift configurations with different schemas.
+
 ## Slow Migration Execution
 
 **Problem**: Migrations are taking too long to execute.

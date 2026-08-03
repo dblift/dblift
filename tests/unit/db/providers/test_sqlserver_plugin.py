@@ -139,12 +139,115 @@ class TestSqlServerSchemaOperations(unittest.TestCase):
         result = ops.get_schemas(conn)
         self.assertEqual([], result)
 
-    def test_set_current_schema_is_noop(self):
+    def test_set_current_schema_alters_connecting_user_default_schema(self):
+        """Unqualified DDL must land in the configured schema (issue #806).
+
+        SQL Server has no session-level search path; ALTER USER ... WITH
+        DEFAULT_SCHEMA is the real equivalent, and it takes effect
+        immediately within the current session.
+        """
         ops, qe, log = self._make_ops()
         conn, _, _ = _make_connection()
-        # Should not raise, no execute calls
+        qe.execute_query.return_value = [{"db_user": "dblift_test"}]
+
         ops.set_current_schema(conn, "dbo")
+
+        qe.execute_statement.assert_called_once_with(
+            conn, "ALTER USER [dblift_test] WITH DEFAULT_SCHEMA = [dbo]"
+        )
+
+    def test_set_current_schema_logs_warning_when_it_cannot_determine_user(self):
+        ops, qe, log = self._make_ops()
+        conn, _, _ = _make_connection()
+        qe.execute_query.return_value = []  # can't resolve the connecting user
+
+        ops.set_current_schema(conn, "dbo")
+
         qe.execute_statement.assert_not_called()
+        log.warning.assert_called_once()
+
+    def test_set_current_schema_alters_only_once_for_same_schema(self):
+        """DEFAULT_SCHEMA is catalog-level state on the login, not
+        connection-scoped like every other dialect's mechanism — repeated
+        calls with the same schema must not re-issue ALTER USER.
+        """
+        ops, qe, log = self._make_ops()
+        conn, _, _ = _make_connection()
+
+        def fake_execute_query(connection, sql, params=None):
+            if "USER_NAME()" in sql:
+                return [{"db_user": "dblift_test"}]
+            if "sys.database_principals" in sql:
+                return [{"default_schema": ops._current_schema_set}]
+            return []
+
+        qe.execute_query.side_effect = fake_execute_query
+
+        ops.set_current_schema(conn, "dbo")
+        ops.set_current_schema(conn, "dbo")
+        ops.set_current_schema(conn, "dbo")
+
+        qe.execute_statement.assert_called_once_with(
+            conn, "ALTER USER [dblift_test] WITH DEFAULT_SCHEMA = [dbo]"
+        )
+        log.warning.assert_not_called()
+
+    def test_set_current_schema_detects_interference_even_when_target_schema_is_unchanged(self):
+        """The interference check must not be gated behind the cache-hit
+        skip. ``--db-schema`` is fixed for a whole process run, so after the
+        first call every later call asks for the SAME schema again -- if the
+        catalog read only ran on a schema change, a concurrent process
+        clobbering DEFAULT_SCHEMA between two identical calls would never be
+        noticed. See issue #806 review follow-up.
+        """
+        ops, qe, log = self._make_ops()
+        conn, _, _ = _make_connection()
+        ops._current_schema_set = "sales"  # as if set earlier on this connection
+
+        def fake_execute_query(connection, sql, params=None):
+            if "sys.database_principals" in sql:
+                # someone else silently overwrote it
+                return [{"db_user": "dblift_test", "default_schema": "orders"}]
+            return []
+
+        qe.execute_query.side_effect = fake_execute_query
+
+        ops.set_current_schema(conn, "sales")  # same schema as before -- a cache hit
+
+        log.warning.assert_called_once()
+        warning_msg = log.warning.call_args[0][0]
+        assert "orders" in warning_msg
+        assert "sales" in warning_msg
+        # The write is still skipped on the cache hit -- only detection changed.
+        qe.execute_statement.assert_not_called()
+        assert ops._current_schema_set == "sales"
+
+    def test_set_current_schema_warns_on_external_interference(self):
+        """A concurrent process sharing this login changing DEFAULT_SCHEMA
+        between our own writes must be surfaced loudly, not silently trusted.
+        """
+        ops, qe, log = self._make_ops()
+        conn, _, _ = _make_connection()
+        ops._current_schema_set = "schema_a"  # as if set earlier on this connection
+
+        def fake_execute_query(connection, sql, params=None):
+            if "sys.database_principals" in sql:
+                # someone else changed it
+                return [{"db_user": "dblift_test", "default_schema": "schema_hijacked"}]
+            return []
+
+        qe.execute_query.side_effect = fake_execute_query
+
+        ops.set_current_schema(conn, "schema_b")
+
+        log.warning.assert_called_once()
+        warning_msg = log.warning.call_args[0][0]
+        assert "schema_hijacked" in warning_msg
+        assert "schema_a" in warning_msg
+        qe.execute_statement.assert_called_once_with(
+            conn, "ALTER USER [dblift_test] WITH DEFAULT_SCHEMA = [schema_b]"
+        )
+        assert ops._current_schema_set == "schema_b"
 
     def test_get_columns_query_returns_tuple(self):
         ops, qe, log = self._make_ops()
