@@ -258,6 +258,17 @@ class TestFormatConnectionError:
         out = format_connection_error(err, "generic")
         assert out == "Connection failed: host not found"
 
+    def test_pymssql_tuple_error_is_unwrapped(self):
+        """pymssql raises errors as a raw tuple; its str() must not leak
+        the byte-string literal or error-code tuple wrapper verbatim."""
+        raw = (
+            "(20009, b'DB-Lib error message 20009, severity 9: "
+            "Unable to connect: Adaptive Server is unavailable or does not exist')"
+        )
+        result = format_connection_error(Exception(raw), "sqlserver")
+        assert "20009" not in result or "b'" not in result
+        assert "Unable to connect" in result
+
 
 # ---------------------------------------------------------------------------
 # _is_auth_error

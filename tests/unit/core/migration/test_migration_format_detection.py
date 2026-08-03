@@ -5,6 +5,7 @@ These tests verify that DBLIFT can correctly detect migration formats
 and route them to the appropriate executor.
 """
 
+import logging
 from pathlib import Path
 
 import pytest
@@ -118,6 +119,19 @@ class TestMigrationFormatInMigration:
         # Verify default format is SQL
         assert hasattr(migration, "format")
         assert migration.format == MigrationFormat.SQL
+
+    def test_baseline_marker_name_does_not_warn(self, caplog):
+        """BASELINE rows are synthetic markers (e.g. '<< Flyway Baseline >>'), not real
+        files — format detection should not run against them and log a spurious warning."""
+        with caplog.at_level(logging.WARNING):
+            migration = Migration(
+                script_name="<< Flyway Baseline >>",
+                type=MigrationType.BASELINE,
+                version=None,
+            )
+
+        assert not any("Unknown migration file extension" in r.message for r in caplog.records)
+        assert migration.format == MigrationFormat.UNKNOWN
 
 
 class TestMigrationExecutorArchitecture:

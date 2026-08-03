@@ -386,7 +386,7 @@ class TestFromUrl:
 
     def test_from_url_invalid_prefix_raises(self):
         """Unknown native URL schemes are rejected."""
-        with pytest.raises(ValueError, match="Unsupported database type"):
+        with pytest.raises(ValueError, match="Unsupported database type.*notajdbc"):
             BaseDatabaseConfig.from_url("notajdbc://host/db")
 
     def test_from_url_unknown_db_type_raises(self):

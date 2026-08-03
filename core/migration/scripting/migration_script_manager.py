@@ -1,5 +1,6 @@
 """Migration script manager — discovers, parses, and orders migration scripts on disk."""
 
+import os
 import re
 from functools import cmp_to_key
 from pathlib import Path
@@ -447,6 +448,11 @@ class MigrationScriptManager:
                     f"Migration directory does not exist or is not a directory: {dir_path}"
                 )
                 continue
+
+            if not os.access(dir_path, os.R_OK | os.X_OK):
+                raise PermissionError(
+                    f"Cannot read migrations directory: {dir_path} (permission denied)"
+                )
 
             # Determine recursive setting for this directory
             # Check dir_recursive_map first, then fall back to global recursive flag

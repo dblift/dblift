@@ -1,5 +1,6 @@
 """DB2 native provider behavior."""
 
+import logging
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
@@ -204,6 +205,28 @@ def test_native_provider_exposes_schema_operations_adapter() -> None:
     provider.schema_operations.create_schema_if_not_exists(None, "APP")
 
     assert calls == ["APP"]
+
+
+def test_db2_provider_disables_ibm_db_sa_traceback_logging() -> None:
+    """ibm_db_sa's log_entry_exit decorator calls logger.exception() on every
+    driver-call failure, printing a raw traceback to stderr before dblift's
+    own exception handling ever runs. Db2Provider must disable that logger
+    on construction so SQL errors surface only through dblift's own clean
+    FAILED-panel formatting."""
+    config = DbliftConfig.from_dict(
+        {
+            "database": {
+                "type": "db2",
+                "url": "ibm_db_sa://localhost:50000/SAMPLE",
+                "username": "u",
+                "password": "p",
+            }
+        }
+    )
+
+    Db2Provider(config)
+
+    assert logging.getLogger("ibm_db_sa").disabled is True
 
 
 def test_clean_schema_delegates_to_schema_operations_path() -> None:

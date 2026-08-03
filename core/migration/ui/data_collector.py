@@ -210,7 +210,7 @@ class MigrationDataCollector:
             description = self._clean_delete_description(getattr(migration, "description", ""))
 
             # Skip if this version should be excluded based on filters
-            if version and self._should_exclude_migration(
+            if self._should_exclude_migration(
                 version,
                 script_name,
                 tags or [],
@@ -325,16 +325,13 @@ class MigrationDataCollector:
                 # If this is an undone migration, don't skip it - show it as PENDING too
                 if not (version and version in undone_versions):
                     should_skip = True
-            elif (version and version in shown_versions) or (
-                version
-                and self._should_exclude_migration(
-                    version,
-                    script_name,
-                    tags or [],
-                    exclude_tags or [],
-                    versions or [],
-                    exclude_versions or [],
-                )
+            elif (version and version in shown_versions) or self._should_exclude_migration(
+                version,
+                script_name,
+                tags or [],
+                exclude_tags or [],
+                versions or [],
+                exclude_versions or [],
             ):
                 should_skip = True
 
@@ -444,7 +441,7 @@ class MigrationDataCollector:
             installed_by = getattr(migration, "installed_by", None)
 
             # Skip if this version should be excluded based on filters
-            if version and self._should_exclude_migration(
+            if self._should_exclude_migration(
                 version,
                 script_name,
                 tags or [],
@@ -548,7 +545,7 @@ class MigrationDataCollector:
             migration_type = getattr(migration, "type", None)
 
             # Skip if should be excluded
-            if version and self._should_exclude_migration(
+            if self._should_exclude_migration(
                 version,
                 script_name,
                 tags or [],
@@ -756,7 +753,7 @@ class MigrationDataCollector:
     ) -> bool:
         """Check if migration should be excluded based on filters."""
         # Versions inclusion filter
-        if versions and version not in versions:
+        if versions and version and version not in versions:
             return True
 
         # Versions exclusion filter

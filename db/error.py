@@ -36,6 +36,18 @@ class ErrorCategory(str, Enum):
 # (``db/plugins/<X>/quirks.py`` ``error_patterns()``) and are sourced at
 # classifier construction via ``ProviderRegistry.get_quirks`` (ADR-26 A2).
 
+# pymssql raises connection errors as a raw tuple, e.g.
+# "(20009, b'DB-Lib error message 20009, severity 9: Unable to connect: ...')"
+# — unwrap it to the human-readable message text before falling back to the
+# generic passthrough.
+_PYMSSQL_TUPLE_RE = re.compile(r"^\(\d+,\s*b?['\"](.+?)['\"]\)$")
+
+# SQLAlchemy appends the failing statement to statement-bound errors, e.g.
+# '...\n[SQL: CREATE TABLE dblift_schema_history (...)]\n[parameters: ...]'.
+# format_connection_error() strips this trailing block so a schema/table
+# setup failure never leaks internal DDL to the user.
+_SQL_STATEMENT_BLOCK_RE = re.compile(r"\s*\[SQL:.*", re.IGNORECASE | re.DOTALL)
+
 # Generic fallback patterns (checked for all database types)
 _GENERIC_PATTERNS: List[Tuple[re.Pattern[str], ErrorCategory]] = [
     (
@@ -122,6 +134,8 @@ def format_connection_error(error: Exception, db_type: str = "") -> str:
     from core.migration.executor.execution_engine import _strip_driver_exception_prefix
 
     message = _strip_driver_exception_prefix(str(error))
+    # See _SQL_STATEMENT_BLOCK_RE above for why this is stripped here only.
+    message = _SQL_STATEMENT_BLOCK_RE.sub("", message).strip()
     lowered = message.lower()
     # SQL Server can report login failures with SQLState 08001, so inspect
     # explicit auth markers before classifying broad connection SQLStates.
@@ -140,6 +154,11 @@ def format_connection_error(error: Exception, db_type: str = "") -> str:
         return "Connection failed: host unreachable"
     if "unknown host" in lowered or "name or service not known" in lowered:
         return "Connection failed: host not found"
+
+    pymssql_match = _PYMSSQL_TUPLE_RE.match(str(message).strip())
+    if pymssql_match:
+        return f"Connection failed: {pymssql_match.group(1)}"
+
     return f"Connection failed: {message}"
 
 

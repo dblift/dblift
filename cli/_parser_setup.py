@@ -336,21 +336,51 @@ def create_parser(
     exit_on_error: bool = True, suppress_errors: bool = False
 ) -> argparse.ArgumentParser:
     """Create and configure the argument parser for DBLift CLI."""
+    # Shared parent for the 4 db-connection flags. It is attached both to the
+    # root parser (so `dblift --db-url ... migrate` keeps working) and to the
+    # migrate/info/validate/undo subparsers (so the flags are documented in
+    # their --help output, not just the root's). ``default=argparse.SUPPRESS``
+    # is required for that dual attachment: argparse's subparser dispatch
+    # (``_SubParsersAction.__call__``) always parses the subcommand's
+    # remaining args into a *fresh* namespace and then copies every one of its
+    # dests onto the outer namespace — so a subparser-local default of ``None``
+    # would silently overwrite a value already parsed at the root level
+    # (e.g. `dblift --db-url X migrate` with no --db-url after "migrate").
+    # SUPPRESS keeps the dest off the subnamespace entirely when the flag
+    # isn't repeated after the subcommand, so the root-parsed value survives.
+    #
+    # Side effect: because this same parent is used on the root parser too,
+    # ``database_url``/``database_username``/``database_password``/
+    # ``database_schema`` may be entirely ABSENT from ``args`` (not merely
+    # ``None``) for ANY subcommand — not just migrate/info/validate/undo —
+    # whenever the flag isn't passed anywhere on the command line. Any new
+    # code reading these must use ``hasattr``/``getattr(..., None)`` (as
+    # ``cli/_config_helpers.py`` already does); a bare ``args.database_url``
+    # will raise ``AttributeError`` when unset. See
+    # tests/unit/cli/test_parser_invariants.py::
+    # test_db_flags_absent_from_namespace_when_unset_for_non_db_subcommand.
     db_parent = argparse.ArgumentParser(add_help=False)
-    db_parent.add_argument("--db-url", dest="database_url", help="Database URL")
-    db_parent.add_argument("--db-username", dest="database_username", help="Database username")
-    db_parent.add_argument("--db-password", dest="database_password", help="Database password")
-    db_parent.add_argument("--db-schema", dest="database_schema", help="Database schema")
-    # Hidden copy for the root parser: flags are parsed globally but shown in
-    # subcommand --help only.
-    db_parent_hidden = argparse.ArgumentParser(add_help=False)
-    db_parent_hidden.add_argument("--db-url", dest="database_url", help=argparse.SUPPRESS)
-    db_parent_hidden.add_argument("--db-username", dest="database_username", help=argparse.SUPPRESS)
-    db_parent_hidden.add_argument("--db-password", dest="database_password", help=argparse.SUPPRESS)
-    db_parent_hidden.add_argument("--db-schema", dest="database_schema", help=argparse.SUPPRESS)
+    db_parent.add_argument(
+        "--db-url", dest="database_url", default=argparse.SUPPRESS, help="Database URL"
+    )
+    db_parent.add_argument(
+        "--db-username",
+        dest="database_username",
+        default=argparse.SUPPRESS,
+        help="Database username",
+    )
+    db_parent.add_argument(
+        "--db-password",
+        dest="database_password",
+        default=argparse.SUPPRESS,
+        help="Database password",
+    )
+    db_parent.add_argument(
+        "--db-schema", dest="database_schema", default=argparse.SUPPRESS, help="Database schema"
+    )
     parser_kwargs: Dict[str, Any] = {
         "description": "dblift: Database migration tool",
-        "parents": [db_parent_hidden],
+        "parents": [db_parent],
     }
     if not exit_on_error:
         parser_kwargs["exit_on_error"] = False
@@ -450,22 +480,22 @@ def create_parser(
     migrate_parser = subparsers.add_parser(
         "migrate",
         help="Apply migrations",
-        parents=[_history, _strict, _filter],
+        parents=[_history, _strict, _filter, db_parent],
     )
     info_parser = subparsers.add_parser(
         "info",
         help="Show migration information",
-        parents=[_history, _strict, _filter],
+        parents=[_history, _strict, _filter, db_parent],
     )
     validate_parser = subparsers.add_parser(
         "validate",
         help="Validate migration scripts",
-        parents=[_history, _strict, _filter],
+        parents=[_history, _strict, _filter, db_parent],
     )
     undo_parser = subparsers.add_parser(
         "undo",
         help="Rollback migrations",
-        parents=[_history, _strict, _filter],
+        parents=[_history, _strict, _filter, db_parent],
     )
     clean_parser = subparsers.add_parser(
         "clean",

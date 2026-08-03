@@ -129,3 +129,16 @@ def test_python_callbacks_are_unaffected(tmp_path):
 
     # No raise: Python callbacks route through the factory as before.
     _factory(_NoSqlQuirks("cosmosdb")).ensure_format_supported(callback, MigrationFormat.PYTHON)
+
+
+def test_execution_engine_asks_before_running_a_sql_migration():
+    """execute_migration must call ensure_format_supported for SQL migrations,
+    the same way execute_callback already does for SQL callbacks — otherwise a
+    .sql migration on a NoSQL dialect is parsed/executed instead of rejected
+    with DBLIFT-NOSQL-001."""
+    import inspect
+
+    from core.migration.executor.execution_engine import ExecutionEngine
+
+    source = inspect.getsource(ExecutionEngine.execute_migration)
+    assert "ensure_format_supported" in source

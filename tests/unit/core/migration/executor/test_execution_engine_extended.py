@@ -10,6 +10,8 @@ execute_callback, _execute_via_factory, autocommit statement routing.
 import unittest
 from unittest.mock import MagicMock, patch
 
+from sqlalchemy.exc import OperationalError
+
 from core.exceptions import CallbackExecutionError
 from core.migration.executor.execution_engine import ExecutionEngine
 from core.migration.formats import MigrationFormat
@@ -614,6 +616,29 @@ class TestHandleStatementFailure(unittest.TestCase):
 
         warning_calls = [str(c) for c in engine.log.warning.call_args_list]
         self.assertTrue(any("Could not rollback transaction" in c for c in warning_calls))
+
+    def test_preserves_embedded_sql_for_migration_script_statement_errors(self):
+        """Regression guard: unlike format_connection_error (which hides
+        dblift's own schema-setup SQL from connection/setup errors),
+        _handle_statement_failure reports failures in a *user's own*
+        migration script, so the failing '[SQL: ...]' statement must stay
+        visible in the message so they can tell which statement broke.
+
+        _strip_driver_exception_prefix (shared with format_connection_error)
+        must not gain SQL-block stripping — that behavior belongs only to
+        format_connection_error's db_type-specific formatting.
+        """
+        engine = _make_engine(with_history=False)
+        migration = _make_sql_migration()
+        result = MagicMock()
+        raw_error = OperationalError(
+            "CREATE TABLE users (id INT)", None, Exception("ORA-00001: unique constraint violated")
+        )
+
+        engine._handle_statement_failure(migration, raw_error, 0, 100, result)
+
+        error_message = result.set_error.call_args[0][0]
+        self.assertIn("CREATE TABLE users (id INT)", error_message)
 
 
 # ---------------------------------------------------------------------------

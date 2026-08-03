@@ -635,6 +635,13 @@ class TestCleanSchema:
         assert any("DROP VIEW" in s for s in statements)
         assert any("DROP MATERIALIZED VIEW" in s for s in statements)
         assert any(s.startswith("DROP TABLE") and "CASCADE CONSTRAINTS" in s for s in statements)
+        table_drops = [s for s in statements if s.startswith("DROP TABLE")]
+        assert table_drops, "expected at least one DROP TABLE statement"
+        for stmt in table_drops:
+            assert stmt.rstrip().endswith("PURGE"), (
+                f"DROP TABLE must PURGE to avoid leaving recycle-bin/identity-"
+                f"sequence orphans behind: {stmt!r}"
+            )
         assert any("DROP SEQUENCE" in s and "SEQ1" in s for s in statements)
         assert not any("ISEQ$$_1" in s for s in statements)
         assert any("DROP PROCEDURE" in s for s in statements)

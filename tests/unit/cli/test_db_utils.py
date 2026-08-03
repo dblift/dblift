@@ -594,6 +594,56 @@ class TestCheckConnectionLogFile:
         _, kwargs = mock_logger.call_args
         assert kwargs.get("log_file_pattern") == "/tmp/dblift_test/logs/log.json"
 
+    @patch("cli.db_utils.ProviderRegistry.create_provider")
+    @patch("cli.db_utils.load_config")
+    @patch("cli.db_utils.DbliftLogger")
+    def test_closes_logger_on_success(self, mock_logger, mock_load_config, mock_create_provider):
+        mock_config_instance = Mock()
+        mock_config_instance.database.url = "mssql+pymssql://localhost:1433/test"
+        mock_config_instance.database.type = "sqlserver"
+        mock_load_config.return_value = mock_config_instance
+
+        mock_provider = Mock()
+        mock_provider.get_database_url.return_value = "mssql+pymssql://localhost:1433/test"
+        mock_provider.get_database_version.return_value = "SQL Server 2019"
+        mock_create_provider.return_value = mock_provider
+
+        args = Mock()
+        args.format = "text"
+        args.log_file = "/tmp/dblift_test/logs/log.json"
+        args.log_dir = None
+        args.log_format = "json"
+
+        check_connection(args)
+
+        mock_logger.return_value.close.assert_called_once()
+
+    @patch("cli.db_utils.ProviderRegistry.create_provider")
+    @patch("cli.db_utils.load_config")
+    @patch("cli.db_utils.DbliftLogger")
+    def test_closes_logger_on_connection_failure(
+        self, mock_logger, mock_load_config, mock_create_provider
+    ):
+        mock_config_instance = Mock()
+        mock_config_instance.database.url = "mssql+pymssql://localhost:1433/test"
+        mock_config_instance.database.type = "sqlserver"
+        mock_load_config.return_value = mock_config_instance
+
+        mock_provider = Mock()
+        mock_provider.create_connection.side_effect = Exception("Connection failed")
+        mock_create_provider.return_value = mock_provider
+
+        args = Mock()
+        args.format = "text"
+        args.log_level = "info"
+        args.log_file = "/tmp/dblift_test/logs/log.json"
+        args.log_dir = None
+        args.log_format = "json"
+
+        check_connection(args)
+
+        mock_logger.return_value.close.assert_called_once()
+
 
 class TestPrintConnectionResults:
     """Test print_connection_results functionality."""

@@ -458,7 +458,15 @@ class Migration:
             self._sql_statements = sql_statements
             # Detect format from script name extension (handles DB-loaded migrations where
             # script_path is not available but the extension encodes the format).
-            self.format = MigrationFormatDetector.detect_from_filename(self.script_name)
+            if self.type == MigrationType.BASELINE:
+                # Baseline entries are markers, not real script files (see the
+                # BASELINE docstring above) — file-extension detection doesn't
+                # apply and would only produce a spurious warning. UNKNOWN matches
+                # what detect_from_filename would have returned anyway for a
+                # synthetic, extensionless name, just without the log noise.
+                self.format = MigrationFormat.UNKNOWN
+            else:
+                self.format = MigrationFormatDetector.detect_from_filename(self.script_name)
 
         self.checksum: Optional[int] = self._calculate_checksum()
 
