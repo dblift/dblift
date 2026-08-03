@@ -205,10 +205,9 @@ class TestSqlServerSchemaOperations(unittest.TestCase):
         ops._current_schema_set = "sales"  # as if set earlier on this connection
 
         def fake_execute_query(connection, sql, params=None):
-            if "USER_NAME()" in sql:
-                return [{"db_user": "dblift_test"}]
             if "sys.database_principals" in sql:
-                return [{"default_schema": "orders"}]  # someone else silently overwrote it
+                # someone else silently overwrote it
+                return [{"db_user": "dblift_test", "default_schema": "orders"}]
             return []
 
         qe.execute_query.side_effect = fake_execute_query
@@ -232,10 +231,9 @@ class TestSqlServerSchemaOperations(unittest.TestCase):
         ops._current_schema_set = "schema_a"  # as if set earlier on this connection
 
         def fake_execute_query(connection, sql, params=None):
-            if "USER_NAME()" in sql:
-                return [{"db_user": "dblift_test"}]
             if "sys.database_principals" in sql:
-                return [{"default_schema": "schema_hijacked"}]  # someone else changed it
+                # someone else changed it
+                return [{"db_user": "dblift_test", "default_schema": "schema_hijacked"}]
             return []
 
         qe.execute_query.side_effect = fake_execute_query

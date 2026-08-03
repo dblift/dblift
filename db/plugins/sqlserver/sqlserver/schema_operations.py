@@ -465,18 +465,16 @@ class SqlServerSchemaOperations(BaseSchemaOperations):
             schema: Schema name to make the connecting user's default
         """
         try:
-            rows = self.query_executor.execute_query(connection, "SELECT USER_NAME() AS db_user")
+            rows = self.query_executor.execute_query(
+                connection,
+                "SELECT USER_NAME() AS db_user, DEFAULT_SCHEMA_NAME AS default_schema "
+                "FROM sys.database_principals WHERE name = USER_NAME()",
+            )
             current_user = rows[0].get("db_user") if rows else None
             if not current_user:
                 raise RuntimeError("could not determine the connecting database user")
 
-            catalog_rows = self.query_executor.execute_query(
-                connection,
-                "SELECT DEFAULT_SCHEMA_NAME AS default_schema "
-                "FROM sys.database_principals WHERE name = ?",
-                params=[current_user],
-            )
-            catalog_schema = catalog_rows[0].get("default_schema") if catalog_rows else None
+            catalog_schema = rows[0].get("default_schema") if rows else None
             if (
                 self._current_schema_set is not None
                 and catalog_schema is not None
