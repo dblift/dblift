@@ -709,6 +709,7 @@ class MigrateCommand(BaseCommand):
             if not validation_success:
                 result.set_error(f"Validation failed: {validation_errors}")
                 result.complete()
+                self._log_command_completion("migrate", result)
                 return result
 
             if not pending_migrations:
