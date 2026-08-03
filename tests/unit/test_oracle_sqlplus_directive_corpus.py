@@ -144,5 +144,67 @@ class TestSqlplusDirectiveTerminationCorpus(unittest.TestCase):
                     )
 
 
+class TestConnectDirectiveExcludesDatabaseLinkSyntax(unittest.TestCase):
+    """``CONNECT TO user IDENTIFIED BY password`` is Oracle DDL syntax (part
+    of ``CREATE DATABASE LINK``), not the SQL*Plus ``CONNECT`` client
+    command — SQL*Plus ``CONNECT`` is always ``CONNECT
+    [user][/password][@identifier]`` and never uses ``TO``. Before the fix,
+    the ``CONNECT`` directive's pattern matched this DDL continuation line
+    too broadly and appended a spurious ``;``, splitting a multi-line
+    ``CREATE DATABASE LINK ... USING '...'`` statement in two and creating a
+    database link with no connect descriptor. This is the same class of
+    false-positive already documented above for ``SET``/``WHENEVER``/
+    ``START`` — the negative-example case the corpus module docstring calls
+    out as exactly what this file exists to guard against.
+    """
+
+    def _split(self, sql: str) -> list[str]:
+        from db.plugins.oracle.parser.oracle_statement_parser import OracleStatementParser
+        from db.plugins.oracle.parser.oracle_tokenizer import OracleTokenizer
+
+        tokens = OracleTokenizer(sql).tokenize()
+        return [s for s in OracleStatementParser(tokens).split_statements() if s.strip()]
+
+    def test_create_database_link_connect_to_line_not_terminated(self) -> None:
+        raw = (
+            "CREATE DATABASE LINK mylink\n"
+            "CONNECT TO remote_user IDENTIFIED BY remote_pass\n"
+            "USING '(DESCRIPTION=(ADDRESS=(PROTOCOL=TCP)(HOST=remotehost)(PORT=1521))"
+            "(CONNECT_DATA=(SERVICE_NAME=remotedb)))';\n"
+        )
+        terminated = terminate_sqlplus_directives(raw)
+        self.assertNotIn("remote_pass;", terminated)
+        self.assertEqual(terminated, raw)
+
+        stmts = self._split(terminated)
+        matching = [s for s in stmts if "CREATE DATABASE LINK" in s]
+        self.assertEqual(len(matching), 1, f"expected one statement, got: {stmts}")
+        self.assertIn("CONNECT TO remote_user IDENTIFIED BY remote_pass", matching[0])
+        self.assertIn("USING '(DESCRIPTION=", matching[0])
+
+    def test_create_database_link_single_line_still_works(self) -> None:
+        """Regression guard: the already-working single-line form must stay intact."""
+        raw = (
+            "CREATE DATABASE LINK mylink CONNECT TO remote_user IDENTIFIED BY remote_pass "
+            "USING '(DESCRIPTION=(ADDRESS=(PROTOCOL=TCP)(HOST=remotehost)(PORT=1521))"
+            "(CONNECT_DATA=(SERVICE_NAME=remotedb)))';\n"
+        )
+        terminated = terminate_sqlplus_directives(raw)
+        self.assertEqual(terminated, raw)
+
+        stmts = self._split(terminated)
+        matching = [s for s in stmts if "CREATE DATABASE LINK" in s]
+        self.assertEqual(len(matching), 1, f"expected one statement, got: {stmts}")
+        self.assertIn("CONNECT TO remote_user IDENTIFIED BY remote_pass", matching[0])
+        self.assertIn("USING '(DESCRIPTION=", matching[0])
+
+    def test_genuine_sqlplus_connect_command_still_terminated(self) -> None:
+        """Regression guard: real SQL*Plus ``CONNECT user/pass@db`` directives
+        (no ``TO``) must still get their trailing ``;`` inserted.
+        """
+        raw = "CONNECT app_user/app_pass@orcl\nSELECT 1 FROM dual;\n"
+        self.assertIn("CONNECT app_user/app_pass@orcl;", terminate_sqlplus_directives(raw))
+
+
 if __name__ == "__main__":
     unittest.main()
