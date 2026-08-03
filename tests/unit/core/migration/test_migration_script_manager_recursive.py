@@ -163,6 +163,75 @@ class TestMigrationScriptManagerPerDirectoryRecursive:
             f"{[m.script_name for m in all_migrations]}"
         )
 
+    def test_load_migration_scripts_finds_subdirectory_file_in_second_additional_dir(self):
+        """A migration nested in a subdirectory of an additional directory that is
+        not the first one passed via additional_dirs must still be discovered and
+        actually readable — not just found by get_all_scripts and then dropped
+        when load_migration_scripts reconstructs its path for reading.
+        """
+        (self.primary_dir / "V1_0_0__primary.sql").write_text("CREATE TABLE primary;")
+        (self.additional_dir1 / "V1_0_1__add1.sql").write_text("CREATE TABLE add1;")
+        (self.additional_dir2 / "subdir" / "V1_0_2__add2_sub.sql").write_text(
+            "CREATE TABLE add2_sub;"
+        )
+
+        migrations = self.script_manager.load_migration_scripts(
+            self.primary_dir,
+            recursive=True,
+            additional_dirs=[self.additional_dir1, self.additional_dir2],
+        )
+
+        all_migrations = [m for migration_list in migrations.values() for m in migration_list]
+        script_names = [m.script_name for m in all_migrations]
+
+        assert "V1_0_0__primary.sql" in script_names
+        assert "V1_0_1__add1.sql" in script_names
+        assert "V1_0_2__add2_sub.sql" in script_names, (
+            "migration nested in a subdirectory of the second additional directory "
+            f"was not loaded; got {script_names}"
+        )
+
+    def test_load_migration_scripts_single_directory_with_subdirectory(self):
+        """Regression guard: a single scripts directory (no additional_dirs) with
+        a migration nested in a subdirectory must still be loaded correctly.
+        """
+        (self.primary_dir / "V1_0_0__primary.sql").write_text("CREATE TABLE primary;")
+        (self.primary_dir / "subdir" / "V1_0_1__primary_sub.sql").write_text(
+            "CREATE TABLE primary_sub;"
+        )
+
+        migrations = self.script_manager.load_migration_scripts(
+            self.primary_dir,
+            recursive=True,
+        )
+
+        all_migrations = [m for migration_list in migrations.values() for m in migration_list]
+        script_names = [m.script_name for m in all_migrations]
+
+        assert "V1_0_0__primary.sql" in script_names
+        assert "V1_0_1__primary_sub.sql" in script_names
+
+    def test_load_migration_scripts_multiple_directories_flat_files_only(self):
+        """Regression guard: multiple scripts directories with only flat (non-nested)
+        files in each must all be loaded correctly.
+        """
+        (self.primary_dir / "V1_0_0__primary.sql").write_text("CREATE TABLE primary;")
+        (self.additional_dir1 / "V1_0_1__add1.sql").write_text("CREATE TABLE add1;")
+        (self.additional_dir2 / "V1_0_2__add2.sql").write_text("CREATE TABLE add2;")
+
+        migrations = self.script_manager.load_migration_scripts(
+            self.primary_dir,
+            recursive=True,
+            additional_dirs=[self.additional_dir1, self.additional_dir2],
+        )
+
+        all_migrations = [m for migration_list in migrations.values() for m in migration_list]
+        script_names = [m.script_name for m in all_migrations]
+
+        assert "V1_0_0__primary.sql" in script_names
+        assert "V1_0_1__add1.sql" in script_names
+        assert "V1_0_2__add2.sql" in script_names
+
     def test_get_callbacks_by_event_with_per_directory_recursive(self):
         """Test get_callbacks_by_event with per-directory recursive settings."""
         # Create callback files

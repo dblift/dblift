@@ -512,8 +512,12 @@ class MigrationScriptManager:
                             is_additional_dir = dir_path != migrations_dir
 
                         if is_additional_dir:
-                            # Store as "dir_name/script_name" to track which directory it came from
-                            scripts.append(f"{dir_path}/{script_path.name}")
+                            # Store as "dir_name/relative_path" (which may include
+                            # subdirectory components) to track which directory it
+                            # came from while preserving its location within that
+                            # directory.
+                            rel_path = script_path.relative_to(dir_path)
+                            scripts.append(f"{dir_path}/{rel_path.as_posix()}")
                         else:
                             # For the primary directory, use the relative path as-is
                             rel_path = script_path.relative_to(dir_path)
@@ -586,22 +590,23 @@ class MigrationScriptManager:
         seen_files: Set[Path] = set()
 
         for rel_script_path in script_paths:
-            # Handle paths from additional directories - format is "full_path/script_name"
+            # Handle paths from additional directories - format is
+            # "full_dir_path/relative_path", where relative_path may itself
+            # contain subdirectory components.
             if additional_dirs and "/" in rel_script_path:
-                # The rel_script_path is in format "full_dir_path/script_name"
-                # Extract the directory part and find matching additional_dir
-                dir_part = rel_script_path.rsplit("/", 1)[0]  # Get everything before last /
-                script_name = rel_script_path.rsplit("/", 1)[1]  # Get script name
-
-                # Try to match the directory path with one of the additional_dirs
+                # Try to match the directory path with one of the additional_dirs,
+                # keeping whatever comes after it (including subdirectories) intact.
                 matching_dir = None
+                matching_rel_part = None
                 for add_dir in additional_dirs:
-                    if str(add_dir) == dir_part:
+                    add_dir_prefix = f"{add_dir}/"
+                    if rel_script_path.startswith(add_dir_prefix):
                         matching_dir = add_dir
+                        matching_rel_part = rel_script_path[len(add_dir_prefix) :]
                         break
 
                 if matching_dir:
-                    script_path = matching_dir / script_name
+                    script_path = matching_dir / matching_rel_part
                 else:
                     # Fallback: try as path from scripts_directory
                     script_path = scripts_directory / rel_script_path
