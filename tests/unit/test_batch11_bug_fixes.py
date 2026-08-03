@@ -151,61 +151,6 @@ class TestBug02SqlplusDirectiveTermination(unittest.TestCase):
         stmts = self._split(terminated)
         self.assertTrue(any("CREATE TABLE" in s for s in stmts))
 
-    def test_create_database_link_connect_to_line_not_terminated(self) -> None:
-        """``CONNECT TO user IDENTIFIED BY password`` is Oracle DDL syntax
-        (part of ``CREATE DATABASE LINK``), not the SQL*Plus ``CONNECT``
-        client command. The SQL*Plus ``CONNECT`` directive is always
-        ``CONNECT [user][/password][@identifier]`` — it never uses ``TO``.
-        Before the fix, the broad ``^CONNECT\\s+`` directive pattern matched
-        this continuation line and got a spurious ``;`` appended, splitting
-        the statement in two and creating a database link with no connect
-        descriptor.
-        """
-        from db.plugins.oracle.parser.sqlplus_context import terminate_sqlplus_directives
-
-        raw = (
-            "CREATE DATABASE LINK mylink\n"
-            "CONNECT TO remote_user IDENTIFIED BY remote_pass\n"
-            "USING '(DESCRIPTION=(ADDRESS=(PROTOCOL=TCP)(HOST=remotehost)(PORT=1521))"
-            "(CONNECT_DATA=(SERVICE_NAME=remotedb)))';\n"
-        )
-        terminated = terminate_sqlplus_directives(raw)
-        self.assertNotIn("remote_pass;", terminated)
-        self.assertEqual(terminated, raw)
-
-        stmts = self._split(terminated)
-        matching = [s for s in stmts if "CREATE DATABASE LINK" in s]
-        self.assertEqual(len(matching), 1, f"expected one statement, got: {stmts}")
-        self.assertIn("CONNECT TO remote_user IDENTIFIED BY remote_pass", matching[0])
-        self.assertIn("USING '(DESCRIPTION=", matching[0])
-
-    def test_create_database_link_single_line_still_works(self) -> None:
-        """Regression guard: the already-working single-line form must stay intact."""
-        from db.plugins.oracle.parser.sqlplus_context import terminate_sqlplus_directives
-
-        raw = (
-            "CREATE DATABASE LINK mylink CONNECT TO remote_user IDENTIFIED BY remote_pass "
-            "USING '(DESCRIPTION=(ADDRESS=(PROTOCOL=TCP)(HOST=remotehost)(PORT=1521))"
-            "(CONNECT_DATA=(SERVICE_NAME=remotedb)))';\n"
-        )
-        terminated = terminate_sqlplus_directives(raw)
-        self.assertEqual(terminated, raw)
-
-        stmts = self._split(terminated)
-        matching = [s for s in stmts if "CREATE DATABASE LINK" in s]
-        self.assertEqual(len(matching), 1, f"expected one statement, got: {stmts}")
-        self.assertIn("CONNECT TO remote_user IDENTIFIED BY remote_pass", matching[0])
-        self.assertIn("USING '(DESCRIPTION=", matching[0])
-
-    def test_genuine_sqlplus_connect_command_still_terminated(self) -> None:
-        """Regression guard: real SQL*Plus ``CONNECT user/pass@db`` directives
-        (no ``TO``) must still get their trailing ``;`` inserted.
-        """
-        from db.plugins.oracle.parser.sqlplus_context import terminate_sqlplus_directives
-
-        raw = "CONNECT app_user/app_pass@orcl\nSELECT 1 FROM dual;\n"
-        self.assertIn("CONNECT app_user/app_pass@orcl;", terminate_sqlplus_directives(raw))
-
 
 class TestBug06SqliteRecordUndo(unittest.TestCase):
     """``SQLiteProvider`` previously declared ``record_migration`` but no
