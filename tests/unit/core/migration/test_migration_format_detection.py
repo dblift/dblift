@@ -124,13 +124,14 @@ class TestMigrationFormatInMigration:
         """BASELINE rows are synthetic markers (e.g. '<< Flyway Baseline >>'), not real
         files — format detection should not run against them and log a spurious warning."""
         with caplog.at_level(logging.WARNING):
-            Migration(
+            migration = Migration(
                 script_name="<< Flyway Baseline >>",
                 type=MigrationType.BASELINE,
                 version=None,
             )
 
         assert not any("Unknown migration file extension" in r.message for r in caplog.records)
+        assert migration.format == MigrationFormat.UNKNOWN
 
 
 class TestMigrationExecutorArchitecture:

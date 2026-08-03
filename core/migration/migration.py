@@ -461,8 +461,10 @@ class Migration:
             if self.type == MigrationType.BASELINE:
                 # Baseline entries are markers, not real script files (see the
                 # BASELINE docstring above) — file-extension detection doesn't
-                # apply and would only produce a spurious warning.
-                self.format = MigrationFormat.SQL
+                # apply and would only produce a spurious warning. UNKNOWN matches
+                # what detect_from_filename would have returned anyway for a
+                # synthetic, extensionless name, just without the log noise.
+                self.format = MigrationFormat.UNKNOWN
             else:
                 self.format = MigrationFormatDetector.detect_from_filename(self.script_name)
 
