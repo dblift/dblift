@@ -5,7 +5,7 @@ extracted from MySQL grammar files and existing parser implementation.
 """
 
 import re
-from typing import Dict, List, Pattern, Set
+from typing import Dict, List, Optional, Pattern, Set
 
 from core.sql_parser.dialects.base_config import DialectConfig
 
@@ -398,9 +398,16 @@ class MySqlConfig(DialectConfig):
             "DELIMITER",
         ]
 
-    def get_default_schema(self) -> str:
-        """Get default schema name for MySQL."""
-        return "mysql"  # lint: allow-dialect-string: dialect dispatch
+    def get_default_schema(self) -> Optional[str]:
+        """Get default schema name for MySQL.
+
+        MySQL has no server-wide default schema the way SQL Server has
+        ``dbo`` — the effective schema is whatever database the connection
+        is using, which varies per deployment. Returning ``None`` avoids
+        fabricating a schema qualifier (previously the literal ``"mysql"``
+        system schema) when no schema was explicitly supplied.
+        """
+        return None
 
     def normalize_identifier(self, identifier: str, is_quoted: bool = False) -> str:
         """Normalize MySQL identifier according to dialect rules.
