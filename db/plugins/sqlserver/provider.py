@@ -51,9 +51,10 @@ class SqlServerProvider(SqlAlchemyProvider):
     def execute_statement(
         self, sql: str, schema: Optional[str] = None, params: Optional[List[Any]] = None
     ) -> int:
-        """Execute a SQL statement, creating the migration schema when requested."""
+        """Execute a SQL statement, creating and selecting the migration schema when requested."""
         if schema:
             self.create_schema_if_not_exists(schema)
+            self.set_current_schema(schema)
         return super().execute_statement(sql, schema=schema, params=params)
 
     def table_exists(self, schema: str, table_name: str) -> bool:
@@ -94,11 +95,31 @@ class SqlServerProvider(SqlAlchemyProvider):
         return ", ".join(["?" for _ in range(count)])
 
     def set_current_schema(self, schema: str) -> None:
-        """No-op: SQL Server uses schema-qualified names, not session search path."""
-        self.log.debug(
-            "SQL Server: set_current_schema is a no-op; "
-            "schema qualification is embedded in object names."
-        )
+        """Align the connecting user's default schema so unqualified DDL lands here.
+
+        SQL Server has no session-scoped search path; unqualified object
+        names resolve against the connecting database user's
+        DEFAULT_SCHEMA. ``ALTER USER ... WITH DEFAULT_SCHEMA`` takes effect
+        immediately within the current session (no reconnect required), so
+        it is the real equivalent of PostgreSQL's ``SET search_path`` /
+        MySQL's ``USE``. Without this, unqualified DDL (dblift's own
+        documented usage pattern) silently lands in whatever schema the
+        login already defaults to instead of ``--db-schema``.
+        """
+        try:
+            rows = self.execute_query("SELECT USER_NAME() AS db_user")
+            current_user = rows[0].get("db_user") if rows else None
+            if not current_user:
+                raise RuntimeError("could not determine the connecting database user")
+            super().execute_statement(
+                f"ALTER USER {_q(current_user)} WITH DEFAULT_SCHEMA = {_q(schema)}"
+            )
+        except Exception as e:
+            self.log.warning(
+                f"SQL Server: could not set the connecting user's default schema to "
+                f"'{schema}'; unqualified object names may resolve against a "
+                f"different schema than --db-schema ({e})"
+            )
 
     # ------------------------------------------------------------------
     # Version

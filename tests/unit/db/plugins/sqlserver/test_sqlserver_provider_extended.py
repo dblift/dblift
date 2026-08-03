@@ -5,6 +5,7 @@ from unittest.mock import MagicMock
 from core.migration.sql.execution_statement import classify_execution_statement
 from db.plugins.sqlserver.provider import SqlServerProvider
 from db.provider_interfaces import DroppableObject
+from db.sqlalchemy_provider import SqlAlchemyProvider
 
 
 def _provider(execute_query_map=None, raise_on_statement=None):
@@ -60,12 +61,68 @@ def test_get_schema_qualified_name():
     assert provider.get_schema_qualified_name("dbo", "orders") == "[dbo].[orders]"
 
 
-def test_set_current_schema_is_noop_and_logs_debug():
-    provider = _provider()
+def test_set_current_schema_alters_connecting_user_default_schema(monkeypatch):
+    """Unqualified DDL must land in the configured schema (issue #806).
 
-    provider.set_current_schema("dbo")
+    SQL Server has no session-level search path; unqualified object names
+    resolve against the connecting user's DEFAULT_SCHEMA. ALTER USER takes
+    effect immediately within the current session, so it is the real
+    equivalent of PostgreSQL's ``SET search_path`` / MySQL's ``USE``.
+    """
+    provider = _provider(execute_query_map={"USER_NAME()": [{"db_user": "dblift_test"}]})
+    executed = []
+    monkeypatch.setattr(
+        SqlAlchemyProvider,
+        "execute_statement",
+        lambda self, sql, schema=None, params=None: executed.append(sql),
+    )
 
-    provider.log.debug.assert_called_once()
+    provider.set_current_schema("target_schema")
+
+    assert executed == ["ALTER USER [dblift_test] WITH DEFAULT_SCHEMA = [target_schema]"]
+
+
+def test_set_current_schema_logs_warning_when_it_cannot_determine_user(monkeypatch):
+    """A permission or lookup failure must be loud, not silently swallowed."""
+    provider = _provider()  # execute_query returns [] -> current user can't be resolved
+    monkeypatch.setattr(
+        SqlAlchemyProvider,
+        "execute_statement",
+        lambda self, sql, schema=None, params=None: (_ for _ in ()).throw(AssertionError()),
+    )
+
+    provider.set_current_schema("target_schema")
+
+    provider.log.warning.assert_called_once()
+
+
+def test_execute_statement_with_schema_sets_current_schema(monkeypatch):
+    """The mainline ``migrate`` path (execute_statement) must set the schema too.
+
+    Previously only ``create_schema_if_not_exists`` ran here, so unqualified
+    DDL executed via a normal migration script (not a callback) never had its
+    default schema aligned — this mirrors the PostgreSQL/MySQL providers.
+    """
+    provider = object.__new__(SqlServerProvider)
+    provider.log = MagicMock()
+    calls = []
+    provider.create_schema_if_not_exists = lambda schema: calls.append(("create", schema))
+    provider.set_current_schema = lambda schema: calls.append(("set", schema))
+    monkeypatch.setattr(
+        SqlAlchemyProvider,
+        "execute_statement",
+        lambda self, sql, schema=None, params=None: calls.append(("exec", sql)) or 1,
+    )
+
+    SqlServerProvider.execute_statement(
+        provider, "CREATE TABLE foo (id INT)", schema="target_schema"
+    )
+
+    assert calls == [
+        ("create", "target_schema"),
+        ("set", "target_schema"),
+        ("exec", "CREATE TABLE foo (id INT)"),
+    ]
 
 
 def test_get_database_version_with_rows():

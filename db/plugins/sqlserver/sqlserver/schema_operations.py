@@ -431,18 +431,32 @@ class SqlServerSchemaOperations(BaseSchemaOperations):
             return "Unknown SQL Server Version"
 
     def set_current_schema(self, connection: Any, schema: str) -> None:
-        """Set the current schema for the session.
+        """Align the connecting user's default schema so unqualified DDL lands here.
 
-        Note: SQL Server doesn't have a direct equivalent to Oracle's ALTER SESSION SET CURRENT_SCHEMA.
-        This is a no-op for SQL Server as schema qualification is handled in object names.
+        SQL Server has no session-scoped search path; unqualified object
+        names resolve against the connecting database user's
+        DEFAULT_SCHEMA. ``ALTER USER ... WITH DEFAULT_SCHEMA`` takes effect
+        immediately within the current session (no reconnect required).
 
         Args:
-            schema: Schema name (unused in SQL Server)
+            schema: Schema name to make the connecting user's default
         """
-        self.log.debug(
-            "SQL Server doesn't support setting current schema. Schema qualification handled in object names."
-        )
-        # No-op for SQL Server
+        try:
+            rows = self.query_executor.execute_query(connection, "SELECT USER_NAME() AS db_user")
+            current_user = rows[0].get("db_user") if rows else None
+            if not current_user:
+                raise RuntimeError("could not determine the connecting database user")
+            quoted_user = self.query_executor.get_quoted_schema_name(current_user)
+            quoted_schema = self.query_executor.get_quoted_schema_name(schema)
+            self.query_executor.execute_statement(
+                connection, f"ALTER USER {quoted_user} WITH DEFAULT_SCHEMA = {quoted_schema}"
+            )
+        except Exception as e:
+            self.log.warning(
+                f"SQL Server: could not set the connecting user's default schema to "
+                f"'{schema}'; unqualified object names may resolve against a "
+                f"different schema than --db-schema ({e})"
+            )
 
     def get_columns_query(self, schema: str, table: str) -> tuple[str, List[str]]:
         """Get a SQL Server-specific query to retrieve column information from a table.

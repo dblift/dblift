@@ -139,12 +139,32 @@ class TestSqlServerSchemaOperations(unittest.TestCase):
         result = ops.get_schemas(conn)
         self.assertEqual([], result)
 
-    def test_set_current_schema_is_noop(self):
+    def test_set_current_schema_alters_connecting_user_default_schema(self):
+        """Unqualified DDL must land in the configured schema (issue #806).
+
+        SQL Server has no session-level search path; ALTER USER ... WITH
+        DEFAULT_SCHEMA is the real equivalent, and it takes effect
+        immediately within the current session.
+        """
         ops, qe, log = self._make_ops()
         conn, _, _ = _make_connection()
-        # Should not raise, no execute calls
+        qe.execute_query.return_value = [{"db_user": "dblift_test"}]
+
         ops.set_current_schema(conn, "dbo")
+
+        qe.execute_statement.assert_called_once_with(
+            conn, "ALTER USER [dblift_test] WITH DEFAULT_SCHEMA = [dbo]"
+        )
+
+    def test_set_current_schema_logs_warning_when_it_cannot_determine_user(self):
+        ops, qe, log = self._make_ops()
+        conn, _, _ = _make_connection()
+        qe.execute_query.return_value = []  # can't resolve the connecting user
+
+        ops.set_current_schema(conn, "dbo")
+
         qe.execute_statement.assert_not_called()
+        log.warning.assert_called_once()
 
     def test_get_columns_query_returns_tuple(self):
         ops, qe, log = self._make_ops()
