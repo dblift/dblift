@@ -229,7 +229,11 @@ def test_execute_statement_alters_default_schema_once_across_multiple_statements
         lambda self, sql, schema=None, params=None: executed.append(sql) or 1,
     )
 
-    for stmt in ["CREATE TABLE t1 (id INT)", "CREATE TABLE t2 (id INT)", "CREATE TABLE t3 (id INT)"]:
+    for stmt in [
+        "CREATE TABLE t1 (id INT)",
+        "CREATE TABLE t2 (id INT)",
+        "CREATE TABLE t3 (id INT)",
+    ]:
         SqlServerProvider.execute_statement(provider, stmt, schema="target_schema")
 
     alter_statements = [s for s in executed if s.startswith("ALTER USER")]
