@@ -229,6 +229,10 @@ class MigrateCommand(BaseCommand):
             if type_value == MigrationType.REPEATABLE.value:
                 applied_rec = latest_repeatable_by_script.get(migration.script_name)
                 current_checksum = getattr(migration, "checksum", None)
+                # Only skip when both sides have a known, matching checksum —
+                # a missing checksum on either side (None) must never count as
+                # a match, or a repeatable that was never actually verified
+                # against this content would be silently skipped.
                 if (
                     applied_rec is not None
                     and applied_rec.checksum is not None
