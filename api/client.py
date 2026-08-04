@@ -511,7 +511,7 @@ class DBLiftClient:
         """
         self._guard_scripts_dir_kwarg(kwargs)
         self.events.emit(
-            EventType.MIGRATION_STARTED,
+            EventType.UNDO_STARTED,
             {
                 "target_version": target_version,
                 "dry_run": dry_run,
@@ -539,7 +539,7 @@ class DBLiftClient:
 
             if result.success:
                 self.events.emit(
-                    EventType.MIGRATION_COMPLETED,
+                    EventType.UNDO_COMPLETED,
                     {
                         "result": result,
                         "operation": "undo",
@@ -547,7 +547,7 @@ class DBLiftClient:
                 )
             else:
                 self.events.emit(
-                    EventType.MIGRATION_FAILED,
+                    EventType.UNDO_FAILED,
                     {
                         "error": getattr(result, "error_message", None),
                         "operation": "undo",
@@ -557,7 +557,7 @@ class DBLiftClient:
             return result
         except Exception as e:
             self.events.emit(
-                EventType.MIGRATION_FAILED,
+                EventType.UNDO_FAILED,
                 {
                     "error": str(e),
                     "operation": "undo",
@@ -671,7 +671,7 @@ class DBLiftClient:
         """
         self._guard_scripts_dir_kwarg(kwargs)
         self.events.emit(
-            EventType.MIGRATION_STARTED,
+            EventType.CLEAN_STARTED,
             {
                 "operation": "clean",
                 "dry_run": dry_run,
@@ -689,7 +689,7 @@ class DBLiftClient:
             )
 
             self.events.emit(
-                EventType.MIGRATION_COMPLETED,
+                EventType.CLEAN_COMPLETED,
                 {
                     "result": result,
                     "operation": "clean",
@@ -699,7 +699,7 @@ class DBLiftClient:
             return result
         except Exception as e:
             self.events.emit(
-                EventType.MIGRATION_FAILED,
+                EventType.CLEAN_FAILED,
                 {
                     "error": str(e),
                     "operation": "clean",
@@ -725,7 +725,7 @@ class DBLiftClient:
             BaselineResult with baseline details
         """
         self.events.emit(
-            EventType.MIGRATION_STARTED,
+            EventType.BASELINE_STARTED,
             {
                 "operation": "baseline",
                 "version": version,
@@ -740,7 +740,7 @@ class DBLiftClient:
             )
 
             self.events.emit(
-                EventType.MIGRATION_COMPLETED,
+                EventType.BASELINE_COMPLETED,
                 {
                     "result": result,
                     "operation": "baseline",
@@ -750,7 +750,7 @@ class DBLiftClient:
             return result
         except Exception as e:
             self.events.emit(
-                EventType.MIGRATION_FAILED,
+                EventType.BASELINE_FAILED,
                 {
                     "error": str(e),
                     "operation": "baseline",
@@ -781,7 +781,7 @@ class DBLiftClient:
         """
         self._guard_scripts_dir_kwarg(kwargs)
         self.events.emit(
-            EventType.MIGRATION_STARTED,
+            EventType.REPAIR_STARTED,
             {
                 "operation": "repair",
                 "dry_run": dry_run,
@@ -799,7 +799,7 @@ class DBLiftClient:
             )
 
             self.events.emit(
-                EventType.MIGRATION_COMPLETED,
+                EventType.REPAIR_COMPLETED,
                 {
                     "result": result,
                     "operation": "repair",
@@ -809,7 +809,7 @@ class DBLiftClient:
             return result
         except Exception as e:
             self.events.emit(
-                EventType.MIGRATION_FAILED,
+                EventType.REPAIR_FAILED,
                 {
                     "error": str(e),
                     "operation": "repair",
@@ -884,6 +884,30 @@ class DBLiftClient:
     preflight = _make_premium_stub_method("preflight")
 
     @classmethod
+    def _resolve_factory_client_cls(cls) -> type:
+        """The class ``from_config``/``from_config_file``/``from_sqlalchemy``
+        should construct.
+
+        Called on the base ``DBLiftClient`` class, this consults the same
+        ``dblift.client`` seam the CLI already uses
+        (``core.seams.client_factory.resolve_client_class``) so a
+        tier-provided subclass is returned when one is registered — the
+        documented ``from api.client import DBLiftClient`` entry point then
+        behaves like the CLI instead of always constructing the OSS class
+        (issue #753). Called on any other class — a caller already
+        constructing a specific subclass directly — the seam is not
+        consulted, so that explicit choice is never overridden.
+        """
+        if cls is not DBLiftClient:
+            return cls
+        # Imported here (not at module top) so tests can monkeypatch
+        # core.seams.client_factory.resolve_client_class per-call; a top-level
+        # `from ... import` would bind the function once and ignore later patches.
+        from core.seams.client_factory import resolve_client_class
+
+        return resolve_client_class()
+
+    @classmethod
     def from_config(
         cls,
         config: "DbliftConfig",
@@ -913,7 +937,9 @@ class DBLiftClient:
             kwargs["migrations_dir"] = migrations_dir
         return cast(
             Self,
-            client_from_config(config, logger, client_cls=cls, **kwargs),
+            client_from_config(
+                config, logger, client_cls=cls._resolve_factory_client_cls(), **kwargs
+            ),
         )
 
     @classmethod
@@ -939,7 +965,9 @@ class DBLiftClient:
             overrides["environment"] = environment
         return cast(
             Self,
-            client_from_config_file(config_path, logger, client_cls=cls, **overrides),
+            client_from_config_file(
+                config_path, logger, client_cls=cls._resolve_factory_client_cls(), **overrides
+            ),
         )
 
     @classmethod
@@ -983,7 +1011,7 @@ class DBLiftClient:
                 log_file,
                 connection=connection,
                 config=config,
-                client_cls=cls,
+                client_cls=cls._resolve_factory_client_cls(),
                 **kwargs,
             ),
         )

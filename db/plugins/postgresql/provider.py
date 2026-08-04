@@ -141,12 +141,32 @@ class PostgreSqlProvider(SqlAlchemyProvider):
     def create_migration_lock_table_if_not_exists(self, schema: str) -> None:
         """Create the PostgreSQL migration lock table if it is missing."""
         self.create_schema_if_not_exists(schema)
-        self.execute_statement(f"""
-            CREATE TABLE IF NOT EXISTS {self.get_schema_qualified_name(schema, self.MIGRATION_LOCK_TABLE)} (
-                lock_name VARCHAR(255) PRIMARY KEY,
-                locked_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-            """)
+        try:
+            self.execute_statement(f"""
+                CREATE TABLE IF NOT EXISTS {self.get_schema_qualified_name(schema, self.MIGRATION_LOCK_TABLE)} (
+                    lock_name VARCHAR(255) PRIMARY KEY,
+                    locked_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+                """)
+        except Exception as exc:
+            if "already exists" not in str(exc).lower():
+                raise
+            # Two first-ever migrate() calls can both reach this statement
+            # before either wins the advisory lock below. PostgreSQL can
+            # answer the loser with a duplicate-object error on the table's
+            # implicit row type instead of silently no-op'ing — the table is
+            # there either way, so roll back the aborted statement and
+            # continue rather than failing the migration.
+            self._rollback_failed_lock_table_create()
+
+    def _rollback_failed_lock_table_create(self) -> None:
+        connection = getattr(self, "_connection", None)
+        if connection is not None and not getattr(connection, "closed", False):
+            try:
+                connection.rollback()
+            except Exception as exc:
+                message = "Could not rollback failed migration-lock-table create"
+                raise RuntimeError(message) from exc
 
     def acquire_migration_lock(self, schema: str, wait_timeout_seconds: int = 60) -> bool:
         """Acquire the PostgreSQL advisory migration lock."""

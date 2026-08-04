@@ -19,6 +19,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   already deassociated from connection" warning. The provider now
   serializes access to its connection/transaction state with an
   instance-level lock. (#819)
+- **`undo()`, `clean()`, `baseline()`, and `repair()` never emitted their
+  dedicated `EventType` members.** `UNDO_STARTED`/`UNDO_COMPLETED`/
+  `UNDO_FAILED` and the equivalent `CLEAN_*`/`BASELINE_*`/`REPAIR_*` members
+  have been part of the public `EventType` enum, but `DBLiftClient` emitted
+  the generic `MIGRATION_STARTED`/`MIGRATION_COMPLETED`/`MIGRATION_FAILED`
+  events (with an `operation` field) for all four commands instead. A
+  listener subscribed to e.g. `EventType.CLEAN_STARTED` received nothing
+  when `clean()` ran, even though the command completed successfully. Each
+  command now emits its own dedicated started/completed/failed events,
+  matching how `migrate()` already emits `MIGRATION_*`. (#823)
+- **A typo'd top-level config key (e.g. `migratoins_dir`) was silently
+  ignored instead of surfacing an error.** Config loading is deliberately
+  permissive — unrecognized keys are dropped rather than rejected — so a
+  typo produced no error at all, just silently-wrong behavior from
+  unintended defaults. `db validate-config` now warns when it finds
+  unrecognized top-level keys. (#820)
+- **`migrate --dry-run`, `migrate --validate-only`, and `validate` accepted
+  `.sql` migrations against CosmosDB instead of rejecting them.** CosmosDB
+  only supports Python migrations, and real `migrate` already enforced that
+  via the `DBLIFT-NOSQL-001` guard — but that guard only ran on the
+  execution path, so the three validation-only paths reported success on a
+  migration that would fail the moment it actually ran. The check is now
+  shared between both paths, so all four commands agree. (#816)
+- **`DBLiftClient.from_config`/`from_config_file`/`from_sqlalchemy`, called on
+  the documented base client class, never picked up a tier-provided
+  subclass even when one was installed and registered.** The CLI already
+  resolved the correct client class through the `dblift.client` seam before
+  constructing it; the public factory methods always constructed the exact
+  class they were called on instead of consulting the same seam, so a
+  caller following the documented `DBLiftClient.from_config(...)` pattern
+  silently got the base client's stubbed-out paid-tier methods regardless
+  of what was installed. The factory methods now resolve through the seam
+  when called on the base class itself; calling them on an already-specific
+  subclass is unaffected. (#753)
 
 - **A repeatable migration could fail or silently double-apply when two
   `migrate()` processes raced for the migration lock.** The losing process
