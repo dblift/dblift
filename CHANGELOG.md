@@ -13,6 +13,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`Table.get_column()` could return `None` for columns that were present
+  on the table.** `Table` keeps an internal `_column_map` cache alongside
+  its public `columns` list, but the cache was only refreshed by
+  `add_column()`. Code that replaced the list wholesale — `table.columns =
+  [...]`, a common pattern for bulk-loading columns — left the cache stale,
+  so lookups by name silently failed even though the columns were there.
+  `columns` is now a property whose setter rebuilds `_column_map` on every
+  assignment, so `get_column()` stays correct regardless of how columns
+  were set. (#863)
 - **`validate-sql --dialect X` (no `--config`/`--db-url`) still required a
   database URL**, contradicting its own documented offline-only usage. The
   placeholder connection every dialect uses to unlock offline validation

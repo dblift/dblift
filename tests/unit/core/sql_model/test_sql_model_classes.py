@@ -577,6 +577,24 @@ class TestTable:
         not_found = table.get_column("email")
         assert not_found is None
 
+    def test_table_get_column_after_bulk_columns_reassignment(self):
+        """Reassigning ``table.columns`` wholesale must keep get_column() in sync.
+
+        Bulk-replacing the columns list (e.g. ``table.columns = new_columns``)
+        is a common pattern for introspection code that fetches all columns in
+        one call, rather than appending them one at a time via add_column().
+        get_column() must still find columns added this way.
+        """
+        table = Table("users", schema="PUBLIC")
+        id_column = SqlColumn("id", "INT")
+        name_column = SqlColumn("name", "VARCHAR(100)")
+
+        table.columns = [id_column, name_column]
+
+        assert table.get_column("id") == id_column
+        assert table.get_column("name") == name_column
+        assert table.get_column("email") is None
+
     def test_table_primary_key_operations(self):
         """Test primary key operations."""
         table = Table("users", schema="PUBLIC")
