@@ -13,6 +13,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`--log-file <path-with-directory>` (e.g. `logs/info.html`) landed under
+  a doubled directory** when `--log-dir` shared a path segment with it —
+  `logs/logs/info.html` instead of `logs/info.html`. `FileLog._get_log_file()`
+  always joined the `--log-file` pattern onto `log_dir` even when the
+  pattern already carried its own directory component. A pattern with a
+  directory component is now resolved relative to the current working
+  directory instead of being re-nested; a bare filename still nests under
+  `log_dir` as before. (#832)
+
 - **`--version` could report a stale, unrelated version on an archive/frozen
   distribution.** The version resolvers went straight to
   `importlib.metadata`, which scans the *host's* installed package metadata
