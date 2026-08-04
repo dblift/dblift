@@ -133,6 +133,14 @@ class SqlAlchemyProvider(NativeProvider):
         # cursor/transaction state concurrently (issue #819).
         self._lock = threading.RLock()
 
+    # Guards the one-time creation of a fallback ``_lock`` in ``__getattr__``
+    # below. Must be a class attribute created once at class-definition time
+    # (never per-instance) so every thread racing on the same stub-constructed
+    # instance synchronizes through the same lock before touching
+    # ``self.__dict__``; a per-instance lock would itself be subject to the
+    # same unsynchronized check-then-act it is meant to fix.
+    _lock_creation_lock = threading.Lock()
+
     def __getattr__(self, name: str) -> Any:
         """Fall back to a fresh lock for instances built without ``__init__``.
 
@@ -144,11 +152,17 @@ class SqlAlchemyProvider(NativeProvider):
         ``__getattr__`` only fires once normal lookup has already failed, so
         this never shadows the ``__init__``-assigned lock on a normally
         constructed provider.
+
+        Creation is guarded by the class-level ``_lock_creation_lock`` so that
+        concurrent first-touch access from multiple threads always converges
+        on the same ``RLock`` instance rather than each thread building and
+        installing its own.
         """
         if name == "_lock":
-            lock = threading.RLock()
-            self.__dict__["_lock"] = lock
-            return lock
+            with type(self)._lock_creation_lock:
+                if "_lock" not in self.__dict__:
+                    self.__dict__["_lock"] = threading.RLock()
+                return self.__dict__["_lock"]
         raise AttributeError(f"{type(self).__name__!r} object has no attribute {name!r}")
 
     @classmethod
@@ -217,11 +231,12 @@ class SqlAlchemyProvider(NativeProvider):
 
     def close(self) -> None:
         """Close the active connection and dispose of the engine."""
-        if self._tx is not None:
-            self._tx.rollback()
-            self._tx = None
-        self._conn_mgr.close()
-        self._connection = None
+        with self._lock:
+            if self._tx is not None:
+                self._tx.rollback()
+                self._tx = None
+            self._conn_mgr.close()
+            self._connection = None
 
     def is_connected(self) -> bool:
         """Return True if an open connection is held.
@@ -229,7 +244,8 @@ class SqlAlchemyProvider(NativeProvider):
         Returns:
             True if connected, False otherwise.
         """
-        return self._connection is not None and not self._connection.closed
+        with self._lock:
+            return self._connection is not None and not self._connection.closed
 
     def connect(self) -> None:
         """Connect to the database (convenience alias for create_connection)."""
