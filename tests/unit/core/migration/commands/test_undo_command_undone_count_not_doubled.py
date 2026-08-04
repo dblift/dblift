@@ -100,9 +100,9 @@ class TestUndoneCountNotDoubled:
 
         result = cmd.execute(scripts_dir=MagicMock(), target_version="0")
 
-        assert len(result.undone_migrations) == 2, (
-            f"Expected both migrations to be undone, got {len(result.undone_migrations)}"
-        )
+        assert (
+            len(result.undone_migrations) == 2
+        ), f"Expected both migrations to be undone, got {len(result.undone_migrations)}"
         assert result.undone_count == len(result.undone_migrations), (
             f"undone_count ({result.undone_count}) must equal "
             f"len(undone_migrations) ({len(result.undone_migrations)})"
