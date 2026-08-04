@@ -13,6 +13,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The batch `generate_undo_scripts()` API silently returned an empty list
+  for a migrations directory containing only Python migrations**, instead
+  of explaining why each file was skipped the way the single-file
+  `generate_undo_script()` API already does. Discovery now considers every
+  supported migration extension, not just `.sql`, so a non-SQL migration
+  gets the same per-file explanation in the batch result instead of being
+  silently dropped. (#834)
+
 - **`--version` could report a stale, unrelated version on an archive/frozen
   distribution.** The version resolvers went straight to
   `importlib.metadata`, which scans the *host's* installed package metadata
