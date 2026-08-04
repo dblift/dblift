@@ -13,6 +13,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`beforeEachMigrate`/`afterEachMigrate` callback banner lines only printed
+  for the first migration in a batch.** The callbacks executed correctly for
+  every migration, but the "Executing N beforeEachMigrate callback(s)" style
+  log lines are identical text on every migration (same callback set, same
+  script names), and the logger's time-window message deduplication silently
+  swallowed the repeats. The console/log output now shows one banner line
+  per migration, matching the actual execution count. (#829)
 - **`migrate()`'s result listed a Python migration's version twice.** The
   execution engine's non-SQL success path recorded the migration into the
   result, and the command layer recorded it again unconditionally — SQL
