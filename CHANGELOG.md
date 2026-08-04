@@ -20,6 +20,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   dialects lazily reconnect on demand, but CosmosDB doesn't, so it surfaced
   immediately. `baseline()` now establishes its connection up front, the
   same way `undo()` already does. (#821)
+- **`migrate --dry-run`, `migrate --validate-only`, and `validate` accepted
+  `.sql` migrations against CosmosDB instead of rejecting them.** CosmosDB
+  only supports Python migrations, and real `migrate` already enforced that
+  via the `DBLIFT-NOSQL-001` guard — but that guard only ran on the
+  execution path, so the three validation-only paths reported success on a
+  migration that would fail the moment it actually ran. The check is now
+  shared between both paths, so all four commands agree. (#816)
 - **`DBLiftClient.from_config`/`from_config_file`/`from_sqlalchemy`, called on
   the documented base client class, never picked up a tier-provided
   subclass even when one was installed and registered.** The CLI already

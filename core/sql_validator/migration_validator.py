@@ -5,8 +5,10 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
 
 from core.constants import TEST_PLACEHOLDER_TIME_MS
+from core.exceptions import UnsupportedMigrationFormatError
 from core.logger import Log, NullLog
 from core.migration._type_match import is_migration_type, is_versioned
+from core.migration.executors.executor_factory import check_format_supported
 from core.migration.history.migration_history_manager import MigrationHistoryManager
 from core.migration.migration import (
     Migration,
@@ -230,6 +232,35 @@ class MigrationValidator:
 
         return _impl(self, valid_scripts, issues)
 
+    def _validate_format_supported(
+        self, scripts: List[Migration], result: ValidationResult, issues: List[str]
+    ) -> bool:
+        """Reject a script whose format the dialect cannot run (DBLIFT-NOSQL-001).
+
+        Uses the same pure check ``ExecutionEngine.execute_migration`` runs
+        before a real (non-dry-run) migration executes, so ``validate``,
+        ``migrate --validate-only``, and ``migrate --dry-run`` — which all
+        resolve through this method — surface the same rejection up front
+        instead of reporting success for a ``.sql`` migration this dialect
+        can never run.
+        """
+        for script in scripts:
+            # ``format`` is set by every real Migration (from the file
+            # extension); test doubles built as bare SimpleNamespace/Mock
+            # objects for unrelated checks may omit it, and have nothing
+            # for this check to evaluate.
+            format = getattr(script, "format", None)
+            if format is None:
+                continue
+            try:
+                check_format_supported(self._quirks, format, script.script_name)
+            except UnsupportedMigrationFormatError as e:
+                result.success = False
+                result.error_message = str(e)
+                issues.append(str(e))
+                return False
+        return True
+
     def validate_resolved_migrations(
         self, migrations: List[Migration], command: str = "migrate"
     ) -> ValidationResult:
@@ -437,6 +468,15 @@ class MigrationValidator:
             )
 
             self.log.debug(f"[DEBUG] valid_scripts: {[s.script_name for s in valid_scripts]}")
+
+            # A .sql migration on a dialect with no SQL DDL (e.g. Cosmos DB) must be
+            # rejected here too, not only when it actually executes — otherwise
+            # `migrate --dry-run`, `--validate-only`, and `validate` all report
+            # success for a migration that real `migrate` would refuse to run.
+            if not self._validate_format_supported(valid_scripts, validation_result, issues):
+                validation_result.execution_time = TEST_PLACEHOLDER_TIME_MS
+                validation_result.issues = issues
+                return validation_result
 
             # Validate no scripts case
             should_return_early, validation_success = self._validate_no_scripts_case(
