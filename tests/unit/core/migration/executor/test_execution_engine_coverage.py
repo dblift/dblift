@@ -770,7 +770,13 @@ class TestCommitAndVerifyExtended(unittest.TestCase):
 class TestExecuteViaFactoryExtended(unittest.TestCase):
 
     def test_success_no_history_no_exception(self):
-        """Lines 866-906: success + no history_manager → just commit."""
+        """Lines 866-906: success + no history_manager → just commit.
+
+        ``_execute_via_factory`` does not add a MigrationInfo to the result on
+        success — the caller (MigrateCommand._execute_single_migration) does
+        that uniformly for every migration type. Adding it here too used to
+        duplicate the entry for non-SQL (e.g. Python) migrations (issue #835).
+        """
         engine = _make_engine(with_history=False)
         exec_result = MagicMock()
         exec_result.success = True
@@ -785,7 +791,7 @@ class TestExecuteViaFactoryExtended(unittest.TestCase):
             engine._execute_via_factory(migration, result)
 
         engine.provider.commit_transaction.assert_called_once()
-        result.add_migration.assert_called_once()
+        result.add_migration.assert_not_called()
 
     def test_failure_path_records_failed_history(self):
         """Lines 907-952: exec_result.success=False → rollback + record FAILED history."""
