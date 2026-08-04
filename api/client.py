@@ -616,7 +616,10 @@ class DBLiftClient:
 
         Args:
             migration_paths: List of paths to versioned SQL migration files (V*__.sql).
-                             If None, finds all versioned SQL migrations in migrations_dir.
+                             If None, finds all versioned migrations in migrations_dir.
+                             Non-SQL migrations (e.g. Python) are included in the results
+                             with an error explaining why they were skipped, since automatic
+                             undo generation only supports SQL migrations.
             migrations_dir: Directory to search for migrations (default: configured migrations dir)
             overwrite: Whether to overwrite existing undo scripts
             recursive: Search migrations directory recursively
