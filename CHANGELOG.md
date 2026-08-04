@@ -23,6 +23,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   when `clean()` ran, even though the command completed successfully. Each
   command now emits its own dedicated started/completed/failed events,
   matching how `migrate()` already emits `MIGRATION_*`. (#823)
+- **`DBLiftClient.from_config`/`from_config_file`/`from_sqlalchemy`, called on
+  the documented base client class, never picked up a tier-provided
+  subclass even when one was installed and registered.** The CLI already
+  resolved the correct client class through the `dblift.client` seam before
+  constructing it; the public factory methods always constructed the exact
+  class they were called on instead of consulting the same seam, so a
+  caller following the documented `DBLiftClient.from_config(...)` pattern
+  silently got the base client's stubbed-out paid-tier methods regardless
+  of what was installed. The factory methods now resolve through the seam
+  when called on the base class itself; calling them on an already-specific
+  subclass is unaffected. (#753)
 
 - **A repeatable migration could fail or silently double-apply when two
   `migrate()` processes raced for the migration lock.** The losing process
