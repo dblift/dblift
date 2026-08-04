@@ -13,6 +13,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`--log-level DEBUG`'s `scripts_dir:` trace line could name a directory
+  that was never scanned.** The logged value and the directory actually
+  used for scanning were resolved two different ways — one against the
+  config file's own directory, the other against the current working
+  directory — and diverged whenever the two differed. The trace now logs
+  the client's own resolved scripts directory, the same value the scanner
+  actually uses. Logging only; scan behavior is unchanged. (#833)
+
 - **`--version` could report a stale, unrelated version on an archive/frozen
   distribution.** The version resolvers went straight to
   `importlib.metadata`, which scans the *host's* installed package metadata
