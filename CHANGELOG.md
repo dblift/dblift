@@ -18,6 +18,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   placeholder connection every dialect uses to unlock offline validation
   was `None` for every plugin. Dialects now declare a real placeholder,
   restoring `--dialect`-only validation. (#825)
+- **`--log-level DEBUG`'s `scripts_dir:` trace line could name a directory
+  that was never scanned.** The logged value and the directory actually
+  used for scanning were resolved two different ways — one against the
+  config file's own directory, the other against the current working
+  directory — and diverged whenever the two differed. The trace now logs
+  the client's own resolved scripts directory, the same value the scanner
+  actually uses. Logging only; scan behavior is unchanged. (#833)
+- **`beforeEachMigrate`/`afterEachMigrate` callback banner lines only printed
+  for the first migration in a batch.** The callbacks executed correctly for
+  every migration, but the "Executing N beforeEachMigrate callback(s)" style
+  log lines are identical text on every migration (same callback set, same
+  script names), and the logger's time-window message deduplication silently
+  swallowed the repeats. The console/log output now shows one banner line
+  per migration, matching the actual execution count. (#829)
+- **`migrate()`'s result listed a Python migration's version twice.** The
+  execution engine's non-SQL success path recorded the migration into the
+  result, and the command layer recorded it again unconditionally — SQL
+  migrations only hit the second, so only Python migrations doubled.
+  Execution itself was always correct; this was a result-payload
+  construction bug only. (#835)
+- **A genuine (non-race) error creating the PostgreSQL migration-lock table
+  or schema left the connection unusable afterward.** The rollback that
+  clears an aborted transaction only ran for the already-handled
+  concurrent-create race case; any other error (e.g. a permissions
+  failure) re-raised without rolling back, leaving the connection in a
+  failed-transaction state for whatever ran next. Rollback now runs for
+  any caught failure before deciding whether to swallow it (race case) or
+  re-raise it (genuine error). (#851)
+- **The batch `generate_undo_scripts()` API silently returned an empty list
+  for a migrations directory containing only Python migrations**, instead
+  of explaining why each file was skipped the way the single-file
+  `generate_undo_script()` API already does. Discovery now considers every
+  supported migration extension, not just `.sql`, so a non-SQL migration
+  gets the same per-file explanation in the batch result instead of being
+  silently dropped. (#834)
 - **`--log-file <path-with-directory>` (e.g. `logs/info.html`) landed under
   a doubled directory** when `--log-dir` shared a path segment with it —
   `logs/logs/info.html` instead of `logs/info.html`. `FileLog._get_log_file()`

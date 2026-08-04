@@ -958,18 +958,13 @@ class ExecutionEngine:
                         _rollback_best_effort()
                         return
 
-                if hasattr(result, "add_migration"):
-                    result.add_migration(
-                        MigrationInfo(
-                            script=migration.script_name,
-                            version=migration.version,
-                            description=migration.description,
-                            type=migration_type,
-                            status="SUCCESS",
-                            execution_time=elapsed_ms,
-                            checksum=migration.checksum,
-                        )
-                    )
+                # Do not add a successful MigrationInfo to the result here: the
+                # caller (MigrateCommand._execute_single_migration) already adds
+                # one for every migration that completes without an error,
+                # covering both SQL and non-SQL formats uniformly. Adding one
+                # here too duplicated the entry for non-SQL (e.g. Python)
+                # migrations, since the SQL execution path never adds one on
+                # success (issue #835).
                 self.log.info(
                     f"Migration {migration.script_name} executed successfully in {elapsed_ms}ms"
                 )
