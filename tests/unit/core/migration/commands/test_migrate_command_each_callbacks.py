@@ -131,3 +131,35 @@ def test_each_callback_banner_logs_once_per_migration_in_a_batch():
         "expected one banner line per migration in the batch, got "
         f"{len(banner_lines)}: {logged_messages}"
     )
+
+
+@pytest.mark.unit
+def test_each_callback_banner_falls_back_when_len_raises():
+    """A callbacks collection that declares ``__len__`` but raises on call
+    (a malformed/duck-typed collection) must still log a banner line,
+    falling back to a plain "callback(s)" message instead of propagating."""
+
+    class _BrokenLen:
+        def __len__(self):
+            raise TypeError("len() not actually supported")
+
+        def __iter__(self):
+            return iter([SimpleNamespace(script_name="beforeEachMigrate__mark.sql")])
+
+        def __bool__(self):
+            return True
+
+    command = MigrateCommand.__new__(MigrateCommand)
+    command.log = MagicMock()
+    command.execution_engine = MagicMock()
+    command.script_manager = MagicMock()
+    command.script_manager.get_callbacks_by_event.return_value = _BrokenLen()
+
+    command._execute_callbacks(Path("migrations"), "beforeEachMigrate", True, None, None)
+
+    banner_calls = [
+        call.args[0]
+        for call in command.log.info.call_args_list
+        if call.args[0].startswith("Executing") and "callback(s)" in call.args[0]
+    ]
+    assert banner_calls == ["Executing beforeEachMigrate callback(s)"]
