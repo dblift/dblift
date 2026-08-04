@@ -572,6 +572,7 @@ class BaseCommand:
         *,
         ensure_history: bool = False,
         dry_run: bool = False,
+        create_schema: bool = False,
     ) -> None:
         """Run the canonical pre-execute lifecycle for every command.
 
@@ -581,9 +582,9 @@ class BaseCommand:
              any metadata read or DDL.
           2. ``create_schema_and_history_table()`` when
              ``ensure_history=True`` AND not ``dry_run`` — commands that
-             require the history table (``migrate``, ``info``) call this
-             idempotently; dry-run skips it (PR-02 byte-identical
-             contract).
+             require the history table (``migrate``, ``info``, ``undo``,
+             ``baseline``) call this idempotently; dry-run skips it
+             (PR-02 byte-identical contract).
           3. ``_populate_database_info(result)`` — reads live connection
              metadata onto the result. Must come AFTER phases 1 and 2
              because it calls provider methods that require a connection
@@ -598,17 +599,31 @@ class BaseCommand:
         Args:
             result: OperationResult to populate with database metadata.
             ensure_history: If True, create the schema history table when
-                not in dry-run. ``migrate`` and ``info`` pass True;
-                ``clean`` passes False (it doesn't need history).
+                not in dry-run. ``migrate``, ``info``, ``undo`` and
+                ``baseline`` pass True; ``clean`` passes False (it doesn't
+                need history).
             dry_run: Skip history-table creation when True, regardless
                 of ``ensure_history``. ``_ensure_connected`` and
                 ``_populate_database_info`` still run — dry-run must
-                still produce accurate output.
+                still produce accurate output. Pass the command's own
+                dry-run flag only when that command must skip the
+                history table as a dry-run side effect (``migrate``,
+                ``baseline``); leave it at the default when the command
+                always needs the history table regardless of its own
+                dry-run mode (``undo``).
+            create_schema: Forwarded to
+                ``create_schema_and_history_table(create_schema=...)``.
+                ``migrate``/``info``/``undo`` pass False (schema is
+                expected to already exist); ``baseline`` passes True
+                (it may be the first command run against a fresh
+                database).
         """
         self._ensure_connected()
         if ensure_history and not dry_run:
             try:
-                self.history_manager.create_schema_and_history_table(create_schema=False)
+                self.history_manager.create_schema_and_history_table(
+                    create_schema=create_schema
+                )
             except Exception as exc:
                 from db.error import format_connection_error
 
