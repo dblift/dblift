@@ -336,8 +336,13 @@ class DirectoryConfig:
         if isinstance(data, str):
             return cls(path=data, recursive=True)
         elif isinstance(data, dict):
+            # Accept 'directory' as an alias for 'path' — it mirrors the
+            # top-level migrations.directory field name, so it's a natural
+            # key for users to reach for here. Without this, an entry keyed
+            # on 'directory' silently resolves to an empty path and finds
+            # nothing.
             return cls(
-                path=data.get("path", ""),
+                path=data.get("path", data.get("directory", "")),
                 recursive=data.get("recursive", True),
             )
         else:
