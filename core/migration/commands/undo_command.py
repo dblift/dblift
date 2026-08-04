@@ -341,20 +341,20 @@ class UndoCommand(BaseCommand):
             self.log.info(f"Found {len(migrations_to_undo)} migration(s) to undo")
 
             if dry_run:
-                if show_sql:
-                    for migration in migrations_to_undo:
-                        undo_migration = self._find_undo_script(
-                            migration,
-                            all_scripts,
-                            tags=normalized_tags,
-                            exclude_tags=normalized_exclude_tags,
-                        )
-                        if undo_migration is None:
-                            error_msg = f"No undo script found for {migration.script_name}"
-                            self.log.error(error_msg)
-                            result.set_error(error_msg)
-                            self._log_command_completion("undo", result)
-                            return result
+                for migration in migrations_to_undo:
+                    undo_migration = self._find_undo_script(
+                        migration,
+                        all_scripts,
+                        tags=normalized_tags,
+                        exclude_tags=normalized_exclude_tags,
+                    )
+                    if undo_migration is None:
+                        error_msg = f"No undo script found for {migration.script_name}"
+                        self.log.error(error_msg)
+                        result.set_error(error_msg)
+                        self._log_command_completion("undo", result)
+                        return result
+                    if show_sql:
                         if undo_migration.format == MigrationFormat.PYTHON:
                             self._add_empty_visible_sql(undo_migration, result)
                         else:
