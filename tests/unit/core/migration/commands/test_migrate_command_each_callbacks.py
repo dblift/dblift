@@ -126,9 +126,7 @@ def test_each_callback_banner_logs_once_per_migration_in_a_batch():
             None,
         )
 
-    banner_lines = [
-        m for m in logged_messages if m.startswith("Executing") and "callback(s)" in m
-    ]
+    banner_lines = [m for m in logged_messages if m.startswith("Executing") and "callback(s)" in m]
     assert len(banner_lines) == 2, (
         "expected one banner line per migration in the batch, got "
         f"{len(banner_lines)}: {logged_messages}"
