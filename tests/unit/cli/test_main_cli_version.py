@@ -114,3 +114,108 @@ class TestResolveCoreVersion:
             resolved = _resolve_core_version()
 
         assert resolved == "1.2.3-frozen"
+
+
+@pytest.mark.unit
+class TestResolveManifestVersion:
+    """A ``DISTRIBUTION-MANIFEST.json`` next to the running entry point is
+    stamped at build time with the version of the bundled archive/frozen
+    distribution — it can't be shadowed by whatever happens to be sitting in
+    the host's site-packages, unlike ``importlib.metadata``."""
+
+    def test_reads_version_from_manifest(self, tmp_path, monkeypatch):
+        from cli.main import _resolve_manifest_version
+
+        (tmp_path / "DISTRIBUTION-MANIFEST.json").write_text(
+            '{"version": "3.2.0", "artifact_type": "archive"}', encoding="utf-8"
+        )
+        monkeypatch.setattr("cli.main._project_root", tmp_path)
+
+        assert _resolve_manifest_version() == "3.2.0"
+
+    def test_returns_none_when_manifest_absent(self, tmp_path, monkeypatch):
+        """A plain ``pip install`` never ships this file — no-op, not an error."""
+        from cli.main import _resolve_manifest_version
+
+        monkeypatch.setattr("cli.main._project_root", tmp_path)
+
+        assert _resolve_manifest_version() is None
+
+    def test_returns_none_on_malformed_manifest(self, tmp_path, monkeypatch):
+        from cli.main import _resolve_manifest_version
+
+        (tmp_path / "DISTRIBUTION-MANIFEST.json").write_text("not json", encoding="utf-8")
+        monkeypatch.setattr("cli.main._project_root", tmp_path)
+
+        assert _resolve_manifest_version() is None
+
+    def test_returns_none_on_valid_json_that_is_not_an_object(self, tmp_path, monkeypatch):
+        from cli.main import _resolve_manifest_version
+
+        (tmp_path / "DISTRIBUTION-MANIFEST.json").write_text("[1, 2, 3]", encoding="utf-8")
+        monkeypatch.setattr("cli.main._project_root", tmp_path)
+
+        assert _resolve_manifest_version() is None
+
+    def test_returns_none_when_version_field_missing(self, tmp_path, monkeypatch):
+        from cli.main import _resolve_manifest_version
+
+        (tmp_path / "DISTRIBUTION-MANIFEST.json").write_text(
+            '{"artifact_type": "archive"}', encoding="utf-8"
+        )
+        monkeypatch.setattr("cli.main._project_root", tmp_path)
+
+        assert _resolve_manifest_version() is None
+
+
+@pytest.mark.unit
+class TestFormatVersionWithManifest:
+    """Reproduces the exact archive-distribution failure from issue #745: a
+    stale/unrelated ``dblift``/``dblift-pro``/``dblift-enterprise`` install
+    sitting in the host's site-packages must not win over the version stamped
+    in the bundled distribution's own manifest."""
+
+    def test_manifest_headlines_over_disagreeing_metadata(self):
+        """Host site-packages has stale 2.x installs; the archive's manifest
+        says 3.2.0. The manifest must win the headline."""
+        from cli.main import _format_version
+
+        installed = {"dblift-pro": "2.2.0", "dblift-enterprise": "2.2.0"}
+        with patch("cli.main._resolve_core_version", return_value="2.0.0"):
+            with patch("cli.main._resolve_manifest_version", return_value="3.2.0"):
+                with patch("importlib.metadata.version", _fake_version(installed)):
+                    out = _format_version()
+
+        lines = out.splitlines()
+        assert lines[0] == "dblift version 3.2.0"
+        # Manifest has no per-tier breakdown, so the component lines are
+        # unaffected -- this documents current, not ideal, behavior.
+        assert any("core (OSS)" in line and "2.0.0" in line for line in lines[1:])
+        assert any(line.strip().startswith("pro:") and "2.2.0" in line for line in lines[1:])
+        assert any(line.strip().startswith("enterprise:") and "2.2.0" in line for line in lines[1:])
+
+    def test_manifest_headlines_pure_oss_archive(self):
+        """A pure-OSS archive (no pro/enterprise installed at all) with a
+        manifest still headlines from the manifest and stays a single line."""
+        from cli.main import _format_version
+
+        with patch("cli.main._resolve_core_version", return_value="2.0.0"):
+            with patch("cli.main._resolve_manifest_version", return_value="3.2.0"):
+                with patch("importlib.metadata.version", _fake_version({})):
+                    out = _format_version()
+
+        assert out == "dblift version 3.2.0"
+
+    def test_no_manifest_is_unaffected(self):
+        """No manifest present (normal ``pip install``) -- behavior is
+        unchanged from before this fix."""
+        from cli.main import _format_version
+
+        installed = {"dblift-pro": "2.4.0"}
+        with patch("cli.main._resolve_core_version", return_value="2.3.0"):
+            with patch("cli.main._resolve_manifest_version", return_value=None):
+                with patch("importlib.metadata.version", _fake_version(installed)):
+                    out = _format_version()
+
+        lines = out.splitlines()
+        assert lines[0] == "dblift version 2.4.0"
