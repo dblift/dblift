@@ -884,6 +884,27 @@ class DBLiftClient:
     preflight = _make_premium_stub_method("preflight")
 
     @classmethod
+    def _resolve_factory_client_cls(cls) -> type:
+        """The class ``from_config``/``from_config_file``/``from_sqlalchemy``
+        should construct.
+
+        Called on the base ``DBLiftClient`` class, this consults the same
+        ``dblift.client`` seam the CLI already uses
+        (``core.seams.client_factory.resolve_client_class``) so a
+        tier-provided subclass is returned when one is registered — the
+        documented ``from api.client import DBLiftClient`` entry point then
+        behaves like the CLI instead of always constructing the OSS class
+        (issue #753). Called on any other class — a caller already
+        constructing a specific subclass directly — the seam is not
+        consulted, so that explicit choice is never overridden.
+        """
+        if cls is not DBLiftClient:
+            return cls
+        from core.seams.client_factory import resolve_client_class
+
+        return resolve_client_class()
+
+    @classmethod
     def from_config(
         cls,
         config: "DbliftConfig",
@@ -913,7 +934,9 @@ class DBLiftClient:
             kwargs["migrations_dir"] = migrations_dir
         return cast(
             Self,
-            client_from_config(config, logger, client_cls=cls, **kwargs),
+            client_from_config(
+                config, logger, client_cls=cls._resolve_factory_client_cls(), **kwargs
+            ),
         )
 
     @classmethod
@@ -939,7 +962,9 @@ class DBLiftClient:
             overrides["environment"] = environment
         return cast(
             Self,
-            client_from_config_file(config_path, logger, client_cls=cls, **overrides),
+            client_from_config_file(
+                config_path, logger, client_cls=cls._resolve_factory_client_cls(), **overrides
+            ),
         )
 
     @classmethod
@@ -983,7 +1008,7 @@ class DBLiftClient:
                 log_file,
                 connection=connection,
                 config=config,
-                client_cls=cls,
+                client_cls=cls._resolve_factory_client_cls(),
                 **kwargs,
             ),
         )
