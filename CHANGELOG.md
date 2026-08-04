@@ -13,6 +13,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`--version` could report a stale, unrelated version on an archive/frozen
+  distribution.** The version resolvers went straight to
+  `importlib.metadata`, which scans the *host's* installed package metadata
+  rather than verifying it belongs to the code actually executing — so an
+  extracted distribution running under a Python whose site-packages held an
+  older `dblift` install reported that older version instead of its own. When
+  a `DISTRIBUTION-MANIFEST.json` is present next to the running entry point —
+  stamped at build time with the version of the bundled code, and immune to
+  whatever happens to be installed on the host — `--version`'s headline now
+  prefers it. A plain `pip install` never ships this file, so that path is
+  unaffected. (#745)
 - **Concurrent calls into one shared `DBLiftClient` (e.g. multiple threads
   calling `.info()`) could race on `SqlAlchemyProvider`'s single cached
   connection**, intermittently raising errors or leaking a "transaction

@@ -220,6 +220,31 @@ def _resolve_core_version() -> Optional[str]:
         return None
 
 
+def _resolve_manifest_version() -> Optional[str]:
+    """Return the ``version`` field of a ``DISTRIBUTION-MANIFEST.json`` sitting
+    next to the running entry point, if one is present.
+
+    An archive/frozen distribution ships this file at its root, stamped at
+    build time with the version of the code it actually bundles. Unlike
+    ``importlib.metadata``, it cannot be shadowed by an unrelated distribution
+    that happens to be installed elsewhere on the host — so when present, it
+    is the most authoritative source for "what version is this". A real
+    ``pip install`` never ships this file, so this is a no-op there.
+    """
+    import json
+
+    manifest_file = _project_root / "DISTRIBUTION-MANIFEST.json"
+    try:
+        with open(manifest_file, "r", encoding="utf-8") as f:
+            manifest = json.load(f)
+        version = manifest.get("version")
+        if isinstance(version, str) and version:
+            return version
+    except (OSError, ValueError):
+        pass
+    return None
+
+
 def _format_version() -> str:
     """Render the ``--version`` output.
 
@@ -231,6 +256,11 @@ def _format_version() -> str:
     is present, list every component so a bare number is never ambiguous. In a
     plain OSS install only the core is present, so the output stays a single
     ``dblift version X`` line — unchanged from before.
+
+    An archive/frozen distribution's ``DISTRIBUTION-MANIFEST.json``, when
+    present, overrides the headline: it is stamped at build time and immune to
+    whatever unrelated ``dblift``/``dblift-pro``/``dblift-enterprise``
+    metadata happens to be installed on the host running it.
     """
     from importlib.metadata import PackageNotFoundError
     from importlib.metadata import version as _version
@@ -245,8 +275,9 @@ def _format_version() -> str:
     pro = _get("dblift-pro")
     enterprise = _get("dblift-enterprise")
 
-    # Headline = most-derived installed tier (the product actually running).
-    product = enterprise or pro or core
+    # Headline = manifest version (bundled distribution) if present, else the
+    # most-derived installed tier (the product actually running).
+    product = _resolve_manifest_version() or enterprise or pro or core
     lines = [f"dblift version {product}"]
     # Component manifest only when a paid tier is present; OSS stays one line.
     if pro or enterprise:
