@@ -236,16 +236,27 @@ class BaseCommand:
         )
 
         if callbacks:
+            # dedupe=False: for each-migration events (beforeEachMigrate,
+            # afterEachMigrate, ...), this method is called once per migration
+            # in the batch, and the message text is identical every time
+            # (same callback set, same script names). The logger's time-window
+            # deduplication otherwise silently swallows these lines for every
+            # migration but the first, even though the callbacks themselves
+            # execute for every migration.
             try:
                 callback_count = len(callbacks) if hasattr(callbacks, "__len__") else "some"
-                self.log.info(f"Executing {callback_count} {event_prefix} callback(s)")
+                self.log.info(
+                    f"Executing {callback_count} {event_prefix} callback(s)", dedupe=False
+                )
             except (TypeError, AttributeError):
-                self.log.info(f"Executing {event_prefix} callback(s)")
+                self.log.info(f"Executing {event_prefix} callback(s)", dedupe=False)
             for callback in callbacks:
                 try:
-                    self.log.info(f"Executing callback: {callback.script_name}")
+                    self.log.info(f"Executing callback: {callback.script_name}", dedupe=False)
                     self.execution_engine.execute_callback(callback)
-                    self.log.info(f"Callback {callback.script_name} executed successfully")
+                    self.log.info(
+                        f"Callback {callback.script_name} executed successfully", dedupe=False
+                    )
                 except Exception as e:
                     # Error callbacks (afterMigrateError, afterCleanError, afterUndoError) should only log warnings
                     # Regular callbacks should fail the entire operation

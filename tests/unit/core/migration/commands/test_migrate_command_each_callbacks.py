@@ -82,3 +82,54 @@ def test_failing_beforeEachMigrate_callback_surfaces_its_own_error():
     assert result.error_message is not None
     assert "no such table: err_log" in result.error_message
     assert "start_time" not in result.error_message
+
+
+@pytest.mark.unit
+def test_each_callback_banner_logs_once_per_migration_in_a_batch():
+    """The "Executing N <event> callback(s)" banner must log once per
+    migration in a batch, not just for the first migration.
+
+    Regression test for issue #829: the banner is emitted via
+    ``self.log.info()`` with the logger's default ``dedupe=True``. Because the
+    same callback set (and therefore the identical message text) is
+    dispatched before every migration in a batch, the logger's time-window
+    deduplication silently swallowed the banner for every migration but the
+    first, even though the callbacks themselves executed correctly for each
+    migration (confirmed via a side-effect log table in the original report).
+    """
+    from core.logger.log import AbstractLog
+
+    logged_messages: list[str] = []
+
+    class _RecordingLog(AbstractLog):
+        def _write_log_event(self, event, console_only=False):
+            logged_messages.append(event.message)
+
+    command = MigrateCommand.__new__(MigrateCommand)
+    command.log = _RecordingLog("test")
+    command.execution_engine = MagicMock()
+
+    callback = SimpleNamespace(script_name="beforeEachMigrate__mark.sql")
+    command.script_manager = MagicMock()
+    command.script_manager.get_callbacks_by_event.return_value = [callback]
+
+    scripts_dir = Path("migrations")
+
+    # Simulate the per-migration dispatch that _execute_single_migration does
+    # for a 2-migration batch, each with a matching beforeEachMigrate callback.
+    for _ in range(2):
+        command._execute_callbacks(
+            scripts_dir,
+            "beforeEachMigrate",
+            True,
+            None,
+            None,
+        )
+
+    banner_lines = [
+        m for m in logged_messages if m.startswith("Executing") and "callback(s)" in m
+    ]
+    assert len(banner_lines) == 2, (
+        "expected one banner line per migration in the batch, got "
+        f"{len(banner_lines)}: {logged_messages}"
+    )
