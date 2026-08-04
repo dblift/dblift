@@ -511,7 +511,7 @@ class DBLiftClient:
         """
         self._guard_scripts_dir_kwarg(kwargs)
         self.events.emit(
-            EventType.MIGRATION_STARTED,
+            EventType.UNDO_STARTED,
             {
                 "target_version": target_version,
                 "dry_run": dry_run,
@@ -539,7 +539,7 @@ class DBLiftClient:
 
             if result.success:
                 self.events.emit(
-                    EventType.MIGRATION_COMPLETED,
+                    EventType.UNDO_COMPLETED,
                     {
                         "result": result,
                         "operation": "undo",
@@ -547,7 +547,7 @@ class DBLiftClient:
                 )
             else:
                 self.events.emit(
-                    EventType.MIGRATION_FAILED,
+                    EventType.UNDO_FAILED,
                     {
                         "error": getattr(result, "error_message", None),
                         "operation": "undo",
@@ -557,7 +557,7 @@ class DBLiftClient:
             return result
         except Exception as e:
             self.events.emit(
-                EventType.MIGRATION_FAILED,
+                EventType.UNDO_FAILED,
                 {
                     "error": str(e),
                     "operation": "undo",
@@ -671,7 +671,7 @@ class DBLiftClient:
         """
         self._guard_scripts_dir_kwarg(kwargs)
         self.events.emit(
-            EventType.MIGRATION_STARTED,
+            EventType.CLEAN_STARTED,
             {
                 "operation": "clean",
                 "dry_run": dry_run,
@@ -689,7 +689,7 @@ class DBLiftClient:
             )
 
             self.events.emit(
-                EventType.MIGRATION_COMPLETED,
+                EventType.CLEAN_COMPLETED,
                 {
                     "result": result,
                     "operation": "clean",
@@ -699,7 +699,7 @@ class DBLiftClient:
             return result
         except Exception as e:
             self.events.emit(
-                EventType.MIGRATION_FAILED,
+                EventType.CLEAN_FAILED,
                 {
                     "error": str(e),
                     "operation": "clean",
@@ -725,7 +725,7 @@ class DBLiftClient:
             BaselineResult with baseline details
         """
         self.events.emit(
-            EventType.MIGRATION_STARTED,
+            EventType.BASELINE_STARTED,
             {
                 "operation": "baseline",
                 "version": version,
@@ -740,7 +740,7 @@ class DBLiftClient:
             )
 
             self.events.emit(
-                EventType.MIGRATION_COMPLETED,
+                EventType.BASELINE_COMPLETED,
                 {
                     "result": result,
                     "operation": "baseline",
@@ -750,7 +750,7 @@ class DBLiftClient:
             return result
         except Exception as e:
             self.events.emit(
-                EventType.MIGRATION_FAILED,
+                EventType.BASELINE_FAILED,
                 {
                     "error": str(e),
                     "operation": "baseline",
@@ -781,7 +781,7 @@ class DBLiftClient:
         """
         self._guard_scripts_dir_kwarg(kwargs)
         self.events.emit(
-            EventType.MIGRATION_STARTED,
+            EventType.REPAIR_STARTED,
             {
                 "operation": "repair",
                 "dry_run": dry_run,
@@ -799,7 +799,7 @@ class DBLiftClient:
             )
 
             self.events.emit(
-                EventType.MIGRATION_COMPLETED,
+                EventType.REPAIR_COMPLETED,
                 {
                     "result": result,
                     "operation": "repair",
@@ -809,7 +809,7 @@ class DBLiftClient:
             return result
         except Exception as e:
             self.events.emit(
-                EventType.MIGRATION_FAILED,
+                EventType.REPAIR_FAILED,
                 {
                     "error": str(e),
                     "operation": "repair",

@@ -32,6 +32,10 @@ _START_EVENTS = (
     "migration.script.started",
     "validation.started",
     "info.started",
+    "undo.started",
+    "clean.started",
+    "baseline.started",
+    "repair.started",
 )
 _END_EVENTS = (
     "migration.completed",
@@ -42,6 +46,14 @@ _END_EVENTS = (
     "validation.failed",
     "info.completed",
     "info.failed",
+    "undo.completed",
+    "undo.failed",
+    "clean.completed",
+    "clean.failed",
+    "baseline.completed",
+    "baseline.failed",
+    "repair.completed",
+    "repair.failed",
 )
 _FAIL_EVENTS = frozenset(e for e in _END_EVENTS if e.endswith(".failed"))
 
@@ -66,6 +78,14 @@ def _span_name(event: Event) -> str:
         return "dblift.script"
     if et == "migration.started":
         return f"dblift.{event.operation or 'migrate'}"
+    if et == "undo.started":
+        return "dblift.undo"
+    if et == "clean.started":
+        return "dblift.clean"
+    if et == "baseline.started":
+        return "dblift.baseline"
+    if et == "repair.started":
+        return "dblift.repair"
     if et == "validation.started":
         return "dblift.validate"
     return "dblift.info"
@@ -111,8 +131,9 @@ class OtelHandle:
                     return
                 # Defensive drain: if a top-level op end (e.g. migration.failed) arrives while
                 # a script child span is still open (missing script.*.failed in some error paths),
-                # close the leaked child first as ERROR so nesting stays correct.
-                if et in ("migration.completed", "migration.failed"):
+                # close the leaked child first as ERROR so nesting stays correct. ``undo`` also
+                # emits migration.script.* child events for each rolled-back script.
+                if et in ("migration.completed", "migration.failed", "undo.completed", "undo.failed"):
                     while self._stack and self._stack[-1][2] == "dblift.script":
                         child, child_token, _ = self._stack.pop()
                         _set_attrs(child, event)
