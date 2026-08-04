@@ -176,6 +176,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   window. See the troubleshooting guide for the resulting recommendation:
   don't share one SQL Server login across concurrent dblift runs targeting
   different schemas. (#806)
+- **CosmosDB: a container name containing a single quote (e.g.
+  `o'brien_orders`) produced a broken `DROP TABLE` comment.** The
+  generated `context.db.delete_container(...)` snippet hand-wrapped the
+  container name in single quotes, so an embedded quote broke out of the
+  wrapping and left mismatched quotes in the emitted text. The name is now
+  rendered with Python's `!r` formatting, which escapes embedded quotes
+  correctly. (#858)
 
 ### Removed
 
