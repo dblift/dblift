@@ -8,6 +8,7 @@ headline and lists every present component so a bare number is never ambiguous.
 In a plain OSS install only the core is present, so the output stays one line.
 """
 
+import types
 from importlib.metadata import PackageNotFoundError
 from unittest.mock import patch
 
@@ -21,6 +22,17 @@ def _fake_version(installed):
         if name in installed:
             return installed[name]
         raise PackageNotFoundError(name)
+
+    return _inner
+
+
+def _fake_import_module(modules):
+    """Build an ``importlib.import_module`` stand-in from a name->module map."""
+
+    def _inner(name):
+        if name in modules:
+            return modules[name]
+        raise ModuleNotFoundError(name)
 
     return _inner
 
@@ -219,3 +231,63 @@ class TestFormatVersionWithManifest:
 
         lines = out.splitlines()
         assert lines[0] == "dblift version 2.4.0"
+
+
+@pytest.mark.unit
+class TestFormatVersionBreakdownPrefersDirectImport:
+    """The breakdown lines resolve installed-package versions the same way the
+    headline already resolves the core version: a directly-importable
+    package's own ``__version__`` is preferred over installed distribution
+    metadata, which can be stale if the host environment has leftover/unrelated
+    metadata for a package name that a newer running copy also uses."""
+
+    def test_prefers_direct_import_version_over_metadata(self):
+        """A directly-importable package reporting its own ``__version__``
+        must win over ``importlib.metadata.version``, which may be stale."""
+        from cli.main import _format_version
+
+        fake_pro = types.SimpleNamespace(__version__="9.9.9-direct")
+        installed = {"dblift-pro": "2.4.0"}
+        with patch("cli.main._resolve_core_version", return_value="2.3.0"):
+            with patch("importlib.metadata.version", _fake_version(installed)):
+                with patch(
+                    "importlib.import_module",
+                    _fake_import_module({"dblift_pro": fake_pro}),
+                ):
+                    out = _format_version()
+
+        lines = out.splitlines()
+        assert any(
+            line.strip().startswith("pro:") and "9.9.9-direct" in line for line in lines[1:]
+        )
+        assert not any("2.4.0" in line for line in lines)
+
+    def test_falls_back_to_metadata_when_not_importable(self):
+        """No direct-import candidate available -- metadata is used, unchanged."""
+        from cli.main import _format_version
+
+        installed = {"dblift-pro": "2.4.0"}
+        with patch("cli.main._resolve_core_version", return_value="2.3.0"):
+            with patch("importlib.metadata.version", _fake_version(installed)):
+                with patch("importlib.import_module", _fake_import_module({})):
+                    out = _format_version()
+
+        lines = out.splitlines()
+        assert any(line.strip().startswith("pro:") and "2.4.0" in line for line in lines[1:])
+
+    def test_falls_back_to_metadata_when_no_version_attribute(self):
+        """Importable but no ``__version__`` attribute -- metadata is used."""
+        from cli.main import _format_version
+
+        fake_pro = types.SimpleNamespace()
+        installed = {"dblift-pro": "2.4.0"}
+        with patch("cli.main._resolve_core_version", return_value="2.3.0"):
+            with patch("importlib.metadata.version", _fake_version(installed)):
+                with patch(
+                    "importlib.import_module",
+                    _fake_import_module({"dblift_pro": fake_pro}),
+                ):
+                    out = _format_version()
+
+        lines = out.splitlines()
+        assert any(line.strip().startswith("pro:") and "2.4.0" in line for line in lines[1:])
