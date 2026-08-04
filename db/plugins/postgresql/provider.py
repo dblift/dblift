@@ -161,8 +161,12 @@ class PostgreSqlProvider(SqlAlchemyProvider):
 
     def _rollback_failed_lock_table_create(self) -> None:
         connection = getattr(self, "_connection", None)
-        if connection is not None:
-            connection.rollback()
+        if connection is not None and not getattr(connection, "closed", False):
+            try:
+                connection.rollback()
+            except Exception as exc:
+                message = "Could not rollback failed migration-lock-table create"
+                raise RuntimeError(message) from exc
 
     def acquire_migration_lock(self, schema: str, wait_timeout_seconds: int = 60) -> bool:
         """Acquire the PostgreSQL advisory migration lock."""

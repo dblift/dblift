@@ -239,7 +239,42 @@ def test_create_migration_lock_table_survives_concurrent_duplicate_object_race()
 
     provider.execute_statement = raise_duplicate_object
     provider._connection = MagicMock()
+    provider._connection.closed = False
 
     provider.create_migration_lock_table_if_not_exists("public")
 
     provider._connection.rollback.assert_called_once()
+
+
+def test_create_migration_lock_table_reraises_unrelated_errors():
+    """A failure unrelated to the race (e.g. a permissions error) must still
+    propagate -- the "already exists" match must not be so broad it masks a
+    genuinely different failure."""
+    provider = _Provider()
+
+    def raise_permission_denied(sql, schema=None, params=None):
+        if "CREATE TABLE IF NOT EXISTS" in sql:
+            raise Exception("permission denied for schema public")
+        provider.statements.append((sql, schema, params))
+        return 1
+
+    provider.execute_statement = raise_permission_denied
+    provider._connection = MagicMock()
+
+    with pytest.raises(Exception, match="permission denied"):
+        provider.create_migration_lock_table_if_not_exists("public")
+
+    provider._connection.rollback.assert_not_called()
+
+
+def test_rollback_failed_lock_table_create_wraps_rollback_failure():
+    """If the rollback itself fails (e.g. the connection was already
+    dropped by the server after the abort), the caller must get a clear,
+    labeled error instead of a raw driver exception."""
+    provider = _Provider()
+    provider._connection = MagicMock()
+    provider._connection.closed = False
+    provider._connection.rollback.side_effect = Exception("connection already closed")
+
+    with pytest.raises(RuntimeError, match="Could not rollback"):
+        provider._rollback_failed_lock_table_create()
