@@ -13,6 +13,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`dblift --version`'s per-package breakdown lines could report a stale
+  version for an installed package**, even though the headline already
+  avoided this for the core version. The breakdown lines now try a direct
+  import of each package first and prefer its own `__version__` attribute,
+  falling back to installed distribution metadata only when the package
+  isn't importable or doesn't expose one — the same preference the headline
+  already applies to avoid stale host-installed metadata. (#854)
 - **`undo()`'s `undone_count` was incremented twice per undone migration.**
   `UndoResult.add_undone_migration()` already derives `undone_count` from
   `len(undone_migrations)`, but the command layer also did a redundant

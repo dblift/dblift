@@ -262,11 +262,25 @@ def _format_version() -> str:
     present, overrides the headline: it is stamped at build time and immune to
     whatever unrelated ``dblift``/``dblift-pro``/``dblift-enterprise``
     metadata happens to be installed on the host running it.
+
+    The breakdown lines apply that same preference at the component level: a
+    directly-importable package's own ``__version__`` attribute is tried
+    before ``importlib.metadata.version``, for consistency with how the
+    headline already avoids stale host-installed metadata.
     """
+    import importlib
     from importlib.metadata import PackageNotFoundError
     from importlib.metadata import version as _version
 
     def _get(dist: str) -> Optional[str]:
+        try:
+            module = importlib.import_module(dist.replace("-", "_"))
+            module_version = getattr(module, "__version__", None)
+            if isinstance(module_version, str) and module_version:
+                return module_version
+        except Exception:
+            # A broken install shouldn't crash --version; fall back to metadata.
+            pass
         try:
             return _version(dist)
         except PackageNotFoundError:
