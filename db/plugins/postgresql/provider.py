@@ -86,15 +86,18 @@ class PostgreSqlProvider(SqlAlchemyProvider):
         try:
             self.execute_statement(f"CREATE SCHEMA IF NOT EXISTS {_quote_identifier(schema)}")
         except Exception as exc:
+            # Any failure here aborts the current transaction, so roll back
+            # before deciding how to handle it -- otherwise the connection is
+            # left in a failed-transaction state for whatever runs next.
+            self._rollback_failed_create_race("schema")
             if "already exists" not in str(exc).lower():
                 raise
             # Two racing processes against a genuinely nonexistent schema can
             # both pass the SELECT EXISTS check above before either one
             # creates it. PostgreSQL can answer the loser with a unique
             # violation on pg_namespace instead of silently no-op'ing -- the
-            # schema is there either way, so roll back the aborted statement
-            # and continue rather than failing the caller.
-            self._rollback_failed_create_race("schema")
+            # schema is there either way, so treat the rolled-back race as
+            # success rather than failing the caller.
 
     def table_exists(self, schema: str, table_name: str) -> bool:
         """Return whether a table exists in the given schema."""
@@ -160,15 +163,18 @@ class PostgreSqlProvider(SqlAlchemyProvider):
                 )
                 """)
         except Exception as exc:
+            # Any failure here aborts the current transaction, so roll back
+            # before deciding how to handle it -- otherwise the connection is
+            # left in a failed-transaction state for whatever runs next.
+            self._rollback_failed_create_race("migration-lock-table")
             if "already exists" not in str(exc).lower():
                 raise
             # Two first-ever migrate() calls can both reach this statement
             # before either wins the advisory lock below. PostgreSQL can
             # answer the loser with a duplicate-object error on the table's
             # implicit row type instead of silently no-op'ing — the table is
-            # there either way, so roll back the aborted statement and
-            # continue rather than failing the migration.
-            self._rollback_failed_create_race("migration-lock-table")
+            # there either way, so treat the rolled-back race as success
+            # rather than failing the migration.
 
     def _rollback_failed_create_race(self, what: str) -> None:
         connection = getattr(self, "_connection", None)
