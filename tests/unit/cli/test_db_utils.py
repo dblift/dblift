@@ -146,6 +146,69 @@ class TestValidateConfig:
         assert "Error validating configuration" in captured.err
 
 
+class TestValidateConfigUnrecognizedTopLevelKeys:
+    """Issue 820: a typo'd/unrecognized top-level config key is silently
+    ignored today. ``validate-config`` should warn about it instead of
+    running as if the key didn't exist.
+    """
+
+    def _write_config(self, tmp_path, body):
+        config_path = tmp_path / "dblift.yaml"
+        config_path.write_text(body)
+        return str(config_path)
+
+    def _make_args(self, config_path):
+        return argparse.Namespace(
+            config=config_path,
+            db_url=None,
+            db_username=None,
+            db_password=None,
+            db_schema=None,
+            env=None,
+            command="validate-config",
+            commands_list=None,
+            installed_by=None,
+            format=None,
+        )
+
+    def test_warns_on_unrecognized_top_level_key(self, tmp_path, capsys):
+        config_path = self._write_config(
+            tmp_path,
+            """
+database:
+  type: sqlite
+  path: ./test.db
+migratoins_dir: ./migrations
+""",
+        )
+
+        result = validate_config(self._make_args(config_path))
+
+        assert result == 0
+        captured = capsys.readouterr()
+        assert "migratoins_dir" in captured.err
+        assert "Warning" in captured.err
+
+    def test_no_warning_for_config_with_only_valid_keys(self, tmp_path, capsys):
+        config_path = self._write_config(
+            tmp_path,
+            """
+database:
+  type: sqlite
+  path: ./test.db
+migrations:
+  directory: ./migrations
+history_table: my_history
+""",
+        )
+
+        result = validate_config(self._make_args(config_path))
+
+        assert result == 0
+        captured = capsys.readouterr()
+        assert "unrecognized" not in captured.err.lower()
+
+
 class TestDiagnoseConnection:
     """Test diagnose_connection functionality."""
 
