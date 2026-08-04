@@ -20,6 +20,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   dialects lazily reconnect on demand, but CosmosDB doesn't, so it surfaced
   immediately. `baseline()` now establishes its connection up front, the
   same way `undo()` already does. (#821)
+- **`undo()`, `clean()`, `baseline()`, and `repair()` never emitted their
+  dedicated `EventType` members.** `UNDO_STARTED`/`UNDO_COMPLETED`/
+  `UNDO_FAILED` and the equivalent `CLEAN_*`/`BASELINE_*`/`REPAIR_*` members
+  have been part of the public `EventType` enum, but `DBLiftClient` emitted
+  the generic `MIGRATION_STARTED`/`MIGRATION_COMPLETED`/`MIGRATION_FAILED`
+  events (with an `operation` field) for all four commands instead. A
+  listener subscribed to e.g. `EventType.CLEAN_STARTED` received nothing
+  when `clean()` ran, even though the command completed successfully. Each
+  command now emits its own dedicated started/completed/failed events,
+  matching how `migrate()` already emits `MIGRATION_*`. (#823)
 - **A typo'd top-level config key (e.g. `migratoins_dir`) was silently
   ignored instead of surfacing an error.** Config loading is deliberately
   permissive — unrecognized keys are dropped rather than rejected — so a

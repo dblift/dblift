@@ -79,3 +79,35 @@ def test_undo_produces_undo_spans(tmp_path, exporter):
     names = {s.name for s in exporter.get_finished_spans()}
     assert "dblift.undo" in names
     assert "dblift.script" in names
+
+
+def test_clean_produces_clean_span(tmp_path, exporter):
+    client = _client(tmp_path)
+    client.migrate()
+    instrument(client)
+    client.clean(clean_enabled=True)
+
+    names = {s.name for s in exporter.get_finished_spans()}
+    assert "dblift.clean" in names
+
+
+def test_baseline_produces_baseline_span(tmp_path, exporter):
+    migrations = tmp_path / "migrations"
+    migrations.mkdir()
+    engine = create_engine(f"sqlite:///{tmp_path/'db.sqlite'}")
+    client = DBLiftClient.from_sqlalchemy(engine, migrations_dir=str(migrations))
+    instrument(client)
+    client.baseline("1.0.0")
+
+    names = {s.name for s in exporter.get_finished_spans()}
+    assert "dblift.baseline" in names
+
+
+def test_repair_produces_repair_span(tmp_path, exporter):
+    client = _client(tmp_path)
+    client.migrate()
+    instrument(client)
+    client.repair()
+
+    names = {s.name for s in exporter.get_finished_spans()}
+    assert "dblift.repair" in names

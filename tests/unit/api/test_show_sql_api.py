@@ -71,7 +71,9 @@ class TestShowSqlApi:
         client.undo(show_sql=True)
 
         started_call = client.events.emit.call_args_list[0]
-        assert started_call.args[0] is EventType.MIGRATION_STARTED
+        # Issue #823: undo() emits the dedicated UNDO_STARTED event instead
+        # of the generic MIGRATION_STARTED with operation="undo".
+        assert started_call.args[0] is EventType.UNDO_STARTED
         assert started_call.args[1]["operation"] == "undo"
         assert started_call.args[1]["show_sql"] is True
         assert client.executor.undo.call_args.kwargs["show_sql"] is True
