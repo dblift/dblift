@@ -133,7 +133,12 @@ class OtelHandle:
                 # a script child span is still open (missing script.*.failed in some error paths),
                 # close the leaked child first as ERROR so nesting stays correct. ``undo`` also
                 # emits migration.script.* child events for each rolled-back script.
-                if et in ("migration.completed", "migration.failed", "undo.completed", "undo.failed"):
+                if et in (
+                    "migration.completed",
+                    "migration.failed",
+                    "undo.completed",
+                    "undo.failed",
+                ):
                     while self._stack and self._stack[-1][2] == "dblift.script":
                         child, child_token, _ = self._stack.pop()
                         _set_attrs(child, event)
