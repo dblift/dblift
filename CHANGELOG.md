@@ -21,6 +21,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   longer matched `len(undone_migrations)`. Removed the redundant increment;
   `add_undone_migration()` is now the sole source of truth for the count.
   (#855)
+- **`Table.get_column()` could return `None` for columns that were present
+  on the table.** `Table` keeps an internal `_column_map` cache alongside
+  its public `columns` list, but the cache was only refreshed by
+  `add_column()`. Code that replaced the list wholesale — `table.columns =
+  [...]`, a common pattern for bulk-loading columns — left the cache stale,
+  so lookups by name silently failed even though the columns were there.
+  `columns` is now a property whose setter rebuilds `_column_map` on every
+  assignment, so `get_column()` stays correct regardless of how columns
+  were set. (#863)
 - **`validate-sql --dialect X` (no `--config`/`--db-url`) still required a
   database URL**, contradicting its own documented offline-only usage. The
   placeholder connection every dialect uses to unlock offline validation
@@ -184,6 +193,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   window. See the troubleshooting guide for the resulting recommendation:
   don't share one SQL Server login across concurrent dblift runs targeting
   different schemas. (#806)
+- **CosmosDB: a container name containing a single quote (e.g.
+  `o'brien_orders`) produced a broken `DROP TABLE` comment.** The
+  generated `context.db.delete_container(...)` snippet hand-wrapped the
+  container name in single quotes, so an embedded quote broke out of the
+  wrapping and left mismatched quotes in the emitted text. The name is now
+  rendered with Python's `!r` formatting, which escapes embedded quotes
+  correctly. (#858)
 
 ### Removed
 

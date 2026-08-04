@@ -77,7 +77,7 @@ class Table(SqlObject):
         ``TableOptions`` and call ``Table.from_options(...)`` instead.
         """
         super().__init__(name, object_type, schema, dialect)
-        self.columns = columns or []
+        self.columns = columns or []  # goes through the columns.setter below
 
         # Ensure columns inherit the dialect
         for col in self.columns:
@@ -120,8 +120,8 @@ class Table(SqlObject):
         # ``dialect_options`` is initialized by ``SqlObject.__init__``; plugin
         # write sites use ``set_dialect_option`` / ``get_dialect_option`` from
         # the base class.
-
-        self._column_map = {col.name.lower(): col for col in self.columns}
+        # (``self.columns = columns or []`` above already populated
+        # ``_column_map`` via the columns.setter.)
 
         # Track if tablespace was explicitly set
         if tablespace is not None:
@@ -311,6 +311,24 @@ class Table(SqlObject):
             raw_ddl=self.raw_ddl,
         )
 
+    @property
+    def columns(self) -> List[SqlColumn]:
+        """The table's columns, in declaration order."""
+        return self._columns
+
+    @columns.setter
+    def columns(self, value: Optional[List[SqlColumn]]) -> None:
+        """Replace the table's columns wholesale and rebuild ``_column_map``.
+
+        Bulk-assigning ``table.columns = [...]`` (rather than calling
+        ``add_column`` per column) used to leave ``_column_map`` — the index
+        backing ``get_column()`` — stale, since the two were only kept in
+        sync by convention. Routing both paths through this setter makes
+        ``get_column()`` reliable regardless of how columns were set.
+        """
+        self._columns = value or []
+        self._column_map = {col.name.lower(): col for col in self._columns}
+
     def add_column(self, column: SqlColumn) -> None:
         """Add a column to the table.
 
@@ -321,7 +339,7 @@ class Table(SqlObject):
         if not hasattr(column, "dialect") or not column.dialect:
             column.dialect = self.dialect
 
-        self.columns.append(column)
+        self._columns.append(column)
         self._column_map[column.name.lower()] = column
 
     def get_column(self, name: str) -> Optional[SqlColumn]:

@@ -103,7 +103,7 @@ class CosmosdbQuirks(BaseQuirks):
             return (
                 f"-- CosmosDB containers are dropped through the Azure SDK, not SQL.\n"
                 f"-- In a Python migration: "
-                f"context.db.delete_container('{obj_name}')"
+                f"context.db.delete_container({obj_name!r})"
             )
         if obj_type == "INDEX":
             return (
