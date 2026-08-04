@@ -13,6 +13,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`baseline()` failed with "CosmosDB provider has no active connection" when
+  it was the first operation called on a fresh client.** Unlike
+  `info()`/`migrate()`/`undo()`, `baseline_command.py` never called the
+  shared `_ensure_connected()` helper before touching the provider — most
+  dialects lazily reconnect on demand, but CosmosDB doesn't, so it surfaced
+  immediately. `baseline()` now establishes its connection up front, the
+  same way `undo()` already does. (#821)
+
 - **A repeatable migration could fail or silently double-apply when two
   `migrate()` processes raced for the migration lock.** The losing process
   already re-checks and skips versioned migrations another process applied
