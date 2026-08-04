@@ -900,6 +900,9 @@ class DBLiftClient:
         """
         if cls is not DBLiftClient:
             return cls
+        # Imported here (not at module top) so tests can monkeypatch
+        # core.seams.client_factory.resolve_client_class per-call; a top-level
+        # `from ... import` would bind the function once and ignore later patches.
         from core.seams.client_factory import resolve_client_class
 
         return resolve_client_class()
