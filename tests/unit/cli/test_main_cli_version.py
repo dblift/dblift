@@ -291,3 +291,23 @@ class TestFormatVersionBreakdownPrefersDirectImport:
 
         lines = out.splitlines()
         assert any(line.strip().startswith("pro:") and "2.4.0" in line for line in lines[1:])
+
+    def test_falls_back_to_metadata_when_import_raises_non_import_error(self):
+        """A package that's importable but broken (raises something other than
+        ImportError during import, e.g. a corrupted install) must not crash
+        --version -- it falls back to metadata like any other unusable import."""
+        from cli.main import _format_version
+
+        def _broken_import(name):
+            if name == "dblift_pro":
+                raise AttributeError("simulated broken install")
+            raise ModuleNotFoundError(name)
+
+        installed = {"dblift-pro": "2.4.0"}
+        with patch("cli.main._resolve_core_version", return_value="2.3.0"):
+            with patch("importlib.metadata.version", _fake_version(installed)):
+                with patch("importlib.import_module", _broken_import):
+                    out = _format_version()
+
+        lines = out.splitlines()
+        assert any(line.strip().startswith("pro:") and "2.4.0" in line for line in lines[1:])

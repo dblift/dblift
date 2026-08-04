@@ -278,7 +278,8 @@ def _format_version() -> str:
             module_version = getattr(module, "__version__", None)
             if isinstance(module_version, str) and module_version:
                 return module_version
-        except ImportError:
+        except Exception:
+            # A broken install shouldn't crash --version; fall back to metadata.
             pass
         try:
             return _version(dist)
