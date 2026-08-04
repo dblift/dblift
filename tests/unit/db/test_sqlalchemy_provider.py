@@ -7,9 +7,11 @@ remaining abstract slots so we can instantiate and exercise the real
 behaviour.
 """
 
+import threading
+import time
 from types import SimpleNamespace
 from typing import Any, Dict, List, Optional
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -812,3 +814,255 @@ def test_autocommit_statement_keeps_unrelated_execution_options(cfg: DbliftConfi
         assert conn.get_execution_options().get("isolation_level") is None
     finally:
         provider.close()
+
+
+# ---------------------------------------------------------------------------
+# Thread safety (issue #819) — concurrent read-only calls on one shared
+# provider must not race on its single cached connection.
+# ---------------------------------------------------------------------------
+
+
+def test_concurrent_execute_query_from_several_threads_does_not_race(tmp_path: Any) -> None:
+    """Several threads sharing one provider must not race on its cached connection.
+
+    ``DBLiftClient.info()`` fans out into several calls to
+    ``provider.execute_query`` / ``execute_statement`` against the single
+    ``Connection`` object cached on the provider (see ``create_connection``).
+    Nothing guarded that shared state, so concurrent callers on one client
+    instance could pass the "no connection yet" check together, each install
+    a connection of their own onto ``self._connection``, and tear down a
+    sibling's still-live connection out from under it — exactly the failure
+    mode the bug report describes (an ``AssertionError``, ``success=False``
+    with no message, and a leaked "transaction already deassociated from
+    connection" warning), reported against Citus but rooted in this
+    dialect-agnostic base class.
+
+    Deterministic reproduction: two chokepoints on the connection lifecycle
+    are each patched with a short sleep — a plain sleep, not a rendezvous the
+    fix's lock would starve, since the fix must remain free to serialize
+    threads one at a time through them without the test itself deadlocking.
+    ``NativeConnectionManager.create_connection`` (the swap-in of a fresh
+    connection onto the provider's cached ``self._connection``) widens the
+    window in which several threads that all saw "no connection yet" are
+    still creating one together. ``_escape_driver_percent_literals`` (called
+    immediately before every ``exec_driver_sql``, i.e. right after a thread
+    has *obtained* a connection and is about to use it) widens the window in
+    which a thread is actively using a connection a sibling could still tear
+    down. Several independent rounds, each against a fresh never-yet-connected
+    provider so every thread's first call is the racy one, drive the odds of
+    the whole test run missing the bug to effectively zero without relying on
+    a single lucky interleaving.
+    """
+    from db.native_connection_manager import NativeConnectionManager
+
+    # A real on-disk file (not ``:memory:``) so the table exists for every
+    # round's freshly-constructed provider — an in-memory SQLite database is
+    # private to whichever connection created it.
+    db_path = tmp_path / "race.db"
+    file_cfg = DbliftConfig.from_dict({"database": {"type": "sqlite", "path": str(db_path)}})
+
+    setup_provider = _Concrete(file_cfg)
+    setup_provider.create_connection()
+    setup_provider.execute_statement("CREATE TABLE t (id INTEGER)")
+    setup_provider.execute_statement("INSERT INTO t (id) VALUES (1)")
+    setup_provider.close()
+
+    real_create_connection = NativeConnectionManager.create_connection
+
+    def slow_create_connection(self: NativeConnectionManager) -> Any:
+        time.sleep(0.02)
+        return real_create_connection(self)
+
+    real_escape = SqlAlchemyProvider.__dict__["_escape_driver_percent_literals"].__func__
+
+    def slow_escape(sql: str, paramstyle: str) -> str:
+        time.sleep(0.02)
+        return real_escape(sql, paramstyle)
+
+    thread_count = 5
+    rounds = 15
+    errors: List[BaseException] = []
+    errors_lock = threading.Lock()
+
+    with (
+        patch.object(NativeConnectionManager, "create_connection", slow_create_connection),
+        patch.object(
+            SqlAlchemyProvider, "_escape_driver_percent_literals", staticmethod(slow_escape)
+        ),
+    ):
+        for _ in range(rounds):
+            # A fresh, never-yet-connected provider each round: every
+            # thread's first call is the one guaranteed to see "no
+            # connection yet", win or lose the race.
+            provider = _Concrete(file_cfg)
+            start_barrier = threading.Barrier(thread_count)
+
+            def worker() -> None:
+                try:
+                    start_barrier.wait()
+                    rows = provider.execute_query("SELECT id FROM t")
+                    assert rows == [{"id": 1}], f"unexpected rows: {rows!r}"
+                except BaseException as exc:  # noqa: BLE001 - collected and reported below
+                    with errors_lock:
+                        errors.append(exc)
+
+            threads = [threading.Thread(target=worker) for _ in range(thread_count)]
+            for t in threads:
+                t.start()
+            for t in threads:
+                t.join(timeout=30)
+
+            provider.close()
+
+    assert not errors, f"Concurrent execute_query raised on a shared connection: {errors!r}"
+
+
+def test_concurrent_close_races_readers_without_raising(tmp_path: Any) -> None:
+    """``close()`` racing concurrent readers on a shared client must not raise.
+
+    ``DBLiftClient.close()``/``__exit__`` reach ``SqlAlchemyProvider.close()``,
+    and ``BaseCommand._ensure_connected()`` (phase 1 of every command,
+    including ``InfoCommand``) reaches ``is_connected()`` — both read/mutate
+    the same cached ``self._connection`` that ``execute_query`` et al. use.
+    Before this fix neither method took ``self._lock``, so a concurrent
+    ``close()`` was free to run *while a reader thread's own lock-protected
+    section was already in flight* (the reader's lock does nothing to stop an
+    unlocked caller), nulling ``self._connection`` and disposing the engine
+    out from under a sibling mid ``execute_query``. Confirmed live (see task):
+    racing ``close()`` against concurrent readers reliably raised
+    ``sqlalchemy.exc.ResourceClosedError: This Connection is closed`` — the
+    same family of failure as the original bug report's
+    ``ConnectionError: transaction already deassociated from connection``.
+
+    Reproduction needs the provider already connected (so readers actually
+    reach the query path instead of finding ``is_connected() is False`` and
+    stopping) and a wide-enough window inside the locked section for the
+    closer to land its unlocked ``close()`` mid-flight — provided here by
+    patching ``_escape_driver_percent_literals`` (called from inside
+    ``execute_query``'s critical section, right before the connection is
+    used) to sleep. Many independent short-lived providers (one per round),
+    each racing several readers against one closer via a barrier plus a
+    short closer-side delay, drive the odds of missing the window to
+    effectively zero: this reproduces on every round pre-fix.
+    """
+    real_escape = SqlAlchemyProvider.__dict__["_escape_driver_percent_literals"].__func__
+
+    def slow_escape(sql: str, paramstyle: str) -> str:
+        time.sleep(0.05)
+        return real_escape(sql, paramstyle)
+
+    reader_count = 6
+    rounds = 25
+    errors: List[BaseException] = []
+    errors_lock = threading.Lock()
+
+    with patch.object(
+        SqlAlchemyProvider, "_escape_driver_percent_literals", staticmethod(slow_escape)
+    ):
+        for round_index in range(rounds):
+            db_path = tmp_path / f"race_close_{round_index}.db"
+            file_cfg = DbliftConfig.from_dict(
+                {"database": {"type": "sqlite", "path": str(db_path)}}
+            )
+
+            setup_provider = _Concrete(file_cfg)
+            setup_provider.create_connection()
+            setup_provider.execute_statement("CREATE TABLE t (id INTEGER)")
+            setup_provider.execute_statement("INSERT INTO t (id) VALUES (1)")
+            setup_provider.close()
+
+            provider = _Concrete(file_cfg)
+            provider.create_connection()
+            start_barrier = threading.Barrier(reader_count + 1)
+
+            def reader() -> None:
+                try:
+                    start_barrier.wait()
+                    connected = provider.is_connected()
+                    if connected:
+                        rows = provider.execute_query("SELECT id FROM t")
+                        assert rows == [{"id": 1}], f"unexpected rows: {rows!r}"
+                except BaseException as exc:  # noqa: BLE001 - collected and reported below
+                    with errors_lock:
+                        errors.append(exc)
+
+            def closer() -> None:
+                start_barrier.wait()
+                # Give readers a head start into their locked, sleeping
+                # section before close() (unlocked, pre-fix) races in.
+                time.sleep(0.01)
+                provider.close()
+
+            threads = [threading.Thread(target=reader) for _ in range(reader_count)]
+            threads.append(threading.Thread(target=closer))
+            for t in threads:
+                t.start()
+            for t in threads:
+                t.join(timeout=30)
+
+    assert not errors, f"Concurrent close() raced a reader unsafely: {errors!r}"
+
+
+def test_getattr_lock_fallback_converges_on_one_lock_under_concurrent_first_touch() -> None:
+    """Concurrent first-touch access to the ``__getattr__`` fallback lock must agree.
+
+    Some existing test doubles construct a provider through
+    ``object.__new__`` (skipping ``__init__``, e.g.
+    ``test_query_executor_exposes_mysql_identifier_helpers`` above), so
+    ``self._lock`` is never assigned and the first access falls through to
+    ``__getattr__``. Before this fix that fallback was an unsynchronized
+    check-then-act (build a lock, then store it), so many threads touching
+    ``obj._lock`` for the first time simultaneously could each observe the
+    attribute missing, each build their own ``RLock``, and each overwrite the
+    previous store — leaving different threads holding different lock
+    objects with zero mutual exclusion between them. All threads must
+    converge on exactly one ``RLock`` instance.
+
+    The unsynchronized version of ``__getattr__`` returns the *local*
+    ``lock`` variable it just built, not whatever ends up stored on
+    ``self.__dict__`` — so even a single interleaving between two threads'
+    "check missing, then construct" is enough for both to walk away with
+    their own distinct object. In plain execution the whole check-construct-
+    store sequence is fast enough that the GIL rarely switches threads mid
+    sequence, so the race is real but easy to miss by chance (confirmed live:
+    the reviewer needed 32 threads to catch it 3-ways-distinct). To make the
+    reproduction deterministic rather than lucky, ``threading.RLock`` is
+    patched (module-locally, in ``db.sqlalchemy_provider``) to add a short
+    sleep between construction and return — this only widens the window
+    threads race inside, it does not change what either version of
+    ``__getattr__`` does with the result.
+    """
+    import db.sqlalchemy_provider as sqlalchemy_provider_module
+
+    real_rlock = threading.RLock
+
+    def slow_rlock(*args: Any, **kwargs: Any) -> threading.RLock:
+        lock = real_rlock(*args, **kwargs)
+        time.sleep(0.01)
+        return lock
+
+    instance = object.__new__(_Concrete)
+    thread_count = 32
+    observed: List[threading.RLock] = []
+    observed_lock = threading.Lock()
+    start_barrier = threading.Barrier(thread_count)
+
+    def touch() -> None:
+        start_barrier.wait()
+        lock = instance._lock
+        with observed_lock:
+            observed.append(lock)
+
+    with patch.object(sqlalchemy_provider_module.threading, "RLock", slow_rlock):
+        threads = [threading.Thread(target=touch) for _ in range(thread_count)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join(timeout=30)
+
+    assert len(observed) == thread_count
+    distinct_ids = {id(lock) for lock in observed}
+    assert len(distinct_ids) == 1, (
+        f"Expected every thread to converge on one RLock, got {len(distinct_ids)} distinct "
+        "lock objects — threads holding different locks have no mutual exclusion between them."
+    )
