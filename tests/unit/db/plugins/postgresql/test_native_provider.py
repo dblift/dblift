@@ -1,5 +1,7 @@
 """PostgreSQL native provider contract tests."""
 
+from unittest.mock import MagicMock
+
 import pytest
 
 from db.plugins.postgresql.postgresql.locking_manager import _get_advisory_lock_key
@@ -216,3 +218,28 @@ def test_release_uses_same_deterministic_advisory_key():
 
     expected_key = _get_advisory_lock_key("public")
     assert provider.queries[-1][0] == f"SELECT pg_advisory_unlock({expected_key}) AS released"
+
+
+def test_create_migration_lock_table_survives_concurrent_duplicate_object_race():
+    """Two first-ever ``migrate()`` calls both run ``CREATE TABLE IF NOT
+    EXISTS`` before either one reaches the advisory lock that is meant to
+    serialize them. PostgreSQL can respond to the loser with a
+    ``DuplicateObject`` error on the table's implicit row type instead of
+    silently no-op'ing, so the table-creation step must treat that as
+    success instead of letting it fail the whole migration."""
+    provider = _Provider()
+
+    def raise_duplicate_object(sql, schema=None, params=None):
+        if "CREATE TABLE IF NOT EXISTS" in sql:
+            raise Exception(
+                '(psycopg.errors.DuplicateObject) type "dblift_migration_lock" already exists'
+            )
+        provider.statements.append((sql, schema, params))
+        return 1
+
+    provider.execute_statement = raise_duplicate_object
+    provider._connection = MagicMock()
+
+    provider.create_migration_lock_table_if_not_exists("public")
+
+    provider._connection.rollback.assert_called_once()
