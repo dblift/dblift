@@ -292,7 +292,7 @@ def test_create_schema_survives_concurrent_unique_violation_race():
     def raise_unique_violation(sql, schema=None, params=None):
         if "CREATE SCHEMA IF NOT EXISTS" in sql:
             raise Exception(
-                'duplicate key value violates unique constraint '
+                "duplicate key value violates unique constraint "
                 '"pg_namespace_nspname_index"\n'
                 "DETAIL:  Key (nspname)=(tenant_a) already exists."
             )

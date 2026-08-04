@@ -13,6 +13,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Two racing first-time `migrate()` calls against a genuinely nonexistent
+  PostgreSQL schema could leave one process with a poisoned connection.**
+  `create_schema_if_not_exists` did a non-atomic check-then-create; both
+  processes could pass the exists-check before either created the schema,
+  and the loser hit an uncaught `UniqueViolation`. Same class of bug as the
+  migration-lock-table create race (#815), now closed for schema creation
+  too, across the whole PostgreSQL-compatible family. (#846)
+
 - **Concurrent calls into one shared `DBLiftClient` (e.g. multiple threads
   calling `.info()`) could race on `SqlAlchemyProvider`'s single cached
   connection**, intermittently raising errors or leaking a "transaction
