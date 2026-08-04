@@ -51,6 +51,8 @@ migrations:
   recursive: true  # Global default for directories without explicit recursive setting
 ```
 
+`directory` is also accepted as an alias for `path` in object-form entries.
+
 ## Mixed Format
 
 You can mix string and dict formats in the same configuration:
