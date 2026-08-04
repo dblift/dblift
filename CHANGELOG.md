@@ -13,6 +13,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+### Removed
+
+## [3.4.1] - 2026-08-04
+
+### Added
+
+### Changed
+
+### Fixed
+
 - **`dblift --version`'s per-package breakdown lines could report a stale
   version for an installed package**, even though the headline already
   avoided this for the core version. The breakdown lines now try a direct
