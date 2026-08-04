@@ -13,6 +13,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`undo --dry-run` reported a false-optimistic "would undo" preview when the
+  target migration had no matching undo script**, while the real (non-dry-run)
+  `undo` correctly and immediately failed with `No undo script found for
+  ...`. The dry-run path only checked for the undo script's existence when
+  `--show-sql` was also passed; without it, dry-run skipped straight to the
+  preview. It now checks for the undo script the same way the real path
+  does, regardless of `--show-sql`. No writes ever occurred either way, so
+  this was a preview-accuracy issue, not a correctness bug. (#831)
 - **`--version` could report a stale, unrelated version on an archive/frozen
   distribution.** The version resolvers went straight to
   `importlib.metadata`, which scans the *host's* installed package metadata
