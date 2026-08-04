@@ -13,6 +13,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`--log-level DEBUG`'s `scripts_dir:` trace line could name a directory
+  that was never scanned.** The logged value and the directory actually
+  used for scanning were resolved two different ways — one against the
+  config file's own directory, the other against the current working
+  directory — and diverged whenever the two differed. The trace now logs
+  the client's own resolved scripts directory, the same value the scanner
+  actually uses. Logging only; scan behavior is unchanged. (#833)
 - **`beforeEachMigrate`/`afterEachMigrate` callback banner lines only printed
   for the first migration in a batch.** The callbacks executed correctly for
   every migration, but the "Executing N beforeEachMigrate callback(s)" style
