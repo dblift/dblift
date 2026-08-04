@@ -205,6 +205,16 @@ class TestDbliftConfig:
         assert config.path == "./migrations"
         assert config.recursive is True
 
+    def test_directory_config_from_dict_with_directory_alias(self):
+        """Test DirectoryConfig accepts 'directory' as an alias for 'path'."""
+        config = DirectoryConfig.from_dict({"directory": "./migrations"})
+        assert config.path == "./migrations"
+
+    def test_directory_config_from_dict_path_wins_over_directory_alias(self):
+        """Test 'path' takes precedence when both 'path' and 'directory' are given."""
+        config = DirectoryConfig.from_dict({"path": "./a", "directory": "./b"})
+        assert config.path == "./a"
+
     def test_migrations_config_with_directories_list_strings(self):
         """Test MigrationsConfig with directories as list of strings (old format)."""
         config = MigrationsConfig(
