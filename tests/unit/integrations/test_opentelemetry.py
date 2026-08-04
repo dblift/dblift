@@ -91,6 +91,20 @@ def test_clean_produces_clean_span(tmp_path, exporter):
     assert "dblift.clean" in names
 
 
+def test_clean_soft_failure_marks_span_error(tmp_path, exporter):
+    """Issue #848: clean() returning success=False without raising (here,
+    clean disabled by config since clean_enabled isn't passed) must still
+    mark the span ERROR, not OK."""
+    client = _client(tmp_path)
+    client.migrate()
+    instrument(client)
+    result = client.clean()
+
+    assert result.success is False
+    span = next(s for s in exporter.get_finished_spans() if s.name == "dblift.clean")
+    assert span.status.status_code.name == "ERROR"
+
+
 def test_baseline_produces_baseline_span(tmp_path, exporter):
     migrations = tmp_path / "migrations"
     migrations.mkdir()

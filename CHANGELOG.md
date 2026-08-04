@@ -36,6 +36,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   when `clean()` ran, even though the command completed successfully. Each
   command now emits its own dedicated started/completed/failed events,
   matching how `migrate()` already emits `MIGRATION_*`. (#823)
+- **`clean()`, `baseline()`, and `repair()` emitted their `*_COMPLETED` event
+  even when the underlying operation failed without raising** — e.g. `clean()`
+  refusing to run because destructive clean is disabled by configuration, or
+  `baseline()`/`repair()` hitting a safety check. Each command called its
+  executor and emitted `*_COMPLETED` unconditionally, only reaching
+  `*_FAILED` via a Python exception. Any listener (webhooks, OpenTelemetry
+  spans, custom integrations) watching for `*_FAILED` to detect a failed
+  clean/baseline/repair missed it. These three commands now check the
+  result's success flag before emitting, the same way `undo()` already does.
+  (#848)
 - **A typo'd top-level config key (e.g. `migratoins_dir`) was silently
   ignored instead of surfacing an error.** Config loading is deliberately
   permissive — unrecognized keys are dropped rather than rejected — so a
