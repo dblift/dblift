@@ -23,6 +23,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   when `clean()` ran, even though the command completed successfully. Each
   command now emits its own dedicated started/completed/failed events,
   matching how `migrate()` already emits `MIGRATION_*`. (#823)
+- **A typo'd top-level config key (e.g. `migratoins_dir`) was silently
+  ignored instead of surfacing an error.** Config loading is deliberately
+  permissive — unrecognized keys are dropped rather than rejected — so a
+  typo produced no error at all, just silently-wrong behavior from
+  unintended defaults. `db validate-config` now warns when it finds
+  unrecognized top-level keys. (#820)
 - **`migrate --dry-run`, `migrate --validate-only`, and `validate` accepted
   `.sql` migrations against CosmosDB instead of rejecting them.** CosmosDB
   only supports Python migrations, and real `migrate` already enforced that
