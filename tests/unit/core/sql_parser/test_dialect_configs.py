@@ -717,11 +717,16 @@ class TestMySqlConfig:
         assert isinstance(config.supports_line_comments(), bool)
 
     def test_get_default_schema(self):
-        """Test get_default_schema method."""
+        """Test get_default_schema method.
+
+        MySQL has no server-wide default schema (unlike SQL Server's
+        ``dbo``): the effective schema is whatever database the connection
+        uses, which varies per deployment. Must not fabricate a schema name.
+        """
         config = MySqlConfig()
 
         schema = config.get_default_schema()
-        assert schema == "mysql"
+        assert schema is None
 
     def test_name_property(self):
         """Test name property."""

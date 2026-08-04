@@ -173,12 +173,15 @@ class MigrateCommand(BaseCommand):
         pending: List[Migration],
         applied: List[AppliedMigration],
     ) -> List[Migration]:
-        """Drop versioned migrations already present in successful history rows.
+        """Drop migrations already present in successful history rows.
 
         Versioned migrations are uniquely keyed on ``(version, type)``; that
         pair must be unique across history rows for installed_rank ordering
-        to work. Repeatables are content-checksum based and re-evaluated each
-        run, so they are never filtered here.
+        to work. Repeatables are content-checksum based, keyed on
+        script_name: a repeatable is only dropped if a successful history
+        row for the same script now has a matching checksum, since a
+        concurrent process may have applied it (with unchanged content)
+        while this process was waiting for the lock.
         """
         latest_undo_rank_by_version: Dict[str, int] = {}
         for rec in applied:
@@ -202,6 +205,15 @@ class MigrateCommand(BaseCommand):
                 continue
             successful_keys.add((str(rec.version), rec_type))
 
+        latest_repeatable_by_script: Dict[str, AppliedMigration] = {}
+        for rec in applied:
+            if not rec.success or migration_type_name(rec.type) != MigrationType.REPEATABLE.value:
+                continue
+            script = str(rec.script_name)
+            current = latest_repeatable_by_script.get(script)
+            if current is None or int(rec.installed_rank or 0) > int(current.installed_rank or 0):
+                latest_repeatable_by_script[script] = rec
+
         filtered: List[Migration] = []
         for migration in pending:
             type_value = migration_type_name(migration.type)
@@ -214,6 +226,22 @@ class MigrateCommand(BaseCommand):
                     f"{migration.version}) — applied by concurrent process"
                 )
                 continue
+            if type_value == MigrationType.REPEATABLE.value:
+                applied_rec = latest_repeatable_by_script.get(migration.script_name)
+                current_checksum = getattr(migration, "checksum", None)
+                # Only skip when both sides have a known, matching checksum —
+                # a missing checksum on either side (None) must never count as
+                # a match, or a repeatable that was never actually verified
+                # against this content would be silently skipped.
+                if (
+                    applied_rec is not None
+                    and applied_rec.checksum is not None
+                    and applied_rec.checksum == current_checksum
+                ):
+                    self.log.info(
+                        f"Skipping {migration.script_name} — applied by " "concurrent process"
+                    )
+                    continue
             filtered.append(migration)
         return filtered
 

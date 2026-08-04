@@ -4,7 +4,7 @@ import os
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List, Mapping, Optional, Tuple, Type, Union, cast
+from typing import Any, Dict, FrozenSet, List, Mapping, Optional, Tuple, Type, Union, cast
 
 import yaml
 
@@ -43,6 +43,56 @@ _ENVIRONMENT_SECTION_KEYS: Tuple[str, ...] = ("environments", "resolve")
 #: ``resolve.env_var``). Deliberately NOT a registry property: like
 #: ``--config``, it selects configuration rather than being configuration.
 DEFAULT_ENV_SELECTOR_VAR = "DBLIFT_ENV"
+
+# Every top-level key ``DbliftConfig.from_dict`` (and its supporting helpers)
+# actually reads. File loading is permissive by construction — an unrecognized
+# key is silently dropped rather than rejected — so this set exists to let
+# ``db validate-config`` flag likely typos (e.g. ``migratoins_dir``) that would
+# otherwise run unnoticed. Keep in sync with the ``data.get(...)`` reads in
+# :meth:`DbliftConfig.from_dict`.
+KNOWN_TOP_LEVEL_CONFIG_KEYS: FrozenSet[str] = frozenset(
+    (
+        "database",
+        "migrations",
+        "migrations_dir",  # deprecated alias for migrations.directory
+        "logging",
+        "log_dir",
+        "log_file",
+        "log_format",
+        "log_level",
+        "baseline_version",
+        "target_version",
+        "dry_run",
+        "undo",
+        "installed_by",
+        "extra_params",
+        "tags",
+        "exclude_tags",
+        "versions",
+        "exclude_versions",
+        "mark_as_executed",
+        "strict_mode",
+        "clean_disabled",
+        "placeholders",
+        "history_table",
+        "snapshot_table",
+        "max_snapshots",
+        "secrets",
+    )
+    + _ENVIRONMENT_SECTION_KEYS
+    + _PAID_RAW_CONFIG_KEYS
+)
+
+
+def unrecognized_top_level_keys(data: Dict[str, Any]) -> List[str]:
+    """Return the top-level keys in *data* that the config schema doesn't recognize, sorted.
+
+    Used by ``db validate-config`` to warn about likely typos instead of
+    silently ignoring the key, as plain config loading does.
+    """
+    if not isinstance(data, dict):
+        return []
+    return sorted(key for key in data if key not in KNOWN_TOP_LEVEL_CONFIG_KEYS)
 
 
 # ``validate-sql`` only needs a dialect-typed DbliftConfig; connection is never opened.
@@ -336,8 +386,13 @@ class DirectoryConfig:
         if isinstance(data, str):
             return cls(path=data, recursive=True)
         elif isinstance(data, dict):
+            # Accept 'directory' as an alias for 'path' — it mirrors the
+            # top-level migrations.directory field name, so it's a natural
+            # key for users to reach for here. Without this, an entry keyed
+            # on 'directory' silently resolves to an empty path and finds
+            # nothing.
             return cls(
-                path=data.get("path", ""),
+                path=data.get("path", data.get("directory", "")),
                 recursive=data.get("recursive", True),
             )
         else:

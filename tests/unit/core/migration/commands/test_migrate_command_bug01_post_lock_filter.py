@@ -1,8 +1,12 @@
 """BUG-01: post-lock history re-read filters concurrently-applied migrations.
 
-Verifies ``MigrateCommand._filter_already_applied`` only drops VERSIONED
-pending migrations whose ``(version, type)`` matches a SUCCESSFUL applied
-history row. Repeatables and failed rows must NOT cause a skip.
+Verifies ``MigrateCommand._filter_already_applied`` drops VERSIONED pending
+migrations whose ``(version, type)`` matches a SUCCESSFUL applied history
+row, and REPEATABLE pending migrations whose script_name matches a
+SUCCESSFUL applied history row with the same checksum (see
+``test_migrate_command_repeatable_lock_race.py`` for the checksum-based
+repeatable re-check added for issue #811). Failed rows must NOT cause a
+skip.
 """
 
 import unittest
@@ -99,12 +103,15 @@ class TestFilterAlreadyApplied(unittest.TestCase):
 
         self.assertEqual(out, [])
 
-    def test_repeatable_never_filtered(self):
+    def test_repeatable_without_checksum_not_filtered(self):
         cmd = _cmd()
         pending = [
             _pending(None, "R__view.sql", type_=MigrationType.REPEATABLE),
         ]
-        # Repeatable history rows would have version=NULL — should not match.
+        # Repeatable history rows would have version=NULL — should not match
+        # on the versioned (version, type) key. Neither side carries a
+        # checksum here, so the repeatable checksum re-check (issue #811)
+        # can't match either — it must not be skipped.
         applied = [
             AppliedMigration(
                 script_name="R__view.sql",

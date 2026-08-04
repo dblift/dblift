@@ -205,6 +205,9 @@ class OracleQuirks(BaseQuirks):
     native_driver_display = "python-oracledb"
     # Oracle TIMESTAMP / TIME accept only fractional-seconds precision.
     time_type_supports_only_fractional_precision = True
+    # validate-sql offline placeholder — a service_name is required, so a
+    # bare host/port URL is not enough (see build_sqlalchemy_url).
+    lint_placeholder_url = "oracle://localhost:1521/?service_name=XEPDB1"
     # Wave C hooks (story 26-9): migration engine transaction semantics.
     requires_explicit_commit_after_ddl = True
     supports_session_autocommit = False

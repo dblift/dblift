@@ -41,6 +41,8 @@ class SqliteQuirks(BaseQuirks):
     requires_credentials = False
     url_optional_when_file_path_given = True
     connection_identifier_attrs = ("url", "path", "database")
+    # In-memory DB: never touches disk, safe as a validate-sql offline placeholder.
+    lint_placeholder_url = "sqlite:///:memory:"
 
     def __init__(self, dialect_name: str = "sqlite") -> None:
         """Initialize SQLite quirks with the dialect name."""

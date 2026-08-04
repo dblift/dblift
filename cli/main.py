@@ -220,6 +220,32 @@ def _resolve_core_version() -> Optional[str]:
         return None
 
 
+def _resolve_manifest_version() -> Optional[str]:
+    """Return the ``version`` field of a ``DISTRIBUTION-MANIFEST.json`` sitting
+    next to the running entry point, if one is present.
+
+    An archive/frozen distribution ships this file at its root, stamped at
+    build time with the version of the code it actually bundles. Unlike
+    ``importlib.metadata``, it cannot be shadowed by an unrelated distribution
+    that happens to be installed elsewhere on the host — so when present, it
+    is the most authoritative source for "what version is this". A real
+    ``pip install`` never ships this file, so this is a no-op there.
+    """
+    import json
+
+    manifest_file = _project_root / "DISTRIBUTION-MANIFEST.json"
+    try:
+        with open(manifest_file, "r", encoding="utf-8") as f:
+            manifest = json.load(f)
+        if isinstance(manifest, dict):
+            version = manifest.get("version")
+            if isinstance(version, str) and version:
+                return version
+    except (OSError, ValueError):
+        pass
+    return None
+
+
 def _format_version() -> str:
     """Render the ``--version`` output.
 
@@ -231,11 +257,30 @@ def _format_version() -> str:
     is present, list every component so a bare number is never ambiguous. In a
     plain OSS install only the core is present, so the output stays a single
     ``dblift version X`` line — unchanged from before.
+
+    An archive/frozen distribution's ``DISTRIBUTION-MANIFEST.json``, when
+    present, overrides the headline: it is stamped at build time and immune to
+    whatever unrelated ``dblift``/``dblift-pro``/``dblift-enterprise``
+    metadata happens to be installed on the host running it.
+
+    The breakdown lines apply that same preference at the component level: a
+    directly-importable package's own ``__version__`` attribute is tried
+    before ``importlib.metadata.version``, for consistency with how the
+    headline already avoids stale host-installed metadata.
     """
+    import importlib
     from importlib.metadata import PackageNotFoundError
     from importlib.metadata import version as _version
 
     def _get(dist: str) -> Optional[str]:
+        try:
+            module = importlib.import_module(dist.replace("-", "_"))
+            module_version = getattr(module, "__version__", None)
+            if isinstance(module_version, str) and module_version:
+                return module_version
+        except Exception:
+            # A broken install shouldn't crash --version; fall back to metadata.
+            pass
         try:
             return _version(dist)
         except PackageNotFoundError:
@@ -245,8 +290,9 @@ def _format_version() -> str:
     pro = _get("dblift-pro")
     enterprise = _get("dblift-enterprise")
 
-    # Headline = most-derived installed tier (the product actually running).
-    product = enterprise or pro or core
+    # Headline = manifest version (bundled distribution) if present, else the
+    # most-derived installed tier (the product actually running).
+    product = _resolve_manifest_version() or enterprise or pro or core
     lines = [f"dblift version {product}"]
     # Component manifest only when a paid tier is present; OSS stays one line.
     if pro or enterprise:
@@ -519,6 +565,28 @@ def _apply_configured_output_format(ctx: _CliContext) -> None:
         ctx.args.format = output_format
 
 
+def _effective_scripts_dir_for_log(client: Any, fallback: Optional[Path]) -> Any:
+    """Return the directory ``client`` will actually scan, for debug logging.
+
+    ``_resolve_scripts_directories`` computes ``scripts_dir`` locally
+    (resolving relative paths against the config file's parent directory),
+    but that value is never handed to the client — ``_build_command_client``
+    builds it straight from ``ctx.config``, which re-resolves the migrations
+    directory independently (relative paths are resolved against the
+    current working directory at scan time). The two can disagree, so the
+    debug line must reflect the client's own resolution, not the local one.
+    Falls back to the locally-computed value for clients without
+    ``_get_scripts_dir`` (e.g. config-only stand-ins).
+    """
+    get_scripts_dir = getattr(client, "_get_scripts_dir", None)
+    if not callable(get_scripts_dir):
+        return fallback
+    try:
+        return get_scripts_dir().resolve()
+    except (OSError, RuntimeError, TypeError):
+        return fallback
+
+
 def _dispatch_command(ctx: _CliContext, command_output: CommandOutput) -> int:
     """Phase 4: build full workflow context and run the command loop.
 
@@ -532,7 +600,7 @@ def _dispatch_command(ctx: _CliContext, command_output: CommandOutput) -> int:
     )
 
     client = _build_command_client(ctx)
-    ctx.log.debug(f"scripts_dir: {scripts_dir}")
+    ctx.log.debug(f"scripts_dir: {_effective_scripts_dir_for_log(client, scripts_dir)}")
     ctx.log.debug(
         f"config.migrations.directories: {getattr(ctx.config.migrations, 'directories', None)}"
     )

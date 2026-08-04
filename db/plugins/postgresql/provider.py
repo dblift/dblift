@@ -83,7 +83,21 @@ class PostgreSqlProvider(SqlAlchemyProvider):
         )
         if exists and exists[0].get("exists"):
             return
-        self.execute_statement(f"CREATE SCHEMA IF NOT EXISTS {_quote_identifier(schema)}")
+        try:
+            self.execute_statement(f"CREATE SCHEMA IF NOT EXISTS {_quote_identifier(schema)}")
+        except Exception as exc:
+            # Any failure here aborts the current transaction, so roll back
+            # before deciding how to handle it -- otherwise the connection is
+            # left in a failed-transaction state for whatever runs next.
+            self._rollback_failed_create_race("schema")
+            if "already exists" not in str(exc).lower():
+                raise
+            # Two racing processes against a genuinely nonexistent schema can
+            # both pass the SELECT EXISTS check above before either one
+            # creates it. PostgreSQL can answer the loser with a unique
+            # violation on pg_namespace instead of silently no-op'ing -- the
+            # schema is there either way, so treat the rolled-back race as
+            # success rather than failing the caller.
 
     def table_exists(self, schema: str, table_name: str) -> bool:
         """Return whether a table exists in the given schema."""
@@ -141,12 +155,35 @@ class PostgreSqlProvider(SqlAlchemyProvider):
     def create_migration_lock_table_if_not_exists(self, schema: str) -> None:
         """Create the PostgreSQL migration lock table if it is missing."""
         self.create_schema_if_not_exists(schema)
-        self.execute_statement(f"""
-            CREATE TABLE IF NOT EXISTS {self.get_schema_qualified_name(schema, self.MIGRATION_LOCK_TABLE)} (
-                lock_name VARCHAR(255) PRIMARY KEY,
-                locked_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-            """)
+        try:
+            self.execute_statement(f"""
+                CREATE TABLE IF NOT EXISTS {self.get_schema_qualified_name(schema, self.MIGRATION_LOCK_TABLE)} (
+                    lock_name VARCHAR(255) PRIMARY KEY,
+                    locked_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+                """)
+        except Exception as exc:
+            # Any failure here aborts the current transaction, so roll back
+            # before deciding how to handle it -- otherwise the connection is
+            # left in a failed-transaction state for whatever runs next.
+            self._rollback_failed_create_race("migration-lock-table")
+            if "already exists" not in str(exc).lower():
+                raise
+            # Two first-ever migrate() calls can both reach this statement
+            # before either wins the advisory lock below. PostgreSQL can
+            # answer the loser with a duplicate-object error on the table's
+            # implicit row type instead of silently no-op'ing — the table is
+            # there either way, so treat the rolled-back race as success
+            # rather than failing the migration.
+
+    def _rollback_failed_create_race(self, what: str) -> None:
+        connection = getattr(self, "_connection", None)
+        if connection is not None and not getattr(connection, "closed", False):
+            try:
+                connection.rollback()
+            except Exception as exc:
+                message = f"Could not rollback failed {what} create"
+                raise RuntimeError(message) from exc
 
     def acquire_migration_lock(self, schema: str, wait_timeout_seconds: int = 60) -> bool:
         """Acquire the PostgreSQL advisory migration lock."""

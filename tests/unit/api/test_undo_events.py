@@ -1,13 +1,19 @@
-"""BUG-09 regression: undo() emits MIGRATION_FAILED when result.success=False.
+"""BUG-09 regression: undo() emits UNDO_FAILED when result.success=False.
 
-Before this fix, api.Client.undo() only emitted MIGRATION_FAILED on Python
+Before this fix, api.Client.undo() only emitted a failure event on Python
 exceptions; a soft failure (executor returns result.success=False) silently
-emitted only MIGRATION_COMPLETED, leaving listeners unable to distinguish
+emitted only the completed event, leaving listeners unable to distinguish
 success from failure.
 
-Cursor-bot follow-up: MIGRATION_COMPLETED must NOT be emitted on failure
+Cursor-bot follow-up: the completed event must NOT be emitted on failure
 (success=False), consistent with the exception path which also omits it.
 Emitting both events on soft failure would trigger post-success workflows.
+
+Issue #823: undo() used to emit the generic ``MIGRATION_STARTED`` /
+``MIGRATION_COMPLETED`` / ``MIGRATION_FAILED`` events (with
+``operation="undo"``) instead of the dedicated ``UNDO_STARTED`` /
+``UNDO_COMPLETED`` / ``UNDO_FAILED`` members that ``EventType`` already
+declares. Updated here to assert the dedicated events fire.
 """
 
 from __future__ import annotations
@@ -53,8 +59,8 @@ class TestUndoEvents:
         client.undo(target_version="1")
 
         emitted = [call.args[0] for call in client.events.emit.call_args_list]
-        assert EventType.MIGRATION_COMPLETED in emitted
-        assert EventType.MIGRATION_FAILED not in emitted
+        assert EventType.UNDO_COMPLETED in emitted
+        assert EventType.UNDO_FAILED not in emitted
 
     def test_undo_failure_emits_failed_not_completed(self):
         result = MagicMock()
@@ -65,8 +71,8 @@ class TestUndoEvents:
         client.undo(target_version="1")
 
         emitted = [call.args[0] for call in client.events.emit.call_args_list]
-        assert EventType.MIGRATION_FAILED in emitted
-        assert EventType.MIGRATION_COMPLETED not in emitted
+        assert EventType.UNDO_FAILED in emitted
+        assert EventType.UNDO_COMPLETED not in emitted
 
     def test_undo_failure_event_carries_error_message(self):
         result = MagicMock()
@@ -79,7 +85,7 @@ class TestUndoEvents:
         failed_calls = [
             call
             for call in client.events.emit.call_args_list
-            if call.args[0] == EventType.MIGRATION_FAILED
+            if call.args[0] == EventType.UNDO_FAILED
         ]
         assert len(failed_calls) == 1
         assert failed_calls[0].args[1]["error"] == "No undo script for V2"
@@ -103,5 +109,5 @@ class TestUndoEvents:
             client.undo(target_version="1")
 
         emitted = [call.args[0] for call in client.events.emit.call_args_list]
-        assert EventType.MIGRATION_FAILED in emitted
-        assert EventType.MIGRATION_COMPLETED not in emitted
+        assert EventType.UNDO_FAILED in emitted
+        assert EventType.UNDO_COMPLETED not in emitted

@@ -1059,10 +1059,10 @@ class TestUndoStatementEmitterInit(unittest.TestCase):
 class TestUndoScriptGeneratorDialects(unittest.TestCase):
     """Tests for dialect-specific behavior in UndoScriptGenerator."""
 
-    def _make_generator(self, dialect):
+    def _make_generator(self, dialect, default_schema=None):
         from core.migration.scripting.undo_script_generator import UndoScriptGenerator
 
-        return UndoScriptGenerator(dialect=dialect)
+        return UndoScriptGenerator(dialect=dialect, default_schema=default_schema)
 
     def _make_migration(self, content):
         from core.migration.migration import Migration
@@ -1082,6 +1082,53 @@ class TestUndoScriptGeneratorDialects(unittest.TestCase):
         self.assertTrue(len(drop_stmts) >= 1)
         for stmt in drop_stmts:
             self.assertNotIn("CASCADE", stmt.sql)
+
+    def test_mysql_undo_uses_configured_schema_not_hardcoded_mysql(self):
+        """Regression for issue #802: undo DROP statements must be qualified
+        with the actually-configured schema, never the literal "mysql".
+        """
+        gen = self._make_generator("mysql", default_schema="dblift_test")
+        migration = self._make_migration("CREATE TABLE t (id INT);")
+        results = gen._generate_undo_statements(migration)
+        drop_stmts = [s for s in results if "DROP TABLE" in s.sql]
+        self.assertTrue(len(drop_stmts) >= 1)
+        for stmt in drop_stmts:
+            self.assertIn("`dblift_test`", stmt.sql)
+            self.assertNotIn("`mysql`", stmt.sql)
+
+    def test_mariadb_undo_uses_configured_schema_not_hardcoded_mysql(self):
+        """Regression for issue #802: MariaDB shares the MySQL parser config
+        and must not reproduce the hardcoded "mysql" schema literal either.
+        """
+        gen = self._make_generator("mariadb", default_schema="dblift_test")
+        migration = self._make_migration("CREATE TABLE t (id INT);")
+        results = gen._generate_undo_statements(migration)
+        drop_stmts = [s for s in results if "DROP TABLE" in s.sql]
+        self.assertTrue(len(drop_stmts) >= 1)
+        for stmt in drop_stmts:
+            self.assertIn("`dblift_test`", stmt.sql)
+            self.assertNotIn("`mysql`", stmt.sql)
+
+    def test_mysql_undo_without_configured_schema_omits_mysql_literal(self):
+        """When no schema is configured at all, undo statements must stay
+        unqualified rather than falling back to the "mysql" system schema.
+        """
+        gen = self._make_generator("mysql")
+        migration = self._make_migration("CREATE TABLE t (id INT);")
+        results = gen._generate_undo_statements(migration)
+        drop_stmts = [s for s in results if "DROP TABLE" in s.sql]
+        self.assertTrue(len(drop_stmts) >= 1)
+        for stmt in drop_stmts:
+            self.assertNotIn("mysql", stmt.sql.lower())
+
+    def test_mariadb_undo_without_configured_schema_omits_mysql_literal(self):
+        gen = self._make_generator("mariadb")
+        migration = self._make_migration("CREATE TABLE t (id INT);")
+        results = gen._generate_undo_statements(migration)
+        drop_stmts = [s for s in results if "DROP TABLE" in s.sql]
+        self.assertTrue(len(drop_stmts) >= 1)
+        for stmt in drop_stmts:
+            self.assertNotIn("mysql", stmt.sql.lower())
 
     def test_oracle_table_drop_no_if_exists(self):
         gen = self._make_generator("oracle")

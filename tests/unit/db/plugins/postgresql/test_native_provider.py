@@ -1,5 +1,7 @@
 """PostgreSQL native provider contract tests."""
 
+from unittest.mock import MagicMock
+
 import pytest
 
 from db.plugins.postgresql.postgresql.locking_manager import _get_advisory_lock_key
@@ -216,3 +218,129 @@ def test_release_uses_same_deterministic_advisory_key():
 
     expected_key = _get_advisory_lock_key("public")
     assert provider.queries[-1][0] == f"SELECT pg_advisory_unlock({expected_key}) AS released"
+
+
+def test_create_migration_lock_table_survives_concurrent_duplicate_object_race():
+    """Two first-ever ``migrate()`` calls both run ``CREATE TABLE IF NOT
+    EXISTS`` before either one reaches the advisory lock that is meant to
+    serialize them. PostgreSQL can respond to the loser with a
+    ``DuplicateObject`` error on the table's implicit row type instead of
+    silently no-op'ing, so the table-creation step must treat that as
+    success instead of letting it fail the whole migration."""
+    provider = _Provider()
+
+    def raise_duplicate_object(sql, schema=None, params=None):
+        if "CREATE TABLE IF NOT EXISTS" in sql:
+            raise Exception(
+                '(psycopg.errors.DuplicateObject) type "dblift_migration_lock" already exists'
+            )
+        provider.statements.append((sql, schema, params))
+        return 1
+
+    provider.execute_statement = raise_duplicate_object
+    provider._connection = MagicMock()
+    provider._connection.closed = False
+
+    provider.create_migration_lock_table_if_not_exists("public")
+
+    provider._connection.rollback.assert_called_once()
+
+
+def test_create_migration_lock_table_reraises_unrelated_errors():
+    """A failure unrelated to the race (e.g. a permissions error) must still
+    propagate -- the "already exists" match must not be so broad it masks a
+    genuinely different failure. The connection must still be rolled back
+    so it is not left in a failed-transaction state for the caller."""
+    provider = _Provider()
+
+    def raise_permission_denied(sql, schema=None, params=None):
+        if "CREATE TABLE IF NOT EXISTS" in sql:
+            raise Exception("permission denied for schema public")
+        provider.statements.append((sql, schema, params))
+        return 1
+
+    provider.execute_statement = raise_permission_denied
+    provider._connection = MagicMock()
+    provider._connection.closed = False
+
+    with pytest.raises(Exception, match="permission denied"):
+        provider.create_migration_lock_table_if_not_exists("public")
+
+    provider._connection.rollback.assert_called_once()
+
+
+def test_rollback_failed_lock_table_create_wraps_rollback_failure():
+    """If the rollback itself fails (e.g. the connection was already
+    dropped by the server after the abort), the caller must get a clear,
+    labeled error instead of a raw driver exception."""
+    provider = _Provider()
+    provider._connection = MagicMock()
+    provider._connection.closed = False
+    provider._connection.rollback.side_effect = Exception("connection already closed")
+
+    with pytest.raises(RuntimeError, match="Could not rollback"):
+        provider._rollback_failed_create_race("migration-lock-table")
+
+
+def test_create_schema_survives_concurrent_unique_violation_race():
+    """Two racing callers can both pass the ``SELECT EXISTS`` check against a
+    genuinely nonexistent schema before either one creates it. PostgreSQL can
+    answer the loser with a unique-violation error on
+    ``pg_namespace_nspname_index`` instead of silently no-op'ing, so schema
+    creation must treat that as success instead of failing the caller."""
+    provider = _Provider()
+    provider.execute_query = lambda sql, params=None: [{"exists": False}]
+
+    def raise_unique_violation(sql, schema=None, params=None):
+        if "CREATE SCHEMA IF NOT EXISTS" in sql:
+            raise Exception(
+                "duplicate key value violates unique constraint "
+                '"pg_namespace_nspname_index"\n'
+                "DETAIL:  Key (nspname)=(tenant_a) already exists."
+            )
+        provider.statements.append((sql, schema, params))
+        return 1
+
+    provider.execute_statement = raise_unique_violation
+    provider._connection = MagicMock()
+    provider._connection.closed = False
+
+    PostgreSqlProvider.create_schema_if_not_exists(provider, "tenant_a")
+
+    provider._connection.rollback.assert_called_once()
+
+
+def test_create_schema_reraises_unrelated_errors():
+    """A failure unrelated to the race (e.g. a permissions error) must still
+    propagate -- the "already exists" match must not be so broad it masks a
+    genuinely different failure. The connection must still be rolled back
+    so it is not left in a failed-transaction state for the caller."""
+    provider = _Provider()
+    provider.execute_query = lambda sql, params=None: [{"exists": False}]
+
+    def raise_permission_denied(sql, schema=None, params=None):
+        if "CREATE SCHEMA IF NOT EXISTS" in sql:
+            raise Exception("permission denied to create schema tenant_a")
+        provider.statements.append((sql, schema, params))
+        return 1
+
+    provider.execute_statement = raise_permission_denied
+    provider._connection = MagicMock()
+    provider._connection.closed = False
+
+    with pytest.raises(Exception, match="permission denied"):
+        PostgreSqlProvider.create_schema_if_not_exists(provider, "tenant_a")
+
+    provider._connection.rollback.assert_called_once()
+
+
+def test_rollback_failed_schema_create_wraps_rollback_failure():
+    """If the rollback itself fails after a schema-create race, the caller
+    must get a clear, labeled error instead of a raw driver exception."""
+    provider = _Provider()
+    provider._connection = MagicMock()
+    provider._connection.closed = False
+    provider._connection.rollback.side_effect = Exception("connection already closed")
+
+    with pytest.raises(RuntimeError, match="Could not rollback failed schema create"):
+        provider._rollback_failed_create_race("schema")

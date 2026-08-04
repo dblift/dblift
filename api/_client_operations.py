@@ -37,6 +37,19 @@ def _apply_sql_script_warning_scan(
                     result.add_warning(warning_msg)
 
 
+def _resolve_configured_schema(client: Any) -> Optional[str]:
+    """Get the actually-configured database schema from a client, if any.
+
+    Used so undo statements are qualified with the schema the client is
+    really connected to instead of a dialect-specific guess. Returns
+    ``None`` when ``client.config.database.schema`` isn't a usable string
+    (e.g. unset, or a test double without real config).
+    """
+    database = getattr(getattr(client, "config", None), "database", None)
+    schema = getattr(database, "schema", None)
+    return schema if isinstance(schema, str) and schema else None
+
+
 def generate_undo_script_operation(
     client: Any,
     *,
@@ -91,14 +104,24 @@ def generate_undo_scripts_operation(
     **kwargs: Any,
 ) -> List[GenerateUndoScriptResult]:
     """Generate many undo scripts for ``DBLiftClient.generate_undo_scripts``."""
+    from core.migration.formats import MigrationFormatDetector
+
     results: List[GenerateUndoScriptResult] = []
 
     if migration_paths is None:
         migrations_dir = (
             client._get_scripts_dir() if migrations_dir is None else Path(migrations_dir)
         )
-        pattern = "**/V*.sql" if recursive else "V*.sql"
-        migration_paths = [f for f in migrations_dir.glob(pattern) if f.is_file()]
+        # Discover versioned migration files of any supported format (not just
+        # .sql) so that non-SQL migrations (e.g. CosmosDB's Python-only
+        # migrations) still show up as per-file results below explaining why
+        # they were skipped, instead of vanishing from a SQL-only glob.
+        pattern = "**/V*" if recursive else "V*"
+        migration_paths = [
+            f
+            for f in migrations_dir.glob(pattern)
+            if f.is_file() and MigrationFormatDetector.is_migration_file(f)
+        ]
     else:
         migration_paths = [Path(p) for p in migration_paths]
 
@@ -211,7 +234,11 @@ def _generate_undo_script_for_migration(
     if output_dir_path is None:
         output_dir_path = migration_path.parent
 
-    generator = UndoScriptGenerator(dialect=client.dialect, logger=client.logger)
+    generator = UndoScriptGenerator(
+        dialect=client.dialect,
+        logger=client.logger,
+        default_schema=_resolve_configured_schema(client),
+    )
     expected_undo_path = generator.get_undo_script_path_for_migration(
         migration,
         output_dir=output_dir_path,

@@ -105,6 +105,7 @@ def test_create_migration_lock_table_uses_parameterized_catalog_check():
 def test_execute_statement_creates_schema_when_schema_is_passed(monkeypatch):
     provider = object.__new__(SqlServerProvider)
     provider.create_schema_if_not_exists = MagicMock()
+    provider.set_current_schema = MagicMock()
     executed = {}
 
     def fake_execute_statement(self, sql, schema=None, params=None):
@@ -117,6 +118,7 @@ def test_execute_statement_creates_schema_when_schema_is_passed(monkeypatch):
 
     assert provider.execute_statement("CREATE TABLE t(id int)", schema="dbo", params=[1]) == 7
     provider.create_schema_if_not_exists.assert_called_once_with("dbo")
+    provider.set_current_schema.assert_called_once_with("dbo")
     assert executed == {"sql": "CREATE TABLE t(id int)", "schema": "dbo", "params": [1]}
 
 

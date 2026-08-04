@@ -29,9 +29,19 @@ class SqlServerProvider(SqlAlchemyProvider):
     canonical_dialect_key = "sqlserver"
     MIGRATION_LOCK_TABLE = "dblift_migration_lock"
 
+    #: Schema this connection's login was last aligned to via ``set_current_schema``.
+    #: SQL Server's DEFAULT_SCHEMA is catalog-level state on the *login*
+    #: (``sys.database_principals``), not connection-scoped like every other
+    #: dialect's search-path mechanism — this cache avoids re-issuing ``ALTER
+    #: USER`` (a shared-state write) on every statement, limiting the window
+    #: for a concurrent process sharing the same login to interfere. Class-level
+    #: default so tests constructing via ``object.__new__`` still see ``None``.
+    _current_schema_set: Optional[str] = None
+
     def __init__(self, config: DbliftConfig, log: Optional[Log] = None) -> None:
         """Initialize the native SQL Server provider."""
         super().__init__(config, log)
+        self._current_schema_set = None
 
     # ------------------------------------------------------------------
     # SchemaProvider
@@ -51,9 +61,10 @@ class SqlServerProvider(SqlAlchemyProvider):
     def execute_statement(
         self, sql: str, schema: Optional[str] = None, params: Optional[List[Any]] = None
     ) -> int:
-        """Execute a SQL statement, creating the migration schema when requested."""
+        """Execute a SQL statement, creating and selecting the migration schema when requested."""
         if schema:
             self.create_schema_if_not_exists(schema)
+            self.set_current_schema(schema)
         return super().execute_statement(sql, schema=schema, params=params)
 
     def table_exists(self, schema: str, table_name: str) -> bool:
@@ -94,11 +105,78 @@ class SqlServerProvider(SqlAlchemyProvider):
         return ", ".join(["?" for _ in range(count)])
 
     def set_current_schema(self, schema: str) -> None:
-        """No-op: SQL Server uses schema-qualified names, not session search path."""
-        self.log.debug(
-            "SQL Server: set_current_schema is a no-op; "
-            "schema qualification is embedded in object names."
-        )
+        """Align the connecting user's default schema so unqualified DDL lands here.
+
+        SQL Server has no session-scoped search path; unqualified object
+        names resolve against the connecting database user's
+        DEFAULT_SCHEMA. ``ALTER USER ... WITH DEFAULT_SCHEMA`` takes effect
+        immediately within the current session (no reconnect required), so
+        it is the real equivalent of PostgreSQL's ``SET search_path`` /
+        MySQL's ``USE``. Without this, unqualified DDL (dblift's own
+        documented usage pattern) silently lands in whatever schema the
+        login already defaults to instead of ``--db-schema``.
+
+        Unlike every other dialect's mechanism, though, DEFAULT_SCHEMA is
+        catalog-level state on the login (``sys.database_principals``) —
+        not connection-scoped — so it is visible to and overwritable by any
+        other connection authenticating as the same login. ``--db-schema``
+        is one fixed value for an entire process run, so after the first
+        call every later call (i.e. every subsequent statement) asks for
+        the *same* schema again — that steady state is exactly when a
+        concurrent process sharing this login is most likely to have
+        clobbered it. So the login's current DEFAULT_SCHEMA is read and
+        compared against what this connection set it to last on *every*
+        call, regardless of whether the requested schema changed; a
+        mismatch means another process changed it, which is logged loudly
+        since unqualified DDL placement is no longer reliable. Only the
+        ``ALTER USER`` WRITE itself is skipped once this connection has
+        already set the requested schema — reads don't race the way writes
+        do, so this still avoids redundant writes to the shared catalog row
+        without blinding the check to interference between them. Detecting
+        the interference does not undo it: this connection's own DDL may
+        still land against whatever schema the catalog currently holds
+        until something asks for a schema change again. A dedicated SQL
+        Server login per ``--db-schema`` avoids the whole scenario.
+        """
+        try:
+            rows = self.execute_query(
+                "SELECT USER_NAME() AS db_user, DEFAULT_SCHEMA_NAME AS default_schema "
+                "FROM sys.database_principals WHERE name = USER_NAME()"
+            )
+            current_user = rows[0].get("db_user") if rows else None
+            if not current_user:
+                raise RuntimeError("could not determine the connecting database user")
+
+            catalog_schema = rows[0].get("default_schema") if rows else None
+            if (
+                self._current_schema_set is not None
+                and catalog_schema is not None
+                and catalog_schema != self._current_schema_set
+            ):
+                self.log.warning(
+                    f"SQL Server login '{current_user}' DEFAULT_SCHEMA is '{catalog_schema}' "
+                    f"but dblift set it to '{self._current_schema_set}' earlier on this "
+                    f"connection — another process changed it. If this login is shared across "
+                    f"concurrent dblift runs with different --db-schema values, unqualified DDL "
+                    f"placement is not reliable; use a dedicated login per schema."
+                )
+
+            if self._current_schema_set == schema:
+                # Already the value this connection wants — skip the
+                # redundant catalog WRITE. The read+comparison above still
+                # ran, so interference is still detected on every call.
+                return
+
+            super().execute_statement(
+                f"ALTER USER {_q(current_user)} WITH DEFAULT_SCHEMA = {_q(schema)}"
+            )
+            self._current_schema_set = schema
+        except Exception as e:
+            self.log.warning(
+                f"SQL Server: could not set the connecting user's default schema to "
+                f"'{schema}'; unqualified object names may resolve against a "
+                f"different schema than --db-schema ({e})"
+            )
 
     # ------------------------------------------------------------------
     # Version

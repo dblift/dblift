@@ -134,6 +134,8 @@ class SqlserverQuirks(BaseQuirks):
     # SQL Server encodes ``VARCHAR(MAX)`` / ``NVARCHAR(MAX)`` via the
     # column-size sentinels ``-1`` (VARCHAR) and ``2147483647`` (NVARCHAR).
     varchar_max_sentinel_sizes: Tuple[int, ...] = (-1, 2147483647)
+    # validate-sql offline placeholder.
+    lint_placeholder_url = "mssql://localhost:1433/dblift_validate_sql"
 
     def enhance_columns(
         self, extractor: Any, schema: str, table: str, columns: "list[Any]"

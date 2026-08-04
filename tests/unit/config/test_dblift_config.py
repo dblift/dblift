@@ -7,10 +7,12 @@ import yaml
 pytestmark = [pytest.mark.unit]
 
 from config.dblift_config import (
+    KNOWN_TOP_LEVEL_CONFIG_KEYS,
     DbliftConfig,
     DirectoryConfig,
     LoggingConfig,
     MigrationsConfig,
+    unrecognized_top_level_keys,
 )
 
 
@@ -205,6 +207,16 @@ class TestDbliftConfig:
         assert config.path == "./migrations"
         assert config.recursive is True
 
+    def test_directory_config_from_dict_with_directory_alias(self):
+        """Test DirectoryConfig accepts 'directory' as an alias for 'path'."""
+        config = DirectoryConfig.from_dict({"directory": "./migrations"})
+        assert config.path == "./migrations"
+
+    def test_directory_config_from_dict_path_wins_over_directory_alias(self):
+        """Test 'path' takes precedence when both 'path' and 'directory' are given."""
+        config = DirectoryConfig.from_dict({"path": "./a", "directory": "./b"})
+        assert config.path == "./a"
+
     def test_migrations_config_with_directories_list_strings(self):
         """Test MigrationsConfig with directories as list of strings (old format)."""
         config = MigrationsConfig(
@@ -309,3 +321,29 @@ class TestDbliftConfig:
         assert dir_configs[0].recursive is True  # Uses global default
         assert dir_configs[1].path == "./migrations/features"
         assert dir_configs[1].recursive is False
+
+
+class TestUnrecognizedTopLevelKeys:
+    def test_no_unrecognized_keys_for_known_config(self):
+        d = {"database": {}, "migrations": {}, "logging": {}}
+        assert unrecognized_top_level_keys(d) == []
+
+    def test_flags_a_single_typo(self):
+        d = {"database": {}, "migratoins_dir": "./migrations"}
+        assert unrecognized_top_level_keys(d) == ["migratoins_dir"]
+
+    def test_flags_multiple_unknown_keys_sorted(self):
+        d = {"zzz_unknown": 1, "database": {}, "aaa_unknown": 2}
+        assert unrecognized_top_level_keys(d) == ["aaa_unknown", "zzz_unknown"]
+
+    def test_environment_section_keys_not_flagged(self):
+        d = {"environments": {}, "resolve": {}}
+        assert unrecognized_top_level_keys(d) == []
+
+    def test_deprecated_migrations_dir_alias_not_flagged(self):
+        d = {"migrations_dir": "./migrations"}
+        assert unrecognized_top_level_keys(d) == []
+
+    def test_non_dict_input_returns_no_keys(self):
+        assert unrecognized_top_level_keys(None) == []
+        assert unrecognized_top_level_keys([]) == []

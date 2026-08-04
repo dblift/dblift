@@ -10,6 +10,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from core.introspection.extractors.table_extractor import TableExtractor
+from core.sql_model.base import SqlColumn
 
 pytestmark = [pytest.mark.unit]
 
@@ -136,9 +137,10 @@ class TestGetTablesPartitionSchemeEnrichmentException(unittest.TestCase):
 
 class TestGetTablesNoColumnOrConstraintExtractor(unittest.TestCase):
     def test_falls_back_to_schema_introspector_for_columns_and_constraints(self):
+        col1 = SqlColumn("col1", "VARCHAR(50)")
         with _patch_si() as mock_si:
             mock_inst = MagicMock()
-            mock_inst._get_columns.return_value = ["col1"]
+            mock_inst._get_columns.return_value = [col1]
             mock_inst._get_constraints.return_value = ["pk1"]
             mock_si.return_value = mock_inst
 
@@ -154,7 +156,7 @@ class TestGetTablesNoColumnOrConstraintExtractor(unittest.TestCase):
 
             tables = extractor.get_tables("public")
 
-            self.assertEqual(tables[0].columns, ["col1"])
+            self.assertEqual(tables[0].columns, [col1])
             self.assertEqual(tables[0].constraints, ["pk1"])
 
 
@@ -258,16 +260,17 @@ class TestGetViewTables(unittest.TestCase):
         self.assertEqual(extractor._get_view_tables("public", table_pattern="users%"), [])
 
     def test_column_extractor_populates_view_columns(self):
+        col1 = SqlColumn("col1", "VARCHAR(50)")
         vq = MagicMock()
         vq.get_view_names_query.return_value = ("SELECT views", [])
         col_ext = MagicMock()
-        col_ext.get_columns.return_value = ["col1"]
+        col_ext.get_columns.return_value = [col1]
         extractor = _make_extractor(vendor_queries=vq, col_extractor=col_ext)
         extractor.provider.query_executor.execute_query.return_value = [{"VIEW_NAME": "v1"}]
 
         views = extractor._get_view_tables("public")
 
-        self.assertEqual(views[0].columns, ["col1"])
+        self.assertEqual(views[0].columns, [col1])
 
     def test_column_extractor_exception_leaves_columns_empty(self):
         vq = MagicMock()

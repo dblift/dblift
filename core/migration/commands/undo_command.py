@@ -152,22 +152,17 @@ class UndoCommand(BaseCommand):
         result.target_schema = self.config.database.schema
 
         try:
-            # Ensure the provider connection exists before any state or
-            # history read. undo() has no prior migrate()/info() call to
-            # rely on, so it must establish the connection itself -- some
-            # providers (e.g. CosmosDB) have no lazy-reconnect hook and
+            # Canonical preflight (ADR-0011): connect → ensure schema/history
+            # table → populate connection info. undo() has no prior
+            # migrate()/info() call to rely on, so it must run this itself --
+            # some providers (e.g. CosmosDB) have no lazy-reconnect hook and
             # raise instead of connecting on demand, which previously left
             # this command reading an empty, connection-less history and
-            # reporting a false "nothing to undo" (mirrors _run_preflight's
-            # connect-before-history-before-info ordering used by
-            # migrate/info).
-            self._ensure_connected()
-
-            # Ensure schema and history table exist
-            self.history_manager.create_schema_and_history_table(create_schema=False)
-
-            # Populate database connection information (after connection is established)
-            self._populate_database_info(result)
+            # reporting a false "nothing to undo". The history table is
+            # always ensured here (not skipped in dry-run) since undo's own
+            # dry-run branch only affects whether migrations are executed,
+            # not whether the history table needs to exist to read it.
+            self._run_preflight(result, ensure_history=True, create_schema=False)
 
             # Log command execution with connection info (after connection is established)
             self._log_command_header_update(
@@ -346,20 +341,20 @@ class UndoCommand(BaseCommand):
             self.log.info(f"Found {len(migrations_to_undo)} migration(s) to undo")
 
             if dry_run:
-                if show_sql:
-                    for migration in migrations_to_undo:
-                        undo_migration = self._find_undo_script(
-                            migration,
-                            all_scripts,
-                            tags=normalized_tags,
-                            exclude_tags=normalized_exclude_tags,
-                        )
-                        if undo_migration is None:
-                            error_msg = f"No undo script found for {migration.script_name}"
-                            self.log.error(error_msg)
-                            result.set_error(error_msg)
-                            self._log_command_completion("undo", result)
-                            return result
+                for migration in migrations_to_undo:
+                    undo_migration = self._find_undo_script(
+                        migration,
+                        all_scripts,
+                        tags=normalized_tags,
+                        exclude_tags=normalized_exclude_tags,
+                    )
+                    if undo_migration is None:
+                        error_msg = f"No undo script found for {migration.script_name}"
+                        self.log.error(error_msg)
+                        result.set_error(error_msg)
+                        self._log_command_completion("undo", result)
+                        return result
+                    if show_sql:
                         if undo_migration.format == MigrationFormat.PYTHON:
                             self._add_empty_visible_sql(undo_migration, result)
                         else:
@@ -522,9 +517,6 @@ class UndoCommand(BaseCommand):
                         "migration.script.completed",
                         {**_undo_script_data, "execution_time": execution_time},
                     )
-
-                    # History recording is handled by the execution engine
-                    result.undone_count += 1
 
                     self.log.info(f"Successfully undone migration {migration.script_name}")
 
