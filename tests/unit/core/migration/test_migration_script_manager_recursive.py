@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pytest
 
+from config.dblift_config import MigrationsConfig
 from core.logger import DbliftLogger, LogFormat
 from core.migration.scripting.migration_script_manager import MigrationScriptManager
 
@@ -262,3 +263,52 @@ class TestMigrationScriptManagerPerDirectoryRecursive:
         assert any("beforeMigrate__callback_sub.sql" in name for name in script_names)
         assert any("beforeMigrate__callback_add1.sql" in name for name in script_names)
         assert not any("beforeMigrate__callback_add1_sub.sql" in name for name in script_names)
+
+
+class TestObjectFormDirectoryConfigDiscovery:
+    """Issue #818: object-form `directories:` entries must resolve to the
+    directory the user configured, so file discovery finds their scripts.
+
+    Pins the full pipeline: MigrationsConfig.get_directory_configs() ->
+    MigrationScriptManager.get_all_scripts().
+    """
+
+    def setup_method(self):
+        """Set up a real temp directory with a single top-level migration script."""
+        self.temp_dir = Path(tempfile.mkdtemp())
+        (self.temp_dir / "V1__init.sql").write_text("CREATE TABLE foo (id INT);")
+
+        logger = DbliftLogger("test", LogFormat.TEXT)
+        self.script_manager = MigrationScriptManager(logger)
+
+    def teardown_method(self):
+        import shutil
+
+        shutil.rmtree(self.temp_dir)
+
+    def test_object_form_entry_discovers_top_level_file(self):
+        """Object-form entry (dict with 'directory' + 'recursive') must resolve
+        to the configured directory and find the top-level script in it."""
+        migrations_config = MigrationsConfig(
+            directories=[{"directory": str(self.temp_dir), "recursive": True}],
+        )
+        dir_configs = migrations_config.get_directory_configs()
+
+        assert dir_configs[0].path == str(self.temp_dir)
+
+        scripts = self.script_manager.get_all_scripts(
+            Path(dir_configs[0].path), recursive=dir_configs[0].recursive
+        )
+        assert scripts == ["V1__init.sql"]
+
+    def test_string_form_entry_discovers_top_level_file(self):
+        """Regression: the equivalent plain-string form must keep working."""
+        migrations_config = MigrationsConfig(directories=[str(self.temp_dir)])
+        dir_configs = migrations_config.get_directory_configs()
+
+        assert dir_configs[0].path == str(self.temp_dir)
+
+        scripts = self.script_manager.get_all_scripts(
+            Path(dir_configs[0].path), recursive=dir_configs[0].recursive
+        )
+        assert scripts == ["V1__init.sql"]
