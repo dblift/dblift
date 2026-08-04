@@ -13,6 +13,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`migrate()`'s result listed a Python migration's version twice.** The
+  execution engine's non-SQL success path recorded the migration into the
+  result, and the command layer recorded it again unconditionally — SQL
+  migrations only hit the second, so only Python migrations doubled.
+  Execution itself was always correct; this was a result-payload
+  construction bug only. (#835)
+
 - **`--version` could report a stale, unrelated version on an archive/frozen
   distribution.** The version resolvers went straight to
   `importlib.metadata`, which scans the *host's* installed package metadata
