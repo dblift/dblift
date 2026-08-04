@@ -688,13 +688,22 @@ class DBLiftClient:
                 **kwargs,
             )
 
-            self.events.emit(
-                EventType.CLEAN_COMPLETED,
-                {
-                    "result": result,
-                    "operation": "clean",
-                },
-            )
+            if result.success:
+                self.events.emit(
+                    EventType.CLEAN_COMPLETED,
+                    {
+                        "result": result,
+                        "operation": "clean",
+                    },
+                )
+            else:
+                self.events.emit(
+                    EventType.CLEAN_FAILED,
+                    {
+                        "error": getattr(result, "error_message", None),
+                        "operation": "clean",
+                    },
+                )
 
             return result
         except Exception as e:
@@ -739,13 +748,22 @@ class DBLiftClient:
                 **kwargs,
             )
 
-            self.events.emit(
-                EventType.BASELINE_COMPLETED,
-                {
-                    "result": result,
-                    "operation": "baseline",
-                },
-            )
+            if result.success:
+                self.events.emit(
+                    EventType.BASELINE_COMPLETED,
+                    {
+                        "result": result,
+                        "operation": "baseline",
+                    },
+                )
+            else:
+                self.events.emit(
+                    EventType.BASELINE_FAILED,
+                    {
+                        "error": getattr(result, "error_message", None),
+                        "operation": "baseline",
+                    },
+                )
 
             return result
         except Exception as e:
@@ -798,13 +816,22 @@ class DBLiftClient:
                 **kwargs,
             )
 
-            self.events.emit(
-                EventType.REPAIR_COMPLETED,
-                {
-                    "result": result,
-                    "operation": "repair",
-                },
-            )
+            if result.success:
+                self.events.emit(
+                    EventType.REPAIR_COMPLETED,
+                    {
+                        "result": result,
+                        "operation": "repair",
+                    },
+                )
+            else:
+                self.events.emit(
+                    EventType.REPAIR_FAILED,
+                    {
+                        "error": getattr(result, "error_message", None),
+                        "operation": "repair",
+                    },
+                )
 
             return result
         except Exception as e:
