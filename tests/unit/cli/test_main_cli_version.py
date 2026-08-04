@@ -257,9 +257,7 @@ class TestFormatVersionBreakdownPrefersDirectImport:
                     out = _format_version()
 
         lines = out.splitlines()
-        assert any(
-            line.strip().startswith("pro:") and "9.9.9-direct" in line for line in lines[1:]
-        )
+        assert any(line.strip().startswith("pro:") and "9.9.9-direct" in line for line in lines[1:])
         assert not any("2.4.0" in line for line in lines)
 
     def test_falls_back_to_metadata_when_not_importable(self):
