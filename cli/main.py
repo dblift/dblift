@@ -237,9 +237,10 @@ def _resolve_manifest_version() -> Optional[str]:
     try:
         with open(manifest_file, "r", encoding="utf-8") as f:
             manifest = json.load(f)
-        version = manifest.get("version")
-        if isinstance(version, str) and version:
-            return version
+        if isinstance(manifest, dict):
+            version = manifest.get("version")
+            if isinstance(version, str) and version:
+                return version
     except (OSError, ValueError):
         pass
     return None

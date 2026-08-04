@@ -149,6 +149,14 @@ class TestResolveManifestVersion:
 
         assert _resolve_manifest_version() is None
 
+    def test_returns_none_on_valid_json_that_is_not_an_object(self, tmp_path, monkeypatch):
+        from cli.main import _resolve_manifest_version
+
+        (tmp_path / "DISTRIBUTION-MANIFEST.json").write_text("[1, 2, 3]", encoding="utf-8")
+        monkeypatch.setattr("cli.main._project_root", tmp_path)
+
+        assert _resolve_manifest_version() is None
+
     def test_returns_none_when_version_field_missing(self, tmp_path, monkeypatch):
         from cli.main import _resolve_manifest_version
 
