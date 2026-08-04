@@ -68,6 +68,20 @@ class TestCleanEvents:
         assert EventType.MIGRATION_STARTED not in emitted
         assert EventType.MIGRATION_COMPLETED not in emitted
 
+    def test_clean_soft_failure_emits_failed_not_completed(self):
+        """Issue #848: executor.clean() returning success=False (without
+        raising) must emit CLEAN_FAILED, not CLEAN_COMPLETED."""
+        result = MagicMock()
+        result.success = False
+        result.error_message = "Clean disabled by config"
+
+        client = _make_client("clean", result)
+        client.clean()
+
+        emitted = [call.args[0] for call in client.events.emit.call_args_list]
+        assert EventType.CLEAN_FAILED in emitted
+        assert EventType.CLEAN_COMPLETED not in emitted
+
     def test_clean_exception_emits_clean_failed(self):
         client = _make_failing_client("clean", RuntimeError("boom"))
 
@@ -95,6 +109,20 @@ class TestBaselineEvents:
         assert EventType.MIGRATION_STARTED not in emitted
         assert EventType.MIGRATION_COMPLETED not in emitted
 
+    def test_baseline_soft_failure_emits_failed_not_completed(self):
+        """Issue #848: executor.baseline() returning success=False (without
+        raising) must emit BASELINE_FAILED, not BASELINE_COMPLETED."""
+        result = MagicMock()
+        result.success = False
+        result.error_message = "Schema history table already has entries"
+
+        client = _make_client("baseline", result)
+        client.baseline(version="1.0.0")
+
+        emitted = [call.args[0] for call in client.events.emit.call_args_list]
+        assert EventType.BASELINE_FAILED in emitted
+        assert EventType.BASELINE_COMPLETED not in emitted
+
     def test_baseline_exception_emits_baseline_failed(self):
         client = _make_failing_client("baseline", RuntimeError("boom"))
 
@@ -121,6 +149,20 @@ class TestRepairEvents:
         assert EventType.REPAIR_COMPLETED in emitted
         assert EventType.MIGRATION_STARTED not in emitted
         assert EventType.MIGRATION_COMPLETED not in emitted
+
+    def test_repair_soft_failure_emits_failed_not_completed(self):
+        """Issue #848: executor.repair() returning success=False (without
+        raising) must emit REPAIR_FAILED, not REPAIR_COMPLETED."""
+        result = MagicMock()
+        result.success = False
+        result.error_message = "No mismatched checksums to repair"
+
+        client = _make_client("repair", result)
+        client.repair()
+
+        emitted = [call.args[0] for call in client.events.emit.call_args_list]
+        assert EventType.REPAIR_FAILED in emitted
+        assert EventType.REPAIR_COMPLETED not in emitted
 
     def test_repair_exception_emits_repair_failed(self):
         client = _make_failing_client("repair", RuntimeError("boom"))

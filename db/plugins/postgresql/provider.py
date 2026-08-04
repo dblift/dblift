@@ -83,7 +83,18 @@ class PostgreSqlProvider(SqlAlchemyProvider):
         )
         if exists and exists[0].get("exists"):
             return
-        self.execute_statement(f"CREATE SCHEMA IF NOT EXISTS {_quote_identifier(schema)}")
+        try:
+            self.execute_statement(f"CREATE SCHEMA IF NOT EXISTS {_quote_identifier(schema)}")
+        except Exception as exc:
+            if "already exists" not in str(exc).lower():
+                raise
+            # Two racing processes against a genuinely nonexistent schema can
+            # both pass the SELECT EXISTS check above before either one
+            # creates it. PostgreSQL can answer the loser with a unique
+            # violation on pg_namespace instead of silently no-op'ing -- the
+            # schema is there either way, so roll back the aborted statement
+            # and continue rather than failing the caller.
+            self._rollback_failed_create_race("schema")
 
     def table_exists(self, schema: str, table_name: str) -> bool:
         """Return whether a table exists in the given schema."""
@@ -157,15 +168,15 @@ class PostgreSqlProvider(SqlAlchemyProvider):
             # implicit row type instead of silently no-op'ing — the table is
             # there either way, so roll back the aborted statement and
             # continue rather than failing the migration.
-            self._rollback_failed_lock_table_create()
+            self._rollback_failed_create_race("migration-lock-table")
 
-    def _rollback_failed_lock_table_create(self) -> None:
+    def _rollback_failed_create_race(self, what: str) -> None:
         connection = getattr(self, "_connection", None)
         if connection is not None and not getattr(connection, "closed", False):
             try:
                 connection.rollback()
             except Exception as exc:
-                message = "Could not rollback failed migration-lock-table create"
+                message = f"Could not rollback failed {what} create"
                 raise RuntimeError(message) from exc
 
     def acquire_migration_lock(self, schema: str, wait_timeout_seconds: int = 60) -> bool:

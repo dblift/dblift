@@ -24,6 +24,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   whatever happens to be installed on the host — `--version`'s headline now
   prefers it. A plain `pip install` never ships this file, so that path is
   unaffected. (#745)
+- **Two racing first-time `migrate()` calls against a genuinely nonexistent
+  PostgreSQL schema could leave one process with a poisoned connection.**
+  `create_schema_if_not_exists` did a non-atomic check-then-create; both
+  processes could pass the exists-check before either created the schema,
+  and the loser hit an uncaught `UniqueViolation`. Same class of bug as the
+  migration-lock-table create race (#815), now closed for schema creation
+  too, across the whole PostgreSQL-compatible family. (#846)
 - **Concurrent calls into one shared `DBLiftClient` (e.g. multiple threads
   calling `.info()`) could race on `SqlAlchemyProvider`'s single cached
   connection**, intermittently raising errors or leaking a "transaction
@@ -47,6 +54,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   when `clean()` ran, even though the command completed successfully. Each
   command now emits its own dedicated started/completed/failed events,
   matching how `migrate()` already emits `MIGRATION_*`. (#823)
+- **`clean()`, `baseline()`, and `repair()` emitted their `*_COMPLETED` event
+  even when the underlying operation failed without raising** — e.g. `clean()`
+  refusing to run because destructive clean is disabled by configuration, or
+  `baseline()`/`repair()` hitting a safety check. Each command called its
+  executor and emitted `*_COMPLETED` unconditionally, only reaching
+  `*_FAILED` via a Python exception. Any listener (webhooks, OpenTelemetry
+  spans, custom integrations) watching for `*_FAILED` to detect a failed
+  clean/baseline/repair missed it. These three commands now check the
+  result's success flag before emitting, the same way `undo()` already does.
+  (#848)
 - **A typo'd top-level config key (e.g. `migratoins_dir`) was silently
   ignored instead of surfacing an error.** Config loading is deliberately
   permissive — unrecognized keys are dropped rather than rejected — so a
