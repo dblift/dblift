@@ -13,6 +13,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A genuine (non-race) error creating the PostgreSQL migration-lock table
+  or schema left the connection unusable afterward.** The rollback that
+  clears an aborted transaction only ran for the already-handled
+  concurrent-create race case; any other error (e.g. a permissions
+  failure) re-raised without rolling back, leaving the connection in a
+  failed-transaction state for whatever ran next. Rollback now runs for
+  any caught failure before deciding whether to swallow it (race case) or
+  re-raise it (genuine error). (#851)
+
 - **`--version` could report a stale, unrelated version on an archive/frozen
   distribution.** The version resolvers went straight to
   `importlib.metadata`, which scans the *host's* installed package metadata
