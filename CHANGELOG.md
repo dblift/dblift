@@ -13,6 +13,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A typo'd top-level config key (e.g. `migratoins_dir`) was silently
+  ignored instead of surfacing an error.** Config loading is deliberately
+  permissive — unrecognized keys are dropped rather than rejected — so a
+  typo produced no error at all, just silently-wrong behavior from
+  unintended defaults. `db validate-config` now warns when it finds
+  unrecognized top-level keys. (#820)
+
 - **A repeatable migration could fail or silently double-apply when two
   `migrate()` processes raced for the migration lock.** The losing process
   already re-checks and skips versioned migrations another process applied
