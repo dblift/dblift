@@ -52,7 +52,9 @@ def _factory_patches():
     """Patch the DB/logging side effects factory functions trigger before
     ever reaching the class-resolution decision under test."""
     return (
-        patch("api._client_factory.ProviderRegistry.create_provider", return_value=MagicMock(spec=[])),
+        patch(
+            "api._client_factory.ProviderRegistry.create_provider", return_value=MagicMock(spec=[])
+        ),
         patch("api._client_factory.DbliftLogger", return_value=MagicMock()),
     )
 
