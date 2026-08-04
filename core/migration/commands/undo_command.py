@@ -518,9 +518,6 @@ class UndoCommand(BaseCommand):
                         {**_undo_script_data, "execution_time": execution_time},
                     )
 
-                    # History recording is handled by the execution engine
-                    result.undone_count += 1
-
                     self.log.info(f"Successfully undone migration {migration.script_name}")
 
                     # Execute afterEach callbacks after successful undo

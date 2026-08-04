@@ -13,6 +13,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`undo()`'s `undone_count` was incremented twice per undone migration.**
+  `UndoResult.add_undone_migration()` already derives `undone_count` from
+  `len(undone_migrations)`, but the command layer also did a redundant
+  standalone `result.undone_count += 1` right after recording each undone
+  migration — so after undoing multiple migrations, `undone_count` no
+  longer matched `len(undone_migrations)`. Removed the redundant increment;
+  `add_undone_migration()` is now the sole source of truth for the count.
+  (#855)
 - **`Table.get_column()` could return `None` for columns that were present
   on the table.** `Table` keeps an internal `_column_map` cache alongside
   its public `columns` list, but the cache was only refreshed by
