@@ -9,6 +9,7 @@ are left abstract for per-DB subclasses (e.g. SqliteNativeProvider).
 """
 
 import re
+import threading
 from typing import Any, Dict, List, Mapping, Optional, Tuple
 
 from sqlalchemy import text
@@ -123,6 +124,32 @@ class SqlAlchemyProvider(NativeProvider):
         self._connection: Optional[Connection] = None
         self._tx: Optional[Transaction] = None
         self.query_executor = _SqlAlchemyQueryExecutor(self)
+        # A single Connection is cached on this provider (see create_connection)
+        # and reused across calls. SQLAlchemy Connections are not safe for
+        # concurrent use from multiple threads, so every method that fetches
+        # or executes on it must serialize through this lock — otherwise two
+        # threads racing on ``self._connection`` can hand each other a
+        # connection that is mid-close, or drive the same live connection's
+        # cursor/transaction state concurrently (issue #819).
+        self._lock = threading.RLock()
+
+    def __getattr__(self, name: str) -> Any:
+        """Fall back to a fresh lock for instances built without ``__init__``.
+
+        Several tests construct a provider through a stub ``__init__`` that
+        never calls ``SqlAlchemyProvider.__init__`` (e.g. binding a provider
+        directly to a fake connection to unit-test one method in isolation).
+        Those never see the assignment above and must still work rather than
+        raise ``AttributeError`` the first time a locked method runs.
+        ``__getattr__`` only fires once normal lookup has already failed, so
+        this never shadows the ``__init__``-assigned lock on a normally
+        constructed provider.
+        """
+        if name == "_lock":
+            lock = threading.RLock()
+            self.__dict__["_lock"] = lock
+            return lock
+        raise AttributeError(f"{type(self).__name__!r} object has no attribute {name!r}")
 
     @classmethod
     def from_engine(
@@ -150,14 +177,20 @@ class SqlAlchemyProvider(NativeProvider):
         Returns:
             An open sqlalchemy.engine.Connection.
         """
-        # Prefer any pre-bound open connection (e.g. injected via from_sqlalchemy
-        # with connection=) so that the caller's session/transaction is used.
-        if self._connection is not None and not self._connection.closed:
+        with self._lock:
+            # Prefer any pre-bound open connection (e.g. injected via
+            # from_sqlalchemy with connection=) so that the caller's
+            # session/transaction is used.
+            if self._connection is not None and not self._connection.closed:
+                return self._connection
+            if (
+                self._tx is not None
+                and self._connection is not None
+                and not self._connection.closed
+            ):
+                return self._connection
+            self._connection = self._conn_mgr.create_connection()
             return self._connection
-        if self._tx is not None and self._connection is not None and not self._connection.closed:
-            return self._connection
-        self._connection = self._conn_mgr.create_connection()
-        return self._connection
 
     @property
     def connection(self) -> Optional[Connection]:
@@ -175,11 +208,12 @@ class SqlAlchemyProvider(NativeProvider):
         Returns:
             An open sqlalchemy.engine.Connection.
         """
-        if self._connection is None or self._connection.closed:
-            self.create_connection()
-        if self._connection is None:
-            raise RuntimeError("SQLAlchemy connection could not be created")
-        return self._connection
+        with self._lock:
+            if self._connection is None or self._connection.closed:
+                self.create_connection()
+            if self._connection is None:
+                raise RuntimeError("SQLAlchemy connection could not be created")
+            return self._connection
 
     def close(self) -> None:
         """Close the active connection and dispose of the engine."""
@@ -291,16 +325,17 @@ class SqlAlchemyProvider(NativeProvider):
         Returns:
             Number of rows affected (-1 if the driver does not report it).
         """
-        conn = self._ensure_connection()
-        if params is None:
-            driver_sql = self._escape_driver_percent_literals(sql, conn.dialect.paramstyle)
-            result = conn.exec_driver_sql(driver_sql)
-        else:
-            named_sql, bound_params = self._bind(sql, params)
-            result = conn.execute(text(named_sql), bound_params)
-        if self._tx is None and not getattr(self, "_external_connection", False):
-            conn.commit()
-        return result.rowcount if result.rowcount is not None else -1
+        with self._lock:
+            conn = self._ensure_connection()
+            if params is None:
+                driver_sql = self._escape_driver_percent_literals(sql, conn.dialect.paramstyle)
+                result = conn.exec_driver_sql(driver_sql)
+            else:
+                named_sql, bound_params = self._bind(sql, params)
+                result = conn.execute(text(named_sql), bound_params)
+            if self._tx is None and not getattr(self, "_external_connection", False):
+                conn.commit()
+            return result.rowcount if result.rowcount is not None else -1
 
     def execute_query(self, sql: str, params: Optional[List[Any]] = None) -> List[Dict[str, Any]]:
         """Execute a SQL query and return results as a list of dicts.
@@ -312,17 +347,18 @@ class SqlAlchemyProvider(NativeProvider):
         Returns:
             List of dicts mapping column names to native Python values.
         """
-        conn = self._ensure_connection()
-        if params is None:
-            driver_sql = self._escape_driver_percent_literals(sql, conn.dialect.paramstyle)
-            result = conn.exec_driver_sql(driver_sql)
-        else:
-            named_sql, bound_params = self._bind(sql, params)
-            result = conn.execute(text(named_sql), bound_params)
-        rows = [dict(row) for row in result.mappings()]
-        if self._tx is None and not getattr(self, "_external_connection", False):
-            conn.commit()
-        return rows
+        with self._lock:
+            conn = self._ensure_connection()
+            if params is None:
+                driver_sql = self._escape_driver_percent_literals(sql, conn.dialect.paramstyle)
+                result = conn.exec_driver_sql(driver_sql)
+            else:
+                named_sql, bound_params = self._bind(sql, params)
+                result = conn.execute(text(named_sql), bound_params)
+            rows = [dict(row) for row in result.mappings()]
+            if self._tx is None and not getattr(self, "_external_connection", False):
+                conn.commit()
+            return rows
 
     # ------------------------------------------------------------------
     # TransactionalProvider
@@ -330,22 +366,25 @@ class SqlAlchemyProvider(NativeProvider):
 
     def begin_transaction(self) -> None:
         """Begin an explicit database transaction."""
-        conn = self._ensure_connection()
-        self._tx = conn.begin()
+        with self._lock:
+            conn = self._ensure_connection()
+            self._tx = conn.begin()
 
     def commit_transaction(self) -> None:
         """Commit the current explicit transaction."""
-        if self._tx is not None:
-            self._tx.commit()
-            self._tx = None
+        with self._lock:
+            if self._tx is not None:
+                self._tx.commit()
+                self._tx = None
 
     def rollback_transaction(self) -> None:
         """Roll back the current explicit transaction."""
-        if self._tx is not None:
-            self._tx.rollback()
-            self._tx = None
-        elif self._connection is not None and not getattr(self._connection, "closed", False):
-            self._connection.rollback()
+        with self._lock:
+            if self._tx is not None:
+                self._tx.rollback()
+                self._tx = None
+            elif self._connection is not None and not getattr(self._connection, "closed", False):
+                self._connection.rollback()
 
     def _end_open_transaction(self, conn: Connection) -> None:
         """Discard any open transaction so the connection sits on a clean boundary."""
@@ -380,16 +419,17 @@ class SqlAlchemyProvider(NativeProvider):
         all-or-nothing rollback; leaving the session autocommitting would
         silently disarm it.
         """
-        conn = self._ensure_connection()
-        self._end_open_transaction(conn)
-        previous_execution_options = conn.get_execution_options()
-        conn.execution_options(isolation_level="AUTOCOMMIT")
-        try:
-            return self.execute_statement(sql, schema=schema, params=params)
-        finally:
-            if not conn.closed:
-                self._end_open_transaction(conn)
-                self._restore_isolation_level(conn, previous_execution_options)
+        with self._lock:
+            conn = self._ensure_connection()
+            self._end_open_transaction(conn)
+            previous_execution_options = conn.get_execution_options()
+            conn.execution_options(isolation_level="AUTOCOMMIT")
+            try:
+                return self.execute_statement(sql, schema=schema, params=params)
+            finally:
+                if not conn.closed:
+                    self._end_open_transaction(conn)
+                    self._restore_isolation_level(conn, previous_execution_options)
 
     @staticmethod
     def _restore_isolation_level(conn: Connection, previous: Mapping[str, Any]) -> None:
