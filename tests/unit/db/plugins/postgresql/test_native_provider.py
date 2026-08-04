@@ -249,7 +249,8 @@ def test_create_migration_lock_table_survives_concurrent_duplicate_object_race()
 def test_create_migration_lock_table_reraises_unrelated_errors():
     """A failure unrelated to the race (e.g. a permissions error) must still
     propagate -- the "already exists" match must not be so broad it masks a
-    genuinely different failure."""
+    genuinely different failure. The connection must still be rolled back
+    so it is not left in a failed-transaction state for the caller."""
     provider = _Provider()
 
     def raise_permission_denied(sql, schema=None, params=None):
@@ -260,11 +261,12 @@ def test_create_migration_lock_table_reraises_unrelated_errors():
 
     provider.execute_statement = raise_permission_denied
     provider._connection = MagicMock()
+    provider._connection.closed = False
 
     with pytest.raises(Exception, match="permission denied"):
         provider.create_migration_lock_table_if_not_exists("public")
 
-    provider._connection.rollback.assert_not_called()
+    provider._connection.rollback.assert_called_once()
 
 
 def test_rollback_failed_lock_table_create_wraps_rollback_failure():
@@ -311,7 +313,8 @@ def test_create_schema_survives_concurrent_unique_violation_race():
 def test_create_schema_reraises_unrelated_errors():
     """A failure unrelated to the race (e.g. a permissions error) must still
     propagate -- the "already exists" match must not be so broad it masks a
-    genuinely different failure."""
+    genuinely different failure. The connection must still be rolled back
+    so it is not left in a failed-transaction state for the caller."""
     provider = _Provider()
     provider.execute_query = lambda sql, params=None: [{"exists": False}]
 
@@ -323,11 +326,12 @@ def test_create_schema_reraises_unrelated_errors():
 
     provider.execute_statement = raise_permission_denied
     provider._connection = MagicMock()
+    provider._connection.closed = False
 
     with pytest.raises(Exception, match="permission denied"):
         PostgreSqlProvider.create_schema_if_not_exists(provider, "tenant_a")
 
-    provider._connection.rollback.assert_not_called()
+    provider._connection.rollback.assert_called_once()
 
 
 def test_rollback_failed_schema_create_wraps_rollback_failure():
