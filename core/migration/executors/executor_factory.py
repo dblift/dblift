@@ -21,6 +21,30 @@ from .sql_executor import SqlMigrationExecutor
 logger = logging.getLogger(__name__)
 
 
+def check_format_supported(quirks: Any, format: MigrationFormat, script_name: str) -> None:
+    """Raise when *quirks*'s dialect cannot run migrations of *format*.
+
+    Document stores declare ``supports_sql_migrations = False``: they have
+    no SQL DDL, so a ``.sql`` migration is a mistake to surface rather than
+    something to translate. Pure — reads only the *quirks* object passed
+    in, so it runs without a live connection and is safe to call from
+    dry-run/validate paths as well as real execution.
+    """
+    if format is not MigrationFormat.SQL:
+        return
+    if quirks is None or getattr(quirks, "supports_sql_migrations", True):
+        return
+
+    dialect = getattr(quirks, "dialect_name", "") or "this dialect"
+    raise UnsupportedMigrationFormatError(
+        f"{UnsupportedMigrationFormatError.code}: '{script_name}' is a SQL "
+        f"migration, but the '{dialect}' dialect does not execute SQL migrations. "
+        "Rewrite it as a Python migration exposing 'def migrate(context)' and drive "
+        "the vendor SDK through 'context.db' / 'context.raw_client'. "
+        "See docs/user-guide/nosql-python-migrations.md."
+    )
+
+
 class MigrationExecutorFactory:
     """
     Factory for creating and routing to migration executors.
@@ -175,29 +199,15 @@ class MigrationExecutorFactory:
     def ensure_format_supported(self, migration: Migration, format: MigrationFormat) -> None:
         """Raise when the target dialect cannot run migrations of *format*.
 
-        Document stores declare ``supports_sql_migrations = False``: they
-        have no SQL DDL, so a ``.sql`` migration is a mistake to surface
-        rather than something to translate.
-
         Public because callbacks do not route through :meth:`get_executor`
         — ``ExecutionEngine.execute_callback`` runs SQL callbacks itself and
         needs the same verdict, or a ``.sql`` callback on a document store
         would fail later with an opaque parser/driver error instead of
-        ``DBLIFT-NOSQL-001``.
+        ``DBLIFT-NOSQL-001``. Thin wrapper around :func:`check_format_supported`
+        that supplies the provider's quirks.
         """
-        if format is not MigrationFormat.SQL:
-            return
-        quirks = getattr(self.provider, "quirks", None)
-        if quirks is None or getattr(quirks, "supports_sql_migrations", True):
-            return
-
-        dialect = getattr(quirks, "dialect_name", "") or "this dialect"
-        raise UnsupportedMigrationFormatError(
-            f"{UnsupportedMigrationFormatError.code}: '{migration.script_name}' is a SQL "
-            f"migration, but the '{dialect}' dialect does not execute SQL migrations. "
-            "Rewrite it as a Python migration exposing 'def migrate(context)' and drive "
-            "the vendor SDK through 'context.db' / 'context.raw_client'. "
-            "See docs/user-guide/nosql-python-migrations.md."
+        check_format_supported(
+            getattr(self.provider, "quirks", None), format, migration.script_name
         )
 
     def execute(
