@@ -621,9 +621,7 @@ class BaseCommand:
         self._ensure_connected()
         if ensure_history and not dry_run:
             try:
-                self.history_manager.create_schema_and_history_table(
-                    create_schema=create_schema
-                )
+                self.history_manager.create_schema_and_history_table(create_schema=create_schema)
             except Exception as exc:
                 from db.error import format_connection_error
 
