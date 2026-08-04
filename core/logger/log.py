@@ -499,6 +499,16 @@ class FileLog(AbstractLog):
             # If no extension in the pattern and no format placeholder, add the extension
             elif "." not in log_file_name.split("/")[-1]:
                 log_file_name += f".{extension}"
+
+            # A pattern that already has its own directory component (e.g.
+            # "logs/info.html" from --log-file) is a path meant to be
+            # resolved relative to the current working directory — joining
+            # it onto log_dir would double-nest it when log_dir happens to
+            # share a name with that directory. Only a bare filename (no
+            # directory component) nests under log_dir.
+            log_file_path = Path(log_file_name)
+            if log_file_path.parent != Path("."):
+                return log_file_path
         else:
             # Use default naming convention
             log_file_name = (
