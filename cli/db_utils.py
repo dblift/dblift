@@ -7,12 +7,14 @@ import traceback
 from pathlib import Path
 from typing import Any, Dict, List
 
+import yaml
+
 from api._cli_support import (
     ProviderRegistry,
     get_provider_display_url,
 )
 from cli._output import CommandOutput, from_args
-from config.dblift_config import load_config
+from config.dblift_config import DbliftConfig, load_config, unrecognized_top_level_keys
 from core.logger import DbliftLogger, LogFormat
 from core.utils.url_masking import mask_database_url
 from db.error import format_connection_error
@@ -87,6 +89,7 @@ def validate_config(args: argparse.Namespace) -> int:
             except (FileNotFoundError, RuntimeError) as load_err:
                 out.error(f"Error: {load_err}")
                 return 1
+            _warn_if_unrecognized_top_level_keys(config_file, out)
         else:
             # Batch-6 BUG-04: without ``--config`` and without ``--db-url`` (or
             # the ``DBLIFT_DB_URL`` env var), ``load_config`` returns a config
@@ -120,6 +123,30 @@ def validate_config(args: argparse.Namespace) -> int:
     except Exception as e:
         out.error(f"Error validating configuration: {str(e)}")
         return 1
+
+
+def _warn_if_unrecognized_top_level_keys(config_file: str, out: CommandOutput) -> None:
+    """Emit a stderr warning when the config file has an unrecognized top-level key.
+
+    Config file loading is permissive by construction: an unknown top-level
+    key (e.g. a typo like ``migratoins_dir``) is silently dropped rather than
+    rejected, so the command runs as if the key wasn't there. ``validate-config``
+    is the natural place to surface that, since checking config correctness is
+    its whole purpose. Re-reading the file here is best-effort — any error is
+    swallowed since ``load_config`` already loaded it successfully.
+    """
+    try:
+        raw_data = DbliftConfig.load_config_data_from_yaml(config_file)
+    except (OSError, yaml.YAMLError):
+        return
+    unknown = unrecognized_top_level_keys(raw_data)
+    if not unknown:
+        return
+    keys = ", ".join(unknown)
+    out.error(
+        f"Warning: unrecognized configuration key(s): {keys}. "
+        f"Check for typos — unrecognized keys are ignored."
+    )
 
 
 _CREDENTIALLESS_TEST_TYPES = frozenset({"dummy"})
