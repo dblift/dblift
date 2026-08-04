@@ -13,6 +13,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`migrate --dry-run`, `migrate --validate-only`, and `validate` accepted
+  `.sql` migrations against CosmosDB instead of rejecting them.** CosmosDB
+  only supports Python migrations, and real `migrate` already enforced that
+  via the `DBLIFT-NOSQL-001` guard — but that guard only ran on the
+  execution path, so the three validation-only paths reported success on a
+  migration that would fail the moment it actually ran. The check is now
+  shared between both paths, so all four commands agree. (#816)
+
 - **A repeatable migration could fail or silently double-apply when two
   `migrate()` processes raced for the migration lock.** The losing process
   already re-checks and skips versioned migrations another process applied
