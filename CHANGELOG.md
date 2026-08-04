@@ -19,6 +19,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   migrations only hit the second, so only Python migrations doubled.
   Execution itself was always correct; this was a result-payload
   construction bug only. (#835)
+- **A genuine (non-race) error creating the PostgreSQL migration-lock table
+  or schema left the connection unusable afterward.** The rollback that
+  clears an aborted transaction only ran for the already-handled
+  concurrent-create race case; any other error (e.g. a permissions
+  failure) re-raised without rolling back, leaving the connection in a
+  failed-transaction state for whatever ran next. Rollback now runs for
+  any caught failure before deciding whether to swallow it (race case) or
+  re-raise it (genuine error). (#851)
+- **The batch `generate_undo_scripts()` API silently returned an empty list
+  for a migrations directory containing only Python migrations**, instead
+  of explaining why each file was skipped the way the single-file
+  `generate_undo_script()` API already does. Discovery now considers every
+  supported migration extension, not just `.sql`, so a non-SQL migration
+  gets the same per-file explanation in the batch result instead of being
+  silently dropped. (#834)
+- **`--log-file <path-with-directory>` (e.g. `logs/info.html`) landed under
+  a doubled directory** when `--log-dir` shared a path segment with it —
+  `logs/logs/info.html` instead of `logs/info.html`. `FileLog._get_log_file()`
+  always joined the `--log-file` pattern onto `log_dir` even when the
+  pattern already carried its own directory component. A pattern with a
+  directory component is now resolved relative to the current working
+  directory instead of being re-nested; a bare filename still nests under
+  `log_dir` as before. (#832)
 - **`undo --dry-run` reported a false-optimistic "would undo" preview when the
   target migration had no matching undo script**, while the real (non-dry-run)
   `undo` correctly and immediately failed with `No undo script found for
