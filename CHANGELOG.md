@@ -13,6 +13,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`migrate()`'s result listed a Python migration's version twice.** The
+  execution engine's non-SQL success path recorded the migration into the
+  result, and the command layer recorded it again unconditionally — SQL
+  migrations only hit the second, so only Python migrations doubled.
+  Execution itself was always correct; this was a result-payload
+  construction bug only. (#835)
 - **A genuine (non-race) error creating the PostgreSQL migration-lock table
   or schema left the connection unusable afterward.** The rollback that
   clears an aborted transaction only ran for the already-handled
