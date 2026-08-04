@@ -13,6 +13,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Concurrent calls into one shared `DBLiftClient` (e.g. multiple threads
+  calling `.info()`) could race on `SqlAlchemyProvider`'s single cached
+  connection**, intermittently raising errors or leaking a "transaction
+  already deassociated from connection" warning. The provider now
+  serializes access to its connection/transaction state with an
+  instance-level lock. (#819)
+
 - **A repeatable migration could fail or silently double-apply when two
   `migrate()` processes raced for the migration lock.** The losing process
   already re-checks and skips versioned migrations another process applied
