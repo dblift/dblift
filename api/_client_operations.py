@@ -104,14 +104,24 @@ def generate_undo_scripts_operation(
     **kwargs: Any,
 ) -> List[GenerateUndoScriptResult]:
     """Generate many undo scripts for ``DBLiftClient.generate_undo_scripts``."""
+    from core.migration.formats import MigrationFormatDetector
+
     results: List[GenerateUndoScriptResult] = []
 
     if migration_paths is None:
         migrations_dir = (
             client._get_scripts_dir() if migrations_dir is None else Path(migrations_dir)
         )
-        pattern = "**/V*.sql" if recursive else "V*.sql"
-        migration_paths = [f for f in migrations_dir.glob(pattern) if f.is_file()]
+        # Discover versioned migration files of any supported format (not just
+        # .sql) so that non-SQL migrations (e.g. CosmosDB's Python-only
+        # migrations) still show up as per-file results below explaining why
+        # they were skipped, instead of vanishing from a SQL-only glob.
+        pattern = "**/V*" if recursive else "V*"
+        migration_paths = [
+            f
+            for f in migrations_dir.glob(pattern)
+            if f.is_file() and MigrationFormatDetector.is_migration_file(f)
+        ]
     else:
         migration_paths = [Path(p) for p in migration_paths]
 
