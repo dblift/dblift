@@ -641,6 +641,50 @@ class TestFileLog:
         log_file = log._get_log_file()
         assert log_file.suffix == ".html"
 
+    def test_get_log_file_pattern_with_relative_directory_does_not_double_nest(
+        self, tmp_path, monkeypatch
+    ):
+        """Regression for #832: a --log-file value with its own directory
+        component (e.g. "logs/info.html") is a path relative to the current
+        working directory, not a pattern to re-nest under log_dir. When
+        log_dir is also "logs", the file must land at logs/info.html, not
+        logs/logs/info.html."""
+        monkeypatch.chdir(tmp_path)
+        log_dir = tmp_path / "logs"
+        log = FileLog(
+            "test_log",
+            log_dir,
+            LogFormat.HTML,
+            log_file_pattern="logs/info.html",
+        )
+        log_file = log._get_log_file()
+        assert log_file.resolve() == (tmp_path / "logs" / "info.html").resolve()
+        assert not (tmp_path / "logs" / "logs").exists()
+
+    def test_get_log_file_pattern_bare_filename_still_nests_under_log_dir(self, tmp_path):
+        """A --log-file value with no directory component (just a filename)
+        must still nest under log_dir — this case must not regress."""
+        log = FileLog(
+            "test_log",
+            tmp_path,
+            LogFormat.HTML,
+            log_file_pattern="info.html",
+        )
+        log_file = log._get_log_file()
+        assert log_file == tmp_path / "info.html"
+
+    def test_get_log_file_pattern_absolute_path_used_as_is(self, tmp_path):
+        """An absolute --log-file path must be used as-is, ignoring log_dir."""
+        absolute_target = tmp_path / "elsewhere" / "info.html"
+        log = FileLog(
+            "test_log",
+            tmp_path / "logs",
+            LogFormat.HTML,
+            log_file_pattern=str(absolute_target),
+        )
+        log_file = log._get_log_file()
+        assert log_file == absolute_target
+
     def test_get_extension_for_format(self, tmp_path):
         """Test _get_extension_for_format."""
         log = FileLog("test_log", tmp_path, LogFormat.TEXT)
