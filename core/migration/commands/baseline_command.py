@@ -23,16 +23,14 @@ class BaselineCommand(BaseCommand):
         result.target_schema = self.config.database.schema
 
         try:
-            # Ensure the provider connection exists before any state or
-            # history read. baseline() has no prior migrate()/info() call to
-            # rely on, so it must establish the connection itself -- some
-            # providers (e.g. CosmosDB) have no lazy-reconnect hook and
-            # raise instead of connecting on demand (mirrors the same fix
-            # applied to undo()).
-            self._ensure_connected()
-
-            # Populate database connection information (after connection is established)
-            self._populate_database_info(result)
+            # Canonical preflight (ADR-0011): connect → ensure schema/history
+            # table (skipped in dry-run so baseline never creates it as a
+            # side effect of a dry-run) → populate connection info.
+            # baseline() has no prior migrate()/info() call to rely on, so
+            # it must run this itself -- some providers (e.g. CosmosDB)
+            # have no lazy-reconnect hook and raise instead of connecting
+            # on demand (mirrors the same fix applied to undo()).
+            self._run_preflight(result, ensure_history=True, dry_run=dry_run, create_schema=True)
 
             if dry_run:
                 # Don't create the schema/history table as a side effect of dry-run.
@@ -55,9 +53,6 @@ class BaselineCommand(BaseCommand):
                 )
                 self._log_command_completion("baseline", result)
                 return result
-
-            # Ensure schema and history table exist before baselining.
-            self.history_manager.create_schema_and_history_table(create_schema=True)
 
             # Log command execution with connection info (after connection is established)
             self._log_command_header_update("baseline", baseline_version=baseline_version)

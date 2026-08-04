@@ -100,6 +100,26 @@ class TestPreflightOrdering:
         assert "create_schema_and_history_table" not in order
         assert order == ["_ensure_connected", "_populate_database_info"]
 
+    def test_create_schema_defaults_to_false(self, monkeypatch, recorder):
+        """migrate/info/undo: create_schema defaults to False (unchanged)."""
+        cmd = _make_minimal_command()
+        _patch_preflight(monkeypatch, cmd, recorder)
+
+        cmd._run_preflight(result=MagicMock(), ensure_history=True)
+
+        create_call = next(c for c in recorder.calls if c[0] == "create_schema_and_history_table")
+        assert create_call[2] == {"create_schema": False}
+
+    def test_create_schema_true_is_forwarded(self, monkeypatch, recorder):
+        """baseline: create_schema=True must reach create_schema_and_history_table."""
+        cmd = _make_minimal_command()
+        _patch_preflight(monkeypatch, cmd, recorder)
+
+        cmd._run_preflight(result=MagicMock(), ensure_history=True, create_schema=True)
+
+        create_call = next(c for c in recorder.calls if c[0] == "create_schema_and_history_table")
+        assert create_call[2] == {"create_schema": True}
+
     def test_populate_always_runs_last(self, monkeypatch, recorder):
         """Whatever the flags, populate comes AFTER connect (Bugbot PR 160 guard)."""
         cmd = _make_minimal_command()
