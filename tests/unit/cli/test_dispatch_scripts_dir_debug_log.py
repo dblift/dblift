@@ -82,3 +82,24 @@ def test_dispatch_logs_client_scripts_dir_not_stale_local_value(tmp_path):
     assert scripts_dir_lines, "expected a 'scripts_dir:' debug line"
     assert scripts_dir_lines[0] == f"scripts_dir: {real_scanned_dir.resolve()}"
     assert str(stale_unresolved_dir) not in scripts_dir_lines[0]
+
+
+@pytest.mark.unit
+def test_effective_scripts_dir_falls_back_when_client_has_no_get_scripts_dir(tmp_path):
+    """Clients without a callable ``_get_scripts_dir`` (e.g. config-only
+    stand-ins) fall back to the locally-computed value instead of raising."""
+    fallback = tmp_path / "fallback"
+    client = SimpleNamespace()  # no _get_scripts_dir attribute at all
+
+    assert cli_main._effective_scripts_dir_for_log(client, fallback) is fallback
+
+
+@pytest.mark.unit
+def test_effective_scripts_dir_falls_back_when_get_scripts_dir_raises(tmp_path):
+    """A client whose ``_get_scripts_dir()``/``.resolve()`` raises falls back
+    to the locally-computed value instead of propagating."""
+    fallback = tmp_path / "fallback"
+    client = MagicMock()
+    client._get_scripts_dir.side_effect = OSError("boom")
+
+    assert cli_main._effective_scripts_dir_for_log(client, fallback) is fallback
