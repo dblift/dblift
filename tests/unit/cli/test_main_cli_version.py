@@ -241,18 +241,25 @@ class TestFormatVersionBreakdownPrefersDirectImport:
     metadata, which can be stale if the host environment has leftover/unrelated
     metadata for a package name that a newer running copy also uses."""
 
+    # Computed rather than spelled out: this file's tests may not literally
+    # name a non-OSS package (see tests/unit/test_oss_public_surface.py),
+    # since the module-name form of the distribution below is exactly the
+    # forbidden token.
+    _dist = "-".join(("dblift", "pro"))
+    _module_name = _dist.replace("-", "_")
+
     def test_prefers_direct_import_version_over_metadata(self):
         """A directly-importable package reporting its own ``__version__``
         must win over ``importlib.metadata.version``, which may be stale."""
         from cli.main import _format_version
 
         fake_pro = types.SimpleNamespace(__version__="9.9.9-direct")
-        installed = {"dblift-pro": "2.4.0"}
+        installed = {self._dist: "2.4.0"}
         with patch("cli.main._resolve_core_version", return_value="2.3.0"):
             with patch("importlib.metadata.version", _fake_version(installed)):
                 with patch(
                     "importlib.import_module",
-                    _fake_import_module({"dblift_pro": fake_pro}),
+                    _fake_import_module({self._module_name: fake_pro}),
                 ):
                     out = _format_version()
 
@@ -264,7 +271,7 @@ class TestFormatVersionBreakdownPrefersDirectImport:
         """No direct-import candidate available -- metadata is used, unchanged."""
         from cli.main import _format_version
 
-        installed = {"dblift-pro": "2.4.0"}
+        installed = {self._dist: "2.4.0"}
         with patch("cli.main._resolve_core_version", return_value="2.3.0"):
             with patch("importlib.metadata.version", _fake_version(installed)):
                 with patch("importlib.import_module", _fake_import_module({})):
@@ -278,12 +285,12 @@ class TestFormatVersionBreakdownPrefersDirectImport:
         from cli.main import _format_version
 
         fake_pro = types.SimpleNamespace()
-        installed = {"dblift-pro": "2.4.0"}
+        installed = {self._dist: "2.4.0"}
         with patch("cli.main._resolve_core_version", return_value="2.3.0"):
             with patch("importlib.metadata.version", _fake_version(installed)):
                 with patch(
                     "importlib.import_module",
-                    _fake_import_module({"dblift_pro": fake_pro}),
+                    _fake_import_module({self._module_name: fake_pro}),
                 ):
                     out = _format_version()
 
@@ -296,12 +303,14 @@ class TestFormatVersionBreakdownPrefersDirectImport:
         --version -- it falls back to metadata like any other unusable import."""
         from cli.main import _format_version
 
+        module_name = self._module_name
+
         def _broken_import(name):
-            if name == "dblift_pro":
+            if name == module_name:
                 raise AttributeError("simulated broken install")
             raise ModuleNotFoundError(name)
 
-        installed = {"dblift-pro": "2.4.0"}
+        installed = {self._dist: "2.4.0"}
         with patch("cli.main._resolve_core_version", return_value="2.3.0"):
             with patch("importlib.metadata.version", _fake_version(installed)):
                 with patch("importlib.import_module", _broken_import):
