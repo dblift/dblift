@@ -136,6 +136,8 @@ class Db2Quirks(BaseQuirks):
     index_drop_standalone_supports_if_exists = False  # DB2 has no DROP INDEX IF EXISTS
     # Wave B hooks.
     native_driver_display = "ibm_db_sa"
+    # validate-sql offline placeholder.
+    lint_placeholder_url = "db2://localhost:50000/DBLIFT_VALIDATE_SQL"
     # Wave C hooks (story 26-9): migration engine transaction semantics.
     clean_schema_auto_commits = True
     requires_explicit_commit_after_ddl = True

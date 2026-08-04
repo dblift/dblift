@@ -13,6 +13,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`validate-sql --dialect X` (no `--config`/`--db-url`) still required a
+  database URL**, contradicting its own documented offline-only usage. The
+  placeholder connection every dialect uses to unlock offline validation
+  was `None` for every plugin. Dialects now declare a real placeholder,
+  restoring `--dialect`-only validation. (#825)
 - **`--log-level DEBUG`'s `scripts_dir:` trace line could name a directory
   that was never scanned.** The logged value and the directory actually
   used for scanning were resolved two different ways — one against the

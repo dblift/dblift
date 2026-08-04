@@ -121,6 +121,10 @@ class PostgresqlQuirks(BaseQuirks):
     native_url_schema_params = ("currentSchema", "search_path")
     # PG TIMESTAMP / TIME accept only fractional-seconds precision.
     time_type_supports_only_fractional_precision = True
+    # validate-sql offline placeholder. Inherited by every PG-wire plugin
+    # (CockroachDB, Redshift, Citus, YugabyteDB, Neon, Supabase, AlloyDB,
+    # Aurora PostgreSQL, TimescaleDB) — they all keep the postgresql:// scheme.
+    lint_placeholder_url = "postgresql://localhost/dblift_validate_sql"
 
     # Default canonical name; ProviderRegistry.get_quirks() passes the
     # caller's db_type so that aliases (e.g. "postgres") preserve the

@@ -96,6 +96,9 @@ class MysqlQuirks(BaseQuirks):
     table_column_default_has_on_update = True
     # Wave B hooks.
     native_driver_display = "pymysql"
+    # validate-sql offline placeholder. Inherited by MariaDB, whose config
+    # class is MySQL's own (config_dialect="mysql") and builds mysql:// URLs.
+    lint_placeholder_url = "mysql://localhost/dblift_validate_sql"
     # Wave C hooks (story 26-9): migration engine transaction semantics.
     clean_schema_auto_commits = True
     supports_session_autocommit = False

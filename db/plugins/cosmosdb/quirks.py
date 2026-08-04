@@ -45,6 +45,10 @@ class CosmosdbQuirks(BaseQuirks):
     # Wave B hooks.
     native_driver_display = "Azure Cosmos DB SDK for Python"
     requires_credentials = False
+    # No validate-sql offline lint: ``parser_class()`` below returns None for
+    # every parser_type because Cosmos DB has no SQL for dblift to read, so a
+    # placeholder connection would not unlock anything. ``lint_placeholder_url``
+    # stays unset (``None``, from BaseQuirks).
     connection_identifier_attrs = ("url", "account_endpoint")
     missing_connection_identifier_hint = (
         "CosmosDB account endpoint not specified (set database.account_endpoint "
