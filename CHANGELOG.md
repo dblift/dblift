@@ -21,7 +21,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   batch. The batch now emits `MIGRATION_FAILED` when `failure_count > 0`,
   reserving `MIGRATION_COMPLETED` for a batch where every item succeeded —
   matching how `generate_undo_script()` (the single-file API) already
-  handles success/failure.
+  handles success/failure. (#173)
+- **Bare `undo` (no `--target-version`) could undo the wrong migration when
+  migrations were applied out of version order.** It selected the migration
+  to undo by sorting on version number instead of using install-rank order
+  (`ORDER BY installed_rank`, the same convention every provider's history
+  query and the `--target-version` path already use). Migrations applied
+  out of version order — allowed by dblift with only a warning unless
+  `--strict` is passed — could cause bare `undo` to remove a different
+  migration's objects than the one actually most recently installed. Both
+  code paths now agree on install-rank order. (#172)
+- **`log_level` set in a config file or via `DBLIFT_LOG_LEVEL` had no
+  effect on console output.** The logging setup read the raw CLI argument
+  directly instead of the already-merged config value, and `--log-level`'s
+  invisible argparse default made every run look like `--log-level info`
+  was explicitly passed, silently overriding the config file or env var.
+  Both are fixed: the CLI flag no longer has a hidden default, and logging
+  setup now reads the merged config value. (#177)
+- **Two call sites assumed a JDBC-style connection API
+  (`getAutoCommit()`/`isClosed()`) that not every Python driver
+  implements** (confirmed missing on `python-oracledb`), causing caught,
+  debug-log-only errors and skipping the connection-state checks they
+  guard. Both call sites now use `hasattr()` guards with a safe fallback,
+  matching the pattern already used elsewhere in the codebase. (#176)
+- **`db check-connection` reported a generic "invalid credentials" message
+  for SQLite filesystem permission errors.** The dialect-agnostic error
+  classifier's "permission denied" pattern, intended for database-level
+  authorization errors, also matched the text of a raw filesystem
+  `PermissionError`. OS-level errors are no longer routed through the
+  auth-error classifier, so the real error message is now shown. (#174)
+- **DuckDB migrations without `--installed-by` left the "Installed By"
+  history column blank** instead of falling back to the OS user, since
+  DuckDB (like SQLite) has no database-level username to fall back to.
+  Embedded/no-username drivers now fall back to the OS user, matching what
+  `import-flyway` already does when preserving values from a source table.
+  (#175)
+- **Duplicate-version validation errors didn't distinguish which files
+  collided** when two `--scripts` directories both contained a same-named
+  migration for the same version — the error repeated the identical
+  basename twice with no path context. The error now includes the full
+  script path for both files. (#170)
 
 ### Removed
 
