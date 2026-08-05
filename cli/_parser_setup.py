@@ -444,10 +444,15 @@ def create_parser(
     parser.add_argument("--log-format", default="text", help="Log format (text, json, html)")
     parser.add_argument(
         "--log-level",
-        default="info",
+        # No default here: a non-None default is indistinguishable from an
+        # explicit choice once merged with config-file/env values (CLI > env >
+        # file precedence), so it would always win and silently discard
+        # DBLIFT_LOG_LEVEL / a config file's log_level. _configure_logging()
+        # falls back to LogLevel.INFO when nothing sets a level.
+        default=None,
         type=str.lower,
         choices=["debug", "info", "warn", "error"],
-        help="Log level (case-insensitive)",
+        help="Log level (case-insensitive, default: info)",
     )
     parser.add_argument("--log-file", help="Log file name")
     parser.add_argument(
