@@ -230,6 +230,270 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
+## [3.4.2] - 2026-08-05
+
+### Added
+
+### Changed
+
+### Fixed
+
+- **`generate_undo_scripts()` (the batch API) emitted `MIGRATION_COMPLETED`
+  even when every item in the batch failed.** The per-item results and the
+  `success_count`/`failure_count` payload fields were already computed
+  correctly, but the batch-level terminal event was emitted unconditionally,
+  so listeners watching for `MIGRATION_FAILED` couldn't detect an all-failed
+  batch. The batch now emits `MIGRATION_FAILED` when `failure_count > 0`,
+  reserving `MIGRATION_COMPLETED` for a batch where every item succeeded —
+  matching how `generate_undo_script()` (the single-file API) already
+  handles success/failure. (#173)
+- **Bare `undo` (no `--target-version`) could undo the wrong migration when
+  migrations were applied out of version order.** It selected the migration
+  to undo by sorting on version number instead of using install-rank order
+  (`ORDER BY installed_rank`, the same convention every provider's history
+  query and the `--target-version` path already use). Migrations applied
+  out of version order — allowed by dblift with only a warning unless
+  `--strict` is passed — could cause bare `undo` to remove a different
+  migration's objects than the one actually most recently installed. Both
+  code paths now agree on install-rank order. (#172)
+- **`log_level` set in a config file or via `DBLIFT_LOG_LEVEL` had no
+  effect on console output.** The logging setup read the raw CLI argument
+  directly instead of the already-merged config value, and `--log-level`'s
+  invisible argparse default made every run look like `--log-level info`
+  was explicitly passed, silently overriding the config file or env var.
+  Both are fixed: the CLI flag no longer has a hidden default, and logging
+  setup now reads the merged config value. (#177)
+- **Two call sites assumed a JDBC-style connection API
+  (`getAutoCommit()`/`isClosed()`) that not every Python driver
+  implements** (confirmed missing on `python-oracledb`), causing caught,
+  debug-log-only errors and skipping the connection-state checks they
+  guard. Both call sites now use `hasattr()` guards with a safe fallback,
+  matching the pattern already used elsewhere in the codebase. (#176)
+- **`db check-connection` reported a generic "invalid credentials" message
+  for SQLite filesystem permission errors.** The dialect-agnostic error
+  classifier's "permission denied" pattern, intended for database-level
+  authorization errors, also matched the text of a raw filesystem
+  `PermissionError`. OS-level errors are no longer routed through the
+  auth-error classifier, so the real error message is now shown. (#174)
+- **DuckDB migrations without `--installed-by` left the "Installed By"
+  history column blank** instead of falling back to the OS user, since
+  DuckDB (like SQLite) has no database-level username to fall back to.
+  Embedded/no-username drivers now fall back to the OS user, matching what
+  `import-flyway` already does when preserving values from a source table.
+  (#175)
+- **Duplicate-version validation errors didn't distinguish which files
+  collided** when two `--scripts` directories both contained a same-named
+  migration for the same version — the error repeated the identical
+  basename twice with no path context. The error now includes the full
+  script path for both files. (#170)
+
+### Removed
+
+## [3.4.1] - 2026-08-04
+
+### Added
+
+### Changed
+
+### Fixed
+
+- **`dblift --version`'s per-package breakdown lines could report a stale
+  version for an installed package**, even though the headline already
+  avoided this for the core version. The breakdown lines now try a direct
+  import of each package first and prefer its own `__version__` attribute,
+  falling back to installed distribution metadata only when the package
+  isn't importable or doesn't expose one — the same preference the headline
+  already applies to avoid stale host-installed metadata. (#854)
+- **`undo()`'s `undone_count` was incremented twice per undone migration.**
+  `UndoResult.add_undone_migration()` already derives `undone_count` from
+  `len(undone_migrations)`, but the command layer also did a redundant
+  standalone `result.undone_count += 1` right after recording each undone
+  migration — so after undoing multiple migrations, `undone_count` no
+  longer matched `len(undone_migrations)`. Removed the redundant increment;
+  `add_undone_migration()` is now the sole source of truth for the count.
+  (#855)
+- **`Table.get_column()` could return `None` for columns that were present
+  on the table.** `Table` keeps an internal `_column_map` cache alongside
+  its public `columns` list, but the cache was only refreshed by
+  `add_column()`. Code that replaced the list wholesale — `table.columns =
+  [...]`, a common pattern for bulk-loading columns — left the cache stale,
+  so lookups by name silently failed even though the columns were there.
+  `columns` is now a property whose setter rebuilds `_column_map` on every
+  assignment, so `get_column()` stays correct regardless of how columns
+  were set. (#863)
+- **`validate-sql --dialect X` (no `--config`/`--db-url`) still required a
+  database URL**, contradicting its own documented offline-only usage. The
+  placeholder connection every dialect uses to unlock offline validation
+  was `None` for every plugin. Dialects now declare a real placeholder,
+  restoring `--dialect`-only validation. (#825)
+- **`--log-level DEBUG`'s `scripts_dir:` trace line could name a directory
+  that was never scanned.** The logged value and the directory actually
+  used for scanning were resolved two different ways — one against the
+  config file's own directory, the other against the current working
+  directory — and diverged whenever the two differed. The trace now logs
+  the client's own resolved scripts directory, the same value the scanner
+  actually uses. Logging only; scan behavior is unchanged. (#833)
+- **`beforeEachMigrate`/`afterEachMigrate` callback banner lines only printed
+  for the first migration in a batch.** The callbacks executed correctly for
+  every migration, but the "Executing N beforeEachMigrate callback(s)" style
+  log lines are identical text on every migration (same callback set, same
+  script names), and the logger's time-window message deduplication silently
+  swallowed the repeats. The console/log output now shows one banner line
+  per migration, matching the actual execution count. (#829)
+- **`migrate()`'s result listed a Python migration's version twice.** The
+  execution engine's non-SQL success path recorded the migration into the
+  result, and the command layer recorded it again unconditionally — SQL
+  migrations only hit the second, so only Python migrations doubled.
+  Execution itself was always correct; this was a result-payload
+  construction bug only. (#835)
+- **A genuine (non-race) error creating the PostgreSQL migration-lock table
+  or schema left the connection unusable afterward.** The rollback that
+  clears an aborted transaction only ran for the already-handled
+  concurrent-create race case; any other error (e.g. a permissions
+  failure) re-raised without rolling back, leaving the connection in a
+  failed-transaction state for whatever ran next. Rollback now runs for
+  any caught failure before deciding whether to swallow it (race case) or
+  re-raise it (genuine error). (#851)
+- **The batch `generate_undo_scripts()` API silently returned an empty list
+  for a migrations directory containing only Python migrations**, instead
+  of explaining why each file was skipped the way the single-file
+  `generate_undo_script()` API already does. Discovery now considers every
+  supported migration extension, not just `.sql`, so a non-SQL migration
+  gets the same per-file explanation in the batch result instead of being
+  silently dropped. (#834)
+- **`--log-file <path-with-directory>` (e.g. `logs/info.html`) landed under
+  a doubled directory** when `--log-dir` shared a path segment with it —
+  `logs/logs/info.html` instead of `logs/info.html`. `FileLog._get_log_file()`
+  always joined the `--log-file` pattern onto `log_dir` even when the
+  pattern already carried its own directory component. A pattern with a
+  directory component is now resolved relative to the current working
+  directory instead of being re-nested; a bare filename still nests under
+  `log_dir` as before. (#832)
+- **`undo --dry-run` reported a false-optimistic "would undo" preview when the
+  target migration had no matching undo script**, while the real (non-dry-run)
+  `undo` correctly and immediately failed with `No undo script found for
+  ...`. The dry-run path only checked for the undo script's existence when
+  `--show-sql` was also passed; without it, dry-run skipped straight to the
+  preview. It now checks for the undo script the same way the real path
+  does, regardless of `--show-sql`. No writes ever occurred either way, so
+  this was a preview-accuracy issue, not a correctness bug. (#831)
+- **`--version` could report a stale, unrelated version on an archive/frozen
+  distribution.** The version resolvers went straight to
+  `importlib.metadata`, which scans the *host's* installed package metadata
+  rather than verifying it belongs to the code actually executing — so an
+  extracted distribution running under a Python whose site-packages held an
+  older `dblift` install reported that older version instead of its own. When
+  a `DISTRIBUTION-MANIFEST.json` is present next to the running entry point —
+  stamped at build time with the version of the bundled code, and immune to
+  whatever happens to be installed on the host — `--version`'s headline now
+  prefers it. A plain `pip install` never ships this file, so that path is
+  unaffected. (#745)
+- **Two racing first-time `migrate()` calls against a genuinely nonexistent
+  PostgreSQL schema could leave one process with a poisoned connection.**
+  `create_schema_if_not_exists` did a non-atomic check-then-create; both
+  processes could pass the exists-check before either created the schema,
+  and the loser hit an uncaught `UniqueViolation`. Same class of bug as the
+  migration-lock-table create race (#815), now closed for schema creation
+  too, across the whole PostgreSQL-compatible family. (#846)
+- **Concurrent calls into one shared `DBLiftClient` (e.g. multiple threads
+  calling `.info()`) could race on `SqlAlchemyProvider`'s single cached
+  connection**, intermittently raising errors or leaking a "transaction
+  already deassociated from connection" warning. The provider now
+  serializes access to its connection/transaction state with an
+  instance-level lock. (#819)
+- **`baseline()` failed with "CosmosDB provider has no active connection" when
+  it was the first operation called on a fresh client.** Unlike
+  `info()`/`migrate()`/`undo()`, `baseline_command.py` never called the
+  shared `_ensure_connected()` helper before touching the provider — most
+  dialects lazily reconnect on demand, but CosmosDB doesn't, so it surfaced
+  immediately. `baseline()` now establishes its connection up front, the
+  same way `undo()` already does. (#821)
+- **`undo()`, `clean()`, `baseline()`, and `repair()` never emitted their
+  dedicated `EventType` members.** `UNDO_STARTED`/`UNDO_COMPLETED`/
+  `UNDO_FAILED` and the equivalent `CLEAN_*`/`BASELINE_*`/`REPAIR_*` members
+  have been part of the public `EventType` enum, but `DBLiftClient` emitted
+  the generic `MIGRATION_STARTED`/`MIGRATION_COMPLETED`/`MIGRATION_FAILED`
+  events (with an `operation` field) for all four commands instead. A
+  listener subscribed to e.g. `EventType.CLEAN_STARTED` received nothing
+  when `clean()` ran, even though the command completed successfully. Each
+  command now emits its own dedicated started/completed/failed events,
+  matching how `migrate()` already emits `MIGRATION_*`. (#823)
+- **`clean()`, `baseline()`, and `repair()` emitted their `*_COMPLETED` event
+  even when the underlying operation failed without raising** — e.g. `clean()`
+  refusing to run because destructive clean is disabled by configuration, or
+  `baseline()`/`repair()` hitting a safety check. Each command called its
+  executor and emitted `*_COMPLETED` unconditionally, only reaching
+  `*_FAILED` via a Python exception. Any listener (webhooks, OpenTelemetry
+  spans, custom integrations) watching for `*_FAILED` to detect a failed
+  clean/baseline/repair missed it. These three commands now check the
+  result's success flag before emitting, the same way `undo()` already does.
+  (#848)
+- **A typo'd top-level config key (e.g. `migratoins_dir`) was silently
+  ignored instead of surfacing an error.** Config loading is deliberately
+  permissive — unrecognized keys are dropped rather than rejected — so a
+  typo produced no error at all, just silently-wrong behavior from
+  unintended defaults. `db validate-config` now warns when it finds
+  unrecognized top-level keys. (#820)
+- **`migrate --dry-run`, `migrate --validate-only`, and `validate` accepted
+  `.sql` migrations against CosmosDB instead of rejecting them.** CosmosDB
+  only supports Python migrations, and real `migrate` already enforced that
+  via the `DBLIFT-NOSQL-001` guard — but that guard only ran on the
+  execution path, so the three validation-only paths reported success on a
+  migration that would fail the moment it actually ran. The check is now
+  shared between both paths, so all four commands agree. (#816)
+- **`DBLiftClient.from_config`/`from_config_file`/`from_sqlalchemy`, called on
+  the documented base client class, never picked up a tier-provided
+  subclass even when one was installed and registered.** The CLI already
+  resolved the correct client class through the `dblift.client` seam before
+  constructing it; the public factory methods always constructed the exact
+  class they were called on instead of consulting the same seam, so a
+  caller following the documented `DBLiftClient.from_config(...)` pattern
+  silently got the base client's stubbed-out paid-tier methods regardless
+  of what was installed. The factory methods now resolve through the seam
+  when called on the base class itself; calling them on an already-specific
+  subclass is unaffected. (#753)
+
+- **A repeatable migration could fail or silently double-apply when two
+  `migrate()` processes raced for the migration lock.** The losing process
+  already re-checks and skips versioned migrations another process applied
+  while it waited for the lock, but never re-checked repeatable (`R__`)
+  migrations the same way — it unconditionally re-executed them. Against a
+  non-idempotent repeatable script this produced a genuine failed migration
+  even though the schema was already fully and correctly migrated by the
+  winner; against an idempotent one it wrote a duplicate history row.
+  `_filter_already_applied` now re-verifies pending repeatables against the
+  post-lock history snapshot by script name and checksum, mirroring the
+  existing versioned-migration re-check. (#811)
+
+- **SQL Server: unqualified DDL (dblift's own documented `CREATE TABLE`
+  style) silently landed in the connecting login's own default schema
+  instead of `--db-schema`.** SQL Server's `set_current_schema` was an
+  explicit no-op, and the provider never called it at all outside
+  callbacks. It now aligns the connecting login's `DEFAULT_SCHEMA` via
+  `ALTER USER ... WITH DEFAULT_SCHEMA`, the only mechanism SQL Server
+  offers — unlike every other supported dialect, this is catalog-level
+  state on the login rather than scoped to the connection, so it's visible
+  to and overwritable by any other connection using the same login. The
+  login's actual `DEFAULT_SCHEMA` is now read back and compared against
+  what dblift last set on every call (not only when `--db-schema` itself
+  changes), logging a warning the moment it disagrees; only the redundant
+  `ALTER USER` write is skipped once the connection already holds the
+  requested schema. This makes a shared login getting clobbered by a
+  concurrent dblift run visible in the logs — it does not, and cannot,
+  retroactively fix DDL that already ran against the wrong schema in that
+  window. See the troubleshooting guide for the resulting recommendation:
+  don't share one SQL Server login across concurrent dblift runs targeting
+  different schemas. (#806)
+- **CosmosDB: a container name containing a single quote (e.g.
+  `o'brien_orders`) produced a broken `DROP TABLE` comment.** The
+  generated `context.db.delete_container(...)` snippet hand-wrapped the
+  container name in single quotes, so an embedded quote broke out of the
+  wrapping and left mismatched quotes in the emitted text. The name is now
+  rendered with Python's `!r` formatting, which escapes embedded quotes
+  correctly. (#858)
+
+### Removed
+
 ## [3.4.0] - 2026-08-02
 
 ### Added
