@@ -136,6 +136,20 @@ class MigrationContext:
         ``context.execute("ALTER TABLE ...")`` instead of
         ``context.provider.execute_statement(...)``.
 
+        ``params`` uses dblift's ``?`` (qmark) placeholder convention,
+        positionally matched against a list — the same syntax used in SQL
+        migration files — regardless of the target dialect's native
+        paramstyle::
+
+            context.execute(
+                "INSERT INTO t (a, b) VALUES (?, ?)", [1, 2]
+            )
+
+        Each ``?`` is translated internally to the connection's DBAPI
+        paramstyle (e.g. ``%s`` for pymysql, ``:1`` for cx_Oracle), so
+        dialect-specific placeholder syntax such as ``%s`` should not be
+        written directly in ``sql``.
+
         B10-BUG-09: ``provider.execute_statement`` routes through the provider
         ``Statement.executeUpdate()``, which PostgreSQL and DB2 drivers
         reject for result-set-returning SQL ("A result was returned when
