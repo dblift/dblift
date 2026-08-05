@@ -98,3 +98,84 @@ class TestNoTargetVersionUsesInstallRankNotVersionOrder:
             f"the only candidate checked, got {checked_versions} -- bare undo must "
             "follow install-rank order, not version-number order."
         )
+
+    def test_skips_non_versioned_migration_type_and_falls_through(self):
+        # A REPEATABLE migration installed most recently must be skipped (it's
+        # not undoable), falling through to the next SQL/PYTHON candidate.
+        v1 = _make_migration(1)
+        repeatable = _make_migration(None, mtype=MigrationType.REPEATABLE)
+        cmd = _make_command([v1, repeatable])
+
+        cmd.execute(scripts_dir=MagicMock())
+
+        checked_versions = [
+            call.args[0] for call in cmd.migration_rules.should_undo_version.call_args_list
+        ]
+        assert checked_versions == ["1"]
+
+    def test_skips_migration_that_fails_tag_filter(self):
+        # Neither migration carries the requested tag, so both are skipped
+        # and nothing is undone.
+        v1 = _make_migration(1)
+        v2 = _make_migration(2)
+        cmd = _make_command([v1, v2])
+
+        cmd.execute(scripts_dir=MagicMock(), tags="special")
+
+        assert cmd.migration_rules.should_undo_version.call_args_list == []
+
+    def test_skips_failed_migration_and_falls_through(self):
+        # The most recently applied migration failed and must be skipped,
+        # falling through to the next successful one.
+        v1 = _make_migration(1, success=True)
+        v2 = _make_migration(2, success=False)
+        cmd = _make_command([v1, v2])
+
+        cmd.execute(scripts_dir=MagicMock())
+
+        checked_versions = [
+            call.args[0] for call in cmd.migration_rules.should_undo_version.call_args_list
+        ]
+        assert checked_versions == ["1"]
+
+    def test_skips_migration_with_no_version(self):
+        # An SQL/PYTHON-typed migration with no version (edge case) must be
+        # skipped, falling through to the next versioned candidate.
+        v1 = _make_migration(1)
+        no_version = _make_migration(None)
+        cmd = _make_command([v1, no_version])
+
+        cmd.execute(scripts_dir=MagicMock())
+
+        checked_versions = [
+            call.args[0] for call in cmd.migration_rules.should_undo_version.call_args_list
+        ]
+        assert checked_versions == ["1"]
+
+    def test_versions_filter_excludes_non_matching_migration(self):
+        # --versions=1 excludes V2 (most recently applied), falling through
+        # to V1.
+        v1 = _make_migration(1)
+        v2 = _make_migration(2)
+        cmd = _make_command([v1, v2])
+
+        cmd.execute(scripts_dir=MagicMock(), versions="1")
+
+        checked_versions = [
+            call.args[0] for call in cmd.migration_rules.should_undo_version.call_args_list
+        ]
+        assert checked_versions == ["1"]
+
+    def test_exclude_versions_filter_skips_migration(self):
+        # --exclude-versions=2 excludes V2 (most recently applied), falling
+        # through to V1.
+        v1 = _make_migration(1)
+        v2 = _make_migration(2)
+        cmd = _make_command([v1, v2])
+
+        cmd.execute(scripts_dir=MagicMock(), exclude_versions="2")
+
+        checked_versions = [
+            call.args[0] for call in cmd.migration_rules.should_undo_version.call_args_list
+        ]
+        assert checked_versions == ["1"]
