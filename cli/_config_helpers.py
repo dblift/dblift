@@ -178,7 +178,7 @@ def _build_args_namespace(
             args.dry_run = False
             args.log_dir = "logs"
             args.log_format = "text"
-            args.log_level = "info"
+            args.log_level = None
             args.log_file = None
             args.database_url = None
             args.database_username = None
@@ -458,7 +458,13 @@ def _configure_logging(
         "warn": LogLevel.WARN,
         "error": LogLevel.ERROR,
     }
-    log_level = _LOG_LEVEL_MAP.get(args.log_level, LogLevel.INFO)
+    # ``config.log_level`` is the already-merged value (file -> env -> CLI
+    # precedence applied in config.dblift_config.load_config); prefer it over
+    # the raw CLI namespace, which only reflects an explicit --log-level and
+    # otherwise carries no signal about file/env config. Fall back to
+    # args.log_level when the merged config has none set.
+    effective_log_level = getattr(config, "log_level", None) or args.log_level
+    log_level = _LOG_LEVEL_MAP.get(effective_log_level, LogLevel.INFO)
     # ``--quiet`` raises the *console* threshold to NOTICE so info/debug
     # lines disappear from the terminal while NOTICE (success
     # confirmations, "Command completed"), WARN, and ERROR still show

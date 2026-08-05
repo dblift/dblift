@@ -849,10 +849,13 @@ class TestConfigureLoggingDictLookup:
         args.no_progress = False
         return args
 
-    def _make_config(self):
+    def _make_config(self, log_level=None):
         config = MagicMock()
         config.database.url = "postgresql+psycopg://localhost:5432/test"
         config.database.schema = "public"
+        # Explicit: a bare MagicMock().log_level is a truthy Mock object, which
+        # would defeat the "merged config wins when set" precedence under test.
+        config.log_level = log_level
         return config
 
     @patch("cli._config_helpers.LogFactory")
@@ -981,3 +984,57 @@ class TestConfigureLoggingDictLookup:
         args = self._make_args(log_format="text")
         _configure_logging(args, self._make_config(), MagicMock())
         assert mock_log_factory.configure.call_args.kwargs["log_format"] == LogFormat.TEXT
+
+    @patch("cli._config_helpers.LogFactory")
+    @patch("cli._config_helpers.DatabaseUrlParser")
+    @patch("cli._config_helpers.Path")
+    def test_merged_config_log_level_used_when_cli_flag_not_passed(
+        self, mock_path, mock_parser, mock_log_factory
+    ):
+        """A ``log_level`` merged from a config file or DBLIFT_LOG_LEVEL (surfaced on
+        the merged config, not on the raw CLI namespace) must drive console
+        verbosity even though the user never passed ``--log-level``."""
+        from cli.main import _configure_logging
+        from core.logger import LogLevel
+
+        mock_parser.parse_database_name.return_value = "test"
+        # args.log_level is None: the user did not pass --log-level.
+        args = self._make_args(log_level=None)
+        config = self._make_config(log_level="debug")
+        _configure_logging(args, config, MagicMock())
+        assert mock_log_factory.configure.call_args.kwargs["log_level"] == LogLevel.DEBUG
+
+    @patch("cli._config_helpers.LogFactory")
+    @patch("cli._config_helpers.DatabaseUrlParser")
+    @patch("cli._config_helpers.Path")
+    def test_merged_config_log_level_takes_precedence_over_raw_args(
+        self, mock_path, mock_parser, mock_log_factory
+    ):
+        """The merged config already encodes CLI > env > file precedence, so it
+        must win over the raw args namespace whenever it is set."""
+        from cli.main import _configure_logging
+        from core.logger import LogLevel
+
+        mock_parser.parse_database_name.return_value = "test"
+        args = self._make_args(log_level="error")
+        config = self._make_config(log_level="debug")
+        _configure_logging(args, config, MagicMock())
+        assert mock_log_factory.configure.call_args.kwargs["log_level"] == LogLevel.DEBUG
+
+    @patch("cli._config_helpers.LogFactory")
+    @patch("cli._config_helpers.DatabaseUrlParser")
+    @patch("cli._config_helpers.Path")
+    def test_args_log_level_used_when_merged_config_has_none_set(
+        self, mock_path, mock_parser, mock_log_factory
+    ):
+        """When neither file nor env set a log level, fall back to the raw
+        args value (e.g. an explicit ``--log-level`` the merge step didn't
+        thread through, or the CLI default)."""
+        from cli.main import _configure_logging
+        from core.logger import LogLevel
+
+        mock_parser.parse_database_name.return_value = "test"
+        args = self._make_args(log_level="warn")
+        config = self._make_config(log_level=None)
+        _configure_logging(args, config, MagicMock())
+        assert mock_log_factory.configure.call_args.kwargs["log_level"] == LogLevel.WARN

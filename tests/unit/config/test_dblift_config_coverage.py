@@ -3,6 +3,7 @@ from unittest.mock import patch
 
 import pytest
 
+from cli._parser_setup import create_parser
 from config.dblift_config import DbliftConfig, deep_merge_dicts, load_config
 from config.errors import ConfigurationError
 
@@ -343,3 +344,49 @@ database:
         assert config.mark_as_executed is True
         assert config.strict_mode is True
         assert config.history_table == "h"
+
+
+@pytest.mark.unit
+def test_load_config_env_log_level_survives_when_cli_flag_not_passed(monkeypatch):
+    """DBLIFT_LOG_LEVEL must reach the merged config when --log-level is never
+    passed on the command line. Uses the real argparse parser (not a hand-rolled
+    Args stub) so the CLI flag's default value is exercised exactly as it is at
+    runtime — a stub bypasses the exact mechanism this regression guards."""
+    monkeypatch.delenv("DBLIFT_DB_URL", raising=False)
+    monkeypatch.setenv("DBLIFT_LOG_LEVEL", "debug")
+    args = create_parser().parse_args(["--db-url", "sqlite:///test.db", "info"])
+    config = load_config(None, args)
+    assert config.log_level == "debug"
+
+
+@pytest.mark.unit
+def test_load_config_file_log_level_survives_when_cli_flag_not_passed(tmp_path):
+    """A ``log_level`` set in the config file must reach the merged config when
+    --log-level is never passed on the command line."""
+    config_file = tmp_path / "config.yaml"
+    config_file.write_text("""
+database:
+  url: sqlite:///test.db
+log_level: debug
+""")
+    args = create_parser().parse_args(["--config", str(config_file), "info"])
+    config = load_config(args.config, args)
+    assert config.log_level == "debug"
+
+
+@pytest.mark.unit
+def test_load_config_cli_log_level_still_wins_over_env_and_file(monkeypatch, tmp_path):
+    """An explicit --log-level must still take precedence over both
+    DBLIFT_LOG_LEVEL and a config file value (CLI > env > file)."""
+    monkeypatch.setenv("DBLIFT_LOG_LEVEL", "debug")
+    config_file = tmp_path / "config.yaml"
+    config_file.write_text("""
+database:
+  url: sqlite:///test.db
+log_level: warn
+""")
+    args = create_parser().parse_args(
+        ["--config", str(config_file), "--log-level", "error", "info"]
+    )
+    config = load_config(args.config, args)
+    assert config.log_level == "error"
