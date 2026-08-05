@@ -7,6 +7,7 @@ to use specialized components for better separation of concerns.
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
@@ -186,6 +187,8 @@ class MigrationExecutor:
         1. DbliftConfig.installed_by
         2. DatabaseConfig.installed_by
         3. DatabaseConfig.username
+        4. OS user (for embedded databases like DuckDB/SQLite that have no
+           database-level username)
 
         Returns:
             The username to use for recording migrations
@@ -195,7 +198,9 @@ class MigrationExecutor:
         elif hasattr(self.config.database, "installed_by") and self.config.database.installed_by:
             return self.config.database.installed_by
         else:
-            return self.config.database.username
+            return self.config.database.username or os.environ.get(
+                "USER", os.environ.get("USERNAME", "dblift")
+            )
 
     def migrate(
         self,
