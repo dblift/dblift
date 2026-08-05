@@ -13,6 +13,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+### Removed
+
+## [3.4.2] - 2026-08-05
+
+### Added
+
+### Changed
+
+### Fixed
+
 - **`generate_undo_scripts()` (the batch API) emitted `MIGRATION_COMPLETED`
   even when every item in the batch failed.** The per-item results and the
   `success_count`/`failure_count` payload fields were already computed
