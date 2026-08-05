@@ -742,17 +742,25 @@ class MigrationValidator:
                     )
                     result.success = False
                     result.error_message = "Found migration scripts with duplicate versions"
+                # script_name is the bare filename, which is identical for two
+                # same-named scripts from different --scripts directories; use
+                # the full path (when available) so colliding files remain
+                # distinguishable.
+                existing_display = getattr(version_map[script.version], "path", None) or (
+                    version_map[script.version].script_name
+                )
+                script_display = getattr(script, "path", None) or script.script_name
                 # Create error message for duplicate versions
                 duplicate_error = (
                     f"Version {script.version} is used by both "
-                    f"{version_map[script.version].script_name} and {script.script_name}"
+                    f"{existing_display} and {script_display}"
                 )
                 issues.append("Validation failed: Found migration scripts with duplicate versions")
                 issues.append(duplicate_error)
                 result.success = False
                 result.error_message = (
                     f"Version {script.version} is used by both "
-                    f"{version_map[script.version].script_name} and {script.script_name}"
+                    f"{existing_display} and {script_display}"
                 )
             else:
                 version_map[script.version] = script
