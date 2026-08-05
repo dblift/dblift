@@ -389,7 +389,15 @@ class ExecutionEngine:
                 and self.provider.connection
             ):
                 try:
-                    auto_commit_state = self.provider.connection.getAutoCommit()
+                    if hasattr(self.provider.connection, "getAutoCommit"):
+                        auto_commit_state = self.provider.connection.getAutoCommit()
+                    else:
+                        # Driver doesn't expose a JDBC-style getAutoCommit()
+                        # (e.g. python-oracledb exposes autocommit as a
+                        # property, not a method). Treat as unknown and roll
+                        # back defensively — rollback_transaction() already
+                        # no-ops safely when there's nothing to roll back.
+                        auto_commit_state = False
 
                     # Rollback any existing transaction to ensure clean state
                     if not auto_commit_state:
@@ -846,9 +854,9 @@ class ExecutionEngine:
                                     ) or not re.match(r"^[a-zA-Z0-9_]+$", table_name):
                                         break  # skip verification if names don't match alphanumeric+underscore
                                     try:
-                                        if (
-                                            self.provider.connection
-                                            and not self.provider.connection.isClosed()
+                                        if self.provider.connection and (
+                                            not hasattr(self.provider.connection, "isClosed")
+                                            or not self.provider.connection.isClosed()
                                         ):
                                             dialect = getattr(
                                                 self.sql_analyzer, "dialect", ""

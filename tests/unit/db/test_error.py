@@ -269,6 +269,21 @@ class TestFormatConnectionError:
         assert "20009" not in result or "b'" not in result
         assert "Unable to connect" in result
 
+    def test_sqlite_filesystem_permission_error_is_not_invalid_credentials(self):
+        """A PermissionError raised while SQLite tries to open/create its
+        database file (e.g. an unwritable parent directory) is an OS-level
+        filesystem error, not a database authentication failure. SQLite has
+        no credentials concept, so the message must reflect the actual OS
+        error rather than the generic 'invalid credentials' wording."""
+        err = PermissionError(13, "Permission denied")
+        # Match the real message shape raised by Path.mkdir() on a read-only
+        # parent directory: "[Errno 13] Permission denied: '/tmp/ro/sub'"
+        err.filename = "/tmp/ro/sub"
+        result = format_connection_error(err, "sqlite")
+        assert result != "Connection failed: invalid credentials"
+        assert "Permission denied" in result
+        assert "/tmp/ro/sub" in result
+
 
 # ---------------------------------------------------------------------------
 # _is_auth_error
@@ -287,6 +302,16 @@ class TestIsAuthError:
             result = _is_auth_error(
                 Exception("some odd driver failure"), "some odd driver failure", "generic"
             )
+        assert result is False
+
+    def test_returns_false_for_os_level_permission_error(self):
+        """A raw PermissionError/OSError (e.g. from SQLite failing to open a
+        file on an unwritable path) must not be classified as an auth error
+        just because its message contains 'Permission denied' — the generic
+        AUTHORIZATION pattern is meant for database-level permission errors,
+        not filesystem errors from embedded drivers."""
+        err = PermissionError(13, "Permission denied", "/tmp/ro/sub")
+        result = _is_auth_error(err, str(err).lower(), "sqlite")
         assert result is False
 
 

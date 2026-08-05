@@ -331,6 +331,31 @@ class TestPrepareTransaction(unittest.TestCase):
         debug_calls = [str(c) for c in engine.log.debug.call_args_list]
         self.assertTrue(any("Could not check connection state" in c for c in debug_calls))
 
+    def test_no_getautocommit_attribute_rolls_back_defensively(self):
+        """Python DB-API drivers (e.g. python-oracledb) expose autocommit as a
+        property, not a getAutoCommit() method. Without a guard, the missing
+        attribute raised AttributeError, was swallowed by the outer
+        try/except, and the pre-migration rollback check never ran. It
+        should instead fall back to rolling back defensively, the same way
+        db/plugins/mysql/mysql/schema_operations.py and
+        db/plugins/db2/db2/schema_operations.py fall back when they can't
+        check getAutoCommit().
+        """
+        engine = _make_engine()
+        migration = _make_sql_migration()
+        engine.provider.connection = object()  # no getAutoCommit()/isClosed()
+        engine.provider.begin_transaction.return_value = None
+
+        result = engine._prepare_transaction(migration)
+
+        self.assertTrue(result)
+        engine.provider.rollback_transaction.assert_called_once()
+        debug_calls = [str(c) for c in engine.log.debug.call_args_list]
+        self.assertFalse(
+            any("Could not check connection state" in c for c in debug_calls),
+            "getAutoCommit() absence should be handled by a guard, not caught as an error",
+        )
+
     def test_rollback_before_begin_failure_logs_debug(self):
         engine = _make_engine()
         migration = _make_sql_migration()
@@ -693,6 +718,31 @@ class TestCommitAndVerify(unittest.TestCase):
 
         debug_calls = [str(c) for c in engine.log.debug.call_args_list]
         self.assertTrue(any("Post-commit verification" in c for c in debug_calls))
+
+    def test_no_isclosed_attribute_still_runs_verification(self):
+        """Python DB-API drivers (e.g. python-oracledb) expose ``closed`` as a
+        property, not an isClosed() method. Without a guard, the missing
+        attribute raised AttributeError, was swallowed by the inner
+        try/except, and the post-commit verification query never ran. It
+        should instead fall back to assuming the connection is open (the
+        caller already confirmed ``self.provider.connection`` is truthy) and
+        actually run the verification query.
+        """
+        engine = _make_engine()
+        migration = _make_sql_migration()
+        engine.provider.connection = object()  # no getAutoCommit()/isClosed()
+        engine.provider.execute_query.return_value = [{"cnt": 0}]
+        engine.sql_analyzer.dialect = "postgresql"
+
+        statements = ["CREATE TABLE public.users (id SERIAL)"]
+        engine._commit_and_verify(migration, statements, 100)
+
+        engine.provider.execute_query.assert_called_once()
+        debug_calls = [str(c) for c in engine.log.debug.call_args_list]
+        self.assertFalse(
+            any("Post-commit verification query failed" in c for c in debug_calls),
+            "isClosed() absence should be handled by a guard, not caught as an error",
+        )
 
 
 # ---------------------------------------------------------------------------

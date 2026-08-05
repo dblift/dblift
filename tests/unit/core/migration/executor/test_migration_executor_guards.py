@@ -1,5 +1,6 @@
 """Tests for MigrationExecutor guard conditions (lines 59, 61)."""
 
+import os
 import unittest
 from unittest.mock import MagicMock, patch
 
@@ -88,3 +89,15 @@ class TestGetInstalledBy(unittest.TestCase):
         config.database.username = "dbuser"
         result = executor.get_installed_by()
         self.assertEqual(result, "dbuser")
+
+    def test_falls_back_to_os_user_when_no_db_username(self):
+        """DuckDB/SQLite have no DB-level username, so the OS user should be used."""
+        executor, config = self._make_executor()
+        if executor is None:
+            self.skipTest("Cannot create executor with mocked dependencies")
+        config.installed_by = None
+        config.database.installed_by = None
+        config.database.username = ""
+        with patch.dict(os.environ, {"USER": "osuser"}, clear=False):
+            result = executor.get_installed_by()
+        self.assertEqual(result, "osuser")

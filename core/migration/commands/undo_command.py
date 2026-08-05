@@ -3,7 +3,6 @@ Undo command implementation.
 """
 
 import time
-from functools import cmp_to_key
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
@@ -243,37 +242,29 @@ class UndoCommand(BaseCommand):
             migrations_to_undo = []
 
             if target_version is None:
-                # No target version specified - find the latest migration that can be undone
-                # Process versioned migrations in reverse order (newest first)
-                versioned_migrations = []
-                for m in applied_migrations:
-                    if m.type in (MigrationType.SQL, MigrationType.PYTHON):
-                        if not self._matches_tag_filters(
-                            m,
-                            normalized_tags,
-                            normalized_exclude_tags,
-                            fallback_tags=_fallback_tags_for(m),
-                        ):
-                            continue
-                        # Use migration rules to determine if migration was successful
-                        success_value = getattr(m, "success", False)
-                        is_success = is_migration_success(success_value)
-                        if is_success:
-                            versioned_migrations.append(m)
-                # Sort by semantic version (Flyway-compatible): "10" > "4",
-                # not lexicographic where "4" > "10". Without this, undo picks
-                # the wrong migration when versions span digit boundaries.
-                versioned_migrations.sort(
-                    key=cmp_to_key(
-                        lambda a, b: compare_versions(
-                            getattr(a, "version", "") or "",
-                            getattr(b, "version", "") or "",
-                        )
-                    ),
-                    reverse=True,
-                )
+                # No target version specified - find the latest migration that can be undone.
+                # Walk applied migrations in reverse install-rank order (most recently
+                # applied first) -- every provider's get_applied_migrations() query is
+                # ORDER BY installed_rank, and the target-version branch below uses the
+                # same reversed(applied_migrations) convention. Install rank, not version
+                # number, determines what "most recent" means: migrations can be applied
+                # out of version order.
+                for migration in reversed(applied_migrations):
+                    if migration.type not in (MigrationType.SQL, MigrationType.PYTHON):
+                        continue
+                    if not self._matches_tag_filters(
+                        migration,
+                        normalized_tags,
+                        normalized_exclude_tags,
+                        fallback_tags=_fallback_tags_for(migration),
+                    ):
+                        continue
+                    # Use migration rules to determine if migration was successful
+                    success_value = getattr(migration, "success", False)
+                    is_success = is_migration_success(success_value)
+                    if not is_success:
+                        continue
 
-                for migration in versioned_migrations:
                     version = str(migration.version) if migration.version else None
                     if not version:
                         continue
