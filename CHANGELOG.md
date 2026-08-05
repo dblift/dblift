@@ -13,6 +13,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`generate_undo_scripts()` (the batch API) emitted `MIGRATION_COMPLETED`
+  even when every item in the batch failed.** The per-item results and the
+  `success_count`/`failure_count` payload fields were already computed
+  correctly, but the batch-level terminal event was emitted unconditionally,
+  so listeners watching for `MIGRATION_FAILED` couldn't detect an all-failed
+  batch. The batch now emits `MIGRATION_FAILED` when `failure_count > 0`,
+  reserving `MIGRATION_COMPLETED` for a batch where every item succeeded —
+  matching how `generate_undo_script()` (the single-file API) already
+  handles success/failure.
+
 ### Removed
 
 ## [3.4.1] - 2026-08-04
