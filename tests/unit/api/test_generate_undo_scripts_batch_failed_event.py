@@ -32,9 +32,7 @@ def _make_client(dialect: str = "postgresql"):
 
 def _batch_terminal_call(client):
     """Find the single batch-level terminal emit (payload carries 'results')."""
-    calls = [
-        call for call in client.events.emit.call_args_list if "results" in call.args[1]
-    ]
+    calls = [call for call in client.events.emit.call_args_list if "results" in call.args[1]]
     assert len(calls) == 1, "expected exactly one batch-level terminal event"
     return calls[0]
 
