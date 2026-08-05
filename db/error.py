@@ -180,6 +180,14 @@ def _is_auth_error(error: Exception, lowered_message: str, db_type: str) -> bool
     )
     if any(marker in lowered_message for marker in auth_markers):
         return True
+    if isinstance(error, OSError):
+        # A raw PermissionError/OSError (e.g. SQLite failing to open or
+        # create its database file on an unwritable path) is a filesystem
+        # error, not a database credential failure. The generic
+        # "permission denied" pattern below is meant for DB-level
+        # authorization errors, so skip it here rather than misreport an
+        # OS error as "invalid credentials".
+        return False
     try:
         category = DatabaseErrorClassifier(db_type).categorize_error(error)
     except Exception:
