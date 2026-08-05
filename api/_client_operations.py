@@ -170,13 +170,15 @@ def generate_undo_scripts_operation(
                 {"error": error_msg, "operation": "generate_undo_script"},
             )
 
+    success_count = sum(1 for r in results if r.success)
+    failure_count = sum(1 for r in results if not r.success)
     client.events.emit(
-        EventType.MIGRATION_COMPLETED,
+        EventType.MIGRATION_FAILED if failure_count > 0 else EventType.MIGRATION_COMPLETED,
         {
             "operation": "generate_undo_scripts",
             "results": results,
-            "success_count": sum(1 for r in results if r.success),
-            "failure_count": sum(1 for r in results if not r.success),
+            "success_count": success_count,
+            "failure_count": failure_count,
         },
     )
     return results

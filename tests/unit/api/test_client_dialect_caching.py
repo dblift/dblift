@@ -136,10 +136,14 @@ class TestClientDialectCaching:
         assert results[0].success is False
         assert results[0].error_message == ("Failed to generate undo script: generator unavailable")
 
+        # Filter to the per-item failure event (operation="generate_undo_script",
+        # singular); the batch also emits its own MIGRATION_FAILED now that every
+        # item in it failed, with operation="generate_undo_scripts" (plural).
         failed_calls = [
             call
             for call in client.events.emit.call_args_list
             if call.args[0] == EventType.MIGRATION_FAILED
+            and call.args[1].get("operation") == "generate_undo_script"
         ]
         assert len(failed_calls) == 1
         assert failed_calls[0].args[1] == {
@@ -181,10 +185,14 @@ class TestClientDialectCaching:
         assert results[0].success is False
         assert results[0].error_message == error_message
 
+        # Filter to the per-item failure event (operation="generate_undo_script",
+        # singular); the batch also emits its own MIGRATION_FAILED now that every
+        # item in it failed, with operation="generate_undo_scripts" (plural).
         failed_calls = [
             call
             for call in client.events.emit.call_args_list
             if call.args[0] == EventType.MIGRATION_FAILED
+            and call.args[1].get("operation") == "generate_undo_script"
         ]
         assert len(failed_calls) == 1
         assert failed_calls[0].args[1] == {
