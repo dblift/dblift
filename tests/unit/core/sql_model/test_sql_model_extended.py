@@ -103,6 +103,18 @@ class TestSqlObjectStringType(unittest.TestCase):
         obj = SqlObject("t", SqlObjectType.TABLE, dialect="postgresql")
         self.assertEqual(obj.format_identifier(""), "")
 
+    def test_format_identifier_escapes_embedded_quote_sqlite(self):
+        table = Table("users", dialect="sqlite")
+        self.assertEqual(table.format_identifier('say "hi"'), '"say ""hi"""')
+
+    def test_format_identifier_escapes_embedded_quote_mysql(self):
+        table = Table("users", dialect="mysql")
+        self.assertEqual(table.format_identifier("say `hi`"), "`say ``hi```")
+
+    def test_format_identifier_escapes_embedded_quote_sqlserver(self):
+        table = Table("users", dialect="sqlserver")
+        self.assertEqual(table.format_identifier("say ]hi]"), "[say ]]hi]]]")
+
     def test_mark_and_check_property_explicit(self):
         obj = SqlObject("t", SqlObjectType.TABLE)
         self.assertFalse(obj.is_property_explicit("foo"))

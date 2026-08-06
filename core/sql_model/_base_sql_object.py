@@ -126,7 +126,8 @@ class SqlObject:
         if not canonical:
             return identifier
         quirks = ProviderRegistry.get_quirks(canonical)
-        return f"{quirks.quote_open}{identifier}{quirks.quote_close}"
+        escaped = identifier.replace(quirks.quote_close, quirks.quote_close * 2)
+        return f"{quirks.quote_open}{escaped}{quirks.quote_close}"
 
     def get_dialect_option(
         self, plugin: str, key: str, default: Optional[Any] = None
