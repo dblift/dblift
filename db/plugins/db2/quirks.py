@@ -246,6 +246,65 @@ class Db2Quirks(BaseQuirks):
             log.warning(f"DB2: Could not query SYSCAT.TABLES: {find_err}")
         return strategies
 
+    # Column ALTER hooks (Epic 27 column_converter refactor). DB2 uses the
+    # same ``ALTER COLUMN`` form as PostgreSQL/SQL Server, but the
+    # type-change clause needs the ``SET DATA TYPE`` keyword and a plain
+    # ``SET NOT NULL`` (not the bare ``NOT NULL`` SQL Server accepts).
+    #
+    # Note: on DB2 either ALTER puts the table into REORG-pending state
+    # (most access paths degraded until ``REORG TABLE`` runs) — that
+    # follow-up step is out of scope here; this hook only renders the ALTER.
+    def render_column_nullable_change(
+        self, col_diff: object, formatted_table: str, formatted_column: str, dialect: str
+    ) -> "Optional[object]":
+        """``ALTER TABLE … ALTER COLUMN <col> SET|DROP NOT NULL`` — DB2 nullable toggle.
+
+        SET NOT NULL emits a pre-check counting NULL rows so a violating migration
+        fails cleanly before the ALTER runs.
+        """
+        from core.sql_generator.sql_statement import SqlStatement
+
+        nullable_diff = getattr(col_diff, "nullable_diff", None)
+        if nullable_diff is None:
+            return None
+        expected_nullable, _ = nullable_diff
+        if not expected_nullable:
+            return SqlStatement(
+                sql=f"ALTER TABLE {formatted_table} ALTER COLUMN {formatted_column} SET NOT NULL;",
+                statement_type="ALTER",
+                object_type="COLUMN",
+                object_name=f"{formatted_table}.{formatted_column}",
+                dialect=dialect,
+                pre_check=f"SELECT COUNT(*) FROM {formatted_table} WHERE {formatted_column} IS NULL;",
+                error_if_check_fails=True,
+                error_message="Cannot set NOT NULL: column contains NULL values",
+            )
+        return SqlStatement(
+            sql=f"ALTER TABLE {formatted_table} ALTER COLUMN {formatted_column} DROP NOT NULL;",
+            statement_type="ALTER",
+            object_type="COLUMN",
+            object_name=f"{formatted_table}.{formatted_column}",
+            dialect=dialect,
+        )
+
+    def render_column_type_change(
+        self, col_diff: object, formatted_table: str, formatted_column: str, dialect: str
+    ) -> "Optional[object]":
+        """``ALTER TABLE … ALTER COLUMN <col> SET DATA TYPE <type>`` — DB2 column-type change."""
+        from core.sql_generator.sql_statement import SqlStatement
+
+        data_type_diff = getattr(col_diff, "data_type_diff", None)
+        if data_type_diff is None:
+            return None
+        expected_type, _ = data_type_diff
+        return SqlStatement(
+            sql=f"ALTER TABLE {formatted_table} ALTER COLUMN {formatted_column} SET DATA TYPE {expected_type};",
+            statement_type="ALTER",
+            object_type="COLUMN",
+            object_name=f"{formatted_table}.{formatted_column}",
+            dialect=dialect,
+        )
+
     def ddl_generator_class(self) -> Optional[Type["BaseSqlGenerator"]]:
         """DDL generator relocated to the paid package; registered by register_pro_generators()."""
         return None
