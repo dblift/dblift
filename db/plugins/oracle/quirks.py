@@ -840,7 +840,11 @@ class OracleQuirks(BaseQuirks):
     # matches the v$version banner, which doubles as the captured edition.
     feature_gates = {
         "online_index_build": FeatureGate(
-            edition_pattern=r"enterprise",
+            # Enterprise Edition and Oracle Database Free (23ai/26ai) both
+            # support CREATE INDEX ... ONLINE — Free ships the full
+            # Enterprise feature set, only resource-limited, not
+            # feature-limited (issue #908).
+            edition_pattern=r"enterprise|free",
             description="CREATE INDEX ... ONLINE",
         ),
         "row_limit_fetch_first": FeatureGate(
