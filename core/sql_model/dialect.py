@@ -321,9 +321,9 @@ def quote_identifier(dialect: Optional[str], identifier: str) -> str:
 
     Args:
         dialect: SQL dialect string (any case; None treated as default).
-        identifier: Raw identifier to quote (no escaping of internal
-            special characters — callers that need escaping keep their
-            own implementation, e.g. SafetyChecker).
+        identifier: Raw identifier to quote. An embedded occurrence of the
+            dialect's own close-quote character is escaped by doubling it
+            before wrapping.
 
     Returns:
         Quoted identifier string.
@@ -331,7 +331,8 @@ def quote_identifier(dialect: Optional[str], identifier: str) -> str:
     from db.provider_registry import ProviderRegistry
 
     q = ProviderRegistry.get_quirks((dialect or "").lower().strip())
-    return f"{q.quote_open}{identifier}{q.quote_close}"
+    escaped = identifier.replace(q.quote_close, q.quote_close * 2)
+    return f"{q.quote_open}{escaped}{q.quote_close}"
 
 
 def quote_qualified(

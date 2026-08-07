@@ -76,6 +76,45 @@ class TestBug01PostCommitQuoting(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
+# Issue #911: quote_identifier() must escape an embedded quote character,
+# not just wrap the identifier verbatim. Twin of #904 (SqlObject.
+# format_identifier), fixed the same way: double the close-quote char.
+# ---------------------------------------------------------------------------
+class TestIssue911QuoteIdentifierEscaping(unittest.TestCase):
+    """An identifier containing the dialect's own quote character produced
+    malformed SQL: quoting say "hi" under a double-quote dialect returned
+    say "hi"" wrapped in one more pair of quotes instead of the properly
+    doubled/escaped form. This corrupted auto-generated undo scripts
+    (DROP COLUMN / DROP CONSTRAINT) built by ``_extractors.py`` /
+    ``_reversers.py`` and diff-based DDL from ``base_converter.py``."""
+
+    def test_postgresql_escapes_embedded_double_quote(self) -> None:
+        from core.sql_model.dialect import quote_identifier
+
+        self.assertEqual(quote_identifier("postgresql", 'say "hi"'), '"say ""hi"""')
+
+    def test_sqlite_escapes_embedded_double_quote(self) -> None:
+        from core.sql_model.dialect import quote_identifier
+
+        self.assertEqual(quote_identifier("sqlite", 'say "hi"'), '"say ""hi"""')
+
+    def test_mysql_escapes_embedded_backtick(self) -> None:
+        from core.sql_model.dialect import quote_identifier
+
+        self.assertEqual(quote_identifier("mysql", "say `hi`"), "`say ``hi```")
+
+    def test_sqlserver_escapes_embedded_close_bracket(self) -> None:
+        from core.sql_model.dialect import quote_identifier
+
+        self.assertEqual(quote_identifier("sqlserver", "say ]hi]"), "[say ]]hi]]]")
+
+    def test_identifier_without_quote_character_is_unaffected(self) -> None:
+        from core.sql_model.dialect import quote_identifier
+
+        self.assertEqual(quote_identifier("postgresql", "users"), '"users"')
+
+
+# ---------------------------------------------------------------------------
 # B10-BUG-04: ``--version`` on subcommands must hint the real flag
 # ---------------------------------------------------------------------------
 class TestBug04BaselineVersionAlias(unittest.TestCase):
