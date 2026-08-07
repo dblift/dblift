@@ -12,6 +12,7 @@ from core.logger.results import (
     CleanResult,
     InfoResult,
     MigrateResult,
+    MigrationQueryResultInfo,
     MigrationSqlInfo,
     OperationResult,
     RepairResult,
@@ -102,6 +103,74 @@ class TestOutputFormatter:
         output = self.formatter.format_undo(result)
 
         assert "DROP TABLE users" in output
+
+    def test_format_migrate_show_query_results_prints_table(self):
+        result = MigrateResult()
+        result.show_query_results = True
+        info = MigrationQueryResultInfo("V1__init.sql", version="1")
+        info.add_result("SELECT * FROM users", ["id", "name"], [[1, "alice"]])
+        result.query_results.append(info)
+
+        output = self.formatter.format_migrate(result)
+
+        assert "Query Results:" in output
+        assert "SELECT * FROM users" in output
+        assert "alice" in output
+
+    def test_format_migrate_without_show_query_results_hides_table(self):
+        result = MigrateResult()
+        result.show_query_results = False
+        info = MigrationQueryResultInfo("V1__init.sql", version="1")
+        info.add_result("SELECT * FROM users", ["id"], [[1]])
+        result.query_results.append(info)
+
+        output = self.formatter.format_migrate(result)
+
+        assert "Query Results:" not in output
+        assert "SELECT * FROM users" not in output
+
+    def test_format_migrate_query_results_independent_of_show_sql(self):
+        """show_sql and show_query_results are independent gates."""
+        result = MigrateResult()
+        result.show_sql = False
+        result.show_query_results = True
+        result.add_sql_migration(
+            MigrationSqlInfo("V1__init.sql", version="1", statements=["CREATE TABLE users"])
+        )
+        info = MigrationQueryResultInfo("V1__init.sql", version="1")
+        info.add_result("SELECT 1", ["one"], [[1]])
+        result.query_results.append(info)
+
+        output = self.formatter.format_migrate(result)
+
+        assert "CREATE TABLE users" not in output
+        assert "Query Results:" in output
+
+    def test_format_clean_show_query_results_prints_table(self):
+        """CLEAN's --show-query-results panel renders in text output (Bug 3 regression guard)."""
+        result = CleanResult()
+        result.show_query_results = True
+        info = MigrationQueryResultInfo("beforeClean/check.sql", version=None)
+        info.add_result("SELECT * FROM users", ["id", "name"], [[1, "alice"]])
+        result.query_results.append(info)
+
+        output = self.formatter.format_clean(result)
+
+        assert "Query Results:" in output
+        assert "SELECT * FROM users" in output
+        assert "alice" in output
+
+    def test_format_clean_without_show_query_results_hides_table(self):
+        result = CleanResult()
+        result.show_query_results = False
+        info = MigrationQueryResultInfo("beforeClean/check.sql", version=None)
+        info.add_result("SELECT * FROM users", ["id"], [[1]])
+        result.query_results.append(info)
+
+        output = self.formatter.format_clean(result)
+
+        assert "Query Results:" not in output
+        assert "SELECT * FROM users" not in output
 
     def test_format_generic(self):
         """Test format_generic method."""

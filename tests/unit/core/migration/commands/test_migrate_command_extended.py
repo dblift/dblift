@@ -215,7 +215,9 @@ class TestExecuteBeforeCallbacks(unittest.TestCase):
     def test_always_calls_before_migrate(self):
         cmd = _make_cmd()
         cmd._execute_callbacks = MagicMock()
-        cmd._execute_before_callbacks(Path("/migrations"), [], [], True, None, None)
+        cmd._execute_before_callbacks(
+            Path("/migrations"), [], [], True, None, None, MigrateResult()
+        )
         events = [c.args[1] for c in cmd._execute_callbacks.call_args_list]
         self.assertIn("beforeMigrate", events)
 
@@ -223,14 +225,18 @@ class TestExecuteBeforeCallbacks(unittest.TestCase):
         cmd = _make_cmd()
         cmd._execute_callbacks = MagicMock()
         m = _make_migration()
-        cmd._execute_before_callbacks(Path("/migrations"), [m], [], True, None, None)
+        cmd._execute_before_callbacks(
+            Path("/migrations"), [m], [], True, None, None, MigrateResult()
+        )
         events = [c.args[1] for c in cmd._execute_callbacks.call_args_list]
         self.assertIn("beforeVersioned", events)
 
     def test_skips_before_versioned_when_no_versioned_migrations(self):
         cmd = _make_cmd()
         cmd._execute_callbacks = MagicMock()
-        cmd._execute_before_callbacks(Path("/migrations"), [], [], True, None, None)
+        cmd._execute_before_callbacks(
+            Path("/migrations"), [], [], True, None, None, MigrateResult()
+        )
         events = [c.args[1] for c in cmd._execute_callbacks.call_args_list]
         self.assertNotIn("beforeVersioned", events)
 
@@ -238,14 +244,18 @@ class TestExecuteBeforeCallbacks(unittest.TestCase):
         cmd = _make_cmd()
         cmd._execute_callbacks = MagicMock()
         m = _make_migration(type_=MigrationType.REPEATABLE)
-        cmd._execute_before_callbacks(Path("/migrations"), [], [m], True, None, None)
+        cmd._execute_before_callbacks(
+            Path("/migrations"), [], [m], True, None, None, MigrateResult()
+        )
         events = [c.args[1] for c in cmd._execute_callbacks.call_args_list]
         self.assertIn("beforeRepeatable", events)
 
     def test_skips_before_repeatable_when_no_repeatable_migrations(self):
         cmd = _make_cmd()
         cmd._execute_callbacks = MagicMock()
-        cmd._execute_before_callbacks(Path("/migrations"), [], [], True, None, None)
+        cmd._execute_before_callbacks(
+            Path("/migrations"), [], [], True, None, None, MigrateResult()
+        )
         events = [c.args[1] for c in cmd._execute_callbacks.call_args_list]
         self.assertNotIn("beforeRepeatable", events)
 

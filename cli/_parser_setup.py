@@ -268,10 +268,25 @@ def _add_diff_and_target_options(
         action="store_true",
         help="Show SQL statements in command output and reports",
     )
+    migrate_parser.add_argument(
+        "--show-query-results",
+        action="store_true",
+        help="Show rows returned by SELECT statements in command output and reports",
+    )
     undo_parser.add_argument(
         "--show-sql",
         action="store_true",
         help="Show SQL statements in command output and reports",
+    )
+    undo_parser.add_argument(
+        "--show-query-results",
+        action="store_true",
+        help="Show rows returned by SELECT statements in command output and reports",
+    )
+    clean_parser.add_argument(
+        "--show-query-results",
+        action="store_true",
+        help="Show rows returned by SELECT statements in command output and reports",
     )
     clean_parser.add_argument(
         "--clean-enabled",

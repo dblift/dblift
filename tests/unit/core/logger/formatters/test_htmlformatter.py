@@ -14,6 +14,7 @@ from core.logger.results import (
     InfoResult,
     MigrateResult,
     MigrationInfo,
+    MigrationQueryResultInfo,
     MigrationSqlInfo,
     OperationResult,
     RepairResult,
@@ -83,6 +84,69 @@ class TestHtmlFormatter:
         html = formatter.format_result(result, "public", "test", "MIGRATE")
 
         assert "CREATE TABLE users" not in html
+
+    def test_format_result_includes_query_results_only_when_enabled(self):
+        formatter = HtmlFormatter()
+        result = MigrateResult()
+        result.show_query_results = True
+        info = MigrationQueryResultInfo("V1__init.sql", version="1", description="init")
+        info.add_result("SELECT * FROM users", ["id", "name"], [[1, "alice"], [2, "bob"]])
+        result.query_results.append(info)
+
+        html = formatter.format_result(result, "public", "test", "MIGRATE")
+
+        assert "Query results" in html
+        assert "SELECT * FROM users" in html
+        assert "alice" in html
+        assert "bob" in html
+        assert 'class="t"' in html
+
+    def test_format_result_includes_query_results_for_clean_command(self):
+        """CLEAN's --show-query-results panel renders (Bug 2 regression guard)."""
+        formatter = HtmlFormatter()
+        result = CleanResult()
+        result.show_query_results = True
+        info = MigrationQueryResultInfo("beforeClean/check.sql", version=None, description="check")
+        info.add_result("SELECT * FROM users", ["id", "name"], [[1, "alice"], [2, "bob"]])
+        result.query_results.append(info)
+
+        html = formatter.format_result(result, "public", "test", "CLEAN")
+
+        assert "Query results" in html
+        assert "SELECT * FROM users" in html
+        assert "alice" in html
+        assert "bob" in html
+        assert 'class="t"' in html
+
+    def test_format_result_hides_query_results_when_disabled(self):
+        formatter = HtmlFormatter()
+        result = MigrateResult()
+        result.show_query_results = False
+        info = MigrationQueryResultInfo("V1__init.sql", version="1", description="init")
+        info.add_result("SELECT * FROM users", ["id"], [[1]])
+        result.query_results.append(info)
+
+        html = formatter.format_result(result, "public", "test", "MIGRATE")
+
+        assert "Query results" not in html
+
+    def test_format_result_query_results_independent_of_show_sql(self):
+        """show_sql and show_query_results gate their own, independent panels."""
+        formatter = HtmlFormatter()
+        result = MigrateResult()
+        result.show_sql = True
+        result.show_query_results = False
+        result.add_sql_migration(
+            MigrationSqlInfo("V1__init.sql", version="1", statements=["CREATE TABLE users"])
+        )
+        info = MigrationQueryResultInfo("V1__init.sql", version="1")
+        info.add_result("SELECT 1", ["one"], [[1]])
+        result.query_results.append(info)
+
+        html = formatter.format_result(result, "public", "test", "MIGRATE")
+
+        assert "CREATE TABLE users" in html
+        assert "Query results" not in html
 
     def test_format_result_preserves_performance_panel_without_show_sql(self):
         formatter = HtmlFormatter()

@@ -284,6 +284,7 @@ class MigrateCommand(BaseCommand):
         use_recursive: bool,
         use_additional_dirs: Optional[List[Path]],
         dir_recursive_map: Optional[Dict[Path, bool]],
+        result: MigrateResult,
     ) -> None:
         """Execute all before-migration callbacks."""
         # Execute beforeMigrate callbacks
@@ -293,12 +294,17 @@ class MigrateCommand(BaseCommand):
             use_recursive,
             use_additional_dirs,
             dir_recursive_map,
+            result=result,
         )
 
         # Execute beforeVersioned callbacks if there are versioned migrations
         if versioned_migrations:
             self._execute_callbacks(
-                scripts_dir, "beforeVersioned", use_recursive, use_additional_dirs
+                scripts_dir,
+                "beforeVersioned",
+                use_recursive,
+                use_additional_dirs,
+                result=result,
             )
 
         # Execute beforeRepeatable callbacks if there are repeatable migrations
@@ -309,6 +315,7 @@ class MigrateCommand(BaseCommand):
                 use_recursive,
                 use_additional_dirs,
                 dir_recursive_map,
+                result=result,
             )
 
     def _execute_after_callbacks(
@@ -328,7 +335,11 @@ class MigrateCommand(BaseCommand):
         # Execute afterVersioned callbacks if there were versioned migrations
         if versioned_migrations:
             self._execute_callbacks(
-                scripts_dir, "afterVersioned", use_recursive, use_additional_dirs
+                scripts_dir,
+                "afterVersioned",
+                use_recursive,
+                use_additional_dirs,
+                result=result,
             )
 
         # Execute afterRepeatable callbacks if there were repeatable migrations
@@ -339,6 +350,7 @@ class MigrateCommand(BaseCommand):
                 use_recursive,
                 use_additional_dirs,
                 dir_recursive_map,
+                result=result,
             )
 
         # Execute afterMigrate callbacks after all migrations complete successfully
@@ -348,6 +360,7 @@ class MigrateCommand(BaseCommand):
             use_recursive,
             use_additional_dirs,
             dir_recursive_map,
+            result=result,
         )
 
     def _handle_failed_migration(
@@ -394,6 +407,7 @@ class MigrateCommand(BaseCommand):
             use_recursive,
             use_additional_dirs,
             dir_recursive_map,
+            result=result,
         )
 
     def _execute_single_migration(
@@ -428,6 +442,7 @@ class MigrateCommand(BaseCommand):
                 use_recursive,
                 use_additional_dirs,
                 dir_recursive_map,
+                result=result,
             )
             self._execute_callbacks(
                 scripts_dir,
@@ -435,6 +450,7 @@ class MigrateCommand(BaseCommand):
                 use_recursive,
                 use_additional_dirs,
                 dir_recursive_map,
+                result=result,
             )
 
             # Start journal tracking for this migration
@@ -486,6 +502,7 @@ class MigrateCommand(BaseCommand):
                     "afterMigrateError",
                     use_recursive,
                     use_additional_dirs,
+                    result=result,
                 )
                 return False
 
@@ -525,6 +542,7 @@ class MigrateCommand(BaseCommand):
                 use_recursive,
                 use_additional_dirs,
                 dir_recursive_map,
+                result=result,
             )
             self._execute_callbacks(
                 scripts_dir,
@@ -532,6 +550,7 @@ class MigrateCommand(BaseCommand):
                 use_recursive,
                 use_additional_dirs,
                 dir_recursive_map,
+                result=result,
             )
 
             return True
@@ -654,6 +673,7 @@ class MigrateCommand(BaseCommand):
         additional_dirs: Optional[List[Path]] = None,
         dir_recursive_map: Optional[Dict[Path, bool]] = None,
         show_sql: bool = False,
+        show_query_results: bool = False,
     ) -> MigrateResult:
         """Execute database migrations.
 
@@ -665,6 +685,7 @@ class MigrateCommand(BaseCommand):
         run_checks("command.pre_migrate")
         result = MigrateResult()
         result.show_sql = show_sql
+        result.show_query_results = show_query_results
         result.target_schema = self.config.database.schema
         result.journal = self.journal
         if not getattr(self, "migration_helpers", None):
@@ -827,6 +848,7 @@ class MigrateCommand(BaseCommand):
                             use_recursive,
                             use_additional_dirs,
                             dir_recursive_map,
+                            result,
                         )
 
                         # Execute migrations normally
@@ -863,6 +885,7 @@ class MigrateCommand(BaseCommand):
                         use_recursive,
                         use_additional_dirs,
                         dir_recursive_map,
+                        result=result,
                     )
                 finally:
                     # Always release the migration lock if it was acquired

@@ -18,6 +18,7 @@ from core.constants import (
 )
 from core.exceptions import CallbackExecutionError, TransactionAbortedError
 from core.logger import Log, NullLog
+from core.logger.console import render_records_table, rows_to_columns_and_values
 from core.logger.results import MigrationInfo, OperationResult
 from core.migration.executor.transaction_policy import TransactionPolicy
 from core.migration.executors import MigrationExecutorFactory
@@ -606,6 +607,23 @@ class ExecutionEngine:
                                 f"Expected list for query result, got {type(result_data).__name__}"
                             )
                         rows_affected = len(result_data) if result_data else 0
+                        if getattr(result, "show_query_results", False):
+                            columns, table_rows = rows_to_columns_and_values(result_data)
+                            result.add_query_result(
+                                migration.script_name,
+                                migration.version,
+                                migration.description,
+                                statement,
+                                columns,
+                                table_rows,
+                            )
+                            self.log.info(
+                                render_records_table(
+                                    [(c, "left") for c in columns],
+                                    table_rows,
+                                    title=f"Query result ({len(table_rows)} rows)",
+                                )
+                            )
                     else:
                         if not isinstance(result_data, int):
                             raise TypeError(
@@ -1041,11 +1059,15 @@ class ExecutionEngine:
             result.set_error(error_msg)
             _rollback_best_effort()
 
-    def execute_callback(self, callback: Migration) -> None:
+    def execute_callback(
+        self, callback: Migration, result: Optional[OperationResult] = None
+    ) -> None:
         """Execute a callback migration.
 
         Args:
             callback: The callback migration to execute
+            result: Optional operation result to attach captured query results to
+                (when ``result.show_query_results`` is enabled)
         """
         # Route non-SQL callbacks to the executor factory (mirrors execute_migration routing — B5 fix)
         if callback.format != MigrationFormat.SQL:
@@ -1138,13 +1160,30 @@ class ExecutionEngine:
                             statement
                         )
                         if is_query:
-                            if result_data:
-                                row_count = (
-                                    len(result_data) if isinstance(result_data, list) else "unknown"
+                            if not isinstance(result_data, list):
+                                raise TypeError(
+                                    f"Expected list for query result, got {type(result_data).__name__}"
                                 )
-                                self.log.info(
-                                    f"Query executed successfully, {row_count} rows returned"
+                            row_count = len(result_data)
+                            self.log.info(f"Query executed successfully, {row_count} rows returned")
+                            if result is not None and getattr(result, "show_query_results", False):
+                                columns, table_rows = rows_to_columns_and_values(result_data)
+                                result.add_query_result(
+                                    callback.script_name,
+                                    callback.version,
+                                    callback.description,
+                                    statement,
+                                    columns,
+                                    table_rows,
                                 )
+                                if table_rows:
+                                    self.log.info(
+                                        render_records_table(
+                                            [(c, "left") for c in columns],
+                                            table_rows,
+                                            title=f"Query result ({len(table_rows)} rows)",
+                                        )
+                                    )
                         else:
                             rows_affected = result_data if isinstance(result_data, int) else -1
                             if _is_ddl_statement_for_success_log(statement):
@@ -1158,12 +1197,34 @@ class ExecutionEngine:
                     elif statement_type == "QUERY":
                         # This is a SELECT statement - execute as query
                         query_result: List[Dict[str, Any]] = self.provider.execute_query(statement)
-                        if query_result:
-                            # Log query summary (e.g., "10 rows returned")
-                            row_count = (
-                                len(query_result) if isinstance(query_result, list) else "unknown"
+                        # Log query summary (e.g., "10 rows returned") — fires for 0-row
+                        # results too, since an empty SELECT is still a successful query.
+                        row_count = (
+                            len(query_result) if isinstance(query_result, list) else "unknown"
+                        )
+                        self.log.info(f"Query executed successfully, {row_count} rows returned")
+                        if (
+                            isinstance(query_result, list)
+                            and result is not None
+                            and getattr(result, "show_query_results", False)
+                        ):
+                            columns, table_rows = rows_to_columns_and_values(query_result)
+                            result.add_query_result(
+                                callback.script_name,
+                                callback.version,
+                                callback.description,
+                                statement,
+                                columns,
+                                table_rows,
                             )
-                            self.log.info(f"Query executed successfully, {row_count} rows returned")
+                            if table_rows:
+                                self.log.info(
+                                    render_records_table(
+                                        [(c, "left") for c in columns],
+                                        table_rows,
+                                        title=f"Query result ({len(table_rows)} rows)",
+                                    )
+                                )
                     else:
                         # This is DDL or DML - execute as regular SQL
                         rows_affected = self.provider.execute_statement(statement)

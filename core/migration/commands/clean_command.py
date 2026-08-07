@@ -34,6 +34,7 @@ class CleanCommand(BaseCommand):
         """
         result = CleanResult()
         clean_enabled = kwargs.pop("clean_enabled", False) is True
+        result.show_query_results = kwargs.pop("show_query_results", False) is True
         # BUG-10: CosmosDB has no SQL schema, so ``config.database.schema`` is
         # empty and the summary line rendered as "Cleaned N object(s) from
         # schema '':". Fall back to the database-scope name when schema is
@@ -110,7 +111,12 @@ class CleanCommand(BaseCommand):
             if scripts_dir:
                 try:
                     self._execute_callbacks(
-                        scripts_dir, "beforeClean", recursive, additional_dirs, dir_recursive_map
+                        scripts_dir,
+                        "beforeClean",
+                        recursive,
+                        additional_dirs,
+                        dir_recursive_map,
+                        result=result,
                     )
                 except Exception as e:
                     self.log.error(f"beforeClean callback failed: {e}")
@@ -122,6 +128,7 @@ class CleanCommand(BaseCommand):
                             recursive,
                             additional_dirs,
                             dir_recursive_map,
+                            result=result,
                         )
                     result.complete()
                     return result
@@ -166,7 +173,12 @@ class CleanCommand(BaseCommand):
             # Execute afterClean callbacks if scripts_dir is provided
             if scripts_dir:
                 self._execute_callbacks(
-                    scripts_dir, "afterClean", recursive, additional_dirs, dir_recursive_map
+                    scripts_dir,
+                    "afterClean",
+                    recursive,
+                    additional_dirs,
+                    dir_recursive_map,
+                    result=result,
                 )
 
             # Log summary of cleaned objects grouped by type
@@ -205,6 +217,7 @@ class CleanCommand(BaseCommand):
                         recursive,
                         additional_dirs,
                         dir_recursive_map,
+                        result=result,
                     )
                 except Exception as cb_e:
                     self.log.debug(

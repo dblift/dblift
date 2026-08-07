@@ -38,6 +38,8 @@ class OperationResult:
         self.cli_options: dict[str, Any] = {}  # Store CLI options used for the command
         self.show_sql: bool = False
         self.sql: List["MigrationSqlInfo"] = []
+        self.show_query_results: bool = False
+        self.query_results: List["MigrationQueryResultInfo"] = []
         # None when not applicable; True/False when a failed migration row was/was not
         # persisted to history after an execution failure.
         self.failed_history_persisted: Optional[bool] = None
@@ -77,6 +79,22 @@ class OperationResult:
     def add_sql_migration(self, migration_sql: "MigrationSqlInfo") -> None:
         """Add SQL visibility data for one migration script."""
         self.sql.append(migration_sql)
+
+    def add_query_result(
+        self,
+        script: str,
+        version: Optional[Union[str, int]],
+        description: str,
+        statement: str,
+        columns: List[str],
+        rows: List[List[Any]],
+    ) -> None:
+        """Record a QUERY statement's result set, grouped by script."""
+        info = next((q for q in self.query_results if q.script == script), None)
+        if info is None:
+            info = MigrationQueryResultInfo(script, version, description)
+            self.query_results.append(info)
+        info.add_result(statement, columns, rows)
 
     def set_error(self, error_message: str) -> None:
         """Set an error message and mark the operation as failed."""
@@ -145,6 +163,26 @@ class MigrationSqlInfo:
         self.version = version
         self.description = description
         self.statements = statements or []
+
+
+class MigrationQueryResultInfo:
+    """Query result rows captured for one script when ``--show-query-results`` is enabled."""
+
+    def __init__(
+        self,
+        script: str,
+        version: Optional[Union[str, int]] = None,
+        description: str = "",
+    ) -> None:
+        """Store per-script query results (one entry per QUERY statement that returned rows)."""
+        self.script = script
+        self.version = version
+        self.description = description
+        self.results: List[Dict[str, Any]] = []
+
+    def add_result(self, statement: str, columns: List[str], rows: List[List[Any]]) -> None:
+        """Record one QUERY statement's result set."""
+        self.results.append({"statement": statement, "columns": columns, "rows": rows})
 
 
 # Result classes for different operations
