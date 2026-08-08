@@ -298,6 +298,28 @@ class TestMainCliDecomposition(unittest.TestCase):
         self.assertEqual(args.command, "undo")
         self.assertTrue(args.show_sql)
 
+    def test_show_query_results_preserved_for_migrate(self):
+        """--show-query-results should be available on migrate, independent of --show-sql."""
+        parser = create_parser(exit_on_error=False)
+        args = parser.parse_args(["migrate", "--show-query-results"])
+        self.assertEqual(args.command, "migrate")
+        self.assertTrue(args.show_query_results)
+        self.assertFalse(args.show_sql)
+
+    def test_show_query_results_preserved_for_undo(self):
+        """--show-query-results should be available on undo."""
+        parser = create_parser(exit_on_error=False)
+        args = parser.parse_args(["undo", "--show-query-results"])
+        self.assertEqual(args.command, "undo")
+        self.assertTrue(args.show_query_results)
+
+    def test_show_query_results_preserved_for_clean(self):
+        """--show-query-results should be available on clean."""
+        parser = create_parser(exit_on_error=False)
+        args = parser.parse_args(["clean", "--show-query-results"])
+        self.assertEqual(args.command, "clean")
+        self.assertTrue(args.show_query_results)
+
     def test_dry_run_preserved_for_info(self):
         """--dry-run must survive info subparser processing."""
         parser = create_parser(exit_on_error=False)

@@ -12,6 +12,7 @@ from core.logger.results import (
     InfoResult,
     MigrateResult,
     MigrationInfo,
+    MigrationQueryResultInfo,
     MigrationSqlInfo,
     OperationResult,
     RepairResult,
@@ -115,6 +116,36 @@ class TestOperationResult:
 
         assert result.show_sql is True
         assert result.sql == [sql_info]
+
+    def test_add_query_result_creates_one_entry_per_script(self):
+        """add_query_result groups multiple queries under the same script."""
+        result = OperationResult()
+        result.show_query_results = True
+
+        result.add_query_result("V1__init.sql", "1", "init", "SELECT * FROM a", ["id"], [[1], [2]])
+        result.add_query_result("V1__init.sql", "1", "init", "SELECT * FROM b", ["name"], [["x"]])
+        result.add_query_result("V2__more.sql", "2", "more", "SELECT * FROM c", ["y"], [[9]])
+
+        assert len(result.query_results) == 2
+        first, second = result.query_results
+        assert isinstance(first, MigrationQueryResultInfo)
+        assert first.script == "V1__init.sql"
+        assert len(first.results) == 2
+        assert first.results[0] == {
+            "statement": "SELECT * FROM a",
+            "columns": ["id"],
+            "rows": [[1], [2]],
+        }
+        assert first.results[1]["statement"] == "SELECT * FROM b"
+        assert second.script == "V2__more.sql"
+        assert len(second.results) == 1
+
+    def test_add_query_result_independent_of_show_sql(self):
+        """show_query_results and show_sql are independent flags."""
+        result = OperationResult()
+        assert result.show_sql is False
+        assert result.show_query_results is False
+        assert result.query_results == []
 
 
 class TestMigrationInfo:

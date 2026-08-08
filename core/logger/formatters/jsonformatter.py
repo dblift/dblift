@@ -110,6 +110,7 @@ class JsonFormatter:
         output.update(self._build_time_metadata(result))
         output.update(self._build_base_metadata(result, schema, database_name))
         output.update(self._format_sql_visibility(result))
+        output.update(self._format_query_results(result))
         output.update(self._format_migrate_metadata(result, command_type))
         output.update(self._format_clean_metadata(result, command_type))
 
@@ -214,6 +215,31 @@ class JsonFormatter:
                     ],
                 }
                 for migration_sql in getattr(result, "sql", [])
+            ],
+        }
+
+    def _format_query_results(self, result: OperationResult) -> Dict[str, Any]:
+        """Return structured query result data when explicitly requested."""
+        if not getattr(result, "show_query_results", False):
+            return {}
+        return {
+            "show_query_results": True,
+            "query_results": [
+                {
+                    "script": info.script,
+                    "version": info.version,
+                    "description": info.description,
+                    "results": [
+                        {
+                            "statement": self._sanitize_message(entry["statement"]),
+                            "columns": entry["columns"],
+                            "row_count": len(entry["rows"]),
+                            "rows": self._sanitize_for_json(entry["rows"]),
+                        }
+                        for entry in info.results
+                    ],
+                }
+                for info in getattr(result, "query_results", [])
             ],
         }
 
@@ -502,6 +528,7 @@ class JsonFormatter:
             cmd_output["migration_count"] = 0
 
         cmd_output.update(self._format_sql_visibility(result))
+        cmd_output.update(self._format_query_results(result))
 
         # Add version information for baseline commands
         if hasattr(result, "init_version") and result.init_version:

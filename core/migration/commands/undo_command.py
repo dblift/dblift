@@ -134,6 +134,7 @@ class UndoCommand(BaseCommand):
         versions: Optional[str] = None,
         exclude_versions: Optional[str] = None,
         show_sql: bool = False,
+        show_query_results: bool = False,
         placeholders: Optional[Dict[str, Any]] = None,
         recursive: Optional[bool] = None,
         additional_dirs: Optional[List[Path]] = None,
@@ -148,6 +149,7 @@ class UndoCommand(BaseCommand):
 
         result = UndoResult()
         result.show_sql = show_sql
+        result.show_query_results = show_query_results
         result.target_schema = self.config.database.schema
 
         try:
@@ -364,7 +366,12 @@ class UndoCommand(BaseCommand):
             # Execute beforeUndo callbacks
             try:
                 self._execute_callbacks(
-                    scripts_dir, "beforeUndo", use_recursive, use_additional_dirs, dir_recursive_map
+                    scripts_dir,
+                    "beforeUndo",
+                    use_recursive,
+                    use_additional_dirs,
+                    dir_recursive_map,
+                    result=result,
                 )
             except Exception as e:
                 self.log.error(f"beforeUndo callback failed: {e}")
@@ -375,6 +382,7 @@ class UndoCommand(BaseCommand):
                     use_recursive,
                     use_additional_dirs,
                     dir_recursive_map,
+                    result=result,
                 )
                 result.complete()
                 return result
@@ -394,6 +402,7 @@ class UndoCommand(BaseCommand):
                         use_recursive,
                         use_additional_dirs,
                         dir_recursive_map,
+                        result=result,
                     )
 
                     # SQL path: find the corresponding UNDO_SQL script
@@ -415,6 +424,7 @@ class UndoCommand(BaseCommand):
                             use_recursive,
                             use_additional_dirs,
                             dir_recursive_map,
+                            result=result,
                         )
                         break
 
@@ -482,6 +492,7 @@ class UndoCommand(BaseCommand):
                             use_recursive,
                             use_additional_dirs,
                             dir_recursive_map,
+                            result=result,
                         )
                         break
 
@@ -518,6 +529,7 @@ class UndoCommand(BaseCommand):
                         use_recursive,
                         use_additional_dirs,
                         dir_recursive_map,
+                        result=result,
                     )
 
                 except Exception as e:
@@ -576,6 +588,7 @@ class UndoCommand(BaseCommand):
                         use_recursive,
                         use_additional_dirs,
                         dir_recursive_map,
+                        result=result,
                     )
                     break
 
@@ -583,7 +596,12 @@ class UndoCommand(BaseCommand):
             # Execute afterUndo callbacks
             if not result.error_message:
                 self._execute_callbacks(
-                    scripts_dir, "afterUndo", use_recursive, use_additional_dirs, dir_recursive_map
+                    scripts_dir,
+                    "afterUndo",
+                    use_recursive,
+                    use_additional_dirs,
+                    dir_recursive_map,
+                    result=result,
                 )
 
             # Set journal on result for HTML formatter access
@@ -624,6 +642,7 @@ class UndoCommand(BaseCommand):
                     use_recursive,
                     use_additional_dirs,
                     dir_recursive_map,
+                    result=result,
                 )
             except Exception as e:
                 self.log.debug(

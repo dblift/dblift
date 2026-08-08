@@ -11,6 +11,7 @@ This file was extracted from the monolithic
 from pathlib import Path
 from typing import Any, Dict, Optional, Type
 
+from core.logger.console import render_records_table
 from core.logger.formatters.jsonformatter import JsonFormatter
 from core.logger.results import (
     BaselineResult,
@@ -147,6 +148,7 @@ class OutputFormatter:
                 output.append(f"- {warning}")
 
         self._append_sql_visibility(output, result)
+        self._append_query_results(output, result)
         return "\n".join(output)
 
     def format_undo(self, result: UndoResult) -> str:
@@ -169,6 +171,7 @@ class OutputFormatter:
             output.append("No migrations were undone.")
 
         self._append_sql_visibility(output, result)
+        self._append_query_results(output, result)
         return "\n".join(output)
 
     def _append_sql_visibility(self, output: list[str], result: OperationResult) -> None:
@@ -183,6 +186,25 @@ class OutputFormatter:
             output.append(f"-- {migration_sql.script}")
             for statement in migration_sql.statements:
                 output.append(statement)
+        output.append("-" * 80)
+
+    def _append_query_results(self, output: list[str], result: OperationResult) -> None:
+        """Append captured query result tables only when explicitly requested."""
+        if not getattr(result, "show_query_results", False) or not getattr(
+            result, "query_results", None
+        ):
+            return
+
+        output.append("")
+        output.append("Query Results:")
+        output.append("-" * 80)
+        for info in result.query_results:
+            output.append(f"-- {info.script}")
+            for entry in info.results:
+                output.append(entry["statement"])
+                output.append(
+                    render_records_table([(c, "left") for c in entry["columns"]], entry["rows"])
+                )
         output.append("-" * 80)
 
     def format_migrate(self, result: MigrateResult) -> str:
@@ -233,6 +255,7 @@ class OutputFormatter:
                 output.append(f"- {warning}")
 
         self._append_sql_visibility(output, result)
+        self._append_query_results(output, result)
         return "\n".join(output)
 
     def format_clean(self, result: CleanResult) -> str:
@@ -271,6 +294,8 @@ class OutputFormatter:
             output.append("\nWarnings:")
             for warning in result.warnings:
                 output.append(f"- {warning}")
+
+        self._append_query_results(output, result)
 
         return "\n".join(output)
 

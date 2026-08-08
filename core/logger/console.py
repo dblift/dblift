@@ -203,6 +203,19 @@ def render_panel_to_str(panel: Panel, width: int = 200) -> str:
     return render_to_str(panel, width=width)
 
 
+def rows_to_columns_and_values(
+    result_set: List[Dict[str, Any]],
+) -> Tuple[List[str], List[List[Any]]]:
+    """Convert a query result set (list of row dicts) into (columns, rows) form.
+
+    ``columns`` is taken from the first row's key order; ``rows`` is a list of
+    cell-value lists in that same column order, suitable for
+    ``render_records_table`` or JSON/HTML serialization.
+    """
+    columns = list(result_set[0].keys()) if result_set else []
+    return columns, [[row.get(c) for c in columns] for row in result_set]
+
+
 def render_records_table(
     columns: List[Tuple[str, str]],
     rows: List[List[Any]],
@@ -224,7 +237,12 @@ def render_records_table(
     for header, justify in columns:
         table.add_column(header, justify=cast(ColumnJustify, justify))
     for row in rows:
-        table.add_row(*[cell if isinstance(cell, Text) else str(cell) for cell in row])
+        table.add_row(
+            *[
+                "—" if cell is None else (cell if isinstance(cell, Text) else str(cell))
+                for cell in row
+            ]
+        )
     if color:
         console = Console(
             file=sys.stdout, highlight=False, markup=False, soft_wrap=True, emoji=False

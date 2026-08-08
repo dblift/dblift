@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional
 from config import DbliftConfig
 
 if TYPE_CHECKING:
+    from core.logger.results import OperationResult
     from core.migration.journals.migration_journal import MigrationJournal
     from core.migration.placeholders.placeholder_service import PlaceholderService
     from rich.panel import Panel
@@ -214,6 +215,7 @@ class BaseCommand:
         use_recursive: bool,
         use_additional_dirs: Optional[List[Path]],
         dir_recursive_map: Optional[Dict[Path, bool]] = None,
+        result: Optional["OperationResult"] = None,
     ) -> None:
         """Execute callbacks for a specific lifecycle event.
 
@@ -223,6 +225,8 @@ class BaseCommand:
             use_recursive: Whether to search subdirectories recursively
             use_additional_dirs: Optional list of additional directories to search
             dir_recursive_map: Optional mapping of directory paths to their recursive settings
+            result: Optional operation result to attach captured query results to
+                (when ``result.show_query_results`` is enabled)
 
         Raises:
             Exception: If any callback fails (except for error callbacks which only log warnings)
@@ -253,7 +257,7 @@ class BaseCommand:
             for callback in callbacks:
                 try:
                     self.log.info(f"Executing callback: {callback.script_name}", dedupe=False)
-                    self.execution_engine.execute_callback(callback)
+                    self.execution_engine.execute_callback(callback, result)
                     self.log.info(
                         f"Callback {callback.script_name} executed successfully", dedupe=False
                     )
