@@ -519,6 +519,18 @@ class SqlserverQuirks(BaseQuirks):
             edition_pattern=r"enterprise|developer|evaluation|azure",
             description="WITH (ONLINE = ON) index builds",
         ),
+        # ALTER TABLE ... ALTER COLUMN WITH (ONLINE = ON): introduced in SQL
+        # Server 2016 (internal version 13.0, matching this file's own
+        # version_specific_type_mappings numbering above), same edition set
+        # as online_index_build (Enterprise/Developer/Evaluation/Azure)
+        # only. Without a proven server, callers stay conservative rather
+        # than assuming a feature two years newer than online index builds
+        # is available on the same edition floor.
+        "online_alter_column": FeatureGate(
+            min_version="13.0+",
+            edition_pattern=r"enterprise|developer|evaluation|azure",
+            description="WITH (ONLINE = ON) ALTER COLUMN",
+        ),
     }
 
     def type_preferences(self) -> "dict[str, str]":
