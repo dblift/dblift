@@ -372,24 +372,40 @@ class TestMarkResolvedStatus(unittest.TestCase):
     def test_no_scripts_available_all_resolved(self):
         m1 = _mk_versioned("1.0", rank=1)
         m2 = _mk_versioned("2.0", rank=2)
-        self.mgr._mark_resolved_status([m1, m2], [], scripts_available=False)
+        self.mgr._mark_resolved_status([m1, m2], [], [], scripts_available=False)
         assert m1.resolved is True
         assert m2.resolved is True
 
     def test_scripts_available_matches_pending_script(self):
         applied = _mk_versioned("1.0", rank=1)
         pending = _mk_versioned("2.0", rank=99)
-        self.mgr._mark_resolved_status([applied], [pending], scripts_available=True)
+        self.mgr._mark_resolved_status([applied], [pending], [pending], scripts_available=True)
         assert pending.resolved is True
-        # applied.script_name not in pending scripts → not resolved
+        # applied.script_name absent from the full on-disk list → not resolved
         assert applied.resolved is False
 
     def test_scripts_available_applied_with_matching_script(self):
         """Applied migration whose script_name matches a pending script is marked resolved."""
         applied = _mk_versioned("1.0", rank=1, script_name="V1__test.sql")
         pending = _mk_versioned("1.0", rank=1, script_name="V1__test.sql")
-        self.mgr._mark_resolved_status([applied], [pending], scripts_available=True)
+        self.mgr._mark_resolved_status([applied], [pending], [pending], scripts_available=True)
         assert applied.resolved is True
+
+    def test_applied_script_not_pending_but_still_on_disk_is_resolved(self):
+        """Regression test: an already-applied migration with nothing pending for
+        it (already executed) must still resolve to True when its script file
+        is present in the full on-disk script list, even though it is absent
+        from pending_migrations."""
+        applied = _mk_versioned("1.0", rank=1, script_name="V1__test.sql")
+        on_disk = _mk_versioned("1.0", rank=1, script_name="V1__test.sql")
+        self.mgr._mark_resolved_status([applied], [], [on_disk], scripts_available=True)
+        assert applied.resolved is True
+
+    def test_applied_script_missing_from_disk_is_unresolved(self):
+        applied = _mk_versioned("3.0", rank=3, script_name="V3__test.sql")
+        on_disk = [_mk_versioned("1.0", rank=1), _mk_versioned("2.0", rank=2)]
+        self.mgr._mark_resolved_status([applied], [], on_disk, scripts_available=True)
+        assert applied.resolved is False
 
 
 # ===========================================================================

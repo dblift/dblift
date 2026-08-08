@@ -463,6 +463,20 @@ class MigrationDataCollector:
                 status = "SUCCESS"
                 if self._is_migration_type_equal(migration_type, "BASELINE"):
                     status = "BASELINE"
+                elif not getattr(migration, "resolved", True) and not (
+                    version and version in undone_versions_set
+                ):
+                    # Undone versions are handled below regardless of resolved
+                    # status: a migration that was explicitly undone should keep
+                    # showing as Undone even if its script was later deleted.
+                    if (
+                        version
+                        and migration_state.current_version
+                        and self._compare_versions(version, migration_state.current_version) > 0
+                    ):
+                        status = MigrationDisplayState.FUTURE.value
+                    else:
+                        status = MigrationDisplayState.MISSING.value
                 elif (
                     self._is_versioned_type(migration_type)
                     and version
@@ -493,7 +507,17 @@ class MigrationDataCollector:
                     if has_undo_after:
                         status = "UNDONE"
             elif is_migration_failure(success):
-                status = "FAILED"
+                if not getattr(migration, "resolved", True):
+                    if (
+                        version
+                        and migration_state.current_version
+                        and self._compare_versions(version, migration_state.current_version) > 0
+                    ):
+                        status = MigrationDisplayState.FAILED_FUTURE.value
+                    else:
+                        status = MigrationDisplayState.FAILED_MISSING.value
+                else:
+                    status = "FAILED"
             else:
                 status = "UNKNOWN"
 
