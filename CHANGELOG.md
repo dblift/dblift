@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+### Changed
+
+### Fixed
+
+### Removed
+
+## [3.5.0] - 2026-08-08
+
+### Added
+
 - **`--show-query-results`** — a new flag on `migrate`, `undo`, and `clean`
   that captures and renders the actual columns/rows a `SELECT` statement
   returns (in versioned migrations, undo scripts, and before/after callback
