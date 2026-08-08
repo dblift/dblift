@@ -102,6 +102,11 @@ class TestJsonFormatterQueryResults:
         assert entry["results"][0]["columns"] == ["id", "name"]
         assert entry["results"][0]["rows"] == [[1, "alice"]]
 
+        # query_results must not also appear at the root — it should be
+        # emitted exactly once, inside commands[0], not duplicated at the
+        # top level (issue #192).
+        assert "query_results" not in data
+
     def test_non_json_native_cell_types_serialize_without_error(self):
         formatter = JsonFormatter()
         result = MigrateResult()

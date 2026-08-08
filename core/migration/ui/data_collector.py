@@ -6,6 +6,7 @@ migration data from various sources (applied migrations, pending migrations,
 filesystem) for display purposes.
 """
 
+import functools
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple, Union
 
@@ -303,13 +304,7 @@ class MigrationDataCollector:
         # Process pending migrations (in execution order: versioned first, then repeatable)
         sorted_pending_legacy = sorted(
             pending_migrations or [],
-            key=lambda m: (
-                # Versioned migrations (type 0) come before repeatable (type 1)
-                0 if self._is_versioned_type(getattr(m, "type", None)) else 1,
-                # Then sort by version (for versioned) or script name (for repeatable)
-                getattr(m, "version", "") or "",
-                getattr(m, "script_name", ""),
-            ),
+            key=functools.cmp_to_key(self._compare_pending_migrations),
         )
         for migration in sorted_pending_legacy:
             script_name = migration.script_name
@@ -530,13 +525,7 @@ class MigrationDataCollector:
         # Execution order: versioned first (sorted by version), then repeatable (sorted by script name)
         sorted_pending = sorted(
             pending_migrations,
-            key=lambda m: (
-                # Versioned migrations (type 0) come before repeatable (type 1)
-                0 if self._is_versioned_type(getattr(m, "type", None)) else 1,
-                # Then sort by version (for versioned) or script name (for repeatable)
-                getattr(m, "version", "") or "",
-                getattr(m, "script_name", ""),
-            ),
+            key=functools.cmp_to_key(self._compare_pending_migrations),
         )
 
         for migration in sorted_pending:
@@ -893,3 +882,22 @@ class MigrationDataCollector:
     def _compare_versions(self, version1: Optional[str], version2: Optional[str]) -> int:
         """Compare two version strings. Delegates to shared compare_versions utility."""
         return _compare_versions_shared(version1, version2)
+
+    def _compare_pending_migrations(self, m1: Migration, m2: Migration) -> int:
+        """Order pending migrations for display: versioned before repeatable,
+        versioned entries in numeric version order, then by script name."""
+        type1 = 0 if self._is_versioned_type(getattr(m1, "type", None)) else 1
+        type2 = 0 if self._is_versioned_type(getattr(m2, "type", None)) else 1
+        if type1 != type2:
+            return type1 - type2
+
+        if type1 == 0:
+            version_cmp = self._compare_versions(
+                getattr(m1, "version", "") or "", getattr(m2, "version", "") or ""
+            )
+            if version_cmp != 0:
+                return version_cmp
+
+        script1 = getattr(m1, "script_name", "")
+        script2 = getattr(m2, "script_name", "")
+        return -1 if script1 < script2 else (1 if script1 > script2 else 0)

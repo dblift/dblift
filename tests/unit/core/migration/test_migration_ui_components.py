@@ -86,6 +86,14 @@ class TestTableRendererFormatMigrationTable(unittest.TestCase):
         assert "Success" in result
         assert "Total migrations: 1" in result
 
+    def test_type_column_not_truncated(self):
+        # Type column must fit the longest MigrationType value (REPEATABLE) untruncated
+        data = [{"version": "1.0", "type": "UNDO_SQL"}]
+        result = self.renderer.format_migration_table(data)
+        assert "UNDO_SQL" in result
+        assert "UN…" not in result
+        assert "Ty…" not in result
+
     def test_undoable_false_renders_no(self):
         # Undoable column removed (too narrow for table) — state column used instead
         data = [{"version": "2.0", "undoable": False, "state": "Pending"}]
