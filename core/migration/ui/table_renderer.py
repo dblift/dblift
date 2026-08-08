@@ -35,7 +35,7 @@ class TableRenderer:
             ("Category", "category", "left", 10, 12, True),
             ("Version", "version", "left", 5, 12, True),
             ("Description", "description", "left", 10, 28, False),
-            ("Type", "type", "left", 4, 10, True),
+            ("Type", "type", "left", 4, None, True),
             ("Installed On", "installed_on", "left", 19, 19, True),
             ("Installed By", "installed_by", "left", 8, 15, True),
             ("State", "state", "left", 7, 9, True),
