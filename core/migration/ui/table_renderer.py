@@ -32,15 +32,15 @@ class TableRenderer:
         """Build a Rich Table with colored State column."""
         # (header, key, justify, min_width, max_width, no_wrap)
         columns = [
-            ("Category", "category", "left", 10, 12, True),
-            ("Version", "version", "left", 5, 12, True),
-            ("Description", "description", "left", 10, 28, False),
+            ("Category", "category", "left", 10, None, True),
+            ("Version", "version", "left", 5, None, True),
+            ("Description", "description", "left", 10, None, False),
             ("Type", "type", "left", 4, None, True),
-            ("Installed On", "installed_on", "left", 19, 19, True),
-            ("Installed By", "installed_by", "left", 8, 15, True),
-            ("State", "state", "left", 7, 9, True),
-            ("Exec Time", "execution_time", "right", 6, 10, True),
-            ("Undoable", "undoable", "center", 5, 8, True),
+            ("Installed On", "installed_on", "left", 19, None, True),
+            ("Installed By", "installed_by", "left", 8, None, True),
+            ("State", "state", "left", 7, None, True),
+            ("Exec Time", "execution_time", "right", 6, None, True),
+            ("Undoable", "undoable", "center", 5, None, True),
         ]
 
         table = Table(box=box.ROUNDED, show_header=True, header_style="bold")
