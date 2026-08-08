@@ -344,6 +344,20 @@ class TestSupportsConcurrentIndex:
         """
         assert quirks("citus").supports_concurrent_index is True
 
+    @pytest.mark.parametrize("dialect", ["neon", "supabase", "aurora-postgresql", "alloydb"])
+    def test_true_postgres_clones_inherit_true(self, dialect: str) -> None:
+        """Neon, Supabase, Aurora PostgreSQL, and AlloyDB are managed PostgreSQL
+        itself, not a different storage/execution engine the way Citus,
+        CockroachDB, TimescaleDB, and YugabyteDB are — confirmed for Neon
+        against its own docs (``CREATE INDEX CONCURRENTLY`` works, the one
+        documented caveat is routing: it needs a direct connection, not a
+        pooled one, which is a connection-layer concern this flag doesn't
+        model). Pinned explicitly rather than left to bare inheritance, so a
+        future audit of "every PostgreSQL-wire engine" has something to run
+        against instead of re-deriving the list from ``all_registered_dialects()``.
+        """
+        assert quirks(dialect).supports_concurrent_index is True
+
     def test_overrides_are_declared_on_the_quirks_class(self) -> None:
         """Pin the override *mechanism*, not just the resolved value.
 
