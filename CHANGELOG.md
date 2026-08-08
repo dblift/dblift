@@ -9,9 +9,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`subquery_row_limit_requires_derived_table`** (bool) — a new capability
+  flag: an `UPDATE ... WHERE pk IN (<subselect>)` needs a derived-table wrap
+  when the subselect itself carries a row limit, even on a dialect that
+  otherwise allows the direct self-referencing form. MySQL and MariaDB both
+  reject `IN (SELECT ... LIMIT n)` outright with error 1235, regardless of
+  whether the subquery also reads its own target table — an orthogonal fact
+  to `update_subquery_requires_derived_table` (error 1093), which MariaDB
+  correctly declares `False` for and continues to.
+
 ### Changed
 
 ### Fixed
+
+- **`supports_concurrent_index` was inherited, never individually checked,
+  by five PostgreSQL-wire-compatible engines that do not all share
+  PostgreSQL's `CREATE INDEX CONCURRENTLY` behavior.** Redshift has no
+  `CREATE INDEX` at all; CockroachDB and YugabyteDB already build every
+  index online regardless of the keyword (recommending it implied the
+  plain form blocks, which it never does on either engine); TimescaleDB
+  does not support the keyword directly on a hypertable at all. Set
+  `False` on Redshift, CockroachDB, TimescaleDB, and YugabyteDB. Citus was
+  checked against its own documentation and left inheriting `True` — its
+  distributed-DDL reference documents `CREATE INDEX CONCURRENTLY` as the
+  supported, recommended way to add an index to a distributed table
+  without blocking writes, propagated per shard — and Neon, Supabase,
+  Aurora PostgreSQL, and AlloyDB (managed PostgreSQL itself, not a
+  different storage/execution engine) keep inheriting `True` as well.
 
 - **`generate_undo_scripts()` (the batch API) emitted `MIGRATION_COMPLETED`
   even when every item in the batch failed.** The per-item results and the

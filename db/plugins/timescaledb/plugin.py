@@ -15,4 +15,12 @@ from db.provider_registry import PluginInfo
 PLUGIN: PluginInfo = make_pg_compatible_plugin(
     "timescaledb",
     "TimescaleDB (PostgreSQL extension) database provider",
+    # TimescaleDB does not support CREATE INDEX CONCURRENTLY directly on a
+    # hypertable (confirmed against Tiger Data's own CREATE INDEX reference,
+    # current as of 2026-08). The documented alternative for a non-blocking
+    # build is a different clause entirely --
+    # ``WITH (timescaledb.transaction_per_chunk)`` -- not CONCURRENTLY.
+    # Inheriting PostgreSQL's ``True`` here would recommend syntax this
+    # engine doesn't support for the case it's meant to help.
+    quirks_overrides={"supports_concurrent_index": False},
 )

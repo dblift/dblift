@@ -63,6 +63,10 @@ class MysqlQuirks(BaseQuirks):
     json_bind_cast_type: Optional[str] = "JSON"
     # Error 1093: "can't specify target table for update in FROM clause".
     update_subquery_requires_derived_table = True
+    # Error 1235: rejects LIMIT inside IN (subquery) outright. Inherited by
+    # MariaDB (which does NOT hit 1093 above, so this is declared separately
+    # rather than folded into update_subquery_requires_derived_table).
+    subquery_row_limit_requires_derived_table = True
     connection_identifier_attrs = ("url", "host", "database")
     missing_connection_identifier_hint = "MySQL connection requires url or host/database fields"
     sqlglot_dialect = "mysql"
