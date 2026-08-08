@@ -82,6 +82,14 @@ class TestDeclaredGates:
         gate = get_feature_gates("oracle")["online_index_build"]
         assert gate.edition_pattern == r"enterprise|free"
 
+    def test_sqlserver_declares_online_alter_column(self):
+        """WITH (ONLINE = ON) ALTER COLUMN: SQL Server 2016+ (13.0), same
+        edition floor as online_index_build.
+        """
+        gate = get_feature_gates("sqlserver")["online_alter_column"]
+        assert gate.min_version == "13.0+"
+        assert gate.edition_pattern == r"enterprise|developer|evaluation|azure"
+
     def test_mysql_declares_rename_column(self):
         gate = get_feature_gates("mysql")["rename_column"]
         assert gate.min_version == "8.0+"
@@ -140,6 +148,34 @@ class TestSupportsFeature:
         """Partial knowledge: an edition-gated feature with version-only info."""
         result = supports_feature("sqlserver", "online_index_build", {"version": "15.0.2000.5"})
         assert result is None
+
+    @pytest.mark.parametrize(
+        "server_info,expected",
+        [
+            # Both constraints proven, both satisfied.
+            ({"edition": "Enterprise Edition (64-bit)", "version": "15.0.2000.5"}, True),
+            # Both proven, edition fails -- min_version alone is not enough.
+            ({"edition": "Standard Edition (64-bit)", "version": "15.0.2000.5"}, False),
+            # Both proven, version fails (SQL Server 2014) -- edition alone
+            # is not enough; the feature did not exist yet.
+            ({"edition": "Enterprise Edition (64-bit)", "version": "12.0.2000.8"}, False),
+            # Edition known, version unknown -- min_version cannot be
+            # evaluated, so the combined result is unknown even though the
+            # edition alone would pass online_index_build.
+            ({"edition": "Enterprise Edition (64-bit)"}, None),
+            # Version known, edition unknown.
+            ({"version": "15.0.2000.5"}, None),
+            # Neither known.
+            ({}, None),
+        ],
+    )
+    def test_sqlserver_online_alter_column_needs_both_constraints(self, server_info, expected):
+        """Two independent constraints (unlike online_index_build's
+        edition-only gate) -- both must be provably satisfied for True, and
+        losing either piece of server info degrades to unknown rather than
+        falling back to whichever constraint IS known.
+        """
+        assert supports_feature("sqlserver", "online_alter_column", server_info) is expected
 
     @pytest.mark.parametrize(
         "banner,expected",

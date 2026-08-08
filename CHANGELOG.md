@@ -15,6 +15,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
+## [3.5.1] - 2026-08-08
+
+### Added
+
+- **`online_alter_column`** feature-gate name (`core.sql_model.feature_gates.KNOWN_FEATURES`)
+  — SQL Server's `ALTER TABLE ... ALTER COLUMN WITH (ONLINE = ON)`, introduced
+  in SQL Server 2016 (min version `13.0`), Enterprise/Developer/Evaluation/Azure
+  editions only — the same edition floor as the existing `online_index_build`
+  gate. Declared ahead of its first consumer to avoid a second MINOR release
+  once something needs it. (This was intended for 3.5.0 but missed that
+  release — the branch was pushed after the PR had already merged. Landing
+  it here instead of leaving 3.5.0's notes inaccurate.)
+
+### Changed
+
+### Fixed
+
+### Removed
+
 ## [3.5.0] - 2026-08-08
 
 ### Added
