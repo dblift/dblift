@@ -116,6 +116,28 @@ class TestUndoStatementEmitterQuoteIdentifier(unittest.TestCase):
         result = emitter._quote_identifier("users")
         self.assertIn("users", result)
 
+    def test_escapes_embedded_quote_character(self):
+        """Issue #911: an identifier containing the dialect's own quote
+        character must have it doubled, not passed through raw — this is
+        the exact method _extractors.py/_reversers.py call to build
+        DROP COLUMN / DROP CONSTRAINT statements for auto-generated undo
+        scripts."""
+        emitter = self._make_emitter("postgresql")
+        self.assertEqual(emitter._quote_identifier('say "hi"'), '"say ""hi"""')
+
+    def test_drop_column_statement_escapes_embedded_quote(self):
+        """Reproduces the issue's concrete failure scenario: an undo script
+        DROP COLUMN for a column named say "hi" must not emit the malformed
+        DROP COLUMN "say "hi"" — built with the exact f-string pattern
+        _reversers.py uses (ALTER TABLE ... DROP COLUMN {quoted});."""
+        emitter = self._make_emitter("postgresql")
+        column_name = 'say "hi"'
+        drop_sql = f"ALTER TABLE {emitter._quote_identifier('users')} DROP COLUMN {emitter._quote_identifier(column_name)};"
+        self.assertEqual(
+            drop_sql,
+            'ALTER TABLE "users" DROP COLUMN "say ""hi""";',
+        )
+
 
 class TestUndoStatementEmitterExtractVersion(unittest.TestCase):
     """Tests for _extract_version_from_filename in _UndoExtractorsMixin."""
@@ -588,6 +610,24 @@ class TestUndoReversersMixin(unittest.TestCase):
         stmt.affected_objects = [sql_obj]
         result = gen._reverse_statement_from_parsed(stmt)
         self.assertIn("DROP COLUMN", result.sql)
+
+    def test_routing_create_escapes_embedded_quote_in_table_name(self):
+        """Issue #911, traced end-to-end through the real reverser path:
+        a CREATE TABLE whose parsed affected_objects carry a table name
+        with an embedded quote must reverse to a properly escaped
+        DROP TABLE, not the malformed form quote_identifier() previously
+        produced."""
+        from core.sql_model.base import SqlObjectType
+
+        gen = self._make_generator("postgresql")
+        stmt = self._make_stmt('CREATE TABLE "say ""hi""" (id INT);')
+        sql_obj = MagicMock()
+        sql_obj.name = 'say "hi"'
+        sql_obj.schema = None
+        sql_obj.object_type = SqlObjectType.TABLE
+        stmt.affected_objects = [sql_obj]
+        result = gen._reverse_statement_from_parsed(stmt)
+        self.assertIn('"say ""hi"""', result.sql)
 
     def test_routing_drop_unknown_type(self):
         gen = self._make_generator()

@@ -266,6 +266,121 @@ class TestJsonBindCastType:
 
 
 # --------------------------------------------------------------------------
+# supports_concurrent_index
+# --------------------------------------------------------------------------
+
+
+class TestSupportsConcurrentIndex:
+    """The bug this capability closes.
+
+    ``supports_concurrent_index`` defaults to ``False`` on ``BaseQuirks`` and
+    was declared ``True`` only by ``PostgresqlQuirks`` — every PostgreSQL-wire
+    engine inherited that ``True`` with nobody having checked whether
+    ``CREATE INDEX CONCURRENTLY`` means the same thing for them. It does not:
+    Redshift has no ``CREATE INDEX`` at all, CockroachDB and YugabyteDB build
+    every index online regardless of the keyword (so recommending it implies
+    the plain form blocks, backwards), and TimescaleDB's own docs say
+    ``CONCURRENTLY`` is not supported directly on a hypertable at all.
+    """
+
+    @pytest.mark.parametrize(
+        "dialect, expected",
+        [
+            ("postgresql", True),
+            ("citus", True),  # verified against Citus's own DDL reference: works per-shard
+            ("redshift", False),
+            ("cockroachdb", False),
+            ("timescaledb", False),
+            ("yugabytedb", False),
+            ("mysql", False),
+            ("mariadb", False),
+            ("sqlite", False),
+            ("oracle", False),
+            ("sqlserver", False),
+            ("db2", False),
+        ],
+    )
+    def test_declared_value(self, dialect: str, expected: bool) -> None:
+        assert quirks(dialect).supports_concurrent_index is expected
+
+    def test_redshift_has_no_create_index_syntax_at_all(self) -> None:
+        """Redshift uses sort keys and zone maps instead of B-tree indexes.
+
+        It subclasses ``PostgresqlQuirks`` and so would inherit ``True``, but
+        there is no ``CREATE INDEX`` of any form to add ``CONCURRENTLY`` to.
+        """
+        assert quirks("redshift").supports_concurrent_index is False
+
+    def test_cockroachdb_builds_every_index_online_regardless(self) -> None:
+        """Per Cockroach Labs' CREATE INDEX reference: ``CONCURRENTLY`` is
+        "optional, no-op syntax for PostgreSQL compatibility. All indexes are
+        created concurrently in CockroachDB." Recommending the keyword implies
+        the plain form blocks, which is never true here.
+        """
+        assert quirks("cockroachdb").supports_concurrent_index is False
+
+    def test_yugabytedb_defaults_to_concurrent_already(self) -> None:
+        """Per YugabyteDB's own CREATE INDEX reference: "the default mode is
+        CONCURRENTLY, wherever possible" — online index backfill is already
+        the default, and ``NONCONCURRENTLY`` is the actual opt-out. Inheriting
+        PostgreSQL's ``True`` has it backwards.
+        """
+        assert quirks("yugabytedb").supports_concurrent_index is False
+
+    def test_timescaledb_does_not_support_concurrently_on_hypertables(self) -> None:
+        """TimescaleDB's own docs: not supported directly on a hypertable; the
+        documented alternative is ``WITH (timescaledb.transaction_per_chunk)``,
+        a different clause entirely, not ``CONCURRENTLY``.
+        """
+        assert quirks("timescaledb").supports_concurrent_index is False
+
+    def test_citus_inherits_true_because_it_actually_works_per_shard(self) -> None:
+        """Verified against Citus's own DDL reference before leaving this
+        inherited rather than overridden: ``CREATE INDEX CONCURRENTLY`` is
+        Citus's own documented, recommended way to add an index to a
+        distributed table without blocking writes, propagated per shard.
+        This is the one PostgreSQL-wire engine in this sweep where the
+        inherited ``True`` is correct, not an unchecked assumption.
+        """
+        assert quirks("citus").supports_concurrent_index is True
+
+    @pytest.mark.parametrize("dialect", ["neon", "supabase", "aurora-postgresql", "alloydb"])
+    def test_true_postgres_clones_inherit_true(self, dialect: str) -> None:
+        """Neon, Supabase, Aurora PostgreSQL, and AlloyDB are managed PostgreSQL
+        itself, not a different storage/execution engine the way Citus,
+        CockroachDB, TimescaleDB, and YugabyteDB are — confirmed for Neon
+        against its own docs (``CREATE INDEX CONCURRENTLY`` works, the one
+        documented caveat is routing: it needs a direct connection, not a
+        pooled one, which is a connection-layer concern this flag doesn't
+        model). Pinned explicitly rather than left to bare inheritance, so a
+        future audit of "every PostgreSQL-wire engine" has something to run
+        against instead of re-deriving the list from ``all_registered_dialects()``.
+        """
+        assert quirks(dialect).supports_concurrent_index is True
+
+    def test_overrides_are_declared_on_the_quirks_class(self) -> None:
+        """Pin the override *mechanism*, not just the resolved value.
+
+        The per-dialect tests above already fail if an override is deleted
+        (it would fall through to PostgreSQL's inherited ``True``), but this
+        checks the same fact a different way: the flag is a real class
+        attribute on each dialect's own quirks class, whether declared
+        directly (``RedshiftQuirks``, ``CockroachdbQuirks``) or injected via
+        ``quirks_overrides`` into the ``make_pg_compatible_quirks``-built
+        class (``TimescaledbQuirks``, ``YugabytedbQuirks``) — so the guard
+        does not depend on the parent chain continuing to resolve to
+        ``True`` forever.
+        """
+        from db.plugins._pg_compatible import TimescaledbQuirks, YugabytedbQuirks
+        from db.plugins.cockroachdb.quirks import CockroachdbQuirks
+
+        assert "supports_concurrent_index" in vars(RedshiftQuirks)
+        assert "supports_concurrent_index" in vars(CockroachdbQuirks)
+        assert "supports_concurrent_index" in vars(TimescaledbQuirks)
+        assert "supports_concurrent_index" in vars(YugabytedbQuirks)
+
+
+# --------------------------------------------------------------------------
 # update_subquery_requires_derived_table
 # --------------------------------------------------------------------------
 
@@ -284,6 +399,38 @@ class TestUpdateSubqueryDerivedTable:
     )
     def test_everyone_else_takes_the_direct_form(self, dialect: str) -> None:
         assert quirks(dialect).update_subquery_requires_derived_table is False
+
+
+# --------------------------------------------------------------------------
+# subquery_row_limit_requires_derived_table
+# --------------------------------------------------------------------------
+
+
+class TestSubqueryRowLimitRequiresDerivedTable:
+    """Orthogonal to :attr:`update_subquery_requires_derived_table` above.
+
+    MariaDB's ``False`` there is correct (error 1093 does not apply) and
+    stays correct here too — this flag is about a DIFFERENT error (1235:
+    "doesn't yet support 'LIMIT & IN/ALL/ANY/SOME subquery'"), which MySQL
+    and MariaDB both raise for the identical shape
+    (``... WHERE pk IN (SELECT pk FROM t ... LIMIT n)``) regardless of
+    whether the subquery also references its own target table.
+    """
+
+    def test_mysql_requires_the_wrapper(self) -> None:
+        assert quirks("mysql").subquery_row_limit_requires_derived_table is True
+
+    def test_mariadb_inherits_the_wrapper_from_mysql(self) -> None:
+        """Not overridden back to False the way update_subquery_requires_
+        derived_table is — MariaDB genuinely hits error 1235 too.
+        """
+        assert quirks("mariadb").subquery_row_limit_requires_derived_table is True
+
+    @pytest.mark.parametrize(
+        "dialect", ["postgresql", "sqlite", "oracle", "db2", "sqlserver", "citus"]
+    )
+    def test_no_other_dialect_wraps(self, dialect: str) -> None:
+        assert quirks(dialect).subquery_row_limit_requires_derived_table is False
 
 
 # --------------------------------------------------------------------------

@@ -80,7 +80,7 @@ class TestDeclaredGates:
 
     def test_oracle_declares_online_index_build(self):
         gate = get_feature_gates("oracle")["online_index_build"]
-        assert gate.edition_pattern == r"enterprise"
+        assert gate.edition_pattern == r"enterprise|free"
 
     def test_mysql_declares_rename_column(self):
         gate = get_feature_gates("mysql")["rename_column"]
@@ -146,6 +146,14 @@ class TestSupportsFeature:
         [
             ("Oracle Database 19c Enterprise Edition Release 19.0.0.0.0 - Production", True),
             ("Oracle Database 19c Standard Edition 2 Release 19.0.0.0.0", False),
+            # Legacy Express Edition (pre-23ai) was genuinely feature-limited
+            # (no online DDL) — must still resolve to unsupported.
+            ("Oracle Database 18c Express Edition Release 18.0.0.0.0", False),
+            # Oracle Database Free (23ai/26ai) carries the full Enterprise
+            # Edition feature set (resource-limited, not feature-limited) —
+            # CREATE INDEX ... ONLINE works on it. Confirmed live against
+            # gvenzl/oracle-free:latest (issue #908).
+            ("Oracle AI Database 26ai Free Release 23.26.2.0.0", True),
         ],
     )
     def test_oracle_online_index_by_banner(self, banner, expected):

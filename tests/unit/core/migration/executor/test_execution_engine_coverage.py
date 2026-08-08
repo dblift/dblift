@@ -15,6 +15,7 @@ import unittest
 from unittest.mock import MagicMock, patch
 
 from core.exceptions import TransactionAbortedError
+from core.logger.results import OperationResult
 from core.migration.executor.execution_engine import ExecutionEngine, _strip_driver_exception_prefix
 from core.migration.formats import MigrationFormat
 from core.migration.migration import Migration
@@ -961,6 +962,162 @@ class TestExecuteCallbackAdditional(unittest.TestCase):
 
         warning_calls = [str(c) for c in engine.log.warning.call_args_list]
         self.assertTrue(any("Could not rollback" in c for c in warning_calls))
+
+
+class TestQueryResultCapture(unittest.TestCase):
+    """--show-query-results: rows from a SELECT are captured on the OperationResult."""
+
+    def test_migration_query_captures_columns_and_rows_when_enabled(self):
+        engine = _make_engine()
+        mock_ses = MagicMock()
+        mock_ses.execute_statement.return_value = (
+            True,
+            [{"id": 1, "name": "alice"}, {"id": 2, "name": "bob"}],
+        )
+        engine.sql_execution_service = mock_ses
+        migration = _make_sql_migration()
+        result = OperationResult()
+        result.show_query_results = True
+
+        success = engine._execute_statements(
+            ["SELECT id, name FROM t"], migration, result, time.time()
+        )
+
+        self.assertTrue(success)
+        self.assertEqual(len(result.query_results), 1)
+        info = result.query_results[0]
+        self.assertEqual(info.script, migration.script_name)
+        self.assertEqual(len(info.results), 1)
+        self.assertEqual(info.results[0]["columns"], ["id", "name"])
+        self.assertEqual(info.results[0]["rows"], [[1, "alice"], [2, "bob"]])
+        info_calls = [str(c) for c in engine.log.info.call_args_list]
+        self.assertTrue(any("Query result" in c for c in info_calls))
+
+    def test_migration_query_not_captured_when_flag_disabled(self):
+        """Default (show_query_results=False) leaves query_results empty — no behavior change."""
+        engine = _make_engine()
+        mock_ses = MagicMock()
+        mock_ses.execute_statement.return_value = (True, [{"id": 1}])
+        engine.sql_execution_service = mock_ses
+        migration = _make_sql_migration()
+        result = OperationResult()
+
+        success = engine._execute_statements(["SELECT id FROM t"], migration, result, time.time())
+
+        self.assertTrue(success)
+        self.assertEqual(result.query_results, [])
+
+    def test_ddl_dml_statement_does_not_add_query_result(self):
+        engine = _make_engine()
+        mock_ses = MagicMock()
+        mock_ses.execute_statement.return_value = (False, 3)
+        engine.sql_execution_service = mock_ses
+        migration = _make_sql_migration()
+        result = OperationResult()
+        result.show_query_results = True
+
+        success = engine._execute_statements(["UPDATE t SET x=1"], migration, result, time.time())
+
+        self.assertTrue(success)
+        self.assertEqual(result.query_results, [])
+
+    def test_callback_query_captures_result_when_enabled(self):
+        engine = _make_engine()
+        mock_ses = MagicMock()
+        mock_ses.execute_statement.return_value = (True, [{"status": "active"}])
+        engine.sql_execution_service = mock_ses
+        cb = MagicMock(spec=Migration)
+        cb.format = MigrationFormat.SQL
+        cb.script_name = "beforeMigrate/cb.sql"
+        cb.version = None
+        cb.description = ""
+        cb.dialect = "postgresql"
+        cb.parse_sql_statements.return_value = ["SELECT status FROM jobs"]
+        result = OperationResult()
+        result.show_query_results = True
+
+        engine.execute_callback(cb, result)
+
+        self.assertEqual(len(result.query_results), 1)
+        info = result.query_results[0]
+        self.assertEqual(info.script, "beforeMigrate/cb.sql")
+        self.assertEqual(info.results[0]["columns"], ["status"])
+        self.assertEqual(info.results[0]["rows"], [["active"]])
+
+    def test_callback_without_result_param_does_not_raise(self):
+        """execute_callback(cb) with no result (default None) is unaffected — backward compatible."""
+        engine = _make_engine()
+        mock_ses = MagicMock()
+        mock_ses.execute_statement.return_value = (True, [{"id": 1}])
+        engine.sql_execution_service = mock_ses
+        cb = MagicMock(spec=Migration)
+        cb.format = MigrationFormat.SQL
+        cb.script_name = "before.sql"
+        cb.dialect = "postgresql"
+        cb.parse_sql_statements.return_value = ["SELECT id FROM t"]
+
+        engine.execute_callback(cb)  # no result passed
+
+    def test_callback_zero_row_query_captured_via_sql_execution_service(self):
+        """Bug 1: a 0-row callback SELECT via sql_execution_service is still
+        captured (empty rows) and logged as a query result, not as DDL/DML
+        'rows affected'."""
+        engine = _make_engine()
+        mock_ses = MagicMock()
+        mock_ses.execute_statement.return_value = (True, [])
+        engine.sql_execution_service = mock_ses
+        cb = MagicMock(spec=Migration)
+        cb.format = MigrationFormat.SQL
+        cb.script_name = "beforeMigrate/cb.sql"
+        cb.version = None
+        cb.description = ""
+        cb.dialect = "postgresql"
+        cb.parse_sql_statements.return_value = ["SELECT status FROM jobs WHERE 1=0"]
+        result = OperationResult()
+        result.show_query_results = True
+
+        engine.execute_callback(cb, result)
+
+        self.assertEqual(len(result.query_results), 1)
+        info = result.query_results[0]
+        self.assertEqual(info.results[0]["columns"], [])
+        self.assertEqual(info.results[0]["rows"], [])
+
+        info_calls = [str(c) for c in engine.log.info.call_args_list]
+        self.assertTrue(
+            any("Query executed successfully, 0 rows returned" in c for c in info_calls)
+        )
+        self.assertFalse(any("rows affected" in c for c in info_calls))
+
+    def test_callback_zero_row_query_captured_without_sql_execution_service(self):
+        """Bug 1: same guarantee for the fallback branch (no sql_execution_service
+        configured), which classifies statements via sql_analyzer directly."""
+        engine = _make_engine()
+        engine.sql_execution_service = None
+        engine.sql_analyzer.get_statement_type.return_value = "QUERY"
+        engine.provider.execute_query.return_value = []
+        cb = MagicMock(spec=Migration)
+        cb.format = MigrationFormat.SQL
+        cb.script_name = "beforeMigrate/cb.sql"
+        cb.version = None
+        cb.description = ""
+        cb.dialect = "postgresql"
+        cb.parse_sql_statements.return_value = ["SELECT status FROM jobs WHERE 1=0"]
+        result = OperationResult()
+        result.show_query_results = True
+
+        engine.execute_callback(cb, result)
+
+        self.assertEqual(len(result.query_results), 1)
+        info = result.query_results[0]
+        self.assertEqual(info.results[0]["columns"], [])
+        self.assertEqual(info.results[0]["rows"], [])
+
+        info_calls = [str(c) for c in engine.log.info.call_args_list]
+        self.assertTrue(
+            any("Query executed successfully, 0 rows returned" in c for c in info_calls)
+        )
+        self.assertFalse(any("rows affected" in c for c in info_calls))
 
 
 if __name__ == "__main__":

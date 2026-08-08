@@ -28,6 +28,16 @@ def test_render_records_table_empty_rows_renders_header_only():
     assert "Empty" in out and "ID" in out
 
 
+def test_render_records_table_none_cell_renders_em_dash_not_none_string():
+    out = render_records_table(
+        [("ID", "left"), ("Name", "left")],
+        [[1, None]],
+        title="Nulls",
+    )
+    assert "—" in out
+    assert "None" not in out
+
+
 def test_state_text_styles_known_state():
     t = state_text("failed")
     assert isinstance(t, Text)

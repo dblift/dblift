@@ -265,6 +265,7 @@ class DBLiftClient:
         exclude_versions: Optional[str] = None,
         mark_as_executed: bool = False,
         show_sql: bool = False,
+        show_query_results: bool = False,
         placeholders: Optional[Dict[str, Any]] = None,
         recursive: bool = True,
         additional_dirs: Optional[List[Path]] = None,
@@ -281,6 +282,7 @@ class DBLiftClient:
             exclude_versions: Comma-separated versions to exclude (e.g., "1.0.0,1.1.0")
             mark_as_executed: Mark migrations as executed without running them
             show_sql: Include migration SQL statements in outputs and reports
+            show_query_results: Include rows returned by SELECT statements in outputs and reports
             placeholders: Placeholder values for migration scripts
             recursive: Search scripts directory recursively
             additional_dirs: Additional script directories
@@ -316,6 +318,7 @@ class DBLiftClient:
                 exclude_versions=exclude_versions,
                 mark_as_executed=mark_as_executed,
                 show_sql=show_sql,
+                show_query_results=show_query_results,
                 placeholders=placeholders,
                 recursive=recursive,
                 additional_dirs=additional_dirs,
@@ -486,6 +489,7 @@ class DBLiftClient:
         versions: Optional[str] = None,
         exclude_versions: Optional[str] = None,
         show_sql: bool = False,
+        show_query_results: bool = False,
         placeholders: Optional[Dict[str, Any]] = None,
         recursive: bool = True,
         additional_dirs: Optional[List[Path]] = None,
@@ -501,6 +505,7 @@ class DBLiftClient:
             versions: Comma-separated versions to include (e.g., "1.0.0,1.1.0")
             exclude_versions: Comma-separated versions to exclude (e.g., "1.0.0,1.1.0")
             show_sql: Include undo SQL statements in outputs and reports
+            show_query_results: Include rows returned by SELECT statements in outputs and reports
             placeholders: Placeholder values for migration scripts
             recursive: Search scripts directory recursively
             additional_dirs: Additional script directories
@@ -531,6 +536,7 @@ class DBLiftClient:
                 versions=versions,
                 exclude_versions=exclude_versions,
                 show_sql=show_sql,
+                show_query_results=show_query_results,
                 placeholders=placeholders,
                 recursive=recursive,
                 additional_dirs=additional_dirs,
@@ -658,6 +664,7 @@ class DBLiftClient:
         recursive: bool = True,
         additional_dirs: Optional[List[Path]] = None,
         clean_enabled: bool = False,
+        show_query_results: bool = False,
         **kwargs: Any,
     ) -> "CleanResult":
         """Clean database schema.
@@ -667,6 +674,7 @@ class DBLiftClient:
             recursive: Search scripts directory recursively
             additional_dirs: Additional script directories
             clean_enabled: If True, allow destructive clean even when config disables it
+            show_query_results: Include rows returned by SELECT statements in outputs and reports
             **kwargs: Additional options
 
         Returns:
@@ -688,6 +696,7 @@ class DBLiftClient:
                 recursive=recursive,
                 additional_dirs=additional_dirs,
                 clean_enabled=clean_enabled,
+                show_query_results=show_query_results,
                 **kwargs,
             )
 

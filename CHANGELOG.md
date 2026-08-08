@@ -13,6 +13,85 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+### Removed
+
+## [3.5.0] - 2026-08-08
+
+### Added
+
+- **`--show-query-results`** — a new flag on `migrate`, `undo`, and `clean`
+  that captures and renders the actual columns/rows a `SELECT` statement
+  returns (in versioned migrations, undo scripts, and before/after callback
+  scripts), instead of the "N rows returned" count every output format was
+  previously limited to. Renders as a Rich table (console/text), a
+  structured `query_results` substructure (json), and a "Query results"
+  panel (html). Independent of `--show-sql`, which only controls SQL-text
+  visibility — the two can be used separately or together.
+
+- **`subquery_row_limit_requires_derived_table`** (bool) — a new capability
+  flag: an `UPDATE ... WHERE pk IN (<subselect>)` needs a derived-table wrap
+  when the subselect itself carries a row limit, even on a dialect that
+  otherwise allows the direct self-referencing form. MySQL and MariaDB both
+  reject `IN (SELECT ... LIMIT n)` outright with error 1235, regardless of
+  whether the subquery also reads its own target table — an orthogonal fact
+  to `update_subquery_requires_derived_table` (error 1093), which MariaDB
+  correctly declares `False` for and continues to.
+
+### Changed
+
+### Fixed
+
+- **DB2 `diff --generate-sql` produced zero statements for a nullable-column
+  or type-change drift**, even though the drift itself was correctly
+  detected. `Db2Quirks` never overrode `render_column_nullable_change`/
+  `render_column_type_change`, so both silently fell back to the base
+  no-op default. Implemented both with genuine DB2 syntax (`ALTER TABLE
+  ... ALTER COLUMN ... SET/DROP NOT NULL`, `... SET DATA TYPE ...`),
+  including the same NULL-count pre-check other dialects' equivalents
+  already use as a fail-fast UX measure.
+
+- **Oracle's `online_index_build` edition gate hard-failed on a real,
+  current Oracle Free (23ai/26ai) container**, which demonstrably
+  supports `CREATE INDEX ... ONLINE`. The gate matched only
+  `r"enterprise"` against the raw `v$version` banner; broadened to
+  `r"enterprise|free"`, the same "enumerate known-supporting editions"
+  convention SQL Server's own gate already uses. Verified this doesn't
+  regress the older, differently-named Express Edition (XE) — its
+  banners never contain the substring "free", since the edition rename
+  to "Free" only happened at 23ai.
+
+- **`quote_identifier()` didn't escape an embedded occurrence of the
+  dialect's own closing quote character**, corrupting undo-script
+  generation and diff-converter output for an object name that needs
+  quote-doubling to represent (e.g. a column literally named
+  `say "hi"`). Doubles `quirks.quote_close` before wrapping, matching
+  `SqlObject.format_identifier`'s existing fix for the same defect
+  class below. Covers PostgreSQL/SQLite `"`, MySQL `` ` ``, and SQL
+  Server `]`.
+
+- **`SqlObject.format_identifier` had the identical unescaped-quote
+  defect** in `export-schema` output and any other DDL generation
+  going through that path — reapplying a malformed export against a
+  fresh database silently created a different, corrupted schema
+  instead of erroring. Same fix: double `quirks.quote_close` before
+  wrapping, matching the convention already used by
+  `db/sqlalchemy_provider.py`'s `_identifier_quote_chars()`.
+
+- **`supports_concurrent_index` was inherited, never individually checked,
+  by five PostgreSQL-wire-compatible engines that do not all share
+  PostgreSQL's `CREATE INDEX CONCURRENTLY` behavior.** Redshift has no
+  `CREATE INDEX` at all; CockroachDB and YugabyteDB already build every
+  index online regardless of the keyword (recommending it implied the
+  plain form blocks, which it never does on either engine); TimescaleDB
+  does not support the keyword directly on a hypertable at all. Set
+  `False` on Redshift, CockroachDB, TimescaleDB, and YugabyteDB. Citus was
+  checked against its own documentation and left inheriting `True` — its
+  distributed-DDL reference documents `CREATE INDEX CONCURRENTLY` as the
+  supported, recommended way to add an index to a distributed table
+  without blocking writes, propagated per shard — and Neon, Supabase,
+  Aurora PostgreSQL, and AlloyDB (managed PostgreSQL itself, not a
+  different storage/execution engine) keep inheriting `True` as well.
+
 - **`generate_undo_scripts()` (the batch API) emitted `MIGRATION_COMPLETED`
   even when every item in the batch failed.** The per-item results and the
   `success_count`/`failure_count` payload fields were already computed

@@ -542,6 +542,21 @@ class BaseQuirks:
     #: materialises the rows first and is accepted. Everyone else allows the
     #: direct form, and the extra nesting would only cost a materialisation.
     update_subquery_requires_derived_table: bool = False
+    #: An ``UPDATE ... WHERE pk IN (<subselect>)`` needs the derived-table
+    #: wrap when the subselect itself carries a row limit (``LIMIT n`` /
+    #: ``TOP (n)`` / ``FETCH FIRST n ROWS ONLY``), even on a dialect that
+    #: otherwise allows the direct self-referencing form. MySQL and MariaDB
+    #: both reject ``IN (SELECT pk FROM t ... LIMIT n)`` outright with error
+    #: 1235 ("This version of MariaDB doesn't yet support 'LIMIT & IN/ALL/
+    #: ANY/SOME subquery'" — MySQL's own error text names MariaDB, but MySQL
+    #: raises the identical 1235 for the identical shape). This is an
+    #: orthogonal fact to :attr:`update_subquery_requires_derived_table`:
+    #: MariaDB's ``False`` there is correct and about a different error
+    #: (1093 does not apply to MariaDB) — flipping it to paper over 1235
+    #: would make that flag's own comment a lie. A batched, PK-keyed backfill
+    #: UPDATE is exactly the shape that hits this: its subselect is bounded
+    #: by a row limit by construction.
+    subquery_row_limit_requires_derived_table: bool = False
     #: Default schema name when the user supplies none. ``None`` means
     #: the dialect has no default — the framework returns ``""``.
     #: PostgreSQL=``"public"``, CosmosDB=``"default"``, SQLite=``"main"``.
@@ -577,7 +592,17 @@ class BaseQuirks:
     #: ``True/False`` used by capability checks; this attribute carries
     #: the third "case-insensitive" option needed by SQL Server.
     unquoted_identifier_case: str = "lowercase"
-    #: ``CREATE INDEX ... CONCURRENTLY`` is valid (PostgreSQL only).
+    #: ``CREATE INDEX ... CONCURRENTLY`` builds the index without blocking
+    #: ordinary reads/writes, meaningfully different from the plain form.
+    #: True on PostgreSQL and Citus (verified against each engine's own docs
+    #: — Citus's distributed-DDL reference documents it as the recommended,
+    #: working way to add an index to a distributed table without blocking
+    #: writes, propagated per shard). False elsewhere, including on other
+    #: PostgreSQL-wire engines that inherit ``PostgresqlQuirks`` but do NOT
+    #: share this behavior: Redshift has no ``CREATE INDEX`` at all,
+    #: CockroachDB and YugabyteDB already build every index online
+    #: regardless of the keyword, and TimescaleDB does not support the
+    #: keyword directly on a hypertable.
     supports_concurrent_index: bool = False
     #: ``CREATE INDEX ... ONLINE`` is valid (SQL Server only).
     supports_online_index: bool = False

@@ -494,6 +494,54 @@ table.t{width:100%;border-collapse:separate;border-spacing:0;font-size:12.5px}
     </div>
   {% endif %}
 
+  {% if cmd.command_type in ['MIGRATE','UNDO','CLEAN'] and cmd.result.show_query_results and cmd.query_results %}
+    <div class="panel">
+      <div class="panel-h">
+        <div class="title">{{ icon_db() }} Query results</div>
+      </div>
+      <div class="mig-list">
+        {% for info in cmd.query_results %}
+          <div class="mig-item open">
+            <div class="mig-head">
+              <span class="mig-vno">{{ info.version|default(loop.index) }}</span>
+              <div class="mig-name">
+                <strong>{{ info.description|default(info.script) }}</strong>
+                <span class="file">{{ info.script }}</span>
+              </div>
+              <span class="mig-stmt-count">{{ info.results|length }} result{% if info.results|length != 1 %}s{% endif %}</span>
+            </div>
+            <div class="mig-body">
+              {% if info.results %}
+                {% for entry in info.results %}
+                  <div class="codeblock" style="margin-bottom:8px">
+                    <pre>{{ entry.statement|e }}</pre>
+                    <button class="copy" onclick="copyText(this, decodeURIComponent('{{ entry.statement|urlencode }}'))" title="Copy">{{ icon_copy() }}</button>
+                  </div>
+                  {% if entry.rows %}
+                  <div style="overflow-x:auto; margin-bottom:14px">
+                    <table class="t">
+                      <thead><tr>{% for col in entry.columns %}<th>{{ col }}</th>{% endfor %}</tr></thead>
+                      <tbody>
+                        {% for row in entry.rows %}
+                        <tr>{% for cell in row %}<td>{{ cell if cell is not none else '—' }}</td>{% endfor %}</tr>
+                        {% endfor %}
+                      </tbody>
+                    </table>
+                  </div>
+                  {% else %}
+                  <p class="muted" style="padding:0 0 14px 0">Query returned 0 rows.</p>
+                  {% endif %}
+                {% endfor %}
+              {% else %}
+              <p class="muted" style="padding:10px 0">No query results recorded.</p>
+              {% endif %}
+            </div>
+          </div>
+        {% endfor %}
+      </div>
+    </div>
+  {% endif %}
+
   {% if cmd.command_type == 'PLAN' %}
     {% set plan = cmd.result %}
     <div class="panel">

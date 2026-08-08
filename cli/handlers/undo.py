@@ -24,6 +24,7 @@ def _handle_undo(ctx: CliCommandContext) -> Tuple[bool, Any]:
         versions=versions,
         exclude_versions=exclude_versions,
         show_sql=getattr(ctx.args, "show_sql", False),
+        show_query_results=getattr(ctx.args, "show_query_results", False),
         placeholders=ctx.placeholders,
         recursive=ctx.recursive,
         additional_dirs=ctx.additional_scripts_dirs if ctx.additional_scripts_dirs else None,

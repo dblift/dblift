@@ -12,6 +12,7 @@ def _handle_clean(ctx: CliCommandContext) -> Tuple[bool, Any]:
         dry_run=ctx.args.dry_run,
         recursive=ctx.recursive,
         additional_dirs=ctx.additional_scripts_dirs if ctx.additional_scripts_dirs else None,
+        show_query_results=getattr(ctx.args, "show_query_results", False),
     )
     _set_command_completed(ctx.log, result, "CLEAN")
     return (result.success, result)
