@@ -1352,3 +1352,27 @@ class TestPendingMigrationsNumericSort(unittest.TestCase):
             migration_state=state, all_applied_migrations=[]
         )
         assert [r["version"] for r in result] == ["2", "3", "10"]
+
+    def test_versioned_pending_before_repeatable(self):
+        coll = self._c()
+        pending = [
+            _make_migration(
+                None, mtype=MigrationType.REPEATABLE, script_name="R__z.sql", success=None
+            ),
+            _make_migration("5", success=None),
+        ]
+        result = coll.get_migration_data(applied_migrations=[], pending_migrations=pending)
+        assert [r["script"] for r in result] == ["V5__test.sql", "R__z.sql"]
+
+    def test_repeatable_pending_sorted_by_script_name(self):
+        coll = self._c()
+        pending = [
+            _make_migration(
+                None, mtype=MigrationType.REPEATABLE, script_name="R__b.sql", success=None
+            ),
+            _make_migration(
+                None, mtype=MigrationType.REPEATABLE, script_name="R__a.sql", success=None
+            ),
+        ]
+        result = coll.get_migration_data(applied_migrations=[], pending_migrations=pending)
+        assert [r["script"] for r in result] == ["R__a.sql", "R__b.sql"]
