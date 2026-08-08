@@ -1322,3 +1322,33 @@ class TestGetCategoryFromTypeEdgeCases(unittest.TestCase):
         result = coll._get_category_from_type("DELETE", migration=m)
         # Falls through to script_name check → "Versioned"
         assert result == "Versioned"
+
+
+class TestPendingMigrationsNumericSort(unittest.TestCase):
+    """Pending versioned migrations must sort numerically (V2, V3, V10), not lexicographically."""
+
+    def _c(self):
+        return _make_collector()[0]
+
+    def test_legacy_pending_sorted_numerically(self):
+        coll = self._c()
+        pending = [
+            _make_migration("10", success=None),
+            _make_migration("2", success=None),
+            _make_migration("3", success=None),
+        ]
+        result = coll.get_migration_data(applied_migrations=[], pending_migrations=pending)
+        assert [r["version"] for r in result] == ["2", "3", "10"]
+
+    def test_state_pending_sorted_numerically(self):
+        coll = self._c()
+        pending = [
+            _make_migration("10", success=None),
+            _make_migration("2", success=None),
+            _make_migration("3", success=None),
+        ]
+        state = MigrationState(pending_objects=pending)
+        result = coll.get_migration_data(
+            migration_state=state, all_applied_migrations=[]
+        )
+        assert [r["version"] for r in result] == ["2", "3", "10"]
