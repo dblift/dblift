@@ -1348,9 +1348,7 @@ class TestPendingMigrationsNumericSort(unittest.TestCase):
             _make_migration("3", success=None),
         ]
         state = MigrationState(pending_objects=pending)
-        result = coll.get_migration_data(
-            migration_state=state, all_applied_migrations=[]
-        )
+        result = coll.get_migration_data(migration_state=state, all_applied_migrations=[])
         assert [r["version"] for r in result] == ["2", "3", "10"]
 
     def test_versioned_pending_before_repeatable(self):
