@@ -1,12 +1,16 @@
 """Credential-masking helpers for :class:`BaseDatabaseConfig.to_safe_dict`.
 
 Extracted from ``config.database_config`` during PR-H10 so the facade
-module stays under its 500-line budget. Pure functions with no side
-effects; behaviour matches the original inline implementation byte-for-byte.
+module stays under its 500-line budget. Pure functions with no side effects.
+
+URL masking is delegated to :mod:`core.utils.url_masking` rather than
+duplicated here — the two copies had drifted and this one covered neither
+``pwd=`` nor the CosmosDB ``AccountKey=``.
 """
 
-import re
 from typing import Any, Dict
+
+from core.utils.url_masking import mask_database_url
 
 # Sensitive key patterns (case-insensitive matching)
 _SENSITIVE_PATTERNS = (
@@ -31,12 +35,15 @@ def is_sensitive_key(key: str) -> bool:
 
 
 def mask_url_credentials(url: str) -> str:
-    """Mask ``password=...`` parameters and ``user:pass@`` segments in ``url``."""
-    # Pattern for password=xxx or password=xxx; or password=xxx&
-    url = re.sub(r"(password=)[^;&\s]+", r"\1***MASKED***", url, flags=re.IGNORECASE)
-    # Pattern for user:password@ in URLs
-    url = re.sub(r"(://[^:]+:)[^@]+(@)", r"\1***MASKED***\2", url)
-    return url
+    """Mask credentials embedded in a connection URL.
+
+    Single-sources the URL rules from :func:`core.utils.url_masking.mask_database_url`
+    so that ``to_safe_dict`` masks exactly what the logger and CLI mask —
+    ``user:pass@`` authorities, ``password=`` / ``pwd=`` parameters and the
+    CosmosDB ``AccountKey=``. A narrower local copy previously let ``pwd=``
+    and ``AccountKey=`` through into ``__repr__`` output.
+    """
+    return mask_database_url(url)
 
 
 def mask_dict_in_place(result: Dict[str, Any], field_name: str) -> None:

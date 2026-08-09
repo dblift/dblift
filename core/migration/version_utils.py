@@ -28,8 +28,16 @@ def _parse_version_parts(version: str) -> List[_VersionPart]:
 def compare_versions(version1: Optional[str], version2: Optional[str]) -> int:
     """Compare two migration version strings.
 
-    Handles None, letter-based versions (e.g. VA vs VB), underscore-separated
-    and dot-separated numeric versions (e.g. '1_2_3', '1.2.3').
+    Handles None, underscore-separated and dot-separated numeric versions
+    (e.g. '1_2_3', '1.2.3'), and alphanumeric segments after the first
+    (e.g. '3.2A', '1.2.3RC1').
+
+    Purely alphabetic versions ('A' vs 'B') are ordered correctly too, but no
+    migration *filename* can carry one: a version must start with a digit, or
+    ``Users__seed.sql`` would be indistinguishable from a migration at version
+    'sers' (see ``MigrationScriptManager.parse_filename``). That path exists
+    for history rows, whose ``version`` column can hold arbitrary text after
+    an import from another tool.
 
     Args:
         version1: First version string, or None (treated as empty string).

@@ -6,7 +6,7 @@ from config.database_config import BaseDatabaseConfig, register_database_type
 
 
 @register_database_type("dummy")
-@dataclass
+@dataclass(repr=False)  # keep BaseDatabaseConfig.__repr__ (credential-masked)
 class DummyDatabaseConfig(BaseDatabaseConfig):
     """Dummy database configuration for testing."""
 

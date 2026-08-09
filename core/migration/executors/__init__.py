@@ -1,20 +1,19 @@
 """
 Migration executors.
 
-Provides executor interfaces and implementations for different migration formats.
-Currently supports SQL and Python migrations.
+Provides executor interfaces and implementations for non-SQL migration
+formats. SQL migrations are executed by :class:`~core.migration.executor.
+execution_engine.ExecutionEngine` itself — see the factory docstring.
 """
 
 from .base_executor import BaseMigrationExecutor, MigrationExecutionResult
 from .executor_factory import MigrationExecutorFactory
 from .python_executor import MigrationContext, PythonMigrationExecutor
-from .sql_executor import SqlMigrationExecutor
 
 __all__ = [
     "BaseMigrationExecutor",
     "MigrationExecutionResult",
     "MigrationContext",
     "PythonMigrationExecutor",
-    "SqlMigrationExecutor",
     "MigrationExecutorFactory",
 ]

@@ -62,21 +62,21 @@ class DuckDBQuirks(BaseQuirks):
             return DuckDBRegexParser
         return None
 
-    # PRO hooks — the paid packages register these (Pro tier).
+    # Optional hooks — registered by an installed extension package.
     def ddl_generator_class(self) -> Optional[Type["BaseSqlGenerator"]]:
-        """DDL generator lives in the Pro package; registered by register_pro_generators()."""
+        """DDL generator is supplied by an installed extension package."""
         return None
 
     def alter_generator_class(self) -> Optional[Type["BaseAlterGenerator"]]:
-        """ALTER generator lives in the Pro package; registered by register_pro_generators()."""
+        """ALTER generator is supplied by an installed extension package."""
         return None
 
     def introspector_class(self) -> Optional[Type[Any]]:
-        """DuckDB rich introspection is registered by PRO."""
+        """DuckDB rich introspection is supplied by an installed extension package."""
         return None
 
     def vendor_queries_class(self) -> "Optional[Type[Any]]":
-        """DuckDB metadata queries are registered by PRO."""
+        """DuckDB metadata queries are supplied by an installed extension package."""
         return None
 
     def type_equivalents(self) -> "dict[str, str]":

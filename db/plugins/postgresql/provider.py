@@ -8,7 +8,7 @@ from core.logger import Log
 from core.migration.clean_summary import CleanExecutionSummary
 from db.plugins.base_history_manager import UNDO_HISTORY_TYPE
 from db.plugins.postgresql._provider_query_executor import ProviderQueryExecutor
-from db.plugins.postgresql.postgresql.locking_manager import _get_advisory_lock_key
+from db.plugins.postgresql.postgresql._lock_key import _get_advisory_lock_key
 from db.plugins.postgresql.postgresql.schema_operations import PostgreSqlSchemaOperations
 from db.plugins.postgresql.search_path import search_path_schemas
 from db.provider_interfaces import DroppableObject

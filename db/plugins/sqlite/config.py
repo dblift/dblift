@@ -37,7 +37,7 @@ def sqlite_path_from_url(url: str) -> str:
 
 @register_database_type("sqlite")  # lint: allow-dialect-string: config type registration
 @register_database_type("sqlite3")  # lint: allow-dialect-string: config type registration
-@dataclass
+@dataclass(repr=False)  # keep BaseDatabaseConfig.__repr__ (credential-masked)
 class SQLiteConfig(BaseDatabaseConfig):
     """Configuration for SQLite database connections.
 

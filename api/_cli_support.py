@@ -16,6 +16,7 @@ underlying need can instead be expressed through ``DBLiftClient`` or a
 new typed entry point in ``api/``.
 """
 
+from db.error import format_connection_error
 from db.provider_capabilities import get_provider_display_url
 from db.provider_interfaces import ConnectionProvider
 from db.provider_registry import ProviderRegistry
@@ -23,5 +24,6 @@ from db.provider_registry import ProviderRegistry
 __all__ = [
     "ConnectionProvider",
     "ProviderRegistry",
+    "format_connection_error",
     "get_provider_display_url",
 ]

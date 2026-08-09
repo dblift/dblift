@@ -109,14 +109,12 @@ class ExecutionEngine:
             None  # set per-migration in _parse_sql_statements (opaque, dialect-owned)
         )
 
-        # Initialize migration executor factory for multi-format support
-        # This allows DBLIFT to support SQL and future non-SQL migrations (Python, etc.)
+        # Initialize migration executor factory for non-SQL migration formats
+        # (Python, etc.). SQL is executed by this engine directly.
         self.executor_factory = MigrationExecutorFactory(
             provider=provider,
             config=config,
             log=self.log,
-            sql_analyzer=sql_analyzer,
-            sql_execution_service=sql_execution_service,
             placeholder_service=placeholder_service,
         )
 

@@ -64,7 +64,7 @@ class CosmosdbQuirks(BaseQuirks):
         return None
 
     def alter_generator_class(self) -> Optional[Type["BaseAlterGenerator"]]:
-        """ALTER generator relocated to the paid package; registered by register_pro_generators()."""
+        """ALTER generator is supplied by an installed extension package."""
         return None
 
     def parser_class(self, parser_type: str) -> Optional[type]:
@@ -192,7 +192,7 @@ class CosmosdbQuirks(BaseQuirks):
         return self._cosmosdb_noop(formatted_table, formatted_column, "collation", dialect)
 
     def introspector_class(self) -> "Optional[Type[Any]]":
-        """CosmosDB rich introspection is registered by the PRO package."""
+        """CosmosDB rich introspection is supplied by an installed extension package."""
         return None
 
     def type_equivalents(self) -> "Dict[str, str]":

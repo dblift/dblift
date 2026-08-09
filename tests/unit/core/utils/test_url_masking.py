@@ -39,6 +39,24 @@ class TestMaskDatabaseUrl:
         assert "abc123" not in masked
         assert "AccountKey=***" in masked
 
+    def test_masks_leading_password_param(self):
+        """password= at the very start of a connection string must be masked.
+
+        ODBC/DB2-style strings have no ``?``/``&``/``;`` before the first
+        parameter, so the delimiter-anchored patterns must not be the only
+        ones that match.
+        """
+        conn = "password=secret123;server=host;database=db"
+        masked = mask_database_url(conn)
+        assert "secret123" not in masked
+        assert "password=***" in masked
+
+    def test_masks_semicolon_password_param(self):
+        """password= after a ';' separator must be masked."""
+        conn = "server=host;password=secret123;database=db"
+        masked = mask_database_url(conn)
+        assert "secret123" not in masked
+
     def test_no_password_url_unchanged(self):
         """URL without credentials remains unchanged."""
         url = "postgresql+psycopg://localhost/db?user=admin"

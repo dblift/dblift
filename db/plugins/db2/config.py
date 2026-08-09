@@ -8,7 +8,7 @@ from config.database_config import BaseDatabaseConfig, register_database_type
 
 # lint: allow-dialect-string: config type registration
 @register_database_type("db2")
-@dataclass
+@dataclass(repr=False)  # keep BaseDatabaseConfig.__repr__ (credential-masked)
 class Db2Config(BaseDatabaseConfig):
     """DB2 specific configuration."""
 

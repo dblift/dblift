@@ -783,8 +783,9 @@ class Migration:
         # Check for versioned migrations — Flyway convention: V<version>__<desc>
         # NOTE: Uses \d (digit-only) rather than [a-z0-9] to avoid false positives:
         # "validate.sql" starts with "va" — 'a' would match [a-z0-9] and be misclassified.
-        # This is intentionally stricter than parse_filename() which accepts letter-based
-        # versions (e.g. "Va__create.sql"). _determine_type() is a fast pre-check; full
+        # A version must therefore start with a digit; MigrationScriptManager.parse_filename
+        # applies the same rule, and the two must stay in step (they disagreed once, and
+        # the stricter one silently won). _determine_type() remains a fast pre-check; full
         # validation with version extraction is done later by MigrationScriptManager.
         if re.match(r"^v\d", script_name):
             return MigrationType.SQL

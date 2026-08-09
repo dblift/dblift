@@ -213,7 +213,10 @@ class ImportFlywayCommand(BaseCommand):
         flyway_type = row.get("type")
         if not flyway_type:
             return dict(row)
-        mapped_type = FLYWAY_TYPE_TO_MIGRATION_TYPE.get(str(flyway_type))
+        # ``flyway_type`` is a raw column value from Flyway's own history
+        # table (e.g. "SQL", "JDBC"), never a MigrationType member — the
+        # str() is defensive against non-text column types, not an enum cast.
+        mapped_type = FLYWAY_TYPE_TO_MIGRATION_TYPE.get(str(flyway_type))  # lint: allow-enum-str
         if mapped_type is None:
             raise ValueError(
                 f"Unrecognised Flyway migration type '{flyway_type}' for script "

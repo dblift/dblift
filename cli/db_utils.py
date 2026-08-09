@@ -11,13 +11,13 @@ import yaml
 
 from api._cli_support import (
     ProviderRegistry,
+    format_connection_error,
     get_provider_display_url,
 )
 from cli._output import CommandOutput, from_args
 from config.dblift_config import DbliftConfig, load_config, unrecognized_top_level_keys
 from core.logger import DbliftLogger, LogFormat
 from core.utils.url_masking import mask_database_url
-from db.error import format_connection_error
 
 
 def _to_python(obj: Any) -> Any:

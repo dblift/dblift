@@ -185,7 +185,7 @@ class MigrationDataService:
             Set of version strings that were applied out of order
         """
         out_of_order = set()
-        last_version_parts: list[int] = []
+        last_version: Optional[str] = None
 
         for migration in applied_migrations:
             if self._get_migration_type(migration) not in VERSIONED_SCRIPT_TYPES:
@@ -196,51 +196,19 @@ class MigrationDataService:
                 continue
 
             try:
-                # Parse version into parts for comparison
-                version_parts = []
-                for part in version.replace("_", ".").split("."):
-                    try:
-                        version_parts.append(int(part))
-                    except ValueError:
-                        version_parts.append(0)
-
-                # Check if this version is lower than the previous one
-                if (
-                    last_version_parts
-                    and self._compare_version_parts(version_parts, last_version_parts) < 0
-                ):
+                # Check if this version is lower than the previous one. Uses the
+                # shared comparator: a local int-only parse scored every alpha
+                # segment as 0, so a VB -> VA regression looked in-order.
+                if last_version is not None and _compare_versions_shared(version, last_version) < 0:
                     out_of_order.add(version)
 
-                last_version_parts = version_parts
+                last_version = version
 
             except Exception as e:
                 self.logger.debug(f"Could not parse version for out-of-order detection: {e}")
                 continue
 
         return out_of_order
-
-    def _compare_version_parts(self, v1_parts: List[int], v2_parts: List[int]) -> int:
-        """Compare version part lists.
-
-        Args:
-            v1_parts: First version parts
-            v2_parts: Second version parts
-
-        Returns:
-            int: Comparison result
-        """
-        # Pad shorter version with zeros
-        max_len = max(len(v1_parts), len(v2_parts))
-        v1_parts_padded = v1_parts + [0] * (max_len - len(v1_parts))
-        v2_parts_padded = v2_parts + [0] * (max_len - len(v2_parts))
-
-        for i in range(max_len):
-            if v1_parts_padded[i] < v2_parts_padded[i]:
-                return -1
-            elif v1_parts_padded[i] > v2_parts_padded[i]:
-                return 1
-
-        return 0
 
     def _build_repeatable_checksums(self, applied_migrations: List[Migration]) -> Dict[str, str]:
         """Build a map of repeatable migration checksums.

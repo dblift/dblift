@@ -43,17 +43,24 @@ class TestBug01MigrationContextClose(unittest.TestCase):
 # B6-BUG-02: UNDO_SQL history record must not carry checksum=None (PG INT col)
 # ---------------------------------------------------------------------------
 class TestBug02UndoChecksumZeroSentinel(unittest.TestCase):
-    """All four ``record_undo`` sites must emit ``checksum: 0`` — not ``None``
+    """Every ``record_undo`` site must emit ``checksum: 0`` — not ``None``
     — so the INT-typed column in the history table doesn't trip native drivers.
     """
 
     def _undo_info_sources(self):
         from pathlib import Path
 
+        # Every module that builds an UNDO_SQL history row: the shared base
+        # plus each relational provider, which own their history inline.
         return [
             Path("db/plugins/base_history_manager.py"),
-            Path("db/plugins/oracle/oracle/history_manager.py"),
-            Path("db/plugins/sqlserver/sqlserver/history_manager.py"),
+            Path("db/plugins/postgresql/provider.py"),
+            Path("db/plugins/mysql/provider.py"),
+            Path("db/plugins/oracle/provider.py"),
+            Path("db/plugins/sqlserver/provider.py"),
+            Path("db/plugins/db2/provider.py"),
+            Path("db/plugins/duckdb/provider.py"),
+            Path("db/plugins/snowflake/provider.py"),
         ]
 
     def test_no_source_still_uses_checksum_none(self) -> None:

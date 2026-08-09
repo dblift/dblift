@@ -1625,6 +1625,10 @@ class BaseQuirks:
         Called by ``DataTypeNormalizer._build_type_equivalents()`` to
         get the dialect-specific synonym table (e.g. ``{"INT4": "INTEGER", ...}``).
         Default: empty dict (no aliases beyond the cross-dialect set).
+
+        Read by schema comparison, which installed extension packages provide —
+        the per-dialect tables have no in-repository consumer and are not dead.
+        See :mod:`core.normalization`.
         """
         return {}
 

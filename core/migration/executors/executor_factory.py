@@ -16,7 +16,6 @@ from core.migration.migration import Migration
 
 from .base_executor import BaseMigrationExecutor, MigrationExecutionResult
 from .python_executor import PythonMigrationExecutor
-from .sql_executor import SqlMigrationExecutor
 
 logger = logging.getLogger(__name__)
 
@@ -55,16 +54,21 @@ class MigrationExecutorFactory:
     3. Routes the migration to that executor
 
     This architecture allows DBLIFT to support multiple migration formats
-    (SQL, Python, JavaScript, etc.) without changing the core execution logic.
+    (Python, JavaScript, etc.) without changing the core execution logic.
+
+    **SQL is deliberately not routed here.** ``ExecutionEngine.execute_migration``
+    runs SQL migrations itself because the work interleaves with things the
+    :class:`BaseMigrationExecutor` contract cannot express: placeholder
+    substitution at parse time, batch-separator classification, the
+    transactional-vs-autocommit policy decision, and writing the history row
+    *inside* the migration's transaction before commit. A non-SQL migration is
+    opaque by comparison — the engine hands it over and the executor owns the
+    whole run — which is exactly what this contract models. ``get_executor``
+    therefore returns ``None`` for :attr:`MigrationFormat.SQL`.
 
     Examples:
         >>> factory = MigrationExecutorFactory(provider, config, log)
-        >>> factory.register_executor(SqlMigrationExecutor)
         >>>
-        >>> # Execute a SQL migration
-        >>> migration = Migration(script_path=Path("V1__test.sql"))
-        >>> result = factory.execute(migration)
-
         >>> # Execute a Python migration
         >>> migration = Migration(script_path=Path("V1__test.py"))
         >>> result = factory.execute(migration)
@@ -75,8 +79,6 @@ class MigrationExecutorFactory:
         provider: Any,
         config: Any,
         log: Any,
-        sql_analyzer: Any = None,
-        sql_execution_service: Any = None,
         placeholder_service: Any = None,
     ):
         """
@@ -86,16 +88,12 @@ class MigrationExecutorFactory:
             provider: Database provider instance
             config: DBLIFT configuration
             log: Logger instance
-            sql_analyzer: Optional SQL analyzer
-            sql_execution_service: Optional SQL execution service
             placeholder_service: Optional placeholder service holding the effective
                 placeholder set, for executors that expose it to migration scripts
         """
         self.provider = provider
         self.config = config
         self.log = log if log is not None else NullLog()
-        self.sql_analyzer = sql_analyzer
-        self.sql_execution_service = sql_execution_service
         self.placeholder_service = placeholder_service
 
         # Registry of executor classes by format
@@ -104,8 +102,8 @@ class MigrationExecutorFactory:
         # Cache of initialized executors
         self._executor_instances: Dict[MigrationFormat, BaseMigrationExecutor] = {}
 
-        # Register default executors
-        self.register_executor_class(MigrationFormat.SQL, SqlMigrationExecutor)
+        # Register default executors. SQL is absent by design — see the class
+        # docstring; ExecutionEngine runs SQL migrations itself.
         self.register_executor_class(MigrationFormat.PYTHON, PythonMigrationExecutor)
 
     def register_executor_class(
@@ -139,9 +137,9 @@ class MigrationExecutorFactory:
             no suitable executor is found
 
         Examples:
-            >>> migration = Migration(script_path=Path("V1__test.sql"))
+            >>> migration = Migration(script_path=Path("V1__test.py"))
             >>> executor = factory.get_executor(migration)
-            >>> print(executor)  # SqlMigrationExecutor(dialect=postgresql)
+            >>> print(executor)  # PythonMigrationExecutor(...)
         """
         # Determine the migration format
         if hasattr(migration, "format"):
@@ -168,20 +166,7 @@ class MigrationExecutorFactory:
         # Get or create executor instance for this format
         if format not in self._executor_instances:
             executor_class = self._executor_classes[format]
-
-            # Create instance with appropriate arguments
-            if format == MigrationFormat.SQL:
-                # SQL executor needs sql_analyzer and sql_execution_service
-                executor = executor_class(  # type: ignore[call-arg]
-                    self.provider,
-                    self.config,
-                    self.log,
-                    self.sql_analyzer,
-                    self.sql_execution_service,
-                )
-            else:
-                # Other executors use standard constructor
-                executor = executor_class(self.provider, self.config, self.log)
+            executor = executor_class(self.provider, self.config, self.log)
 
             # Python scripts read placeholders off the migration context, so they
             # need the same service the SQL path substitutes from. Injected after

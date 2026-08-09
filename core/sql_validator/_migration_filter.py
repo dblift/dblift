@@ -20,10 +20,9 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING, List, Optional, Sequence, Tuple
 
-from packaging.version import parse as parse_version
-
 from core.migration import is_versioned
 from core.migration.migration import Migration, MigrationType
+from core.migration.version_utils import compare_versions
 
 if TYPE_CHECKING:
     from core.sql_validator.migration_validator import MigrationValidator
@@ -64,10 +63,19 @@ def handle_baseline_filtering(
     mv: "MigrationValidator", valid_scripts: List[Migration]
 ) -> List[Migration]:
     """If a BASELINE migration exists, drop versioned scripts ≤ baseline version."""
-    baseline_migrations = [s for s in valid_scripts if s.type == MigrationType.BASELINE]
+    # A baseline with no version cannot define a cut-off; pruning against it
+    # would drop every versioned script.
+    baseline_migrations = [
+        s for s in valid_scripts if s.type == MigrationType.BASELINE and s.version
+    ]
     if baseline_migrations:
-        # Use the highest baseline version if multiple
-        highest_baseline = max(baseline_migrations, key=lambda m: parse_version(str(m.version)))
+        # Use the highest baseline version if multiple. ``compare_versions`` is
+        # the project comparator: PEP 440 parsing rejects documented formats
+        # such as ``VA`` and ``1_2_3`` outright.
+        highest_baseline = baseline_migrations[0]
+        for candidate in baseline_migrations[1:]:
+            if compare_versions(candidate.version, highest_baseline.version) > 0:
+                highest_baseline = candidate
         baseline_version = highest_baseline.version
 
         # Filter out versioned migrations <= baseline version
@@ -76,7 +84,7 @@ def handle_baseline_filtering(
             # Role, not format: MigrationType.SQL means "versioned", and a
             # versioned .py script carries MigrationType.PYTHON instead.
             if is_versioned(script.type):
-                if parse_version(str(script.version)) > parse_version(str(baseline_version)):
+                if compare_versions(str(script.version), str(baseline_version)) > 0:
                     filtered_scripts.append(script)
             else:
                 # Keep all non-versioned migrations (repeatable, callback, baseline, undo)

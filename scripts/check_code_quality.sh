@@ -81,7 +81,7 @@ else
 fi
 
 echo -e "\n===== import-linter (internal layering) ====="
-# Local-only gate — .github/workflows/code-quality.yml does NOT run this.
+# Also enforced by .github/workflows/code-quality.yml.
 # Enforces the intra-tree layering contracts in .importlinter: cli must
 # reach the database layer through api/ rather than importing db directly,
 # and no library layer (api/config/core/db) may import cli. This replaced
@@ -91,14 +91,14 @@ echo -e "\n===== import-linter (internal layering) ====="
 lint-imports --config .importlinter || { echo "❌ Import-linter: layering contract broken."; exit_code=1; }
 
 echo -e "\n===== AST lint patterns (ratchet) ====="
-# Mirrors .github/workflows/code-quality.yml step. Fails only on NEW
+# Also enforced by .github/workflows/code-quality.yml. Fails only on NEW
 # entries vs .lint-patterns-baseline.txt — pre-existing legacy hits
 # are baseline-listed; new ones must either gain a `# lint: allow-*`
 # annotation or be added to the baseline with a justifying PR.
 "$PYTHON_BIN" scripts/lint_patterns.py || { echo "❌ AST lint patterns: new violation(s) detected."; exit_code=1; }
 
 echo -e "\n===== Public-API docstring linter (ratchet) ====="
-# Local-only gate — CI does not run this. api/, cli/ and core/ are
+# Also enforced by .github/workflows/code-quality.yml. api/, cli/ and core/ are
 # all pinned at zero in .docstring-ratchet.json; db/ is capped at its
 # measured count. New missing-docstring sites push a count above its
 # cap and fail.

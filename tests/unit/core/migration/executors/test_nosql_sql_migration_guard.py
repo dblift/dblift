@@ -80,21 +80,24 @@ def test_python_migration_on_nosql_dialect_is_accepted(tmp_path):
     assert MigrationFormat.PYTHON in executor.get_supported_formats()
 
 
-def test_sql_migration_on_relational_dialect_is_unaffected(tmp_path):
+def test_sql_migration_on_relational_dialect_passes_the_guard(tmp_path):
+    """A relational dialect must clear the guard rather than raise.
+
+    ``get_executor`` still returns ``None`` — SQL is run by ExecutionEngine,
+    not by a registered executor — so the meaningful assertion is the absence
+    of ``UnsupportedMigrationFormatError``.
+    """
     migration = _migration(tmp_path, "V1_0_4__create.sql", "CREATE TABLE t (id INT);")
 
-    executor = _factory(_SqlQuirks("postgresql")).get_executor(migration)
-
-    assert executor is not None
-    assert MigrationFormat.SQL in executor.get_supported_formats()
+    assert _factory(_SqlQuirks("postgresql")).get_executor(migration) is None
 
 
 def test_provider_without_quirks_does_not_break_routing(tmp_path):
-    """A bare provider stub (no ``quirks``) keeps the historical SQL path."""
+    """A bare provider stub (no ``quirks``) must not raise during routing."""
     migration = _migration(tmp_path, "V1_0_5__create.sql", "CREATE TABLE t (id INT);")
     factory = MigrationExecutorFactory(provider=object(), config=None, log=None)
 
-    assert factory.get_executor(migration) is not None
+    assert factory.get_executor(migration) is None
 
 
 def test_sql_callbacks_get_the_same_verdict(tmp_path):

@@ -23,6 +23,49 @@ from core.migration.migration import (
 from core.migration.version_utils import compare_versions as _compare_versions_shared
 from core.migration.version_utils import is_migration_success
 
+# A version must start with a digit. Later segments may mix letters and
+# digits (``V3.2A``, ``V1.2.3RC1``) — dblift is deliberately looser than
+# Flyway there, which stores versions as integers and rejects any
+# non-numeric token. The leading digit is what makes the grammar decidable:
+# without it ``VA__create.sql`` (version "A") and ``Users__seed.sql``
+# (version "sers") are the same shape, and there is no rule that keeps the
+# second from being loaded as a migration. ``Migration._determine_type``
+# applies the same rule — keep the two in step.
+_VERSION_BODY = r"\d[A-Za-z0-9]*(?:[._][A-Za-z0-9]+)*"
+
+
+def _versioned_pattern(prefix: str, extension_escaped: str) -> str:
+    """Build the ``<prefix>{version}__{description}<ext>`` filename pattern."""
+    return rf"^{prefix}({_VERSION_BODY})__(.+){extension_escaped}$"
+
+
+def _normalize_version(version_str: str) -> str:
+    """Return the version with ``_`` separators rendered as ``.``.
+
+    ``V1_2_3`` and ``V1.2.3`` name the same version, so they must not produce
+    two different history rows.
+    """
+    return version_str.replace("_", ".")
+
+
+# A near-miss is a file that visibly reached for the convention and missed:
+# a prefix letter followed by a version-ish character (``V2.1_create.sql``,
+# ``R_repeat.sql``), or any prefixed name carrying the ``__`` separator
+# (``VA__create.sql``). The prefix letter alone is far too weak a signal —
+# ``backup_old.sql``, ``routines.sql`` and ``users.sql`` all start with one
+# and are nobody's failed migration. Everything else in the directory
+# (``helpers.py``, ``__init__.py``, ``notes.sql``) must stay silent, because
+# this fires on every single run.
+#
+# Baseline (``B``) is deliberately absent: a well-formed ``B1__x.sql`` is
+# excluded by design, not by malformation, so warning about it would be wrong.
+_NEAR_MISS_RE = re.compile(r"^[VUR](?:[0-9_]|[A-Za-z0-9.]*__)", re.IGNORECASE)
+
+
+def _looks_like_migration(script_name: str) -> bool:
+    """True if *script_name* looks like a failed attempt at the convention."""
+    return _NEAR_MISS_RE.match(script_name) is not None
+
 
 def _matches_callback_event(base_name: str, event_prefix: str) -> bool:
     """Return True if ``base_name`` is a callback file for ``event_prefix``.
@@ -110,34 +153,26 @@ class MigrationScriptManager:
             return MigrationType.CALLBACK, None, description, tags
 
         # Versioned migration: V{version}__{description}[tag1,tag2].<extension>
-        # Handle numeric versions with dots or underscores, and letter-based versions
-        versioned_pattern = rf"^V([A-Za-z0-9]+(?:(?:\.|_)[A-Za-z0-9]+)*)__(.+){extension_escaped}$"
-        versioned_match = re.match(versioned_pattern, filename_without_tags)
+        versioned_match = re.match(
+            _versioned_pattern("V", extension_escaped), filename_without_tags
+        )
         if versioned_match:
-            version_str = versioned_match.group(1)
-            # Keep the full version string for numeric versions, but replace underscores with dots
-            if version_str.replace(".", "").replace("_", "").isdigit():
-                normalized_version = version_str.replace("_", ".")
-                return MigrationType.SQL, normalized_version, versioned_match.group(2), tags
-            else:
-                # For letter-based versions, use the raw version string
-                version = version_str
-                return MigrationType.SQL, version, versioned_match.group(2), tags
+            return (
+                MigrationType.SQL,
+                _normalize_version(versioned_match.group(1)),
+                versioned_match.group(2),
+                tags,
+            )
 
         # Undo migration: U{version}__{description}[tag1,tag2].<extension>
-        # Handle numeric versions with dots or underscores, and letter-based versions
-        undo_pattern = rf"^U([A-Za-z0-9]+(?:(?:\.|_)[A-Za-z0-9]+)*)__(.+){extension_escaped}$"
-        undo_match = re.match(undo_pattern, filename_without_tags)
+        undo_match = re.match(_versioned_pattern("U", extension_escaped), filename_without_tags)
         if undo_match:
-            version_str = undo_match.group(1)
-            # Keep the full version string for numeric versions, but replace underscores with dots
-            if version_str.replace(".", "").replace("_", "").isdigit():
-                normalized_version = version_str.replace("_", ".")
-                return MigrationType.UNDO_SQL, normalized_version, undo_match.group(2), tags
-            else:
-                # For letter-based versions, use the raw version string
-                version = version_str
-                return MigrationType.UNDO_SQL, version, undo_match.group(2), tags
+            return (
+                MigrationType.UNDO_SQL,
+                _normalize_version(undo_match.group(1)),
+                undo_match.group(2),
+                tags,
+            )
 
         # Repeatable migration: R__{description}[tag1,tag2].<extension>
         repeatable_pattern = rf"^R__(.+){extension_escaped}$"
@@ -159,13 +194,14 @@ class MigrationScriptManager:
         """True if *filename* is a Flyway versioned migration (V*__), any registered extension.
 
         Uses :meth:`parse_filename` (canonical), not :meth:`Migration._determine_type`,
-        so letter-based versions (e.g. ``Va__``) and non-.sql extensions match consistently.
+        so non-.sql extensions match consistently. The two agree on the version
+        grammar itself — both require a leading digit.
         """
         migration_type, version, _, _ = self.parse_filename(filename)
         return migration_type == MigrationType.SQL and bool(version)
 
     def compare_versions(self, version1: Optional[str], version2: Optional[str]) -> int:
-        """Compare two version strings (e.g., '1.0.0' vs '1.0.1', '1_2_3' vs '1_2_4', 'VA' vs 'VB'). Handles None as empty string."""
+        """Compare two version strings (e.g. '1.0.0' vs '1.0.1', '1_2_3' vs '1_2_4', '3.2A' vs '3.2B'). Handles None as empty string."""
         return _compare_versions_shared(version1, version2)
 
     def get_migration_scripts(
@@ -528,24 +564,39 @@ class MigrationScriptManager:
         return scripts
 
     def _report_callback_naming_violation(self, script_name: str) -> None:
-        """Warn once when a rejected file was plainly meant to be a callback.
+        """Warn once when a rejected file was plainly meant to be a migration.
 
-        Every other malformed name is dropped silently here, but a file named
-        for a callback event is worth calling out: it looks like a working
-        callback sitting in the migrations directory and never runs. Reported
-        once per manager because ``get_callbacks_by_event`` re-scans the
-        directory for each of the dozen-odd events a command dispatches.
+        A rejected file is simply absent from the run, so a near-miss reads as
+        "nothing to apply" rather than as an error. Files that were obviously
+        intended as migrations are therefore called out; anything else in the
+        directory (``helpers.py``, ``notes.sql``) is somebody's supporting file
+        and stays silent. Reported once per manager because
+        ``get_callbacks_by_event`` re-scans the directory for each of the
+        dozen-odd events a command dispatches.
         """
-        prefix = _callback_prefix_missing_separator(script_name)
-        if prefix is None or script_name in self._reported_naming_violations:
+        if script_name in self._reported_naming_violations:
             return
 
-        self._reported_naming_violations.add(script_name)
-        self.logger.warning(
-            f"Script '{script_name}' is named for the '{prefix}' callback event but does "
-            f"not follow the Dblift naming convention '{prefix}__<description>' — the "
-            f"'__' separator is missing. It will be excluded from migration."
-        )
+        callback_prefix = _callback_prefix_missing_separator(script_name)
+        if callback_prefix is not None:
+            self._reported_naming_violations.add(script_name)
+            self.logger.warning(
+                f"Script '{script_name}' is named for the '{callback_prefix}' callback event "
+                f"but does not follow the Dblift naming convention "
+                f"'{callback_prefix}__<description>' — the '__' separator is missing. "
+                f"It will be excluded from migration."
+            )
+            return
+
+        if _looks_like_migration(script_name):
+            self._reported_naming_violations.add(script_name)
+            self.logger.warning(
+                f"Script '{script_name}' starts with a migration prefix but does not follow "
+                f"the Dblift naming convention. Expected V<version>__<description>, "
+                f"U<version>__<description> or R__<description>, where <version> starts with "
+                f"a digit (e.g. V1__init.sql, V2.1__add_index.sql) and '__' is a double "
+                f"underscore. It will be excluded from migration."
+            )
 
     def load_migration_scripts(
         self,
@@ -605,7 +656,7 @@ class MigrationScriptManager:
                         matching_rel_part = rel_script_path[len(add_dir_prefix) :]
                         break
 
-                if matching_dir:
+                if matching_dir and matching_rel_part is not None:
                     script_path = matching_dir / matching_rel_part
                 else:
                     # Fallback: try as path from scripts_directory
