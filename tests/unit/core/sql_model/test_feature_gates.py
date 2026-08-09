@@ -108,6 +108,18 @@ class TestDeclaredGates:
         gate = get_feature_gates("mariadb")["rename_column"]
         assert gate.min_version == "10.5.2+"
 
+    def test_mysql_declares_instant_add_column(self):
+        """INSTANT is the default ALGORITHM for ADD COLUMN as of 8.0.12."""
+        gate = get_feature_gates("mysql")["instant_add_column"]
+        assert gate.min_version == "8.0.12+"
+
+    def test_mariadb_declares_instant_add_column(self):
+        """10.3.7 is the first GA release carrying ALGORITHM=INSTANT --
+        a different threshold than MySQL's, restated here (inheritance
+        guard, same as rename_column above)."""
+        gate = get_feature_gates("mariadb")["instant_add_column"]
+        assert gate.min_version == "10.3.7+"
+
     def test_postgresql_declares_set_not_null_reuses_validated_check(self):
         gate = get_feature_gates("postgresql")["set_not_null_reuses_validated_check"]
         assert gate.min_version == "12.0+"
@@ -263,6 +275,33 @@ class TestSupportsFeature:
     )
     def test_mariadb_rename_column_by_version(self, version, expected):
         assert supports_feature("mariadb", "rename_column", {"version": version}) is expected
+
+    @pytest.mark.parametrize(
+        "version,expected",
+        [
+            ("8.0.12", True),  # exact boundary
+            ("8.0.36-0ubuntu0.22.04.1", True),
+            ("8.0.11", False),  # INPLACE, not INSTANT, one patch below
+            ("5.7.44-log", False),
+            ("garbage", None),
+            (None, None),
+        ],
+    )
+    def test_mysql_instant_add_column_by_version(self, version, expected):
+        server_info = {"version": version} if version is not None else None
+        assert supports_feature("mysql", "instant_add_column", server_info) is expected
+
+    @pytest.mark.parametrize(
+        "version,expected",
+        [
+            ("10.3.7", True),  # exact boundary, first GA with the syntax
+            ("10.11.6-MariaDB-1:10.11.6+maria~ubu2204", True),
+            ("10.3.6", False),  # alpha-only, one patch below GA
+            ("10.2.31", False),
+        ],
+    )
+    def test_mariadb_instant_add_column_by_version(self, version, expected):
+        assert supports_feature("mariadb", "instant_add_column", {"version": version}) is expected
 
     @pytest.mark.parametrize(
         "version,expected",
