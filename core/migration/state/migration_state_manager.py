@@ -93,8 +93,11 @@ class MigrationStateManager:
         history = self._analyse_history(applied_migrations, analysis_context)
 
         pending_migrations: List[Migration] = []
+        all_scripts: List[Migration] = []
         if scripts_dir:
             # Use NEW centralized pending computation method
+            # (all_scripts is populated as a side effect, reusing this same filesystem scan
+            # instead of scanning again just to compute resolved status)
             pending_migrations = self._compute_pending_migrations(
                 scripts_dir,
                 history.executed_scripts,
@@ -111,11 +114,13 @@ class MigrationStateManager:
                 exclude_versions=self._normalize_filter(exclude_versions),
                 strict_mode=strict_mode,
                 baseline_version=analysis_context.get("baseline_version"),
+                out_all_scripts=all_scripts,
             )
 
         self._mark_resolved_status(
             applied_migrations,
             pending_migrations,
+            all_scripts,
             scripts_available=bool(scripts_dir),
         )
 
@@ -190,6 +195,7 @@ class MigrationStateManager:
         self,
         applied_migrations: List[Migration],
         pending_migrations: List[Migration],
+        all_scripts: List[Migration],
         *,
         scripts_available: bool,
     ) -> None:
@@ -199,12 +205,17 @@ class MigrationStateManager:
                 migration.resolved = True
             return
 
+        # Built from the full on-disk script list (not just pending_migrations):
+        # a script that's already applied has nothing pending for it, so using
+        # pending_migrations alone would wrongly mark its history row missing.
         resolved_script_names: Set[str] = set()
-        for migration in pending_migrations:
+        for migration in all_scripts:
             script_name = getattr(migration, "script_name", "")
             if script_name:
                 resolved_script_names.add(script_name)
                 resolved_script_names.add(Path(script_name).name)
+
+        for migration in pending_migrations:
             migration.resolved = True
 
         for migration in applied_migrations:
@@ -432,6 +443,7 @@ class MigrationStateManager:
         exclude_versions: Optional[List[str]] = None,
         strict_mode: bool = False,
         baseline_version: Optional[str] = None,
+        out_all_scripts: Optional[List[Migration]] = None,
     ) -> List[Migration]:
         """Compute which migrations need to be executed.
 
@@ -482,6 +494,10 @@ class MigrationStateManager:
             all_scripts.extend(migration_list)
 
         self.logger.debug(f"Loaded {len(all_scripts)} migration objects")
+
+        if out_all_scripts is not None:
+            # Let callers reuse this scan instead of re-scanning the filesystem themselves.
+            out_all_scripts.extend(all_scripts)
 
         # Step 3: Determine current version from applied migrations (excluding undone ones)
         # Filter out undone migrations before calculating current version

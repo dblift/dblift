@@ -111,7 +111,7 @@ def test_state_layer_marks_history_rows_distinct_from_resolved_scripts():
         type=MigrationType.SQL,
     )
 
-    manager._mark_resolved_status([applied], [pending], scripts_available=True)
+    manager._mark_resolved_status([applied], [pending], [pending], scripts_available=True)
 
     assert applied.resolved is False
     assert pending.resolved is True
