@@ -9,11 +9,86 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`instant_add_column` feature gate for MySQL and MariaDB.** `ALTER TABLE ...
+  ADD COLUMN` completes without a table rebuild (`ALGORITHM=INSTANT`) only from
+  a specific version onward, and that version differs between the two engines'
+  independently-diverged InnoDB forks: MySQL 8.0.12+ (where `INSTANT` became
+  the default algorithm; `INPLACE`, which still rewrites the table, applied
+  before that) and MariaDB 10.3.7+ (the first GA release carrying the syntax).
+  Both gates are version-only — this feature has no edition split. Consumers
+  that capture `server_info` can resolve availability through
+  `supports_feature`, the same tri-state way as the existing
+  `online_index_build` / `online_alter_column` / `online_table_move` gates.
+  Per-statement restrictions the gate deliberately does not model
+  (`ROW_FORMAT=COMPRESSED`, a `FULLTEXT` index, an added `AUTO_INCREMENT`
+  column, and each engine's own column-position restriction) are documented
+  inline as the caller's responsibility.
+
 ### Changed
+
+- **`dblift` now reports a migration file whose name misses the convention,
+  instead of ignoring it.** A file such as `V2.1_create.sql` — one underscore
+  where two are required — was skipped with a debug-level trace, so a run
+  against it reported nothing to apply. Such a file now produces a warning
+  naming it and the expected form. The check is narrow on purpose, since it
+  runs on every scan: it fires on a `V`/`U`/`R` prefix followed by a
+  version-like character, or a prefix plus a one-letter version and the `__`
+  separator. Ordinary files that merely start with the same letter —
+  `backup_old.sql`, `routines.sql`, `util__helpers.py` — stay silent.
+
+- **A migration version must start with a digit.** This was already enforced
+  when classifying a script, but not when parsing its filename, and the two
+  disagreed: `VA__create.sql` was parsed as a versioned migration and then
+  silently discarded, while `Update__rows.sql` parsed as an undo migration at
+  version `pdate`. Both now apply the one rule. Versions mixing digits and
+  letters after the first character are unaffected — `V3.2A`, `V1.2.3RC1` and
+  `V1_2_3` all continue to work.
 
 ### Fixed
 
+- **`repr()` of a database configuration printed credentials in clear text.**
+  Every dialect configuration class regenerated its own `__repr__`, which
+  overrode the credential-masking one it inherited, so a password — and a
+  CosmosDB account key — reached tracebacks, log lines and debugger output
+  verbatim. Masking also only covered the known `password` field, missing
+  credentials a dialect adds under its own name. Both are fixed, and the
+  masking rules are now single-sourced rather than duplicated with two
+  different levels of coverage: `pwd=` parameters and CosmosDB `AccountKey=`
+  values were masked on one path and not the other.
+
+- **Migration versions were compared three different ways.** Baseline
+  filtering used PEP 440 parsing, which rejects documented forms such as
+  `1_2_3` outright; out-of-order detection parsed versions as integers, so any
+  non-numeric part became `0` and a `VB` → `VA` regression read as in-order.
+  Both now use the shared comparator. That comparator also mis-ordered a
+  version segment mixing digits and letters and digits again: `1.2.3RC1`
+  compared *greater* than `1.2.4`. Segments are now compared by their leading
+  number first.
+
+- **A `dblift` system check failure under Django reported "no pending
+  migrations".** Any error — a bad connection, a missing migrations directory,
+  an import problem — was swallowed and rendered as a clean bill of health for
+  a check that never ran. It now reports `dblift.W002` with the cause, and the
+  message is credential-masked because a driver's connection error often
+  echoes the connection string back.
+
 ### Removed
+
+- **Internal history and locking manager classes for the relational dialects.**
+  `PostgreSqlHistoryManager`, `PostgreSqlLockingManager` and their MySQL,
+  Oracle, SQL Server and DB2 counterparts are gone from
+  `db.plugins.<dialect>.<dialect>`. Those dialects compose their history and
+  lock SQL on the provider itself and never constructed these classes, so the
+  code was unreachable while still appearing supported. SQLite and CosmosDB
+  keep their equivalents — those are live. No documented API is affected;
+  `DBLiftClient` and the CLI are unchanged.
+
+- **`SqlMigrationExecutor`** is no longer exported from
+  `core.migration.executors`. SQL migrations are executed by the migration
+  engine directly, because transaction policy and history recording interleave
+  with statement execution in a way the format-executor contract cannot
+  express. The class was never reachable on the SQL path, and the executor
+  factory now routes non-SQL formats only.
 
 ## [3.6.0] - 2026-08-09
 
