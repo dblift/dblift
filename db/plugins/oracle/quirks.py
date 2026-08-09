@@ -851,6 +851,19 @@ class OracleQuirks(BaseQuirks):
             min_version="12.1+",
             description="FETCH FIRST n ROWS ONLY",
         ),
+        "online_table_move": FeatureGate(
+            # Oracle's Database Licensing Information User Manual (Table 1-4,
+            # High Availability) lists "ALTER TABLE ... MOVE ONLINE
+            # operations" as N for Standard Edition 2, Y for Enterprise
+            # Edition and above -- same edition floor as online_index_build,
+            # including Free (issue #908: Free ships the full Enterprise
+            # feature set, only resource-limited). Online move of a whole
+            # (non-partitioned) table is a 12.2 feature; 12.1 only supports
+            # it for partitions/subpartitions.
+            edition_pattern=r"enterprise|free",
+            min_version="12.2+",
+            description="ALTER TABLE ... MOVE ONLINE",
+        ),
     }
 
     def row_limit_clauses(
