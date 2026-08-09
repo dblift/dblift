@@ -757,7 +757,7 @@ class MigrationDataCollector:
 
     def _should_exclude_migration(
         self,
-        version: str,
+        version: Optional[str],
         script_name: str,
         tags: List[str],
         exclude_tags: List[str],

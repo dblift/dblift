@@ -27,3 +27,10 @@ jobs:
 
       - name: Report complexity
         run: radon cc api/ cli/ config/ core/ db/ -s -a
+
+      # Backstop, not a target: only an F-ranked block fails the build. This is
+      # the strictest threshold the tree passes today (-bE would flag 21 blocks),
+      # so it catches new extremes without blocking on existing debt. Tighten a
+      # rank at a time as the hotspots are split.
+      - name: Enforce complexity ceiling
+        run: xenon --max-absolute F --max-modules E --max-average B api/ cli/ config/ core/ db/

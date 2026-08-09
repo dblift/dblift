@@ -42,17 +42,20 @@ _BODIES = {"sql": (V_SQL, U_SQL), "py": (V_PY, U_PY)}
 # Every module under db/ that owns a history-table predicate or writes a
 # history ``type``. Scanned as source so a new dialect copy-pasting the old
 # literal is caught even if nothing instantiates it.
+# Every module that composes history SQL: the shared base, the relational
+# providers that own their history inline, and the two dialects that still
+# attach a history component.
 _HISTORY_SOURCES = [
     "db/plugins/base_history_manager.py",
     "db/plugins/postgresql/provider.py",
     "db/plugins/oracle/provider.py",
-    "db/plugins/oracle/oracle/history_manager.py",
     "db/plugins/snowflake/provider.py",
     "db/plugins/mysql/provider.py",
     "db/plugins/sqlserver/provider.py",
-    "db/plugins/sqlserver/sqlserver/history_manager.py",
     "db/plugins/duckdb/provider.py",
     "db/plugins/db2/provider.py",
+    "db/plugins/sqlite/sqlite/history_manager.py",
+    "db/plugins/cosmosdb/cosmosdb/history_manager.py",
 ]
 
 

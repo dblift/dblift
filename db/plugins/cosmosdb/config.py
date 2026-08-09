@@ -8,7 +8,7 @@ from config.database_config import BaseDatabaseConfig, register_database_type
 
 # lint: allow-dialect-string: config type registration
 @register_database_type("cosmosdb")
-@dataclass
+@dataclass(repr=False)  # keep BaseDatabaseConfig.__repr__ (credential-masked)
 class CosmosDbConfig(BaseDatabaseConfig):
     """Configuration for Azure Cosmos DB connections."""
 

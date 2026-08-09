@@ -404,7 +404,8 @@ def _validate_db_config(
     else:
         if not hasattr(config, "database") or not config.database:
             parser.error(
-                "Database configuration is required. Specify it in the config file or environment variables."
+                "Database configuration is required. Specify it in the config file "
+                "or environment variables."
             )
 
         url_provided = hasattr(args, "database_url") and getattr(args, "database_url", None)

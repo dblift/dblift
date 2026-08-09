@@ -241,19 +241,19 @@ class MysqlQuirks(BaseQuirks):
         )
 
     def ddl_generator_class(self) -> Optional[Type["BaseSqlGenerator"]]:
-        """DDL generator relocated to the paid package; registered by register_pro_generators()."""
+        """DDL generator is supplied by an installed extension package."""
         return None
 
     def alter_generator_class(self) -> Optional[Type["BaseAlterGenerator"]]:
-        """ALTER generator relocated to the paid package; registered by register_pro_generators()."""
+        """ALTER generator is supplied by an installed extension package."""
         return None
 
     def vendor_queries_class(self) -> "Optional[Type[Any]]":
-        """MySQL-family rich metadata queries are registered by PRO."""
+        """MySQL-family rich metadata queries are supplied by an installed extension package."""
         return None
 
     def introspector_class(self) -> "Optional[Type[Any]]":
-        """MySQL-family rich introspection is registered by PRO."""
+        """MySQL-family rich introspection is supplied by an installed extension package."""
         return None
 
     def parser_class(self, parser_type: str) -> Optional[type]:

@@ -19,26 +19,6 @@ from db.plugins.base_history_manager import BaseHistoryManager
 # ===========================================================================
 # BaseHistoryManager tests
 # ===========================================================================
-
-
-class TestBaseHistoryManagerRowLimitClause:
-
-    def test_base_history_manager_row_limit_clause(self):
-        """BaseHistoryManager default returns LIMIT n syntax."""
-        manager = MagicMock(spec=BaseHistoryManager)
-        # Call the real method on the mock
-        result = BaseHistoryManager.get_row_limit_clause(manager, 1)
-        assert result == "LIMIT 1"
-
-    def test_oracle_history_manager_row_limit_clause(self):
-        """OracleHistoryManager returns FETCH FIRST syntax."""
-        from db.plugins.oracle.oracle.history_manager import OracleHistoryManager
-
-        manager = MagicMock(spec=OracleHistoryManager)
-        result = OracleHistoryManager.get_row_limit_clause(manager, 1)
-        assert result == "FETCH FIRST 1 ROWS ONLY"
-
-
 # ---------------------------------------------------------------------------
 # Concrete BaseHistoryManager subclasses for SQL generation tests
 # ---------------------------------------------------------------------------
