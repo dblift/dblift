@@ -36,6 +36,7 @@ KNOWN_FEATURES: FrozenSet[str] = frozenset(
     {
         "online_index_build",
         "online_alter_column",
+        "online_table_move",
         "rename_column",
         "set_not_null_reuses_validated_check",
         "row_limit_fetch_first",

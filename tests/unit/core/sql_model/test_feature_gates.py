@@ -90,6 +90,14 @@ class TestDeclaredGates:
         assert gate.min_version == "13.0+"
         assert gate.edition_pattern == r"enterprise|developer|evaluation|azure"
 
+    def test_oracle_declares_online_table_move(self):
+        """ALTER TABLE ... MOVE ONLINE for a whole (non-partitioned) table:
+        12.2+, same edition floor as online_index_build.
+        """
+        gate = get_feature_gates("oracle")["online_table_move"]
+        assert gate.min_version == "12.2+"
+        assert gate.edition_pattern == r"enterprise|free"
+
     def test_mysql_declares_rename_column(self):
         gate = get_feature_gates("mysql")["rename_column"]
         assert gate.min_version == "8.0+"
@@ -194,6 +202,42 @@ class TestSupportsFeature:
     )
     def test_oracle_online_index_by_banner(self, banner, expected):
         assert supports_feature("oracle", "online_index_build", {"edition": banner}) is expected
+
+    @pytest.mark.parametrize(
+        "banner,expected",
+        [
+            # Both constraints proven, both satisfied.
+            ("Oracle Database 19c Enterprise Edition Release 19.0.0.0.0", True),
+            # Edition proven, version proven, but pre-12.2 -- online move of
+            # a whole (non-partitioned) table did not exist yet.
+            ("Oracle Database 12c Enterprise Edition Release 12.1.0.2.0", False),
+            # Edition fails -- min_version alone is not enough.
+            ("Oracle Database 19c Standard Edition 2 Release 19.0.0.0.0", False),
+            # Free carries the full Enterprise feature set, same as
+            # online_index_build.
+            ("Oracle AI Database 26ai Free Release 23.26.2.0.0", True),
+        ],
+    )
+    def test_oracle_online_table_move_by_banner(self, banner, expected):
+        """The v$version banner doubles as both edition and version source
+        for Oracle -- both server_info keys carry the same string (see
+        test_online_index_full_banner_under_both_keys' precedent), and both
+        constraints must resolve for a combined True.
+        """
+        server_info = {"edition": banner, "version": banner}
+        assert supports_feature("oracle", "online_table_move", server_info) is expected
+
+    def test_oracle_online_table_move_needs_both_constraints(self):
+        """Edition known, version unknown (only the edition key captured) --
+        min_version cannot be evaluated, so the combined result is unknown
+        even though the edition alone would pass online_index_build.
+        """
+        result = supports_feature(
+            "oracle",
+            "online_table_move",
+            {"edition": "Oracle Database 19c Enterprise Edition Release 19.0.0.0.0"},
+        )
+        assert result is None
 
     @pytest.mark.parametrize(
         "version,expected",
