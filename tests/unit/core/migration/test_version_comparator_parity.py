@@ -111,3 +111,46 @@ class TestOutOfOrderDetectionUsesSharedComparator:
 def test_underscore_and_dot_separators_are_equivalent():
     """Guards the property both replaced implementations relied on."""
     assert compare_versions("1_2_3", "1.2.3") == 0
+
+
+@pytest.mark.unit
+class TestMixedAlphanumericSegments:
+    """A segment like ``3RC1`` must order by its leading number first.
+
+    The tokenizer once matched only ``<digits><letters>``, so ``3RC1`` (letters
+    then digits again) fell through to the pure-alpha branch — which sorts
+    above *every* numeric segment. ``1.2.3RC1`` therefore compared greater than
+    ``1.2.4``, which is wrong under any convention.
+    """
+
+    @pytest.mark.parametrize(
+        "lower, higher",
+        [
+            ("1.2.3RC1", "1.2.4"),
+            ("1.2.3RC1", "1.3.0"),
+            ("1.2.3RC1", "1.2.3RC2"),
+            ("1.2.9RC1", "1.2.10RC1"),
+            ("2.0.0BETA2", "2.0.1"),
+        ],
+    )
+    def test_orders_by_leading_number(self, lower: str, higher: str):
+        assert compare_versions(lower, higher) < 0
+        assert compare_versions(higher, lower) > 0
+
+    def test_equal_to_itself(self):
+        assert compare_versions("1.2.3RC1", "1.2.3RC1") == 0
+
+    @pytest.mark.parametrize(
+        "suffixed, bare",
+        [("3.2A", "3.2"), ("1.2.3RC1", "1.2.3"), ("2.0.0BETA2", "2.0.0")],
+    )
+    def test_suffix_sorts_after_the_bare_version(self, suffixed: str, bare: str):
+        """Long-standing dblift convention: a suffix is a later revision.
+
+        Deliberately *not* PEP 440, where a suffix marks a pre-release and
+        sorts before. Migration suffixes are used as hotfix markers, and the
+        ordering has shipped this way — flipping it would silently reorder
+        existing histories.
+        """
+        assert compare_versions(suffixed, bare) > 0
+        assert compare_versions(bare, suffixed) < 0

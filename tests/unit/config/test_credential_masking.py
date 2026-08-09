@@ -65,6 +65,38 @@ class TestToSafeDict:
         assert "abc123secret" not in cfg.to_safe_dict()["url"]
         assert "abc123secret" not in repr(cfg)
 
+    def test_masks_sensitive_top_level_key_on_a_real_dialect_config(self):
+        """A dialect that adds its own credential field must be masked too.
+
+        ``CosmosDbConfig.to_dict`` injects ``account_key`` at the top level, not
+        inside ``extra_params``, so masking only the known ``password`` field
+        left it in clear text in every ``repr``.
+        """
+        from db.plugins.cosmosdb.config import CosmosDbConfig
+
+        cfg = CosmosDbConfig(
+            type="cosmosdb",
+            account_endpoint="https://acct.documents.azure.com/",
+            account_key="abc123secret",
+            database_name="db",
+        )
+
+        assert cfg.to_safe_dict()["account_key"] != "abc123secret"
+        assert "abc123secret" not in repr(cfg)
+
+    def test_masking_preserves_non_sensitive_values(self):
+        """Masking must not flatten the dict-valued fields it walks into."""
+        cfg = DummyDatabaseConfig(
+            type="dummy",
+            url="dummy://host/db",
+            extra_params={"api_key": "secret123", "sslmode": "require"},
+        )
+        safe = cfg.to_safe_dict()
+
+        assert safe["extra_params"]["sslmode"] == "require"
+        assert safe["type"] == "dummy"
+        assert safe["connection_timeout"] == 30
+
     def test_every_registered_config_has_a_masked_repr(self):
         """No registered dialect config may re-generate a plain dataclass repr.
 

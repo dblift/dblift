@@ -61,3 +61,34 @@ class TestMaskDatabaseUrl:
         """URL without credentials remains unchanged."""
         url = "postgresql+psycopg://localhost/db?user=admin"
         assert mask_database_url(url) == url
+
+    @pytest.mark.parametrize(
+        "value",
+        [
+            # "password=" / "pwd=" as the tail of a longer token: not the
+            # parameter, so masking it corrupts an operator-visible value.
+            "DATABASE=db;oldpassword=keepme;UID=u",
+            "Server=s;old_password=keepme;",
+            "Server=s;custom_pwd_hint=keepme;",
+            # A filesystem path that merely contains the letters.
+            "sqlite:////home/pwd=keepme/app.db",
+        ],
+    )
+    def test_does_not_mask_password_lookalikes(self, value):
+        """Only a real parameter may be masked, never a substring of one."""
+        assert mask_database_url(value) == value
+
+    @pytest.mark.parametrize(
+        "value",
+        [
+            "password=secret123;server=host",
+            "server=host;password=secret123",
+            "server=host?password=secret123",
+            "server=host&password=secret123",
+            "server=host;pwd=secret123",
+            "PWD=secret123;server=host",
+        ],
+    )
+    def test_masks_real_password_parameters(self, value):
+        """Every delimiter — and the start of the string — still masks."""
+        assert "secret123" not in mask_database_url(value)

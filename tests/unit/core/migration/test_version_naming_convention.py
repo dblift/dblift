@@ -38,6 +38,11 @@ ACCEPTED = [
     ("V1_2_3__create.sql", MigrationType.SQL, "1.2.3"),
     ("V3.2A__create.sql", MigrationType.SQL, "3.2A"),
     ("V1.2.3RC1__create.sql", MigrationType.SQL, "1.2.3RC1"),
+    # Underscores are rewritten to dots only when the version is all digits.
+    # A lettered version keeps its separators verbatim, so it still matches
+    # the string already recorded in existing history rows.
+    ("V1_2A__create.sql", MigrationType.SQL, "1_2A"),
+    ("V1_2_3RC1__create.sql", MigrationType.SQL, "1_2_3RC1"),
     ("U1__undo.sql", MigrationType.UNDO_SQL, "1"),
     ("U1.2__undo.sql", MigrationType.UNDO_SQL, "1.2"),
 ]
@@ -123,6 +128,12 @@ class TestInvalidNamesAreReported:
             "users.sql",
             "views.sql",
             "utils.py",
+            # Prefix letter *and* a '__' separator, but the character after
+            # the prefix is an ordinary letter — these are words, not versions.
+            "util__helpers.py",
+            "report__daily.sql",
+            "views__all.sql",
+            "user__roles.sql",
         ],
     )
     def test_ordinary_file_is_not_warned_about(self, tmp_path: Path, filename: str):

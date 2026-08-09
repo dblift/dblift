@@ -44,22 +44,35 @@ def _normalize_version(version_str: str) -> str:
 
     ``V1_2_3`` and ``V1.2.3`` name the same version, so they must not produce
     two different history rows.
+
+    Applied to all-digit versions only, matching long-standing behaviour. A
+    version carrying letters is returned verbatim: rewriting ``1_2A`` to
+    ``1.2A`` would not match the ``1_2A`` already written to existing history
+    rows, and the raw-string set lookups against ``undone_versions`` in
+    ``MigrationStateManager`` compare versions as text, not through the
+    comparator.
     """
-    return version_str.replace("_", ".")
+    if version_str.replace(".", "").replace("_", "").isdigit():
+        return version_str.replace("_", ".")
+    return version_str
 
 
 # A near-miss is a file that visibly reached for the convention and missed:
 # a prefix letter followed by a version-ish character (``V2.1_create.sql``,
-# ``R_repeat.sql``), or any prefixed name carrying the ``__`` separator
-# (``VA__create.sql``). The prefix letter alone is far too weak a signal —
-# ``backup_old.sql``, ``routines.sql`` and ``users.sql`` all start with one
-# and are nobody's failed migration. Everything else in the directory
-# (``helpers.py``, ``__init__.py``, ``notes.sql``) must stay silent, because
-# this fires on every single run.
+# ``R_repeat.sql``), or a prefix plus a one-letter version and the separator
+# (``VA__create.sql``). Both halves are deliberately tight, because this fires
+# on every single run:
+#
+#   * the prefix letter alone is far too weak — ``backup_old.sql``,
+#     ``routines.sql`` and ``users.sql`` all start with one;
+#   * allowing any run of letters before ``__`` is also too weak, because
+#     ordinary words then qualify: ``util__helpers.py``,
+#     ``report__daily.sql``, ``views__all.sql``. Capping it at a single
+#     letter keeps ``VA``/``UB``-style attempts and lets words through.
 #
 # Baseline (``B``) is deliberately absent: a well-formed ``B1__x.sql`` is
 # excluded by design, not by malformation, so warning about it would be wrong.
-_NEAR_MISS_RE = re.compile(r"^[VUR](?:[0-9_]|[A-Za-z0-9.]*__)", re.IGNORECASE)
+_NEAR_MISS_RE = re.compile(r"^[VUR](?:[0-9_]|[A-Za-z]?[0-9.]*__)", re.IGNORECASE)
 
 
 def _looks_like_migration(script_name: str) -> bool:

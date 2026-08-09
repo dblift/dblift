@@ -62,11 +62,19 @@ def mask_credentials(result: Dict[str, Any]) -> Dict[str, Any]:
 
     Mutates ``result`` in place but also returns it for fluent use.
     """
-    # Mask password
-    if result.get("password"):
-        result["password"] = "***MASKED***"
+    # Mask every sensitive scalar at the top level, not just ``password``.
+    # Dialects add their own credential fields to ``to_dict`` — CosmosDB puts
+    # ``account_key`` here rather than in ``extra_params`` — and naming only
+    # the known field left those in clear text in every ``repr``.
+    # Container values are skipped: they are walked below, and replacing a
+    # whole dict would discard its non-sensitive entries.
+    for key, value in list(result.items()):
+        if value and not isinstance(value, (dict, list, tuple, set)) and is_sensitive_key(key):
+            result[key] = "***MASKED***"
 
-    # Mask URL if it contains credentials
+    # Mask URL if it contains credentials. Handled separately from the loop:
+    # a URL is rewritten in place, not replaced wholesale, so the host and
+    # database stay readable.
     url = result.get("url", "")
     if url:
         result["url"] = mask_url_credentials(url)

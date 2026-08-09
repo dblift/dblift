@@ -1,9 +1,7 @@
 """Unit tests for SQL Server plugin components.
 
 Covers:
-- SqlServerHistoryManager (history_manager.py)
 - SqlServerConnectionManager (connection_manager.py) — pure-Python paths only
-- SqlServerLockingManager (locking_manager.py)
 - SqlServerQueryExecutor (query_executor.py)
 - SqlServerSchemaOperations (schema_operations.py)
 

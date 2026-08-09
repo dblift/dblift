@@ -2,7 +2,6 @@
 
 Covers:
 - PostgreSqlSchemaOperations (schema_operations.py)
-- PostgreSqlHistoryManager (history_manager.py)
 - PostgreSqlQueryExecutor (query_executor.py)
 - PostgreSqlConnectionManager (connection_manager.py) — pure-Python paths only
 

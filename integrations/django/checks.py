@@ -17,10 +17,12 @@ def pending_migrations_check(app_configs: Any, **kwargs: Any) -> list[Any]:
     or configuration failure would hand the operator a clean bill of health
     for a check that never actually ran.
     """
-    from integrations.django._client import get_client
-    from integrations.fastapi import _pending_ids_from_info
-
     try:
+        # Imported inside the guard, not above it: an ImportError here must
+        # become a warning like any other failure, never abort `manage.py`.
+        from integrations.django._client import get_client
+        from integrations.fastapi import _pending_ids_from_info
+
         client = get_client()
         try:
             info = client.info()
@@ -30,10 +32,14 @@ def pending_migrations_check(app_configs: Any, **kwargs: Any) -> list[Any]:
     except Exception as exc:
         # Broad by necessity: a system check must never abort `manage.py`,
         # and any failure mode here is equally undiagnosable to the operator
-        # unless it is surfaced.
+        # unless it is surfaced. The message is masked because a driver's
+        # connection error often echoes the DSN back, credentials included.
+        from core.utils.url_masking import mask_database_url
+
         return [
             DjangoWarning(
-                f"dblift: could not check for pending migrations: {exc}",
+                f"dblift: could not check for pending migrations: "
+                f"{mask_database_url(str(exc))}",
                 hint=(
                     "Verify DBLIFT_MIGRATIONS_DIR and the default database "
                     "connection, then re-run `python manage.py check`."

@@ -77,6 +77,22 @@ def test_check_reports_failure_instead_of_staying_silent(tmp_path, monkeypatch):
         assert "could not connect" in str(messages[0].msg)
 
 
+def test_check_masks_credentials_in_the_failure_message(tmp_path, monkeypatch):
+    """A driver error often echoes the DSN back, credentials included."""
+    with override_settings(**_settings(tmp_path)):
+        import integrations.django._client as client_module
+        from integrations.django.checks import pending_migrations_check
+
+        def _boom():
+            raise RuntimeError("could not connect to postgresql://admin:secret123@h/db")
+
+        monkeypatch.setattr(client_module, "get_client", _boom)
+
+        messages = pending_migrations_check(None)
+
+        assert messages and "secret123" not in str(messages[0].msg)
+
+
 def test_info_command_runs(tmp_path):
     with override_settings(**_settings(tmp_path)):
         call_command("dblift_info")
