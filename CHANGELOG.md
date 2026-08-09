@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+### Changed
+
+### Fixed
+
+### Removed
+
+## [3.7.0] - 2026-08-09
+
+### Added
+
 - **`instant_add_column` feature gate for MySQL and MariaDB.** `ALTER TABLE ...
   ADD COLUMN` completes without a table rebuild (`ALGORITHM=INSTANT`) only from
   a specific version onward, and that version differs between the two engines'
