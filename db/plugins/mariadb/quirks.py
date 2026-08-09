@@ -44,6 +44,20 @@ class MariadbQuirks(MysqlQuirks):
             min_version="10.5.2+",
             description="ALTER TABLE ... RENAME COLUMN",
         ),
+        "instant_add_column": FeatureGate(
+            # 10.3.7 is the first GA release carrying the ALGORITHM=INSTANT
+            # syntax (the feature landed as alpha in 10.3.2). Not the same
+            # threshold as MySQL -- MariaDB and MySQL's InnoDB forks
+            # diverged on when this shipped. Version-only: this is not
+            # edition-gated, but still narrower than "any ADD COLUMN is
+            # instant" -- callers must separately account for the
+            # per-statement restrictions this gate does not model
+            # (ROW_FORMAT=COMPRESSED, a hidden FTS_DOC_ID column from a
+            # FULLTEXT index, and, before 10.4, INSTANT only adding a
+            # column as the last column).
+            min_version="10.3.7+",
+            description="ALTER TABLE ... ADD COLUMN, ALGORITHM=INSTANT",
+        ),
     }
 
     # MariaDB historically did not need post-introspection rollback in dblift;
