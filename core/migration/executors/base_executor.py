@@ -84,8 +84,8 @@ class BaseMigrationExecutor(ABC):
             True if this executor can execute the migration
 
         Examples:
-            >>> executor = SqlMigrationExecutor(provider, config, log)
-            >>> migration = Migration(script_path=Path("V1__test.sql"))
+            >>> executor = PythonMigrationExecutor(provider, config, log)
+            >>> migration = Migration(script_path=Path("V1__test.py"))
             >>> executor.can_execute(migration)
             True
         """

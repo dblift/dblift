@@ -12,7 +12,7 @@ from .vendor_queries_factory import VendorQueriesFactory, register_vendor_querie
 
 # Database-specific introspectors are reached through
 # ``IntrospectorFactory.create()``; some rich implementations are
-# registered by PRO.
+# registered by an installed extension package.
 
 __all__ = [
     "BaseIntrospector",

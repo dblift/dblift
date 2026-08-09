@@ -274,27 +274,6 @@ class TestDetectOutOfOrderMigrations:
         assert "1_2" in result
 
 
-# ---------- _compare_version_parts ----------
-
-
-@pytest.mark.unit
-class TestCompareVersionParts:
-    def test_equal(self, service):
-        assert service._compare_version_parts([1, 2], [1, 2]) == 0
-
-    def test_less_than(self, service):
-        assert service._compare_version_parts([1, 0], [1, 2]) == -1
-
-    def test_greater_than(self, service):
-        assert service._compare_version_parts([2, 0], [1, 9]) == 1
-
-    def test_different_lengths_padded(self, service):
-        assert service._compare_version_parts([1], [1, 0]) == 0
-
-    def test_shorter_less_than_longer(self, service):
-        assert service._compare_version_parts([1], [1, 1]) == -1
-
-
 # ---------- _build_repeatable_checksums ----------
 
 

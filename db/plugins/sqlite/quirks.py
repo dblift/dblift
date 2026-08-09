@@ -49,11 +49,11 @@ class SqliteQuirks(BaseQuirks):
         super().__init__(dialect_name=dialect_name)
 
     def ddl_generator_class(self) -> Optional[Type["BaseSqlGenerator"]]:
-        """DDL generator relocated to the paid package; registered by register_pro_generators()."""
+        """DDL generator is supplied by an installed extension package."""
         return None
 
     def alter_generator_class(self) -> Optional[Type["BaseAlterGenerator"]]:
-        """ALTER generator relocated to the paid package; registered by register_pro_generators()."""
+        """ALTER generator is supplied by an installed extension package."""
         return None
 
     def parser_class(self, parser_type: str) -> Optional[type]:
@@ -71,11 +71,11 @@ class SqliteQuirks(BaseQuirks):
         return None
 
     def introspector_class(self) -> Optional[Type[Any]]:
-        """SQLite rich introspection is registered by PRO."""
+        """SQLite rich introspection is supplied by an installed extension package."""
         return None
 
     def vendor_queries_class(self) -> "Optional[Type[Any]]":
-        """SQLite metadata queries are registered by PRO."""
+        """SQLite metadata queries are supplied by an installed extension package."""
         return None
 
     def type_equivalents(self) -> "dict[str, str]":

@@ -35,5 +35,25 @@ jobs:
       - name: Check imports
         run: isort --check --diff api/ cli/ config/ core/ db/ tests/ scripts/
 
+      # tests/ and scripts/ are excluded in .flake8 (legacy volume) — see the
+      # note there. Mirrors scripts/check_code_quality.sh.
+      - name: Check style
+        run: flake8 --config=.flake8 api/ cli/ config/ core/ db/
+
+      - name: Type check
+        run: mypy api/ cli/ config/ core/ db/ --config-file pyproject.toml --show-error-codes
+
+      - name: Check internal layering
+        run: lint-imports --config .importlinter
+
+      - name: AST lint patterns (ratchet)
+        run: python scripts/lint_patterns.py
+
+      - name: Public-API docstrings (ratchet)
+        run: python scripts/check_api_docstrings.py --paths api cli core db --ratchet .docstring-ratchet.json
+
+      - name: Line-length (ratchet)
+        run: python scripts/check_line_length.py
+
       - name: Check public OSS surface
         run: python -m pytest tests/unit/test_oss_public_surface.py tests/smoke/test_oss_standalone.py -q

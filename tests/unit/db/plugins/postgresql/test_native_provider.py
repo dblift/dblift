@@ -4,7 +4,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from db.plugins.postgresql.postgresql.locking_manager import _get_advisory_lock_key
+from db.plugins.postgresql.postgresql._lock_key import _get_advisory_lock_key
 from db.plugins.postgresql.provider import PostgreSqlProvider
 from db.sqlalchemy_provider import SqlAlchemyProvider
 

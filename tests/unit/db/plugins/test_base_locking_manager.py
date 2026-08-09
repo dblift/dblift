@@ -6,12 +6,7 @@ import pytest
 
 from core.logger import NullLog
 from db.plugins.base_locking_manager import BaseLockingManager
-from db.plugins.db2.db2.locking_manager import Db2LockingManager
-from db.plugins.mysql.mysql.locking_manager import MySqlLockingManager
-from db.plugins.oracle.oracle.locking_manager import OracleLockingManager
-from db.plugins.postgresql.postgresql.locking_manager import PostgreSqlLockingManager
 from db.plugins.sqlite.sqlite.locking_manager import SQLiteLockingManager
-from db.plugins.sqlserver.sqlserver.locking_manager import SqlServerLockingManager
 
 
 @pytest.mark.unit
@@ -88,40 +83,18 @@ class TestBaseLockingManagerInterface:
         assert mgr.query_executor is qe
         assert mgr.log is log
 
-    @pytest.mark.parametrize(
-        "manager_class,kwargs",
-        [
-            (OracleLockingManager, {"query_executor": MagicMock()}),
-            (PostgreSqlLockingManager, {"query_executor": MagicMock()}),
-            (MySqlLockingManager, {"query_executor": MagicMock()}),
-            (SqlServerLockingManager, {"query_executor": MagicMock()}),
-            (SQLiteLockingManager, {"query_executor": MagicMock()}),
-            (Db2LockingManager, {"query_executor": MagicMock()}),
-        ],
-    )
-    def test_jdbc_managers_are_instances_of_base(self, manager_class, kwargs):
-        """All SQL locking managers are instances of BaseLockingManager."""
-        mgr = manager_class(**kwargs)
-        assert isinstance(
-            mgr, BaseLockingManager
-        ), f"{manager_class.__name__} should be an instance of BaseLockingManager"
+    def test_component_locking_manager_is_an_instance_of_base(self):
+        """SQLite is the one dialect that still attaches a locking component.
 
-    @pytest.mark.parametrize(
-        "manager_class",
-        [
-            OracleLockingManager,
-            PostgreSqlLockingManager,
-            MySqlLockingManager,
-            SqlServerLockingManager,
-            SQLiteLockingManager,
-            Db2LockingManager,
-        ],
-    )
-    def test_jdbc_managers_are_subclasses_of_base(self, manager_class):
-        """All SQL locking managers are subclasses of BaseLockingManager."""
-        assert issubclass(
-            manager_class, BaseLockingManager
-        ), f"{manager_class.__name__} should be a subclass of BaseLockingManager"
+        The other relational dialects implement ``acquire_migration_lock`` /
+        ``release_migration_lock`` on the provider itself, so they have no
+        locking manager to type-check against this interface.
+        """
+        mgr = SQLiteLockingManager(query_executor=MagicMock())
+        assert isinstance(mgr, BaseLockingManager)
+
+    def test_component_locking_manager_is_a_subclass_of_base(self):
+        assert issubclass(SQLiteLockingManager, BaseLockingManager)
 
     def test_cosmosdb_does_not_inherit_from_base(self):
         """CosmosDbLockingManager does NOT inherit from BaseLockingManager (different API)."""

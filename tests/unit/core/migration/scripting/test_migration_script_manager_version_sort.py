@@ -125,18 +125,22 @@ class TestParseFilenameAlphabeticVersion:
 
     # --- AC#6: versions alphabétiques déterministes ---
 
-    def test_parse_filename_alpha_version_a(self):
-        """AC#6: parse_filename('VA__desc.sql') returns version='A' (no hash)."""
-        mtype, version, desc, tags = self.mgr.parse_filename("VA__desc.sql")
-        assert mtype == MigrationType.SQL
-        assert version == "A"
-        assert desc == "desc"
+    def test_parse_filename_rejects_purely_alphabetic_version(self):
+        """A version must start with a digit, so 'VA__desc.sql' is not a migration.
 
-    def test_parse_filename_alpha_version_b(self):
-        """AC#6: parse_filename('VB__desc.sql') returns version='B' (no hash)."""
-        mtype, version, desc, tags = self.mgr.parse_filename("VB__desc.sql")
+        Accepting it would also make ``Users__seed.sql`` a migration at version
+        'sers' — the two have the same shape. See
+        tests/unit/core/migration/test_version_naming_convention.py.
+        """
+        mtype, version, _, _ = self.mgr.parse_filename("VA__desc.sql")
+        assert mtype == MigrationType.UNKNOWN
+        assert version is None
+
+    def test_parse_filename_alphanumeric_version_kept_verbatim(self):
+        """AC#6: a mixed version is returned as written, never hashed."""
+        mtype, version, desc, _ = self.mgr.parse_filename("V3.2A__desc.sql")
         assert mtype == MigrationType.SQL
-        assert version == "B"
+        assert version == "3.2A"
         assert desc == "desc"
 
     def test_compare_versions_alpha_order(self):
@@ -154,16 +158,21 @@ class TestParseFilenameAlphabeticVersion:
         result = self.mgr.compare_versions("B", "A")
         assert result == 1
 
-    def test_parse_filename_undo_alpha_version(self):
-        """Undo migrations also return raw version string (no hash)."""
-        mtype, version, desc, tags = self.mgr.parse_filename("UA__rollback.sql")
+    def test_parse_filename_undo_alphanumeric_version(self):
+        """Undo migrations also return the raw version string (no hash)."""
+        mtype, version, _, _ = self.mgr.parse_filename("U3.2A__rollback.sql")
         assert mtype == MigrationType.UNDO_SQL
-        assert version == "A"
+        assert version == "3.2A"
+
+    def test_parse_filename_rejects_undo_with_purely_alphabetic_version(self):
+        mtype, version, _, _ = self.mgr.parse_filename("UA__rollback.sql")
+        assert mtype == MigrationType.UNKNOWN
+        assert version is None
 
     def test_alpha_version_deterministic_across_calls(self):
         """Version string is stable across multiple parse calls (no hash randomness)."""
-        results = [self.mgr.parse_filename("VA__desc.sql")[1] for _ in range(10)]
-        assert all(v == "A" for v in results)
+        results = [self.mgr.parse_filename("V3.2A__desc.sql")[1] for _ in range(10)]
+        assert all(v == "3.2A" for v in results)
 
     # --- Edge cases: None versions and mixed alpha/numeric comparison ---
 
@@ -210,9 +219,13 @@ class TestIsVersionedScriptName:
         assert self.mgr.is_versioned_script_name("V1_0_0__seed.sql") is True
         assert self.mgr.is_versioned_script_name("V1_0_0__seed.py") is True
 
-    def test_letter_version_accepted(self):
-        """Letter-based V prefix versions match parse_filename; _determine_type alone would not."""
-        assert self.mgr.is_versioned_script_name("Va__letter.sql") is True
+    def test_letter_version_rejected(self):
+        """A version must start with a digit — both classifiers agree on this."""
+        assert self.mgr.is_versioned_script_name("Va__letter.sql") is False
+
+    def test_alphanumeric_version_accepted(self):
+        """Only the leading character must be a digit; later segments may mix."""
+        assert self.mgr.is_versioned_script_name("V3.2A__mixed.sql") is True
 
     def test_repeatable_undo_not_versioned(self):
         assert self.mgr.is_versioned_script_name("R__repeat.sql") is False

@@ -392,7 +392,7 @@ class DirectoryConfig:
             # on 'directory' silently resolves to an empty path and finds
             # nothing.
             return cls(
-                path=data.get("path", data.get("directory", "")),
+                path=str(data.get("path") or data.get("directory") or ""),
                 recursive=data.get("recursive", True),
             )
         else:

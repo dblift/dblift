@@ -544,7 +544,7 @@ class BaseDatabaseConfig(UrlBuilderMixin, ABC):
         return props
 
 
-@dataclass
+@dataclass(repr=False)  # keep BaseDatabaseConfig.__repr__ (credential-masked)
 class _IncompleteDatabaseConfig(BaseDatabaseConfig):
     """Concrete stub returned when _allow_incomplete=True and no registered type is found.
 

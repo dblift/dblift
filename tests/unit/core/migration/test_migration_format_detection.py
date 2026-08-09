@@ -149,46 +149,34 @@ class TestMigrationExecutorArchitecture:
 
         assert BaseMigrationExecutor is not None
 
-    def test_sql_executor_exists(self):
-        """Test that SqlMigrationExecutor exists."""
-        from core.migration.executors import SqlMigrationExecutor
+    def test_executor_factory_does_not_route_sql(self):
+        """SQL is executed by ExecutionEngine itself, never through the factory.
 
-        assert SqlMigrationExecutor is not None
-
-    def test_executor_factory_supports_sql(self):
-        """Test that executor factory supports SQL format."""
+        The engine interleaves transaction policy and history writing with
+        statement execution, which the executor contract cannot express. A
+        registered SQL executor would be an unreachable second implementation.
+        """
         from unittest.mock import Mock
 
         from core.migration.executors import MigrationExecutorFactory
 
-        # Create factory with mocks
         factory = MigrationExecutorFactory(
             provider=Mock(), config=Mock(database=Mock(type="postgresql")), log=Mock()
         )
 
-        # Verify SQL is supported
-        assert MigrationFormat.SQL in factory.get_supported_formats()
+        assert MigrationFormat.SQL not in factory.get_supported_formats()
 
-    def test_executor_factory_can_get_sql_executor(self):
-        """Test that factory can provide SQL executor."""
-        from unittest.mock import Mock
-
-        from core.migration.executors import MigrationExecutorFactory
-
-        # Create factory
-        factory = MigrationExecutorFactory(
-            provider=Mock(), config=Mock(database=Mock(type="postgresql")), log=Mock()
-        )
-
-        # Create a SQL migration
         migration = Migration(script_name="V1_0_0__test.sql", content="CREATE TABLE test (id INT);")
+        assert factory.get_executor(migration) is None
 
-        # Get executor
-        executor = factory.get_executor(migration)
+    def test_execution_engine_owns_the_sql_path(self):
+        """The engine must short-circuit SQL before reaching the factory."""
+        import inspect
 
-        # Verify we got an executor
-        assert executor is not None
-        assert executor.can_execute(migration)
+        from core.migration.executor.execution_engine import ExecutionEngine
+
+        source = inspect.getsource(ExecutionEngine.execute_migration)
+        assert "if migration.format != MigrationFormat.SQL:" in source
 
     def test_architecture_ready_for_new_formats(self):
         """Test that architecture is ready to accept new format executors."""

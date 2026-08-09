@@ -241,19 +241,19 @@ class MysqlQuirks(BaseQuirks):
         )
 
     def ddl_generator_class(self) -> Optional[Type["BaseSqlGenerator"]]:
-        """DDL generator relocated to the paid package; registered by register_pro_generators()."""
+        """DDL generator is supplied by an installed extension package."""
         return None
 
     def alter_generator_class(self) -> Optional[Type["BaseAlterGenerator"]]:
-        """ALTER generator relocated to the paid package; registered by register_pro_generators()."""
+        """ALTER generator is supplied by an installed extension package."""
         return None
 
     def vendor_queries_class(self) -> "Optional[Type[Any]]":
-        """MySQL-family rich metadata queries are registered by PRO."""
+        """MySQL-family rich metadata queries are supplied by an installed extension package."""
         return None
 
     def introspector_class(self) -> "Optional[Type[Any]]":
-        """MySQL-family rich introspection is registered by PRO."""
+        """MySQL-family rich introspection is supplied by an installed extension package."""
         return None
 
     def parser_class(self, parser_type: str) -> Optional[type]:
@@ -667,6 +667,18 @@ class MysqlQuirks(BaseQuirks):
         "json_bind_cast": FeatureGate(
             min_version="5.7.8+",
             description="CAST(? AS JSON) — native JSON type introduced in 5.7.8",
+        ),
+        "instant_add_column": FeatureGate(
+            # INSTANT is the default ALGORITHM as of 8.0.12 (INPLACE before
+            # that, which still rebuilds/rewrites the table for ADD COLUMN).
+            # Version-only: this is not edition-gated, but still narrower
+            # than "any ADD COLUMN is instant" -- callers must separately
+            # account for the per-statement restrictions this gate does not
+            # model (ROW_FORMAT=COMPRESSED, FULLTEXT index, an added
+            # AUTO_INCREMENT column disallowing concurrent DML, and, before
+            # 8.0.29, INSTANT only adding a column as the last column).
+            min_version="8.0.12+",
+            description="ALTER TABLE ... ADD COLUMN, ALGORITHM=INSTANT",
         ),
     }
 

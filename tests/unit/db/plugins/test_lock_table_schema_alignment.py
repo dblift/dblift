@@ -1,160 +1,81 @@
-"""Tests for lock table schema alignment across MySQL and DB2 plugins.
+"""Lock-table column alignment for the MySQL and DB2 providers.
 
-Verifies that CREATE TABLE SQL uses the standard column names
-(lock_name, acquired_at, acquired_by) as defined in the BaseLockingManager
-schema contract.
+The lock table must use the standard column names ``lock_name`` /
+``acquired_at`` / ``acquired_by``. A drifted name only surfaces at runtime
+against a real database, when the DDL and the DML disagree.
+
+These tests target the providers, which own the lock SQL for every
+relational dialect. Only SQLite and CosmosDB still delegate to a locking
+manager component.
 """
 
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
-from db.plugins.db2.db2.locking_manager import Db2LockingManager
-from db.plugins.mysql.mysql.locking_manager import MySqlLockingManager
+from db.plugins.db2.provider import Db2Provider
+from db.plugins.mysql.provider import MySqlProvider
 
 
-def _capture_create_table_sql(manager_class):
-    """Helper: instantiate a locking manager, call create_migration_lock_table_if_not_exists,
-    and return the SQL string passed to execute_statement."""
-    mock_qe = MagicMock()
-    mock_qe.table_exists.return_value = False
-    mock_qe.get_schema_qualified_name.return_value = "myschema.dblift_migration_lock"
-
-    manager = manager_class(query_executor=mock_qe)
-
-    mock_conn = MagicMock()
-    manager.create_migration_lock_table_if_not_exists(mock_conn, "myschema")
-
-    sql_called = mock_qe.execute_statement.call_args[0][1]
-    return sql_called
+def _provider(provider_class):
+    """Build a provider with connection handling stubbed out."""
+    provider = provider_class.__new__(provider_class)
+    provider.log = MagicMock()
+    provider.execute_statement = MagicMock(return_value=0)
+    provider.execute_query = MagicMock(return_value=[])
+    provider.create_schema_if_not_exists = MagicMock()
+    provider.table_exists = MagicMock(return_value=False)
+    provider.get_schema_qualified_name = MagicMock(return_value="myschema.dblift_migration_lock")
+    return provider
 
 
-# ── MySQL tests ──────────────────────────────────────────────────────────
+def _executed_sql(provider):
+    return " ".join(str(call) for call in provider.execute_statement.call_args_list).lower()
 
 
 @pytest.mark.unit
 class TestMySqlLockTableSchema:
+    """MySQL creates the lock table but takes the lock via GET_LOCK, not DML."""
+
     @pytest.fixture(autouse=True)
     def setup(self):
-        self.sql = _capture_create_table_sql(MySqlLockingManager)
+        self.provider = _provider(MySqlProvider)
+        self.provider.create_migration_lock_table_if_not_exists("myschema")
+        self.sql = _executed_sql(self.provider)
 
-    def test_mysql_create_table_contains_lock_name(self):
-        assert "lock_name" in self.sql.lower()
+    @pytest.mark.parametrize("column", ["lock_name", "acquired_at", "acquired_by"])
+    def test_create_table_declares_standard_column(self, column):
+        assert column in self.sql
 
-    def test_mysql_create_table_contains_acquired_at(self):
-        assert "acquired_at" in self.sql.lower()
-
-    def test_mysql_create_table_contains_acquired_by(self):
-        assert "acquired_by" in self.sql.lower()
-
-    def test_mysql_create_table_does_not_contain_lock_id(self):
-        assert "lock_id" not in self.sql.lower()
-
-
-# ── MySQL DML tests ───────────────────────────────────────────────────────
-
-
-def _capture_mysql_dml_sql(mock_execute_query_result):
-    """Helper: run _try_table_based_locking_acquire and return all execute_statement SQL."""
-    mock_qe = MagicMock()
-    mock_qe.table_exists.return_value = True  # table exists, skip CREATE TABLE
-    mock_qe.get_schema_qualified_name.return_value = "myschema.dblift_migration_lock"
-    mock_qe.execute_query.return_value = mock_execute_query_result
-    mock_qe.execute_statement.return_value = 0
-
-    manager = MySqlLockingManager(query_executor=mock_qe)
-    mock_conn = MagicMock()
-    manager._try_table_based_locking_acquire(mock_conn, "myschema", 1)
-
-    return " ".join(str(c) for c in mock_qe.execute_statement.call_args_list)
-
-
-@pytest.mark.unit
-class TestMySqlDmlSchema:
-    """Verify DML queries (INSERT/UPDATE/DELETE) use aligned column names."""
-
-    def test_mysql_insert_sql_uses_lock_name(self):
-        # No existing lock row → INSERT path
-        combined = _capture_mysql_dml_sql([])
-        assert "lock_name" in combined.lower()
-        assert "lock_id" not in combined.lower()
-
-    def test_mysql_insert_sql_uses_acquired_at(self):
-        combined = _capture_mysql_dml_sql([])
-        assert "acquired_at" in combined.lower()
-        assert "locked_at" not in combined.lower()
-
-    def test_mysql_insert_sql_uses_acquired_by(self):
-        combined = _capture_mysql_dml_sql([])
-        assert "acquired_by" in combined.lower()
-        assert "locked_by" not in combined.lower()
-
-    def test_mysql_update_sql_uses_acquired_columns(self):
-        # Existing lock row → UPDATE path
-        existing_row = [{"lock_name": "migration", "acquired_at": "now", "acquired_by": "x"}]
-        combined = _capture_mysql_dml_sql(existing_row)
-        assert "acquired_at" in combined.lower()
-        assert "acquired_by" in combined.lower()
-        assert "locked_at" not in combined.lower()
-        assert "locked_by" not in combined.lower()
-
-
-# ── DB2 tests ────────────────────────────────────────────────────────────
+    def test_create_table_has_no_drifted_column(self):
+        assert "lock_id" not in self.sql
+        assert "locked_at" not in self.sql
+        assert "locked_by" not in self.sql
 
 
 @pytest.mark.unit
 class TestDb2LockTableSchema:
+    """DB2 is table-backed: DDL and DML must agree on the column names."""
+
     @pytest.fixture(autouse=True)
     def setup(self):
-        self.sql = _capture_create_table_sql(Db2LockingManager)
+        self.provider = _provider(Db2Provider)
+        self.provider.create_migration_lock_table_if_not_exists("myschema")
+        self.sql = _executed_sql(self.provider)
 
-    def test_db2_create_table_contains_lock_name(self):
-        assert "lock_name" in self.sql.lower()
+    @pytest.mark.parametrize("column", ["lock_name", "acquired_at", "acquired_by"])
+    def test_create_table_declares_standard_column(self, column):
+        assert column in self.sql
 
-    def test_db2_create_table_contains_acquired_at(self):
-        assert "acquired_at" in self.sql.lower()
+    def test_create_table_has_no_drifted_column(self):
+        assert "lock_id" not in self.sql
+        assert "locked_at" not in self.sql
+        assert "locked_by" not in self.sql
 
-    def test_db2_create_table_contains_acquired_by(self):
-        assert "acquired_by" in self.sql.lower()
+    @pytest.mark.parametrize("column", ["lock_name", "acquired_at", "acquired_by"])
+    def test_acquire_dml_uses_the_same_columns(self, column):
+        provider = _provider(Db2Provider)
+        with patch("db.plugins.db2.provider.socket.gethostname", return_value="host"):
+            provider.acquire_migration_lock("myschema", wait_timeout_seconds=0)
 
-    def test_db2_create_table_does_not_contain_lock_id(self):
-        assert "lock_id" not in self.sql.lower()
-
-
-# ── DB2 DML tests ────────────────────────────────────────────────────────
-
-
-def _capture_db2_dml_sql():
-    """Helper: run DB2 _try_table_based_locking_acquire and return all execute_statement SQL."""
-    mock_qe = MagicMock()
-    mock_qe.table_exists.return_value = True  # table exists everywhere
-    mock_qe.get_schema_qualified_name.return_value = "myschema.DBLIFT_MIGRATION_LOCK"
-    mock_qe.execute_statement.return_value = 0
-
-    manager = Db2LockingManager(query_executor=mock_qe)
-    mock_conn = MagicMock()
-    mock_conn.getAutoCommit.return_value = False
-
-    manager._try_table_based_locking_acquire(mock_conn, "myschema", 1)
-
-    return " ".join(str(c) for c in mock_qe.execute_statement.call_args_list)
-
-
-@pytest.mark.unit
-class TestDb2DmlSchema:
-    """Verify DML queries (MERGE, cleanup DELETE) use aligned column names."""
-
-    def test_db2_merge_sql_uses_lock_name(self):
-        combined = _capture_db2_dml_sql()
-        assert "lock_name" in combined.lower()
-        assert "lock_id" not in combined.lower()
-
-    def test_db2_merge_sql_uses_acquired_at(self):
-        combined = _capture_db2_dml_sql()
-        assert "acquired_at" in combined.lower()
-        assert "locked_at" not in combined.lower()
-
-    def test_db2_merge_sql_uses_acquired_by(self):
-        combined = _capture_db2_dml_sql()
-        assert "acquired_by" in combined.lower()
-        assert "locked_by" not in combined.lower()
+        assert column in _executed_sql(provider)

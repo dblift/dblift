@@ -8,7 +8,7 @@ from config.database_config import BaseDatabaseConfig, register_database_type
 
 # lint: allow-dialect-string: config type registration
 @register_database_type("duckdb")
-@dataclass
+@dataclass(repr=False)  # keep BaseDatabaseConfig.__repr__ (credential-masked)
 class DuckDBConfig(BaseDatabaseConfig):
     """Configuration for DuckDB connections.
 

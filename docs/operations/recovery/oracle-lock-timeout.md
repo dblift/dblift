@@ -1,7 +1,7 @@
 # Oracle `DBMS_LOCK` timeout
 
 dblift serialises Oracle migrations via the [`DBMS_LOCK`][1] package
-(`db/plugins/oracle/oracle/locking_manager.py`). When the lock is held
+(`db/plugins/oracle/provider.py`, `acquire_migration_lock`). When the lock is held
 longer than the configured timeout, the new migration aborts with an
 `ORA-` lock error. The schema is untouched, but the operator needs to
 know whether the lock holder is alive (wait), wedged (kill), or
@@ -80,7 +80,8 @@ finish or fail naturally — killing a healthy migration mid-DDL is the
        EXEC DBMS_LOCK.RELEASE('<lock-handle>');
 
    `DBMS_LOCK.RELEASE` requires the handle, which dblift derives from
-   the schema name (see `locking_manager.py`); contact the developer
+   the schema name (see `acquire_migration_lock` in the Oracle provider);
+   contact the developer
    team for the exact handle if you can't read the source.
 4. Investigate why the holder wedged before retrying. The
    [network split runbook](network-split.md) often applies.
