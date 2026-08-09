@@ -349,6 +349,9 @@ class ConsoleLog(AbstractLog):
                         performance_lines.append(line)
                         continue
 
+                    if in_sql_section and line.strip() == "Query Results:":
+                        in_sql_section = False
+
                     if in_sql_section:
                         performance_lines.append(line)
                         continue
