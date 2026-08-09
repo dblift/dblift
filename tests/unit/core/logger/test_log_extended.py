@@ -535,6 +535,57 @@ class TestConsoleLog:
         assert "SQL Statements:" in captured.err
         assert "CREATE TABLE users" in captured.err
 
+    def test_display_result_summary_show_sql_and_query_results_no_reprint(self, capsys):
+        """--show-sql plus --show-query-results must not reprint Query Results after SUCCESS."""
+        log = ConsoleLog("test_log")
+        result = MigrateResult()
+        result.success = True
+        result.target_schema = "test_schema"
+        result.show_sql = True
+        result.add_sql_migration(
+            MigrationSqlInfo("V1__init.sql", version="1", statements=["CREATE TABLE users"])
+        )
+        result.show_query_results = True
+        result.add_query_result("V1__init.sql", "1", "init", "SELECT * FROM users", ["id"], [[1]])
+
+        log._display_result_summary(result)
+
+        captured = capsys.readouterr()
+        assert "SQL Statements:" in captured.err
+        assert "Query Results:" not in captured.err
+
+    def test_display_result_summary_show_query_results_alone_no_reprint(self, capsys):
+        """--show-query-results without --show-sql must not reprint results after SUCCESS."""
+        log = ConsoleLog("test_log")
+        result = MigrateResult()
+        result.success = True
+        result.target_schema = "test_schema"
+        result.show_query_results = True
+        result.add_query_result("V1__init.sql", "1", "init", "SELECT * FROM users", ["id"], [[1]])
+
+        log._display_result_summary(result)
+
+        captured = capsys.readouterr()
+        assert "Query Results:" not in captured.err
+
+    def test_display_result_summary_show_sql_alone_prints_sql(self, capsys):
+        """--show-sql without --show-query-results still prints SQL Statements normally."""
+        log = ConsoleLog("test_log")
+        result = MigrateResult()
+        result.success = True
+        result.target_schema = "test_schema"
+        result.show_sql = True
+        result.add_sql_migration(
+            MigrationSqlInfo("V1__init.sql", version="1", statements=["CREATE TABLE users"])
+        )
+
+        log._display_result_summary(result)
+
+        captured = capsys.readouterr()
+        assert "SQL Statements:" in captured.err
+        assert "CREATE TABLE users" in captured.err
+        assert "Query Results:" not in captured.err
+
     def test_display_result_summary_with_journal(self, capsys):
         """Test _display_result_summary with journal data."""
         log = ConsoleLog("test_log")

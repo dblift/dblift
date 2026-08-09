@@ -110,7 +110,11 @@ class JsonFormatter:
         output.update(self._build_time_metadata(result))
         output.update(self._build_base_metadata(result, schema, database_name))
         output.update(self._format_sql_visibility(result))
-        output.update(self._format_query_results(result))
+        # In multi-command mode, query_results is already emitted per-command
+        # inside the "commands" array (see _format_command_result_data);
+        # skip the root-level copy to avoid duplicating the payload.
+        if not (self.using_multi_command and self.command_results):
+            output.update(self._format_query_results(result))
         output.update(self._format_migrate_metadata(result, command_type))
         output.update(self._format_clean_metadata(result, command_type))
 

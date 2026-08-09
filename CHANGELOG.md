@@ -15,6 +15,58 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
+## [3.5.2] - 2026-08-08
+
+### Added
+
+### Changed
+
+### Fixed
+
+- **`dblift info` listed pending versioned migrations in lexicographic order**
+  (`V10` before `V2`), disagreeing with the numeric order `migrate` actually
+  executes them in. Pending sorts now delegate to the same version
+  comparator `migrate`/dry-run already use, instead of sorting on the raw
+  version string.
+
+- **`dblift info`'s `Type` column truncated values** like `UNDO_SQL` and
+  `REPEATABLE` to 3-4 characters, because every column carried a hardcoded
+  `max_width`. All `info` table columns now size to their content instead,
+  removing the caps that made this — and any future long value — truncate.
+
+- **`--show-query-results` duplicated the captured rows in JSON logs**, once
+  at the log root and again under each command's own entry. The root-level
+  copy is now suppressed once a per-command copy already exists.
+
+- **`dblift info` reported an applied migration as `Success` even after its
+  script file was deleted from disk.** The resolved/missing join only
+  checked scripts still pending for "still present," so an already-applied
+  script with nothing pending for it was never confirmed as still on disk;
+  separately, `info` re-fetched history as a disconnected set of objects
+  that never received a resolved flag in the first place. `info` now
+  renders `Missing` / `Future` / `Failed missing` / `Failed future`
+  correctly, using the same join `validate` already relies on.
+
+- **`dblift undo` with no `--target-version` misbehaved once a version had
+  been undone, reapplied, and undone again** — it logged a confusing
+  "already been undone, please specify a version" message even though it
+  then correctly undid the right version anyway, and the reported current
+  version stayed stuck on the version that had actually been undone. Root
+  cause was an undo-rank lookup that returned the first undo found for a
+  version instead of the latest, so a reapply that happened before the most
+  recent undo looked like it came after "the" undo. The no-target scan also
+  no longer routes already-undone candidates through the explicit-target
+  "please specify" message — it skips them silently while still picking
+  the correct next version.
+
+- **`--show-sql` combined with `--show-query-results` reprinted query result
+  tables on the console after the `SUCCESS` banner**, duplicating output
+  already streamed live during execution. `--show-query-results` alone was
+  unaffected. The console summary filter now stops capturing at the end of
+  the SQL statements section instead of running to the end of the report.
+
+### Removed
+
 ## [3.5.1] - 2026-08-08
 
 ### Added

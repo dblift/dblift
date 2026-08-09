@@ -146,14 +146,20 @@ class MigrationDataService:
         Returns:
             int: Installed rank of undo migration, or -1 if not found
         """
+        # A version can be undone more than once (undo, reapply, undo again),
+        # so the latest undo -- not the first one found -- determines whether
+        # a later reapply superseded it.
+        latest_rank = -1
         for migration in migrations:
             if (
                 self._get_migration_type(migration) == "UNDO_SQL"
                 and str(getattr(migration, "version", "")) == version
                 and self._is_migration_successful(migration)
             ):
-                return getattr(migration, "installed_rank", 0)
-        return -1
+                rank = getattr(migration, "installed_rank", 0)
+                if rank > latest_rank:
+                    latest_rank = rank
+        return latest_rank
 
     def _get_baseline_version(self, applied_migrations: List[Migration]) -> Optional[str]:
         """Get the baseline version from applied migrations.

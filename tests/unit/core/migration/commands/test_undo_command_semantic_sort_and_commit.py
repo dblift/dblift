@@ -37,6 +37,7 @@ def _make_command(applied_migrations):
 
     migration_rules = MagicMock()
     migration_rules.should_undo_version.return_value = (True, None)
+    migration_rules._is_currently_undone.return_value = False
 
     executor_factory = MagicMock()
     executor_factory.get_executor.return_value = None
@@ -87,7 +88,7 @@ class TestVersionSortIsSemanticNotLexicographic:
         # will actually happen. Instead, verify the rules layer was queried
         # for V10 first (the top of the sorted list) — NOT V4.
         rules_calls = [
-            call.args[0] for call in cmd.migration_rules.should_undo_version.call_args_list
+            call.args[0] for call in cmd.migration_rules._is_currently_undone.call_args_list
         ]
         assert rules_calls, "migration_rules was never consulted"
         assert rules_calls[0] == "10", (
@@ -103,6 +104,6 @@ class TestVersionSortIsSemanticNotLexicographic:
         cmd.execute(scripts_dir=MagicMock())
 
         rules_calls = [
-            call.args[0] for call in cmd.migration_rules.should_undo_version.call_args_list
+            call.args[0] for call in cmd.migration_rules._is_currently_undone.call_args_list
         ]
         assert rules_calls[0] == "1.10", f"1.10 should sort after 1.9, got {rules_calls[0]}"

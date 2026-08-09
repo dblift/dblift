@@ -122,7 +122,7 @@ class InfoCommand(BaseCommand):
             # Get ALL migrations from history (not filtered) to show complete sequential history
             # The state's applied_objects is filtered to exclude undone migrations,
             # but for info command we need to show ALL migrations in chronological order
-            all_applied_migrations = self.history_manager.get_applied_migrations()
+            all_applied_migrations = migration_state.all_applied_objects
 
             # Populate current schema version from applied (non-undone) migrations
             applied_migrations = migration_state.applied_objects
