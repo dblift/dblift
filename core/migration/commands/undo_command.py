@@ -275,15 +275,15 @@ class UndoCommand(BaseCommand):
                     if normalized_exclude_versions and version in normalized_exclude_versions:
                         continue
 
-                    can_undo, message = self.migration_rules.should_undo_version(
-                        version, applied_migrations
-                    )
-                    if can_undo:
-                        migrations_to_undo.append(migration)
-                        if not tag_filter_active:
-                            break  # Only undo the most recent undoable migration
-                    elif message:
-                        self.log.info(message)
+                    # Auto-scan mode: silently skip candidates that are already
+                    # undone instead of routing through should_undo_version(),
+                    # whose "please specify version X" message is meant for the
+                    # explicit --target-version path below, not this scan.
+                    if self.migration_rules._is_currently_undone(version, applied_migrations):
+                        continue
+                    migrations_to_undo.append(migration)
+                    if not tag_filter_active:
+                        break  # Only undo the most recent undoable migration
             else:
                 # Target version specified - find all migrations newer than target that can be undone
                 for migration in reversed(applied_migrations):

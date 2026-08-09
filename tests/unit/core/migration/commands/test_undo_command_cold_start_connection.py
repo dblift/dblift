@@ -81,6 +81,7 @@ def _make_command(applied_migrations):
 
     migration_rules = MagicMock()
     migration_rules.should_undo_version.return_value = (True, None)
+    migration_rules._is_currently_undone.return_value = False
 
     executor_factory = MagicMock()
     executor_factory.get_executor.return_value = None
@@ -134,7 +135,7 @@ def test_cold_start_undo_connects_before_deciding_nothing_to_undo():
     )
 
     checked_versions = [
-        call.args[0] for call in cmd.migration_rules.should_undo_version.call_args_list
+        call.args[0] for call in cmd.migration_rules._is_currently_undone.call_args_list
     ]
     assert checked_versions == ["1"], (
         "the applied migration must be found once connected, not silently "

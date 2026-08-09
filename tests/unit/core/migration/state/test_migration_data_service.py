@@ -139,6 +139,20 @@ class TestGetReappliedVersions:
         result = service._get_reapplied_versions(migrations)
         assert result == set()
 
+    def test_not_reapplied_when_undone_again_after_reapply(self, service):
+        # V1 stays applied throughout; V2 goes apply -> undo -> reapply -> undo.
+        # The latest event for V2 is the second undo, so it must NOT be
+        # considered reapplied even though an earlier reapply exists.
+        migrations = [
+            make_migration(version="1", type="SQL", success=True, installed_rank=1),
+            make_migration(version="2", type="SQL", success=True, installed_rank=2),
+            make_migration(version="2", type="UNDO_SQL", success=True, installed_rank=3),
+            make_migration(version="2", type="SQL", success=True, installed_rank=4),
+            make_migration(version="2", type="UNDO_SQL", success=True, installed_rank=5),
+        ]
+        result = service._get_reapplied_versions(migrations)
+        assert result == set()
+
 
 # ---------- _is_version_reapplied / _get_undo_rank ----------
 
@@ -185,6 +199,17 @@ class TestGetUndoRank:
             make_migration(version="1", type="UNDO_SQL", success=False, installed_rank=3),
         ]
         assert service._get_undo_rank(migrations, "1") == -1
+
+    def test_returns_latest_rank_when_undone_more_than_once(self, service):
+        # undo, reapply, undo again -- must return the latest undo's rank (5),
+        # not the first one found (3).
+        migrations = [
+            make_migration(version="2", type="SQL", success=True, installed_rank=2),
+            make_migration(version="2", type="UNDO_SQL", success=True, installed_rank=3),
+            make_migration(version="2", type="SQL", success=True, installed_rank=4),
+            make_migration(version="2", type="UNDO_SQL", success=True, installed_rank=5),
+        ]
+        assert service._get_undo_rank(migrations, "2") == 5
 
 
 # ---------- _get_baseline_version ----------
