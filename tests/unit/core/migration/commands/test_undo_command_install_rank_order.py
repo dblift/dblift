@@ -41,6 +41,7 @@ def _make_command(applied_migrations):
 
     migration_rules = MagicMock()
     migration_rules.should_undo_version.return_value = (True, None)
+    migration_rules._is_currently_undone.return_value = False
 
     executor_factory = MagicMock()
     executor_factory.get_executor.return_value = None
@@ -91,7 +92,7 @@ class TestNoTargetVersionUsesInstallRankNotVersionOrder:
         cmd.execute(scripts_dir=MagicMock())
 
         checked_versions = [
-            call.args[0] for call in cmd.migration_rules.should_undo_version.call_args_list
+            call.args[0] for call in cmd.migration_rules._is_currently_undone.call_args_list
         ]
         assert checked_versions == ["2"], (
             f"Expected V2 (highest installed_rank / most recently applied) to be "
@@ -109,7 +110,7 @@ class TestNoTargetVersionUsesInstallRankNotVersionOrder:
         cmd.execute(scripts_dir=MagicMock())
 
         checked_versions = [
-            call.args[0] for call in cmd.migration_rules.should_undo_version.call_args_list
+            call.args[0] for call in cmd.migration_rules._is_currently_undone.call_args_list
         ]
         assert checked_versions == ["1"]
 
@@ -122,7 +123,7 @@ class TestNoTargetVersionUsesInstallRankNotVersionOrder:
 
         cmd.execute(scripts_dir=MagicMock(), tags="special")
 
-        assert cmd.migration_rules.should_undo_version.call_args_list == []
+        assert cmd.migration_rules._is_currently_undone.call_args_list == []
 
     def test_skips_failed_migration_and_falls_through(self):
         # The most recently applied migration failed and must be skipped,
@@ -134,7 +135,7 @@ class TestNoTargetVersionUsesInstallRankNotVersionOrder:
         cmd.execute(scripts_dir=MagicMock())
 
         checked_versions = [
-            call.args[0] for call in cmd.migration_rules.should_undo_version.call_args_list
+            call.args[0] for call in cmd.migration_rules._is_currently_undone.call_args_list
         ]
         assert checked_versions == ["1"]
 
@@ -148,7 +149,7 @@ class TestNoTargetVersionUsesInstallRankNotVersionOrder:
         cmd.execute(scripts_dir=MagicMock())
 
         checked_versions = [
-            call.args[0] for call in cmd.migration_rules.should_undo_version.call_args_list
+            call.args[0] for call in cmd.migration_rules._is_currently_undone.call_args_list
         ]
         assert checked_versions == ["1"]
 
@@ -162,7 +163,7 @@ class TestNoTargetVersionUsesInstallRankNotVersionOrder:
         cmd.execute(scripts_dir=MagicMock(), versions="1")
 
         checked_versions = [
-            call.args[0] for call in cmd.migration_rules.should_undo_version.call_args_list
+            call.args[0] for call in cmd.migration_rules._is_currently_undone.call_args_list
         ]
         assert checked_versions == ["1"]
 
@@ -176,6 +177,6 @@ class TestNoTargetVersionUsesInstallRankNotVersionOrder:
         cmd.execute(scripts_dir=MagicMock(), exclude_versions="2")
 
         checked_versions = [
-            call.args[0] for call in cmd.migration_rules.should_undo_version.call_args_list
+            call.args[0] for call in cmd.migration_rules._is_currently_undone.call_args_list
         ]
         assert checked_versions == ["1"]

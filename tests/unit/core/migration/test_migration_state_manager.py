@@ -144,6 +144,80 @@ def test_versioned_migration_pending_only_when_not_reapplied(include_reapply):
         assert pending[0].version == version
 
 
+def test_undo_reapply_undo_cycle_leaves_version_undone():
+    """V2 goes apply -> undo -> reapply -> undo again while V1 stays applied
+    throughout. Since the latest event for V2 is an undo, build_state()
+    must filter V2 out of applied_objects and report V1 as the current
+    version -- not still report V2 as applied."""
+    v1 = _create_versioned_migration("1", installed_rank=1)
+    v2_apply = _create_versioned_migration("2", installed_rank=2)
+    v2_undo = _create_undo_migration("2", installed_rank=3)
+    v2_reapply = _create_versioned_migration("2", installed_rank=4)
+    v2_undo_again = _create_undo_migration("2", installed_rank=5)
+    applied = [v1, v2_apply, v2_undo, v2_reapply, v2_undo_again]
+
+    log = DummyLog()
+    rules = MigrationRules(log)
+    manager = MigrationStateManager(
+        log,
+        history_manager=StubHistoryManager(applied),
+        script_manager=StubScriptManager([]),
+        migration_rules=rules,
+    )
+
+    state = manager.build_state(scripts_dir=None)
+
+    # UNDO_SQL rows aren't versioned-apply rows, so they stay in
+    # applied_objects regardless; only the SQL/PYTHON "apply" rows for the
+    # undone version must be filtered out.
+    versioned_versions = {m.version for m in state.applied_objects if m.type == MigrationType.SQL}
+    assert versioned_versions == {"1"}
+    assert manager.get_current_version(state.applied_objects) == "1"
+
+
+def test_simple_undo_undo_cycle_steps_version_down_cleanly():
+    """Regression guard for the already-working simple case: migrate to V2
+    once (no reapply cycle), then undo twice -- schema version steps
+    2 -> 1 -> None cleanly."""
+    v1 = _create_versioned_migration("1", installed_rank=1)
+    v2 = _create_versioned_migration("2", installed_rank=2)
+
+    log = DummyLog()
+    rules = MigrationRules(log)
+
+    # Before any undo: current version is 2.
+    manager = MigrationStateManager(
+        log,
+        history_manager=StubHistoryManager([v1, v2]),
+        script_manager=StubScriptManager([]),
+        migration_rules=rules,
+    )
+    state = manager.build_state(scripts_dir=None)
+    assert manager.get_current_version(state.applied_objects) == "2"
+
+    # After undoing V2: current version is 1.
+    v2_undo = _create_undo_migration("2", installed_rank=3)
+    manager = MigrationStateManager(
+        log,
+        history_manager=StubHistoryManager([v1, v2, v2_undo]),
+        script_manager=StubScriptManager([]),
+        migration_rules=rules,
+    )
+    state = manager.build_state(scripts_dir=None)
+    assert manager.get_current_version(state.applied_objects) == "1"
+
+    # After undoing V1 too: no version left.
+    v1_undo = _create_undo_migration("1", installed_rank=4)
+    manager = MigrationStateManager(
+        log,
+        history_manager=StubHistoryManager([v1, v2, v2_undo, v1_undo]),
+        script_manager=StubScriptManager([]),
+        migration_rules=rules,
+    )
+    state = manager.build_state(scripts_dir=None)
+    assert manager.get_current_version(state.applied_objects) is None
+
+
 class TestLookupChecksum:
     """Tests for _lookup_checksum static method — basename extraction coherence."""
 
