@@ -15,6 +15,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
+## [3.6.0] - 2026-08-09
+
+### Added
+
+- **`online_table_move` feature gate for Oracle.** `ALTER TABLE ... MOVE
+  ONLINE` for a whole (non-partitioned) table is a 12.2+, Enterprise
+  Edition-and-above feature (Standard Edition 2 does not support it, per
+  Oracle's own Database Licensing Information User Manual); Oracle Database
+  Free carries the same feature set as Enterprise, resource-limited only.
+  Consumers that capture `server_info` can now resolve this feature's
+  availability through `supports_feature`, the same tri-state way as the
+  existing `online_index_build`/`online_alter_column` gates.
+
+### Changed
+
+### Fixed
+
+### Removed
+
 ## [3.5.2] - 2026-08-08
 
 ### Added
