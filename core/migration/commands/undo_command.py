@@ -519,6 +519,10 @@ class UndoCommand(BaseCommand):
                         "migration.script.completed",
                         {**_undo_script_data, "execution_time": execution_time},
                     )
+                    _emit_script_event(
+                        "undo.script.rolled_back",
+                        {**_undo_script_data, "execution_time": execution_time},
+                    )
 
                     self.log.info(f"Successfully undone migration {migration.script_name}")
 

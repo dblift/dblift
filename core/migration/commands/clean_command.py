@@ -7,6 +7,7 @@ from typing import Any, Dict, List, Optional
 
 from core.logger.results import CleanResult
 
+from ._script_events import emit_script_event as _emit_script_event
 from .base_command import BaseCommand
 
 
@@ -146,6 +147,9 @@ class CleanCommand(BaseCommand):
                             object_type=obj.object_type,
                             name=obj.name,
                             schema=self.config.database.schema,
+                        )
+                        _emit_script_event(
+                            "clean.object.removed", {"type": obj.object_type, "name": obj.name}
                         )
                 except Exception as e:
                     error = f"Failed to drop {obj.object_type} {obj.name}: {e}"

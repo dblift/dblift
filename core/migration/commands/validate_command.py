@@ -66,6 +66,15 @@ class ValidateCommand(BaseCommand):
                 exclude_versions=exclude_versions,
             )
 
+            self._execute_callbacks(
+                scripts_dir,
+                "beforeValidate",
+                recursive,
+                additional_dirs,
+                dir_recursive_map,
+                result=result,
+            )
+
             validation_result = self.validator.validate_migrations(
                 scripts_dir,
                 "validate",
@@ -76,6 +85,15 @@ class ValidateCommand(BaseCommand):
                 exclude_tags=exclude_tags,
                 versions=versions,
                 exclude_versions=exclude_versions,
+            )
+
+            self._execute_callbacks(
+                scripts_dir,
+                "afterValidate",
+                recursive,
+                additional_dirs,
+                dir_recursive_map,
+                result=result,
             )
 
             result.success = validation_result.success

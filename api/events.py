@@ -206,6 +206,7 @@ class Event:
 
     # ----- Common operation context (used across multiple event types) -----
     operation: Optional[str] = None
+    name: Optional[str] = None
     target_version: Optional[str] = None
     dry_run: Optional[bool] = None
     show_sql: Optional[bool] = None
