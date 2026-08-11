@@ -34,5 +34,3 @@ def test_migration_data_from_state_successful_baseline_uses_baseline_state():
     )
     assert len(rows) == 1
     assert rows[0]["state"] == "Baseline"
-
-

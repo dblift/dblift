@@ -53,7 +53,9 @@ def _build_state(applied_migrations, current_version=None, undone_versions=None)
     )
 
 
-def _build_pending_state(pending_migrations, scripts_dir=None, baseline_version=None, target_version=None):
+def _build_pending_state(
+    pending_migrations, scripts_dir=None, baseline_version=None, target_version=None
+):
     """Same idea as _build_state, but for pending entries via
     MigrationStateService.determine_pending_state()."""
     context = {

@@ -79,5 +79,3 @@ def test_migration_state_manager_uses_is_migration_failure():
 
     src = inspect.getsource(mod)
     assert "is_migration_failure" in src
-
-

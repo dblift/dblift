@@ -88,5 +88,3 @@ class TestIsVersionedType(unittest.TestCase):
 
         coll = self._c()
         self.assertFalse(coll._is_versioned_type(MigrationType.REPEATABLE))
-
-

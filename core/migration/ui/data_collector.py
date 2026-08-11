@@ -187,7 +187,9 @@ class MigrationDataCollector:
         # already-computed statuses instead of re-deriving them here.
         applied_status_by_id = {
             id(migration): entry.status
-            for migration, entry in zip(migration_state.all_applied_objects, migration_state.applied)
+            for migration, entry in zip(
+                migration_state.all_applied_objects, migration_state.applied
+            )
         }
         pending_status_by_id = {
             id(migration): entry.status
