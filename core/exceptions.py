@@ -50,6 +50,25 @@ class NoSqlWriteNotSupportedError(ExecutionError):
     """
 
 
+class NoSqlQueryLanguageUnsupportedError(ExecutionError):
+    """Raised when a string statement reaches a store with no query language.
+
+    Sibling of :class:`NoSqlWriteNotSupportedError`, not a subclass. That
+    one means a *write* was sent to a read-only query API — Cosmos DB
+    executes ``SELECT`` and rejects the rest. This one means there is no
+    string language to execute at all: MongoDB reads are ``find()`` calls,
+    not statements, so a string arriving at the query executor is an error
+    whatever it says.
+
+    The remedy is always the same and belongs in the message: reach the
+    driver through ``context.db`` (a ``pymongo.database.Database``) or
+    ``context.raw_client``.
+    """
+
+    #: Stable diagnostic code quoted in the message and in the docs.
+    code = "DBLIFT-NOSQL-002"
+
+
 # --- Validation exceptions ---
 
 
