@@ -1,14 +1,10 @@
 """Coverage tests for core/migration/ui/data_collector.py.
 
 Targets the uncovered lines around _format_installed_on, _get_migration_type_string,
-_status_to_display_state, _is_migration_type_equal, _is_versioned_type,
-get_migration_data, _get_migration_data_from_state, _find_undo_versions,
-_find_current_and_baseline_version, _collect_versioned_migrations,
-_build_repeatable_checksums, _sort_applied_migrations,
-_detect_out_of_order_migrations, _get_undone_versions, _get_reapplied_versions,
-_should_exclude_migration, _clean_delete_description, _get_category_from_type,
-_get_type_from_migration_type, _format_version, _determine_pending_migration_status,
-_compare_versions.
+_is_migration_type_equal, _is_versioned_type, get_migration_data,
+_get_migration_data_from_state, _find_undo_versions, _should_exclude_migration,
+_clean_delete_description, _get_category_from_type, _get_type_from_migration_type,
+_format_version, _compare_versions.
 """
 
 import datetime
@@ -21,7 +17,7 @@ import pytest
 
 from core.logger import NullLog
 from core.migration.migration import Migration, MigrationType
-from core.migration.state.migration_state import MigrationState
+from core.migration.state.migration_state import MigrationEntry, MigrationState
 from core.migration.ui.data_collector import MigrationDataCollector
 
 pytestmark = pytest.mark.unit
@@ -63,6 +59,17 @@ def _make_migration(
     m.execution_time = execution_time
     m.filepath = ""
     return m
+
+
+def _applied_state(migrations_and_statuses, **state_kwargs):
+    """Build a MigrationState whose .applied/.all_applied_objects mirror what
+    MigrationStateManager.build_state() produces (MigrationStateService-computed
+    statuses), so _get_migration_data_from_state can look status up instead of
+    re-deriving it.
+    """
+    migrations = [m for m, _ in migrations_and_statuses]
+    entries = [MigrationEntry.from_migration(m, status=s) for m, s in migrations_and_statuses]
+    return MigrationState(all_applied_objects=migrations, applied=entries, **state_kwargs)
 
 
 # ===========================================================================
@@ -149,33 +156,6 @@ class TestGetMigrationTypeStringCoverage(unittest.TestCase):
 
 
 # ===========================================================================
-# _status_to_display_state  (lines 90-96)
-# ===========================================================================
-
-
-class TestStatusToDisplayStateCoverage(unittest.TestCase):
-    def test_success(self):
-        result = MigrationDataCollector._status_to_display_state("SUCCESS")
-        assert result == "Success"
-
-    def test_out_of_order(self):
-        result = MigrationDataCollector._status_to_display_state("OUT OF ORDER")
-        assert result == "Out of order"
-
-    def test_baseline(self):
-        result = MigrationDataCollector._status_to_display_state("BASELINE")
-        assert result == "Baseline"
-
-    def test_other_status_capitalized(self):
-        result = MigrationDataCollector._status_to_display_state("FAILED")
-        assert result == "Failed"
-
-    def test_pending_capitalized(self):
-        result = MigrationDataCollector._status_to_display_state("PENDING")
-        assert result == "Pending"
-
-
-# ===========================================================================
 # _is_migration_type_equal  (lines 98-106)
 # ===========================================================================
 
@@ -224,247 +204,6 @@ class TestIsVersionedTypeCoverage(unittest.TestCase):
 
     def test_string_sql_is_versioned(self):
         assert self._c()._is_versioned_type("SQL") is True
-
-
-# ===========================================================================
-# _find_current_and_baseline_version  (lines 631-646)
-# ===========================================================================
-
-
-class TestFindCurrentAndBaselineVersionCoverage(unittest.TestCase):
-    def _c(self):
-        return _make_collector()[0]
-
-    def test_empty_migrations_returns_none_none(self):
-        coll = self._c()
-        current, baseline = coll._find_current_and_baseline_version([])
-        assert current is None
-        assert baseline is None
-
-    def test_finds_current_version(self):
-        coll = self._c()
-        m = _make_migration("2.0", success=True)
-        current, baseline = coll._find_current_and_baseline_version([m])
-        assert current == "2.0"
-        assert baseline is None
-
-    def test_finds_baseline_version(self):
-        coll = self._c()
-        m = _make_migration("1.0", mtype=MigrationType.BASELINE, success=True)
-        current, baseline = coll._find_current_and_baseline_version([m])
-        assert baseline == "1.0"
-        assert current is None
-
-    def test_picks_highest_versioned(self):
-        coll = self._c()
-        m1 = _make_migration("1.0", success=True, installed_rank=1)
-        m2 = _make_migration("2.0", success=True, installed_rank=2)
-        current, _ = coll._find_current_and_baseline_version([m1, m2])
-        assert current == "2.0"
-
-    def test_skips_failed_migrations(self):
-        coll = self._c()
-        m = _make_migration("3.0", success=False)
-        current, _ = coll._find_current_and_baseline_version([m])
-        assert current is None
-
-
-# ===========================================================================
-# _collect_versioned_migrations  (lines 648-657)
-# ===========================================================================
-
-
-class TestCollectVersionedMigrationsCoverage(unittest.TestCase):
-    def _c(self):
-        return _make_collector()[0]
-
-    def test_empty_list_returns_empty(self):
-        assert self._c()._collect_versioned_migrations([]) == []
-
-    def test_includes_sql_migrations(self):
-        coll = self._c()
-        m = _make_migration("1.0")
-        result = coll._collect_versioned_migrations([m])
-        assert len(result) == 1
-        assert result[0]["version"] == "1.0"
-
-    def test_excludes_repeatable_migrations(self):
-        coll = self._c()
-        m = _make_migration(None, mtype=MigrationType.REPEATABLE)
-        result = coll._collect_versioned_migrations([m])
-        assert len(result) == 0
-
-    def test_excludes_versioned_without_version(self):
-        coll = self._c()
-        m = _make_migration(None, mtype=MigrationType.SQL)
-        result = coll._collect_versioned_migrations([m])
-        assert len(result) == 0
-
-
-# ===========================================================================
-# _build_repeatable_checksums  (lines 659-678)
-# ===========================================================================
-
-
-class TestBuildRepeatableChecksumsCoverage(unittest.TestCase):
-    def _c(self):
-        return _make_collector()[0]
-
-    def test_empty_returns_empty(self):
-        assert self._c()._build_repeatable_checksums([]) == {}
-
-    def test_builds_checksum_for_repeatable_success(self):
-        coll = self._c()
-        m = _make_migration(None, mtype=MigrationType.REPEATABLE, success=True, checksum="abc")
-        m.script_name = "R__init.sql"
-        result = coll._build_repeatable_checksums([m])
-        assert result.get("R__init.sql") == "abc"
-
-    def test_skips_failed_repeatable(self):
-        coll = self._c()
-        m = _make_migration(None, mtype=MigrationType.REPEATABLE, success=False, checksum="abc")
-        result = coll._build_repeatable_checksums([m])
-        assert result == {}
-
-    def test_latest_rank_wins(self):
-        coll = self._c()
-        m1 = _make_migration(
-            None, mtype=MigrationType.REPEATABLE, success=True, checksum="old", installed_rank=1
-        )
-        m1.script_name = "R__init.sql"
-        m2 = _make_migration(
-            None, mtype=MigrationType.REPEATABLE, success=True, checksum="new", installed_rank=2
-        )
-        m2.script_name = "R__init.sql"
-        result = coll._build_repeatable_checksums([m1, m2])
-        # Sorted in reverse by rank; first occurrence wins
-        assert result.get("R__init.sql") == "new"
-
-
-# ===========================================================================
-# _sort_applied_migrations  (lines 680-682)
-# ===========================================================================
-
-
-class TestSortAppliedMigrationsCoverage(unittest.TestCase):
-    def _c(self):
-        return _make_collector()[0]
-
-    def test_sorts_ascending_by_rank(self):
-        coll = self._c()
-        m1 = _make_migration("2.0", installed_rank=2)
-        m2 = _make_migration("1.0", installed_rank=1)
-        result = coll._sort_applied_migrations([m1, m2])
-        assert result[0].version == "1.0"
-        assert result[1].version == "2.0"
-
-    def test_handles_none_rank(self):
-        coll = self._c()
-        m1 = _make_migration("1.0", installed_rank=None)
-        m2 = _make_migration("2.0", installed_rank=1)
-        result = coll._sort_applied_migrations([m1, m2])
-        assert len(result) == 2
-
-
-# ===========================================================================
-# _detect_out_of_order_migrations  (lines 702-713)
-# ===========================================================================
-
-
-class TestDetectOutOfOrderMigrationsCoverage(unittest.TestCase):
-    def _c(self):
-        return _make_collector()[0]
-
-    def test_empty_returns_empty_set(self):
-        assert self._c()._detect_out_of_order_migrations([]) == set()
-
-    def test_in_order_returns_empty(self):
-        coll = self._c()
-        versioned = [
-            {"version": "1.0", "migration": MagicMock(script_name="V1.sql")},
-            {"version": "2.0", "migration": MagicMock(script_name="V2.sql")},
-        ]
-        result = coll._detect_out_of_order_migrations(versioned)
-        assert len(result) == 0
-
-    def test_detects_out_of_order(self):
-        coll = self._c()
-        m1 = MagicMock(script_name="V2.sql")
-        m2 = MagicMock(script_name="V1.sql")
-        versioned = [
-            {"version": "2.0", "migration": m1},
-            {"version": "1.0", "migration": m2},
-        ]
-        result = coll._detect_out_of_order_migrations(versioned)
-        assert "V1.sql" in result
-
-
-# ===========================================================================
-# _get_undone_versions  (lines 715-762)
-# ===========================================================================
-
-
-class TestGetUndoneVersionsCoverage(unittest.TestCase):
-    def _c(self):
-        return _make_collector()[0]
-
-    def test_empty_returns_empty(self):
-        assert self._c()._get_undone_versions([]) == set()
-
-    def test_finds_undone_version(self):
-        coll = self._c()
-        sql = _make_migration("1.0", mtype=MigrationType.SQL, success=True, installed_rank=1)
-        undo = _make_migration("1.0", mtype=MigrationType.UNDO_SQL, success=True, installed_rank=2)
-        result = coll._get_undone_versions([sql, undo])
-        assert "1.0" in result
-
-    def test_reapplied_after_undo_not_undone(self):
-        coll = self._c()
-        sql1 = _make_migration("1.0", mtype=MigrationType.SQL, success=True, installed_rank=1)
-        undo = _make_migration("1.0", mtype=MigrationType.UNDO_SQL, success=True, installed_rank=2)
-        sql2 = _make_migration("1.0", mtype=MigrationType.SQL, success=True, installed_rank=3)
-        result = coll._get_undone_versions([sql1, undo, sql2])
-        # After reapplication, should NOT be in undone
-        assert "1.0" not in result
-
-    def test_failed_undo_not_counted(self):
-        coll = self._c()
-        sql = _make_migration("1.0", mtype=MigrationType.SQL, success=True, installed_rank=1)
-        undo = _make_migration("1.0", mtype=MigrationType.UNDO_SQL, success=False, installed_rank=2)
-        result = coll._get_undone_versions([sql, undo])
-        assert "1.0" not in result
-
-
-# ===========================================================================
-# _get_reapplied_versions  (lines 764-772)
-# ===========================================================================
-
-
-class TestGetReappliedVersionsCoverage(unittest.TestCase):
-    def _c(self):
-        return _make_collector()[0]
-
-    def test_empty_returns_empty(self):
-        assert self._c()._get_reapplied_versions([]) == set()
-
-    def test_single_application_not_reapplied(self):
-        coll = self._c()
-        m = _make_migration("1.0", success=True)
-        result = coll._get_reapplied_versions([m])
-        assert "1.0" not in result
-
-    def test_two_applications_marked_reapplied(self):
-        coll = self._c()
-        m1 = _make_migration("1.0", success=True, installed_rank=1)
-        m2 = _make_migration("1.0", success=True, installed_rank=2)
-        result = coll._get_reapplied_versions([m1, m2])
-        assert "1.0" in result
-
-    def test_failed_not_counted(self):
-        coll = self._c()
-        m = _make_migration("1.0", success=False)
-        result = coll._get_reapplied_versions([m])
-        assert "1.0" not in result
 
 
 # ===========================================================================
@@ -705,28 +444,6 @@ class TestFormatVersionCoverage(unittest.TestCase):
 
 
 # ===========================================================================
-# _determine_pending_migration_status  (lines 899-908)
-# ===========================================================================
-
-
-class TestDeterminePendingMigrationStatusCoverage(unittest.TestCase):
-    def _c(self):
-        return _make_collector()[0]
-
-    def test_always_returns_pending(self):
-        coll = self._c()
-        m = _make_migration("1.0")
-        result = coll._determine_pending_migration_status(m, None, None, None)
-        assert result == "PENDING"
-
-    def test_returns_pending_with_versions(self):
-        coll = self._c()
-        m = _make_migration("2.0")
-        result = coll._determine_pending_migration_status(m, "5.0", "1.0", "0.5")
-        assert result == "PENDING"
-
-
-# ===========================================================================
 # _compare_versions  (line 910-912)
 # ===========================================================================
 
@@ -812,112 +529,22 @@ class TestFindUndoVersionsCoverage(unittest.TestCase):
 
 
 # ===========================================================================
-# get_migration_data — legacy path  (lines 161-383)
+# get_migration_data — public wrapper over _get_migration_data_from_state
 # ===========================================================================
 
 
-class TestGetMigrationDataLegacyCoverage(unittest.TestCase):
+class TestGetMigrationDataWrapperCoverage(unittest.TestCase):
     def _c(self):
         return _make_collector()[0]
 
-    def test_empty_inputs_returns_empty_list(self):
-        coll = self._c()
-        result = coll.get_migration_data(applied_migrations=[], pending_migrations=[])
-        assert result == []
-
-    def test_successful_sql_migration_in_result(self):
+    def test_delegates_to_get_migration_data_from_state(self):
         coll = self._c()
         m = _make_migration("1.0", success=True, installed_rank=1)
-        result = coll.get_migration_data(applied_migrations=[m], pending_migrations=[])
+        state = _applied_state([(m, "Success")], pending_objects=[])
+        result = coll.get_migration_data(migration_state=state, all_applied_migrations=[m])
         assert len(result) == 1
         assert result[0]["version"] == "1.0"
         assert result[0]["state"] == "Success"
-
-    def test_failed_migration_state(self):
-        coll = self._c()
-        m = _make_migration("1.0", success=False, installed_rank=1)
-        result = coll.get_migration_data(applied_migrations=[m], pending_migrations=[])
-        assert result[0]["state"] == "Failed"
-
-    def test_pending_migration_in_result(self):
-        coll = self._c()
-        pending = _make_migration("2.0")
-        pending.success = None
-        result = coll.get_migration_data(applied_migrations=[], pending_migrations=[pending])
-        assert len(result) == 1
-        assert result[0]["state"] == "Pending"
-
-    def test_undone_migration_state(self):
-        coll = self._c()
-        sql = _make_migration("1.0", success=True, installed_rank=1)
-        undo = _make_migration(
-            "1.0",
-            mtype=MigrationType.UNDO_SQL,
-            success=True,
-            installed_rank=2,
-            script_name="U1__undo.sql",
-        )
-        result = coll.get_migration_data(applied_migrations=[sql, undo], pending_migrations=[])
-        # The SQL migration should show as UNDONE
-        sql_rows = [r for r in result if r.get("version") == "1.0" and r.get("type") == "SQL"]
-        assert any(r["state"] == "Undone" for r in sql_rows)
-
-    def test_creates_script_manager_when_none(self):
-        coll = MigrationDataCollector(log=MagicMock(), script_manager=None)
-        result = coll.get_migration_data(applied_migrations=[], pending_migrations=[])
-        assert result == []
-        assert coll.script_manager is not None
-
-    def test_exclude_version_filter(self):
-        coll = self._c()
-        m = _make_migration("1.0", success=True, installed_rank=1)
-        result = coll.get_migration_data(
-            applied_migrations=[m], pending_migrations=[], exclude_versions=["1.0"]
-        )
-        assert len(result) == 0
-
-    def test_versions_filter_includes_only_specified(self):
-        coll = self._c()
-        m1 = _make_migration("1.0", success=True, installed_rank=1)
-        m2 = _make_migration("2.0", success=True, installed_rank=2)
-        result = coll.get_migration_data(
-            applied_migrations=[m1, m2], pending_migrations=[], versions=["2.0"]
-        )
-        versions_in_result = [r["version"] for r in result]
-        assert "2.0" in versions_in_result
-        assert "1.0" not in versions_in_result
-
-    def test_delete_type_shows_deleted_state(self):
-        coll = self._c()
-        m = _make_migration("1.0", mtype=MigrationType.DELETE, success=True, installed_rank=1)
-        result = coll.get_migration_data(applied_migrations=[m], pending_migrations=[])
-        assert result[0]["state"] == "Deleted"
-
-    def test_baseline_migration_state(self):
-        coll = self._c()
-        m = _make_migration("1.0", mtype=MigrationType.BASELINE, success=True, installed_rank=1)
-        result = coll.get_migration_data(applied_migrations=[m], pending_migrations=[])
-        assert result[0]["state"] == "Baseline"
-
-    def test_repeatable_migration_included(self):
-        coll = self._c()
-        m = _make_migration(
-            None,
-            mtype=MigrationType.REPEATABLE,
-            success=True,
-            installed_rank=1,
-            script_name="R__init.sql",
-            checksum="abc",
-        )
-        result = coll.get_migration_data(applied_migrations=[m], pending_migrations=[])
-        assert len(result) == 1
-
-    def test_uses_migration_state_when_provided(self):
-        coll = self._c()
-        state = MigrationState(pending_objects=[])
-        m = _make_migration("1.0", success=True, installed_rank=1)
-        result = coll.get_migration_data(migration_state=state, all_applied_migrations=[m])
-        assert len(result) == 1
 
 
 # ===========================================================================
@@ -957,7 +584,11 @@ class TestGetMigrationDataFromStateCoverage(unittest.TestCase):
             installed_rank=2,
             script_name="U1__undo.sql",
         )
-        state = MigrationState(pending_objects=[], undone_versions=["1.0"])
+        state = _applied_state(
+            [(m, "Undone"), (undo, "Success")],
+            pending_objects=[],
+            undone_versions=["1.0"],
+        )
         result = coll._get_migration_data_from_state(
             migration_state=state, all_applied_migrations=[m, undo]
         )
@@ -994,7 +625,7 @@ class TestGetMigrationDataFromStateCoverage(unittest.TestCase):
     def test_failed_migration_state(self):
         coll = self._c()
         m = _make_migration("1.0", success=False, installed_rank=1)
-        state = MigrationState(pending_objects=[])
+        state = _applied_state([(m, "Failed")], pending_objects=[])
         result = coll._get_migration_data_from_state(
             migration_state=state, all_applied_migrations=[m]
         )
@@ -1003,7 +634,7 @@ class TestGetMigrationDataFromStateCoverage(unittest.TestCase):
     def test_delete_type_shows_deleted(self):
         coll = self._c()
         m = _make_migration("1.0", mtype=MigrationType.DELETE, success=True, installed_rank=1)
-        state = MigrationState(pending_objects=[])
+        state = _applied_state([(m, "Deleted")], pending_objects=[])
         result = coll._get_migration_data_from_state(
             migration_state=state, all_applied_migrations=[m]
         )
@@ -1012,7 +643,7 @@ class TestGetMigrationDataFromStateCoverage(unittest.TestCase):
     def test_baseline_shows_baseline(self):
         coll = self._c()
         m = _make_migration("1.0", mtype=MigrationType.BASELINE, success=True, installed_rank=1)
-        state = MigrationState(pending_objects=[])
+        state = _applied_state([(m, "Baseline")], pending_objects=[])
         result = coll._get_migration_data_from_state(
             migration_state=state, all_applied_migrations=[m]
         )
@@ -1146,98 +777,6 @@ class TestFormatInstalledOnException(unittest.TestCase):
         assert "bad-dt" in result
 
 
-class TestLegacyPathRemainingLines(unittest.TestCase):
-    """Covers lines 163/165 (None defaults), 198-203 (reapplied lookup),
-    272 (UNKNOWN status), 285 (repeatable old-checksum skip),
-    332-333 (undone version shown as pending), 345/348 (should_skip paths).
-    """
-
-    def _c(self):
-        return _make_collector()[0]
-
-    def test_none_applied_and_pending_uses_defaults(self):
-        """Lines 163/165: None applied/pending are set to []."""
-        coll = self._c()
-        result = coll.get_migration_data(applied_migrations=None, pending_migrations=None)
-        assert result == []
-
-    def test_reapplied_migration_lookup_updates_latest(self):
-        """Lines 198-203: when two entries share script_name, later rank wins in lookup dict."""
-        coll = self._c()
-        m1 = _make_migration("1.0", success=True, installed_rank=1)
-        m2 = _make_migration("1.0", success=True, installed_rank=2)
-        m2.script_name = m1.script_name  # same script name, higher rank
-        result = coll.get_migration_data(applied_migrations=[m1, m2], pending_migrations=[])
-        # Both rows should be present (legacy shows all)
-        assert len(result) >= 1
-
-    def test_unknown_success_value_gives_unknown_status(self):
-        """Line 272: success value that is neither truthy nor failure => UNKNOWN."""
-        coll = self._c()
-        m = _make_migration("1.0", success=None, installed_rank=1)
-        result = coll.get_migration_data(applied_migrations=[m], pending_migrations=[])
-        assert result[0]["state"] == "Unknown"
-
-    def test_repeatable_old_checksum_skipped_in_legacy(self):
-        """Line 285: older repeatable row with stale checksum is skipped."""
-        coll = self._c()
-        old = _make_migration(
-            None, mtype=MigrationType.REPEATABLE, success=True, installed_rank=1, checksum="old"
-        )
-        old.script_name = "R__init.sql"
-        new = _make_migration(
-            None, mtype=MigrationType.REPEATABLE, success=True, installed_rank=2, checksum="new"
-        )
-        new.script_name = "R__init.sql"
-        result = coll.get_migration_data(applied_migrations=[old, new], pending_migrations=[])
-        r_rows = [r for r in result if r["script"] == "R__init.sql"]
-        assert len(r_rows) == 1
-
-    def test_undone_version_also_shown_as_pending(self):
-        """Lines 332-333: undone migration can appear both as UNDONE and PENDING."""
-        coll = self._c()
-        sql = _make_migration("1.0", success=True, installed_rank=1)
-        undo = _make_migration(
-            "1.0",
-            mtype=MigrationType.UNDO_SQL,
-            success=True,
-            installed_rank=2,
-            script_name="U1__undo.sql",
-        )
-        pending = _make_migration("1.0", success=None)
-        # pending has same script_name as sql — but version is in undone_versions
-        pending.script_name = sql.script_name
-        result = coll.get_migration_data(
-            applied_migrations=[sql, undo], pending_migrations=[pending]
-        )
-        # The undone SQL appears as UNDONE, and the pending entry shows again
-        states = [r["state"] for r in result if r["version"] == "1.0"]
-        assert "Undone" in states
-
-    def test_pending_excluded_by_version_filter(self):
-        """Lines 345/348: pending migration excluded via should_exclude."""
-        coll = self._c()
-        pending = _make_migration("3.0", success=None)
-        pending.script_name = "V3__init.sql"
-        result = coll.get_migration_data(
-            applied_migrations=[],
-            pending_migrations=[pending],
-            exclude_versions=["3.0"],
-        )
-        assert all(r["version"] != "3.0" for r in result)
-
-    def test_pending_skipped_when_already_shown(self):
-        """Line 347/348: pending migration with a version already in shown_versions is skipped."""
-        coll = self._c()
-        applied = _make_migration("2.0", success=True, installed_rank=1)
-        pending = _make_migration("2.0", success=None)
-        pending.script_name = "V2__other.sql"
-        result = coll.get_migration_data(applied_migrations=[applied], pending_migrations=[pending])
-        # Version 2.0 should appear only once (the applied one)
-        v2_rows = [r for r in result if r["version"] == "2.0"]
-        assert len(v2_rows) == 1
-
-
 class TestStatePathRemainingLines(unittest.TestCase):
     """Covers line 514 (UNKNOWN in state path) and 567 (pending exclude in state path)."""
 
@@ -1330,16 +869,6 @@ class TestPendingMigrationsNumericSort(unittest.TestCase):
     def _c(self):
         return _make_collector()[0]
 
-    def test_legacy_pending_sorted_numerically(self):
-        coll = self._c()
-        pending = [
-            _make_migration("10", success=None),
-            _make_migration("2", success=None),
-            _make_migration("3", success=None),
-        ]
-        result = coll.get_migration_data(applied_migrations=[], pending_migrations=pending)
-        assert [r["version"] for r in result] == ["2", "3", "10"]
-
     def test_state_pending_sorted_numerically(self):
         coll = self._c()
         pending = [
@@ -1359,7 +888,8 @@ class TestPendingMigrationsNumericSort(unittest.TestCase):
             ),
             _make_migration("5", success=None),
         ]
-        result = coll.get_migration_data(applied_migrations=[], pending_migrations=pending)
+        state = MigrationState(pending_objects=pending)
+        result = coll.get_migration_data(migration_state=state, all_applied_migrations=[])
         assert [r["script"] for r in result] == ["V5__test.sql", "R__z.sql"]
 
     def test_repeatable_pending_sorted_by_script_name(self):
@@ -1372,5 +902,6 @@ class TestPendingMigrationsNumericSort(unittest.TestCase):
                 None, mtype=MigrationType.REPEATABLE, script_name="R__a.sql", success=None
             ),
         ]
-        result = coll.get_migration_data(applied_migrations=[], pending_migrations=pending)
+        state = MigrationState(pending_objects=pending)
+        result = coll.get_migration_data(migration_state=state, all_applied_migrations=[])
         assert [r["script"] for r in result] == ["R__a.sql", "R__b.sql"]

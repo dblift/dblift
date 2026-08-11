@@ -6,7 +6,8 @@ import pytest
 
 from core.logger import NullLog
 from core.migration.migration import Migration, MigrationType
-from core.migration.state.migration_state import MigrationState
+from core.migration.state.migration_state import MigrationEntry, MigrationState
+from core.migration.state.migration_state_service import MigrationStateService
 from core.migration.ui.data_collector import MigrationDataCollector
 
 pytestmark = pytest.mark.unit
@@ -26,6 +27,48 @@ def _mk_versioned(version, rank, script_name=None, success=True, resolved=True):
     return m
 
 
+def _build_state(applied_migrations, current_version=None, undone_versions=None):
+    """Build a MigrationState the way MigrationStateManager.build_state() does:
+    .applied entries carry the status MigrationStateService.determine_state()
+    computes, so the collector can look status up instead of re-deriving it.
+    """
+    context = {
+        "undone_versions": set(undone_versions or []),
+        "out_of_order_migrations": set(),
+        "repeatable_checksums": {},
+        "reapplied_versions": set(),
+        "current_version": current_version,
+    }
+    service = MigrationStateService(NullLog())
+    entries = [
+        MigrationEntry.from_migration(m, status=service.determine_state(m, context).value)
+        for m in applied_migrations
+    ]
+    return MigrationState(
+        current_version=current_version,
+        undone_versions=sorted(context["undone_versions"]),
+        pending_objects=[],
+        all_applied_objects=applied_migrations,
+        applied=entries,
+    )
+
+
+def _build_pending_state(pending_migrations, scripts_dir=None, baseline_version=None, target_version=None):
+    """Same idea as _build_state, but for pending entries via
+    MigrationStateService.determine_pending_state()."""
+    context = {
+        "baseline_version": baseline_version,
+        "target_version": target_version,
+        "scripts_dir": scripts_dir,
+    }
+    service = MigrationStateService(NullLog())
+    entries = [
+        MigrationEntry.from_migration(m, status=service.determine_pending_state(m, context).value)
+        for m in pending_migrations
+    ]
+    return MigrationState(pending_objects=pending_migrations, pending=entries)
+
+
 def test_applied_migration_with_deleted_script_shows_missing():
     """V3's script was applied but its file is gone; only V1-V2 remain on
     disk and nothing is pending — V3 must render as Missing."""
@@ -34,7 +77,7 @@ def test_applied_migration_with_deleted_script_shows_missing():
     v2 = _mk_versioned("2", rank=2, resolved=True)
     v3 = _mk_versioned("3", rank=3, resolved=False)
 
-    state = MigrationState(current_version="3", pending_objects=[])
+    state = _build_state([v1, v2, v3], current_version="3")
     rows = collector._get_migration_data_from_state(
         migration_state=state,
         all_applied_migrations=[v1, v2, v3],
@@ -51,7 +94,7 @@ def test_failed_applied_migration_with_deleted_script_shows_failed_missing():
     collector = MigrationDataCollector(NullLog())
     v1 = _mk_versioned("1", rank=1, success=False, resolved=False)
 
-    state = MigrationState(current_version=None, pending_objects=[])
+    state = _build_state([v1], current_version=None)
     rows = collector._get_migration_data_from_state(
         migration_state=state,
         all_applied_migrations=[v1],
@@ -69,7 +112,7 @@ def test_applied_migrations_with_scripts_still_present_stay_success():
     v1 = _mk_versioned("1", rank=1, resolved=True)
     v2 = _mk_versioned("2", rank=2, resolved=True)
 
-    state = MigrationState(current_version="2", pending_objects=[])
+    state = _build_state([v1, v2], current_version="2")
     rows = collector._get_migration_data_from_state(
         migration_state=state,
         all_applied_migrations=[v1, v2],
@@ -86,7 +129,7 @@ def test_unresolved_future_version_shows_future():
     collector = MigrationDataCollector(NullLog())
     v5 = _mk_versioned("5", rank=1, resolved=False)
 
-    state = MigrationState(current_version="3", pending_objects=[])
+    state = _build_state([v5], current_version="3")
     rows = collector._get_migration_data_from_state(
         migration_state=state,
         all_applied_migrations=[v5],
@@ -112,11 +155,7 @@ def test_undone_migration_still_detected_with_resolved_scripts():
     undo.success = True
     undo.installed_rank = 2
 
-    state = MigrationState(
-        current_version=None,
-        undone_versions=["1"],
-        pending_objects=[],
-    )
+    state = _build_state([sql, undo], current_version=None, undone_versions=["1"])
     rows = collector._get_migration_data_from_state(
         migration_state=state,
         all_applied_migrations=[sql, undo],
@@ -125,3 +164,36 @@ def test_undone_migration_still_detected_with_resolved_scripts():
 
     sql_row = next(row for row in rows if row["version"] == "1" and row["type"] != "UNDO_SQL")
     assert sql_row["state"] == "Undone"
+
+
+def test_pending_migration_with_undo_script_shows_available():
+    """Regression guard: _determine_pending_migration_status used to be a
+    stub that always returned PENDING, so a pending versioned migration with
+    an undo companion script on disk rendered as Pending instead of
+    Available. The collector must now surface MigrationStateService's
+    determine_pending_state() result instead."""
+    import tempfile
+    from pathlib import Path
+
+    collector = MigrationDataCollector(NullLog())
+    pending = Migration(
+        script_name="V2__test.sql",
+        content="SELECT 1;",
+        version="2",
+        description="Test",
+        type=MigrationType.SQL,
+    )
+    pending.success = None
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        scripts_dir = Path(tmpdir)
+        (scripts_dir / "U2__undo.sql").write_text("SELECT 1;", encoding="utf-8")
+
+        state = _build_pending_state([pending], scripts_dir=scripts_dir)
+        rows = collector._get_migration_data_from_state(
+            migration_state=state,
+            all_applied_migrations=[],
+            scripts_dir=scripts_dir,
+        )
+
+    assert rows[0]["state"] == "Available"

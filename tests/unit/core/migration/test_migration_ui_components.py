@@ -10,6 +10,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from core.migration.migration import Migration, MigrationType
+from core.migration.state.migration_state import MigrationState
 from core.migration.ui.migration_ui import MigrationUI
 from core.migration.ui.table_renderer import TableRenderer
 
@@ -193,25 +194,10 @@ class TestMigrationUIGetMigrationData(unittest.TestCase):
     def setUp(self):
         self.ui = MigrationUI(_make_log())
 
-    def test_legacy_mode_returns_list(self):
-        """Legacy path with applied/pending migrations returns a list."""
-        m = _make_migration()
-        result = self.ui.get_migration_data(applied_migrations=[m], pending_migrations=[])
-        assert isinstance(result, list)
-
-    def test_none_applied_treated_as_empty(self):
-        result = self.ui.get_migration_data(applied_migrations=None, pending_migrations=None)
-        assert isinstance(result, list)
-
     def test_new_mode_with_migration_state(self):
-        """New mode with migration_state uses state-based path."""
-        state = MagicMock()
-        state.undone_versions = []
-        state.repeatable_checksums = {}
-        state.pending_objects = []
-        state.current_version = None
-        state.baseline_version = None
+        """migration_state-based path returns a list."""
         all_applied = [_make_migration()]
+        state = MigrationState(pending_objects=[], all_applied_objects=all_applied)
         result = self.ui.get_migration_data(
             migration_state=state,
             all_applied_migrations=all_applied,
