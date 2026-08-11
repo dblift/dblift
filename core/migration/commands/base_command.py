@@ -40,6 +40,8 @@ from db.provider_capabilities import (
 )
 from db.provider_interfaces import SchemaProvider
 
+from ._script_events import emit_script_event as _emit_script_event
+
 
 @dataclass
 class BaseCommandContext:
@@ -123,6 +125,33 @@ def _render_main_header_panel(raw_header: str) -> str:
         ),
         width=80,
     )
+
+
+# Maps ``_execute_callbacks``' ``event_prefix`` argument to the matching
+# ``callback.*`` EventType value (api/events.py). Prefixes with no mapping
+# (e.g. validate-command hooks, which no command wires up yet) are simply
+# not emitted.
+_CALLBACK_LIFECYCLE_EVENTS: Dict[str, str] = {
+    "beforeMigrate": "callback.before_migrate",
+    "afterMigrate": "callback.after_migrate",
+    "afterMigrateError": "callback.after_migrate_error",
+    "beforeEach": "callback.before_each",
+    "afterEach": "callback.after_each",
+    "beforeEachMigrate": "callback.before_each_migrate",
+    "afterEachMigrate": "callback.after_each_migrate",
+    "beforeRepeatable": "callback.before_repeatable",
+    "afterRepeatable": "callback.after_repeatable",
+    "beforeVersioned": "callback.before_versioned",
+    "afterVersioned": "callback.after_versioned",
+    "beforeValidate": "callback.before_validate",
+    "afterValidate": "callback.after_validate",
+    "beforeClean": "callback.before_clean",
+    "afterClean": "callback.after_clean",
+    "afterCleanError": "callback.after_clean_error",
+    "beforeUndo": "callback.before_undo",
+    "afterUndo": "callback.after_undo",
+    "afterUndoError": "callback.after_undo_error",
+}
 
 
 class BaseCommand:
@@ -248,20 +277,35 @@ class BaseCommand:
             # migration but the first, even though the callbacks themselves
             # execute for every migration.
             try:
-                callback_count = len(callbacks) if hasattr(callbacks, "__len__") else "some"
+                callback_count = len(callbacks) if hasattr(callbacks, "__len__") else None
                 self.log.info(
-                    f"Executing {callback_count} {event_prefix} callback(s)", dedupe=False
+                    f"Executing {callback_count if callback_count is not None else 'some'} "
+                    f"{event_prefix} callback(s)",
+                    dedupe=False,
                 )
             except (TypeError, AttributeError):
+                callback_count = None
                 self.log.info(f"Executing {event_prefix} callback(s)", dedupe=False)
+
+            lifecycle_event = _CALLBACK_LIFECYCLE_EVENTS.get(event_prefix)
+            if lifecycle_event:
+                _emit_script_event(
+                    lifecycle_event, {"count": callback_count} if callback_count is not None else {}
+                )
+
             for callback in callbacks:
                 try:
                     self.log.info(f"Executing callback: {callback.script_name}", dedupe=False)
+                    _emit_script_event("callback.started", {"name": callback.script_name})
                     self.execution_engine.execute_callback(callback, result)
+                    _emit_script_event("callback.completed", {"name": callback.script_name})
                     self.log.info(
                         f"Callback {callback.script_name} executed successfully", dedupe=False
                     )
                 except Exception as e:
+                    _emit_script_event(
+                        "callback.failed", {"name": callback.script_name, "error": str(e)}
+                    )
                     # Error callbacks (afterMigrateError, afterCleanError, afterUndoError) should only log warnings
                     # Regular callbacks should fail the entire operation
                     if "Error" in event_prefix:
