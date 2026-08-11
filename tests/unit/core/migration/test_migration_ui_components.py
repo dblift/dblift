@@ -204,6 +204,32 @@ class TestMigrationUIGetMigrationData(unittest.TestCase):
         )
         assert isinstance(result, list)
 
+    def test_own_script_manager_propagated_to_data_collector(self):
+        """When the UI already holds a script_manager, it's handed to the collector."""
+        sm = MagicMock()
+        self.ui.script_manager = sm
+        state = MigrationState(pending_objects=[], all_applied_objects=[])
+        self.ui.get_migration_data(migration_state=state, all_applied_migrations=[])
+        assert self.ui.data_collector.script_manager is sm
+
+
+class TestMigrationUIDisplayMigrationInfo(unittest.TestCase):
+
+    def setUp(self):
+        self.ui = MigrationUI(_make_log())
+        self.ui.log.logs = [self.ui.log]
+
+    def test_renders_table_and_logs_summary(self):
+        """End-to-end: real MigrationUI/TableRenderer, no mocked collaborators."""
+        m = _make_migration()
+        state = MigrationState(pending_objects=[], all_applied_objects=[m])
+        self.ui.display_migration_info(migration_state=state, all_applied_migrations=[m])
+
+        self.ui.log.info.assert_called_once()
+        self.ui.log.file_only_info.assert_called_once()
+        assert self.ui.log.migration_data
+        assert self.ui.log.migration_data[0]["version"] == "1"
+
 
 if __name__ == "__main__":
     unittest.main()
