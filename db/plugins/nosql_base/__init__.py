@@ -16,6 +16,8 @@ What a document-store plugin supplies:
 
 * :class:`DocumentHistoryManager` — migration history as documents.
 * :class:`DocumentLockingManager` — a lease document guarding concurrent runs.
+* :class:`DocumentStoreProvider` — document-level reads and writes for
+  storage dblift keeps inside the target database.
 * :class:`SamplingIntrospector` — schema inferred by sampling documents.
 
 Its quirks must also declare ``is_nosql = True`` and
@@ -26,9 +28,11 @@ migrations to ``DBLIFT-NOSQL-001`` rather than to a translator.
 from db.plugins.nosql_base.history import DocumentHistoryManager
 from db.plugins.nosql_base.introspection import SamplingIntrospector
 from db.plugins.nosql_base.locking import DocumentLockingManager
+from db.plugins.nosql_base.provider import DocumentStoreProvider
 
 __all__ = [
     "DocumentHistoryManager",
     "DocumentLockingManager",
+    "DocumentStoreProvider",
     "SamplingIntrospector",
 ]
