@@ -63,9 +63,7 @@ def test_migrate_callbacks_emit_lifecycle_and_per_script_events(tmp_path: Path) 
     (migrations / "beforeMigrate__setup.sql").write_text("SELECT 1;")
 
     client = _client(tmp_path, migrations)
-    seen = _capture(
-        client, "callback.before_migrate", "callback.started", "callback.completed"
-    )
+    seen = _capture(client, "callback.before_migrate", "callback.started", "callback.completed")
     client.migrate()
 
     fired = [ev for ev, _ in seen]
