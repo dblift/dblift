@@ -125,3 +125,62 @@ def test_repair_produces_repair_span(tmp_path, exporter):
 
     names = {s.name for s in exporter.get_finished_spans()}
     assert "dblift.repair" in names
+
+
+def test_callback_events_recorded_as_span_events_not_new_spans(tmp_path, exporter):
+    migrations = tmp_path / "migrations"
+    migrations.mkdir()
+    (migrations / "V1_0_0__t.sql").write_text("CREATE TABLE t (id INTEGER PRIMARY KEY);")
+    (migrations / "beforeMigrate__setup.sql").write_text("SELECT 1;")
+
+    engine = create_engine(f"sqlite:///{tmp_path/'db.sqlite'}")
+    client = DBLiftClient.from_sqlalchemy(engine, migrations_dir=str(migrations))
+    instrument(client)
+    client.migrate()
+
+    spans = exporter.get_finished_spans()
+    names = {s.name for s in spans}
+    # Callbacks must not get their own span.
+    assert "callback.started" not in names
+
+    migrate_span = next(s for s in spans if s.name == "dblift.migrate")
+    event_names = [e.name for e in migrate_span.events]
+    assert "callback.before_migrate" in event_names
+    assert "callback.started" in event_names
+    assert "callback.completed" in event_names
+    started = next(e for e in migrate_span.events if e.name == "callback.started")
+    assert started.attributes.get("dblift.name") == "beforeMigrate__setup.sql"
+
+
+def test_clean_object_removed_recorded_on_clean_span(tmp_path, exporter):
+    client = _client(tmp_path)
+    client.migrate()
+    instrument(client)
+    client.clean(clean_enabled=True)
+
+    clean_span = next(s for s in exporter.get_finished_spans() if s.name == "dblift.clean")
+    removed = [e for e in clean_span.events if e.name == "clean.object.removed"]
+    assert removed
+    assert removed[0].attributes.get("dblift.type") == "table"
+    assert removed[0].attributes.get("dblift.name")
+
+
+def test_undo_rollback_marker_carries_script_name(tmp_path, exporter):
+    """Regression: undo.script.rolled_back is emitted with a ``script`` field,
+    not ``name`` — the marker attrs must read both so the span event carries
+    the rolled-back script instead of being empty."""
+    migrations = tmp_path / "migrations"
+    migrations.mkdir()
+    (migrations / "V1_0_0__t.sql").write_text("CREATE TABLE t (id INTEGER PRIMARY KEY);")
+    (migrations / "U1_0_0__t.sql").write_text("DROP TABLE t;")
+
+    engine = create_engine(f"sqlite:///{tmp_path/'db.sqlite'}")
+    client = DBLiftClient.from_sqlalchemy(engine, migrations_dir=str(migrations))
+    client.migrate()
+    instrument(client)
+    client.undo()
+
+    undo_span = next(s for s in exporter.get_finished_spans() if s.name == "dblift.undo")
+    rolled_back = [e for e in undo_span.events if e.name == "undo.script.rolled_back"]
+    assert rolled_back
+    assert rolled_back[0].attributes.get("dblift.script") == "U1_0_0__t.sql"

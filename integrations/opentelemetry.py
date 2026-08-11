@@ -66,7 +66,7 @@ _SPAN_MARKER_EVENTS = frozenset(e.value for e in EventType if e.value.startswith
     "undo.script.rolled_back",
 }
 
-_MARKER_ATTR_FIELDS = ("name", "type", "count", "error")
+_MARKER_ATTR_FIELDS = ("name", "script", "type", "count", "error")
 
 _ATTR_FIELDS = (
     "operation",
