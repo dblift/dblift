@@ -238,6 +238,22 @@ def create_config(
                 "database_name": db_config.get("database_name"),
             }
         }
+    # Handle MongoDB (native, pymongo — no SQLAlchemy URL)
+    elif db_type in ("mongodb", "mongo"):
+        config_dict = {
+            "database": {
+                "type": "mongodb",
+                "host": db_config.get("host", "localhost"),
+                "port": int(db_config.get("port", 27017)),
+                "database": db_config.get("database", "testdb"),
+            }
+        }
+        if db_config.get("username"):
+            config_dict["database"]["username"] = db_config["username"]
+        if db_config.get("password"):
+            config_dict["database"]["password"] = db_config["password"]
+        if db_config.get("url"):
+            config_dict["database"]["url"] = db_config["url"]
     else:
         # Build database URL based on database type
         if db_type == "sqlserver":

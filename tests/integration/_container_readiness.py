@@ -156,6 +156,24 @@ def wait_for_readiness(service, container):
                     print(f"[{service.upper()}] CosmosDB Emulator is ready!")
                     time.sleep(5)  # CosmosDB needs extra time for backend services to initialize
                     return
+            elif service == "mongodb":
+                # Prefer an in-container ping; fall back to log scrape for
+                # standalone mongo:7, which is ready within a few seconds.
+                try:
+                    exit_code, _ = container.exec_run(
+                        ["mongosh", "--quiet", "--eval", "db.adminCommand('ping')"]
+                    )
+                    if exit_code == 0:
+                        print(f"[{service.upper()}] Database is ready!")
+                        time.sleep(1)
+                        return
+                except Exception as exec_err:
+                    print(f"[{service.upper()}] mongosh ping unavailable: {exec_err}")
+                logs = container.logs().decode(errors="ignore")
+                if "Waiting for connections" in logs:
+                    print(f"[{service.upper()}] Database is ready!")
+                    time.sleep(1)
+                    return
         except Exception as e:
             print(f"[{service.upper()}] Error checking readiness: {str(e)}")
             # Continue trying rather than failing immediately

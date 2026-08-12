@@ -35,7 +35,7 @@ from tests.integration._container_readiness import (  # noqa: F401  re-export
 )
 
 # Limit to SQL Server only for focused integration testing
-SUPPORTED_DBS = ["sqlserver", "mysql", "postgresql", "oracle", "cosmosdb", "sqlite"]
+SUPPORTED_DBS = ["sqlserver", "mysql", "postgresql", "oracle", "cosmosdb", "mongodb", "sqlite"]
 
 # Check if we should limit to a specific database for core tests
 DBLIFT_CORE_TEST_DB = os.environ.get("DBLIFT_CORE_TEST_DB")
@@ -144,6 +144,7 @@ db_container_names = {
     "sqlserver": "dblift_sqlserver",
     "db2": "dblift_db2",
     "cosmosdb": "dblift_cosmosdb",
+    "mongodb": "dblift_mongodb",
 }
 
 # DEAD CODE: service_map is never referenced — db_container_names (above) is the
@@ -172,6 +173,7 @@ image_map = {
         # Keep in sync with tests/integration/docker-compose.yml (CI uses compose)
         "db2": "icr.io/db2_community/db2:latest",
         "cosmosdb": "mcr.microsoft.com/cosmosdb/linux/azure-cosmos-emulator:vnext-preview",
+        "mongodb": "mongo:7",
     }.items()
     if k in SUPPORTED_DBS
 }
@@ -204,6 +206,9 @@ env_map = {
             "AZURE_COSMOS_EMULATOR_PARTITION_COUNT=10",
             "AZURE_COSMOS_EMULATOR_ENABLE_DATA_PERSISTENCE=true",
         ],
+        # Standalone mongo:7 needs no env; empty list so the key exists when
+        # SUPPORTED_DBS is filtered to just mongodb via DBLIFT_CORE_TEST_DB.
+        "mongodb": [],
     }.items()
     if k in SUPPORTED_DBS
 }
@@ -223,6 +228,7 @@ port_map = {
             "10253/tcp": 10253,  # CosmosDB Emulator data port
             "10254/tcp": 10254,  # CosmosDB Emulator data port
         },
+        "mongodb": {"27017/tcp": 27017},
     }.items()
     if k in SUPPORTED_DBS
 }
@@ -343,6 +349,12 @@ def db_configs() -> Dict[str, Dict[str, Any]]:
             "database_name": "testdb",
             "container_name": "test_container",
             "use_managed_identity": False,
+        },
+        "mongodb": {
+            "type": "mongodb",
+            "host": "localhost",
+            "port": 27017,
+            "database": "testdb",
         },
     }
 
@@ -1343,3 +1355,45 @@ def cosmosdb_container(docker_client, db_configs):
     config["url"] = config["account_endpoint"]
 
     yield config
+
+
+@pytest.fixture(scope="session")
+def mongodb_container(request, db_configs):
+    """Start and yield MongoDB container configuration.
+
+    Standalone mongod, deliberately not a replica set: dblift claims no
+    transaction support on MongoDB, so a single node is the whole supported
+    surface and it starts in a second or two.
+
+    Resolves ``docker_client`` only after the SUPPORTED_DBS gate so that
+    selecting another dialect via ``DBLIFT_CORE_TEST_DB`` skips cleanly
+    without requiring a Docker daemon.
+    """
+    service = "mongodb"
+
+    if service not in SUPPORTED_DBS:
+        pytest.skip(f"{service} tests are not enabled (not in SUPPORTED_DBS: {SUPPORTED_DBS})")
+
+    docker_client = request.getfixturevalue("docker_client")
+    container_name = db_container_names[service]
+    try:
+        container = docker_client.containers.get(container_name)
+        if container.status != "running":
+            container.start()
+            print(f"Started existing container {container_name}")
+    except docker.errors.NotFound:
+        print(f"Creating and starting new container {container_name}")
+        run_kwargs = dict(
+            image=image_map[service],
+            name=container_name,
+            environment=env_map.get(service) or None,
+            ports=port_map[service],
+            detach=True,
+        )
+        # docker SDK: environment=None or omit if empty
+        if not run_kwargs.get("environment"):
+            run_kwargs.pop("environment", None)
+        container = docker_client.containers.run(**run_kwargs)
+
+    wait_for_readiness(service, container)
+    return db_configs[service].copy()
