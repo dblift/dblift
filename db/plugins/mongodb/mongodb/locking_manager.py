@@ -101,9 +101,16 @@ class MongoDbLockingManager(DocumentLockingManager):
             existing = self._collection().find_one({"_id": self.LOCK_DOCUMENT_ID})
             if self._is_expired(existing):
                 self.log.warning("Reclaiming an expired migration lock lease")
-                self._collection().delete_one({"_id": self.LOCK_DOCUMENT_ID})
-                if self._try_insert_lease():
-                    return True
+                if existing is not None:
+                    result = self._collection().delete_one(
+                        {"_id": self.LOCK_DOCUMENT_ID, "acquired_at": existing.get("acquired_at")}
+                    )
+                    if result.deleted_count > 0 and self._try_insert_lease():
+                        return True
+                else:
+                    # No lease document exists, try to acquire it
+                    if self._try_insert_lease():
+                        return True
 
             if time.monotonic() >= deadline:
                 self.log.warning(
