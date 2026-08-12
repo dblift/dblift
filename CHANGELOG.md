@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+### Changed
+
+### Fixed
+
+### Removed
+
+## [3.8.0] - 2026-08-12
+
+### Added
+
 - **MongoDB support** — `type: mongodb` (alias `mongo`), installed with
   `pip install "dblift[mongodb]"`. Migrations are Python scripts driving
   pymongo through `context.db` / `context.raw_client`; `migrate`, `info`,
