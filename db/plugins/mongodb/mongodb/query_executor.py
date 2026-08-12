@@ -56,8 +56,8 @@ class MongoDbQueryExecutor:
     def execute_statement(
         self,
         sql: str,
-        params: Optional[Any] = None,
         schema: Optional[str] = None,
+        params: Optional[Any] = None,
     ) -> int:
         """Always raises — see the class docstring."""
         self._reject(sql)

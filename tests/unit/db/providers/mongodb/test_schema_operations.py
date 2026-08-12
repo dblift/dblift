@@ -113,16 +113,16 @@ def test_database_version_falls_back_when_unavailable():
 
 def test_create_schema_is_noop():
     """MongoDB has no schema layer; create_schema_if_not_exists is a no-op."""
-    operations, _ = _operations([])
-    # Should not raise, and should not call any database methods
+    operations, database = _operations([])
     operations.create_schema_if_not_exists(None, "test_schema")
+    assert database.method_calls == []
 
 
 def test_set_current_schema_is_noop():
     """MongoDB has no schema layer; set_current_schema is a no-op."""
-    operations, _ = _operations([])
-    # Should not raise, and should not call any database methods
+    operations, database = _operations([])
     operations.set_current_schema(None, "test_schema")
+    assert database.method_calls == []
 
 
 def test_get_tables_returns_collections():

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any, List, Optional, Tuple, Union
 
-from core.logger import Log, NullLog
+from core.logger import Log
 from core.migration.clean_summary import CleanExecutionSummary
 from db.plugins.base_schema_operations import BaseSchemaOperations
 
@@ -19,8 +19,7 @@ class MongoDbSchemaOperations(BaseSchemaOperations):
 
     def __init__(self, query_executor: Any, log: Optional[Log] = None) -> None:
         """Store the executor (for its connection manager) and the logger."""
-        self.query_executor = query_executor
-        self.log: Log = log if log is not None else NullLog()
+        super().__init__(query_executor=query_executor, log=log)
 
     def _database(self) -> Any:
         """Return the live ``Database`` handle, connecting if needed."""
