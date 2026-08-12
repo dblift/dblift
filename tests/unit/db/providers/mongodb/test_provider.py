@@ -37,7 +37,8 @@ def test_components_are_wired():
 
 
 def test_satisfies_the_document_store_contract():
-    """PRO-side snapshot storage selects on this capability, not on a name."""
+    """A caller that needs document-level storage selects on this
+    capability, not on a dialect name."""
     assert isinstance(_provider(), DocumentStoreProvider)
 
 

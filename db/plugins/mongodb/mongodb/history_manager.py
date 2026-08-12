@@ -60,10 +60,22 @@ class MongoDbHistoryManager(DocumentHistoryManager):
         migration_info: Dict[str, Any],
         table_name: Optional[str] = None,
     ) -> None:
-        """Write one history document for *migration_info*."""
+        """Write one history document for *migration_info*.
+
+        ``installed_rank`` is not something the caller provides — the real
+        framework caller (``MigrationHistoryManager.record_migration``)
+        never includes it in ``migration_info`` — so it is assigned here,
+        the MongoDB-native equivalent of an auto-increment column: the
+        current maximum rank in the collection, plus one.
+        """
+        collection = self._collection(table_name)
+        existing = self.query_executor.list_documents(collection)
+        next_rank = max((doc.get("installed_rank", 0) for doc in existing), default=0) + 1
+
         document = dict(migration_info)
-        document["_id"] = str(migration_info["installed_rank"])
-        self.query_executor.upsert_document(self._collection(table_name), document)
+        document["installed_rank"] = next_rank
+        document["_id"] = str(next_rank)
+        self.query_executor.upsert_document(collection, document)
 
     def get_applied_migrations(
         self, connection: Any, schema: str, table_name: Optional[str] = None

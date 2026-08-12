@@ -8,8 +8,6 @@ be permanently unretryable.
 
 from unittest.mock import MagicMock
 
-import pytest
-
 from db.plugins.mongodb.mongodb import MongoDbHistoryManager
 
 
@@ -35,29 +33,93 @@ def test_create_provisions_the_collection():
     )
 
 
+def _framework_migration_info(**overrides):
+    """Match the exact key set ``MigrationHistoryManager.record_migration``
+    sends — no ``installed_rank``. See
+    ``core/migration/history/migration_history_manager.py``."""
+    info = {
+        "script": "V1_0_0__create_users.py",
+        "version": "1.0.0",
+        "description": "create users",
+        "type": "PYTHON",
+        "checksum": 123456,
+        "success": True,
+        "execution_time": 42,
+        "installed_on": "2026-01-01T00:00:00",
+        "installed_by": "app",
+    }
+    info.update(overrides)
+    return info
+
+
 def test_record_writes_a_document_keyed_by_installed_rank():
+    """``installed_rank`` is assigned by the manager itself, the MongoDB-native
+    equivalent of an auto-increment column — the real framework caller never
+    supplies it (see ``_framework_migration_info``)."""
     manager, query_executor, _ = _manager()
-    manager.record_migration(
-        None,
-        "ignored",
-        {
-            "installed_rank": 3,
-            "version": "1.0.0",
-            "description": "create users",
-            "type": "PYTHON",
-            "script": "V1_0_0__create_users.py",
-            "checksum": 123456,
-            "installed_by": "app",
-            "execution_time": 42,
-            "success": True,
-        },
-    )
+    manager.record_migration(None, "ignored", _framework_migration_info())
     collection, document = query_executor.upsert_document.call_args.args
     assert collection == "dblift_schema_history"
-    assert document["_id"] == "3"
-    assert document["installed_rank"] == 3
+    assert document["_id"] == "1"
+    assert document["installed_rank"] == 1
     assert document["script"] == "V1_0_0__create_users.py"
     assert document["success"] is True
+
+
+def test_record_migration_assigns_sequential_ranks_without_a_caller_supplied_rank():
+    """Regression test for a crash where ``record_migration`` read
+    ``migration_info["installed_rank"]`` — a key the real framework caller
+    never provides — and raised ``KeyError`` on the first migration."""
+    manager, query_executor, _ = _manager()
+
+    written = []
+
+    def _record_upsert(collection, document):
+        written.append(dict(document))
+        return document
+
+    query_executor.upsert_document.side_effect = _record_upsert
+
+    def _list_documents(collection):
+        return list(written)
+
+    query_executor.list_documents.side_effect = _list_documents
+
+    manager.record_migration(None, "ignored", _framework_migration_info(script="V1.py"))
+    manager.record_migration(None, "ignored", _framework_migration_info(script="V2.py"))
+
+    ranks = [doc["installed_rank"] for doc in written]
+    assert ranks == [1, 2]
+    assert [doc["_id"] for doc in written] == ["1", "2"]
+
+
+def test_record_migration_ignores_a_caller_supplied_installed_rank():
+    """Nothing in the contract promises a caller-supplied rank is honored —
+    the manager always computes its own from the stored maximum."""
+    manager, query_executor, _ = _manager(
+        [{"_id": "5", "installed_rank": 5, "script": "V5.py", "success": True}]
+    )
+    manager.record_migration(
+        None, "ignored", _framework_migration_info(installed_rank=999, script="V6.py")
+    )
+    _collection, document = query_executor.upsert_document.call_args.args
+    assert document["installed_rank"] == 6
+    assert document["_id"] == "6"
+
+
+def test_record_undo_computes_its_own_rank_too():
+    """``record_undo`` is inherited from ``BaseHistoryManager`` and calls
+    ``self.record_migration(...)`` — the same overridden method, so the same
+    fix that stops ``record_migration`` from crashing on a missing
+    ``installed_rank`` also fixes undo history, which previously failed
+    silently (the base implementation swallows the KeyError and returns
+    False)."""
+    manager, query_executor, _ = _manager()
+    result = manager.record_undo(None, "ignored", "1.0.0")
+    assert result is True
+    _collection, document = query_executor.upsert_document.call_args.args
+    assert document["installed_rank"] == 1
+    assert document["_id"] == "1"
 
 
 def test_applied_migrations_are_ordered_by_installed_rank():
