@@ -6,3 +6,7 @@ __plugin_description__ = "MongoDB provider"
 __plugin_dialects__ = ["mongodb", "mongo"]
 __plugin_transport__ = "native"
 __plugin_class__ = "MongoDbProvider"
+
+from .provider import MongoDbProvider
+
+__all__ = ["MongoDbProvider"]
