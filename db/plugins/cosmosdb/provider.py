@@ -4,7 +4,6 @@ Cosmos DB provider implementation.
 This provider uses modular components to handle Cosmos DB-specific database operations.
 """
 
-import time
 from typing import Any, Dict, List, Optional
 
 from config import DbliftConfig
@@ -17,6 +16,7 @@ from db.plugins.cosmosdb.cosmosdb import (
     CosmosDbLockingManager,
     CosmosDbQueryExecutor,
     CosmosDbSchemaOperations,
+    CosmosDbSnapshotManager,
 )
 from db.provider_interfaces import DroppableObject
 
@@ -43,6 +43,7 @@ class CosmosDbProvider(NativeProvider):
         self.history_manager = CosmosDbHistoryManager(
             self.query_executor, self.schema_operations, config, log
         )
+        self.snapshot_manager = CosmosDbSnapshotManager(self, log=self.log)
 
     def create_connection(self) -> Any:
         """Create a connection to Cosmos DB using Azure SDK."""
@@ -347,66 +348,23 @@ class CosmosDbProvider(NativeProvider):
         """Create migration history container if it doesn't exist."""
         self.history_manager.create_history_container_if_not_exists(schema, table_name)
 
-    _SNAPSHOT_CREATE_MAX_RETRIES = 5
-    _SNAPSHOT_CREATE_BACKOFF_BASE = 2.0
-
-    @staticmethod
-    def _is_transient_snapshot_error(exc: Exception) -> bool:
-        msg = str(exc).lower()
-        return (
-            "serviceunavailable" in msg
-            or "service unavailable" in msg
-            or "503" in msg
-            or "timeout" in msg
-            or "timed out" in msg
-        )
-
     def create_snapshot_table_if_not_exists(
         self,
         schema: str,
         table_name: Optional[str] = None,
     ) -> None:
-        """Create the snapshot container through the SDK, retrying on 503.
+        """Create the snapshot container through the SDK.
 
-        The inherited implementation renders ``CREATE TABLE`` DDL and sends
-        it to ``execute_statement``. Cosmos has no DDL — that only ever
-        worked because the pseudo-SQL emulator recognised ``CREATE TABLE``
-        and turned it into a container create. With the emulator gone the
-        statement would raise ``NoSqlWriteNotSupportedError``, so the
-        container is created directly here instead.
-
-        The emulator also returns ServiceUnavailable / 503 during warmup, so
-        the create is retried with exponential backoff and snapshot
-        persistence survives the first migrate after a fresh container start.
+        Provisioning lives on ``CosmosDbSnapshotManager`` so every document
+        store implements the same contract instead of re-deriving it from
+        this provider. See ``db/plugins/nosql_base/snapshot.py``.
         """
-        from core.constants import DBLIFT_SCHEMA_SNAPSHOTS_TABLE
-
-        resolved_name = table_name or DBLIFT_SCHEMA_SNAPSHOTS_TABLE
-        last_exc: Optional[Exception] = None
-        for attempt in range(self._SNAPSHOT_CREATE_MAX_RETRIES):
-            try:
-                # Snapshots are keyed by ``snapshot_id``; partition on it so
-                # a point read can find one without a cross-partition query.
-                self.schema_operations.create_container_if_not_exists(
-                    resolved_name, partition_key="/snapshot_id"
-                )
-                return
-            except Exception as e:
-                last_exc = e
-                if (
-                    attempt < self._SNAPSHOT_CREATE_MAX_RETRIES - 1
-                    and self._is_transient_snapshot_error(e)
-                ):
-                    wait = self._SNAPSHOT_CREATE_BACKOFF_BASE**attempt
-                    self.log.warning(
-                        f"Snapshot container creation transient failure "
-                        f"(attempt {attempt + 1}/{self._SNAPSHOT_CREATE_MAX_RETRIES}): "
-                        f"{e}. Retrying in {wait:.1f}s…"
-                    )
-                    time.sleep(wait)
-                    continue
-                break
-        raise RuntimeError(f"Failed to create snapshot container: {str(last_exc)}") from last_exc
+        # Guards providers built via __new__ (bypassing __init__, as some
+        # tests do) rather than the normal constructor, where this would
+        # already be set.
+        if getattr(self, "snapshot_manager", None) is None:
+            self.snapshot_manager = CosmosDbSnapshotManager(self, log=self.log)
+        self.snapshot_manager.create_snapshot_table_if_not_exists(schema, table_name)
 
     def close(self) -> None:
         """Close the Cosmos DB connection."""

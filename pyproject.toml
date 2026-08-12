@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "dblift"
-version = "3.7.0"
+version = "3.8.0"
 description = "A database migration tool that supports multiple databases with native Python drivers"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -48,6 +48,7 @@ sqlserver = "db.plugins.sqlserver.plugin:PLUGIN"
 db2 = "db.plugins.db2.plugin:PLUGIN"
 sqlite = "db.plugins.sqlite.plugin:PLUGIN"
 cosmosdb = "db.plugins.cosmosdb.plugin:PLUGIN"
+mongodb = "db.plugins.mongodb.plugin:PLUGIN"
 duckdb = "db.plugins.duckdb.plugin:PLUGIN"
 # PostgreSQL-compatible distributions — reuse the PostgreSQL provider/config/
 # driver, distinct identity only. Users keep their postgresql:// URL and select
@@ -134,6 +135,10 @@ duckdb = ["duckdb>=1.0", "duckdb_engine>=0.13"]
 # except ``db/plugins/cosmosdb/cosmosdb/_sdk.py``, which is itself imported
 # lazily — so plugin discovery still registers cosmosdb without the SDK.
 cosmosdb = ["azure-cosmos>=4.5.0", "azure-identity>=1.15.0"]
+# ``pymongo`` is imported lazily by the plugin's ``_sdk.py`` and
+# ``connection_manager.py``, so plugin discovery still registers mongodb
+# without the driver installed.
+mongodb = ["pymongo>=4.6"]
 # PostgreSQL-compatible distributions share the psycopg driver.
 neon = ["psycopg[binary]>=3.1"]
 supabase = ["psycopg[binary]>=3.1"]
@@ -162,7 +167,7 @@ otel = ["opentelemetry-api>=1.20"]
 # needs its own package (as redshift and snowflake already do); naming them
 # keeps the coverage claim mechanically checkable instead of argued.
 all = [
-    "dblift[postgresql,mysql,mariadb,oracle,sqlserver,db2,duckdb,cosmosdb]",
+    "dblift[postgresql,mysql,mariadb,oracle,sqlserver,db2,duckdb,cosmosdb,mongodb]",
     "dblift[redshift,snowflake]",
     "dblift[neon,supabase,aurora-postgresql,alloydb]",
     "dblift[yugabytedb,timescaledb,citus,cockroachdb]",
@@ -898,6 +903,33 @@ module = [
     "db.plugins.cosmosdb.cosmosdb.locking_manager",
     "db.plugins.cosmosdb.cosmosdb.query_executor",
     "db.plugins.cosmosdb.cosmosdb.schema_operations",
+]
+disallow_any_generics = true
+disallow_subclassing_any = true
+disallow_untyped_calls = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+disallow_untyped_decorators = true
+no_implicit_optional = true
+warn_unused_ignores = true
+strict_equality = true
+
+# strict db/plugins/mongodb
+[[tool.mypy.overrides]]
+module = [
+    "db.plugins.mongodb",
+    "db.plugins.mongodb.plugin",
+    "db.plugins.mongodb.config",
+    "db.plugins.mongodb.provider",
+    "db.plugins.mongodb.quirks",
+    "db.plugins.mongodb.mongodb",
+    "db.plugins.mongodb.mongodb._sdk",
+    "db.plugins.mongodb.mongodb.connection_manager",
+    "db.plugins.mongodb.mongodb.history_manager",
+    "db.plugins.mongodb.mongodb.locking_manager",
+    "db.plugins.mongodb.mongodb.query_executor",
+    "db.plugins.mongodb.mongodb.schema_operations",
+    "db.plugins.mongodb.mongodb.snapshot_manager",
 ]
 disallow_any_generics = true
 disallow_subclassing_any = true

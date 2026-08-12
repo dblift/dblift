@@ -35,7 +35,7 @@ from tests.integration._container_readiness import (  # noqa: F401  re-export
 )
 
 # Limit to SQL Server only for focused integration testing
-SUPPORTED_DBS = ["sqlserver", "mysql", "postgresql", "oracle", "cosmosdb", "sqlite"]
+SUPPORTED_DBS = ["sqlserver", "mysql", "postgresql", "oracle", "cosmosdb", "mongodb", "sqlite"]
 
 # Check if we should limit to a specific database for core tests
 DBLIFT_CORE_TEST_DB = os.environ.get("DBLIFT_CORE_TEST_DB")
@@ -67,6 +67,15 @@ EXTERNAL_COSMOSDB_ENDPOINT = os.environ.get("DBLIFT_COSMOSDB_ENDPOINT")
 EXTERNAL_COSMOSDB_KEY = os.environ.get("DBLIFT_COSMOSDB_KEY")
 EXTERNAL_COSMOSDB_DATABASE = os.environ.get("DBLIFT_COSMOSDB_DATABASE")
 EXTERNAL_COSMOSDB_CONTAINER = os.environ.get("DBLIFT_COSMOSDB_CONTAINER")
+
+# External MongoDB configuration (e.g. Apple Container / remote mongod).
+# When set, the mongodb_container fixture skips Docker startup — CI leaves
+# these unset and keeps using the docker_client path below.
+EXTERNAL_MONGODB_HOST = os.environ.get("DBLIFT_MONGODB_HOST")
+EXTERNAL_MONGODB_PORT = os.environ.get("DBLIFT_MONGODB_PORT")
+EXTERNAL_MONGODB_DATABASE = os.environ.get("DBLIFT_MONGODB_DATABASE")
+EXTERNAL_MONGODB_USERNAME = os.environ.get("DBLIFT_MONGODB_USERNAME")
+EXTERNAL_MONGODB_PASSWORD = os.environ.get("DBLIFT_MONGODB_PASSWORD")
 
 
 def _apply_mysql_port_override(configs: Dict[str, Dict[str, Any]], port_value: str | None) -> None:
@@ -144,6 +153,7 @@ db_container_names = {
     "sqlserver": "dblift_sqlserver",
     "db2": "dblift_db2",
     "cosmosdb": "dblift_cosmosdb",
+    "mongodb": "dblift_mongodb",
 }
 
 # DEAD CODE: service_map is never referenced — db_container_names (above) is the
@@ -172,6 +182,7 @@ image_map = {
         # Keep in sync with tests/integration/docker-compose.yml (CI uses compose)
         "db2": "icr.io/db2_community/db2:latest",
         "cosmosdb": "mcr.microsoft.com/cosmosdb/linux/azure-cosmos-emulator:vnext-preview",
+        "mongodb": "mongo:7",
     }.items()
     if k in SUPPORTED_DBS
 }
@@ -204,6 +215,9 @@ env_map = {
             "AZURE_COSMOS_EMULATOR_PARTITION_COUNT=10",
             "AZURE_COSMOS_EMULATOR_ENABLE_DATA_PERSISTENCE=true",
         ],
+        # Standalone mongo:7 needs no env; empty list so the key exists when
+        # SUPPORTED_DBS is filtered to just mongodb via DBLIFT_CORE_TEST_DB.
+        "mongodb": [],
     }.items()
     if k in SUPPORTED_DBS
 }
@@ -223,6 +237,7 @@ port_map = {
             "10253/tcp": 10253,  # CosmosDB Emulator data port
             "10254/tcp": 10254,  # CosmosDB Emulator data port
         },
+        "mongodb": {"27017/tcp": 27017},
     }.items()
     if k in SUPPORTED_DBS
 }
@@ -344,6 +359,12 @@ def db_configs() -> Dict[str, Dict[str, Any]]:
             "container_name": "test_container",
             "use_managed_identity": False,
         },
+        "mongodb": {
+            "type": "mongodb",
+            "host": "localhost",
+            "port": 27017,
+            "database": "testdb",
+        },
     }
 
     _apply_mysql_port_override(configs, EXTERNAL_MYSQL_PORT)
@@ -408,6 +429,29 @@ def db_configs() -> Dict[str, Dict[str, Any]]:
             "[INFO] Using external CosmosDB configuration: "
             f"{cosmosdb_config['account_endpoint']} "
             f"(database={cosmosdb_config['database_name']})"
+        )
+
+    if EXTERNAL_MONGODB_HOST:
+        mongodb_config = configs["mongodb"]
+        mongodb_config["host"] = EXTERNAL_MONGODB_HOST
+        if EXTERNAL_MONGODB_PORT:
+            try:
+                mongodb_config["port"] = int(EXTERNAL_MONGODB_PORT)
+            except ValueError:
+                print(
+                    f"[WARN] Invalid DBLIFT_MONGODB_PORT value '{EXTERNAL_MONGODB_PORT}', "
+                    "using default 27017"
+                )
+        if EXTERNAL_MONGODB_DATABASE:
+            mongodb_config["database"] = EXTERNAL_MONGODB_DATABASE
+        if EXTERNAL_MONGODB_USERNAME:
+            mongodb_config["username"] = EXTERNAL_MONGODB_USERNAME
+        if EXTERNAL_MONGODB_PASSWORD:
+            mongodb_config["password"] = EXTERNAL_MONGODB_PASSWORD
+        print(
+            "[INFO] Using external MongoDB configuration: "
+            f"{mongodb_config['host']}:{mongodb_config['port']} "
+            f"(database={mongodb_config['database']})"
         )
 
     return configs
@@ -1265,11 +1309,11 @@ def db2_container(docker_client, db_configs):
 
 
 @pytest.fixture
-def cosmosdb_container(docker_client, db_configs):
+def cosmosdb_container(request, db_configs):
     """Start and yield CosmosDB container configuration.
 
     This fixture provides CosmosDB configuration that can work with:
-    1. CosmosDB Emulator (default - auto-started if not running)
+    1. CosmosDB Emulator (default - auto-started via Docker if not running)
     2. External CosmosDB instance (via environment variables)
 
     Environment variables for external CosmosDB:
@@ -1277,6 +1321,11 @@ def cosmosdb_container(docker_client, db_configs):
     - DBLIFT_COSMOSDB_KEY: CosmosDB account key
     - DBLIFT_COSMOSDB_DATABASE: Database name
     - DBLIFT_COSMOSDB_CONTAINER: Container name (optional)
+
+    ``docker_client`` is resolved only on the Docker path so an external
+    endpoint (Apple Container emulator, real Azure account, …) works without
+    a Docker daemon. CI leaves the external env vars unset and keeps the
+    Docker startup path below unchanged.
     """
     service = "cosmosdb"
 
@@ -1292,6 +1341,7 @@ def cosmosdb_container(docker_client, db_configs):
         # Configuration is already updated in db_configs, skip container startup
     else:
         print("[COSMOSDB] Using CosmosDB Emulator - checking if container is running...")
+        docker_client = request.getfixturevalue("docker_client")
 
         # Try to start or create the CosmosDB Emulator container
         container_name = db_container_names[service]
@@ -1343,3 +1393,57 @@ def cosmosdb_container(docker_client, db_configs):
     config["url"] = config["account_endpoint"]
 
     yield config
+
+
+@pytest.fixture(scope="session")
+def mongodb_container(request, db_configs):
+    """Start and yield MongoDB container configuration.
+
+    Standalone mongod, deliberately not a replica set: dblift claims no
+    transaction support on MongoDB, so a single node is the whole supported
+    surface and it starts in a second or two.
+
+    Resolves ``docker_client`` only after the SUPPORTED_DBS gate so that
+    selecting another dialect via ``DBLIFT_CORE_TEST_DB`` skips cleanly
+    without requiring a Docker daemon.
+
+    When ``DBLIFT_MONGODB_HOST`` is set (external mongod — Apple Container,
+    remote host, etc.), Docker is not touched; CI leaves that unset and uses
+    the docker_client path below unchanged.
+    """
+    service = "mongodb"
+
+    if service not in SUPPORTED_DBS:
+        pytest.skip(f"{service} tests are not enabled (not in SUPPORTED_DBS: {SUPPORTED_DBS})")
+
+    config = db_configs[service].copy()
+
+    # External instance (Apple Container, remote mongod, …) — same pattern as
+    # cosmosdb_container + EXTERNAL_COSMOSDB_ENDPOINT. CI does not set this.
+    if EXTERNAL_MONGODB_HOST:
+        print(f"[MONGODB] Using external MongoDB instance at " f"{config['host']}:{config['port']}")
+        return config
+
+    docker_client = request.getfixturevalue("docker_client")
+    container_name = db_container_names[service]
+    try:
+        container = docker_client.containers.get(container_name)
+        if container.status != "running":
+            container.start()
+            print(f"Started existing container {container_name}")
+    except docker.errors.NotFound:
+        print(f"Creating and starting new container {container_name}")
+        run_kwargs = dict(
+            image=image_map[service],
+            name=container_name,
+            environment=env_map.get(service) or None,
+            ports=port_map[service],
+            detach=True,
+        )
+        # docker SDK: environment=None or omit if empty
+        if not run_kwargs.get("environment"):
+            run_kwargs.pop("environment", None)
+        container = docker_client.containers.run(**run_kwargs)
+
+    wait_for_readiness(service, container)
+    return config

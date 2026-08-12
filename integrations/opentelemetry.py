@@ -20,7 +20,7 @@ from opentelemetry import context as otel_context
 from opentelemetry import trace
 from opentelemetry.trace import Span, Status, StatusCode
 
-from api.events import Event
+from api.events import Event, EventType
 
 if TYPE_CHECKING:
     from api import DBLiftClient
@@ -56,6 +56,17 @@ _END_EVENTS = (
     "repair.failed",
 )
 _FAIL_EVENTS = frozenset(e for e in _END_EVENTS if e.endswith(".failed"))
+
+# Sub-operation events (callback lifecycle, per-object clean, per-script undo
+# rollback) that don't get their own span — they're recorded as timestamped
+# events on the currently active span instead, so tracing UIs aren't flooded
+# with one span per callback/object.
+_SPAN_MARKER_EVENTS = frozenset(e.value for e in EventType if e.value.startswith("callback.")) | {
+    "clean.object.removed",
+    "undo.script.rolled_back",
+}
+
+_MARKER_ATTR_FIELDS = ("name", "script", "type", "count", "error")
 
 _ATTR_FIELDS = (
     "operation",
@@ -98,6 +109,14 @@ def _set_attrs(span: Span, event: Event) -> None:
         value = getattr(event, field, None)
         if value is not None:
             span.set_attribute(f"dblift.{field}", value)
+
+
+def _marker_attrs(event: Event) -> dict:
+    return {
+        f"dblift.{field}": value
+        for field in _MARKER_ATTR_FIELDS
+        if (value := getattr(event, field, None)) is not None
+    }
 
 
 def _dblift_version() -> str:
@@ -162,6 +181,8 @@ class OtelHandle:
                     span.set_status(Status(StatusCode.OK))
                 otel_context.detach(token)
                 span.end()
+            elif et in _SPAN_MARKER_EVENTS and self._stack:
+                self._stack[-1][0].add_event(et, attributes=_marker_attrs(event))
         except Exception as exc:  # telemetry must never break the engine
             _log.debug("dblift otel listener error: %s", exc)
 
@@ -175,7 +196,7 @@ def instrument(client: "DBLiftClient") -> OtelHandle:
     """Register OTel span listeners on ``client.events``. Returns a handle."""
     tracer = trace.get_tracer("dblift", _dblift_version())
     handle = OtelHandle(client, tracer)
-    for event_str in (*_START_EVENTS, *_END_EVENTS):
+    for event_str in (*_START_EVENTS, *_END_EVENTS, *_SPAN_MARKER_EVENTS):
         client.events.on(event_str, handle._on_event)
         handle._registered.append((event_str, handle._on_event))
     return handle

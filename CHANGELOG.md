@@ -15,6 +15,49 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
+## [3.8.0] - 2026-08-12
+
+### Added
+
+- **MongoDB support** — `type: mongodb` (alias `mongo`), installed with
+  `pip install "dblift[mongodb]"`. Migrations are Python scripts driving
+  pymongo through `context.db` / `context.raw_client`; `migrate`, `info`,
+  `validate`, `repair`, `clean` and `baseline` are supported. Migration
+  history and the concurrency lock are stored as documents. See
+  [NoSQL Python Migrations](docs/user-guide/nosql-python-migrations.md).
+- **`DBLIFT-NOSQL-002`** — raised when a string statement reaches a store
+  with no query language. Distinct from `DBLIFT-NOSQL-001`, which rejects a
+  `.sql` migration file before execution.
+
+### Changed
+
+- Document-store plugins now share snapshot-collection provisioning through
+  `DocumentSnapshotManager`, alongside the existing shared history, locking
+  and introspection contracts. No behavior change for existing targets.
+- The event types below now land as span events on the active operation span
+  rather than as their own spans, so OpenTelemetry traces get the extra
+  detail without one span per callback or dropped object. (#211)
+
+### Fixed
+
+- **`info`** now shows the status `MigrationStateManager` already computes
+  instead of re-deriving it in a second, drifted implementation. The
+  pending-migration branch was a stub that always returned `PENDING`,
+  silently dropping `Available` / `Below baseline` / `Above target`. (#210)
+- Several `EventType` values were declared but never emitted, so subscribers
+  — including the OpenTelemetry integration — never saw them: undo now emits
+  `UNDO_SCRIPT_ROLLED_BACK` per rolled-back script, clean emits
+  `CLEAN_OBJECT_REMOVED` per dropped object, and migrate/undo/clean/validate
+  now emit their callback lifecycle events (`CALLBACK_STARTED` /
+  `COMPLETED` / `FAILED`, `CALLBACK_BEFORE_MIGRATE` / `BEFORE_VALIDATE` /
+  ...). (#211)
+- The OpenTelemetry span marker for a rolled-back script carried no useful
+  attributes — it read the event's `name` field, but the event carries the
+  script under `script`, so every rollback produced an identical,
+  empty-looking span event. (#212)
+
+### Removed
+
 ## [3.7.0] - 2026-08-09
 
 ### Added
