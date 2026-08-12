@@ -52,7 +52,7 @@ class MongoDbLockingManager(DocumentLockingManager):
         self.log.debug(f"Ensured lock collection exists: {self.LOCK_CONTAINER_NAME}")
 
     @staticmethod
-    def _is_expired(lease: Optional[dict]) -> bool:
+    def _is_expired(lease: Optional[dict[str, Any]]) -> bool:
         """Whether *lease* is old enough to reclaim.
 
         An unreadable or absent timestamp counts as expired: a lease nobody

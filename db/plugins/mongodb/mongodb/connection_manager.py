@@ -41,8 +41,8 @@ class MongoDbConnectionManager:
         """Initialize the connection manager and validate the target."""
         self.config = config
         self.log = log if log is not None else NullLog()
-        self.client: Optional["MongoClient"] = None
-        self.database: Optional["Database"] = None
+        self.client: Optional["MongoClient[Any]"] = None
+        self.database: Optional["Database[Any]"] = None
 
         if not getattr(config.database, "url", None) and not getattr(
             config.database, "host", None
@@ -60,6 +60,8 @@ class MongoDbConnectionManager:
         """
         uri = self.config.database.build_connection_string()
         database_name = self.config.database.database
+        if not database_name:
+            raise ValueError("MongoDB database name is required")
 
         self.log.debug(f"Connecting to MongoDB: {self.config.database.build_database_url()}")
 

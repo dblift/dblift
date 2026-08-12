@@ -65,9 +65,11 @@ class MongoDbProvider(NativeProvider):
 
     # --- statements (rejected) -------------------------------------------
 
-    def execute_statement(self, sql: str, **kwargs: Any) -> int:
+    def execute_statement(
+        self, sql: str, schema: Optional[str] = None, params: Optional[List[Any]] = None
+    ) -> int:
         """Always raises — MongoDB has no string statements."""
-        return self.query_executor.execute_statement(sql, **kwargs)
+        return self.query_executor.execute_statement(sql, params=params, schema=schema)
 
     def execute_query(self, sql: str, params: Optional[List[Any]] = None) -> List[Dict[str, Any]]:
         """Always raises — MongoDB has no string queries."""
@@ -189,6 +191,19 @@ class MongoDbProvider(NativeProvider):
     ) -> None:
         """Record a migration in the history collection."""
         self.history_manager.record_migration(None, schema, migration_info, table_name)
+
+    def repair_migration_history(
+        self,
+        schema: str,
+        script_name: str,
+        checksum: Any,
+        table_name: str = "dblift_schema_history",
+        success_value: Optional[Any] = None,
+    ) -> bool:
+        """Update checksum (and optionally success) of an existing history document."""
+        return self.history_manager.repair_migration_history(
+            None, schema, script_name, checksum, success_value, table_name
+        )
 
     def get_applied_migrations(
         self, schema: str, table_name: str = "dblift_schema_history"

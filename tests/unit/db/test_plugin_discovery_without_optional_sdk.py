@@ -98,8 +98,15 @@ def _run_probe() -> dict:
 
 
 def test_discovery_registers_every_dialect_without_the_azure_sdk():
-    """All 19 providers register, cosmosdb included, with ``azure`` unimportable."""
+    """Every first-party provider registers, cosmosdb included, with ``azure`` unimportable."""
+    import tomllib
+
     result = _run_probe()
+    expected = set(
+        tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))["project"][
+            "entry-points"
+        ]["dblift.providers"].keys()
+    )
 
     assert result["blocker_effective"], (
         "The probe's import blocker did not take effect, so the run proves "
@@ -110,10 +117,9 @@ def test_discovery_registers_every_dialect_without_the_azure_sdk():
         "must import cleanly on a bare install — the driver is only needed to "
         "connect, not to be discovered."
     )
-    assert len(result["dialects"]) == 19, (
+    assert set(result["dialects"]) == expected, (
         "Discovery registered "
-        f"{len(result['dialects'])} providers instead of 19 with the Azure SDK "
-        f"absent: {result['dialects']}"
+        f"{result['dialects']} with the Azure SDK absent; expected {sorted(expected)}"
     )
 
 
@@ -123,7 +129,7 @@ def test_the_cosmosdb_plugin_module_itself_imports_without_the_azure_sdk():
     ``discover_plugins`` has a filesystem pass that reconstructs a
     ``PluginInfo`` from the package layout when ``plugin.py:PLUGIN`` cannot be
     read. It logs and continues, so a hard ``from azure.cosmos import ...`` at
-    the top of ``db/plugins/cosmosdb/plugin.py`` leaves the count above at 19
+    the top of ``db/plugins/cosmosdb/plugin.py`` leaves the set above complete
     and the test green — while every field only ``plugin.py`` declares
     (``install_extra``, ``native_driver_module``, ``config_class``) is silently
     lost, taking the driver report and the install hint with it.
