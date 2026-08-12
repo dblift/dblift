@@ -1309,11 +1309,11 @@ def db2_container(docker_client, db_configs):
 
 
 @pytest.fixture
-def cosmosdb_container(docker_client, db_configs):
+def cosmosdb_container(request, db_configs):
     """Start and yield CosmosDB container configuration.
 
     This fixture provides CosmosDB configuration that can work with:
-    1. CosmosDB Emulator (default - auto-started if not running)
+    1. CosmosDB Emulator (default - auto-started via Docker if not running)
     2. External CosmosDB instance (via environment variables)
 
     Environment variables for external CosmosDB:
@@ -1321,6 +1321,11 @@ def cosmosdb_container(docker_client, db_configs):
     - DBLIFT_COSMOSDB_KEY: CosmosDB account key
     - DBLIFT_COSMOSDB_DATABASE: Database name
     - DBLIFT_COSMOSDB_CONTAINER: Container name (optional)
+
+    ``docker_client`` is resolved only on the Docker path so an external
+    endpoint (Apple Container emulator, real Azure account, …) works without
+    a Docker daemon. CI leaves the external env vars unset and keeps the
+    Docker startup path below unchanged.
     """
     service = "cosmosdb"
 
@@ -1336,6 +1341,7 @@ def cosmosdb_container(docker_client, db_configs):
         # Configuration is already updated in db_configs, skip container startup
     else:
         print("[COSMOSDB] Using CosmosDB Emulator - checking if container is running...")
+        docker_client = request.getfixturevalue("docker_client")
 
         # Try to start or create the CosmosDB Emulator container
         container_name = db_container_names[service]
