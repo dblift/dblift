@@ -9,7 +9,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **MongoDB support** — `type: mongodb` (alias `mongo`), installed with
+  `pip install "dblift[mongodb]"`. Migrations are Python scripts driving
+  pymongo through `context.db` / `context.raw_client`; `migrate`, `info`,
+  `validate`, `repair`, `clean` and `baseline` are supported. Migration
+  history and the concurrency lock are stored as documents. See
+  [NoSQL Python Migrations](docs/user-guide/nosql-python-migrations.md).
+- **`DBLIFT-NOSQL-002`** — raised when a string statement reaches a store
+  with no query language. Distinct from `DBLIFT-NOSQL-001`, which rejects a
+  `.sql` migration file before execution.
+
 ### Changed
+
+- Document-store plugins now share snapshot-collection provisioning through
+  `DocumentSnapshotManager`, alongside the existing shared history, locking
+  and introspection contracts. No behavior change for existing targets.
 
 ### Fixed
 

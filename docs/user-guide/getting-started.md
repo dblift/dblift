@@ -62,7 +62,7 @@ CREATE TABLE users (
 
 Migration filenames follow the pattern `V<version>__<description>.sql`. The version determines apply order.
 
-**Targeting Azure Cosmos DB?** Cosmos has no SQL DDL, so its migrations are Python files (`V1_0_0__create_users_container.py`) that call the Azure SDK; a `.sql` migration fails with `DBLIFT-NOSQL-001`. Everything else in this guide is the same. See [NoSQL (Cosmos DB) Python migrations](nosql-python-migrations.md).
+**Targeting Cosmos DB or MongoDB?** Document stores have no SQL DDL surface, so their migrations are Python files (`V1_0_0__create_users.py`) that call the vendor SDK; a `.sql` migration fails with `DBLIFT-NOSQL-001`. Everything else in this guide is the same. See [NoSQL Python migrations](nosql-python-migrations.md).
 
 ## Step 4: Check state
 

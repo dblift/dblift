@@ -236,32 +236,67 @@ Use `dblift info` to see execution times for each migration.
 4. Verify network/firewall allows connections
 5. Check Azure portal for account status
 
-## CosmosDB: `DBLIFT-NOSQL-001` on a `.sql` Migration
+## Document store: `DBLIFT-NOSQL-001` on a `.sql` Migration
 
-**Problem**: running against Cosmos DB fails with
-`DBLIFT-NOSQL-001: '<file>.sql' is a SQL migration, but the 'cosmosdb' dialect
+**Problem**: running against Cosmos DB or MongoDB fails with
+`DBLIFT-NOSQL-001: '<file>.sql' is a SQL migration, but the '<dialect>' dialect
 does not execute SQL migrations.`
 
-**Cause**: Cosmos DB has no SQL DDL. It runs Python migrations only — the
-pseudo-SQL statements (`DROP CONTAINER`, `SET THROUGHPUT`, `CREATE INDEX`,
-`SET TTL`, …) no longer exist and are not translated to SDK calls.
+**Cause**: document stores (Cosmos DB and MongoDB) have no SQL DDL surface.
+They run Python migrations only. Cosmos pseudo-SQL statements
+(`DROP CONTAINER`, `SET THROUGHPUT`, `CREATE INDEX`, `SET TTL`, …) no longer
+exist and are not translated to SDK calls.
 
 **Solution**:
 
 1. Rewrite the migration as `.py` with the same version and description
    (`V1_0_0__create_users.sql` → `V1_0_0__create_users.py`).
-2. Drive the Azure SDK from `migrate(context)` via `context.db` /
-   `context.raw_client`. The statement-by-statement conversion table is in
-   [NoSQL (Cosmos DB) Python migrations](nosql-python-migrations.md#converting-pseudo-sql-to-sdk-calls).
+2. Drive the vendor SDK from `migrate(context)` via `context.db` /
+   `context.raw_client`. For Cosmos DB, the statement-by-statement conversion
+   table is in
+   [NoSQL Python migrations](nosql-python-migrations.md#converting-pseudo-sql-to-sdk-calls).
+   For MongoDB, use pymongo collection APIs as shown in the same guide.
 3. Delete the `.sql` file only if it was never applied. Already-applied `.sql`
    migrations stay valid — their history rows and checksums are untouched, and
    no `repair` or re-baseline is needed.
 
 !!! note "Related errors"
-    `NoSqlWriteNotSupportedError` means a Python migration passed a write
-    statement to `context.execute()`; only native `SELECT` runs there. An
-    `AttributeError` on `context.database` or `context.client` means the script
-    predates the rename to `context.db` / `context.raw_client`.
+    On Cosmos DB, `NoSqlWriteNotSupportedError` means a Python migration passed
+    a write statement to `context.execute()`; only native `SELECT` runs there.
+    On MongoDB, any string to `context.execute()` raises `DBLIFT-NOSQL-002`
+    instead (see below). An `AttributeError` on `context.database` or
+    `context.client` means the script predates the rename to `context.db` /
+    `context.raw_client`.
+
+## MongoDB: `DBLIFT-NOSQL-002` on `context.execute()`
+
+**Problem**: a Python migration against MongoDB fails with
+`DBLIFT-NOSQL-002` when it calls `context.execute(...)`.
+
+**Cause**: MongoDB has no string query language. Unlike Cosmos DB (which runs
+native `SELECT` and rejects writes), there is nothing for a string statement to
+execute — reads are `find()` calls, not statements.
+
+**Solution**:
+
+1. Remove the `context.execute(...)` call.
+2. Use `context.db` (`pymongo.database.Database`) or `context.raw_client`
+   (`pymongo.MongoClient`) — for example `context.db["users"].find(...)`,
+   collection write methods, or `context.db.command({...})`.
+3. See [NoSQL Python migrations](nosql-python-migrations.md#mongodb) for
+   worked examples and notes on partial state after a failed migration.
+
+## MongoDB Connection Issues
+
+**Problem**: Can't connect to MongoDB.
+
+**Solution**:
+1. Verify `host`/`port` or the full `url` (`mongodb://` / `mongodb+srv://`)
+2. Confirm `database` is set — it is required even when `url` is supplied
+3. Check credentials and auth source (Atlas often needs `authSource=admin` in
+   the URI)
+4. For local development, ensure mongod is listening (default port 27017)
+5. Re-run `dblift db check-connection`
 
 ## SQLite Path Issues
 
