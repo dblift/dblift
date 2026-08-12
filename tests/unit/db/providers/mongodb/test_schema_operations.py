@@ -109,3 +109,54 @@ def test_database_version_falls_back_when_unavailable():
     operations, database = _operations([])
     database.command.side_effect = Exception("not authorized")
     assert operations.get_database_version(None) == "unknown"
+
+
+def test_create_schema_is_noop():
+    """MongoDB has no schema layer; create_schema_if_not_exists is a no-op."""
+    operations, _ = _operations([])
+    # Should not raise, and should not call any database methods
+    operations.create_schema_if_not_exists(None, "test_schema")
+
+
+def test_set_current_schema_is_noop():
+    """MongoDB has no schema layer; set_current_schema is a no-op."""
+    operations, _ = _operations([])
+    # Should not raise, and should not call any database methods
+    operations.set_current_schema(None, "test_schema")
+
+
+def test_get_tables_returns_collections():
+    """get_tables should return the list of collections."""
+    operations, _ = _operations(["users", "orders"])
+    tables = operations.get_tables(None, "ignored")
+    assert sorted(tables) == ["orders", "users"]
+
+
+def test_get_schemas_returns_empty_list():
+    """get_schemas returns empty list since MongoDB has no schemas."""
+    operations, _ = _operations([])
+    schemas = operations.get_schemas(None)
+    assert schemas == []
+
+
+def test_get_columns_query_returns_find_command():
+    """get_columns_query returns a MongoDB find query."""
+    operations, _ = _operations([])
+    query = operations.get_columns_query("ignored_schema", "users")
+    assert query == "db.users.findOne()"
+
+
+def test_get_add_column_sql_returns_comment():
+    """get_add_column_sql returns a comment since MongoDB is schema-less."""
+    operations, _ = _operations([])
+    sql = operations.get_add_column_sql("ignored_schema", "users", "email", "string")
+    assert "schema-less" in sql
+    assert "users.email" in sql
+
+
+def test_get_parameter_placeholders():
+    """get_parameter_placeholders returns comma-separated question marks."""
+    operations, _ = _operations([])
+    assert operations.get_parameter_placeholders(1) == "?"
+    assert operations.get_parameter_placeholders(3) == "?, ?, ?"
+    assert operations.get_parameter_placeholders(0) == ""
