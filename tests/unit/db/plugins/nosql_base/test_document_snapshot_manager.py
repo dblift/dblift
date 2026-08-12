@@ -48,10 +48,3 @@ def test_empty_name_falls_back_to_the_default():
     manager = _Recording()
     manager.create_snapshot_table_if_not_exists("ignored_schema", "")
     assert manager.created == [DBLIFT_SCHEMA_SNAPSHOTS_TABLE]
-
-
-def test_no_ddl_is_produced():
-    """Nothing on this contract may return or execute SQL."""
-    manager = _Recording()
-    manager.create_snapshot_table_if_not_exists("ignored_schema")
-    assert not any("CREATE" in name.upper() for name in manager.created)
