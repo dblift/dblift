@@ -698,6 +698,7 @@ DBLift works with these databases:
 | DB2 | `ibm_db_sa://localhost:50000/mydb` | `dblift[db2]` |
 | SQLite | `/path/to/database.db` or `:memory:` (see [SQLite Configuration](#sqlite-configuration)) |
 | Azure Cosmos DB | `https://account.documents.azure.com:443/` (see [CosmosDB Configuration](#cosmosdb-configuration)) | `dblift[cosmosdb]` |
+| MongoDB | `mongodb://host:27017` or `mongodb+srv://…` (see [MongoDB Configuration](#mongodb-configuration)) | `dblift[mongodb]` |
 
 ### SQLite Configuration
 
@@ -774,7 +775,56 @@ and calls the Azure SDK through `context.db` (`azure.cosmos.DatabaseProxy`) or
 `context.raw_client` (`azure.cosmos.CosmosClient`); `context.execute()` runs
 native Cosmos `SELECT` only. A `.sql` migration aimed at CosmosDB fails with
 `DBLIFT-NOSQL-001`. See
-[NoSQL (Cosmos DB) Python migrations](docs/user-guide/nosql-python-migrations.md).
+[NoSQL Python migrations](docs/user-guide/nosql-python-migrations.md).
+
+### MongoDB Configuration
+
+MongoDB needs `pymongo`, which ships in its own extra:
+
+```bash
+pip install "dblift[mongodb]"
+```
+
+Two input shapes are accepted; `url` wins when both are present:
+
+```yaml
+database:
+  type: "mongodb"          # alias: "mongo"
+  host: "localhost"
+  port: 27017              # optional; defaults to 27017
+  database: "myapp"        # required
+  # username: "app"
+  # password: "secret"
+```
+
+**URI form** (Atlas, TLS, replica sets and auth sources live in the URI as
+query parameters):
+
+```yaml
+database:
+  type: "mongodb"
+  url: "mongodb+srv://user:pass@cluster.example.mongodb.net/"
+  database: "myapp"
+```
+
+**Using Environment Variables:**
+```bash
+export DBLIFT_DB_TYPE="mongodb"
+export DBLIFT_DB_HOST="localhost"
+export DBLIFT_DB_PORT="27017"
+export DBLIFT_DB_DATABASE="myapp"
+# Or URI form:
+# export DBLIFT_DB_URL="mongodb://localhost:27017"
+# export DBLIFT_DB_DATABASE="myapp"
+```
+
+**MongoDB migrations are Python, not SQL:** MongoDB has no string query
+language, so DBLift runs `.py` migrations against it. A migration defines
+`def migrate(context)` and calls pymongo through `context.db`
+(`pymongo.database.Database`) or `context.raw_client` (`pymongo.MongoClient`).
+A `.sql` migration fails with `DBLIFT-NOSQL-001`; a string handed to
+`context.execute()` raises `DBLIFT-NOSQL-002`. See
+[NoSQL Python migrations](docs/user-guide/nosql-python-migrations.md).
 
 ### Using Environment Variables
 
@@ -1033,7 +1083,8 @@ For advanced features and technical details, see:
 
 - **[Documentation index](docs/README.md)** - User guide, API reference, and architecture topics
 - **[Cosmos DB configuration](docs/user-guide/configuration.md#cosmosdb-configuration)** - Account settings and emulator
-- **[Cosmos DB Python migrations](docs/user-guide/nosql-python-migrations.md)** - Migration contract, context reference, and pseudo-SQL conversion table
+- **[MongoDB configuration](docs/user-guide/configuration.md#mongodb-configuration)** - Host/URI and database settings
+- **[NoSQL Python migrations](docs/user-guide/nosql-python-migrations.md)** - Migration contract for Cosmos DB and MongoDB
 
 ### Configuration Templates
 

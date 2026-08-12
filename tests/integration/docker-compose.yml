@@ -120,3 +120,16 @@ services:
     # Note: vnext-preview is arm64-native; on Docker/Colima with an x86_64 VM profile
     # this image fails with "exec format error" — use Apple's `container` runtime or
     # a native-arm64 Colima profile on macOS ARM64 instead.
+
+  mongodb:
+    image: mongo:7
+    container_name: dblift_mongodb
+    ports:
+      - "27017:27017"
+    healthcheck:
+      # No replica set: dblift claims no transaction support on MongoDB, so
+      # a standalone mongod is the whole supported surface and starts fast.
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 5s
+      timeout: 5s
+      retries: 10

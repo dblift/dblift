@@ -146,13 +146,13 @@ my-project/
     └── V1_0_2__add_products.sql
 ```
 
-!!! note "Cosmos DB uses `.py` migrations"
-    Azure Cosmos DB has no SQL DDL, so its migrations are Python scripts
-    (`V1_0_0__create_users_container.py`) that drive the Azure SDK. A `.sql`
-    migration aimed at Cosmos DB fails with `DBLIFT-NOSQL-001`. Everything in
-    this page — ordering, tags, `--dry-run`, undo, multiple directories —
-    applies unchanged. See
-    [NoSQL (Cosmos DB) Python migrations](nosql-python-migrations.md).
+!!! note "Document stores use `.py` migrations"
+    Azure Cosmos DB and MongoDB have no SQL DDL surface, so their migrations
+    are Python scripts (`V1_0_0__create_users.py`) that drive the vendor SDK.
+    A `.sql` migration aimed at either target fails with `DBLIFT-NOSQL-001`.
+    Everything in this page — ordering, tags, `--dry-run`, undo, multiple
+    directories — applies unchanged. See
+    [NoSQL Python migrations](nosql-python-migrations.md).
 
 ### Multi-Module Projects
 

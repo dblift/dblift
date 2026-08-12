@@ -194,16 +194,33 @@ def test_fk_reference_bind_params_non_oracle_has_three_items(dialect: str) -> No
     assert params == ["s", "t", "c"], f"{dialect}: fk_reference_bind_params returned {params!r}"
 
 
-def test_cosmosdb_rejects_sql_migrations() -> None:
-    """CosmosDB runs Python migrations only — no SQL DDL to execute."""
-    quirks = ProviderRegistry.get_quirks("cosmosdb")
+def _nosql_plugin_names():
+    ProviderRegistry.discover_plugins()
+    return [
+        plugin.name
+        for plugin in ProviderRegistry.list_plugins()
+        if getattr(ProviderRegistry.get_quirks(plugin.name), "is_nosql", False)
+    ]
+
+
+@pytest.mark.parametrize("plugin_name", _nosql_plugin_names())
+def test_nosql_dialects_reject_sql_migrations(plugin_name):
+    """Every document store must route .sql to DBLIFT-NOSQL-001 rather than
+    to a translator — asserted by capability, so a new one is covered the
+    day it registers."""
+    quirks = ProviderRegistry.get_quirks(plugin_name)
     assert quirks.supports_sql_migrations is False
     assert quirks.is_nosql is True
 
 
+def test_at_least_two_nosql_plugins_are_registered():
+    """Guards the parametrization above against silently collecting nothing."""
+    assert len(_nosql_plugin_names()) >= 2
+
+
 @pytest.mark.parametrize(
     "dialect",
-    [d for d in KNOWN_DIALECTS if d != "cosmosdb"],
+    [d for d in KNOWN_DIALECTS if d not in set(_nosql_plugin_names())],
 )
 def test_relational_dialects_accept_sql_migrations(dialect: str) -> None:
     """Every relational dialect keeps executing .sql migrations."""

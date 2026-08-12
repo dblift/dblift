@@ -149,6 +149,7 @@ DBLift works with these databases:
 | DB2 | `ibm_db_sa://localhost:50000/mydb` | `dblift[db2]` |
 | SQLite | `/path/to/database.db` or `:memory:` (see [SQLite Configuration](#sqlite-configuration)) |
 | Azure Cosmos DB | `https://account.documents.azure.com:443/` (see [CosmosDB Configuration](#cosmosdb-configuration)) | `dblift[cosmosdb]` |
+| MongoDB | `mongodb://host:27017` or `mongodb+srv://…` (see [MongoDB Configuration](#mongodb-configuration)) | `dblift[mongodb]` |
 
 ## SQLite Configuration
 
@@ -235,10 +236,70 @@ A `.sql` migration aimed at a Cosmos DB target fails with `DBLIFT-NOSQL-001`
 before anything executes. File naming, ordering, checksums and `--dry-run` are
 otherwise identical to SQL migrations.
 
-See **[NoSQL (Cosmos DB) Python migrations](nosql-python-migrations.md)** for
-the migration contract, the full context reference, and how to convert the
-removed pseudo-SQL statements (`DROP CONTAINER`, `SET THROUGHPUT`,
-`CREATE INDEX`, `SET TTL`, …) into SDK calls.
+See **[NoSQL Python migrations](nosql-python-migrations.md)** for the migration
+contract, the full context reference, and how to convert the removed
+pseudo-SQL statements (`DROP CONTAINER`, `SET THROUGHPUT`, `CREATE INDEX`,
+`SET TTL`, …) into SDK calls.
+
+## MongoDB Configuration
+
+MongoDB needs `pymongo`, which ships in its own extra:
+
+```bash
+pip install "dblift[mongodb]"
+```
+
+Two input shapes are accepted; `url` wins when both are present:
+
+```yaml
+database:
+  type: "mongodb"          # alias: "mongo"
+  host: "localhost"
+  port: 27017              # optional; defaults to 27017
+  database: "myapp"        # required
+  # username: "app"
+  # password: "secret"
+```
+
+### URI Form
+
+Atlas, TLS, replica sets and auth sources are URI query parameters — pass them
+on `url` rather than as separate fields:
+
+```yaml
+database:
+  type: "mongodb"
+  url: "mongodb+srv://user:pass@cluster.example.mongodb.net/"
+  database: "myapp"
+```
+
+### Using Environment Variables
+
+```bash
+export DBLIFT_DB_TYPE="mongodb"
+export DBLIFT_DB_HOST="localhost"
+export DBLIFT_DB_PORT="27017"
+export DBLIFT_DB_DATABASE="myapp"
+# Or URI form:
+# export DBLIFT_DB_URL="mongodb://localhost:27017"
+# export DBLIFT_DB_DATABASE="myapp"
+```
+
+### MongoDB Migrations Are Python
+
+MongoDB has no string query language, so DBLift runs **Python migrations only**
+against it. A `.py` migration receives `context.db`
+(`pymongo.database.Database`) and `context.raw_client` (`pymongo.MongoClient`)
+and calls pymongo directly; `context.execute()` always raises
+`DBLIFT-NOSQL-002`.
+
+A `.sql` migration aimed at a MongoDB target fails with `DBLIFT-NOSQL-001`
+before anything executes. File naming, ordering, checksums and `--dry-run` are
+otherwise identical to SQL migrations.
+
+See **[NoSQL Python migrations](nosql-python-migrations.md)** for the migration
+contract, worked examples, and notes on partial state (no automatic
+transactions around your script).
 
 ## Using Environment Variables
 
