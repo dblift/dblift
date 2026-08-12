@@ -359,6 +359,9 @@ class CosmosDbProvider(NativeProvider):
         store implements the same contract instead of re-deriving it from
         this provider. See ``db/plugins/nosql_base/snapshot.py``.
         """
+        # Guards providers built via __new__ (bypassing __init__, as some
+        # tests do) rather than the normal constructor, where this would
+        # already be set.
         if getattr(self, "snapshot_manager", None) is None:
             self.snapshot_manager = CosmosDbSnapshotManager(self, log=self.log)
         self.snapshot_manager.create_snapshot_table_if_not_exists(schema, table_name)

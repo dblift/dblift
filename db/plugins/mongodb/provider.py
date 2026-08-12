@@ -143,7 +143,7 @@ class MongoDbProvider(NativeProvider):
             DroppableObject(
                 name=collection_name,
                 object_type="COLLECTION",
-                drop_sql=f"database.drop_collection({collection_name!r})",
+                drop_sql=self.schema_operations._drop_audit_line(collection_name),
             )
             for collection_name in self.schema_operations.list_collections()
         ]
