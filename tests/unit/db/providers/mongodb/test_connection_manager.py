@@ -59,6 +59,29 @@ def test_create_connection_sets_both_handles():
     assert returned is fake_database
 
 
+def test_create_connection_pings_the_server():
+    """pymongo's MongoClient() constructor never raises for a bad host — it
+    connects lazily. Without an explicit ping, create_connection() cannot
+    detect an unreachable server, and db check-connection would report
+    success against a host with nothing listening."""
+    manager = MongoDbConnectionManager(_config())
+    fake_client = MagicMock()
+    with _patch_mongo_client(fake_client):
+        manager.create_connection()
+    fake_client.admin.command.assert_called_once_with("ping")
+
+
+def test_create_connection_raises_when_the_server_is_unreachable():
+    from pymongo.errors import ServerSelectionTimeoutError
+
+    manager = MongoDbConnectionManager(_config())
+    fake_client = MagicMock()
+    fake_client.admin.command.side_effect = ServerSelectionTimeoutError("no servers found")
+    with _patch_mongo_client(fake_client):
+        with pytest.raises(ServerSelectionTimeoutError):
+            manager.create_connection()
+
+
 def test_database_is_selected_by_name():
     manager = MongoDbConnectionManager(_config(database="appdb"))
     fake_client = MagicMock()
