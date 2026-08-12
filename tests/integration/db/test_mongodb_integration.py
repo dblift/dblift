@@ -11,13 +11,21 @@ documents are changed through ``pymongo`` from a **Python migration**
 
 See ``docs/user-guide/nosql-python-migrations.md``.
 
-Prerequisites:
-- MongoDB running in Docker (``docker compose up -d mongodb`` from
-  ``tests/integration``)
+Prerequisites (one of):
+- MongoDB via Docker (CI default): from ``tests/integration``,
+  ``docker compose up -d mongodb``
+- External mongod (local Apple Container, remote host, …): set
+  ``DBLIFT_MONGODB_HOST`` (optional ``DBLIFT_MONGODB_PORT`` /
+  ``DBLIFT_MONGODB_DATABASE``). When that is set the fixture does not
+  start a Docker container.
 
 Usage:
     export DBLIFT_DISABLE_CLI_EXTENSIONS=1
     export DBLIFT_CORE_TEST_DB=mongodb
+    # CI / Docker path — leave DBLIFT_MONGODB_HOST unset
+    # Local Apple Container example:
+    #   container run -d --name dblift_mongodb -p 27017:27017 mongo:7
+    #   export DBLIFT_MONGODB_HOST=localhost
     pytest tests/integration/db/test_mongodb_integration.py -v
 """
 

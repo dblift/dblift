@@ -68,6 +68,15 @@ EXTERNAL_COSMOSDB_KEY = os.environ.get("DBLIFT_COSMOSDB_KEY")
 EXTERNAL_COSMOSDB_DATABASE = os.environ.get("DBLIFT_COSMOSDB_DATABASE")
 EXTERNAL_COSMOSDB_CONTAINER = os.environ.get("DBLIFT_COSMOSDB_CONTAINER")
 
+# External MongoDB configuration (e.g. Apple Container / remote mongod).
+# When set, the mongodb_container fixture skips Docker startup — CI leaves
+# these unset and keeps using the docker_client path below.
+EXTERNAL_MONGODB_HOST = os.environ.get("DBLIFT_MONGODB_HOST")
+EXTERNAL_MONGODB_PORT = os.environ.get("DBLIFT_MONGODB_PORT")
+EXTERNAL_MONGODB_DATABASE = os.environ.get("DBLIFT_MONGODB_DATABASE")
+EXTERNAL_MONGODB_USERNAME = os.environ.get("DBLIFT_MONGODB_USERNAME")
+EXTERNAL_MONGODB_PASSWORD = os.environ.get("DBLIFT_MONGODB_PASSWORD")
+
 
 def _apply_mysql_port_override(configs: Dict[str, Dict[str, Any]], port_value: str | None) -> None:
     """Apply the MySQL host-port override used by docker-compose.override.yml."""
@@ -420,6 +429,29 @@ def db_configs() -> Dict[str, Dict[str, Any]]:
             "[INFO] Using external CosmosDB configuration: "
             f"{cosmosdb_config['account_endpoint']} "
             f"(database={cosmosdb_config['database_name']})"
+        )
+
+    if EXTERNAL_MONGODB_HOST:
+        mongodb_config = configs["mongodb"]
+        mongodb_config["host"] = EXTERNAL_MONGODB_HOST
+        if EXTERNAL_MONGODB_PORT:
+            try:
+                mongodb_config["port"] = int(EXTERNAL_MONGODB_PORT)
+            except ValueError:
+                print(
+                    f"[WARN] Invalid DBLIFT_MONGODB_PORT value '{EXTERNAL_MONGODB_PORT}', "
+                    "using default 27017"
+                )
+        if EXTERNAL_MONGODB_DATABASE:
+            mongodb_config["database"] = EXTERNAL_MONGODB_DATABASE
+        if EXTERNAL_MONGODB_USERNAME:
+            mongodb_config["username"] = EXTERNAL_MONGODB_USERNAME
+        if EXTERNAL_MONGODB_PASSWORD:
+            mongodb_config["password"] = EXTERNAL_MONGODB_PASSWORD
+        print(
+            "[INFO] Using external MongoDB configuration: "
+            f"{mongodb_config['host']}:{mongodb_config['port']} "
+            f"(database={mongodb_config['database']})"
         )
 
     return configs
@@ -1368,11 +1400,26 @@ def mongodb_container(request, db_configs):
     Resolves ``docker_client`` only after the SUPPORTED_DBS gate so that
     selecting another dialect via ``DBLIFT_CORE_TEST_DB`` skips cleanly
     without requiring a Docker daemon.
+
+    When ``DBLIFT_MONGODB_HOST`` is set (external mongod — Apple Container,
+    remote host, etc.), Docker is not touched; CI leaves that unset and uses
+    the docker_client path below unchanged.
     """
     service = "mongodb"
 
     if service not in SUPPORTED_DBS:
         pytest.skip(f"{service} tests are not enabled (not in SUPPORTED_DBS: {SUPPORTED_DBS})")
+
+    config = db_configs[service].copy()
+
+    # External instance (Apple Container, remote mongod, …) — same pattern as
+    # cosmosdb_container + EXTERNAL_COSMOSDB_ENDPOINT. CI does not set this.
+    if EXTERNAL_MONGODB_HOST:
+        print(
+            f"[MONGODB] Using external MongoDB instance at "
+            f"{config['host']}:{config['port']}"
+        )
+        return config
 
     docker_client = request.getfixturevalue("docker_client")
     container_name = db_container_names[service]
@@ -1396,4 +1443,4 @@ def mongodb_container(request, db_configs):
         container = docker_client.containers.run(**run_kwargs)
 
     wait_for_readiness(service, container)
-    return db_configs[service].copy()
+    return config
