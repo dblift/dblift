@@ -40,6 +40,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **MongoDB's `db check-connection` reported success against an unreachable
+  host.** `MongoClient()` connects lazily and never raised on its own, and
+  `get_database_version()`'s deliberately lenient error handling — correct
+  for `migrate`, where a version string isn't worth failing a run over —
+  left `check-connection` with no real reachability signal. Connecting now
+  pings the server immediately, matching every other dialect. (#218)
 - **`info`** now shows the status `MigrationStateManager` already computes
   instead of re-deriving it in a second, drifted implementation. The
   pending-migration branch was a stub that always returned `PENDING`,

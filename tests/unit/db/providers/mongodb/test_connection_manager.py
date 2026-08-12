@@ -72,6 +72,7 @@ def test_create_connection_pings_the_server():
 
 
 def test_create_connection_raises_when_the_server_is_unreachable():
+    pytest.importorskip("pymongo")
     from pymongo.errors import ServerSelectionTimeoutError
 
     manager = MongoDbConnectionManager(_config())
