@@ -31,15 +31,27 @@ def test_handles_start_empty():
     assert manager.database is None
 
 
+def _patch_mongo_client(fake_client):
+    """Patch the production import seam — unit CI may not have pymongo until
+    the ``mongodb`` extra is installed, and ``patch("pymongo.MongoClient")``
+    fails to resolve without the package on the path."""
+    return patch(
+        "db.plugins.mongodb.mongodb.connection_manager._load_mongo_client",
+        return_value=MagicMock(return_value=fake_client),
+    )
+
+
 def test_create_connection_sets_both_handles():
     manager = MongoDbConnectionManager(_config())
     fake_client = MagicMock()
     fake_database = MagicMock()
     fake_client.__getitem__.return_value = fake_database
 
-    with patch("pymongo.MongoClient", return_value=fake_client) as mongo_client:
+    with _patch_mongo_client(fake_client) as loader:
         returned = manager.create_connection()
 
+    loader.assert_called_once()
+    mongo_client = loader.return_value
     mongo_client.assert_called_once()
     assert mongo_client.call_args.args[0] == "mongodb://localhost:27017"
     assert manager.client is fake_client
@@ -50,7 +62,7 @@ def test_create_connection_sets_both_handles():
 def test_database_is_selected_by_name():
     manager = MongoDbConnectionManager(_config(database="appdb"))
     fake_client = MagicMock()
-    with patch("pymongo.MongoClient", return_value=fake_client):
+    with _patch_mongo_client(fake_client):
         manager.create_connection()
     fake_client.__getitem__.assert_called_once_with("appdb")
 
@@ -68,7 +80,7 @@ def test_get_collection_connects_on_demand():
     fake_client = MagicMock()
     fake_database = MagicMock()
     fake_client.__getitem__.return_value = fake_database
-    with patch("pymongo.MongoClient", return_value=fake_client):
+    with _patch_mongo_client(fake_client):
         manager.get_collection("users")
     fake_database.__getitem__.assert_called_once_with("users")
 
@@ -81,7 +93,7 @@ def test_database_url_is_masked():
 def test_close_releases_the_client():
     manager = MongoDbConnectionManager(_config())
     fake_client = MagicMock()
-    with patch("pymongo.MongoClient", return_value=fake_client):
+    with _patch_mongo_client(fake_client):
         manager.create_connection()
     manager.close()
     fake_client.close.assert_called_once()

@@ -8,7 +8,12 @@ lease is reclaimable so a dead holder cannot block the collection forever.
 from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock
 
-from pymongo.errors import DuplicateKeyError
+import pytest
+
+# pymongo is an optional extra; unit CI installs ``dblift[mongodb]`` (same
+# pattern as cosmosdb). Without it, skip rather than fail collection.
+pytest.importorskip("pymongo")
+from pymongo.errors import DuplicateKeyError  # noqa: E402
 
 from db.plugins.mongodb.mongodb import MongoDbLockingManager
 
