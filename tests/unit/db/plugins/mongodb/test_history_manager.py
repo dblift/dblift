@@ -1,0 +1,127 @@
+"""``MongoDbHistoryManager`` — migration history as documents.
+
+The critical method is delete_failed_migration_entry: repair calls it to
+clear a failed row so migrate can retry. Inheriting the relational default
+would emit a SQL DELETE, which on MongoDB raises — and the migration would
+be permanently unretryable.
+"""
+
+from unittest.mock import MagicMock
+
+import pytest
+
+from db.plugins.mongodb.mongodb import MongoDbHistoryManager
+
+
+def _manager(documents=None):
+    query_executor = MagicMock()
+    query_executor.list_documents.return_value = list(documents or [])
+    query_executor.delete_document.return_value = 1
+    schema_operations = MagicMock()
+    manager = MongoDbHistoryManager(query_executor, schema_operations, config=MagicMock())
+    return manager, query_executor, schema_operations
+
+
+def test_history_collection_name():
+    manager, _, _ = _manager()
+    assert manager.HISTORY_CONTAINER_NAME == "dblift_schema_history"
+
+
+def test_create_provisions_the_collection():
+    manager, _, schema_operations = _manager()
+    manager.create_migration_history_table_if_not_exists(None, "ignored")
+    schema_operations.create_collection_if_not_exists.assert_called_once_with(
+        "dblift_schema_history"
+    )
+
+
+def test_record_writes_a_document_keyed_by_installed_rank():
+    manager, query_executor, _ = _manager()
+    manager.record_migration(
+        None,
+        "ignored",
+        {
+            "installed_rank": 3,
+            "version": "1.0.0",
+            "description": "create users",
+            "type": "PYTHON",
+            "script": "V1_0_0__create_users.py",
+            "checksum": 123456,
+            "installed_by": "app",
+            "execution_time": 42,
+            "success": True,
+        },
+    )
+    collection, document = query_executor.upsert_document.call_args.args
+    assert collection == "dblift_schema_history"
+    assert document["_id"] == "3"
+    assert document["installed_rank"] == 3
+    assert document["script"] == "V1_0_0__create_users.py"
+    assert document["success"] is True
+
+
+def test_applied_migrations_are_ordered_by_installed_rank():
+    manager, _, _ = _manager(
+        [
+            {"_id": "2", "installed_rank": 2, "script": "V2.py", "success": True},
+            {"_id": "1", "installed_rank": 1, "script": "V1.py", "success": True},
+        ]
+    )
+    ranks = [row["installed_rank"] for row in manager.get_applied_migrations(None, "ignored")]
+    assert ranks == [1, 2]
+
+
+def test_applied_migrations_drop_the_document_id():
+    """``_id`` is storage bookkeeping; the framework's row shape has no such
+    column and would carry it into comparisons."""
+    manager, _, _ = _manager([{"_id": "1", "installed_rank": 1, "script": "V1.py"}])
+    assert "_id" not in manager.get_applied_migrations(None, "ignored")[0]
+
+
+def test_delete_failed_removes_only_the_failed_document():
+    manager, query_executor, _ = _manager(
+        [
+            {"_id": "1", "script": "V1.py", "success": False},
+            {"_id": "2", "script": "V1.py", "success": True},
+            {"_id": "3", "script": "V2.py", "success": False},
+        ]
+    )
+    removed = manager.delete_failed_migration_entry(None, "ignored", "V1.py")
+
+    assert removed == 1
+    query_executor.delete_document.assert_called_once_with("dblift_schema_history", "1")
+
+
+def test_delete_failed_returns_zero_when_nothing_matches():
+    manager, query_executor, _ = _manager([{"_id": "2", "script": "V1.py", "success": True}])
+    assert manager.delete_failed_migration_entry(None, "ignored", "V1.py") == 0
+    query_executor.delete_document.assert_not_called()
+
+
+def test_delete_failed_is_not_the_inherited_sql_version():
+    """Regression guard: if this ever resolves to BaseHistoryManager's
+    implementation, repair on MongoDB breaks and a failed migration can
+    never be retried."""
+    from db.plugins.base_history_manager import BaseHistoryManager
+
+    assert (
+        MongoDbHistoryManager.delete_failed_migration_entry
+        is not BaseHistoryManager.delete_failed_migration_entry
+    )
+
+
+def test_repair_updates_the_checksum_in_place():
+    manager, query_executor, _ = _manager(
+        [{"_id": "1", "script": "V1.py", "checksum": 111, "success": True}]
+    )
+    result = manager.repair_migration_history(None, "ignored", "V1.py", 222)
+    assert result is True
+    _collection, document = query_executor.upsert_document.call_args.args
+    assert document["checksum"] == 222
+    assert document["_id"] == "1"
+
+
+def test_create_history_table_returns_a_description_not_ddl():
+    manager, _, _ = _manager()
+    rendered = manager.create_history_table("ignored", "dblift_schema_history")
+    assert "CREATE TABLE" not in rendered.upper()
