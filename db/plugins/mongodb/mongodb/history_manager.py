@@ -18,9 +18,6 @@ class MongoDbHistoryManager(DocumentHistoryManager):
     silently fail to match.
     """
 
-    DEFAULT_HISTORY_TABLE = "dblift_schema_history"
-    HISTORY_CONTAINER_NAME = "dblift_schema_history"
-
     def __init__(
         self,
         query_executor: Any,
