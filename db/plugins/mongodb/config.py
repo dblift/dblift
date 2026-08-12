@@ -75,7 +75,7 @@ class MongoDbConfig(BaseDatabaseConfig):
     def to_dict(self) -> Dict[str, Any]:
         """Convert to a dictionary with the resolved URI included."""
         result = super().to_dict()
-        result["uri"] = self.build_database_url()
+        result["uri"] = self.build_connection_string()
         return result
 
     def get_connection_props(self) -> Dict[str, str]:

@@ -6,7 +6,7 @@ tracebacks, log lines and debugger output in clear text.
 
 import pytest
 
-from config._credential_masking import mask_url_credentials
+from config._credential_masking import mask_credentials, mask_url_credentials
 from config._subclasses.dummy_config import DummyDatabaseConfig
 
 
@@ -127,3 +127,48 @@ class TestToSafeDict:
         safe = cfg.to_safe_dict()
         assert safe["extra_params"]["api_key"] != "secret123"
         assert safe["extra_params"]["sslmode"] == "require"
+
+
+@pytest.mark.unit
+class TestMaskCredentialsUrlShapedKeys:
+    """A connection string can be exposed under names other than ``url``.
+
+    ``mask_credentials`` must treat every URL-shaped key the same way, not
+    just the literal ``url`` field — otherwise a dialect whose ``to_dict``
+    exposes the connection string as ``uri``/``dsn``/``connection_string``
+    leaks its password into ``repr()``.
+    """
+
+    def test_masks_uri_key(self):
+        result = mask_credentials({"uri": "mongodb://admin:secret@host:27017/db"})
+        assert "secret" not in result["uri"]
+        assert "admin" in result["uri"]
+
+    def test_masks_dsn_key(self):
+        result = mask_credentials({"dsn": "postgresql://admin:secret@host:5432/db"})
+        assert "secret" not in result["dsn"]
+        assert "admin" in result["dsn"]
+
+    def test_masks_connection_string_key(self):
+        result = mask_credentials(
+            {"connection_string": "server=host;password=secret123;database=db"}
+        )
+        assert "secret123" not in result["connection_string"]
+
+    def test_url_key_behavior_unchanged(self):
+        result = mask_credentials({"url": "postgresql://admin:secret@host:5432/db"})
+        assert "secret" not in result["url"]
+        assert "admin" in result["url"]
+
+    def test_clean_url_shaped_value_is_byte_identical(self):
+        """Masking must not rewrite a URL-shaped value that has no credentials."""
+        clean = "mongodb://localhost:27017/db"
+        result = mask_credentials({"uri": clean})
+        assert result["uri"] == clean
+
+    def test_non_url_key_is_not_run_through_url_masking(self):
+        """A key that isn't URL-shaped (and isn't sensitive-named) must pass
+        through untouched, even if its value looks like a connection string."""
+        value = "connect via user:secret@host if needed"
+        result = mask_credentials({"description": value})
+        assert result["description"] == value

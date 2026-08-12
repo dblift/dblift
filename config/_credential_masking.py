@@ -27,6 +27,12 @@ _SENSITIVE_PATTERNS = (
     "private",
 )
 
+# Keys whose value is a full connection string. A dialect's ``to_dict`` can
+# expose the same connection string under any of these names (MongoDB uses
+# ``uri``, ODBC-style dialects use ``dsn`` or ``connection_string``), so all
+# of them need the same in-place URL masking as ``url``.
+_URL_SHAPED_KEYS = frozenset({"url", "uri", "dsn", "connection_string"})
+
 
 def is_sensitive_key(key: str) -> bool:
     """Return True if ``key`` looks like it names sensitive data."""
@@ -72,12 +78,13 @@ def mask_credentials(result: Dict[str, Any]) -> Dict[str, Any]:
         if value and not isinstance(value, (dict, list, tuple, set)) and is_sensitive_key(key):
             result[key] = "***MASKED***"
 
-    # Mask URL if it contains credentials. Handled separately from the loop:
-    # a URL is rewritten in place, not replaced wholesale, so the host and
-    # database stay readable.
-    url = result.get("url", "")
-    if url:
-        result["url"] = mask_url_credentials(url)
+    # Mask URL-shaped values if they contain credentials. Handled separately
+    # from the loop above: a URL is rewritten in place, not replaced
+    # wholesale, so the host and database stay readable.
+    for key in _URL_SHAPED_KEYS:
+        value = result.get(key, "")
+        if value:
+            result[key] = mask_url_credentials(value)
 
     # Mask any sensitive keys in extra_params / properties (case-insensitive)
     mask_dict_in_place(result, "extra_params")
