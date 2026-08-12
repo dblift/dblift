@@ -23,9 +23,7 @@ def _manager():
 def _lease(age_seconds):
     return {
         "_id": "migration_lock",
-        "acquired_at": (
-            datetime.now(timezone.utc) - timedelta(seconds=age_seconds)
-        ).isoformat(),
+        "acquired_at": (datetime.now(timezone.utc) - timedelta(seconds=age_seconds)).isoformat(),
     }
 
 
@@ -100,7 +98,9 @@ def test_expired_lease_race_another_process_reclaims_first(monkeypatch):
         stale_lease,  # First find sees the stale lease
         fresh_lease,  # After delete fails, find sees the fresh lease (another process won)
     ]
-    collection.delete_one.return_value = MagicMock(deleted_count=0)  # Delete fails (acquired_at mismatch)
+    collection.delete_one.return_value = MagicMock(
+        deleted_count=0
+    )  # Delete fails (acquired_at mismatch)
 
     # Should timeout waiting for the fresh lease, not insert on top of it
     assert manager.acquire_migration_lock("ignored", wait_timeout_seconds=0) is False

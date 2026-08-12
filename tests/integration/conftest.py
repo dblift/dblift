@@ -1421,10 +1421,7 @@ def mongodb_container(request, db_configs):
     # External instance (Apple Container, remote mongod, …) — same pattern as
     # cosmosdb_container + EXTERNAL_COSMOSDB_ENDPOINT. CI does not set this.
     if EXTERNAL_MONGODB_HOST:
-        print(
-            f"[MONGODB] Using external MongoDB instance at "
-            f"{config['host']}:{config['port']}"
-        )
+        print(f"[MONGODB] Using external MongoDB instance at " f"{config['host']}:{config['port']}")
         return config
 
     docker_client = request.getfixturevalue("docker_client")

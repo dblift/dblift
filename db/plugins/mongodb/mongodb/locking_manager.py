@@ -113,9 +113,7 @@ class MongoDbLockingManager(DocumentLockingManager):
                         return True
 
             if time.monotonic() >= deadline:
-                self.log.warning(
-                    f"Could not acquire migration lock within {wait_timeout_seconds}s"
-                )
+                self.log.warning(f"Could not acquire migration lock within {wait_timeout_seconds}s")
                 return False
             time.sleep(_POLL_INTERVAL_SECONDS)
 

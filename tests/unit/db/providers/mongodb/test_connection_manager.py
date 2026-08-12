@@ -59,7 +59,7 @@ def test_missing_driver_gives_an_install_hint():
     manager = MongoDbConnectionManager(_config())
     with patch("db.plugins.mongodb.mongodb.connection_manager._load_mongo_client") as loader:
         loader.side_effect = ImportError("No module named 'pymongo'")
-        with pytest.raises(ImportError, match=r'dblift\[mongodb\]'):
+        with pytest.raises(ImportError, match=r"dblift\[mongodb\]"):
             manager.create_connection()
 
 

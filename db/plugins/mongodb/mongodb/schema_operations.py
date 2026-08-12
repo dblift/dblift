@@ -35,9 +35,7 @@ class MongoDbSchemaOperations(BaseSchemaOperations):
         MongoDB has no schemas. The database is selected by the connection,
         and collections spring into existence on first write.
         """
-        self.log.debug(
-            f"Schema layer not applicable to MongoDB; using database: {schema}"
-        )
+        self.log.debug(f"Schema layer not applicable to MongoDB; using database: {schema}")
 
     def set_current_schema(self, connection: Any, schema: str) -> None:
         """No-op for MongoDB — it has no schema layer.

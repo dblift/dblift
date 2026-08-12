@@ -44,9 +44,7 @@ class MongoDbConnectionManager:
         self.client: Optional["MongoClient[Any]"] = None
         self.database: Optional["Database[Any]"] = None
 
-        if not getattr(config.database, "url", None) and not getattr(
-            config.database, "host", None
-        ):
+        if not getattr(config.database, "url", None) and not getattr(config.database, "host", None):
             raise ValueError("MongoDB connection target is required (set url or host)")
         if not getattr(config.database, "database", None):
             raise ValueError("MongoDB database name is required")
