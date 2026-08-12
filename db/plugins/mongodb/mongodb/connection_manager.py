@@ -45,11 +45,15 @@ class MongoDbConnectionManager:
         self.database: Optional["Database[Any]"] = None
 
     def create_connection(self) -> Any:
-        """Open the client and select the configured database.
+        """Open the client, prove the server is reachable, and select the database.
 
-        Returns the ``Database`` handle. pymongo connects lazily, so this
-        does not prove the server is reachable — the first real operation
-        does, within ``_SERVER_SELECTION_TIMEOUT_MS``.
+        Returns the ``Database`` handle. pymongo's ``MongoClient`` constructor
+        itself connects lazily, so it never raises for a bad host on its own —
+        every other dialect's ``create_connection`` performs a real handshake,
+        and callers (``db check-connection`` in particular) rely on that to
+        report failure instead of a false "connected". An explicit ``ping``
+        forces that handshake now, within ``_SERVER_SELECTION_TIMEOUT_MS``,
+        instead of deferring it to whatever operation happens to run first.
         """
         uri = self.config.database.build_connection_string()
         database_name = self.config.database.database
@@ -71,6 +75,7 @@ class MongoDbConnectionManager:
             uri,
             serverSelectionTimeoutMS=_SERVER_SELECTION_TIMEOUT_MS,
         )
+        self.client.admin.command("ping")
         self.database = self.client[database_name]
         self.log.debug(f"Connected to MongoDB database: {database_name}")
         return self.database
