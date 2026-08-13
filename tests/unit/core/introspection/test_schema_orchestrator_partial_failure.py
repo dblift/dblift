@@ -31,18 +31,21 @@ pytestmark = [pytest.mark.unit]
 
 #: Every object type the orchestrator collects, with the ``si`` method
 #: that produces it and the result key it populates.
+#: ``(object_type, result key, count key)``. The result key and the object
+#: type differ for none of them today, but both are named so a future
+#: divergence is a test edit rather than a silent mismatch.
 COLLECTED_TYPES = [
-    ("views", "get_views", "views", "view_count"),
-    ("materialized_views", "get_materialized_views", "materialized_views", None),
-    ("sequences", "get_sequences", "sequences", "sequence_count"),
-    ("triggers", "get_triggers", "triggers", "trigger_count"),
-    ("events", "get_events", "events", None),
-    ("procedures", "get_procedures", "procedures", "procedure_count"),
-    ("functions", "get_functions", "functions", "function_count"),
-    ("packages", "get_packages", "packages", "package_count"),
-    ("synonyms", "get_synonyms", "synonyms", "synonym_count"),
-    ("user_defined_types", "get_user_defined_types", "user_defined_types", None),
-    ("extensions", "get_extensions", "extensions", None),
+    ("views", "views", "view_count"),
+    ("materialized_views", "materialized_views", "materialized_view_count"),
+    ("sequences", "sequences", "sequence_count"),
+    ("triggers", "triggers", "trigger_count"),
+    ("events", "events", "event_count"),
+    ("procedures", "procedures", "procedure_count"),
+    ("functions", "functions", "function_count"),
+    ("packages", "packages", "package_count"),
+    ("synonyms", "synonyms", "synonym_count"),
+    ("user_defined_types", "user_defined_types", "user_defined_type_count"),
+    ("extensions", "extensions", "extension_count"),
 ]
 _TYPE_IDS = [t[0] for t in COLLECTED_TYPES]
 
@@ -244,10 +247,8 @@ class TestCleanRun:
 
 
 class TestOneFailingTypeDoesNotAbortTheSnapshot:
-    @pytest.mark.parametrize(
-        "kind, _method, result_key, _count_key", COLLECTED_TYPES, ids=_TYPE_IDS
-    )
-    def test_other_object_types_are_still_present(self, kind, _method, result_key, _count_key):
+    @pytest.mark.parametrize("kind, result_key, count_key", COLLECTED_TYPES, ids=_TYPE_IDS)
+    def test_other_object_types_are_still_present(self, kind, result_key, count_key):
         result = introspect_schema(_Introspector(failing=[kind]), "public")
 
         # The spine survives -- this is the whole point.
@@ -256,19 +257,19 @@ class TestOneFailingTypeDoesNotAbortTheSnapshot:
         assert result["indexes"] == {"t1": ["ix_t1"], "t2": ["ix_t2"]}
 
         # Every *other* collected type still read normally.
-        for other, _m, other_key, _c in COLLECTED_TYPES:
+        for other, other_key, _c in COLLECTED_TYPES:
             if other == kind:
                 continue
             assert result[other_key] == [f"{other}_1"], f"{other} was lost when {kind} failed"
 
-        # The failing one is empty.
+        # The failing one is empty -- and its count agrees, which is
+        # exactly why the count alone cannot be trusted.
         assert result[result_key] == []
+        assert result[count_key] == 0
 
-    @pytest.mark.parametrize(
-        "kind, _method, _result_key, _count_key", COLLECTED_TYPES, ids=_TYPE_IDS
-    )
+    @pytest.mark.parametrize("kind, _result_key, _count_key", COLLECTED_TYPES, ids=_TYPE_IDS)
     def test_failure_is_visible_without_enabling_result_tracking(
-        self, kind, _method, _result_key, _count_key
+        self, kind, _result_key, _count_key
     ):
         """The channel that matters. A caller that never called
         ``enable_result_tracking()`` must still be able to tell an
@@ -285,11 +286,9 @@ class TestOneFailingTypeDoesNotAbortTheSnapshot:
         assert "permission denied" in result["failures"][0]["error"]
         assert result["failures"][0]["exception_type"] == "RuntimeError"
 
-    @pytest.mark.parametrize(
-        "kind, _method, _result_key, _count_key", COLLECTED_TYPES, ids=_TYPE_IDS
-    )
+    @pytest.mark.parametrize("kind, _result_key, _count_key", COLLECTED_TYPES, ids=_TYPE_IDS)
     def test_failure_is_also_recorded_on_the_tracker_when_enabled(
-        self, kind, _method, _result_key, _count_key
+        self, kind, _result_key, _count_key
     ):
         si = _Introspector(failing=[kind], track_results=True)
 
@@ -298,15 +297,16 @@ class TestOneFailingTypeDoesNotAbortTheSnapshot:
         assert [t["property"] for t in si.tracked] == [kind]
         assert [f["object_type"] for f in result["failures"]] == [kind]
 
-    @pytest.mark.parametrize(
-        "kind, _method, _result_key, _count_key", COLLECTED_TYPES, ids=_TYPE_IDS
-    )
-    def test_failure_is_logged_at_error_level(self, kind, _method, _result_key, _count_key):
+    @pytest.mark.parametrize("kind, _result_key, _count_key", COLLECTED_TYPES, ids=_TYPE_IDS)
+    def test_failure_is_logged_at_error_level(self, kind, _result_key, _count_key):
         si = _Introspector(failing=[kind])
 
         introspect_schema(si, "public")
 
-        assert any(kind in line for line in si.log.errors)
+        # Match the full phrase, not a bare substring: "views" occurs
+        # inside "materialized_views", so `kind in line` would pass for
+        # the wrong log entry.
+        assert any(f"Could not read {kind} for schema" in line for line in si.log.errors)
         assert any("incomplete" in line for line in si.log.warnings)
 
 
@@ -372,7 +372,12 @@ class TestOneFailingTableDoesNotAbortTheSnapshot:
         elif prop == "check_constraints":
             assert t2.constraints == []
         else:
-            assert prop not in t2.enriched
+            # The other three are in-place enrichments. Assert the whole
+            # list, not just the absence of one name: `prop not in [...]`
+            # would also pass if enrichment never ran at all.
+            assert sorted(t2.enriched) == sorted(
+                q for q in ("computed_columns", "identity_columns", "partition_scheme") if q != prop
+            )
         # ...and nothing else about that table was lost.
         if prop != "indexes":
             assert result["indexes"]["t2"] == ["ix_t2"]

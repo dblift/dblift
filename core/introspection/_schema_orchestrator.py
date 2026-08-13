@@ -173,67 +173,77 @@ def introspect_schema(si: Any, schema: str, **kwargs: Any) -> Dict[str, Any]:
             # are still read.
 
             # Enrich columns with computed/generated column metadata
-            if si.vendor_queries and si.vendor_queries.supports_computed_columns():
-                _collect(
-                    "computed_columns",
-                    lambda: si.enrich_columns_with_computed(schema, table.name, table.columns),
-                    None,
-                    table=table.name,
-                )
+            _collect(
+                "computed_columns",
+                lambda: (
+                    si.enrich_columns_with_computed(schema, table.name, table.columns)
+                    if si.vendor_queries and si.vendor_queries.supports_computed_columns()
+                    else None
+                ),
+                None,
+                table=table.name,
+            )
 
             # Enrich columns with identity/auto-increment metadata
-            if si.vendor_queries:
-                _collect(
-                    "identity_columns",
-                    lambda: si.enrich_columns_with_identity(schema, table.name, table.columns),
-                    None,
-                    table=table.name,
-                )
+            _collect(
+                "identity_columns",
+                lambda: (
+                    si.enrich_columns_with_identity(schema, table.name, table.columns)
+                    if si.vendor_queries
+                    else None
+                ),
+                None,
+                table=table.name,
+            )
 
             # Add check constraints from vendor queries (if not already added via _get_constraints)
             # Note: get_tables() already calls _get_constraints() which includes check constraints,
             # so we need to deduplicate here to avoid adding them twice
-            if si.vendor_queries and si.vendor_queries.supports_check_constraints():
-                # Build a set of existing constraint names (case-insensitive) for deduplication
-                existing_constraint_names = {
-                    c.name.strip().upper() if c.name else None for c in table.constraints if c.name
-                }
-                # Get check constraints and only add those that don't already exist
-                check_constraints = _collect(
-                    "check_constraints",
-                    lambda: si.get_check_constraints(schema, table.name),
-                    [],
-                    table=table.name,
-                )
-                if check_constraints:
-                    for check_constraint in check_constraints:
-                        check_name_normalized = (
-                            check_constraint.name.strip().upper() if check_constraint.name else None
+            # Build a set of existing constraint names (case-insensitive) for deduplication
+            existing_constraint_names = {
+                c.name.strip().upper() if c.name else None for c in table.constraints if c.name
+            }
+            # Get check constraints and only add those that don't already exist
+            check_constraints = _collect(
+                "check_constraints",
+                lambda: (
+                    si.get_check_constraints(schema, table.name)
+                    if si.vendor_queries and si.vendor_queries.supports_check_constraints()
+                    else []
+                ),
+                [],
+                table=table.name,
+            )
+            if check_constraints:
+                for check_constraint in check_constraints:
+                    check_name_normalized = (
+                        check_constraint.name.strip().upper() if check_constraint.name else None
+                    )
+                    # Skip if constraint already exists (by name)
+                    if check_name_normalized and check_name_normalized in existing_constraint_names:
+                        si.log.debug(
+                            f"Skipping duplicate check constraint "
+                            f"{schema}.{table.name}.{check_constraint.name} "
+                            f"(already exists in table constraints)"
                         )
-                        # Skip if constraint already exists (by name)
-                        if (
-                            check_name_normalized
-                            and check_name_normalized in existing_constraint_names
-                        ):
-                            si.log.debug(
-                                f"Skipping duplicate check constraint "
-                                f"{schema}.{table.name}.{check_constraint.name} "
-                                f"(already exists in table constraints)"
-                            )
-                            continue
-                        # Add the constraint
-                        table.constraints.append(check_constraint)
-                        if check_name_normalized:
-                            existing_constraint_names.add(check_name_normalized)
+                        continue
+                    # Add the constraint
+                    table.constraints.append(check_constraint)
+                    if check_name_normalized:
+                        existing_constraint_names.add(check_name_normalized)
 
             # Enrich table with partition scheme (method and columns only, not individual partitions)
-            if si.vendor_queries:  # get_partition_scheme_query guaranteed in ABC
-                _collect(
-                    "partition_scheme",
-                    lambda: si.enrich_table_with_partition_scheme(schema, table.name, table),
-                    None,
-                    table=table.name,
-                )
+            _collect(
+                "partition_scheme",
+                lambda: (
+                    # get_partition_scheme_query guaranteed in ABC
+                    si.enrich_table_with_partition_scheme(schema, table.name, table)
+                    if si.vendor_queries
+                    else None
+                ),
+                None,
+                table=table.name,
+            )
 
             # Get indexes
             indexes = _collect(
@@ -244,19 +254,22 @@ def introspect_schema(si: Any, schema: str, **kwargs: Any) -> Dict[str, Any]:
             result["total_indexes"] = total_idx + len(indexes)
 
             # Get table partitions (if supported)
-            if si.vendor_queries and si.vendor_queries.supports_partitions():
-                partitions = _collect(
-                    "partitions",
-                    lambda: si.get_table_partitions(schema, table.name),
-                    [],
-                    table=table.name,
-                )
-                if partitions:
-                    result["partitions"][table.name] = partitions
-                    if hasattr(table, "export_partitions"):
-                        table.export_partitions = partitions
-                    total_parts: int = result["total_partitions"]
-                    result["total_partitions"] = total_parts + len(partitions)
+            partitions = _collect(
+                "partitions",
+                lambda: (
+                    si.get_table_partitions(schema, table.name)
+                    if si.vendor_queries and si.vendor_queries.supports_partitions()
+                    else []
+                ),
+                [],
+                table=table.name,
+            )
+            if partitions:
+                result["partitions"][table.name] = partitions
+                if hasattr(table, "export_partitions"):
+                    table.export_partitions = partitions
+                total_parts: int = result["total_partitions"]
+                result["total_partitions"] = total_parts + len(partitions)
 
         # Every lookup below goes through _collect: one object type that
         # cannot be read is recorded and skipped, not fatal.
@@ -268,12 +281,17 @@ def introspect_schema(si: Any, schema: str, **kwargs: Any) -> Dict[str, Any]:
             result["view_count"] = len(views)
 
             # Get materialized views (if supported)
-            if si.vendor_queries and si.vendor_queries.supports_materialized_views():
-                materialized_views = _collect(
-                    "materialized_views", lambda: si.get_materialized_views(schema), []
-                )
-                result["materialized_views"] = materialized_views
-                result["materialized_view_count"] = len(materialized_views)
+            materialized_views = _collect(
+                "materialized_views",
+                lambda: (
+                    si.get_materialized_views(schema)
+                    if si.vendor_queries and si.vendor_queries.supports_materialized_views()
+                    else []
+                ),
+                [],
+            )
+            result["materialized_views"] = materialized_views
+            result["materialized_view_count"] = len(materialized_views)
 
         # Get sequences
         if include_sequences:
@@ -306,9 +324,9 @@ def introspect_schema(si: Any, schema: str, **kwargs: Any) -> Dict[str, Any]:
             result["function_count"] = len(functions)
 
         # Get packages/modules (Oracle, DB2)
-        packages = []
-        if si.vendor_queries:
-            packages = _collect("packages", lambda: si.get_packages(schema), [])
+        packages = _collect(
+            "packages", lambda: si.get_packages(schema) if si.vendor_queries else [], []
+        )
         result["packages"] = packages
         result["package_count"] = len(packages)
 
@@ -362,9 +380,13 @@ def introspect_schema(si: Any, schema: str, **kwargs: Any) -> Dict[str, Any]:
             )
 
     except Exception as e:
-        # Only the table phase reaches here; every object-type lookup is
-        # collected by _collect above. A failure to read tables leaves
-        # nothing partial worth returning, so it still aborts.
+        # Only table discovery and the loop mechanics reach here. Every
+        # lookup, and the capability predicate guarding it, runs inside a
+        # _collect call -- the predicate is folded into the same lambda
+        # precisely so that a bundle whose supports_*() raises is
+        # reported as that one object type failing rather than killing
+        # the snapshot. A failure to read the table list leaves nothing
+        # partial worth returning, so that alone still aborts.
         si.log.error(f"Error in enhanced introspection for schema {schema}: {e}")
         raise
 

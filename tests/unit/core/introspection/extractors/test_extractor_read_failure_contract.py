@@ -213,12 +213,19 @@ class _RecordingTracker:
     """Minimal stand-in for the introspector's result-tracking surface."""
 
     def __init__(self) -> None:
-        self.errors: List[str] = []
+        self.errors: List[dict] = []
 
     def _track_error(
         self, message, object_type=None, object_name=None, property_name=None, exception=None
     ):
-        self.errors.append(f"{object_type}:{object_name}:{property_name}:{message}")
+        self.errors.append(
+            {
+                "message": message,
+                "object_type": object_type,
+                "object_name": object_name,
+                "property_name": property_name,
+            }
+        )
 
     def _track_warning(self, *args, **kwargs):
         pass
@@ -326,7 +333,13 @@ class TestReadFailureIsRecordedBeforeReRaising:
             getattr(ext, method)("public")
 
         assert len(tracker.errors) == 1, "the failure must still reach the result tracker"
-        assert object_type in tracker.errors[0]
+        # Assert the recorded property_name exactly. A substring test over
+        # the whole record would pass for either of the two near-identical
+        # handlers in procedure_extractor.py, so a copy-paste that recorded
+        # "procedures" from get_functions would go unnoticed.
+        assert tracker.errors[0]["property_name"] == object_type
+        assert tracker.errors[0]["object_type"] == "schema"
+        assert tracker.errors[0]["object_name"] == "public"
 
     def test_materialized_views_records_nothing_by_design(self):
         """``get_materialized_views`` is the one method whose handler never
@@ -455,7 +468,7 @@ class TestNarrowHelperDegradation:
 
         views = ext.get_views("public")
 
-        assert len(executor.calls) >= 2, "the per-view column query must have been attempted"
+        assert len(executor.calls) == 2, "exactly the list query and the column query"
         assert [v.name for v in views] == ["v_orders"]
         assert views[0].columns == []
 
@@ -468,7 +481,7 @@ class TestNarrowHelperDegradation:
 
         mviews = ext.get_materialized_views("public")
 
-        assert len(executor.calls) >= 2, "the per-view column query must have been attempted"
+        assert len(executor.calls) == 2, "exactly the list query and the column query"
         assert [v.name for v in mviews] == ["mv_orders"]
         assert mviews[0].columns == []
 
@@ -484,6 +497,6 @@ class TestNarrowHelperDegradation:
 
         functions = ext.get_functions("public")
 
-        assert len(executor.calls) >= 2, "the per-function argument query must have been attempted"
+        assert len(executor.calls) == 2, "exactly the list query and the argument query"
         assert [f.name for f in functions] == ["calc_total"]
         assert functions[0].parameters == []
