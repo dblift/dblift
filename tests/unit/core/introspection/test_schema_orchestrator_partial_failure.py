@@ -66,19 +66,25 @@ class _Log:
 
 
 class _VendorQueries:
-    """Declares support for everything the orchestrator gates on."""
+    """Declares support for everything the orchestrator gates on, so all
+    six per-table lookups actually run."""
 
     def supports_computed_columns(self):
-        return False
+        return True
 
     def supports_check_constraints(self):
-        return False
+        return True
 
     def supports_partitions(self):
-        return False
+        return True
 
     def supports_materialized_views(self):
         return True
+
+
+class _Constraint:
+    def __init__(self, name):
+        self.name = name
 
 
 class _Table:
@@ -86,6 +92,18 @@ class _Table:
         self.name = name
         self.columns = ["c1", "c2"]
         self.constraints: List[Any] = []
+        self.enriched: List[str] = []
+
+
+#: Every per-table property the orchestrator collects.
+PER_TABLE_PROPERTIES = [
+    "computed_columns",
+    "identity_columns",
+    "check_constraints",
+    "partition_scheme",
+    "indexes",
+    "partitions",
+]
 
 
 class _Introspector:
@@ -97,16 +115,34 @@ class _Introspector:
     records nothing, exactly as on the real introspector.
     """
 
-    def __init__(self, failing=(), track_results=False):
+    def __init__(self, failing=(), track_results=False, tables=("t1", "t2"), table_failures=()):
         self._failing = set(failing)
         self._track_results = track_results
+        #: ``{(property, table_name), ...}`` -- per-table lookups that raise.
+        self._table_failures = set(table_failures)
+        self._table_names = tuple(tables)
+        self.tables = [_Table(n) for n in self._table_names]
         self.tracked: List[Dict[str, Any]] = []
         self.log = _Log()
         self.vendor_queries = _VendorQueries()
 
-    def _track_error(self, message, object_type=None, object_name=None, **kwargs):
+    def _maybe_table(self, prop, table, value):
+        if (prop, table) in self._table_failures:
+            raise RuntimeError(f"permission denied reading {prop} of {table}")
+        return value
+
+    def _track_error(
+        self, message, object_type=None, object_name=None, property_name=None, exception=None
+    ):
         if self._track_results:
-            self.tracked.append({"message": message, "property": kwargs.get("property_name")})
+            self.tracked.append(
+                {
+                    "message": message,
+                    "property": property_name,
+                    "object_type": object_type,
+                    "object_name": object_name,
+                }
+            )
 
     def _maybe(self, kind):
         if kind in self._failing:
@@ -116,18 +152,33 @@ class _Introspector:
     def get_tables(self, schema, include_views=False):
         if "tables" in self._failing:
             raise RuntimeError("permission denied reading tables")
-        return [_Table("t1")]
+        return self.tables
+
+    def _table_by_name(self, name):
+        return next(t for t in self.tables if t.name == name)
+
+    def enrich_columns_with_computed(self, schema, table, columns):
+        self._maybe_table("computed_columns", table, None)
+        self._table_by_name(table).enriched.append("computed_columns")
 
     def enrich_columns_with_identity(self, schema, table, columns):
-        pass
+        self._maybe_table("identity_columns", table, None)
+        self._table_by_name(table).enriched.append("identity_columns")
 
     def enrich_table_with_partition_scheme(self, schema, table, obj):
-        pass
+        self._maybe_table("partition_scheme", table, None)
+        self._table_by_name(table).enriched.append("partition_scheme")
+
+    def get_check_constraints(self, schema, table):
+        return self._maybe_table("check_constraints", table, [_Constraint(f"ck_{table}")])
+
+    def get_table_partitions(self, schema, table):
+        return self._maybe_table("partitions", table, [f"part_{table}"])
 
     def get_indexes(self, schema, table):
         if "indexes" in self._failing:
             raise RuntimeError("permission denied reading indexes")
-        return ["ix_1"]
+        return self._maybe_table("indexes", table, [f"ix_{table}"])
 
     def get_views(self, schema):
         return self._maybe("views")
@@ -173,9 +224,10 @@ class TestCleanRun:
         result = introspect_schema(_Introspector(), "public")
 
         assert result["failures"] == []
-        assert result["table_count"] == 1
+        assert result["table_count"] == 2
         assert result["view_count"] == 1
         assert result["sequence_count"] == 1
+        assert result["indexes"] == {"t1": ["ix_t1"], "t2": ["ix_t2"]}
 
     def test_nothing_is_tracked_and_nothing_is_logged_as_error(self):
         si = _Introspector(track_results=True)
@@ -199,9 +251,9 @@ class TestOneFailingTypeDoesNotAbortTheSnapshot:
         result = introspect_schema(_Introspector(failing=[kind]), "public")
 
         # The spine survives -- this is the whole point.
-        assert result["table_count"] == 1
-        assert result["total_columns"] == 2
-        assert result["indexes"] == {"t1": ["ix_1"]}
+        assert result["table_count"] == 2
+        assert result["total_columns"] == 4
+        assert result["indexes"] == {"t1": ["ix_t1"], "t2": ["ix_t2"]}
 
         # Every *other* collected type still read normally.
         for other, _m, other_key, _c in COLLECTED_TYPES:
@@ -227,6 +279,9 @@ class TestOneFailingTypeDoesNotAbortTheSnapshot:
 
         assert si.tracked == [], "precondition: this caller did not opt into tracking"
         assert [f["object_type"] for f in result["failures"]] == [kind]
+        assert (
+            result["failures"][0]["object_name"] == "public"
+        ), "schema-level entries name the schema"
         assert "permission denied" in result["failures"][0]["error"]
         assert result["failures"][0]["exception_type"] == "RuntimeError"
 
@@ -266,7 +321,128 @@ class TestSeveralFailingTypes:
         assert sorted(t["property"] for t in si.tracked) == sorted(failing)
         assert result["sequences"] == ["sequences_1"]
         assert result["functions"] == ["functions_1"]
-        assert result["table_count"] == 1
+        assert result["table_count"] == 2
+
+
+# ---------------------------------------------------------------------------
+# One unreadable table property: that table keeps its row, the rest are whole
+# ---------------------------------------------------------------------------
+
+
+class TestOneFailingTableDoesNotAbortTheSnapshot:
+    """The finer-grained half of the same rule. Before this, one table
+    whose indexes could not be read killed the entire introspection and
+    discarded every table already collected -- for indexes specifically
+    that was worse than the silent ``[]`` it replaced."""
+
+    @pytest.mark.parametrize("prop", PER_TABLE_PROPERTIES)
+    def test_every_other_table_is_still_read_in_full(self, prop):
+        si = _Introspector(tables=("t1", "t2", "t3"), table_failures=[(prop, "t2")])
+
+        result = introspect_schema(si, "public")
+
+        # All three tables are present -- the failing one has not been dropped.
+        assert [t.name for t in result["tables"]] == ["t1", "t2", "t3"]
+        assert result["table_count"] == 3
+
+        # The healthy tables are complete.
+        for name in ("t1", "t3"):
+            table = si._table_by_name(name)
+            assert result["indexes"][name] == [f"ix_{name}"]
+            assert result["partitions"][name] == [f"part_{name}"]
+            assert [c.name for c in table.constraints] == [f"ck_{name}"]
+            assert set(table.enriched) == {
+                "computed_columns",
+                "identity_columns",
+                "partition_scheme",
+            }
+
+    @pytest.mark.parametrize("prop", PER_TABLE_PROPERTIES)
+    def test_the_failing_table_keeps_its_row_with_that_property_empty(self, prop):
+        si = _Introspector(tables=("t1", "t2"), table_failures=[(prop, "t2")])
+
+        result = introspect_schema(si, "public")
+
+        t2 = si._table_by_name("t2")
+        assert t2 in result["tables"]
+        if prop == "indexes":
+            assert result["indexes"]["t2"] == []
+        elif prop == "partitions":
+            assert "t2" not in result["partitions"]
+        elif prop == "check_constraints":
+            assert t2.constraints == []
+        else:
+            assert prop not in t2.enriched
+        # ...and nothing else about that table was lost.
+        if prop != "indexes":
+            assert result["indexes"]["t2"] == ["ix_t2"]
+
+    @pytest.mark.parametrize("prop", PER_TABLE_PROPERTIES)
+    def test_failure_names_the_table_and_is_visible_without_tracking(self, prop):
+        """Without this, an operator sees an empty index list for one
+        table and cannot tell which table was unreadable, or that any
+        were -- the original bug at table granularity."""
+        si = _Introspector(tables=("t1", "t2"), table_failures=[(prop, "t2")], track_results=False)
+
+        result = introspect_schema(si, "public")
+
+        assert si.tracked == [], "precondition: this caller did not opt into tracking"
+        assert len(result["failures"]) == 1
+        entry = result["failures"][0]
+        assert entry["object_type"] == prop
+        assert entry["object_name"] == "t2", "per-table entries name the table"
+        assert entry["exception_type"] == "RuntimeError"
+        assert "permission denied" in entry["error"]
+
+    @pytest.mark.parametrize("prop", PER_TABLE_PROPERTIES)
+    def test_failure_is_also_recorded_on_the_tracker_when_enabled(self, prop):
+        si = _Introspector(tables=("t1", "t2"), table_failures=[(prop, "t2")], track_results=True)
+
+        introspect_schema(si, "public")
+
+        assert len(si.tracked) == 1
+        assert si.tracked[0]["property"] == prop
+        assert si.tracked[0]["object_type"] == "table"
+        assert si.tracked[0]["object_name"] == "t2"
+
+    def test_the_same_property_failing_on_several_tables_is_reported_per_table(self):
+        si = _Introspector(
+            tables=("t1", "t2", "t3"),
+            table_failures=[("indexes", "t1"), ("indexes", "t3")],
+        )
+
+        result = introspect_schema(si, "public")
+
+        assert sorted(f["object_name"] for f in result["failures"]) == ["t1", "t3"]
+        assert all(f["object_type"] == "indexes" for f in result["failures"])
+        assert result["indexes"] == {"t1": [], "t2": ["ix_t2"], "t3": []}
+        # The summary line names the kind once, not once per table.
+        assert any("indexes" in w and "2 failure(s)" in w for w in si.log.warnings)
+
+    def test_schema_level_and_per_table_failures_share_one_list(self):
+        si = _Introspector(
+            failing=["views"], tables=("t1", "t2"), table_failures=[("indexes", "t2")]
+        )
+
+        result = introspect_schema(si, "public")
+
+        assert sorted((f["object_type"], f["object_name"]) for f in result["failures"]) == [
+            ("indexes", "t2"),
+            ("views", "public"),
+        ]
+        assert all(
+            set(f) == {"object_type", "object_name", "error", "exception_type"}
+            for f in result["failures"]
+        ), "one list, one shape, one reader"
+
+    def test_a_failing_table_property_does_not_abort_the_run(self):
+        si = _Introspector(tables=("t1", "t2"), table_failures=[("indexes", "t2")])
+
+        result = introspect_schema(si, "public")  # must not raise
+
+        assert result["view_count"] == 1
+        assert result["sequence_count"] == 1
+        assert result["total_indexes"] == 1
 
 
 # ---------------------------------------------------------------------------
@@ -274,15 +450,12 @@ class TestSeveralFailingTypes:
 # ---------------------------------------------------------------------------
 
 
-class TestTablePhaseStillAborts:
-    """Columns, indexes and partitions all hang off the table list, so a
-    snapshot that could not read tables has nothing partial to return.
-    This asymmetry is deliberate; it is pinned so it reads that way."""
+class TestTableDiscoveryStillAborts:
+    """Every per-table property hangs off the table list, so a snapshot
+    that could not read *tables* has nothing partial to return. Table
+    discovery is the one lookup that still aborts; this asymmetry is
+    deliberate and pinned so it reads that way."""
 
-    def test_table_read_failure_propagates(self):
+    def test_table_discovery_failure_propagates(self):
         with pytest.raises(RuntimeError, match="permission denied reading tables"):
             introspect_schema(_Introspector(failing=["tables"]), "public")
-
-    def test_index_read_failure_propagates(self):
-        with pytest.raises(RuntimeError, match="permission denied reading indexes"):
-            introspect_schema(_Introspector(failing=["indexes"]), "public")

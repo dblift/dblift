@@ -33,31 +33,44 @@ def introspect_schema(si: Any, schema: str, **kwargs: Any) -> Dict[str, Any]:
     *read* an object type, rather than returning ``[]`` and making an
     unreadable schema look like an empty one. Aborting the whole
     introspection on the first such failure would be worse for a caller
-    than the old silence was — it throws away the tables, columns,
-    indexes and partitions already collected. So every schema-level
-    object-type lookup is run through :func:`_collect`: a failure records
-    the object type and the reason, leaves that type at its initialised
-    empty value, and lets the remaining types proceed.
+    than the old silence was — it throws away everything already
+    collected. So every lookup is run through :func:`_collect` at two
+    granularities:
+
+    * **schema-level object types** — views, sequences, triggers, events,
+      procedures, functions, packages, synonyms, user-defined types,
+      extensions, materialized views. A failure leaves that type at its
+      initialised empty value and the remaining types still run.
+    * **per-table properties** — indexes, partitions, check constraints,
+      computed columns, identity columns, partition scheme. A failure
+      leaves that one table's property empty; the table keeps its row in
+      the snapshot, and every other table is still read in full.
 
     A failure is reported through three channels, deliberately:
 
     * ``result["failures"]`` — a list of
-      ``{"object_type", "error", "exception_type"}`` dicts, empty when
-      nothing failed. **This is the channel that matters**, because it is
-      the only one a caller gets without opting into anything. A caller
-      that reads ``result["view_count"] == 0`` and nothing else would be
-      back to the original bug — an unreadable type indistinguishable
-      from an absent one — so the failure had to land on the object
-      callers already read, next to the counts it explains.
-    * ``si.log.error`` — visible in logs without any caller change.
+      ``{"object_type", "object_name", "error", "exception_type"}``
+      dicts, empty when nothing failed. **This is the channel that
+      matters**, because it is the only one a caller gets without opting
+      into anything. A caller that reads ``result["view_count"] == 0`` or
+      an empty ``result["indexes"]["orders"]`` and nothing else would be
+      back to the original bug — unreadable indistinguishable from absent
+      — so the failure lands on the object callers already read, next to
+      the counts it explains. ``object_name`` is the schema for
+      schema-level lookups and the table for per-table ones; the two sets
+      of ``object_type`` values are disjoint, so which one it names is
+      never ambiguous.
+    * ``si.log.error`` — visible in logs without any caller change, plus
+      one summary warning naming the distinct types that failed.
     * ``si._track_error`` — for callers that called
       ``enable_result_tracking()``, so ``IntrospectionResult.success``
-      and the error count stay honest.
+      and the error count stay honest. Per-table failures are recorded
+      with ``object_type="table"`` and the table as ``object_name``,
+      matching what the extractors themselves record.
 
-    Table discovery is deliberately *not* collected this way and still
-    aborts: columns, indexes and partitions all hang off the table list,
-    so a snapshot that failed to read tables has nothing partial to
-    return.
+    Table *discovery* is deliberately not collected this way and still
+    aborts: every per-table property hangs off the table list, so a
+    snapshot that failed to read tables has nothing partial to return.
     """
     include_views = kwargs.get("include_views", True)
     include_sequences = kwargs.get("include_sequences", True)
@@ -100,34 +113,42 @@ def introspect_schema(si: Any, schema: str, **kwargs: Any) -> Dict[str, Any]:
     }
     failures: List[Dict[str, str]] = result["failures"]
 
-    def _collect(object_type: str, fetch: Callable[[], Any], default: Any) -> Any:
-        """Run one object-type lookup, keeping the snapshot on failure.
+    def _collect(
+        object_type: str, fetch: Callable[[], Any], default: Any, table: str | None = None
+    ) -> Any:
+        """Run one lookup, keeping the snapshot on failure.
 
         Returns whatever *fetch* returned, or *default* if it raised. A
         raised failure is appended to ``result["failures"]``, logged at
         error level, and recorded on the result tracker when the caller
         enabled one — see this module's docstring for why all three.
+
+        *table* names the table whose property is being read, for the
+        per-table lookups inside the table loop; leave it ``None`` for
+        schema-level object types.
         """
         try:
             return fetch()
         except Exception as exc:
+            owner = table if table is not None else schema
+            where = f"table {schema}.{table}" if table is not None else f"schema {schema}"
             failures.append(
                 {
                     "object_type": object_type,
+                    "object_name": owner,
                     "error": str(exc),
                     "exception_type": type(exc).__name__,
                 }
             )
             si.log.error(
-                f"Could not read {object_type} for schema {schema}: {exc} "
-                f"— continuing without them"
+                f"Could not read {object_type} for {where}: {exc} — continuing without them"
             )
             track_error = getattr(si, "_track_error", None)
             if callable(track_error):
                 track_error(
-                    f"Skipped {object_type} for schema {schema} after a read failure: {exc}",
-                    object_type="schema",
-                    object_name=schema,
+                    f"Skipped {object_type} for {where} after a read failure: {exc}",
+                    object_type="table" if table is not None else "schema",
+                    object_name=owner,
                     property_name=object_type,
                     exception=exc,
                 )
@@ -146,13 +167,28 @@ def introspect_schema(si: Any, schema: str, **kwargs: Any) -> Dict[str, Any]:
             total_cols: int = result["total_columns"]
             result["total_columns"] = total_cols + len(table.columns)
 
+            # Every per-table lookup below goes through _collect too: one
+            # table whose property cannot be read keeps its row in the
+            # snapshot with that property empty, and the remaining tables
+            # are still read.
+
             # Enrich columns with computed/generated column metadata
             if si.vendor_queries and si.vendor_queries.supports_computed_columns():
-                si.enrich_columns_with_computed(schema, table.name, table.columns)
+                _collect(
+                    "computed_columns",
+                    lambda: si.enrich_columns_with_computed(schema, table.name, table.columns),
+                    None,
+                    table=table.name,
+                )
 
             # Enrich columns with identity/auto-increment metadata
             if si.vendor_queries:
-                si.enrich_columns_with_identity(schema, table.name, table.columns)
+                _collect(
+                    "identity_columns",
+                    lambda: si.enrich_columns_with_identity(schema, table.name, table.columns),
+                    None,
+                    table=table.name,
+                )
 
             # Add check constraints from vendor queries (if not already added via _get_constraints)
             # Note: get_tables() already calls _get_constraints() which includes check constraints,
@@ -163,7 +199,12 @@ def introspect_schema(si: Any, schema: str, **kwargs: Any) -> Dict[str, Any]:
                     c.name.strip().upper() if c.name else None for c in table.constraints if c.name
                 }
                 # Get check constraints and only add those that don't already exist
-                check_constraints = si.get_check_constraints(schema, table.name)
+                check_constraints = _collect(
+                    "check_constraints",
+                    lambda: si.get_check_constraints(schema, table.name),
+                    [],
+                    table=table.name,
+                )
                 if check_constraints:
                     for check_constraint in check_constraints:
                         check_name_normalized = (
@@ -187,17 +228,29 @@ def introspect_schema(si: Any, schema: str, **kwargs: Any) -> Dict[str, Any]:
 
             # Enrich table with partition scheme (method and columns only, not individual partitions)
             if si.vendor_queries:  # get_partition_scheme_query guaranteed in ABC
-                si.enrich_table_with_partition_scheme(schema, table.name, table)
+                _collect(
+                    "partition_scheme",
+                    lambda: si.enrich_table_with_partition_scheme(schema, table.name, table),
+                    None,
+                    table=table.name,
+                )
 
             # Get indexes
-            indexes = si.get_indexes(schema, table.name)
+            indexes = _collect(
+                "indexes", lambda: si.get_indexes(schema, table.name), [], table=table.name
+            )
             result["indexes"][table.name] = indexes
             total_idx: int = result["total_indexes"]
             result["total_indexes"] = total_idx + len(indexes)
 
             # Get table partitions (if supported)
             if si.vendor_queries and si.vendor_queries.supports_partitions():
-                partitions = si.get_table_partitions(schema, table.name)
+                partitions = _collect(
+                    "partitions",
+                    lambda: si.get_table_partitions(schema, table.name),
+                    [],
+                    table=table.name,
+                )
                 if partitions:
                     result["partitions"][table.name] = partitions
                     if hasattr(table, "export_partitions"):
@@ -298,9 +351,14 @@ def introspect_schema(si: Any, schema: str, **kwargs: Any) -> Dict[str, Any]:
             msg_parts.append(f"{result['extension_count']} extensions")
         si.log.debug(f"Enhanced introspection complete: {', '.join(msg_parts)}")
         if failures:
+            # Distinct type names: a per-table property that failed on
+            # many tables should read as one problem here, with the
+            # affected tables listed in result["failures"].
+            kinds = sorted({f["object_type"] for f in failures})
             si.log.warning(
                 f"Enhanced introspection for schema {schema} is incomplete — "
-                f"could not read: {', '.join(f['object_type'] for f in failures)}"
+                f"could not read: {', '.join(kinds)} "
+                f"({len(failures)} failure(s); see result['failures'])"
             )
 
     except Exception as e:
