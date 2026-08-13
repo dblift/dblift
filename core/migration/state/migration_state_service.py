@@ -233,4 +233,4 @@ class MigrationStateService:
         normalized_current = normalize_migration_checksum(current)
         if normalized_stored is not None and normalized_current is not None:
             return normalized_stored != normalized_current
-        return stored != current
+        return bool(stored != current)
