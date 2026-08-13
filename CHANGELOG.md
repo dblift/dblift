@@ -13,6 +13,105 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+### Removed
+
+## [3.9.0] - 2026-08-13
+
+### Added
+
+- **`CosmosDbProvider.list_native_items`.** The `DocumentStoreProvider`
+  protocol declares three document operations; the CosmosDB provider
+  implemented only two, so `isinstance(provider, DocumentStoreProvider)`
+  answered `False` for a document-store provider. It now returns every
+  document in a container. A missing container returns `[]` without touching
+  `query_items`, because the SDK's iterator can hang indefinitely against one
+  that does not exist.
+- **Configuration templates for PostgreSQL, SQL Server and Cosmos DB** at the
+  repository root. The configuration guide said sample files were "available
+  in the repository" and linked to files that were not present. Every key was
+  checked against the config loader, and all three build through
+  `ConfigBuilder.from_dict()`.
+- **Redesigned HTML migration report.** SQL and query results now sit under
+  each statement row, with object type and name columns, and a panel listing
+  executed lifecycle callbacks with their phase, file, statements, result sets
+  and status.
+
+### Changed
+
+- **`introspect_schema` reports what it could not read, and keeps the rest.**
+  A schema read that hit a failure previously either returned a silently
+  incomplete result or, for some object types, aborted and discarded
+  everything already collected. It now records each failure in a new
+  `result["failures"]` list and returns what it did read:
+
+  ```json
+  {"object_type": "indexes", "object_name": "orders",
+   "error": "permission denied ...", "exception_type": "RuntimeError"}
+  ```
+
+  `object_name` is the table for per-table lookups and the schema for
+  schema-level ones. All seventeen lookups report — eleven object types plus
+  six per-table properties — so an empty `failures` means the read genuinely
+  completed. Only table discovery still aborts, because without it there is
+  no schema to report on.
+
+  Callers that enabled result tracking keep receiving `_track_error` records
+  as before. Note `error_count` counts recorded events rather than distinct
+  problems: a single failure is recorded at both the extractor and the
+  orchestrator, so it contributes more than one.
+
+### Fixed
+
+- **`extract_objects` reported nothing, or the wrong thing, for most
+  statements.** The regex path recognised only `CREATE TABLE`, `ALTER TABLE`,
+  `CREATE [OR REPLACE] VIEW`, `CREATE [UNIQUE] INDEX` and a generic
+  `DROP <word>`. Every other statement reported no object at all — so
+  sequences, triggers, routines, synonyms, types, grants, comments and all DML
+  were invisible to callers, including the migration journal, which groups
+  per-object execution stats by these results, and the undo generator, which
+  decides how to reverse a statement from them. Some statements that were
+  recognised reported a SQL keyword as the object's *name*.
+
+  CREATE/ALTER/DROP are now recognised for sequences, triggers, routines,
+  packages, types, synonyms, schemas, materialized views and extensions, along
+  with `TRUNCATE`, `COMMENT ON`, `GRANT`/`REVOKE` and DML target tables, and
+  `object_type` is reported as a `SqlObjectType` member name. The alternation
+  is generated from the enum's own members, so the vocabulary cannot drift
+  from it by a later edit.
+
+  Callers reading these results will see different values than before — the
+  correct ones, where previously the object was missing or misnamed.
+
+- **MongoDB `clean` destroyed the view catalogue and then reported failure.**
+  The droppable list included `system.views`; dropping it erased every view
+  definition in the database, so the subsequent drop of each view found
+  nothing and raised `Failed to drop collection`. `clean` no longer treats the
+  reserved `system.` namespace as droppable — matched as a prefix, which is
+  what MongoDB actually reserves, so a user collection merely containing
+  `system.` is still dropped. dblift's own history, lock and snapshot
+  collections are still removed: `clean` remains a full reset.
+
+  One consequence, stated deliberately: `system.js`, the legacy user-writable
+  stored-JavaScript collection, now survives a clean.
+- **Read failures were reported as "nothing found".** Every schema-level
+  extractor caught exceptions from its vendor query and returned `[]`, so a
+  permission error on a catalogue was indistinguishable from an object type
+  genuinely having none — a schema export completed successfully while
+  silently missing indexes, views, sequences, triggers, routines, events,
+  packages, synonyms, user-defined types, extensions, partitions, check
+  constraints or computed and identity columns. Read failures now propagate,
+  and are collected by the caller as described under Changed.
+
+  Handlers that degrade a single property of an object still exported — a
+  view whose column list could not be read, for instance — are unchanged.
+  The distinction is whether a failure loses one field or a whole object.
+- **MongoDB rendered DROP statements as SQL.** `MongodbQuirks` had no
+  `render_drop_for_object` override, so DROP fell through to the relational
+  renderer and emitted `DROP TABLE ... CASCADE` and `DROP INDEX ...` for a
+  store that rejects `.sql` migrations outright. Every DROP form now renders
+  as a comment naming the real driver call — `drop_collection` for a
+  collection or a view, `drop_index` on the owning collection for an index.
+
 - **`info` hid scripts migrate will not run.** The catalog was migrate's
   execute-list, so Below baseline and Above target never appeared for
   on-disk files outside the run window. Those scripts now show with those
@@ -27,6 +126,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **First-time repeatables were logged as needing reapply.** `migrate` /
   `info` now say "pending repeatable migration(s)" when the script has
   never been applied; "need to be reapplied" is only for checksum drift.
+
+### Documentation
+
+- **Links pointed at a repository that is not this one.** `SECURITY.md`,
+  `docs/index.md` and `docs/user-guide/troubleshooting.md` sent readers —
+  including anyone reporting a security issue — to a repository they could not
+  reach. Repointed, along with the configuration guide's template links.
+- Comments and docstrings that described things outside this repository now
+  state the same technical reason in terms of this codebase.
 
 ### Removed
 
