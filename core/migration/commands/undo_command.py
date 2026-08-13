@@ -32,51 +32,6 @@ class UndoCommand(BaseCommand):
         return [str(value).strip().lower() for value in values if str(value).strip()]
 
     @staticmethod
-    def _normalize_migration_tags(migration: Any) -> List[str]:
-        migration_tags = getattr(migration, "tags", []) or []
-        if not isinstance(migration_tags, list):
-            migration_tags = list(migration_tags)
-        return [str(tag).strip().lower() for tag in migration_tags if str(tag).strip()]
-
-    @classmethod
-    def _effective_tags(
-        cls, migration: Any, fallback_tags: Optional[List[str]] = None
-    ) -> List[str]:
-        migration_tags = cls._normalize_migration_tags(migration)
-        if migration_tags:
-            return migration_tags
-        return fallback_tags or []
-
-    @classmethod
-    def _matches_tag_filters(
-        cls,
-        migration: Any,
-        tags: Optional[List[str]],
-        exclude_tags: Optional[List[str]],
-        fallback_tags: Optional[List[str]] = None,
-    ) -> bool:
-        migration_tags = cls._effective_tags(migration, fallback_tags)
-        if tags and not any(tag in migration_tags for tag in tags):
-            return False
-        if exclude_tags and any(tag in migration_tags for tag in exclude_tags):
-            return False
-        return True
-
-    @classmethod
-    def _source_tags_by_version(cls, all_scripts: List[Any]) -> Dict[str, List[str]]:
-        tags_by_version: Dict[str, List[str]] = {}
-        for script in all_scripts:
-            if script.type not in (MigrationType.SQL, MigrationType.PYTHON):
-                continue
-            version = getattr(script, "version", None)
-            if version is None:
-                continue
-            script_tags = cls._normalize_migration_tags(script)
-            if script_tags:
-                tags_by_version[str(version)] = script_tags
-        return tags_by_version
-
-    @staticmethod
     def _coerced_applied_list(value: Any) -> List[Any]:
         if value is None or not hasattr(value, "__iter__"):
             return []

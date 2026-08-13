@@ -76,7 +76,6 @@ class MigrationStateManager:
         exclude_tags: Optional[Sequence[str]] = None,
         versions: Optional[Sequence[str]] = None,
         exclude_versions: Optional[Sequence[str]] = None,
-        strict_mode: bool = False,
     ) -> MigrationState:
         """Rebuild and return the current migration state as a JSON-ready snapshot.
 
@@ -114,8 +113,6 @@ class MigrationStateManager:
                 recursive=recursive,
                 additional_dirs=list(additional_dirs) if additional_dirs else None,
                 dir_recursive_map=dir_recursive_map,
-                strict_mode=strict_mode,
-                baseline_version=analysis_context.get("baseline_version"),
                 out_all_scripts=all_scripts,
             )
 
@@ -437,13 +434,6 @@ class MigrationStateManager:
         recursive: bool = True,
         additional_dirs: Optional[List[Path]] = None,
         dir_recursive_map: Optional[Dict[Path, bool]] = None,
-        target_version: Optional[str] = None,
-        tags: Optional[List[str]] = None,
-        exclude_tags: Optional[List[str]] = None,
-        versions: Optional[List[str]] = None,
-        exclude_versions: Optional[List[str]] = None,
-        strict_mode: bool = False,
-        baseline_version: Optional[str] = None,
         out_all_scripts: Optional[List[Migration]] = None,
     ) -> List[Migration]:
         """Catalog unresolved on-disk scripts (not migrate's execute-list).
@@ -451,9 +441,6 @@ class MigrationStateManager:
         Membership is versioned-not-applied (or undone), repeatable never-run
         or checksum-changed, and undo scripts. Baseline, target, undo type,
         tags, and versions do not omit rows; commands select later.
-
-        Filter kwargs (``target_version``, ``tags``, ``versions``, …) remain
-        for call-site compatibility and are not applied here.
         """
         # Step 1: Get all scripts from filesystem
         all_script_paths = self.script_manager.get_all_scripts(
@@ -531,13 +518,7 @@ class MigrationStateManager:
         if current_version:
             self.logger.debug(f"Current applied version: {current_version}")
 
-        # Step 4: Determine highest applied version for strict mode
-        highest_applied_version = None
-        if strict_mode and current_version:
-            highest_applied_version = current_version
-            self.logger.debug(f"Strict mode: highest applied version is {highest_applied_version}")
-
-        # Step 5: Catalog unresolved on-disk scripts (do not omit by
+        # Step 4: Catalog unresolved on-disk scripts (do not omit by
         # baseline/target/undo/tags — commands select from this set later)
         pending: List[Migration] = []
 
@@ -553,10 +534,6 @@ class MigrationStateManager:
                     executed_scripts,
                     executed_versions if executed_versions is not None else set(),
                     effective_undone_versions,
-                    current_version,
-                    highest_applied_version,
-                    strict_mode,
-                    baseline_version,
                 ):
                     pending.append(migration)
 
@@ -617,10 +594,6 @@ class MigrationStateManager:
         executed_scripts: Set[str],
         executed_versions: Set[str],
         undone_versions: Set[str],
-        current_version: Optional[str],
-        highest_applied_version: Optional[str],
-        strict_mode: bool,
-        baseline_version: Optional[str] = None,
     ) -> bool:
         """Check if a versioned migration is pending.
 
