@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import re
 import sys
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional
@@ -21,6 +22,7 @@ if TYPE_CHECKING:
 
 from core.exceptions import CallbackExecutionError
 from core.logger import Log, NullLog
+from core.logger.results import CallbackExecution
 from core.logger.log import LogFormat
 from core.migration.executor.execution_engine import ExecutionEngine
 from core.migration.executor.migration_helpers import MigrationHelpers
@@ -294,15 +296,24 @@ class BaseCommand:
                 )
 
             for callback in callbacks:
+                script_name = getattr(callback, "script_name", "")
+                description = getattr(callback, "description", "") or ""
+                record_name = description or Path(str(script_name)).stem
+                record = CallbackExecution(event_prefix, record_name, str(script_name))
+                if result is not None:
+                    result.callbacks.append(record)
+                started = time.perf_counter()
                 try:
                     self.log.info(f"Executing callback: {callback.script_name}", dedupe=False)
                     _emit_script_event("callback.started", {"name": callback.script_name})
-                    self.execution_engine.execute_callback(callback, result)
+                    self.execution_engine.execute_callback(callback, result, record=record)
                     _emit_script_event("callback.completed", {"name": callback.script_name})
                     self.log.info(
                         f"Callback {callback.script_name} executed successfully", dedupe=False
                     )
+                    record.status = "OK"
                 except Exception as e:
+                    record.status = "FAILED"
                     _emit_script_event(
                         "callback.failed", {"name": callback.script_name, "error": str(e)}
                     )
@@ -317,6 +328,8 @@ class BaseCommand:
                         raise CallbackExecutionError(
                             f"Callback {callback.script_name} failed: {e}"
                         ) from e
+                finally:
+                    record.duration_ms = int((time.perf_counter() - started) * 1000)
 
     def _log_current_schema_version(self) -> None:
         """Log the current schema version at the beginning of a command.
