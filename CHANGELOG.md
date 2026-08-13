@@ -13,6 +13,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`info` hid scripts migrate will not run.** The catalog was migrate's
+  execute-list, so Below baseline and Above target never appeared for
+  on-disk files outside the run window. Those scripts now show with those
+  statuses; migrate still runs only Pending. Pending / Outdated meaning
+  is unchanged: Outdated is the applied repeatable row when the file
+  changed; the matching unresolved file is Pending.
+
 ### Removed
 
 ## [3.8.0] - 2026-08-12
