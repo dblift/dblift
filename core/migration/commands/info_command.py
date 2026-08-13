@@ -57,6 +57,7 @@ class InfoCommand(BaseCommand):
         recursive: bool = True,
         additional_dirs: Optional[List[Path]] = None,
         dir_recursive_map: Optional[Dict[Path, bool]] = None,
+        target_version: Optional[str] = None,
         tags: Optional[str] = None,
         exclude_tags: Optional[str] = None,
         versions: Optional[str] = None,
@@ -66,6 +67,8 @@ class InfoCommand(BaseCommand):
         """Get information about migrations using migration rules for state determination."""
         result = InfoResult()
         result.target_schema = self.config.database.schema
+        if target_version is None:
+            target_version = getattr(self.config, "target_version", None)
 
         normalized_tags = _normalize_filter(tags)
         normalized_exclude_tags = _normalize_filter(exclude_tags)
@@ -80,6 +83,7 @@ class InfoCommand(BaseCommand):
                     recursive=recursive,
                     additional_dirs=additional_dirs,
                     dir_recursive_map=dir_recursive_map,
+                    target_version=target_version,
                 )
             except Exception as e:
                 # If build_state fails, create empty state

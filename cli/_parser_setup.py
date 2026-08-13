@@ -206,8 +206,8 @@ def _make_filter_parent() -> argparse.ArgumentParser:
 
 # NOTE: ``--target-version`` is intentionally NOT extracted into a parent
 # parser. Its help text is genuinely command-specific (migrate / undo /
-# validate each describe a different intent) and unifying it would degrade
-# `--help` output. Each subparser adds it explicitly in
+# validate / info each describe a different intent) and unifying it would
+# degrade `--help` output. Each subparser adds it explicitly in
 # ``_add_diff_and_target_options`` so the user-facing string stays
 # accurate. See Bugbot review on PR-09.
 
@@ -240,8 +240,9 @@ def _add_diff_and_target_options(
     undo_parser: argparse.ArgumentParser,
     validate_parser: argparse.ArgumentParser,
     clean_parser: argparse.ArgumentParser,
+    info_parser: argparse.ArgumentParser,
 ) -> None:
-    """Configure migrate/undo/validate/clean subcommand-specific options.
+    """Configure migrate/undo/validate/clean/info subcommand-specific options.
 
     ``--target-version`` is added per-command (rather than via a shared
     parent parser) because each command has a meaningfully different
@@ -252,6 +253,7 @@ def _add_diff_and_target_options(
     migrate_parser.add_argument("--target-version", help="Target version to migrate to")
     undo_parser.add_argument("--target-version", help="Target version to roll back to")
     validate_parser.add_argument("--target-version", help="Validate migrations up to this version")
+    info_parser.add_argument("--target-version", help="Show migrations up to this version")
     # Migrate specific options
     migrate_parser.add_argument(
         "--validate-only",
@@ -545,7 +547,9 @@ def create_parser(
     builtin_extension_parsers = _register_builtin_command_parsers(parser)
     # Configure arguments via extracted functions
     _add_baseline_options(baseline_parser)
-    _add_diff_and_target_options(migrate_parser, undo_parser, validate_parser, clean_parser)
+    _add_diff_and_target_options(
+        migrate_parser, undo_parser, validate_parser, clean_parser, info_parser
+    )
     # info --format option (JSON output for scripting)
     info_parser.add_argument(
         "--format",
