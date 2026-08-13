@@ -140,6 +140,9 @@ class MigrationStateManager:
             if change.script_name
             for name in (change.script_name, Path(change.script_name).name)
         }
+        # One history index, native checksum type — not the data-service
+        # str() copy that made ``"732078983" != 732078983``.
+        analysis_context["repeatable_checksums"] = dict(history.repeatable_checksums)
 
         applied_entries, failed_entries = self._build_applied_entries(
             applied_migrations, analysis_context
@@ -368,7 +371,9 @@ class MigrationStateManager:
             script_key = getattr(migration, "script_name", "")
             previous_checksum = self._lookup_checksum(previous_checksums, script_key)
 
-            if previous_checksum and previous_checksum != current_checksum:
+            if previous_checksum and self.state_service._checksums_differ(
+                previous_checksum, current_checksum
+            ):
                 changes.append(
                     ChecksumChange(
                         script_name=script_key,
@@ -689,7 +694,9 @@ class MigrationStateManager:
         stored_checksum = self._lookup_checksum(repeatable_checksums, script_name)
 
         # If checksum changed, it's pending
-        if stored_checksum and current_checksum != stored_checksum:
+        if stored_checksum and current_checksum and self.state_service._checksums_differ(
+            stored_checksum, current_checksum
+        ):
             return True
 
         return False

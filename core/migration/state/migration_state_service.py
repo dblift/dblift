@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any, Dict, Union
 
 from core.logger import Log
+from core.migration.migration import normalize_migration_checksum
 from core.migration.state.migration_display_state import MigrationDisplayState
 from core.migration.version_utils import compare_versions as _compare_versions_shared
 from core.migration.version_utils import (
@@ -113,10 +114,9 @@ class MigrationStateService:
             # Check for repeatable migrations
             if migration_type == "REPEATABLE":
                 stored_checksum = repeatable_checksums.get(script_name)
-                if stored_checksum and checksum and stored_checksum != checksum:
-                    # Repeatable migration is outdated
-                    # Check if there's a newer version already applied
-                    # For now, just mark as outdated
+                if stored_checksum and checksum and self._checksums_differ(
+                    stored_checksum, checksum
+                ):
                     return MigrationDisplayState.OUTDATED
                 pending_repeatables = context.get("pending_repeatable_scripts") or set()
                 script_basename = Path(script_name).name if script_name else ""
@@ -218,3 +218,17 @@ class MigrationStateService:
         except Exception as e:
             self.logger.debug(f"Could not check for undo scripts: {e}")
             return False
+
+    @staticmethod
+    def _checksums_differ(stored: Any, current: Any) -> bool:
+        """True when stored and current checksums are not the same CRC32.
+
+        History rows and the analysis index may disagree on type (int vs
+        ``str(int)``) or signedness (unsigned driver CRC32 vs Python signed).
+        Non-numeric legacy values fall back to identity comparison.
+        """
+        normalized_stored = normalize_migration_checksum(stored)
+        normalized_current = normalize_migration_checksum(current)
+        if normalized_stored is not None and normalized_current is not None:
+            return normalized_stored != normalized_current
+        return stored != current

@@ -167,6 +167,34 @@ class TestMigrationStateService:
         result = service.determine_state(migration, context)
         assert result == MigrationDisplayState.SUCCESS
 
+    def test_determine_state_repeatable_str_vs_int_same_crc32_is_success(self, service):
+        """History index may stringify CRC32; the row still carries an int.
+
+        ``"732078983" != 732078983`` is True in Python, which used to label a
+        freshly applied repeatable Outdated.
+        """
+        migration = Mock()
+        migration.success = True
+        migration.type = "REPEATABLE"
+        migration.script_name = "R__report.sql"
+        migration.checksum = 732078983
+        migration.resolved = True
+        context = {"repeatable_checksums": {"R__report.sql": "732078983"}}
+        result = service.determine_state(migration, context)
+        assert result == MigrationDisplayState.SUCCESS
+
+    def test_determine_state_repeatable_unsigned_vs_signed_crc32_is_success(self, service):
+        """Some drivers store CRC32 unsigned; Python CRC32 is signed."""
+        migration = Mock()
+        migration.success = True
+        migration.type = "REPEATABLE"
+        migration.script_name = "R__report.sql"
+        migration.checksum = -1022714467
+        migration.resolved = True
+        context = {"repeatable_checksums": {"R__report.sql": "3272252829"}}
+        result = service.determine_state(migration, context)
+        assert result == MigrationDisplayState.SUCCESS
+
     def test_determine_state_success_missing_future(self, service):
         """Test determine_state for successful missing migration in future."""
         migration = Mock()

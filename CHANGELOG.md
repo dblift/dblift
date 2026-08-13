@@ -19,6 +19,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   statuses; migrate still runs only Pending. Pending / Outdated meaning
   is unchanged: Outdated is the applied repeatable row when the file
   changed; the matching unresolved file is Pending.
+- **`info` labeled a successful repeatable Outdated.** The catalog index
+  stringified CRC32 checksums, then compared them to the int on the
+  history row (`"732078983" != 732078983`). Comparison now goes through
+  `normalize_migration_checksum`, and the duplicate stringifying indexer
+  is gone.
 
 ### Removed
 

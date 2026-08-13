@@ -104,6 +104,26 @@ def test_undo_sql_omitted_from_table_undoable_yes_for_companion():
         tmp.cleanup()
 
 
+def test_matching_numeric_checksum_applied_repeatable_is_success_not_outdated():
+    """Applied R with the same CRC32 as the file is Success, even if history
+    indexed the checksum as a string (the playground Outdated false positive).
+    """
+    applied = _mk_repeatable("R__report.sql", rank=1, checksum=732078983)
+    on_disk = _mk_repeatable("R__report.sql", checksum=732078983)
+    mgr = _mk_manager(applied=[applied], scripts=[on_disk])
+
+    with tempfile.TemporaryDirectory() as tmp:
+        scripts_dir = Path(tmp)
+        (scripts_dir / on_disk.script_name).write_text(on_disk.content)
+        state, rows, table = _pipeline(mgr, scripts_dir)
+
+    assert [entry.status for entry in state.applied] == ["Success"]
+    assert state.pending == []
+    row = _row_by_script(rows, "R__report.sql")
+    assert row["state"] == "Success"
+    assert "Outdated" not in table
+
+
 def test_outdated_applied_repeatable_and_pending_file_reach_info_table():
     """On-disk checksum change: applied row Outdated, pending file Pending."""
     applied = _mk_repeatable("R__data.sql", rank=1, checksum="old")
