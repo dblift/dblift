@@ -95,11 +95,12 @@ class TestHtmlFormatter:
 
         html = formatter.format_result(result, "public", "test", "MIGRATE")
 
-        assert "Query results" in html
-        assert "SELECT * FROM users" in html
+        assert "Query result" in html
+        assert "SQL statements" not in html
         assert "alice" in html
         assert "bob" in html
         assert 'class="t"' in html
+        assert "SELECT * FROM users" not in html
 
     def test_format_result_includes_query_results_for_clean_command(self):
         """CLEAN's --show-query-results panel renders (Bug 2 regression guard)."""
@@ -208,7 +209,8 @@ class TestHtmlFormatter:
 
         html = formatter.format_result(result, "public", "test", "MIGRATE")
 
-        assert html.count("CREATE TABLE users") == 1
+        assert "SQL statements" not in html
+        assert html.count("<pre>CREATE TABLE users (id INTEGER)</pre>") == 1
 
     def test_format_header(self):
         """Test formatting of HTML header."""
