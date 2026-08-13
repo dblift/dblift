@@ -215,8 +215,10 @@ class _RecordingTracker:
     def __init__(self) -> None:
         self.errors: List[str] = []
 
-    def _track_error(self, message, object_type=None, object_name=None, **kwargs):
-        self.errors.append(f"{object_type}:{object_name}:{message}")
+    def _track_error(
+        self, message, object_type=None, object_name=None, property_name=None, exception=None
+    ):
+        self.errors.append(f"{object_type}:{object_name}:{property_name}:{message}")
 
     def _track_warning(self, *args, **kwargs):
         pass

@@ -203,3 +203,67 @@ class TestBaseIntrospectorPropagatesReadFailures:
 
         with pytest.raises(RuntimeError, match="permission denied"):
             introspector.get_indexes("public", "my_table")
+
+
+# ---------------------------------------------------------------------------
+# Recording and propagating are not alternatives
+# ---------------------------------------------------------------------------
+
+
+class _RecordingTracker:
+    """Minimal stand-in for the introspector's result-tracking surface."""
+
+    def __init__(self) -> None:
+        self.errors: List[str] = []
+
+    def _track_error(
+        self, message, object_type=None, object_name=None, property_name=None, exception=None
+    ):
+        self.errors.append(f"{object_type}:{object_name}:{property_name}")
+
+    def _track_warning(self, *args, **kwargs):
+        pass
+
+    def _track_object_status(self, *args, **kwargs):
+        return None
+
+
+class TestReadFailureIsRecordedBeforeReRaising:
+    """``enable_result_tracking()`` is a public extension point on the
+    introspector, so a caller can and does opt into result tracking. Such
+    a caller needs the read failure counted in its quality verdict *and*
+    surfaced; propagating without recording would leave it with an
+    ``error_count`` of zero and a ``valid`` verdict for a schema whose
+    indexes were never read."""
+
+    def test_error_is_tracked_and_the_exception_still_escapes(self):
+        tracker = _RecordingTracker()
+        ext = IndexExtractor(
+            provider=_StubProvider(
+                _RaisingQueryExecutor(RuntimeError("permission denied for pg_indexes"))
+            ),
+            connection=_OpenConnection(),
+            metadata=object(),
+            vendor_queries=_TestQueries(),
+            dialect="postgresql",
+            result_tracker=tracker,
+        )
+
+        with pytest.raises(RuntimeError, match="permission denied"):
+            ext.get_indexes("public", "my_table")
+
+        assert tracker.errors == ["table:my_table:indexes"]
+
+    def test_a_successful_read_records_nothing(self):
+        tracker = _RecordingTracker()
+        ext = IndexExtractor(
+            provider=_StubProvider(_RowsQueryExecutor(rows=[])),
+            connection=_OpenConnection(),
+            metadata=object(),
+            vendor_queries=_TestQueries(),
+            dialect="postgresql",
+            result_tracker=tracker,
+        )
+
+        assert ext.get_indexes("public", "my_table") == []
+        assert tracker.errors == []

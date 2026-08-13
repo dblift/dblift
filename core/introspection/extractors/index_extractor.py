@@ -23,6 +23,12 @@ class IndexExtractor(BaseExtractor):
         running the vendor query propagates to the caller instead of being
         caught here.
 
+        The failure is still recorded on the result tracker for callers
+        that enabled it, and then re-raised. Recording and propagating are
+        not alternatives: a caller that opted into result tracking needs
+        the failure counted in its quality verdict, and a caller that did
+        not still needs it to surface rather than becoming ``[]``.
+
         Args:
             schema: Schema name
             table: Table name
@@ -32,13 +38,23 @@ class IndexExtractor(BaseExtractor):
 
         Raises:
             Exception: Whatever the vendor query round trip raises (e.g. a
-                permission or connection error) — not swallowed.
+                permission or connection error) — recorded, then re-raised.
         """
         self.ensure_metadata()
         if not self.vendor_queries:
             return []
 
-        indexes_data = self._get_indexes_from_vendor_queries(schema, table)
+        try:
+            indexes_data = self._get_indexes_from_vendor_queries(schema, table)
+        except Exception as e:
+            self.track_error(
+                f"Error getting indexes: {e}",
+                object_type="table",
+                object_name=table,
+                property_name="indexes",
+                exception=e,
+            )
+            raise
 
         # Convert to Index objects
         return self._build_index_objects(schema, table, indexes_data)
