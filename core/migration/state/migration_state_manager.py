@@ -23,8 +23,8 @@ from core.migration.version_utils import is_migration_failure
 
 
 class StrictModeError(ValueError):
-    """Raised by ``_is_versioned_pending`` when ``strict_mode=True`` and an
-    out-of-order migration is detected. Subclasses :class:`ValueError` so
+    """Raised by migrate when ``strict_mode=True`` and an out-of-order
+    executable pending migration is selected. Subclasses :class:`ValueError` so
     callers that haven't migrated to the narrower type still catch it,
     but lets ``MigrateCommand`` distinguish strict-mode violations from
     arbitrary :class:`ValueError` instances raised elsewhere in the
@@ -78,7 +78,13 @@ class MigrationStateManager:
         exclude_versions: Optional[Sequence[str]] = None,
         strict_mode: bool = False,
     ) -> MigrationState:
-        """Rebuild and return the current migration state as a JSON-ready snapshot."""
+        """Rebuild and return the current migration state as a JSON-ready snapshot.
+
+        ``pending`` / ``pending_objects`` are the unresolved on-disk catalog,
+        not migrate's execute-list. ``target_version`` labels Above target and
+        does not drop rows. ``tags`` / ``versions`` stay on the signature for
+        callers; they are not omit filters here.
+        """
 
         applied_migrations = self.history_manager.get_applied_migrations()
         self.logger.debug(f"Loaded {len(applied_migrations)} applied migrations from history")
@@ -107,11 +113,7 @@ class MigrationStateManager:
                 history.executed_versions,
                 recursive=recursive,
                 additional_dirs=list(additional_dirs) if additional_dirs else None,
-                target_version=target_version,
-                tags=self._normalize_filter(tags),
-                exclude_tags=self._normalize_filter(exclude_tags),
-                versions=self._normalize_filter(versions),
-                exclude_versions=self._normalize_filter(exclude_versions),
+                dir_recursive_map=dir_recursive_map,
                 strict_mode=strict_mode,
                 baseline_version=analysis_context.get("baseline_version"),
                 out_all_scripts=all_scripts,
@@ -128,6 +130,19 @@ class MigrationStateManager:
             pending_migrations,
             history.repeatable_checksums,
         )
+
+        # History-vs-history of the latest applied row always matches, so
+        # determine_state needs the checksum-changed pending set to label
+        # that row Outdated until migrate reapplies it.
+        analysis_context["pending_repeatable_scripts"] = {
+            name
+            for change in checksum_changes
+            if change.script_name
+            for name in (change.script_name, Path(change.script_name).name)
+        }
+        # One history index, native checksum type — not the data-service
+        # str() copy that made ``"732078983" != 732078983``.
+        analysis_context["repeatable_checksums"] = dict(history.repeatable_checksums)
 
         applied_entries, failed_entries = self._build_applied_entries(
             applied_migrations, analysis_context
@@ -147,22 +162,6 @@ class MigrationStateManager:
                 or str(getattr(m, "version", "")) not in undone_but_not_reapplied
             )
         ]
-
-        # Apply tag/version filters to applied_objects if filters are provided
-        # This is needed for undo command to only consider migrations matching the filters
-        if tags or exclude_tags or versions or exclude_versions:
-            applied_objects_filtered = [
-                m
-                for m in applied_objects_filtered
-                if self._passes_filters(
-                    m,
-                    target_version,
-                    self._normalize_filter(tags),
-                    self._normalize_filter(exclude_tags),
-                    self._normalize_filter(versions),
-                    self._normalize_filter(exclude_versions),
-                )
-            ]
 
         state = MigrationState(
             current_version=analysis_context.get("current_version"),
@@ -372,7 +371,9 @@ class MigrationStateManager:
             script_key = getattr(migration, "script_name", "")
             previous_checksum = self._lookup_checksum(previous_checksums, script_key)
 
-            if previous_checksum and previous_checksum != current_checksum:
+            if previous_checksum and self.state_service._checksums_differ(
+                previous_checksum, current_checksum
+            ):
                 changes.append(
                     ChecksumChange(
                         script_name=script_key,
@@ -445,31 +446,14 @@ class MigrationStateManager:
         baseline_version: Optional[str] = None,
         out_all_scripts: Optional[List[Migration]] = None,
     ) -> List[Migration]:
-        """Compute which migrations need to be executed.
+        """Catalog unresolved on-disk scripts (not migrate's execute-list).
 
-        This is the NEW centralized method that replaces MigrationScriptManager.get_pending_migrations().
-        It handles:
-        1. Scripts that have never been executed
-        2. Repeatable scripts that have changed (new checksum)
-        3. Versioned scripts that were executed but later undone
+        Membership is versioned-not-applied (or undone), repeatable never-run
+        or checksum-changed, and undo scripts. Baseline, target, undo type,
+        tags, and versions do not omit rows; commands select later.
 
-        Args:
-            scripts_dir: Directory containing migration scripts
-            executed_scripts: Set of script names that have been executed
-            applied_migrations: List of applied Migration objects from history
-            undone_versions: Set of versions that have been undone
-            repeatable_checksums: Dict of script name to checksum for repeatables
-            recursive: Whether to scan subdirectories
-            additional_dirs: Additional directories to scan
-            target_version: Optional target version to migrate to
-            tags: Optional list of tags to filter by (inclusion)
-            exclude_tags: Optional list of tags to exclude
-            versions: Optional list of versions to include
-            exclude_versions: Optional list of versions to exclude
-            strict_mode: Whether strict mode is enabled
-
-        Returns:
-            List of Migration objects that need to be executed
+        Filter kwargs (``target_version``, ``tags``, ``versions``, …) remain
+        for call-site compatibility and are not applied here.
         """
         # Step 1: Get all scripts from filesystem
         all_script_paths = self.script_manager.get_all_scripts(
@@ -553,7 +537,8 @@ class MigrationStateManager:
             highest_applied_version = current_version
             self.logger.debug(f"Strict mode: highest applied version is {highest_applied_version}")
 
-        # Step 5: Filter and determine pending migrations
+        # Step 5: Catalog unresolved on-disk scripts (do not omit by
+        # baseline/target/undo/tags — commands select from this set later)
         pending: List[Migration] = []
 
         for migration in all_scripts:
@@ -561,49 +546,34 @@ class MigrationStateManager:
             migration_type_name = self._get_type_name(migration)
             migration_version = cast(Optional[str], getattr(migration, "version", None))
 
-            # Check if script is pending based on type
             if migration_type_name in VERSIONED_SCRIPT_TYPES:
-                # Apply filters first, then check if pending
-                if self._passes_filters(
-                    migration,
-                    target_version,
-                    tags,
-                    exclude_tags,
-                    versions,
-                    exclude_versions,
+                if self._is_versioned_pending(
+                    script_name,
+                    migration_version,
+                    executed_scripts,
+                    executed_versions if executed_versions is not None else set(),
+                    effective_undone_versions,
+                    current_version,
+                    highest_applied_version,
+                    strict_mode,
+                    baseline_version,
                 ):
-                    if self._is_versioned_pending(
-                        script_name,
-                        migration_version,
-                        executed_scripts,
-                        executed_versions if executed_versions is not None else set(),
-                        effective_undone_versions,
-                        current_version,
-                        highest_applied_version,
-                        strict_mode,
-                        baseline_version,
-                    ):
-                        pending.append(migration)
+                    pending.append(migration)
 
             elif migration_type_name == "REPEATABLE":
-                # Apply filters FIRST for repeatable migrations to respect tag filtering
-                # Only check if pending if the migration passes tag filters
-                if self._passes_filters(migration, None, tags, exclude_tags, None, None):
-                    if self._is_repeatable_pending(
-                        script_name, migration, executed_scripts, repeatable_checksums
-                    ):
-                        pending.append(migration)
+                if self._is_repeatable_pending(
+                    script_name, migration, executed_scripts, repeatable_checksums
+                ):
+                    pending.append(migration)
 
             elif migration_type_name == "UNDO_SQL":
-                # Undo migrations are never "pending" for migrate command
-                # They're only used by the undo command
-                continue
+                pending.append(migration)
 
             elif migration_type_name in ("CALLBACK", "BASELINE"):
                 # Callbacks and baselines are handled separately
                 continue
 
-        self.logger.debug(f"Computed {len(pending)} pending migrations after filtering")
+        self.logger.debug(f"Cataloged {len(pending)} unresolved on-disk migrations")
         return pending
 
     def get_current_version(self, applied_migrations: List[Migration]) -> Optional[str]:
@@ -659,9 +629,10 @@ class MigrationStateManager:
         - Avoids issues with script name normalization (relative paths vs filenames)
         - More robust and simpler logic
 
-        Returns True if the migration should be executed, False otherwise.
-        In strict mode, prevents out-of-order migrations (versions <= current_version).
-        Migrations with versions <= baseline are considered already applied (only if baseline exists).
+        Returns True if the migration is unresolved (catalog membership), False otherwise.
+        Out-of-order unresolved scripts stay in the catalog; migrate --strict
+        raises when selecting executable pending, not during catalog build.
+        Versions at or below baseline stay in the catalog; commands label them later.
         """
         # For versioned migrations, check by version first (primary key)
         # Fall back to script_name for backward compatibility
@@ -682,44 +653,9 @@ class MigrationStateManager:
         if version and str(version) in undone_versions:
             return True
 
-        # Check if version is covered by baseline
-        # ONLY skip if there's an actual BASELINE migration and version <= baseline_version
-        # This allows out-of-order migrations when no baseline exists
-        if not is_executed and baseline_version and version:
-            if self.script_manager.compare_versions(version, baseline_version) <= 0:
-                # This version is at or below the baseline version
-                # It's implicitly covered by the baseline
-                self.logger.debug(
-                    f"Skipping migration {script_name} (version {version}) - "
-                    f"covered by baseline version {baseline_version}"
-                )
-                return False
-
-        # Never executed - check strict mode
+        # Never executed — catalog always includes out-of-order unresolved
+        # scripts. Migrate --strict raises when selecting executable pending.
         if not is_executed:
-            # BUG-05: out-of-order detection — a pending migration whose
-            # version is <= the highest applied version.
-            if current_version and version:
-                if self.script_manager.compare_versions(version, current_version) <= 0:
-                    if strict_mode:
-                        # Strict mode must FAIL the migrate command, not
-                        # silently skip — callers (CI, operators) need a
-                        # non-zero exit so the out-of-order file surfaces.
-                        raise StrictModeError(
-                            f"Strict mode: out-of-order migration {script_name} "
-                            f"(version {version} <= current version {current_version}). "
-                            f"Renumber the script above {current_version} or run "
-                            f"without --strict to apply it anyway."
-                        )
-                    # Non-strict: warn but still include so historical
-                    # behaviour (apply in-order files older than current)
-                    # is preserved.
-                    self.logger.warning(
-                        f"Out-of-order migration {script_name} "
-                        f"(version {version} <= current version {current_version}). "
-                        f"Applying anyway; use --strict to enforce strict ordering."
-                    )
-            # Not executed and passes all checks
             return True
 
         # Already executed and not undone - not pending
@@ -758,7 +694,11 @@ class MigrationStateManager:
         stored_checksum = self._lookup_checksum(repeatable_checksums, script_name)
 
         # If checksum changed, it's pending
-        if stored_checksum and current_checksum != stored_checksum:
+        if (
+            stored_checksum
+            and current_checksum
+            and self.state_service._checksums_differ(stored_checksum, current_checksum)
+        ):
             return True
 
         return False

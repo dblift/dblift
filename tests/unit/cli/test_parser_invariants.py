@@ -243,6 +243,15 @@ def test_import_flyway_accepts_source_table_override():
     assert args.flyway_table == "custom_flyway_history"
 
 
+def test_info_accepts_target_version():
+    parser = create_parser()
+
+    args = parser.parse_args(["info", "--target-version", "4"])
+
+    assert args.command == "info"
+    assert args.target_version == "4"
+
+
 def test_db_url_flag_documented_in_migrate_help():
     """F-13: --db-url/--db-schema must appear in `dblift migrate --help`.
 

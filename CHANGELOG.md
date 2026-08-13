@@ -13,6 +13,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`info` hid scripts migrate will not run.** The catalog was migrate's
+  execute-list, so Below baseline and Above target never appeared for
+  on-disk files outside the run window. Those scripts now show with those
+  statuses; migrate still runs only Pending. Pending / Outdated meaning
+  is unchanged: Outdated is the applied repeatable row when the file
+  changed; the matching unresolved file is Pending.
+- **`info` labeled a successful repeatable Outdated.** The catalog index
+  stringified CRC32 checksums, then compared them to the int on the
+  history row (`"732078983" != 732078983`). Comparison now goes through
+  `normalize_migration_checksum`, and the duplicate stringifying indexer
+  is gone.
+- **First-time repeatables were logged as needing reapply.** `migrate` /
+  `info` now say "pending repeatable migration(s)" when the script has
+  never been applied; "need to be reapplied" is only for checksum drift.
+
 ### Removed
 
 ## [3.8.0] - 2026-08-12

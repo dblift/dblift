@@ -209,6 +209,10 @@ class MigrationDataCollector:
             checksum = getattr(migration, "checksum", None)
             installed_by = getattr(migration, "installed_by", None)
 
+            # Flyway removeUndos: undo scripts are not table rows.
+            if self._is_migration_type_equal(migration_type, "UNDO_SQL"):
+                continue
+
             # Skip if this version should be excluded based on filters
             if self._should_exclude_migration(
                 version,
@@ -264,6 +268,10 @@ class MigrationDataCollector:
             script_name = migration.script_name
             version = getattr(migration, "version", None)
             migration_type = getattr(migration, "type", None)
+
+            # Flyway removeUndos: undo scripts are not table rows.
+            if self._is_migration_type_equal(migration_type, "UNDO_SQL"):
+                continue
 
             # Skip if should be excluded
             if self._should_exclude_migration(

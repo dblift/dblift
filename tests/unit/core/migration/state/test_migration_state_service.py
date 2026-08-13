@@ -167,6 +167,34 @@ class TestMigrationStateService:
         result = service.determine_state(migration, context)
         assert result == MigrationDisplayState.SUCCESS
 
+    def test_determine_state_repeatable_str_vs_int_same_crc32_is_success(self, service):
+        """History index may stringify CRC32; the row still carries an int.
+
+        ``"732078983" != 732078983`` is True in Python, which used to label a
+        freshly applied repeatable Outdated.
+        """
+        migration = Mock()
+        migration.success = True
+        migration.type = "REPEATABLE"
+        migration.script_name = "R__report.sql"
+        migration.checksum = 732078983
+        migration.resolved = True
+        context = {"repeatable_checksums": {"R__report.sql": "732078983"}}
+        result = service.determine_state(migration, context)
+        assert result == MigrationDisplayState.SUCCESS
+
+    def test_determine_state_repeatable_unsigned_vs_signed_crc32_is_success(self, service):
+        """Some drivers store CRC32 unsigned; Python CRC32 is signed."""
+        migration = Mock()
+        migration.success = True
+        migration.type = "REPEATABLE"
+        migration.script_name = "R__report.sql"
+        migration.checksum = -1022714467
+        migration.resolved = True
+        context = {"repeatable_checksums": {"R__report.sql": "3272252829"}}
+        result = service.determine_state(migration, context)
+        assert result == MigrationDisplayState.SUCCESS
+
     def test_determine_state_success_missing_future(self, service):
         """Test determine_state for successful missing migration in future."""
         migration = Mock()
@@ -249,6 +277,33 @@ class TestMigrationStateService:
         result = service.determine_pending_state(migration, context)
         assert result == MigrationDisplayState.BELOW_BASELINE
 
+    def test_determine_pending_state_version_equal_to_baseline(self, service):
+        """Pending versioned migration at baseline is Below baseline, not Pending."""
+        migration = Mock()
+        migration.type = "SQL"
+        migration.version = "2.0.0"
+        context = {"baseline_version": "2.0.0"}
+        result = service.determine_pending_state(migration, context)
+        assert result == MigrationDisplayState.BELOW_BASELINE
+
+    def test_determine_pending_state_version_above_baseline(self, service):
+        """Version above baseline stays Pending when no target is set."""
+        migration = Mock()
+        migration.type = "SQL"
+        migration.version = "3.0.0"
+        context = {"baseline_version": "2.0.0"}
+        result = service.determine_pending_state(migration, context)
+        assert result == MigrationDisplayState.PENDING
+
+    def test_determine_pending_state_above_baseline_and_target(self, service):
+        """Version above both baseline and target is Above target."""
+        migration = Mock()
+        migration.type = "SQL"
+        migration.version = "5.0.0"
+        context = {"baseline_version": "2.0.0", "target_version": "4.0.0"}
+        result = service.determine_pending_state(migration, context)
+        assert result == MigrationDisplayState.ABOVE_TARGET
+
     def test_determine_pending_state_above_target(self, service):
         """Test determine_pending_state for version above target."""
         migration = Mock()
@@ -259,7 +314,7 @@ class TestMigrationStateService:
         assert result == MigrationDisplayState.ABOVE_TARGET
 
     def test_determine_pending_state_with_undo_script(self, service, tmp_path):
-        """Test determine_pending_state for version with undo script."""
+        """Versioned scripts stay Pending; Available is the undo-script state only."""
         migration = Mock()
         migration.type = "SQL"
         migration.version = "1.0.0"
@@ -270,7 +325,7 @@ class TestMigrationStateService:
 
         context = {"scripts_dir": str(tmp_path)}
         result = service.determine_pending_state(migration, context)
-        assert result == MigrationDisplayState.AVAILABLE
+        assert result == MigrationDisplayState.PENDING
 
     def test_determine_pending_state_default(self, service):
         """Test determine_pending_state default to PENDING."""

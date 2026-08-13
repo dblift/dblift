@@ -32,6 +32,7 @@ from core.migration.state.migration_state_manager import (
     StrictModeError,
 )
 from core.migration.ui.migration_ui import MigrationUI
+from core.migration.version_utils import compare_versions
 from core.sql_validator.migration_validator import MigrationValidator
 from db.base_provider import BaseProvider
 
@@ -658,6 +659,34 @@ class MigrateCommand(BaseCommand):
         if updated_version:
             result.current_schema_version = updated_version
 
+    def _enforce_strict_ordering(
+        self,
+        migrations: List[Migration],
+        current_version: Optional[str],
+        strict_mode: bool,
+    ) -> None:
+        """Raise or warn when executable pending is out of version order."""
+        if not current_version:
+            return
+        for migration in migrations:
+            version = getattr(migration, "version", None)
+            if not version:
+                continue
+            if compare_versions(str(version), str(current_version)) <= 0:
+                script_name = getattr(migration, "script_name", "")
+                if strict_mode:
+                    raise StrictModeError(
+                        f"Strict mode: out-of-order migration {script_name} "
+                        f"(version {version} <= current version {current_version}). "
+                        f"Renumber the script above {current_version} or run "
+                        f"without --strict to apply it anyway."
+                    )
+                self.log.warning(
+                    f"Out-of-order migration {script_name} "
+                    f"(version {version} <= current version {current_version}). "
+                    f"Applying anyway; use --strict to enforce strict ordering."
+                )
+
     def execute(
         self,
         scripts_dir: Path,
@@ -713,10 +742,8 @@ class MigrateCommand(BaseCommand):
             if not validation_success:
                 return result
 
-            # Use MigrationStateManager to get centralized migration state.
-            # Pass strict_mode so _is_versioned_pending raises immediately on
-            # out-of-order migrations instead of emitting a misleading
-            # "Applying anyway; use --strict" warning.
+            # Catalog is unfiltered; migrate selects Pending then tags/versions.
+            # target_version is label context only (Above target), not an omit filter.
             strict_mode = bool(getattr(self.config, "strict_mode", False))
             migration_state = self.state_manager.build_state(
                 scripts_dir,
@@ -724,11 +751,6 @@ class MigrateCommand(BaseCommand):
                 additional_dirs=use_additional_dirs,
                 dir_recursive_map=dir_recursive_map,
                 target_version=target_version,
-                tags=tags,
-                exclude_tags=exclude_tags,
-                versions=versions,
-                exclude_versions=exclude_versions,
-                strict_mode=strict_mode,
             )
 
             # Store current schema version in result for HTML reports
@@ -737,7 +759,15 @@ class MigrateCommand(BaseCommand):
             if current_version:
                 result.current_schema_version = current_version
 
-            pending_migrations = migration_state.pending_objects
+            pending_migrations = migration_state.executable_pending_objects()
+            pending_migrations = self.state_manager.apply_filters_to_migrations(
+                pending_migrations,
+                tags=tags,
+                exclude_tags=exclude_tags,
+                versions=versions,
+                exclude_versions=exclude_versions,
+            )
+            self._enforce_strict_ordering(pending_migrations, current_version, strict_mode)
 
             if getattr(self, "validator", None) is None:
                 validation_success, validation_errors, validation_time = True, None, 0.0
@@ -905,12 +935,12 @@ class MigrateCommand(BaseCommand):
             return result
 
         except StrictModeError as e:
-            # Strict-mode out-of-order violations raised by
-            # ``_is_versioned_pending``. Specific subclass of
-            # ``ValueError`` so unrelated ``ValueError``s elsewhere in
-            # the try block (validation, lock acquisition, state
-            # updates) still fall through to the broader handler with
-            # the "Migration operation failed:" prefix (PR #241 Bugbot).
+            # Strict-mode out-of-order violations raised when selecting
+            # executable pending. Specific subclass of ``ValueError`` so
+            # unrelated ``ValueError``s elsewhere in the try block
+            # (validation, lock acquisition, state updates) still fall
+            # through to the broader handler with the "Migration operation
+            # failed:" prefix (PR #241 Bugbot).
             self.log.error(str(e))
             result.set_error(str(e))
             self._log_command_completion("migrate", result)

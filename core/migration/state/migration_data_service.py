@@ -52,7 +52,6 @@ class MigrationDataService:
         reapplied_versions = self._get_reapplied_versions(sorted_migrations)
         baseline_version = self._get_baseline_version(sorted_migrations)
         out_of_order_migrations = self._detect_out_of_order_migrations(sorted_migrations)
-        repeatable_checksums = self._build_repeatable_checksums(sorted_migrations)
         current_version = self._get_current_version(sorted_migrations)
 
         return {
@@ -60,7 +59,6 @@ class MigrationDataService:
             "reapplied_versions": reapplied_versions,
             "baseline_version": baseline_version,
             "out_of_order_migrations": out_of_order_migrations,
-            "repeatable_checksums": repeatable_checksums,
             "current_version": current_version,
             "target_version": self.target_version,
             "scripts_dir": self.scripts_dir,
@@ -209,26 +207,6 @@ class MigrationDataService:
                 continue
 
         return out_of_order
-
-    def _build_repeatable_checksums(self, applied_migrations: List[Migration]) -> Dict[str, str]:
-        """Build a map of repeatable migration checksums.
-
-        Args:
-            applied_migrations: List of applied migrations
-
-        Returns:
-            Dict mapping script names to their latest checksums
-        """
-        repeatable_checksums = {}
-
-        for migration in applied_migrations:
-            if self._get_migration_type(migration) == "REPEATABLE":
-                script_name = str(getattr(migration, "script_name", ""))
-                checksum = str(getattr(migration, "checksum", ""))
-                if script_name and checksum:
-                    repeatable_checksums[script_name] = checksum
-
-        return repeatable_checksums
 
     def _sort_applied_migrations(self, applied_migrations: List[Migration]) -> List[Migration]:
         """Sort applied migrations by installed rank.
