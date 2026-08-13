@@ -199,7 +199,7 @@ table.t{width:100%;border-collapse:separate;border-spacing:0;font-size:12.5px}
 ::-webkit-scrollbar-thumb{background:#1F2A3D;border-radius:6px;border:2px solid var(--bg)}
 ::-webkit-scrollbar-thumb:hover{background:#2C3A52}
 @media (max-width:1180px){.metastrip{grid-template-columns:repeat(3,1fr)}.kpis{grid-template-columns:repeat(3,1fr)}}
-@media (max-width:720px){.metastrip{grid-template-columns:repeat(2,1fr)}.kpis{grid-template-columns:repeat(2,1fr)}.stmt-row,.stmt-list-h{grid-template-columns:32px 1fr 90px}.stmt-timeline{display:none}.mig-head{grid-template-columns:24px 50px 1fr auto auto}.mig-stmt-count{display:none}}
+@media (max-width:720px){.metastrip{grid-template-columns:repeat(2,1fr)}.kpis{grid-template-columns:repeat(2,1fr)}.stmt-row,.stmt-list-h{grid-template-columns:28px 70px 76px minmax(0,1fr) 52px}.stmt-timeline{display:none}.mig-head{grid-template-columns:24px 50px 1fr auto auto}.mig-stmt-count{display:none}}
 @media print{body{background:#fff;color:#000}[data-print-hide]{display:none !important}.panel,.kpi,.diff{box-shadow:none;border-color:#ddd}.tab-pane.hidden{display:block !important}.stmt-detail,.mig-item .mig-body{display:block !important}}
 </style>
 </head>
@@ -328,7 +328,7 @@ table.t{width:100%;border-collapse:separate;border-spacing:0;font-size:12.5px}
   </div>
   <div class="cell">
     <div class="label">{{ icon_file() }} DBLift</div>
-    <div class="value mono">v{{ dblift_version|default('—') }}</div>
+    <div class="value mono">v{{ dblift_version|default('—', true) }}</div>
   </div>
   <div class="cell">
     <div class="label">{{ icon_chart() }} Run</div>
@@ -718,7 +718,7 @@ table.t{width:100%;border-collapse:separate;border-spacing:0;font-size:12.5px}
               {% if mj.statements %}
               <div class="stmt-list">
                 <div class="stmt-list-h">
-                  <div>#</div><div>Operation</div><div>Object type</div><div>Object name</div><div>Timeline</div><div style="text-align:right">Time</div>
+                  <div>#</div><div>Operation</div><div>Object type</div><div>Object name</div><div class="stmt-timeline">Timeline</div><div style="text-align:right">Time</div>
                 </div>
                 {% for st in mj.statements %}
                   {% set risky = is_risky(st.statement) %}
@@ -1100,7 +1100,11 @@ function toggleStmt(row){
   if(block) block.classList.toggle('open');
 }
 function exportHtml(){
-  var blob = new Blob([document.documentElement.outerHTML], {type: 'text/html;charset=utf-8'});
+  var root = document.documentElement.cloneNode(true);
+  root.querySelectorAll('.tab-pane.hidden').forEach(function(p){ p.classList.remove('hidden'); });
+  root.querySelectorAll('.mig-item').forEach(function(it){ it.classList.add('open'); });
+  root.querySelectorAll('.stmt-block').forEach(function(it){ it.classList.add('open'); });
+  var blob = new Blob(['<!DOCTYPE html>\n' + root.outerHTML], {type: 'text/html;charset=utf-8'});
   var a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
   a.download = (document.title || 'dblift-migration-report').replace(/\s+/g, '-').toLowerCase() + '.html';

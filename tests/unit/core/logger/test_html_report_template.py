@@ -148,3 +148,34 @@ def test_diff_empty_callout():
     html = HtmlFormatter().format_result(result, "public", "demo", "DIFF")
 
     assert "This DIFF command did not produce structured diff output." in html
+
+
+def test_export_js_expands_collapsed_content_on_a_clone():
+    html = HtmlFormatter().format_result(MigrateResult(), "public", "demo", "MIGRATE")
+
+    assert "cloneNode(true)" in html
+    assert "tab-pane.hidden" in html
+    assert "classList.remove('hidden')" in html
+    assert ".mig-item" in html
+    assert ".stmt-block" in html
+    assert "classList.add('open')" in html
+
+
+def test_unknown_dblift_version_renders_em_dash_not_bare_v(monkeypatch):
+    from core.logger.formatters import htmlformatter as htmlformatter_mod
+
+    monkeypatch.setattr(htmlformatter_mod, "resolve_dblift_package_version", lambda: None)
+    html = HtmlFormatter().format_result(MigrateResult(), "public", "demo", "MIGRATE")
+
+    assert ">v</div>" not in html
+    assert "v—" in html
+
+
+def test_mobile_statement_grid_keeps_object_columns():
+    html = HtmlFormatter().format_result(MigrateResult(), "public", "demo", "MIGRATE")
+    mobile = html.split("@media (max-width:720px)")[1].split("@media")[0]
+
+    assert "32px 1fr 90px" not in mobile
+    assert "minmax(0,1fr)" in mobile
+    assert "stmt-timeline" in mobile
+    assert "display:none" in mobile

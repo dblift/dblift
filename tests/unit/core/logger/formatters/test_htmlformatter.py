@@ -648,6 +648,13 @@ class TestHtmlFormatter:
         assert "V1__Initial.sql" in call_args["per_migration_journal"]
         assert call_args["per_migration_journal"]["V1__Initial.sql"] == {"total_time": 1500}
 
+    @patch("core.logger.formatters.htmlformatter.resolve_dblift_package_version", return_value=None)
+    def test_report_metadata_omits_empty_version(self, _mock_version):
+        formatter = HtmlFormatter()
+        meta = formatter._report_metadata(MigrateResult(), "2026-08-12 19:17:29")
+
+        assert meta["dblift_version"] is None
+
     def test_multiple_log_entries(self):
         """Test handling multiple log entries."""
         formatter = HtmlFormatter()

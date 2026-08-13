@@ -440,7 +440,7 @@ class HtmlFormatter:
         start = getattr(result, "start_time", None)
         run_id = start.strftime("%Y-%m-%d %H:%M:%S") if isinstance(start, datetime) else timestamp
         return {
-            "dblift_version": version or "",
+            "dblift_version": version or None,
             "db_user": self._report_db_user(result),
             "run_id": run_id,
             "report_generated_at": timestamp,
