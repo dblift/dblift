@@ -14,30 +14,31 @@ class IndexExtractor(BaseExtractor):
         """
         Get all indexes for a table.
 
+        ``[]`` means the table genuinely has no indexes (the vendor query
+        ran and returned zero rows) or the dialect has no index-introspection
+        support at all (no ``vendor_queries``). A failure to *read* indexes
+        — permission denied, a dropped connection, an unreadable catalog view
+        — is not translated into ``[]``: no dialect represents "this table
+        has no indexes" as an exception, so any exception raised while
+        running the vendor query propagates to the caller instead of being
+        caught here.
+
         Args:
             schema: Schema name
             table: Table name
 
         Returns:
             List of Index objects
+
+        Raises:
+            Exception: Whatever the vendor query round trip raises (e.g. a
+                permission or connection error) — not swallowed.
         """
         self.ensure_metadata()
         if not self.vendor_queries:
             return []
 
-        try:
-            indexes_data = self._get_indexes_from_vendor_queries(schema, table)
-
-        except Exception as e:
-            self.log.warning(f"Could not get indexes for {schema}.{table}: {e}")
-            self.track_error(
-                f"Error getting indexes: {e}",
-                object_type="table",
-                object_name=table,
-                property_name="indexes",
-                exception=e,
-            )
-            return []
+        indexes_data = self._get_indexes_from_vendor_queries(schema, table)
 
         # Convert to Index objects
         return self._build_index_objects(schema, table, indexes_data)
