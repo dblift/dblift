@@ -160,6 +160,45 @@ class TestReverseCreate:
         assert "users" in result.sql
 
 
+@pytest.mark.unit
+class TestDefaultSchemaPlaceholderNeverReachesGeneratedSql:
+    """``default_schema`` is internal to ``extract_objects``, not an identifier.
+
+    That function reports one combined ``"<schema>.<name>"`` string, using the
+    literal ``default_schema`` when the statement named no schema. Quoting the
+    whole string as a single identifier yields
+    ``DROP SEQUENCE "default_schema.users_seq"`` -- an object that never
+    exists (ORA-02289), so the undo script silently undoes nothing.
+    """
+
+    @pytest.mark.parametrize(
+        "sql",
+        [
+            "CREATE TABLE t (id INT)",
+            "CREATE VIEW v AS SELECT 1",
+            "CREATE SEQUENCE users_seq START WITH 1",
+            "CREATE TRIGGER tg BEFORE INSERT ON t FOR EACH ROW BEGIN NULL; END;",
+            "CREATE INDEX idx ON orders (email)",
+        ],
+    )
+    def test_placeholder_is_absent_from_the_undo_statement(self, sql):
+        gen = make_generator(dialect="oracle")
+        result = gen._reverse_create(sql, gen.sql_analyzer.analyze_statement(sql))
+        assert "default_schema" not in result.sql
+
+    def test_unqualified_name_drops_the_bare_object(self):
+        gen = make_generator(dialect="oracle")
+        sql = "CREATE SEQUENCE users_seq START WITH 1"
+        result = gen._reverse_create(sql, gen.sql_analyzer.analyze_statement(sql))
+        assert result.sql == 'DROP SEQUENCE "users_seq";'
+
+    def test_a_real_schema_is_still_qualified(self):
+        gen = make_generator(dialect="oracle")
+        sql = "CREATE TABLE app.orders (id INT)"
+        result = gen._reverse_create(sql, gen.sql_analyzer.analyze_statement(sql))
+        assert result.sql == 'DROP TABLE "app"."orders";'
+
+
 # ---------------------------------------------------------------------------
 # _reverse_alter_from_parsed — uncovered branches
 # ---------------------------------------------------------------------------

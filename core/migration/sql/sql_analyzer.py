@@ -6,12 +6,258 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from core.logger import Log
 from core.migration.sql.statement_splitter import StatementSplitter
+from core.sql_model._base_sql_object import SqlObjectType
 
 # Import parser system components
 from core.sql_parser.parser_factory import SqlParserFactory
 
 # Configure logging
 logger = logging.getLogger(__name__)
+
+# --- Object recognition vocabulary ------------------------------------------
+# Object types recognised after CREATE / ALTER / DROP, after the ``ON`` of a
+# GRANT / REVOKE, and after COMMENT ON. Ordered longest-first so a two-word type
+# is never truncated to its first word: ``DROP MATERIALIZED VIEW mv`` used to be
+# reported as type "MATERIALIZED" with name "default_schema.VIEW", so the object
+# actually being dropped never appeared at all.
+_RECOGNISED_OBJECT_TYPES: Tuple[SqlObjectType, ...] = (
+    SqlObjectType.FOREIGN_DATA_WRAPPER,
+    SqlObjectType.MATERIALIZED_VIEW,
+    SqlObjectType.PACKAGE_BODY,
+    SqlObjectType.DATABASE_LINK,
+    SqlObjectType.TABLE,
+    SqlObjectType.VIEW,
+    SqlObjectType.INDEX,
+    SqlObjectType.SEQUENCE,
+    SqlObjectType.TRIGGER,
+    SqlObjectType.FUNCTION,
+    SqlObjectType.PROCEDURE,
+    SqlObjectType.PACKAGE,
+    SqlObjectType.TYPE,
+    SqlObjectType.SYNONYM,
+    SqlObjectType.SCHEMA,
+    SqlObjectType.EXTENSION,
+    SqlObjectType.DATABASE,
+    SqlObjectType.ROLE,
+    SqlObjectType.USER,
+    SqlObjectType.EVENT,
+)
+
+# Built from the enum members themselves, so whatever the alternation matches is
+# a ``SqlObjectType`` member name by construction once its spaces are collapsed
+# back to underscores (see ``_object_type_name``).
+_OBJECT_KEYWORDS = "|".join(t.name.replace("_", r"\s+") for t in _RECOGNISED_OBJECT_TYPES)
+
+# The schema reported when a statement names none. An internal placeholder, not
+# an identifier: consumers must strip it rather than emit it into SQL.
+DEFAULT_SCHEMA_PLACEHOLDER = "default_schema"
+
+# A SQL identifier: quoted ("x", [x], `x`) or bare, optionally schema-qualified.
+_IDENTIFIER = r'(?:"[^"]+"|\[[^\]]+\]|`[^`]+`|[\w$#]+)'
+_QUALIFIED_NAME = rf"{_IDENTIFIER}(?:\s*\.\s*{_IDENTIFIER})*"
+# Words that stand between the object type and its name and must never be
+# captured as the name -- the real name follows them:
+# ``DROP TABLE IF EXISTS users``, ``ALTER TABLE ONLY users ADD COLUMN c``
+# (PostgreSQL's no-inheritance modifier), ``DROP INDEX CONCURRENTLY idx``.
+_NAME_PREFIX = r"(?:(?:IF\s+(?:NOT\s+)?EXISTS|ONLY|CONCURRENTLY)\s+)*"
+
+# Leading comments must not hide the statement's leading verb.
+_LEADING_COMMENTS_RE = re.compile(r"\A(?:\s*(?:--[^\n]*|/\*.*?\*/))+\s*", re.DOTALL)
+
+# CREATE INDEX is kept separate from the generic DDL shape because it names two
+# objects: the index, and the table it is built on (reported as ``on_object``).
+# An index build is an INDEX whatever index *type* it declares, so the type
+# keyword is skipped rather than being allowed to make the statement
+# unrecognisable: ``CREATE BITMAP INDEX`` (Oracle), ``CREATE FULLTEXT INDEX``
+# and ``CREATE SPATIAL INDEX`` (MySQL), ``CREATE UNIQUE CLUSTERED INDEX`` and
+# ``CREATE CLUSTERED COLUMNSTORE INDEX`` (SQL Server). Skipping one here cannot
+# select a wrong type the way a modifier before an alternation can: what follows
+# this group is the literal INDEX, so a mis-skip fails to match rather than
+# matching something else. This branch owns every index build carrying an ON
+# clause, which is why these keywords are not repeated in ``_DDL_MODIFIERS``.
+_INDEX_TYPE_MODIFIERS = (
+    r"(?:(?:UNIQUE|CLUSTERED|NONCLUSTERED|COLUMNSTORE|BITMAP|FULLTEXT|SPATIAL)\s+)*"
+)
+# Only these two literal modifiers may stand between INDEX and the name. The
+# name group refuses to match either of them, or the ``ON`` that follows an
+# unnamed index build: an earlier version relied on the trailing ``ON`` to force
+# backtracking onto "the real name", which is precisely what reported
+# ``CREATE INDEX CONCURRENTLY ON orders (email)`` as an index named
+# CONCURRENTLY. When there is no name, there is no name to report.
+_INDEX_MODIFIERS = r"(?:(?:CONCURRENTLY|IF\s+(?:NOT\s+)?EXISTS)\s+)*"
+_NOT_AN_INDEX_NAME = r"(?!(?:ON|CONCURRENTLY)\b)"
+# Anchored for the same reason as the DDL patterns below: an index build nested
+# in a routine body must not displace the routine as the statement's subject.
+_CREATE_INDEX_RE = re.compile(
+    rf"\ACREATE\s+{_INDEX_TYPE_MODIFIERS}INDEX\s+{_INDEX_MODIFIERS}"
+    rf"{_NOT_AN_INDEX_NAME}({_QUALIFIED_NAME})"
+    rf"\s+ON\s+(?:ONLY\s+)?({_QUALIFIED_NAME})",
+    re.IGNORECASE,
+)
+# Modifiers that may stand between the verb and the object type. An explicit
+# allowlist rather than "skip any word": a wildcard skip let a modelled keyword
+# further along the statement displace the real subject, so
+# ``ALTER PUBLICATION pub ADD TABLE t`` reported the table. Each entry names a
+# real statement -- ``CREATE OR REPLACE VIEW v``, ``CREATE GLOBAL TEMPORARY
+# TABLE t``, ``CREATE LOCAL TEMPORARY TABLE t``, ``CREATE TEMP VIEW v``,
+# ``CREATE UNLOGGED TABLE t``, ``CREATE VIRTUAL TABLE v USING fts5``,
+# ``CREATE FOREIGN TABLE f``, ``CREATE PUBLIC SYNONYM s FOR t`` and
+# ``CREATE PUBLIC DATABASE LINK dl`` -- and an unlisted one is not a silent
+# wrong answer: the statement falls through to the UNKNOWN branch with its name
+# intact. MATERIALIZED is deliberately absent: it is the first word of a
+# modelled two-word type, so skipping it would report a plain VIEW. Index-type
+# keywords are absent for a different reason -- the CREATE INDEX branch above
+# owns those statements, and it reports the target table as well as the type.
+_DDL_MODIFIER_KEYWORDS = (
+    r"OR\s+REPLACE",
+    "GLOBAL",
+    "LOCAL",
+    "TEMPORARY",
+    "TEMP",
+    "UNLOGGED",
+    "VIRTUAL",
+    "FOREIGN",
+    "PUBLIC",
+)
+_DDL_MODIFIERS = rf"(?:(?:{'|'.join(_DDL_MODIFIER_KEYWORDS)})\s+)*"
+# Multi-word object types this analyzer does not model. Listed so their trailing
+# words are not read as the object's name: without ``EVENT TRIGGER`` here,
+# ``CREATE EVENT TRIGGER et`` matches the modelled EVENT and reports an event
+# named "TRIGGER". Each names a real statement: PostgreSQL's
+# ``CREATE TEXT SEARCH DICTIONARY d (...)``, ``CREATE EVENT TRIGGER et ON ...``,
+# ``CREATE USER MAPPING FOR u SERVER s``, ``ALTER DEFAULT PRIVILEGES IN SCHEMA s``
+# and ``CREATE OPERATOR CLASS oc FOR TYPE int``, and Oracle's
+# ``CREATE TYPE BODY t``.
+_UNMODELLED_MULTI_WORD_TYPES = (
+    r"TEXT\s+SEARCH\s+\w+|EVENT\s+TRIGGER|USER\s+MAPPING|TYPE\s+BODY"
+    r"|DEFAULT\s+PRIVILEGES|OPERATOR\s+(?:CLASS|FAMILY)"
+)
+
+# Anchored: the object a DDL statement acts on is named at its head, so a
+# keyword appearing later must never be reached by scanning forward.
+_DDL_OBJECT_RE = re.compile(
+    rf"\A(?:CREATE|ALTER|DROP)\s+{_DDL_MODIFIERS}({_OBJECT_KEYWORDS})\b\s+"
+    rf"{_NAME_PREFIX}({_QUALIFIED_NAME})",
+    re.IGNORECASE,
+)
+# Vetoes the match above when the head is really an unmodelled multi-word type.
+_UNMODELLED_MULTI_WORD_RE = re.compile(
+    rf"\A(?:CREATE|ALTER|DROP)\s+{_DDL_MODIFIERS}(?:{_UNMODELLED_MULTI_WORD_TYPES})\b",
+    re.IGNORECASE,
+)
+# Same shape, but for an object type this analyzer does not model (TABLESPACE,
+# POLICY, PUBLICATION, ...). The keyword itself is deliberately not captured:
+# admitting it as an ``object_type`` is what broke the one-vocabulary invariant,
+# so these degrade to ``UNKNOWN`` while still reporting the object's name.
+# ``(?:\w+\s+)?(?:{_OBJECT_KEYWORDS})`` is what makes an unlisted modifier fail
+# safely: in ``CREATE PUBLIC SYNONYM s`` the modelled SYNONYM sitting one word
+# in is evidence that PUBLIC was a modifier, so the name is still ``s`` rather
+# than the keyword. The type stays UNKNOWN -- widening the *typed* path to skip
+# arbitrary words is what let a later keyword displace the subject.
+_UNMODELLED_DDL_RE = re.compile(
+    rf"\A(?:CREATE|ALTER|DROP)\s+{_DDL_MODIFIERS}"
+    rf"(?:{_UNMODELLED_MULTI_WORD_TYPES}|(?:\w+\s+)?(?:{_OBJECT_KEYWORDS})|\w+)\s+"
+    rf"{_NAME_PREFIX}({_QUALIFIED_NAME})",
+    re.IGNORECASE,
+)
+_TRUNCATE_RE = re.compile(
+    rf"TRUNCATE\s+(?:TABLE\s+)?(?:ONLY\s+)?({_QUALIFIED_NAME})", re.IGNORECASE
+)
+_COMMENT_ON_RE = re.compile(
+    rf"COMMENT\s+ON\s+(COLUMN|{_OBJECT_KEYWORDS})\b\s+({_QUALIFIED_NAME})", re.IGNORECASE
+)
+# ``ON ALL TABLES IN SCHEMA s`` names a set rather than one object; the name it
+# yields is rejected by ``_names_an_object`` rather than by a second mechanism.
+_GRANT_RE = re.compile(
+    rf"(?:GRANT|REVOKE)\b.*?\bON\s+(?:({_OBJECT_KEYWORDS})\b\s+)?({_QUALIFIED_NAME})",
+    re.IGNORECASE | re.DOTALL,
+)
+_DML_TARGET_RE = re.compile(
+    rf"(?:INSERT\s+INTO|MERGE\s+INTO|DELETE\s+FROM|UPDATE)\s+(?:ONLY\s+)?({_QUALIFIED_NAME})",
+    re.IGNORECASE,
+)
+
+
+# Words no grammar makes an object's name, refused in the name slot whatever
+# vouched for it. Each is reserved in SQL and so cannot be a bare identifier:
+# ``CREATE INDEX ON orders (email)`` names no index, ``DROP OWNED BY r`` names
+# no object, ``GRANT SELECT ON ALL TABLES IN SCHEMA s`` names a set, and
+# ``GRANT USAGE ON FOREIGN SERVER srv`` names a server type this module does
+# not model. Quoted identifiers keep their quotes and so never match here: a
+# table really called "set" is written ``DROP TABLE "set"``.
+_RESERVED_WORDS = frozenset(
+    "ALL AS BY CONCURRENTLY EXISTS FOR FOREIGN FROM IF IN INTO IS NOT ON ONLY TO"
+    " USING VALUES WITH".split()
+)
+
+# The wider net, consulted only where nothing vouched for the name. It holds
+# every word this module reads as syntax -- statement verbs, object types and
+# the modifier allowlists -- derived from those patterns so it cannot drift out
+# of sync when one of them gains a keyword, plus the words that occupy the name
+# slot in statements which configure a session or instance rather than name an
+# object (``ALTER SESSION SET x = y``, ``ALTER SESSION ENABLE PARALLEL DML``,
+# ``ALTER SYSTEM RESET ALL``, ``ALTER SYSTEM FLUSH SHARED_POOL``,
+# ``ALTER SYSTEM CHECKPOINT``) and Oracle's editionable-object modifiers
+# (``CREATE OR REPLACE FORCE EDITIONABLE VIEW v``).
+_SESSION_CLAUSE_WORDS = "SET RESET ENABLE DISABLE FLUSH CHECKPOINT EDITIONABLE NONEDITIONABLE"
+_STATEMENT_VERBS = (
+    "CREATE ALTER DROP TRUNCATE COMMENT GRANT REVOKE INSERT UPDATE DELETE MERGE SELECT"
+)
+_SYNTAX_WORDS = _RESERVED_WORDS | frozenset(
+    re.findall(
+        r"[A-Z]{2,}",
+        " ".join(
+            (
+                _OBJECT_KEYWORDS,
+                _INDEX_TYPE_MODIFIERS,
+                _INDEX_MODIFIERS,
+                _NAME_PREFIX,
+                _DDL_MODIFIERS,
+                _UNMODELLED_MULTI_WORD_TYPES,
+                _SESSION_CLAUSE_WORDS,
+                _STATEMENT_VERBS,
+            )
+        ),
+    )
+)
+
+
+def _names_an_object(raw: str, vouched: bool) -> bool:
+    """Whether the name slot holds a name rather than a keyword.
+
+    ``vouched`` says a modelled object-type keyword was matched immediately
+    before this token, which is what identifies the token as a name: a table
+    may legitimately be called ``checkpoint`` or ``data``, and after
+    ``ON TABLE`` it plainly is one. Reserved words are refused either way --
+    no grammar makes ``ON`` an object name, which is how the unnamed index
+    build ``CREATE INDEX ON orders (email)`` reports no index rather than one
+    called "ON". Where nothing vouched, the wider syntax net applies: naming
+    a keyword is the one outcome worse than naming nothing.
+    """
+    word = raw.upper()
+    if word in _RESERVED_WORDS:
+        return False
+    return vouched or word not in _SYNTAX_WORDS
+
+
+def _object_type_name(keyword: str) -> str:
+    """Return the ``SqlObjectType`` member name for a matched type keyword."""
+    return re.sub(r"\s+", "_", keyword.strip().upper())
+
+
+def _qualified_object_name(raw: str, drop_last_part: bool = False) -> str:
+    """Render a matched identifier as ``schema.name``.
+
+    Unqualified names take the literal ``default_schema`` prefix, the convention
+    the CREATE TABLE branch has always used. ``drop_last_part`` reports the
+    parent of a column reference, so ``users.email`` becomes ``users``.
+    """
+    parts = re.findall(_IDENTIFIER, raw)
+    if drop_last_part and len(parts) > 1:
+        parts = parts[:-1]
+    if len(parts) >= 2:
+        return f"{parts[-2]}.{parts[-1]}"
+    return f"{DEFAULT_SCHEMA_PLACEHOLDER}.{parts[0]}"
 
 
 class SqlAnalyzer:
@@ -64,7 +310,6 @@ class SqlAnalyzer:
             self.parser_factory = parser_factory
         else:
             self.parser_factory = SqlParserFactory(self.dialect)
-        self.parser = None
 
     def get_statement_type(self, sql: str) -> str:
         """Get the high-level type of SQL statement (DDL, DML, QUERY, UNKNOWN).
@@ -172,13 +417,6 @@ class SqlAnalyzer:
         """
         # Use regex-based analysis
         try:
-            parser = self.parser
-            if parser is None:
-                parser = self.parser_factory.get_parser(self.dialect)
-                self.parser = parser
-            if parser is not None:
-                parser.parse(sql)
-
             objects = self.extract_objects(sql)
 
             analysis = {
@@ -465,6 +703,11 @@ class SqlAnalyzer:
     def _extract_objects_regex(self, statement: str) -> List[Dict[str, str]]:
         """Extract objects from a SQL statement using regex.
 
+        This is the single place that answers "which object does this statement
+        touch". Every branch reports an ``object_type`` that is a
+        ``SqlObjectType`` member name, so callers can map the string back to the
+        enum instead of matching a spelling that varies per branch.
+
         Args:
             statement: SQL statement to analyze
 
@@ -477,66 +720,117 @@ class SqlAnalyzer:
         if not statement or not statement.strip():
             return objects
 
-        statement = statement.strip()
+        statement = _LEADING_COMMENTS_RE.sub("", statement.strip()).strip()
+        if not statement:
+            return objects
 
-        # Extract tables from CREATE TABLE
-        if statement.upper().startswith("CREATE TABLE"):
-            match = re.search(
-                r'CREATE\s+TABLE\s+(?:(\w+)\.)?(["\[\]\w]+)', statement, re.IGNORECASE
+        upper = statement.upper()
+        # Matched up front rather than guarded by a literal prefix: the index
+        # type keyword varies by dialect, and a prefix guard admitting only
+        # CREATE INDEX / CREATE UNIQUE INDEX left every other index build
+        # without the table it is built on.
+        create_index = _CREATE_INDEX_RE.search(statement) if upper.startswith("CREATE") else None
+
+        # CREATE INDEX also names the table the index is built on
+        if create_index:
+            objects.append(
+                {
+                    "object_type": SqlObjectType.INDEX.name,
+                    "object_name": create_index.group(1),
+                    "on_object": _qualified_object_name(create_index.group(2)),
+                }
             )
-            if match:
-                schema = match.group(1) or "default_schema"
-                table = match.group(2)
-                objects.append({"object_type": "Table", "object_name": f"{schema}.{table}"})
 
-        # Extract tables from ALTER TABLE
-        elif statement.upper().startswith("ALTER TABLE"):
-            match = re.search(r'ALTER\s+TABLE\s+(?:(\w+)\.)?(["\[\]\w]+)', statement, re.IGNORECASE)
-            if match:
-                schema = match.group(1) or "default_schema"
-                table = match.group(2)
-                objects.append({"object_type": "Table", "object_name": f"{schema}.{table}"})
+        # CREATE / ALTER / DROP of any recognised object type
+        elif upper.startswith("CREATE") or upper.startswith("ALTER") or upper.startswith("DROP"):
+            match = _DDL_OBJECT_RE.search(statement)
+            if match and not _UNMODELLED_MULTI_WORD_RE.search(statement):
+                # The modelled keyword vouches for what follows it being a name.
+                if _names_an_object(match.group(2), vouched=True):
+                    objects.append(
+                        {
+                            "object_type": _object_type_name(match.group(1)),
+                            "object_name": _qualified_object_name(match.group(2)),
+                        }
+                    )
+            else:
+                # An object type this analyzer does not model still names an
+                # object. Reporting nothing would drop the statement from every
+                # caller's view; reporting the raw keyword as a type would break
+                # the one vocabulary. So: the name, typed honestly as UNKNOWN.
+                # Nothing vouches for the token here, so the wider syntax net
+                # applies (``ALTER SYSTEM RESET ALL`` names no object).
+                match = _UNMODELLED_DDL_RE.search(statement)
+                if match and _names_an_object(match.group(1), vouched=False):
+                    objects.append(
+                        {
+                            "object_type": SqlObjectType.UNKNOWN.name,
+                            "object_name": _qualified_object_name(match.group(1)),
+                        }
+                    )
 
-        # Extract views from CREATE VIEW
-        elif statement.upper().startswith("CREATE VIEW") or statement.upper().startswith(
-            "CREATE OR REPLACE VIEW"
-        ):
-            match = re.search(
-                r'CREATE\s+(?:OR\s+REPLACE\s+)?VIEW\s+(?:(\w+)\.)?(["\[\]\w]+)',
-                statement,
-                re.IGNORECASE,
-            )
+        # TRUNCATE always targets a table, with or without the TABLE keyword
+        elif upper.startswith("TRUNCATE"):
+            match = _TRUNCATE_RE.search(statement)
             if match:
-                schema = match.group(1) or "default_schema"
-                view = match.group(2)
-                objects.append({"object_type": "View", "object_name": f"{schema}.{view}"})
-
-        # Extract indexes from CREATE INDEX
-        elif statement.upper().startswith("CREATE INDEX") or statement.upper().startswith(
-            "CREATE UNIQUE INDEX"
-        ):
-            match = re.search(
-                r'CREATE\s+(?:UNIQUE\s+)?INDEX\s+(["\[\]\w]+)\s+ON\s+(?:(\w+)\.)?(["\[\]\w]+)',
-                statement,
-                re.IGNORECASE,
-            )
-            if match:
-                index = match.group(1)
-                schema = match.group(2) or "default_schema"
-                table = match.group(3)
                 objects.append(
-                    {"object_type": "Index", "object_name": index, "on_object": f"{schema}.{table}"}
+                    {
+                        "object_type": SqlObjectType.TABLE.name,
+                        "object_name": _qualified_object_name(match.group(1)),
+                    }
                 )
 
-        # Extract objects from DROP statements
-        elif statement.upper().startswith("DROP"):
-            match = re.search(r'DROP\s+(\w+)\s+(?:(\w+)\.)?(["\[\]\w]+)', statement, re.IGNORECASE)
+        # COMMENT ON <type> <name>; a column comment reports its table
+        elif upper.startswith("COMMENT"):
+            match = _COMMENT_ON_RE.search(statement)
             if match:
-                object_type = match.group(1)
-                schema = match.group(2) or "default_schema"
-                object_name = match.group(3)
+                is_column = match.group(1).upper() == "COLUMN"
                 objects.append(
-                    {"object_type": object_type, "object_name": f"{schema}.{object_name}"}
+                    {
+                        "object_type": (
+                            SqlObjectType.TABLE.name
+                            if is_column
+                            else _object_type_name(match.group(1))
+                        ),
+                        "object_name": _qualified_object_name(
+                            match.group(2), drop_last_part=is_column
+                        ),
+                    }
+                )
+
+        # GRANT / REVOKE name the object the privilege is on; without an
+        # explicit type keyword the object is a table
+        elif upper.startswith("GRANT") or upper.startswith("REVOKE"):
+            match = _GRANT_RE.search(statement)
+            keyword = match.group(1) if match else None
+            # ``GRANT ... ON x`` names an object by grammar whether or not it
+            # spells the type, so the position itself vouches; the reserved
+            # words still apply, which is what stops ``ON ALL TABLES IN SCHEMA``
+            # and ``ON FOREIGN SERVER srv``.
+            if match and _names_an_object(match.group(2), vouched=True):
+                objects.append(
+                    {
+                        "object_type": (
+                            _object_type_name(keyword) if keyword else SqlObjectType.TABLE.name
+                        ),
+                        "object_name": _qualified_object_name(match.group(2)),
+                    }
+                )
+
+        # DML names the table it writes to. A read (SELECT) affects no object.
+        elif (
+            upper.startswith("INSERT")
+            or upper.startswith("UPDATE")
+            or upper.startswith("DELETE")
+            or upper.startswith("MERGE")
+        ):
+            match = _DML_TARGET_RE.search(statement)
+            if match:
+                objects.append(
+                    {
+                        "object_type": SqlObjectType.TABLE.name,
+                        "object_name": _qualified_object_name(match.group(1)),
+                    }
                 )
 
         return objects
