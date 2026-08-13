@@ -490,9 +490,7 @@ class HtmlFormatter:
             "result_set": None,
         }
 
-    def _merge_sql_visibility(
-        self, journal_map: Dict[str, Any], result: OperationResult
-    ) -> None:
+    def _merge_sql_visibility(self, journal_map: Dict[str, Any], result: OperationResult) -> None:
         """Surface result.sql under the per-migration accordion when journal is empty."""
         if not getattr(result, "show_sql", False):
             return

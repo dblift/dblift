@@ -349,7 +349,7 @@ class MigrationJournal:
         """Unwrap enum-like object types to a plain string."""
         if hasattr(object_type, "value"):
             object_type = object_type.value
-        return str(object_type)
+        return str(object_type)  # lint: allow-enum-str
 
     @staticmethod
     def _parse_affected_object(obj: Any) -> Tuple[str, str, str]:
@@ -381,7 +381,7 @@ class MigrationJournal:
         if not match:
             return ""
         parts = re.split(r"\s*\.\s*", match.group("name"))
-        last = parts[-1].strip("\"`[]")
+        last = parts[-1].strip('"`[]')
         if last.upper() == "DUAL":
             return ""
         return last
@@ -600,9 +600,7 @@ class MigrationJournal:
         by_index, by_text = self._object_change_lookups(entries)
 
         def _statement_dict(entry: JournalEntry) -> Dict[str, Any]:
-            operation, object_type, object_name = self._annotate_statement(
-                entry, by_index, by_text
-            )
+            operation, object_type, object_name = self._annotate_statement(entry, by_index, by_text)
             return {
                 "statement": entry.statement,
                 "execution_time": entry.execution_time,

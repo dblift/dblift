@@ -131,9 +131,7 @@ def test_repeatable_version_renders_as_r():
 
 def test_callbacks_panel_renders_executed_callback():
     result = MigrateResult()
-    result.callbacks.append(
-        CallbackExecution("beforeMigrate", "seed", "beforeMigrate__seed.sql")
-    )
+    result.callbacks.append(CallbackExecution("beforeMigrate", "seed", "beforeMigrate__seed.sql"))
     result.complete()
     html = HtmlFormatter().format_result(result, "public", "demo", "MIGRATE")
 

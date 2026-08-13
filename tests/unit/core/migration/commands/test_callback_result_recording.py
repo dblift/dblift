@@ -54,6 +54,20 @@ def test_execute_callbacks_records_failed_status_then_reraises():
     assert result.callbacks[0].file == "beforeMigrate__bad.sql"
 
 
+@pytest.mark.unit
+def test_error_callback_records_failed_status_without_reraise():
+    callback = SimpleNamespace(script_name="afterMigrateError__note.sql", description="note")
+    command = _command_with_callbacks([callback])
+    command.execution_engine.execute_callback.side_effect = RuntimeError("boom")
+    result = MigrateResult()
+
+    command._execute_callbacks(Path("migrations"), "afterMigrateError", True, None, None, result)
+
+    assert len(result.callbacks) == 1
+    assert result.callbacks[0].status == "FAILED"
+    assert result.callbacks[0].phase == "afterMigrateError"
+
+
 def _engine_with_query_result(rows):
     from core.migration.executor.execution_engine import ExecutionEngine
 
@@ -102,9 +116,7 @@ def test_execute_callback_stores_statements_and_result_sets_on_record():
 @pytest.mark.unit
 def test_execute_callback_records_zero_row_result_set():
     engine = _engine_with_query_result([])
-    cb = _sql_callback(
-        "beforeMigrate__empty.sql", "empty", "SELECT status FROM jobs WHERE 1=0"
-    )
+    cb = _sql_callback("beforeMigrate__empty.sql", "empty", "SELECT status FROM jobs WHERE 1=0")
     record = CallbackExecution("beforeMigrate", "empty", cb.script_name)
 
     engine.execute_callback(cb, MigrateResult(), record=record)
@@ -112,3 +124,29 @@ def test_execute_callback_records_zero_row_result_set():
     assert record.statements == ["SELECT status FROM jobs WHERE 1=0"]
     assert record.row_count == 0
     assert record.result_sets[0]["rows"] == []
+
+
+@pytest.mark.unit
+def test_execute_callback_records_result_set_without_sql_execution_service():
+    from core.migration.executor.execution_engine import ExecutionEngine
+
+    provider = MagicMock()
+    provider.execute_query.return_value = [{"status": "ok"}]
+    sql_analyzer = MagicMock()
+    sql_analyzer.dialect = "postgresql"
+    sql_analyzer.get_statement_type.return_value = "QUERY"
+    engine = ExecutionEngine(
+        provider=provider,
+        sql_analyzer=sql_analyzer,
+        log=MagicMock(),
+        sql_execution_service=None,
+        config=SimpleNamespace(database=SimpleNamespace(schema=None)),
+    )
+    cb = _sql_callback("beforeMigrate__check.sql", "check", "SELECT status FROM jobs")
+    record = CallbackExecution("beforeMigrate", "check", cb.script_name)
+
+    engine.execute_callback(cb, MigrateResult(), record=record)
+
+    assert record.statements == ["SELECT status FROM jobs"]
+    assert record.row_count == 1
+    assert record.result_sets[0]["rows"] == [["ok"]]

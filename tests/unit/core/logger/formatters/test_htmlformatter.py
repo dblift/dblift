@@ -655,6 +655,53 @@ class TestHtmlFormatter:
 
         assert meta["dblift_version"] is None
 
+    def test_report_db_user_from_cli_and_migration(self):
+        formatter = HtmlFormatter()
+        from_cli = MigrateResult()
+        from_cli.cli_options = {"username": "cli_user"}
+        assert formatter._report_db_user(from_cli) == "cli_user"
+
+        from_mig = MigrateResult()
+        from_mig.add_migration(MigrationInfo(script="V1__init.sql", installed_by="hist_user"))
+        assert formatter._report_db_user(from_mig) == "hist_user"
+        assert formatter._report_db_user(MigrateResult()) is None
+
+    def test_merge_sql_into_empty_journal_summary(self):
+        formatter = HtmlFormatter()
+        result = MigrateResult()
+        result.show_sql = True
+        result.add_sql_migration(
+            MigrationSqlInfo(
+                "V1__init.sql", version="1", description="init", statements=["SELECT 1"]
+            )
+        )
+        journal = {"V1__init.sql": {"version": None, "description": "", "statements": []}}
+        formatter._merge_sql_visibility(journal, result)
+        assert journal["V1__init.sql"]["statements"][0]["statement"] == "SELECT 1"
+        assert journal["V1__init.sql"]["version"] == "1"
+
+    def test_attach_query_result_sets_matches_and_skips(self):
+        formatter = HtmlFormatter()
+        result = MigrateResult()
+        result.show_query_results = True
+        info = MigrationQueryResultInfo("V1__init.sql", version="1")
+        info.add_result("SELECT 1", ["one"], [[1]])
+        result.query_results.append(info)
+        journal = {
+            "V1__init.sql": {
+                "statements": [
+                    {"statement": "CREATE TABLE t (id int)"},
+                    "not-a-dict",
+                ]
+            },
+            "other.sql": "not-a-dict",
+        }
+        formatter._attach_query_result_sets(journal, result)
+        assert journal["V1__init.sql"]["statements"][0]["result_set"] is None
+        extra = journal["V1__init.sql"]["statements"][-1]
+        assert extra["statement"] == "SELECT 1"
+        assert extra["result_set"]["rows"] == [[1]]
+
     def test_multiple_log_entries(self):
         """Test handling multiple log entries."""
         formatter = HtmlFormatter()

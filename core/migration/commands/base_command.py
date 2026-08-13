@@ -22,8 +22,8 @@ if TYPE_CHECKING:
 
 from core.exceptions import CallbackExecutionError
 from core.logger import Log, NullLog
-from core.logger.results import CallbackExecution
 from core.logger.log import LogFormat
+from core.logger.results import CallbackExecution
 from core.migration.executor.execution_engine import ExecutionEngine
 from core.migration.executor.migration_helpers import MigrationHelpers
 from core.migration.history.migration_history_manager import MigrationHistoryManager

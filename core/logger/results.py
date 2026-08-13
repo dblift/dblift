@@ -17,6 +17,7 @@ class CallbackExecution:
     """One lifecycle callback run, recorded for HTML reports."""
 
     def __init__(self, phase: str, name: str, file: str) -> None:
+        """Store the callback phase, display name, and script path."""
         self.phase = phase
         self.name = name
         self.file = file
