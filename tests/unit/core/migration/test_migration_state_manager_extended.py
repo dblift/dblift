@@ -17,6 +17,7 @@ Covers:
   - _analyse_history  (DELETE, CALLBACK, REPEATABLE branches)
 """
 
+import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -109,6 +110,19 @@ def _mk_undo(version, rank, success=True):
         type=MigrationType.UNDO_SQL,
     )
     m.success = success
+    m.installed_rank = rank
+    return m
+
+
+def _mk_baseline(version, rank=1):
+    m = Migration(
+        script_name="<< Flyway Baseline >>",
+        content="",
+        version=version,
+        description="<< Flyway Baseline >>",
+        type=MigrationType.BASELINE,
+    )
+    m.success = True
     m.installed_rank = rank
     return m
 
@@ -295,8 +309,8 @@ class TestIsVersionedPending(unittest.TestCase):
         assert self._call(executed_versions={"1.0"}, undone_versions={"1.0"}) is True
 
     def test_baseline_covers_older_version(self):
-        """Version at or below baseline is not pending."""
-        assert self._call(version="1.0", baseline_version="2.0") is False
+        """Unresolved scripts at or below baseline stay in the catalog."""
+        assert self._call(version="1.0", baseline_version="2.0") is True
 
     def test_baseline_does_not_cover_newer_version(self):
         """Version above baseline is still pending."""
@@ -618,6 +632,55 @@ class TestAnalyseHistory(unittest.TestCase):
         }
         result = self.mgr._analyse_history([m], ctx)
         assert "5.0" in result.executed_versions
+
+
+# ===========================================================================
+# build_state catalog (not migrate execute-list)
+# ===========================================================================
+
+
+class TestBuildStateCatalog(unittest.TestCase):
+    """build_state() keeps every unresolved on-disk script, labeled not omitted."""
+
+    def test_keeps_below_baseline_pending_above_target_and_undo(self):
+        v1 = _mk_versioned("1")
+        v3 = _mk_versioned("3")
+        v5 = _mk_versioned("5")
+        u3 = _mk_undo("3", rank=99)
+        mgr = _mk_manager(applied=[_mk_baseline("2")], scripts=[v1, v3, v5, u3])
+
+        with tempfile.TemporaryDirectory() as tmp:
+            scripts_dir = Path(tmp)
+            (scripts_dir / u3.script_name).write_text(u3.content)
+            state = mgr.build_state(scripts_dir, target_version="3")
+
+        statuses = {entry.script: entry.status for entry in state.pending}
+        assert statuses == {
+            v1.script_name: "Below baseline",
+            v3.script_name: "Pending",
+            v5.script_name: "Above target",
+            u3.script_name: "Available",
+        }
+        assert {m.script_name for m in state.pending_objects} == set(statuses)
+
+    def test_tags_do_not_omit_untagged_catalog_scripts(self):
+        v1 = _mk_versioned("1")
+        v3 = _mk_versioned("3")
+        v5 = _mk_versioned("5")
+        u3 = _mk_undo("3", rank=99)
+        mgr = _mk_manager(applied=[_mk_baseline("2")], scripts=[v1, v3, v5, u3])
+
+        with tempfile.TemporaryDirectory() as tmp:
+            scripts_dir = Path(tmp)
+            (scripts_dir / u3.script_name).write_text(u3.content)
+            state = mgr.build_state(scripts_dir, target_version="3", tags=["feature"])
+
+        assert {entry.script for entry in state.pending} == {
+            v1.script_name,
+            v3.script_name,
+            v5.script_name,
+            u3.script_name,
+        }
 
 
 if __name__ == "__main__":

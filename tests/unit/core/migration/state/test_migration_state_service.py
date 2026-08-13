@@ -259,7 +259,7 @@ class TestMigrationStateService:
         assert result == MigrationDisplayState.ABOVE_TARGET
 
     def test_determine_pending_state_with_undo_script(self, service, tmp_path):
-        """Test determine_pending_state for version with undo script."""
+        """Versioned scripts stay Pending; Available is the undo-script state only."""
         migration = Mock()
         migration.type = "SQL"
         migration.version = "1.0.0"
@@ -270,7 +270,7 @@ class TestMigrationStateService:
 
         context = {"scripts_dir": str(tmp_path)}
         result = service.determine_pending_state(migration, context)
-        assert result == MigrationDisplayState.AVAILABLE
+        assert result == MigrationDisplayState.PENDING
 
     def test_determine_pending_state_default(self, service):
         """Test determine_pending_state default to PENDING."""

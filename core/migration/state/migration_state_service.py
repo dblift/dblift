@@ -156,7 +156,6 @@ class MigrationStateService:
         baseline_version = context.get("baseline_version")
         target_version = context.get("target_version")
         context.get("current_version")
-        scripts_dir = context.get("scripts_dir")
 
         # Get migration properties
         version = getattr(migration, "version", None)
@@ -181,10 +180,6 @@ class MigrationStateService:
             # Check if above target
             if target_version and self._compare_versions(version, target_version) > 0:
                 return MigrationDisplayState.ABOVE_TARGET
-
-            # Check if this version has an undo script available
-            if scripts_dir and self._version_has_undo_script(version, scripts_dir):
-                return MigrationDisplayState.AVAILABLE
 
         # Default pending state
         return MigrationDisplayState.PENDING
