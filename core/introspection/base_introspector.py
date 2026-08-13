@@ -877,6 +877,14 @@ class BaseIntrospector:
         public-API surface keep working. The body of the orchestration lives
         in its own module to keep this class focused on per-kind ``get_X``
         entry points and extractor lifecycle.
+
+        The returned dict carries a ``"failures"`` key: a list of
+        ``{"object_type", "error", "exception_type"}`` dicts, empty when
+        everything was read. An object type that could not be read is
+        reported there and left empty rather than aborting the snapshot,
+        so **a zero count is only meaningful once ``failures`` has been
+        checked** — that is the difference between "this schema has no
+        views" and "the views could not be read".
         """
         from core.introspection._schema_orchestrator import introspect_schema as _impl
 

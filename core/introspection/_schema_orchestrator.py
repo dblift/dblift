@@ -18,7 +18,7 @@ the single source of state.
 
 from __future__ import annotations
 
-from typing import Any, Dict
+from typing import Any, Callable, Dict, List
 
 
 def introspect_schema(si: Any, schema: str, **kwargs: Any) -> Dict[str, Any]:
@@ -28,6 +28,36 @@ def introspect_schema(si: Any, schema: str, **kwargs: Any) -> Dict[str, Any]:
     return shape; the orchestrator delegates every per-kind lookup back
     to ``si`` so capability gating + vendor query dispatch + extractor
     lifecycle all live on the introspector instance.
+
+    **Partial results.** The ``get_X`` extractors raise when they cannot
+    *read* an object type, rather than returning ``[]`` and making an
+    unreadable schema look like an empty one. Aborting the whole
+    introspection on the first such failure would be worse for a caller
+    than the old silence was — it throws away the tables, columns,
+    indexes and partitions already collected. So every schema-level
+    object-type lookup is run through :func:`_collect`: a failure records
+    the object type and the reason, leaves that type at its initialised
+    empty value, and lets the remaining types proceed.
+
+    A failure is reported through three channels, deliberately:
+
+    * ``result["failures"]`` — a list of
+      ``{"object_type", "error", "exception_type"}`` dicts, empty when
+      nothing failed. **This is the channel that matters**, because it is
+      the only one a caller gets without opting into anything. A caller
+      that reads ``result["view_count"] == 0`` and nothing else would be
+      back to the original bug — an unreadable type indistinguishable
+      from an absent one — so the failure had to land on the object
+      callers already read, next to the counts it explains.
+    * ``si.log.error`` — visible in logs without any caller change.
+    * ``si._track_error`` — for callers that called
+      ``enable_result_tracking()``, so ``IntrospectionResult.success``
+      and the error count stay honest.
+
+    Table discovery is deliberately *not* collected this way and still
+    aborts: columns, indexes and partitions all hang off the table list,
+    so a snapshot that failed to read tables has nothing partial to
+    return.
     """
     include_views = kwargs.get("include_views", True)
     include_sequences = kwargs.get("include_sequences", True)
@@ -66,7 +96,42 @@ def introspect_schema(si: Any, schema: str, **kwargs: Any) -> Dict[str, Any]:
         "total_columns": 0,
         "total_indexes": 0,
         "total_partitions": 0,
+        "failures": [],
     }
+    failures: List[Dict[str, str]] = result["failures"]
+
+    def _collect(object_type: str, fetch: Callable[[], Any], default: Any) -> Any:
+        """Run one object-type lookup, keeping the snapshot on failure.
+
+        Returns whatever *fetch* returned, or *default* if it raised. A
+        raised failure is appended to ``result["failures"]``, logged at
+        error level, and recorded on the result tracker when the caller
+        enabled one — see this module's docstring for why all three.
+        """
+        try:
+            return fetch()
+        except Exception as exc:
+            failures.append(
+                {
+                    "object_type": object_type,
+                    "error": str(exc),
+                    "exception_type": type(exc).__name__,
+                }
+            )
+            si.log.error(
+                f"Could not read {object_type} for schema {schema}: {exc} "
+                f"— continuing without them"
+            )
+            track_error = getattr(si, "_track_error", None)
+            if callable(track_error):
+                track_error(
+                    f"Skipped {object_type} for schema {schema} after a read failure: {exc}",
+                    object_type="schema",
+                    object_name=schema,
+                    property_name=object_type,
+                    exception=exc,
+                )
+            return default
 
     si.log.info(f"Starting enhanced schema introspection: {schema}")
 
@@ -140,75 +205,74 @@ def introspect_schema(si: Any, schema: str, **kwargs: Any) -> Dict[str, Any]:
                     total_parts: int = result["total_partitions"]
                     result["total_partitions"] = total_parts + len(partitions)
 
+        # Every lookup below goes through _collect: one object type that
+        # cannot be read is recorded and skipped, not fatal.
+
         # Get views with definitions
         if include_views:
-            views = si.get_views(schema)
+            views = _collect("views", lambda: si.get_views(schema), [])
             result["views"] = views
             result["view_count"] = len(views)
 
             # Get materialized views (if supported)
             if si.vendor_queries and si.vendor_queries.supports_materialized_views():
-                materialized_views = si.get_materialized_views(schema)
+                materialized_views = _collect(
+                    "materialized_views", lambda: si.get_materialized_views(schema), []
+                )
                 result["materialized_views"] = materialized_views
                 result["materialized_view_count"] = len(materialized_views)
 
         # Get sequences
         if include_sequences:
-            sequences = si.get_sequences(schema)
+            sequences = _collect("sequences", lambda: si.get_sequences(schema), [])
             result["sequences"] = sequences
             result["sequence_count"] = len(sequences)
 
         # Get triggers
         if include_triggers:
-            triggers = si.get_triggers(schema)
+            triggers = _collect("triggers", lambda: si.get_triggers(schema), [])
             result["triggers"] = triggers
             result["trigger_count"] = len(triggers)
 
         # Get events (MySQL only)
-        try:
-            events = si.get_events(schema)
-        except Exception as exc:
-            events = []
-            si.log.debug(f"Failed to fetch events for schema {schema}: {exc}")
+        events = _collect("events", lambda: si.get_events(schema), [])
         if events:
             result["events"] = events
             result["event_count"] = len(events)
 
         # Get procedures
         if include_procedures:
-            procedures = si.get_procedures(schema)
+            procedures = _collect("procedures", lambda: si.get_procedures(schema), [])
             result["procedures"] = procedures
             result["procedure_count"] = len(procedures)
 
         # Get functions
         if include_functions:
-            functions = si.get_functions(schema)
+            functions = _collect("functions", lambda: si.get_functions(schema), [])
             result["functions"] = functions
             result["function_count"] = len(functions)
 
         # Get packages/modules (Oracle, DB2)
         packages = []
         if si.vendor_queries:
-            try:
-                packages = si.get_packages(schema)
-            except Exception as exc:
-                packages = []
-                si.log.debug(f"Could not fetch packages for schema {schema}: {exc}")
+            packages = _collect("packages", lambda: si.get_packages(schema), [])
         result["packages"] = packages
         result["package_count"] = len(packages)
 
         # Get synonyms (if supported)
-        synonyms = si.get_synonyms(schema)
+        synonyms = _collect("synonyms", lambda: si.get_synonyms(schema), [])
         result["synonyms"] = synonyms
         result["synonym_count"] = len(synonyms)
 
         # Get user-defined types
-        user_defined_types = si.get_user_defined_types(schema)
+        user_defined_types = _collect(
+            "user_defined_types", lambda: si.get_user_defined_types(schema), []
+        )
         result["user_defined_types"] = user_defined_types
         result["user_defined_type_count"] = len(user_defined_types)
 
         # Get extensions (PostgreSQL-specific, database-wide)
-        extensions = si.get_extensions()
+        extensions = _collect("extensions", lambda: si.get_extensions(), [])
         result["extensions"] = extensions
         result["extension_count"] = len(extensions)
 
@@ -233,8 +297,16 @@ def introspect_schema(si: Any, schema: str, **kwargs: Any) -> Dict[str, Any]:
         if result["extension_count"] > 0:
             msg_parts.append(f"{result['extension_count']} extensions")
         si.log.debug(f"Enhanced introspection complete: {', '.join(msg_parts)}")
+        if failures:
+            si.log.warning(
+                f"Enhanced introspection for schema {schema} is incomplete — "
+                f"could not read: {', '.join(f['object_type'] for f in failures)}"
+            )
 
     except Exception as e:
+        # Only the table phase reaches here; every object-type lookup is
+        # collected by _collect above. A failure to read tables leaves
+        # nothing partial worth returning, so it still aborts.
         si.log.error(f"Error in enhanced introspection for schema {schema}: {e}")
         raise
 
