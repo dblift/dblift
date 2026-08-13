@@ -442,5 +442,115 @@ class TestDeleteNativeItem(unittest.TestCase):
         container_client.query_items.assert_not_called()
 
 
+# ---------------------------------------------------------------------------
+# list_native_items
+# ---------------------------------------------------------------------------
+#
+# DocumentStoreProvider.list_native_items declares "return every document in
+# *collection*"; CosmosDbProvider implemented upsert_native_item and
+# delete_native_item but not this one, so isinstance(provider,
+# DocumentStoreProvider) answered False for CosmosDB. This issues a native
+# SELECT * FROM c through the same container-client access pattern as
+# upsert_native_item / delete_native_item above, guarded by table_exists
+# first: the SDK's query_items iterator can hang indefinitely against a
+# container that does not exist, so this checks existence before ever
+# calling query_items rather than relying on catching whatever query_items
+# eventually does.
+
+
+class TestListNativeItems(unittest.TestCase):
+
+    def _make(self):
+        return _make_executor()
+
+    def test_returns_every_document_in_the_container(self):
+        ex = self._make()
+        ex.table_exists = MagicMock(return_value=True)
+        container = _make_container_mock(items=[{"id": "a"}, {"id": "b"}, {"id": "c"}])
+        ex.connection_manager.get_container_client.return_value = container
+
+        result = ex.list_native_items("dblift_schema_snapshots")
+
+        self.assertEqual([{"id": "a"}, {"id": "b"}, {"id": "c"}], result)
+
+    def test_uses_the_correct_container(self):
+        ex = self._make()
+        ex.table_exists = MagicMock(return_value=True)
+        container = _make_container_mock(items=[])
+        ex.connection_manager.get_container_client.return_value = container
+
+        ex.list_native_items("dblift_schema_snapshots")
+
+        ex.connection_manager.get_container_client.assert_called_once_with(
+            "dblift_schema_snapshots"
+        )
+
+    def test_empty_container_returns_empty_list(self):
+        ex = self._make()
+        ex.table_exists = MagicMock(return_value=True)
+        container = _make_container_mock(items=[])
+        ex.connection_manager.get_container_client.return_value = container
+
+        result = ex.list_native_items("dblift_schema_snapshots")
+
+        self.assertEqual([], result)
+
+    def test_missing_container_returns_empty_list_without_querying(self):
+        """A container that does not exist yields no documents -- matching
+        MongoDB's find() on a missing collection -- rather than issuing
+        query_items, which can hang indefinitely against a container that
+        isn't there."""
+        ex = self._make()
+        ex.table_exists = MagicMock(return_value=False)
+        container = MagicMock()
+        ex.connection_manager.get_container_client.return_value = container
+
+        result = ex.list_native_items("does_not_exist")
+
+        self.assertEqual([], result)
+        container.query_items.assert_not_called()
+
+    def test_checks_existence_before_binding_to_a_container_client(self):
+        ex = self._make()
+        ex.table_exists = MagicMock(return_value=True)
+        container = _make_container_mock(items=[{"id": "a"}])
+        ex.connection_manager.get_container_client.return_value = container
+
+        ex.list_native_items("dblift_schema_snapshots")
+
+        ex.table_exists.assert_called_once_with(None, "", "dblift_schema_snapshots")
+
+    def test_does_not_go_through_execute_statement_or_execute_query(self):
+        """Regression guard: this must be a direct SDK call, not a
+        rendered-SQL path routed through execute_statement/execute_query."""
+        ex = self._make()
+        ex.table_exists = MagicMock(return_value=True)
+        container = _make_container_mock(items=[{"id": "a"}])
+        ex.connection_manager.get_container_client.return_value = container
+        ex.execute_statement = MagicMock()
+        ex.execute_query = MagicMock()
+
+        ex.list_native_items("dblift_schema_snapshots")
+
+        ex.execute_statement.assert_not_called()
+        ex.execute_query.assert_not_called()
+
+    def test_no_order_by_is_added(self):
+        """Ordering is not part of the contract -- the protocol says callers
+        that need an order impose it themselves, so this must not sneak in
+        an ORDER BY the protocol never promised."""
+        ex = self._make()
+        ex.table_exists = MagicMock(return_value=True)
+        captured = []
+        container = MagicMock()
+        container.query_items.side_effect = lambda query, **kw: captured.append(query) or iter([])
+        ex.connection_manager.get_container_client.return_value = container
+
+        ex.list_native_items("dblift_schema_snapshots")
+
+        self.assertTrue(len(captured) > 0)
+        self.assertNotIn("ORDER BY", captured[0].upper())
+
+
 if __name__ == "__main__":
     unittest.main()
