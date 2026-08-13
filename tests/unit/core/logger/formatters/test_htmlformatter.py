@@ -95,11 +95,12 @@ class TestHtmlFormatter:
 
         html = formatter.format_result(result, "public", "test", "MIGRATE")
 
-        assert "Query results" in html
-        assert "SELECT * FROM users" in html
+        assert "Query result" in html
+        assert "SQL statements" not in html
         assert "alice" in html
         assert "bob" in html
         assert 'class="t"' in html
+        assert "SELECT * FROM users" not in html
 
     def test_format_result_includes_query_results_for_clean_command(self):
         """CLEAN's --show-query-results panel renders (Bug 2 regression guard)."""
@@ -208,7 +209,8 @@ class TestHtmlFormatter:
 
         html = formatter.format_result(result, "public", "test", "MIGRATE")
 
-        assert html.count("CREATE TABLE users") == 1
+        assert "SQL statements" not in html
+        assert html.count("<pre>CREATE TABLE users (id INTEGER)</pre>") == 1
 
     def test_format_header(self):
         """Test formatting of HTML header."""
@@ -645,6 +647,60 @@ class TestHtmlFormatter:
         assert "per_migration_journal" in call_args
         assert "V1__Initial.sql" in call_args["per_migration_journal"]
         assert call_args["per_migration_journal"]["V1__Initial.sql"] == {"total_time": 1500}
+
+    @patch("core.logger.formatters.htmlformatter.resolve_dblift_package_version", return_value=None)
+    def test_report_metadata_omits_empty_version(self, _mock_version):
+        formatter = HtmlFormatter()
+        meta = formatter._report_metadata(MigrateResult(), "2026-08-12 19:17:29")
+
+        assert meta["dblift_version"] is None
+
+    def test_report_db_user_from_cli_and_migration(self):
+        formatter = HtmlFormatter()
+        from_cli = MigrateResult()
+        from_cli.cli_options = {"username": "cli_user"}
+        assert formatter._report_db_user(from_cli) == "cli_user"
+
+        from_mig = MigrateResult()
+        from_mig.add_migration(MigrationInfo(script="V1__init.sql", installed_by="hist_user"))
+        assert formatter._report_db_user(from_mig) == "hist_user"
+        assert formatter._report_db_user(MigrateResult()) is None
+
+    def test_merge_sql_into_empty_journal_summary(self):
+        formatter = HtmlFormatter()
+        result = MigrateResult()
+        result.show_sql = True
+        result.add_sql_migration(
+            MigrationSqlInfo(
+                "V1__init.sql", version="1", description="init", statements=["SELECT 1"]
+            )
+        )
+        journal = {"V1__init.sql": {"version": None, "description": "", "statements": []}}
+        formatter._merge_sql_visibility(journal, result)
+        assert journal["V1__init.sql"]["statements"][0]["statement"] == "SELECT 1"
+        assert journal["V1__init.sql"]["version"] == "1"
+
+    def test_attach_query_result_sets_matches_and_skips(self):
+        formatter = HtmlFormatter()
+        result = MigrateResult()
+        result.show_query_results = True
+        info = MigrationQueryResultInfo("V1__init.sql", version="1")
+        info.add_result("SELECT 1", ["one"], [[1]])
+        result.query_results.append(info)
+        journal = {
+            "V1__init.sql": {
+                "statements": [
+                    {"statement": "CREATE TABLE t (id int)"},
+                    "not-a-dict",
+                ]
+            },
+            "other.sql": "not-a-dict",
+        }
+        formatter._attach_query_result_sets(journal, result)
+        assert journal["V1__init.sql"]["statements"][0]["result_set"] is None
+        extra = journal["V1__init.sql"]["statements"][-1]
+        assert extra["statement"] == "SELECT 1"
+        assert extra["result_set"]["rows"] == [[1]]
 
     def test_multiple_log_entries(self):
         """Test handling multiple log entries."""
