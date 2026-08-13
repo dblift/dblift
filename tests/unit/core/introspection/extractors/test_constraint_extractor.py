@@ -3,13 +3,19 @@
 import unittest
 from unittest.mock import MagicMock
 
+#: Distinguishes "caller did not ask for particular vendor queries" from
+#: "caller explicitly wants vendor_queries=None". Without it, passing None
+#: silently got a MagicMock, so the tests named ``..._without_vendor_queries``
+#: never exercised the ``vendor_queries is None`` branch they describe.
+_DEFAULT_VQ = object()
 
-def _make_extractor(dialect="postgresql", vendor_queries=None):
+
+def _make_extractor(dialect="postgresql", vendor_queries=_DEFAULT_VQ):
     from core.introspection.extractors.constraint_extractor import ConstraintExtractor
 
     provider = MagicMock()
     provider.query_executor = MagicMock()
-    if vendor_queries is None:
+    if vendor_queries is _DEFAULT_VQ:
         vendor_queries = MagicMock()
         vendor_queries.get_primary_key_query.return_value = ("SELECT pk", [])
         vendor_queries.get_foreign_keys_query.return_value = ("SELECT fk", [])
@@ -206,7 +212,7 @@ class TestConstraintExtractorGetUniqueConstraints(unittest.TestCase):
 
 class TestConstraintExtractorCheckConstraints(unittest.TestCase):
     def test_returns_empty_without_vendor_queries(self):
-        ext = _make_extractor()
+        ext = _make_extractor(vendor_queries=None)
         result = ext.get_check_constraints("public", "t")
         self.assertEqual(result, [])
 
@@ -225,13 +231,17 @@ class TestConstraintExtractorCheckConstraints(unittest.TestCase):
         result = ext.get_check_constraints("public", "users")
         self.assertIsInstance(result, list)
 
-    def test_handles_exception_returns_empty(self):
+    def test_read_failure_propagates(self):
+        """A read failure must not be swallowed into ``[]`` -- that is
+        indistinguishable from genuinely having none. The orchestrator
+        turns it into a reported partial result; see
+        ``test_schema_orchestrator_partial_failure.py``."""
         vq = MagicMock()
         vq.get_check_constraints_query.return_value = ("SELECT 1", [])
         ext = _make_extractor(vendor_queries=vq)
         ext.provider.query_executor.execute_query.side_effect = Exception("DB err")
-        result = ext.get_check_constraints("public", "users")
-        self.assertEqual(result, [])
+        with self.assertRaisesRegex(Exception, "DB err"):
+            ext.get_check_constraints("public", "users")
 
 
 # ---------------------------------------------------------------------------

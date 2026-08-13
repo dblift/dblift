@@ -572,7 +572,7 @@ class ConstraintExtractor(BaseExtractor):
                 property_name="check_constraints",
                 exception=e,
             )
-            return []
+            raise
 
     def _sanitize_constraint_name(self, name: Optional[str]) -> Optional[str]:
         """Strip engine-generated constraint names; return ``None`` to drop.
