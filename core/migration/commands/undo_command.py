@@ -13,6 +13,7 @@ from core.constants import SECONDS_TO_MILLISECONDS
 from core.logger.results import MigrationInfo, MigrationSqlInfo, UndoResult
 from core.migration.formats.migration_format import MigrationFormat
 from core.migration.migration import MigrationType
+from core.migration.state.migration_display_state import MigrationDisplayState
 from core.migration.version_utils import compare_versions, is_migration_success
 
 from ._script_events import emit_script_event as _emit_script_event
@@ -76,26 +77,32 @@ class UndoCommand(BaseCommand):
         return tags_by_version
 
     @staticmethod
-    def _find_undo_script(
-        migration: Any,
-        all_scripts: List[Any],
-        tags: Optional[List[str]] = None,
-        exclude_tags: Optional[List[str]] = None,
-    ) -> Optional[Any]:
-        """Return the matching undo script for a versioned SQL migration."""
-        if tags is not None or exclude_tags is not None:
-            for script in all_scripts:
-                if (
-                    script.type == MigrationType.UNDO_SQL
-                    and script.version == migration.version
-                    and UndoCommand._matches_tag_filters(script, tags, exclude_tags)
-                ):
-                    return script
-            return None
+    def _coerced_applied_list(value: Any) -> List[Any]:
+        if value is None or not hasattr(value, "__iter__"):
+            return []
+        try:
+            return list(value)
+        except (TypeError, AttributeError):
+            return []
 
-        for script in all_scripts:
-            if script.type == MigrationType.UNDO_SQL and script.version == migration.version:
-                return script
+    @staticmethod
+    def _find_undo_script(migration: Any, state: Any) -> Optional[Any]:
+        """Return the Available catalog undo script matching the applied version."""
+        version = getattr(migration, "version", None)
+        if version is None or state is None:
+            return None
+        version_s = str(version)
+        pending_objects = getattr(state, "pending_objects", None) or []
+        pending_entries = getattr(state, "pending", None) or []
+        try:
+            pairs = zip(pending_objects, pending_entries)
+        except TypeError:
+            return None
+        for obj, entry in pairs:
+            if getattr(entry, "status", None) != MigrationDisplayState.AVAILABLE.value:
+                continue
+            if str(getattr(entry, "version", None)) == version_s:
+                return obj
         return None
 
     def _add_visible_sql(self, undo_migration: Any, result: UndoResult) -> None:
@@ -143,8 +150,6 @@ class UndoCommand(BaseCommand):
         """Undo migrations to a target version."""
         normalized_tags = self._normalize_filter_values(tags)
         normalized_exclude_tags = self._normalize_filter_values(exclude_tags)
-        normalized_versions = self._normalize_filter_values(versions)
-        normalized_exclude_versions = self._normalize_filter_values(exclude_versions)
         tag_filter_active = bool(normalized_tags or normalized_exclude_tags)
 
         result = UndoResult()
@@ -185,7 +190,9 @@ class UndoCommand(BaseCommand):
                 placeholders, recursive, additional_dirs, self.placeholder_service
             )
 
-            # Build state (source of truth) and derive applied migrations to consider
+            # Catalog is unfiltered; undo selects applied Success then tags/versions.
+            # target_version is rollback-to (undo versions > target), not an omit filter.
+            migration_state = None
             try:
                 migration_state = self.state_manager.build_state(
                     scripts_dir,
@@ -193,24 +200,15 @@ class UndoCommand(BaseCommand):
                     additional_dirs=use_additional_dirs,
                     dir_recursive_map=dir_recursive_map,
                     target_version=target_version,
-                    tags=None,
-                    exclude_tags=None,
-                    versions=normalized_versions,
-                    exclude_versions=normalized_exclude_versions,
                 )
 
-                applied_migrations = getattr(migration_state, "applied_objects", [])
-
-                # Handle Mock objects in tests - ensure applied_migrations is iterable
-                if not hasattr(applied_migrations, "__iter__"):
-                    # If it's not iterable (e.g., a Mock), treat it as empty
-                    applied_migrations = []
-                else:
-                    # Convert to list to ensure we can iterate multiple times
-                    try:
-                        applied_migrations = list(applied_migrations)
-                    except (TypeError, AttributeError):
-                        applied_migrations = []
+                applied_migrations = self._coerced_applied_list(
+                    getattr(migration_state, "all_applied_objects", None)
+                )
+                if not applied_migrations:
+                    applied_migrations = self._coerced_applied_list(
+                        getattr(migration_state, "applied_objects", None)
+                    )
             except Exception as e:
                 # If build_state fails (e.g., due to mocked dependencies in tests), use empty list
                 self.log.debug(f"Could not build migration state: {e}")
@@ -218,27 +216,39 @@ class UndoCommand(BaseCommand):
 
             # Store current schema version in result for HTML reports
             current_version = None
-            if applied_migrations:
+            current_source = applied_migrations
+            if migration_state is not None:
+                applied_objects = self._coerced_applied_list(
+                    getattr(migration_state, "applied_objects", None)
+                )
+                if applied_objects:
+                    current_source = applied_objects
+            if current_source:
                 try:
-                    current_version = self.state_manager.get_current_version(applied_migrations)
+                    current_version = self.state_manager.get_current_version(current_source)
                 except Exception as e:
                     self.log.debug(f"Could not get current version: {e}")
             if current_version:
                 result.current_schema_version = current_version
 
-            all_scripts = self.script_manager.get_migration_scripts(
-                scripts_dir,
-                recursive=use_recursive,
-                additional_dirs=use_additional_dirs,
-                dir_recursive_map=dir_recursive_map,
+            success_applied = [
+                migration
+                for migration in applied_migrations
+                if getattr(migration, "type", None) in (MigrationType.SQL, MigrationType.PYTHON)
+                and is_migration_success(getattr(migration, "success", False))
+                and getattr(migration, "version", None)
+            ]
+            candidates = self.state_manager.apply_filters_to_migrations(
+                success_applied,
+                tags=tags,
+                exclude_tags=exclude_tags,
+                versions=versions,
+                exclude_versions=exclude_versions,
             )
-            source_tags_by_version = self._source_tags_by_version(all_scripts)
-
-            def _fallback_tags_for(migration: Any) -> List[str]:
-                version = getattr(migration, "version", None)
-                if version is None:
-                    return []
-                return source_tags_by_version.get(str(version), [])
+            try:
+                candidates = list(candidates)
+            except (TypeError, AttributeError):
+                candidates = success_applied
 
             # Find migrations to undo using migration rules (based on state)
             migrations_to_undo = []
@@ -251,30 +261,8 @@ class UndoCommand(BaseCommand):
                 # same reversed(applied_migrations) convention. Install rank, not version
                 # number, determines what "most recent" means: migrations can be applied
                 # out of version order.
-                for migration in reversed(applied_migrations):
-                    if migration.type not in (MigrationType.SQL, MigrationType.PYTHON):
-                        continue
-                    if not self._matches_tag_filters(
-                        migration,
-                        normalized_tags,
-                        normalized_exclude_tags,
-                        fallback_tags=_fallback_tags_for(migration),
-                    ):
-                        continue
-                    # Use migration rules to determine if migration was successful
-                    success_value = getattr(migration, "success", False)
-                    is_success = is_migration_success(success_value)
-                    if not is_success:
-                        continue
-
-                    version = str(migration.version) if migration.version else None
-                    if not version:
-                        continue
-                    if normalized_versions and version not in normalized_versions:
-                        continue
-                    if normalized_exclude_versions and version in normalized_exclude_versions:
-                        continue
-
+                for migration in reversed(candidates):
+                    version = str(migration.version)
                     # Auto-scan mode: silently skip candidates that are already
                     # undone instead of routing through should_undo_version(),
                     # whose "please specify version X" message is meant for the
@@ -286,30 +274,8 @@ class UndoCommand(BaseCommand):
                         break  # Only undo the most recent undoable migration
             else:
                 # Target version specified - find all migrations newer than target that can be undone
-                for migration in reversed(applied_migrations):
-                    if not self._matches_tag_filters(
-                        migration,
-                        normalized_tags,
-                        normalized_exclude_tags,
-                        fallback_tags=_fallback_tags_for(migration),
-                    ):
-                        continue
-                    if migration.version is not None:
-                        version = str(migration.version)
-                        if normalized_versions and version not in normalized_versions:
-                            continue
-                        if normalized_exclude_versions and version in normalized_exclude_versions:
-                            continue
-                    # Use migration rules to determine if migration was successful
-                    success_value = getattr(migration, "success", False)
-                    is_success = is_migration_success(success_value)
-
-                    if (
-                        migration.type in (MigrationType.SQL, MigrationType.PYTHON)
-                        and is_success
-                        and migration.version is not None
-                        and compare_versions(str(migration.version), str(target_version)) > 0
-                    ):
+                for migration in reversed(candidates):
+                    if compare_versions(str(migration.version), str(target_version)) > 0:
                         version = str(migration.version)
                         can_undo, message = self.migration_rules.should_undo_version(
                             version, applied_migrations
@@ -320,10 +286,7 @@ class UndoCommand(BaseCommand):
                             result.set_error(message)
                             self._log_command_completion("undo", result)
                             return result
-                    elif (
-                        migration.version is not None
-                        and compare_versions(str(migration.version), str(target_version)) <= 0
-                    ):
+                    elif compare_versions(str(migration.version), str(target_version)) <= 0:
                         break
 
             if not migrations_to_undo:
@@ -335,12 +298,7 @@ class UndoCommand(BaseCommand):
 
             if dry_run:
                 for migration in migrations_to_undo:
-                    undo_migration = self._find_undo_script(
-                        migration,
-                        all_scripts,
-                        tags=normalized_tags,
-                        exclude_tags=normalized_exclude_tags,
-                    )
+                    undo_migration = self._find_undo_script(migration, migration_state)
                     if undo_migration is None:
                         error_msg = f"No undo script found for {migration.script_name}"
                         self.log.error(error_msg)
@@ -406,12 +364,7 @@ class UndoCommand(BaseCommand):
                     )
 
                     # SQL path: find the corresponding UNDO_SQL script
-                    undo_migration = self._find_undo_script(
-                        migration,
-                        all_scripts,
-                        tags=normalized_tags,
-                        exclude_tags=normalized_exclude_tags,
-                    )
+                    undo_migration = self._find_undo_script(migration, migration_state)
 
                     if undo_migration is None:
                         error_msg = f"No undo script found for {migration.script_name}"

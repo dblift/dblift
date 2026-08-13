@@ -23,8 +23,8 @@ from core.migration.version_utils import is_migration_failure
 
 
 class StrictModeError(ValueError):
-    """Raised by ``_is_versioned_pending`` when ``strict_mode=True`` and an
-    out-of-order migration is detected. Subclasses :class:`ValueError` so
+    """Raised by migrate when ``strict_mode=True`` and an out-of-order
+    executable pending migration is selected. Subclasses :class:`ValueError` so
     callers that haven't migrated to the narrower type still catch it,
     but lets ``MigrateCommand`` distinguish strict-mode violations from
     arbitrary :class:`ValueError` instances raised elsewhere in the
@@ -615,7 +615,8 @@ class MigrationStateManager:
         - More robust and simpler logic
 
         Returns True if the migration is unresolved (catalog membership), False otherwise.
-        In strict mode, prevents out-of-order migrations (versions <= current_version).
+        Out-of-order unresolved scripts stay in the catalog; migrate --strict
+        raises when selecting executable pending, not during catalog build.
         Versions at or below baseline stay in the catalog; commands label them later.
         """
         # For versioned migrations, check by version first (primary key)
@@ -637,31 +638,9 @@ class MigrationStateManager:
         if version and str(version) in undone_versions:
             return True
 
-        # Never executed - check strict mode
+        # Never executed — catalog always includes out-of-order unresolved
+        # scripts. Migrate --strict raises when selecting executable pending.
         if not is_executed:
-            # BUG-05: out-of-order detection — a pending migration whose
-            # version is <= the highest applied version.
-            if current_version and version:
-                if self.script_manager.compare_versions(version, current_version) <= 0:
-                    if strict_mode:
-                        # Strict mode must FAIL the migrate command, not
-                        # silently skip — callers (CI, operators) need a
-                        # non-zero exit so the out-of-order file surfaces.
-                        raise StrictModeError(
-                            f"Strict mode: out-of-order migration {script_name} "
-                            f"(version {version} <= current version {current_version}). "
-                            f"Renumber the script above {current_version} or run "
-                            f"without --strict to apply it anyway."
-                        )
-                    # Non-strict: warn but still include so historical
-                    # behaviour (apply in-order files older than current)
-                    # is preserved.
-                    self.logger.warning(
-                        f"Out-of-order migration {script_name} "
-                        f"(version {version} <= current version {current_version}). "
-                        f"Applying anyway; use --strict to enforce strict ordering."
-                    )
-            # Not executed and passes all checks
             return True
 
         # Already executed and not undone - not pending

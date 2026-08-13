@@ -14,6 +14,9 @@ import pytest
 from core.migration.commands.undo_command import UndoCommand
 from core.migration.migration import MigrationType
 from core.migration.rules.migration_rules import MigrationRules
+from core.migration.state.migration_display_state import MigrationDisplayState
+from core.migration.state.migration_state import MigrationEntry
+from core.migration.state.migration_state_manager import MigrationStateManager
 
 
 def _make_migration(version, mtype=MigrationType.SQL, success=True, installed_rank=1):
@@ -46,8 +49,26 @@ def _make_command(applied_migrations, *, migration_rules, undo_scripts=None):
     state_manager = MagicMock()
     migration_state = MagicMock()
     migration_state.applied_objects = applied_migrations
+    migration_state.all_applied_objects = list(applied_migrations)
+    undo_scripts = list(undo_scripts or [])
+    migration_state.pending_objects = undo_scripts
+    migration_state.pending = [
+        MigrationEntry(
+            s.script_name,
+            str(s.version),
+            s.description,
+            "UNDO_SQL",
+            MigrationDisplayState.AVAILABLE.value,
+            None,
+        )
+        for s in undo_scripts
+    ]
     state_manager.build_state.return_value = migration_state
     state_manager.get_current_version.return_value = None
+    _filter_mgr = MigrationStateManager.__new__(MigrationStateManager)
+    state_manager.apply_filters_to_migrations.side_effect = (
+        lambda migrations, **kwargs: _filter_mgr.apply_filters_to_migrations(migrations, **kwargs)
+    )
 
     executor_factory = MagicMock()
     executor_factory.get_executor.return_value = None

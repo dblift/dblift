@@ -18,7 +18,8 @@ from unittest.mock import MagicMock, patch
 
 from core.migration.commands.migrate_command import MigrateCommand
 from core.migration.migration import AppliedMigration, MigrationType
-from core.migration.state.migration_state import MigrationState
+from core.migration.state.migration_display_state import MigrationDisplayState
+from core.migration.state.migration_state import MigrationEntry, MigrationState
 
 
 def _cmd(pending, applied_after_lock, execute_side_effect=None):
@@ -37,10 +38,24 @@ def _cmd(pending, applied_after_lock, execute_side_effect=None):
     state = MigrationState()
     state.applied_objects = []
     state.pending_objects = pending
+    state.pending = [
+        MigrationEntry(
+            getattr(obj, "script_name", ""),
+            str(getattr(obj, "version", "") or "") or None,
+            getattr(obj, "description", None),
+            getattr(getattr(obj, "type", None), "name", None),
+            MigrationDisplayState.PENDING.value,
+            None,
+        )
+        for obj in pending
+    ]
 
     state_manager = MagicMock()
     state_manager.build_state.return_value = state
     state_manager.get_current_version.return_value = None
+    state_manager.apply_filters_to_migrations.side_effect = (
+        lambda migrations, **kwargs: list(migrations)
+    )
 
     migration_helpers = MagicMock()
     migration_helpers.setup_migration_parameters.return_value = (True, None)

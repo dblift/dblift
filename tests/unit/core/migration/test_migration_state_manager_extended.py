@@ -316,13 +316,9 @@ class TestIsVersionedPending(unittest.TestCase):
         """Version above baseline is still pending."""
         assert self._call(version="3.0", baseline_version="2.0") is True
 
-    def test_out_of_order_strict_raises(self):
-        with self.assertRaises(ValueError):
-            self._call(
-                version="1.0",
-                current_version="2.0",
-                strict_mode=True,
-            )
+    def test_out_of_order_strict_included_in_catalog(self):
+        """Strict mode must not raise or omit during catalog membership."""
+        assert self._call(version="1.0", current_version="2.0", strict_mode=True) is True
 
     def test_out_of_order_non_strict_included(self):
         """Non-strict out-of-order migration still returns True."""

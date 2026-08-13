@@ -50,8 +50,17 @@ def _make_undo_cmd(history_manager=None, provider=None):
     state_manager = MagicMock()
     migration_state = MagicMock()
     migration_state.applied_objects = []
+    migration_state.all_applied_objects = []
+    migration_state.pending_objects = []
+    migration_state.pending = []
     state_manager.build_state.return_value = migration_state
     state_manager.get_current_version.return_value = None
+    from core.migration.state.migration_state_manager import MigrationStateManager
+
+    _filter_mgr = MigrationStateManager.__new__(MigrationStateManager)
+    state_manager.apply_filters_to_migrations.side_effect = (
+        lambda migrations, **kwargs: _filter_mgr.apply_filters_to_migrations(migrations, **kwargs)
+    )
 
     config = MagicMock()
     config.database.schema = "test"
