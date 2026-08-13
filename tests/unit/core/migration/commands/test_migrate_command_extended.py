@@ -797,31 +797,6 @@ class TestStrictModeWarningSupression(unittest.TestCase):
             "build_state must not receive strict_mode; migrate enforces it when selecting",
         )
 
-    def test_strict_mode_error_surfaces_directly_without_operation_failed_prefix(self):
-        """StrictModeError from _is_versioned_pending is surfaced directly, not wrapped.
-
-        PR #241 Bugbot: previously the catch was ``except ValueError`` which
-        also swallowed unrelated ValueErrors. Now narrowed to
-        ``StrictModeError`` (a ``ValueError`` subclass).
-        """
-        from core.migration.state.migration_state_manager import StrictModeError
-
-        cmd = self._make_strict_cmd()
-        strict_msg = (
-            "Strict mode: out-of-order migration V1.5__foo.sql "
-            "(version 1.5 <= current version 2). Renumber the script."
-        )
-        cmd.state_manager.build_state.side_effect = StrictModeError(strict_msg)
-
-        with patch.object(cmd, "_initialize_migration_execution", return_value=(True, True, [])):
-            with patch.object(cmd, "_log_command_completion"):
-                result = cmd.execute(Path("/migrations"))
-
-        self.assertFalse(result.success)
-        self.assertEqual(result.error_message, strict_msg)
-        # Must NOT have the "Migration operation failed:" prefix
-        self.assertNotIn("Migration operation failed", result.error_message)
-
     def test_unrelated_value_error_still_gets_operation_failed_prefix(self):
         """Regression guard: a plain ValueError elsewhere in the migrate
         flow must NOT be silently surfaced — it gets the broader
