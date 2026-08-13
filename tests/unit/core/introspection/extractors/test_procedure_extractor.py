@@ -193,12 +193,18 @@ class TestGetProceduresWithVendorQueries(unittest.TestCase):
         result = ext.get_procedures("public")
         self.assertIsInstance(result, list)
 
-    def test_handles_exception(self):
+    def test_read_failure_propagates(self):
+        """A failure to read procedures must not be swallowed into ``[]``
+        -- that would be indistinguishable from a schema that genuinely
+        has none. Engines without stored procedures decline through
+        ``supports_procedures()`` or a ``(None, [])`` query instead. See
+        ``test_extractor_read_failure_contract.py`` for the full
+        contract."""
         vq = self._make_vq()
         ext = _make_extractor(vendor_queries=vq)
         ext.provider.query_executor.execute_query.side_effect = Exception("DB error")
-        result = ext.get_procedures("public")
-        self.assertEqual(result, [])
+        with self.assertRaisesRegex(Exception, "DB error"):
+            ext.get_procedures("public")
 
 
 class TestGetFunctions(unittest.TestCase):
@@ -754,7 +760,7 @@ class TestGetProceduresMysqlDialect(unittest.TestCase):
         result = ext.get_procedures("mydb")
         self.assertEqual(result, [])
 
-    def test_get_procedures_exception_with_result_tracker(self):
+    def test_get_procedures_read_failure_is_not_downgraded_to_a_tracked_error(self):
         vq = MagicMock()
         vq.supports_procedures.return_value = True
         vq.get_procedures_query.return_value = ("SELECT ...", [])
@@ -762,9 +768,9 @@ class TestGetProceduresMysqlDialect(unittest.TestCase):
         tracker = MagicMock()
         ext.result_tracker = tracker
         ext.provider.query_executor.execute_query.side_effect = Exception("fatal")
-        result = ext.get_procedures("mydb")
-        self.assertEqual(result, [])
-        tracker._track_error.assert_called_once()
+        with self.assertRaisesRegex(Exception, "fatal"):
+            ext.get_procedures("mydb")
+        tracker._track_error.assert_not_called()
 
 
 class TestGetProceduresOracleDialect(unittest.TestCase):
@@ -1289,7 +1295,10 @@ class TestGetFunctionsDialects(unittest.TestCase):
         fn_status.add_property_status.assert_any_call("parameters", False)
         tracker._track_warning.assert_called_once()
 
-    def test_get_functions_exception_with_result_tracker(self):
+    def test_get_functions_read_failure_is_not_downgraded_to_a_tracked_error(self):
+        """Engines without user functions decline through
+        ``supports_functions()`` or a ``(None, [])`` query, so an
+        exception here can only mean the read failed."""
         vq = MagicMock()
         vq.supports_functions.return_value = True
         vq.get_functions_query.return_value = ("SELECT ...", [])
@@ -1297,9 +1306,9 @@ class TestGetFunctionsDialects(unittest.TestCase):
         tracker = MagicMock()
         ext.result_tracker = tracker
         ext.provider.query_executor.execute_query.side_effect = Exception("fatal error")
-        result = ext.get_functions("public")
-        self.assertEqual(result, [])
-        tracker._track_error.assert_called_once()
+        with self.assertRaisesRegex(Exception, "fatal error"):
+            ext.get_functions("public")
+        tracker._track_error.assert_not_called()
 
     def test_get_functions_oracle_ddl_sets_definition(self):
         vq = self._make_vq_for_functions()

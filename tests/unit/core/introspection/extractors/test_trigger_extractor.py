@@ -472,19 +472,25 @@ class TestTriggerExtractorConstraintAttributes(unittest.TestCase):
 
 
 class TestTriggerExtractorErrorHandling(unittest.TestCase):
-    def test_query_exception_returns_empty_list(self):
+    """A failure to read triggers must not be swallowed into ``[]`` --
+    that would be indistinguishable from a schema that genuinely has no
+    triggers. Engines without trigger introspection decline through
+    ``supports_triggers()`` or a ``(None, [])`` query instead. See
+    ``test_extractor_read_failure_contract.py`` for the full contract."""
+
+    def test_query_exception_propagates(self):
         vq = _vq([])
         extractor = _make_extractor(dialect="postgresql", vendor_queries=vq)
         extractor.provider.query_executor.execute_query.side_effect = Exception("DB error")
-        trigs = extractor.get_triggers("public")
-        self.assertEqual(trigs, [])
+        with self.assertRaisesRegex(Exception, "DB error"):
+            extractor.get_triggers("public")
 
-    def test_error_tracked_when_result_tracker_set(self):
+    def test_failure_is_not_downgraded_to_a_tracked_error(self):
         vq = _vq([])
         extractor = _make_extractor(dialect="postgresql", vendor_queries=vq)
         extractor.provider.query_executor.execute_query.side_effect = Exception("fail")
         tracker = MagicMock()
         extractor.result_tracker = tracker
-        trigs = extractor.get_triggers("public")
-        self.assertEqual(trigs, [])
-        tracker._track_error.assert_called_once()
+        with self.assertRaisesRegex(Exception, "fail"):
+            extractor.get_triggers("public")
+        tracker._track_error.assert_not_called()

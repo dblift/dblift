@@ -5,7 +5,6 @@ This module extracts stored procedure and function metadata from databases
 using vendor-specific queries.
 """
 
-import logging
 import re
 from typing import Any, Callable, Dict, List, Optional
 
@@ -19,8 +18,6 @@ from core.introspection._utils import (
 from core.introspection.extractors.base_extractor import BaseExtractor
 from core.sql_model.procedure import Parameter, Procedure
 from core.utils.metadata_helpers import _fetch_mysql_show_create_routine  # noqa: F401
-
-logger = logging.getLogger(__name__)
 
 
 def _extract_definition_parts(definition: Optional[str]) -> tuple[Optional[str], Optional[str]]:
@@ -306,11 +303,32 @@ class ProcedureExtractor(BaseExtractor):
         """
         Get stored procedures in a schema.
 
+        ``[]`` means the schema genuinely has no procedures (the vendor
+        query ran and returned zero rows) or the dialect has none. An
+        engine without stored procedures is declined up front:
+        ``supports_procedures()`` is ``False`` by default, and a dialect
+        that claims the capability but has no catalog query returns
+        ``(None, [])``. Both are plain return values checked before any
+        query runs, so "this engine has no procedures" never arrives as an
+        exception. A failure to *read* procedures — permission denied, a
+        dropped connection, an unreadable catalog view — is therefore not
+        translated into ``[]``: it propagates to the caller, because an
+        empty export section and an unreadable one must not look alike.
+
+        The per-procedure lookups inside the loop keep their own
+        handlers: a procedure whose parameters or full DDL could not be
+        read is still exported with that one property blank, rather than
+        the whole schema's procedure list disappearing.
+
         Args:
             schema: Schema name
 
         Returns:
             List of Procedure objects
+
+        Raises:
+            Exception: Whatever the vendor query round trip raises (e.g. a
+                permission or connection error) — not swallowed.
         """
         from db.provider_registry import ProviderRegistry
 
@@ -321,135 +339,119 @@ class ProcedureExtractor(BaseExtractor):
 
         quirks = ProviderRegistry.get_quirks(self.dialect or "")
 
-        try:
-            sql, params = self.vendor_queries.get_procedures_query(schema)
-            if not sql:
-                return []
+        sql, params = self.vendor_queries.get_procedures_query(schema)
+        if not sql:
+            return []
 
-            self.log.debug(f"Executing get_procedures query for schema: {schema}")
+        self.log.debug(f"Executing get_procedures query for schema: {schema}")
 
-            results = self.provider.query_executor.execute_query(self.connection, sql, params)
+        results = self.provider.query_executor.execute_query(self.connection, sql, params)
 
-            self.log.debug(f"Query returned {len(results)} procedures")
+        self.log.debug(f"Query returned {len(results)} procedures")
 
-            procedures = []
-            for row in results:
-                procedure_name = get_row_value(row, "procedure_name")
-                if not procedure_name:
-                    continue
+        procedures = []
+        for row in results:
+            procedure_name = get_row_value(row, "procedure_name")
+            if not procedure_name:
+                continue
 
-                # Track procedure capture status
-                procedure_status = None
-                if self.result_tracker:
-                    procedure_status = self.result_tracker._track_object_status(
-                        "procedure", procedure_name, schema
-                    )
-
-                raw_definition = _clean_source_text(self, get_row_value(row, "definition"))
-
-                try:
-                    parameter_json = get_row_value(row, "parameter_json")
-                    parameters = self._build_parameters_from_json(parameter_json)
-                    if not parameters:
-                        parameters = quirks.fetch_routine_parameters_fallback(
-                            self, schema, procedure_name, "procedure"
-                        )
-                    if procedure_status:
-                        procedure_status.add_property_status("parameters", True)
-                except Exception as e:
-                    if procedure_status:
-                        procedure_status.add_property_status("parameters", False)
-                    if self.result_tracker:
-                        self.result_tracker._track_warning(
-                            f"Could not get procedure parameters: {e}",
-                            object_type="procedure",
-                            object_name=procedure_name,
-                            property_name="parameters",
-                            exception=e,
-                        )
-                    parameters = []
-
-                definition_text, body_text = _extract_definition_parts(raw_definition)
-
-                procedure = Procedure(
-                    name=procedure_name,
-                    schema=schema,
-                    parameters=parameters,
-                    body=body_text or raw_definition,
-                    language=(
-                        get_row_value(row, "language")
-                        if "language" in row or "LANGUAGE" in row
-                        else "SQL"
-                    ),
-                    comment=(
-                        get_row_value(row, "comment")
-                        if "comment" in row or "COMMENT" in row
-                        else None
-                    ),
-                    is_function=False,
-                    dialect=self.dialect,
-                    definition=definition_text or raw_definition,
+            # Track procedure capture status
+            procedure_status = None
+            if self.result_tracker:
+                procedure_status = self.result_tracker._track_object_status(
+                    "procedure", procedure_name, schema
                 )
-                # Plugin-derived volatility (MySQL: is_deterministic;
-                # SQL Server: is_deterministic — irrelevant for procs).
-                quirks.apply_routine_volatility_from_row(self, procedure, row)
-                volatility = get_row_value(row, "volatility")
-                if volatility:
-                    procedure.volatility = volatility
-                security_definer_val = get_row_value(row, "security_definer") or get_row_value(
-                    row, "security_type"
-                )
-                if security_definer_val is not None:
-                    security_value = str(security_definer_val).upper()
-                    procedure.security_definer = security_value in ("YES", "DEFINER", "TRUE", "1")
-                execute_as_principal = get_row_value(row, "execute_as_principal")
-                if execute_as_principal:
-                    procedure.definer = execute_as_principal
-                    if not procedure.security_definer:
-                        procedure.security_definer = True
-                elif raw_definition:
-                    upper_def = raw_definition.upper()
-                    if "EXECUTE AS OWNER" in upper_def:
-                        procedure.definer = "OWNER"
-                        procedure.security_definer = True
-                # MySQL definer column has final authority — it can
-                # replace ``"OWNER"`` set just above with the real
-                # ``user@host``.
-                quirks.apply_routine_definer_from_row(self, procedure, row)
-                data_access_val = get_row_value(row, "data_access")
-                if data_access_val:
-                    procedure.data_access = data_access_val
-                if procedure.definition and not _is_full_definition(procedure.definition):
-                    procedure.definition = None
-                # Catalog DDL fallback (MySQL only fills when definition
-                # is missing; Oracle DBMS_METADATA always replaces).
-                quirks.fetch_routine_full_definition(
-                    self, schema, procedure_name, "procedure", procedure, procedure_status
-                )
-                if not procedure.parameters:
-                    procedure.parameters = quirks.fetch_routine_parameters_fallback(
+
+            raw_definition = _clean_source_text(self, get_row_value(row, "definition"))
+
+            try:
+                parameter_json = get_row_value(row, "parameter_json")
+                parameters = self._build_parameters_from_json(parameter_json)
+                if not parameters:
+                    parameters = quirks.fetch_routine_parameters_fallback(
                         self, schema, procedure_name, "procedure"
                     )
-                quirks.postprocess_routine(self, schema, procedure)
-                procedures.append(procedure)
+                if procedure_status:
+                    procedure_status.add_property_status("parameters", True)
+            except Exception as e:
+                if procedure_status:
+                    procedure_status.add_property_status("parameters", False)
+                if self.result_tracker:
+                    self.result_tracker._track_warning(
+                        f"Could not get procedure parameters: {e}",
+                        object_type="procedure",
+                        object_name=procedure_name,
+                        property_name="parameters",
+                        exception=e,
+                    )
+                parameters = []
 
-            if len(procedures) > 0:
-                self.log.debug(f"Found {len(procedures)} procedures in schema {schema}")
+            definition_text, body_text = _extract_definition_parts(raw_definition)
 
-            return procedures
-
-        except Exception as e:
-            logger.warning(f"Error getting procedures for schema {schema}: {e}")
-            self.log.warning(f"Could not get procedures for schema {schema}: {e}")
-            if self.result_tracker:
-                self.result_tracker._track_error(
-                    f"Error getting procedures: {e}",
-                    object_type="schema",
-                    object_name=schema,
-                    property_name="procedures",
-                    exception=e,
+            procedure = Procedure(
+                name=procedure_name,
+                schema=schema,
+                parameters=parameters,
+                body=body_text or raw_definition,
+                language=(
+                    get_row_value(row, "language")
+                    if "language" in row or "LANGUAGE" in row
+                    else "SQL"
+                ),
+                comment=(
+                    get_row_value(row, "comment") if "comment" in row or "COMMENT" in row else None
+                ),
+                is_function=False,
+                dialect=self.dialect,
+                definition=definition_text or raw_definition,
+            )
+            # Plugin-derived volatility (MySQL: is_deterministic;
+            # SQL Server: is_deterministic — irrelevant for procs).
+            quirks.apply_routine_volatility_from_row(self, procedure, row)
+            volatility = get_row_value(row, "volatility")
+            if volatility:
+                procedure.volatility = volatility
+            security_definer_val = get_row_value(row, "security_definer") or get_row_value(
+                row, "security_type"
+            )
+            if security_definer_val is not None:
+                security_value = str(security_definer_val).upper()
+                procedure.security_definer = security_value in ("YES", "DEFINER", "TRUE", "1")
+            execute_as_principal = get_row_value(row, "execute_as_principal")
+            if execute_as_principal:
+                procedure.definer = execute_as_principal
+                if not procedure.security_definer:
+                    procedure.security_definer = True
+            elif raw_definition:
+                upper_def = raw_definition.upper()
+                if "EXECUTE AS OWNER" in upper_def:
+                    procedure.definer = "OWNER"
+                    procedure.security_definer = True
+            # MySQL definer column has final authority — it can
+            # replace ``"OWNER"`` set just above with the real
+            # ``user@host``.
+            quirks.apply_routine_definer_from_row(self, procedure, row)
+            data_access_val = get_row_value(row, "data_access")
+            if data_access_val:
+                procedure.data_access = data_access_val
+            if procedure.definition and not _is_full_definition(procedure.definition):
+                procedure.definition = None
+            # Catalog DDL fallback (MySQL only fills when definition
+            # is missing; Oracle DBMS_METADATA always replaces).
+            quirks.fetch_routine_full_definition(
+                self, schema, procedure_name, "procedure", procedure, procedure_status
+            )
+            if not procedure.parameters:
+                procedure.parameters = quirks.fetch_routine_parameters_fallback(
+                    self, schema, procedure_name, "procedure"
                 )
-            return []
+            quirks.postprocess_routine(self, schema, procedure)
+            procedures.append(procedure)
+
+        if len(procedures) > 0:
+            self.log.debug(f"Found {len(procedures)} procedures in schema {schema}")
+
+        return procedures
 
     def get_functions(
         self, schema: str, get_user_defined_types_fn: Optional[Callable[..., Any]] = None
@@ -457,12 +459,33 @@ class ProcedureExtractor(BaseExtractor):
         """
         Get functions in a schema.
 
+        ``[]`` means the schema genuinely has no functions (the vendor
+        query ran and returned zero rows) or the dialect has none. An
+        engine without user functions is declined up front:
+        ``supports_functions()`` is ``False`` by default, and a dialect
+        that claims the capability but has no catalog query returns
+        ``(None, [])``. Both are plain return values checked before any
+        query runs, so "this engine has no functions" never arrives as an
+        exception. A failure to *read* functions — permission denied, a
+        dropped connection, an unreadable catalog view — is therefore not
+        translated into ``[]``: it propagates to the caller, because an
+        empty export section and an unreadable one must not look alike.
+
+        The per-function lookups inside the loop keep their own handlers:
+        a function whose arguments, definition or owning type could not
+        be read is still exported with that one property blank, rather
+        than the whole schema's function list disappearing.
+
         Args:
             schema: Schema name
             get_user_defined_types_fn: Optional function to get UDTs for filtering (DB2)
 
         Returns:
             List of Procedure objects (with is_function=True)
+
+        Raises:
+            Exception: Whatever the vendor query round trip raises (e.g. a
+                permission or connection error) — not swallowed.
         """
         from db.provider_registry import ProviderRegistry
 
@@ -473,349 +496,320 @@ class ProcedureExtractor(BaseExtractor):
 
         quirks = ProviderRegistry.get_quirks(self.dialect or "")
 
-        try:
-            sql, params = self.vendor_queries.get_functions_query(schema)
-            if not sql:
-                return []
-
-            self.log.debug(f"Executing get_functions query for schema: {schema}")
-
-            results = self.provider.query_executor.execute_query(self.connection, sql, params)
-
-            functions = []
-            # System function names that should be filtered out (operators, type casts)
-            system_function_names = {
-                "<",
-                "<=",
-                "<>",
-                "=",
-                ">",
-                ">=",
-                "VARCHAR",
-                "INTEGER",
-                "DECIMAL",
-                "TIMESTAMP",
-                "CHAR",
-                "SMALLINT",
-                "BIGINT",
-                "REAL",
-                "DOUBLE",
-                "DATE",
-                "TIME",
-            }
-
-            # Get user-defined type names to filter them out (DB2 may return distinct types as functions)
-            udt_names = set()
-            if get_user_defined_types_fn:
-                try:
-                    udts = get_user_defined_types_fn(schema)
-                    udt_names = {udt.name.upper() for udt in udts if udt.name}
-                except Exception as e:
-                    self.log.debug(f"Could not get UDTs for procedure filtering: {e}")
-
-            for row in results:
-                function_name = (
-                    get_row_value(row, "function_name")
-                    or row.get("FUNCNAME")
-                    or row.get("funcname")
-                )
-
-                if not function_name:
-                    continue
-
-                # Skip system functions/operators
-                if function_name.upper() in {name.upper() for name in system_function_names}:
-                    self.log.debug(f"Skipping system function/operator: {function_name}")
-                    continue
-
-                # Skip user-defined types that are incorrectly returned as functions (DB2 issue)
-                if function_name.upper() in udt_names:
-                    self.log.debug(
-                        f"Skipping user-defined type incorrectly returned as function: {function_name}"
-                    )
-                    continue
-
-                # Track function capture status
-                function_status = None
-                if self.result_tracker:
-                    function_status = self.result_tracker._track_object_status(
-                        "function", function_name, schema
-                    )
-
-                raw_definition = _clean_source_text(self, get_row_value(row, "definition"))
-                definition_text, body_text = _extract_definition_parts(raw_definition)
-
-                try:
-                    parameters = self._build_parameters_from_json(
-                        get_row_value(row, "parameter_json")
-                    )
-                    if function_status:
-                        function_status.add_property_status("parameters", True)
-                except Exception as e:
-                    if function_status:
-                        function_status.add_property_status("parameters", False)
-                    if self.result_tracker:
-                        self.result_tracker._track_warning(
-                            f"Could not get function parameters: {e}",
-                            object_type="function",
-                            object_name=function_name,
-                            property_name="parameters",
-                            exception=e,
-                        )
-                    parameters = []
-
-                function = Procedure(
-                    name=function_name,
-                    schema=schema,
-                    parameters=parameters,
-                    body=body_text or raw_definition,
-                    language=(
-                        get_row_value(row, "language")
-                        if "language" in row or "LANGUAGE" in row
-                        else "SQL"
-                    ),
-                    comment=(
-                        get_row_value(row, "comment")
-                        if "comment" in row or "COMMENT" in row
-                        else None
-                    ),
-                    is_function=True,
-                    return_type=(
-                        get_row_value(row, "return_type")
-                        if "return_type" in row or "RETURN_TYPE" in row
-                        else None
-                    ),
-                    dialect=self.dialect,
-                    definition=definition_text or raw_definition,
-                )
-                # Plugin-derived volatility (MySQL / SQL Server: derived
-                # from ``is_deterministic``).
-                quirks.apply_routine_volatility_from_row(self, function, row)
-                volatility = get_row_value(row, "volatility")
-                if volatility:
-                    function.volatility = volatility
-                security_definer_val = get_row_value(row, "security_definer") or get_row_value(
-                    row, "security_type"
-                )
-                if security_definer_val is not None:
-                    security_value = str(security_definer_val).upper()
-                    function.security_definer = security_value in ("YES", "DEFINER", "TRUE", "1")
-                execute_as_principal = get_row_value(row, "execute_as_principal")
-                if execute_as_principal:
-                    function.definer = execute_as_principal
-                    if not function.security_definer:
-                        function.security_definer = True
-                elif raw_definition:
-                    upper_def = raw_definition.upper()
-                    if "EXECUTE AS OWNER" in upper_def:
-                        function.definer = "OWNER"
-                        function.security_definer = True
-                # MySQL definer column has final authority.
-                quirks.apply_routine_definer_from_row(self, function, row)
-                data_access_val = get_row_value(row, "data_access")
-                if data_access_val:
-                    function.data_access = data_access_val
-                if function.definition and not _is_full_definition(function.definition):
-                    function.definition = None
-                # Catalog DDL fallback (MySQL only fills when definition
-                # is missing; Oracle DBMS_METADATA always replaces).
-                quirks.fetch_routine_full_definition(
-                    self, schema, function_name, "function", function, function_status
-                )
-                if self.vendor_queries and hasattr(
-                    self.vendor_queries, "get_function_arguments_query"
-                ):
-                    try:
-                        arg_sql, arg_params = self.vendor_queries.get_function_arguments_query(
-                            schema, function_name
-                        )
-                        arg_rows = self.provider.query_executor.execute_query(
-                            self.connection, arg_sql, arg_params
-                        )
-                        parsed_parameters: List[tuple[int, Parameter]] = []
-
-                        for arg_row in arg_rows:
-                            position_val = get_row_value(arg_row, "position")
-                            if position_val is None:
-                                continue
-                            try:
-                                position = int(position_val)
-                            except (TypeError, ValueError):
-                                continue
-
-                            data_type = get_row_value(arg_row, "data_type") or "UNKNOWN"
-                            direction = (get_row_value(arg_row, "in_out") or "IN").upper()
-
-                            # POSITION = 0 represents the return type for functions
-                            if position == 0:
-                                if data_type:
-                                    function.return_type = data_type
-                                continue
-
-                            argument_name = (
-                                get_row_value(arg_row, "argument_name") or f"param_{position}"
-                            )
-                            parameter = Parameter(
-                                name=argument_name,
-                                data_type=data_type,
-                                direction=direction,
-                                dialect=self.dialect,
-                            )
-                            parsed_parameters.append((position, parameter))
-
-                        if parsed_parameters:
-                            parsed_parameters.sort(key=lambda item: item[0])
-                            function.parameters = [param for _, param in parsed_parameters]
-                    except Exception as exc:
-                        self.log.debug(
-                            f"Could not fetch argument metadata for function {schema}.{function_name}: {exc}"
-                        )
-
-                if self.vendor_queries and not getattr(function, "definition", None):
-                    try:
-                        def_sql, def_params = self.vendor_queries.get_function_definition_query(
-                            schema, function_name
-                        )
-                        # BUG-01: if the vendor has no definition query (base
-                        # returns (None, [])), keep the function — don't drop
-                        # it entirely. Missing-definition is a capture warning,
-                        # not a reason to skip the object from export.
-                        if def_sql:
-                            def_rows = self.provider.query_executor.execute_query(
-                                self.connection, def_sql, def_params
-                            )
-                            if def_rows:
-                                definition_value = _clean_source_text(
-                                    self, get_row_value(def_rows[0], "definition")
-                                )
-                                if definition_value:
-                                    function.definition = definition_value.strip()
-                    except Exception as exc:
-                        self.log.debug(
-                            f"Could not fetch definition for function {schema}.{function_name}: {exc}"
-                        )
-
-                # Fallback: Parse parameters/return type from definition if still missing
-                if (
-                    not function.parameters or len(function.parameters) == 0
-                ) or not function.return_type:
-                    definition_for_parse = function.definition or definition_text
-                    if definition_for_parse:
-                        signature_match = re.search(
-                            r"FUNCTION\s+[^\(]+\((?P<params>.*?)\)\s+RETURN\s+(?P<ret>[^\s]+)",
-                            definition_for_parse,
-                            re.IGNORECASE | re.DOTALL,
-                        )
-                        if signature_match:
-                            params_section = signature_match.group("params").strip()
-                            return_type = signature_match.group("ret").strip()
-                            if return_type and not function.return_type:
-                                function.return_type = return_type
-
-                            if params_section and not function.parameters:
-                                parameter_chunks: List[str] = []
-                                current = ""
-                                paren_depth = 0
-                                for ch in params_section:
-                                    if ch == "(":
-                                        paren_depth += 1
-                                    elif ch == ")":
-                                        paren_depth = max(paren_depth - 1, 0)
-                                    elif ch == "," and paren_depth == 0:
-                                        if current.strip():
-                                            parameter_chunks.append(current.strip())
-                                        current = ""
-                                        continue
-                                    current += ch
-                                if current.strip():
-                                    parameter_chunks.append(current.strip())
-
-                                manual_parameters: List[Parameter] = []
-                                for part in parameter_chunks:
-                                    tokens = part.split()
-                                    if not tokens:
-                                        continue
-
-                                    direction = "IN"
-                                    name = tokens[0]
-                                    data_type = None
-
-                                    if len(tokens) >= 3 and tokens[1].upper() in {
-                                        "IN",
-                                        "OUT",
-                                        "INOUT",
-                                    }:
-                                        direction = tokens[1].upper()
-                                        data_type = tokens[2]
-                                    elif (
-                                        tokens[0].upper() in {"IN", "OUT", "INOUT"}
-                                        and len(tokens) >= 3
-                                    ):
-                                        direction = tokens[0].upper()
-                                        name = tokens[1]
-                                        data_type = tokens[2]
-                                    elif len(tokens) >= 2:
-                                        data_type = tokens[1]
-
-                                    if data_type is None and len(tokens) >= 3:
-                                        data_type = tokens[-1]
-
-                                    if data_type is None:
-                                        data_type = "UNKNOWN"
-
-                                    parameter = Parameter(
-                                        name=name,
-                                        data_type=data_type,
-                                        direction=direction,
-                                        dialect=self.dialect,
-                                    )
-                                    manual_parameters.append(parameter)
-
-                                if manual_parameters:
-                                    function.parameters = manual_parameters
-
-                if not function.parameters:
-                    function.parameters = quirks.fetch_routine_parameters_fallback(
-                        self, schema, function_name, "function"
-                    )
-
-                extension_name = (
-                    get_row_value(row, "extension_name") or row.get("EXTENSION_NAME")
-                    if isinstance(row, dict)
-                    else None
-                )
-                if extension_name:
-                    function.extension = extension_name  # type: ignore[attr-defined]
-
-                # Track property capture
-                if function_status:
-                    function_status.add_property_status("body", function.body is not None)
-                    function_status.add_property_status(
-                        "definition", function.definition is not None
-                    )
-                    function_status.add_property_status(
-                        "return_type", function.return_type is not None
-                    )
-                    function_status.add_property_status(
-                        "volatility", function.volatility is not None
-                    )
-
-                functions.append(function)
-
-            if len(functions) > 0:
-                self.log.debug(f"Found {len(functions)} functions in schema {schema}")
-
-            return functions
-
-        except Exception as e:
-            logger.warning(f"Error getting functions for schema {schema}: {e}")
-            self.log.warning(f"Could not get functions for schema {schema}: {e}")
-            if self.result_tracker:
-                self.result_tracker._track_error(
-                    f"Error getting functions: {e}",
-                    object_type="schema",
-                    object_name=schema,
-                    property_name="functions",
-                    exception=e,
-                )
+        sql, params = self.vendor_queries.get_functions_query(schema)
+        if not sql:
             return []
+
+        self.log.debug(f"Executing get_functions query for schema: {schema}")
+
+        results = self.provider.query_executor.execute_query(self.connection, sql, params)
+
+        functions = []
+        # System function names that should be filtered out (operators, type casts)
+        system_function_names = {
+            "<",
+            "<=",
+            "<>",
+            "=",
+            ">",
+            ">=",
+            "VARCHAR",
+            "INTEGER",
+            "DECIMAL",
+            "TIMESTAMP",
+            "CHAR",
+            "SMALLINT",
+            "BIGINT",
+            "REAL",
+            "DOUBLE",
+            "DATE",
+            "TIME",
+        }
+
+        # Get user-defined type names to filter them out (DB2 may return distinct types as functions)
+        udt_names = set()
+        if get_user_defined_types_fn:
+            try:
+                udts = get_user_defined_types_fn(schema)
+                udt_names = {udt.name.upper() for udt in udts if udt.name}
+            except Exception as e:
+                self.log.debug(f"Could not get UDTs for procedure filtering: {e}")
+
+        for row in results:
+            function_name = (
+                get_row_value(row, "function_name") or row.get("FUNCNAME") or row.get("funcname")
+            )
+
+            if not function_name:
+                continue
+
+            # Skip system functions/operators
+            if function_name.upper() in {name.upper() for name in system_function_names}:
+                self.log.debug(f"Skipping system function/operator: {function_name}")
+                continue
+
+            # Skip user-defined types that are incorrectly returned as functions (DB2 issue)
+            if function_name.upper() in udt_names:
+                self.log.debug(
+                    f"Skipping user-defined type incorrectly returned as function: {function_name}"
+                )
+                continue
+
+            # Track function capture status
+            function_status = None
+            if self.result_tracker:
+                function_status = self.result_tracker._track_object_status(
+                    "function", function_name, schema
+                )
+
+            raw_definition = _clean_source_text(self, get_row_value(row, "definition"))
+            definition_text, body_text = _extract_definition_parts(raw_definition)
+
+            try:
+                parameters = self._build_parameters_from_json(get_row_value(row, "parameter_json"))
+                if function_status:
+                    function_status.add_property_status("parameters", True)
+            except Exception as e:
+                if function_status:
+                    function_status.add_property_status("parameters", False)
+                if self.result_tracker:
+                    self.result_tracker._track_warning(
+                        f"Could not get function parameters: {e}",
+                        object_type="function",
+                        object_name=function_name,
+                        property_name="parameters",
+                        exception=e,
+                    )
+                parameters = []
+
+            function = Procedure(
+                name=function_name,
+                schema=schema,
+                parameters=parameters,
+                body=body_text or raw_definition,
+                language=(
+                    get_row_value(row, "language")
+                    if "language" in row or "LANGUAGE" in row
+                    else "SQL"
+                ),
+                comment=(
+                    get_row_value(row, "comment") if "comment" in row or "COMMENT" in row else None
+                ),
+                is_function=True,
+                return_type=(
+                    get_row_value(row, "return_type")
+                    if "return_type" in row or "RETURN_TYPE" in row
+                    else None
+                ),
+                dialect=self.dialect,
+                definition=definition_text or raw_definition,
+            )
+            # Plugin-derived volatility (MySQL / SQL Server: derived
+            # from ``is_deterministic``).
+            quirks.apply_routine_volatility_from_row(self, function, row)
+            volatility = get_row_value(row, "volatility")
+            if volatility:
+                function.volatility = volatility
+            security_definer_val = get_row_value(row, "security_definer") or get_row_value(
+                row, "security_type"
+            )
+            if security_definer_val is not None:
+                security_value = str(security_definer_val).upper()
+                function.security_definer = security_value in ("YES", "DEFINER", "TRUE", "1")
+            execute_as_principal = get_row_value(row, "execute_as_principal")
+            if execute_as_principal:
+                function.definer = execute_as_principal
+                if not function.security_definer:
+                    function.security_definer = True
+            elif raw_definition:
+                upper_def = raw_definition.upper()
+                if "EXECUTE AS OWNER" in upper_def:
+                    function.definer = "OWNER"
+                    function.security_definer = True
+            # MySQL definer column has final authority.
+            quirks.apply_routine_definer_from_row(self, function, row)
+            data_access_val = get_row_value(row, "data_access")
+            if data_access_val:
+                function.data_access = data_access_val
+            if function.definition and not _is_full_definition(function.definition):
+                function.definition = None
+            # Catalog DDL fallback (MySQL only fills when definition
+            # is missing; Oracle DBMS_METADATA always replaces).
+            quirks.fetch_routine_full_definition(
+                self, schema, function_name, "function", function, function_status
+            )
+            if self.vendor_queries and hasattr(self.vendor_queries, "get_function_arguments_query"):
+                try:
+                    arg_sql, arg_params = self.vendor_queries.get_function_arguments_query(
+                        schema, function_name
+                    )
+                    arg_rows = self.provider.query_executor.execute_query(
+                        self.connection, arg_sql, arg_params
+                    )
+                    parsed_parameters: List[tuple[int, Parameter]] = []
+
+                    for arg_row in arg_rows:
+                        position_val = get_row_value(arg_row, "position")
+                        if position_val is None:
+                            continue
+                        try:
+                            position = int(position_val)
+                        except (TypeError, ValueError):
+                            continue
+
+                        data_type = get_row_value(arg_row, "data_type") or "UNKNOWN"
+                        direction = (get_row_value(arg_row, "in_out") or "IN").upper()
+
+                        # POSITION = 0 represents the return type for functions
+                        if position == 0:
+                            if data_type:
+                                function.return_type = data_type
+                            continue
+
+                        argument_name = (
+                            get_row_value(arg_row, "argument_name") or f"param_{position}"
+                        )
+                        parameter = Parameter(
+                            name=argument_name,
+                            data_type=data_type,
+                            direction=direction,
+                            dialect=self.dialect,
+                        )
+                        parsed_parameters.append((position, parameter))
+
+                    if parsed_parameters:
+                        parsed_parameters.sort(key=lambda item: item[0])
+                        function.parameters = [param for _, param in parsed_parameters]
+                except Exception as exc:
+                    self.log.debug(
+                        f"Could not fetch argument metadata for function {schema}.{function_name}: {exc}"
+                    )
+
+            if self.vendor_queries and not getattr(function, "definition", None):
+                try:
+                    def_sql, def_params = self.vendor_queries.get_function_definition_query(
+                        schema, function_name
+                    )
+                    # BUG-01: if the vendor has no definition query (base
+                    # returns (None, [])), keep the function — don't drop
+                    # it entirely. Missing-definition is a capture warning,
+                    # not a reason to skip the object from export.
+                    if def_sql:
+                        def_rows = self.provider.query_executor.execute_query(
+                            self.connection, def_sql, def_params
+                        )
+                        if def_rows:
+                            definition_value = _clean_source_text(
+                                self, get_row_value(def_rows[0], "definition")
+                            )
+                            if definition_value:
+                                function.definition = definition_value.strip()
+                except Exception as exc:
+                    self.log.debug(
+                        f"Could not fetch definition for function {schema}.{function_name}: {exc}"
+                    )
+
+            # Fallback: Parse parameters/return type from definition if still missing
+            if (
+                not function.parameters or len(function.parameters) == 0
+            ) or not function.return_type:
+                definition_for_parse = function.definition or definition_text
+                if definition_for_parse:
+                    signature_match = re.search(
+                        r"FUNCTION\s+[^\(]+\((?P<params>.*?)\)\s+RETURN\s+(?P<ret>[^\s]+)",
+                        definition_for_parse,
+                        re.IGNORECASE | re.DOTALL,
+                    )
+                    if signature_match:
+                        params_section = signature_match.group("params").strip()
+                        return_type = signature_match.group("ret").strip()
+                        if return_type and not function.return_type:
+                            function.return_type = return_type
+
+                        if params_section and not function.parameters:
+                            parameter_chunks: List[str] = []
+                            current = ""
+                            paren_depth = 0
+                            for ch in params_section:
+                                if ch == "(":
+                                    paren_depth += 1
+                                elif ch == ")":
+                                    paren_depth = max(paren_depth - 1, 0)
+                                elif ch == "," and paren_depth == 0:
+                                    if current.strip():
+                                        parameter_chunks.append(current.strip())
+                                    current = ""
+                                    continue
+                                current += ch
+                            if current.strip():
+                                parameter_chunks.append(current.strip())
+
+                            manual_parameters: List[Parameter] = []
+                            for part in parameter_chunks:
+                                tokens = part.split()
+                                if not tokens:
+                                    continue
+
+                                direction = "IN"
+                                name = tokens[0]
+                                data_type = None
+
+                                if len(tokens) >= 3 and tokens[1].upper() in {
+                                    "IN",
+                                    "OUT",
+                                    "INOUT",
+                                }:
+                                    direction = tokens[1].upper()
+                                    data_type = tokens[2]
+                                elif (
+                                    tokens[0].upper() in {"IN", "OUT", "INOUT"} and len(tokens) >= 3
+                                ):
+                                    direction = tokens[0].upper()
+                                    name = tokens[1]
+                                    data_type = tokens[2]
+                                elif len(tokens) >= 2:
+                                    data_type = tokens[1]
+
+                                if data_type is None and len(tokens) >= 3:
+                                    data_type = tokens[-1]
+
+                                if data_type is None:
+                                    data_type = "UNKNOWN"
+
+                                parameter = Parameter(
+                                    name=name,
+                                    data_type=data_type,
+                                    direction=direction,
+                                    dialect=self.dialect,
+                                )
+                                manual_parameters.append(parameter)
+
+                            if manual_parameters:
+                                function.parameters = manual_parameters
+
+            if not function.parameters:
+                function.parameters = quirks.fetch_routine_parameters_fallback(
+                    self, schema, function_name, "function"
+                )
+
+            extension_name = (
+                get_row_value(row, "extension_name") or row.get("EXTENSION_NAME")
+                if isinstance(row, dict)
+                else None
+            )
+            if extension_name:
+                function.extension = extension_name  # type: ignore[attr-defined]
+
+            # Track property capture
+            if function_status:
+                function_status.add_property_status("body", function.body is not None)
+                function_status.add_property_status("definition", function.definition is not None)
+                function_status.add_property_status("return_type", function.return_type is not None)
+                function_status.add_property_status("volatility", function.volatility is not None)
+
+            functions.append(function)
+
+        if len(functions) > 0:
+            self.log.debug(f"Found {len(functions)} functions in schema {schema}")
+
+        return functions
