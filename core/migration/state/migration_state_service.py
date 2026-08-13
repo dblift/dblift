@@ -118,6 +118,10 @@ class MigrationStateService:
                     # Check if there's a newer version already applied
                     # For now, just mark as outdated
                     return MigrationDisplayState.OUTDATED
+                pending_repeatables = context.get("pending_repeatable_scripts") or set()
+                script_basename = Path(script_name).name if script_name else ""
+                if script_name in pending_repeatables or script_basename in pending_repeatables:
+                    return MigrationDisplayState.OUTDATED
 
             # Check if migration is missing (success but not resolved)
             if hasattr(migration, "resolved") and not migration.resolved:

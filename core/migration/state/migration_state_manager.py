@@ -131,6 +131,16 @@ class MigrationStateManager:
             history.repeatable_checksums,
         )
 
+        # History-vs-history of the latest applied row always matches, so
+        # determine_state needs the checksum-changed pending set to label
+        # that row Outdated until migrate reapplies it.
+        analysis_context["pending_repeatable_scripts"] = {
+            name
+            for change in checksum_changes
+            if change.script_name
+            for name in (change.script_name, Path(change.script_name).name)
+        }
+
         applied_entries, failed_entries = self._build_applied_entries(
             applied_migrations, analysis_context
         )
