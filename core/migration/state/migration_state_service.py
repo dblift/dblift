@@ -6,7 +6,7 @@ based on their execution history and context.
 """
 
 from pathlib import Path
-from typing import Any, Dict, Union
+from typing import Any, Dict
 
 from core.logger import Log
 from core.migration.migration import normalize_migration_checksum
@@ -193,33 +193,6 @@ class MigrationStateService:
     def _compare_versions(self, version1: str, version2: str) -> int:
         """Compare two version strings. Delegates to shared compare_versions utility."""
         return _compare_versions_shared(version1, version2)
-
-    def _version_has_undo_script(self, version: str, scripts_dir: Union[Path, str]) -> bool:
-        """Check if a version has a corresponding undo script.
-
-        Args:
-            version: Version to check
-            scripts_dir: Directory containing migration scripts
-
-        Returns:
-            bool: True if undo script exists
-        """
-        if not scripts_dir or not version:
-            return False
-
-        try:
-
-            scripts_path = Path(scripts_dir)
-
-            # Look for undo scripts with pattern U{version}*.sql
-            undo_pattern = f"U{version}*.sql"
-            undo_files = list(scripts_path.glob(undo_pattern))
-
-            return len(undo_files) > 0
-
-        except Exception as e:
-            self.logger.debug(f"Could not check for undo scripts: {e}")
-            return False
 
     @staticmethod
     def _checksums_differ(stored: Any, current: Any) -> bool:

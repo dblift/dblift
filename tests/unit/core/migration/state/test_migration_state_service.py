@@ -387,32 +387,3 @@ class TestMigrationStateService:
         result = service._compare_versions("1.0.0a", "1.0.0")
         # Should fallback to string comparison
         assert isinstance(result, int)
-
-    def test_version_has_undo_script_true(self, service, tmp_path):
-        """Test _version_has_undo_script returns True when script exists."""
-        undo_file = tmp_path / "U1.0.0__undo.sql"
-        undo_file.write_text("DROP TABLE test;")
-
-        result = service._version_has_undo_script("1.0.0", tmp_path)
-        assert result is True
-
-    def test_version_has_undo_script_false(self, service, tmp_path):
-        """Test _version_has_undo_script returns False when script doesn't exist."""
-        result = service._version_has_undo_script("1.0.0", tmp_path)
-        assert result is False
-
-    def test_version_has_undo_script_no_scripts_dir(self, service):
-        """Test _version_has_undo_script with no scripts_dir."""
-        result = service._version_has_undo_script("1.0.0", None)
-        assert result is False
-
-    def test_version_has_undo_script_no_version(self, service, tmp_path):
-        """Test _version_has_undo_script with no version."""
-        result = service._version_has_undo_script(None, tmp_path)
-        assert result is False
-
-    def test_version_has_undo_script_exception(self, service):
-        """Test _version_has_undo_script handles exceptions."""
-        # Pass invalid path type to trigger exception
-        result = service._version_has_undo_script("1.0.0", 123)
-        assert result is False
