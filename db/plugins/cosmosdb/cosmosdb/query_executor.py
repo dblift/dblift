@@ -221,6 +221,43 @@ class CosmosDbQueryExecutor(BaseQueryExecutor):
         container_client = self.connection_manager.get_container_client(container_name)
         container_client.delete_item(item=item_id, partition_key=partition_key)
 
+    def list_native_items(self, container_name: str) -> List[Dict[str, Any]]:
+        """Return every document in *container_name* via a native ``SELECT``.
+
+        Cosmos DB's SQL API genuinely executes a ``SELECT``, unlike
+        MongoDB's ``find()``-backed equivalent, so this issues
+        ``SELECT * FROM c`` directly through the same container-client
+        access pattern as :meth:`upsert_native_item` /
+        :meth:`delete_native_item` above, rather than routing through
+        :meth:`execute_query` (which exists to run caller-supplied SQL, not
+        to hardcode this one shape).
+
+        Ordering is not guaranteed: no ``ORDER BY`` is added, matching
+        ``DocumentStoreProvider.list_native_items``'s contract that callers
+        needing an order impose it themselves.
+
+        The Azure SDK's ``query_items`` iterator can hang indefinitely
+        against a container that does not exist, so this checks existence
+        with :meth:`table_exists` first and returns an empty list for a
+        missing container without ever calling ``query_items`` -- the same
+        "no documents" answer MongoDB's ``find()`` gives for a missing
+        collection, just reached by a guard instead of by iterating.
+
+        Args:
+            container_name: Name of the Cosmos DB container to read.
+
+        Returns:
+            Every document in the container, as plain dicts. Empty list if
+            the container is empty or does not exist.
+        """
+        if not self.table_exists(None, "", container_name):
+            return []
+        container_client = self.connection_manager.get_container_client(container_name)
+        items = container_client.query_items(
+            query="SELECT * FROM c", enable_cross_partition_query=True
+        )
+        return [dict(item) for item in items]
+
     def _normalize_cosmos_sql(self, sql: str, container_name: str) -> str:
         """Normalize Cosmos DB SQL query to use proper container alias.
 
