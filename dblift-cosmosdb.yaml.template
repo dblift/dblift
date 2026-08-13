@@ -1,0 +1,40 @@
+# DBLift Configuration Template for Azure Cosmos DB
+
+database:
+  type: cosmosdb
+  # Option 1: Use account endpoint URL
+  url: "https://your-account.documents.azure.com:443/"
+  # Or specify explicitly:
+  # account_endpoint: "https://your-account.documents.azure.com:443/"
+
+  # Database name
+  database_name: "mydatabase"
+  # Or use 'database' field (will be mapped to database_name):
+  # database: "mydatabase"
+
+  # Authentication - Option 1: Account Key
+  account_key: "your-primary-key-here"
+
+  # Authentication - Option 2: Managed Identity (for Azure VMs/App Services)
+  # use_managed_identity: true
+
+  # Optional: Default container for operations
+  container_name: "default"
+
+migrations:
+  directory: "./migrations"
+  # Or use multiple directories:
+  # directories:
+  #   - "./migrations/core"
+  #   - "./migrations/features"
+
+# Environments — one file for ALL your environments (selected with --env / DBLIFT_ENV).
+# Root sections above are the shared base; each block below overrides only what differs.
+# See docs/user-guide/configuration.md#environments
+# environments:
+#   prod:
+#     database:
+#       url: "${DBLIFT_PROD_URL}"
+#   uat:
+#     database:
+#       url: "${DBLIFT_UAT_URL}"

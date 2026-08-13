@@ -1388,12 +1388,12 @@ lazily-populated-registry latch bug fixed twice already in 3.3.0.
 - **CosmosDB has a native document-delete primitive:**
   `CosmosDbQueryExecutor.delete_native_item(container_name, item_id,
   partition_key)`, plus a thin `CosmosDbProvider.delete_native_item` forward.
-  The delete-side counterpart to 3.3.0's `upsert_native_item`: the sibling
-  monorepo's schema-snapshot repository prunes old snapshots by rendering a
+  The delete-side counterpart to 3.3.0's `upsert_native_item`: the
+  schema-snapshot repository prunes old snapshots by rendering a
   SQL `DELETE` and routing it through `execute_statement`, which raises
   `NoSqlWriteNotSupportedError` for CosmosDB just like the `INSERT`
   `upsert_native_item` was added to replace — Cosmos's SQL API rejects any
-  DML verb, not only writes. This closes the gap so the monorepo's pruning
+  DML verb, not only writes. This closes the gap so that pruning
   path can be wired the same way the single-document write already was.
 
 ### Fixed
@@ -1527,8 +1527,8 @@ pre-push quality gate that could not have caught either of them.
 
 - **The pre-push quality gate passes again.** `scripts/check_code_quality.sh`
   exited non-zero on a clean checkout, because four of the config files it
-  reads had never accompanied it from the monorepo it was copied from. flake8
-  in particular was failing on ~15,800 line-length violations — invisibly,
+  reads had never been added alongside it. flake8 in particular was failing
+  on ~15,800 line-length violations — invisibly,
   since that stage sets its exit code without printing a failure marker. A
   gate that cannot pass on an unmodified tree cannot tell a contributor's
   breakage from its own, so it stops being run. No packaged behaviour changes.

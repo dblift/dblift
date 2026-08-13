@@ -1,7 +1,7 @@
 # CLI matrix tests
 
 These tests are a direct translation of the **dblift-dev-test** skill matrix
-(`~/.claude/skills/dblift-dev-test/SKILL.md`) into executable pytest.
+into executable pytest.
 
 ## Why this directory exists
 

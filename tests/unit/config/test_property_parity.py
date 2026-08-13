@@ -84,8 +84,9 @@ def _env_param(spec):
 # Properties whose CLI flag is registered only by the Pro/Enterprise
 # cli_extensions (see cli/_parser_setup.py::_add_registry_flags deferred_specs).
 # In an OSS-only install (no Pro extension) the flag genuinely does not exist on
-# the parser; this is by design, not a coverage gap. The monorepo (Pro present)
-# still asserts full coverage for these — only a genuinely-absent flag skips.
+# the parser; this is by design, not a coverage gap. Full coverage for these is
+# still asserted separately wherever the Pro extension is present — only a
+# genuinely-absent flag skips.
 _PRO_DEFERRED_CLI = {"max_snapshots", "snapshot_table"}
 
 

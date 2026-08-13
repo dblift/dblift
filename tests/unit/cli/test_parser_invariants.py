@@ -191,7 +191,8 @@ def _leaf_subcommand_invocations() -> List[Tuple[str, List[str]]]:
 # Top-level flags registered only by the Pro/Enterprise CLI extension (see
 # cli/_parser_setup.py::_add_registry_flags deferred_specs). They are absent
 # from an OSS-only parser by design; skip the preservation check for them
-# when the extension isn't installed, but still assert it in the monorepo.
+# when the extension isn't installed -- the same invariant is verified
+# separately wherever the extension is present.
 _PRO_ONLY_PARENT_FLAGS = {"--max-snapshots"}
 
 
