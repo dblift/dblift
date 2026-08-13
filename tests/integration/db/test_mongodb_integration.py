@@ -368,6 +368,20 @@ class TestMongoDbCommandFlows:
         assert result.success, f"clean failed: {result.output}"
         assert mongo_db.list_collection_names() == []
 
+    def test_clean_drops_a_collection_that_merely_contains_system_dot(self, mongo_cli, mongo_db):
+        """``system.`` is a reserved *prefix*, not a banned substring: the
+        server itself accepts a real collection named ``orders_system.log``
+        (only creation directly under ``system.`` is refused). A substring
+        match would silently spare it from a full-reset ``clean`` — a worse
+        failure than the one this filter exists to fix, since it has no
+        error to notice."""
+        mongo_db.create_collection("orders_system.log")
+
+        result = mongo_cli.clean()
+
+        assert result.success, f"clean failed: {result.output}"
+        assert "orders_system.log" not in mongo_db.list_collection_names()
+
     def test_baseline_records_a_baseline_row(self, mongo_cli, migrations_dir, mongo_db):
         result = mongo_cli.baseline("1.0.0", baseline_description="initial baseline")
 

@@ -49,8 +49,9 @@ class MongoDbSchemaOperations(BaseSchemaOperations):
         Unfiltered on purpose: ``collection_exists``, ``get_tables`` and
         ``create_collection_if_not_exists`` all need the true full list, not
         a clean-specific view of it. Clean itself enumerates through
-        :meth:`list_droppable_collections`, which excludes the ``system.*``
-        namespace — see that method for why.
+        :meth:`list_droppable_collections`, which excludes collections whose
+        name starts with the server-reserved ``system.`` prefix — see that
+        method for why.
         """
         return list(self._database().list_collection_names())
 
@@ -63,26 +64,32 @@ class MongoDbSchemaOperations(BaseSchemaOperations):
 
         Same as :meth:`list_collections` — dblift's own storage included,
         since clean's contract is a full reset — except for anything whose
-        name contains ``system.``. That namespace is server-maintained
-        bookkeeping, not user schema; relational ``clean`` drops user
-        objects and leaves catalogs like ``pg_catalog`` alone, and this is
-        the MongoDB equivalent.
+        name *starts with* ``system.``. That prefix is reserved by MongoDB
+        itself: the server refuses to create a collection under it (an
+        attempt to make ``system.custom`` fails outright), so anything
+        carrying it is server-maintained bookkeeping, never user schema.
+        Relational ``clean`` drops user objects and leaves catalogs like
+        ``pg_catalog`` alone; this is the MongoDB equivalent. A name that
+        merely *contains* ``system.`` — e.g. ``orders_system.log`` — is an
+        ordinary, server-accepted user collection and must still be
+        dropped, which is why this is a prefix check, not a substring one.
 
-        Excluding it is not just tidiness: ``system.views`` stores every
-        view's definition, so dropping it erases the views themselves. A
-        later attempt to drop one of those now-vanished views then reports
-        a spurious failure for an object clean's own earlier step already
-        removed. Skipping ``system.views`` here removes the cause instead
-        of reordering around it.
+        Excluding the prefix is not just tidiness: ``system.views`` stores
+        every view's definition, so dropping it erases the views
+        themselves. A later attempt to drop one of those now-vanished
+        views then reports a spurious failure for an object clean's own
+        earlier step already removed. Skipping ``system.views`` here
+        removes the cause instead of reordering around it.
 
         Trade-off worth stating: ``system.js`` — the legacy user-writable
-        stored-JavaScript collection — is also skipped by this same rule,
-        and unlike ``system.views`` it holds user-authored content, not
-        metadata. It survives a clean. That is judged acceptable because
-        dblift manages schema and stored JavaScript is not schema, but it
-        is a real, visible behavioural consequence of this filter.
+        stored-JavaScript collection — also carries this prefix and is
+        skipped by the same rule, and unlike ``system.views`` it holds
+        user-authored content, not metadata. It survives a clean. That is
+        judged acceptable because dblift manages schema and stored
+        JavaScript is not schema, but it is a real, visible behavioural
+        consequence of this filter.
         """
-        return [name for name in self.list_collections() if "system." not in name]
+        return [name for name in self.list_collections() if not name.startswith("system.")]
 
     @staticmethod
     def _drop_audit_line(collection_name: str) -> str:

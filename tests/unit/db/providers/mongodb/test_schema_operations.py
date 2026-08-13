@@ -102,9 +102,21 @@ def test_list_droppable_collections_excludes_system_namespace():
     """``system.views`` is server bookkeeping, not user schema — and dropping
     it first destroys every view definition before clean reaches them, which
     is the actual mechanism behind the "drop a view, get a spurious failure"
-    bug. Excluding anything containing ``system.`` removes the cause."""
+    bug. Excluding anything starting with the reserved ``system.`` prefix
+    removes the cause."""
     operations, _ = _operations(["users", "system.views", "system.js"])
     assert operations.list_droppable_collections() == ["users"]
+
+
+def test_list_droppable_collections_keeps_names_that_merely_contain_system_dot():
+    """``system.`` is a reserved *prefix*, not a banned substring — MongoDB
+    itself accepts a collection named ``orders_system.log`` (it only refuses
+    creation under the leading ``system.`` prefix). A substring match would
+    silently spare real user data from a full-reset ``clean``, which is a
+    worse failure than the one this filter exists to fix, because it is
+    silent."""
+    operations, _ = _operations(["orders_system.log", "system.views"])
+    assert operations.list_droppable_collections() == ["orders_system.log"]
 
 
 def test_list_droppable_collections_keeps_dblift_collections():
