@@ -93,9 +93,8 @@ def test_default_roots_point_at_packages_that_exist() -> None:
     """A root that does not resolve makes the gate pass vacuously.
 
     ``Path.rglob`` on a missing directory yields nothing rather than raising,
-    so a stale root is silent. The monorepo copy of this script shipped with
-    exactly that defect after its packages moved; this asserts the OSS roots
-    still resolve.
+    so a stale root goes silent rather than failing loudly after a package
+    moves; this asserts the OSS roots still resolve.
     """
     repo_root = Path(lp.__file__).resolve().parent.parent
 

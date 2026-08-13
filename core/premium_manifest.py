@@ -25,9 +25,9 @@ stub methods (``diff``, ``export_schema``, ``snapshot``, ``plan``,
 ``preflight``), mirroring the CLI stubs one layer down. Commands with no
 API equivalent (``validate-sql``, ``data``) leave it ``None``.
 
-The paid monorepo carries a CI check that diffs this catalog against the
-commands its packages actually register — keep entries in sync with the
-real command surface, never ahead of it.
+Paid packages carry a CI check that diffs this catalog against the
+commands they actually register — keep entries in sync with the real
+command surface, never ahead of it.
 """
 
 from __future__ import annotations

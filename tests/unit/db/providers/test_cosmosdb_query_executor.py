@@ -385,14 +385,13 @@ class TestUpsertNativeItem(unittest.TestCase):
 # delete_native_item
 # ---------------------------------------------------------------------------
 #
-# upsert_native_item closed the write half of the schema-snapshot gap; the
-# sibling monorepo's SchemaSnapshotRepository also prunes old snapshots
-# (delete_old_snapshots / _delete_all_snapshots) by rendering a plain SQL
-# DELETE and routing it through execute_statement -- which raises the
-# identical NoSqlWriteNotSupportedError for CosmosDB, since a delete is a
-# write like any other. This is the matching native, non-SQL escape hatch for
-# removing a single document by id, so the monorepo's pruning path can be
-# wired the same way the single-document write was.
+# upsert_native_item closed the write half of the schema-snapshot gap;
+# pruning old snapshots also removes documents by id, and does that today
+# by rendering a plain SQL DELETE and routing it through execute_statement
+# -- which raises the identical NoSqlWriteNotSupportedError for CosmosDB,
+# since a delete is a write like any other. This is the matching native,
+# non-SQL escape hatch for removing a single document by id, so that
+# pruning path can be wired the same way the single-document write was.
 
 
 class TestDeleteNativeItem(unittest.TestCase):

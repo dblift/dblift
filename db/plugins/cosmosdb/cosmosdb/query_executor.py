@@ -181,10 +181,9 @@ class CosmosDbQueryExecutor(BaseQueryExecutor):
         reference and are not a user-authored migration; migrations already
         reach the SDK through ``context.db`` / ``context.raw_client`` (see
         ``execute_statement``'s docstring). This change adds the primitive
-        only — the schema-snapshot repository still needs to be updated, in
-        the sibling monorepo where it lives, to call this instead of
-        building an ``INSERT``; until that happens the gap above is not yet
-        closed end-to-end.
+        only — the schema-snapshot repository still needs to be updated to
+        call this instead of building an ``INSERT``; until that happens the
+        gap above is not yet closed end-to-end.
 
         Args:
             container_name: Name of the Cosmos DB container to upsert into.
@@ -204,11 +203,10 @@ class CosmosDbQueryExecutor(BaseQueryExecutor):
 
         A ``DELETE`` routed through ``execute_statement`` hits the identical
         ``NoSqlWriteNotSupportedError`` a write does, since Cosmos's SQL API
-        is read-only regardless of which DML verb is used. The monorepo's
-        schema-snapshot repository prunes old snapshots
-        (``delete_old_snapshots`` / ``_delete_all_snapshots``) by rendering a
-        SQL ``DELETE`` today; this is the native path for it to use instead,
-        the delete-side counterpart to :meth:`upsert_native_item`'s
+        is read-only regardless of which DML verb is used. Pruning old
+        snapshots removes individual documents by id, and does that today by
+        rendering a SQL ``DELETE``; this is the native path for it to use
+        instead, the delete-side counterpart to :meth:`upsert_native_item`'s
         write-side fix.
 
         Args:
