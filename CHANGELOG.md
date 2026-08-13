@@ -30,6 +30,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
+- **Unused catalog / undo helpers.** Dead `UndoCommand` tag helpers
+  (`_matches_tag_filters`, `_source_tags_by_version`, `_effective_tags`,
+  `_normalize_migration_tags`) — superseded by `apply_filters_to_migrations`;
+  unused `_version_has_undo_script` (Pending no longer promotes to Available
+  for versioned+U*); and unused strict/baseline kwargs on catalog pending
+  helpers. No behavior change for migrate / info / undo / repair / diff.
+
 ## [3.8.0] - 2026-08-12
 
 ### Added
