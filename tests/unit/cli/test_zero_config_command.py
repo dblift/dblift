@@ -1,4 +1,4 @@
-"""A handler-driven, config-independent command dispatch (issue cmodiano/dblift#746).
+"""A handler-driven, config-independent command dispatch.
 
 The OSS-native ``config``/``db`` commands already skip project-config
 loading entirely (see ``cli/main.py::_parse_argv_and_load_config``). A paid

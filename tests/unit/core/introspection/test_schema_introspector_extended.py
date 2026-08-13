@@ -835,10 +835,9 @@ class TestEnrichColumnsWithIdentity(unittest.TestCase):
 
     def test_sql_variant_seed_and_increment_decoded_from_bytes(self):
         """SQL Server's sys.identity_columns.seed_value/increment_value are
-        typed ``sql_variant``. Reproduces run 30342871407 on
-        cmodiano/dblift#claude/diff-snapshot-diagnosis: pymssql returns a
-        sql_variant int as the raw little-endian on-wire bytes rather than
-        a Python int, so an unconverted pass-through leaves
+        typed ``sql_variant``. pymssql returns a sql_variant int as the raw
+        little-endian on-wire bytes rather than a Python int, so an
+        unconverted pass-through leaves
         ``identity_seed``/``identity_increment`` as ``bytes``. Formatting
         that straight into DDL produces
         ``IDENTITY(b'\\x01\\x00\\x00\\x00',b'\\x01\\x00\\x00\\x00')``, which

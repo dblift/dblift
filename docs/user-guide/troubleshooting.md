@@ -343,7 +343,7 @@ If you're still experiencing problems:
 2. **Validate configuration**: Run `dblift db validate-config`
 3. **Diagnose connection**: Run `dblift db check-connection` and `dblift db diagnose-connection`
 4. **Review documentation**: Check the [Commands Reference](commands.md) and [Configuration Guide](configuration.md)
-5. **Open an issue**: [GitHub Issues](https://github.com/cmodiano/dblift/issues)
+5. **Open an issue**: [GitHub Issues](https://github.com/dblift/dblift/issues)
 
 ## Diagnostic Commands
 
