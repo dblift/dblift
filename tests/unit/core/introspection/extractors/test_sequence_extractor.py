@@ -330,21 +330,29 @@ class TestSequenceExtractorFallbackFields(unittest.TestCase):
 
 
 class TestSequenceExtractorErrorHandling(unittest.TestCase):
-    def test_query_exception_returns_empty_list(self):
+    """A failure to read sequences must not be swallowed into ``[]`` --
+    that would be indistinguishable from a schema that genuinely has no
+    sequences. A build with no way to ask declines earlier: in this
+    repository that is ``vendor_queries`` being ``None``, since
+    ``supports_sequences()`` defaults to ``True`` and no bundle here
+    overrides it. See ``test_extractor_read_failure_contract.py`` for the
+    full contract."""
+
+    def test_query_exception_propagates(self):
         vq, _ = _simple_vq([])
         extractor = _make_extractor(dialect="postgresql", vendor_queries=vq)
         extractor.provider.query_executor.execute_query.side_effect = Exception("DB error")
-        seqs = extractor.get_sequences("public")
-        self.assertEqual(seqs, [])
+        with self.assertRaisesRegex(Exception, "DB error"):
+            extractor.get_sequences("public")
 
-    def test_error_tracked_when_result_tracker_set(self):
+    def test_failure_is_tracked_and_still_raised(self):
         vq, _ = _simple_vq([])
         extractor = _make_extractor(dialect="postgresql", vendor_queries=vq)
         extractor.provider.query_executor.execute_query.side_effect = Exception("fail")
         tracker = MagicMock()
         extractor.result_tracker = tracker
-        seqs = extractor.get_sequences("public")
-        self.assertEqual(seqs, [])
+        with self.assertRaisesRegex(Exception, "fail"):
+            extractor.get_sequences("public")
         tracker._track_error.assert_called_once()
 
 

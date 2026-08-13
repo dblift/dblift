@@ -40,9 +40,9 @@ _DEFAULT_TIER_LOAD_ORDER = 1
 
 _features_loaded = False
 
-# Must be updated if a tier package's distribution name changes in the
-# monorepo, or a new tier is added under a different name -- an unlisted
-# distribution is indistinguishable here from "not installed", so
+# Must be updated if a tier package's distribution name changes, or a new
+# tier is added under a different name -- an unlisted distribution is
+# indistinguishable here from "not installed", so
 # _any_tier_distribution_installed silently reverts to the pre-fix
 # never-retries behavior for it.
 _KNOWN_TIER_DISTRIBUTIONS = ("dblift-pro", "dblift-enterprise")

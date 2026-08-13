@@ -41,12 +41,33 @@ class TriggerExtractor(BaseExtractor):
         """
         Get triggers in a schema (optionally filtered by table).
 
+        ``[]`` means the schema genuinely has no triggers, or this build
+        has no way to ask. Three things decline before any query runs:
+
+        * no ``vendor_queries`` registered for the dialect at all;
+        * ``supports_triggers()`` returning ``False`` — the base class
+          default, so an engine without trigger introspection declines
+          here by simply not opting in;
+        * ``get_triggers_query`` returning ``(None, [])``, which the ABC
+          documents as the way to say "not supported".
+
+        Anything raised once the query *does* run is a failure to read —
+        permission denied, a dropped connection, an unreadable catalog
+        view — and is not translated into ``[]``, because an empty export
+        section and an unreadable one must not look alike. The failure is
+        still recorded on the result tracker for callers that enabled it,
+        and then re-raised.
+
         Args:
             schema: Schema name
             table: Optional table name to filter triggers
 
         Returns:
             List of Trigger objects
+
+        Raises:
+            Exception: Whatever the vendor query round trip raises (e.g. a
+                permission or connection error) — recorded, then re-raised.
         """
         if not self.vendor_queries or not self.vendor_queries.supports_triggers():
             return []
@@ -167,4 +188,4 @@ class TriggerExtractor(BaseExtractor):
                     property_name="triggers",
                     exception=e,
                 )
-            return []
+            raise

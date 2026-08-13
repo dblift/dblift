@@ -274,37 +274,6 @@ class TestDetectOutOfOrderMigrations:
         assert "1_2" in result
 
 
-# ---------- _build_repeatable_checksums ----------
-
-
-@pytest.mark.unit
-class TestBuildRepeatableChecksums:
-    def test_maps_script_to_checksum(self, service):
-        migrations = [
-            make_migration(type="REPEATABLE", script_name="R__seed.sql", checksum="abc123"),
-            make_migration(type="REPEATABLE", script_name="R__ref.sql", checksum="def456"),
-        ]
-        result = service._build_repeatable_checksums(migrations)
-        assert result == {"R__seed.sql": "abc123", "R__ref.sql": "def456"}
-
-    def test_ignores_non_repeatable(self, service):
-        migrations = [
-            make_migration(type="SQL", script_name="V1__init.sql", checksum="aaa"),
-        ]
-        assert service._build_repeatable_checksums(migrations) == {}
-
-    def test_latest_checksum_wins(self, service):
-        migrations = [
-            make_migration(type="REPEATABLE", script_name="R__seed.sql", checksum="old"),
-            make_migration(type="REPEATABLE", script_name="R__seed.sql", checksum="new"),
-        ]
-        result = service._build_repeatable_checksums(migrations)
-        assert result == {"R__seed.sql": "new"}
-
-    def test_empty_list(self, service):
-        assert service._build_repeatable_checksums([]) == {}
-
-
 # ---------- _sort_applied_migrations ----------
 
 
@@ -364,7 +333,6 @@ class TestBuildAnalysisContext:
             "reapplied_versions",
             "baseline_version",
             "out_of_order_migrations",
-            "repeatable_checksums",
             "current_version",
             "target_version",
             "scripts_dir",

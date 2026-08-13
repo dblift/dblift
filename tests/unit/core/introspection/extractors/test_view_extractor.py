@@ -352,16 +352,23 @@ class TestGetViewsPostgresqlDialect(unittest.TestCase):
 
 
 class TestGetViewsErrorHandling(unittest.TestCase):
-    def test_query_exception_returns_empty_list(self):
+    """A failure to read views must not be swallowed into ``[]`` -- that
+    would be indistinguishable from a schema that genuinely has no views.
+    A build with no way to ask declines earlier: in this repository that
+    is ``vendor_queries`` being ``None``, since ``supports_views()``
+    defaults to ``True`` and no bundle here overrides it. See
+    ``test_extractor_read_failure_contract.py`` for the full contract."""
+
+    def test_query_exception_propagates(self):
         vq = MagicMock()
         vq.supports_views.return_value = True
         vq.get_views_query.return_value = ("SELECT 1", [])
         extractor = _make_extractor(dialect="postgresql", vendor_queries=vq)
         extractor.provider.query_executor.execute_query.side_effect = Exception("DB error")
-        views = extractor.get_views("public")
-        self.assertEqual(views, [])
+        with self.assertRaisesRegex(Exception, "DB error"):
+            extractor.get_views("public")
 
-    def test_error_tracked_when_result_tracker_set(self):
+    def test_failure_is_tracked_and_still_raised(self):
         vq = MagicMock()
         vq.supports_views.return_value = True
         vq.get_views_query.return_value = ("SELECT 1", [])
@@ -369,8 +376,8 @@ class TestGetViewsErrorHandling(unittest.TestCase):
         extractor.provider.query_executor.execute_query.side_effect = Exception("fail")
         tracker = MagicMock()
         extractor.result_tracker = tracker
-        views = extractor.get_views("public")
-        self.assertEqual(views, [])
+        with self.assertRaisesRegex(Exception, "fail"):
+            extractor.get_views("public")
         tracker._track_error.assert_called_once()
 
 
@@ -525,11 +532,16 @@ class TestGetMaterializedViews(unittest.TestCase):
         self.assertEqual(mvs[0].clustered_index_name, "IX_idx_view")
         self.assertEqual(mvs[0].clustered_index_columns, ["id", "val"])
 
-    def test_error_returns_empty_list(self):
+    def test_read_failure_propagates(self):
+        """A dialect without materialized views declines through
+        ``supports_materialized_views()`` or a ``(None, [])`` query, so an
+        exception here can only mean the read failed -- and must not be
+        downgraded to the ``[]`` a schema with no materialized views
+        produces."""
         extractor = self._make_pg_mv_extractor()
         extractor.provider.query_executor.execute_query.side_effect = Exception("DB fail")
-        mvs = extractor.get_materialized_views("public")
-        self.assertEqual(mvs, [])
+        with self.assertRaisesRegex(Exception, "DB fail"):
+            extractor.get_materialized_views("public")
 
 
 # --- _get_object_column_names() ---

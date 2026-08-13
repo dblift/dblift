@@ -118,9 +118,9 @@ class TestRowLimitStyle:
         convention of declaring its native/canonical form), but a live db2
         12.01.0500 server, probed via
         tests/integration/capabilities/test_engine_capabilities.py
-        ::test_row_limit_clauses_match_the_engine (CI run 30346957093,
-        cmodiano/dblift), accepted a bare trailing ``LIMIT`` too --
-        contradicting the ``select_supports_limit = False`` this dialect
+        ::test_row_limit_clauses_match_the_engine, accepted a bare trailing
+        ``LIMIT`` too -- contradicting the ``select_supports_limit = False``
+        this dialect
         used to declare. The two questions are genuinely different
         ("what do I render" vs. "may an optional probe append a bare LIMIT
         at all") and db2 is the first registered dialect where they

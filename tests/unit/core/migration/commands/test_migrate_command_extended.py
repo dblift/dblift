@@ -24,11 +24,30 @@ from sqlalchemy.exc import OperationalError
 from core.logger.results import MigrateResult, MigrationInfo
 from core.migration.commands.migrate_command import MigrateCommand
 from core.migration.migration import MigrationType
-from core.migration.state.migration_state import MigrationState
+from core.migration.state.migration_display_state import MigrationDisplayState
+from core.migration.state.migration_state import MigrationEntry, MigrationState
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+
+def _pending_entries(objects):
+    return [
+        MigrationEntry(
+            getattr(obj, "script_name", ""),
+            str(getattr(obj, "version", "") or "") or None,
+            getattr(obj, "description", None),
+            getattr(getattr(obj, "type", None), "name", None),
+            MigrationDisplayState.PENDING.value,
+            None,
+        )
+        for obj in objects
+    ]
+
+
+def _pass_through_filters(migrations, **kwargs):
+    return list(migrations)
 
 
 def _make_cmd(
@@ -553,13 +572,16 @@ class TestMigrateCommandExecute(unittest.TestCase):
         history_manager.create_schema_and_history_table.return_value = None
         history_manager.get_applied_migrations.return_value = []
 
+        pending = pending or []
         state = MigrationState()
         state.applied_objects = []
-        state.pending_objects = pending or []
+        state.pending_objects = pending
+        state.pending = _pending_entries(pending)
 
         state_manager = MagicMock()
         state_manager.build_state.return_value = state
         state_manager.get_current_version.return_value = None
+        state_manager.apply_filters_to_migrations.side_effect = _pass_through_filters
 
         migration_helpers = MagicMock()
         migration_helpers.setup_migration_parameters.return_value = (True, None)
@@ -742,11 +764,10 @@ class TestMigrateCommandExecute(unittest.TestCase):
 
 
 class TestStrictModeWarningSupression(unittest.TestCase):
-    """BUG-01: strict mode must not emit a non-strict 'Applying anyway' warning.
+    """Strict mode must fail when selecting out-of-order executable pending.
 
-    When --strict is active, build_state() must receive strict_mode=True so
-    _is_versioned_pending raises ValueError immediately instead of emitting
-    the misleading 'Applying anyway; use --strict' warning.
+    Catalog build no longer raises; migrate raises StrictModeError after
+    selecting Pending objects whose version is <= current.
     """
 
     def _make_strict_cmd(self):
@@ -757,12 +778,13 @@ class TestStrictModeWarningSupression(unittest.TestCase):
         cmd = _make_cmd(config=config)
         return cmd
 
-    def test_build_state_called_with_strict_mode_true(self):
+    def test_build_state_called_without_strict_mode(self):
         cmd = self._make_strict_cmd()
-        state = MagicMock()
+        state = MigrationState()
         state.pending_objects = []
         state.applied_objects = []
         cmd.state_manager.build_state.return_value = state
+        cmd.state_manager.apply_filters_to_migrations.side_effect = _pass_through_filters
 
         with patch.object(cmd, "_initialize_migration_execution", return_value=(True, True, [])):
             with patch.object(cmd, "_update_final_state"):
@@ -770,35 +792,10 @@ class TestStrictModeWarningSupression(unittest.TestCase):
                     cmd.execute(Path("/migrations"))
 
         call_kwargs = cmd.state_manager.build_state.call_args[1]
-        self.assertTrue(
-            call_kwargs.get("strict_mode"),
-            "build_state must be called with strict_mode=True when config.strict_mode=True",
+        self.assertFalse(
+            call_kwargs.get("strict_mode", False),
+            "build_state must not receive strict_mode; migrate enforces it when selecting",
         )
-
-    def test_strict_mode_error_surfaces_directly_without_operation_failed_prefix(self):
-        """StrictModeError from _is_versioned_pending is surfaced directly, not wrapped.
-
-        PR #241 Bugbot: previously the catch was ``except ValueError`` which
-        also swallowed unrelated ValueErrors. Now narrowed to
-        ``StrictModeError`` (a ``ValueError`` subclass).
-        """
-        from core.migration.state.migration_state_manager import StrictModeError
-
-        cmd = self._make_strict_cmd()
-        strict_msg = (
-            "Strict mode: out-of-order migration V1.5__foo.sql "
-            "(version 1.5 <= current version 2). Renumber the script."
-        )
-        cmd.state_manager.build_state.side_effect = StrictModeError(strict_msg)
-
-        with patch.object(cmd, "_initialize_migration_execution", return_value=(True, True, [])):
-            with patch.object(cmd, "_log_command_completion"):
-                result = cmd.execute(Path("/migrations"))
-
-        self.assertFalse(result.success)
-        self.assertEqual(result.error_message, strict_msg)
-        # Must NOT have the "Migration operation failed:" prefix
-        self.assertNotIn("Migration operation failed", result.error_message)
 
     def test_unrelated_value_error_still_gets_operation_failed_prefix(self):
         """Regression guard: a plain ValueError elsewhere in the migrate
@@ -823,10 +820,11 @@ class TestStrictModeWarningSupression(unittest.TestCase):
         config.database.type = "postgresql"
         config.strict_mode = False
         cmd = _make_cmd(config=config)
-        state = MagicMock()
+        state = MigrationState()
         state.pending_objects = []
         state.applied_objects = []
         cmd.state_manager.build_state.return_value = state
+        cmd.state_manager.apply_filters_to_migrations.side_effect = _pass_through_filters
 
         with patch.object(cmd, "_initialize_migration_execution", return_value=(True, True, [])):
             with patch.object(cmd, "_update_final_state"):

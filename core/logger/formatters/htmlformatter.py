@@ -10,6 +10,7 @@ from typing import Any, Dict, List, Optional
 
 import jinja2
 
+from core.logger._formatters import resolve_dblift_package_version
 from core.logger.results import OperationResult
 
 
@@ -234,6 +235,7 @@ class HtmlFormatter:
                 "server_name": self._extract_server_from_result(result),
                 "report_time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                 "logo_path": "",
+                **self._report_metadata(result, datetime.now().strftime("%Y-%m-%d %H:%M:%S")),
             }
 
             # Enrich context with common metadata if available
@@ -303,7 +305,10 @@ class HtmlFormatter:
                         "migrations": cmd_migrations,
                         "sql": getattr(cmd_result, "sql", []),
                         "query_results": getattr(cmd_result, "query_results", []),
-                        "per_migration_journal": cmd_per_migration,
+                        "per_migration_journal": self._enrich_command_journal(
+                            cmd_per_migration, cmd_result
+                        ),
+                        "callbacks": list(getattr(cmd_result, "callbacks", []) or []),
                         "success": cmd.get("success"),
                         "error_message": cmd.get("error_message"),
                         "execution_time": cmd.get("execution_time"),
@@ -335,7 +340,10 @@ class HtmlFormatter:
                     "migrations": migrations,
                     "sql": getattr(result, "sql", []),
                     "query_results": getattr(result, "query_results", []),
-                    "per_migration_journal": per_migration_journal,
+                    "per_migration_journal": self._enrich_command_journal(
+                        per_migration_journal, result
+                    ),
+                    "callbacks": list(getattr(result, "callbacks", []) or []),
                     "success": result.success,
                     "error_message": result.error_message,
                     "execution_time": result.execution_time(),
@@ -425,6 +433,151 @@ class HtmlFormatter:
     def _normalize_command_type(self, command_type: str, result: OperationResult) -> str:
         """Normalize command labels for template usage."""
         return (command_type or "operation").upper()
+
+    def _report_metadata(self, result: OperationResult, timestamp: str) -> Dict[str, Any]:
+        """Fill metastrip fields the template shows as dashes when missing."""
+        version = resolve_dblift_package_version()
+        start = getattr(result, "start_time", None)
+        run_id = start.strftime("%Y-%m-%d %H:%M:%S") if isinstance(start, datetime) else timestamp
+        return {
+            "dblift_version": version or None,
+            "db_user": self._report_db_user(result),
+            "run_id": run_id,
+            "report_generated_at": timestamp,
+        }
+
+    @staticmethod
+    def _report_db_user(result: OperationResult) -> Optional[str]:
+        cli = getattr(result, "cli_options", None) or {}
+        if isinstance(cli, dict):
+            for key in ("db_username", "username", "user", "installed_by"):
+                value = cli.get(key)
+                if value:
+                    return str(value)
+        for migration in getattr(result, "migrations", None) or []:
+            value = getattr(migration, "installed_by", None)
+            if value:
+                return str(value)
+        return None
+
+    def _enrich_command_journal(
+        self, journal_map: Dict[str, Any], result: OperationResult
+    ) -> Dict[str, Any]:
+        """Copy journal summaries, attach result sets, and merge --show-sql rows."""
+        enriched: Dict[str, Any] = {}
+        for script, summary in (journal_map or {}).items():
+            if isinstance(summary, dict):
+                copy = dict(summary)
+                statements = summary.get("statements") or []
+                copy["statements"] = [dict(st) if isinstance(st, dict) else st for st in statements]
+                enriched[script] = copy
+            else:
+                enriched[script] = summary
+        self._merge_sql_visibility(enriched, result)
+        self._attach_query_result_sets(enriched, result)
+        return enriched
+
+    @staticmethod
+    def _sql_statement_dict(statement: str) -> Dict[str, Any]:
+        return {
+            "statement": statement,
+            "execution_time": 0,
+            "success": True,
+            "error": "",
+            "operation": "",
+            "object_type": "",
+            "object_name": "",
+            "result_set": None,
+        }
+
+    def _merge_sql_visibility(self, journal_map: Dict[str, Any], result: OperationResult) -> None:
+        """Surface result.sql under the per-migration accordion when journal is empty."""
+        if not getattr(result, "show_sql", False):
+            return
+        for sql_info in getattr(result, "sql", None) or []:
+            script = getattr(sql_info, "script", None)
+            if not script:
+                continue
+            summary = journal_map.get(script)
+            if summary is None:
+                journal_map[script] = {
+                    "version": getattr(sql_info, "version", None),
+                    "description": getattr(sql_info, "description", "") or "",
+                    "total_execution_time": 0,
+                    "statements": [
+                        self._sql_statement_dict(stmt) for stmt in (sql_info.statements or [])
+                    ],
+                }
+                continue
+            if not isinstance(summary, dict):
+                continue
+            if summary.get("statements"):
+                continue
+            summary["statements"] = [
+                self._sql_statement_dict(stmt) for stmt in (sql_info.statements or [])
+            ]
+            if not summary.get("version"):
+                summary["version"] = getattr(sql_info, "version", None)
+            if not summary.get("description"):
+                summary["description"] = getattr(sql_info, "description", "") or ""
+
+    def _attach_query_result_sets(
+        self, journal_map: Dict[str, Any], result: OperationResult
+    ) -> None:
+        """Key query result tables to the statement that produced them."""
+        if not getattr(result, "show_query_results", False):
+            return
+        queues: Dict[str, List[Dict[str, Any]]] = {}
+        for info in getattr(result, "query_results", None) or []:
+            script = getattr(info, "script", "")
+            for entry in getattr(info, "results", None) or []:
+                queues.setdefault(script, []).append(entry)
+            if script and script not in journal_map:
+                journal_map[script] = {
+                    "version": getattr(info, "version", None),
+                    "description": getattr(info, "description", "") or "",
+                    "total_execution_time": 0,
+                    "statements": [],
+                }
+
+        for script, summary in journal_map.items():
+            if not isinstance(summary, dict):
+                continue
+            statements = summary.setdefault("statements", [])
+            queue = list(queues.get(script, []))
+            claimed: set[int] = set()
+            for stmt in statements:
+                if not isinstance(stmt, dict):
+                    continue
+                sql = stmt.get("statement")
+                match_idx = next(
+                    (
+                        i
+                        for i, entry in enumerate(queue)
+                        if i not in claimed and entry.get("statement") == sql
+                    ),
+                    None,
+                )
+                if match_idx is None:
+                    stmt.setdefault("result_set", None)
+                    continue
+                claimed.add(match_idx)
+                stmt["result_set"] = queue[match_idx]
+            for i, entry in enumerate(queue):
+                if i in claimed:
+                    continue
+                statements.append(
+                    {
+                        "statement": entry.get("statement", ""),
+                        "execution_time": 0,
+                        "success": True,
+                        "error": "",
+                        "operation": "SELECT",
+                        "object_type": "QUERY",
+                        "object_name": "",
+                        "result_set": entry,
+                    }
+                )
 
     def _get_extra_template_context(
         self, result: OperationResult, command_type: str

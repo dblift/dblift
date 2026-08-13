@@ -835,10 +835,9 @@ class TestEnrichColumnsWithIdentity(unittest.TestCase):
 
     def test_sql_variant_seed_and_increment_decoded_from_bytes(self):
         """SQL Server's sys.identity_columns.seed_value/increment_value are
-        typed ``sql_variant``. Reproduces run 30342871407 on
-        cmodiano/dblift#claude/diff-snapshot-diagnosis: pymssql returns a
-        sql_variant int as the raw little-endian on-wire bytes rather than
-        a Python int, so an unconverted pass-through leaves
+        typed ``sql_variant``. pymssql returns a sql_variant int as the raw
+        little-endian on-wire bytes rather than a Python int, so an
+        unconverted pass-through leaves
         ``identity_seed``/``identity_increment`` as ``bytes``. Formatting
         that straight into DDL produces
         ``IDENTITY(b'\\x01\\x00\\x00\\x00',b'\\x01\\x00\\x00\\x00')``, which
@@ -1046,7 +1045,8 @@ class TestEnrichColumnsWithIdentity(unittest.TestCase):
         si.provider.query_executor.execute_query.side_effect = RuntimeError("db fail")
 
         col = SqlColumn(name="id", data_type="INTEGER")
-        si.enrich_columns_with_identity("public", "users", [col])
+        with self.assertRaisesRegex(RuntimeError, "db fail"):
+            si.enrich_columns_with_identity("public", "users", [col])
         si.log.warning.assert_called()
 
     def test_failed_decode_does_not_leave_column_flagged_as_identity(self):
@@ -1206,7 +1206,8 @@ class TestEnrichColumnsWithComputed(unittest.TestCase):
         si.provider.query_executor.execute_query.side_effect = RuntimeError("db fail")
 
         col = SqlColumn(name="total", data_type="REAL")
-        si.enrich_columns_with_computed("public", "orders", [col])
+        with self.assertRaisesRegex(RuntimeError, "db fail"):
+            si.enrich_columns_with_computed("public", "orders", [col])
         si.log.warning.assert_called()
 
 
@@ -1295,7 +1296,8 @@ class TestEnrichTableWithPartitionScheme(unittest.TestCase):
         si.vendor_queries = MagicMock()
         si.vendor_queries.get_partition_scheme_query.side_effect = RuntimeError("fail")
         table = MagicMock()
-        si.enrich_table_with_partition_scheme("public", "t", table)
+        with self.assertRaisesRegex(RuntimeError, "fail"):
+            si.enrich_table_with_partition_scheme("public", "t", table)
         si.log.warning.assert_called()
 
 
@@ -1367,8 +1369,8 @@ class TestGetTablePartitions(unittest.TestCase):
         si.vendor_queries.supports_partitions.return_value = True
         si.vendor_queries.get_table_partitions_query.return_value = ("SELECT ...", [])
         si.provider.query_executor.execute_query.side_effect = RuntimeError("db fail")
-        partitions = si.get_table_partitions("public", "t")
-        self.assertEqual(partitions, [])
+        with self.assertRaisesRegex(RuntimeError, "db fail"):
+            si.get_table_partitions("public", "t")
 
 
 # ---------------------------------------------------------------------------

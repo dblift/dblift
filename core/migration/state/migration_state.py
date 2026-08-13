@@ -11,6 +11,8 @@ import datetime as _dt
 from dataclasses import asdict, dataclass, field
 from typing import Any, Dict, List, Optional
 
+from core.migration.state.migration_display_state import MigrationDisplayState
+
 
 @dataclass(slots=True)
 class ChecksumChange:
@@ -116,8 +118,18 @@ class MigrationState:
 
     @property
     def has_pending(self) -> bool:
-        """True when one or more migrations remain to be applied."""
-        return bool(self.pending)
+        """True when any catalog entry is still executable Pending."""
+        pending_status = MigrationDisplayState.PENDING.value
+        return any(entry.status == pending_status for entry in self.pending)
+
+    def executable_pending_objects(self) -> List[Any]:
+        """Return catalog objects whose paired entry status is Pending."""
+        pending_status = MigrationDisplayState.PENDING.value
+        return [
+            obj
+            for obj, entry in zip(self.pending_objects, self.pending)
+            if entry.status == pending_status
+        ]
 
     @property
     def checksum_change_count(self) -> int:

@@ -102,7 +102,7 @@ DBLift supports the following databases:
 
 - 📖 Check the [User Guide](user-guide/getting-started.md) for common tasks
 - 🔍 Search the documentation using the search bar above
-- 🐛 Found a bug? [Open an issue](https://github.com/cmodiano/dblift/issues)
+- 🐛 Found a bug? [Open an issue](https://github.com/dblift/dblift/issues)
 - 💬 Have questions? Check the [Troubleshooting](user-guide/troubleshooting.md) guide
 
 ---

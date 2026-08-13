@@ -42,8 +42,8 @@ class TestBug01And03PostgresPartialUniqueIndexes(unittest.TestCase):
 # BUG-05: strict mode must raise on out-of-order migrations, non-strict warn
 # ---------------------------------------------------------------------------
 class TestBug05StrictOutOfOrder(unittest.TestCase):
-    def test_state_manager_has_strict_out_of_order_messages(self) -> None:
-        import core.migration.state.migration_state_manager as mod
+    def test_migrate_command_has_strict_out_of_order_messages(self) -> None:
+        import core.migration.commands.migrate_command as mod
 
         src = Path(mod.__file__).read_text()
         self.assertIn("Strict mode: out-of-order migration", src)

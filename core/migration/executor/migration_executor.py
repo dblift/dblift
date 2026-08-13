@@ -369,6 +369,7 @@ class MigrationExecutor:
             recursive=recursive,
             additional_dirs=additional_dirs,
             dir_recursive_map=dir_recursive_map,
+            target_version=target_version,
             tags=tags,
             exclude_tags=exclude_tags,
             versions=versions,

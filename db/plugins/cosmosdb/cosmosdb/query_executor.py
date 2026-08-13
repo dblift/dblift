@@ -181,10 +181,9 @@ class CosmosDbQueryExecutor(BaseQueryExecutor):
         reference and are not a user-authored migration; migrations already
         reach the SDK through ``context.db`` / ``context.raw_client`` (see
         ``execute_statement``'s docstring). This change adds the primitive
-        only — the schema-snapshot repository still needs to be updated, in
-        the sibling monorepo where it lives, to call this instead of
-        building an ``INSERT``; until that happens the gap above is not yet
-        closed end-to-end.
+        only — the schema-snapshot repository still needs to be updated to
+        call this instead of building an ``INSERT``; until that happens the
+        gap above is not yet closed end-to-end.
 
         Args:
             container_name: Name of the Cosmos DB container to upsert into.
@@ -204,11 +203,10 @@ class CosmosDbQueryExecutor(BaseQueryExecutor):
 
         A ``DELETE`` routed through ``execute_statement`` hits the identical
         ``NoSqlWriteNotSupportedError`` a write does, since Cosmos's SQL API
-        is read-only regardless of which DML verb is used. The monorepo's
-        schema-snapshot repository prunes old snapshots
-        (``delete_old_snapshots`` / ``_delete_all_snapshots``) by rendering a
-        SQL ``DELETE`` today; this is the native path for it to use instead,
-        the delete-side counterpart to :meth:`upsert_native_item`'s
+        is read-only regardless of which DML verb is used. Pruning old
+        snapshots removes individual documents by id, and does that today by
+        rendering a SQL ``DELETE``; this is the native path for it to use
+        instead, the delete-side counterpart to :meth:`upsert_native_item`'s
         write-side fix.
 
         Args:
@@ -220,6 +218,43 @@ class CosmosDbQueryExecutor(BaseQueryExecutor):
         """
         container_client = self.connection_manager.get_container_client(container_name)
         container_client.delete_item(item=item_id, partition_key=partition_key)
+
+    def list_native_items(self, container_name: str) -> List[Dict[str, Any]]:
+        """Return every document in *container_name* via a native ``SELECT``.
+
+        Cosmos DB's SQL API genuinely executes a ``SELECT``, unlike
+        MongoDB's ``find()``-backed equivalent, so this issues
+        ``SELECT * FROM c`` directly through the same container-client
+        access pattern as :meth:`upsert_native_item` /
+        :meth:`delete_native_item` above, rather than routing through
+        :meth:`execute_query` (which exists to run caller-supplied SQL, not
+        to hardcode this one shape).
+
+        Ordering is not guaranteed: no ``ORDER BY`` is added, matching
+        ``DocumentStoreProvider.list_native_items``'s contract that callers
+        needing an order impose it themselves.
+
+        The Azure SDK's ``query_items`` iterator can hang indefinitely
+        against a container that does not exist, so this checks existence
+        with :meth:`table_exists` first and returns an empty list for a
+        missing container without ever calling ``query_items`` -- the same
+        "no documents" answer MongoDB's ``find()`` gives for a missing
+        collection, just reached by a guard instead of by iterating.
+
+        Args:
+            container_name: Name of the Cosmos DB container to read.
+
+        Returns:
+            Every document in the container, as plain dicts. Empty list if
+            the container is empty or does not exist.
+        """
+        if not self.table_exists(None, "", container_name):
+            return []
+        container_client = self.connection_manager.get_container_client(container_name)
+        items = container_client.query_items(
+            query="SELECT * FROM c", enable_cross_partition_query=True
+        )
+        return [dict(item) for item in items]
 
     def _normalize_cosmos_sql(self, sql: str, container_name: str) -> str:
         """Normalize Cosmos DB SQL query to use proper container alias.

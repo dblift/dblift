@@ -130,13 +130,17 @@ class TestGetEvents(unittest.TestCase):
         events = extractor.get_events("mydb")
         self.assertFalse(events[0].enabled)
 
-    def test_exception_returns_empty(self):
+    def test_read_failure_propagates(self):
+        """A read failure must not be swallowed into ``[]`` -- that is
+        indistinguishable from genuinely having none. See
+        ``test_schema_orchestrator_partial_failure.py`` for how the
+        orchestrator turns this into a reported partial result."""
         vq = MagicMock()
         vq.get_events_query.return_value = ("SELECT 1", [])
         extractor = _make_extractor(dialect="mysql", vendor_queries=vq)
         extractor.provider.query_executor.execute_query.side_effect = Exception("fail")
-        events = extractor.get_events("mydb")
-        self.assertEqual(events, [])
+        with self.assertRaisesRegex(Exception, "fail"):
+            extractor.get_events("mydb")
 
 
 # --- get_packages() ---
@@ -201,13 +205,17 @@ class TestGetPackages(unittest.TestCase):
         packages = extractor.get_packages("MYSCHEMA")
         self.assertEqual(packages, [])
 
-    def test_exception_returns_empty(self):
+    def test_read_failure_propagates(self):
+        """A read failure must not be swallowed into ``[]`` -- that is
+        indistinguishable from genuinely having none. See
+        ``test_schema_orchestrator_partial_failure.py`` for how the
+        orchestrator turns this into a reported partial result."""
         vq = MagicMock()
         vq.get_packages_query.return_value = ("SELECT 1", [])
         extractor = _make_extractor(dialect="oracle", vendor_queries=vq)
         extractor.provider.query_executor.execute_query.side_effect = Exception("fail")
-        packages = extractor.get_packages("MYSCHEMA")
-        self.assertEqual(packages, [])
+        with self.assertRaisesRegex(Exception, "fail"):
+            extractor.get_packages("MYSCHEMA")
 
 
 # --- get_synonyms() ---
@@ -278,14 +286,18 @@ class TestGetSynonyms(unittest.TestCase):
         self.assertEqual(len(synonyms), 1)
         self.assertEqual(synonyms[0].name, "MY_ALIAS")
 
-    def test_exception_returns_empty(self):
+    def test_read_failure_propagates(self):
+        """A read failure must not be swallowed into ``[]`` -- that is
+        indistinguishable from genuinely having none. See
+        ``test_schema_orchestrator_partial_failure.py`` for how the
+        orchestrator turns this into a reported partial result."""
         vq = MagicMock()
         vq.supports_synonyms.return_value = True
         vq.get_synonyms_query.return_value = ("SELECT 1", [])
         extractor = _make_extractor(dialect="oracle", vendor_queries=vq)
         extractor.provider.query_executor.execute_query.side_effect = Exception("fail")
-        synonyms = extractor.get_synonyms("MYSCHEMA")
-        self.assertEqual(synonyms, [])
+        with self.assertRaisesRegex(Exception, "fail"):
+            extractor.get_synonyms("MYSCHEMA")
 
 
 # --- get_extensions() ---
@@ -378,14 +390,18 @@ class TestGetExtensions(unittest.TestCase):
         self.assertEqual(len(exts), 1)
         self.assertEqual(exts[0].name, "pg_trgm")
 
-    def test_exception_returns_empty(self):
+    def test_read_failure_propagates(self):
+        """A read failure must not be swallowed into ``[]`` -- that is
+        indistinguishable from genuinely having none. See
+        ``test_schema_orchestrator_partial_failure.py`` for how the
+        orchestrator turns this into a reported partial result."""
         vq = MagicMock()
         vq.supports_extensions.return_value = True
         vq.get_extensions_query.return_value = ("SELECT 1", [])
         extractor = _make_extractor(dialect="postgresql", vendor_queries=vq)
         extractor.provider.query_executor.execute_query.side_effect = Exception("fail")
-        exts = extractor.get_extensions()
-        self.assertEqual(exts, [])
+        with self.assertRaisesRegex(Exception, "fail"):
+            extractor.get_extensions()
 
 
 # --- get_foreign_data_wrappers() ---
@@ -741,14 +757,18 @@ class TestGetUserDefinedTypes(unittest.TestCase):
         self.assertNotIn("users", names)
         self.assertIn("custom_type", names)
 
-    def test_exception_returns_empty(self):
+    def test_read_failure_propagates(self):
+        """A read failure must not be swallowed into ``[]`` -- that is
+        indistinguishable from genuinely having none. The orchestrator
+        turns it into a reported partial result; see
+        ``test_schema_orchestrator_partial_failure.py``."""
         vq = MagicMock()
         vq.supports_user_defined_types.return_value = True
         vq.get_user_defined_types_query.return_value = ("SELECT 1", [])
         extractor = _make_extractor(dialect="postgresql", vendor_queries=vq)
         extractor.provider.query_executor.execute_query.side_effect = Exception("fail")
-        udts = extractor.get_user_defined_types("public")
-        self.assertEqual(udts, [])
+        with self.assertRaisesRegex(Exception, "fail"):
+            extractor.get_user_defined_types("public")
 
 
 # --- _fetch_oracle_source_text ---

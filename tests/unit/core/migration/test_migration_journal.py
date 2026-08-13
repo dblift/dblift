@@ -328,6 +328,8 @@ class TestDetermineOperationFromStatement:
             ("TRUNCATE TABLE t", "TRUNCATE"),
             ("GRANT SELECT ON t TO user1", "GRANT"),
             ("REVOKE SELECT ON t FROM user1", "REVOKE"),
+            ("SELECT id FROM users", "SELECT"),
+            ("WITH cte AS (SELECT 1) SELECT * FROM users", "SELECT"),
         ],
     )
     def test_known_operations(self, journal, statement, expected):
@@ -591,3 +593,56 @@ class TestGetMigrationPerformanceSummary:
         summary = j.get_migration_performance_summary(mid)
         op = summary["object_operations"][0]
         assert op["object_type"] == "VIEW"
+
+    def test_performance_summary_attaches_object_fields_to_statements(self):
+        j = MigrationJournal()
+        mid = "V1__init.sql"
+        j.start_migration(mid, details={"version": "1"})
+        j.record_statement_complete("CREATE TABLE users (id INT)", 0, 50)
+        j.record_object_changes(
+            "CREATE TABLE users (id INT)",
+            0,
+            [{"object_type": "TABLE", "object_name": "users", "schema": "public"}],
+        )
+        j.end_migration(mid, success=True)
+
+        stmt = j.get_migration_performance_summary(mid)["statements"][0]
+        assert stmt["operation"] == "CREATE"
+        assert stmt["object_type"] == "TABLE"
+        assert stmt["object_name"] == "users"
+
+    def test_select_statement_classified_as_query(self):
+        j = MigrationJournal()
+        mid = "R__test.sql"
+        j.start_migration(mid)
+        j.record_statement_complete(
+            "SELECT object_type, object_name FROM all_objects WHERE owner = 'X'", 0, 8
+        )
+        j.end_migration(mid, success=True)
+
+        stmt = j.get_migration_performance_summary(mid)["statements"][0]
+        assert stmt["operation"] == "SELECT"
+        assert stmt["object_type"] == "QUERY"
+        assert stmt["object_name"] == "all_objects"
+
+    def test_select_without_from_has_empty_object_name(self):
+        j = MigrationJournal()
+        mid = "R__ping.sql"
+        j.start_migration(mid)
+        j.record_statement_complete("SELECT 1", 0, 2)
+        j.end_migration(mid, success=True)
+
+        stmt = j.get_migration_performance_summary(mid)["statements"][0]
+        assert stmt["operation"] == "SELECT"
+        assert stmt["object_type"] == "QUERY"
+        assert stmt["object_name"] == ""
+
+    def test_repeatable_version_stays_none_in_summary(self):
+        j = MigrationJournal()
+        mid = "R__test.sql"
+        j.start_migration(mid)
+        j.record_statement_complete("SELECT 1 FROM dual", 0, 3)
+        j.end_migration(mid, success=True)
+
+        summary = j.get_migration_performance_summary(mid)
+        assert summary["version"] is None

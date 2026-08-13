@@ -19,9 +19,9 @@ class TestSelectSupportsLimit:
             ("oracle", False),
             # A live db2 12.01.0500 server, probed via
             # tests/integration/capabilities/test_engine_capabilities.py
-            # ::test_row_limit_clauses_match_the_engine (CI run 30346957093,
-            # cmodiano/dblift), accepted a bare trailing ``SELECT ... LIMIT 2``
-            # -- contradicting the ``select_supports_limit = False`` this
+            # ::test_row_limit_clauses_match_the_engine, accepted a bare
+            # trailing ``SELECT ... LIMIT 2`` -- contradicting the
+            # ``select_supports_limit = False`` this
             # dialect declared. Db2 still renders ``FETCH FIRST n ROWS ONLY``
             # as its preferred row_limit_style; it merely ALSO tolerates a
             # bare LIMIT, so the coarser "may I append LIMIT at all for an

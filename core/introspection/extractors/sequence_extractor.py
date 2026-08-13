@@ -26,11 +26,36 @@ class SequenceExtractor(BaseExtractor):
         """
         Get sequences in a schema using vendor-specific queries.
 
+        ``[]`` means the schema genuinely has no sequences, or this build
+        has no way to ask. Three things decline before any query runs, and
+        for sequences the first is the one that fires in practice:
+
+        * no ``vendor_queries`` registered for the dialect at all;
+        * ``supports_sequences()`` returning ``False``. Note the base
+          class default is ``True`` and no catalog-query bundle in this
+          repository overrides it, so this predicate is an extension
+          point rather than something an engine without ``CREATE
+          SEQUENCE`` currently relies on;
+        * ``get_sequences_query`` returning ``(None, [])``. The ABC
+          declares a non-optional query here, so that is out of contract,
+          but it is guarded rather than handed to the driver.
+
+        Anything raised once the query *does* run is a failure to read —
+        permission denied, a dropped connection, an unreadable catalog
+        view — and is not translated into ``[]``, because an empty export
+        section and an unreadable one must not look alike. The failure is
+        still recorded on the result tracker for callers that enabled it,
+        and then re-raised.
+
         Args:
             schema: Schema name
 
         Returns:
             List of Sequence objects
+
+        Raises:
+            Exception: Whatever the vendor query round trip raises (e.g. a
+                permission or connection error) — recorded, then re-raised.
         """
         if not self.vendor_queries or not self.vendor_queries.supports_sequences():
             return []
@@ -39,6 +64,8 @@ class SequenceExtractor(BaseExtractor):
 
         try:
             sql, params = self.vendor_queries.get_sequences_query(schema)
+            if not sql:
+                return []
             query_executor = getattr(self.provider, "query_executor", None)
             if query_executor is not None:
                 results = query_executor.execute_query(self.connection, sql, params)
@@ -135,4 +162,4 @@ class SequenceExtractor(BaseExtractor):
                     property_name="sequences",
                     exception=e,
                 )
-            return []
+            raise

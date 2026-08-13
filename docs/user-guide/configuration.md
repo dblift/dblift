@@ -345,8 +345,9 @@ When detection is enabled, DBLift uses the detected encoding for that file. If d
 
 Sample configuration files for different databases are available in the repository:
 
-- [PostgreSQL Template](https://github.com/cmodiano/dblift/blob/main/dblift-postgresql.yaml.template)
-- [SQL Server Template](https://github.com/cmodiano/dblift/blob/main/dblift-sqlserver.yaml.template)
+- [PostgreSQL Template](https://github.com/dblift/dblift/blob/main/dblift-postgresql.yaml.template)
+- [SQL Server Template](https://github.com/dblift/dblift/blob/main/dblift-sqlserver.yaml.template)
+- [Cosmos DB Template](https://github.com/dblift/dblift/blob/main/dblift-cosmosdb.yaml.template)
 
 ## Secrets Manager Integration
 

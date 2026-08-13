@@ -145,7 +145,7 @@ class MongoDbProvider(NativeProvider):
                 object_type="COLLECTION",
                 drop_sql=self.schema_operations._drop_audit_line(collection_name),
             )
-            for collection_name in self.schema_operations.list_collections()
+            for collection_name in self.schema_operations.list_droppable_collections()
         ]
 
     def drop_object(self, obj: DroppableObject) -> None:

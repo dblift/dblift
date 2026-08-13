@@ -279,9 +279,6 @@ class TestIsVersionedPendingNestedPath:
             executed_scripts={"V001__init.sql"},  # basename only — Path.name must match
             executed_versions=set(),
             undone_versions=set(),
-            current_version=None,
-            highest_applied_version=None,
-            strict_mode=False,
         )
         assert result is False  # Already executed via basename fallback (L612 fix)
 
@@ -294,9 +291,6 @@ class TestIsVersionedPendingNestedPath:
             executed_scripts=set(),
             executed_versions=set(),
             undone_versions=set(),
-            current_version=None,
-            highest_applied_version=None,
-            strict_mode=False,
         )
         assert result is True
 
