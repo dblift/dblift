@@ -7,7 +7,7 @@ Covers:
   - _get_type_name
   - _installed_rank
   - _passes_filters  (tags, exclude_tags, versions, exclude_versions)
-  - _is_versioned_pending  (strict mode, baseline)
+  - _is_versioned_pending  (executed / undone membership)
   - _is_repeatable_pending  (no checksum, changed checksum)
   - _mark_resolved_status  (scripts_available=False path)
   - get_current_version
@@ -288,10 +288,6 @@ class TestIsVersionedPending(unittest.TestCase):
             executed_scripts=set(),
             executed_versions=set(),
             undone_versions=set(),
-            current_version=None,
-            highest_applied_version=None,
-            strict_mode=False,
-            baseline_version=None,
         )
         defaults.update(kwargs)
         return self.mgr._is_versioned_pending(**defaults)
@@ -307,22 +303,6 @@ class TestIsVersionedPending(unittest.TestCase):
 
     def test_undone_version_is_pending(self):
         assert self._call(executed_versions={"1.0"}, undone_versions={"1.0"}) is True
-
-    def test_baseline_covers_older_version(self):
-        """Unresolved scripts at or below baseline stay in the catalog."""
-        assert self._call(version="1.0", baseline_version="2.0") is True
-
-    def test_baseline_does_not_cover_newer_version(self):
-        """Version above baseline is still pending."""
-        assert self._call(version="3.0", baseline_version="2.0") is True
-
-    def test_out_of_order_strict_included_in_catalog(self):
-        """Strict mode must not raise or omit during catalog membership."""
-        assert self._call(version="1.0", current_version="2.0", strict_mode=True) is True
-
-    def test_out_of_order_non_strict_included(self):
-        """Non-strict out-of-order migration still returns True."""
-        assert self._call(version="1.0", current_version="2.0", strict_mode=False) is True
 
 
 # ===========================================================================
