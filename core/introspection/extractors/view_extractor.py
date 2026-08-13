@@ -114,11 +114,39 @@ class ViewExtractor(BaseExtractor):
         """
         Get views in a schema using vendor-specific queries.
 
+        ``[]`` means the schema genuinely has no views, or this build has
+        no way to ask. Three things decline before any query runs, and for
+        views the first is the one that fires in practice:
+
+        * no ``vendor_queries`` registered for the dialect at all;
+        * ``supports_views()`` returning ``False``. Note the base class
+          default is ``True`` and no catalog-query bundle in this
+          repository overrides it, so this predicate is an extension
+          point rather than a route any shipped dialect takes;
+        * ``get_views_query`` returning ``(None, [])``. The ABC declares a
+          non-optional query here, so that is out of contract, but it is
+          guarded rather than handed to the driver.
+
+        Anything raised once the query *does* run is a failure to read —
+        permission denied, a dropped connection, an unreadable catalog
+        view — and is not translated into ``[]``, because an empty export
+        section and an unreadable one must not look alike. The failure is
+        still recorded on the result tracker for callers that enabled it,
+        and then re-raised.
+
+        The per-view lookups inside the loop keep their own handlers: a
+        view whose column list or algorithm could not be read is still
+        exported, with that one property blank.
+
         Args:
             schema: Schema name
 
         Returns:
             List of View objects with their definitions
+
+        Raises:
+            Exception: Whatever the vendor query round trip raises (e.g. a
+                permission or connection error) — recorded, then re-raised.
         """
         if not self.vendor_queries or not self.vendor_queries.supports_views():
             return []
@@ -127,6 +155,8 @@ class ViewExtractor(BaseExtractor):
 
         try:
             sql, params = self.vendor_queries.get_views_query(schema)
+            if not sql:
+                return []
             self.log.debug(f"[{self.dialect.upper()}] Executing views query for schema '{schema}'")
             results = self.provider.query_executor.execute_query(self.connection, sql, params)
             self.log.debug(f"[{self.dialect.upper()}] Views query completed, processing results")
@@ -228,7 +258,7 @@ class ViewExtractor(BaseExtractor):
                     property_name="views",
                     exception=e,
                 )
-            return []
+            raise
 
     def get_materialized_views(self, schema: str) -> List[View]:
         """
@@ -236,11 +266,32 @@ class ViewExtractor(BaseExtractor):
 
         Materialized views are supported by PostgreSQL (9.3+) and Oracle.
 
+        ``[]`` means the schema genuinely has none, or this build has no
+        way to ask. Three things decline before any query runs:
+
+        * no ``vendor_queries`` registered for the dialect at all;
+        * ``supports_materialized_views()`` returning ``False`` — the base
+          class default, so an engine without materialized views declines
+          here by simply not opting in. This is also checked again by
+          ``SchemaIntrospector.get_materialized_views``;
+        * ``get_materialized_views_query`` returning ``(None, [])``, the
+          documented "not supported" return for this optional query.
+
+        Anything raised once the query *does* run is a failure to read and
+        is not translated into ``[]``, because an empty export section and
+        an unreadable one must not look alike.
+
         Args:
             schema: Schema name
 
         Returns:
             List of View objects with materialized=True
+
+        Raises:
+            Exception: Whatever the vendor query round trip raises (e.g. a
+                permission or connection error) — not swallowed. Unlike
+                the other extract methods this one has no result-tracker
+                call to preserve; it never had one.
         """
         if not self.vendor_queries or not self.vendor_queries.supports_materialized_views():
             return []
@@ -320,4 +371,4 @@ class ViewExtractor(BaseExtractor):
         except Exception as e:
             logger.warning(f"Error getting materialized views for schema {schema}: {e}")
             self.log.warning(f"Could not get materialized views for schema {schema}: {e}")
-            return []
+            raise
