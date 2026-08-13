@@ -173,8 +173,8 @@ class MigrationStateService:
 
         # Handle versioned migrations
         if version:
-            # Check if below baseline
-            if baseline_version and self._compare_versions(version, baseline_version) < 0:
+            # Check if at or below baseline (baselined versions must not be Pending)
+            if baseline_version and self._compare_versions(version, baseline_version) <= 0:
                 return MigrationDisplayState.BELOW_BASELINE
 
             # Check if above target

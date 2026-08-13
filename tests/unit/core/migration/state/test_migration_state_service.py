@@ -249,6 +249,33 @@ class TestMigrationStateService:
         result = service.determine_pending_state(migration, context)
         assert result == MigrationDisplayState.BELOW_BASELINE
 
+    def test_determine_pending_state_version_equal_to_baseline(self, service):
+        """Pending versioned migration at baseline is Below baseline, not Pending."""
+        migration = Mock()
+        migration.type = "SQL"
+        migration.version = "2.0.0"
+        context = {"baseline_version": "2.0.0"}
+        result = service.determine_pending_state(migration, context)
+        assert result == MigrationDisplayState.BELOW_BASELINE
+
+    def test_determine_pending_state_version_above_baseline(self, service):
+        """Version above baseline stays Pending when no target is set."""
+        migration = Mock()
+        migration.type = "SQL"
+        migration.version = "3.0.0"
+        context = {"baseline_version": "2.0.0"}
+        result = service.determine_pending_state(migration, context)
+        assert result == MigrationDisplayState.PENDING
+
+    def test_determine_pending_state_above_baseline_and_target(self, service):
+        """Version above both baseline and target is Above target."""
+        migration = Mock()
+        migration.type = "SQL"
+        migration.version = "5.0.0"
+        context = {"baseline_version": "2.0.0", "target_version": "4.0.0"}
+        result = service.determine_pending_state(migration, context)
+        assert result == MigrationDisplayState.ABOVE_TARGET
+
     def test_determine_pending_state_above_target(self, service):
         """Test determine_pending_state for version above target."""
         migration = Mock()
