@@ -125,7 +125,14 @@ class MiscExtractor(BaseExtractor):
 
         except Exception as e:
             self.log.warning(f"Could not get events for schema {schema}: {e}")
-            return []
+            self.track_error(
+                f"Error getting events: {e}",
+                object_type="schema",
+                object_name=schema,
+                property_name="events",
+                exception=e,
+            )
+            raise
 
     def get_packages(self, schema: str) -> List[Any]:
         """
@@ -201,7 +208,14 @@ class MiscExtractor(BaseExtractor):
 
         except Exception as e:
             self.log.warning(f"Could not get packages for schema {schema}: {e}")
-            return []
+            self.track_error(
+                f"Error getting packages: {e}",
+                object_type="schema",
+                object_name=schema,
+                property_name="packages",
+                exception=e,
+            )
+            raise
 
     def get_synonyms(self, schema: str) -> List[Any]:
         """
@@ -274,7 +288,14 @@ class MiscExtractor(BaseExtractor):
         except Exception as e:
             logger.warning(f"Error getting synonyms for schema {schema}: {e}")
             self.log.warning(f"Could not get synonyms for schema {schema}: {e}")
-            return []
+            self.track_error(
+                f"Error getting synonyms: {e}",
+                object_type="schema",
+                object_name=schema,
+                property_name="synonyms",
+                exception=e,
+            )
+            raise
 
     def get_user_defined_types(
         self, schema: str, get_tables_fn: Optional[Callable[..., Any]] = None
@@ -396,7 +417,14 @@ class MiscExtractor(BaseExtractor):
         except Exception as e:
             logger.warning(f"Error getting user-defined types for schema {schema}: {e}")
             self.log.warning(f"Could not get user-defined types for schema {schema}: {e}")
-            return []
+            self.track_error(
+                f"Error getting user_defined_types: {e}",
+                object_type="schema",
+                object_name=schema,
+                property_name="user_defined_types",
+                exception=e,
+            )
+            raise
 
     def get_extensions(self) -> List[Any]:
         """
@@ -468,7 +496,14 @@ class MiscExtractor(BaseExtractor):
         except Exception as e:
             logger.warning(f"Error getting extensions: {e}")
             self.log.warning(f"Could not get extensions: {e}")
-            return []
+            self.track_error(
+                f"Error getting extensions: {e}",
+                object_type="database",
+                object_name=None,
+                property_name="extensions",
+                exception=e,
+            )
+            raise
 
     def get_foreign_data_wrappers(self) -> List[Any]:
         """

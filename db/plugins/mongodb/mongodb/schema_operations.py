@@ -46,15 +46,50 @@ class MongoDbSchemaOperations(BaseSchemaOperations):
     def list_collections(self) -> List[str]:
         """Return every collection name, dblift's own storage included.
 
-        Unfiltered on purpose. Clean drops the whole database — the Cosmos DB
-        plugin's ``list_containers`` behaves identically for the same reason —
-        so filtering here would silently make clean partial.
+        Unfiltered on purpose: ``collection_exists``, ``get_tables`` and
+        ``create_collection_if_not_exists`` all need the true full list, not
+        a clean-specific view of it. Clean itself enumerates through
+        :meth:`list_droppable_collections`, which excludes collections whose
+        name starts with the server-reserved ``system.`` prefix — see that
+        method for why.
         """
         return list(self._database().list_collection_names())
 
     def collection_exists(self, collection_name: str) -> bool:
         """Whether *collection_name* exists."""
         return collection_name in self.list_collections()
+
+    def list_droppable_collections(self) -> List[str]:
+        """Return collection names clean should drop.
+
+        Same as :meth:`list_collections` — dblift's own storage included,
+        since clean's contract is a full reset — except for anything whose
+        name *starts with* ``system.``. That prefix is reserved by MongoDB
+        itself: the server refuses to create a collection under it (an
+        attempt to make ``system.custom`` fails outright), so anything
+        carrying it is server-maintained bookkeeping, never user schema.
+        Relational ``clean`` drops user objects and leaves catalogs like
+        ``pg_catalog`` alone; this is the MongoDB equivalent. A name that
+        merely *contains* ``system.`` — e.g. ``orders_system.log`` — is an
+        ordinary, server-accepted user collection and must still be
+        dropped, which is why this is a prefix check, not a substring one.
+
+        Excluding the prefix is not just tidiness: ``system.views`` stores
+        every view's definition, so dropping it erases the views
+        themselves. A later attempt to drop one of those now-vanished
+        views then reports a spurious failure for an object clean's own
+        earlier step already removed. Skipping ``system.views`` here
+        removes the cause instead of reordering around it.
+
+        Trade-off worth stating: ``system.js`` — the legacy user-writable
+        stored-JavaScript collection — also carries this prefix and is
+        skipped by the same rule, and unlike ``system.views`` it holds
+        user-authored content, not metadata. It survives a clean. That is
+        judged acceptable because dblift manages schema and stored
+        JavaScript is not schema, but it is a real, visible behavioural
+        consequence of this filter.
+        """
+        return [name for name in self.list_collections() if not name.startswith("system.")]
 
     @staticmethod
     def _drop_audit_line(collection_name: str) -> str:
@@ -169,14 +204,15 @@ class MongoDbSchemaOperations(BaseSchemaOperations):
         return ", ".join(["?" for _ in range(count)])
 
     def clean_schema(self, connection: Any, schema: str) -> CleanExecutionSummary:
-        """Drop every collection, dblift's own storage included.
+        """Drop every droppable collection, dblift's own storage included.
 
         A failure on one collection is recorded and the loop continues:
         abandoning the rest would leave the database in a state that is
-        neither the old one nor clean.
+        neither the old one nor clean. See :meth:`list_droppable_collections`
+        for what is excluded and why.
         """
         summary = CleanExecutionSummary()
-        for collection_name in self.list_collections():
+        for collection_name in self.list_droppable_collections():
             try:
                 self._database().drop_collection(collection_name)
             except Exception as drop_error:
@@ -196,7 +232,7 @@ class MongoDbSchemaOperations(BaseSchemaOperations):
     def get_clean_preview(self, schema: str) -> CleanExecutionSummary:
         """Report what :meth:`clean_schema` would drop, dropping nothing."""
         summary = CleanExecutionSummary()
-        for collection_name in self.list_collections():
+        for collection_name in self.list_droppable_collections():
             summary.record_drop(
                 sql=self._drop_audit_line(collection_name),
                 object_type="COLLECTION",

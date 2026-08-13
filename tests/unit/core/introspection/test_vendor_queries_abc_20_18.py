@@ -192,7 +192,8 @@ class TestNoDoubleMiscLogging:
         extractor = self._make_misc_extractor()
         extractor.vendor_queries.get_events_query.side_effect = RuntimeError("boom")
 
-        extractor.get_events("mydb")
+        with pytest.raises(RuntimeError, match="boom"):
+            extractor.get_events("mydb")
 
         assert extractor.log.warning.call_count == 1
 
@@ -202,7 +203,8 @@ class TestNoDoubleMiscLogging:
         extractor.dialect = "oracle"
         extractor.vendor_queries.get_packages_query.side_effect = RuntimeError("boom")
 
-        extractor.get_packages("myschema")
+        with pytest.raises(RuntimeError, match="boom"):
+            extractor.get_packages("myschema")
 
         assert extractor.log.warning.call_count == 1
 

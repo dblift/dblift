@@ -13,6 +13,21 @@ if TYPE_CHECKING:
     from core.migration.journals.migration_journal import MigrationJournal
 
 
+class CallbackExecution:
+    """One lifecycle callback run, recorded for HTML reports."""
+
+    def __init__(self, phase: str, name: str, file: str) -> None:
+        """Store the callback phase, display name, and script path."""
+        self.phase = phase
+        self.name = name
+        self.file = file
+        self.statements: List[str] = []
+        self.result_sets: List[Dict[str, Any]] = []
+        self.status: str = "OK"
+        self.duration_ms: int = 0
+        self.row_count: int = 0
+
+
 # Base class for all operation results
 class OperationResult:
     """Base class for operation results."""
@@ -40,6 +55,7 @@ class OperationResult:
         self.sql: List["MigrationSqlInfo"] = []
         self.show_query_results: bool = False
         self.query_results: List["MigrationQueryResultInfo"] = []
+        self.callbacks: List[CallbackExecution] = []
         # None when not applicable; True/False when a failed migration row was/was not
         # persisted to history after an execution failure.
         self.failed_history_persisted: Optional[bool] = None

@@ -106,6 +106,15 @@ class CosmosDbProvider(NativeProvider):
         """
         self.query_executor.delete_native_item(container_name, item_id, partition_key=partition_key)
 
+    def list_native_items(self, container_name: str) -> List[Dict[str, Any]]:
+        """List documents straight through the Azure SDK, bypassing SQL.
+
+        Thin forward to :meth:`CosmosDbQueryExecutor.list_native_items` --
+        same shape as :meth:`upsert_native_item` / :meth:`delete_native_item`
+        above.
+        """
+        return self.query_executor.list_native_items(container_name)
+
     def create_schema_if_not_exists(self, schema: str) -> None:
         """Create schema if it doesn't exist (Cosmos DB doesn't have schemas)."""
         connection = self._get_connection_or_raise()

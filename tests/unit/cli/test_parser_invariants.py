@@ -191,7 +191,8 @@ def _leaf_subcommand_invocations() -> List[Tuple[str, List[str]]]:
 # Top-level flags registered only by the Pro/Enterprise CLI extension (see
 # cli/_parser_setup.py::_add_registry_flags deferred_specs). They are absent
 # from an OSS-only parser by design; skip the preservation check for them
-# when the extension isn't installed, but still assert it in the monorepo.
+# when the extension isn't installed -- the same invariant is verified
+# separately wherever the extension is present.
 _PRO_ONLY_PARENT_FLAGS = {"--max-snapshots"}
 
 
@@ -241,6 +242,15 @@ def test_import_flyway_accepts_source_table_override():
     args = parser.parse_args(["import-flyway", "--flyway-table", "custom_flyway_history"])
 
     assert args.flyway_table == "custom_flyway_history"
+
+
+def test_info_accepts_target_version():
+    parser = create_parser()
+
+    args = parser.parse_args(["info", "--target-version", "4"])
+
+    assert args.command == "info"
+    assert args.target_version == "4"
 
 
 def test_db_url_flag_documented_in_migrate_help():

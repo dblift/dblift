@@ -229,8 +229,12 @@ class TestEventsErrorHandling:
 
         assert result["events"] == []
         assert result["event_count"] == 0
-        debug_calls = [str(c) for c in si.log.debug.call_args_list]
-        assert any("Failed to fetch events" in c for c in debug_calls)
+        # The failure is collected rather than swallowed: it is reported on
+        # the returned dict so a caller that never enabled result tracking
+        # can still tell an unreadable object type from an absent one.
+        assert [f["object_type"] for f in result["failures"]] == ["events"]
+        error_calls = [str(c) for c in si.log.error.call_args_list]
+        assert any("events" in c for c in error_calls)
 
 
 class TestPackagesErrorHandling:
@@ -242,8 +246,9 @@ class TestPackagesErrorHandling:
 
         assert result["packages"] == []
         assert result["package_count"] == 0
-        debug_calls = [str(c) for c in si.log.debug.call_args_list]
-        assert any("Could not fetch packages" in c for c in debug_calls)
+        assert [f["object_type"] for f in result["failures"]] == ["packages"]
+        error_calls = [str(c) for c in si.log.error.call_args_list]
+        assert any("packages" in c for c in error_calls)
 
 
 class TestIntrospectSchemaErrorPropagation:

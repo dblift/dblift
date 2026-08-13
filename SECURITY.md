@@ -138,4 +138,4 @@ For security issues, use the email address in `pyproject.toml`
 `[project.authors]`. Please use PGP if available; our public key is
 published on the project's website (see `README.md`).
 
-For non-security issues: [GitHub issues](https://github.com/cmodiano/dblift/issues).
+For non-security issues: [GitHub issues](https://github.com/dblift/dblift/issues).

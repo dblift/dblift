@@ -59,6 +59,14 @@ def enrich_table_with_partition_scheme(
 
     except Exception as e:
         si.log.warning(f"Error enriching partition scheme for {schema}.{table_name}: {e}")
+        si._track_error(
+            f"Error getting partition_scheme: {e}",
+            object_type="table",
+            object_name=table_name,
+            property_name="partition_scheme",
+            exception=e,
+        )
+        raise
 
 
 def _normalize_partition_bound(si: Any, value: Any) -> Any:
@@ -181,4 +189,11 @@ def get_table_partitions(si: "SchemaIntrospector", schema: str, table: str) -> L
 
     except Exception as e:
         si.log.warning(f"Could not get partitions for {schema}.{table}: {e}")
-        return []
+        si._track_error(
+            f"Error getting partitions: {e}",
+            object_type="table",
+            object_name=table,
+            property_name="partitions",
+            exception=e,
+        )
+        raise

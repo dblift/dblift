@@ -25,9 +25,15 @@ stub methods (``diff``, ``export_schema``, ``snapshot``, ``plan``,
 ``preflight``), mirroring the CLI stubs one layer down. Commands with no
 API equivalent (``validate-sql``, ``data``) leave it ``None``.
 
-The paid monorepo carries a CI check that diffs this catalog against the
-commands its packages actually register — keep entries in sync with the
-real command surface, never ahead of it.
+``_register_premium_stub_parsers`` (``cli/_parser_setup.py``) decides
+whether to create a stub purely by string-matching catalog names against
+already-registered parser names — it cannot tell a stale entry from a real
+gap. If this catalog drifts from the command surface a paid runtime
+actually registers (a rename, a removal, a name never shipped), a stub
+gets created that either shadows a real command under a different name or
+advertises one that does not exist, breaking the "real parsers always
+win" precedence above. Keep entries in sync with the real command
+surface, never ahead of it.
 """
 
 from __future__ import annotations

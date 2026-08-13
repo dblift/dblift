@@ -1,0 +1,41 @@
+# DBLift Configuration Template for PostgreSQL
+# Copy this file to dblift-postgresql.yaml and update with your actual database credentials
+
+database:
+  url: postgresql+psycopg://localhost:5432/dblift
+  schema: dblift
+  username: your_username
+  password: your_password
+
+migrations:
+  directory: ./migrations
+  recursive: true
+
+  # Alternative: Use 'directories' for multiple directories
+  # directories:
+  #   - ./migrations/core
+  #   - ./migrations/features
+  #
+  # Per-directory recursive settings:
+  # directories:
+  #   - path: ./migrations/core
+  #     recursive: true    # Search subdirectories
+  #   - path: ./migrations/features
+  #     recursive: false   # Only top-level files
+
+logging:
+  level: INFO
+
+# Optional CLI overrides
+log_format: text  # text, json, or html
+
+# Environments — one file for ALL your environments (selected with --env / DBLIFT_ENV).
+# Root sections above are the shared base; each block below overrides only what differs.
+# See docs/user-guide/configuration.md#environments
+# environments:
+#   prod:
+#     database:
+#       url: "${DBLIFT_PROD_URL}"
+#   uat:
+#     database:
+#       url: "${DBLIFT_UAT_URL}"

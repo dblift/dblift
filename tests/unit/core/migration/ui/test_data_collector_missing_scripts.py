@@ -168,12 +168,9 @@ def test_undone_migration_still_detected_with_resolved_scripts():
     assert sql_row["state"] == "Undone"
 
 
-def test_pending_migration_with_undo_script_shows_available():
-    """Regression guard: _determine_pending_migration_status used to be a
-    stub that always returned PENDING, so a pending versioned migration with
-    an undo companion script on disk rendered as Pending instead of
-    Available. The collector must now surface MigrationStateService's
-    determine_pending_state() result instead."""
+def test_pending_migration_with_undo_script_shows_pending():
+    """Available is the undo-script state only. A versioned pending script
+    stays Pending even when a U* companion exists on disk."""
     import tempfile
     from pathlib import Path
 
@@ -198,4 +195,4 @@ def test_pending_migration_with_undo_script_shows_available():
             scripts_dir=scripts_dir,
         )
 
-    assert rows[0]["state"] == "Available"
+    assert rows[0]["state"] == "Pending"

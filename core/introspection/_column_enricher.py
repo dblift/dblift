@@ -195,6 +195,14 @@ def enrich_columns_with_computed(
             f"Could not enrich computed columns with detailed metadata "
             f"for {schema}.{table}: {e}"
         )
+        si._track_error(
+            f"Error getting computed_columns: {e}",
+            object_type="table",
+            object_name=table,
+            property_name="computed_columns",
+            exception=e,
+        )
+        raise
 
 
 def enrich_columns_with_identity(
@@ -360,3 +368,11 @@ def enrich_columns_with_identity(
             f"Could not enrich identity columns with detailed metadata "
             f"for {schema}.{table}: {e}"
         )
+        si._track_error(
+            f"Error getting identity_columns: {e}",
+            object_type="table",
+            object_name=table,
+            property_name="identity_columns",
+            exception=e,
+        )
+        raise

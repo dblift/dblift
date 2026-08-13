@@ -9,6 +9,7 @@ from core.exceptions import NoSqlQueryLanguageUnsupportedError
 from db.plugins.mongodb.config import MongoDbConfig
 from db.plugins.mongodb.provider import MongoDbProvider
 from db.plugins.nosql_base import DocumentStoreProvider
+from db.provider_interfaces import DroppableObject
 
 
 def _provider():
@@ -84,6 +85,34 @@ def test_clean_delegates_to_schema_operations():
     provider.schema_operations = MagicMock()
     provider.clean_schema("ignored")
     provider.schema_operations.clean_schema.assert_called_once()
+
+
+def test_list_droppable_objects_uses_the_filtered_collection_list():
+    """``clean`` must enumerate through ``list_droppable_collections``, not
+    the unfiltered ``list_collections`` — dropping ``system.views`` destroys
+    every view definition before clean reaches them, then reports a
+    spurious "Failed to drop" for a view its own earlier step erased."""
+    provider = _provider()
+    provider.schema_operations = MagicMock()
+    provider.schema_operations.list_droppable_collections.return_value = ["users"]
+    provider.schema_operations._drop_audit_line.return_value = "database.drop_collection('users')"
+
+    objects = provider.list_droppable_objects("ignored")
+
+    assert [obj.name for obj in objects] == ["users"]
+    provider.schema_operations.list_collections.assert_not_called()
+
+
+def test_drop_object_still_raises_when_nothing_was_dropped():
+    """``False`` from ``drop_collection`` must keep meaning failure — this
+    change only stops it from firing on collections clean should never have
+    tried to drop in the first place."""
+    provider = _provider()
+    provider.schema_operations = MagicMock()
+    provider.schema_operations.drop_collection.return_value = False
+
+    with pytest.raises(RuntimeError, match="Failed to drop collection"):
+        provider.drop_object(DroppableObject(name="ghost", object_type="COLLECTION", drop_sql=""))
 
 
 def test_upsert_native_item_writes_a_document():

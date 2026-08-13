@@ -306,11 +306,36 @@ class ProcedureExtractor(BaseExtractor):
         """
         Get stored procedures in a schema.
 
+        ``[]`` means the schema genuinely has no procedures, or this build
+        has no way to ask. Three things decline before any query runs:
+
+        * no ``vendor_queries`` registered for the dialect at all;
+        * ``supports_procedures()`` returning ``False`` — the base class
+          default, so an engine without stored procedures declines here by
+          simply not opting in;
+        * ``get_procedures_query`` returning ``(None, [])``, which the ABC
+          documents as the way to say "not supported".
+
+        Anything raised once the query *does* run is a failure to read —
+        permission denied, a dropped connection, an unreadable catalog
+        view — and is not translated into ``[]``, because an empty export
+        section and an unreadable one must not look alike. The failure is
+        still recorded on the result tracker for callers that enabled it,
+        and then re-raised.
+
+        The per-procedure lookups inside the loop keep their own handlers:
+        a procedure whose parameters or full DDL could not be read is
+        still exported with that one property blank.
+
         Args:
             schema: Schema name
 
         Returns:
             List of Procedure objects
+
+        Raises:
+            Exception: Whatever the vendor query round trip raises (e.g. a
+                permission or connection error) — recorded, then re-raised.
         """
         from db.provider_registry import ProviderRegistry
 
@@ -449,7 +474,7 @@ class ProcedureExtractor(BaseExtractor):
                     property_name="procedures",
                     exception=e,
                 )
-            return []
+            raise
 
     def get_functions(
         self, schema: str, get_user_defined_types_fn: Optional[Callable[..., Any]] = None
@@ -457,12 +482,37 @@ class ProcedureExtractor(BaseExtractor):
         """
         Get functions in a schema.
 
+        ``[]`` means the schema genuinely has no functions, or this build
+        has no way to ask. Three things decline before any query runs:
+
+        * no ``vendor_queries`` registered for the dialect at all;
+        * ``supports_functions()`` returning ``False`` — the base class
+          default, so an engine without user functions declines here by
+          simply not opting in;
+        * ``get_functions_query`` returning ``(None, [])``, which the ABC
+          documents as the way to say "not supported".
+
+        Anything raised once the query *does* run is a failure to read —
+        permission denied, a dropped connection, an unreadable catalog
+        view — and is not translated into ``[]``, because an empty export
+        section and an unreadable one must not look alike. The failure is
+        still recorded on the result tracker for callers that enabled it,
+        and then re-raised.
+
+        The per-function lookups inside the loop keep their own handlers:
+        a function whose arguments, definition or owning type could not be
+        read is still exported with that one property blank.
+
         Args:
             schema: Schema name
             get_user_defined_types_fn: Optional function to get UDTs for filtering (DB2)
 
         Returns:
             List of Procedure objects (with is_function=True)
+
+        Raises:
+            Exception: Whatever the vendor query round trip raises (e.g. a
+                permission or connection error) — recorded, then re-raised.
         """
         from db.provider_registry import ProviderRegistry
 
@@ -818,4 +868,4 @@ class ProcedureExtractor(BaseExtractor):
                     property_name="functions",
                     exception=e,
                 )
-            return []
+            raise

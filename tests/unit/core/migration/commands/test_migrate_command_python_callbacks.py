@@ -10,6 +10,8 @@ import pytest
 
 from core.migration.commands.migrate_command import MigrateCommand
 from core.migration.migration import MigrationType
+from core.migration.state.migration_display_state import MigrationDisplayState
+from core.migration.state.migration_state import MigrationEntry, MigrationState
 
 
 @pytest.mark.unit
@@ -34,11 +36,24 @@ def test_python_migrations_trigger_versioned_callbacks(monkeypatch):
         version="1",
         type=MigrationType.PYTHON,
     )
-    command.state_manager.build_state.return_value = SimpleNamespace(
+    command.state_manager.build_state.return_value = MigrationState(
         applied_objects=[],
         pending_objects=[python_migration],
+        pending=[
+            MigrationEntry(
+                python_migration.script_name,
+                python_migration.version,
+                None,
+                "PYTHON",
+                MigrationDisplayState.PENDING.value,
+                None,
+            )
+        ],
     )
     command.state_manager.get_current_version.return_value = None
+    command.state_manager.apply_filters_to_migrations.side_effect = (
+        lambda migrations, **kwargs: list(migrations)
+    )
 
     result = command.execute(Path("migrations"))
 

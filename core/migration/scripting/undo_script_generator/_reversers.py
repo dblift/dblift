@@ -8,12 +8,29 @@ reversed SQL statements for the undo script.
 
 import re
 import traceback
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Tuple
 
 from sqlglot import exp, parse_one
 
 from core.migration.scripting.undo_script_generator._models import UndoStatement
+from core.migration.sql.sql_analyzer import DEFAULT_SCHEMA_PLACEHOLDER
 from core.sql_model.base import SqlStatementType
+
+
+def _split_extracted_object_name(obj_name: str, schema: Optional[str]) -> Tuple[str, Optional[str]]:
+    """Split ``extract_objects``'s ``"<schema>.<name>"`` into its two parts.
+
+    That function reports one combined string, using the literal
+    ``default_schema`` when the statement named no schema. Both are internal to
+    it, and quoting the combined string as a single identifier produces
+    ``DROP SEQUENCE "default_schema.users_seq"`` -- an object that never exists.
+    """
+    if "." not in obj_name:
+        return obj_name, schema
+    prefix, _, bare_name = obj_name.rpartition(".")
+    if prefix == DEFAULT_SCHEMA_PLACEHOLDER:
+        return bare_name, schema
+    return bare_name, schema or prefix
 
 
 class _UndoReversersMixin:
@@ -198,8 +215,9 @@ class _UndoReversersMixin:
         else:
             obj = objects[0]
             obj_type = obj.get("object_type", "UNKNOWN").upper()
-            obj_name = obj.get("object_name", "")
-            schema = obj.get("schema")
+            obj_name, schema = _split_extracted_object_name(
+                obj.get("object_name", ""), obj.get("schema")
+            )
 
         # Generate DROP statement based on object type
         if obj_type in ("TABLE", "INDEX", "VIEW", "SEQUENCE", "TRIGGER", "PROCEDURE", "FUNCTION"):

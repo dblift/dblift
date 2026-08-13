@@ -140,15 +140,17 @@ class TestGetIndexes:
 
         assert result == []
 
-    def test_exception_path_returns_empty_list(self):
+    def test_exception_path_propagates(self):
+        """A failure to read indexes must not be swallowed into ``[]`` --
+        that would be indistinguishable from a table that genuinely has no
+        indexes. See ``test_index_extractor_read_failure_contract.py`` for
+        the full contract."""
         vq = MagicMock()
         vq.get_indexes_query.side_effect = RuntimeError("DB error")
         ext = _make_extractor(dialect="postgresql", vendor_queries=vq)
 
-        result = ext.get_indexes("s", "t")
-
-        assert result == []
-        ext.log.warning.assert_called_once()
+        with pytest.raises(RuntimeError, match="DB error"):
+            ext.get_indexes("s", "t")
 
     def test_without_vendor_queries_and_metadata_none_returns_empty_list(self):
         ext = _make_extractor(dialect="postgresql", vendor_queries=None)

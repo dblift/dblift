@@ -349,10 +349,20 @@ def check_repeatable_migrations(
                 script.script_name, "", script.checksum if script.checksum is not None else 0
             )
     if result.repeatable_migrations_to_reapply:
-        modified_count = len(result.repeatable_migrations_to_reapply)
-        # Only show this message for commands where it makes sense (migrate and info)
+        first_time = [
+            rep for rep in result.repeatable_migrations_to_reapply if not rep["database_checksum"]
+        ]
+        to_reapply = [
+            rep for rep in result.repeatable_migrations_to_reapply if rep["database_checksum"]
+        ]
+        # Only show these messages for commands where they make sense (migrate and info)
         if command in ["migrate", "info"]:
-            mv.log.info(f"Found {modified_count} repeatable migration(s) that need to be reapplied")
+            if first_time:
+                mv.log.info(f"Found {len(first_time)} pending repeatable migration(s)")
+            if to_reapply:
+                mv.log.info(
+                    f"Found {len(to_reapply)} repeatable migration(s) that need to be reapplied"
+                )
         for rep in result.repeatable_migrations_to_reapply:
             if rep["database_checksum"]:
                 mv.log.debug(

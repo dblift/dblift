@@ -14,12 +14,31 @@ class IndexExtractor(BaseExtractor):
         """
         Get all indexes for a table.
 
+        ``[]`` means the table genuinely has no indexes (the vendor query
+        ran and returned zero rows) or the dialect has no index-introspection
+        support at all (no ``vendor_queries``). A failure to *read* indexes
+        — permission denied, a dropped connection, an unreadable catalog view
+        — is not translated into ``[]``: no dialect represents "this table
+        has no indexes" as an exception, so any exception raised while
+        running the vendor query propagates to the caller instead of being
+        caught here.
+
+        The failure is still recorded on the result tracker for callers
+        that enabled it, and then re-raised. Recording and propagating are
+        not alternatives: a caller that opted into result tracking needs
+        the failure counted in its quality verdict, and a caller that did
+        not still needs it to surface rather than becoming ``[]``.
+
         Args:
             schema: Schema name
             table: Table name
 
         Returns:
             List of Index objects
+
+        Raises:
+            Exception: Whatever the vendor query round trip raises (e.g. a
+                permission or connection error) — recorded, then re-raised.
         """
         self.ensure_metadata()
         if not self.vendor_queries:
@@ -27,9 +46,7 @@ class IndexExtractor(BaseExtractor):
 
         try:
             indexes_data = self._get_indexes_from_vendor_queries(schema, table)
-
         except Exception as e:
-            self.log.warning(f"Could not get indexes for {schema}.{table}: {e}")
             self.track_error(
                 f"Error getting indexes: {e}",
                 object_type="table",
@@ -37,7 +54,7 @@ class IndexExtractor(BaseExtractor):
                 property_name="indexes",
                 exception=e,
             )
-            return []
+            raise
 
         # Convert to Index objects
         return self._build_index_objects(schema, table, indexes_data)

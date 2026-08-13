@@ -1,9 +1,10 @@
 """Migration journal — thread-safe per-migration event log for statements, timings, and failures."""
 
+import re
 import threading
 from datetime import datetime
 from enum import Enum
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 
 class EntryType(Enum):
@@ -338,8 +339,89 @@ class MigrationJournal:
             return "GRANT"
         elif stmt_upper.startswith("REVOKE"):
             return "REVOKE"
+        elif stmt_upper.startswith("SELECT") or stmt_upper.startswith("WITH"):
+            return "SELECT"
         else:
             return "UNKNOWN"
+
+    @staticmethod
+    def _normalize_object_type(object_type: Any) -> str:
+        """Unwrap enum-like object types to a plain string."""
+        if hasattr(object_type, "value"):
+            object_type = object_type.value
+        return str(object_type)  # lint: allow-enum-str
+
+    @staticmethod
+    def _parse_affected_object(obj: Any) -> Tuple[str, str, str]:
+        """Return (object_type, object_name, schema) from a dict or SqlObject."""
+        if isinstance(obj, dict):
+            object_name = obj.get("object_name", "unknown")
+            schema = obj.get("schema", "") or ""
+            object_type = obj.get("object_type", "UNKNOWN")
+        else:
+            object_name = getattr(obj, "name", "unknown")
+            schema = getattr(obj, "schema", "") or ""
+            object_type = getattr(obj, "object_type", "UNKNOWN")
+        object_type_str = MigrationJournal._normalize_object_type(object_type)
+        object_name_str = str(object_name or "")
+        schema_str = str(schema)
+        if schema_str and object_name_str.startswith(f"{schema_str}."):
+            object_name_str = object_name_str[len(schema_str) + 1 :]
+        return object_type_str, object_name_str, schema_str
+
+    @staticmethod
+    def _primary_relation_from_select(statement: str) -> str:
+        """Return the first FROM relation for a query, or empty if none."""
+        match = re.search(
+            r"\bFROM\s+(?!\()(?P<name>(?:\"[^\"]+\"|`[^`]+`|\[[^\]]+\]|[A-Za-z_][\w$]*)"
+            r"(?:\s*\.\s*(?:\"[^\"]+\"|`[^`]+`|\[[^\]]+\]|[A-Za-z_][\w$]*))*)",
+            statement or "",
+            re.IGNORECASE,
+        )
+        if not match:
+            return ""
+        parts = re.split(r"\s*\.\s*", match.group("name"))
+        last = parts[-1].strip('"`[]')
+        if last.upper() == "DUAL":
+            return ""
+        return last
+
+    def _object_change_lookups(
+        self, entries: List[JournalEntry]
+    ) -> Tuple[Dict[int, Any], Dict[str, Any]]:
+        """Index first affected object by statement_index, then by SQL text."""
+        by_index: Dict[int, Any] = {}
+        by_text: Dict[str, Any] = {}
+        for entry in entries:
+            if entry.entry_type != EntryType.OBJECT_CHANGE or not entry.details:
+                continue
+            objects_affected = entry.details.get("objects_affected") or []
+            if not objects_affected:
+                continue
+            first = objects_affected[0]
+            by_index[entry.statement_index] = first
+            if entry.statement:
+                by_text.setdefault(entry.statement, first)
+        return by_index, by_text
+
+    def _annotate_statement(
+        self,
+        entry: JournalEntry,
+        by_index: Dict[int, Any],
+        by_text: Dict[str, Any],
+    ) -> Tuple[str, str, str]:
+        """Return (operation, object_type, object_name) for a completed statement."""
+        obj = by_index.get(entry.statement_index)
+        if obj is None:
+            obj = by_text.get(entry.statement)
+        if obj is not None:
+            object_type, object_name, _schema = self._parse_affected_object(obj)
+            operation = self._determine_operation_from_statement(entry.statement, object_type)
+            return operation, object_type, object_name
+        operation = self._determine_operation_from_statement(entry.statement)
+        if operation == "SELECT":
+            return "SELECT", "QUERY", self._primary_relation_from_select(entry.statement)
+        return operation, "", ""
 
     def get_performance_stats_by_object_type(self, migration_id: str) -> Dict[str, Any]:
         """Get performance statistics grouped by object type.
@@ -515,6 +597,21 @@ class MigrationJournal:
                     slowest_time = entry.execution_time
                     slowest_statement = entry.statement
 
+        by_index, by_text = self._object_change_lookups(entries)
+
+        def _statement_dict(entry: JournalEntry) -> Dict[str, Any]:
+            operation, object_type, object_name = self._annotate_statement(entry, by_index, by_text)
+            return {
+                "statement": entry.statement,
+                "execution_time": entry.execution_time,
+                "details": entry.details,
+                "success": entry.success,
+                "error": entry.error_message,
+                "operation": operation,
+                "object_type": object_type,
+                "object_name": object_name,
+            }
+
         if not statement_times:
             return {
                 "migration_id": actual_migration_id,
@@ -540,13 +637,7 @@ class MigrationJournal:
             "min_statement_time": min(statement_times),
             "slowest_statement": slowest_statement,
             "statements": [
-                {
-                    "statement": entry.statement,
-                    "execution_time": entry.execution_time,
-                    "details": entry.details,
-                    "success": entry.success,
-                    "error": entry.error_message,
-                }
+                _statement_dict(entry)
                 for entry in entries
                 if entry.entry_type == EntryType.STATEMENT_COMPLETE
             ],

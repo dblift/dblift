@@ -287,7 +287,7 @@ class TestExtractObjects(unittest.TestCase):
         sql = "CREATE TABLE myschema.users (id INT)"
         objects = self.analyzer.extract_objects(sql)
         self.assertEqual(len(objects), 1)
-        self.assertEqual(objects[0]["object_type"], "Table")
+        self.assertEqual(objects[0]["object_type"], "TABLE")
         self.assertIn("users", objects[0]["object_name"])
 
     def test_create_table_without_schema_uses_default(self):
@@ -300,31 +300,31 @@ class TestExtractObjects(unittest.TestCase):
         sql = "ALTER TABLE myschema.users ADD COLUMN email VARCHAR(255)"
         objects = self.analyzer.extract_objects(sql)
         self.assertEqual(len(objects), 1)
-        self.assertEqual(objects[0]["object_type"], "Table")
+        self.assertEqual(objects[0]["object_type"], "TABLE")
 
     def test_create_view(self):
         sql = "CREATE VIEW myschema.active_users AS SELECT * FROM users"
         objects = self.analyzer.extract_objects(sql)
         self.assertEqual(len(objects), 1)
-        self.assertEqual(objects[0]["object_type"], "View")
+        self.assertEqual(objects[0]["object_type"], "VIEW")
 
     def test_create_or_replace_view(self):
         sql = "CREATE OR REPLACE VIEW v AS SELECT 1"
         objects = self.analyzer.extract_objects(sql)
         self.assertEqual(len(objects), 1)
-        self.assertEqual(objects[0]["object_type"], "View")
+        self.assertEqual(objects[0]["object_type"], "VIEW")
 
     def test_create_index(self):
         sql = "CREATE INDEX idx_email ON users(email)"
         objects = self.analyzer.extract_objects(sql)
         self.assertEqual(len(objects), 1)
-        self.assertEqual(objects[0]["object_type"], "Index")
+        self.assertEqual(objects[0]["object_type"], "INDEX")
 
     def test_create_unique_index(self):
         sql = "CREATE UNIQUE INDEX idx_unique ON myschema.users(email)"
         objects = self.analyzer.extract_objects(sql)
         self.assertEqual(len(objects), 1)
-        self.assertEqual(objects[0]["object_type"], "Index")
+        self.assertEqual(objects[0]["object_type"], "INDEX")
         self.assertIn("users", objects[0]["on_object"])
 
     def test_drop_table(self):
@@ -333,10 +333,12 @@ class TestExtractObjects(unittest.TestCase):
         self.assertEqual(len(objects), 1)
         self.assertEqual(objects[0]["object_type"].upper(), "TABLE")
 
-    def test_insert_returns_empty(self):
+    def test_insert_reports_target_table(self):
         sql = "INSERT INTO t VALUES (1)"
         objects = self.analyzer.extract_objects(sql)
-        self.assertEqual(objects, [])
+        self.assertEqual(len(objects), 1)
+        self.assertEqual(objects[0]["object_type"], "TABLE")
+        self.assertIn("t", objects[0]["object_name"])
 
     def test_select_returns_empty(self):
         sql = "SELECT 1"
@@ -363,19 +365,11 @@ class TestAnalyzeStatement(unittest.TestCase):
         result = self.analyzer.analyze_statement(sql)
         self.assertEqual(result["type"], "QUERY")
 
-    def test_analyze_with_parser_error_returns_fallback(self):
-        self.analyzer.parser_factory = MagicMock()
-        self.analyzer.parser_factory.get_parser.side_effect = Exception("parser unavailable")
-        sql = "SELECT 1"
+    def test_analyze_reports_the_extraction_it_actually_used(self):
+        sql = "CREATE TABLE t (id INT)"
         result = self.analyzer.analyze_statement(sql)
-        self.assertIn("type", result)
-
-    def test_analyze_uses_cached_parser(self):
-        mock_parser = MagicMock()
-        self.analyzer.parser = mock_parser
-        sql = "SELECT 1"
-        self.analyzer.analyze_statement(sql)
-        mock_parser.parse.assert_called_once_with(sql)
+        self.assertEqual(result["parsed_with"], "regex")
+        self.assertEqual(result["objects"], self.analyzer.extract_objects(sql))
 
     def test_analyze_error_returns_invalid_result(self):
         self.analyzer._extract_objects_regex = MagicMock(side_effect=Exception("regex fail"))

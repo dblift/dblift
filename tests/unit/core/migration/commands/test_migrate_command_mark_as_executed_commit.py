@@ -10,6 +10,8 @@ import pytest
 
 from core.migration.commands.migrate_command import MigrateCommand
 from core.migration.migration import MigrationType
+from core.migration.state.migration_display_state import MigrationDisplayState
+from core.migration.state.migration_state import MigrationEntry, MigrationState
 
 
 def _command_with_pending_migration(monkeypatch, provider: MagicMock) -> MigrateCommand:
@@ -25,18 +27,30 @@ def _command_with_pending_migration(monkeypatch, provider: MagicMock) -> Migrate
     command._log_command_completion = MagicMock()
     command.state_manager = MagicMock()
     command.state_manager.get_current_version.return_value = None
-    command.state_manager.build_state.return_value = SimpleNamespace(
+    pending = SimpleNamespace(
+        script_name="V2__second.sql",
+        version="2",
+        description="second",
+        type=MigrationType.SQL,
+        checksum=123,
+        content="CREATE TABLE ${TABLE_NAME} (id INT);",
+    )
+    command.state_manager.build_state.return_value = MigrationState(
         applied_objects=[],
-        pending_objects=[
-            SimpleNamespace(
-                script_name="V2__second.sql",
-                version="2",
-                description="second",
-                type=MigrationType.SQL,
-                checksum=123,
-                content="CREATE TABLE ${TABLE_NAME} (id INT);",
+        pending_objects=[pending],
+        pending=[
+            MigrationEntry(
+                pending.script_name,
+                pending.version,
+                pending.description,
+                "SQL",
+                MigrationDisplayState.PENDING.value,
+                None,
             )
         ],
+    )
+    command.state_manager.apply_filters_to_migrations.side_effect = (
+        lambda migrations, **kwargs: list(migrations)
     )
     return command
 
