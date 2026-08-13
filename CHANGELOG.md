@@ -24,6 +24,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   history row (`"732078983" != 732078983`). Comparison now goes through
   `normalize_migration_checksum`, and the duplicate stringifying indexer
   is gone.
+- **First-time repeatables were logged as needing reapply.** `migrate` /
+  `info` now say "pending repeatable migration(s)" when the script has
+  never been applied; "need to be reapplied" is only for checksum drift.
 
 ### Removed
 

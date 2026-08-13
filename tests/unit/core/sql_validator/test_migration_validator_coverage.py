@@ -1260,6 +1260,32 @@ class TestCheckRepeatableMigrations(unittest.TestCase):
         self.assertEqual(len(result.repeatable_migrations_to_reapply), 1)
         self.assertEqual(result.repeatable_migrations_to_reapply[0]["database_checksum"], "")
 
+    def test_not_applied_logs_pending_not_reapplied(self):
+        from core.sql_validator.migration_validator import ValidationResult
+
+        v, _, _, log = _make_validator()
+        result = ValidationResult()
+        v._check_repeatable_migrations([self._rep_script()], [], result, command="migrate")
+        messages = [call.args[0] for call in log.info.call_args_list]
+        self.assertTrue(any("pending repeatable" in msg for msg in messages), messages)
+        self.assertFalse(any("need to be reapplied" in msg for msg in messages), messages)
+
+    def test_applied_and_changed_logs_reapplied(self):
+        from core.sql_validator.migration_validator import ValidationResult
+
+        v, sm, _, log = _make_validator()
+        result = ValidationResult()
+        sm.has_script_changed.return_value = True
+        v._check_repeatable_migrations(
+            [self._rep_script(checksum=200)],
+            [self._applied_rep(success=True, checksum=100)],
+            result,
+            command="migrate",
+        )
+        messages = [call.args[0] for call in log.info.call_args_list]
+        self.assertTrue(any("need to be reapplied" in msg for msg in messages), messages)
+        self.assertFalse(any("pending repeatable" in msg for msg in messages), messages)
+
     def test_applied_and_changed_adds_to_reapply(self):
         from core.sql_validator.migration_validator import ValidationResult
 
