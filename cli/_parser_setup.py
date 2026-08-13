@@ -253,7 +253,10 @@ def _add_diff_and_target_options(
     migrate_parser.add_argument("--target-version", help="Target version to migrate to")
     undo_parser.add_argument("--target-version", help="Target version to roll back to")
     validate_parser.add_argument("--target-version", help="Validate migrations up to this version")
-    info_parser.add_argument("--target-version", help="Show migrations up to this version")
+    info_parser.add_argument(
+        "--target-version",
+        help="Label scripts above this version as Above target",
+    )
     # Migrate specific options
     migrate_parser.add_argument(
         "--validate-only",
