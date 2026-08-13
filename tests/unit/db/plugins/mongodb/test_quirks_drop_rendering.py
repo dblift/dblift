@@ -52,7 +52,48 @@ def test_render_drop_for_index_names_drop_index():
     assert "indexing policy" not in comment
 
 
-@pytest.mark.parametrize("obj_type", ["TABLE", "INDEX"])
+def test_render_drop_for_view_names_drop_collection():
+    """MongoDB views (``db.createView``) are real, listed in ``listCollections``
+    as ``type: "view"``, queryable, and dropped exactly like a collection —
+    unlike CosmosDB, which has no view concept at all. A prior draft of this
+    override wrongly copied Cosmos's "does not support views" text; guard
+    against that regression explicitly.
+    """
+    quirks = MongodbQuirks()
+
+    comment = quirks.render_drop_for_object(
+        obj_type="VIEW",
+        obj_name="big_orders",
+        schema_prefix="",
+        table_name=None,
+    )
+
+    assert comment is not None
+    assert "drop_collection" in comment
+    assert "big_orders" in comment
+    assert "does not support views" not in comment
+
+
+def test_render_drop_for_materialized_view_names_drop_collection():
+    """MongoDB's "on-demand materialized view" pattern ($merge) writes to an
+    ordinary collection — there is no separate persisted catalog object, so
+    it drops the same way a collection does.
+    """
+    quirks = MongodbQuirks()
+
+    comment = quirks.render_drop_for_object(
+        obj_type="MATERIALIZED_VIEW",
+        obj_name="daily_totals",
+        schema_prefix="",
+        table_name=None,
+    )
+
+    assert comment is not None
+    assert "drop_collection" in comment
+    assert "daily_totals" in comment
+
+
+@pytest.mark.parametrize("obj_type", ["TABLE", "INDEX", "VIEW", "MATERIALIZED_VIEW"])
 def test_no_branch_returns_sql(obj_type):
     """Every branch must return a comment, never a runnable DROP statement."""
     quirks = MongodbQuirks()
@@ -71,8 +112,6 @@ def test_no_branch_returns_sql(obj_type):
 @pytest.mark.parametrize(
     "obj_type",
     [
-        "VIEW",
-        "MATERIALIZED_VIEW",
         "SEQUENCE",
         "PROCEDURE",
         "FUNCTION",

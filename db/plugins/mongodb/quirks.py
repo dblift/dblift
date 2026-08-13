@@ -94,8 +94,28 @@ class MongodbQuirks(BaseQuirks):
         in the document API. Emitting a comment keeps generated scripts
         readable without pretending a statement is runnable.
         """
-        if obj_type in ("VIEW", "MATERIALIZED_VIEW"):
-            return f"-- MongoDB does not support views. No DROP VIEW needed for '{obj_name}'."
+        if obj_type == "VIEW":
+            # MongoDB has had read-only views since 3.4 (``db.createView``).
+            # They are ordinary entries in ``listCollections`` (type
+            # "view") and are dropped exactly like a collection.
+            return (
+                f"-- MongoDB views are dropped through the driver, not SQL.\n"
+                f"-- In a Python migration: "
+                f"context.db.drop_collection({obj_name!r})"
+            )
+        if obj_type == "MATERIALIZED_VIEW":
+            # MongoDB has no distinct materialized-view catalog object. The
+            # "on-demand materialized view" pattern in MongoDB's own docs is
+            # an aggregation pipeline ending in $merge that writes into an
+            # ordinary collection, so it is dropped the same way as one.
+            return (
+                "-- MongoDB has no materialized view catalog object; the "
+                "on-demand materialized view\n"
+                "-- pattern ($merge) writes to an ordinary collection, "
+                "dropped the same way as one.\n"
+                f"-- In a Python migration: "
+                f"context.db.drop_collection({obj_name!r})"
+            )
         if obj_type == "TABLE":
             return (
                 f"-- MongoDB collections are dropped through the driver, not SQL.\n"
@@ -105,12 +125,14 @@ class MongodbQuirks(BaseQuirks):
         if obj_type == "INDEX":
             # Unlike CosmosDB, MongoDB indexes are real, individually named,
             # droppable objects — they are dropped per-collection, not
-            # managed through an indexing policy.
-            collection = table_name if table_name else "<collection>"
+            # managed through an indexing policy. Leave the placeholder
+            # unquoted (no ``!r``) when the collection is unknown so it
+            # reads as a gap to fill in, not a literal collection name.
+            collection_expr = repr(table_name) if table_name else "<collection>"
             return (
                 f"-- MongoDB indexes are dropped through the driver, not SQL.\n"
                 f"-- In a Python migration: "
-                f"context.db[{collection!r}].drop_index({obj_name!r})"
+                f"context.db[{collection_expr}].drop_index({obj_name!r})"
             )
         if obj_type == "SEQUENCE":
             return (
