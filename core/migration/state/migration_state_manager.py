@@ -694,8 +694,10 @@ class MigrationStateManager:
         stored_checksum = self._lookup_checksum(repeatable_checksums, script_name)
 
         # If checksum changed, it's pending
-        if stored_checksum and current_checksum and self.state_service._checksums_differ(
-            stored_checksum, current_checksum
+        if (
+            stored_checksum
+            and current_checksum
+            and self.state_service._checksums_differ(stored_checksum, current_checksum)
         ):
             return True
 

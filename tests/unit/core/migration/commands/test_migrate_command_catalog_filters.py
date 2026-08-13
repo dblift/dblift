@@ -63,8 +63,8 @@ def _make_cmd(state, *, strict_mode=False):
     state_manager = MagicMock()
     state_manager.build_state.return_value = state
     state_manager.get_current_version.return_value = None
-    state_manager.apply_filters_to_migrations.side_effect = (
-        lambda migrations, **kwargs: list(migrations)
+    state_manager.apply_filters_to_migrations.side_effect = lambda migrations, **kwargs: list(
+        migrations
     )
 
     cmd = MigrateCommand(

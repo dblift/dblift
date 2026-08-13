@@ -114,8 +114,10 @@ class MigrationStateService:
             # Check for repeatable migrations
             if migration_type == "REPEATABLE":
                 stored_checksum = repeatable_checksums.get(script_name)
-                if stored_checksum and checksum and self._checksums_differ(
-                    stored_checksum, checksum
+                if (
+                    stored_checksum
+                    and checksum
+                    and self._checksums_differ(stored_checksum, checksum)
                 ):
                     return MigrationDisplayState.OUTDATED
                 pending_repeatables = context.get("pending_repeatable_scripts") or set()

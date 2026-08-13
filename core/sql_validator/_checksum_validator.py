@@ -350,21 +350,15 @@ def check_repeatable_migrations(
             )
     if result.repeatable_migrations_to_reapply:
         first_time = [
-            rep
-            for rep in result.repeatable_migrations_to_reapply
-            if not rep["database_checksum"]
+            rep for rep in result.repeatable_migrations_to_reapply if not rep["database_checksum"]
         ]
         to_reapply = [
-            rep
-            for rep in result.repeatable_migrations_to_reapply
-            if rep["database_checksum"]
+            rep for rep in result.repeatable_migrations_to_reapply if rep["database_checksum"]
         ]
         # Only show these messages for commands where they make sense (migrate and info)
         if command in ["migrate", "info"]:
             if first_time:
-                mv.log.info(
-                    f"Found {len(first_time)} pending repeatable migration(s)"
-                )
+                mv.log.info(f"Found {len(first_time)} pending repeatable migration(s)")
             if to_reapply:
                 mv.log.info(
                     f"Found {len(to_reapply)} repeatable migration(s) that need to be reapplied"
