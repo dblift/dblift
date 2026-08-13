@@ -98,6 +98,42 @@ def test_clean_continues_past_a_failing_drop():
     assert len(summary.errors) == 1
 
 
+def test_list_droppable_collections_excludes_system_namespace():
+    """``system.views`` is server bookkeeping, not user schema — and dropping
+    it first destroys every view definition before clean reaches them, which
+    is the actual mechanism behind the "drop a view, get a spurious failure"
+    bug. Excluding anything containing ``system.`` removes the cause."""
+    operations, _ = _operations(["users", "system.views", "system.js"])
+    assert operations.list_droppable_collections() == ["users"]
+
+
+def test_list_droppable_collections_keeps_dblift_collections():
+    """dblift's own storage is user-visible state dblift created, not server
+    bookkeeping — clean's contract is a full reset, so it must still go."""
+    operations, _ = _operations(["dblift_schema_history", "dblift_migration_lock", "users"])
+    assert sorted(operations.list_droppable_collections()) == [
+        "dblift_migration_lock",
+        "dblift_schema_history",
+        "users",
+    ]
+
+
+def test_clean_schema_skips_system_namespace_collections():
+    operations, database = _operations(["users", "system.views"])
+    summary = operations.clean_schema(None, "ignored")
+
+    dropped = [call.args[0] for call in database.drop_collection.call_args_list]
+    assert dropped == ["users"]
+    assert len(summary.objects) == 1
+
+
+def test_clean_preview_skips_system_namespace_collections():
+    operations, _ = _operations(["users", "system.views"])
+    summary = operations.get_clean_preview("ignored")
+    names = [obj.name for obj in summary.objects]
+    assert names == ["users"]
+
+
 def test_database_version_reads_build_info():
     operations, database = _operations([])
     database.command.return_value = {"version": "7.0.5"}

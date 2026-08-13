@@ -283,6 +283,91 @@ class TestMongoDbCommandFlows:
 
         assert mongo_db.list_collection_names() == []
 
+    def test_clean_drops_a_view_without_reporting_failure(self, mongo_cli, mongo_db):
+        """Regression for the ordering bug: dropping ``system.views`` erases
+        every view definition it describes, so clean's own later attempt to
+        drop the now-vanished view used to find nothing and report
+        "Failed to drop COLLECTION" for an object clean itself had already
+        removed. Both halves of the bug are checked: the command must report
+        success, and every user collection — the view included — must
+        actually be gone server-side. ``system.views`` itself is left behind
+        empty by MongoDB even after its last view is dropped; that is a
+        server property, not a partial clean, so it is allowed to remain.
+        """
+        mongo_db.create_collection("big")
+        mongo_db.command("create", "recent", viewOn="big", pipeline=[])
+        assert sorted(mongo_db.list_collection_names()) == ["big", "recent", "system.views"]
+
+        result = mongo_cli.clean()
+
+        assert result.success, f"clean failed: {result.output}"
+        remaining = mongo_db.list_collection_names()
+        assert "big" not in remaining
+        assert "recent" not in remaining
+        assert set(remaining) <= {"system.views"}
+
+        # A view can be created again on the cleaned database — proves the
+        # view namespace was left in a usable state, not merely emptied.
+        mongo_db.create_collection("big")
+        mongo_db.command("create", "recent", viewOn="big", pipeline=[])
+        assert list(mongo_db["recent"].find({})) == []
+
+    def test_clean_drops_a_view_defined_on_another_view(self, mongo_cli, mongo_db):
+        """A view chain must not change the outcome: the whole namespace
+        still comes from the single ``system.views`` collection."""
+        mongo_db.create_collection("big")
+        mongo_db.command("create", "orders", viewOn="big", pipeline=[])
+        mongo_db.command("create", "recent", viewOn="orders", pipeline=[])
+        assert "system.views" in mongo_db.list_collection_names()
+
+        result = mongo_cli.clean()
+
+        assert result.success, f"clean failed: {result.output}"
+        remaining = mongo_db.list_collection_names()
+        assert "big" not in remaining
+        assert "orders" not in remaining
+        assert "recent" not in remaining
+        assert set(remaining) <= {"system.views"}
+
+    def test_clean_drops_views_and_dblift_storage_together(
+        self, mongo_cli, migrations_dir, mongo_db
+    ):
+        """Views and dblift's own collections must both be gone afterward —
+        clean is a full reset, not a partial one that stops at the first
+        namespace collection it trips over. dblift's own storage is the
+        property most at risk from excluding ``system.*``: it must not be
+        mistaken for server bookkeeping."""
+        create_migration(migrations_dir, "V1_0_0__create_users.py", PY_CREATE_USERS)
+        assert mongo_cli.migrate().success
+        mongo_db.create_collection("big")
+        mongo_db.command("create", "recent", viewOn="big", pipeline=[])
+        names_before = mongo_db.list_collection_names()
+        assert HISTORY in names_before
+        assert "system.views" in names_before
+
+        result = mongo_cli.clean()
+
+        assert result.success, f"clean failed: {result.output}"
+        remaining = mongo_db.list_collection_names()
+        assert "big" not in remaining
+        assert "recent" not in remaining
+        assert "users" not in remaining
+        assert HISTORY not in remaining
+        assert LOCK not in remaining
+        assert set(remaining) <= {"system.views"}
+
+    def test_clean_with_no_views_still_drops_everything(self, mongo_cli, mongo_db):
+        """Ordinary-path regression: with no views, ``system.views`` never
+        exists in the first place, so plain collections must clean exactly
+        as before."""
+        mongo_db.create_collection("big")
+        mongo_db.create_collection("orders")
+
+        result = mongo_cli.clean()
+
+        assert result.success, f"clean failed: {result.output}"
+        assert mongo_db.list_collection_names() == []
+
     def test_baseline_records_a_baseline_row(self, mongo_cli, migrations_dir, mongo_db):
         result = mongo_cli.baseline("1.0.0", baseline_description="initial baseline")
 
