@@ -332,9 +332,11 @@ class TestSequenceExtractorFallbackFields(unittest.TestCase):
 class TestSequenceExtractorErrorHandling(unittest.TestCase):
     """A failure to read sequences must not be swallowed into ``[]`` --
     that would be indistinguishable from a schema that genuinely has no
-    sequences. Engines without sequences (SQLite, MySQL) decline through
-    ``supports_sequences()`` instead. See
-    ``test_extractor_read_failure_contract.py`` for the full contract."""
+    sequences. A build with no way to ask declines earlier: in this
+    repository that is ``vendor_queries`` being ``None``, since
+    ``supports_sequences()`` defaults to ``True`` and no bundle here
+    overrides it. See ``test_extractor_read_failure_contract.py`` for the
+    full contract."""
 
     def test_query_exception_propagates(self):
         vq, _ = _simple_vq([])
@@ -343,7 +345,7 @@ class TestSequenceExtractorErrorHandling(unittest.TestCase):
         with self.assertRaisesRegex(Exception, "DB error"):
             extractor.get_sequences("public")
 
-    def test_failure_is_not_downgraded_to_a_tracked_error(self):
+    def test_failure_is_tracked_and_still_raised(self):
         vq, _ = _simple_vq([])
         extractor = _make_extractor(dialect="postgresql", vendor_queries=vq)
         extractor.provider.query_executor.execute_query.side_effect = Exception("fail")
@@ -351,7 +353,7 @@ class TestSequenceExtractorErrorHandling(unittest.TestCase):
         extractor.result_tracker = tracker
         with self.assertRaisesRegex(Exception, "fail"):
             extractor.get_sequences("public")
-        tracker._track_error.assert_not_called()
+        tracker._track_error.assert_called_once()
 
 
 class TestSequenceExtractorResultTracker(unittest.TestCase):

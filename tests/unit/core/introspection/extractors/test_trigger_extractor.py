@@ -485,7 +485,7 @@ class TestTriggerExtractorErrorHandling(unittest.TestCase):
         with self.assertRaisesRegex(Exception, "DB error"):
             extractor.get_triggers("public")
 
-    def test_failure_is_not_downgraded_to_a_tracked_error(self):
+    def test_failure_is_tracked_and_still_raised(self):
         vq = _vq([])
         extractor = _make_extractor(dialect="postgresql", vendor_queries=vq)
         extractor.provider.query_executor.execute_query.side_effect = Exception("fail")
@@ -493,4 +493,4 @@ class TestTriggerExtractorErrorHandling(unittest.TestCase):
         extractor.result_tracker = tracker
         with self.assertRaisesRegex(Exception, "fail"):
             extractor.get_triggers("public")
-        tracker._track_error.assert_not_called()
+        tracker._track_error.assert_called_once()

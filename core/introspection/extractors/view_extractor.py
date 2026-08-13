@@ -114,19 +114,29 @@ class ViewExtractor(BaseExtractor):
         """
         Get views in a schema using vendor-specific queries.
 
-        ``[]`` means the schema genuinely has no views (the vendor query
-        ran and returned zero rows) or the dialect has no view
-        introspection, which ``vendor_queries.supports_views()`` declines
-        up front before any query runs. A failure to *read* views —
+        ``[]`` means the schema genuinely has no views, or this build has
+        no way to ask. Three things decline before any query runs, and for
+        views the first is the one that fires in practice:
+
+        * no ``vendor_queries`` registered for the dialect at all;
+        * ``supports_views()`` returning ``False``. Note the base class
+          default is ``True`` and no catalog-query bundle in this
+          repository overrides it, so this predicate is an extension
+          point rather than a route any shipped dialect takes;
+        * ``get_views_query`` returning ``(None, [])``. The ABC declares a
+          non-optional query here, so that is out of contract, but it is
+          guarded rather than handed to the driver.
+
+        Anything raised once the query *does* run is a failure to read —
         permission denied, a dropped connection, an unreadable catalog
-        view — is not translated into ``[]``: it propagates to the caller,
-        because an empty export section and an unreadable one must not
-        look alike.
+        view — and is not translated into ``[]``, because an empty export
+        section and an unreadable one must not look alike. The failure is
+        still recorded on the result tracker for callers that enabled it,
+        and then re-raised.
 
         The per-view lookups inside the loop keep their own handlers: a
         view whose column list or algorithm could not be read is still
-        exported, with that one property blank, rather than the whole
-        schema's view list disappearing.
+        exported, with that one property blank.
 
         Args:
             schema: Schema name
@@ -136,101 +146,119 @@ class ViewExtractor(BaseExtractor):
 
         Raises:
             Exception: Whatever the vendor query round trip raises (e.g. a
-                permission or connection error) — not swallowed.
+                permission or connection error) — recorded, then re-raised.
         """
         if not self.vendor_queries or not self.vendor_queries.supports_views():
             return []
 
         self.ensure_metadata()
 
-        sql, params = self.vendor_queries.get_views_query(schema)
-        self.log.debug(f"[{self.dialect.upper()}] Executing views query for schema '{schema}'")
-        results = self.provider.query_executor.execute_query(self.connection, sql, params)
-        self.log.debug(f"[{self.dialect.upper()}] Views query completed, processing results")
+        try:
+            sql, params = self.vendor_queries.get_views_query(schema)
+            if not sql:
+                return []
+            self.log.debug(f"[{self.dialect.upper()}] Executing views query for schema '{schema}'")
+            results = self.provider.query_executor.execute_query(self.connection, sql, params)
+            self.log.debug(f"[{self.dialect.upper()}] Views query completed, processing results")
 
-        views = []
-        for row in results:
-            view_name = get_row_value(row, "view_name") or get_row_value(row, "table_name")
-            if not view_name or view_name.upper() == "NONE":
-                logger.warning(f"Skipping view with invalid name: {row}")
-                continue
+            views = []
+            for row in results:
+                view_name = get_row_value(row, "view_name") or get_row_value(row, "table_name")
+                if not view_name or view_name.upper() == "NONE":
+                    logger.warning(f"Skipping view with invalid name: {row}")
+                    continue
 
-            # Dialect-specific catalog-name normalisation (DB2 lowercases)
-            # routed through the per-plugin quirks hook.
-            from db.provider_registry import ProviderRegistry
+                # Dialect-specific catalog-name normalisation (DB2 lowercases)
+                # routed through the per-plugin quirks hook.
+                from db.provider_registry import ProviderRegistry
 
-            quirks = ProviderRegistry.get_quirks(self.dialect or "")
-            view_name = quirks.normalize_view_name(view_name)
+                quirks = ProviderRegistry.get_quirks(self.dialect or "")
+                view_name = quirks.normalize_view_name(view_name)
 
-            check_option = get_row_value(row, "check_option")
-            columns = parse_json_array(get_row_value(row, "column_names"))
-            if not columns:
-                try:
-                    columns = self._get_object_column_names(schema, view_name)
-                except Exception as e:
-                    if self.result_tracker:
-                        self.result_tracker._track_warning(
-                            f"Could not get view columns: {e}",
-                            object_type="view",
-                            object_name=view_name,
-                            property_name="columns",
-                            exception=e,
-                        )
-                    columns = []
+                check_option = get_row_value(row, "check_option")
+                columns = parse_json_array(get_row_value(row, "column_names"))
+                if not columns:
+                    try:
+                        columns = self._get_object_column_names(schema, view_name)
+                    except Exception as e:
+                        if self.result_tracker:
+                            self.result_tracker._track_warning(
+                                f"Could not get view columns: {e}",
+                                object_type="view",
+                                object_name=view_name,
+                                property_name="columns",
+                                exception=e,
+                            )
+                        columns = []
 
-            # Track view capture status
-            view_status = None
-            if self.result_tracker:
-                view_status = self.result_tracker._track_object_status("view", view_name, schema)
-
-            view = View(
-                name=view_name,
-                schema=schema,
-                query=self._extract_view_query(get_row_value(row, "view_definition")),
-                columns=columns,
-                is_updatable=(get_row_value(row, "is_updatable") or "NO") == "YES",
-                check_option=(
-                    check_option if check_option and check_option.upper() != "NONE" else None
-                ),
-                dialect=self.dialect,
-            )
-
-            # Track property capture
-            if view_status:
-                view_status.add_property_status("query", view.query is not None)
-                view_status.add_property_status("columns", len(columns) > 0)
-
-            # Dialect-specific row-level view enrichment (MySQL definer +
-            # sql_security, PostgreSQL security_definer / security_invoker).
-            quirks.enrich_view_from_row(view, row, view_status)
-
-            # Vendor-specific view algorithm fetch (MySQL / MariaDB
-            # via ``SHOW CREATE VIEW``; other dialects return None).
-            try:
-                algorithm = quirks.fetch_view_algorithm(self, schema, view_name)
-                if algorithm:
-                    view.algorithm = algorithm
-                    if view_status:
-                        view_status.add_property_status("algorithm", True)
-                elif view_status and quirks.provides_view_algorithm:
-                    view_status.add_property_status("algorithm", False)
-            except Exception as e:
-                if view_status:
-                    view_status.add_property_status("algorithm", False)
+                # Track view capture status
+                view_status = None
                 if self.result_tracker:
-                    self.result_tracker._track_warning(
-                        f"Could not get view algorithm: {e}",
-                        object_type="view",
-                        object_name=view_name,
-                        property_name="algorithm",
-                        exception=e,
+                    view_status = self.result_tracker._track_object_status(
+                        "view", view_name, schema
                     )
 
-            views.append(view)
+                view = View(
+                    name=view_name,
+                    schema=schema,
+                    query=self._extract_view_query(get_row_value(row, "view_definition")),
+                    columns=columns,
+                    is_updatable=(get_row_value(row, "is_updatable") or "NO") == "YES",
+                    check_option=(
+                        check_option if check_option and check_option.upper() != "NONE" else None
+                    ),
+                    dialect=self.dialect,
+                )
 
-        self.log.debug(f"Found {len(views)} views in schema {schema}")
+                # Track property capture
+                if view_status:
+                    view_status.add_property_status("query", view.query is not None)
+                    view_status.add_property_status("columns", len(columns) > 0)
 
-        return views
+                # Dialect-specific row-level view enrichment (MySQL definer +
+                # sql_security, PostgreSQL security_definer / security_invoker).
+                quirks.enrich_view_from_row(view, row, view_status)
+
+                # Vendor-specific view algorithm fetch (MySQL / MariaDB
+                # via ``SHOW CREATE VIEW``; other dialects return None).
+                try:
+                    algorithm = quirks.fetch_view_algorithm(self, schema, view_name)
+                    if algorithm:
+                        view.algorithm = algorithm
+                        if view_status:
+                            view_status.add_property_status("algorithm", True)
+                    elif view_status and quirks.provides_view_algorithm:
+                        view_status.add_property_status("algorithm", False)
+                except Exception as e:
+                    if view_status:
+                        view_status.add_property_status("algorithm", False)
+                    if self.result_tracker:
+                        self.result_tracker._track_warning(
+                            f"Could not get view algorithm: {e}",
+                            object_type="view",
+                            object_name=view_name,
+                            property_name="algorithm",
+                            exception=e,
+                        )
+
+                views.append(view)
+
+            self.log.debug(f"Found {len(views)} views in schema {schema}")
+
+            return views
+
+        except Exception as e:
+            logger.warning(f"Error getting views for schema {schema}: {e}")
+            self.log.warning(f"Could not get views for schema {schema}: {e}")
+            if self.result_tracker:
+                self.result_tracker._track_error(
+                    f"Error getting views: {e}",
+                    object_type="schema",
+                    object_name=schema,
+                    property_name="views",
+                    exception=e,
+                )
+            raise
 
     def get_materialized_views(self, schema: str) -> List[View]:
         """
@@ -238,18 +266,20 @@ class ViewExtractor(BaseExtractor):
 
         Materialized views are supported by PostgreSQL (9.3+) and Oracle.
 
-        ``[]`` means the schema genuinely has no materialized views (the
-        vendor query ran and returned zero rows) or the dialect has none.
-        An engine without materialized views is declined up front:
-        ``supports_materialized_views()`` is ``False`` by default, and a
-        dialect that claims the capability but has no catalog query
-        returns ``(None, [])``. Both are plain return values checked
-        before any query runs, so "this engine has no materialized views"
-        never arrives as an exception. A failure to *read* them —
-        permission denied, a dropped connection, an unreadable catalog
-        view — is therefore not translated into ``[]``: it propagates to
-        the caller, because an empty export section and an unreadable one
-        must not look alike.
+        ``[]`` means the schema genuinely has none, or this build has no
+        way to ask. Three things decline before any query runs:
+
+        * no ``vendor_queries`` registered for the dialect at all;
+        * ``supports_materialized_views()`` returning ``False`` — the base
+          class default, so an engine without materialized views declines
+          here by simply not opting in. This is also checked again by
+          ``SchemaIntrospector.get_materialized_views``;
+        * ``get_materialized_views_query`` returning ``(None, [])``, the
+          documented "not supported" return for this optional query.
+
+        Anything raised once the query *does* run is a failure to read and
+        is not translated into ``[]``, because an empty export section and
+        an unreadable one must not look alike.
 
         Args:
             schema: Schema name
@@ -259,78 +289,86 @@ class ViewExtractor(BaseExtractor):
 
         Raises:
             Exception: Whatever the vendor query round trip raises (e.g. a
-                permission or connection error) — not swallowed.
+                permission or connection error) — not swallowed. Unlike
+                the other extract methods this one has no result-tracker
+                call to preserve; it never had one.
         """
         if not self.vendor_queries or not self.vendor_queries.supports_materialized_views():
             return []
 
         self.ensure_metadata()
 
-        sql, params = self.vendor_queries.get_materialized_views_query(schema)
-        if sql is None:
-            return []
+        try:
+            sql, params = self.vendor_queries.get_materialized_views_query(schema)
+            if sql is None:
+                return []
 
-        results = self.provider.query_executor.execute_query(self.connection, sql, params)
+            results = self.provider.query_executor.execute_query(self.connection, sql, params)
 
-        materialized_views = []
-        for row in results:
-            mv_name = get_row_value(row, "materialized_view_name")
-            if not mv_name:
-                logger.warning(f"Skipping materialized view with no name: {row}")
-                continue
+            materialized_views = []
+            for row in results:
+                mv_name = get_row_value(row, "materialized_view_name")
+                if not mv_name:
+                    logger.warning(f"Skipping materialized view with no name: {row}")
+                    continue
 
-            columns = parse_json_array(get_row_value(row, "column_names"))
-            if not columns:
-                columns = self._get_object_column_names(schema, mv_name)
-            mview = View(
-                name=mv_name,
-                schema=schema,
-                query=get_row_value(row, "view_definition"),
-                materialized=True,
-                columns=columns,
-                dialect=self.dialect,
-            )
-            # Store additional metadata as dynamic attributes
-            mview.is_populated = (get_row_value(row, "is_populated") or "NO") == "YES"
+                columns = parse_json_array(get_row_value(row, "column_names"))
+                if not columns:
+                    columns = self._get_object_column_names(schema, mv_name)
+                mview = View(
+                    name=mv_name,
+                    schema=schema,
+                    query=get_row_value(row, "view_definition"),
+                    materialized=True,
+                    columns=columns,
+                    dialect=self.dialect,
+                )
+                # Store additional metadata as dynamic attributes
+                mview.is_populated = (get_row_value(row, "is_populated") or "NO") == "YES"
 
-            # Dialect-specific materialized-view row enrichment
-            # (PostgreSQL ``UNLOGGED`` flag).
-            from db.provider_registry import ProviderRegistry
+                # Dialect-specific materialized-view row enrichment
+                # (PostgreSQL ``UNLOGGED`` flag).
+                from db.provider_registry import ProviderRegistry
 
-            quirks = ProviderRegistry.get_quirks(self.dialect or "")
-            quirks.enrich_materialized_view_from_row(mview, row)
+                quirks = ProviderRegistry.get_quirks(self.dialect or "")
+                quirks.enrich_materialized_view_from_row(mview, row)
 
-            # Oracle-specific metadata
-            last_refresh = get_row_value(row, "last_refresh")
-            if last_refresh:
-                mview.last_refresh = last_refresh
+                # Oracle-specific metadata
+                last_refresh = get_row_value(row, "last_refresh")
+                if last_refresh:
+                    mview.last_refresh = last_refresh
 
-            refresh_method = get_row_value(row, "refresh_method")
-            if refresh_method:
-                mview.refresh_method = refresh_method
+                refresh_method = get_row_value(row, "refresh_method")
+                if refresh_method:
+                    mview.refresh_method = refresh_method
 
-            refresh_mode = get_row_value(row, "refresh_mode")
-            if refresh_mode:
-                mview.refresh_mode = refresh_mode
+                refresh_mode = get_row_value(row, "refresh_mode")
+                if refresh_mode:
+                    mview.refresh_mode = refresh_mode
 
-            fast_refreshable = get_row_value(row, "fast_refreshable")
-            if fast_refreshable:
-                mview.fast_refreshable = fast_refreshable
+                fast_refreshable = get_row_value(row, "fast_refreshable")
+                if fast_refreshable:
+                    mview.fast_refreshable = fast_refreshable
 
-            # SQL Server indexed views: capture the unique clustered index so the
-            # generator can emit the ``CREATE UNIQUE CLUSTERED INDEX`` DDL that
-            # materializes the view. Without it, the exported script would not
-            # actually be an indexed view after replay.
-            clustered_index_name = get_row_value(row, "clustered_index_name")
-            if clustered_index_name:
-                mview.clustered_index_name = clustered_index_name  # type: ignore[attr-defined]
-                clustered_index_columns = get_row_value(row, "clustered_index_columns") or ""
-                mview.clustered_index_columns = [  # type: ignore[attr-defined]
-                    col.strip() for col in clustered_index_columns.split(",") if col.strip()
-                ]
+                # SQL Server indexed views: capture the unique clustered index so the
+                # generator can emit the ``CREATE UNIQUE CLUSTERED INDEX`` DDL that
+                # materializes the view. Without it, the exported script would not
+                # actually be an indexed view after replay.
+                clustered_index_name = get_row_value(row, "clustered_index_name")
+                if clustered_index_name:
+                    mview.clustered_index_name = clustered_index_name  # type: ignore[attr-defined]
+                    clustered_index_columns = get_row_value(row, "clustered_index_columns") or ""
+                    mview.clustered_index_columns = [  # type: ignore[attr-defined]
+                        col.strip() for col in clustered_index_columns.split(",") if col.strip()
+                    ]
 
-            materialized_views.append(mview)
+                materialized_views.append(mview)
 
-        self.log.debug(f"Found {len(materialized_views)} materialized views in schema {schema}")
+            self.log.debug(f"Found {len(materialized_views)} materialized views in schema {schema}")
 
-        return materialized_views
+            return materialized_views
+
+        except Exception as e:
+            logger.warning(f"Error getting materialized views for schema {schema}: {e}")
+            self.log.warning(f"Could not get materialized views for schema {schema}: {e}")
+            raise
