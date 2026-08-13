@@ -118,6 +118,7 @@ def test_no_branch_returns_sql(obj_type):
         "TRIGGER",
         "PACKAGE",
         "SYNONYM",
+        "EXTENSION",
     ],
 )
 def test_unsupported_object_types_render_explanatory_comment(obj_type):
@@ -133,6 +134,32 @@ def test_unsupported_object_types_render_explanatory_comment(obj_type):
 
     assert comment is not None
     assert comment.strip() != ""
+    assert not comment.upper().startswith("DROP ")
+
+
+def test_unknown_object_type_still_renders_a_comment():
+    """Guard for the fallback branch itself, not just the named object types.
+
+    A future object type nobody has added a branch for yet must still land
+    on the trailing fallback and render a comment — the same failure this
+    whole override exists to close (a ``None`` return here is exactly what
+    lets DROP rendering fall through to the relational SQL renderer). Uses a
+    deliberately synthetic type name so no future refactor's real branch
+    for a real object type accidentally starts handling it and hiding a
+    regression in the fallback.
+    """
+    quirks = MongodbQuirks()
+
+    comment = quirks.render_drop_for_object(
+        obj_type="NOT_A_REAL_OBJECT_TYPE",
+        obj_name="orders",
+        schema_prefix="",
+        table_name=None,
+    )
+
+    assert comment is not None
+    assert comment.strip() != ""
+    assert "orders" in comment
     assert not comment.upper().startswith("DROP ")
 
 
