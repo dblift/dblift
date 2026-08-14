@@ -271,7 +271,8 @@ class TestMongoDbPythonMigrations:
 @pytest.mark.integration
 @pytest.mark.mongodb
 class TestMongoDbCommandFlows:
-    """info / repair / clean / baseline / locking over Python migrations."""
+    """info / validate / repair / clean / baseline / locking over Python
+    migrations."""
 
     def test_info_lists_the_applied_migration(self, mongo_cli, migrations_dir):
         create_migration(migrations_dir, "V1_0_0__create_users.py", PY_CREATE_USERS)
@@ -281,6 +282,44 @@ class TestMongoDbCommandFlows:
 
         assert result.success, f"info failed: {result.output}"
         assert "1.0.0" in result.output
+
+    def test_validate_passes_after_migrate(self, mongo_cli, migrations_dir):
+        """``validate`` passes when history matches the migration files."""
+        create_migration(migrations_dir, "V1_0_0__create_users.py", PY_CREATE_USERS)
+        assert mongo_cli.migrate().success
+
+        result = mongo_cli.validate()
+
+        assert result.success, f"validate failed: {result.output}"
+
+    def test_repair_fixes_modified_checksum(self, mongo_cli, migrations_dir):
+        """Editing an applied ``.py`` breaks validate; ``repair`` restores it."""
+        script = create_migration(migrations_dir, "V1_0_0__create_users.py", PY_CREATE_USERS)
+        assert mongo_cli.migrate().success
+        assert mongo_cli.validate().success
+
+        # Change the file without changing what it does — checksum drifts.
+        script.write_text(PY_CREATE_USERS + "\n# checksum drift\n")
+        assert mongo_cli.validate().failed
+
+        result = mongo_cli.repair()
+        assert result.success, f"repair failed: {result.output}"
+        assert mongo_cli.validate().success
+
+    def test_validate_passes_when_applied_script_file_is_removed(self, mongo_cli, migrations_dir):
+        """A missing file for an applied migration is a warning, not a
+        validate failure, by default everywhere in dblift — see the
+        non-strict-mode branch in
+        ``core/sql_validator/_checksum_validator.validate_checksums``. MongoDB
+        goes through the same dialect-agnostic path, so it must match."""
+        script = create_migration(migrations_dir, "V1_0_0__create_users.py", PY_CREATE_USERS)
+        assert mongo_cli.migrate().success
+
+        script.unlink()
+
+        result = mongo_cli.validate()
+
+        assert result.success, f"validate failed: {result.output}"
 
     def test_repair_clears_a_failed_migration_and_allows_retry(
         self, mongo_cli, migrations_dir, mongo_db
