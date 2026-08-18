@@ -638,10 +638,18 @@ class ProviderRegistry:
         class body* count — an inheriting plugin (e.g. MariaDB extends MySQL's
         quirks) does not become a second owner of an inherited capability, so
         the MySQL/MariaDB family resolves to the single canonical owner.
+
+        Read from :meth:`quirks_base_class`, never from the composed class
+        :meth:`get_quirks` instantiates: composition builds its subclass with
+        an empty class body, so ``vars()`` of it declares nothing and every
+        dialect carrying a registered extension would stop owning its
+        capability. Owning one is a statement the core makes about the engine
+        and an installed extension can never make it — the seam rejects an
+        extension that so much as re-answers an existing hook.
         """
         winners = []
         for plugin in cls.list_plugins():
-            quirks_class = type(cls.get_quirks(plugin.name))
+            quirks_class = cls.quirks_base_class(plugin.name)
             # The owner is the plugin whose quirks class sets the flag truthy
             # in its *own* class body — an inheriting subclass (MariaDB ←
             # MySQL) that merely inherits the flag is not a second owner.

@@ -18,18 +18,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   before: with nothing registered, `get_quirks` returns the plugin's own class
   rather than a dynamic subclass.
 
-  Extensions may only **add**. Defining a name the dialect already answers —
-  whether the plugin's quirks class declares it or inherits it from
-  `BaseQuirks` — raises `QuirksExtensionCollisionError` naming the hook, the
-  extension and the class that already defines it. An existing hook is a
-  statement about the database engine, so a second answer for it belongs
-  upstream here rather than in an installed extension, and shadowing it
-  quietly would override a newer core without a word.
-  `validate_quirks_extensions()` runs at feature-load time, so a collision on a
-  dialect nothing happens to resolve still fails loudly. Registration targets
-  dialect keys explicitly: an extension for `postgresql` does not reach the
-  PostgreSQL-wire-compatible dialects (`neon`, `timescaledb`, ...) or the
-  registry's aliases.
+  Extensions may only **add**. Answering a name the dialect already answers —
+  whether the plugin's quirks class declares it, it is inherited from
+  `BaseQuirks`, or the extension inherits it from a parent of its own — raises
+  `QuirksExtensionCollisionError` naming the hook, the extension, the ancestor
+  the name came from and the class that already defines it. Two extensions
+  registered for one dialect answering the same hook raise it too, naming
+  both: registration order deciding a winner is the same silent shadowing in
+  the other direction. `__init__` and `__slots__` are rejected as well —
+  composition instantiates the class as `composed(dialect_name=...)`, so an
+  extension redefining `__init__` would silently empty `quirks.dialect_name`.
+  An existing hook is a statement about the database engine, so a second
+  answer for it belongs upstream here rather than in an installed extension,
+  and shadowing it quietly would override a newer core without a word. An
+  extension **may** subclass `BaseQuirks` so the mixin type-checks: classes
+  already in the dialect's own lineage contribute nothing and collide with
+  nothing. `validate_quirks_extensions()` runs at feature-load time, so a
+  collision on a dialect nothing happens to resolve still fails loudly, and a
+  set of extensions with no consistent method resolution order raises
+  `QuirksExtensionCompositionError` instead of a raw `TypeError`.
+
+  Registration targets dialect keys explicitly: an extension for `postgresql`
+  does not reach the PostgreSQL-wire-compatible dialects (`neon`,
+  `timescaledb`, ...) or MariaDB, which are separate plugins. Registry
+  *aliases* are not separate keys — registration and lookup both resolve
+  through `ProviderRegistry.canonical_dialect_name`, so an extension
+  registered for `sqlite` also answers a user who configured `sqlite3`.
+
+  `ProviderRegistry.canonical_dialect_name_for_capability` now reads the
+  pre-composition quirks class. It counts only a class-body declaration as
+  capability ownership, and the composed class is built with an empty class
+  body, so a dialect carrying an extension used to stop owning its capability
+  — which silently discarded every built-in `dialect_options` value for that
+  dialect, MySQL storage engine and row format included.
 
 ### Changed
 

@@ -9,20 +9,30 @@ existing call site keeps resolving exactly what it resolved before.
 
 **Extensions add hooks; they never re-answer one.** If an extension
 defines a name the resolved base class already answers — whether the
-plugin's own quirks class declares it or it is inherited from
-``BaseQuirks`` — composition raises
-:class:`QuirksExtensionCollisionError`. A hook the core already answers
-is a statement about the database engine, and a second answer for it
-belongs upstream in the core, not in an installed extension. Silently
-winning by MRO is the failure mode this seam exists to prevent: it
-shadows the core implementation, and a newer core defining the same hook
-would then be overridden without a word.
+plugin's own quirks class declares it, it is inherited from
+``BaseQuirks``, or the extension inherits it from a parent of its own —
+composition raises :class:`QuirksExtensionCollisionError`. A hook the
+core already answers is a statement about the database engine, and a
+second answer for it belongs upstream in the core, not in an installed
+extension. Silently winning by MRO is the failure mode this seam exists
+to prevent: it shadows the core implementation, and a newer core
+defining the same hook would then be overridden without a word. Two
+extensions answering one hook for one dialect are rejected on the same
+grounds — that shadowing is silent in the other direction.
+
+An extension **may** subclass ``BaseQuirks`` so the mixin type-checks:
+classes already in the base's own lineage contribute nothing, so nothing
+they declare counts as a collision, and the plugin's own overrides stay
+ahead of the ``BaseQuirks`` defaults in the composed MRO.
 
 Registration targets dialect keys **explicitly** — an extension for
 ``postgresql`` reaches ``postgresql`` and nothing else. Wire-compatible
-engines (``neon``, ``timescaledb``, ...) and the registry's aliases
-(``postgres``, ``mssql``, ``sqlite3``) are separate keys; a package that
-wants them lists them.
+engines (``neon``, ``timescaledb``, ...) and MariaDB are separate plugins
+with their own canonical names; a package that wants them lists them.
+Registry *aliases* are not separate keys: registration and lookup both
+resolve through ``ProviderRegistry.canonical_dialect_name``, so an
+extension registered for ``sqlite`` also answers a user who configured
+``sqlite3``.
 
 **Deviation from the other seams in this package:** they log a warning
 and continue when a registrar misbehaves, because a bad plugin must not
@@ -35,24 +45,48 @@ running with exactly the divergence the seam exists to prevent.
 
 from __future__ import annotations
 
-from typing import Dict, Iterable, List, Optional
+from typing import Dict, Iterable, List, Optional, Tuple
 
 from core.exceptions import DbliftError
 
+#: Keyed on the registry's *canonical* dialect name, so an extension
+#: registered under an alias and one registered under the canonical name land
+#: in the same list and a lookup under either key finds both.
 _extensions: Dict[str, List[type]] = {}
+
+#: Names composition itself owns, reachable only because the general
+#: underscore skip in :func:`_reject_collisions` is load-bearing (without it
+#: ``__module__`` and ``__doc__`` collide on every extension).
+#: ``ProviderRegistry.get_quirks`` instantiates the composed class as
+#: ``composed(dialect_name=...)``, so an extension defining ``__init__``
+#: shadows ``BaseQuirks.__init__`` and silently breaks the documented
+#: ``config.database.type == quirks.dialect_name`` invariant; ``__slots__``
+#: dictates the composed instance layout rather than answering any hook.
+_RESERVED_NAMES = ("__init__", "__slots__")
 
 
 class QuirksExtensionCollisionError(DbliftError):
     """Raised when a registered extension redefines an existing quirks hook."""
 
 
+class QuirksExtensionCompositionError(DbliftError):
+    """Raised when a dialect's registered extensions cannot form a class.
+
+    Distinct from :class:`QuirksExtensionCollisionError`: nothing is being
+    re-answered, the list of bases simply has no consistent linearisation —
+    registering a class and then a subclass of it, most commonly.
+    """
+
+
 def register_quirks_extension(dialects: Iterable[str], extension: type) -> None:
     """Register *extension* as a quirks mixin for each dialect in *dialects*.
 
     Args:
-        dialects: Dialect keys the extension applies to, exactly as they
-            are passed to ``ProviderRegistry.get_quirks`` (case-insensitive).
-            Nothing propagates implicitly to related dialects.
+        dialects: Dialect keys the extension applies to. Each is resolved to
+            the plugin's canonical name, so registering under an alias
+            (``mssql``, ``sqlite3``) registers for the dialect it names.
+            Nothing propagates implicitly to *related* dialects: separate
+            plugins (MariaDB, the PostgreSQL-wire engines) are separate keys.
         extension: The mixin class. Composed ahead of the dialect's base
             quirks class, in registration order.
 
@@ -61,7 +95,7 @@ def register_quirks_extension(dialects: Iterable[str], extension: type) -> None:
     forces that check at load time.
     """
     for dialect in dialects:
-        registered = _extensions.setdefault(dialect.lower(), [])
+        registered = _extensions.setdefault(_canonical_dialect(dialect), [])
         if extension not in registered:
             registered.append(extension)
     _invalidate_resolved_quirks()
@@ -76,15 +110,30 @@ def compose_quirks_class(dialect: str, base: type) -> type:
     order.
 
     Raises:
-        QuirksExtensionCollisionError: If a registered extension defines a
-            public name that *base* already resolves.
+        QuirksExtensionCollisionError: If a registered extension answers a
+            name *base* already answers, or a name another extension for the
+            same dialect already answers.
+        QuirksExtensionCompositionError: If the resulting list of bases has
+            no consistent method resolution order.
     """
-    extensions = _extensions.get(dialect.lower())
+    if not _extensions:
+        return base
+    extensions = _extensions.get(_canonical_dialect(dialect))
     if not extensions:
         return base
-    for extension in extensions:
-        _reject_collisions(dialect, base, extension)
-    return type(f"{base.__name__}Composed", (*extensions, base), {})
+    _reject_collisions(dialect, base, extensions)
+    try:
+        return type(f"{base.__name__}Composed", (*extensions, base), {})
+    except TypeError as exc:
+        raise QuirksExtensionCompositionError(
+            f"Quirks extensions registered for dialect {dialect!r} cannot be "
+            f"composed with {_describe(base)}: {exc}. Bases, in registration "
+            f"order: {', '.join(_describe(e) for e in extensions)}, "
+            f"{_describe(base)}. Registering a class and then a subclass of it "
+            f"is the usual cause — a subclass has to precede its parent and "
+            f"composition preserves registration order. Register only the "
+            f"class that should apply."
+        ) from exc
 
 
 def validate_quirks_extensions() -> None:
@@ -98,6 +147,7 @@ def validate_quirks_extensions() -> None:
 
     Raises:
         QuirksExtensionCollisionError: On the first colliding extension.
+        QuirksExtensionCompositionError: On the first uncomposable dialect.
     """
     if not _extensions:
         return
@@ -129,22 +179,108 @@ def _invalidate_resolved_quirks() -> None:
     ProviderRegistry.clear_quirks_cache()
 
 
-def _reject_collisions(dialect: str, base: type, extension: type) -> None:
-    """Raise if *extension* redefines any public name *base* already answers."""
-    for name in vars(extension):
-        if name.startswith("_"):
+def _canonical_dialect(dialect: str) -> str:
+    """Return the registry's canonical name for *dialect*, else its lowercase.
+
+    Registration and lookup both go through this, or they disagree within a
+    single ``get_quirks`` call: the base class resolves through the registry's
+    aliases while the extension list would not. ``sqlite3`` and ``mongo``
+    reach ``config.database.type`` un-normalised, so a package registering for
+    ``sqlite`` must still answer a user who configured ``sqlite3``.
+
+    Unknown names fall back to the lowercase input, so a dialect no plugin
+    claims still keys stably.
+
+    Imported inside the function for the same reason as
+    :func:`_invalidate_resolved_quirks`.
+    """
+    from db.provider_registry import ProviderRegistry
+
+    lowered = (dialect or "").lower()
+    return ProviderRegistry.canonical_dialect_name(lowered) or lowered
+
+
+def _reject_collisions(dialect: str, base: type, extensions: List[type]) -> None:
+    """Raise unless every registered extension only *adds* names.
+
+    Two checks sharing one name-derivation rule so they cannot drift: each
+    extension against *base*, and each against the extensions registered
+    before it for the same dialect. The second is the same silent shadowing
+    in the unchecked direction — two packages answering one hook would
+    otherwise resolve by registration order with no diagnostic.
+
+    Both live here rather than in :func:`register_quirks_extension` because
+    :func:`_contributed_names` is defined relative to *base*, which is not
+    known until composition; :func:`validate_quirks_extensions` composes every
+    registered dialect at load time, so the error is just as early.
+    """
+    answered: Dict[str, Tuple[type, type]] = {}
+    for extension in extensions:
+        for name, declaring in _contributed_names(base, extension).items():
+            if name in _RESERVED_NAMES:
+                raise QuirksExtensionCollisionError(
+                    f"Quirks extension {_describe(extension)} registered for "
+                    f"dialect {dialect!r} defines {name!r}"
+                    f"{_inherited_from(extension, declaring)}. Composition owns "
+                    f"that name: ProviderRegistry.get_quirks instantiates the "
+                    f"composed class as composed(dialect_name=...), so an "
+                    f"extension redefining __init__ breaks the "
+                    f"config.database.type == quirks.dialect_name invariant, and "
+                    f"one declaring __slots__ dictates the composed instance "
+                    f"layout. Extensions add hooks, nothing else."
+                )
+            if name.startswith("_"):
+                continue
+            owner = _defining_class(base, name)
+            if owner is not None:
+                raise QuirksExtensionCollisionError(
+                    f"Quirks extension {_describe(extension)} registered for "
+                    f"dialect {dialect!r} redefines {name!r}"
+                    f"{_inherited_from(extension, declaring)}, which "
+                    f"{_describe(owner)} already defines. Extensions may only "
+                    f"add hooks the core does not answer: an existing hook is a "
+                    f"statement about the database engine, and a second answer "
+                    f"for it belongs upstream in the core rather than in an "
+                    f"installed extension."
+                )
+            previous = answered.get(name)
+            # A shared declaring class is one implementation reached through two
+            # registered extensions (a package's internal mixin) — unambiguous,
+            # and rejecting it would break a legitimate arrangement.
+            if previous is not None and previous[1] is not declaring:
+                raise QuirksExtensionCollisionError(
+                    f"Quirks extensions {_describe(previous[0])} and "
+                    f"{_describe(extension)}, both registered for dialect "
+                    f"{dialect!r}, each answer {name!r} "
+                    f"({_describe(previous[1])} and {_describe(declaring)}). "
+                    f"Registration order alone would decide which one wins, "
+                    f"silently — the shadowing this seam exists to prevent. One "
+                    f"of the two must drop the hook."
+                )
+            answered[name] = (extension, declaring)
+
+
+def _contributed_names(base: type, extension: type) -> Dict[str, type]:
+    """Map each name *extension* contributes to the class in its MRO declaring it.
+
+    Walks the extension's whole MRO rather than ``vars(extension)``: a name
+    the extension inherits from a parent of its own still precedes *base* in
+    the composed MRO and still wins, so a leaf-only check lets through exactly
+    the shadowing this seam forbids.
+
+    Classes already in *base*'s MRO are skipped, so an extension subclassing
+    ``BaseQuirks`` — the natural instinct, so the mixin type-checks —
+    contributes nothing by doing so and is not rejected for every name
+    ``BaseQuirks`` declares.
+    """
+    contributed: Dict[str, type] = {}
+    base_lineage = base.__mro__
+    for klass in extension.__mro__:
+        if klass is object or klass in base_lineage:
             continue
-        owner = _defining_class(base, name)
-        if owner is None:
-            continue
-        raise QuirksExtensionCollisionError(
-            f"Quirks extension {_describe(extension)} registered for dialect "
-            f"{dialect!r} redefines {name!r}, which {_describe(owner)} already "
-            f"defines. Extensions may only add hooks the core does not answer: "
-            f"an existing hook is a statement about the database engine, and a "
-            f"second answer for it belongs upstream in the core rather than in "
-            f"an installed extension."
-        )
+        for name in vars(klass):
+            contributed.setdefault(name, klass)
+    return contributed
 
 
 def _defining_class(base: type, name: str) -> Optional[type]:
@@ -158,6 +294,13 @@ def _defining_class(base: type, name: str) -> Optional[type]:
         if name in vars(klass):
             return klass
     return None
+
+
+def _inherited_from(extension: type, declaring: type) -> str:
+    """Name the ancestor a colliding name came from, when it is not the leaf."""
+    if declaring is extension:
+        return ""
+    return f" (inherited from {_describe(declaring)})"
 
 
 def _describe(klass: type) -> str:
