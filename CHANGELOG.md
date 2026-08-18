@@ -51,9 +51,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (`__abstractmethods__`, `__parameters__`, `__orig_bases__`, `__slots__`,
   `__new__`) that composition owns. `validate_quirks_extensions()` runs at
   feature-load time, so a collision on a dialect nothing happens to resolve
-  still fails loudly, and a set of extensions with no consistent method
-  resolution order raises `QuirksExtensionCompositionError` instead of a raw
-  `TypeError`.
+  still fails loudly, and anything that stops the composed class being built
+  raises `QuirksExtensionCompositionError` naming the dialect and the bases
+  rather than escaping raw — a set of extensions with no consistent method
+  resolution order, or an extension's own metaclass refusing the composition,
+  which contributes no name for the checks above to catch.
 
   Registration targets dialect keys explicitly: an extension for `postgresql`
   does not reach the PostgreSQL-wire-compatible dialects (`neon`,

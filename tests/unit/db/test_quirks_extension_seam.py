@@ -18,11 +18,14 @@ import enum
 import re
 from abc import ABCMeta
 from dataclasses import dataclass
-from typing import Generic, Iterator, List, NamedTuple, Protocol, TypeVar
+from typing import Dict, Generic, Iterator, List, NamedTuple, Protocol, Tuple, TypeVar
 
 import pytest
 
 from core.seams.quirks import (
+    _DUNDER_REASONS,
+    _EXTENSION_SHAPE_ADVICE,
+    _GENERIC_DUNDER_REASON,
     QuirksExtensionCollisionError,
     QuirksExtensionCompositionError,
     clear_quirks_extensions,
@@ -416,6 +419,55 @@ def test_registering_a_class_and_its_own_subclass_reports_what_the_caller_did() 
     assert "mysql" in message
 
 
+class _RefusesToBeComposed(type):
+    """A metaclass that rejects being used as a base, with a non-``TypeError``.
+
+    ``bases`` is empty only for :class:`_ExtensionWithACustomMetaclass` itself,
+    so the refusal fires when ``compose_quirks_class`` builds the composed
+    class and not at import.
+    """
+
+    def __new__(
+        mcls,
+        name: str,
+        bases: Tuple[type, ...],
+        namespace: Dict[str, object],
+        **kwargs: object,
+    ) -> "_RefusesToBeComposed":
+        if bases:
+            raise ValueError("metaclass refuses this composition")
+        return super().__new__(mcls, name, bases, namespace, **kwargs)
+
+
+class _ExtensionWithACustomMetaclass(metaclass=_RefusesToBeComposed):
+    """A metaclass contributes nothing to ``vars()``, so no guard sees it."""
+
+    def metaclass_extension_hook(self) -> str:
+        return "metaclass"
+
+
+def test_a_metaclass_refusing_composition_is_reported_as_a_composition_error() -> None:
+    """Whatever a metaclass raises has to arrive as a seam error, not raw.
+
+    No guard can cover this ahead of ``type(...)``: a metaclass is not a name
+    in the extension's ``vars()``, which holds only neutral bookkeeping and
+    the hook, so composition is reached and the metaclass decides.
+    ``validate_quirks_extensions`` is called outside
+    ``load_feature_extensions``'s per-entry-point ``try``/``except``, so an
+    exception left untranslated escapes CLI startup with nothing tying it to
+    quirks composition.
+    """
+    register_quirks_extension(["mysql"], _ExtensionWithACustomMetaclass)
+
+    with pytest.raises(QuirksExtensionCompositionError) as excinfo:
+        ProviderRegistry.get_quirks("mysql")
+
+    message = str(excinfo.value)
+    assert "metaclass refuses this composition" in message
+    assert "_ExtensionWithACustomMetaclass" in message
+    assert "mysql" in message
+
+
 # ---------------------------------------------------------------------------
 # Alias keying
 # ---------------------------------------------------------------------------
@@ -554,6 +606,8 @@ class _InheritsInitFromItsOwnParent(_ParentWithInit):
 @pytest.mark.parametrize(
     "extension, name",
     [
+        (_OverridesInit, "__init__"),
+        (_DeclaresSlots, "__slots__"),
         (_DefinesGetattribute, "__getattribute__"),
         (_DefinesGetattr, "__getattr__"),
         (_DefinesInitSubclass, "__init_subclass__"),
@@ -561,7 +615,19 @@ class _InheritsInitFromItsOwnParent(_ParentWithInit):
     ],
 )
 def test_an_extension_defining_a_composition_dunder_is_rejected(extension: type, name: str) -> None:
-    """None of these adds a hook; each re-answers what composition owns."""
+    """None of these adds a hook; each re-answers what composition owns.
+
+    The wording is asserted, not just the quoted name: the message is built
+    from module constants that nothing else pins, so emptying
+    :data:`_DUNDER_REASONS` or dropping the advice used to change what an
+    author reads without failing a single test.
+
+    The reason is *indexed*, and the one name with no reason of its own is
+    the one case naming :data:`_GENERIC_DUNDER_REASON`. Writing the lookup as
+    ``.get(name, _GENERIC_DUNDER_REASON)`` would mirror the message's own
+    expression, so an emptied ``_DUNDER_REASONS`` would still pass — with
+    every rejection carrying the generic reason the test then asked for.
+    """
     register_quirks_extension(["mysql"], extension)
 
     with pytest.raises(QuirksExtensionCollisionError) as excinfo:
@@ -570,6 +636,9 @@ def test_an_extension_defining_a_composition_dunder_is_rejected(extension: type,
     message = str(excinfo.value)
     assert name in message
     assert extension.__name__ in message
+    expected_reason = _GENERIC_DUNDER_REASON if name == "__new__" else _DUNDER_REASONS[name]
+    assert expected_reason in message
+    assert _EXTENSION_SHAPE_ADVICE in message
 
 
 def test_an_init_subclass_extension_never_reaches_composition() -> None:
@@ -697,10 +766,10 @@ def test_a_standard_library_base_class_extension_is_rejected(extension: type) ->
     ``NamedTuple`` and ``Enum`` are refused by necessity, and the guard is
     what makes the failure legible. A ``NamedTuple`` extension composes as a
     class but its ``__new__`` then rejects ``composed(dialect_name=...)``; an
-    ``Enum`` extension does not compose at all, and fails with an
-    ``AttributeError`` out of the enum machinery that
-    ``compose_quirks_class`` would not translate, since it catches
-    ``TypeError``.
+    ``Enum`` extension does not compose at all, failing with an
+    ``AttributeError`` out of the enum machinery that ``compose_quirks_class``
+    would otherwise report as an unsatisfiable MRO — the wrong diagnosis for
+    a base that can never compose.
     """
     register_quirks_extension(["mysql"], extension)
 

@@ -161,8 +161,10 @@ class QuirksExtensionCompositionError(DbliftError):
     """Raised when a dialect's registered extensions cannot form a class.
 
     Distinct from :class:`QuirksExtensionCollisionError`: nothing is being
-    re-answered, the list of bases simply has no consistent linearisation —
-    registering a class and then a subclass of it, most commonly.
+    re-answered, the composed class simply cannot be built. Most commonly the
+    list of bases has no consistent linearisation — registering a class and
+    then a subclass of it — but an extension's own metaclass refusing the
+    composition arrives here too, whatever it raises.
     """
 
 
@@ -201,8 +203,9 @@ def compose_quirks_class(dialect: str, base: type) -> type:
         QuirksExtensionCollisionError: If a registered extension answers a
             name *base* already answers, or a name another extension for the
             same dialect already answers.
-        QuirksExtensionCompositionError: If the resulting list of bases has
-            no consistent method resolution order.
+        QuirksExtensionCompositionError: If building the composed class fails
+            for any reason — no consistent method resolution order, or an
+            extension's metaclass refusing the composition.
     """
     if not _extensions:
         return base
@@ -212,7 +215,14 @@ def compose_quirks_class(dialect: str, base: type) -> type:
     _reject_collisions(dialect, base, extensions)
     try:
         return type(f"{base.__name__}Composed", (*extensions, base), {})
-    except TypeError as exc:
+    # Every exception, not just TypeError: an extension carrying a custom
+    # metaclass contributes no name to vars(), so _reject_collisions has
+    # nothing to catch and type() reaches Meta.__new__, which may raise
+    # anything at all. Untranslated it escapes load_feature_extensions —
+    # which calls validate_quirks_extensions outside its per-entry-point
+    # except — with nothing naming quirks composition. The try holds exactly
+    # one statement, so this cannot swallow anything else.
+    except Exception as exc:
         raise QuirksExtensionCompositionError(
             f"Quirks extensions registered for dialect {dialect!r} cannot be "
             f"composed with {_describe(base)}: {exc}. Bases, in registration "
