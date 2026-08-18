@@ -9,6 +9,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Extension point for dialect quirks (`core/seams/quirks.py`).** A dialect
+  resolved to exactly one quirks class, so an installed package that needed a
+  hook the core does not define had no supported way to contribute one.
+  `register_quirks_extension(dialects, extension)` now mixes an extension class
+  in ahead of the dialect's quirks class, and `provider.quirks.<hook>` finds
+  the added hook. Existing call sites resolve exactly what they resolved
+  before: with nothing registered, `get_quirks` returns the plugin's own class
+  rather than a dynamic subclass.
+
+  Extensions may only **add**. Defining a name the dialect already answers —
+  whether the plugin's quirks class declares it or inherits it from
+  `BaseQuirks` — raises `QuirksExtensionCollisionError` naming the hook, the
+  extension and the class that already defines it. An existing hook is a
+  statement about the database engine, so a second answer for it belongs
+  upstream here rather than in an installed extension, and shadowing it
+  quietly would override a newer core without a word.
+  `validate_quirks_extensions()` runs at feature-load time, so a collision on a
+  dialect nothing happens to resolve still fails loudly. Registration targets
+  dialect keys explicitly: an extension for `postgresql` does not reach the
+  PostgreSQL-wire-compatible dialects (`neon`, `timescaledb`, ...) or the
+  registry's aliases.
+
 ### Changed
 
 ### Fixed

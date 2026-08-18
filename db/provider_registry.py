@@ -11,6 +11,7 @@ if TYPE_CHECKING:
     from config import DbliftConfig
     from core.logger import Log
 
+from core.seams.quirks import compose_quirks_class
 from db.base_provider import BaseProvider
 from db.base_quirks import BaseQuirks
 
@@ -525,6 +526,10 @@ class ProviderRegistry:
         ``provider.quirks.<hook>`` always gets a real object —
         never ``None`` — so call sites stay branch-free.
 
+        Extensions registered through ``core.seams.quirks`` are composed
+        ahead of that class; with none registered — the ordinary case —
+        the class is instantiated unchanged.
+
         Instances are cached per dialect string so that hot paths
         (e.g. ``SqlGenerator.generate_ddl`` calls ``_quirks_for``
         ~5x per object) reuse a single instance instead of
@@ -534,19 +539,41 @@ class ProviderRegistry:
         cached = cls._quirks_cache.get(normalized)
         if cached is not None:
             return cached
-        if not cls._discovered:
-            cls.discover_plugins()
-        plugin_info = cls._plugins.get(normalized)
-        if plugin_info is not None and plugin_info.quirks_class is not None:
-            # Pass the caller's normalized db_type so aliases
-            # (e.g. ``"postgres"`` for the postgresql plugin) preserve
-            # the invariant
-            # ``provider.config.database.type == provider.quirks.dialect_name``.
-            instance: BaseQuirks = plugin_info.quirks_class(dialect_name=normalized)
-        else:
-            instance = BaseQuirks(dialect_name=normalized)
+        composed = compose_quirks_class(normalized, cls.quirks_base_class(normalized))
+        # Pass the caller's normalized db_type so aliases
+        # (e.g. ``"postgres"`` for the postgresql plugin) preserve
+        # the invariant
+        # ``provider.config.database.type == provider.quirks.dialect_name``.
+        instance: BaseQuirks = composed(dialect_name=normalized)
         cls._quirks_cache[normalized] = instance
         return instance
+
+    @classmethod
+    def quirks_base_class(cls, db_type: str) -> Type[BaseQuirks]:
+        """Return the quirks class *db_type* resolves to before composition.
+
+        The plugin's declared ``quirks_class``, or :class:`BaseQuirks` for
+        plugins that declare none and for unregistered dialects. Split out of
+        :meth:`get_quirks` so ``core.seams.quirks`` can validate its registered
+        extensions against the real base class without instantiating anything
+        and without a second copy of this lookup.
+        """
+        if not cls._discovered:
+            cls.discover_plugins()
+        plugin_info = cls._plugins.get(db_type.lower())
+        if plugin_info is not None and plugin_info.quirks_class is not None:
+            return plugin_info.quirks_class
+        return BaseQuirks
+
+    @classmethod
+    def clear_quirks_cache(cls) -> None:
+        """Discard the memoised quirks instances.
+
+        Called by ``core.seams.quirks`` when an extension registers: a dialect
+        resolved before that point would otherwise keep serving its
+        un-extended instance for the life of the process.
+        """
+        cls._quirks_cache.clear()
 
     @classmethod
     def canonical_dialect_name(cls, alias: str) -> Optional[str]:
