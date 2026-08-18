@@ -28,6 +28,18 @@ classes already in the base's own lineage contribute nothing, so nothing
 they declare counts as a collision, and the plugin's own overrides stay
 ahead of the ``BaseQuirks`` defaults in the composed MRO.
 
+So an extension is a ``BaseQuirks`` subclass or a plain class, and
+nothing else. ``abc.ABC``, ``typing.Protocol``, ``typing.Generic``,
+``NamedTuple`` and ``Enum`` bases are all rejected, because each writes
+dunders of its own into the class — ``__abstractmethods__``,
+``__parameters__``, ``__orig_bases__``, ``__slots__``, ``__new__`` — and
+those are names composition owns. The narrowing is deliberate rather
+than incidental: allowing them by where the name was declared would
+mean allowing ``Protocol.__init__`` and ``Generic.__init_subclass__``,
+the two most dangerous names of all, on the strength of interpreter
+behaviour that is not guaranteed to hold across versions. An extension
+needs none of these bases: it adds hooks to a class the core types.
+
 Registration targets dialect keys **explicitly** — an extension for
 ``postgresql`` reaches ``postgresql`` and nothing else. Wire-compatible
 engines (``neon``, ``timescaledb``, ...) and MariaDB are separate plugins
@@ -83,9 +95,61 @@ _COMPOSITION_NEUTRAL_NAMES = frozenset(
         "__dict__",
         "__weakref__",
         "__annotations__",
+        # 3.13-only, and CI runs 3.11 and 3.12, so no test reaches these two:
+        # their necessity is asserted by reading CPython, not by the suite —
+        # without them every extension is rejected on 3.13. Both are pure
+        # introspection metadata (the class's first source line, the attribute
+        # names assigned in its body), so neither can hide a real shadow.
         "__firstlineno__",
         "__static_attributes__",
     }
+)
+
+#: One reason per dunder composition has a specific answer for, so a rejection
+#: explains the name it actually quotes. The message was one paragraph naming
+#: five dunders regardless: an author who wrote ``__getattr__`` was walked
+#: through ``__init__`` first, and an author who wrote no dunder at all — one
+#: whose class inherited ``__abstractmethods__`` from an ``abc.ABC`` base —
+#: got five explanations, none of them about the name in the message.
+_DUNDER_REASONS: Dict[str, str] = {
+    "__init__": (
+        "ProviderRegistry.get_quirks instantiates the composed class as "
+        "composed(dialect_name=...), so an extension's __init__ empties "
+        "quirks.dialect_name"
+    ),
+    "__slots__": "__slots__ dictates the layout of the composed instance",
+    "__init_subclass__": (
+        "__init_subclass__ runs during composition itself — the composed class is "
+        "built with type(...), which is a subclass creation — and writes into that "
+        "class's own namespace, ahead of every extension and the base"
+    ),
+    "__getattr__": (
+        "__getattr__ answers every hook the composed class does not define, so a "
+        "missing hook never surfaces and hasattr is always true"
+    ),
+    "__getattribute__": (
+        "__getattribute__ intercepts every attribute read on the composed instance, "
+        "so it can re-answer any hook, including ones the core already answers"
+    ),
+}
+
+#: Used for every dunder :data:`_DUNDER_REASONS` has no specific answer for —
+#: mostly the ones a standard-library base wrote, which the author never typed.
+#: Which one it is does not change the verdict, so the reason does not vary.
+_GENERIC_DUNDER_REASON = (
+    "Composition owns class creation, and a dunder an extension contributes is "
+    "either metadata a base class wrote or a change to how the composed class is "
+    "built, instantiated or looked up — neither answers a question about the "
+    "database engine"
+)
+
+#: The route forward, appended to every dunder rejection. An author reaching a
+#: dunder they did not write reached it through a base class, so naming the
+#: two shapes that compose is more use than naming the rule again.
+_EXTENSION_SHAPE_ADVICE = (
+    "Extensions add hooks and nothing else: subclass BaseQuirks, or use a plain "
+    "class. Do not subclass abc.ABC, typing.Protocol, typing.Generic, NamedTuple "
+    "or Enum — each contributes dunders of its own."
 )
 
 
@@ -252,18 +316,9 @@ def _reject_collisions(dialect: str, base: type, extensions: List[type]) -> None
                 raise QuirksExtensionCollisionError(
                     f"Quirks extension {_describe(extension)} registered for "
                     f"dialect {dialect!r} defines {name!r}"
-                    f"{_inherited_from(extension, declaring)}. Composition owns "
-                    f"every dunder but the bookkeeping Python writes into a class "
-                    f"body itself: a dunder answers no question about the database "
-                    f"engine, it changes how the composed class is built, "
-                    f"instantiated or looked up. ProviderRegistry.get_quirks "
-                    f"instantiates the composed class as composed(dialect_name=...), "
-                    f"so __init__ empties quirks.dialect_name; __slots__ dictates "
-                    f"the composed instance layout; __init_subclass__ runs during "
-                    f"composition itself and writes ahead of every extension and the "
-                    f"base; __getattr__ and __getattribute__ answer every hook, "
-                    f"including ones nothing defines. Extensions add hooks, nothing "
-                    f"else."
+                    f"{_inherited_from(extension, declaring)}. "
+                    f"{_DUNDER_REASONS.get(name, _GENERIC_DUNDER_REASON)}. "
+                    f"{_EXTENSION_SHAPE_ADVICE}"
                 )
             owner = _defining_class(base, name)
             if owner is not None:

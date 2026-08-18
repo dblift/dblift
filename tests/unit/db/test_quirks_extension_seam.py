@@ -13,8 +13,12 @@ Companion to ``test_dialect_quirks_conformance.py``, which guards the
 
 from __future__ import annotations
 
+import abc
+import enum
+import re
+from abc import ABCMeta
 from dataclasses import dataclass
-from typing import Iterator, List
+from typing import Generic, Iterator, List, NamedTuple, Protocol, TypeVar
 
 import pytest
 
@@ -56,6 +60,19 @@ def _clean_extension_registry() -> Iterator[None]:
 #: A hook ``BaseQuirks`` defines and the PostgreSQL plugin inherits unchanged.
 #: Shadowing it is the case that only an MRO-wide check catches.
 _INHERITED_BASE_HOOK = "boolean_false_literal"
+
+
+def _rejected_name(message: str) -> str:
+    """The name a rejection message quotes.
+
+    Read out of the message rather than asserted by hand: which dunder a
+    class contributing several of them trips on *first* is ``vars()``
+    ordering, and a test naming one of them pins an implementation detail of
+    CPython instead of the seam's decision.
+    """
+    match = re.search(r"\bdefines '([^']+)'", message)
+    assert match is not None, f"no rejected name in message: {message}"
+    return match.group(1)
 
 
 class _PluginOwnedQuirks(BaseQuirks):
@@ -572,13 +589,22 @@ def test_an_init_subclass_extension_never_reaches_composition() -> None:
 
 
 def test_a_dataclass_extension_is_rejected() -> None:
-    """``@dataclass`` writes ``__init__`` without the author naming it."""
+    """``@dataclass`` writes dunders the author never named.
+
+    Which one the guard reaches first is ``vars()`` ordering — here
+    ``__dataclass_params__``, not the ``__init__`` this test was written
+    for — so the assertion names neither. What it pins is that the reported
+    name is a dunder ``@dataclass`` generated rather than one the class body
+    declares, and that the class is refused.
+    """
     register_quirks_extension(["mysql"], _DataclassExtension)
 
     with pytest.raises(QuirksExtensionCollisionError) as excinfo:
         ProviderRegistry.get_quirks("mysql")
 
-    assert "__init__" in str(excinfo.value)
+    message = str(excinfo.value)
+    assert "_DataclassExtension" in message
+    assert _rejected_name(message) in vars(_DataclassExtension)
 
 
 def test_an_extension_inheriting_init_from_its_own_parent_is_rejected() -> None:
@@ -600,3 +626,121 @@ def test_an_extension_of_only_new_hooks_still_composes() -> None:
 
     assert ProviderRegistry.get_quirks("mysql").dialect_extension_hook() == "extension"
     assert ProviderRegistry.get_quirks("sqlserver").typed_extension_hook() == "typed"
+
+
+# ---------------------------------------------------------------------------
+# Standard-library bases contribute dunders, so they are rejected
+# ---------------------------------------------------------------------------
+
+
+T = TypeVar("T")
+
+
+class _ExtendsAbc(abc.ABC):
+    def abc_extension_hook(self) -> str:
+        return "abc"
+
+
+class _UsesAbcMeta(metaclass=ABCMeta):
+    def abcmeta_extension_hook(self) -> str:
+        return "abcmeta"
+
+
+class _ExtendsGeneric(Generic[T]):
+    def generic_extension_hook(self) -> str:
+        return "generic"
+
+
+class _ExtendsProtocol(Protocol):
+    def protocol_extension_hook(self) -> str:
+        return "protocol"
+
+
+class _ExtendsNamedTuple(NamedTuple):
+    scratch: str = "tuple"
+
+
+class _ExtendsEnum(enum.Enum):
+    ONLY = "member"
+
+
+@pytest.mark.parametrize(
+    "extension",
+    [
+        _ExtendsAbc,
+        _UsesAbcMeta,
+        _ExtendsGeneric,
+        _ExtendsProtocol,
+        _ExtendsNamedTuple,
+        _ExtendsEnum,
+    ],
+    ids=["abc.ABC", "ABCMeta", "Generic", "Protocol", "NamedTuple", "Enum"],
+)
+def test_a_standard_library_base_class_extension_is_rejected(extension: type) -> None:
+    """Pins the decision, so widening it is a visible diff rather than drift.
+
+    Each of these bases writes dunders into its subclass —
+    ``__abstractmethods__``, ``__orig_bases__``, ``__parameters__``,
+    ``__slots__``, ``__new__`` — and the seam rejects every dunder it does
+    not own, so all six are refused. The reasons are not the same reason.
+
+    ``abc.ABC``, ``ABCMeta``, ``Generic`` and ``Protocol`` are refused **by
+    choice**: on this interpreter all four compose *and* instantiate
+    correctly, ``dialect_name`` and the base's own hooks intact. Allowing
+    them would have to be by provenance — trusting the declaring class — and
+    that means trusting ``Protocol.__init__`` and
+    ``Generic.__init_subclass__``, the two most dangerous names of all, on
+    the strength of interpreter behaviour no version guarantees. An extension
+    needs none of these bases: it subclasses ``BaseQuirks`` or it is a plain
+    class.
+
+    ``NamedTuple`` and ``Enum`` are refused by necessity, and the guard is
+    what makes the failure legible. A ``NamedTuple`` extension composes as a
+    class but its ``__new__`` then rejects ``composed(dialect_name=...)``; an
+    ``Enum`` extension does not compose at all, and fails with an
+    ``AttributeError`` out of the enum machinery that
+    ``compose_quirks_class`` would not translate, since it catches
+    ``TypeError``.
+    """
+    register_quirks_extension(["mysql"], extension)
+
+    with pytest.raises(QuirksExtensionCollisionError) as excinfo:
+        ProviderRegistry.get_quirks("mysql")
+
+    message = str(excinfo.value)
+    assert extension.__name__ in message
+    rejected = _rejected_name(message)
+    assert rejected.startswith("__") and rejected.endswith("__"), message
+
+
+# ---------------------------------------------------------------------------
+# Private names are hooks too
+# ---------------------------------------------------------------------------
+
+
+class _ShadowsAPrivateQuirksName:
+    """Extension redefining a private name the PostgreSQL plugin declares."""
+
+    _PG_SERIAL_TYPES = frozenset({"nothing-is-a-serial"})
+
+
+def test_shadowing_a_private_name_the_quirks_class_declares_is_rejected() -> None:
+    """A private shadow is a real shadow — skipping ``_name`` would let it win.
+
+    ``PostgresqlQuirks.render_identity_clause`` reads
+    ``self._PG_SERIAL_TYPES``, so an extension declaring that name changes
+    what the dialect answers for every ``SERIAL`` column, exactly as a public
+    hook would. Nothing else in this suite fails if the guard skips
+    single-underscore names.
+    """
+    assert "_PG_SERIAL_TYPES" in vars(PostgresqlQuirks)
+
+    register_quirks_extension(["postgresql"], _ShadowsAPrivateQuirksName)
+
+    with pytest.raises(QuirksExtensionCollisionError) as excinfo:
+        ProviderRegistry.get_quirks("postgresql")
+
+    message = str(excinfo.value)
+    assert "_PG_SERIAL_TYPES" in message
+    assert "_ShadowsAPrivateQuirksName" in message
+    assert "PostgresqlQuirks" in message

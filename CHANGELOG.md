@@ -35,16 +35,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `__slots__` dictates the composed instance layout; `__init_subclass__` runs
   during composition itself and writes ahead of every extension and the base;
   `__getattr__` and `__getattribute__` answer every hook, including ones
-  nothing defines.
+  nothing defines. The rejection quotes the offending name and gives the one
+  reason that applies to it, rather than every reason at once.
   An existing hook is a statement about the database engine, so a second
   answer for it belongs upstream here rather than in an installed extension,
-  and shadowing it quietly would override a newer core without a word. An
-  extension **may** subclass `BaseQuirks` so the mixin type-checks: classes
+  and shadowing it quietly would override a newer core without a word. The
+  check does not skip private names either: a plugin quirks class reads its
+  own `_NAME` constants through `self`, so an extension declaring one shadows
+  the dialect's answer exactly as a public hook would.
+  An extension **may** subclass `BaseQuirks` so the mixin type-checks: classes
   already in the dialect's own lineage contribute nothing and collide with
-  nothing. `validate_quirks_extensions()` runs at feature-load time, so a
-  collision on a dialect nothing happens to resolve still fails loudly, and a
-  set of extensions with no consistent method resolution order raises
-  `QuirksExtensionCompositionError` instead of a raw `TypeError`.
+  nothing. It is therefore a `BaseQuirks` subclass or a plain class and
+  nothing else — `abc.ABC`, `typing.Protocol`, `typing.Generic`, `NamedTuple`
+  and `Enum` bases are rejected, each contributing dunders of its own
+  (`__abstractmethods__`, `__parameters__`, `__orig_bases__`, `__slots__`,
+  `__new__`) that composition owns. `validate_quirks_extensions()` runs at
+  feature-load time, so a collision on a dialect nothing happens to resolve
+  still fails loudly, and a set of extensions with no consistent method
+  resolution order raises `QuirksExtensionCompositionError` instead of a raw
+  `TypeError`.
 
   Registration targets dialect keys explicitly: an extension for `postgresql`
   does not reach the PostgreSQL-wire-compatible dialects (`neon`,
