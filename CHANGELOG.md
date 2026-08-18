@@ -25,9 +25,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the name came from and the class that already defines it. Two extensions
   registered for one dialect answering the same hook raise it too, naming
   both: registration order deciding a winner is the same silent shadowing in
-  the other direction. `__init__` and `__slots__` are rejected as well —
-  composition instantiates the class as `composed(dialect_name=...)`, so an
-  extension redefining `__init__` would silently empty `quirks.dialect_name`.
+  the other direction. Dunders are rejected outright, bar the bookkeeping
+  Python writes into every class body (`__module__`, `__doc__`, `__dict__`,
+  `__weakref__`, `__annotations__`, ...): a dunder answers no question about a
+  database engine, it changes how the composed class is built, instantiated or
+  looked up. `__init__` — which a `@dataclass` extension generates without its
+  author naming it — would silently empty `quirks.dialect_name`, since
+  composition instantiates the class as `composed(dialect_name=...)`;
+  `__slots__` dictates the composed instance layout; `__init_subclass__` runs
+  during composition itself and writes ahead of every extension and the base;
+  `__getattr__` and `__getattribute__` answer every hook, including ones
+  nothing defines.
   An existing hook is a statement about the database engine, so a second
   answer for it belongs upstream here rather than in an installed extension,
   and shadowing it quietly would override a newer core without a word. An

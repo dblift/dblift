@@ -13,7 +13,8 @@ Companion to ``test_dialect_quirks_conformance.py``, which guards the
 
 from __future__ import annotations
 
-from typing import Iterator
+from dataclasses import dataclass
+from typing import Iterator, List
 
 import pytest
 
@@ -456,3 +457,146 @@ def test_an_extension_declaring_slots_is_rejected() -> None:
         ProviderRegistry.get_quirks("mysql")
 
     assert "__slots__" in str(excinfo.value)
+
+
+# ---------------------------------------------------------------------------
+# Dunders the enumeration used to wave through
+# ---------------------------------------------------------------------------
+#
+# ``__init__`` and ``__slots__`` were named explicitly and every other
+# underscore name was skipped, so the rule was a denylist of two. These
+# classes are the dunders that denylist let past, each of which re-answers
+# something the composed class already answers.
+
+
+class _DefinesGetattribute:
+    """Intercepts every attribute read on the composed instance."""
+
+    def __getattribute__(self, name: str) -> object:
+        if name == _INHERITED_BASE_HOOK:
+            return "HIJACKED"
+        return object.__getattribute__(self, name)
+
+
+class _DefinesGetattr:
+    """Answers every hook that does not exist, so ``hasattr`` is always true."""
+
+    def __getattr__(self, name: str) -> str:
+        return "invented"
+
+
+#: Every class :class:`_DefinesInitSubclass` saw created, so a test can assert
+#: the hook never ran rather than only that composition raised.
+_INIT_SUBCLASS_CALLS: List[type] = []
+
+
+class _DefinesInitSubclass:
+    """A package mixin auto-registering its subclasses — a mainstream idiom.
+
+    ``compose_quirks_class`` builds the composed class with ``type(...)``,
+    which *is* a subclass creation, so this fires during composition and
+    writes into the composed class's own namespace — MRO position 0, ahead of
+    every extension and the base.
+    """
+
+    def __init_subclass__(cls, **kwargs: object) -> None:
+        super().__init_subclass__(**kwargs)
+        _INIT_SUBCLASS_CALLS.append(cls)
+        setattr(cls, _INHERITED_BASE_HOOK, "INJECTED-AT-COMPOSITION")
+
+
+class _DefinesNew:
+    """Controls construction of the composed instance."""
+
+    def __new__(cls, *args: object, **kwargs: object) -> "_DefinesNew":
+        return super().__new__(cls)
+
+
+@dataclass
+class _DataclassExtension:
+    """``@dataclass`` generates ``__init__``, so the seam must reject it."""
+
+    scratch: str = "generated"
+
+    def dataclass_extension_hook(self) -> str:
+        return "dataclass"
+
+
+class _ParentWithInit:
+    def __init__(self, *args: object, **kwargs: object) -> None:  # noqa: D107
+        pass
+
+
+class _InheritsInitFromItsOwnParent(_ParentWithInit):
+    """The ``__init__`` arrives by inheritance, not from this class body."""
+
+    def inherited_init_hook(self) -> str:
+        return "inherited"
+
+
+@pytest.mark.parametrize(
+    "extension, name",
+    [
+        (_DefinesGetattribute, "__getattribute__"),
+        (_DefinesGetattr, "__getattr__"),
+        (_DefinesInitSubclass, "__init_subclass__"),
+        (_DefinesNew, "__new__"),
+    ],
+)
+def test_an_extension_defining_a_composition_dunder_is_rejected(extension: type, name: str) -> None:
+    """None of these adds a hook; each re-answers what composition owns."""
+    register_quirks_extension(["mysql"], extension)
+
+    with pytest.raises(QuirksExtensionCollisionError) as excinfo:
+        ProviderRegistry.get_quirks("mysql")
+
+    message = str(excinfo.value)
+    assert name in message
+    assert extension.__name__ in message
+
+
+def test_an_init_subclass_extension_never_reaches_composition() -> None:
+    """The rejection has to precede ``type()``, or the hook has already run.
+
+    Raising after composition would be no protection: the injected
+    ``boolean_false_literal`` sits in the composed class's own namespace,
+    ahead of every extension and the base.
+    """
+    _INIT_SUBCLASS_CALLS.clear()
+    register_quirks_extension(["mysql"], _DefinesInitSubclass)
+
+    with pytest.raises(QuirksExtensionCollisionError):
+        compose_quirks_class("mysql", ProviderRegistry.quirks_base_class("mysql"))
+
+    assert _INIT_SUBCLASS_CALLS == []
+
+
+def test_a_dataclass_extension_is_rejected() -> None:
+    """``@dataclass`` writes ``__init__`` without the author naming it."""
+    register_quirks_extension(["mysql"], _DataclassExtension)
+
+    with pytest.raises(QuirksExtensionCollisionError) as excinfo:
+        ProviderRegistry.get_quirks("mysql")
+
+    assert "__init__" in str(excinfo.value)
+
+
+def test_an_extension_inheriting_init_from_its_own_parent_is_rejected() -> None:
+    """A leaf-``vars`` check misses it, yet the parent still wins by MRO."""
+    register_quirks_extension(["mysql"], _InheritsInitFromItsOwnParent)
+
+    with pytest.raises(QuirksExtensionCollisionError) as excinfo:
+        ProviderRegistry.get_quirks("mysql")
+
+    message = str(excinfo.value)
+    assert "__init__" in message
+    assert "_ParentWithInit" in message
+
+
+def test_an_extension_of_only_new_hooks_still_composes() -> None:
+    """The inverted rule must not reject what the enumeration accepted."""
+    register_quirks_extension(["mysql"], _AddsNewHook)
+    register_quirks_extension(["sqlserver"], _TypedExtension)
+
+    assert ProviderRegistry.get_quirks("mysql").dialect_extension_hook() == "extension"
+    assert ProviderRegistry.get_quirks("sqlserver").typed_extension_hook() == "typed"

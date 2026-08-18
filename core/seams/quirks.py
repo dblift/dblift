@@ -18,7 +18,10 @@ extension. Silently winning by MRO is the failure mode this seam exists
 to prevent: it shadows the core implementation, and a newer core
 defining the same hook would then be overridden without a word. Two
 extensions answering one hook for one dialect are rejected on the same
-grounds — that shadowing is silent in the other direction.
+grounds — that shadowing is silent in the other direction. Dunders are
+rejected outright, bar the bookkeeping Python writes into every class
+body: a dunder says nothing about a database engine, it changes how the
+composed class is built, instantiated or looked up.
 
 An extension **may** subclass ``BaseQuirks`` so the mixin type-checks:
 classes already in the base's own lineage contribute nothing, so nothing
@@ -54,15 +57,36 @@ from core.exceptions import DbliftError
 #: in the same list and a lookup under either key finds both.
 _extensions: Dict[str, List[type]] = {}
 
-#: Names composition itself owns, reachable only because the general
-#: underscore skip in :func:`_reject_collisions` is load-bearing (without it
-#: ``__module__`` and ``__doc__`` collide on every extension).
-#: ``ProviderRegistry.get_quirks`` instantiates the composed class as
-#: ``composed(dialect_name=...)``, so an extension defining ``__init__``
-#: shadows ``BaseQuirks.__init__`` and silently breaks the documented
-#: ``config.database.type == quirks.dialect_name`` invariant; ``__slots__``
-#: dictates the composed instance layout rather than answering any hook.
-_RESERVED_NAMES = ("__init__", "__slots__")
+#: The only names an extension may contribute that :func:`_reject_collisions`
+#: ignores: the bookkeeping Python itself writes into a class body. Everything
+#: else an extension contributes is checked, dunders included.
+#:
+#: An allowlist on purpose. The rule here was a denylist — ``__init__`` and
+#: ``__slots__`` named explicitly, every other underscore name skipped — and a
+#: denylist of what is forbidden can only ever be incomplete: that one waved
+#: through ``__getattribute__``, ``__getattr__``, ``__init_subclass__`` and
+#: ``__new__``, each of which re-answers what the composed class already
+#: answers. What is *inert* is instead a closed set the interpreter defines.
+#:
+#: ``__module__``, ``__doc__``, ``__dict__`` and ``__weakref__`` are in the
+#: dict of every class that does not inherit them, so the skip is load-bearing:
+#: without it every extension collides immediately. ``__annotations__`` appears
+#: as soon as the class body annotates a name. ``__qualname__`` is popped by
+#: ``type.__new__`` on CPython 3.11 and ``__firstlineno__`` /
+#: ``__static_attributes__`` only exist from 3.13; all three are listed so the
+#: guard neither depends on nor is broken by the interpreter version.
+_COMPOSITION_NEUTRAL_NAMES = frozenset(
+    {
+        "__module__",
+        "__qualname__",
+        "__doc__",
+        "__dict__",
+        "__weakref__",
+        "__annotations__",
+        "__firstlineno__",
+        "__static_attributes__",
+    }
+)
 
 
 class QuirksExtensionCollisionError(DbliftError):
@@ -203,11 +227,16 @@ def _canonical_dialect(dialect: str) -> str:
 def _reject_collisions(dialect: str, base: type, extensions: List[type]) -> None:
     """Raise unless every registered extension only *adds* names.
 
-    Two checks sharing one name-derivation rule so they cannot drift: each
-    extension against *base*, and each against the extensions registered
-    before it for the same dialect. The second is the same silent shadowing
-    in the unchecked direction — two packages answering one hook would
-    otherwise resolve by registration order with no diagnostic.
+    Three checks sharing one name-derivation rule so they cannot drift: any
+    name outside :data:`_COMPOSITION_NEUTRAL_NAMES` that is a dunder, then
+    each remaining name against *base*, then each against the extensions
+    registered before it for the same dialect. The last is the same silent
+    shadowing in the unchecked direction — two packages answering one hook
+    would otherwise resolve by registration order with no diagnostic.
+
+    The dunder check cannot be folded into the check against *base*: nothing
+    in a quirks lineage declares ``__getattr__`` or ``__slots__``, so both
+    would pass a collision test and still take over the composed class.
 
     Both live here rather than in :func:`register_quirks_extension` because
     :func:`_contributed_names` is defined relative to *base*, which is not
@@ -217,20 +246,25 @@ def _reject_collisions(dialect: str, base: type, extensions: List[type]) -> None
     answered: Dict[str, Tuple[type, type]] = {}
     for extension in extensions:
         for name, declaring in _contributed_names(base, extension).items():
-            if name in _RESERVED_NAMES:
+            if name in _COMPOSITION_NEUTRAL_NAMES:
+                continue
+            if _is_dunder(name):
                 raise QuirksExtensionCollisionError(
                     f"Quirks extension {_describe(extension)} registered for "
                     f"dialect {dialect!r} defines {name!r}"
                     f"{_inherited_from(extension, declaring)}. Composition owns "
-                    f"that name: ProviderRegistry.get_quirks instantiates the "
-                    f"composed class as composed(dialect_name=...), so an "
-                    f"extension redefining __init__ breaks the "
-                    f"config.database.type == quirks.dialect_name invariant, and "
-                    f"one declaring __slots__ dictates the composed instance "
-                    f"layout. Extensions add hooks, nothing else."
+                    f"every dunder but the bookkeeping Python writes into a class "
+                    f"body itself: a dunder answers no question about the database "
+                    f"engine, it changes how the composed class is built, "
+                    f"instantiated or looked up. ProviderRegistry.get_quirks "
+                    f"instantiates the composed class as composed(dialect_name=...), "
+                    f"so __init__ empties quirks.dialect_name; __slots__ dictates "
+                    f"the composed instance layout; __init_subclass__ runs during "
+                    f"composition itself and writes ahead of every extension and the "
+                    f"base; __getattr__ and __getattribute__ answer every hook, "
+                    f"including ones nothing defines. Extensions add hooks, nothing "
+                    f"else."
                 )
-            if name.startswith("_"):
-                continue
             owner = _defining_class(base, name)
             if owner is not None:
                 raise QuirksExtensionCollisionError(
@@ -294,6 +328,11 @@ def _defining_class(base: type, name: str) -> Optional[type]:
         if name in vars(klass):
             return klass
     return None
+
+
+def _is_dunder(name: str) -> bool:
+    """Whether *name* is a ``__dunder__`` — a name Python, not a hook, owns."""
+    return name.startswith("__") and name.endswith("__")
 
 
 def _inherited_from(extension: type, declaring: type) -> str:
