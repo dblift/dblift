@@ -612,7 +612,7 @@ class PostgresqlQuirks(BaseQuirks):
 
     # round_trip extra object types (story 27-6).
     def round_trip_extra_object_types(self) -> "list[str]":
-        """PostgreSQL round-trip covers user-defined types, materialized views, and extensions."""
+        """PostgreSQL contributes user-defined types, materialized views, and extensions."""
         return ["user_defined_types", "materialized_views", "extensions"]
 
     # Column ALTER hooks (Epic 27 column_converter refactor).

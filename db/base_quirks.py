@@ -342,8 +342,8 @@ class BaseQuirks:
 
     # ------------------------------------------------------------------
     # Column ALTER generation hooks (Epic 27).
-    # Drive ``ColumnConverter._generate_*_change`` in
-    # ``core/sql_generator/diff_converters/column_converter.py``.
+    # Drive the per-change ALTER rendering in the diff converters
+    # (``core/sql_generator/diff_converters``).
     # Each hook receives the pre-formatted identifiers so the plugin
     # only needs to compose the SQL string.  Return ``None`` to emit
     # a warning and skip the change; return a ``SqlStatement`` comment
@@ -405,8 +405,8 @@ class BaseQuirks:
     def round_trip_extra_object_types(self) -> "list[str]":
         """Return dialect-specific object type names to include in round-trip tests.
 
-        ``RoundTripTester._get_supported_object_types`` extends the base list
-        with this result. Plugins return names from the set:
+        The caller appends this result to the object-type list it walks
+        for every dialect. Plugins return names from the set:
         ``user_defined_types``, ``materialized_views``, ``extensions``,
         ``synonyms``, ``packages``, ``events``.
 
@@ -561,12 +561,13 @@ class BaseQuirks:
     #: the dialect has no default — the framework returns ``""``.
     #: PostgreSQL=``"public"``, CosmosDB=``"default"``, SQLite=``"main"``.
     #: SQL Server's "dbo" is NOT set here — it's a parser hint only
-    #: (``parser_default_schema``), not an export-schema fallback.
+    #: (``parser_default_schema``), never substituted for a missing schema.
     default_schema_name: Optional[str] = None
     #: Schema name the parser assigns to objects with no explicit schema.
     #: Falls back to ``default_schema_name`` when ``None``.
     #: SQL Server sets ``"dbo"`` here without setting ``default_schema_name``
-    #: so export-schema doesn't normalize empty schemas to ``"dbo"``.
+    #: so a schema-less object keeps its empty schema when SQL is generated
+    #: from the model, instead of being normalized to ``"dbo"``.
     parser_default_schema: Optional[str] = None
     #: ``DROP TABLE / VIEW / INDEX / ... IF EXISTS`` is supported.
     #: Oracle has no native ``IF EXISTS``; everyone else does.
@@ -1574,8 +1575,7 @@ class BaseQuirks:
         Distinct from :meth:`requires_dialect_specific_wrapping`: that
         hook governs CREATE-statement wrapping inside ``generate_ddl``
         (uses ``//`` markers, narrower object set). This hook governs
-        the broader ``$$`` helper (``_requires_mysql_delimiter`` /
-        ``_wrap_mysql_delimiter_block``) which historically covers
+        the broader ``$$`` delimiter path, which historically covers
         procedures, functions, triggers and events.
         """
         return False
@@ -1635,8 +1635,8 @@ class BaseQuirks:
     def type_preferences(self) -> "dict[str, str]":
         """Return per-dialect canonical → preferred-form mapping.
 
-        Called by ``TypeMapper.get_dialect_preferred_type()`` to resolve
-        the preferred name for a canonical type in this dialect
+        The type-mapping layer consults this to resolve the preferred
+        name for a canonical type in this dialect
         (e.g. Oracle prefers ``NUMBER`` for ``INTEGER``).
         Default: empty dict (use canonical form as-is).
         """
@@ -1892,29 +1892,29 @@ class BaseQuirks:
 
     #: Dialect raises an error when ``Connection.commit()`` is called while
     #: ``autoCommit`` is True. Oracle throws ORA-17273; most drivers tolerate
-    #: redundant commits silently. Used by the round-trip tester
-    #: to decide whether to skip an explicit commit when autoCommit is on.
+    #: redundant commits silently. Callers check this before issuing an
+    #: explicit commit, and skip it when autoCommit is on.
     commit_with_autocommit_raises: bool = False
 
     #: Some dialects require ``autoCommit=False`` for DDL like ``CREATE USER``
     #: (Oracle) — issuing DDL with autoCommit on can fail or silently
-    #: not persist. The round-trip tester checks this before creating
-    #: the test schema and flips autoCommit if needed.
+    #: not persist. Callers check this before such DDL and flip autoCommit
+    #: if needed.
     ddl_requires_autocommit_off: bool = False
 
-    #: Round-trip-tester schema-creation policy. When True, a failure to
-    #: create the test schema is fatal (Oracle: CREATE USER cannot be
-    #: silently retried). When False, the round-trip tester logs a
-    #: warning and continues because the schema might already exist
+    #: Scratch-schema creation policy. When True, a failure to create the
+    #: schema is fatal (Oracle: CREATE USER cannot be silently retried).
+    #: When False, the caller logs a warning and continues because the
+    #: schema might already exist
     #: (Postgres / MySQL / SQL Server CREATE SCHEMA IF NOT EXISTS).
     strict_schema_creation_errors: bool = False
 
     #: Whether unquoted identifiers are stored upper-cased in the data
     #: dictionary. True for Oracle (``USER_TABLES.TABLE_NAME``) and DB2
     #: (``SYSCAT.TABLES.TABNAME``); False for case-sensitive (PostgreSQL)
-    #: or case-folding-to-lower (MySQL default) dialects. The round-trip
-    #: tester uses this to know whether to upper-case an unquoted table
-    #: name before formatting a DROP statement.
+    #: or case-folding-to-lower (MySQL default) dialects. Callers use this
+    #: to know whether to upper-case an unquoted table name before
+    #: formatting a DROP statement.
     unquoted_identifiers_uppercase_in_dictionary: bool = False
 
     #: Dialect benefits from retry-drop-and-create when a CREATE TABLE
@@ -1934,9 +1934,6 @@ class BaseQuirks:
         block (no ``IF EXISTS`` support, ``CASCADE CONSTRAINTS`` to
         handle FKs). DB2 overrides to drop the ``IF EXISTS`` clause
         (older DB2 versions reject it).
-
-        Used by ``RoundTripTester._build_drop_sql`` /
-        ``_retry_drop_and_create``.
         """
         return f"DROP TABLE IF EXISTS {target}"
 
@@ -1945,9 +1942,9 @@ class BaseQuirks:
     ) -> str:
         """Rewrite ``source_schema`` references in CREATE-statement ``sql``.
 
-        Used by ``RoundTripTester._replace_schema_in_sql`` to retarget
-        generated SQL at the test schema before execution. The default
-        implementation covers PostgreSQL / MySQL / SQLite — namely:
+        Retargets generated SQL at a different schema before execution.
+        The default implementation covers PostgreSQL / MySQL / SQLite —
+        namely:
 
         * Quoted form ``"<source>"`` → ``"<target>"``.
         * Bare unquoted form ``<source>.`` / ``<source>`` → ``<target>``
@@ -1988,13 +1985,13 @@ class BaseQuirks:
     ) -> "list[str]":
         """Build the list of DROP-target identifiers to try in retry order.
 
-        Used by ``RoundTripTester._retry_drop_and_create`` when a CREATE
-        TABLE fails on Oracle/DB2 because the table is "already there"
-        but the original DROP couldn't find it (case-folding, recycle
-        bin, identifier-quoting quirks). The default returns the obvious
-        two forms (quoted then unquoted) — adequate for PostgreSQL /
-        MySQL / SqlServer / SQLite, which never reach this code path
-        thanks to ``retry_drop_create_on_error = False``.
+        Called when a CREATE TABLE fails on Oracle/DB2 because the table
+        is "already there" but the original DROP couldn't find it
+        (case-folding, recycle bin, identifier-quoting quirks). The
+        default returns the obvious two forms (quoted then unquoted) —
+        adequate for PostgreSQL / MySQL / SqlServer / SQLite, which never
+        reach this code path thanks to
+        ``retry_drop_create_on_error = False``.
 
         Oracle overrides to look up the *actual* owner / table_name in
         ``ALL_TABLES`` (skipping ``BIN$`` recycle-bin entries) and

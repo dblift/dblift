@@ -146,8 +146,8 @@ class Db2Quirks(BaseQuirks):
     # DB2 blocks subsequent queries until uncommitted transactions are
     # resolved; read-only introspection rolls back to free the connection.
     requires_rollback_after_introspection = True
-    # PR-C2: DB2 SYSCAT stores unquoted identifiers upper-cased — the
-    # round-trip tester upper-cases unquoted table names before DROP.
+    # PR-C2: DB2 SYSCAT stores unquoted identifiers upper-cased — unquoted
+    # table names are upper-cased before DROP.
     unquoted_identifiers_uppercase_in_dictionary = True
     # DB2 TIMESTAMP / TIME accept only fractional-seconds precision,
     # not the generic ``(width, scale)`` pair.
@@ -215,7 +215,7 @@ class Db2Quirks(BaseQuirks):
         """Look up the actual TABSCHEMA/TABNAME in SYSCAT.TABLES and try it first."""
         import logging
 
-        log = logging.getLogger("core.validation.round_trip_tester")
+        log = logging.getLogger(__name__)
 
         strategies: "list[str]" = [f'"{schema_clean}"."{table_clean}"']
         try:
@@ -341,7 +341,7 @@ class Db2Quirks(BaseQuirks):
 
     # round_trip extra object types.
     def round_trip_extra_object_types(self) -> "list[str]":
-        """Db2 round-trip covers user-defined types and stored packages."""
+        """Db2 contributes user-defined types and stored packages."""
         return ["user_defined_types", "packages"]
 
     # Story 27-1: collapse TIMESTAMP(n) → TIMESTAMP (DB2 ignores fractional-

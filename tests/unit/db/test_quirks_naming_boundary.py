@@ -170,9 +170,7 @@ MODULE_PATH_MIN_SEGMENTS = 3
 
 #: reST code references: ``literal``, `literal`, and :class:`Target` roles.
 CODE_REF = re.compile(
-    r":(?:class|meth|func|attr|mod|obj|data|exc):`~?([^`]+)`"
-    r"|``([^`\s]+)``"
-    r"|`([^`\s]+)`"
+    r":(?:class|meth|func|attr|mod|obj|data|exc):`~?([^`]+)`" r"|``([^`\s]+)``" r"|`([^`\s]+)`"
 )
 
 #: A dotted path inside a plain string literal, e.g. a logger name.
@@ -328,10 +326,9 @@ class TestQuirksNamingBoundary:
                 found[str(path.relative_to(REPO_ROOT))] = findings
 
         unfrozen = [line for rel, lines in found.items() if rel not in allowed for line in lines]
-        assert not unfrozen, (
-            "Edition-gated command named outside core/premium_manifest.py:\n"
-            + "\n".join(unfrozen)
-        )
+        assert (
+            not unfrozen
+        ), "Edition-gated command named outside core/premium_manifest.py:\n" + "\n".join(unfrozen)
 
         stale = sorted(set(allowed) - set(found))
         assert not stale, f"Frozen allowlist entries with no remaining site (remove them): {stale}"
