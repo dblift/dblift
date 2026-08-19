@@ -212,7 +212,8 @@ def enrich_columns_with_identity(
 
     The base column extractor loads the coarse identity flag from the
     plugin's column query. This pass enriches matching columns with seed,
-    increment, and current-value details from the plugin's identity query.
+    increment, current-value and generation-kind details from the plugin's
+    identity query.
     """
     # Columns may already have is_identity set from the plugin's column query.
     # This method adds detailed metadata (seed, increment) from vendor queries
@@ -258,6 +259,16 @@ def enrich_columns_with_identity(
                         si._get_row_value(row, "last_value")
                         or row.get("LAST_VALUE")
                         or row.get("last_value")
+                    ),
+                    # Generation kind -- whether INSERT may override the
+                    # generated value. Optional: dialects whose identity
+                    # syntax has no such concept (SQL Server IDENTITY, MySQL
+                    # AUTO_INCREMENT) simply don't select it, and the column
+                    # keeps ``identity_generation = None``.
+                    "identity_generation": (
+                        si._get_row_value(row, "identity_generation")
+                        or row.get("IDENTITY_GENERATION")
+                        or row.get("identity_generation")
                     ),
                 }
 
@@ -346,6 +357,16 @@ def enrich_columns_with_identity(
                     # byte width) doesn't discard the good seed/increment we
                     # just stored. Note: last_value is not part of SQL Model,
                     # store as custom attribute if needed.
+                    #
+                    # identity_generation is assigned here rather than
+                    # alongside is_identity above so it shares the fate of
+                    # seed/increment: render_identity_clause reads it too,
+                    # and the except branch exists precisely so a column
+                    # whose identity metadata could not be decoded falls out
+                    # of identity handling entirely. Assigning it earlier
+                    # would leave an is_identity=False column still
+                    # serializing a generation kind through to_dict.
+                    column.identity_generation = identity_data["identity_generation"]
                     if identity_data["last_value"] is not None:
                         try:
                             column.identity_last_value = _decode_sql_variant_int(  # type: ignore[attr-defined]

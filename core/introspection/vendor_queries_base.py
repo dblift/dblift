@@ -255,6 +255,11 @@ class VendorMetadataQueries(ABC):
             - seed_value: Starting value
             - increment_value: Increment amount
             - last_value: Current/last generated value (optional)
+            - identity_generation: Generation kind, ``ALWAYS`` or
+              ``BY DEFAULT`` (optional) -- whether an INSERT may override
+              the generated value. Omit it for dialects whose identity
+              syntax has no such concept; the column then keeps
+              ``identity_generation = None`` rather than a guessed default.
 
         Note:
             This is optional. Return None if not supported.
