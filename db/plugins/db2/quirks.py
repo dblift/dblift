@@ -16,7 +16,7 @@ if TYPE_CHECKING:
 # Each entry: (compiled regex, ErrorCategory). Sourced by
 # ``DatabaseErrorClassifier`` via ``error_patterns()`` (ADR-26 A2).
 _ERROR_PATTERNS: List[Tuple[re.Pattern[str], ErrorCategory]] = [
-    # Connection errors (consolidated from db/plugins/db2/db2/query_executor.py)
+    # Connection errors (consolidated from the DB2 query executor)
     (re.compile(r"errorcode=-4499", re.IGNORECASE), ErrorCategory.NETWORK),
     (re.compile(r"sqlstate=08001", re.IGNORECASE), ErrorCategory.NETWORK),
     (re.compile(r"sqlstate=08\w{3}", re.IGNORECASE), ErrorCategory.NETWORK),

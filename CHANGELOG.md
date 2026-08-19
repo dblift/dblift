@@ -97,13 +97,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Quirks documentation pointed at code that is not in this repository.**
   Comments and docstrings across `db/base_quirks.py` and the Oracle, DB2,
-  MySQL, PostgreSQL and SQL Server quirks named classes, private methods and
-  a module path that no file here defines, so following them led nowhere.
-  They now describe what each hook returns and why a dialect overrides it.
+  MySQL, PostgreSQL and SQL Server quirks named classes, private methods,
+  a module path and two file paths that no file here defines, so following
+  them led nowhere. They now describe what each hook returns and why a
+  dialect overrides it.
+
+  The costliest of these was on `select_supports_limit`: DB2 sets it `True`
+  although its declared `row_limit_style` is not `"limit"`, and the comment
+  justifying that cited an integration test at a path this repository does
+  not contain — so the evidence for a claim about a database engine could
+  not be checked from here. The claim and the server version it was measured
+  against are kept; the unreachable pointer is gone.
+
   `db/plugins/mysql/quirks.py` also pointed at a view-algorithm helper that
-  has moved into the `fetch_view_algorithm` hook, and the
-  `default_schema_name` / `parser_default_schema` comments in
-  `db/base_quirks.py` explained SQL Server's `dbo` handling in terms of a
+  has moved into the `fetch_view_algorithm` hook, `db/plugins/db2/quirks.py`
+  attributed its connection-error patterns to a source file that no longer
+  exists, and the `default_schema_name` / `parser_default_schema` comments
+  in `db/base_quirks.py` explained SQL Server's `dbo` handling in terms of a
   caller rather than the schema normalisation it actually controls. No
   behaviour change.
 
