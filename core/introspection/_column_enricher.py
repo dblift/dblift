@@ -259,13 +259,20 @@ def enrich_columns_with_identity(
                 # same kind captured anywhere else. Renderers trim again
                 # on their own side; they cannot assume this pass is what
                 # populated the field.
+                #
+                # A value that is *only* blanks collapses to ``None``
+                # rather than ``''``: a ``CHAR(1)`` catalog blank means
+                # "not generated", so it reports absence, and absence is
+                # already spelled ``None`` by the row that omits the
+                # column entirely. Storing ``''`` would leave the same
+                # "nothing reported" state serializing two unequal ways.
                 generation = (
                     si._get_row_value(row, "identity_generation")
                     or row.get("IDENTITY_GENERATION")
                     or row.get("identity_generation")
                 )
                 if isinstance(generation, str):
-                    generation = generation.strip()
+                    generation = generation.strip() or None
                 identity_map[column_name.upper()] = {
                     "seed_value": (
                         si._get_row_value(row, "seed_value")

@@ -1334,6 +1334,48 @@ class TestEnrichColumnsWithIdentity(unittest.TestCase):
             "GENERATED ALWAYS AS IDENTITY",
         )
 
+    def test_whitespace_only_generation_kind_is_stored_as_none(self):
+        """Stripping a blank value must yield ``None``, not ``''``.
+
+        ``SYSCAT.COLUMNS.GENERATED`` is ``CHAR(1)`` and its blank means
+        "not generated", so an all-blank value is the *absence* of a
+        generation kind rather than an empty one. The strip above turns
+        such a row into ``''``, while a query that simply omits the
+        column yields ``None`` -- and ``''`` != ``None``, so ``to_dict``
+        serializes two different values for the same "nothing was
+        reported" state. That is the same snapshot-comparison divergence
+        the strip was added to close, reached from the other end.
+
+        Nothing relaxes either way: both are falsy and
+        ``render_identity_clause`` reads them through the same ``or ""``
+        fallback, so both still render BY DEFAULT. This pins the stored
+        value, not the DDL.
+        """
+        si, _ = _make_si(has_connection=True)
+        si.vendor_queries = MagicMock()
+        si.vendor_queries.get_identity_columns_query.return_value = ("SELECT ...", [])
+        si.provider.query_executor.execute_query.return_value = [
+            {
+                "column_name": "ID",
+                "seed_value": 1,
+                "increment_value": 1,
+                "last_value": None,
+                "identity_generation": "   ",
+            }
+        ]
+
+        col = SqlColumn(name="id", data_type="INTEGER")
+        si.enrich_columns_with_identity("public", "users", [col])
+
+        self.assertIsNone(col.identity_generation)
+        self.assertIsNone(col.to_dict()["identity_generation"])
+        # The state a row omitting the column produces -- the whole point
+        # of the normalisation is that the two compare equal.
+        self.assertEqual(
+            col.to_dict()["identity_generation"],
+            SqlColumn(name="id", data_type="INTEGER").to_dict()["identity_generation"],
+        )
+
     def test_uppercase_row_keys_deliver_the_generation_kind_too(self):
         """Oracle-style all-uppercase keys must reach the column.
 
