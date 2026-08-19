@@ -145,14 +145,35 @@ class TestMigrationStateService:
         result = service.determine_state(migration, context)
         assert result == MigrationDisplayState.OUT_OF_ORDER
 
-    def test_determine_state_success_repeatable_outdated(self, service):
-        """Test determine_state for outdated repeatable migration."""
+    def test_determine_state_success_repeatable_superseded(self, service):
+        """An older successful R row whose checksum is not the latest is Superseded.
+
+        ``repeatable_checksums`` is the latest successful history checksum.
+        Differing from it means a newer application exists — not that this
+        row still needs to be reapplied (that is Outdated on the latest row).
+        """
         migration = Mock()
         migration.success = True
         migration.type = "REPEATABLE"
         migration.script_name = "R__test.sql"
-        migration.checksum = "new_checksum"
-        context = {"repeatable_checksums": {"R__test.sql": "old_checksum"}}
+        migration.checksum = "old_checksum"
+        migration.resolved = True
+        context = {"repeatable_checksums": {"R__test.sql": "new_checksum"}}
+        result = service.determine_state(migration, context)
+        assert result == MigrationDisplayState.SUPERSEDED
+
+    def test_determine_state_success_repeatable_outdated(self, service):
+        """Latest successful R is Outdated only when the on-disk file drifted."""
+        migration = Mock()
+        migration.success = True
+        migration.type = "REPEATABLE"
+        migration.script_name = "R__test.sql"
+        migration.checksum = "applied_checksum"
+        migration.resolved = True
+        context = {
+            "repeatable_checksums": {"R__test.sql": "applied_checksum"},
+            "pending_repeatable_scripts": {"R__test.sql"},
+        }
         result = service.determine_state(migration, context)
         assert result == MigrationDisplayState.OUTDATED
 

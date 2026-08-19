@@ -119,7 +119,8 @@ class MigrationStateService:
                     and checksum
                     and self._checksums_differ(stored_checksum, checksum)
                 ):
-                    return MigrationDisplayState.OUTDATED
+                    # Latest successful checksum is on a newer history row.
+                    return MigrationDisplayState.SUPERSEDED
                 pending_repeatables = context.get("pending_repeatable_scripts") or set()
                 script_basename = Path(script_name).name if script_name else ""
                 if script_name in pending_repeatables or script_basename in pending_repeatables:

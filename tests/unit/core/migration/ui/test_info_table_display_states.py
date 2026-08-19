@@ -144,3 +144,29 @@ def test_outdated_applied_repeatable_and_pending_file_reach_info_table():
     assert [row["state"] for row in named] == ["Outdated", "Pending"]
     assert "Outdated" in table
     assert "Pending" in table
+
+
+def test_reapplied_repeatable_shows_superseded_then_success():
+    """After checksum-change + migrate, info keeps both history rows.
+
+    Flyway 12: older execution Superseded, latest Success. The collector
+    must not hide the older row, and must not label it Outdated.
+    """
+    first = _mk_repeatable("R__data.sql", rank=1, checksum="old")
+    latest = _mk_repeatable("R__data.sql", rank=2, checksum="new")
+    on_disk = _mk_repeatable("R__data.sql", checksum="new")
+    mgr = _mk_manager(applied=[first, latest], scripts=[on_disk])
+
+    with tempfile.TemporaryDirectory() as tmp:
+        scripts_dir = Path(tmp)
+        (scripts_dir / on_disk.script_name).write_text(on_disk.content)
+        state, rows, table = _pipeline(mgr, scripts_dir)
+
+    assert [entry.status for entry in state.applied] == ["Superseded", "Success"]
+    assert state.pending == []
+
+    named = [row for row in rows if row["script"] == "R__data.sql"]
+    assert [row["state"] for row in named] == ["Superseded", "Success"]
+    assert "Superseded" in table
+    assert "Success" in table
+    assert "Outdated" not in table
