@@ -98,6 +98,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`info` hid older repeatable executions after reapply.** A checksum
+  change plus `migrate` wrote a second history row, but `info` kept only
+  the latest as Success. The previous successful row now shows as
+  Superseded, matching the catalog: Outdated is still the latest applied
+  row while the file has drifted and is pending.
+
 - **Quirks documentation pointed at code that is not in this repository.**
   Comments and docstrings across `db/base_quirks.py` and the Oracle, DB2,
   MySQL, PostgreSQL and SQL Server quirks named classes, private methods,

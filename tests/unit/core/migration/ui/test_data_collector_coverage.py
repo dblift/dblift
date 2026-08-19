@@ -649,7 +649,7 @@ class TestGetMigrationDataFromStateCoverage(unittest.TestCase):
         )
         assert result[0]["state"] == "Baseline"
 
-    def test_repeatable_old_checksum_skipped(self):
+    def test_repeatable_old_checksum_shown_as_superseded(self):
         coll = self._c()
         old = _make_migration(
             None, mtype=MigrationType.REPEATABLE, success=True, installed_rank=1, checksum="old"
@@ -659,13 +659,16 @@ class TestGetMigrationDataFromStateCoverage(unittest.TestCase):
             None, mtype=MigrationType.REPEATABLE, success=True, installed_rank=2, checksum="new"
         )
         new.script_name = "R__init.sql"
-        state = MigrationState(pending_objects=[], repeatable_checksums={"R__init.sql": "new"})
+        state = _applied_state(
+            [(old, "Superseded"), (new, "Success")],
+            pending_objects=[],
+            repeatable_checksums={"R__init.sql": "new"},
+        )
         result = coll._get_migration_data_from_state(
             migration_state=state, all_applied_migrations=[old, new]
         )
-        # Only the new one should be shown; old should be skipped
         r_rows = [r for r in result if r["script"] == "R__init.sql"]
-        assert len(r_rows) == 1
+        assert [r["state"] for r in r_rows] == ["Superseded", "Success"]
 
     def test_versions_filter(self):
         coll = self._c()
