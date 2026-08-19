@@ -71,9 +71,54 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   — which silently discarded every built-in `dialect_options` value for that
   dialect, MySQL storage engine and row format included.
 
+- **Naming guard over the dialect-quirks surface**
+  (`tests/unit/db/test_quirks_naming_boundary.py`). `db/base_quirks.py`,
+  `core/dialect_boundary.py` and every `db/plugins/*/quirks.py` are read by
+  people who only have this repository, so the guard fails when their
+  comments, docstrings or string literals reference a symbol no file here
+  defines, and when they name a command this edition does not ship
+  (`core/premium_manifest.py` is the one file allowed to name those, and the
+  list is read from it rather than copied). The 13 pre-existing sites across
+  nine plugin quirks files — nine of them comments, four of them
+  `lint_placeholder_url` values — are frozen at their current per-file,
+  per-command counts: the guard fails on a new one, on a different command
+  taking a departed one's place, and on an allowlist entry whose site is
+  gone. Counts are lowered in the commit that removes a site.
+
 ### Changed
 
+- **Oracle and DB2 retry-drop logging is attributed to the code that emits
+  it.** `build_retry_drop_strategies` in `db/plugins/oracle/quirks.py` and
+  `db/plugins/db2/quirks.py` logged under the fixed logger name
+  `core.validation.round_trip_tester`, which matches no module in this
+  repository. Both now call `logging.getLogger(__name__)`. **Behaviour
+  change:** these records now arrive under `db.plugins.oracle.quirks` and
+  `db.plugins.db2.quirks`; a logging filter, handler or level configured for
+  the old name no longer sees them.
+
 ### Fixed
+
+- **Quirks documentation pointed at code that is not in this repository.**
+  Comments and docstrings across `db/base_quirks.py` and the Oracle, DB2,
+  MySQL, PostgreSQL and SQL Server quirks named classes, private methods,
+  a module path and two file paths that no file here defines, so following
+  them led nowhere. They now describe what each hook returns and why a
+  dialect overrides it.
+
+  The costliest of these was on `select_supports_limit`: DB2 sets it `True`
+  although its declared `row_limit_style` is not `"limit"`, and the comment
+  justifying that cited an integration test at a path this repository does
+  not contain — so the evidence for a claim about a database engine could
+  not be checked from here. The claim and the server version it was measured
+  against are kept; the unreachable pointer is gone.
+
+  `db/plugins/mysql/quirks.py` also pointed at a view-algorithm helper that
+  has moved into the `fetch_view_algorithm` hook, `db/plugins/db2/quirks.py`
+  attributed its connection-error patterns to a source file that no longer
+  exists, and the `default_schema_name` / `parser_default_schema` comments
+  in `db/base_quirks.py` explained SQL Server's `dbo` handling in terms of a
+  caller rather than the schema normalisation it actually controls. No
+  behaviour change.
 
 ### Removed
 

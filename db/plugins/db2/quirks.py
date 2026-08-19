@@ -16,7 +16,7 @@ if TYPE_CHECKING:
 # Each entry: (compiled regex, ErrorCategory). Sourced by
 # ``DatabaseErrorClassifier`` via ``error_patterns()`` (ADR-26 A2).
 _ERROR_PATTERNS: List[Tuple[re.Pattern[str], ErrorCategory]] = [
-    # Connection errors (consolidated from db/plugins/db2/db2/query_executor.py)
+    # Connection errors (consolidated from the DB2 query executor)
     (re.compile(r"errorcode=-4499", re.IGNORECASE), ErrorCategory.NETWORK),
     (re.compile(r"sqlstate=08001", re.IGNORECASE), ErrorCategory.NETWORK),
     (re.compile(r"sqlstate=08\w{3}", re.IGNORECASE), ErrorCategory.NETWORK),
@@ -110,8 +110,12 @@ class Db2Quirks(BaseQuirks):
     connection_probe_sql = "SELECT 1 FROM SYSIBM.SYSDUMMY1"
     select_supports_limit = True
     # Canonical rendering is trailing ``FETCH FIRST n ROWS ONLY``, but DB2
-    # also accepts a bare trailing ``LIMIT n`` (verified against a live
-    # db2 12.01.0500 server via the capability-probe integration test).
+    # also accepts a bare trailing ``LIMIT n`` — measured against a live db2
+    # 12.01.0500 server by a capability probe outside this distribution. That
+    # makes this dialect the one exception to the usual correlation between
+    # the two attributes; ``BaseQuirks.select_supports_limit`` records the
+    # evidence, and ``tests/unit/db/test_dialect_capability_quirks.py`` pins
+    # the exception from inside this repository.
     row_limit_style = "fetch_first"
     unquoted_identifier_case = "uppercase"
     connection_identifier_attrs = ("url", "host", "database")
@@ -146,8 +150,8 @@ class Db2Quirks(BaseQuirks):
     # DB2 blocks subsequent queries until uncommitted transactions are
     # resolved; read-only introspection rolls back to free the connection.
     requires_rollback_after_introspection = True
-    # PR-C2: DB2 SYSCAT stores unquoted identifiers upper-cased — the
-    # round-trip tester upper-cases unquoted table names before DROP.
+    # PR-C2: DB2 SYSCAT stores unquoted identifiers upper-cased — unquoted
+    # table names are upper-cased before DROP.
     unquoted_identifiers_uppercase_in_dictionary = True
     # DB2 TIMESTAMP / TIME accept only fractional-seconds precision,
     # not the generic ``(width, scale)`` pair.
@@ -215,7 +219,7 @@ class Db2Quirks(BaseQuirks):
         """Look up the actual TABSCHEMA/TABNAME in SYSCAT.TABLES and try it first."""
         import logging
 
-        log = logging.getLogger("core.validation.round_trip_tester")
+        log = logging.getLogger(__name__)
 
         strategies: "list[str]" = [f'"{schema_clean}"."{table_clean}"']
         try:
@@ -341,7 +345,7 @@ class Db2Quirks(BaseQuirks):
 
     # round_trip extra object types.
     def round_trip_extra_object_types(self) -> "list[str]":
-        """Db2 round-trip covers user-defined types and stored packages."""
+        """Db2 contributes user-defined types and stored packages."""
         return ["user_defined_types", "packages"]
 
     # Story 27-1: collapse TIMESTAMP(n) → TIMESTAMP (DB2 ignores fractional-

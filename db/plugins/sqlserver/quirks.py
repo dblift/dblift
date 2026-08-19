@@ -250,7 +250,7 @@ class SqlserverQuirks(BaseQuirks):
 
     # round_trip extra object types.
     def round_trip_extra_object_types(self) -> "list[str]":
-        """SQL Server round-trip covers user-defined types and synonyms."""
+        """SQL Server contributes user-defined types and synonyms."""
         return ["user_defined_types", "synonyms"]
 
     # Column ALTER hooks.
