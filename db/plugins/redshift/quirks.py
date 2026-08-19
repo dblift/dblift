@@ -11,6 +11,13 @@ class RedshiftQuirks(PostgresqlQuirks):
     is_ansi_reference_dialect = False
     is_default_sqlglot_read_fallback = False
 
+    # Redshift's DDL diverges from plain Postgres syntax (e.g. the
+    # DISTKEY/SORTKEY table-distribution clauses below), and sqlglot ships a
+    # dedicated ``redshift`` dialect for exactly that reason. Inheriting
+    # PostgreSQL's ``sqlglot_dialect = "postgres"`` parses that divergent
+    # syntax but then fails to render it back out.
+    sqlglot_dialect = "redshift"
+
     # Opt out of PostgreSQL's feature gates: Redshift's engine diverged long
     # ago (its version() banner even reports PostgreSQL 8.0.x), so PG
     # version-gated semantics do not transfer. ``feature_gates`` replaces the
