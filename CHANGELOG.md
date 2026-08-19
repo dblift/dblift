@@ -9,6 +9,68 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Extension point for dialect quirks (`core/seams/quirks.py`).** A dialect
+  resolved to exactly one quirks class, so an installed package that needed a
+  hook the core does not define had no supported way to contribute one.
+  `register_quirks_extension(dialects, extension)` now mixes an extension class
+  in ahead of the dialect's quirks class, and `provider.quirks.<hook>` finds
+  the added hook. Existing call sites resolve exactly what they resolved
+  before: with nothing registered, `get_quirks` returns the plugin's own class
+  rather than a dynamic subclass.
+
+  Extensions may only **add**. Answering a name the dialect already answers —
+  whether the plugin's quirks class declares it, it is inherited from
+  `BaseQuirks`, or the extension inherits it from a parent of its own — raises
+  `QuirksExtensionCollisionError` naming the hook, the extension, the ancestor
+  the name came from and the class that already defines it. Two extensions
+  registered for one dialect answering the same hook raise it too, naming
+  both: registration order deciding a winner is the same silent shadowing in
+  the other direction. Dunders are rejected outright, bar the bookkeeping
+  Python writes into every class body (`__module__`, `__doc__`, `__dict__`,
+  `__weakref__`, `__annotations__`, ...): a dunder answers no question about a
+  database engine, it changes how the composed class is built, instantiated or
+  looked up. `__init__` — which a `@dataclass` extension generates without its
+  author naming it — would silently empty `quirks.dialect_name`, since
+  composition instantiates the class as `composed(dialect_name=...)`;
+  `__slots__` dictates the composed instance layout; `__init_subclass__` runs
+  during composition itself and writes ahead of every extension and the base;
+  `__getattr__` and `__getattribute__` answer every hook, including ones
+  nothing defines. The rejection quotes the offending name and gives the one
+  reason that applies to it, rather than every reason at once.
+  An existing hook is a statement about the database engine, so a second
+  answer for it belongs upstream here rather than in an installed extension,
+  and shadowing it quietly would override a newer core without a word. The
+  check does not skip private names either: a plugin quirks class reads its
+  own `_NAME` constants through `self`, so an extension declaring one shadows
+  the dialect's answer exactly as a public hook would.
+  An extension **may** subclass `BaseQuirks` so the mixin type-checks: classes
+  already in the dialect's own lineage contribute nothing and collide with
+  nothing. It is therefore a `BaseQuirks` subclass or a plain class and
+  nothing else — `abc.ABC`, `typing.Protocol`, `typing.Generic`, `NamedTuple`
+  and `Enum` bases are rejected, each contributing dunders of its own
+  (`__abstractmethods__`, `__parameters__`, `__orig_bases__`, `__slots__`,
+  `__new__`) that composition owns. `validate_quirks_extensions()` runs at
+  feature-load time, so a collision on a dialect nothing happens to resolve
+  still fails loudly, and anything that stops the composed class being built
+  raises `QuirksExtensionCompositionError` naming the dialect and the bases
+  rather than escaping raw — a set of extensions with no consistent method
+  resolution order, or an extension's own metaclass refusing the composition,
+  which contributes no name for the checks above to catch.
+
+  Registration targets dialect keys explicitly: an extension for `postgresql`
+  does not reach the PostgreSQL-wire-compatible dialects (`neon`,
+  `timescaledb`, ...) or MariaDB, which are separate plugins. Registry
+  *aliases* are not separate keys — registration and lookup both resolve
+  through `ProviderRegistry.canonical_dialect_name`, so an extension
+  registered for `sqlite` also answers a user who configured `sqlite3`.
+
+  `ProviderRegistry.canonical_dialect_name_for_capability` now reads the
+  pre-composition quirks class. It counts only a class-body declaration as
+  capability ownership, and the composed class is built with an empty class
+  body, so a dialect carrying an extension used to stop owning its capability
+  — which silently discarded every built-in `dialect_options` value for that
+  dialect, MySQL storage engine and row format included.
+
 ### Changed
 
 ### Fixed

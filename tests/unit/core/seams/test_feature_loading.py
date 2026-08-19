@@ -213,3 +213,43 @@ def test_broken_tier_distribution_metadata_does_not_crash_load_feature_extension
         "a broken tier distribution must be treated like 'not installed', "
         "not left unresolved forever"
     )
+
+
+def test_a_colliding_quirks_extension_fails_the_load(monkeypatch):
+    """The quirks seam's validation must run from *here*.
+
+    ``tests/unit/db/test_quirks_extension_seam.py`` calls
+    ``validate_quirks_extensions()`` directly, so it stays green if this
+    call site is deleted — and then a collision on a dialect nothing
+    resolves goes undetected until someone runs against that engine, which
+    is the whole point of validating at load time. Registering through a
+    real entry-point registrar and asserting the raise escapes
+    ``load_feature_extensions`` is what pins the wiring.
+    """
+    from core.seams.quirks import (
+        QuirksExtensionCollisionError,
+        clear_quirks_extensions,
+        register_quirks_extension,
+    )
+
+    class _ShadowsAnExistingHook:
+        boolean_false_literal = "shadowed"
+
+    monkeypatch.setattr(
+        feature_loading,
+        "entry_points",
+        lambda group: [
+            _entry_point(
+                "tier",
+                lambda: register_quirks_extension(["db2"], _ShadowsAnExistingHook),
+            )
+        ],
+    )
+
+    try:
+        with pytest.raises(QuirksExtensionCollisionError):
+            load_feature_extensions()
+        # Before the latch, so a second call is just as loud.
+        assert feature_loading._features_loaded is False
+    finally:
+        clear_quirks_extensions()
