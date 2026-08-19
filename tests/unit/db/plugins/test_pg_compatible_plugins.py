@@ -82,8 +82,14 @@ class TestPgCompatiblePlugin:
         assert issubclass(plugin.quirks_class, PostgresqlQuirks)
         assert plugin.quirks_class.__name__ == quirks_name
         quirks = plugin.quirks_class(dialect_name=dialect)
-        # Wire-compatible → parse/render through the postgres sqlglot dialect.
-        assert quirks.sqlglot_dialect == "postgres"
+        if dialect == "redshift":
+            # Redshift's DDL diverges from plain Postgres syntax (e.g. its
+            # DISTKEY/SORTKEY table-distribution clauses), so it parses/renders
+            # through sqlglot's own dedicated redshift dialect instead.
+            assert quirks.sqlglot_dialect == "redshift"
+        else:
+            # Wire-compatible → parse/render through the postgres sqlglot dialect.
+            assert quirks.sqlglot_dialect == "postgres"
         assert quirks.dialect_name == dialect
         # Only PostgreSQL may own the ANSI reference dialect.
         assert quirks.is_ansi_reference_dialect is False

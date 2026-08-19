@@ -196,6 +196,14 @@ class PostgresqlQuirks(BaseQuirks):
             r"^(VACUUM|REINDEX DATABASE|REINDEX SYSTEM)\b",
             "PostgreSQL maintenance command cannot run inside a transaction block",
         ),
+        (
+            r"^REINDEX\s+(TABLE|INDEX)\s+CONCURRENTLY\b",
+            "PostgreSQL REINDEX CONCURRENTLY cannot run inside a transaction block",
+        ),
+        (
+            r"^DROP\s+INDEX\s+CONCURRENTLY\b",
+            "PostgreSQL DROP INDEX CONCURRENTLY cannot run inside a transaction block",
+        ),
     )
 
     def enrich_view_from_row(self, view: Any, row: Dict[str, Any], view_status: Any = None) -> None:
