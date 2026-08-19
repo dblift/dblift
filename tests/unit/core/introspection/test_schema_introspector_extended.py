@@ -1213,7 +1213,7 @@ class TestEnrichColumnsWithIdentity(unittest.TestCase):
         )
 
     def test_row_without_a_generation_kind_leaves_it_none(self):
-        """Most dialects' identity queries have no generation kind to give
+        """Not every dialect's identity query has a generation kind to give
         (SQL Server IDENTITY and MySQL AUTO_INCREMENT have no such concept),
         and their rows -- the exact three-key shape every other test in this
         class uses -- must keep ``identity_generation`` at ``None``. Not a
@@ -1261,6 +1261,109 @@ class TestEnrichColumnsWithIdentity(unittest.TestCase):
 
         self.assertFalse(col.is_identity)
         self.assertIsNone(col.identity_generation)
+
+    def test_failed_decode_clears_a_generation_kind_written_by_another_pass(self):
+        """The reset above must hold for a value this function did not write.
+
+        The ``else`` placement only keeps *this* function from storing a
+        generation kind on a column it is about to disown; it says nothing
+        about one already on the column. ``identity_generation`` is the
+        field name ``information_schema.columns`` uses, so the natural
+        second writer is a column extractor that read it there -- and with
+        the row carrying no generation key, the enricher would leave that
+        earlier value untouched while resetting ``is_identity`` to False.
+        ``to_dict`` then serializes a non-identity column still claiming
+        ALWAYS: exactly the state the siblings are cleared to prevent.
+        """
+        si, _ = _make_si(has_connection=True)
+        si.vendor_queries = MagicMock()
+        si.vendor_queries.get_identity_columns_query.return_value = ("SELECT ...", [])
+        si.provider.query_executor.execute_query.return_value = [
+            {
+                "column_name": "ID",
+                "seed_value": b"\x00\x03\x00\x00\x00",  # non-standard width
+                "increment_value": (1).to_bytes(4, byteorder="little"),
+                "last_value": None,
+                # No generation key at all -- the row cannot supply the None.
+            }
+        ]
+
+        col = SqlColumn(name="id", data_type="DECIMAL")
+        col.identity_generation = "ALWAYS"
+
+        si.enrich_columns_with_identity("public", "users", [col])
+
+        self.assertFalse(col.is_identity)
+        self.assertIsNone(col.identity_seed)
+        self.assertIsNone(col.identity_increment)
+        self.assertIsNone(col.identity_generation)
+        self.assertIsNone(col.to_dict()["identity_generation"])
+
+    def test_generation_kind_is_stripped_before_it_reaches_the_column(self):
+        """A padded generation kind must not enter the model.
+
+        ``SYSCAT.COLUMNS.GENERATED`` is ``CHAR(1)`` and a ``CHAR(n)``
+        catalog column is blank-padded to its declared width, so a driver
+        can hand this value back with surrounding whitespace. The stored
+        value is what ``to_dict`` serializes and what a snapshot
+        comparison sees, so ``'ALWAYS  '`` would read as a difference
+        against ``'ALWAYS'`` from any other source -- and it is what
+        ``render_identity_clause`` reads, whose fallback is *everything
+        that is not ALWAYS*, so the padding silently relaxes the
+        constraint the capture exists to preserve.
+        """
+        si, _ = _make_si(has_connection=True)
+        si.vendor_queries = MagicMock()
+        si.vendor_queries.get_identity_columns_query.return_value = ("SELECT ...", [])
+        si.provider.query_executor.execute_query.return_value = [
+            {
+                "column_name": "ID",
+                "seed_value": 1,
+                "increment_value": 1,
+                "last_value": None,
+                "identity_generation": " ALWAYS \r\n",
+            }
+        ]
+
+        col = SqlColumn(name="id", data_type="INTEGER")
+        si.enrich_columns_with_identity("public", "users", [col])
+
+        self.assertEqual(col.identity_generation, "ALWAYS")
+        self.assertEqual(
+            PostgresqlQuirks().render_identity_clause(col),
+            "GENERATED ALWAYS AS IDENTITY",
+        )
+
+    def test_uppercase_row_keys_deliver_the_generation_kind_too(self):
+        """Oracle-style all-uppercase keys must reach the column.
+
+        Every other test here uses lower-case keys, but drivers that
+        upper-case unquoted identifiers return the whole row that way --
+        which is why the three sibling fields are each read through an
+        upper-case fallback. A generation kind read only in lower case
+        would be dropped for exactly the dialects whose catalogs shout,
+        and dropping it is the silent relaxation this capture prevents.
+        """
+        si, _ = _make_si(has_connection=True)
+        si.vendor_queries = MagicMock()
+        si.vendor_queries.get_identity_columns_query.return_value = ("SELECT ...", [])
+        si.provider.query_executor.execute_query.return_value = [
+            {
+                "COLUMN_NAME": "ID",
+                "SEED_VALUE": 5,
+                "INCREMENT_VALUE": 2,
+                "LAST_VALUE": None,
+                "IDENTITY_GENERATION": "ALWAYS",
+            }
+        ]
+
+        col = SqlColumn(name="id", data_type="INTEGER")
+        si.enrich_columns_with_identity("public", "users", [col])
+
+        self.assertTrue(col.is_identity)
+        self.assertEqual(col.identity_seed, 5)
+        self.assertEqual(col.identity_increment, 2)
+        self.assertEqual(col.identity_generation, "ALWAYS")
 
 
 # ---------------------------------------------------------------------------

@@ -257,9 +257,23 @@ class VendorMetadataQueries(ABC):
             - last_value: Current/last generated value (optional)
             - identity_generation: Generation kind, ``ALWAYS`` or
               ``BY DEFAULT`` (optional) -- whether an INSERT may override
-              the generated value. Omit it for dialects whose identity
-              syntax has no such concept; the column then keeps
-              ``identity_generation = None`` rather than a guessed default.
+              the generated value. Surrounding whitespace is stripped, so a
+              blank-padded ``CHAR`` catalog column can be selected as-is.
+
+              It reaches generated DDL only through a dialect's
+              ``render_identity_clause``, and today
+              :class:`~db.plugins.postgresql.quirks.PostgresqlQuirks` is the
+              only implementation that reads it. Supplying it for another
+              dialect stores it on the column and serializes it, but that
+              dialect's renderer emits its own fixed generation kind
+              regardless -- and a renderer fixed at ``ALWAYS`` renders an
+              introspected ``BY DEFAULT`` column as ``ALWAYS``, which
+              *tightens* the constraint and breaks INSERTs that name the
+              column. Select it only for a dialect whose renderer reads it.
+
+              Omit it for dialects whose identity syntax has no such
+              concept; the column then keeps ``identity_generation = None``
+              rather than a guessed default.
 
         Note:
             This is optional. Return None if not supported.

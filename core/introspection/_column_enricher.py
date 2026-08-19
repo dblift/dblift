@@ -244,6 +244,28 @@ def enrich_columns_with_identity(
                 or row.get("column_name")
             )
             if column_name:
+                # Generation kind -- whether INSERT may override the
+                # generated value. Optional: dialects whose identity
+                # syntax has no such concept (SQL Server IDENTITY, MySQL
+                # AUTO_INCREMENT) simply don't select it, and the column
+                # keeps ``identity_generation = None``.
+                #
+                # Trimmed here, at the one place a catalog row becomes
+                # model state, because the stored text is what ``to_dict``
+                # serializes and what a snapshot comparison comes back to:
+                # a blank-padded ``'ALWAYS  '`` -- which is what a
+                # ``CHAR(n)`` catalog column hands back, padded to its
+                # declared width -- would read as a difference against the
+                # same kind captured anywhere else. Renderers trim again
+                # on their own side; they cannot assume this pass is what
+                # populated the field.
+                generation = (
+                    si._get_row_value(row, "identity_generation")
+                    or row.get("IDENTITY_GENERATION")
+                    or row.get("identity_generation")
+                )
+                if isinstance(generation, str):
+                    generation = generation.strip()
                 identity_map[column_name.upper()] = {
                     "seed_value": (
                         si._get_row_value(row, "seed_value")
@@ -260,16 +282,7 @@ def enrich_columns_with_identity(
                         or row.get("LAST_VALUE")
                         or row.get("last_value")
                     ),
-                    # Generation kind -- whether INSERT may override the
-                    # generated value. Optional: dialects whose identity
-                    # syntax has no such concept (SQL Server IDENTITY, MySQL
-                    # AUTO_INCREMENT) simply don't select it, and the column
-                    # keeps ``identity_generation = None``.
-                    "identity_generation": (
-                        si._get_row_value(row, "identity_generation")
-                        or row.get("IDENTITY_GENERATION")
-                        or row.get("identity_generation")
-                    ),
+                    "identity_generation": generation,
                 }
 
         # sql_variant columns (e.g. SQL Server's
@@ -344,12 +357,21 @@ def enrich_columns_with_identity(
                     # immediately" -- either way, downstream DDL rendering
                     # must not mistake a leftover None for "never asked, use
                     # SQL Server's own default". Reset is_identity and the
-                    # two fields render_identity_clause reads so the column
+                    # three fields render_identity_clause reads so the column
                     # falls out of identity handling entirely rather than
                     # rendering a guessed IDENTITY(1,1).
+                    #
+                    # identity_generation is cleared here even though the
+                    # else branch below is what assigns it: an earlier pass
+                    # may already have put one on the column (it is the
+                    # field name information_schema.columns uses), and a
+                    # reset that only undoes this function's own writes
+                    # would leave an is_identity=False column still
+                    # serializing ALWAYS through to_dict.
                     column.is_identity = False
                     column.identity_seed = None
                     column.identity_increment = None
+                    column.identity_generation = None
                 else:
                     # seed/increment decoded fine -- only now attempt
                     # last_value, in its own try/except so that a
@@ -361,11 +383,14 @@ def enrich_columns_with_identity(
                     # identity_generation is assigned here rather than
                     # alongside is_identity above so it shares the fate of
                     # seed/increment: render_identity_clause reads it too,
-                    # and the except branch exists precisely so a column
-                    # whose identity metadata could not be decoded falls out
-                    # of identity handling entirely. Assigning it earlier
-                    # would leave an is_identity=False column still
-                    # serializing a generation kind through to_dict.
+                    # and a column whose identity metadata could not be
+                    # decoded must fall out of identity handling entirely.
+                    # This placement keeps a value we would immediately
+                    # discard from being written at all; the clear in the
+                    # except branch covers one an earlier pass had already
+                    # put there. Both are needed for the invariant "an
+                    # is_identity=False column carries no generation kind"
+                    # to hold whatever the row and the column arrived with.
                     column.identity_generation = identity_data["identity_generation"]
                     if identity_data["last_value"] is not None:
                         try:
