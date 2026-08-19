@@ -25,13 +25,19 @@ Two ways that breaks, both of which this module ratchets:
    copy of it.
 
 Matching for (2) is deliberately narrow: a command name is only a
-*command* reference when it is written as one. Multi-word names
-(``export-schema``) are unambiguous in any form, hyphen or underscore.
-Single-word names are ordinary English — ``snapshot`` appears ~19 times
-in these files meaning "a snapshot table" — so those are matched only in
-an invocation context (``dblift <name>``, ``<name> command``, or a
-backticked literal that is exactly the name). Widening this to bare word
-matches would bury the signal under prose that is not a leak.
+*command* reference when it is written as one. A hyphenated catalog name
+is unambiguous in any form, hyphen or underscore — no ordinary English
+word carries an internal hyphen. Single-token names are ordinary English:
+one of them occurs ~19 times in these files as a plain noun for a kind of
+table, describing storage that has nothing to do with the command. Those
+are therefore matched only in an invocation context (``dblift <name>``,
+``<name> command``, or a backticked literal that is exactly the name).
+Widening this to bare word matches would bury the signal under prose that
+is not a leak.
+
+This module names no catalog command itself, in prose or in data — that
+is the rule it enforces, and a guard that had to spell out what it keeps
+out would be the leak.
 """
 
 from __future__ import annotations
@@ -72,7 +78,7 @@ SKIP_DIRS = {
 # ---------------------------------------------------------------------------
 # Pre-existing violations of check (2), frozen at their current counts.
 #
-# ``validate-sql`` is named in comments and in ``lint_placeholder_url``
+# One catalog command is named in comments and in ``lint_placeholder_url``
 # values across nine plugin quirks files. That predates this guard and is
 # part of a wider situation in the config layer (``config/dblift_config.py``
 # consumes ``lint_placeholder_url``), so it is out of scope here and is NOT
@@ -275,8 +281,8 @@ def _command_patterns() -> List[Tuple[str, re.Pattern]]:
         else:
             escaped = re.escape(name)
             # ``dblift <name>`` is matched case-sensitively: the CLI is
-            # spelled lowercase, while "DBLift snapshot table" in prose is
-            # the product name in front of an ordinary noun, not a command.
+            # spelled lowercase, while the capitalised product name in
+            # front of an ordinary noun is prose, not a command.
             patterns.append(
                 (
                     name,
