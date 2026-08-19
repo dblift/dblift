@@ -56,8 +56,10 @@ read a green run as "the prose is clean":
   module path survives.
 
 Identifier-shaped mentions of a hyphenated catalog command *are* caught
-(``<name>_hint`` matches, because the boundary look-around rejects only
-alphanumerics), and on Python 3.11 so are f-strings. Under PEP 701
+in prose (``<name>_hint`` matches, because the boundary look-around
+rejects only alphanumerics); a real identifier in code is not scanned,
+since :func:`_prose_tokens` reads only comments and string literals. On
+Python 3.11 f-strings are caught too. Under PEP 701
 (3.12+) f-string bodies arrive as ``FSTRING_MIDDLE`` rather than
 ``STRING``, which is why the token filter accepts both.
 """
@@ -455,13 +457,17 @@ class TestQuirksNamingBoundary:
         # departing mention of one cannot be replaced by a mention of another
         # under an unchanged per-file total.
         found: Dict[str, Dict[str, List[str]]] = {}
-        names_by_key: Dict[str, str] = {}
+        # Built from the manifest rather than from the sites actually found:
+        # the stale branch below fires exactly when a command's last site is
+        # gone, so a map populated from ``found`` has nothing to resolve with
+        # and leaves the maintainer reading bare hex. ``.get(key, key)`` falls
+        # back to the digest only for a key whose command left the catalog,
+        # where no real name exists anywhere to print.
+        names_by_key: Dict[str, str] = {_command_key(c.name): c.name for c in PREMIUM_COMMANDS}
         for path in guarded_files():
             rel = str(path.relative_to(REPO_ROOT))
             for name, line in command_name_findings(path):
-                key = _command_key(name)
-                names_by_key[key] = name
-                found.setdefault(rel, {}).setdefault(key, []).append(line)
+                found.setdefault(rel, {}).setdefault(_command_key(name), []).append(line)
 
         unfrozen = [
             line
@@ -475,7 +481,7 @@ class TestQuirksNamingBoundary:
         ), "Edition-gated command named outside core/premium_manifest.py:\n" + "\n".join(unfrozen)
 
         stale = sorted(
-            f"{rel} [{key}]"
+            f"{rel} ['{names_by_key.get(key, key)}' -> {key}]"
             for rel, by_key in allowed.items()
             for key in by_key
             if key not in found.get(rel, {})
@@ -492,7 +498,7 @@ class TestQuirksNamingBoundary:
             "Frozen allowlist counts changed — a new site is a leak, a removed one means "
             "lowering the number in the same commit:\n"
             + "\n".join(
-                f"  {rel} ['{names_by_key[key]}' -> {key}]: {count} site(s), "
+                f"  {rel} ['{names_by_key.get(key, key)}' -> {key}]: {count} site(s), "
                 f"frozen at {allowed[rel][key]}\n"
                 + "\n".join(f"    {line}" for line in found[rel][key])
                 for (rel, key), count in sorted(drifted.items())
