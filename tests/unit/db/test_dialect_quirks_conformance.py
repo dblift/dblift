@@ -247,6 +247,52 @@ def test_no_dialect_carries_sdk_translation_hooks(dialect: str) -> None:
         assert not hasattr(quirks, hook), f"{dialect}: {hook} must not come back"
 
 
+def _registered_plugin_names():
+    """Every registered dialect, not just ``KNOWN_DIALECTS``.
+
+    The hook guarded below was answered by all twenty registered dialects —
+    five declared a value and the rest inherited one — so the guard has to
+    sweep all twenty. ``test_at_least_two_nosql_plugins_are_registered``
+    already fails if this registry collects nothing.
+    """
+    return sorted(plugin.name for plugin in ProviderRegistry.list_plugins())
+
+
+@pytest.mark.parametrize("dialect", _registered_plugin_names())
+def test_no_dialect_declares_the_round_trip_object_type_hook(dialect: str) -> None:
+    """``round_trip_extra_object_types`` belongs to the composition seam now.
+
+    It was removed from :class:`BaseQuirks` and from the five plugin quirks
+    classes that overrode it, because its contract was a list of object-type
+    names walked by a driver that is not part of this distribution — nothing
+    here could read it and check what those names meant.
+
+    Two ways it comes back, and both are failures:
+
+    * Re-declared on :class:`BaseQuirks` — every dialect answers again, and
+      the seam has nothing left to contribute.
+    * Left behind on a single plugin's quirks class — a *silent* dead
+      override, since nothing in this repository reads it, right up until an
+      installed package registers an extension supplying the hook for that
+      dialect. ``core/seams/quirks.py`` refuses to compose an extension over
+      a base class that already answers the hook, so the process then fails
+      to start rather than mis-answering.
+
+    Asserted against the pre-composition class from
+    :meth:`ProviderRegistry.quirks_base_class`, never against
+    :meth:`ProviderRegistry.get_quirks`: the composed class is exactly where
+    a legitimately registered extension is *supposed* to put this hook, so
+    reading it there would fail the installation this removal enables.
+    """
+    quirks_class = ProviderRegistry.quirks_base_class(dialect)
+    assert not hasattr(quirks_class, "round_trip_extra_object_types"), (
+        f"{dialect}: {quirks_class.__name__} declares or inherits "
+        "round_trip_extra_object_types. Contribute it through "
+        "core/seams/quirks.py instead — an extension cannot register for a "
+        "dialect whose quirks class already answers the hook."
+    )
+
+
 def test_unwrap_default_value_sqlserver_strips_parens() -> None:
     """Story 27-5: SQL Server must strip outer parens from simple defaults."""
 

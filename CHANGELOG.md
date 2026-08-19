@@ -155,6 +155,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   | `["user_defined_types", "packages"]` | `db2` |
   | `[]` (base default) | `cosmosdb`, `duckdb`, `mongodb`, `snowflake`, `sqlite` |
 
+  **If your plugin *overrides* this hook, delete the override.** Nothing in
+  this repository reads it any more, so an override left behind answers no
+  caller — and stops being merely dead the moment an extension supplies the
+  hook for that dialect: `core/seams/quirks.py` refuses to compose an
+  extension over a base class that already answers a name, so the
+  registration raises `QuirksExtensionCollisionError` out of
+  `load_feature_extensions`, which does not swallow it. The result is a
+  process that will not start, not a wrong answer. A new test in
+  `tests/unit/db/test_dialect_quirks_conformance.py` fails if any registered
+  dialect's pre-composition quirks class declares or inherits the name again.
+
+  Not a MAJOR under [`docs/semver-policy.md`](docs/semver-policy.md): §1.2
+  puts every module under `db/` outside the public surface, and §3's
+  fast-path allows removing a never-public symbol with no deprecation
+  overlap. §1's intro naming each module's `__all__` as a source of truth
+  does not pull this one back in — `db/base_quirks.py` exports only
+  `BaseQuirks`, and §1.2 makes the module internal either way.
+
 ## [3.9.0] - 2026-08-13
 
 ### Added

@@ -2019,6 +2019,12 @@ class BaseQuirks:
             f"{schema_clean}.{table_clean}",
         ]
 
+    # ------------------------------------------------------------------
+    # End of the round-trip validation hooks. Nothing below belongs to
+    # them, and several of the declarations that follow do have callers
+    # in this repository.
+    # ------------------------------------------------------------------
+
     #: SQL Server memory-optimised tables (HEKATON).
     table_supports_memory_optimized: bool = False
 
