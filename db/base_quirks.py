@@ -435,11 +435,18 @@ class BaseQuirks:
     #: SQLite accept ``LIMIT``; Oracle (``FETCH FIRST N ROWS ONLY``) does
     #: not; SQL Server uses ``TOP N`` instead. DB2's *preferred* rendering
     #: is also ``FETCH FIRST N ROWS ONLY`` (see :attr:`row_limit_style`),
-    #: but DB2 additionally accepts a bare trailing ``LIMIT`` clause —
-    #: verified against a live db2 12.01.0500 server by a capability
-    #: probe — so it sets this True even though its declared
-    #: ``row_limit_style`` is not ``"limit"``. When False, post-commit
-    #: verification queries and similar probes omit the ``LIMIT`` clause.
+    #: but DB2 additionally accepts a bare trailing ``LIMIT`` clause, so it
+    #: sets this True even though its declared ``row_limit_style`` is not
+    #: ``"limit"``. That divergence is pinned from here by
+    #: ``test_row_limit_style_and_select_supports_limit_agree`` in
+    #: ``tests/unit/db/test_dialect_capability_quirks.py``, which sweeps every
+    #: registered dialect and asserts DB2 is the only one where the two
+    #: attributes disagree — so a second dialect cannot quietly join it. The
+    #: engine behaviour behind the divergence was measured against a live db2
+    #: 12.01.0500 server by a capability probe that runs outside this
+    #: distribution and cannot be re-run from this repository. When False,
+    #: post-commit verification queries and similar probes omit the
+    #: ``LIMIT`` clause.
     select_supports_limit: bool = True
     #: How a SELECT is bounded to N rows. One of:
     #: ``"limit"`` (trailing ``LIMIT n`` — PostgreSQL family, MySQL,
@@ -469,9 +476,9 @@ class BaseQuirks:
     #: guaranteed to: DB2 is a documented exception — it declares
     #: ``row_limit_style = "fetch_first"`` as its preferred rendering yet
     #: sets ``select_supports_limit = True`` because the live engine also
-    #: accepts a bare trailing ``LIMIT`` (verified via the capability-probe
-    #: integration test). Nothing in the framework enforces that the two
-    #: stay consistent, so a new dialect could set one without the other;
+    #: accepts a bare trailing ``LIMIT`` (see :attr:`select_supports_limit`
+    #: for how that is evidenced). Nothing in the framework enforces that the
+    #: two stay consistent, so a new dialect could set one without the other;
     #: see the invariant test in ``tests/unit/db/test_dialect_capability_quirks.py``.
     row_limit_style: str = "limit"
     #: How an "insert or update on primary-key conflict" is expressed.
@@ -1882,6 +1889,16 @@ class BaseQuirks:
     def is_data_change_set_table_already_exists_error(self, error_message: str) -> bool:
         """Whether the error indicates the data change-set table already exists."""
         return False
+
+    # ------------------------------------------------------------------
+    # Round-trip validation hooks.
+    # These, and ``round_trip_extra_object_types`` earlier in this class,
+    # are consumed by a round-trip validation driver that is not part of
+    # this distribution. Nothing in this repository calls them, and that
+    # is expected rather than evidence that they are dead: plugins
+    # override them, so grepping for a caller here finds only the
+    # overrides. Each hook documents its own contract below.
+    # ------------------------------------------------------------------
 
     #: Dialect supports direct session autocommit control reliably. MySQL,
     #: DB2 and Oracle behave inconsistently; PostgreSQL and SQL Server support

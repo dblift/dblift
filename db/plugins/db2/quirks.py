@@ -110,8 +110,12 @@ class Db2Quirks(BaseQuirks):
     connection_probe_sql = "SELECT 1 FROM SYSIBM.SYSDUMMY1"
     select_supports_limit = True
     # Canonical rendering is trailing ``FETCH FIRST n ROWS ONLY``, but DB2
-    # also accepts a bare trailing ``LIMIT n`` (verified against a live
-    # db2 12.01.0500 server via the capability-probe integration test).
+    # also accepts a bare trailing ``LIMIT n`` — measured against a live db2
+    # 12.01.0500 server by a capability probe outside this distribution. That
+    # makes this dialect the one exception to the usual correlation between
+    # the two attributes; ``BaseQuirks.select_supports_limit`` records the
+    # evidence, and ``tests/unit/db/test_dialect_capability_quirks.py`` pins
+    # the exception from inside this repository.
     row_limit_style = "fetch_first"
     unquoted_identifier_case = "uppercase"
     connection_identifier_attrs = ("url", "host", "database")

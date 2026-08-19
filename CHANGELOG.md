@@ -78,9 +78,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   comments, docstrings or string literals reference a symbol no file here
   defines, and when they name a command this edition does not ship
   (`core/premium_manifest.py` is the one file allowed to name those, and the
-  list is read from it rather than copied). The nine pre-existing
-  `lint_placeholder_url` sites are frozen at their current per-file counts:
-  the guard fails on a new one, and the counts are lowered as sites go away.
+  list is read from it rather than copied). The 13 pre-existing sites across
+  nine plugin quirks files — nine of them comments, four of them
+  `lint_placeholder_url` values — are frozen at their current per-file,
+  per-command counts: the guard fails on a new one, on a different command
+  taking a departed one's place, and on an allowlist entry whose site is
+  gone. Counts are lowered in the commit that removes a site.
 
 ### Changed
 
