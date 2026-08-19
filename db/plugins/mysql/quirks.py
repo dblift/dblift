@@ -328,11 +328,6 @@ class MysqlQuirks(BaseQuirks):
         """
         return object_type_name in self._DEFINITION_PRESERVE_TYPES
 
-    # round_trip extra object types.
-    def round_trip_extra_object_types(self) -> "list[str]":
-        """MySQL contributes user-defined types and scheduled events."""
-        return ["user_defined_types", "events"]
-
     # Column ALTER hooks — MySQL uses MODIFY for type changes.
     def render_column_type_change(
         self, col_diff: object, formatted_table: str, formatted_column: str, dialect: str

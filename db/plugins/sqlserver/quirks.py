@@ -248,11 +248,6 @@ class SqlserverQuirks(BaseQuirks):
             return f"DROP INDEX IF EXISTS {obj_name} ON {schema_prefix}{target}"
         return None
 
-    # round_trip extra object types.
-    def round_trip_extra_object_types(self) -> "list[str]":
-        """SQL Server contributes user-defined types and synonyms."""
-        return ["user_defined_types", "synonyms"]
-
     # Column ALTER hooks.
     def render_column_nullable_change(
         self, col_diff: object, formatted_table: str, formatted_column: str, dialect: str

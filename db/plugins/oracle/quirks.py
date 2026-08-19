@@ -446,11 +446,6 @@ class OracleQuirks(BaseQuirks):
             return f"DROP TRIGGER IF EXISTS {schema_prefix}{obj_name}"
         return None
 
-    # round_trip extra object types.
-    def round_trip_extra_object_types(self) -> "list[str]":
-        """Oracle contributes user-defined OBJECT types, synonyms, and packages."""
-        return ["user_defined_types", "synonyms", "packages"]
-
     # Column ALTER hooks — Oracle uses MODIFY instead of ALTER COLUMN.
     def render_column_nullable_change(
         self, col_diff: object, formatted_table: str, formatted_column: str, dialect: str

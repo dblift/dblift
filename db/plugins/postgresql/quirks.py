@@ -610,11 +610,6 @@ class PostgresqlQuirks(BaseQuirks):
             return f"nextval('{match.group(1)}'::regclass)"
         return default_str
 
-    # round_trip extra object types (story 27-6).
-    def round_trip_extra_object_types(self) -> "list[str]":
-        """PostgreSQL contributes user-defined types, materialized views, and extensions."""
-        return ["user_defined_types", "materialized_views", "extensions"]
-
     # Column ALTER hooks (Epic 27 column_converter refactor).
     def render_column_nullable_change(
         self, col_diff: object, formatted_table: str, formatted_column: str, dialect: str

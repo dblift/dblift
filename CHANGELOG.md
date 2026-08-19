@@ -122,6 +122,57 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
+- **`BaseQuirks.round_trip_extra_object_types`, and its five plugin
+  overrides.** Every other hook in the round-trip region of
+  `db/base_quirks.py` is a statement about a database engine that can be read
+  and checked from this repository. This one was not: its contract was the
+  object-type list walked by a round-trip validation driver that is not part
+  of this distribution, so the names it returned meant nothing without that
+  driver. `core/seams/quirks.py` now gives an installed package a supported
+  way to contribute a hook of its own, which is where this one belongs.
+
+  Removed from `db/base_quirks.py` (the declaration and its `[]` default) and
+  from the PostgreSQL, Oracle, MySQL, SQL Server and Db2 quirks classes. It
+  was never declared on the `DialectQuirks` protocol in
+  `core/dialect_boundary.py`, and nothing in this repository called it.
+
+  **Contract change for anyone consuming this hook.** There is no longer a
+  default, so `ProviderRegistry.get_quirks(<dialect>).round_trip_extra_object_types`
+  raises `AttributeError` for *every* dialect unless a registered quirks
+  extension supplies it. That includes the dialects that previously answered
+  `[]` by inheriting the base default, not only the five that declared a
+  value — an extension covering just the five leaves the other fifteen
+  raising. Registration targets canonical dialect keys explicitly, so the
+  dialects that inherited an answer from another plugin's quirks class each
+  need their own registration:
+
+  | previous value | dialects that answered it |
+  | --- | --- |
+  | `["user_defined_types", "materialized_views", "extensions"]` | `postgresql`, and `alloydb`, `aurora-postgresql`, `citus`, `cockroachdb`, `neon`, `redshift`, `supabase`, `timescaledb`, `yugabytedb` by inheritance |
+  | `["user_defined_types", "synonyms", "packages"]` | `oracle` |
+  | `["user_defined_types", "events"]` | `mysql`, and `mariadb` by inheritance |
+  | `["user_defined_types", "synonyms"]` | `sqlserver` |
+  | `["user_defined_types", "packages"]` | `db2` |
+  | `[]` (base default) | `cosmosdb`, `duckdb`, `mongodb`, `snowflake`, `sqlite` |
+
+  **If your plugin *overrides* this hook, delete the override.** Nothing in
+  this repository reads it any more, so an override left behind answers no
+  caller — and stops being merely dead the moment an extension supplies the
+  hook for that dialect: `core/seams/quirks.py` refuses to compose an
+  extension over a base class that already answers a name, so the
+  registration raises `QuirksExtensionCollisionError` out of
+  `load_feature_extensions`, which does not swallow it. The result is a
+  process that will not start, not a wrong answer. A new test in
+  `tests/unit/db/test_dialect_quirks_conformance.py` fails if any registered
+  dialect's pre-composition quirks class declares or inherits the name again.
+
+  Not a MAJOR under [`docs/semver-policy.md`](docs/semver-policy.md): §1.2
+  puts every module under `db/` outside the public surface, and §3's
+  fast-path allows removing a never-public symbol with no deprecation
+  overlap. §1's intro naming each module's `__all__` as a source of truth
+  does not pull this one back in — `db/base_quirks.py` exports only
+  `BaseQuirks`, and §1.2 makes the module internal either way.
+
 ## [3.9.0] - 2026-08-13
 
 ### Added
