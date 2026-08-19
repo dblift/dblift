@@ -135,6 +135,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The HTML report left the object type and name blank for every DML
+  statement.** `INSERT`, `UPDATE` and `DELETE` rows in the per-migration
+  execution table showed `—` in both columns. The statement parsers cover
+  DDL only and return an empty list for DML without raising, but the manual
+  table-name fallback in `SqlExecutionService` sat in an `except` branch, so
+  it never ran and no object change was recorded for those statements. The
+  fallback now runs whenever the parsers yield nothing, and the two copies of
+  its object-building block are one.
+
+- **The report's brand logo was the wide wordmark, and was missing entirely
+  from an installed package.** The header slot is a 40×40 square, so the
+  556×218 wordmark rendered illegibly. The image was also read from
+  `logo/dblift_logo.png` at render time, a path excluded from the wheel, and
+  from a sibling website checkout — neither exists for an installed DBLift,
+  which left only an embedded fallback SVG whose opening `linearGradient` tag
+  was truncated, so the image failed to parse. The report now embeds a square
+  logo directly in the template and reads no file at render time, giving the
+  same output from a source checkout and from a wheel.
+
 - **`info` hid older repeatable executions after reapply.** A checksum
   change plus `migrate` wrote a second history row, but `info` kept only
   the latest as Success. The previous successful row now shows as
