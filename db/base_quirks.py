@@ -402,18 +402,6 @@ class BaseQuirks:
         """
         return None
 
-    def round_trip_extra_object_types(self) -> "list[str]":
-        """Return dialect-specific object type names to include in round-trip tests.
-
-        The caller appends this result to the object-type list it walks
-        for every dialect. Plugins return names from the set:
-        ``user_defined_types``, ``materialized_views``, ``extensions``,
-        ``synonyms``, ``packages``, ``events``.
-
-        Default: empty list (no dialect-specific types beyond the base set).
-        """
-        return []
-
     #: Identifier-quoting characters. Default is ANSI double-quote on
     #: both sides; MySQL uses backticks, SQL Server uses square
     #: brackets. Plugins override the two attributes.
@@ -1892,12 +1880,12 @@ class BaseQuirks:
 
     # ------------------------------------------------------------------
     # Round-trip validation hooks.
-    # These, and ``round_trip_extra_object_types`` earlier in this class,
-    # are consumed by a round-trip validation driver that is not part of
-    # this distribution. Nothing in this repository calls them, and that
-    # is expected rather than evidence that they are dead: plugins
-    # override them, so grepping for a caller here finds only the
-    # overrides. Each hook documents its own contract below.
+    # The hooks in this section, and nothing outside it, are consumed by a
+    # round-trip validation driver that is not part of this distribution.
+    # Nothing in this repository calls them, and that is expected rather
+    # than evidence that they are dead: plugins override them, so grepping
+    # for a caller here finds only the overrides. Each hook documents its
+    # own contract below.
     # ------------------------------------------------------------------
 
     #: Dialect supports direct session autocommit control reliably. MySQL,

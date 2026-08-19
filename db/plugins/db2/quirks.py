@@ -343,11 +343,6 @@ class Db2Quirks(BaseQuirks):
             return DB2RegexParser
         return None
 
-    # round_trip extra object types.
-    def round_trip_extra_object_types(self) -> "list[str]":
-        """Db2 contributes user-defined types and stored packages."""
-        return ["user_defined_types", "packages"]
-
     # Story 27-1: collapse TIMESTAMP(n) → TIMESTAMP (DB2 ignores fractional-
     # seconds precision in the DDL round-trip).
     def normalize_column_data_type(self, col: object, data_type: str) -> str:

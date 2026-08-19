@@ -122,6 +122,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
+- **`BaseQuirks.round_trip_extra_object_types`, and its five plugin
+  overrides.** Every other hook in the round-trip region of
+  `db/base_quirks.py` is a statement about a database engine that can be read
+  and checked from this repository. This one was not: its contract was the
+  object-type list walked by a round-trip validation driver that is not part
+  of this distribution, so the names it returned meant nothing without that
+  driver. `core/seams/quirks.py` now gives an installed package a supported
+  way to contribute a hook of its own, which is where this one belongs.
+
+  Removed from `db/base_quirks.py` (the declaration and its `[]` default) and
+  from the PostgreSQL, Oracle, MySQL, SQL Server and Db2 quirks classes. It
+  was never declared on the `DialectQuirks` protocol in
+  `core/dialect_boundary.py`, and nothing in this repository called it.
+
+  **Contract change for anyone consuming this hook.** There is no longer a
+  default, so `ProviderRegistry.get_quirks(<dialect>).round_trip_extra_object_types`
+  raises `AttributeError` for *every* dialect unless a registered quirks
+  extension supplies it. That includes the dialects that previously answered
+  `[]` by inheriting the base default, not only the five that declared a
+  value — an extension covering just the five leaves the other fifteen
+  raising. Registration targets canonical dialect keys explicitly, so the
+  dialects that inherited an answer from another plugin's quirks class each
+  need their own registration:
+
+  | previous value | dialects that answered it |
+  | --- | --- |
+  | `["user_defined_types", "materialized_views", "extensions"]` | `postgresql`, and `alloydb`, `aurora-postgresql`, `citus`, `cockroachdb`, `neon`, `redshift`, `supabase`, `timescaledb`, `yugabytedb` by inheritance |
+  | `["user_defined_types", "synonyms", "packages"]` | `oracle` |
+  | `["user_defined_types", "events"]` | `mysql`, and `mariadb` by inheritance |
+  | `["user_defined_types", "synonyms"]` | `sqlserver` |
+  | `["user_defined_types", "packages"]` | `db2` |
+  | `[]` (base default) | `cosmosdb`, `duckdb`, `mongodb`, `snowflake`, `sqlite` |
+
 ## [3.9.0] - 2026-08-13
 
 ### Added
