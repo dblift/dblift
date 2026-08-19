@@ -1,6 +1,8 @@
 """DB2 quirks behavior."""
 
+import logging
 from types import SimpleNamespace
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -72,3 +74,120 @@ def test_render_column_type_change_sets_data_type() -> None:
 def test_render_column_type_change_returns_none_without_a_diff() -> None:
     col_diff = SimpleNamespace(data_type_diff=None)
     assert Db2Quirks().render_column_type_change(col_diff, "ORDERS", "STATUS", "db2") is None
+
+
+# ``build_retry_drop_strategies`` builds the DROP targets to try, in order,
+# after a CREATE TABLE failed because the table is already there but the
+# original DROP could not find it. DB2 folds unquoted identifiers to upper
+# case in SYSCAT, so the name the caller holds and the name the catalog
+# stores can differ.
+
+
+def _lookup_executor(rows=None, error=None):
+    """Query executor stub, shaped like the call the lookup actually makes.
+
+    ``execute_query(connection, sql, params)`` — three positional arguments,
+    with four bound parameters, returning a list of row mappings.
+    """
+    query_executor = MagicMock()
+    if error is not None:
+        query_executor.execute_query.side_effect = error
+    else:
+        query_executor.execute_query.return_value = rows
+    return query_executor
+
+
+@pytest.mark.parametrize("rows", [[], None], ids=["no_rows", "no_result"])
+def test_db2_retry_drop_strategies_stand_on_the_names_passed_in(rows):
+    """No catalog match: the quoted form of the caller's names is all there is."""
+    connection = object()
+    query_executor = _lookup_executor(rows=rows)
+
+    strategies = Db2Quirks().build_retry_drop_strategies(
+        query_executor, connection, "APP", "ORDERS"
+    )
+
+    assert strategies == ['"APP"."ORDERS"']
+    connection_arg, _sql, params = query_executor.execute_query.call_args.args
+    # The lookup runs on the connection it was handed, not one of its own,
+    # and the names go in as bound parameters rather than inlined text.
+    assert connection_arg is connection
+    assert params == ["APP", "APP", "ORDERS", "ORDERS"]
+
+
+@pytest.mark.parametrize(
+    "row",
+    [
+        {"TABSCHEMA": "APP", "TABNAME": "ORDERS"},
+        {"tabschema": "APP", "tabname": "ORDERS"},
+    ],
+    ids=["upper_case_keys", "lower_case_keys"],
+)
+def test_db2_retry_drop_tries_the_catalog_name_first(row):
+    """The upper-cased name SYSCAT stores is the one a DROP has to target.
+
+    It is prepended, not appended: trying the caller's lower-case form first
+    would fail again for the same reason the first DROP did.
+    """
+    strategies = Db2Quirks().build_retry_drop_strategies(
+        _lookup_executor(rows=[row]), object(), "app", "orders"
+    )
+
+    assert strategies == ['"APP"."ORDERS"', '"app"."orders"']
+
+
+def test_db2_retry_drop_tries_a_different_schema_first():
+    """The schema SYSCAT reports wins over the one the caller assumed."""
+    strategies = Db2Quirks().build_retry_drop_strategies(
+        _lookup_executor(rows=[{"TABSCHEMA": "DB2INST1", "TABNAME": "ORDERS"}]),
+        object(),
+        "APP",
+        "ORDERS",
+    )
+
+    assert strategies == ['"DB2INST1"."ORDERS"', '"APP"."ORDERS"']
+
+
+def test_db2_retry_drop_lookup_strips_quotes_from_the_bound_names():
+    """SYSCAT holds bare identifiers, so a quoted name must not be matched
+    against a value that still carries its quotes."""
+    query_executor = _lookup_executor(rows=[])
+
+    Db2Quirks().build_retry_drop_strategies(query_executor, object(), '"APP"', '"ORDERS"')
+
+    assert query_executor.execute_query.call_args.args[2] == [
+        "APP",
+        "APP",
+        "ORDERS",
+        "ORDERS",
+    ]
+
+
+def test_db2_retry_drop_strategies_survive_a_failing_lookup():
+    """The catalog query is best-effort — the caller still gets its list.
+
+    Letting the failure out would turn a retry that might have worked into a
+    hard error, on a path only reached because something already went wrong.
+    """
+    query_executor = _lookup_executor(error=RuntimeError("SQL0204N SYSCAT.TABLES"))
+
+    strategies = Db2Quirks().build_retry_drop_strategies(query_executor, object(), "APP", "ORDERS")
+
+    assert strategies == ['"APP"."ORDERS"']
+
+
+def test_db2_retry_drop_lookup_failure_logs_under_this_modules_own_logger(caplog):
+    """The swallowed failure is attributed to the module that emits it.
+
+    A logger named for some other namespace sends the only trace of this
+    failure somewhere the reader of this file has no reason to look.
+    """
+    query_executor = _lookup_executor(error=RuntimeError("catalog unavailable"))
+
+    with caplog.at_level(logging.DEBUG):
+        Db2Quirks().build_retry_drop_strategies(query_executor, object(), "APP", "ORDERS")
+
+    emitters = {
+        record.name for record in caplog.records if "catalog unavailable" in record.getMessage()
+    }
+    assert emitters == {"db.plugins.db2.quirks"}
