@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+### Changed
+
+### Fixed
+
+### Removed
+
+## [3.10.0] - 2026-08-20
+
+### Added
+
 - **Extension point for dialect quirks (`core/seams/quirks.py`).** A dialect
   resolved to exactly one quirks class, so an installed package that needed a
   hook the core does not define had no supported way to contribute one.
@@ -135,6 +145,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **PostgreSQL statements the server refuses inside a transaction were
+  wrapped in one.** `classify_execution_statement` decides whether the
+  execution engine may open a transaction around a statement, and its
+  PostgreSQL pattern list covered the `CONCURRENTLY` family, `VACUUM`,
+  `REINDEX DATABASE` and `REINDEX SYSTEM` only. `REINDEX SCHEMA`, bare
+  `CLUSTER`, `CREATE DATABASE`, `DROP DATABASE`, `CREATE TABLESPACE`,
+  `DROP TABLESPACE` and `ALTER SYSTEM` each document the same restriction on
+  their own reference page, and each was wrapped anyway — so the statement
+  failed at apply time against a real server, after the rest of the
+  transaction had already rolled back. All seven are now classified
+  non-transactional, and `REINDEX ... CONCURRENTLY` widens from
+  `TABLE|INDEX` to also cover `SCHEMA`.
+
+  The patterns stay narrow, because wrapping is what lets a failed migration
+  roll back and a false positive costs more than a missing entry: `CLUSTER`
+  is anchored to the end of the statement, so the restricted table-less form
+  is caught while `CLUSTER <table> USING <index>` keeps its transaction, and
+  `REINDEX TABLE`, `CREATE INDEX`, `DROP INDEX` and
+  `ALTER TABLE ... SET TABLESPACE` are pinned as transactional in the
+  opposite direction.
+
 - **The HTML report left the object type and name blank for every DML
   statement.** `INSERT`, `UPDATE` and `DELETE` rows in the per-migration
   execution table showed `—` in both columns. The statement parsers cover
@@ -181,6 +212,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   in `db/base_quirks.py` explained SQL Server's `dbo` handling in terms of a
   caller rather than the schema normalisation it actually controls. No
   behaviour change.
+
+- **Redshift resolved PostgreSQL's sqlglot dialect instead of its own.**
+  `RedshiftQuirks` inherits `PostgresqlQuirks` and so inherited
+  `sqlglot_dialect = "postgres"`, although sqlglot ships a dedicated
+  `redshift` dialect precisely because Redshift's DDL diverges. Divergent
+  syntax parsed under the generic grammar and then could not be rendered
+  back — `CREATE TABLE t (id INT) DISTKEY(id) SORTKEY(id)` raised
+  `ValueError: Unsupported expression type list` — and because the SQL
+  formatter catches that failure and returns the statement unchanged, the
+  only symptom was output that silently went unformatted. Redshift now
+  declares `sqlglot_dialect = "redshift"`, under which the same statement
+  round-trips.
+
+- **`REINDEX ... CONCURRENTLY` and `DROP INDEX CONCURRENTLY` ran inside a
+  transaction.** PostgreSQL documents both as unable to run in a transaction
+  block — the restriction `CREATE INDEX CONCURRENTLY` already carried in
+  `non_transactional_sql_patterns` — but neither was listed, so an operator
+  running either form through a migration got
+  `ActiveSqlTransaction: ... cannot run inside a transaction block` instead
+  of the automatic non-transactional execution the engine provides for this
+  class of statement. Both are now listed, and plain `REINDEX TABLE` /
+  `DROP INDEX` keep running inside a transaction.
 
 ### Removed
 
