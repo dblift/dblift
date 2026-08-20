@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+### Changed
+
+### Fixed
+
+### Removed
+
+## [3.10.0] - 2026-08-20
+
+### Added
+
 - **Extension point for dialect quirks (`core/seams/quirks.py`).** A dialect
   resolved to exactly one quirks class, so an installed package that needed a
   hook the core does not define had no supported way to contribute one.
