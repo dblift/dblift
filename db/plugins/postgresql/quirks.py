@@ -208,8 +208,7 @@ class PostgresqlQuirks(BaseQuirks):
         # to end-of-statement rather than to the verb.
         (
             r"^CLUSTER\s*(\([^()]*\)\s*)?(VERBOSE\s*)?;?$",
-            "PostgreSQL CLUSTER without a table name cannot run inside a "
-            "transaction block",
+            "PostgreSQL CLUSTER without a table name cannot run inside a " "transaction block",
         ),
         # Each of these states the restriction on its own reference page, in
         # the same words: "<COMMAND> cannot be executed inside a transaction
