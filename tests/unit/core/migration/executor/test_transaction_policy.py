@@ -59,6 +59,37 @@ def test_postgresql_create_index_concurrently_requires_autocommit():
 
 
 @pytest.mark.unit
+@pytest.mark.parametrize(
+    "sql",
+    [
+        "REINDEX TABLE CONCURRENTLY orders",
+        "REINDEX INDEX CONCURRENTLY idx_orders_id",
+        "DROP INDEX CONCURRENTLY idx_orders_id",
+    ],
+)
+def test_postgresql_concurrently_maintenance_commands_require_autocommit(sql):
+    statement = classify_execution_statement(sql, dialect="postgresql", statement_type="DDL")
+
+    assert statement.can_execute_in_transaction is False
+    assert "CONCURRENTLY" in (statement.transaction_reason or "")
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    "sql",
+    [
+        "REINDEX TABLE orders",
+        "REINDEX INDEX idx_orders_id",
+        "DROP INDEX idx_orders_id",
+    ],
+)
+def test_postgresql_non_concurrently_maintenance_commands_run_in_transaction(sql):
+    statement = classify_execution_statement(sql, dialect="postgresql", statement_type="DDL")
+
+    assert statement.can_execute_in_transaction is True
+
+
+@pytest.mark.unit
 def test_sqlserver_create_fulltext_catalog_requires_autocommit():
     statement = classify_execution_statement(
         "CREATE FULLTEXT CATALOG dblift_ft_catalog AS DEFAULT",

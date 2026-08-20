@@ -15,6 +15,279 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
+## [3.10.0] - 2026-08-20
+
+### Added
+
+- **Extension point for dialect quirks (`core/seams/quirks.py`).** A dialect
+  resolved to exactly one quirks class, so an installed package that needed a
+  hook the core does not define had no supported way to contribute one.
+  `register_quirks_extension(dialects, extension)` now mixes an extension class
+  in ahead of the dialect's quirks class, and `provider.quirks.<hook>` finds
+  the added hook. Existing call sites resolve exactly what they resolved
+  before: with nothing registered, `get_quirks` returns the plugin's own class
+  rather than a dynamic subclass.
+
+  Extensions may only **add**. Answering a name the dialect already answers —
+  whether the plugin's quirks class declares it, it is inherited from
+  `BaseQuirks`, or the extension inherits it from a parent of its own — raises
+  `QuirksExtensionCollisionError` naming the hook, the extension, the ancestor
+  the name came from and the class that already defines it. Two extensions
+  registered for one dialect answering the same hook raise it too, naming
+  both: registration order deciding a winner is the same silent shadowing in
+  the other direction. Dunders are rejected outright, bar the bookkeeping
+  Python writes into every class body (`__module__`, `__doc__`, `__dict__`,
+  `__weakref__`, `__annotations__`, ...): a dunder answers no question about a
+  database engine, it changes how the composed class is built, instantiated or
+  looked up. `__init__` — which a `@dataclass` extension generates without its
+  author naming it — would silently empty `quirks.dialect_name`, since
+  composition instantiates the class as `composed(dialect_name=...)`;
+  `__slots__` dictates the composed instance layout; `__init_subclass__` runs
+  during composition itself and writes ahead of every extension and the base;
+  `__getattr__` and `__getattribute__` answer every hook, including ones
+  nothing defines. The rejection quotes the offending name and gives the one
+  reason that applies to it, rather than every reason at once.
+  An existing hook is a statement about the database engine, so a second
+  answer for it belongs upstream here rather than in an installed extension,
+  and shadowing it quietly would override a newer core without a word. The
+  check does not skip private names either: a plugin quirks class reads its
+  own `_NAME` constants through `self`, so an extension declaring one shadows
+  the dialect's answer exactly as a public hook would.
+  An extension **may** subclass `BaseQuirks` so the mixin type-checks: classes
+  already in the dialect's own lineage contribute nothing and collide with
+  nothing. It is therefore a `BaseQuirks` subclass or a plain class and
+  nothing else — `abc.ABC`, `typing.Protocol`, `typing.Generic`, `NamedTuple`
+  and `Enum` bases are rejected, each contributing dunders of its own
+  (`__abstractmethods__`, `__parameters__`, `__orig_bases__`, `__slots__`,
+  `__new__`) that composition owns. `validate_quirks_extensions()` runs at
+  feature-load time, so a collision on a dialect nothing happens to resolve
+  still fails loudly, and anything that stops the composed class being built
+  raises `QuirksExtensionCompositionError` naming the dialect and the bases
+  rather than escaping raw — a set of extensions with no consistent method
+  resolution order, or an extension's own metaclass refusing the composition,
+  which contributes no name for the checks above to catch.
+
+  Registration targets dialect keys explicitly: an extension for `postgresql`
+  does not reach the PostgreSQL-wire-compatible dialects (`neon`,
+  `timescaledb`, ...) or MariaDB, which are separate plugins. Registry
+  *aliases* are not separate keys — registration and lookup both resolve
+  through `ProviderRegistry.canonical_dialect_name`, so an extension
+  registered for `sqlite` also answers a user who configured `sqlite3`.
+
+  `ProviderRegistry.canonical_dialect_name_for_capability` now reads the
+  pre-composition quirks class. It counts only a class-body declaration as
+  capability ownership, and the composed class is built with an empty class
+  body, so a dialect carrying an extension used to stop owning its capability
+  — which silently discarded every built-in `dialect_options` value for that
+  dialect, MySQL storage engine and row format included.
+
+- **Naming guard over the dialect-quirks surface**
+  (`tests/unit/db/test_quirks_naming_boundary.py`). `db/base_quirks.py`,
+  `core/dialect_boundary.py` and every `db/plugins/*/quirks.py` are read by
+  people who only have this repository, so the guard fails when their
+  comments, docstrings or string literals reference a symbol no file here
+  defines, and when they name a command this edition does not ship
+  (`core/premium_manifest.py` is the one file allowed to name those, and the
+  list is read from it rather than copied). The 13 pre-existing sites across
+  nine plugin quirks files — nine of them comments, four of them
+  `lint_placeholder_url` values — are frozen at their current per-file,
+  per-command counts: the guard fails on a new one, on a different command
+  taking a departed one's place, and on an allowlist entry whose site is
+  gone. Counts are lowered in the commit that removes a site.
+
+- **Identity queries may carry a column's generation kind.**
+  `VendorMetadataQueries.get_identity_columns_query` results are read by
+  `enrich_columns_with_identity` in `core/introspection/_column_enricher.py`,
+  which built a fixed three-key record (`seed_value`, `increment_value`,
+  `last_value`) from each row — so no identity query could deliver a
+  generation kind through it however it was written, and
+  `SqlColumn.identity_generation` stayed `None` on every introspected column
+  of every dialect. A query may now return a fourth, optional
+  `identity_generation` (`ALWAYS` or `BY DEFAULT`), read with the same
+  case-insensitive row access and with surrounding whitespace stripped, and
+  the value lands on the column.
+
+  What that guards: `PostgresqlQuirks.render_identity_clause` emits
+  `GENERATED BY DEFAULT AS IDENTITY` for anything that is not `ALWAYS`, so a
+  column declared `GENERATED ALWAYS AS IDENTITY` whose generation kind was
+  dropped re-renders as `BY DEFAULT` — silently relaxing the constraint,
+  since the column starts accepting caller-supplied values it previously
+  rejected, and neither `diff` nor round-trip validation reports it because
+  the emitted DDL is valid. The clause is now rendered from a trimmed,
+  upper-cased reading of the field for the same reason: that fallback fails
+  open, so a value differing only in padding or case would relax the
+  constraint just as completely.
+
+  **No behaviour changes until an identity query selects the column.** No
+  dialect in this repository ships one: every plugin's
+  `vendor_queries_class()` returns `None`, so `VendorQueriesFactory.create`
+  returns `None` for every dialect and the enrichment pass returns at its
+  first guard without reading a row. The re-render described above therefore
+  persists on every dialect here, unchanged, until an identity query
+  supplies the column — which is why this is filed as a new optional
+  contract column rather than a fix. `identity_generation` stays optional by
+  design: a query that does not select it leaves the field at `None` rather
+  than a guessed default, which is what dialects whose identity syntax has
+  no such concept need. It is read at render time by `PostgresqlQuirks`
+  only — other dialects' `render_identity_clause` implementations ignore it
+  and emit their own fixed generation kind.
+
+### Changed
+
+- **Oracle and DB2 retry-drop logging is attributed to the code that emits
+  it.** `build_retry_drop_strategies` in `db/plugins/oracle/quirks.py` and
+  `db/plugins/db2/quirks.py` logged under the fixed logger name
+  `core.validation.round_trip_tester`, which matches no module in this
+  repository. Both now call `logging.getLogger(__name__)`. **Behaviour
+  change:** these records now arrive under `db.plugins.oracle.quirks` and
+  `db.plugins.db2.quirks`; a logging filter, handler or level configured for
+  the old name no longer sees them.
+
+### Fixed
+
+- **PostgreSQL statements the server refuses inside a transaction were
+  wrapped in one.** `classify_execution_statement` decides whether the
+  execution engine may open a transaction around a statement, and its
+  PostgreSQL pattern list covered the `CONCURRENTLY` family, `VACUUM`,
+  `REINDEX DATABASE` and `REINDEX SYSTEM` only. `REINDEX SCHEMA`, bare
+  `CLUSTER`, `CREATE DATABASE`, `DROP DATABASE`, `CREATE TABLESPACE`,
+  `DROP TABLESPACE` and `ALTER SYSTEM` each document the same restriction on
+  their own reference page, and each was wrapped anyway — so the statement
+  failed at apply time against a real server, after the rest of the
+  transaction had already rolled back. All seven are now classified
+  non-transactional, and `REINDEX ... CONCURRENTLY` widens from
+  `TABLE|INDEX` to also cover `SCHEMA`.
+
+  The patterns stay narrow, because wrapping is what lets a failed migration
+  roll back and a false positive costs more than a missing entry: `CLUSTER`
+  is anchored to the end of the statement, so the restricted table-less form
+  is caught while `CLUSTER <table> USING <index>` keeps its transaction, and
+  `REINDEX TABLE`, `CREATE INDEX`, `DROP INDEX` and
+  `ALTER TABLE ... SET TABLESPACE` are pinned as transactional in the
+  opposite direction.
+
+- **The HTML report left the object type and name blank for every DML
+  statement.** `INSERT`, `UPDATE` and `DELETE` rows in the per-migration
+  execution table showed `—` in both columns. The statement parsers cover
+  DDL only and return an empty list for DML without raising, but the manual
+  table-name fallback in `SqlExecutionService` sat in an `except` branch, so
+  it never ran and no object change was recorded for those statements. The
+  fallback now runs whenever the parsers yield nothing, and the two copies of
+  its object-building block are one.
+
+- **The report's brand logo was the wide wordmark, and was missing entirely
+  from an installed package.** The header slot is a 40×40 square, so the
+  556×218 wordmark rendered illegibly. The image was also read from
+  `logo/dblift_logo.png` at render time, a path excluded from the wheel, and
+  from a sibling website checkout — neither exists for an installed DBLift,
+  which left only an embedded fallback SVG whose opening `linearGradient` tag
+  was truncated, so the image failed to parse. The report now embeds a square
+  logo directly in the template and reads no file at render time, giving the
+  same output from a source checkout and from a wheel.
+
+- **`info` hid older repeatable executions after reapply.** A checksum
+  change plus `migrate` wrote a second history row, but `info` kept only
+  the latest as Success. The previous successful row now shows as
+  Superseded, matching the catalog: Outdated is still the latest applied
+  row while the file has drifted and is pending.
+
+- **Quirks documentation pointed at code that is not in this repository.**
+  Comments and docstrings across `db/base_quirks.py` and the Oracle, DB2,
+  MySQL, PostgreSQL and SQL Server quirks named classes, private methods,
+  a module path and two file paths that no file here defines, so following
+  them led nowhere. They now describe what each hook returns and why a
+  dialect overrides it.
+
+  The costliest of these was on `select_supports_limit`: DB2 sets it `True`
+  although its declared `row_limit_style` is not `"limit"`, and the comment
+  justifying that cited an integration test at a path this repository does
+  not contain — so the evidence for a claim about a database engine could
+  not be checked from here. The claim and the server version it was measured
+  against are kept; the unreachable pointer is gone.
+
+  `db/plugins/mysql/quirks.py` also pointed at a view-algorithm helper that
+  has moved into the `fetch_view_algorithm` hook, `db/plugins/db2/quirks.py`
+  attributed its connection-error patterns to a source file that no longer
+  exists, and the `default_schema_name` / `parser_default_schema` comments
+  in `db/base_quirks.py` explained SQL Server's `dbo` handling in terms of a
+  caller rather than the schema normalisation it actually controls. No
+  behaviour change.
+
+- **Redshift resolved PostgreSQL's sqlglot dialect instead of its own.**
+  `RedshiftQuirks` inherits `PostgresqlQuirks` and so inherited
+  `sqlglot_dialect = "postgres"`, although sqlglot ships a dedicated
+  `redshift` dialect precisely because Redshift's DDL diverges. Divergent
+  syntax parsed under the generic grammar and then could not be rendered
+  back — `CREATE TABLE t (id INT) DISTKEY(id) SORTKEY(id)` raised
+  `ValueError: Unsupported expression type list` — and because the SQL
+  formatter catches that failure and returns the statement unchanged, the
+  only symptom was output that silently went unformatted. Redshift now
+  declares `sqlglot_dialect = "redshift"`, under which the same statement
+  round-trips.
+
+- **`REINDEX ... CONCURRENTLY` and `DROP INDEX CONCURRENTLY` ran inside a
+  transaction.** PostgreSQL documents both as unable to run in a transaction
+  block — the restriction `CREATE INDEX CONCURRENTLY` already carried in
+  `non_transactional_sql_patterns` — but neither was listed, so an operator
+  running either form through a migration got
+  `ActiveSqlTransaction: ... cannot run inside a transaction block` instead
+  of the automatic non-transactional execution the engine provides for this
+  class of statement. Both are now listed, and plain `REINDEX TABLE` /
+  `DROP INDEX` keep running inside a transaction.
+
+### Removed
+
+- **`BaseQuirks.round_trip_extra_object_types`, and its five plugin
+  overrides.** Every other hook in the round-trip region of
+  `db/base_quirks.py` is a statement about a database engine that can be read
+  and checked from this repository. This one was not: its contract was the
+  object-type list walked by a round-trip validation driver that is not part
+  of this distribution, so the names it returned meant nothing without that
+  driver. `core/seams/quirks.py` now gives an installed package a supported
+  way to contribute a hook of its own, which is where this one belongs.
+
+  Removed from `db/base_quirks.py` (the declaration and its `[]` default) and
+  from the PostgreSQL, Oracle, MySQL, SQL Server and Db2 quirks classes. It
+  was never declared on the `DialectQuirks` protocol in
+  `core/dialect_boundary.py`, and nothing in this repository called it.
+
+  **Contract change for anyone consuming this hook.** There is no longer a
+  default, so `ProviderRegistry.get_quirks(<dialect>).round_trip_extra_object_types`
+  raises `AttributeError` for *every* dialect unless a registered quirks
+  extension supplies it. That includes the dialects that previously answered
+  `[]` by inheriting the base default, not only the five that declared a
+  value — an extension covering just the five leaves the other fifteen
+  raising. Registration targets canonical dialect keys explicitly, so the
+  dialects that inherited an answer from another plugin's quirks class each
+  need their own registration:
+
+  | previous value | dialects that answered it |
+  | --- | --- |
+  | `["user_defined_types", "materialized_views", "extensions"]` | `postgresql`, and `alloydb`, `aurora-postgresql`, `citus`, `cockroachdb`, `neon`, `redshift`, `supabase`, `timescaledb`, `yugabytedb` by inheritance |
+  | `["user_defined_types", "synonyms", "packages"]` | `oracle` |
+  | `["user_defined_types", "events"]` | `mysql`, and `mariadb` by inheritance |
+  | `["user_defined_types", "synonyms"]` | `sqlserver` |
+  | `["user_defined_types", "packages"]` | `db2` |
+  | `[]` (base default) | `cosmosdb`, `duckdb`, `mongodb`, `snowflake`, `sqlite` |
+
+  **If your plugin *overrides* this hook, delete the override.** Nothing in
+  this repository reads it any more, so an override left behind answers no
+  caller — and stops being merely dead the moment an extension supplies the
+  hook for that dialect: `core/seams/quirks.py` refuses to compose an
+  extension over a base class that already answers a name, so the
+  registration raises `QuirksExtensionCollisionError` out of
+  `load_feature_extensions`, which does not swallow it. The result is a
+  process that will not start, not a wrong answer. A new test in
+  `tests/unit/db/test_dialect_quirks_conformance.py` fails if any registered
+  dialect's pre-composition quirks class declares or inherits the name again.
+
+  Not a MAJOR under [`docs/semver-policy.md`](docs/semver-policy.md): §1.2
+  puts every module under `db/` outside the public surface, and §3's
+  fast-path allows removing a never-public symbol with no deprecation
+  overlap. §1's intro naming each module's `__all__` as a source of truth
+  does not pull this one back in — `db/base_quirks.py` exports only
+  `BaseQuirks`, and §1.2 makes the module internal either way.
+
 ## [3.9.0] - 2026-08-13
 
 ### Added

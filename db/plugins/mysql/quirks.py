@@ -282,9 +282,8 @@ class MysqlQuirks(BaseQuirks):
     #     statements with ``DELIMITER //...//\nDELIMITER ;``.
     #
     #   ``_BLOCK_DELIMITER_OBJECT_TYPES`` (wider) — adds TRIGGER and
-    #     EVENT. Used by the ``$$``-flavoured helper
-    #     ``_requires_mysql_delimiter`` /
-    #     ``_wrap_mysql_delimiter_block`` in sql_generator.py.
+    #     EVENT. Read through ``requires_block_delimiter_wrapping`` by the
+    #     separate ``$$``-flavoured delimiter path.
     _DELIMITER_OBJECT_TYPES = frozenset({"PROCEDURE", "FUNCTION"})
     _BLOCK_DELIMITER_OBJECT_TYPES = frozenset({"PROCEDURE", "FUNCTION", "TRIGGER", "EVENT"})
     _DEFINITION_PRESERVE_TYPES = frozenset({"VIEW", "PROCEDURE", "FUNCTION", "TRIGGER", "EVENT"})
@@ -328,11 +327,6 @@ class MysqlQuirks(BaseQuirks):
         Other object types are re-rendered from the structured model.
         """
         return object_type_name in self._DEFINITION_PRESERVE_TYPES
-
-    # round_trip extra object types.
-    def round_trip_extra_object_types(self) -> "list[str]":
-        """MySQL round-trip covers user-defined types and scheduled events."""
-        return ["user_defined_types", "events"]
 
     # Column ALTER hooks — MySQL uses MODIFY for type changes.
     def render_column_type_change(
@@ -384,8 +378,8 @@ class MysqlQuirks(BaseQuirks):
         """MySQL / MariaDB views carry ``DEFINER`` (``user@host``) and
         ``SQL SECURITY`` (DEFINER | INVOKER) clauses recorded in
         ``information_schema.views``. The ``ALGORITHM`` clause is fetched
-        via ``SHOW CREATE VIEW`` elsewhere (gated by its own dialect
-        check inside the extractor's ``_get_mysql_view_algorithm`` helper)."""
+        via ``SHOW CREATE VIEW`` elsewhere, through the separate
+        ``fetch_view_algorithm`` hook."""
         from core.utils.row_access import get_row_value
 
         definer = get_row_value(row, "definer")

@@ -216,12 +216,12 @@ class OracleQuirks(BaseQuirks):
     commit_with_autocommit_raises = True
     # Oracle DDL (CREATE USER) needs autoCommit=False to persist reliably.
     ddl_requires_autocommit_off = True
-    # PR-C2: Oracle CREATE USER cannot be silently retried — make schema
-    # creation errors fatal for the round-trip test.
+    # PR-C2: Oracle CREATE USER cannot be silently retried — schema
+    # creation errors are fatal.
     strict_schema_creation_errors = True
     # Oracle stores unquoted identifiers upper-cased in USER_TABLES /
-    # ALL_TABLES, so round-trip-tester DROP statements need to upper-case
-    # the table name when it wasn't already quoted in the source.
+    # ALL_TABLES, so a DROP statement must upper-case the table name
+    # when it wasn't already quoted in the source.
     unquoted_identifiers_uppercase_in_dictionary = True
 
     def render_round_trip_drop_table_sql(self, target: str) -> str:
@@ -268,7 +268,7 @@ class OracleQuirks(BaseQuirks):
         """Look up the real owner/table_name in ALL_TABLES and try it first."""
         import logging
 
-        log = logging.getLogger("core.validation.round_trip_tester")
+        log = logging.getLogger(__name__)
 
         strategies: "list[str]" = [
             f'"{schema_clean}"."{table_clean}"',
@@ -445,11 +445,6 @@ class OracleQuirks(BaseQuirks):
         if obj_type == "TRIGGER":
             return f"DROP TRIGGER IF EXISTS {schema_prefix}{obj_name}"
         return None
-
-    # round_trip extra object types.
-    def round_trip_extra_object_types(self) -> "list[str]":
-        """Oracle round-trip covers user-defined OBJECT types, synonyms, and packages."""
-        return ["user_defined_types", "synonyms", "packages"]
 
     # Column ALTER hooks — Oracle uses MODIFY instead of ALTER COLUMN.
     def render_column_nullable_change(

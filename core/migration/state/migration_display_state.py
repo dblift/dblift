@@ -26,5 +26,6 @@ class MigrationDisplayState(Enum):
     FUTURE = "Future"  # Migration succeeded but version higher than current
     OUT_OF_ORDER = "Out of order"  # Migration succeeded but applied out of order
     OUTDATED = "Outdated"  # Repeatable migration outdated and should be re-applied
+    SUPERSEDED = "Superseded"  # Older repeatable execution replaced by a later apply
     UNKNOWN = "Unknown"  # Migration state cannot be determined
     NEEDS_REPAIR = "Needs repair"  # Migration requires repair action

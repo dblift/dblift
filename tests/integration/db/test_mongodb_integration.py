@@ -97,6 +97,42 @@ def migrate(context):
     context.execute("SELECT 1")
 '''
 
+PY_UNDO_USERS = '''
+"""Undo companion for V1_0_0 — drops the users collection."""
+
+
+def migrate(context):
+    if context.dry_run:
+        context.log.info("[DRY-RUN] would drop collection 'users'")
+        return
+
+    context.db.drop_collection("users")
+    context.log.info("Dropped collection 'users'")
+'''
+
+PY_CREATE_USERS_AND_ORDERS = '''
+"""Create two collections in one migration, so undo can leave one behind
+if it only rolls back part of the migration's effect."""
+
+
+def migrate(context):
+    if context.dry_run:
+        return
+    context.db.create_collection("users")
+    context.db.create_collection("orders")
+'''
+
+PY_UNDO_USERS_AND_ORDERS = '''
+"""Undo companion for V1_0_0 — drops both collections it created."""
+
+
+def migrate(context):
+    if context.dry_run:
+        return
+    context.db.drop_collection("users")
+    context.db.drop_collection("orders")
+'''
+
 SQL_MIGRATION_REJECTED = "CREATE TABLE users (id INT);"
 
 
@@ -235,7 +271,8 @@ class TestMongoDbPythonMigrations:
 @pytest.mark.integration
 @pytest.mark.mongodb
 class TestMongoDbCommandFlows:
-    """info / repair / clean / baseline / locking over Python migrations."""
+    """info / validate / repair / clean / baseline / locking over Python
+    migrations."""
 
     def test_info_lists_the_applied_migration(self, mongo_cli, migrations_dir):
         create_migration(migrations_dir, "V1_0_0__create_users.py", PY_CREATE_USERS)
@@ -245,6 +282,44 @@ class TestMongoDbCommandFlows:
 
         assert result.success, f"info failed: {result.output}"
         assert "1.0.0" in result.output
+
+    def test_validate_passes_after_migrate(self, mongo_cli, migrations_dir):
+        """``validate`` passes when history matches the migration files."""
+        create_migration(migrations_dir, "V1_0_0__create_users.py", PY_CREATE_USERS)
+        assert mongo_cli.migrate().success
+
+        result = mongo_cli.validate()
+
+        assert result.success, f"validate failed: {result.output}"
+
+    def test_repair_fixes_modified_checksum(self, mongo_cli, migrations_dir):
+        """Editing an applied ``.py`` breaks validate; ``repair`` restores it."""
+        script = create_migration(migrations_dir, "V1_0_0__create_users.py", PY_CREATE_USERS)
+        assert mongo_cli.migrate().success
+        assert mongo_cli.validate().success
+
+        # Change the file without changing what it does — checksum drifts.
+        script.write_text(PY_CREATE_USERS + "\n# checksum drift\n")
+        assert mongo_cli.validate().failed
+
+        result = mongo_cli.repair()
+        assert result.success, f"repair failed: {result.output}"
+        assert mongo_cli.validate().success
+
+    def test_validate_passes_when_applied_script_file_is_removed(self, mongo_cli, migrations_dir):
+        """A missing file for an applied migration is a warning, not a
+        validate failure, by default everywhere in dblift — see the
+        non-strict-mode branch in
+        ``core/sql_validator/_checksum_validator.validate_checksums``. MongoDB
+        goes through the same dialect-agnostic path, so it must match."""
+        script = create_migration(migrations_dir, "V1_0_0__create_users.py", PY_CREATE_USERS)
+        assert mongo_cli.migrate().success
+
+        script.unlink()
+
+        result = mongo_cli.validate()
+
+        assert result.success, f"validate failed: {result.output}"
 
     def test_repair_clears_a_failed_migration_and_allows_retry(
         self, mongo_cli, migrations_dir, mongo_db
@@ -387,3 +462,100 @@ class TestMongoDbCommandFlows:
 
         assert result.success, f"baseline failed: {result.output}"
         assert mongo_db[HISTORY].count_documents({}) >= 1
+
+
+@pytest.mark.integration
+@pytest.mark.mongodb
+class TestMongoDbUndo:
+    """``undo`` runs the ``U…`` companion, exactly like any other Python
+    migration — the command has no ``is_nosql``/dialect branch."""
+
+    def test_undo_drops_the_collection(self, mongo_cli, migrations_dir, mongo_db):
+        create_migration(migrations_dir, "V1_0_0__create_users.py", PY_CREATE_USERS)
+        create_migration(migrations_dir, "U1_0_0__drop_users.py", PY_UNDO_USERS)
+
+        assert mongo_cli.migrate().success
+        assert "users" in mongo_db.list_collection_names()
+
+        result = mongo_cli.undo()
+
+        assert result.success, f"undo failed: {result.output}"
+        assert "users" not in mongo_db.list_collection_names()
+
+    def test_undo_adds_a_history_row_without_erasing_the_original(
+        self, mongo_cli, migrations_dir, mongo_db
+    ):
+        """Undo does not delete or rewrite the original history row — it
+        appends an ``UNDO_SQL`` row and later reads decide "currently
+        undone" by comparing installed ranks (see
+        ``MigrationRules._is_currently_undone``)."""
+        create_migration(migrations_dir, "V1_0_0__create_users.py", PY_CREATE_USERS)
+        create_migration(migrations_dir, "U1_0_0__drop_users.py", PY_UNDO_USERS)
+
+        assert mongo_cli.migrate().success
+        assert mongo_cli.undo().success
+
+        rows = list(mongo_db[HISTORY].find({}).sort("installed_rank", 1))
+        assert len(rows) == 2
+        assert rows[0]["script"] == "V1_0_0__create_users.py"
+        assert rows[0]["type"] == "PYTHON"
+        assert rows[0]["success"] is True
+        assert rows[1]["script"] == "U1_0_0__drop_users.py"
+        assert rows[1]["type"] == "UNDO_SQL"
+        assert rows[1]["success"] is True
+
+    def test_undo_drops_every_collection_the_migration_created(
+        self, mongo_cli, migrations_dir, mongo_db
+    ):
+        """A migration that creates more than one collection must be fully
+        rolled back, not just its first effect — a partial undo would leave
+        one collection behind."""
+        create_migration(
+            migrations_dir, "V1_0_0__create_users_and_orders.py", PY_CREATE_USERS_AND_ORDERS
+        )
+        create_migration(
+            migrations_dir, "U1_0_0__drop_users_and_orders.py", PY_UNDO_USERS_AND_ORDERS
+        )
+
+        assert mongo_cli.migrate().success
+        assert {"users", "orders"} <= set(mongo_db.list_collection_names())
+
+        result = mongo_cli.undo()
+
+        assert result.success, f"undo failed: {result.output}"
+        remaining = mongo_db.list_collection_names()
+        assert "users" not in remaining
+        assert "orders" not in remaining
+
+    def test_undo_without_undo_script_fails_clearly(self, mongo_cli, migrations_dir, mongo_db):
+        """No ``U1_0_0__*.py`` companion exists, so undo must fail loudly
+        instead of silently doing nothing or dropping the collection
+        without a matching script to have driven it."""
+        create_migration(migrations_dir, "V1_0_0__create_users.py", PY_CREATE_USERS)
+
+        assert mongo_cli.migrate().success
+
+        result = mongo_cli.undo()
+
+        assert result.failed, f"undo should not succeed: {result.output}"
+        assert "No undo script found" in result.output
+        assert "users" in mongo_db.list_collection_names()
+
+    def test_undo_then_migrate_reapplies_the_version(self, mongo_cli, migrations_dir, mongo_db):
+        """A version can be undone and then reapplied — undo does not
+        retire the version permanently."""
+        create_migration(migrations_dir, "V1_0_0__create_users.py", PY_CREATE_USERS)
+        create_migration(migrations_dir, "U1_0_0__drop_users.py", PY_UNDO_USERS)
+
+        assert mongo_cli.migrate().success
+        assert mongo_cli.undo().success
+        assert "users" not in mongo_db.list_collection_names()
+
+        result = mongo_cli.migrate()
+
+        assert result.success, f"re-migrate failed: {result.output}"
+        assert "users" in mongo_db.list_collection_names()
+
+        rows = list(mongo_db[HISTORY].find({}).sort("installed_rank", 1))
+        assert [row["type"] for row in rows] == ["PYTHON", "UNDO_SQL", "PYTHON"]
+        assert all(row["success"] is True for row in rows)

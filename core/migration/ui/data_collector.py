@@ -178,9 +178,6 @@ class MigrationDataCollector:
         # Get pending migrations from state (already sorted by migration order)
         pending_migrations = migration_state.pending_objects
 
-        # Build repeatable checksums map to filter out old repeatable executions
-        repeatable_checksums = migration_state.repeatable_checksums
-
         # migration_state.applied/pending were built 1:1 (same order, same objects)
         # from migration_state.all_applied_objects/pending_objects by MigrationStateManager,
         # using MigrationStateService as the single source of truth for status. Reuse those
@@ -223,14 +220,6 @@ class MigrationDataCollector:
                 exclude_versions or [],
             ):
                 continue
-
-            # For repeatable migrations, only show the latest execution (by checksum)
-            if self._is_migration_type_equal(migration_type, "REPEATABLE"):
-                if script_name in repeatable_checksums:
-                    latest_checksum = repeatable_checksums[script_name]
-                    if checksum and checksum != latest_checksum:
-                        # This is an older execution of the repeatable migration, skip it
-                        continue
 
             # Status is already computed by MigrationStateService (via build_state()).
             state = applied_status_by_id.get(id(migration), MigrationDisplayState.UNKNOWN.value)
