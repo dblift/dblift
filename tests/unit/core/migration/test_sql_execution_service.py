@@ -273,6 +273,20 @@ class TestDmlStatementType(unittest.TestCase):
         _, kwargs = provider.execute_statement.call_args
         assert kwargs.get("params") == [99]
 
+    def test_object_changes_recorded_when_parser_returns_nothing(self):
+        """DML parsers return [] without raising, so the table name fallback must still run."""
+        svc, _, sql_analyzer, _, journal = _make_service(
+            stmt_type=SqlStatementType.DML.value,
+            has_journal=True,
+            has_parser_factory=True,
+        )
+        sql_analyzer.parser_factory.extract_objects.return_value = []
+        svc.execute_statement("INSERT INTO customers (id) VALUES (1)", stmt_index=0)
+        journal.record_object_changes.assert_called_once()
+        objects = journal.record_object_changes.call_args[0][2]
+        assert objects[0]["object_name"] == "customers"
+        assert objects[0]["object_type"] == "TABLE"
+
 
 # ===========================================================================
 # Unknown/fallback statement type

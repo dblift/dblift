@@ -220,38 +220,23 @@ class SqlExecutionService:
                             elif statement_type == SqlStatementType.DML.value:
                                 stmt_upper = statement.strip().upper()
                                 if stmt_upper.startswith(("INSERT", "UPDATE", "DELETE")):
-                                    # Try to extract table name from DML statement
+                                    # Try to use parser to extract table name
                                     if getattr(self.sql_analyzer, "parser_factory", None):
-                                        # Try to use parser to extract table name
                                         try:
-                                            parsed_objects = (
+                                            objects_affected = (
                                                 self.sql_analyzer.parser_factory.extract_objects(
                                                     statement, self.schema
                                                 )
+                                                or []
                                             )
-                                            if parsed_objects:
-                                                objects_affected = parsed_objects
                                         except Exception as e:
                                             self.log.debug(
                                                 f"Could not extract objects from statement: {e}"
                                             )
-                                            # Fallback: extract table name manually
-                                            table_name = self._extract_table_from_dml(statement)
-                                            if table_name:
-                                                from core.sql_model.base import (
-                                                    SqlObject,
-                                                    SqlObjectType,
-                                                )
 
-                                                objects_affected = [
-                                                    SqlObject(
-                                                        name=table_name,
-                                                        object_type=SqlObjectType.TABLE,
-                                                        schema=self.schema or "",
-                                                    )
-                                                ]
-                                    else:
-                                        # Fallback: extract table name manually
+                                    # Fallback: parsers only cover DDL, so DML normally
+                                    # yields no objects (empty list, no exception)
+                                    if not objects_affected:
                                         table_name = self._extract_table_from_dml(statement)
                                         if table_name:
                                             from core.sql_model.base import (

@@ -234,7 +234,6 @@ class HtmlFormatter:
                 "per_migration_journal": per_migration_journal,
                 "server_name": self._extract_server_from_result(result),
                 "report_time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                "logo_path": "",
                 **self._report_metadata(result, datetime.now().strftime("%Y-%m-%d %H:%M:%S")),
             }
 
@@ -352,47 +351,6 @@ class HtmlFormatter:
                 single_cmd.update(self._get_extra_command_context(result, normalized_command_type))
                 unified_commands = [single_cmd]
             context["unified_commands"] = unified_commands
-
-            # Attempt to resolve a default logo if none provided
-            # Convert logo to base64 data URI (no local file references)
-            try:
-                if not context.get("logo_path"):
-                    import base64
-
-                    project_root = Path(__file__).resolve().parents[3]
-                    # Try the main logo directory (now has the new logo)
-                    candidate_logo = project_root / "logo" / "dblift_logo.png"
-                    if candidate_logo.exists():
-                        # Convert PNG to base64 data URI
-                        with open(candidate_logo, "rb") as f:
-                            logo_data = base64.b64encode(f.read()).decode()
-                            context["logo_path"] = f"data:image/png;base64,{logo_data}"
-                    else:
-                        # Fallback: try website asset
-                        website_logo = (
-                            project_root.parent
-                            / "dblift-website"
-                            / "src"
-                            / "assets"
-                            / "images"
-                            / "dblift_logo.png"
-                        )
-                        if website_logo.exists():
-                            # Convert PNG to base64 data URI
-                            with open(website_logo, "rb") as f:
-                                logo_data = base64.b64encode(f.read()).decode()
-                                context["logo_path"] = f"data:image/png;base64,{logo_data}"
-                        else:
-                            # Final fallback: embedded SVG with new brand colors
-                            context["logo_path"] = (
-                                "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjgwIiB2aWV3Qm94PSIwIDAgMjAwIDgwIiBmaWxsPSJub25lIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPgo8ZGVmcz4KPGF0ZXJHcmFkaWVudCBpZD0iZ3JhZGllbnQiIHgxPSIwJSIgeTE9IjAlIiB4Mj0iMTAwJSIgeTI9IjAlIj4KPHN0b3Agb2Zmc2V0PSIwJSIgc3R5bGU9InN0b3AtY29sb3I6IzE0QjhBNjtzdG9wLW9wYWNpdHk6MSIgLz4KPHN0b3Agb2Zmc2V0PSIxMDAlIiBzdHlsZT0ic3RvcC1jb2xvcjojRUM0ODk5O3N0b3Atb3BhY2l0eToxIiAvPgo8L2xpbmVhckdyYWRpZW50Pgo8L2RlZnM+Cjx0ZXh0IHg9IjEwIiB5PSI0NSIgZmlsbD0idXJsKCNncmFkaWVudCkiIGZvbnQtZmFtaWx5PSJNb250c2VycmF0LCBzYW5zLXNlcmlmIiBmb250LXNpemU9IjMyIiBmb250LXdlaWdodD0iYm9sZCI+REJMaWZ0PC90ZXh0Pgo8L3N2Zz4K"
-                            )
-            except Exception as e:
-                _logger.debug(f"Could not load logo file, using fallback SVG: {e}")
-                # Fallback SVG logo with gradient
-                context["logo_path"] = (
-                    "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjgwIiB2aWV3Qm94PSIwIDAgMjAwIDgwIiBmaWxsPSJub25lIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPgo8ZGVmcz4KPGF0ZXJHcmFkaWVudCBpZD0iZ3JhZGllbnQiIHgxPSIwJSIgeTE9IjAlIiB4Mj0iMTAwJSIgeTI9IjAlIj4KPHN0b3Agb2Zmc2V0PSIwJSIgc3R5bGU9InN0b3AtY29sb3I6IzE0QjhBNjtzdG9wLW9wYWNpdHk6MSIgLz4KPHN0b3Agb2Zmc2V0PSIxMDAlIiBzdHlsZT0ic3RvcC1jb2xvcjojRUM0ODk5O3N0b3Atb3BhY2l0eToxIiAvPgo8L2xpbmVhckdyYWRpZW50Pgo8L2RlZnM+Cjx0ZXh0IHg9IjEwIiB5PSI0NSIgZmlsbD0idXJsKCNncmFkaWVudCkiIGZvbnQtZmFtaWx5PSJNb250c2VycmF0LCBzYW5zLXNlcmlmIiBmb250LXNpemU9IjMyIiBmb250LXdlaWdodD0iYm9sZCI+REJMaWZ0PC90ZXh0Pgo8L3N2Zz4K"
-                )
 
             # Render the template
             html = template.render(**context)
