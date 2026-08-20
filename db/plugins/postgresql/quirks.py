@@ -193,12 +193,42 @@ class PostgresqlQuirks(BaseQuirks):
             "PostgreSQL CREATE INDEX CONCURRENTLY cannot run inside a transaction block",
         ),
         (
-            r"^(VACUUM|REINDEX DATABASE|REINDEX SYSTEM)\b",
+            r"^(VACUUM|REINDEX DATABASE|REINDEX SCHEMA|REINDEX SYSTEM)\b",
             "PostgreSQL maintenance command cannot run inside a transaction block",
         ),
         (
-            r"^REINDEX\s+(TABLE|INDEX)\s+CONCURRENTLY\b",
+            r"^REINDEX\s+(TABLE|INDEX|SCHEMA|DATABASE|SYSTEM)\s+CONCURRENTLY\b",
             "PostgreSQL REINDEX CONCURRENTLY cannot run inside a transaction block",
+        ),
+        # Bare CLUSTER only -- "CLUSTER without a table_name reclusters all the
+        # previously-clustered tables in the current database", and it is that
+        # form the reference restricts: "This form of CLUSTER cannot be executed
+        # inside a transaction block." CLUSTER <table> USING <index> is
+        # transactional and must not be swept up, which is why this is anchored
+        # to end-of-statement rather than to the verb.
+        (
+            r"^CLUSTER\s*(\([^()]*\)\s*)?(VERBOSE\s*)?;?$",
+            "PostgreSQL CLUSTER without a table name cannot run inside a "
+            "transaction block",
+        ),
+        # Each of these states the restriction on its own reference page, in
+        # the same words: "<COMMAND> cannot be executed inside a transaction
+        # block." ALTER SYSTEM words it differently -- "since this command acts
+        # directly on the file system and cannot be rolled back, it is not
+        # allowed inside a transaction block or function" -- and is the same
+        # restriction.
+        (
+            r"^(CREATE|DROP)\s+DATABASE\b",
+            "PostgreSQL CREATE/DROP DATABASE cannot run inside a transaction block",
+        ),
+        (
+            r"^(CREATE|DROP)\s+TABLESPACE\b",
+            "PostgreSQL CREATE/DROP TABLESPACE cannot run inside a transaction block",
+        ),
+        (
+            r"^ALTER\s+SYSTEM\b",
+            "PostgreSQL ALTER SYSTEM acts on the file system and cannot run "
+            "inside a transaction block",
         ),
         (
             r"^DROP\s+INDEX\s+CONCURRENTLY\b",
