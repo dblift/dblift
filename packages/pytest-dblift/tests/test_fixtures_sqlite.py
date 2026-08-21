@@ -58,13 +58,13 @@ def test_dblift_engine_connects(dblift_engine: Any, dblift_config: dict[str, Any
 def test_dblift_client_is_public_client(dblift_client: DBLiftClient) -> None:
     assert isinstance(dblift_client, DBLiftClient)
     info = dblift_client.info()
-    assert hasattr(info, "pending_count")
+    assert hasattr(info, "pending_migrations")
 
 
 def test_migrated_db_applies_migrations(
     dblift_migrated_db: DBLiftClient, dblift_engine: Any
 ) -> None:
-    assert dblift_migrated_db.info().pending_count == 0
+    assert dblift_migrated_db.info().pending_migrations == []
     with dblift_engine.connect() as conn:
         count = conn.execute(text("SELECT COUNT(*) FROM pytest_dblift_smoke")).scalar()
         assert count == 0

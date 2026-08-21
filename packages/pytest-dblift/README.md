@@ -24,7 +24,7 @@ pytest --dblift-url "postgresql+psycopg://user:pass@localhost/app_test"
 ```python
 def test_schema(dblift_migrated_db, dblift_client):
     info = dblift_client.info()
-    assert info.pending_count == 0
+    assert info.pending_migrations == []
 ```
 
 `dblift_migrated_db` applies pending migrations (function scope). `dblift_client` is a session-scoped `DBLiftClient`. No fixture is autouse: request what you need.

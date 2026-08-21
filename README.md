@@ -81,7 +81,7 @@ import pytest
 def test_something(dblift_migrated_db, dblift_client):
     # dblift_migrated_db ensures migrations applied (function scope by default)
     result = dblift_client.info()
-    assert result.pending_count == 0
+    assert result.pending_migrations == []
 ```
 <!-- END: OSS README sync: python-install -->
 
