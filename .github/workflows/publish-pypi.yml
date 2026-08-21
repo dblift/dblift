@@ -63,9 +63,6 @@ jobs:
           python -m pip install --upgrade pip build
           python -m build
 
-      - name: Publish dblift
-        uses: pypa/gh-action-pypi-publish@release/v1
-
       - name: Build pytest-dblift distributions
         run: python -m build packages/pytest-dblift
 
@@ -93,6 +90,9 @@ jobs:
             cat /tmp/pypi-pytest-dblift.json || true
             exit 1
           fi
+
+      - name: Publish dblift
+        uses: pypa/gh-action-pypi-publish@release/v1
 
       - name: Publish pytest-dblift
         if: steps.pytest_dblift_pypi.outputs.publish == 'true'
