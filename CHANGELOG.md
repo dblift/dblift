@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`pytest-dblift` 0.1.0 on PyPI.** Separate package (`pip install pytest-dblift`)
+  with a `pytest11` plugin, fixtures (`dblift_migrated_db`, `dblift_empty_db`,
+  `dblift_validate`, `dblift_undo`, session `dblift_client` / `dblift_engine` /
+  `dblift_config`), and per-worker default SQLite files under xdist. It depends
+  on bare `dblift`; non-SQLite engines still need `dblift[<extra>]` for the
+  driver.
+
 ### Changed
 
 ### Fixed

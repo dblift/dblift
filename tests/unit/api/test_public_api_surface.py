@@ -604,3 +604,5 @@ class TestInfoResultCompatibilityAliases:
 
         assert result.applied_migrations == [applied]
         assert result.pending_migrations == [pending]
+        assert result.pending_count == 1
+        assert InfoResult().pending_count == 0

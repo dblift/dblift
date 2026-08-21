@@ -44,6 +44,17 @@ jobs:
             --cov=api --cov=cli --cov=config --cov=core --cov=db --cov=integrations \
             --cov-report=xml
 
+      - name: Install pytest-dblift
+        run: python -m pip install -e packages/pytest-dblift
+
+      - name: Run pytest-dblift tests
+        run: |
+          python -m pytest packages/pytest-dblift/tests \
+            -n auto \
+            --dist=loadscope \
+            -p no:benchmark \
+            --timeout=120
+
       - name: Upload coverage to Codecov
         if: matrix.python-version == '3.12'
         uses: codecov/codecov-action@v5

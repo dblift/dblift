@@ -472,6 +472,11 @@ class InfoResult(OperationResult):
             migration for migration in self.migrations if migration.status in ["PENDING", "Pending"]
         ]
 
+    @property
+    def pending_count(self) -> int:
+        """Number of pending migrations."""
+        return len(self.pending_migrations)
+
     def get_current_version(self) -> Optional[str]:
         """Get the current schema version."""
         return self.current_schema_version
