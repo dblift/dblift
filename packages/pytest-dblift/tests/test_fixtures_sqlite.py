@@ -6,6 +6,9 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from sqlalchemy import text
+
+from api import DBLiftClient
 
 
 def test_resolve_dblift_config_reads_cli_url(
@@ -34,11 +37,6 @@ def test_worker_id_master_without_xdist(pytestconfig: pytest.Config) -> None:
     if getattr(pytestconfig, "workerinput", None):
         pytest.skip("this assertion is for a non-xdist controller process")
     assert _worker_id(pytestconfig) == "master"
-
-
-from sqlalchemy import text
-
-from api import DBLiftClient
 
 
 def test_dblift_config_defaults_to_sqlite_file(dblift_config: dict[str, Any]) -> None:
