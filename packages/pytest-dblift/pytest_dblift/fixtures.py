@@ -70,3 +70,15 @@ def dblift_validate(dblift_client: DBLiftClient) -> Callable[..., Any]:
         return result
 
     return _run_validate
+
+
+@pytest.fixture
+def dblift_undo(dblift_client: DBLiftClient) -> Callable[..., Any]:
+    def _run_undo(**kwargs: Any) -> Any:
+        result = dblift_client.undo(**kwargs)
+        assert getattr(result, "success", False), (
+            f"undo failed: {getattr(result, 'error_message', result)}"
+        )
+        return result
+
+    return _run_undo
