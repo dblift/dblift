@@ -47,6 +47,8 @@ Path: `packages/pytest-dblift/`. Not part of the `dblift` wheel. Root `[tool.set
 
 `python -m build` run from `packages/pytest-dblift/` produces that package's sdist and wheel only.
 
+`pytest-dblift` depends on bare `dblift`, not `dblift[postgresql]` or any other engine extra. Engine plugins ship in the `dblift` wheel; extras only install native drivers. A SQLite-only consumer must not pull `psycopg` (or any other driver) via this package.
+
 Ship: `pytest_dblift/` (plugin code), `pyproject.toml`, package `README.md`, package tests. Do not ship local `logs/`, `*.egg-info`, or `__pycache__`.
 
 ## Plugin surface (0.1.0)
@@ -92,6 +94,20 @@ Only the **default** SQLite file path is worker-specific (`test_gw0.db`, …) vi
 
 Consumers override `dblift_config` or `dblift_engine` in their `conftest.py` (same pattern as pytest-alembic).
 
+### Connecting (drivers)
+
+The plugin does not open its own database URL besides `create_engine(url)` and `DBLiftClient.from_sqlalchemy(engine, ...)`. It uses whatever driver is already importable in the environment.
+
+- **SQLite (default):** no extra. `sqlite3` is stdlib; a file URL is enough.
+- **Any other engine:** the consumer installs the matching dblift extra *before* (or together with) the plugin, then points pytest at that database:
+
+```bash
+pip install pytest-dblift "dblift[postgresql]"
+pytest --dblift-url "postgresql+psycopg://user:pass@localhost/app_test"
+```
+
+Installing the extra installs the native driver (`psycopg`, `PyMySQL`, …). `pytest-dblift` does not declare those extras and does not substitute a second connection. A missing driver fails at `create_engine` / first connect, the same as any other SQLAlchemy program.
+
 ## Failure behavior
 
 `dblift_migrated_db`, `dblift_empty_db`, `dblift_validate`, and `dblift_undo` assert `result.success` and fail the test with `result.error_message`. They do not translate dblift errors into a parallel exception hierarchy.
@@ -124,7 +140,7 @@ Bump `packages/pytest-dblift/pyproject.toml` `version` only when the plugin chan
 
 ## Docs (this repository)
 
-- `packages/pytest-dblift/README.md` — consumer README: install, fixtures (`dblift_migrated_db`, `dblift_client`, `dblift_undo`, `dblift_validate`, `dblift_empty_db`), CLI options, overriding `dblift_config`. No "Phase 4", no `pending_migrations`, no in-file `undo()` on `V*.py`.
+- `packages/pytest-dblift/README.md` — consumer README: install, fixtures (`dblift_migrated_db`, `dblift_client`, `dblift_undo`, `dblift_validate`, `dblift_empty_db`), CLI options, overriding `dblift_config`. Document that SQLite needs no extra, and that any other engine requires `pip install "dblift[<extra>]"` so the driver is present; the plugin then uses that environment. No "Phase 4", no `pending_migrations`, no in-file `undo()` on `V*.py`.
 - Root `README.md` — keep `pip install pytest-dblift` and the `pending_count` snippet. One sentence: it is a separate package, not `dblift[pytest]`.
 - `docs/examples/sqlalchemy-integration.md` — the dedicated-package sentence stays; point at the plugin README; xdist claim limited to default SQLite.
 - `docs/developer-guide/plugin-entry-points.md` — short note that `pytest-dblift` is a separate PyPI package (`pytest11`), not an extra of `dblift`.
