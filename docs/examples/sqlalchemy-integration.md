@@ -150,7 +150,7 @@ client.close()
 # engine still usable for more assertions or the next test
 ```
 
-(The dedicated `pytest-dblift` package provides reusable fixtures that do the above plus isolation for xdist.)
+(The dedicated [`pytest-dblift`](../../packages/pytest-dblift/README.md) package provides reusable fixtures that do the above. pytest-xdist isolation applies to the default SQLite file only.)
 
 ### Framework startup (light tie-in)
 

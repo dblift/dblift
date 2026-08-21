@@ -63,6 +63,10 @@ Cosmos DB's. Every engine's client library sits behind its own extra, so the
 plugins all have to import without their driver present; that is what keeps
 `ProviderRegistry.discover_plugins()` working on a bare install.
 
+## pytest-dblift
+
+`pytest-dblift` is a separate PyPI package (`pip install pytest-dblift`), not a `dblift` extra. It registers a `pytest11` plugin. A bare `dblift` is enough for SQLite; other engines need the matching extra so the native driver is installed. See [`packages/pytest-dblift/README.md`](../../packages/pytest-dblift/README.md).
+
 ## Provider Packages
 
 If you publish a `dblift-foo` provider:
