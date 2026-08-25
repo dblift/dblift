@@ -20,7 +20,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- **`extract_objects` treated `LOG` as the object name on
+### Removed
+
+## [3.10.1] - 2026-08-25
+
+### Added
+
+### Changed
+
+### Fixed
+
+- **`SqlAnalyzer.extract_objects` treated `LOG` as the object name on
   `CREATE`/`DROP MATERIALIZED VIEW LOG ON <table>`.** The type alternation
   recognised `MATERIALIZED VIEW` and took the next token as the name, so
   both `CREATE MATERIALIZED VIEW LOG ON orders` and
@@ -28,7 +38,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `MATERIALIZED_VIEW` named `default_schema.LOG` — the table after `ON`
   never appeared. `MATERIALIZED VIEW LOG` is now matched longest-first and
   the table after `ON` is the affected object (`MATERIALIZED_VIEW_LOG`).
-  A plain `CREATE MATERIALIZED VIEW mv AS SELECT …` is unchanged.
+  A plain `CREATE MATERIALIZED VIEW mv AS SELECT …` is unchanged. Golden
+  tests cover the log form, a schema-qualified table, `DROP`, and the
+  ordinary materialized-view control. (#250)
 
 ### Removed
 
