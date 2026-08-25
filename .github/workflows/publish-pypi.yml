@@ -95,6 +95,8 @@ jobs:
 
       - name: Publish dblift
         uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          skip-existing: true
 
       - name: Upload pytest-dblift distributions
         if: steps.pytest_dblift_pypi.outputs.publish == 'true'
