@@ -97,10 +97,9 @@ Use `client.info()` for read-only status. It powers:
 ```python
 client = DBLiftClient.from_sqlalchemy(engine, migrations_dir=migrations_dir)
 info = client.info()
-pending = getattr(info, "pending_migrations", []) or []
-if pending:
+if getattr(info, "pending_count", 0):
     # e.g. raise or log
-    print("Pending:", [getattr(m, "script_name", m) for m in pending])
+    print(f"Pending count: {info.pending_count}")
 ```
 
 The thin helpers in `dblift.integrations.fastapi` (`check_migrations_current`, `health_payload`, `migration_guard`) and `dblift.integrations.flask` (`init_dblift` + guard) are thin wrappers around exactly this `info()` pattern. You can call `client.info()` directly in scripts or your own wiring.
@@ -150,7 +149,7 @@ client.close()
 # engine still usable for more assertions or the next test
 ```
 
-(The dedicated `pytest-dblift` package provides reusable fixtures that do the above plus isolation for xdist.)
+(The dedicated [`pytest-dblift`](../../packages/pytest-dblift/README.md) package provides reusable fixtures that do the above. pytest-xdist isolation applies to the default SQLite file only.)
 
 ### Framework startup (light tie-in)
 

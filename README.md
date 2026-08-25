@@ -66,11 +66,13 @@ dblift migrate                         # apply when ready
 | `pip install dblift[postgresql]` | PostgreSQL (OSS) |
 | `pip install dblift[oracle]` | Oracle (OSS) |
 
-`pytest-dblift` quickstart:
+`pytest-dblift` quickstart (separate package, not `dblift[pytest]`):
 
 ```bash
 pip install pytest-dblift
 ```
+
+SQLite works with a bare `dblift`. Other engines need `pip install "dblift[<extra>]"` so the driver is already installed; then pass `--dblift-url` or override `dblift_config`.
 
 ```python
 # tests/test_foo.py
@@ -79,7 +81,7 @@ import pytest
 def test_something(dblift_migrated_db, dblift_client):
     # dblift_migrated_db ensures migrations applied (function scope by default)
     result = dblift_client.info()
-    assert result.pending_count == 0
+    assert result.pending_migrations == []
 ```
 <!-- END: OSS README sync: python-install -->
 

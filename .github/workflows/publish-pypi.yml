@@ -34,6 +34,17 @@ jobs:
             -p no:benchmark \
             --timeout=120
 
+      - name: Install pytest-dblift
+        run: python -m pip install -e packages/pytest-dblift
+
+      - name: Run pytest-dblift tests
+        run: |
+          python -m pytest packages/pytest-dblift/tests \
+            -n auto \
+            --dist=loadscope \
+            -p no:benchmark \
+            --timeout=120
+
   publish:
     needs: test
     runs-on: ubuntu-latest
@@ -47,10 +58,44 @@ jobs:
           python-version: "3.11"
           cache: pip
 
-      - name: Build distributions
+      - name: Build dblift distributions
         run: |
           python -m pip install --upgrade pip build
           python -m build
 
-      - name: Publish distributions
+      - name: Build pytest-dblift distributions
+        run: python -m build packages/pytest-dblift
+
+      - name: Check whether pytest-dblift version is on PyPI
+        id: pytest_dblift_pypi
+        run: |
+          VERSION=$(python -c "import tomllib; print(tomllib.load(open('packages/pytest-dblift/pyproject.toml','rb'))['project']['version'])")
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          set +e
+          CODE=$(curl -sS -o /tmp/pypi-pytest-dblift.json -w "%{http_code}" \
+            "https://pypi.org/pypi/pytest-dblift/${VERSION}/json")
+          CURL_STATUS=$?
+          set -e
+          if [ "$CURL_STATUS" -ne 0 ]; then
+            echo "PyPI lookup failed (curl exit ${CURL_STATUS})"
+            exit 1
+          fi
+          echo "PyPI HTTP ${CODE} for pytest-dblift==${VERSION}"
+          if [ "$CODE" = "200" ]; then
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+          elif [ "$CODE" = "404" ]; then
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "Unexpected PyPI status ${CODE}"
+            cat /tmp/pypi-pytest-dblift.json || true
+            exit 1
+          fi
+
+      - name: Publish dblift
         uses: pypa/gh-action-pypi-publish@release/v1
+
+      - name: Publish pytest-dblift
+        if: steps.pytest_dblift_pypi.outputs.publish == 'true'
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: packages/pytest-dblift/dist

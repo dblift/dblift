@@ -142,6 +142,70 @@ class TestCreateObjectRecognition(unittest.TestCase):
         self.assertNotIn("EXISTS", obj["object_name"].upper())
 
 
+class TestMaterializedViewLogReportsTheTable(unittest.TestCase):
+    """``MATERIALIZED VIEW LOG ON <table>`` names the table, not LOG.
+
+    The generic CREATE/DROP shape takes the token after the matched type as
+    the name. ``MATERIALIZED VIEW`` wins over ``VIEW``, so
+    ``CREATE MATERIALIZED VIEW LOG ON orders`` was reported as a
+    ``MATERIALIZED_VIEW`` named ``LOG`` and the table after ``ON`` never
+    appeared. These four spellings are the golden parse: the two LOG forms,
+    the plain ``mv AS SELECT`` control (asserted *differently* from the LOG
+    cases), and ``DROP``.
+    """
+
+    def setUp(self):
+        self.postgresql = SqlAnalyzer(dialect="postgresql")
+        self.oracle = SqlAnalyzer(dialect="oracle")
+
+    def _log_on_table(self, analyzer: SqlAnalyzer, sql: str, expected_name: str) -> None:
+        obj = _only(analyzer, sql)
+        self.assertEqual(obj["object_type"], SqlObjectType.MATERIALIZED_VIEW_LOG.name)
+        self.assertEqual(obj["object_name"], expected_name)
+        self.assertNotEqual(obj["object_name"].rsplit(".", 1)[-1].upper(), "LOG")
+
+    def test_create_log_on_unqualified_table(self):
+        sql = "CREATE MATERIALIZED VIEW LOG ON orders"
+        for analyzer in (self.postgresql, self.oracle):
+            with self.subTest(dialect=analyzer.dialect):
+                self._log_on_table(analyzer, sql, "default_schema.orders")
+
+    def test_create_log_on_schema_qualified_table(self):
+        sql = "CREATE MATERIALIZED VIEW LOG ON hr.employees"
+        for analyzer in (self.postgresql, self.oracle):
+            with self.subTest(dialect=analyzer.dialect):
+                self._log_on_table(analyzer, sql, "hr.employees")
+
+    def test_plain_materialized_view_as_select_is_not_a_log(self):
+        # Control: a real materialized view must stay a MATERIALIZED_VIEW
+        # named after the view, not collapse to the same answer as LOG ON.
+        sql = "CREATE MATERIALIZED VIEW mv AS SELECT 1 FROM orders"
+        for analyzer in (self.postgresql, self.oracle):
+            with self.subTest(dialect=analyzer.dialect):
+                obj = _only(analyzer, sql)
+                self.assertEqual(obj["object_type"], SqlObjectType.MATERIALIZED_VIEW.name)
+                self.assertEqual(obj["object_name"], "default_schema.mv")
+                self.assertNotEqual(obj["object_type"], SqlObjectType.MATERIALIZED_VIEW_LOG.name)
+                self.assertNotEqual(obj["object_name"].rsplit(".", 1)[-1].upper(), "LOG")
+                self.assertNotEqual(obj["object_name"].rsplit(".", 1)[-1].upper(), "ORDERS")
+
+    def test_drop_log_on_table(self):
+        sql = "DROP MATERIALIZED VIEW LOG ON t"
+        for analyzer in (self.postgresql, self.oracle):
+            with self.subTest(dialect=analyzer.dialect):
+                self._log_on_table(analyzer, sql, "default_schema.t")
+
+    def test_materialized_view_named_log_is_still_a_view(self):
+        # LOG is a legal view name. Without ON, this is not a log statement
+        # and must not be absorbed by the three-word type.
+        sql = "CREATE MATERIALIZED VIEW LOG AS SELECT 1 FROM orders"
+        for analyzer in (self.postgresql, self.oracle):
+            with self.subTest(dialect=analyzer.dialect):
+                obj = _only(analyzer, sql)
+                self.assertEqual(obj["object_type"], SqlObjectType.MATERIALIZED_VIEW.name)
+                self.assertEqual(obj["object_name"], "default_schema.LOG")
+
+
 class TestAlterAndDropRecognition(unittest.TestCase):
     """``ALTER``/``DROP`` beyond the table-and-index shapes."""
 

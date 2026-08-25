@@ -9,11 +9,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`pytest-dblift` 0.1.0 on PyPI.** Separate package (`pip install pytest-dblift`)
+  with a `pytest11` plugin, fixtures (`dblift_migrated_db`, `dblift_empty_db`,
+  `dblift_validate`, `dblift_undo`, session `dblift_client` / `dblift_engine` /
+  `dblift_config`), and per-worker default SQLite files under xdist. It depends
+  on bare `dblift`; non-SQLite engines still need `dblift[<extra>]` for the
+  driver.
+
 ### Changed
 
 ### Fixed
 
 ### Removed
+
+## [3.10.1] - 2026-08-24
+
+One change since 3.10.0.
+
+### Fixed
+
+- **CREATE/DROP MATERIALIZED VIEW LOG ON `<table>` reported LOG as the object name.** `extract_objects` treated the keyword LOG as the name; it now takes the table after ON. (#250)
 
 ## [3.10.0] - 2026-08-20
 

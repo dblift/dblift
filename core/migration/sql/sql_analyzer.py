@@ -20,6 +20,10 @@ logger = logging.getLogger(__name__)
 # is never truncated to its first word: ``DROP MATERIALIZED VIEW mv`` used to be
 # reported as type "MATERIALIZED" with name "default_schema.VIEW", so the object
 # actually being dropped never appeared at all.
+# ``MATERIALIZED VIEW LOG`` is deliberately *not* in this list. Putting it
+# here would make ``CREATE MATERIALIZED VIEW LOG AS SELECT …`` (a view whose
+# name is LOG) match the three-word type and then take AS as the name. The
+# log form is recognised by ``_MATERIALIZED_VIEW_LOG_RE``, which requires ON.
 _RECOGNISED_OBJECT_TYPES: Tuple[SqlObjectType, ...] = (
     SqlObjectType.FOREIGN_DATA_WRAPPER,
     SqlObjectType.MATERIALIZED_VIEW,
@@ -120,6 +124,15 @@ _DDL_MODIFIER_KEYWORDS = (
     "PUBLIC",
 )
 _DDL_MODIFIERS = rf"(?:(?:{'|'.join(_DDL_MODIFIER_KEYWORDS)})\s+)*"
+# MATERIALIZED VIEW LOG has no name of its own: the object it affects is the
+# table after ON. The generic DDL shape would take the token after the type
+# as the name, which is the keyword ON (or, if the three-word type loses to
+# MATERIALIZED VIEW, the keyword LOG). Same class of defect as CREATE INDEX.
+_MATERIALIZED_VIEW_LOG_RE = re.compile(
+    rf"\A(?:CREATE|ALTER|DROP)\s+{_DDL_MODIFIERS}MATERIALIZED\s+VIEW\s+LOG\s+"
+    rf"{_NAME_PREFIX}ON\s+({_QUALIFIED_NAME})",
+    re.IGNORECASE,
+)
 # Multi-word object types this analyzer does not model. Listed so their trailing
 # words are not read as the object's name: without ``EVENT TRIGGER`` here,
 # ``CREATE EVENT TRIGGER et`` matches the modelled EVENT and reports an event
@@ -730,6 +743,11 @@ class SqlAnalyzer:
         # CREATE INDEX / CREATE UNIQUE INDEX left every other index build
         # without the table it is built on.
         create_index = _CREATE_INDEX_RE.search(statement) if upper.startswith("CREATE") else None
+        mview_log = (
+            _MATERIALIZED_VIEW_LOG_RE.search(statement)
+            if (upper.startswith("CREATE") or upper.startswith("ALTER") or upper.startswith("DROP"))
+            else None
+        )
 
         # CREATE INDEX also names the table the index is built on
         if create_index:
@@ -740,6 +758,17 @@ class SqlAnalyzer:
                     "on_object": _qualified_object_name(create_index.group(2)),
                 }
             )
+
+        # CREATE / ALTER / DROP MATERIALIZED VIEW LOG ON <table>: the table
+        # after ON is the object, not the keyword LOG.
+        elif mview_log:
+            if _names_an_object(mview_log.group(1), vouched=True):
+                objects.append(
+                    {
+                        "object_type": SqlObjectType.MATERIALIZED_VIEW_LOG.name,
+                        "object_name": _qualified_object_name(mview_log.group(1)),
+                    }
+                )
 
         # CREATE / ALTER / DROP of any recognised object type
         elif upper.startswith("CREATE") or upper.startswith("ALTER") or upper.startswith("DROP"):
