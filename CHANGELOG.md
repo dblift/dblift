@@ -20,6 +20,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **PostgreSQL identity export dropped `START WITH` / `INCREMENT BY`.**
+  `PostgresqlQuirks.render_identity_clause` now emits
+  `(START WITH n INCREMENT BY m)` when either seed or increment is set,
+  matching Oracle. Bare `GENERATED … AS IDENTITY` is unchanged when
+  neither is set.
+
 ### Removed
 
 ## [3.10.1] - 2026-08-24
