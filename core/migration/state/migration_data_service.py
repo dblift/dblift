@@ -12,9 +12,7 @@ from core.logger import Log
 from core.migration.migration import VERSIONED_SCRIPT_TYPES, Migration
 from core.migration.state.migration_state_service import MigrationStateService
 from core.migration.version_utils import compare_versions as _compare_versions_shared
-from core.migration.version_utils import (
-    is_migration_success,
-)
+from core.migration.version_utils import is_migration_success
 
 
 class MigrationDataService:
