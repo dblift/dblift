@@ -232,9 +232,7 @@ def test_render_identity_clause_postgres_emits_start_and_increment_when_both_set
     assert clause is not None
     assert "START WITH 500" in clause
     assert "INCREMENT BY 5" in clause
-    assert clause == (
-        "GENERATED ALWAYS AS IDENTITY (START WITH 500 INCREMENT BY 5)"
-    )
+    assert clause == "GENERATED ALWAYS AS IDENTITY (START WITH 500 INCREMENT BY 5)"
 
 
 @pytest.mark.parametrize(
