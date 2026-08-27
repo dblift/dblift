@@ -138,6 +138,38 @@ class TestNormalizeMigrationsDirs(unittest.TestCase):
         self.assertIsNone(cfg.migrations.directory)
         self.assertEqual(cfg.migrations.directories, [])
 
+    def test_directory_config_recursive_false_not_replaced_by_global_default(self):
+        from api._client_factory import normalize_migrations_dirs
+        from config.dblift_config import DbliftConfig, DirectoryConfig
+
+        config = DbliftConfig.from_dict(
+            {
+                "database": {"url": "sqlite:////tmp/test.db", "schema": "main"},
+                "migrations": {"recursive": True, "directory": "/tmp/other"},
+            }
+        )
+        normalize_migrations_dirs(config, [DirectoryConfig(path="/tmp/scripts", recursive=False)])
+        configs = config.migrations.get_directory_configs()
+        self.assertEqual(len(configs), 1)
+        self.assertEqual(configs[0].path, "/tmp/scripts")
+        self.assertFalse(configs[0].recursive)
+
+    def test_directory_config_recursive_true_not_replaced_by_global_default(self):
+        from api._client_factory import normalize_migrations_dirs
+        from config.dblift_config import DbliftConfig, DirectoryConfig
+
+        config = DbliftConfig.from_dict(
+            {
+                "database": {"url": "sqlite:////tmp/test.db", "schema": "main"},
+                "migrations": {"recursive": False, "directory": "/tmp/other"},
+            }
+        )
+        normalize_migrations_dirs(config, [DirectoryConfig(path="/tmp/scripts", recursive=True)])
+        configs = config.migrations.get_directory_configs()
+        self.assertEqual(len(configs), 1)
+        self.assertEqual(configs[0].path, "/tmp/scripts")
+        self.assertTrue(configs[0].recursive)
+
 
 class TestApplyCtorOverrides(unittest.TestCase):
     def _config(self):

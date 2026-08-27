@@ -29,6 +29,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Sequences backing `GENERATED … AS IDENTITY` (``pg_depend.deptype = 'i'``)
   are excluded from introspection so replay no longer fails with
   `relation "…_seq" already exists`. Free-standing sequences still export.
+- **`undo --target-version` stopped at the first installed version ≤ target.**
+  Out-of-order history (V3 installed before V2, `--target-version 2`) left V3
+  installed and still reported success. Undo now rolls back every installed
+  version strictly above the target, regardless of install rank.
+- **`ALTER TABLE … ADD CONSTRAINT CHECK` truncated nested parentheses.**
+  Regex fallback (DB2 and sqlglot-fail paths) stopped at the first `)`, so
+  re-emitted DDL was unbalanced. CHECK bodies are now parsed with balanced
+  parentheses.
+- **Migrate `beforeVersioned` / `afterVersioned` / `afterMigrateError` callbacks
+  omitted per-directory recursive settings.** Those events now receive
+  `dir_recursive_map` the same way sibling callbacks already did.
+- **API clients dropped `DirectoryConfig.recursive`.** Constructing a client
+  from config replaced per-directory `recursive: false` (and `true`) with the
+  global default. The configured flag is preserved.
+- **HTML command reports were never finalized.** `set_command_completed`
+  checked `FileLog.format` instead of `log_format`, so the HTML close path
+  never ran.
 
 ### Removed
 

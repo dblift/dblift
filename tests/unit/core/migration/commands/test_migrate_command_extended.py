@@ -50,6 +50,13 @@ def _pass_through_filters(migrations, **kwargs):
     return list(migrations)
 
 
+def _callback_dir_recursive_map(call):
+    """Return dir_recursive_map from an _execute_callbacks call (pos or kw)."""
+    if len(call.args) >= 5:
+        return call.args[4]
+    return call.kwargs.get("dir_recursive_map")
+
+
 def _make_cmd(
     provider=None,
     config=None,
@@ -278,6 +285,22 @@ class TestExecuteBeforeCallbacks(unittest.TestCase):
         events = [c.args[1] for c in cmd._execute_callbacks.call_args_list]
         self.assertNotIn("beforeRepeatable", events)
 
+    def test_before_versioned_forwards_dir_recursive_map(self):
+        cmd = _make_cmd()
+        cmd._execute_callbacks = MagicMock()
+        m = _make_migration()
+        dir_map = {Path("/extra"): False}
+        cmd._execute_before_callbacks(
+            Path("/migrations"), [m], [], True, None, dir_map, MigrateResult()
+        )
+        versioned = [
+            c for c in cmd._execute_callbacks.call_args_list if c.args[1] == "beforeVersioned"
+        ]
+        self.assertEqual(len(versioned), 1)
+        self.assertIs(_callback_dir_recursive_map(versioned[0]), dir_map)
+        migrate = [c for c in cmd._execute_callbacks.call_args_list if c.args[1] == "beforeMigrate"]
+        self.assertIs(_callback_dir_recursive_map(migrate[0]), dir_map)
+
 
 # ---------------------------------------------------------------------------
 # _execute_after_callbacks
@@ -326,6 +349,23 @@ class TestExecuteAfterCallbacks(unittest.TestCase):
 
         events = [c.args[1] for c in cmd._execute_callbacks.call_args_list]
         self.assertIn("afterRepeatable", events)
+
+    def test_after_versioned_forwards_dir_recursive_map(self):
+        cmd = _make_cmd()
+        cmd._execute_callbacks = MagicMock()
+        m = _make_migration()
+        result = MigrateResult()
+        dir_map = {Path("/extra"): False}
+
+        cmd._execute_after_callbacks(Path("/migrations"), [m], [], True, None, dir_map, result)
+
+        versioned = [
+            c for c in cmd._execute_callbacks.call_args_list if c.args[1] == "afterVersioned"
+        ]
+        self.assertEqual(len(versioned), 1)
+        self.assertIs(_callback_dir_recursive_map(versioned[0]), dir_map)
+        migrate = [c for c in cmd._execute_callbacks.call_args_list if c.args[1] == "afterMigrate"]
+        self.assertIs(_callback_dir_recursive_map(migrate[0]), dir_map)
 
 
 # ---------------------------------------------------------------------------
@@ -435,6 +475,34 @@ class TestExecuteSingleMigration(unittest.TestCase):
             )
 
         self.assertFalse(success)
+
+    def test_engine_error_after_migrate_error_forwards_dir_recursive_map(self):
+        """afterMigrateError on the execute_migration failure path must receive
+        the same dir_recursive_map as sibling callbacks."""
+
+        def _set_error(migration, result):
+            result.set_error("migration failed")
+
+        execution_engine = MagicMock()
+        execution_engine.execute_migration.side_effect = _set_error
+        cmd = _make_cmd(execution_engine=execution_engine)
+        cmd._execute_callbacks = MagicMock()
+        cmd.journal = None
+        m = _make_migration("V1__a.sql")
+        result = MigrateResult()
+        dir_map = {Path("/extra"): False}
+
+        with patch("core.migration.commands.migrate_command._emit_script_event"):
+            success = cmd._execute_single_migration(
+                m, Path("/migrations"), True, None, dir_map, result
+            )
+
+        self.assertFalse(success)
+        error_calls = [
+            c for c in cmd._execute_callbacks.call_args_list if c.args[1] == "afterMigrateError"
+        ]
+        self.assertEqual(len(error_calls), 1)
+        self.assertIs(_callback_dir_recursive_map(error_calls[0]), dir_map)
 
     def test_exception_in_execute_migration_returns_false(self):
         execution_engine = MagicMock()

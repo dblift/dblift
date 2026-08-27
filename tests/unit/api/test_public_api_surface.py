@@ -568,7 +568,11 @@ class TestClientConfigDirectoryShape:
         ):
             client = client_from_config(config, client_cls=CapturingClient)
 
-        assert client.kwargs["migrations_dir"] == ["/tmp/extra"]
+        md = client.kwargs["migrations_dir"]
+        assert len(md) == 1
+        entry = md[0]
+        assert getattr(entry, "path", None) == "/tmp/extra"
+        assert getattr(entry, "recursive", None) is True
 
     def test_normalize_migrations_dirs_clears_stale_dict_entries(self):
         from api._client_factory import normalize_migrations_dirs

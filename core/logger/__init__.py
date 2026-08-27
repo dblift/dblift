@@ -219,16 +219,10 @@ class DbliftLogger(Log):
                     else:
                         self.log.error(f"Command {command_type.lower()} failed")
 
-        # Close any file logs if they're HTML format to ensure proper HTML rendering
+        # Close any file logs if they're HTML format to ensure proper HTML rendering.
+        # FileLog stores the format on ``log_format`` (LogFormat enum), not ``format``.
         for log in self.logs:
-            if (
-                isinstance(log, FileLog)
-                and hasattr(log, "format")
-                and (
-                    log.format == "html"
-                    or (hasattr(log.format, "lower") and log.format.lower() == "html")
-                )
-            ):
+            if isinstance(log, FileLog) and getattr(log, "log_format", None) == LogFormat.HTML:
                 if hasattr(log, "command_type"):
                     log.command_type = command_type
                 if result is not None:

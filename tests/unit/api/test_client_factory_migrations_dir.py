@@ -71,6 +71,71 @@ class TestClientFactoryMigrationsDir:
 
         assert captured["migrations_dir"] == "from_config_dir"
 
+    def test_directory_config_recursive_false_survives_from_config(self):
+        """API construction with DirectoryConfig(recursive=False) must not
+        replace it with the global recursive default."""
+        from api._client_factory import client_from_config, normalize_migrations_dirs
+        from config.dblift_config import DbliftConfig
+
+        config = DbliftConfig.from_dict(
+            {
+                "database": {"url": "sqlite:////tmp/test.db", "schema": "main"},
+                "migrations": {
+                    "recursive": True,
+                    "directories": [{"path": "/tmp/scripts", "recursive": False}],
+                },
+            }
+        )
+        constructed = {}
+
+        def fake_ctor(**kwargs):
+            normalize_migrations_dirs(kwargs["config"], kwargs["migrations_dir"])
+            constructed.update(kwargs)
+            return MagicMock()
+
+        with (
+            patch("api._client_factory.ProviderRegistry.create_provider", return_value=MagicMock()),
+            patch("api._client_factory.DbliftLogger", return_value=MagicMock()),
+        ):
+            client_from_config(config, client_cls=fake_ctor)
+
+        entry = constructed["migrations_dir"][0]
+        assert getattr(entry, "recursive") is False
+        configs = constructed["config"].migrations.get_directory_configs()
+        assert configs[0].path == "/tmp/scripts"
+        assert configs[0].recursive is False
+
+    def test_directory_config_recursive_true_survives_from_config(self):
+        from api._client_factory import client_from_config, normalize_migrations_dirs
+        from config.dblift_config import DbliftConfig
+
+        config = DbliftConfig.from_dict(
+            {
+                "database": {"url": "sqlite:////tmp/test.db", "schema": "main"},
+                "migrations": {
+                    "recursive": False,
+                    "directories": [{"path": "/tmp/scripts", "recursive": True}],
+                },
+            }
+        )
+        constructed = {}
+
+        def fake_ctor(**kwargs):
+            normalize_migrations_dirs(kwargs["config"], kwargs["migrations_dir"])
+            constructed.update(kwargs)
+            return MagicMock()
+
+        with (
+            patch("api._client_factory.ProviderRegistry.create_provider", return_value=MagicMock()),
+            patch("api._client_factory.DbliftLogger", return_value=MagicMock()),
+        ):
+            client_from_config(config, client_cls=fake_ctor)
+
+        entry = constructed["migrations_dir"][0]
+        assert getattr(entry, "recursive") is True
+        configs = constructed["config"].migrations.get_directory_configs()
+        assert configs[0].recursive is True
+
     def test_migrations_dir_kwarg_not_duplicated(self):
         """migrations_dir must appear exactly once in the constructor call."""
         from api._client_factory import client_from_config
