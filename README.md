@@ -1,7 +1,13 @@
-# DBLift — Database release safety for Python teams
+# DBLift
+
+Flyway-style raw-SQL migrations for Python teams. No JVM, and you see the exact SQL before it runs.
 
 <p align="center">
   <img src="logo/dblift_logo.png" width="280" alt="DBLift Logo">
+</p>
+
+<p align="center">
+  <img src="logo/dblift-migrate-dry-run.gif" width="720" alt="dblift migrate --dry-run --show-sql previewing pending V1__create_users.sql and the exact CREATE TABLE SQL">
 </p>
 
 ![Python](https://img.shields.io/badge/Python-3.11%2B-blue)
