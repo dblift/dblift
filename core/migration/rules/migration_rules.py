@@ -4,8 +4,8 @@ from functools import cmp_to_key
 from typing import Any, List, Optional, Tuple
 
 from core.logger import Log
-from core.migration._type_match import is_migration_type, is_versioned
-from core.migration.migration import Migration, MigrationType
+from core.migration._type_match import is_versioned
+from core.migration.migration import Migration
 from core.migration.version_utils import (
     compare_versions,
     is_migration_success,
@@ -81,28 +81,14 @@ class MigrationRules:
         format counts as a re-apply — the history records versioned Python
         scripts as PYTHON, not SQL.
         """
-        undone = False
-        latest_undo_rank = 0
-        latest_versioned_rank = 0
+        if version is None or version == "":
+            return False
+        # Imported here to avoid a rules ↔ state package cycle: state/__init__
+        # loads MigrationStateManager, which imports MigrationRules.
+        from core.migration.state.rank_wins import latest_successful_ranks
 
-        for m in applied_migrations:
-            if getattr(m, "version", None) != version:
-                continue
-            if not is_migration_success(getattr(m, "success", False)):
-                continue
-
-            m_type = getattr(m, "type", None)
-            m_rank = getattr(m, "installed_rank", 0)
-
-            if is_migration_type(m_type, MigrationType.UNDO_SQL):
-                undone = True
-                if m_rank > latest_undo_rank:
-                    latest_undo_rank = m_rank
-            elif is_versioned(m_type):
-                if m_rank > latest_versioned_rank:
-                    latest_versioned_rank = m_rank
-
-        return undone and latest_undo_rank > latest_versioned_rank
+        state = latest_successful_ranks(applied_migrations).get(str(version))
+        return bool(state and state.currently_undone)
 
     def _next_version_to_undo(
         self, version: Any, applied_migrations: List[Migration]

@@ -31,8 +31,9 @@ from core.migration.state.migration_state_manager import (
     MigrationStateManager,
     StrictModeError,
 )
+from core.migration.state.rank_wins import installed_rank, latest_successful_ranks
 from core.migration.ui.migration_ui import MigrationUI
-from core.migration.version_utils import compare_versions
+from core.migration.version_utils import compare_versions, is_migration_success
 from core.sql_validator.migration_validator import MigrationValidator
 from db.base_provider import BaseProvider
 
@@ -184,25 +185,18 @@ class MigrateCommand(BaseCommand):
         concurrent process may have applied it (with unchanged content)
         while this process was waiting for the lock.
         """
-        latest_undo_rank_by_version: Dict[str, int] = {}
-        for rec in applied:
-            if not rec.success or rec.version is None:
-                continue
-            if migration_type_name(rec.type) == MigrationType.UNDO_SQL.value:
-                version = str(rec.version)
-                latest_undo_rank_by_version[version] = max(
-                    latest_undo_rank_by_version.get(version, 0),
-                    int(rec.installed_rank or 0),
-                )
+        ranks = latest_successful_ranks(applied)
 
         successful_keys = set()
         for rec in applied:
-            if not rec.success or rec.version is None:
+            if rec.version is None or not is_migration_success(rec.success):
                 continue
             rec_type = migration_type_name(rec.type)
             if rec_type not in VERSIONED_SCRIPT_TYPES:
                 continue
-            if int(rec.installed_rank or 0) <= latest_undo_rank_by_version.get(str(rec.version), 0):
+            state = ranks.get(str(rec.version))
+            undo_rank = state.undo if state is not None else 0
+            if installed_rank(rec) <= undo_rank:
                 continue
             successful_keys.add((str(rec.version), rec_type))
 

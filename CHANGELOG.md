@@ -57,6 +57,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **HTML command reports were never finalized.** `set_command_completed`
   checked `FileLog.format` instead of `log_format`, so the HTML close path
   never ran.
+- **A failed versioned history row after undo is no longer treated as a
+  reapply.** Undo/reapply "latest successful rank wins" now lives in one
+  helper; the data-service copy previously counted unsuccessful later rows.
+- **Oracle, DB2, and SQL Server `repair_migration_history(success_value=None)`
+  flipped SUCCESS to failed.** Those dialects now keep the stored flag via
+  `COALESCE`, matching PostgreSQL, MySQL, and SQLite. Callers that pass
+  `success_value=True` are unchanged.
+- **DB2, MySQL, and SQL Server qualified identifiers did not match
+  `schema.table`.** An `rf` string used `\\.` (backslash + any character)
+  instead of a literal dot; the patterns now match PostgreSQL/SQLite.
 
 ### Removed
 

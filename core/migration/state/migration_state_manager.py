@@ -19,6 +19,7 @@ from core.migration.state.migration_state import (
     MigrationState,
 )
 from core.migration.state.migration_state_service import MigrationStateService
+from core.migration.state.rank_wins import latest_successful_ranks
 from core.migration.version_utils import is_migration_failure
 
 
@@ -471,36 +472,14 @@ class MigrationStateManager:
             out_all_scripts.extend(all_scripts)
 
         # Step 3: Determine current version from applied migrations (excluding undone ones)
-        # Filter out undone migrations before calculating current version
-        # Note: reapplied_versions are versions that were undone but then reapplied
-        # We can determine this by checking if a version appears in both undone_versions
-        # and in the applied_migrations list with success status
-        version_status: Dict[str, Dict[str, int]] = {}
-        for m in applied_migrations:
-            m_type = self._get_type_name(m)
-            if m_type not in VERSIONED_SCRIPT_TYPES | {"UNDO_SQL"}:
-                continue
-
-            version = str(getattr(m, "version", "") or "")
-            if not version or version not in undone_versions:
-                continue
-
-            is_success = self.migration_rules.is_success(m)
-            if not is_success:
-                continue
-
-            status = version_status.setdefault(version, {"versioned": 0, "undo": 0})
-            installed_rank = self._installed_rank(m)
-
-            if m_type in VERSIONED_SCRIPT_TYPES:
-                status["versioned"] = max(status["versioned"], installed_rank)
-            elif m_type == "UNDO_SQL":
-                status["undo"] = max(status["undo"], installed_rank)
-
+        # Filter out undone migrations before calculating current version.
+        # Reapplied versions are those whose latest successful versioned rank
+        # outranks the latest successful undo (see latest_successful_ranks).
+        ranks = latest_successful_ranks(applied_migrations)
         reapplied_versions = {
             version
-            for version, status in version_status.items()
-            if status["versioned"] > status["undo"]
+            for version, state in ranks.items()
+            if version in undone_versions and state.reapplied
         }
 
         effective_undone_versions = undone_versions - reapplied_versions

@@ -547,18 +547,12 @@ class OracleProvider(SqlAlchemyProvider):
         table = _oracle_name(table_name)
         if not self.table_exists(schema, table):
             return False
-        if success_value is None:
-            affected = self.execute_statement(
-                f"UPDATE {_schema_object(schema, table)} SET CHECKSUM = ?, SUCCESS = 0 "
-                "WHERE SCRIPT = ?",
-                params=[checksum, script_name],
-            )
-        else:
-            affected = self.execute_statement(
-                f"UPDATE {_schema_object(schema, table)} SET CHECKSUM = ?, SUCCESS = ? "
-                "WHERE SCRIPT = ?",
-                params=[checksum, 1 if success_value else 0, script_name],
-            )
+        success_flag = None if success_value is None else (1 if success_value else 0)
+        affected = self.execute_statement(
+            f"UPDATE {_schema_object(schema, table)} SET CHECKSUM = ?, "
+            "SUCCESS = COALESCE(?, SUCCESS) WHERE SCRIPT = ?",
+            params=[checksum, success_flag, script_name],
+        )
         return affected > 0
 
     def clean_schema(self, schema: str) -> CleanExecutionSummary:

@@ -295,6 +295,9 @@ class TestDB2Config:
 
         pattern = config.get_qualified_identifier_pattern()
         assert isinstance(pattern, re.Pattern)
+        match = pattern.match("schema.table")
+        assert match is not None
+        assert match.group(0) == "schema.table"
 
     def test_get_string_literal_pattern(self):
         """Test get_string_literal_pattern method."""
@@ -651,6 +654,9 @@ class TestMySqlConfig:
 
         pattern = config.get_qualified_identifier_pattern()
         assert isinstance(pattern, re.Pattern)
+        match = pattern.match("schema.table")
+        assert match is not None
+        assert match.group(0) == "schema.table"
 
     def test_get_string_literal_pattern(self):
         """Test get_string_literal_pattern method."""
@@ -959,6 +965,9 @@ class TestSqlServerConfig:
 
         pattern = config.get_qualified_identifier_pattern()
         assert isinstance(pattern, re.Pattern)
+        match = pattern.match("schema.table")
+        assert match is not None
+        assert match.group(0) == "schema.table"
 
     def test_normalize_identifier_brackets(self):
         """Test normalize_identifier with bracket identifiers."""
