@@ -188,3 +188,32 @@ class TestNoTargetVersionUsesInstallRankNotVersionOrder:
             call.args[0] for call in cmd.migration_rules._is_currently_undone.call_args_list
         ]
         assert checked_versions == ["1"]
+
+
+@pytest.mark.unit
+class TestTargetVersionUndoWalksPastLowerRank:
+    """``--target-version`` must undo every installed version strictly above
+    the target, even when a lower-or-equal version was installed later.
+
+    Walking reverse install-rank and breaking at the first version ≤ target
+    leaves a higher version (installed earlier) in place while reporting
+    success.
+    """
+
+    def test_ooo_v3_rank1_v2_rank2_target_2_undoes_v3(self):
+        v3 = _make_migration(3)
+        v2 = _make_migration(2)
+        cmd = _make_command([v3, v2])
+        cmd._find_undo_script = MagicMock(return_value=MagicMock(script_name="U3__test.sql"))
+
+        result = cmd.execute(scripts_dir=MagicMock(), target_version=2, dry_run=True)
+
+        checked = [call.args[0] for call in cmd.migration_rules.should_undo_version.call_args_list]
+        assert checked == ["3"], (
+            "OOO history (V3 rank 1, V2 rank 2) with --target-version 2 must "
+            f"undo V3; should_undo_version was called for {checked}"
+        )
+        undone = [call.args[0] for call in cmd._find_undo_script.call_args_list]
+        assert [m.version for m in undone] == [3]
+        assert result.error_message is None
+        assert result.success

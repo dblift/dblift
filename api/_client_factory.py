@@ -120,23 +120,54 @@ def normalize_migrations_dirs(config: Any, migrations_dir: Union[str, Path, List
     First entry becomes ``config.migrations.directory``; remaining entries (if any)
     populate ``config.migrations.directories``. Caller passes the original
     user-facing value; this function performs in-place mutation.
+
+    ``DirectoryConfig`` (and dicts that set ``recursive``) keep their per-directory
+    recursive flag in ``directories`` so a later ``get_directory_configs()`` does
+    not replace it with the global default.
     """
     if isinstance(migrations_dir, (str, Path)):
         migrations_dir = [migrations_dir]
-    paths = [_migration_directory_path(d) for d in migrations_dir]
-    if paths:
-        config.migrations.directory = str(paths[0])
-    if len(paths) > 1:
-        config.migrations.directories = [str(d) for d in paths[1:]]
+    entries = [_as_migration_dir_entry(d) for d in migrations_dir]
+    if entries:
+        config.migrations.directory = str(_migration_directory_path(entries[0]))
+    from config.dblift_config import DirectoryConfig
+
+    if any(isinstance(entry, DirectoryConfig) for entry in entries):
+        global_recursive = getattr(config.migrations, "recursive", True)
+        config.migrations.directories = [
+            (
+                entry
+                if isinstance(entry, DirectoryConfig)
+                else DirectoryConfig(path=str(entry), recursive=global_recursive)
+            )
+            for entry in entries
+        ]
+    elif len(entries) > 1:
+        config.migrations.directories = [str(d) for d in entries[1:]]
     else:
         config.migrations.directories = []
+
+
+def _as_migration_dir_entry(directory: Any) -> Any:
+    """Keep ``DirectoryConfig.recursive``; flatten plain paths to strings."""
+    from config.dblift_config import DirectoryConfig
+
+    if isinstance(directory, DirectoryConfig):
+        return directory
+    if isinstance(directory, dict) and "recursive" in directory:
+        return DirectoryConfig.from_dict(directory)
+    recursive = getattr(directory, "recursive", None)
+    path = getattr(directory, "path", None)
+    if path is not None and recursive is not None and not isinstance(directory, (str, Path)):
+        return DirectoryConfig(path=str(path), recursive=bool(recursive))
+    return str(_migration_directory_path(directory))
 
 
 def _migration_directory_path(directory: Any) -> Path:
     if isinstance(directory, (str, Path)):
         return Path(directory)
     if isinstance(directory, dict):
-        return Path(directory.get("path", ""))
+        return Path(directory.get("path", "") or directory.get("directory", ""))
     path = getattr(directory, "path", None)
     if path is not None:
         return Path(path)
@@ -217,8 +248,13 @@ def client_from_config(
     if caller_migrations_dir is None and hasattr(client_config.migrations, "get_directory_configs"):
         dir_configs = client_config.migrations.get_directory_configs()
         if dir_configs:
-            configured_dirs = [dir_config.path for dir_config in dir_configs]
+            try:
+                configured_dirs = list(dir_configs)
+            except TypeError:
+                configured_dirs = []
             if configured_dirs:
+                # Pass DirectoryConfig objects (not just .path) so per-directory
+                # recursive flags survive normalize_migrations_dirs().
                 migrations_dir = configured_dirs
 
     # Import here to avoid circular import: api.client imports this module at load time.

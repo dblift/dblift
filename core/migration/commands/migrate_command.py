@@ -305,6 +305,7 @@ class MigrateCommand(BaseCommand):
                 "beforeVersioned",
                 use_recursive,
                 use_additional_dirs,
+                dir_recursive_map,
                 result=result,
             )
 
@@ -340,6 +341,7 @@ class MigrateCommand(BaseCommand):
                 "afterVersioned",
                 use_recursive,
                 use_additional_dirs,
+                dir_recursive_map,
                 result=result,
             )
 
@@ -503,6 +505,7 @@ class MigrateCommand(BaseCommand):
                     "afterMigrateError",
                     use_recursive,
                     use_additional_dirs,
+                    dir_recursive_map,
                     result=result,
                 )
                 return False

@@ -426,6 +426,29 @@ class TestParseAlterTableWithRegex:
         )
         assert table.constraints[0].check_expression
 
+    def test_nested_parens_in_check_body_round_trip_balanced(self):
+        """ADD CONSTRAINT CHECK must not truncate at the first inner ')'."""
+        parser = HybridParser("db2")
+        result = ParseResult(success=True, statements=[])
+        sql = (
+            "ALTER TABLE app.orders ADD CONSTRAINT chk_amount "
+            "CHECK ((amount > 0) AND (status IN ('A', 'B')))"
+        )
+        parser._parse_alter_table_with_regex(sql, None, result)
+        table = result.tables[0]
+        expr = table.constraints[0].check_expression
+        assert expr is not None
+        assert "(amount > 0)" in expr
+        assert "status IN ('A', 'B')" in expr
+        ddl = f"ALTER TABLE APP.ORDERS ADD CONSTRAINT chk_amount CHECK ({expr})"
+        assert ddl.count("(") == ddl.count(")"), ddl
+        from core.sql_generator.basic_table_ddl_generator import BasicTableDdlGenerator
+
+        emitted = BasicTableDdlGenerator(table).generate_alter_check_constraints()
+        assert emitted
+        assert emitted[0].count("(") == emitted[0].count(")"), emitted[0]
+        assert "(amount > 0)" in emitted[0]
+
 
 class TestEnsureViewMetadata:
     def test_existing_view_query_filled_in(self):

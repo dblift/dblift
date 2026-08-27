@@ -731,15 +731,21 @@ class HybridParser(_SqlglotBuildersMixin, SqlParserInterface):
             )
             result.add_table(target_table)
 
-        # Extract ADD CONSTRAINT CHECK
-        check_match = re.search(
-            r"ADD\s+CONSTRAINT\s+(\w+)\s+CHECK\s*\(([^)]+)\)",
+        # Extract ADD CONSTRAINT CHECK. The body may contain nested parentheses
+        # (e.g. IN (...), function calls); do not stop at the first ')'.
+        check_header = re.search(
+            r"ADD\s+CONSTRAINT\s+(\w+)\s+CHECK\s*\(",
             sql_text,
             re.IGNORECASE | re.DOTALL,
         )
-        if check_match:
-            constraint_name = self._normalize_identifier(check_match.group(1), preserve_case=True)
-            check_expression = check_match.group(2).strip()
+        if check_header:
+            constraint_name = self._normalize_identifier(check_header.group(1), preserve_case=True)
+            # start_index at the opening '(' so _extract_column_block reads a
+            # balanced body (quote-aware, includes inner parens).
+            check_expression = self._extract_column_block(sql_text, check_header.end() - 1)
+            if not check_expression:
+                return
+            check_expression = check_expression.strip()
 
             # Check if constraint already exists
             existing = None

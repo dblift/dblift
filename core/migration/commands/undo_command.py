@@ -228,21 +228,24 @@ class UndoCommand(BaseCommand):
                     if not tag_filter_active:
                         break  # Only undo the most recent undoable migration
             else:
-                # Target version specified - find all migrations newer than target that can be undone
+                # Target version specified - undo every installed version strictly
+                # above the target, regardless of install rank. Out-of-order history
+                # (e.g. V3 rank 1, V2 rank 2, --target-version 2) must still undo V3;
+                # stopping at the first version ≤ target would skip a higher version
+                # installed earlier.
                 for migration in reversed(candidates):
-                    if compare_versions(str(migration.version), str(target_version)) > 0:
-                        version = str(migration.version)
-                        can_undo, message = self.migration_rules.should_undo_version(
-                            version, applied_migrations
-                        )
-                        if can_undo:
-                            migrations_to_undo.append(migration)
-                        elif message:
-                            result.set_error(message)
-                            self._log_command_completion("undo", result)
-                            return result
-                    elif compare_versions(str(migration.version), str(target_version)) <= 0:
-                        break
+                    if compare_versions(str(migration.version), str(target_version)) <= 0:
+                        continue
+                    version = str(migration.version)
+                    can_undo, message = self.migration_rules.should_undo_version(
+                        version, applied_migrations
+                    )
+                    if can_undo:
+                        migrations_to_undo.append(migration)
+                    elif message:
+                        result.set_error(message)
+                        self._log_command_completion("undo", result)
+                        return result
 
             if not migrations_to_undo:
                 self.log.info("No migrations to undo")

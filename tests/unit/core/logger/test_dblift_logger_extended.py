@@ -89,6 +89,28 @@ class TestDbliftLoggerSetCommandCompleted(unittest.TestCase):
         # should not raise
 
 
+class TestDbliftLoggerHtmlFinalize(unittest.TestCase):
+    def test_set_command_completed_finalizes_html_file_log_via_log_format(self):
+        """FileLog stores format on ``log_format``; completed HTML reports must
+        still run the finalize/close path."""
+        from core.logger import DbliftLogger, FileLog, LogFormat
+        from core.logger.results import OperationResult
+
+        with TemporaryDirectory() as tmpdir:
+            logger = DbliftLogger("test", format=LogFormat.HTML, logfile_dir=Path(tmpdir))
+            file_log = next(log for log in logger.logs if isinstance(log, FileLog))
+            self.assertEqual(file_log.log_format, LogFormat.HTML)
+
+            close_mock = MagicMock(wraps=file_log.close)
+            file_log.close = close_mock
+
+            result = OperationResult()
+            result.complete()
+            logger.set_command_completed(True, "done", "MIGRATE", result)
+
+            close_mock.assert_called()
+
+
 class TestDbliftLoggerAddLog(unittest.TestCase):
     def test_logs_list_accessible(self):
         from core.logger import DbliftLogger
