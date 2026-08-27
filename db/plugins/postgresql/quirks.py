@@ -525,6 +525,54 @@ class PostgresqlQuirks(BaseQuirks):
 
         return bool(get_row_value(row, "is_temporary") == "YES")
 
+    def identity_owned_sequence_names(self, extractor: Any, schema: str) -> "set[str]":
+        """Return sequences owned by ``GENERATED … AS IDENTITY`` columns.
+
+        PostgreSQL creates an implicit sequence for each identity column
+        and records an internal dependency (``pg_depend.deptype = 'i'``).
+        Replaying ``CREATE SEQUENCE`` for those names fails with
+        ``relation "…_seq" already exists`` because the identity clause
+        already created them. SERIAL ``OWNED BY`` sequences use
+        ``deptype = 'a'`` and free-standing sequences have no such row,
+        so they are left for export.
+        """
+        from core.utils.row_access import get_row_value
+
+        query_executor = getattr(getattr(extractor, "provider", None), "query_executor", None)
+        if not query_executor:
+            return set()
+        connection = getattr(extractor, "connection", None)
+
+        sql = """
+            SELECT seq.relname AS identity_sequence_name
+            FROM pg_catalog.pg_class seq
+            JOIN pg_catalog.pg_namespace nsp ON nsp.oid = seq.relnamespace
+            JOIN pg_catalog.pg_depend dep
+              ON dep.objid = seq.oid
+             AND dep.classid = 'pg_class'::regclass
+             AND dep.deptype = 'i'
+            JOIN pg_catalog.pg_attribute attr
+              ON attr.attrelid = dep.refobjid
+             AND attr.attnum = dep.refobjsubid
+             AND attr.attidentity <> ''
+            WHERE seq.relkind = 'S'
+              AND nsp.nspname = ?
+        """
+        try:
+            rows = query_executor.execute_query(connection, sql, [schema])
+        except Exception as exc:
+            extractor.log.debug(
+                f"Could not load PostgreSQL identity-owned sequences for {schema}: {exc}"
+            )
+            return set()
+
+        names: set[str] = set()
+        for row in rows:
+            name = get_row_value(row, "identity_sequence_name")
+            if name:
+                names.add(str(name))
+        return names
+
     def fk_reference_query(
         self, schema: str, table: str, col: str
     ) -> "Tuple[Optional[str], list[Any]]":

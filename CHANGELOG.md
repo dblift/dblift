@@ -25,6 +25,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `(START WITH n INCREMENT BY m)` when either seed or increment is set,
   matching Oracle. Bare `GENERATED … AS IDENTITY` is unchanged when
   neither is set.
+- **PostgreSQL export emitted `CREATE SEQUENCE` for identity-owned sequences.**
+  Sequences backing `GENERATED … AS IDENTITY` (``pg_depend.deptype = 'i'``)
+  are excluded from introspection so replay no longer fails with
+  `relation "…_seq" already exists`. Free-standing sequences still export.
 
 ### Removed
 

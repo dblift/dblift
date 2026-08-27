@@ -62,6 +62,11 @@ class VendorMetadataQueries(ABC):
             - increment: Increment value
             - cycle_option: Whether sequence cycles (YES/NO)
             - cache_size: Cache size (optional)
+
+        Identity-owned sequences (PostgreSQL ``pg_depend.deptype = 'i'``)
+        must not appear: ``GENERATED … AS IDENTITY`` already creates them,
+        and a standalone ``CREATE SEQUENCE`` aborts on replay. Free-standing
+        sequences must still be returned.
         """
 
     @abstractmethod

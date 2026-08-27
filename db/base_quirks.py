@@ -1170,6 +1170,18 @@ class BaseQuirks:
         """
         return False
 
+    def identity_owned_sequence_names(self, extractor: Any, schema: str) -> "set[str]":
+        """Return catalog names of sequences owned by identity columns.
+
+        Default: empty. PostgreSQL overrides via ``pg_depend`` with
+        ``deptype = 'i'`` (internal identity dependency). Those sequences
+        are created by ``GENERATED … AS IDENTITY`` and must not be
+        emitted as standalone ``CREATE SEQUENCE``. Free-standing
+        sequences (and SERIAL ``OWNED BY`` sequences, ``deptype = 'a'``)
+        are not in this set.
+        """
+        return set()
+
     def should_skip_index(self, name: str) -> bool:
         """Whether the catalog *name* identifies an engine-internal index.
 
