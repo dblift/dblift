@@ -72,10 +72,21 @@ class SequenceExtractor(BaseExtractor):
             else:
                 results = self.provider.execute_query(sql, params)
 
+            from db.provider_registry import ProviderRegistry
+
+            quirks = ProviderRegistry.get_quirks(self.dialect or "")
+            identity_owned_names: set[str] = set()
+            if results:
+                identity_owned_names = {
+                    str(n).lower() for n in quirks.identity_owned_sequence_names(self, schema) if n
+                }
+
             sequences = []
             for row in results:
                 sequence_name = get_row_value(row, "sequence_name")
                 if not sequence_name:
+                    continue
+                if str(sequence_name).lower() in identity_owned_names:
                     continue
 
                 # Track sequence capture status
@@ -93,9 +104,6 @@ class SequenceExtractor(BaseExtractor):
 
                 # Dialect-specific ``temporary`` flag — routed through
                 # the per-plugin quirks hook (PG sequences only).
-                from db.provider_registry import ProviderRegistry
-
-                quirks = ProviderRegistry.get_quirks(self.dialect or "")
                 is_temp = quirks.is_temporary_sequence(row)
 
                 sequence = Sequence(
