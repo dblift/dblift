@@ -6,7 +6,6 @@ from typing import Any, List, Optional, Tuple
 from core.logger import Log
 from core.migration._type_match import is_versioned
 from core.migration.migration import Migration
-from core.migration.state.rank_wins import latest_successful_ranks
 from core.migration.version_utils import (
     compare_versions,
     is_migration_success,
@@ -84,6 +83,10 @@ class MigrationRules:
         """
         if version is None or version == "":
             return False
+        # Imported here to avoid a rules ↔ state package cycle: state/__init__
+        # loads MigrationStateManager, which imports MigrationRules.
+        from core.migration.state.rank_wins import latest_successful_ranks
+
         state = latest_successful_ranks(applied_migrations).get(str(version))
         return bool(state and state.currently_undone)
 

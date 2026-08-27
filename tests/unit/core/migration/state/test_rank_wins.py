@@ -138,11 +138,15 @@ class TestCallSitesUseSharedHelper:
             ),
         )
         for module, method in sites:
-            assert module.latest_successful_ranks is helper, (
-                f"{module.__name__} must import latest_successful_ranks from "
-                "core.migration.state.rank_wins"
-            )
             source = inspect.getsource(method)
             assert (
                 "latest_successful_ranks" in source
             ), f"{method.__qualname__} must call latest_successful_ranks"
+            if module is migration_rules:
+                # Function-level import: a module-level import of the state
+                # package from rules cycles through state/__init__.py.
+                continue
+            assert module.latest_successful_ranks is helper, (
+                f"{module.__name__} must import latest_successful_ranks from "
+                "core.migration.state.rank_wins"
+            )
