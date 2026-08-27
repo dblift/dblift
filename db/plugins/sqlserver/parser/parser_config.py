@@ -485,7 +485,7 @@ class SqlServerConfig(DialectConfig):
         """
         # Grammar-based: Support brackets and double quotes for T-SQL identifiers
         identifier = r'(?:\[[^\]]+\]|"[^"]+"|[a-zA-Z_@#][a-zA-Z0-9_@#$]*)'
-        return re.compile(rf"(?:{identifier}\\.)?{identifier}", re.IGNORECASE)
+        return re.compile(rf"(?:{identifier}\.)?{identifier}", re.IGNORECASE)
 
     def normalize_identifier(self, identifier: str, is_quoted: bool = False) -> str:
         """Normalize identifier according to SQL Server rules.

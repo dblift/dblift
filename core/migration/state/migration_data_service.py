@@ -11,6 +11,7 @@ from typing import Any, Dict, List, Optional, Set
 from core.logger import Log
 from core.migration.migration import VERSIONED_SCRIPT_TYPES, Migration
 from core.migration.state.migration_state_service import MigrationStateService
+from core.migration.state.rank_wins import latest_successful_ranks
 from core.migration.version_utils import compare_versions as _compare_versions_shared
 from core.migration.version_utils import is_migration_success
 
@@ -90,20 +91,8 @@ class MigrationDataService:
         Returns:
             Set of reapplied version strings
         """
-        reapplied_versions = set()
-        undone_versions = self._get_undone_versions(migrations)
-
-        # Find versioned migrations that were applied after their undo
-        for migration in migrations:
-            if self._get_migration_type(migration) in VERSIONED_SCRIPT_TYPES:
-                version = getattr(migration, "version", None)
-                if version and str(version) in undone_versions:
-                    if self._is_migration_successful(migration):
-                        # Check if this migration was applied after the undo
-                        if self._is_version_reapplied(migrations, str(version)):
-                            reapplied_versions.add(str(version))
-
-        return reapplied_versions
+        ranks = latest_successful_ranks(migrations)
+        return {version for version, state in ranks.items() if state.reapplied}
 
     def _is_version_reapplied(self, migrations: List[Migration], version: str) -> bool:
         """Check if a version was reapplied after being undone.
@@ -115,22 +104,8 @@ class MigrationDataService:
         Returns:
             bool: True if version was reapplied
         """
-        undo_rank = self._get_undo_rank(migrations, version)
-        if undo_rank == -1:
-            return False
-
-        # Find the highest rank for this version after the undo
-        max_rank_after_undo = -1
-        for migration in migrations:
-            if (
-                self._get_migration_type(migration) in VERSIONED_SCRIPT_TYPES
-                and str(getattr(migration, "version", "")) == version
-            ):
-                rank = getattr(migration, "installed_rank", 0)
-                if rank > undo_rank:
-                    max_rank_after_undo = max(max_rank_after_undo, rank)
-
-        return max_rank_after_undo > undo_rank
+        state = latest_successful_ranks(migrations).get(str(version))
+        return bool(state and state.reapplied)
 
     def _get_undo_rank(self, migrations: List[Migration], version: str) -> int:
         """Get the installed rank of the undo migration for a version.
@@ -144,18 +119,12 @@ class MigrationDataService:
         """
         # A version can be undone more than once (undo, reapply, undo again),
         # so the latest undo -- not the first one found -- determines whether
-        # a later reapply superseded it.
-        latest_rank = -1
-        for migration in migrations:
-            if (
-                self._get_migration_type(migration) == "UNDO_SQL"
-                and str(getattr(migration, "version", "")) == version
-                and self._is_migration_successful(migration)
-            ):
-                rank = getattr(migration, "installed_rank", 0)
-                if rank > latest_rank:
-                    latest_rank = rank
-        return latest_rank
+        # a later reapply superseded it. Sentinel -1 matches the previous
+        # helper contract when no successful undo exists.
+        state = latest_successful_ranks(migrations).get(str(version))
+        if state is None or state.undo <= 0:
+            return -1
+        return state.undo
 
     def _get_baseline_version(self, applied_migrations: List[Migration]) -> Optional[str]:
         """Get the baseline version from applied migrations.

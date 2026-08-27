@@ -337,7 +337,7 @@ class TestRepairMigrationHistory:
 
         assert provider.repair_migration_history("APP", "V1.sql", 123) is False
 
-    def test_without_success_value_sets_success_zero(self) -> None:
+    def test_without_success_value_keeps_stored_flag(self) -> None:
         provider = DummyDb2Provider()
         provider.table_exists = lambda schema, table_name: True
 
@@ -345,8 +345,9 @@ class TestRepairMigrationHistory:
 
         assert result is True
         statement_call = next(c for c in provider.calls if c[0] == "statement")
-        assert "SUCCESS = 0" in statement_call[1]
-        assert statement_call[3] == [999, "V1.sql"]
+        assert "COALESCE(?, SUCCESS)" in statement_call[1]
+        assert "SUCCESS = 0" not in statement_call[1]
+        assert statement_call[3] == [999, None, "V1.sql"]
 
     def test_with_success_value_sets_param(self) -> None:
         provider = DummyDb2Provider()
@@ -356,7 +357,7 @@ class TestRepairMigrationHistory:
 
         assert result is True
         statement_call = next(c for c in provider.calls if c[0] == "statement")
-        assert "SUCCESS = ?" in statement_call[1]
+        assert "COALESCE(?, SUCCESS)" in statement_call[1]
         assert statement_call[3] == [999, 1, "V1.sql"]
 
 

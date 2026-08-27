@@ -77,6 +77,29 @@ def test_history_table_uses_serial_installed_rank():
     assert "installed_rank SERIAL PRIMARY KEY" in sql
 
 
+def test_repair_migration_history_none_keeps_stored_success():
+    provider = _Provider()
+
+    result = provider.repair_migration_history("public", "V1.sql", 999)
+
+    assert result is True
+    sql, _schema, params = provider.statements[-1]
+    assert "COALESCE(?, success)" in sql
+    assert "success = 0" not in sql
+    assert params == [999, None, "V1.sql"]
+
+
+def test_repair_migration_history_with_success_value():
+    provider = _Provider()
+
+    result = provider.repair_migration_history("public", "V1.sql", 999, success_value=True)
+
+    assert result is True
+    sql, _schema, params = provider.statements[-1]
+    assert "COALESCE(?, success)" in sql
+    assert params == [999, True, "V1.sql"]
+
+
 def test_baseline_refuses_existing_populated_history_table():
     provider = _Provider()
     provider.history_count = 2

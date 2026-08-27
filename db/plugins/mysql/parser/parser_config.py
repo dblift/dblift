@@ -531,7 +531,7 @@ class MySqlConfig(DialectConfig):
         """
         # Grammar-based: Support backticks for MySQL identifiers
         identifier = r"(?:`[^`]+`|[a-zA-Z_][a-zA-Z0-9_]*)"
-        return re.compile(rf"(?:{identifier}\\.)?{identifier}", re.IGNORECASE)
+        return re.compile(rf"(?:{identifier}\.)?{identifier}", re.IGNORECASE)
 
     def extract_backtick_identifiers(self, sql: str) -> List[str]:
         """Extract backtick-quoted identifiers from SQL.

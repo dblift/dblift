@@ -414,8 +414,9 @@ def test_repair_migration_history_without_success_value():
 
     assert result is True
     sql, _schema, params = provider.statements[-1]
-    assert "success = 0" in sql
-    assert params == [999, "V1.sql"]
+    assert "COALESCE(?, success)" in sql
+    assert "success = 0" not in sql
+    assert params == [999, None, "V1.sql"]
 
 
 def test_repair_migration_history_with_success_value():
@@ -425,7 +426,7 @@ def test_repair_migration_history_with_success_value():
 
     assert result is True
     sql, _schema, params = provider.statements[-1]
-    assert "success = ?" in sql
+    assert "COALESCE(?, success)" in sql
     assert params == [999, 1, "V1.sql"]
 
 

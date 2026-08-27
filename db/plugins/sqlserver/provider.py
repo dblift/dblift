@@ -377,17 +377,12 @@ class SqlServerProvider(SqlAlchemyProvider):
         if not self.table_exists(schema, table_name):
             return False
         qualified = _schema_object(schema, table_name)
-        if success_value is None:
-            result = self.execute_statement(
-                f"UPDATE {qualified} SET checksum = ?, success = 0 WHERE script = ?",
-                params=[checksum, script_name],
-            )
-        else:
-            success_bit = 1 if success_value else 0
-            result = self.execute_statement(
-                f"UPDATE {qualified} SET checksum = ?, success = ? WHERE script = ?",
-                params=[checksum, success_bit, script_name],
-            )
+        success_bit = None if success_value is None else (1 if success_value else 0)
+        result = self.execute_statement(
+            f"UPDATE {qualified} SET checksum = ?, success = COALESCE(?, success) "
+            "WHERE script = ?",
+            params=[checksum, success_bit, script_name],
+        )
         return result > 0
 
     # ------------------------------------------------------------------

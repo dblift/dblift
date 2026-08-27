@@ -179,6 +179,15 @@ class TestIsVersionReapplied:
         ]
         assert service._is_version_reapplied(migrations, "1") is False
 
+    def test_failed_later_versioned_row_is_not_reapplied(self, service):
+        migrations = [
+            make_migration(version="1", type="SQL", success=True, installed_rank=1),
+            make_migration(version="1", type="UNDO_SQL", success=True, installed_rank=2),
+            make_migration(version="1", type="SQL", success=False, installed_rank=3),
+        ]
+        assert service._is_version_reapplied(migrations, "1") is False
+        assert service._get_reapplied_versions(migrations) == set()
+
 
 @pytest.mark.unit
 class TestGetUndoRank:

@@ -354,7 +354,26 @@ def test_repair_migration_history_updates_row():
     assert result is True
     sql, _schema, params = provider.statements[-1]
     assert "UPDATE" in sql
+    assert "COALESCE(?, success)" in sql
     assert params == [999, True, "V1.sql"]
+
+
+def test_repair_migration_history_none_keeps_stored_success():
+    class _ProviderWithRows(_Provider):
+        def execute_statement(self, sql, schema=None, params=None):
+            self.statements.append((sql, schema, params))
+            return 1
+
+    provider = _ProviderWithRows()
+    provider.table_exists_value = True
+
+    result = provider.repair_migration_history("mydb", "V1.sql", 999)
+
+    assert result is True
+    sql, _schema, params = provider.statements[-1]
+    assert "COALESCE(?, success)" in sql
+    assert "success = 0" not in sql
+    assert params == [999, None, "V1.sql"]
 
 
 def test_get_columns_query_contains_schema_and_table():

@@ -1201,7 +1201,7 @@ class DB2Config(DialectConfig):
     def get_qualified_identifier_pattern(self) -> Pattern[str]:
         """Get regex pattern for qualified identifiers (schema.table)."""
         identifier = r'(?:"[^"]+"|[a-zA-Z_][a-zA-Z0-9_$#@]*)'
-        return re.compile(rf"(?:{identifier}\\.)?{identifier}", re.IGNORECASE)
+        return re.compile(rf"(?:{identifier}\.)?{identifier}", re.IGNORECASE)
 
     def get_string_literal_pattern(self) -> Pattern[str]:
         """Get regex pattern for string literals."""

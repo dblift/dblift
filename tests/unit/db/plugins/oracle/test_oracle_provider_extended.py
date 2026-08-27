@@ -612,8 +612,9 @@ class TestRepairMigrationHistory:
 
         assert result is True
         sql, _schema, params = p.statements[-1]
-        assert "SUCCESS = 0" in sql
-        assert params == [999, "V1.sql"]
+        assert "COALESCE(?, SUCCESS)" in sql
+        assert "SUCCESS = 0" not in sql
+        assert params == [999, None, "V1.sql"]
 
     def test_with_success_value(self):
         p = _Provider()
@@ -623,7 +624,7 @@ class TestRepairMigrationHistory:
 
         assert result is True
         sql, _schema, params = p.statements[-1]
-        assert "SUCCESS = ?" in sql
+        assert "COALESCE(?, SUCCESS)" in sql
         assert params == [999, 1, "V1.sql"]
 
 
