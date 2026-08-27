@@ -22,9 +22,7 @@ from core.sql_model.base import (
     SqlStatementType,
 )
 from core.sql_model.dialect import SQLGLOT_DIALECT_MAP as _SQLGLOT_DIALECT_MAP
-from core.sql_model.dialect import (
-    _ensure_sqlglot_dialect_map,
-)
+from core.sql_model.dialect import _ensure_sqlglot_dialect_map
 from core.sql_parser.parser_interface import SqlParserInterface
 
 # Setup logger

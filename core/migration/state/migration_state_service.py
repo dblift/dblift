@@ -12,10 +12,7 @@ from core.logger import Log
 from core.migration.migration import normalize_migration_checksum
 from core.migration.state.migration_display_state import MigrationDisplayState
 from core.migration.version_utils import compare_versions as _compare_versions_shared
-from core.migration.version_utils import (
-    is_migration_failure,
-    is_migration_success,
-)
+from core.migration.version_utils import is_migration_failure, is_migration_success
 
 
 class MigrationStateService:
