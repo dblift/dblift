@@ -70,6 +70,18 @@ class TestSetupMigrationParameters(unittest.TestCase):
         _, dirs = helpers.setup_migration_parameters(None, None, None, ps)
         self.assertEqual(len(dirs), 2)
 
+    def test_config_dirs_accept_directory_config(self):
+        from config.dblift_config import DirectoryConfig
+
+        helpers, config = self._make()
+        config.migrations.directories = [
+            DirectoryConfig(path="/tmp/dir1", recursive=False),
+            "/tmp/dir2",
+        ]
+        ps = MagicMock()
+        _, dirs = helpers.setup_migration_parameters(None, None, None, ps)
+        self.assertEqual(dirs, [Path("/tmp/dir1"), Path("/tmp/dir2")])
+
     def test_sets_command_type_on_log(self):
         helpers, _ = self._make()
         ps = MagicMock()
