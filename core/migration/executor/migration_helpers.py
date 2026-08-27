@@ -14,6 +14,21 @@ from core.logger import Log, NullLog
 from core.sql_validator.migration_validator import MigrationValidator
 
 
+def _as_migration_dir_path(dir_path: Any) -> Path:
+    """Coerce a migrations directory entry to ``Path``.
+
+    ``config.migrations.directories`` may hold path strings or
+    ``DirectoryConfig`` objects (API construction keeps per-directory
+    recursive flags that way). ``Path()`` rejects the latter.
+    """
+    if isinstance(dir_path, Path):
+        return dir_path
+    path = getattr(dir_path, "path", None)
+    if path is not None and not isinstance(dir_path, (str, bytes)):
+        return Path(path)
+    return Path(dir_path)
+
+
 class MigrationHelpers:
     """Helper methods for migration operations."""
 
@@ -62,7 +77,10 @@ class MigrationHelpers:
         use_additional_dirs = (
             additional_dirs
             if additional_dirs is not None
-            else [Path(dir_path) for dir_path in getattr(self.config.migrations, "directories", [])]
+            else [
+                _as_migration_dir_path(dir_path)
+                for dir_path in getattr(self.config.migrations, "directories", [])
+            ]
         )
 
         return use_recursive, use_additional_dirs

@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **README demo GIF** of a real `dblift migrate --dry-run --show-sql` run
+  (`logo/dblift-migrate-dry-run.gif`), above the fold.
 - **`pytest-dblift` 0.1.0 on PyPI.** Separate package (`pip install pytest-dblift`)
   with a `pytest11` plugin, fixtures (`dblift_migrated_db`, `dblift_empty_db`,
   `dblift_validate`, `dblift_undo`, session `dblift_client` / `dblift_engine` /
@@ -18,8 +20,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **PyPI / README one-liner.** Description is now
+  “Flyway-style raw-SQL migrations for Python teams. No JVM, and you see the
+  exact SQL before it runs.” PyPI keywords: `flyway`, `migrations`, `python`,
+  `sql`, `postgresql`, `mysql`.
+
 ### Fixed
 
+- **`migrate` crashed when `migrations.directories` held `DirectoryConfig`
+  objects.** API construction keeps those objects so per-directory `recursive`
+  flags survive; `Path()` rejected them. Directory entries are coerced to
+  paths before use.
 - **PostgreSQL identity export dropped `START WITH` / `INCREMENT BY`.**
   `PostgresqlQuirks.render_identity_clause` now emits
   `(START WITH n INCREMENT BY m)` when either seed or increment is set,
