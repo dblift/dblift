@@ -167,7 +167,7 @@ def _migration_directory_path(directory: Any) -> Path:
     if isinstance(directory, (str, Path)):
         return Path(directory)
     if isinstance(directory, dict):
-        return Path(directory.get("path", "") or directory.get("directory", ""))
+        return Path(directory.get("path", ""))
     path = getattr(directory, "path", None)
     if path is not None:
         return Path(path)
@@ -248,10 +248,7 @@ def client_from_config(
     if caller_migrations_dir is None and hasattr(client_config.migrations, "get_directory_configs"):
         dir_configs = client_config.migrations.get_directory_configs()
         if dir_configs:
-            try:
-                configured_dirs = list(dir_configs)
-            except TypeError:
-                configured_dirs = []
+            configured_dirs = list(dir_configs)
             if configured_dirs:
                 # Pass DirectoryConfig objects (not just .path) so per-directory
                 # recursive flags survive normalize_migrations_dirs().

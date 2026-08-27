@@ -449,6 +449,15 @@ class TestParseAlterTableWithRegex:
         assert emitted[0].count("(") == emitted[0].count(")"), emitted[0]
         assert "(amount > 0)" in emitted[0]
 
+    def test_empty_check_body_does_not_add_constraint(self):
+        parser = HybridParser("db2")
+        result = ParseResult(success=True, statements=[])
+        parser._parse_alter_table_with_regex(
+            "ALTER TABLE app.orders ADD CONSTRAINT chk_empty CHECK ()", None, result
+        )
+        table = result.tables[0]
+        assert table.constraints == []
+
 
 class TestEnsureViewMetadata:
     def test_existing_view_query_filled_in(self):

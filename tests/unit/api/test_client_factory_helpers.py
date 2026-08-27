@@ -170,6 +170,55 @@ class TestNormalizeMigrationsDirs(unittest.TestCase):
         self.assertEqual(configs[0].path, "/tmp/scripts")
         self.assertTrue(configs[0].recursive)
 
+    def test_dict_with_recursive_false_is_preserved(self):
+        from api._client_factory import normalize_migrations_dirs
+        from config.dblift_config import DbliftConfig
+
+        config = DbliftConfig.from_dict(
+            {
+                "database": {"url": "sqlite:////tmp/test.db", "schema": "main"},
+                "migrations": {"recursive": True, "directory": "/tmp/other"},
+            }
+        )
+        normalize_migrations_dirs(config, [{"path": "/tmp/scripts", "recursive": False}])
+        configs = config.migrations.get_directory_configs()
+        self.assertEqual(configs[0].path, "/tmp/scripts")
+        self.assertFalse(configs[0].recursive)
+
+    def test_duck_typed_directory_recursive_is_preserved(self):
+        from api._client_factory import normalize_migrations_dirs
+        from config.dblift_config import DbliftConfig
+
+        config = DbliftConfig.from_dict(
+            {
+                "database": {"url": "sqlite:////tmp/test.db", "schema": "main"},
+                "migrations": {"recursive": True, "directory": "/tmp/other"},
+            }
+        )
+        normalize_migrations_dirs(config, [SimpleNamespace(path="/tmp/scripts", recursive=False)])
+        configs = config.migrations.get_directory_configs()
+        self.assertEqual(configs[0].path, "/tmp/scripts")
+        self.assertFalse(configs[0].recursive)
+
+    def test_mixed_directory_config_and_path_keeps_per_dir_recursive(self):
+        from api._client_factory import normalize_migrations_dirs
+        from config.dblift_config import DbliftConfig, DirectoryConfig
+
+        config = DbliftConfig.from_dict(
+            {
+                "database": {"url": "sqlite:////tmp/test.db", "schema": "main"},
+                "migrations": {"recursive": True, "directory": "/tmp/other"},
+            }
+        )
+        normalize_migrations_dirs(
+            config,
+            [DirectoryConfig(path="/tmp/a", recursive=False), "/tmp/b"],
+        )
+        configs = config.migrations.get_directory_configs()
+        self.assertEqual([c.path for c in configs], ["/tmp/a", "/tmp/b"])
+        self.assertFalse(configs[0].recursive)
+        self.assertTrue(configs[1].recursive)
+
 
 class TestApplyCtorOverrides(unittest.TestCase):
     def _config(self):
