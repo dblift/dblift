@@ -27,6 +27,26 @@ class TestMigrationHelpersInit(unittest.TestCase):
         self.assertIsInstance(helpers.log, NullLog)
 
 
+class TestAsMigrationDirPath(unittest.TestCase):
+    def test_path_instance_returned_as_is(self):
+        from core.migration.executor.migration_helpers import _as_migration_dir_path
+
+        p = Path("/tmp/scripts")
+        self.assertIs(_as_migration_dir_path(p), p)
+
+    def test_directory_config_uses_path_attr(self):
+        from config.dblift_config import DirectoryConfig
+        from core.migration.executor.migration_helpers import _as_migration_dir_path
+
+        entry = DirectoryConfig(path="/tmp/scripts", recursive=False)
+        self.assertEqual(_as_migration_dir_path(entry), Path("/tmp/scripts"))
+
+    def test_string_path(self):
+        from core.migration.executor.migration_helpers import _as_migration_dir_path
+
+        self.assertEqual(_as_migration_dir_path("/tmp/scripts"), Path("/tmp/scripts"))
+
+
 class TestSetupMigrationParameters(unittest.TestCase):
     def _make(self):
         from core.migration.executor.migration_helpers import MigrationHelpers
@@ -81,6 +101,13 @@ class TestSetupMigrationParameters(unittest.TestCase):
         ps = MagicMock()
         _, dirs = helpers.setup_migration_parameters(None, None, None, ps)
         self.assertEqual(dirs, [Path("/tmp/dir1"), Path("/tmp/dir2")])
+
+    def test_config_dirs_accept_path_objects(self):
+        helpers, config = self._make()
+        config.migrations.directories = [Path("/tmp/dir1")]
+        ps = MagicMock()
+        _, dirs = helpers.setup_migration_parameters(None, None, None, ps)
+        self.assertEqual(dirs, [Path("/tmp/dir1")])
 
     def test_sets_command_type_on_log(self):
         helpers, _ = self._make()
