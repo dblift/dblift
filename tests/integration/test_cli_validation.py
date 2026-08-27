@@ -15,9 +15,7 @@ from pathlib import Path
 import pytest
 
 from tests.integration.helpers.cli_runner_direct import DBLiftCLIDirect as DBLiftCLI
-from tests.integration.helpers.cli_runner_direct import (
-    get_cli_version,
-)
+from tests.integration.helpers.cli_runner_direct import get_cli_version
 
 
 @pytest.mark.integration

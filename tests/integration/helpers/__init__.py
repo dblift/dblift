@@ -12,9 +12,7 @@ from .cli_runner_direct import (
     CommandResult,
 )
 from .cli_runner_direct import DBLiftCLIDirect as DBLiftCLI
-from .cli_runner_direct import (
-    get_cli_version,
-)
+from .cli_runner_direct import get_cli_version
 from .concurrency_helper import (
     ConcurrentExecutionResult,
     ConcurrentExecutor,
