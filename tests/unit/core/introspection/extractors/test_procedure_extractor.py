@@ -5,7 +5,7 @@ from unittest.mock import MagicMock
 
 
 def _make_extractor(dialect="postgresql", vendor_queries=None):
-    from core.introspection.extractors.procedure_extractor import ProcedureExtractor
+    from dblift.core.introspection.extractors.procedure_extractor import ProcedureExtractor
 
     provider = MagicMock()
     provider.query_executor = MagicMock()
@@ -19,17 +19,23 @@ def _make_extractor(dialect="postgresql", vendor_queries=None):
 
 class TestExtractDefinitionParts(unittest.TestCase):
     def test_none_returns_none_none(self):
-        from core.introspection.extractors.procedure_extractor import _extract_definition_parts
+        from dblift.core.introspection.extractors.procedure_extractor import (
+            _extract_definition_parts,
+        )
 
         self.assertEqual(_extract_definition_parts(None), (None, None))
 
     def test_empty_string(self):
-        from core.introspection.extractors.procedure_extractor import _extract_definition_parts
+        from dblift.core.introspection.extractors.procedure_extractor import (
+            _extract_definition_parts,
+        )
 
         self.assertEqual(_extract_definition_parts(""), (None, None))
 
     def test_with_as_keyword(self):
-        from core.introspection.extractors.procedure_extractor import _extract_definition_parts
+        from dblift.core.introspection.extractors.procedure_extractor import (
+            _extract_definition_parts,
+        )
 
         defn = "CREATE PROCEDURE foo AS BEGIN SELECT 1 END"
         full, body = _extract_definition_parts(defn)
@@ -37,7 +43,9 @@ class TestExtractDefinitionParts(unittest.TestCase):
         self.assertIn("BEGIN", body)
 
     def test_without_as_keyword(self):
-        from core.introspection.extractors.procedure_extractor import _extract_definition_parts
+        from dblift.core.introspection.extractors.procedure_extractor import (
+            _extract_definition_parts,
+        )
 
         defn = "CREATE PROCEDURE foo()"
         full, body = _extract_definition_parts(defn)
@@ -47,32 +55,32 @@ class TestExtractDefinitionParts(unittest.TestCase):
 
 class TestIsFullDefinition(unittest.TestCase):
     def test_create_is_full(self):
-        from core.introspection.extractors.procedure_extractor import _is_full_definition
+        from dblift.core.introspection.extractors.procedure_extractor import _is_full_definition
 
         self.assertTrue(_is_full_definition("CREATE PROCEDURE foo"))
 
     def test_alter_is_full(self):
-        from core.introspection.extractors.procedure_extractor import _is_full_definition
+        from dblift.core.introspection.extractors.procedure_extractor import _is_full_definition
 
         self.assertTrue(_is_full_definition("ALTER PROCEDURE foo"))
 
     def test_replace_is_full(self):
-        from core.introspection.extractors.procedure_extractor import _is_full_definition
+        from dblift.core.introspection.extractors.procedure_extractor import _is_full_definition
 
         self.assertTrue(_is_full_definition("REPLACE PROCEDURE foo"))
 
     def test_partial_not_full(self):
-        from core.introspection.extractors.procedure_extractor import _is_full_definition
+        from dblift.core.introspection.extractors.procedure_extractor import _is_full_definition
 
         self.assertFalse(_is_full_definition("BEGIN SELECT 1 END"))
 
     def test_none_false(self):
-        from core.introspection.extractors.procedure_extractor import _is_full_definition
+        from dblift.core.introspection.extractors.procedure_extractor import _is_full_definition
 
         self.assertFalse(_is_full_definition(None))
 
     def test_empty_false(self):
-        from core.introspection.extractors.procedure_extractor import _is_full_definition
+        from dblift.core.introspection.extractors.procedure_extractor import _is_full_definition
 
         self.assertFalse(_is_full_definition(""))
 
@@ -83,7 +91,7 @@ class TestCleanOracleSourceText(unittest.TestCase):
 
     @staticmethod
     def _quirks():
-        from db.plugins.oracle.quirks import OracleQuirks
+        from dblift.db.plugins.oracle.quirks import OracleQuirks
 
         return OracleQuirks()
 
@@ -226,7 +234,7 @@ class TestGetTriggers(unittest.TestCase):
     def test_returns_empty_without_vendor_queries(self):
         # ProcedureExtractor does not have get_triggers — verify no AttributeError is expected
         # This test is kept as a placeholder indicating get_triggers is not part of this extractor.
-        from core.introspection.extractors.procedure_extractor import ProcedureExtractor
+        from dblift.core.introspection.extractors.procedure_extractor import ProcedureExtractor
 
         self.assertFalse(hasattr(ProcedureExtractor, "get_triggers"))
 
@@ -240,7 +248,9 @@ class TestExtractDefinitionPartsEdgeCases(unittest.TestCase):
     """Cover lines 35 (whitespace-only after strip_leading_comments) and 43 (EXECUTE AS skip)."""
 
     def test_whitespace_only_returns_none_none(self):
-        from core.introspection.extractors.procedure_extractor import _extract_definition_parts
+        from dblift.core.introspection.extractors.procedure_extractor import (
+            _extract_definition_parts,
+        )
 
         # After strip_leading_comments, the remaining text is blank → (None, None)
         result = _extract_definition_parts("   ")
@@ -248,7 +258,9 @@ class TestExtractDefinitionPartsEdgeCases(unittest.TestCase):
 
     def test_execute_as_preceding_is_skipped(self):
         """EXECUTE AS should not be treated as the body delimiter."""
-        from core.introspection.extractors.procedure_extractor import _extract_definition_parts
+        from dblift.core.introspection.extractors.procedure_extractor import (
+            _extract_definition_parts,
+        )
 
         defn = "CREATE PROCEDURE foo EXECUTE AS CALLER AS BEGIN SELECT 1 END"
         full, body = _extract_definition_parts(defn)
@@ -258,7 +270,9 @@ class TestExtractDefinitionPartsEdgeCases(unittest.TestCase):
 
     def test_definition_with_only_execute_as_no_body_as(self):
         """Definition containing only EXECUTE AS and no body AS keyword."""
-        from core.introspection.extractors.procedure_extractor import _extract_definition_parts
+        from dblift.core.introspection.extractors.procedure_extractor import (
+            _extract_definition_parts,
+        )
 
         defn = "EXECUTE AS CALLER"
         full, body = _extract_definition_parts(defn)

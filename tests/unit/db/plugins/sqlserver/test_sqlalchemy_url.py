@@ -7,7 +7,7 @@ import pytest
 import yaml
 from sqlalchemy.engine import make_url
 
-from db.plugins.sqlserver.plugin import PLUGIN as SQLSERVER_PLUGIN
+from dblift.db.plugins.sqlserver.plugin import PLUGIN as SQLSERVER_PLUGIN
 
 
 def _db(**kw):

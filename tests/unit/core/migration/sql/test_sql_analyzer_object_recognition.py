@@ -28,8 +28,8 @@ Two invariants this module pins:
 
 import unittest
 
-from core.migration.sql.sql_analyzer import SqlAnalyzer
-from core.sql_model._base_sql_object import SqlObjectType
+from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
+from dblift.core.sql_model._base_sql_object import SqlObjectType
 
 
 def _only(analyzer: SqlAnalyzer, sql: str) -> dict:

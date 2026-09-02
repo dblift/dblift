@@ -1,7 +1,7 @@
 """Tests for the dialect-agnostic DML undo-safety scanner."""
 
-from db.base_quirks import BaseQuirks
-from db.dml_analysis import (
+from dblift.db.base_quirks import BaseQuirks
+from dblift.db.dml_analysis import (
     analyze_dml,
     dml_where_predicate,
     extract_dml_table_name,

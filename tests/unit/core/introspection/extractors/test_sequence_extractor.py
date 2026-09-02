@@ -9,7 +9,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from core.introspection.extractors.sequence_extractor import SequenceExtractor
+from dblift.core.introspection.extractors.sequence_extractor import SequenceExtractor
 
 pytestmark = [pytest.mark.unit]
 
@@ -202,7 +202,7 @@ def _exported_create_sequence(name):
     OSS dialect generators do not render sequences (paid generators do), so the
     model fallback without a dialect is the portable assertion for this layer.
     """
-    from core.sql_model.sequence import Sequence
+    from dblift.core.sql_model.sequence import Sequence
 
     return Sequence(name).create_statement
 

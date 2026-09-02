@@ -20,7 +20,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from core.migration.scripting.undo_script_generator import UndoScriptGenerator, UndoStatement
+from dblift.core.migration.scripting.undo_script_generator import UndoScriptGenerator, UndoStatement
 
 # ---------------------------------------------------------------------------
 # Helpers — build a minimal concrete instance of the mixin
@@ -34,7 +34,7 @@ def make_generator(dialect="postgresql"):
 
 def make_stmt(sql, affected_objects=None, objects=None, statement_type=None):
     """Build a minimal mock SqlStatement."""
-    from core.sql_model.base import SqlStatementType
+    from dblift.core.sql_model.base import SqlStatementType
 
     stmt = MagicMock()
     stmt.sql_text = sql
@@ -476,7 +476,7 @@ class TestReverseInsertFromParsed:
         stmt = make_stmt("INSERT INTO users (id) VALUES (1);", objects=[obj])
         # Patch parse_one to raise
         with patch(
-            "core.migration.scripting.undo_script_generator._reversers.parse_one",
+            "dblift.core.migration.scripting.undo_script_generator._reversers.parse_one",
             side_effect=Exception("parse error"),
         ):
             result = gen._reverse_insert_from_parsed(stmt)
@@ -488,7 +488,7 @@ class TestReverseInsertFromParsed:
         gen = make_generator()
         stmt = make_stmt("INSERT INTO users (id) VALUES (1);", objects=[])
         with patch(
-            "core.migration.scripting.undo_script_generator._reversers.parse_one",
+            "dblift.core.migration.scripting.undo_script_generator._reversers.parse_one",
             side_effect=Exception("parse error"),
         ):
             result = gen._reverse_insert_from_parsed(stmt)
@@ -500,7 +500,7 @@ class TestReverseInsertFromParsed:
         obj = make_obj("users", "TABLE")
         stmt = make_stmt("INSERT INTO users SELECT * FROM old_users;", objects=[obj])
         with patch(
-            "core.migration.scripting.undo_script_generator._reversers.parse_one",
+            "dblift.core.migration.scripting.undo_script_generator._reversers.parse_one",
             side_effect=Exception("parse error"),
         ):
             with patch.object(gen, "_extract_insert_where_clause", return_value=None):
@@ -513,7 +513,7 @@ class TestReverseInsertFromParsed:
         obj = make_obj("users", "TABLE")
         stmt = make_stmt("INSERT INTO users (id, name) VALUES (1, 'Alice');", objects=[obj])
         with patch(
-            "core.migration.scripting.undo_script_generator._reversers.parse_one",
+            "dblift.core.migration.scripting.undo_script_generator._reversers.parse_one",
             side_effect=Exception("parse error"),
         ):
             with patch.object(gen, "_extract_insert_where_clause", return_value="id = 1"):
@@ -649,7 +649,7 @@ class TestReverseComment:
 @pytest.mark.unit
 class TestReverseStatementFromParsed:
     def test_routes_to_create(self):
-        from core.sql_model.base import SqlStatementType
+        from dblift.core.sql_model.base import SqlStatementType
 
         gen = make_generator()
         obj = make_obj("users", "TABLE")
@@ -662,7 +662,7 @@ class TestReverseStatementFromParsed:
         assert result is not None
 
     def test_routes_to_alter(self):
-        from core.sql_model.base import SqlStatementType
+        from dblift.core.sql_model.base import SqlStatementType
 
         gen = make_generator()
         obj = make_obj("users", "TABLE")
@@ -675,7 +675,7 @@ class TestReverseStatementFromParsed:
         assert result is not None
 
     def test_routes_to_drop(self):
-        from core.sql_model.base import SqlStatementType
+        from dblift.core.sql_model.base import SqlStatementType
 
         gen = make_generator()
         stmt = make_stmt("DROP TABLE users;", statement_type=SqlStatementType.DROP)
@@ -683,7 +683,7 @@ class TestReverseStatementFromParsed:
         assert result.requires_manual_review is True
 
     def test_routes_to_insert(self):
-        from core.sql_model.base import SqlStatementType
+        from dblift.core.sql_model.base import SqlStatementType
 
         gen = make_generator()
         stmt = make_stmt(
@@ -693,7 +693,7 @@ class TestReverseStatementFromParsed:
         assert result is not None
 
     def test_routes_to_update(self):
-        from core.sql_model.base import SqlStatementType
+        from dblift.core.sql_model.base import SqlStatementType
 
         gen = make_generator()
         stmt = make_stmt(
@@ -703,7 +703,7 @@ class TestReverseStatementFromParsed:
         assert result.requires_manual_review is True
 
     def test_routes_to_delete(self):
-        from core.sql_model.base import SqlStatementType
+        from dblift.core.sql_model.base import SqlStatementType
 
         gen = make_generator()
         stmt = make_stmt("DELETE FROM users WHERE id=1;", statement_type=SqlStatementType.DELETE)
@@ -711,7 +711,7 @@ class TestReverseStatementFromParsed:
         assert result.requires_manual_review is True
 
     def test_routes_to_comment(self):
-        from core.sql_model.base import SqlStatementType
+        from dblift.core.sql_model.base import SqlStatementType
 
         gen = make_generator()
         obj = make_obj("users", "TABLE")
@@ -724,7 +724,7 @@ class TestReverseStatementFromParsed:
         assert result is not None
 
     def test_unknown_type_returns_warning(self):
-        from core.sql_model.base import SqlStatementType
+        from dblift.core.sql_model.base import SqlStatementType
 
         gen = make_generator()
         stmt = make_stmt("GRANT SELECT ON users TO admin;", statement_type=SqlStatementType.UNKNOWN)

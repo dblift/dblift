@@ -13,15 +13,15 @@ import types
 
 import pytest
 
-from config.config_builder import ConfigBuilder
-from config.dblift_config import (
+from dblift.config.config_builder import ConfigBuilder
+from dblift.config.dblift_config import (
     DEFAULT_ENV_SELECTOR_VAR,
     DbliftConfig,
     apply_environment,
     load_config,
     select_environment,
 )
-from config.errors import ConfigurationError
+from dblift.config.errors import ConfigurationError
 
 pytestmark = [pytest.mark.unit]
 
@@ -260,7 +260,7 @@ class TestSelectorReservation:
         """DBLIFT_ENV / --env select configuration; they must never become a
         persistent property (which would inject an ``env`` key into the config
         dict and shadow the selector)."""
-        from config.property_registry import PROPERTY_REGISTRY
+        from dblift.config.property_registry import PROPERTY_REGISTRY
 
         for spec in PROPERTY_REGISTRY:
             assert spec.env != DEFAULT_ENV_SELECTOR_VAR, spec.name

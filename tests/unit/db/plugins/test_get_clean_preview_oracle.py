@@ -9,7 +9,7 @@ processes without executing any DROP.
 import unittest
 from unittest.mock import MagicMock
 
-from db.plugins.oracle.oracle.schema_operations import OracleSchemaOperations
+from dblift.db.plugins.oracle.oracle.schema_operations import OracleSchemaOperations
 
 
 def _qx_with_rows(rows_by_keyword):

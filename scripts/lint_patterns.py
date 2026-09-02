@@ -73,7 +73,13 @@ from pathlib import Path
 from typing import Iterator, List, Optional, Tuple
 
 # Roots scanned by default when the user passes no positional argument.
-DEFAULT_ROOTS: Tuple[str, ...] = ("api", "cli", "config", "core", "db")
+DEFAULT_ROOTS: Tuple[str, ...] = (
+    "dblift/api",
+    "dblift/cli",
+    "dblift/config",
+    "dblift/core",
+    "dblift/db",
+)
 
 # Annotations a maintainer adds to the offending line (or the line just
 # above) to declare the occurrence as intentional / deferred.
@@ -295,6 +301,11 @@ def _is_under_dialect_rule_roots(path: Path) -> bool:
     ship one-off tools and are out of scope entirely.
     """
     parts = path.parts
+    # The tree lives under the ``dblift`` package; rule roots and exemptions
+    # are expressed relative to it so synthetic test paths keep working.
+    if parts and parts[0] == "dblift":
+        parts = parts[1:]
+        path = Path(*parts) if parts else Path()
     if not parts:
         return False
     if parts[0] not in DIALECT_RULE_ROOTS:

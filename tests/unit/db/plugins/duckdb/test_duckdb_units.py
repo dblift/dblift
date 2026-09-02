@@ -16,7 +16,7 @@ pytest.importorskip("duckdb_engine", reason="duckdb_engine dialect not installed
 @pytest.mark.unit
 class TestDuckDBConfig:
     def test_path_from_url_file(self):
-        from db.plugins.duckdb.config import DuckDBConfig
+        from dblift.db.plugins.duckdb.config import DuckDBConfig
 
         cfg = DuckDBConfig(type="duckdb", url="duckdb:////tmp/x.duckdb")
         assert cfg.path == "/tmp/x.duckdb"
@@ -24,12 +24,12 @@ class TestDuckDBConfig:
         assert cfg.username == "" and cfg.password == ""
 
     def test_path_from_url_memory(self):
-        from db.plugins.duckdb.config import DuckDBConfig
+        from dblift.db.plugins.duckdb.config import DuckDBConfig
 
         assert DuckDBConfig(type="duckdb", url="duckdb:///:memory:").path == ":memory:"
 
     def test_path_from_url_relative_vs_absolute(self):
-        from db.plugins.duckdb.config import DuckDBConfig
+        from dblift.db.plugins.duckdb.config import DuckDBConfig
 
         # 3-slash → relative (duckdb_engine convention); 4-slash → absolute.
         assert DuckDBConfig(type="duckdb", url="duckdb:///app.db").path == "app.db"
@@ -37,19 +37,19 @@ class TestDuckDBConfig:
         assert DuckDBConfig(type="duckdb", url="duckdb:////abs/app.db").path == "/abs/app.db"
 
     def test_path_from_database_field(self):
-        from db.plugins.duckdb.config import DuckDBConfig
+        from dblift.db.plugins.duckdb.config import DuckDBConfig
 
         cfg = DuckDBConfig(type="duckdb", database="/data/w.duckdb")
         assert cfg.path == "/data/w.duckdb"
 
     def test_missing_path_raises(self):
-        from db.plugins.duckdb.config import DuckDBConfig
+        from dblift.db.plugins.duckdb.config import DuckDBConfig
 
         with pytest.raises(ValueError, match="path is required"):
             DuckDBConfig(type="duckdb")
 
     def test_to_dict_and_conn_props(self):
-        from db.plugins.duckdb.config import DuckDBConfig
+        from dblift.db.plugins.duckdb.config import DuckDBConfig
 
         cfg = DuckDBConfig(type="duckdb", path="/tmp/x.duckdb")
         assert cfg.to_dict()["path"] == "/tmp/x.duckdb"
@@ -61,15 +61,15 @@ class TestDuckDBConfig:
 @pytest.mark.unit
 class TestSqlAlchemyUrl:
     def test_build_from_path(self):
-        from db.plugins.duckdb.config import DuckDBConfig
-        from db.plugins.duckdb.sqlalchemy_url import build_sqlalchemy_url
+        from dblift.db.plugins.duckdb.config import DuckDBConfig
+        from dblift.db.plugins.duckdb.sqlalchemy_url import build_sqlalchemy_url
 
         assert build_sqlalchemy_url(DuckDBConfig(type="duckdb", path="/tmp/x.duckdb")) == (
             "duckdb:////tmp/x.duckdb"
         )
 
     def test_build_memory(self):
-        from db.plugins.duckdb.sqlalchemy_url import build_sqlalchemy_url
+        from dblift.db.plugins.duckdb.sqlalchemy_url import build_sqlalchemy_url
 
         class _C:
             url = None
@@ -79,7 +79,7 @@ class TestSqlAlchemyUrl:
         assert build_sqlalchemy_url(_C()) == "duckdb:///:memory:"
 
     def test_raw_url_passthrough(self):
-        from db.plugins.duckdb.sqlalchemy_url import build_sqlalchemy_url
+        from dblift.db.plugins.duckdb.sqlalchemy_url import build_sqlalchemy_url
 
         class _C:
             url = "duckdb:///abc.duckdb"
@@ -87,7 +87,7 @@ class TestSqlAlchemyUrl:
         assert build_sqlalchemy_url(_C()) == "duckdb:///abc.duckdb"
 
     def test_bad_url_raises(self):
-        from db.plugins.duckdb.sqlalchemy_url import build_sqlalchemy_url
+        from dblift.db.plugins.duckdb.sqlalchemy_url import build_sqlalchemy_url
 
         class _C:
             url = "postgresql://x"
@@ -100,7 +100,7 @@ class TestSqlAlchemyUrl:
 @pytest.mark.unit
 class TestDuckDBQuirks:
     def test_type_maps(self):
-        from db.plugins.duckdb.quirks import DuckDBQuirks
+        from dblift.db.plugins.duckdb.quirks import DuckDBQuirks
 
         q = DuckDBQuirks()
         assert q.type_equivalents()["INT8"] == "BIGINT"
@@ -108,8 +108,8 @@ class TestDuckDBQuirks:
         assert q.type_preferences()["VARCHAR"] == "VARCHAR"
 
     def test_parser_class_dispatch(self):
-        from db.plugins.duckdb.parser.duckdb_regex_parser import DuckDBRegexParser
-        from db.plugins.duckdb.quirks import DuckDBQuirks
+        from dblift.db.plugins.duckdb.parser.duckdb_regex_parser import DuckDBRegexParser
+        from dblift.db.plugins.duckdb.quirks import DuckDBQuirks
 
         q = DuckDBQuirks()
         assert q.parser_class("regex") is DuckDBRegexParser
@@ -122,7 +122,7 @@ class TestDuckDBQuirks:
 @pytest.mark.unit
 class TestParserConfig:
     def test_classification_and_getters(self):
-        from db.plugins.duckdb.parser.parser_config import DuckDBParserConfig
+        from dblift.db.plugins.duckdb.parser.parser_config import DuckDBParserConfig
 
         cfg = DuckDBParserConfig()
         assert cfg.is_ddl_statement("CREATE SEQUENCE s START 1")
@@ -138,7 +138,7 @@ class TestParserConfig:
         assert "COMMIT" in cfg.get_transaction_keywords()
 
     def test_identifier_normalization_and_properties(self):
-        from db.plugins.duckdb.parser.parser_config import DuckDBParserConfig
+        from dblift.db.plugins.duckdb.parser.parser_config import DuckDBParserConfig
 
         cfg = DuckDBParserConfig()
         assert cfg.normalize_identifier('"Mixed"') == "Mixed"
@@ -159,7 +159,7 @@ class TestParserConfig:
 @pytest.mark.unit
 class TestRegexParser:
     def test_split_empty_and_block_comment(self):
-        from db.plugins.duckdb.parser.duckdb_regex_parser import DuckDBRegexParser
+        from dblift.db.plugins.duckdb.parser.duckdb_regex_parser import DuckDBRegexParser
 
         p = DuckDBRegexParser()
         assert p.split_statements("") == []
@@ -167,7 +167,7 @@ class TestRegexParser:
         assert len(stmts) == 2
 
     def test_split_respects_quoted_identifiers(self):
-        from db.plugins.duckdb.parser.duckdb_regex_parser import DuckDBRegexParser
+        from dblift.db.plugins.duckdb.parser.duckdb_regex_parser import DuckDBRegexParser
 
         p = DuckDBRegexParser()
         # ';' and '--' inside a double-quoted identifier are literal.
@@ -178,7 +178,7 @@ class TestRegexParser:
         assert len(stmts2) == 2
 
     def test_extract_variants(self):
-        from db.plugins.duckdb.parser.duckdb_regex_parser import DuckDBRegexParser
+        from dblift.db.plugins.duckdb.parser.duckdb_regex_parser import DuckDBRegexParser
 
         p = DuckDBRegexParser()
         assert p.extract_objects("") == []
@@ -189,9 +189,9 @@ class TestRegexParser:
 # --- provider helper methods ------------------------------------------
 @pytest.fixture()
 def provider():
-    from config import DbliftConfig
-    from db.plugins.duckdb.config import DuckDBConfig
-    from db.plugins.duckdb.provider import DuckDBProvider
+    from dblift.config import DbliftConfig
+    from dblift.db.plugins.duckdb.config import DuckDBConfig
+    from dblift.db.plugins.duckdb.provider import DuckDBProvider
 
     tmp = Path(tempfile.mkdtemp())
     p = DuckDBProvider(

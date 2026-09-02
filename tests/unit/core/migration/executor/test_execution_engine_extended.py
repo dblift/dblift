@@ -12,16 +12,16 @@ from unittest.mock import MagicMock, patch
 
 from sqlalchemy.exc import OperationalError
 
-from core.exceptions import CallbackExecutionError
-from core.migration.executor.execution_engine import ExecutionEngine
-from core.migration.formats import MigrationFormat
-from core.migration.migration import Migration
-from db.provider_interfaces import TransactionalProvider
+from dblift.core.exceptions import CallbackExecutionError
+from dblift.core.migration.executor.execution_engine import ExecutionEngine
+from dblift.core.migration.formats import MigrationFormat
+from dblift.core.migration.migration import Migration
+from dblift.db.provider_interfaces import TransactionalProvider
 
 
 def _make_engine(dialect="postgresql", with_history=False, with_config=True):
     """Build a minimal ExecutionEngine suitable for unit tests."""
-    from db.base_provider import TransactionalProvider
+    from dblift.db.base_provider import TransactionalProvider
 
     provider = MagicMock()
     provider.__class__ = TransactionalProvider

@@ -7,7 +7,7 @@ import pytest
 
 
 def _make_executor():
-    from db.plugins.cosmosdb.cosmosdb.query_executor import CosmosDbQueryExecutor
+    from dblift.db.plugins.cosmosdb.cosmosdb.query_executor import CosmosDbQueryExecutor
 
     executor = CosmosDbQueryExecutor.__new__(CosmosDbQueryExecutor)
     executor.log = logging.getLogger("test")
@@ -116,14 +116,14 @@ class TestExecuteQueryParamSubstitution:
 @pytest.mark.unit
 class TestCosmosParameterPlaceholderContract:
     def test_provider_uses_question_mark_placeholders(self):
-        from db.plugins.cosmosdb.provider import CosmosDbProvider
+        from dblift.db.plugins.cosmosdb.provider import CosmosDbProvider
 
         provider = CosmosDbProvider.__new__(CosmosDbProvider)
 
         assert provider.get_parameter_placeholders(3) == "?, ?, ?"
 
     def test_schema_operations_uses_question_mark_placeholders(self):
-        from db.plugins.cosmosdb.cosmosdb.schema_operations import CosmosDbSchemaOperations
+        from dblift.db.plugins.cosmosdb.cosmosdb.schema_operations import CosmosDbSchemaOperations
 
         operations = CosmosDbSchemaOperations.__new__(CosmosDbSchemaOperations)
 

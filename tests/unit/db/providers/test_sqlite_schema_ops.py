@@ -5,7 +5,7 @@ from unittest.mock import MagicMock
 
 
 def _make_ops():
-    from db.plugins.sqlite.sqlite.schema_operations import SQLiteSchemaOperations
+    from dblift.db.plugins.sqlite.sqlite.schema_operations import SQLiteSchemaOperations
 
     qe = MagicMock()
     log = MagicMock()
@@ -18,8 +18,8 @@ class TestSQLiteSchemaOpsInit(unittest.TestCase):
         self.assertIs(ops.query_executor, qe)
 
     def test_null_log_default(self):
-        from core.logger import NullLog
-        from db.plugins.sqlite.sqlite.schema_operations import SQLiteSchemaOperations
+        from dblift.core.logger import NullLog
+        from dblift.db.plugins.sqlite.sqlite.schema_operations import SQLiteSchemaOperations
 
         ops = SQLiteSchemaOperations(MagicMock())
         self.assertIsInstance(ops.log, NullLog)

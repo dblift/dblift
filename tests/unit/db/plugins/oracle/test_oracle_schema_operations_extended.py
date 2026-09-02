@@ -1,4 +1,4 @@
-"""Extended unit tests for :class:`db.plugins.oracle.oracle.schema_operations.OracleSchemaOperations`.
+"""Extended unit tests for :class:`dblift.db.plugins.oracle.oracle.schema_operations.OracleSchemaOperations`.
 
 Targets fallback/exception branches not covered by the existing
 ``test_oracle_plugin.py`` / ``test_get_clean_preview_oracle.py`` /
@@ -7,8 +7,8 @@ Targets fallback/exception branches not covered by the existing
 
 from unittest.mock import MagicMock
 
-from core.migration.clean_summary import CleanExecutionSummary
-from db.plugins.oracle.oracle.schema_operations import OracleSchemaOperations
+from dblift.core.migration.clean_summary import CleanExecutionSummary
+from dblift.db.plugins.oracle.oracle.schema_operations import OracleSchemaOperations
 
 
 def _make_qe():

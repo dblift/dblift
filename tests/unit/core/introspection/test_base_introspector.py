@@ -7,7 +7,7 @@ from unittest.mock import MagicMock
 
 def _make_concrete(dialect="postgresql"):
     """Create minimal concrete BaseIntrospector subclass."""
-    from core.introspection.base_introspector import BaseIntrospector
+    from dblift.core.introspection.base_introspector import BaseIntrospector
 
     class ConcreteIntrospector(BaseIntrospector):
         def get_tables(self, schema, include_views=False, table_pattern="%"):
@@ -60,7 +60,7 @@ class TestBaseIntrospectorInit(unittest.TestCase):
         self.assertEqual(intr.dialect, "oracle")
 
     def test_dialect_unknown_when_no_config(self):
-        from core.introspection.base_introspector import BaseIntrospector
+        from dblift.core.introspection.base_introspector import BaseIntrospector
 
         class Minimal(BaseIntrospector):
             def get_tables(self, s, iv=False, tp="%"):
@@ -101,8 +101,8 @@ class TestBaseIntrospectorInit(unittest.TestCase):
         self.assertEqual(intr.dialect, "unknown")
 
     def test_null_log_default(self):
-        from core.introspection.base_introspector import BaseIntrospector
-        from core.logger import NullLog
+        from dblift.core.introspection.base_introspector import BaseIntrospector
+        from dblift.core.logger import NullLog
 
         class Minimal(BaseIntrospector):
             def get_tables(self, s, iv=False, tp="%"):

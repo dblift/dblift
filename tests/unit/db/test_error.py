@@ -4,7 +4,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from db.error import (
+from dblift.db.error import (
     DatabaseErrorClassifier,
     ErrorCategory,
     _extract_sqlstate,
@@ -298,7 +298,7 @@ class TestIsAuthError:
         """If DatabaseErrorClassifier(db_type) or categorize_error() raises for
         any reason, _is_auth_error must swallow it and report 'not an auth
         error' rather than propagating."""
-        with patch("db.error.DatabaseErrorClassifier", side_effect=RuntimeError("boom")):
+        with patch("dblift.db.error.DatabaseErrorClassifier", side_effect=RuntimeError("boom")):
             result = _is_auth_error(
                 Exception("some odd driver failure"), "some odd driver failure", "generic"
             )

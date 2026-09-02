@@ -4,8 +4,8 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from core.constants import DBLIFT_SCHEMA_SNAPSHOTS_TABLE
-from db.plugins.mongodb.mongodb import MongoDbSnapshotManager
+from dblift.core.constants import DBLIFT_SCHEMA_SNAPSHOTS_TABLE
+from dblift.db.plugins.mongodb.mongodb import MongoDbSnapshotManager
 
 
 def _manager():

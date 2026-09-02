@@ -2,7 +2,7 @@
 
 import pytest
 
-from core.logger import Log, NullLog
+from dblift.core.logger import Log, NullLog
 
 pytestmark = [pytest.mark.unit]
 
@@ -112,12 +112,12 @@ class TestNullLogImport:
 
     def test_importable_from_core_logger(self):
         """NullLog est importable depuis core.logger."""
-        from core.logger import NullLog as NL
+        from dblift.core.logger import NullLog as NL
 
         assert NL is NullLog
 
     def test_in_all_exports(self):
         """NullLog est dans __all__ de core.logger."""
-        import core.logger as logger_module
+        import dblift.core.logger as logger_module
 
         assert "NullLog" in logger_module.__all__

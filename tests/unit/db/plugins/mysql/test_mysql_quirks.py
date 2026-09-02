@@ -2,7 +2,7 @@
 
 import pytest
 
-from db.plugins.mysql.quirks import MysqlQuirks
+from dblift.db.plugins.mysql.quirks import MysqlQuirks
 
 pytestmark = [pytest.mark.unit]
 

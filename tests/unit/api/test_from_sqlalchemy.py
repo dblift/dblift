@@ -6,9 +6,9 @@ from pathlib import Path
 import pytest
 from sqlalchemy import create_engine
 
-from api import DBLiftClient
-from config import DbliftConfig
-from config.errors import ConfigurationError
+from dblift.api import DBLiftClient
+from dblift.config import DbliftConfig
+from dblift.config.errors import ConfigurationError
 
 
 def test_from_sqlalchemy_migrate_sqlite(tmp_path):

@@ -4,8 +4,8 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from core.logger import NullLog
-from db.plugins.base_query_executor import BaseQueryExecutor
+from dblift.core.logger import NullLog
+from dblift.db.plugins.base_query_executor import BaseQueryExecutor
 
 
 class ConcreteQueryExecutor(BaseQueryExecutor):

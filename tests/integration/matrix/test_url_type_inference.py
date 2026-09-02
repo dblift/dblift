@@ -22,7 +22,7 @@ from typing import Optional
 import pytest
 import yaml
 
-from config.dblift_config import load_config
+from dblift.config.dblift_config import load_config
 
 # Every case starts from a *valid* config (type X + matching URL + creds) and
 # then overrides --db-url to a different dialect. The expected final type must

@@ -15,7 +15,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from core.migration.commands.base_command import BaseCommand
+from dblift.core.migration.commands.base_command import BaseCommand
 
 
 def _make_command_stub() -> BaseCommand:
@@ -103,13 +103,13 @@ class TestCommandLifecycleIntentionalDeviations:
         return Path(relative_path).read_text(encoding="utf-8")
 
     def test_clean_retains_custom_dry_run_connection_handling(self):
-        source = self._source("core/migration/commands/clean_command.py")
+        source = self._source("dblift/core/migration/commands/clean_command.py")
         assert "dry_run" in source
         assert "list_droppable_objects" in source
         assert "_run_command_lifecycle" not in source
 
     def test_undo_retains_multiple_early_completion_paths(self):
-        source = self._source("core/migration/commands/undo_command.py")
+        source = self._source("dblift/core/migration/commands/undo_command.py")
         assert "should_undo_version" in source
         assert source.count('_log_command_completion("undo"') >= 3
         assert "_run_command_lifecycle" not in source
@@ -121,7 +121,7 @@ class TestDryRunFooterMessage:
     'No pending migrations found'."""
 
     def _run_log_completion(self, result):
-        from core.migration.commands.base_command import BaseCommand
+        from dblift.core.migration.commands.base_command import BaseCommand
 
         cmd = BaseCommand.__new__(BaseCommand)
         cmd.log = MagicMock()
@@ -137,7 +137,7 @@ class TestDryRunFooterMessage:
         return call_kwargs[1].get("applied_scripts") if call_kwargs else None
 
     def test_dry_run_shows_count_not_no_pending(self):
-        from core.logger.results import MigrateResult
+        from dblift.core.logger.results import MigrateResult
 
         result = MigrateResult()
         result.dry_run_count = 3
@@ -149,7 +149,7 @@ class TestDryRunFooterMessage:
         assert "No pending" not in applied_scripts[0]
 
     def test_no_pending_message_when_truly_empty(self):
-        from core.logger.results import MigrateResult
+        from dblift.core.logger.results import MigrateResult
 
         result = MigrateResult()
         applied_scripts = self._run_log_completion(result)
@@ -161,8 +161,8 @@ class TestPrintMainHeaderOnceRouting:
     """OBS-01: _print_main_header_once must emit to stderr, not stdout."""
 
     def _make_command_with_console_log(self):
-        from core.logger.log import ConsoleLog
-        from core.migration.commands.base_command import BaseCommand
+        from dblift.core.logger.log import ConsoleLog
+        from dblift.core.migration.commands.base_command import BaseCommand
 
         cmd = BaseCommand.__new__(BaseCommand)
         cmd.log = MagicMock(spec=ConsoleLog)
@@ -173,7 +173,7 @@ class TestPrintMainHeaderOnceRouting:
         return cmd
 
     def test_banner_fallback_goes_to_stderr(self, capsys):
-        import core.migration.commands.base_command as cmd_mod
+        import dblift.core.migration.commands.base_command as cmd_mod
 
         cmd = self._make_command_with_console_log()
         # Reset the flag so the header is actually printed
@@ -181,7 +181,7 @@ class TestPrintMainHeaderOnceRouting:
         cmd_mod._console_main_header_printed = False
         try:
             with patch(
-                "core.logger.log.TextFormatter.format_header",
+                "dblift.core.logger.log.TextFormatter.format_header",
                 return_value="DBLIFT v1.4.1 — testdb",
             ):
                 cmd._print_main_header_once()

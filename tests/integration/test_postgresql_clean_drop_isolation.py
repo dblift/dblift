@@ -19,10 +19,10 @@ from typing import Any, List
 
 import pytest
 
-from api import DBLiftClient
-from config import DbliftConfig
-from db.plugins.postgresql.config import PostgreSqlConfig
-from db.plugins.postgresql.provider import PostgreSqlProvider
+from dblift.api import DBLiftClient
+from dblift.config import DbliftConfig
+from dblift.db.plugins.postgresql.config import PostgreSqlConfig
+from dblift.db.plugins.postgresql.provider import PostgreSqlProvider
 
 pytestmark = pytest.mark.integration
 

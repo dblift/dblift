@@ -1,9 +1,9 @@
 import importlib
 from unittest.mock import MagicMock
 
-import core.seams.event_listeners as event_listeners
-from api.events import EventEmitter
-from core.seams.event_listeners import attach_registered_listeners
+import dblift.core.seams.event_listeners as event_listeners
+from dblift.api.events import EventEmitter
+from dblift.core.seams.event_listeners import attach_registered_listeners
 
 
 def test_attach_no_entrypoints_is_noop():

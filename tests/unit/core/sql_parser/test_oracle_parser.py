@@ -4,20 +4,20 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from core.sql_model.base import ParseResult, SqlStatementType
-from db.plugins.oracle.parser._plsql_block import (
+from dblift.core.sql_model.base import ParseResult, SqlStatementType
+from dblift.db.plugins.oracle.parser._plsql_block import (
     extract_plsql_block,
     is_partial_plsql_fragment,
     is_single_plsql_block,
 )
-from db.plugins.oracle.parser._statement_splitter import (
+from dblift.db.plugins.oracle.parser._statement_splitter import (
     extract_next_complete_statement,
     is_empty_or_comment,
     is_plsql_keyword_start,
     split_statements_regex,
     word_at_position,
 )
-from db.plugins.oracle.parser.oracle_parser import OracleParser
+from dblift.db.plugins.oracle.parser.oracle_parser import OracleParser
 
 
 @pytest.mark.unit
@@ -154,7 +154,7 @@ class TestOracleParser:
 
     def test_extract_objects_regex(self):
         """Test object extraction with regex."""
-        from db.plugins.oracle.parser._object_extractor import extract_objects
+        from dblift.db.plugins.oracle.parser._object_extractor import extract_objects
 
         sql = """
         CREATE TABLE users (id NUMBER, name VARCHAR2(50));
@@ -180,7 +180,7 @@ class TestOracleParser:
 
     def test_extract_objects_with_quoted_identifiers(self):
         """Test object extraction with quoted identifiers."""
-        from db.plugins.oracle.parser._object_extractor import extract_objects
+        from dblift.db.plugins.oracle.parser._object_extractor import extract_objects
 
         sql = """
         CREATE TABLE "Schema"."Users" (id NUMBER);
@@ -265,7 +265,7 @@ class TestOracleParser:
 
     def test_remove_sql_comments(self):
         """Comment removal through the _comments module (ADR-0012)."""
-        from db.plugins.oracle.parser._comments import strip_sql_comments
+        from dblift.db.plugins.oracle.parser._comments import strip_sql_comments
 
         sql_with_comments = """
         -- This is a single line comment

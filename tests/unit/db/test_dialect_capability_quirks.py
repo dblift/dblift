@@ -17,10 +17,10 @@ from __future__ import annotations
 
 import pytest
 
-from db.base_quirks import BaseQuirks
-from db.plugins.mariadb.quirks import MariadbQuirks
-from db.plugins.redshift.quirks import RedshiftQuirks
-from db.provider_registry import ProviderRegistry
+from dblift.db.base_quirks import BaseQuirks
+from dblift.db.plugins.mariadb.quirks import MariadbQuirks
+from dblift.db.plugins.redshift.quirks import RedshiftQuirks
+from dblift.db.provider_registry import ProviderRegistry
 
 
 @pytest.fixture(autouse=True)
@@ -371,8 +371,8 @@ class TestSupportsConcurrentIndex:
         does not depend on the parent chain continuing to resolve to
         ``True`` forever.
         """
-        from db.plugins._pg_compatible import TimescaledbQuirks, YugabytedbQuirks
-        from db.plugins.cockroachdb.quirks import CockroachdbQuirks
+        from dblift.db.plugins._pg_compatible import TimescaledbQuirks, YugabytedbQuirks
+        from dblift.db.plugins.cockroachdb.quirks import CockroachdbQuirks
 
         assert "supports_concurrent_index" in vars(RedshiftQuirks)
         assert "supports_concurrent_index" in vars(CockroachdbQuirks)

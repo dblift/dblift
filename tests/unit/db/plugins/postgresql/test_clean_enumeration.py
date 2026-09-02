@@ -1,7 +1,7 @@
 """PostgreSQL droppable-object enumeration tests."""
 
-from db.plugins.postgresql.provider import PostgreSqlProvider
-from db.provider_interfaces import DroppableObject
+from dblift.db.plugins.postgresql.provider import PostgreSqlProvider
+from dblift.db.provider_interfaces import DroppableObject
 
 
 class _Provider(PostgreSqlProvider):

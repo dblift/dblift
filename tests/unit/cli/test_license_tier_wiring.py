@@ -12,8 +12,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from cli import _command_handlers
-from core.seams import tier_resolver
+from dblift.cli import _command_handlers
+from dblift.core.seams import tier_resolver
 
 
 @pytest.mark.unit

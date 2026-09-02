@@ -5,9 +5,9 @@ from unittest.mock import Mock
 
 import pytest
 
-from core.migration.migration import MigrationType
-from core.migration.state.migration_display_state import MigrationDisplayState
-from core.migration.state.migration_state_service import MigrationStateService
+from dblift.core.migration.migration import MigrationType
+from dblift.core.migration.state.migration_display_state import MigrationDisplayState
+from dblift.core.migration.state.migration_state_service import MigrationStateService
 
 
 @pytest.mark.unit

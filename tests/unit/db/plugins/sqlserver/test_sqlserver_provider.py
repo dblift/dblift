@@ -2,9 +2,9 @@
 
 from unittest.mock import MagicMock
 
-from config.dblift_config import DbliftConfig
-from db.plugins.sqlserver.provider import SqlServerProvider
-from db.sqlalchemy_provider import SqlAlchemyProvider
+from dblift.config.dblift_config import DbliftConfig
+from dblift.db.plugins.sqlserver.provider import SqlServerProvider
+from dblift.db.sqlalchemy_provider import SqlAlchemyProvider
 
 
 def _cfg():

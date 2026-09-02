@@ -4,7 +4,7 @@ from dataclasses import dataclass
 
 import pytest
 
-from config.database_config import BaseDatabaseConfig, DummyDatabaseConfig
+from dblift.config.database_config import BaseDatabaseConfig, DummyDatabaseConfig
 
 pytestmark = [pytest.mark.unit]
 

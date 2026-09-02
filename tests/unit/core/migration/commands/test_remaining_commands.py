@@ -29,8 +29,8 @@ def _make_info_command(
     state_manager_raises=False,
 ):
     """Build an InfoCommand with minimal mocked collaborators."""
-    from core.migration.commands.info_command import InfoCommand
-    from core.migration.state.migration_state import MigrationState
+    from dblift.core.migration.commands.info_command import InfoCommand
+    from dblift.core.migration.state.migration_state import MigrationState
 
     config = SimpleNamespace(database=SimpleNamespace(schema="public"))
     log = MagicMock()
@@ -81,8 +81,8 @@ def _make_info_command(
 
 def _make_undo_command(applied_migrations, *, rules_return=None, provider=None, has_scripts=None):
     """Build an UndoCommand with minimal mocked collaborators."""
-    from core.migration.commands.undo_command import UndoCommand
-    from core.migration.migration import MigrationType
+    from dblift.core.migration.commands.undo_command import UndoCommand
+    from dblift.core.migration.migration import MigrationType
 
     state_manager = MagicMock()
     migration_state = MagicMock()
@@ -128,7 +128,7 @@ def _make_undo_command(applied_migrations, *, rules_return=None, provider=None, 
 
 
 def _make_migration(version, mtype, success=True, has_undo_fn=False, tags=None):
-    from core.migration.migration import MigrationType
+    from dblift.core.migration.migration import MigrationType
 
     m = MagicMock()
     m.version = version
@@ -155,7 +155,7 @@ class TestNormalizeMigrationInfoStatus(unittest.TestCase):
     """Test the free-function normalize_migration_info_status."""
 
     def setUp(self):
-        from core.migration.commands.info_command import normalize_migration_info_status
+        from dblift.core.migration.commands.info_command import normalize_migration_info_status
 
         self.fn = normalize_migration_info_status
 
@@ -288,7 +288,7 @@ class TestInfoCommandDatabaseInfo(unittest.TestCase):
         cmd.provider.connection = None
         # Patch get_provider_display_url to return a URL
         with patch(
-            "core.migration.commands.info_command.get_provider_display_url",
+            "dblift.core.migration.commands.info_command.get_provider_display_url",
             return_value="https://cosmos.documents.azure.com",
         ):
             result = cmd.execute(Path("/tmp"))
@@ -300,7 +300,7 @@ class TestInfoCommandDatabaseInfo(unittest.TestCase):
         cmd.config.database.type = "postgresql"
         cmd.provider.connection = None
         with patch(
-            "core.migration.commands.info_command.get_provider_display_url",
+            "dblift.core.migration.commands.info_command.get_provider_display_url",
             return_value="postgresql+psycopg://localhost/db",
         ):
             result = cmd.execute(Path("/tmp"))
@@ -311,7 +311,7 @@ class TestInfoCommandDatabaseInfo(unittest.TestCase):
         cmd.config.database.type = "mysql"
         cmd.provider.connection = None
         with patch(
-            "core.migration.commands.info_command.get_provider_display_url",
+            "dblift.core.migration.commands.info_command.get_provider_display_url",
             return_value="mysql+pymysql://localhost/db",
         ):
             result = cmd.execute(Path("/tmp"))
@@ -322,7 +322,7 @@ class TestInfoCommandDatabaseInfo(unittest.TestCase):
         cmd.config.database.type = "oracle"
         cmd.provider.connection = None
         with patch(
-            "core.migration.commands.info_command.get_provider_display_url",
+            "dblift.core.migration.commands.info_command.get_provider_display_url",
             return_value="oracle+oracledb://localhost:1521?service_name=ORCL",
         ):
             result = cmd.execute(Path("/tmp"))
@@ -333,7 +333,7 @@ class TestInfoCommandDatabaseInfo(unittest.TestCase):
         cmd.config.database.type = "sqlserver"
         cmd.provider.connection = None
         with patch(
-            "core.migration.commands.info_command.get_provider_display_url",
+            "dblift.core.migration.commands.info_command.get_provider_display_url",
             return_value="mssql+pymssql://localhost:1433/db",
         ):
             result = cmd.execute(Path("/tmp"))
@@ -344,7 +344,7 @@ class TestInfoCommandDatabaseInfo(unittest.TestCase):
         cmd.config.database.type = "unknown"
         cmd.provider.connection = None
         with patch(
-            "core.migration.commands.info_command.get_provider_display_url",
+            "dblift.core.migration.commands.info_command.get_provider_display_url",
             return_value="some://url",
         ):
             result = cmd.execute(Path("/tmp"))
@@ -354,7 +354,7 @@ class TestInfoCommandDatabaseInfo(unittest.TestCase):
         cmd, _ = _make_info_command()
         cmd.provider.connection = None
         with patch(
-            "core.migration.commands.info_command.get_provider_display_url",
+            "dblift.core.migration.commands.info_command.get_provider_display_url",
             return_value="postgresql+psycopg://user:secret@host/db",
         ):
             result = cmd.execute(Path("/tmp"))
@@ -364,7 +364,7 @@ class TestInfoCommandDatabaseInfo(unittest.TestCase):
     def test_connection_info_error_handled_gracefully(self):
         cmd, log = _make_info_command()
         with patch(
-            "core.migration.commands.info_command.get_provider_display_url",
+            "dblift.core.migration.commands.info_command.get_provider_display_url",
             side_effect=RuntimeError("network error"),
         ):
             result = cmd.execute(Path("/tmp"))
@@ -377,7 +377,7 @@ class TestInfoCommandDatabaseInfo(unittest.TestCase):
         cmd.config.database.type = "postgresql"
         cmd.provider.connection = MagicMock()
         with patch(
-            "core.migration.commands.info_command.get_provider_display_url",
+            "dblift.core.migration.commands.info_command.get_provider_display_url",
             return_value="postgresql+psycopg://localhost/db",
         ):
             result = cmd.execute(Path("/tmp"))
@@ -386,7 +386,7 @@ class TestInfoCommandDatabaseInfo(unittest.TestCase):
     def test_current_schema_version_populated_from_state_manager(self):
         from types import SimpleNamespace
 
-        from core.migration.migration import MigrationType
+        from dblift.core.migration.migration import MigrationType
 
         applied = [SimpleNamespace(version="3", type=MigrationType.SQL, success=True)]
         cmd, _ = _make_info_command(applied_objects=applied)

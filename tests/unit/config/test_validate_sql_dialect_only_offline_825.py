@@ -15,8 +15,8 @@ from argparse import Namespace
 
 import pytest
 
-from config.dblift_config import load_config
-from config.errors import ConfigurationError
+from dblift.config.dblift_config import load_config
+from dblift.config.errors import ConfigurationError
 
 pytestmark = [pytest.mark.unit]
 

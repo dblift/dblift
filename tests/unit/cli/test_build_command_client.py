@@ -6,9 +6,9 @@ from types import SimpleNamespace
 
 import pytest
 
-import cli.main as cli_main
-from cli.handlers._shared import ConfigOnlyClient
-from core.seams import client_factory
+import dblift.cli.main as cli_main
+from dblift.cli.handlers._shared import ConfigOnlyClient
+from dblift.core.seams import client_factory
 
 pytestmark = [pytest.mark.unit]
 

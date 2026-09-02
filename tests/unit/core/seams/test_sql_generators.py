@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import pytest
 
-import core.seams.sql_generators as sql_generators
-from core.seams.sql_generators import (
+import dblift.core.seams.sql_generators as sql_generators
+from dblift.core.seams.sql_generators import (
     attach_registered_sql_generators,
     clear_sql_generator_registrars,
 )

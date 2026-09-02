@@ -6,7 +6,7 @@ from unittest.mock import MagicMock
 
 
 def _make_executor():
-    from db.plugins.sqlite.sqlite.query_executor import SQLiteQueryExecutor
+    from dblift.db.plugins.sqlite.sqlite.query_executor import SQLiteQueryExecutor
 
     cm = MagicMock()
     log = MagicMock()
@@ -29,8 +29,8 @@ class TestSQLiteQueryExecutorInit(unittest.TestCase):
         self.assertIs(exec_.connection_manager, cm)
 
     def test_null_log_default(self):
-        from core.logger import NullLog
-        from db.plugins.sqlite.sqlite.query_executor import SQLiteQueryExecutor
+        from dblift.core.logger import NullLog
+        from dblift.db.plugins.sqlite.sqlite.query_executor import SQLiteQueryExecutor
 
         exec_ = SQLiteQueryExecutor(MagicMock())
         self.assertIsInstance(exec_.log, NullLog)

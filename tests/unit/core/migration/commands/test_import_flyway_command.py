@@ -5,7 +5,7 @@ from unittest.mock import Mock
 
 import pytest
 
-from core.migration.commands.import_flyway_command import ImportFlywayCommand
+from dblift.core.migration.commands.import_flyway_command import ImportFlywayCommand
 
 
 @pytest.mark.unit

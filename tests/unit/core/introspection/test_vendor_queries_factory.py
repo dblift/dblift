@@ -1,7 +1,7 @@
 from unittest.mock import patch
 
-from core.introspection import vendor_queries_factory as factory_module
-from core.introspection.vendor_queries_factory import (
+from dblift.core.introspection import vendor_queries_factory as factory_module
+from dblift.core.introspection.vendor_queries_factory import (
     VendorQueriesFactory,
     register_vendor_queries,
 )
@@ -21,7 +21,9 @@ def test_create_runs_registered_introspection_seam():
         register_vendor_queries("seamdb", _Queries)  # type: ignore[arg-type]
 
     try:
-        with patch("core.seams.introspection.attach_registered_introspection", side_effect=attach):
+        with patch(
+            "dblift.core.seams.introspection.attach_registered_introspection", side_effect=attach
+        ):
             queries = VendorQueriesFactory.create("seamdb")
     finally:
         factory_module._VENDOR_QUERIES_REGISTRY.clear()

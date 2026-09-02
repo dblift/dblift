@@ -1,4 +1,4 @@
-from config.dblift_config import DbliftConfig
+from dblift.config.dblift_config import DbliftConfig
 
 
 def test_registry_scalar_arg_flows_through():

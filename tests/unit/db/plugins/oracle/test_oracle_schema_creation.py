@@ -2,7 +2,7 @@
 
 from types import SimpleNamespace
 
-from db.plugins.oracle.provider import OracleProvider
+from dblift.db.plugins.oracle.provider import OracleProvider
 
 
 class _Log:

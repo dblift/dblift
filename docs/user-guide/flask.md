@@ -15,7 +15,7 @@ guard, and register an explicit migration command.
 from flask import Flask
 from sqlalchemy import create_engine
 
-from integrations.flask import init_dblift, register_cli
+from dblift.integrations.flask import init_dblift, register_cli
 
 engine = create_engine("postgresql+psycopg://user:password@localhost/app")
 

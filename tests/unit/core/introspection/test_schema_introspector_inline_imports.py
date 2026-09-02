@@ -4,7 +4,7 @@ import inspect
 
 import pytest
 
-import core.introspection.schema_introspector as mod
+import dblift.core.introspection.schema_introspector as mod
 
 
 @pytest.mark.unit

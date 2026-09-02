@@ -5,10 +5,10 @@ from typing import Any
 
 import pytest
 
-from config import DbliftConfig
-from db.plugins.mysql.config import MySqlConfig
-from db.provider_registry import ProviderRegistry
-from db.sqlalchemy_provider import SqlAlchemyProvider
+from dblift.config import DbliftConfig
+from dblift.db.plugins.mysql.config import MySqlConfig
+from dblift.db.provider_registry import ProviderRegistry
+from dblift.db.sqlalchemy_provider import SqlAlchemyProvider
 
 pytestmark = pytest.mark.integration
 
@@ -65,7 +65,7 @@ def test_mysql_native_roundtrip(mysql_container: dict[str, Any]) -> None:
 def test_mysql_native_introspects_tables_without_jdbc_metadata(
     mysql_container: dict[str, Any],
 ) -> None:
-    from core.introspection.introspector_factory import IntrospectorFactory
+    from dblift.core.introspection.introspector_factory import IntrospectorFactory
 
     database = f"dblift_native_{uuid.uuid4().hex[:8]}"
     bootstrap = ProviderRegistry.create_provider(

@@ -1,16 +1,16 @@
 from pathlib import Path
 from types import SimpleNamespace
 
-from core.sql_model.base import ConstraintType
+from dblift.core.sql_model.base import ConstraintType
 
 
 def test_metadata_helpers_are_available_from_new_module_and_legacy_extractors():
-    from core.introspection.extractors import (
+    from dblift.core.introspection.extractors import (
         constraint_extractor,
         index_extractor,
         procedure_extractor,
     )
-    from core.utils import metadata_helpers
+    from dblift.core.utils import metadata_helpers
 
     assert (
         index_extractor.normalize_postgresql_index_predicate
@@ -28,12 +28,12 @@ def test_metadata_helpers_are_available_from_new_module_and_legacy_extractors():
 
 def test_plugin_quirks_import_metadata_helpers_instead_of_rich_extractors():
     repo_root = Path(__file__).resolve().parents[5]
-    for quirks_path in repo_root.glob("db/plugins/*/quirks.py"):
-        assert "core.introspection.extractors" not in quirks_path.read_text()
+    for quirks_path in repo_root.glob("dblift/db/plugins/*/quirks.py"):
+        assert "dblift.core.introspection.extractors" not in quirks_path.read_text()
 
 
 def test_build_unique_constraints_from_dict_from_new_module_preserves_behavior():
-    from core.utils.metadata_helpers import _build_unique_constraints_from_dict
+    from dblift.core.utils.metadata_helpers import _build_unique_constraints_from_dict
 
     extractor = SimpleNamespace(
         dialect="postgresql",
@@ -60,7 +60,7 @@ def test_build_unique_constraints_from_dict_from_new_module_preserves_behavior()
 
 
 def test_fetch_mysql_show_create_routine_from_new_module_preserves_behavior():
-    from core.utils.metadata_helpers import _fetch_mysql_show_create_routine
+    from dblift.core.utils.metadata_helpers import _fetch_mysql_show_create_routine
 
     class QueryExecutor:
         def execute_query(self, connection, sql, params):

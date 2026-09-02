@@ -1,5 +1,5 @@
-from cli._parser_setup import create_parser
-from config.dblift_config import DbliftConfig
+from dblift.cli._parser_setup import create_parser
+from dblift.config.dblift_config import DbliftConfig
 
 
 def test_installed_by_via_cli():

@@ -4,9 +4,9 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from core.sql_model.table import Table
-from core.sql_model.user_defined_type import UserDefinedType
-from db.plugins.postgresql.quirks import PostgresqlQuirks
+from dblift.core.sql_model.table import Table
+from dblift.core.sql_model.user_defined_type import UserDefinedType
+from dblift.db.plugins.postgresql.quirks import PostgresqlQuirks
 
 
 @pytest.mark.unit

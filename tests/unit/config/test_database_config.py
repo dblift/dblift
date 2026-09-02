@@ -2,12 +2,12 @@ from unittest.mock import patch
 
 import pytest
 
-from config.database_config import BaseDatabaseConfig, DummyDatabaseConfig
-from db.plugins.db2.config import Db2Config
-from db.plugins.mysql.config import MySqlConfig
-from db.plugins.oracle.config import OracleConfig
-from db.plugins.postgresql.config import PostgreSqlConfig
-from db.plugins.sqlserver.config import SqlServerConfig
+from dblift.config.database_config import BaseDatabaseConfig, DummyDatabaseConfig
+from dblift.db.plugins.db2.config import Db2Config
+from dblift.db.plugins.mysql.config import MySqlConfig
+from dblift.db.plugins.oracle.config import OracleConfig
+from dblift.db.plugins.postgresql.config import PostgreSqlConfig
+from dblift.db.plugins.sqlserver.config import SqlServerConfig
 
 
 @pytest.mark.unit
@@ -200,7 +200,7 @@ class TestSqlServerConfig:
 
     def test_integrated_security_props_use_native_sspi(self):
         """Integrated auth: integratedSecurity=true, no creds, no scheme."""
-        from db.plugins.sqlserver.config import SqlServerConfig
+        from dblift.db.plugins.sqlserver.config import SqlServerConfig
 
         config = SqlServerConfig(
             type="sqlserver",

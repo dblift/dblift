@@ -3,7 +3,7 @@
 import re
 from types import SimpleNamespace
 
-from db.plugins.oracle.provider import OracleProvider
+from dblift.db.plugins.oracle.provider import OracleProvider
 
 
 class DummyOracleProvider(OracleProvider):
@@ -58,7 +58,9 @@ def test_plsql_block_keeps_trailing_semicolon(monkeypatch) -> None:
         captured["sql"] = sql
         return 1
 
-    monkeypatch.setattr("db.sqlalchemy_provider.SqlAlchemyProvider.execute_statement", fake_execute)
+    monkeypatch.setattr(
+        "dblift.db.sqlalchemy_provider.SqlAlchemyProvider.execute_statement", fake_execute
+    )
 
     provider.execute_statement("BEGIN NULL; END;", schema=None)
 
@@ -73,7 +75,9 @@ def test_plain_sql_strips_trailing_semicolon(monkeypatch) -> None:
         captured["sql"] = sql
         return 1
 
-    monkeypatch.setattr("db.sqlalchemy_provider.SqlAlchemyProvider.execute_statement", fake_execute)
+    monkeypatch.setattr(
+        "dblift.db.sqlalchemy_provider.SqlAlchemyProvider.execute_statement", fake_execute
+    )
 
     provider.execute_statement("CREATE TABLE t (id NUMBER);", schema=None)
 
@@ -89,7 +93,9 @@ def test_plain_query_strips_trailing_semicolon(monkeypatch) -> None:
         captured["params"] = params
         return []
 
-    monkeypatch.setattr("db.sqlalchemy_provider.SqlAlchemyProvider.execute_query", fake_query)
+    monkeypatch.setattr(
+        "dblift.db.sqlalchemy_provider.SqlAlchemyProvider.execute_query", fake_query
+    )
 
     OracleProvider.execute_query(provider, "SELECT 1 FROM DUAL;", params=[1])
 
@@ -170,7 +176,7 @@ def test_create_schema_generates_oracle_compatible_password(monkeypatch) -> None
         )
         or 1
     )
-    monkeypatch.setattr("db.plugins.oracle.provider.os.urandom", lambda size: b"\xff" * size)
+    monkeypatch.setattr("dblift.db.plugins.oracle.provider.os.urandom", lambda size: b"\xff" * size)
 
     provider.create_schema_if_not_exists("TEST_SCHEMA")
 
@@ -185,9 +191,9 @@ def test_migration_lock_timeout_does_not_fall_back_to_table_lock(monkeypatch) ->
         [{"lock_hash": 42}] if "GET_HASH_VALUE" in sql else [{"result": 1}]
     )
     provider._acquire_table_lock = lambda *_args: True
-    monkeypatch.setattr("db.plugins.oracle.provider.time.sleep", lambda _seconds: None)
+    monkeypatch.setattr("dblift.db.plugins.oracle.provider.time.sleep", lambda _seconds: None)
     times = iter([0, 2])
-    monkeypatch.setattr("db.plugins.oracle.provider.time.time", lambda: next(times))
+    monkeypatch.setattr("dblift.db.plugins.oracle.provider.time.time", lambda: next(times))
 
     assert provider.acquire_migration_lock("APP", wait_timeout_seconds=1) is False
 

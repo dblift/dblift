@@ -1,4 +1,4 @@
-"""Unit tests for `db.plugins.oracle.parser._statement_splitter` (Phase-Oracle-05)."""
+"""Unit tests for `dblift.db.plugins.oracle.parser._statement_splitter` (Phase-Oracle-05)."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ from typing import List, Tuple
 
 import pytest
 
-from db.plugins.oracle.parser._statement_splitter import (
+from dblift.db.plugins.oracle.parser._statement_splitter import (
     extract_next_complete_statement,
     extract_regular_statement,
     is_empty_or_comment,

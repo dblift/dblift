@@ -6,13 +6,13 @@ import inspect
 
 import pytest
 
-from core.sql_model.dialect import (
+from dblift.core.sql_model.dialect import (
     dialect_clean_strategy,
     dialect_supports_transactional_ddl,
     dialect_supports_transactions,
 )
-from db.base_provider import BaseProvider, NativeProvider
-from db.provider_registry import ProviderRegistry
+from dblift.db.base_provider import BaseProvider, NativeProvider
+from dblift.db.provider_registry import ProviderRegistry
 
 
 @pytest.fixture(scope="module")

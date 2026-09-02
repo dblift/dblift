@@ -21,8 +21,8 @@ class TestBug01MySqlAtUserVariableTokenization(unittest.TestCase):
     """
 
     def _idents(self, sql: str) -> list[str]:
-        from core.sql_parser.tokens import TokenType
-        from db.plugins.mysql.parser.mysql_tokenizer import MySQLTokenizer
+        from dblift.core.sql_parser.tokens import TokenType
+        from dblift.db.plugins.mysql.parser.mysql_tokenizer import MySQLTokenizer
 
         return [t.text for t in MySQLTokenizer(sql).tokenize() if t.type == TokenType.IDENTIFIER]
 
@@ -41,16 +41,16 @@ class TestBug01MySqlAtUserVariableTokenization(unittest.TestCase):
         self.assertIn("@y", idents)
 
     def test_user_var_in_string_is_not_a_variable(self) -> None:
-        from core.sql_parser.tokens import TokenType
-        from db.plugins.mysql.parser.mysql_tokenizer import MySQLTokenizer
+        from dblift.core.sql_parser.tokens import TokenType
+        from dblift.db.plugins.mysql.parser.mysql_tokenizer import MySQLTokenizer
 
         for t in MySQLTokenizer("SELECT '@not_a_var';").tokenize():
             if t.type == TokenType.IDENTIFIER:
                 self.assertNotIn("@not_a_var", t.text)
 
     def test_statement_split_preserves_user_var(self) -> None:
-        from db.plugins.mysql.parser.mysql_statement_parser import MySQLStatementParser
-        from db.plugins.mysql.parser.mysql_tokenizer import MySQLTokenizer
+        from dblift.db.plugins.mysql.parser.mysql_statement_parser import MySQLStatementParser
+        from dblift.db.plugins.mysql.parser.mysql_tokenizer import MySQLTokenizer
 
         sql = "SET @stmt_count = 0;\nINSERT INTO logs (n) VALUES (@stmt_count);\n"
         tokens = MySQLTokenizer(sql).tokenize()
@@ -71,14 +71,14 @@ class TestBug02SqlplusDirectiveTermination(unittest.TestCase):
     """
 
     def _split(self, sql: str) -> list[str]:
-        from db.plugins.oracle.parser.oracle_statement_parser import OracleStatementParser
-        from db.plugins.oracle.parser.oracle_tokenizer import OracleTokenizer
+        from dblift.db.plugins.oracle.parser.oracle_statement_parser import OracleStatementParser
+        from dblift.db.plugins.oracle.parser.oracle_tokenizer import OracleTokenizer
 
         tokens = OracleTokenizer(sql).tokenize()
         return [s for s in OracleStatementParser(tokens).split_statements() if s.strip()]
 
     def test_set_serveroutput_followed_by_ddl_is_split(self) -> None:
-        from db.plugins.oracle.parser.sqlplus_context import terminate_sqlplus_directives
+        from dblift.db.plugins.oracle.parser.sqlplus_context import terminate_sqlplus_directives
 
         raw = "SET SERVEROUTPUT ON\nCREATE TABLE t (id NUMBER);\n"
         terminated = terminate_sqlplus_directives(raw)
@@ -87,55 +87,55 @@ class TestBug02SqlplusDirectiveTermination(unittest.TestCase):
         self.assertTrue(any("CREATE TABLE" in s for s in stmts))
 
     def test_define_directive_is_terminated(self) -> None:
-        from db.plugins.oracle.parser.sqlplus_context import terminate_sqlplus_directives
+        from dblift.db.plugins.oracle.parser.sqlplus_context import terminate_sqlplus_directives
 
         raw = "DEFINE schema_name = APP\nCREATE TABLE &schema_name..t (id NUMBER);\n"
         self.assertIn("DEFINE schema_name = APP;", terminate_sqlplus_directives(raw))
 
     def test_prompt_directive_is_terminated(self) -> None:
-        from db.plugins.oracle.parser.sqlplus_context import terminate_sqlplus_directives
+        from dblift.db.plugins.oracle.parser.sqlplus_context import terminate_sqlplus_directives
 
         raw = "PROMPT Creating schema\nCREATE TABLE t (id NUMBER);\n"
         self.assertIn("PROMPT Creating schema;", terminate_sqlplus_directives(raw))
 
     def test_whenever_sqlerror_continue_is_terminated(self) -> None:
-        from db.plugins.oracle.parser.sqlplus_context import terminate_sqlplus_directives
+        from dblift.db.plugins.oracle.parser.sqlplus_context import terminate_sqlplus_directives
 
         raw = "WHENEVER SQLERROR CONTINUE\nDROP TABLE missing;\n"
         self.assertIn("WHENEVER SQLERROR CONTINUE;", terminate_sqlplus_directives(raw))
 
     def test_whenever_sqlerror_exit_is_terminated(self) -> None:
-        from db.plugins.oracle.parser.sqlplus_context import terminate_sqlplus_directives
+        from dblift.db.plugins.oracle.parser.sqlplus_context import terminate_sqlplus_directives
 
         raw = "WHENEVER SQLERROR EXIT\nSELECT 1 FROM dual;\n"
         self.assertIn("WHENEVER SQLERROR EXIT;", terminate_sqlplus_directives(raw))
 
     def test_directive_already_terminated_unchanged(self) -> None:
-        from db.plugins.oracle.parser.sqlplus_context import terminate_sqlplus_directives
+        from dblift.db.plugins.oracle.parser.sqlplus_context import terminate_sqlplus_directives
 
         raw = "SET SERVEROUTPUT ON;\nCREATE TABLE t (id NUMBER);\n"
         self.assertEqual(terminate_sqlplus_directives(raw).count("SET SERVEROUTPUT ON;"), 1)
 
     def test_non_directive_lines_pass_through(self) -> None:
-        from db.plugins.oracle.parser.sqlplus_context import terminate_sqlplus_directives
+        from dblift.db.plugins.oracle.parser.sqlplus_context import terminate_sqlplus_directives
 
         raw = "CREATE TABLE t (\n  id NUMBER,\n  name VARCHAR2(100)\n);\n"
         self.assertEqual(terminate_sqlplus_directives(raw), raw)
 
     def test_block_comment_is_not_modified(self) -> None:
-        from db.plugins.oracle.parser.sqlplus_context import terminate_sqlplus_directives
+        from dblift.db.plugins.oracle.parser.sqlplus_context import terminate_sqlplus_directives
 
         raw = "/*\n  SET SERVEROUTPUT ON\n*/\nCREATE TABLE t (id NUMBER);\n"
         out = terminate_sqlplus_directives(raw)
         self.assertIn("/*\n  SET SERVEROUTPUT ON\n*/", out)
 
     def test_empty_input_passes_through(self) -> None:
-        from db.plugins.oracle.parser.sqlplus_context import terminate_sqlplus_directives
+        from dblift.db.plugins.oracle.parser.sqlplus_context import terminate_sqlplus_directives
 
         self.assertEqual(terminate_sqlplus_directives(""), "")
 
     def test_multiple_directives_then_ddl_round_trip(self) -> None:
-        from db.plugins.oracle.parser.sqlplus_context import terminate_sqlplus_directives
+        from dblift.db.plugins.oracle.parser.sqlplus_context import terminate_sqlplus_directives
 
         # Avoid the word "Begin" inside PROMPT: the Oracle tokeniser treats BEGIN as
         # a KEYWORD which triggers the PL/SQL ``/``-delimiter switch. Production
@@ -162,7 +162,7 @@ class TestBug06SqliteRecordUndo(unittest.TestCase):
     """
 
     def _make_provider(self):
-        from db.plugins.sqlite.provider import SQLiteProvider
+        from dblift.db.plugins.sqlite.provider import SQLiteProvider
 
         config = MagicMock()
         config.database.path = ":memory:"
@@ -179,7 +179,7 @@ class TestBug06SqliteRecordUndo(unittest.TestCase):
         return provider
 
     def test_record_undo_method_exists_on_class(self) -> None:
-        from db.plugins.sqlite.provider import SQLiteProvider
+        from dblift.db.plugins.sqlite.provider import SQLiteProvider
 
         self.assertTrue(hasattr(SQLiteProvider, "record_undo"))
 
@@ -204,9 +204,9 @@ class TestBug06SqliteRecordUndo(unittest.TestCase):
         self.assertFalse(provider.record_undo("main", "3.0.0"))
 
     def test_base_history_manager_records_python_script_name_for_undo(self) -> None:
-        from core.migration.formats import MigrationFormat
-        from core.migration.migration import AppliedMigration
-        from db.plugins.base_history_manager import BaseHistoryManager
+        from dblift.core.migration.formats import MigrationFormat
+        from dblift.core.migration.migration import AppliedMigration
+        from dblift.db.plugins.base_history_manager import BaseHistoryManager
 
         class CapturingHistoryManager(BaseHistoryManager):
             def __init__(self):
@@ -239,7 +239,7 @@ class TestBug06SqliteRecordUndo(unittest.TestCase):
         self.assertEqual(history.recorded["script"], "V4__python_migration.py")
 
         applied = AppliedMigration.from_history_row(history.recorded)
-        with patch("core.migration.formats.format_detector.logger.warning") as warning:
+        with patch("dblift.core.migration.formats.format_detector.logger.warning") as warning:
             migration = applied.to_migration()
         self.assertEqual(migration.format, MigrationFormat.PYTHON)
         warning.assert_not_called()

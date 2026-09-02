@@ -31,7 +31,7 @@ def _make_config(directory="migrations"):
 @pytest.mark.unit
 class TestClientFactoryMigrationsDir:
     def test_caller_migrations_dir_takes_priority(self):
-        from api._client_factory import client_from_config
+        from dblift.api._client_factory import client_from_config
 
         config = _make_config(directory="from_config")
 
@@ -42,8 +42,11 @@ class TestClientFactoryMigrationsDir:
             return MagicMock()
 
         with (
-            patch("api._client_factory.ProviderRegistry.create_provider", return_value=MagicMock()),
-            patch("api._client_factory.DbliftLogger", return_value=MagicMock()),
+            patch(
+                "dblift.api._client_factory.ProviderRegistry.create_provider",
+                return_value=MagicMock(),
+            ),
+            patch("dblift.api._client_factory.DbliftLogger", return_value=MagicMock()),
         ):
             client_from_config(
                 config,
@@ -54,7 +57,7 @@ class TestClientFactoryMigrationsDir:
         assert captured["migrations_dir"] == "/caller/path"
 
     def test_config_migrations_dir_used_when_no_kwarg(self):
-        from api._client_factory import client_from_config
+        from dblift.api._client_factory import client_from_config
 
         config = _make_config(directory="from_config_dir")
         captured = {}
@@ -64,8 +67,11 @@ class TestClientFactoryMigrationsDir:
             return MagicMock()
 
         with (
-            patch("api._client_factory.ProviderRegistry.create_provider", return_value=MagicMock()),
-            patch("api._client_factory.DbliftLogger", return_value=MagicMock()),
+            patch(
+                "dblift.api._client_factory.ProviderRegistry.create_provider",
+                return_value=MagicMock(),
+            ),
+            patch("dblift.api._client_factory.DbliftLogger", return_value=MagicMock()),
         ):
             client_from_config(config, client_cls=fake_ctor)
 
@@ -74,8 +80,8 @@ class TestClientFactoryMigrationsDir:
     def test_directory_config_recursive_false_survives_from_config(self):
         """API construction with DirectoryConfig(recursive=False) must not
         replace it with the global recursive default."""
-        from api._client_factory import client_from_config, normalize_migrations_dirs
-        from config.dblift_config import DbliftConfig
+        from dblift.api._client_factory import client_from_config, normalize_migrations_dirs
+        from dblift.config.dblift_config import DbliftConfig
 
         config = DbliftConfig.from_dict(
             {
@@ -94,8 +100,11 @@ class TestClientFactoryMigrationsDir:
             return MagicMock()
 
         with (
-            patch("api._client_factory.ProviderRegistry.create_provider", return_value=MagicMock()),
-            patch("api._client_factory.DbliftLogger", return_value=MagicMock()),
+            patch(
+                "dblift.api._client_factory.ProviderRegistry.create_provider",
+                return_value=MagicMock(),
+            ),
+            patch("dblift.api._client_factory.DbliftLogger", return_value=MagicMock()),
         ):
             client_from_config(config, client_cls=fake_ctor)
 
@@ -106,8 +115,8 @@ class TestClientFactoryMigrationsDir:
         assert configs[0].recursive is False
 
     def test_directory_config_recursive_true_survives_from_config(self):
-        from api._client_factory import client_from_config, normalize_migrations_dirs
-        from config.dblift_config import DbliftConfig
+        from dblift.api._client_factory import client_from_config, normalize_migrations_dirs
+        from dblift.config.dblift_config import DbliftConfig
 
         config = DbliftConfig.from_dict(
             {
@@ -126,8 +135,11 @@ class TestClientFactoryMigrationsDir:
             return MagicMock()
 
         with (
-            patch("api._client_factory.ProviderRegistry.create_provider", return_value=MagicMock()),
-            patch("api._client_factory.DbliftLogger", return_value=MagicMock()),
+            patch(
+                "dblift.api._client_factory.ProviderRegistry.create_provider",
+                return_value=MagicMock(),
+            ),
+            patch("dblift.api._client_factory.DbliftLogger", return_value=MagicMock()),
         ):
             client_from_config(config, client_cls=fake_ctor)
 
@@ -138,7 +150,7 @@ class TestClientFactoryMigrationsDir:
 
     def test_migrations_dir_kwarg_not_duplicated(self):
         """migrations_dir must appear exactly once in the constructor call."""
-        from api._client_factory import client_from_config
+        from dblift.api._client_factory import client_from_config
 
         config = _make_config()
         call_count = {"n": 0}
@@ -149,8 +161,11 @@ class TestClientFactoryMigrationsDir:
             return MagicMock()
 
         with (
-            patch("api._client_factory.ProviderRegistry.create_provider", return_value=MagicMock()),
-            patch("api._client_factory.DbliftLogger", return_value=MagicMock()),
+            patch(
+                "dblift.api._client_factory.ProviderRegistry.create_provider",
+                return_value=MagicMock(),
+            ),
+            patch("dblift.api._client_factory.DbliftLogger", return_value=MagicMock()),
         ):
             # Should not raise TypeError
             client_from_config(config, client_cls=fake_ctor, migrations_dir="/some/path")

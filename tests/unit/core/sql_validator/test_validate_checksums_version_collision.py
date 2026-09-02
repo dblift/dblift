@@ -4,9 +4,9 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from core.logger import NullLog
-from core.migration.migration import MigrationType
-from core.sql_validator.migration_validator import MigrationValidator, ValidationResult
+from dblift.core.logger import NullLog
+from dblift.core.migration.migration import MigrationType
+from dblift.core.sql_validator.migration_validator import MigrationValidator, ValidationResult
 
 
 def _make_validator():
@@ -20,7 +20,7 @@ def _make_validator():
     v.history_manager = history_manager
     v.log = log
     v.placeholders = {}
-    from core.migration.sql.sql_analyzer import SqlAnalyzer
+    from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
 
     v.sql_analyzer = SqlAnalyzer(dialect="oracle", logger=NullLog())
     v._flyway_compatibility_cache = None

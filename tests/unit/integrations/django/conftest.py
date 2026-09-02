@@ -16,7 +16,7 @@ if not settings.configured:
     settings.configure(
         DEBUG=True,
         DATABASES={"default": {"ENGINE": "django.db.backends.sqlite3", "NAME": ":memory:"}},
-        INSTALLED_APPS=["integrations.django"],
+        INSTALLED_APPS=["dblift.integrations.django"],
         DBLIFT_MIGRATIONS_DIR="/tmp/_dblift_placeholder",
         USE_TZ=True,
     )

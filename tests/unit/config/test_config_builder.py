@@ -5,13 +5,13 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-from config.config_builder import ConfigBuilder, ConfigurationError
-from config.database_config import BaseDatabaseConfig
-from config.dblift_config import DbliftConfig
-from db.plugins.mysql.config import MySqlConfig
-from db.plugins.oracle.config import OracleConfig
-from db.plugins.postgresql.config import PostgreSqlConfig
-from db.plugins.sqlserver.config import SqlServerConfig
+from dblift.config.config_builder import ConfigBuilder, ConfigurationError
+from dblift.config.database_config import BaseDatabaseConfig
+from dblift.config.dblift_config import DbliftConfig
+from dblift.db.plugins.mysql.config import MySqlConfig
+from dblift.db.plugins.oracle.config import OracleConfig
+from dblift.db.plugins.postgresql.config import PostgreSqlConfig
+from dblift.db.plugins.sqlserver.config import SqlServerConfig
 
 
 @pytest.mark.unit
@@ -161,7 +161,8 @@ class TestConfigBuilder:
         }
 
         with patch(
-            "config.config_builder.BaseDatabaseConfig.create", side_effect=ValueError("Error")
+            "dblift.config.config_builder.BaseDatabaseConfig.create",
+            side_effect=ValueError("Error"),
         ):
             with pytest.raises(ValueError, match="Error"):
                 ConfigBuilder.merge_database_overrides(base_config, overrides)
@@ -173,7 +174,7 @@ class TestConfigBuilder:
 
     def test_build_with_file_path_exists(self):
         """Test build with existing file path merges YAML dict before construction."""
-        with patch("config.config_builder.Path.exists", return_value=True):
+        with patch("dblift.config.config_builder.Path.exists", return_value=True):
             with patch.object(
                 DbliftConfig,
                 "load_config_data_from_yaml",
@@ -209,9 +210,9 @@ class TestConfigBuilder:
 
     def test_build_with_file_load_failure(self):
         """Test build when file load fails."""
-        with patch("config.config_builder.Path.exists", return_value=True):
+        with patch("dblift.config.config_builder.Path.exists", return_value=True):
             with patch(
-                "config.dblift_config.DbliftConfig.load_config_data_from_yaml",
+                "dblift.config.dblift_config.DbliftConfig.load_config_data_from_yaml",
                 side_effect=Exception("Error"),
             ):
                 with pytest.warns(UserWarning, match="Failed to load config file"):
@@ -223,7 +224,7 @@ class TestConfigBuilder:
     def test_build_with_env_overrides(self):
         """Test build with env_overrides=True merges env dict when DBLIFT_DB_* vars are set."""
         with patch(
-            "config.config_builder.DbliftConfig.from_env_dict",
+            "dblift.config.config_builder.DbliftConfig.from_env_dict",
             return_value={
                 "database": {
                     "type": "postgresql",
@@ -323,7 +324,7 @@ class TestConfigBuilder:
             }
         }
 
-        with patch("config.config_builder.DbliftConfig.from_dict") as mock_from_dict:
+        with patch("dblift.config.config_builder.DbliftConfig.from_dict") as mock_from_dict:
             mock_config = Mock()
             mock_from_dict.return_value = mock_config
 

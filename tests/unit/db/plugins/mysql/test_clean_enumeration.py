@@ -2,8 +2,8 @@
 
 from unittest.mock import MagicMock
 
-from db.plugins.mysql.provider import MySqlProvider
-from db.provider_interfaces import DroppableObject
+from dblift.db.plugins.mysql.provider import MySqlProvider
+from dblift.db.provider_interfaces import DroppableObject
 
 
 def _query_executor_with_rows(rows_by_keyword):

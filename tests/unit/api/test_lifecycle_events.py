@@ -15,12 +15,12 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from api.events import EventType
+from dblift.api.events import EventType
 
 
 def _make_client(executor_method: str, result: MagicMock) -> "DBLiftClient":  # noqa: F821
     """Build a minimal DBLiftClient stub for event-emission tests."""
-    from api.client import DBLiftClient
+    from dblift.api.client import DBLiftClient
 
     provider = MagicMock()
     provider.supports_transactions.return_value = False
@@ -37,7 +37,7 @@ def _make_client(executor_method: str, result: MagicMock) -> "DBLiftClient":  # 
 
 
 def _make_failing_client(executor_method: str, exc: Exception) -> "DBLiftClient":  # noqa: F821
-    from api.client import DBLiftClient
+    from dblift.api.client import DBLiftClient
 
     provider = MagicMock()
     provider.supports_transactions.return_value = False

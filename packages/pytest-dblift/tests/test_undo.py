@@ -6,7 +6,7 @@ from typing import Any
 
 from sqlalchemy import text
 
-from api import DBLiftClient
+from dblift.api import DBLiftClient
 
 
 def test_dblift_undo_reverts_via_companion_script(

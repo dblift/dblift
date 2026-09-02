@@ -19,7 +19,7 @@ class TestClientDialectCaching:
 
     def _make_client(self, provider_dialect="postgresql"):
         """Create a DBLiftClient with a mocked provider."""
-        from api.client import DBLiftClient
+        from dblift.api.client import DBLiftClient
 
         provider = MagicMock()
         provider.dialect = provider_dialect
@@ -51,7 +51,7 @@ class TestClientDialectCaching:
 
     def test_get_dialect_called_once_not_on_method_call(self):
         """_get_dialect_for_sql_generation called 1x at init, not when accessing self.dialect."""
-        from api.client import DBLiftClient
+        from dblift.api.client import DBLiftClient
 
         provider = MagicMock()
         provider.dialect = "postgresql"
@@ -79,9 +79,9 @@ class TestClientDialectCaching:
             assert mock_get.call_count == 1
 
     def test_generate_undo_scripts_parses_each_migration_once(self, tmp_path, monkeypatch):
-        from api._client_operations import generate_undo_scripts_operation
-        from api.events import EventEmitter
-        from core.migration import migration as migration_module
+        from dblift.api._client_operations import generate_undo_scripts_operation
+        from dblift.api.events import EventEmitter
+        from dblift.core.migration import migration as migration_module
 
         migration_file = tmp_path / "V1__create_users.sql"
         migration_file.write_text("CREATE TABLE users (id int);\n", encoding="utf-8")
@@ -111,8 +111,8 @@ class TestClientDialectCaching:
         assert migration_calls == [migration_file]
 
     def test_generate_undo_scripts_generic_exception_emits_failed_event(self, tmp_path):
-        from api import _client_operations as operations
-        from api.events import EventType
+        from dblift.api import _client_operations as operations
+        from dblift.api.events import EventType
 
         migration_file = tmp_path / "V1__create_users.sql"
         migration_file.write_text("CREATE TABLE users (id int);\n", encoding="utf-8")
@@ -152,8 +152,8 @@ class TestClientDialectCaching:
         }
 
     def test_generate_undo_scripts_file_exists_error_keeps_clean_message(self, tmp_path):
-        from api import _client_operations as operations
-        from api.events import EventType
+        from dblift.api import _client_operations as operations
+        from dblift.api.events import EventType
 
         migration_file = tmp_path / "V1__create_users.sql"
         migration_file.write_text("CREATE TABLE users (id int);\n", encoding="utf-8")
@@ -201,8 +201,8 @@ class TestClientDialectCaching:
         }
 
     def test_generate_undo_script_overwritten_uses_generator_path(self, tmp_path):
-        from api._client_operations import generate_undo_script_operation
-        from api.events import EventEmitter
+        from dblift.api._client_operations import generate_undo_script_operation
+        from dblift.api.events import EventEmitter
 
         migration_file = tmp_path / "V1_2__create_users.sql"
         migration_file.write_text("CREATE TABLE users (id int);\n", encoding="utf-8")
@@ -225,8 +225,8 @@ class TestClientDialectCaching:
         assert result.overwritten is True
 
     def test_generate_undo_script_value_error_result_keeps_migration_path(self, tmp_path):
-        from api import _client_operations as operations
-        from api.events import EventEmitter
+        from dblift.api import _client_operations as operations
+        from dblift.api.events import EventEmitter
 
         migration_file = tmp_path / "not_versioned.sql"
         migration_file.write_text("CREATE TABLE users (id int);\n", encoding="utf-8")
@@ -254,12 +254,12 @@ class TestBaseProviderDialect:
     """Tests for native provider dialect metadata (AC#2)."""
 
     def test_default_canonical_dialect_key_is_empty(self):
-        from db.base_provider import BaseProvider
+        from dblift.db.base_provider import BaseProvider
 
         assert BaseProvider.canonical_dialect_key == ""
 
     def test_postgresql_provider_declares_canonical_dialect_key(self):
-        from db.plugins.postgresql.provider import PostgreSqlProvider
+        from dblift.db.plugins.postgresql.provider import PostgreSqlProvider
 
         assert PostgreSqlProvider.canonical_dialect_key == "postgresql"
 

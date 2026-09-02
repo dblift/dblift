@@ -1,4 +1,4 @@
-from cli.commands.config_command import build_property_table, run_config_command
+from dblift.cli.commands.config_command import build_property_table, run_config_command
 
 
 def _by_name():

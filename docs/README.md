@@ -90,7 +90,7 @@ Use syntax highlighting:
 
 ````markdown
 ```python
-from api.client import DBLiftClient
+from dblift.api.client import DBLiftClient
 client = DBLiftClient(...)
 ```
 ````

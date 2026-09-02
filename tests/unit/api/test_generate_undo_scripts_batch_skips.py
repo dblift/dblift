@@ -20,7 +20,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from api._client_operations import generate_undo_scripts_operation
+from dblift.api._client_operations import generate_undo_scripts_operation
 
 
 def _make_client(dialect: str = "cosmosdb"):
@@ -57,7 +57,7 @@ class TestGenerateUndoScriptsBatchSkips:
 
     def test_skip_message_matches_single_file_api_for_same_file(self, tmp_path):
         """Batch skip explanation == what generate_undo_script() says for that file."""
-        from api._client_operations import generate_undo_script_operation
+        from dblift.api._client_operations import generate_undo_script_operation
 
         migration_file = tmp_path / "V1__create_container.py"
         migration_file.write_text("# migration\n")

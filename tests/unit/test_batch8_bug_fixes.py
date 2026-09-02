@@ -21,8 +21,8 @@ class TestBug01RecursiveIsGlobal(unittest.TestCase):
     "unrecognized arguments"."""
 
     def _extract(self, argv):
-        from cli._command_handlers import _AVAILABLE_COMMANDS
-        from cli._config_helpers import _extract_commands_from_argv
+        from dblift.cli._command_handlers import _AVAILABLE_COMMANDS
+        from dblift.cli._config_helpers import _extract_commands_from_argv
 
         global_only_args = [
             "--version",
@@ -61,7 +61,7 @@ class TestBug01RecursiveIsGlobal(unittest.TestCase):
         self.assertEqual(commands, ["migrate"])
 
     def test_no_recursive_in_global_boolean_flags_set(self) -> None:
-        from cli._config_helpers import _GLOBAL_BOOLEAN_FLAGS
+        from dblift.cli._config_helpers import _GLOBAL_BOOLEAN_FLAGS
 
         self.assertIn("--recursive", _GLOBAL_BOOLEAN_FLAGS)
         self.assertIn("--no-recursive", _GLOBAL_BOOLEAN_FLAGS)
@@ -81,7 +81,7 @@ class TestBug01RecursiveIsGlobal(unittest.TestCase):
 # ---------------------------------------------------------------------------
 class TestBug04JavaFqcnStrip(unittest.TestCase):
     def _capture(self, exc):
-        from core.logger.log import AbstractLog
+        from dblift.core.logger.log import AbstractLog
 
         captured = []
 

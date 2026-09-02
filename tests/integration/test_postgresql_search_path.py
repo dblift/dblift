@@ -17,10 +17,10 @@ import uuid
 
 import pytest
 
-from api import DBLiftClient
-from config import DbliftConfig
-from db.plugins.postgresql.config import PostgreSqlConfig
-from db.provider_registry import ProviderRegistry
+from dblift.api import DBLiftClient
+from dblift.config import DbliftConfig
+from dblift.db.plugins.postgresql.config import PostgreSqlConfig
+from dblift.db.provider_registry import ProviderRegistry
 from tests.integration.helpers.migration_helper import create_versioned_migration
 
 pytestmark = [pytest.mark.integration, pytest.mark.postgresql]

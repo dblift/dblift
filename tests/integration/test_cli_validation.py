@@ -26,7 +26,7 @@ class TestCLIValidation:
         """Verify that cli/main.py is the CLI we're testing."""
         # Get version from production CLI
         result = subprocess.run(
-            [sys.executable, "-m", "cli.main", "--version"],
+            [sys.executable, "-m", "dblift.cli.main", "--version"],
             capture_output=True,
             text=True,
         )
@@ -39,14 +39,14 @@ class TestCLIValidation:
     def test_cli_main_module_exists(self):
         """Verify that cli.main module can be imported."""
         try:
-            import cli.main  # noqa: F401
+            import dblift.cli.main  # noqa: F401
         except ImportError as e:
-            pytest.fail(f"cli.main module cannot be imported: {e}")
+            pytest.fail(f"dblift.cli.main module cannot be imported: {e}")
 
     def test_cli_help_command(self):
         """Verify that production CLI help command works."""
         result = subprocess.run(
-            [sys.executable, "-m", "cli.main", "--help"],
+            [sys.executable, "-m", "dblift.cli.main", "--help"],
             capture_output=True,
             text=True,
         )
@@ -59,7 +59,7 @@ class TestCLIValidation:
     def test_cli_available_commands(self):
         """Verify that all expected commands are available."""
         result = subprocess.run(
-            [sys.executable, "-m", "cli.main", "--help"],
+            [sys.executable, "-m", "dblift.cli.main", "--help"],
             capture_output=True,
             text=True,
         )
@@ -86,7 +86,7 @@ class TestCLIValidation:
     def test_dblift_cli_class_uses_correct_module(self):
         """Verify that DBLiftCLI class uses cli.main."""
         assert (
-            DBLiftCLI.CLI_MODULE == "cli.main"
+            DBLiftCLI.CLI_MODULE == "dblift.cli.main"
         ), f"DBLiftCLI is using wrong module: {DBLiftCLI.CLI_MODULE}"
 
     def test_do_not_use_dblift_cli_py(self):
@@ -98,7 +98,7 @@ class TestCLIValidation:
         must execute the production CLI.
         """
 
-        assert DBLiftCLI.CLI_MODULE == "cli.main"
+        assert DBLiftCLI.CLI_MODULE == "dblift.cli.main"
 
     def test_cli_runner_creates_correct_commands(self, tmp_path):
         """Verify that DBLiftCLI generates correct command lines."""

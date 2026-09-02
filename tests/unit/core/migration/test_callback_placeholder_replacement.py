@@ -10,11 +10,11 @@ from unittest.mock import Mock
 
 import pytest
 
-from core.logger import DbliftLogger
-from core.migration.executor.execution_engine import ExecutionEngine
-from core.migration.migration import Migration, MigrationType
-from core.migration.placeholders.placeholder_service import PlaceholderService
-from core.migration.sql.sql_analyzer import SqlAnalyzer
+from dblift.core.logger import DbliftLogger
+from dblift.core.migration.executor.execution_engine import ExecutionEngine
+from dblift.core.migration.migration import Migration, MigrationType
+from dblift.core.migration.placeholders.placeholder_service import PlaceholderService
+from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
 
 pytestmark = [pytest.mark.unit]
 

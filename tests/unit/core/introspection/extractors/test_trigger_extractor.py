@@ -10,7 +10,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from core.introspection.extractors.trigger_extractor import TriggerExtractor, _to_bool
+from dblift.core.introspection.extractors.trigger_extractor import TriggerExtractor, _to_bool
 
 pytestmark = [pytest.mark.unit]
 

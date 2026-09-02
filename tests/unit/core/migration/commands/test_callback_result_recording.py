@@ -6,11 +6,11 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from core.exceptions import CallbackExecutionError
-from core.logger.results import CallbackExecution, MigrateResult
-from core.migration.commands.migrate_command import MigrateCommand
-from core.migration.formats import MigrationFormat
-from core.migration.migration import Migration
+from dblift.core.exceptions import CallbackExecutionError
+from dblift.core.logger.results import CallbackExecution, MigrateResult
+from dblift.core.migration.commands.migrate_command import MigrateCommand
+from dblift.core.migration.formats import MigrationFormat
+from dblift.core.migration.migration import Migration
 
 
 def _command_with_callbacks(callbacks):
@@ -69,7 +69,7 @@ def test_error_callback_records_failed_status_without_reraise():
 
 
 def _engine_with_query_result(rows):
-    from core.migration.executor.execution_engine import ExecutionEngine
+    from dblift.core.migration.executor.execution_engine import ExecutionEngine
 
     provider = MagicMock()
     sql_analyzer = MagicMock()
@@ -128,7 +128,7 @@ def test_execute_callback_records_zero_row_result_set():
 
 @pytest.mark.unit
 def test_execute_callback_records_result_set_without_sql_execution_service():
-    from core.migration.executor.execution_engine import ExecutionEngine
+    from dblift.core.migration.executor.execution_engine import ExecutionEngine
 
     provider = MagicMock()
     provider.execute_query.return_value = [{"status": "ok"}]

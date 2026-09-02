@@ -4,11 +4,11 @@ import re
 
 import pytest
 
-from core.sql_parser.dialects.base_config import DialectConfig
-from db.plugins.db2.parser.parser_config import DB2Config
-from db.plugins.mysql.parser.parser_config import MySqlConfig
-from db.plugins.postgresql.parser.parser_config import PostgreSqlConfig
-from db.plugins.sqlserver.parser.parser_config import SqlServerConfig
+from dblift.core.sql_parser.dialects.base_config import DialectConfig
+from dblift.db.plugins.db2.parser.parser_config import DB2Config
+from dblift.db.plugins.mysql.parser.parser_config import MySqlConfig
+from dblift.db.plugins.postgresql.parser.parser_config import PostgreSqlConfig
+from dblift.db.plugins.sqlserver.parser.parser_config import SqlServerConfig
 
 
 @pytest.mark.unit

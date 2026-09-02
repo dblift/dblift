@@ -8,7 +8,7 @@ import pytest
 
 pytestmark = [pytest.mark.unit]
 
-from cli.main import (
+from dblift.cli.main import (
     _AVAILABLE_COMMANDS,
     _collect_placeholders,
     _extract_commands_from_argv,

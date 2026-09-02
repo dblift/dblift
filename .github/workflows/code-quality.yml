@@ -30,18 +30,18 @@ jobs:
           python -m pip install -e ".[dev]"
 
       - name: Check formatting
-        run: black --check --diff api/ cli/ config/ core/ db/ tests/ scripts/
+        run: black --check --diff dblift/ tests/ scripts/
 
       - name: Check imports
-        run: isort --check --diff api/ cli/ config/ core/ db/ tests/ scripts/
+        run: isort --check --diff dblift/ tests/ scripts/
 
       # tests/ and scripts/ are excluded in .flake8 (legacy volume) — see the
       # note there. Mirrors scripts/check_code_quality.sh.
       - name: Check style
-        run: flake8 --config=.flake8 api/ cli/ config/ core/ db/
+        run: flake8 --config=.flake8 dblift/
 
       - name: Type check
-        run: mypy api/ cli/ config/ core/ db/ --config-file pyproject.toml --show-error-codes
+        run: mypy dblift/ --config-file pyproject.toml --show-error-codes
 
       - name: Check internal layering
         run: lint-imports --config .importlinter
@@ -50,7 +50,7 @@ jobs:
         run: python scripts/lint_patterns.py
 
       - name: Public-API docstrings (ratchet)
-        run: python scripts/check_api_docstrings.py --paths api cli core db --ratchet .docstring-ratchet.json
+        run: python scripts/check_api_docstrings.py --paths dblift/api dblift/cli dblift/core dblift/db --ratchet .docstring-ratchet.json
 
       - name: Line-length (ratchet)
         run: python scripts/check_line_length.py

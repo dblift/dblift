@@ -11,7 +11,7 @@ import unittest
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
-from core.introspection.extractors.table_extractor import TableExtractor
+from dblift.core.introspection.extractors.table_extractor import TableExtractor
 
 
 def _make_extractor(history: str, snapshot: str, dialect: str = "postgresql") -> TableExtractor:

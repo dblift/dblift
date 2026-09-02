@@ -23,9 +23,9 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from core.migration.commands.repair_command import RepairCommand, RepairSafetyError
-from core.migration.migration import MigrationType
-from core.migration.state.migration_state import MigrationState
+from dblift.core.migration.commands.repair_command import RepairCommand, RepairSafetyError
+from dblift.core.migration.migration import MigrationType
+from dblift.core.migration.state.migration_state import MigrationState
 
 
 def _make_applied(script_name: str, version: str = "1") -> SimpleNamespace:

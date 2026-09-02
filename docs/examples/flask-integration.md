@@ -10,8 +10,8 @@ The helpers only inspect state via `client.info()` (when guard is used); **they 
 from flask import Flask
 from sqlalchemy import create_engine
 
-from api import DBLiftClient
-from integrations.flask import init_dblift, register_cli
+from dblift.api import DBLiftClient
+from dblift.integrations.flask import init_dblift, register_cli
 
 # Your existing engine (owned by you). Pass to from_sqlalchemy so DBLift
 # re-uses it instead of opening its own connection.

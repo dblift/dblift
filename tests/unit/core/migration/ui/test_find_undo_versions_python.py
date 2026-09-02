@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from unittest.mock import MagicMock
 
-from core.migration.ui.data_collector import MigrationDataCollector
+from dblift.core.migration.ui.data_collector import MigrationDataCollector
 
 
 def _make_collector() -> MigrationDataCollector:

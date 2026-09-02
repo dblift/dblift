@@ -1,7 +1,7 @@
 """``MongodbQuirks`` — the capability declarations that route MongoDB."""
 
-from db.base_quirks import BaseQuirks
-from db.plugins.mongodb.quirks import MongodbQuirks
+from dblift.db.base_quirks import BaseQuirks
+from dblift.db.plugins.mongodb.quirks import MongodbQuirks
 
 
 def test_declares_itself_nosql():

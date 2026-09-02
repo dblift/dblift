@@ -32,7 +32,7 @@ import pytest
 import yaml
 
 DBLIFT_ROOT = Path(__file__).resolve().parents[3]
-CLI = [sys.executable, "-m", "cli.main"]
+CLI = [sys.executable, "-m", "dblift.cli.main"]
 
 # Every callback in this module appends one row here, tagged with its event.
 CALLBACK_LOG_DDL = """

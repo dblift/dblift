@@ -25,10 +25,10 @@ rather than the hardcoded literal strings it previously duplicated.
 import unittest
 from unittest.mock import MagicMock, patch
 
-from core.logger.results import RepairResult
-from core.migration.commands.repair_command import RepairCommand
-from core.migration.migration import MigrationType
-from core.migration.ui.data_collector import MigrationDataCollector
+from dblift.core.logger.results import RepairResult
+from dblift.core.migration.commands.repair_command import RepairCommand
+from dblift.core.migration.migration import MigrationType
+from dblift.core.migration.ui.data_collector import MigrationDataCollector
 
 
 def _make_repair_cmd():
@@ -81,7 +81,7 @@ def _run_missing_script_repair(script_name: str, original_type):
     ]
     result = RepairResult()
 
-    with patch("core.migration.commands.repair_command.ensure_provider_connection"):
+    with patch("dblift.core.migration.commands.repair_command.ensure_provider_connection"):
         executed, had_error = cmd._execute_repair_loop(repairs, result)
 
     assert not had_error, "repair loop reported an error"

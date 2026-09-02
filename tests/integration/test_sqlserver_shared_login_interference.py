@@ -29,11 +29,11 @@ import uuid
 import pymssql
 import pytest
 
-from config.dblift_config import DbliftConfig
-from db.plugins.sqlserver.config import SqlServerConfig
-from db.plugins.sqlserver.provider import SqlServerProvider
-from db.provider_registry import ProviderRegistry
-from db.sqlalchemy_provider import SqlAlchemyProvider
+from dblift.config.dblift_config import DbliftConfig
+from dblift.db.plugins.sqlserver.config import SqlServerConfig
+from dblift.db.plugins.sqlserver.provider import SqlServerProvider
+from dblift.db.provider_registry import ProviderRegistry
+from dblift.db.sqlalchemy_provider import SqlAlchemyProvider
 
 pytestmark = [pytest.mark.integration, pytest.mark.sqlserver]
 

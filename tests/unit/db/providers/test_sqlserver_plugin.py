@@ -48,7 +48,9 @@ class TestSqlServerSchemaOperations(unittest.TestCase):
         return qe
 
     def _make_ops(self, qe=None):
-        from db.plugins.sqlserver.sqlserver.schema_operations import SqlServerSchemaOperations
+        from dblift.db.plugins.sqlserver.sqlserver.schema_operations import (
+            SqlServerSchemaOperations,
+        )
 
         if qe is None:
             qe = self._make_qe()

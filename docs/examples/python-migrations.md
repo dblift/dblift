@@ -6,7 +6,7 @@ A Python migration is a file named `V<ver>__<desc>.py` (or repeatable `R__...py`
 
 ```python
 # migrations/V1__seed_and_transform.py
-from api import MigrationContext  # recommended for type hints
+from dblift.api import MigrationContext  # recommended for type hints
 
 def migrate(context: MigrationContext) -> None:
     """Apply the change."""
@@ -44,7 +44,7 @@ from pathlib import Path
 
 from sqlalchemy import create_engine
 
-from api import DBLiftClient, MigrationContext
+from dblift.api import DBLiftClient, MigrationContext
 
 
 def main():
@@ -57,7 +57,7 @@ def main():
         py_mig = migrations_dir / "V1__demo_python_migration.py"
         py_mig.write_text('''"""Demo Python migration using the full MigrationContext surface."""
 
-from api import MigrationContext
+from dblift.api import MigrationContext
 
 
 def migrate(context: MigrationContext) -> None:
@@ -104,7 +104,7 @@ def migrate(context: MigrationContext) -> None:
         undo_mig = migrations_dir / "U1__demo_python_migration.py"
         undo_mig.write_text('''"""Undo script for V1__demo_python_migration.py."""
 
-from api import MigrationContext
+from dblift.api import MigrationContext
 
 
 def migrate(context: MigrationContext) -> None:
@@ -192,7 +192,7 @@ undo companion — you receive a `MigrationContext` with:
 Type it:
 
 ```python
-from api import MigrationContext
+from dblift.api import MigrationContext
 
 def migrate(context: MigrationContext) -> None:
     ...

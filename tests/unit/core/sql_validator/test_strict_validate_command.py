@@ -8,8 +8,8 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from core.migration.migration import MigrationType
-from core.sql_validator.migration_validator import MigrationValidator
+from dblift.core.migration.migration import MigrationType
+from dblift.core.sql_validator.migration_validator import MigrationValidator
 
 
 def _validator(strict_result: bool) -> MigrationValidator:

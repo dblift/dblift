@@ -15,12 +15,12 @@ from pathlib import Path
 
 import pytest
 
-from db.plugins.cockroachdb.sqlalchemy_url import build_sqlalchemy_url as build_cockroach_url
-from db.plugins.postgresql.provider import PostgreSqlProvider
-from db.plugins.postgresql.quirks import PostgresqlQuirks
-from db.plugins.postgresql.sqlalchemy_url import build_sqlalchemy_url as build_postgresql_url
-from db.plugins.redshift.sqlalchemy_url import build_sqlalchemy_url as build_redshift_url
-from db.provider_registry import ProviderRegistry
+from dblift.db.plugins.cockroachdb.sqlalchemy_url import build_sqlalchemy_url as build_cockroach_url
+from dblift.db.plugins.postgresql.provider import PostgreSqlProvider
+from dblift.db.plugins.postgresql.quirks import PostgresqlQuirks
+from dblift.db.plugins.postgresql.sqlalchemy_url import build_sqlalchemy_url as build_postgresql_url
+from dblift.db.plugins.redshift.sqlalchemy_url import build_sqlalchemy_url as build_redshift_url
+from dblift.db.provider_registry import ProviderRegistry
 
 # (plugin dir/module, canonical dialect name, provider cls, quirks cls)
 PG_COMPATIBLE = [
@@ -42,7 +42,7 @@ PG_COMPATIBLE = [
 
 
 def _plugin(module_dir):
-    return importlib.import_module(f"db.plugins.{module_dir}.plugin").PLUGIN
+    return importlib.import_module(f"dblift.db.plugins.{module_dir}.plugin").PLUGIN
 
 
 @pytest.mark.unit
@@ -111,7 +111,7 @@ def test_factory_engines_resolve_classes_from_declared_plugin(
     boilerplate files — a regression here would silently strip these engines of
     their PostgreSQL quirks (and re-break the single ANSI-reference invariant).
     """
-    package = importlib.import_module(f"db.plugins.{module_dir}")
+    package = importlib.import_module(f"dblift.db.plugins.{module_dir}")
     plugin_dir = Path(package.__file__).resolve().parent
     # Precondition: the boilerplate files are gone, so the fallback is the
     # only path that can supply the classes.
@@ -158,9 +158,9 @@ def test_broken_plugin_py_is_logged_not_silently_dropped(monkeypatch, caplog):
     import importlib
     import logging
 
-    from db import provider_registry
+    from dblift.db import provider_registry
 
-    package = importlib.import_module("db.plugins.neon")
+    package = importlib.import_module("dblift.db.plugins.neon")
     plugin_dir = Path(package.__file__).resolve().parent
     real_import_module = importlib.import_module
 
@@ -175,7 +175,7 @@ def test_broken_plugin_py_is_logged_not_silently_dropped(monkeypatch, caplog):
         info = provider_registry.ProviderRegistry._load_plugin(plugin_dir)
 
     assert info is None  # no provider.py to fall back to → engine drops
-    assert any("db.plugins.neon.plugin" in rec.message for rec in caplog.records)
+    assert any("dblift.db.plugins.neon.plugin" in rec.message for rec in caplog.records)
 
 
 @pytest.mark.unit
@@ -184,7 +184,7 @@ def test_factory_built_classes_are_picklable():
     multiprocessing ``spawn``) can resolve them by qualified name."""
     import pickle
 
-    import db.plugins.neon.plugin as neon_plugin
+    import dblift.db.plugins.neon.plugin as neon_plugin
 
     provider_cls = neon_plugin.PLUGIN.provider_class
     quirks_cls = neon_plugin.PLUGIN.quirks_class
@@ -226,9 +226,9 @@ def test_config_create_preserves_identity(module_dir, dialect, provider_name, qu
     ``type = "postgresql"`` unconditionally, collapsing every PG-derived engine
     back to PostgreSQL (identity lost). ``_POSTGRESQL_FAMILY`` preserves it.
     """
-    from config.database_config import BaseDatabaseConfig
-    from config.dblift_config import DbliftConfig
-    from db.plugins.postgresql.config import PostgreSqlConfig
+    from dblift.config.database_config import BaseDatabaseConfig
+    from dblift.config.dblift_config import DbliftConfig
+    from dblift.db.plugins.postgresql.config import PostgreSqlConfig
 
     ProviderRegistry.discover_plugins()
     ProviderRegistry.register_plugin(_plugin(module_dir))
@@ -247,7 +247,7 @@ def test_config_create_preserves_identity(module_dir, dialect, provider_name, qu
 def test_postgres_alias_still_normalises_to_postgresql():
     """The ``postgres`` alias (not a distinct engine) must still fold to
     ``postgresql`` — only the named family members keep their own type."""
-    from config.database_config import BaseDatabaseConfig
+    from dblift.config.database_config import BaseDatabaseConfig
 
     cfg = BaseDatabaseConfig.create({"type": "postgres", "url": "postgresql://u:p@h/db"})
     assert cfg.type == "postgresql"

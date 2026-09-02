@@ -12,18 +12,18 @@ import pytest
 with patch.dict(
     "sys.modules",
     {
-        "cli.db_utils": MagicMock(),
-        "config.dblift_config": MagicMock(),
-        "core.logger": MagicMock(),
-        "core.logger.console": MagicMock(),
-        "core.migration.migration_executor": MagicMock(),
+        "dblift.cli.db_utils": MagicMock(),
+        "dblift.config.dblift_config": MagicMock(),
+        "dblift.core.logger": MagicMock(),
+        "dblift.core.logger.console": MagicMock(),
+        "dblift.core.migration.migration_executor": MagicMock(),
     },
 ):
-    from cli.main import create_parser, main
+    from dblift.cli.main import create_parser, main
 
 
 def test_config_list_short_circuits_before_config_load(monkeypatch):
-    from cli import main as cli_main
+    from dblift.cli import main as cli_main
 
     monkeypatch.setattr(
         cli_main,
@@ -31,7 +31,7 @@ def test_config_list_short_circuits_before_config_load(monkeypatch):
         Mock(side_effect=AssertionError("config should not be loaded for `config --list`")),
     )
     run_config_command = Mock(return_value=0)
-    monkeypatch.setattr("cli.commands.config_command.run_config_command", run_config_command)
+    monkeypatch.setattr("dblift.cli.commands.config_command.run_config_command", run_config_command)
 
     with pytest.raises(SystemExit) as exc_info:
         cli_main._parse_argv_and_load_config(["config", "--list"])
@@ -42,7 +42,7 @@ def test_config_list_short_circuits_before_config_load(monkeypatch):
 
 
 def test_terminal_extension_dispatches_before_argparse_validation(monkeypatch):
-    from cli import main as cli_main
+    from dblift.cli import main as cli_main
 
     handler = Mock(return_value=7)
 
@@ -213,7 +213,7 @@ class TestMainCLI:
         mock_exit.assert_called_once_with(0)
 
     @patch("sys.exit")
-    @patch("cli.db_utils.list_drivers")
+    @patch("dblift.cli.db_utils.list_drivers")
     def test_main_db_list_drivers(self, mock_list_drivers, mock_exit):
         """Test db list-drivers command."""
         mock_list_drivers.return_value = 0
@@ -225,7 +225,7 @@ class TestMainCLI:
         mock_exit.assert_called_once_with(0)
 
     @patch("sys.exit")
-    @patch("cli.db_utils.validate_config")
+    @patch("dblift.cli.db_utils.validate_config")
     def test_main_db_validate_config(self, mock_validate_config, mock_exit):
         """Test db validate-config command."""
         mock_validate_config.return_value = 0
@@ -237,7 +237,7 @@ class TestMainCLI:
         mock_exit.assert_called_once_with(0)
 
     @patch("sys.exit")
-    @patch("cli.db_utils.diagnose_connection")
+    @patch("dblift.cli.db_utils.diagnose_connection")
     def test_main_db_diagnose_connection(self, mock_diagnose_connection, mock_exit):
         """Test db diagnose-connection command."""
         mock_diagnose_connection.return_value = 0
@@ -249,7 +249,7 @@ class TestMainCLI:
         mock_exit.assert_called_once_with(0)
 
     @patch("sys.exit")
-    @patch("cli.db_utils.check_connection")
+    @patch("dblift.cli.db_utils.check_connection")
     def test_main_db_check_connection(self, mock_check_connection, mock_exit):
         """Test db check-connection command."""
         mock_check_connection.return_value = 0
@@ -269,9 +269,9 @@ class TestMainCLI:
 
         mock_exit.assert_called_once_with(1)
 
-    @patch("config.dblift_config.load_config")
-    @patch("core.logger.LogFactory")
-    @patch("core.migration.migration_executor.MigrationExecutor")
+    @patch("dblift.config.dblift_config.load_config")
+    @patch("dblift.core.logger.LogFactory")
+    @patch("dblift.core.migration.migration_executor.MigrationExecutor")
     @patch("pathlib.Path.exists")
     @patch("pathlib.Path.mkdir")
     @patch("sys.exit")
@@ -328,9 +328,9 @@ class TestMainCLI:
         # Exit should not be called for successful migration
         mock_exit.assert_not_called()
 
-    @patch("config.dblift_config.load_config")
-    @patch("core.logger.LogFactory")
-    @patch("core.migration.migration_executor.MigrationExecutor")
+    @patch("dblift.config.dblift_config.load_config")
+    @patch("dblift.core.logger.LogFactory")
+    @patch("dblift.core.migration.migration_executor.MigrationExecutor")
     @patch("pathlib.Path.exists")
     @patch("pathlib.Path.mkdir")
     @patch("sys.exit")
@@ -387,9 +387,9 @@ class TestMainCLI:
         # Exit should be called with error code for failed migration
         mock_exit.assert_called_once_with(1)
 
-    @patch("config.dblift_config.load_config")
-    @patch("core.logger.LogFactory")
-    @patch("core.migration.migration_executor.MigrationExecutor")
+    @patch("dblift.config.dblift_config.load_config")
+    @patch("dblift.core.logger.LogFactory")
+    @patch("dblift.core.migration.migration_executor.MigrationExecutor")
     @patch("pathlib.Path.exists")
     @patch("pathlib.Path.mkdir")
     @patch("sys.exit")
@@ -445,9 +445,9 @@ class TestMainCLI:
         mock_executor.info.assert_called_once()
         mock_exit.assert_not_called()
 
-    @patch("config.dblift_config.load_config")
-    @patch("core.logger.LogFactory")
-    @patch("core.migration.migration_executor.MigrationExecutor")
+    @patch("dblift.config.dblift_config.load_config")
+    @patch("dblift.core.logger.LogFactory")
+    @patch("dblift.core.migration.migration_executor.MigrationExecutor")
     @patch("pathlib.Path.exists")
     @patch("pathlib.Path.mkdir")
     @patch("sys.exit")
@@ -513,14 +513,14 @@ class TestDatabaseUrlMasking:
     """Test that database URLs are masked before logging in CLI."""
 
     def test_mask_database_url_imported_in_cli_main(self):
-        """cli.main doit exposer _mask_database_url (importée depuis snapshot_command)."""
-        import cli.main as m
+        """dblift.cli.main doit exposer _mask_database_url (importée depuis snapshot_command)."""
+        import dblift.cli.main as m
 
         assert hasattr(m, "_mask_database_url"), "_mask_database_url must be imported in cli.main"
 
     def test_cli_main_masks_sqlserver_url(self):
         """Réplication de la logique main.py:1296 — URL SQL Server masquée avant log."""
-        import cli.main as m
+        import dblift.cli.main as m
 
         raw_url = "mssql+pymssql://host/mydb?password=mysecret"
         masked_url = (
@@ -531,7 +531,7 @@ class TestDatabaseUrlMasking:
 
     def test_cli_main_masks_oracle_url(self):
         """Réplication de la logique main.py:1296 — URL Oracle thin masquée avant log."""
-        import cli.main as m
+        import dblift.cli.main as m
 
         raw_url = "oracle+oracledb://admin:secret@host:1521?service_name=orcl"
         masked_url = (
@@ -542,7 +542,7 @@ class TestDatabaseUrlMasking:
 
     def test_cli_main_masks_standard_database_url(self):
         """Standard //user:password@host format (PostgreSQL, MySQL) must be masked before log."""
-        import cli.main as m
+        import dblift.cli.main as m
 
         raw_url = "postgresql+psycopg://admin:secret@host:5432/db"
         masked_url = (
@@ -554,7 +554,7 @@ class TestDatabaseUrlMasking:
 
     def test_cli_main_not_set_url_unchanged(self):
         """Si l'URL vaut 'Not set', elle ne doit pas passer par _mask_database_url."""
-        import cli.main as m
+        import dblift.cli.main as m
 
         raw_url = "Not set"
         masked_url = (
@@ -568,7 +568,7 @@ def test_main_missing_database_url_subprocess():
     cmd = [
         sys.executable,
         "-m",
-        "cli.main",
+        "dblift.cli.main",
         "migrate",
         # No --db-url provided, should trigger error
     ]
@@ -595,7 +595,7 @@ def test_main_missing_database_username_subprocess():
     cmd = [
         sys.executable,
         "-m",
-        "cli.main",
+        "dblift.cli.main",
         "--db-url",
         "oracle+oracledb://localhost:1521?service_name=XE",
         "migrate",
@@ -618,7 +618,7 @@ def test_main_missing_database_password_subprocess():
     cmd = [
         sys.executable,
         "-m",
-        "cli.main",
+        "dblift.cli.main",
         "--db-url",
         "mssql+pymssql://localhost:1433/testdb",
         "--db-username",
@@ -643,7 +643,7 @@ def test_main_info_command_subprocess():
     cmd = [
         sys.executable,
         "-m",
-        "cli.main",
+        "dblift.cli.main",
         "--db-url",
         "postgresql+psycopg://localhost/test",
         "--db-username",
@@ -665,7 +665,7 @@ def test_main_migrate_command_subprocess():
     cmd = [
         sys.executable,
         "-m",
-        "cli.main",
+        "dblift.cli.main",
         "--db-url",
         "postgresql+psycopg://localhost/test",
         "--db-username",
@@ -687,7 +687,7 @@ def test_main_validate_command_subprocess():
     cmd = [
         sys.executable,
         "-m",
-        "cli.main",
+        "dblift.cli.main",
         "--db-url",
         "postgresql+psycopg://localhost/test",
         "--db-username",
@@ -709,7 +709,7 @@ def test_main_baseline_command_subprocess():
     cmd = [
         sys.executable,
         "-m",
-        "cli.main",
+        "dblift.cli.main",
         "--db-url",
         "postgresql+psycopg://localhost/test",
         "--db-username",
@@ -733,7 +733,7 @@ def test_main_exception_handling_subprocess():
     cmd = [
         sys.executable,
         "-m",
-        "cli.main",
+        "dblift.cli.main",
         "--db-url",
         "postgresql+psycopg://localhost:1/nonexistent_db",
         "--db-username",
@@ -753,7 +753,7 @@ def test_main_log_format_validation_subprocess():
     cmd = [
         sys.executable,
         "-m",
-        "cli.main",
+        "dblift.cli.main",
         "--db-url",
         "postgresql+psycopg://localhost:5432/mydb",
         "--db-username",
@@ -776,7 +776,7 @@ def test_main_multiple_log_formats_subprocess():
     cmd = [
         sys.executable,
         "-m",
-        "cli.main",
+        "dblift.cli.main",
         "--db-url",
         "postgresql+psycopg://localhost:5432/mydb",
         "--db-username",
@@ -803,7 +803,7 @@ def test_load_config_failure_no_attribute_error_subprocess():
     cmd = [
         sys.executable,
         "-m",
-        "cli.main",
+        "dblift.cli.main",
         "--config",
         "/nonexistent/config.yaml",
         "--db-url",
@@ -822,7 +822,7 @@ def test_log_initialized_before_load_config_info_subprocess():
     cmd = [
         sys.executable,
         "-m",
-        "cli.main",
+        "dblift.cli.main",
         "--db-url",
         "postgresql+psycopg://nowhere:1/fake",
         "info",
@@ -858,57 +858,57 @@ class TestConfigureLoggingDictLookup:
         config.log_level = log_level
         return config
 
-    @patch("cli._config_helpers.LogFactory")
-    @patch("cli._config_helpers.DatabaseUrlParser")
-    @patch("cli._config_helpers.Path")
+    @patch("dblift.cli._config_helpers.LogFactory")
+    @patch("dblift.cli._config_helpers.DatabaseUrlParser")
+    @patch("dblift.cli._config_helpers.Path")
     def test_log_level_debug_maps_correctly(self, mock_path, mock_parser, mock_log_factory):
-        from cli.main import _configure_logging
-        from core.logger import LogLevel
+        from dblift.cli.main import _configure_logging
+        from dblift.core.logger import LogLevel
 
         mock_parser.parse_database_name.return_value = "test"
         args = self._make_args(log_level="debug")
         _configure_logging(args, self._make_config(), MagicMock())
         assert mock_log_factory.configure.call_args.kwargs["log_level"] == LogLevel.DEBUG
 
-    @patch("cli._config_helpers.LogFactory")
-    @patch("cli._config_helpers.DatabaseUrlParser")
-    @patch("cli._config_helpers.Path")
+    @patch("dblift.cli._config_helpers.LogFactory")
+    @patch("dblift.cli._config_helpers.DatabaseUrlParser")
+    @patch("dblift.cli._config_helpers.Path")
     def test_log_level_warn_maps_correctly(self, mock_path, mock_parser, mock_log_factory):
-        from cli.main import _configure_logging
-        from core.logger import LogLevel
+        from dblift.cli.main import _configure_logging
+        from dblift.core.logger import LogLevel
 
         mock_parser.parse_database_name.return_value = "test"
         args = self._make_args(log_level="warn")
         _configure_logging(args, self._make_config(), MagicMock())
         assert mock_log_factory.configure.call_args.kwargs["log_level"] == LogLevel.WARN
 
-    @patch("cli._config_helpers.LogFactory")
-    @patch("cli._config_helpers.DatabaseUrlParser")
-    @patch("cli._config_helpers.Path")
+    @patch("dblift.cli._config_helpers.LogFactory")
+    @patch("dblift.cli._config_helpers.DatabaseUrlParser")
+    @patch("dblift.cli._config_helpers.Path")
     def test_log_level_error_maps_correctly(self, mock_path, mock_parser, mock_log_factory):
-        from cli.main import _configure_logging
-        from core.logger import LogLevel
+        from dblift.cli.main import _configure_logging
+        from dblift.core.logger import LogLevel
 
         mock_parser.parse_database_name.return_value = "test"
         args = self._make_args(log_level="error")
         _configure_logging(args, self._make_config(), MagicMock())
         assert mock_log_factory.configure.call_args.kwargs["log_level"] == LogLevel.ERROR
 
-    @patch("cli._config_helpers.LogFactory")
-    @patch("cli._config_helpers.DatabaseUrlParser")
-    @patch("cli._config_helpers.Path")
+    @patch("dblift.cli._config_helpers.LogFactory")
+    @patch("dblift.cli._config_helpers.DatabaseUrlParser")
+    @patch("dblift.cli._config_helpers.Path")
     def test_log_level_unknown_defaults_to_info(self, mock_path, mock_parser, mock_log_factory):
-        from cli.main import _configure_logging
-        from core.logger import LogLevel
+        from dblift.cli.main import _configure_logging
+        from dblift.core.logger import LogLevel
 
         mock_parser.parse_database_name.return_value = "test"
         args = self._make_args(log_level="verbose")
         _configure_logging(args, self._make_config(), MagicMock())
         assert mock_log_factory.configure.call_args.kwargs["log_level"] == LogLevel.INFO
 
-    @patch("cli._config_helpers.LogFactory")
-    @patch("cli._config_helpers.DatabaseUrlParser")
-    @patch("cli._config_helpers.Path")
+    @patch("dblift.cli._config_helpers.LogFactory")
+    @patch("dblift.cli._config_helpers.DatabaseUrlParser")
+    @patch("dblift.cli._config_helpers.Path")
     def test_quiet_sets_console_log_level_to_notice(self, mock_path, mock_parser, mock_log_factory):
         """``--quiet`` must keep success (NOTICE) messages — only INFO/DEBUG drop.
 
@@ -916,8 +916,8 @@ class TestConfigureLoggingDictLookup:
         WARN, silently swallowing NOTICE-tier "Command completed
         successfully" confirmations.
         """
-        from cli.main import _configure_logging
-        from core.logger import LogLevel
+        from dblift.cli.main import _configure_logging
+        from dblift.core.logger import LogLevel
 
         mock_parser.parse_database_name.return_value = "test"
         args = self._make_args(log_level="info")
@@ -928,16 +928,16 @@ class TestConfigureLoggingDictLookup:
         # File/JSON/HTML logs keep INFO so audit trail stays complete.
         assert kwargs["log_level"] == LogLevel.INFO
 
-    @patch("cli._config_helpers.LogFactory")
-    @patch("cli._config_helpers.DatabaseUrlParser")
-    @patch("cli._config_helpers.Path")
+    @patch("dblift.cli._config_helpers.LogFactory")
+    @patch("dblift.cli._config_helpers.DatabaseUrlParser")
+    @patch("dblift.cli._config_helpers.Path")
     def test_quiet_skipped_when_log_level_already_at_or_above_notice(
         self, mock_path, mock_parser, mock_log_factory
     ):
         """If ``--log-level=warn``/error already silences info, leave the
         explicit choice alone (no double-override)."""
-        from cli.main import _configure_logging
-        from core.logger import LogLevel
+        from dblift.cli.main import _configure_logging
+        from dblift.core.logger import LogLevel
 
         mock_parser.parse_database_name.return_value = "test"
         args = self._make_args(log_level="warn")
@@ -948,54 +948,54 @@ class TestConfigureLoggingDictLookup:
         assert kwargs["console_log_level"] is None
         assert kwargs["log_level"] == LogLevel.WARN
 
-    @patch("cli._config_helpers.LogFactory")
-    @patch("cli._config_helpers.DatabaseUrlParser")
-    @patch("cli._config_helpers.Path")
+    @patch("dblift.cli._config_helpers.LogFactory")
+    @patch("dblift.cli._config_helpers.DatabaseUrlParser")
+    @patch("dblift.cli._config_helpers.Path")
     def test_log_format_html_maps_correctly(self, mock_path, mock_parser, mock_log_factory):
-        from cli.main import _configure_logging
-        from core.logger import LogFormat
+        from dblift.cli.main import _configure_logging
+        from dblift.core.logger import LogFormat
 
         mock_parser.parse_database_name.return_value = "test"
         args = self._make_args(log_format="html")
         _configure_logging(args, self._make_config(), MagicMock())
         assert mock_log_factory.configure.call_args.kwargs["log_format"] == LogFormat.HTML
 
-    @patch("cli._config_helpers.LogFactory")
-    @patch("cli._config_helpers.DatabaseUrlParser")
-    @patch("cli._config_helpers.Path")
+    @patch("dblift.cli._config_helpers.LogFactory")
+    @patch("dblift.cli._config_helpers.DatabaseUrlParser")
+    @patch("dblift.cli._config_helpers.Path")
     def test_log_format_json_maps_correctly(self, mock_path, mock_parser, mock_log_factory):
-        from cli.main import _configure_logging
-        from core.logger import LogFormat
+        from dblift.cli.main import _configure_logging
+        from dblift.core.logger import LogFormat
 
         mock_parser.parse_database_name.return_value = "test"
         args = self._make_args(log_format="json")
         _configure_logging(args, self._make_config(), MagicMock())
         assert mock_log_factory.configure.call_args.kwargs["log_format"] == LogFormat.JSON
 
-    @patch("cli._config_helpers.LogFactory")
-    @patch("cli._config_helpers.DatabaseUrlParser")
-    @patch("cli._config_helpers.Path")
+    @patch("dblift.cli._config_helpers.LogFactory")
+    @patch("dblift.cli._config_helpers.DatabaseUrlParser")
+    @patch("dblift.cli._config_helpers.Path")
     def test_log_format_text_maps_to_text(self, mock_path, mock_parser, mock_log_factory):
         """'text' est une clé de _LOG_FORMAT_MAP → LogFormat.TEXT (AC#3.4)."""
-        from cli.main import _configure_logging
-        from core.logger import LogFormat
+        from dblift.cli.main import _configure_logging
+        from dblift.core.logger import LogFormat
 
         mock_parser.parse_database_name.return_value = "test"
         args = self._make_args(log_format="text")
         _configure_logging(args, self._make_config(), MagicMock())
         assert mock_log_factory.configure.call_args.kwargs["log_format"] == LogFormat.TEXT
 
-    @patch("cli._config_helpers.LogFactory")
-    @patch("cli._config_helpers.DatabaseUrlParser")
-    @patch("cli._config_helpers.Path")
+    @patch("dblift.cli._config_helpers.LogFactory")
+    @patch("dblift.cli._config_helpers.DatabaseUrlParser")
+    @patch("dblift.cli._config_helpers.Path")
     def test_merged_config_log_level_used_when_cli_flag_not_passed(
         self, mock_path, mock_parser, mock_log_factory
     ):
         """A ``log_level`` merged from a config file or DBLIFT_LOG_LEVEL (surfaced on
         the merged config, not on the raw CLI namespace) must drive console
         verbosity even though the user never passed ``--log-level``."""
-        from cli.main import _configure_logging
-        from core.logger import LogLevel
+        from dblift.cli.main import _configure_logging
+        from dblift.core.logger import LogLevel
 
         mock_parser.parse_database_name.return_value = "test"
         # args.log_level is None: the user did not pass --log-level.
@@ -1004,16 +1004,16 @@ class TestConfigureLoggingDictLookup:
         _configure_logging(args, config, MagicMock())
         assert mock_log_factory.configure.call_args.kwargs["log_level"] == LogLevel.DEBUG
 
-    @patch("cli._config_helpers.LogFactory")
-    @patch("cli._config_helpers.DatabaseUrlParser")
-    @patch("cli._config_helpers.Path")
+    @patch("dblift.cli._config_helpers.LogFactory")
+    @patch("dblift.cli._config_helpers.DatabaseUrlParser")
+    @patch("dblift.cli._config_helpers.Path")
     def test_merged_config_log_level_takes_precedence_over_raw_args(
         self, mock_path, mock_parser, mock_log_factory
     ):
         """The merged config already encodes CLI > env > file precedence, so it
         must win over the raw args namespace whenever it is set."""
-        from cli.main import _configure_logging
-        from core.logger import LogLevel
+        from dblift.cli.main import _configure_logging
+        from dblift.core.logger import LogLevel
 
         mock_parser.parse_database_name.return_value = "test"
         args = self._make_args(log_level="error")
@@ -1021,17 +1021,17 @@ class TestConfigureLoggingDictLookup:
         _configure_logging(args, config, MagicMock())
         assert mock_log_factory.configure.call_args.kwargs["log_level"] == LogLevel.DEBUG
 
-    @patch("cli._config_helpers.LogFactory")
-    @patch("cli._config_helpers.DatabaseUrlParser")
-    @patch("cli._config_helpers.Path")
+    @patch("dblift.cli._config_helpers.LogFactory")
+    @patch("dblift.cli._config_helpers.DatabaseUrlParser")
+    @patch("dblift.cli._config_helpers.Path")
     def test_args_log_level_used_when_merged_config_has_none_set(
         self, mock_path, mock_parser, mock_log_factory
     ):
         """When neither file nor env set a log level, fall back to the raw
         args value (e.g. an explicit ``--log-level`` the merge step didn't
         thread through, or the CLI default)."""
-        from cli.main import _configure_logging
-        from core.logger import LogLevel
+        from dblift.cli.main import _configure_logging
+        from dblift.core.logger import LogLevel
 
         mock_parser.parse_database_name.return_value = "test"
         args = self._make_args(log_level="warn")

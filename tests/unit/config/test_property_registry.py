@@ -1,4 +1,4 @@
-from config.property_registry import (
+from dblift.config.property_registry import (
     PROPERTY_REGISTRY,
     PropertySpec,
     cli_flag,

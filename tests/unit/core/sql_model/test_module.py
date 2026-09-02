@@ -2,7 +2,7 @@
 
 import pytest
 
-from core.sql_model.module import Module
+from dblift.core.sql_model.module import Module
 
 
 @pytest.mark.unit

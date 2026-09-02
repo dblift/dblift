@@ -5,8 +5,8 @@ from types import SimpleNamespace
 import pytest
 from sqlalchemy.engine import make_url
 
-from db.plugins.postgresql.plugin import PLUGIN
-from db.provider_registry import ProviderRegistry
+from dblift.db.plugins.postgresql.plugin import PLUGIN
+from dblift.db.provider_registry import ProviderRegistry
 
 
 @pytest.fixture
@@ -213,8 +213,8 @@ def test_postgresql_sqlalchemy_url_builder_rejects_database_url(_reset_registry)
 
 def test_postgresql_field_based_config_validates(_reset_registry) -> None:
     """Native PostgreSQL accepts host/database credentials without database.url."""
-    from config import DbliftConfig
-    from db.plugins.postgresql.config import PostgreSqlConfig
+    from dblift.config import DbliftConfig
+    from dblift.db.plugins.postgresql.config import PostgreSqlConfig
 
     ProviderRegistry._plugins["postgresql"] = PLUGIN
     ProviderRegistry._discovered = True
@@ -234,7 +234,7 @@ def test_postgresql_field_based_config_validates(_reset_registry) -> None:
 
 def test_dblift_config_accepts_field_based_postgresql_without_url(_reset_registry) -> None:
     """Top-level config validation honors PostgreSQL native identifiers."""
-    from config import DbliftConfig
+    from dblift.config import DbliftConfig
 
     ProviderRegistry._plugins["postgresql"] = PLUGIN
     ProviderRegistry._discovered = True
@@ -259,7 +259,7 @@ def test_dblift_config_accepts_field_based_postgresql_without_url(_reset_registr
 
 def test_dblift_config_infers_postgresql_from_sqlalchemy_url(_reset_registry) -> None:
     """A native PostgreSQL SQLAlchemy URL does not require database.type."""
-    from config import DbliftConfig
+    from dblift.config import DbliftConfig
 
     ProviderRegistry._plugins["postgresql"] = PLUGIN
     ProviderRegistry._discovered = True
@@ -274,8 +274,8 @@ def test_dblift_config_infers_postgresql_from_sqlalchemy_url(_reset_registry) ->
 
 def test_dblift_config_rejects_postgresql_database_url(_reset_registry) -> None:
     """PostgreSQL v2 native configs fail fast on legacy URLs."""
-    from config import DbliftConfig
-    from config.errors import ConfigurationError
+    from dblift.config import DbliftConfig
+    from dblift.config.errors import ConfigurationError
 
     ProviderRegistry._plugins["postgresql"] = PLUGIN
     ProviderRegistry._discovered = True
@@ -293,8 +293,8 @@ def test_dblift_config_rejects_postgresql_database_url(_reset_registry) -> None:
 
 def test_dblift_config_rejects_inferred_postgresql_database_url(_reset_registry) -> None:
     """A JDBC PostgreSQL URL is rejected even when database.type is omitted."""
-    from config import DbliftConfig
-    from config.errors import ConfigurationError
+    from dblift.config import DbliftConfig
+    from dblift.config.errors import ConfigurationError
 
     ProviderRegistry._plugins["postgresql"] = PLUGIN
     ProviderRegistry._discovered = True
@@ -305,8 +305,8 @@ def test_dblift_config_rejects_inferred_postgresql_database_url(_reset_registry)
 
 def test_dblift_config_rejects_postgresql_host_without_database(_reset_registry) -> None:
     """PostgreSQL field configs require host and database together."""
-    from config import DbliftConfig
-    from config.errors import ConfigurationError
+    from dblift.config import DbliftConfig
+    from dblift.config.errors import ConfigurationError
 
     ProviderRegistry._plugins["postgresql"] = PLUGIN
     ProviderRegistry._discovered = True
@@ -317,8 +317,8 @@ def test_dblift_config_rejects_postgresql_host_without_database(_reset_registry)
 
 def test_postgresql_registry_rejects_host_without_database(_reset_registry) -> None:
     """Registry validation uses the plugin-owned PostgreSQL identifier rules."""
-    from config import DbliftConfig
-    from db.plugins.postgresql.config import PostgreSqlConfig
+    from dblift.config import DbliftConfig
+    from dblift.db.plugins.postgresql.config import PostgreSqlConfig
 
     ProviderRegistry._plugins["postgresql"] = PLUGIN
     ProviderRegistry._discovered = True

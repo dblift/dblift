@@ -8,7 +8,7 @@ it at the first semicolon inside the body.
 
 import pytest
 
-from db.plugins.db2.parser.db2_regex_parser import DB2RegexParser
+from dblift.db.plugins.db2.parser.db2_regex_parser import DB2RegexParser
 
 PRELUDE = "CREATE TABLE audit_log (id INTEGER, msg VARCHAR(100))"
 
@@ -275,14 +275,14 @@ class TestDB2EndControlKeywordSeparatorWhitespace:
     """
 
     def test_end_case_separated_by_newline_is_still_recognised(self):
-        from db.plugins.db2.parser.parser_config import DB2Config
+        from dblift.db.plugins.db2.parser.parser_config import DB2Config
 
         sql = "CREATE PROCEDURE p() BEGIN CASE x WHEN 1 THEN SET y=1; END\nCASE; END"
 
         assert DB2Config()._find_block_end(sql, sql.index("BEGIN")) == 68
 
     def test_end_case_separated_by_crlf_is_still_recognised(self):
-        from db.plugins.db2.parser.parser_config import DB2Config
+        from dblift.db.plugins.db2.parser.parser_config import DB2Config
 
         sql = "CREATE PROCEDURE p() BEGIN CASE x WHEN 1 THEN SET y=1; END\r\nCASE; END"
 
@@ -348,7 +348,7 @@ class TestDB2EndControlKeywordSeparatorWhitespace:
         through to treating this ``END`` as the block's own terminating
         ``END`` - closing the block right there, before the real one.
         """
-        from db.plugins.db2.parser.parser_config import DB2Config
+        from dblift.db.plugins.db2.parser.parser_config import DB2Config
 
         sql = (
             "CREATE PROCEDURE p(IN x INTEGER)\nLANGUAGE SQL\nBEGIN\n"
@@ -381,7 +381,7 @@ class TestDB2EndKeywordRequiresRightWordBoundary:
     """
 
     def test_variable_named_enddate_does_not_truncate_the_procedure(self):
-        from db.plugins.db2.parser.parser_config import DB2Config
+        from dblift.db.plugins.db2.parser.parser_config import DB2Config
 
         sql = """CREATE PROCEDURE P1()
 BEGIN
@@ -441,7 +441,7 @@ class TestDB2ControlEndKeywordRequiresWordBoundary:
     """
 
     def test_end_immediately_followed_by_identifier_starting_with_if_is_not_end_if(self):
-        from db.plugins.db2.parser.parser_config import DB2Config
+        from dblift.db.plugins.db2.parser.parser_config import DB2Config
 
         sql = (
             "CREATE PROCEDURE p(IN x INTEGER)\nLANGUAGE SQL\nBEGIN\n"
@@ -843,7 +843,7 @@ BEGIN
   SELECT 1 FROM SYSIBM.SYSDUMMY1;
 END"""
 
-        from db.plugins.db2.parser.parser_config import DB2Config
+        from dblift.db.plugins.db2.parser.parser_config import DB2Config
 
         assert DB2Config()._find_block_end(sql, sql.index("BEGIN")) is None
 

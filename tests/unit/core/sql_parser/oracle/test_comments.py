@@ -1,10 +1,10 @@
-"""Unit tests for `db.plugins.oracle.parser._comments` (Phase-Oracle-02)."""
+"""Unit tests for `dblift.db.plugins.oracle.parser._comments` (Phase-Oracle-02)."""
 
 from __future__ import annotations
 
 import pytest
 
-from db.plugins.oracle.parser._comments import strip_comments, strip_sql_comments
+from dblift.db.plugins.oracle.parser._comments import strip_comments, strip_sql_comments
 
 
 @pytest.mark.unit

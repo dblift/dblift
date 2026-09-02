@@ -5,9 +5,9 @@ from pathlib import Path
 import pytest
 from sqlalchemy import create_engine
 
-from api.async_client import AsyncDBLiftClient
-from core.exceptions import DbliftError
-from integrations.fastapi import (
+from dblift.api.async_client import AsyncDBLiftClient
+from dblift.core.exceptions import DbliftError
+from dblift.integrations.fastapi import (
     check_migrations_current_async,
     health_payload_async,
     migration_guard_async,

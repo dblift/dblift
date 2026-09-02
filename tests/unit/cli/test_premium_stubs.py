@@ -12,10 +12,14 @@ from unittest.mock import Mock
 
 import pytest
 
-from cli._command_handlers import _AVAILABLE_COMMANDS, _COMMAND_HANDLERS, PREMIUM_STUB_COMMANDS
-from cli._constants import EXIT_LICENSE_REQUIRED
-from cli._parser_setup import _register_premium_stub_parsers, create_parser
-from cli.premium_manifest import (
+from dblift.cli._command_handlers import (
+    _AVAILABLE_COMMANDS,
+    _COMMAND_HANDLERS,
+    PREMIUM_STUB_COMMANDS,
+)
+from dblift.cli._constants import EXIT_LICENSE_REQUIRED
+from dblift.cli._parser_setup import _register_premium_stub_parsers, create_parser
+from dblift.cli.premium_manifest import (
     PREMIUM_COMMANDS,
     UPGRADE_URL,
     premium_commands_missing_from,
@@ -135,7 +139,7 @@ def test_gap_fill_handler_logs_upsell_and_fails():
 def test_main_short_circuits_stub_with_license_exit_code(monkeypatch, capsys, argv):
     if argv[0] not in PREMIUM_STUB_COMMANDS:
         pytest.skip("a real extension owns this command in this environment")
-    import cli.main as cli_main
+    import dblift.cli.main as cli_main
 
     monkeypatch.setattr("sys.argv", ["dblift"] + argv)
     with pytest.raises(SystemExit) as excinfo:
@@ -151,7 +155,7 @@ def test_main_short_circuits_stub_with_license_exit_code(monkeypatch, capsys, ar
 def test_main_short_circuit_runs_before_config_and_db_load(monkeypatch):
     if "diff" not in PREMIUM_STUB_COMMANDS:
         pytest.skip("a real extension owns 'diff' in this environment")
-    import cli.main as cli_main
+    import dblift.cli.main as cli_main
 
     monkeypatch.setattr("sys.argv", ["dblift", "diff"])
     load_config = Mock(side_effect=AssertionError("config load must not run for a stub"))
@@ -165,9 +169,9 @@ def test_main_short_circuit_runs_before_config_and_db_load(monkeypatch):
 
 def test_capability_denied_maps_to_license_exit_code():
     """CapabilityDeniedError from a handler uses EXIT_LICENSE_REQUIRED."""
-    import cli._command_handlers as handlers
-    from cli._command_handlers import execute_single_command
-    from core.seams.capabilities import CapabilityDeniedError
+    import dblift.cli._command_handlers as handlers
+    from dblift.cli._command_handlers import execute_single_command
+    from dblift.core.seams.capabilities import CapabilityDeniedError
 
     def _deny(_ctx):
         raise CapabilityDeniedError("feature requires a higher license tier")

@@ -10,9 +10,9 @@ import inspect
 
 import pytest
 
-from db.plugins.cosmosdb.cosmosdb.history_manager import CosmosDbHistoryManager
-from db.plugins.cosmosdb.cosmosdb.locking_manager import CosmosDbLockingManager
-from db.plugins.nosql_base import (
+from dblift.db.plugins.cosmosdb.cosmosdb.history_manager import CosmosDbHistoryManager
+from dblift.db.plugins.cosmosdb.cosmosdb.locking_manager import CosmosDbLockingManager
+from dblift.db.plugins.nosql_base import (
     DocumentHistoryManager,
     DocumentLockingManager,
     SamplingIntrospector,
@@ -62,9 +62,9 @@ def test_history_create_table_returns_a_description_not_ddl():
 
 def test_foundation_carries_no_sql_generation():
     """Nothing in the foundation may compose SQL for a document store."""
-    import db.plugins.nosql_base.history as history_mod
-    import db.plugins.nosql_base.introspection as introspection_mod
-    import db.plugins.nosql_base.locking as locking_mod
+    import dblift.db.plugins.nosql_base.history as history_mod
+    import dblift.db.plugins.nosql_base.introspection as introspection_mod
+    import dblift.db.plugins.nosql_base.locking as locking_mod
 
     for module in (history_mod, locking_mod, introspection_mod):
         source = inspect.getsource(module).upper()

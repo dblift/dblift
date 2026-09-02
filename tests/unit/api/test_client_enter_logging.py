@@ -4,7 +4,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from db.provider_interfaces import ConnectionProvider
+from dblift.db.provider_interfaces import ConnectionProvider
 
 
 @pytest.mark.unit
@@ -13,7 +13,7 @@ class TestClientEnterLogging:
 
     def test_is_connected_exception_is_logged_in_enter(self):
         """Exception de is_connected() dans __enter__ doit être loggée en debug (AC#2)."""
-        from api.client import DBLiftClient
+        from dblift.api.client import DBLiftClient
 
         provider = MagicMock(spec=ConnectionProvider)
         provider.is_connected.side_effect = OSError("socket error")
@@ -36,7 +36,7 @@ class TestClientEnterLogging:
 
     def test_is_connected_exception_still_creates_connection_in_enter(self):
         """Après exception is_connected(), create_connection() doit être appelée."""
-        from api.client import DBLiftClient
+        from dblift.api.client import DBLiftClient
 
         provider = MagicMock(spec=ConnectionProvider)
         provider.is_connected.side_effect = OSError("socket error")

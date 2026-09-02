@@ -12,9 +12,9 @@ re-exported via each module's `__all__`.
 Importing from the following locations constitutes a stable contract:
 
 ```python
-from api import DBLiftClient, EventEmitter, EventType
-from config import DbliftConfig, DatabaseConfig, load_config
-from core.migration import (
+from dblift.api import DBLiftClient, EventEmitter, EventType
+from dblift.config import DbliftConfig, DatabaseConfig, load_config
+from dblift.core.migration import (
     AppliedMigration,
     Migration,
     MigrationResource,
@@ -25,7 +25,7 @@ from core.migration import (
     is_versioned,
     migration_type_name,
 )
-from core.logger import (
+from dblift.core.logger import (
     AbstractLog,
     BaselineResult,
     CleanResult,

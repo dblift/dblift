@@ -27,9 +27,9 @@ from typing import Any, Dict, List, Tuple
 
 import pytest
 
-from core.migration._type_match import is_versioned
-from core.migration.history.migration_history_manager import MigrationHistoryManager
-from core.migration.migration import AppliedMigration, Migration, MigrationType
+from dblift.core.migration._type_match import is_versioned
+from dblift.core.migration.history.migration_history_manager import MigrationHistoryManager
+from dblift.core.migration.migration import AppliedMigration, Migration, MigrationType
 
 # The persisted vocabulary, spelled out literally rather than derived from
 # ``MigrationType`` itself. A parametrization built from ``list(MigrationType)``

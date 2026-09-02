@@ -1,10 +1,10 @@
 import pytest
 
-from config.dblift_config import DbliftConfig
-from db.plugins.db2.config import Db2Config
-from db.plugins.mysql.config import MySqlConfig
-from db.plugins.oracle.config import OracleConfig
-from db.plugins.postgresql.config import PostgreSqlConfig
+from dblift.config.dblift_config import DbliftConfig
+from dblift.db.plugins.db2.config import Db2Config
+from dblift.db.plugins.mysql.config import MySqlConfig
+from dblift.db.plugins.oracle.config import OracleConfig
+from dblift.db.plugins.postgresql.config import PostgreSqlConfig
 
 
 @pytest.mark.unit

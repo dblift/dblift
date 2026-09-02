@@ -10,10 +10,10 @@ explanatory comment instead of SQL.
 
 import pytest
 
-from core.sql_generator.sql_generator import SqlGenerator
-from core.sql_model.index import Index
-from core.sql_model.table import Table
-from db.plugins.mongodb.quirks import MongodbQuirks
+from dblift.core.sql_generator.sql_generator import SqlGenerator
+from dblift.core.sql_model.index import Index
+from dblift.core.sql_model.table import Table
+from dblift.db.plugins.mongodb.quirks import MongodbQuirks
 
 
 def test_render_drop_for_table_names_drop_collection():

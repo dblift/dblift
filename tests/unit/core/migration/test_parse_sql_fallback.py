@@ -9,7 +9,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from core.migration.migration import Migration
+from dblift.core.migration.migration import Migration
 
 
 @pytest.mark.unit
@@ -18,7 +18,7 @@ class TestParseSqlFallback:
 
     def _patch_sql_analyzer(self):
         """Return a patch context manager for SqlAnalyzer (inline import)."""
-        import core.migration.sql.sql_analyzer as analyzer_module
+        import dblift.core.migration.sql.sql_analyzer as analyzer_module
 
         return patch.object(analyzer_module, "SqlAnalyzer")
 

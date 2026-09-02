@@ -5,7 +5,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from db.plugins.oracle.quirks import OracleQuirks
+from dblift.db.plugins.oracle.quirks import OracleQuirks
 
 
 def test_build_snapshot_table_ddl_is_not_owned_by_oracle_plugin() -> None:
@@ -14,7 +14,7 @@ def test_build_snapshot_table_ddl_is_not_owned_by_oracle_plugin() -> None:
 
 
 def test_oracle_compat_snapshot_ddl_is_clob_plain_create():
-    from db.plugins.oracle.quirks import OracleQuirks
+    from dblift.db.plugins.oracle.quirks import OracleQuirks
 
     ddl = OracleQuirks().build_provider_compat_snapshot_ddl("S.SNAP", 100, 128)
     assert ddl == (
@@ -27,7 +27,7 @@ def test_oracle_compat_snapshot_ddl_is_clob_plain_create():
 
 
 def test_oracle_does_not_skip_existence_check():
-    from db.plugins.oracle.quirks import OracleQuirks
+    from dblift.db.plugins.oracle.quirks import OracleQuirks
 
     assert OracleQuirks().provider_compat_snapshot_skips_existence_check is False
 
@@ -166,4 +166,4 @@ def test_oracle_retry_drop_lookup_failure_logs_under_this_modules_own_logger(cap
     emitters = {
         record.name for record in caplog.records if "dictionary unavailable" in record.getMessage()
     }
-    assert emitters == {"db.plugins.oracle.quirks"}
+    assert emitters == {"dblift.db.plugins.oracle.quirks"}

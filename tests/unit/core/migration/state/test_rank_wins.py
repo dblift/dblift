@@ -12,8 +12,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from core.migration.migration import MigrationType
-from core.migration.state.rank_wins import latest_successful_ranks
+from dblift.core.migration.migration import MigrationType
+from dblift.core.migration.state.rank_wins import latest_successful_ranks
 
 pytestmark = [pytest.mark.unit]
 
@@ -114,10 +114,10 @@ class TestCallSitesUseSharedHelper:
     """If a site re-inlines the loop, this fails even when behaviour happens to match."""
 
     def test_four_sites_import_and_call_the_same_function(self):
-        from core.migration.commands import migrate_command
-        from core.migration.rules import migration_rules
-        from core.migration.state import migration_data_service, migration_state_manager
-        from core.migration.state.rank_wins import latest_successful_ranks as helper
+        from dblift.core.migration.commands import migrate_command
+        from dblift.core.migration.rules import migration_rules
+        from dblift.core.migration.state import migration_data_service, migration_state_manager
+        from dblift.core.migration.state.rank_wins import latest_successful_ranks as helper
 
         sites = (
             (
@@ -148,5 +148,5 @@ class TestCallSitesUseSharedHelper:
                 continue
             assert module.latest_successful_ranks is helper, (
                 f"{module.__name__} must import latest_successful_ranks from "
-                "core.migration.state.rank_wins"
+                "dblift.core.migration.state.rank_wins"
             )

@@ -2,10 +2,10 @@ from __future__ import annotations
 
 import pytest
 
-from core.migration.sql import statement_splitter as splitter_module
-from core.migration.sql.sql_analyzer import SqlAnalyzer
-from core.migration.sql.statement_splitter import StatementSplitter
-from core.sql_parser.parser_factory import SqlParserFactory
+from dblift.core.migration.sql import statement_splitter as splitter_module
+from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
+from dblift.core.migration.sql.statement_splitter import StatementSplitter
+from dblift.core.sql_parser.parser_factory import SqlParserFactory
 
 
 @pytest.mark.unit

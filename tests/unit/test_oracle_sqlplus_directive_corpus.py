@@ -35,9 +35,9 @@ from __future__ import annotations
 import unittest
 import warnings
 
-from core.sql_parser.base_tokenizer import TokenizerWarning
-from db.plugins.oracle.parser._sqlplus import SQLPLUS_DIRECTIVES, is_sqlplus_command
-from db.plugins.oracle.parser.sqlplus_context import terminate_sqlplus_directives
+from dblift.core.sql_parser.base_tokenizer import TokenizerWarning
+from dblift.db.plugins.oracle.parser._sqlplus import SQLPLUS_DIRECTIVES, is_sqlplus_command
+from dblift.db.plugins.oracle.parser.sqlplus_context import terminate_sqlplus_directives
 
 
 class TestSqlplusDirectiveRegistry(unittest.TestCase):
@@ -78,8 +78,8 @@ class TestSqlplusDirectiveTerminationCorpus(unittest.TestCase):
     """
 
     def _split(self, sql: str) -> list[str]:
-        from db.plugins.oracle.parser.oracle_statement_parser import OracleStatementParser
-        from db.plugins.oracle.parser.oracle_tokenizer import OracleTokenizer
+        from dblift.db.plugins.oracle.parser.oracle_statement_parser import OracleStatementParser
+        from dblift.db.plugins.oracle.parser.oracle_tokenizer import OracleTokenizer
 
         tokens = OracleTokenizer(sql).tokenize()
         return [s for s in OracleStatementParser(tokens).split_statements() if s.strip()]
@@ -159,8 +159,8 @@ class TestConnectDirectiveExcludesDatabaseLinkSyntax(unittest.TestCase):
     """
 
     def _split(self, sql: str) -> list[str]:
-        from db.plugins.oracle.parser.oracle_statement_parser import OracleStatementParser
-        from db.plugins.oracle.parser.oracle_tokenizer import OracleTokenizer
+        from dblift.db.plugins.oracle.parser.oracle_statement_parser import OracleStatementParser
+        from dblift.db.plugins.oracle.parser.oracle_tokenizer import OracleTokenizer
 
         tokens = OracleTokenizer(sql).tokenize()
         return [s for s in OracleStatementParser(tokens).split_statements() if s.strip()]

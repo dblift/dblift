@@ -17,7 +17,7 @@ class TestHybridParserSilentExceptions:
     def test_hybrid_parser_silent_excepts_replaced(self):
         import inspect
 
-        from core.sql_parser import hybrid_parser as mod
+        from dblift.core.sql_parser import hybrid_parser as mod
 
         source = inspect.getsource(mod)
         silent_count = len(re.findall(r"except Exception:\s*\n\s*pass", source))
@@ -30,7 +30,7 @@ class TestMigrationDataServiceSilentExceptions:
     def test_migration_data_service_silent_excepts_replaced(self):
         import inspect
 
-        from core.migration.state import migration_data_service as mod
+        from dblift.core.migration.state import migration_data_service as mod
 
         source = inspect.getsource(mod)
         silent_count = len(re.findall(r"except Exception:\s*\n\s*pass", source))
@@ -43,7 +43,7 @@ class TestHtmlFormatterSilentExceptions:
     def test_htmlformatter_silent_excepts_replaced(self):
         import inspect
 
-        from core.logger.formatters import htmlformatter as mod
+        from dblift.core.logger.formatters import htmlformatter as mod
 
         source = inspect.getsource(mod)
         silent_count = len(re.findall(r"except Exception:\s*\n\s*pass", source))
@@ -56,7 +56,7 @@ class TestRemainingIntentionalExcepts:
     def test_sqlalchemy_provider_bare_excepts_have_comments(self):
         import inspect
 
-        import db.sqlalchemy_provider as mod
+        import dblift.db.sqlalchemy_provider as mod
 
         source = inspect.getsource(mod)
         # Find all bare except Exception: blocks
@@ -79,7 +79,7 @@ class TestRemainingIntentionalExcepts:
     def test_undo_script_generator_regex_fallbacks_have_comments(self):
         import inspect
 
-        from core.migration.scripting import undo_script_generator as mod
+        from dblift.core.migration.scripting import undo_script_generator as mod
 
         source = inspect.getsource(mod)
         lines = source.splitlines()

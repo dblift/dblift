@@ -6,12 +6,12 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from db.provider_interfaces import DroppableObject
+from dblift.db.provider_interfaces import DroppableObject
 
 
 @pytest.fixture
 def _cosmos_provider():
-    from db.plugins.cosmosdb.provider import CosmosDbProvider
+    from dblift.db.plugins.cosmosdb.provider import CosmosDbProvider
 
     provider = CosmosDbProvider.__new__(CosmosDbProvider)
     provider.schema_operations = MagicMock()

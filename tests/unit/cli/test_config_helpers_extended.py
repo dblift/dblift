@@ -7,7 +7,7 @@ from unittest.mock import MagicMock
 
 class TestPlaceholderTokens(unittest.TestCase):
     def _t(self, val):
-        from cli._config_helpers import _placeholder_tokens
+        from dblift.cli._config_helpers import _placeholder_tokens
 
         return _placeholder_tokens(val)
 
@@ -36,7 +36,7 @@ class TestPlaceholderTokens(unittest.TestCase):
 
 class TestCollectPlaceholders(unittest.TestCase):
     def _c(self, args, config):
-        from cli._config_helpers import _collect_placeholders
+        from dblift.cli._config_helpers import _collect_placeholders
 
         return _collect_placeholders(args, config)
 
@@ -71,7 +71,7 @@ class TestCollectPlaceholders(unittest.TestCase):
 
 class TestCloseLogs(unittest.TestCase):
     def _cl(self, log):
-        from cli._config_helpers import _close_logs
+        from dblift.cli._config_helpers import _close_logs
 
         _close_logs(log)
 
@@ -95,7 +95,7 @@ class TestCloseLogs(unittest.TestCase):
 
 class TestExtractCommandsFromArgv(unittest.TestCase):
     def test_basic_extraction(self):
-        from cli._config_helpers import _extract_commands_from_argv
+        from dblift.cli._config_helpers import _extract_commands_from_argv
 
         available = {"migrate", "info", "validate"}
         global_only = {"--config", "--url"}
@@ -105,13 +105,13 @@ class TestExtractCommandsFromArgv(unittest.TestCase):
         self.assertIn("migrate", commands)
 
     def test_empty_argv(self):
-        from cli._config_helpers import _extract_commands_from_argv
+        from dblift.cli._config_helpers import _extract_commands_from_argv
 
         commands, global_args, sub_args = _extract_commands_from_argv([], {"migrate"}, set())
         self.assertEqual(commands, [])
 
     def test_global_args_separated(self):
-        from cli._config_helpers import _extract_commands_from_argv
+        from dblift.cli._config_helpers import _extract_commands_from_argv
 
         commands, global_args, sub_args = _extract_commands_from_argv(
             ["--url", "postgresql+psycopg://localhost/db", "migrate"], {"migrate"}, {"--url"}
@@ -125,7 +125,7 @@ class TestDiscoverDefaultConfig(unittest.TestCase):
     def _run_in(self, tmp):
         import os
 
-        from cli._config_helpers import _discover_default_config
+        from dblift.cli._config_helpers import _discover_default_config
 
         prev = os.getcwd()
         os.chdir(tmp)

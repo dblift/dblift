@@ -22,8 +22,8 @@ Covers:
 
 import unittest
 
-from core.sql_model.base import ParseResult, SqlStatementType
-from db.plugins.db2.parser.db2_regex_parser import DB2RegexParser
+from dblift.core.sql_model.base import ParseResult, SqlStatementType
+from dblift.db.plugins.db2.parser.db2_regex_parser import DB2RegexParser
 
 
 class TestSplitStatements(unittest.TestCase):

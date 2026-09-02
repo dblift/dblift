@@ -1,11 +1,11 @@
-"""Extended unit tests for :class:`db.plugins.sqlserver.provider.SqlServerProvider`."""
+"""Extended unit tests for :class:`dblift.db.plugins.sqlserver.provider.SqlServerProvider`."""
 
 from unittest.mock import MagicMock
 
-from core.migration.sql.execution_statement import classify_execution_statement
-from db.plugins.sqlserver.provider import SqlServerProvider
-from db.provider_interfaces import DroppableObject
-from db.sqlalchemy_provider import SqlAlchemyProvider
+from dblift.core.migration.sql.execution_statement import classify_execution_statement
+from dblift.db.plugins.sqlserver.provider import SqlServerProvider
+from dblift.db.provider_interfaces import DroppableObject
+from dblift.db.sqlalchemy_provider import SqlAlchemyProvider
 
 
 def _provider(execute_query_map=None, raise_on_statement=None):

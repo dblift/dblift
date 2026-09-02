@@ -10,7 +10,7 @@ from pathlib import Path
 
 from sqlalchemy import create_engine
 
-from api import DBLiftClient
+from dblift.api import DBLiftClient
 
 
 def main():
@@ -110,7 +110,7 @@ When your migrations dir contains `.py` files, the same `from_sqlalchemy` client
 
 ```python
 # In your migrations/V2__using_runtime_ctx.py
-from api import MigrationContext
+from dblift.api import MigrationContext
 
 def migrate(context: MigrationContext) -> None:
     context.log.info("Running under app runtime integration")
@@ -130,7 +130,7 @@ See `docs/examples/python-migrations.md` for a complete runnable round-trip that
 
 ```python
 from sqlalchemy import create_engine
-from api import DBLiftClient
+from dblift.api import DBLiftClient
 
 engine = get_app_engine()  # your normal factory
 with DBLiftClient.from_sqlalchemy(engine, migrations_dir="migrations") as client:

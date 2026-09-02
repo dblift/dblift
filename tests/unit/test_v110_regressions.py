@@ -43,8 +43,8 @@ class TestRepairDeletesFailedMigrations:
         """
         import inspect
 
-        from core.migration.commands.repair_command import RepairCommand
-        from db.plugins.base_history_manager import BaseHistoryManager
+        from dblift.core.migration.commands.repair_command import RepairCommand
+        from dblift.db.plugins.base_history_manager import BaseHistoryManager
 
         source = inspect.getsource(RepairCommand)
         assert (
@@ -59,9 +59,9 @@ class TestRepairDeletesFailedMigrations:
 
     def test_repair_failed_migration_calls_delete(self):
         """BUG-REPAIR-02: repair execute() must issue DELETE for failed migrations."""
-        from core.logger.results import RepairResult
-        from core.migration.commands.repair_command import RepairCommand
-        from core.migration.migration import MigrationType
+        from dblift.core.logger.results import RepairResult
+        from dblift.core.migration.commands.repair_command import RepairCommand
+        from dblift.core.migration.migration import MigrationType
 
         config = Mock()
         config.database.schema = "public"
@@ -133,7 +133,7 @@ class TestProviderGetDatabaseUrl:
         """BUG-CHECK-CONN-01: db_utils should not crash if get_database_url is missing."""
         import inspect
 
-        import cli.db_utils as db_utils
+        import dblift.cli.db_utils as db_utils
 
         source = inspect.getsource(db_utils.check_connection)
         assert "get_provider_display_url" in source and "config.database.url" in source
@@ -155,11 +155,11 @@ class TestValidateSqlClientInit:
         provider.config.logging = None
         return provider
 
-    @patch("api.client.MigrationExecutor")
-    @patch("api._client_factory.DbliftLogger")
+    @patch("dblift.api.client.MigrationExecutor")
+    @patch("dblift.api._client_factory.DbliftLogger")
     def test_file_not_found_raises_after_event(self, mock_logger_class, mock_executor_class):
         """Missing migration path: MIGRATION_FAILED then FileNotFoundError (for try/except flow)."""
-        from api.client import DBLiftClient
+        from dblift.api.client import DBLiftClient
 
         mock_logger_class.return_value = Mock()
         mock_executor = Mock()
@@ -175,11 +175,11 @@ class TestValidateSqlClientInit:
         with pytest.raises(FileNotFoundError):
             client.generate_undo_script("/nonexistent/V1__test.sql")
 
-    @patch("api.client.MigrationExecutor")
-    @patch("api._client_factory.DbliftLogger")
+    @patch("dblift.api.client.MigrationExecutor")
+    @patch("dblift.api._client_factory.DbliftLogger")
     def test_non_versioned_returns_result(self, mock_logger_class, mock_executor_class, tmp_path):
         """BUG-UNDO-01: ValueError for non-versioned files must return result, not raise."""
-        from api.client import DBLiftClient
+        from dblift.api.client import DBLiftClient
 
         mock_logger_class.return_value = Mock()
         mock_executor = Mock()
@@ -199,14 +199,14 @@ class TestValidateSqlClientInit:
         assert not result.success
         assert "not a versioned migration" in result.error_message
 
-    @patch("api.client.MigrationExecutor")
-    @patch("api._client_factory.DbliftLogger")
-    @patch("core.migration.scripting.undo_script_generator.UndoScriptGenerator")
+    @patch("dblift.api.client.MigrationExecutor")
+    @patch("dblift.api._client_factory.DbliftLogger")
+    @patch("dblift.core.migration.scripting.undo_script_generator.UndoScriptGenerator")
     def test_file_exists_returns_result(
         self, mock_gen_class, mock_logger_class, mock_executor_class, tmp_path
     ):
         """BUG-UNDO-01: FileExistsError (overwrite=False) must return result, not raise."""
-        from api.client import DBLiftClient
+        from dblift.api.client import DBLiftClient
 
         mock_logger_class.return_value = Mock()
         mock_executor = Mock()
@@ -244,7 +244,7 @@ class TestInfoCommandRegressions:
         """API-01: InfoCommand must populate current_schema_version from applied migrations."""
         import inspect
 
-        from core.migration.commands.info_command import InfoCommand
+        from dblift.core.migration.commands.info_command import InfoCommand
 
         source = inspect.getsource(InfoCommand.execute)
         # Must resolve current version from state manager and set result.current_schema_version
@@ -257,21 +257,21 @@ class TestInfoCommandRegressions:
 
     def test_status_applied_maps_to_success(self):
         """API-02: Status 'APPLIED' must be normalized to 'SUCCESS'."""
-        from core.migration.commands.info_command import normalize_migration_info_status
+        from dblift.core.migration.commands.info_command import normalize_migration_info_status
 
         assert normalize_migration_info_status("APPLIED") == "SUCCESS"
         assert normalize_migration_info_status("Applied") == "SUCCESS"
 
     def test_status_baseline_maps_to_baseline(self):
         """API-02: Status 'BASELINE' / 'Baseline' must remain distinct (not SUCCESS)."""
-        from core.migration.commands.info_command import normalize_migration_info_status
+        from dblift.core.migration.commands.info_command import normalize_migration_info_status
 
         assert normalize_migration_info_status("BASELINE") == "BASELINE"
         assert normalize_migration_info_status("Baseline") == "BASELINE"
 
     def test_status_normalization_logic(self):
         """API-02: normalization matches normalize_migration_info_status (used by InfoCommand)."""
-        from core.migration.commands.info_command import normalize_migration_info_status
+        from dblift.core.migration.commands.info_command import normalize_migration_info_status
 
         status_map = {
             status_input: normalize_migration_info_status(status_input)
@@ -306,7 +306,7 @@ class TestSqliteCaseEndInTrigger:
 
     def test_trigger_with_case_expression(self):
         """PARSER-01: Trigger containing CASE...END must be parsed as single statement."""
-        from db.plugins.sqlite.parser.sqlite_regex_parser import SQLiteRegexParser
+        from dblift.db.plugins.sqlite.parser.sqlite_regex_parser import SQLiteRegexParser
 
         parser = SQLiteRegexParser()
 
@@ -336,7 +336,7 @@ class TestSqliteCaseEndInTrigger:
 
     def test_trigger_with_nested_case(self):
         """PARSER-01: Trigger with nested CASE expressions."""
-        from db.plugins.sqlite.parser.sqlite_regex_parser import SQLiteRegexParser
+        from dblift.db.plugins.sqlite.parser.sqlite_regex_parser import SQLiteRegexParser
 
         parser = SQLiteRegexParser()
 
@@ -368,7 +368,7 @@ class TestSqliteCaseEndInTrigger:
 
     def test_trigger_with_multiple_case_expressions(self):
         """PARSER-01: Trigger with multiple CASE expressions in same statement."""
-        from db.plugins.sqlite.parser.sqlite_regex_parser import SQLiteRegexParser
+        from dblift.db.plugins.sqlite.parser.sqlite_regex_parser import SQLiteRegexParser
 
         parser = SQLiteRegexParser()
 
@@ -394,7 +394,7 @@ class TestSqliteCaseEndInTrigger:
 
     def test_case_outside_trigger_is_fine(self):
         """CASE...END outside trigger should not affect statement splitting."""
-        from db.plugins.sqlite.parser.sqlite_regex_parser import SQLiteRegexParser
+        from dblift.db.plugins.sqlite.parser.sqlite_regex_parser import SQLiteRegexParser
 
         parser = SQLiteRegexParser()
 
@@ -415,7 +415,7 @@ class TestDb2NativeTransport:
 
     def test_db2_provider_does_not_have_get_database_url_method(self):
         """DB2 v2 native provider rejects legacy URL compatibility."""
-        from db.plugins.db2.provider import Db2Provider
+        from dblift.db.plugins.db2.provider import Db2Provider
 
         assert not hasattr(Db2Provider, "get_database_url")
 
@@ -431,7 +431,7 @@ class TestConfigBuilderMerge:
         import os
         import tempfile
 
-        from config.config_builder import ConfigBuilder
+        from dblift.config.config_builder import ConfigBuilder
 
         # Create a real config file with PostgreSQL database
         with tempfile.NamedTemporaryFile(suffix=".yaml", delete=False, mode="w") as tmp:
@@ -462,7 +462,7 @@ class TestConfigBuilderMerge:
         import os
         import tempfile
 
-        from config.config_builder import ConfigBuilder
+        from dblift.config.config_builder import ConfigBuilder
 
         with tempfile.NamedTemporaryFile(suffix=".yaml", delete=False, mode="w") as tmp:
             tmp.write(
@@ -492,7 +492,7 @@ class TestTransactionalDdlSupport:
 
     def test_transactional_provider_has_supports_transactional_ddl(self):
         """TransactionalProvider interface must define supports_transactional_ddl()."""
-        from db.provider_interfaces import TransactionalProvider
+        from dblift.db.provider_interfaces import TransactionalProvider
 
         assert hasattr(
             TransactionalProvider, "supports_transactional_ddl"
@@ -500,7 +500,7 @@ class TestTransactionalDdlSupport:
 
     def test_mysql_does_not_support_transactional_ddl(self):
         """MySQL auto-commits DDL and must report supports_transactional_ddl() == False."""
-        from db.plugins.mysql.provider import MySqlProvider
+        from dblift.db.plugins.mysql.provider import MySqlProvider
 
         assert hasattr(
             MySqlProvider, "supports_transactional_ddl"
@@ -510,7 +510,7 @@ class TestTransactionalDdlSupport:
 
     def test_oracle_does_not_support_transactional_ddl(self):
         """Oracle implicitly commits DDL and must report supports_transactional_ddl() == False."""
-        from db.plugins.oracle.provider import OracleProvider
+        from dblift.db.plugins.oracle.provider import OracleProvider
 
         assert hasattr(
             OracleProvider, "supports_transactional_ddl"
@@ -519,7 +519,7 @@ class TestTransactionalDdlSupport:
 
     def test_transactional_ddl_default_is_true(self):
         """Default supports_transactional_ddl() should return True (PG, MSSQL, DB2)."""
-        from db.provider_interfaces import TransactionalProvider
+        from dblift.db.provider_interfaces import TransactionalProvider
 
         # Create a minimal concrete subclass to test the default
         class DummyProvider(TransactionalProvider):
@@ -537,10 +537,10 @@ class TestTransactionalDdlSupport:
 
     def test_execution_engine_warns_on_non_transactional_ddl_failure(self):
         """Execution engine must add warning to result when DDL rollback is ineffective."""
-        from core.logger.results import OperationResult
-        from core.migration.executor.execution_engine import ExecutionEngine
-        from core.migration.migration import MigrationType
-        from db.provider_interfaces import TransactionalProvider
+        from dblift.core.logger.results import OperationResult
+        from dblift.core.migration.executor.execution_engine import ExecutionEngine
+        from dblift.core.migration.migration import MigrationType
+        from dblift.db.provider_interfaces import TransactionalProvider
 
         # Create a mock provider that doesn't support transactional DDL
         provider = Mock(spec=TransactionalProvider)

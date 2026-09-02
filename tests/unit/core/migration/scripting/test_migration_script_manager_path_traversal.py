@@ -15,8 +15,8 @@ from unittest.mock import patch
 
 import pytest
 
-from core.logger import DbliftLogger, LogFormat
-from core.migration.scripting.migration_script_manager import MigrationScriptManager
+from dblift.core.logger import DbliftLogger, LogFormat
+from dblift.core.migration.scripting.migration_script_manager import MigrationScriptManager
 
 
 class TestPathTraversalGuard:

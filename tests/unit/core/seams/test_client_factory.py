@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from core.seams import client_factory
+from dblift.core.seams import client_factory
 
 pytestmark = [pytest.mark.unit]
 
@@ -36,7 +36,7 @@ class _TierClient:
 
 def test_falls_back_to_oss_client_without_registration(monkeypatch):
     monkeypatch.setattr(client_factory, "entry_points", lambda group: [])
-    from api import DBLiftClient
+    from dblift.api import DBLiftClient
 
     assert client_factory.resolve_client_class() is DBLiftClient
 
@@ -69,7 +69,7 @@ def test_broken_plugin_falls_back(monkeypatch):
         "entry_points",
         lambda group: [_FakeEntryPoint("bad", None, raises=True)],
     )
-    from api import DBLiftClient
+    from dblift.api import DBLiftClient
 
     assert client_factory.resolve_client_class() is DBLiftClient
 

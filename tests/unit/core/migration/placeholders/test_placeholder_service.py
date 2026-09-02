@@ -4,8 +4,8 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from core.logger import NullLog
-from core.migration.placeholders.placeholder_service import PlaceholderService
+from dblift.core.logger import NullLog
+from dblift.core.migration.placeholders.placeholder_service import PlaceholderService
 
 
 @pytest.mark.unit

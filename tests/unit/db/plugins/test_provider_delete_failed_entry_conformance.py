@@ -21,16 +21,16 @@ import pkgutil
 import unittest
 from unittest.mock import MagicMock
 
-from db.base_provider import BaseProvider
+from dblift.db.base_provider import BaseProvider
 
 
 def _iter_concrete_provider_classes() -> list[type[BaseProvider]]:
-    """Every concrete ``BaseProvider`` subclass under ``db.plugins``.
+    """Every concrete ``BaseProvider`` subclass under ``dblift.db.plugins``.
 
     Import side-effects only — no instantiation, so optional drivers
     (JPype, the Cosmos SDK) need not be installed.
     """
-    import db.plugins as plugins_pkg
+    import dblift.db.plugins as plugins_pkg
 
     discovered: dict[str, type[BaseProvider]] = {}
     for module_info in pkgutil.walk_packages(

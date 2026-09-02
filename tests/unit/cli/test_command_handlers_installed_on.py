@@ -5,7 +5,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from cli._command_handlers import _info_result_to_dict
+from dblift.cli._command_handlers import _info_result_to_dict
 
 
 def _make_migration(installed_on=None):

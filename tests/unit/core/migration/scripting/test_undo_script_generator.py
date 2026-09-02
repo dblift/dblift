@@ -5,9 +5,9 @@ from tempfile import TemporaryDirectory
 
 import pytest
 
-from core.logger import LogFactory
-from core.migration.migration import Migration
-from core.migration.scripting.undo_script_generator import (
+from dblift.core.logger import LogFactory
+from dblift.core.migration.migration import Migration
+from dblift.core.migration.scripting.undo_script_generator import (
     UndoScriptGenerator,
     UndoStatement,
 )

@@ -46,7 +46,7 @@ def test_repo_paid_surface_guard_passes() -> None:
 
 
 def test_core_logger_results_stays_oss_only() -> None:
-    import core.logger.results as results
+    import dblift.core.logger.results as results
 
     for name in (
         "DiffResult",

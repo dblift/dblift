@@ -21,7 +21,7 @@ from unittest.mock import MagicMock, call, patch
 
 import pytest
 
-from cli._config_helpers import (
+from dblift.cli._config_helpers import (
     _build_args_namespace,
     _close_logs,
     _collect_placeholders,
@@ -81,9 +81,9 @@ class TestBuildArgsNamespace:
             database_schema=None,
         )
         with (
-            patch("cli._config_helpers.create_parser", return_value=mock_parser),
+            patch("dblift.cli._config_helpers.create_parser", return_value=mock_parser),
             patch(
-                "cli._config_helpers.parse_with_selective_errors",
+                "dblift.cli._config_helpers.parse_with_selective_errors",
                 return_value=(expected_ns, [], False),
             ),
         ):
@@ -97,8 +97,11 @@ class TestBuildArgsNamespace:
         # Lines 122-125: has_validation_error → sys.exit(2)
         mock_parser = MagicMock()
         with (
-            patch("cli._config_helpers.create_parser", return_value=mock_parser),
-            patch("cli._config_helpers.parse_with_selective_errors", return_value=(None, [], True)),
+            patch("dblift.cli._config_helpers.create_parser", return_value=mock_parser),
+            patch(
+                "dblift.cli._config_helpers.parse_with_selective_errors",
+                return_value=(None, [], True),
+            ),
         ):
             with pytest.raises(SystemExit) as exc_info:
                 _build_args_namespace(
@@ -110,9 +113,10 @@ class TestBuildArgsNamespace:
         # Lines 127-142: args is None → creates Namespace with defaults
         mock_parser = MagicMock()
         with (
-            patch("cli._config_helpers.create_parser", return_value=mock_parser),
+            patch("dblift.cli._config_helpers.create_parser", return_value=mock_parser),
             patch(
-                "cli._config_helpers.parse_with_selective_errors", return_value=(None, [], False)
+                "dblift.cli._config_helpers.parse_with_selective_errors",
+                return_value=(None, [], False),
             ),
         ):
             args, unknown = _build_args_namespace(
@@ -128,9 +132,10 @@ class TestBuildArgsNamespace:
         # Lines 144-155: extract_db_arg with inline value format
         mock_parser = MagicMock()
         with (
-            patch("cli._config_helpers.create_parser", return_value=mock_parser),
+            patch("dblift.cli._config_helpers.create_parser", return_value=mock_parser),
             patch(
-                "cli._config_helpers.parse_with_selective_errors", return_value=(None, [], False)
+                "dblift.cli._config_helpers.parse_with_selective_errors",
+                return_value=(None, [], False),
             ),
         ):
             args, _ = _build_args_namespace(
@@ -144,9 +149,10 @@ class TestBuildArgsNamespace:
         # Lines 152-155: space-separated format in global_arguments
         mock_parser = MagicMock()
         with (
-            patch("cli._config_helpers.create_parser", return_value=mock_parser),
+            patch("dblift.cli._config_helpers.create_parser", return_value=mock_parser),
             patch(
-                "cli._config_helpers.parse_with_selective_errors", return_value=(None, [], False)
+                "dblift.cli._config_helpers.parse_with_selective_errors",
+                return_value=(None, [], False),
             ),
         ):
             args, _ = _build_args_namespace(
@@ -174,8 +180,11 @@ class TestBuildArgsNamespace:
         )
         # No 'command' attribute set
         with (
-            patch("cli._config_helpers.create_parser", return_value=mock_parser),
-            patch("cli._config_helpers.parse_with_selective_errors", return_value=(ns, [], False)),
+            patch("dblift.cli._config_helpers.create_parser", return_value=mock_parser),
+            patch(
+                "dblift.cli._config_helpers.parse_with_selective_errors",
+                return_value=(ns, [], False),
+            ),
         ):
             args, _ = _build_args_namespace(
                 commands=["migrate", "info"], global_arguments=[], subcommand_args=[]
@@ -186,9 +195,10 @@ class TestBuildArgsNamespace:
         # Lines 168: extract database_password
         mock_parser = MagicMock()
         with (
-            patch("cli._config_helpers.create_parser", return_value=mock_parser),
+            patch("dblift.cli._config_helpers.create_parser", return_value=mock_parser),
             patch(
-                "cli._config_helpers.parse_with_selective_errors", return_value=(None, [], False)
+                "dblift.cli._config_helpers.parse_with_selective_errors",
+                return_value=(None, [], False),
             ),
         ):
             args, _ = _build_args_namespace(
@@ -227,8 +237,8 @@ class TestBuildArgsNamespace:
             installed_by=None,
         )
         with (
-            patch("cli._config_helpers.load_config", return_value=config),
-            patch("cli._config_helpers.ConfigBuilder"),
+            patch("dblift.cli._config_helpers.load_config", return_value=config),
+            patch("dblift.cli._config_helpers.ConfigBuilder"),
         ):
             result = _load_and_merge_config(args, None)
         assert result.history_table == "my_history"
@@ -246,8 +256,8 @@ class TestBuildArgsNamespace:
             installed_by=None,
         )
         with (
-            patch("cli._config_helpers.load_config", return_value=config),
-            patch("cli._config_helpers.ConfigBuilder"),
+            patch("dblift.cli._config_helpers.load_config", return_value=config),
+            patch("dblift.cli._config_helpers.ConfigBuilder"),
         ):
             result = _load_and_merge_config(args, None)
         assert result.snapshot_table == "my_snapshots"
@@ -265,8 +275,8 @@ class TestBuildArgsNamespace:
             installed_by="admin",
         )
         with (
-            patch("cli._config_helpers.load_config", return_value=config),
-            patch("cli._config_helpers.ConfigBuilder"),
+            patch("dblift.cli._config_helpers.load_config", return_value=config),
+            patch("dblift.cli._config_helpers.ConfigBuilder"),
         ):
             result = _load_and_merge_config(args, None)
         assert result.database.installed_by == "admin"
@@ -286,8 +296,8 @@ class TestBuildArgsNamespace:
             installed_by=None,
         )
         with (
-            patch("cli._config_helpers.load_config", return_value=config),
-            patch("cli._config_helpers.ConfigBuilder"),
+            patch("dblift.cli._config_helpers.load_config", return_value=config),
+            patch("dblift.cli._config_helpers.ConfigBuilder"),
         ):
             result = _load_and_merge_config(args, None)
         assert result.database.installed_by == "db_user"
@@ -306,8 +316,8 @@ class TestBuildArgsNamespace:
         )
         mock_merged_db = MagicMock()
         with (
-            patch("cli._config_helpers.load_config", return_value=config),
-            patch("cli._config_helpers.ConfigBuilder") as mock_cb,
+            patch("dblift.cli._config_helpers.load_config", return_value=config),
+            patch("dblift.cli._config_helpers.ConfigBuilder") as mock_cb,
         ):
             mock_cb.merge_database_overrides.return_value = mock_merged_db
             result = _load_and_merge_config(args, None)
@@ -327,8 +337,8 @@ class TestBuildArgsNamespace:
         )
         log = MagicMock()
         with (
-            patch("cli._config_helpers.load_config", return_value=config),
-            patch("cli._config_helpers.ConfigBuilder"),
+            patch("dblift.cli._config_helpers.load_config", return_value=config),
+            patch("dblift.cli._config_helpers.ConfigBuilder"),
         ):
             _load_and_merge_config(args, log)
         assert log.debug.call_count >= 3
@@ -518,7 +528,7 @@ class TestValidateDbConfig:
         config.database.username = "user"
         config.database.password = "pass"
         config.database.schema = "public"
-        with patch("cli._config_helpers.DatabaseUrlParser") as mock_parser:
+        with patch("dblift.cli._config_helpers.DatabaseUrlParser") as mock_parser:
             mock_parser.parse_username.return_value = "user"
             mock_parser.parse_password.return_value = "pass"
             _validate_db_config(args, config, parser, ["baseline"])
@@ -741,7 +751,7 @@ class TestResolveScriptsDirectories:
         ``MigrationsConfig.get_directory_configs()`` unconditionally
         preferring a non-empty ``directories`` list over ``directory``.
         """
-        from config.dblift_config import MigrationsConfig
+        from dblift.config.dblift_config import MigrationsConfig
 
         config_dir = tmp_path / "config_migrations"
         config_dir.mkdir()
@@ -796,7 +806,7 @@ class TestEnsureConnection:
 
     def test_already_connected_logs_debug(self):
         # Lines 530-533: is_connected() = True → connection_needed = False
-        from db.provider_interfaces import ConnectionProvider
+        from dblift.db.provider_interfaces import ConnectionProvider
 
         provider = MagicMock(spec=ConnectionProvider)
         provider.is_connected.return_value = True
@@ -809,7 +819,7 @@ class TestEnsureConnection:
 
     def test_ensure_connection_called_when_needed(self):
         # Lines 536-539: connection_needed, provider has ensure_connection
-        from db.provider_interfaces import ConnectionProvider
+        from dblift.db.provider_interfaces import ConnectionProvider
 
         provider = MagicMock(spec=ConnectionProvider)
         provider.is_connected.return_value = False
@@ -822,7 +832,7 @@ class TestEnsureConnection:
 
     def test_create_connection_called_when_no_ensure(self):
         # Lines 540-542: no ensure_connection but is ConnectionProvider → create_connection
-        from db.provider_interfaces import ConnectionProvider
+        from dblift.db.provider_interfaces import ConnectionProvider
 
         provider = MagicMock(spec=ConnectionProvider)
         provider.is_connected.return_value = False
@@ -836,7 +846,7 @@ class TestEnsureConnection:
 
     def test_exception_in_is_connected_logs_debug(self):
         # Lines 534-535: is_connected raises → log.debug
-        from db.provider_interfaces import ConnectionProvider
+        from dblift.db.provider_interfaces import ConnectionProvider
 
         provider = MagicMock(spec=ConnectionProvider)
         provider.is_connected.side_effect = RuntimeError("connection error")
@@ -851,7 +861,7 @@ class TestEnsureConnection:
 
     def test_ensure_connection_exception_logs_debug(self):
         # Lines 543-544: outer try/except → log.debug
-        from db.provider_interfaces import ConnectionProvider
+        from dblift.db.provider_interfaces import ConnectionProvider
 
         provider = MagicMock(spec=ConnectionProvider)
         provider.is_connected.return_value = False

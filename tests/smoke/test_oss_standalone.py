@@ -61,8 +61,8 @@ def _oss_builtin_command_choices(monkeypatch):
     lifecycle commands plus the premium-command stubs registered natively by
     ``_register_premium_stub_parsers``.
     """
-    from cli import extensions
-    from cli._parser_setup import create_parser
+    from dblift.cli import extensions
+    from dblift.cli._parser_setup import create_parser
 
     monkeypatch.setattr(extensions.metadata, "entry_points", lambda group: [])
     parser = create_parser()

@@ -12,12 +12,12 @@ from types import SimpleNamespace
 
 import pytest
 
-from core.migration._type_match import (
+from dblift.core.migration._type_match import (
     is_migration_type,
     is_versioned,
     migration_type_name,
 )
-from core.migration.migration import VERSIONED_SCRIPT_TYPES, MigrationType
+from dblift.core.migration.migration import VERSIONED_SCRIPT_TYPES, MigrationType
 
 # --- migration_type_name ----------------------------------------------------
 

@@ -12,9 +12,9 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
-from core.logger.results import CleanResult
-from core.migration.commands.clean_command import CleanCommand
-from db.provider_interfaces import DroppableObject
+from dblift.core.logger.results import CleanResult
+from dblift.core.migration.commands.clean_command import CleanCommand
+from dblift.db.provider_interfaces import DroppableObject
 
 # ---------------------------------------------------------------------------
 # Helpers

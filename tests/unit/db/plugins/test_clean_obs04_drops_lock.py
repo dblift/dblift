@@ -13,7 +13,7 @@ from unittest.mock import MagicMock
 
 class TestPostgresqlCleanDropsLock(unittest.TestCase):
     def test_lock_table_is_dropped(self):
-        from db.plugins.postgresql.postgresql.schema_operations import (
+        from dblift.db.plugins.postgresql.postgresql.schema_operations import (
             PostgreSqlSchemaOperations,
         )
 
@@ -44,7 +44,7 @@ class TestMysqlCleanDropsLock(unittest.TestCase):
     def test_drop_tables_passes_no_skip_names(self):
         import inspect
 
-        from db.plugins.mysql.mysql.schema_operations import MySqlSchemaOperations
+        from dblift.db.plugins.mysql.mysql.schema_operations import MySqlSchemaOperations
 
         # Source-level guard: the previous code preserved
         # ``DBLIFT_MIGRATION_LOCKS`` via ``skip_names={...}``. After OBS-04 fix
@@ -56,7 +56,7 @@ class TestMysqlCleanDropsLock(unittest.TestCase):
 
 class TestSqliteCleanDropsLock(unittest.TestCase):
     def test_lock_table_enumerated_as_candidate(self):
-        from db.plugins.sqlite.sqlite.schema_operations import SQLiteSchemaOperations
+        from dblift.db.plugins.sqlite.sqlite.schema_operations import SQLiteSchemaOperations
 
         # Build an in-memory sqlite DB with lock + a user table.
         conn = sqlite3.connect(":memory:")

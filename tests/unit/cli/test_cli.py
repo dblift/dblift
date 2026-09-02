@@ -6,13 +6,13 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from cli.db_utils import (
+from dblift.cli.db_utils import (
     check_connection,
     diagnose_connection,
     list_drivers,
     validate_config,
 )
-from config import DbliftConfig
+from dblift.config import DbliftConfig
 
 
 @pytest.mark.unit
@@ -22,7 +22,7 @@ class TestCLI:
     @pytest.fixture
     def mock_provider_registry(self):
         """Mock the ProviderRegistry for testing."""
-        with patch("cli.db_utils.ProviderRegistry") as mock:
+        with patch("dblift.cli.db_utils.ProviderRegistry") as mock:
             yield mock
 
     @pytest.fixture
@@ -82,7 +82,7 @@ class TestCLI:
         mock_config.database.database = "XE"
 
         # Execute command
-        with patch("cli.db_utils.load_config", return_value=mock_config):
+        with patch("dblift.cli.db_utils.load_config", return_value=mock_config):
             result = validate_config(args)
 
         # Verify results
@@ -113,7 +113,7 @@ class TestCLI:
         mock_config.database.database = "XE"
 
         # Execute command
-        with patch("cli.db_utils.load_config", return_value=mock_config):
+        with patch("dblift.cli.db_utils.load_config", return_value=mock_config):
             result = validate_config(args)
 
         # Verify results
@@ -181,9 +181,9 @@ class TestCLI:
         mock_config.database.build_database_url.return_value = args.db_url
 
         # Execute command
-        with patch("cli.db_utils.load_config", return_value=mock_config):
+        with patch("dblift.cli.db_utils.load_config", return_value=mock_config):
             with patch(
-                "db.plugins.oracle.provider.OracleProvider",
+                "dblift.db.plugins.oracle.provider.OracleProvider",
                 return_value=mock_provider,
             ):
                 result = check_connection(args)
@@ -233,9 +233,9 @@ class TestCLI:
         mock_config.database.build_database_url.return_value = args.db_url
 
         # Execute command
-        with patch("cli.db_utils.load_config", return_value=mock_config):
+        with patch("dblift.cli.db_utils.load_config", return_value=mock_config):
             with patch(
-                "db.plugins.oracle.provider.OracleProvider",
+                "dblift.db.plugins.oracle.provider.OracleProvider",
                 return_value=mock_provider,
             ):
                 result = check_connection(args)
@@ -271,7 +271,7 @@ class TestCLI:
         mock_config.database.password = "testpass"
 
         # Execute command
-        with patch("cli.db_utils.load_config", return_value=mock_config):
+        with patch("dblift.cli.db_utils.load_config", return_value=mock_config):
             result = validate_config(args)
 
         # Verify results
@@ -303,7 +303,7 @@ class TestCLI:
         mock_config.database.password = "testpass"
 
         # Execute command
-        with patch("cli.db_utils.load_config", return_value=mock_config):
+        with patch("dblift.cli.db_utils.load_config", return_value=mock_config):
             result = validate_config(args)
 
         # Verify results
@@ -334,7 +334,7 @@ class TestCLI:
 
         # Execute command with environment variables
         with patch.dict(os.environ, {"DBLIFT_DB_USER": "envuser", "DBLIFT_DB_PASSWORD": "envpass"}):
-            with patch("cli.db_utils.load_config", return_value=mock_config):
+            with patch("dblift.cli.db_utils.load_config", return_value=mock_config):
                 result = validate_config(args)
 
         # Verify results
@@ -367,7 +367,7 @@ class TestCLI:
 
         # Execute command with environment variables
         with patch.dict(os.environ, {"DBLIFT_DB_USER": "envuser", "DBLIFT_DB_PASSWORD": "envpass"}):
-            with patch("cli.db_utils.load_config", return_value=mock_config):
+            with patch("dblift.cli.db_utils.load_config", return_value=mock_config):
                 result = validate_config(args)
 
         # Verify results
@@ -402,7 +402,7 @@ class TestCLI:
         mock_config.database.password = None
 
         # Execute command
-        with patch("cli.db_utils.load_config", return_value=mock_config):
+        with patch("dblift.cli.db_utils.load_config", return_value=mock_config):
             result = validate_config(args)
 
         # Verify results

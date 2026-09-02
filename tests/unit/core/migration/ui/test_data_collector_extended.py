@@ -6,7 +6,7 @@ from unittest.mock import MagicMock
 
 
 def _make_collector():
-    from core.migration.ui.data_collector import MigrationDataCollector
+    from dblift.core.migration.ui.data_collector import MigrationDataCollector
 
     log = MagicMock()
     sm = MagicMock()
@@ -19,8 +19,8 @@ class TestMigrationDataCollectorInit(unittest.TestCase):
         self.assertIs(coll.log, log)
 
     def test_null_log_default(self):
-        from core.logger import NullLog
-        from core.migration.ui.data_collector import MigrationDataCollector
+        from dblift.core.logger import NullLog
+        from dblift.core.migration.ui.data_collector import MigrationDataCollector
 
         coll = MigrationDataCollector(log=None)
         self.assertIsInstance(coll.log, NullLog)
@@ -56,7 +56,7 @@ class TestGetMigrationTypeString(unittest.TestCase):
         return _make_collector()[0]
 
     def test_sql_type(self):
-        from core.migration.migration import MigrationType
+        from dblift.core.migration.migration import MigrationType
 
         coll = self._c()
         result = coll._get_migration_type_string(MigrationType.SQL)
@@ -78,13 +78,13 @@ class TestIsVersionedType(unittest.TestCase):
         return _make_collector()[0]
 
     def test_sql_is_versioned(self):
-        from core.migration.migration import MigrationType
+        from dblift.core.migration.migration import MigrationType
 
         coll = self._c()
         self.assertTrue(coll._is_versioned_type(MigrationType.SQL))
 
     def test_repeatable_not_versioned(self):
-        from core.migration.migration import MigrationType
+        from dblift.core.migration.migration import MigrationType
 
         coll = self._c()
         self.assertFalse(coll._is_versioned_type(MigrationType.REPEATABLE))

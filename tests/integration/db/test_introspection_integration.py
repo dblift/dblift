@@ -20,11 +20,11 @@ from pathlib import Path
 
 import pytest
 
-from config.database_config import DatabaseConfig
-from config.dblift_config import DbliftConfig
-from core.introspection import IntrospectorFactory
-from core.logger.log import ConsoleLog
-from db.provider_registry import ProviderRegistry
+from dblift.config.database_config import DatabaseConfig
+from dblift.config.dblift_config import DbliftConfig
+from dblift.core.introspection import IntrospectorFactory
+from dblift.core.logger.log import ConsoleLog
+from dblift.db.provider_registry import ProviderRegistry
 from tests.integration.helpers.cli_runner import DBLiftCLI
 from tests.integration.helpers.migration_helper import create_config
 
@@ -123,15 +123,15 @@ class TestSchemaIntrospection:
         if db_type in {"postgresql", "mysql"}:
             return ProviderRegistry.create_provider(config, log=log)
         elif db_type == "oracle":
-            from db.plugins.oracle.provider import OracleProvider
+            from dblift.db.plugins.oracle.provider import OracleProvider
 
             return OracleProvider(config, log)
         elif db_type == "sqlserver":
-            from db.plugins.sqlserver.provider import SqlServerProvider
+            from dblift.db.plugins.sqlserver.provider import SqlServerProvider
 
             return SqlServerProvider(config, log)
         elif db_type == "db2":
-            from db.plugins.db2.provider import Db2Provider
+            from dblift.db.plugins.db2.provider import Db2Provider
 
             return Db2Provider(config, log)
         else:
@@ -816,7 +816,7 @@ class TestSchemaIntrospection:
                     ), "Column dict should include ordinal_position"
 
                 # Test round-trip: from_dict should work
-                from core.sql_model.table import Table
+                from dblift.core.sql_model.table import Table
 
                 restored_table = Table.from_dict(table_dict)
 
@@ -983,7 +983,7 @@ class TestSchemaIntrospection:
         provider = self._get_provider(db_container)
         log = ConsoleLog("introspection_test", enable_debug=False)
 
-        from core.sql_model.procedure import Procedure
+        from dblift.core.sql_model.procedure import Procedure
 
         with IntrospectorFactory.create(provider, log=log, use_vendor_queries=True) as introspector:
             result = introspector.introspect_schema(
@@ -1076,7 +1076,7 @@ class TestSchemaIntrospection:
                     )
 
                 # Now check with the actual synonyms query
-                from core.introspection import VendorQueriesFactory
+                from dblift.core.introspection import VendorQueriesFactory
 
                 vendor_q = VendorQueriesFactory.create(db_type)
                 sql, params = vendor_q.get_synonyms_query(schema)

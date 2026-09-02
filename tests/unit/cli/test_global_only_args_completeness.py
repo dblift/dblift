@@ -1,6 +1,6 @@
 """Invariant: every root-only CLI flag is classified as global.
 
-`cli.main._extract_commands_from_argv` splits argv into global vs subcommand
+`dblift.cli.main._extract_commands_from_argv` splits argv into global vs subcommand
 arguments *before* argparse runs. A flag defined only on the root parser (not on
 any subparser) must be listed in `_GLOBAL_ONLY_ARGS` (or `_GLOBAL_BOOLEAN_FLAGS`),
 otherwise the preprocessor relocates it after the subcommand token and the
@@ -10,9 +10,9 @@ without updating the classification list; this test fails loudly on the next
 such omission.
 """
 
-from cli._config_helpers import _GLOBAL_BOOLEAN_FLAGS, _extract_commands_from_argv
-from cli._parser_setup import create_parser
-from cli.main import (
+from dblift.cli._config_helpers import _GLOBAL_BOOLEAN_FLAGS, _extract_commands_from_argv
+from dblift.cli._parser_setup import create_parser
+from dblift.cli.main import (
     _AVAILABLE_COMMANDS,
     _GLOBAL_ONLY_ARGS,
     _root_only_boolean_flags,

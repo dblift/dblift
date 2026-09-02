@@ -1,7 +1,7 @@
 from sqlalchemy import text
 
-import db.native_connection_manager as connection_manager_module
-from db.native_connection_manager import NativeConnectionManager
+import dblift.db.native_connection_manager as connection_manager_module
+from dblift.db.native_connection_manager import NativeConnectionManager
 
 
 class _DB:

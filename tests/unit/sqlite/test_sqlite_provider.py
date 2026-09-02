@@ -15,7 +15,7 @@ class TestSQLiteConnectionManager:
 
     def test_get_database_path_from_path(self):
         """Test getting database path from path config."""
-        from db.plugins.sqlite.sqlite.connection_manager import SQLiteConnectionManager
+        from dblift.db.plugins.sqlite.sqlite.connection_manager import SQLiteConnectionManager
 
         mock_config = MagicMock()
         mock_config.database.path = "/path/to/db.sqlite"
@@ -27,7 +27,7 @@ class TestSQLiteConnectionManager:
 
     def test_get_database_path_from_database(self):
         """Test getting database path from database config."""
-        from db.plugins.sqlite.sqlite.connection_manager import SQLiteConnectionManager
+        from dblift.db.plugins.sqlite.sqlite.connection_manager import SQLiteConnectionManager
 
         mock_config = MagicMock()
         mock_config.database.path = None
@@ -46,7 +46,7 @@ class TestSQLiteConnectionManager:
         ``sqlalchemy.engine.make_url``) — a fourth slash is required for an
         absolute path.
         """
-        from db.plugins.sqlite.sqlite.connection_manager import SQLiteConnectionManager
+        from dblift.db.plugins.sqlite.sqlite.connection_manager import SQLiteConnectionManager
 
         mock_config = MagicMock()
         mock_config.database.path = None
@@ -58,7 +58,7 @@ class TestSQLiteConnectionManager:
 
     def test_create_connection_memory(self):
         """Test creating in-memory database connection."""
-        from db.plugins.sqlite.sqlite.connection_manager import SQLiteConnectionManager
+        from dblift.db.plugins.sqlite.sqlite.connection_manager import SQLiteConnectionManager
 
         mock_config = MagicMock()
         mock_config.database.path = ":memory:"
@@ -80,7 +80,7 @@ class TestSQLiteConnectionManager:
 
     def test_create_connection_file(self):
         """Test creating file-based database connection."""
-        from db.plugins.sqlite.sqlite.connection_manager import SQLiteConnectionManager
+        from dblift.db.plugins.sqlite.sqlite.connection_manager import SQLiteConnectionManager
 
         with tempfile.NamedTemporaryFile(suffix=".sqlite", delete=False) as f:
             db_path = f.name
@@ -135,7 +135,7 @@ class TestSQLiteQueryExecutor:
 
     def test_execute_query(self):
         """Test executing a SELECT query."""
-        from db.plugins.sqlite.sqlite.query_executor import SQLiteQueryExecutor
+        from dblift.db.plugins.sqlite.sqlite.query_executor import SQLiteQueryExecutor
 
         mock_connection_manager = MagicMock()
         executor = SQLiteQueryExecutor(mock_connection_manager)
@@ -152,7 +152,7 @@ class TestSQLiteQueryExecutor:
 
     def test_execute_query_with_params(self):
         """Test executing a parameterized query."""
-        from db.plugins.sqlite.sqlite.query_executor import SQLiteQueryExecutor
+        from dblift.db.plugins.sqlite.sqlite.query_executor import SQLiteQueryExecutor
 
         mock_connection_manager = MagicMock()
         executor = SQLiteQueryExecutor(mock_connection_manager)
@@ -166,7 +166,7 @@ class TestSQLiteQueryExecutor:
 
     def test_execute_statement(self):
         """Test executing an INSERT statement."""
-        from db.plugins.sqlite.sqlite.query_executor import SQLiteQueryExecutor
+        from dblift.db.plugins.sqlite.sqlite.query_executor import SQLiteQueryExecutor
 
         mock_connection_manager = MagicMock()
         executor = SQLiteQueryExecutor(mock_connection_manager)
@@ -186,7 +186,7 @@ class TestSQLiteQueryExecutor:
 
     def test_table_exists_true(self):
         """Test table_exists returns True for existing table."""
-        from db.plugins.sqlite.sqlite.query_executor import SQLiteQueryExecutor
+        from dblift.db.plugins.sqlite.sqlite.query_executor import SQLiteQueryExecutor
 
         mock_connection_manager = MagicMock()
         executor = SQLiteQueryExecutor(mock_connection_manager)
@@ -195,7 +195,7 @@ class TestSQLiteQueryExecutor:
 
     def test_table_exists_false(self):
         """Test table_exists returns False for non-existing table."""
-        from db.plugins.sqlite.sqlite.query_executor import SQLiteQueryExecutor
+        from dblift.db.plugins.sqlite.sqlite.query_executor import SQLiteQueryExecutor
 
         mock_connection_manager = MagicMock()
         executor = SQLiteQueryExecutor(mock_connection_manager)
@@ -204,7 +204,7 @@ class TestSQLiteQueryExecutor:
 
     def test_get_schema_qualified_name(self):
         """Test schema-qualified name generation."""
-        from db.plugins.sqlite.sqlite.query_executor import SQLiteQueryExecutor
+        from dblift.db.plugins.sqlite.sqlite.query_executor import SQLiteQueryExecutor
 
         mock_connection_manager = MagicMock()
         executor = SQLiteQueryExecutor(mock_connection_manager)
@@ -228,8 +228,8 @@ class TestSQLiteSchemaOperations:
 
     def test_create_schema_is_noop(self):
         """Test that create_schema is a no-op for SQLite."""
-        from db.plugins.sqlite.sqlite.query_executor import SQLiteQueryExecutor
-        from db.plugins.sqlite.sqlite.schema_operations import SQLiteSchemaOperations
+        from dblift.db.plugins.sqlite.sqlite.query_executor import SQLiteQueryExecutor
+        from dblift.db.plugins.sqlite.sqlite.schema_operations import SQLiteSchemaOperations
 
         mock_connection_manager = MagicMock()
         executor = SQLiteQueryExecutor(mock_connection_manager)
@@ -240,8 +240,8 @@ class TestSQLiteSchemaOperations:
 
     def test_get_database_version(self):
         """Test getting database version."""
-        from db.plugins.sqlite.sqlite.query_executor import SQLiteQueryExecutor
-        from db.plugins.sqlite.sqlite.schema_operations import SQLiteSchemaOperations
+        from dblift.db.plugins.sqlite.sqlite.query_executor import SQLiteQueryExecutor
+        from dblift.db.plugins.sqlite.sqlite.schema_operations import SQLiteSchemaOperations
 
         mock_connection_manager = MagicMock()
         executor = SQLiteQueryExecutor(mock_connection_manager)
@@ -252,8 +252,8 @@ class TestSQLiteSchemaOperations:
 
     def test_get_tables(self):
         """Test getting list of tables."""
-        from db.plugins.sqlite.sqlite.query_executor import SQLiteQueryExecutor
-        from db.plugins.sqlite.sqlite.schema_operations import SQLiteSchemaOperations
+        from dblift.db.plugins.sqlite.sqlite.query_executor import SQLiteQueryExecutor
+        from dblift.db.plugins.sqlite.sqlite.schema_operations import SQLiteSchemaOperations
 
         # Create some tables
         self.conn.execute("CREATE TABLE table1 (id INTEGER PRIMARY KEY)")
@@ -270,8 +270,8 @@ class TestSQLiteSchemaOperations:
 
     def test_get_schemas(self):
         """Test getting list of schemas (should return ['main'])."""
-        from db.plugins.sqlite.sqlite.query_executor import SQLiteQueryExecutor
-        from db.plugins.sqlite.sqlite.schema_operations import SQLiteSchemaOperations
+        from dblift.db.plugins.sqlite.sqlite.query_executor import SQLiteQueryExecutor
+        from dblift.db.plugins.sqlite.sqlite.schema_operations import SQLiteSchemaOperations
 
         mock_connection_manager = MagicMock()
         executor = SQLiteQueryExecutor(mock_connection_manager)
@@ -295,9 +295,9 @@ class TestSQLiteHistoryManager:
 
     def test_create_history_table(self):
         """Test creating migration history table."""
-        from db.plugins.sqlite.sqlite.history_manager import SQLiteHistoryManager
-        from db.plugins.sqlite.sqlite.query_executor import SQLiteQueryExecutor
-        from db.plugins.sqlite.sqlite.schema_operations import SQLiteSchemaOperations
+        from dblift.db.plugins.sqlite.sqlite.history_manager import SQLiteHistoryManager
+        from dblift.db.plugins.sqlite.sqlite.query_executor import SQLiteQueryExecutor
+        from dblift.db.plugins.sqlite.sqlite.schema_operations import SQLiteSchemaOperations
 
         mock_connection_manager = MagicMock()
         mock_config = MagicMock()
@@ -315,9 +315,9 @@ class TestSQLiteHistoryManager:
 
     def test_record_migration(self):
         """Test recording a migration."""
-        from db.plugins.sqlite.sqlite.history_manager import SQLiteHistoryManager
-        from db.plugins.sqlite.sqlite.query_executor import SQLiteQueryExecutor
-        from db.plugins.sqlite.sqlite.schema_operations import SQLiteSchemaOperations
+        from dblift.db.plugins.sqlite.sqlite.history_manager import SQLiteHistoryManager
+        from dblift.db.plugins.sqlite.sqlite.query_executor import SQLiteQueryExecutor
+        from dblift.db.plugins.sqlite.sqlite.schema_operations import SQLiteSchemaOperations
 
         mock_connection_manager = MagicMock()
         mock_config = MagicMock()
@@ -347,9 +347,9 @@ class TestSQLiteHistoryManager:
 
     def test_get_applied_migrations_empty(self):
         """Test getting migrations when none exist."""
-        from db.plugins.sqlite.sqlite.history_manager import SQLiteHistoryManager
-        from db.plugins.sqlite.sqlite.query_executor import SQLiteQueryExecutor
-        from db.plugins.sqlite.sqlite.schema_operations import SQLiteSchemaOperations
+        from dblift.db.plugins.sqlite.sqlite.history_manager import SQLiteHistoryManager
+        from dblift.db.plugins.sqlite.sqlite.query_executor import SQLiteQueryExecutor
+        from dblift.db.plugins.sqlite.sqlite.schema_operations import SQLiteSchemaOperations
 
         mock_connection_manager = MagicMock()
         mock_config = MagicMock()

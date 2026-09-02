@@ -24,8 +24,8 @@ from typing import Any, List, Optional
 
 import pytest
 
-from core.introspection.base_introspector import BaseIntrospector
-from core.introspection.vendor_queries_base import VendorMetadataQueries
+from dblift.core.introspection.base_introspector import BaseIntrospector
+from dblift.core.introspection.vendor_queries_base import VendorMetadataQueries
 
 pytestmark = [pytest.mark.unit]
 

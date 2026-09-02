@@ -16,9 +16,9 @@ import argparse
 
 import pytest
 
-from cli._parser_setup import create_parser
-from config.dblift_config import DbliftConfig
-from config.property_registry import PROPERTY_REGISTRY, PropertySpec
+from dblift.cli._parser_setup import create_parser
+from dblift.config.dblift_config import DbliftConfig
+from dblift.config.property_registry import PROPERTY_REGISTRY, PropertySpec
 
 # Runtime-only meta flags: intentionally NOT persistent properties (absent from
 # PROPERTY_REGISTRY). Declared here so this test can assert they are never read

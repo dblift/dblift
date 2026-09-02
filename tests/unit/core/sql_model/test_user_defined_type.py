@@ -4,7 +4,7 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-from core.sql_model.user_defined_type import UserDefinedType
+from dblift.core.sql_model.user_defined_type import UserDefinedType
 
 
 @pytest.mark.unit

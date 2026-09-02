@@ -4,11 +4,11 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from core.migration import AppliedMigration, MigrationResource, ResolvedMigration
-from core.migration.history.migration_history_manager import MigrationHistoryManager
-from core.migration.migration import Migration, MigrationType, dict_to_migration
-from core.migration.scripting.migration_script_manager import MigrationScriptManager
-from core.migration.state.migration_state_manager import MigrationStateManager
+from dblift.core.migration import AppliedMigration, MigrationResource, ResolvedMigration
+from dblift.core.migration.history.migration_history_manager import MigrationHistoryManager
+from dblift.core.migration.migration import Migration, MigrationType, dict_to_migration
+from dblift.core.migration.scripting.migration_script_manager import MigrationScriptManager
+from dblift.core.migration.state.migration_state_manager import MigrationStateManager
 
 
 @pytest.mark.unit

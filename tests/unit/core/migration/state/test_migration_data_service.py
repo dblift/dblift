@@ -5,8 +5,8 @@ from unittest.mock import MagicMock, Mock
 
 import pytest
 
-from core.migration.state.migration_data_service import MigrationDataService
-from core.migration.state.migration_state_service import MigrationStateService
+from dblift.core.migration.state.migration_data_service import MigrationDataService
+from dblift.core.migration.state.migration_state_service import MigrationStateService
 
 
 def make_migration(

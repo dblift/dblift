@@ -5,11 +5,11 @@ transport, inherits MySQL-family behavior, and preserves MariaDB-specific
 quirks (requires_rollback_after_introspection=False, JSON type mapping).
 """
 
-from db.plugins.mariadb.plugin import PLUGIN as MARIADB_PLUGIN
-from db.plugins.mariadb.provider import MariadbProvider
-from db.plugins.mariadb.quirks import MariadbQuirks
-from db.plugins.mysql.provider import MySqlProvider
-from db.sqlalchemy_provider import SqlAlchemyProvider
+from dblift.db.plugins.mariadb.plugin import PLUGIN as MARIADB_PLUGIN
+from dblift.db.plugins.mariadb.provider import MariadbProvider
+from dblift.db.plugins.mariadb.quirks import MariadbQuirks
+from dblift.db.plugins.mysql.provider import MySqlProvider
+from dblift.db.sqlalchemy_provider import SqlAlchemyProvider
 
 
 def test_mariadb_plugin_is_native_transport() -> None:

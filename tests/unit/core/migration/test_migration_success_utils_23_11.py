@@ -2,7 +2,7 @@
 
 import pytest
 
-from core.migration.version_utils import is_migration_failure, is_migration_success
+from dblift.core.migration.version_utils import is_migration_failure, is_migration_success
 
 pytestmark = [pytest.mark.unit]
 
@@ -75,7 +75,7 @@ def test_none_not_failure():
 def test_migration_state_manager_uses_is_migration_failure():
     import inspect
 
-    import core.migration.state.migration_state_manager as mod
+    import dblift.core.migration.state.migration_state_manager as mod
 
     src = inspect.getsource(mod)
     assert "is_migration_failure" in src

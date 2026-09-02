@@ -9,7 +9,7 @@ the same objects ``clean_schema`` drops without executing any DROP.
 import unittest
 from unittest.mock import MagicMock
 
-from db.plugins.postgresql.postgresql.schema_operations import PostgreSqlSchemaOperations
+from dblift.db.plugins.postgresql.postgresql.schema_operations import PostgreSqlSchemaOperations
 
 
 def _qx_with_results(results_by_query):

@@ -1,6 +1,6 @@
 """One comparator for migration versions, everywhere.
 
-``core.migration.version_utils.compare_versions`` is the documented
+``dblift.core.migration.version_utils.compare_versions`` is the documented
 comparator: it handles letter versions (``VA`` vs ``VB``) and underscore
 separators (``1_2_3``). Two other orderings had grown alongside it —
 PEP 440 parsing in baseline filtering, which *raises* on both of those
@@ -15,11 +15,11 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from core.migration.migration import Migration
-from core.migration.state.migration_data_service import MigrationDataService
-from core.migration.version_utils import compare_versions
-from core.sql_validator._migration_filter import handle_baseline_filtering
-from core.sql_validator.migration_validator import MigrationValidator
+from dblift.core.migration.migration import Migration
+from dblift.core.migration.state.migration_data_service import MigrationDataService
+from dblift.core.migration.version_utils import compare_versions
+from dblift.core.sql_validator._migration_filter import handle_baseline_filtering
+from dblift.core.sql_validator.migration_validator import MigrationValidator
 
 
 def _validator() -> MigrationValidator:

@@ -11,7 +11,7 @@ _DEFAULT_VQ = object()
 
 
 def _make_extractor(dialect="postgresql", vendor_queries=_DEFAULT_VQ):
-    from core.introspection.extractors.constraint_extractor import ConstraintExtractor
+    from dblift.core.introspection.extractors.constraint_extractor import ConstraintExtractor
 
     provider = MagicMock()
     provider.query_executor = MagicMock()
@@ -69,7 +69,7 @@ class TestConstraintExtractorGetConstraints(unittest.TestCase):
         self.assertEqual(result, [])
 
     def test_pk_added_to_constraints(self):
-        from core.sql_model.base import ConstraintType
+        from dblift.core.sql_model.base import ConstraintType
 
         ext = _make_extractor()
         ext.provider.query_executor.execute_query.side_effect = [[_pk_row()], []]
@@ -96,7 +96,7 @@ class TestConstraintExtractorGetPrimaryKey(unittest.TestCase):
         self.assertIsNone(result)
 
     def test_returns_pk_constraint(self):
-        from core.sql_model.base import ConstraintType
+        from dblift.core.sql_model.base import ConstraintType
 
         ext = self._make()
         ext.provider.query_executor.execute_query.return_value = [_pk_row(name="pk_u")]
@@ -142,7 +142,7 @@ class TestConstraintExtractorGetForeignKeys(unittest.TestCase):
         self.assertEqual(result, [])
 
     def test_returns_fk_constraint(self):
-        from core.sql_model.base import ConstraintType
+        from dblift.core.sql_model.base import ConstraintType
 
         ext = self._make()
         ext.provider.query_executor.execute_query.return_value = [_fk_row()]
@@ -311,7 +311,7 @@ class TestGetConstraintsFullPath(unittest.TestCase):
 
     def test_unique_deduplication_by_columns(self):
         """Unique constraint whose columns match the PK columns is dropped."""
-        from core.sql_model.base import ConstraintType, SqlConstraint
+        from dblift.core.sql_model.base import ConstraintType, SqlConstraint
 
         ext = self._make_full()
 
@@ -335,7 +335,7 @@ class TestGetConstraintsFullPath(unittest.TestCase):
 
     def test_unique_deduplication_by_name(self):
         """Unique constraint whose name matches PK name is dropped."""
-        from core.sql_model.base import ConstraintType, SqlConstraint
+        from dblift.core.sql_model.base import ConstraintType, SqlConstraint
 
         ext = self._make_full()
 
@@ -357,7 +357,7 @@ class TestGetConstraintsFullPath(unittest.TestCase):
 
     def test_distinct_unique_constraint_kept(self):
         """Unique constraint on different column from PK is kept."""
-        from core.sql_model.base import ConstraintType, SqlConstraint
+        from dblift.core.sql_model.base import ConstraintType, SqlConstraint
 
         ext = self._make_full()
 
@@ -379,7 +379,7 @@ class TestGetConstraintsFullPath(unittest.TestCase):
 
     def test_check_constraints_added(self):
         """Check constraints are appended to result list."""
-        from core.sql_model.base import ConstraintType, SqlConstraint
+        from dblift.core.sql_model.base import ConstraintType, SqlConstraint
 
         ext = self._make_full()
         ext.provider.query_executor.execute_query.side_effect = [[], []]
@@ -408,7 +408,7 @@ class TestGetForeignKeysCompositePath(unittest.TestCase):
 
     def test_composite_fk_two_columns(self):
         """Two rows with same FK_NAME produce one FK with two columns."""
-        from core.sql_model.base import ConstraintType
+        from dblift.core.sql_model.base import ConstraintType
 
         ext = self._make()
 
@@ -540,7 +540,7 @@ class TestGetUniqueConstraintsViaVendorQueries(unittest.TestCase):
         self.assertEqual(result, [])
 
     def test_db2_returns_constraint_with_one_column(self):
-        from core.sql_model.base import ConstraintType
+        from dblift.core.sql_model.base import ConstraintType
 
         ext = self._make_db2(
             query_result=[
@@ -903,7 +903,7 @@ class TestGetUniqueConstraintsSqlServerPath(unittest.TestCase):
         return ext
 
     def test_sqlserver_unique_constraint_returned(self):
-        from core.sql_model.base import ConstraintType
+        from dblift.core.sql_model.base import ConstraintType
 
         ext = self._make_ss()
         ext.provider.query_executor.execute_query.return_value = [

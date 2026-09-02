@@ -6,7 +6,7 @@ SQLAlchemy `Engine` or `Connection`.
 ```python
 from sqlalchemy import create_engine
 
-from api import DBLiftClient
+from dblift.api import DBLiftClient
 
 engine = create_engine("postgresql+psycopg://user:password@localhost/app")
 
@@ -68,7 +68,7 @@ Python migration files receive a `MigrationContext` with access to the active
 engine, connection, schema, config, placeholders, logger, and `execute` helper:
 
 ```python
-from api import MigrationContext
+from dblift.api import MigrationContext
 
 
 def migrate(context: MigrationContext) -> None:

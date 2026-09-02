@@ -12,7 +12,7 @@ The architecture commits to three layering rules (see
 2. **No upward db → core domain leaks.** ``db/introspection/`` must
    not import from ``core/validation/`` or ``core/migration/``.
    The only legal upward references are
-   ``core.sql_model``, ``core.logger``, ``core.constants``.
+   ``dblift.core.sql_model``, ``dblift.core.logger``, ``dblift.core.constants``.
 
 3. **No cross-plugin imports.** A plugin in ``db/plugins/<a>/`` must
    not import from ``db/plugins/<b>/`` (a ≠ b). Plugins are
@@ -64,7 +64,7 @@ KNOWN_DB_TO_CORE_VIOLATIONS: dict[str, set[str]] = {}
 # that its regex parser inherits the SQL Server parser. Both relations
 # are documented in docs/architecture/database-providers.md.
 #: Directories under ``db/plugins/`` that are shared foundations rather
-#: than dialect plugins. ``db.plugins.base_*`` modules play the same role
+#: than dialect plugins. ``dblift.db.plugins.base_*`` modules play the same role
 #: but are single files, so the ``other_plugin not in plugin_names`` check
 #: already lets them through; these are packaged as directories because
 #: they span several modules, and must be excluded explicitly.
@@ -76,20 +76,20 @@ KNOWN_DB_TO_CORE_VIOLATIONS: dict[str, set[str]] = {}
 SHARED_PLUGIN_FOUNDATIONS: set[str] = {"nosql_base"}
 
 ALLOWED_CROSS_PLUGIN_IMPORTS: dict[str, set[str]] = {
-    "db/plugins/mariadb": {"db.plugins.mysql"},
-    "db/plugins/cosmosdb": {"db.plugins.sqlserver.parser"},
+    "dblift/db/plugins/mariadb": {"dblift.db.plugins.mysql"},
+    "dblift/db/plugins/cosmosdb": {"dblift.db.plugins.sqlserver.parser"},
     # PostgreSQL-compatible distributions reuse the PostgreSQL provider/quirks/
     # URL builder (they speak the PostgreSQL wire protocol). Same intentional
     # family relation as MariaDB ⊃ MySQL.
-    "db/plugins/neon": {"db.plugins.postgresql"},
-    "db/plugins/supabase": {"db.plugins.postgresql"},
-    "db/plugins/aurora_postgresql": {"db.plugins.postgresql"},
-    "db/plugins/alloydb": {"db.plugins.postgresql"},
-    "db/plugins/yugabytedb": {"db.plugins.postgresql"},
-    "db/plugins/timescaledb": {"db.plugins.postgresql"},
-    "db/plugins/citus": {"db.plugins.postgresql"},
-    "db/plugins/cockroachdb": {"db.plugins.postgresql"},
-    "db/plugins/redshift": {"db.plugins.postgresql"},
+    "dblift/db/plugins/neon": {"dblift.db.plugins.postgresql"},
+    "dblift/db/plugins/supabase": {"dblift.db.plugins.postgresql"},
+    "dblift/db/plugins/aurora_postgresql": {"dblift.db.plugins.postgresql"},
+    "dblift/db/plugins/alloydb": {"dblift.db.plugins.postgresql"},
+    "dblift/db/plugins/yugabytedb": {"dblift.db.plugins.postgresql"},
+    "dblift/db/plugins/timescaledb": {"dblift.db.plugins.postgresql"},
+    "dblift/db/plugins/citus": {"dblift.db.plugins.postgresql"},
+    "dblift/db/plugins/cockroachdb": {"dblift.db.plugins.postgresql"},
+    "dblift/db/plugins/redshift": {"dblift.db.plugins.postgresql"},
 }
 
 
@@ -167,10 +167,10 @@ class TestNoCoreToPluginImports:
 
     def test_no_hardcoded_plugin_imports_in_core(self):
         violations: dict[str, set[str]] = {}
-        core_dir = REPO_ROOT / "core"
+        core_dir = REPO_ROOT / "dblift" / "core"
         for path in _python_files_under(core_dir):
             modules = _imported_modules(path)
-            hits = _has_forbidden_import(modules, ("db.plugins",), allowed_exact=set())
+            hits = _has_forbidden_import(modules, ("dblift.db.plugins",), allowed_exact=set())
             if hits:
                 rel = _relative(path)
                 allowed = KNOWN_CORE_TO_PLUGIN_VIOLATIONS.get(rel, set())
@@ -220,13 +220,13 @@ class TestNoDbIntrospectionToCoreLeaks:
     """``db/introspection/`` may not import core.validation / licensing / migration."""
 
     FORBIDDEN_CORE_PREFIXES = (
-        "core.validation",
-        "core.migration",
+        "dblift.core.validation",
+        "dblift.core.migration",
     )
 
     def test_no_upward_imports(self):
         violations: dict[str, set[str]] = {}
-        target = REPO_ROOT / "db" / "introspection"
+        target = REPO_ROOT / "dblift" / "db" / "introspection"
         for path in _python_files_under(target):
             modules = _imported_modules(path)
             hits = _has_forbidden_import(modules, self.FORBIDDEN_CORE_PREFIXES, allowed_exact=set())
@@ -272,7 +272,7 @@ class TestNoCrossPluginImports:
     """A plugin must not import another plugin (except documented inheritance)."""
 
     def test_no_unauthorised_cross_plugin_imports(self):
-        plugins_dir = REPO_ROOT / "db" / "plugins"
+        plugins_dir = REPO_ROOT / "dblift" / "db" / "plugins"
         if not plugins_dir.is_dir():
             pytest.skip("db/plugins/ not present")
 
@@ -285,19 +285,19 @@ class TestNoCrossPluginImports:
         violations: dict[str, set[str]] = {}
         for plugin in plugin_names:
             plugin_dir = plugins_dir / plugin
-            allowed_cross = ALLOWED_CROSS_PLUGIN_IMPORTS.get(f"db/plugins/{plugin}", set())
+            allowed_cross = ALLOWED_CROSS_PLUGIN_IMPORTS.get(f"dblift/db/plugins/{plugin}", set())
 
             for path in _python_files_under(plugin_dir):
                 modules = _imported_modules(path)
                 rel = _relative(path)
                 for module in modules:
-                    if not module.startswith("db.plugins."):
+                    if not module.startswith("dblift.db.plugins."):
                         continue
                     parts = module.split(".")
                     if len(parts) < 3:
                         continue
                     other_plugin = parts[2]
-                    # ``db.plugins.base_*`` are shared infrastructure
+                    # ``dblift.db.plugins.base_*`` are shared infrastructure
                     # modules (BaseHistoryManager, BaseLockingManager,
                     # BaseQueryExecutor, BaseSchemaOperations) — not a
                     # plugin folder. Plugins are expected to import them.
@@ -305,10 +305,10 @@ class TestNoCrossPluginImports:
                         continue
                     if other_plugin == plugin:
                         continue
-                    # Match a submodule boundary — ``"db.plugins.sqlserver.parser"``
-                    # must allow ``db.plugins.sqlserver.parser`` itself and any
-                    # ``db.plugins.sqlserver.parser.<x>``, but NOT a sibling like
-                    # ``db.plugins.sqlserver.parser_legacy`` (Bugbot review).
+                    # Match a submodule boundary — ``"dblift.db.plugins.sqlserver.parser"``
+                    # must allow ``dblift.db.plugins.sqlserver.parser`` itself and any
+                    # ``dblift.db.plugins.sqlserver.parser.<x>``, but NOT a sibling like
+                    # ``dblift.db.plugins.sqlserver.parser_legacy`` (Bugbot review).
                     if any(
                         module == prefix or module.startswith(prefix + ".")
                         for prefix in allowed_cross

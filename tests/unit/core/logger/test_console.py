@@ -9,7 +9,7 @@ from rich.panel import Panel
 from rich.table import Table
 from rich.tree import Tree
 
-from core.logger.console import (
+from dblift.core.logger.console import (
     DBLIFT_THEME,
     get_stderr_console,
     install_rich_traceback,
@@ -212,7 +212,7 @@ class TestConsoleLogConsolePrintLevelFilter:
         reset_stderr_console()
 
     def test_console_print_suppressed_below_threshold(self):
-        from core.logger.log import ConsoleLog, LogLevel
+        from dblift.core.logger.log import ConsoleLog, LogLevel
 
         log = ConsoleLog("test", log_level=LogLevel.WARN)
         log._console = MagicMock()
@@ -222,7 +222,7 @@ class TestConsoleLogConsolePrintLevelFilter:
         log._console.print.assert_not_called()
 
     def test_console_print_emitted_at_or_above_threshold(self):
-        from core.logger.log import ConsoleLog, LogLevel
+        from dblift.core.logger.log import ConsoleLog, LogLevel
 
         log = ConsoleLog("test", log_level=LogLevel.INFO)
         log._console = MagicMock()
@@ -232,7 +232,7 @@ class TestConsoleLogConsolePrintLevelFilter:
         log._console.print.assert_called_once()
 
     def test_console_print_warn_passes_when_threshold_warn(self):
-        from core.logger.log import ConsoleLog, LogLevel
+        from dblift.core.logger.log import ConsoleLog, LogLevel
 
         log = ConsoleLog("test", log_level=LogLevel.WARN)
         log._console = MagicMock()
@@ -242,7 +242,7 @@ class TestConsoleLogConsolePrintLevelFilter:
         log._console.print.assert_called_once()
 
     def test_console_print_default_level_is_info(self):
-        from core.logger.log import ConsoleLog, LogLevel
+        from dblift.core.logger.log import ConsoleLog, LogLevel
 
         # No level kwarg → defaults to INFO → suppressed at WARN threshold.
         log = ConsoleLog("test", log_level=LogLevel.WARN)

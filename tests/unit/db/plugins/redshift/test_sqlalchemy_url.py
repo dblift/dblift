@@ -5,8 +5,8 @@ from types import SimpleNamespace
 import pytest
 from sqlalchemy.engine import make_url
 
-from db.plugins.redshift.plugin import PLUGIN as REDSHIFT_PLUGIN
-from db.provider_registry import ProviderRegistry
+from dblift.db.plugins.redshift.plugin import PLUGIN as REDSHIFT_PLUGIN
+from dblift.db.provider_registry import ProviderRegistry
 
 
 @pytest.fixture

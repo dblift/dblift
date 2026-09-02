@@ -2,9 +2,9 @@
 
 import pytest
 
-from db.base_provider import BaseProvider
-from db.base_quirks import BaseQuirks
-from db.provider_registry import ProviderRegistry
+from dblift.db.base_provider import BaseProvider
+from dblift.db.base_quirks import BaseQuirks
+from dblift.db.provider_registry import ProviderRegistry
 
 
 class _ExistingHistoryProvider:

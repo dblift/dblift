@@ -1,4 +1,4 @@
-"""PR-G9 coverage push for ``core.migration.executor.execution_engine``.
+"""PR-G9 coverage push for ``dblift.core.migration.executor.execution_engine``.
 
 Targets the residual uncovered branches after PR-F4:
 
@@ -21,9 +21,9 @@ import unittest
 from enum import Enum
 from unittest.mock import MagicMock, patch
 
-from core.migration.executor.execution_engine import ExecutionEngine
-from core.migration.formats import MigrationFormat
-from core.migration.migration import Migration
+from dblift.core.migration.executor.execution_engine import ExecutionEngine
+from dblift.core.migration.formats import MigrationFormat
+from dblift.core.migration.migration import Migration
 
 # ---------------------------------------------------------------------------
 # Helpers (mirroring test_execution_engine_extended.py for consistency)
@@ -32,7 +32,7 @@ from core.migration.migration import Migration
 
 def _make_engine(dialect="postgresql", with_history=False, with_config=True):
     """Build a minimal ExecutionEngine suitable for unit tests."""
-    from db.provider_interfaces import TransactionalProvider
+    from dblift.db.provider_interfaces import TransactionalProvider
 
     provider = MagicMock()
     provider.__class__ = TransactionalProvider
@@ -232,7 +232,7 @@ class TestDbmsOutputEnableFailure(unittest.TestCase):
         # Make the import target raise; OracleQuirks.enable_session_output
         # lazy-imports this symbol, so the patch path is the same.
         with patch(
-            "db.plugins.oracle.oracle.dbms_output.enable_dbms_output",
+            "dblift.db.plugins.oracle.oracle.dbms_output.enable_dbms_output",
             side_effect=RuntimeError("dbms_output broken"),
         ):
             with patch.object(engine, "_transaction_liveness_probe_sql", return_value="SELECT 1"):
@@ -268,9 +268,9 @@ class TestDbmsOutputReadFailure(unittest.TestCase):
         # fall back to provider.execute_query (which is harmless).
         engine.provider.connection.prepareStatement.side_effect = AttributeError
 
-        with patch("db.plugins.oracle.oracle.dbms_output.enable_dbms_output"):
+        with patch("dblift.db.plugins.oracle.oracle.dbms_output.enable_dbms_output"):
             with patch(
-                "db.plugins.oracle.oracle.dbms_output.read_dbms_output",
+                "dblift.db.plugins.oracle.oracle.dbms_output.read_dbms_output",
                 side_effect=RuntimeError("read failed"),
             ):
                 with patch.object(
@@ -358,7 +358,7 @@ class TestCommitAndVerifyInvalidQualifiedName(unittest.TestCase):
         # Force the OWASP defense-in-depth guard to fail. The regex match
         # itself extracts only \w+ groups so this is otherwise unreachable.
         with patch(
-            "core.migration.executor.execution_engine.re.match",
+            "dblift.core.migration.executor.execution_engine.re.match",
             return_value=None,
         ):
             engine._commit_and_verify(migration, statements, 100)

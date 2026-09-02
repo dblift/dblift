@@ -11,7 +11,7 @@ These tests focus on challenging the parser with complex scenarios:
 
 import pytest
 
-from db.plugins.oracle.parser.oracle_parser import OracleParser
+from dblift.db.plugins.oracle.parser.oracle_parser import OracleParser
 
 
 @pytest.mark.unit

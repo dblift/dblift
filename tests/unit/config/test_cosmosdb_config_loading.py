@@ -7,9 +7,9 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-from api.client import DBLiftClient
-from config.dblift_config import load_config
-from db.plugins.cosmosdb.config import CosmosDbConfig
+from dblift.api.client import DBLiftClient
+from dblift.config.dblift_config import load_config
+from dblift.db.plugins.cosmosdb.config import CosmosDbConfig
 
 
 @pytest.mark.unit
@@ -46,7 +46,9 @@ database:
     )
 
     provider = Mock()
-    with patch("db.provider_registry.ProviderRegistry.create_provider", return_value=provider):
+    with patch(
+        "dblift.db.provider_registry.ProviderRegistry.create_provider", return_value=provider
+    ):
         client = DBLiftClient.from_config_file(str(config_file), migrations_dir=tmp_path / "m")
 
     assert isinstance(client.config.database, CosmosDbConfig)

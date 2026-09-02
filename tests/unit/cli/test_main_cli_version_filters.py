@@ -7,8 +7,8 @@ import pytest
 
 pytestmark = [pytest.mark.unit]
 
-from cli.extensions import load_terminal_commands
-from cli.main import (
+from dblift.cli.extensions import load_terminal_commands
+from dblift.cli.main import (
     _AVAILABLE_COMMANDS,
     _COMMAND_HANDLERS,
     _extract_version_filters,

@@ -19,7 +19,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from core.migration.commands.base_command import BaseCommand
+from dblift.core.migration.commands.base_command import BaseCommand
 
 
 def _make_command_stub() -> BaseCommand:

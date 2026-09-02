@@ -12,8 +12,8 @@ from opentelemetry import trace
 from opentelemetry.sdk.trace import TracerProvider
 trace.set_tracer_provider(TracerProvider())   # configure your exporter here
 
-from api import DBLiftClient
-from integrations.opentelemetry import instrument
+from dblift.api import DBLiftClient
+from dblift.integrations.opentelemetry import instrument
 
 client = DBLiftClient.from_sqlalchemy(engine, migrations_dir="migrations")
 instrument(client)          # opt-in, per client

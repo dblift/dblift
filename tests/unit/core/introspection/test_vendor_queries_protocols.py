@@ -5,7 +5,7 @@ import unittest
 
 class TestProtocolStructure(unittest.TestCase):
     def test_itable_queries_is_runtime_checkable(self):
-        from core.introspection.vendor_queries_protocols import ITableQueries
+        from dblift.core.introspection.vendor_queries_protocols import ITableQueries
 
         # Mock implementing required methods
         class MockTable:
@@ -36,7 +36,7 @@ class TestProtocolStructure(unittest.TestCase):
         self.assertIsInstance(MockTable(), ITableQueries)
 
     def test_iview_queries_protocol(self):
-        from core.introspection.vendor_queries_protocols import IViewQueries
+        from dblift.core.introspection.vendor_queries_protocols import IViewQueries
 
         class MockView:
             def get_views_query(self, schema):
@@ -57,7 +57,7 @@ class TestProtocolStructure(unittest.TestCase):
         self.assertIsInstance(MockView(), IViewQueries)
 
     def test_iindex_queries_protocol(self):
-        from core.introspection.vendor_queries_protocols import IIndexQueries
+        from dblift.core.introspection.vendor_queries_protocols import IIndexQueries
 
         class MockIndex:
             def get_indexes_query(self, schema, table):
@@ -69,7 +69,7 @@ class TestProtocolStructure(unittest.TestCase):
         self.assertIsInstance(MockIndex(), IIndexQueries)
 
     def test_isequence_queries_protocol(self):
-        from core.introspection.vendor_queries_protocols import ISequenceQueries
+        from dblift.core.introspection.vendor_queries_protocols import ISequenceQueries
 
         class MockSeq:
             def supports_sequences(self):
@@ -86,7 +86,7 @@ class TestProtocolStructure(unittest.TestCase):
         # and live on ``ISequenceQueries``. The minimal mock that
         # satisfies ``IConstraintQueries`` therefore omits them — and
         # MUST still pass isinstance.
-        from core.introspection.vendor_queries_protocols import IConstraintQueries
+        from dblift.core.introspection.vendor_queries_protocols import IConstraintQueries
 
         class MockConstr:
             def get_check_constraints_query(self, schema, table):
@@ -103,14 +103,14 @@ class TestProtocolStructure(unittest.TestCase):
     def test_iconstraint_queries_no_longer_requires_sequence_methods(self):
         # Regression guard against re-adding sequence methods to
         # IConstraintQueries. (PR #241 Bugbot.)
-        from core.introspection.vendor_queries_protocols import IConstraintQueries
+        from dblift.core.introspection.vendor_queries_protocols import IConstraintQueries
 
         protocol_methods = {m for m in dir(IConstraintQueries) if not m.startswith("_")}
         self.assertNotIn("get_sequences_query", protocol_methods)
         self.assertNotIn("supports_sequences", protocol_methods)
 
     def test_non_conforming_class_not_instance(self):
-        from core.introspection.vendor_queries_protocols import ITableQueries
+        from dblift.core.introspection.vendor_queries_protocols import ITableQueries
 
         class NotATable:
             pass
@@ -122,7 +122,7 @@ class TestProtocolMethods(unittest.TestCase):
     """Test that protocol method signatures match expected usage."""
 
     def test_itable_queries_methods_callable(self):
-        from core.introspection.vendor_queries_protocols import ITableQueries
+        from dblift.core.introspection.vendor_queries_protocols import ITableQueries
 
         # Check all required method names exist in Protocol
         methods = [m for m in dir(ITableQueries) if not m.startswith("_")]
@@ -130,7 +130,7 @@ class TestProtocolMethods(unittest.TestCase):
         self.assertIn("get_table_properties_query", methods)
 
     def test_isequence_queries_supports_check(self):
-        from core.introspection.vendor_queries_protocols import ISequenceQueries
+        from dblift.core.introspection.vendor_queries_protocols import ISequenceQueries
 
         methods = [m for m in dir(ISequenceQueries) if not m.startswith("_")]
         self.assertIn("supports_sequences", methods)

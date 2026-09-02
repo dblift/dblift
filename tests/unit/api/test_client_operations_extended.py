@@ -6,7 +6,7 @@ from unittest.mock import MagicMock
 
 class TestHeuristicStatementCount(unittest.TestCase):
     def _count(self, sql):
-        from api._client_operations import _heuristic_statement_count_from_sql
+        from dblift.api._client_operations import _heuristic_statement_count_from_sql
 
         return _heuristic_statement_count_from_sql(sql)
 
@@ -36,12 +36,12 @@ class TestHeuristicStatementCount(unittest.TestCase):
 
 class TestApplySqlScriptWarningScan(unittest.TestCase):
     def _scan(self, result, sql):
-        from api._client_operations import _apply_sql_script_warning_scan
+        from dblift.api._client_operations import _apply_sql_script_warning_scan
 
         _apply_sql_script_warning_scan(result, sql)
 
     def _result(self):
-        from core.logger.results import GenerateUndoScriptResult
+        from dblift.core.logger.results import GenerateUndoScriptResult
 
         return GenerateUndoScriptResult()
 
@@ -70,7 +70,7 @@ class TestGenerateUndoScriptOperation(unittest.TestCase):
     def test_missing_script_raises_or_errors(self):
         from pathlib import Path
 
-        from api._client_operations import generate_undo_script_operation
+        from dblift.api._client_operations import generate_undo_script_operation
 
         client = MagicMock()
         client.migrations_dirs = [Path("/nonexistent")]
@@ -87,7 +87,7 @@ class TestUndoScriptErrorResult(unittest.TestCase):
     def test_creates_failure_result(self):
         from pathlib import Path
 
-        from api._client_operations import _undo_script_error_result
+        from dblift.api._client_operations import _undo_script_error_result
 
         result = _undo_script_error_result(Path("/tmp/V1.sql"), "test error")
         self.assertIsNotNone(result)

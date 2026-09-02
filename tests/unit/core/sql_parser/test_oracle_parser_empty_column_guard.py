@@ -1,6 +1,6 @@
 import pytest
 
-from db.plugins.oracle.parser._object_extractor import extract_objects
+from dblift.db.plugins.oracle.parser._object_extractor import extract_objects
 
 
 @pytest.mark.unit

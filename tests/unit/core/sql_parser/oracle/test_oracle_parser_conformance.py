@@ -34,7 +34,7 @@ from typing import FrozenSet
 
 import pytest
 
-from db.plugins.oracle.parser.oracle_parser import OracleParser
+from dblift.db.plugins.oracle.parser.oracle_parser import OracleParser
 
 
 @dataclass(frozen=True)
@@ -223,11 +223,11 @@ class TestOracleParserSubResponsibilitiesPresent:
     @pytest.mark.parametrize(
         "module_name",
         [
-            "db.plugins.oracle.parser._comments",
-            "db.plugins.oracle.parser._sqlplus",
-            "db.plugins.oracle.parser._object_extractor",
-            "db.plugins.oracle.parser._statement_splitter",
-            "db.plugins.oracle.parser._plsql_block",
+            "dblift.db.plugins.oracle.parser._comments",
+            "dblift.db.plugins.oracle.parser._sqlplus",
+            "dblift.db.plugins.oracle.parser._object_extractor",
+            "dblift.db.plugins.oracle.parser._statement_splitter",
+            "dblift.db.plugins.oracle.parser._plsql_block",
         ],
     )
     def test_module_importable(self, module_name: str) -> None:

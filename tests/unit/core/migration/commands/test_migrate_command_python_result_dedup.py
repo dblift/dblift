@@ -18,12 +18,12 @@ import unittest
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-from core.logger.results import MigrateResult
-from core.migration.commands.migrate_command import MigrateCommand
-from core.migration.executor.execution_engine import ExecutionEngine
-from core.migration.formats import MigrationFormat
-from core.migration.migration import Migration, MigrationType
-from db.provider_interfaces import TransactionalProvider
+from dblift.core.logger.results import MigrateResult
+from dblift.core.migration.commands.migrate_command import MigrateCommand
+from dblift.core.migration.executor.execution_engine import ExecutionEngine
+from dblift.core.migration.formats import MigrationFormat
+from dblift.core.migration.migration import Migration, MigrationType
+from dblift.db.provider_interfaces import TransactionalProvider
 
 
 def _make_engine():
@@ -107,7 +107,7 @@ class TestMigrateResultNoDuplicateForPythonMigration(unittest.TestCase):
         engine.executor_factory = MagicMock()
         engine.executor_factory.execute.return_value = exec_result
 
-        with patch("core.migration.commands.migrate_command._emit_script_event"):
+        with patch("dblift.core.migration.commands.migrate_command._emit_script_event"):
             with patch.object(engine, "_parse_sql_statements", return_value=["SELECT 1"]):
                 with patch.object(engine, "_classify_execution_statements", return_value=[]):
                     with patch.object(engine, "_prepare_transaction", return_value=True):

@@ -25,9 +25,9 @@ pytestmark = [pytest.mark.unit, pytest.mark.sqlite]
 
 @pytest.fixture()
 def provider() -> Iterator[Any]:
-    from config import DbliftConfig
-    from db.plugins.sqlite.config import SQLiteConfig
-    from db.plugins.sqlite.provider import SQLiteProvider
+    from dblift.config import DbliftConfig
+    from dblift.db.plugins.sqlite.config import SQLiteConfig
+    from dblift.db.plugins.sqlite.provider import SQLiteProvider
 
     tmp = Path(tempfile.mkdtemp())
     p = SQLiteProvider(

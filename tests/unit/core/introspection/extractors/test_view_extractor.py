@@ -10,7 +10,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from core.introspection.extractors.view_extractor import ViewExtractor
+from dblift.core.introspection.extractors.view_extractor import ViewExtractor
 
 pytestmark = [pytest.mark.unit]
 
@@ -298,7 +298,7 @@ class TestGetViewsMysqlDialect(unittest.TestCase):
         ]
         # Suppress the SHOW CREATE VIEW call (moved into MysqlQuirks).
         with _patch(
-            "db.plugins.mysql.quirks.MysqlQuirks.fetch_view_algorithm",
+            "dblift.db.plugins.mysql.quirks.MysqlQuirks.fetch_view_algorithm",
             return_value=None,
         ):
             views = extractor.get_views("mydb")
@@ -322,7 +322,7 @@ class TestGetViewsMysqlDialect(unittest.TestCase):
             }
         ]
         with _patch(
-            "db.plugins.mysql.quirks.MysqlQuirks.fetch_view_algorithm",
+            "dblift.db.plugins.mysql.quirks.MysqlQuirks.fetch_view_algorithm",
             return_value="MERGE",
         ):
             views = extractor.get_views("mydb")
@@ -601,12 +601,12 @@ class TestMysqlViewAlgorithm(unittest.TestCase):
 
     @staticmethod
     def _quirks():
-        from db.plugins.mysql.quirks import MysqlQuirks
+        from dblift.db.plugins.mysql.quirks import MysqlQuirks
 
         return MysqlQuirks()
 
     def test_non_mysql_default_returns_none(self):
-        from db.base_quirks import BaseQuirks
+        from dblift.db.base_quirks import BaseQuirks
 
         extractor = _make_extractor(dialect="postgresql")
         self.assertIsNone(BaseQuirks().fetch_view_algorithm(extractor, "public", "v"))

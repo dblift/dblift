@@ -1,15 +1,15 @@
 """CLI-side license-banner wiring (seam consumer).
 
-Covers ``cli.main._propagate_license_banner`` — the helper that pushes the
+Covers ``dblift.cli.main._propagate_license_banner`` — the helper that pushes the
 resolved ``license_info`` onto every sub-logger's formatter. Inert in a pure
-OSS install (no provider on the ``core.seams.license_info`` seam → ``None``).
+OSS install (no provider on the ``dblift.core.seams.license_info`` seam → ``None``).
 """
 
 from types import SimpleNamespace
 
 import pytest
 
-from cli.main import _propagate_license_banner
+from dblift.cli.main import _propagate_license_banner
 
 pytestmark = [pytest.mark.unit]
 

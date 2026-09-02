@@ -5,7 +5,7 @@ from pathlib import Path
 
 from sqlalchemy import create_engine
 
-from api import DBLiftClient
+from dblift.api import DBLiftClient
 
 
 def _client(tmp_path: Path, migrations_dir: Path) -> DBLiftClient:

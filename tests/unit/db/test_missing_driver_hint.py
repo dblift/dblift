@@ -24,14 +24,14 @@ from sqlalchemy import create_engine
 from sqlalchemy.dialects import registry as dialect_registry
 from sqlalchemy.exc import ArgumentError, NoSuchModuleError
 
-import db.native_connection_manager as connection_manager_module
-import db.plugins
-from db.native_connection_manager import (
+import dblift.db.native_connection_manager as connection_manager_module
+import dblift.db.plugins
+from dblift.db.native_connection_manager import (
     NativeConnectionManager,
     describe_missing_driver,
     describe_unloadable_dialect,
 )
-from db.provider_registry import NativeDriverManager, PluginInfo, ProviderRegistry
+from dblift.db.provider_registry import NativeDriverManager, PluginInfo, ProviderRegistry
 
 
 @pytest.fixture(autouse=True)
@@ -412,9 +412,9 @@ class TestOnlyTheExpectedFirstPartyPluginsDeclareADottedDriver:
     @staticmethod
     def _first_party_plugins() -> list[PluginInfo]:
         """Read every first-party ``plugin.py:PLUGIN`` straight off the filesystem."""
-        plugins_dir = Path(db.plugins.__file__).parent
+        plugins_dir = Path(dblift.db.plugins.__file__).parent
         return [
-            importlib.import_module(f"db.plugins.{plugin_file.parent.name}.plugin").PLUGIN
+            importlib.import_module(f"dblift.db.plugins.{plugin_file.parent.name}.plugin").PLUGIN
             for plugin_file in sorted(plugins_dir.glob("*/plugin.py"))
         ]
 

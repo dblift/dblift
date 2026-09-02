@@ -2,8 +2,8 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from db.plugins.sqlserver.provider import SqlServerProvider
-from db.plugins.sqlserver.sqlserver.schema_operations import SqlServerSchemaOperations
+from dblift.db.plugins.sqlserver.provider import SqlServerProvider
+from dblift.db.plugins.sqlserver.sqlserver.schema_operations import SqlServerSchemaOperations
 
 
 def _make_query_executor():
@@ -81,7 +81,7 @@ def test_sqlserver_clean_preview_matches_explicit_clean_objects():
 @pytest.mark.unit
 def test_sqlserver_provider_exposes_native_clean_preview():
     """SqlServerProvider.get_clean_preview delegates to execute_query."""
-    from config.dblift_config import DbliftConfig
+    from dblift.config.dblift_config import DbliftConfig
 
     cfg = DbliftConfig.from_dict(
         {

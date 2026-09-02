@@ -18,8 +18,8 @@ Covers:
 
 import unittest
 
-from core.sql_model.base import ParseResult, SqlStatementType
-from db.plugins.mysql.parser.mysql_regex_parser import MySqlRegexParser
+from dblift.core.sql_model.base import ParseResult, SqlStatementType
+from dblift.db.plugins.mysql.parser.mysql_regex_parser import MySqlRegexParser
 
 
 class TestSplitStatements(unittest.TestCase):

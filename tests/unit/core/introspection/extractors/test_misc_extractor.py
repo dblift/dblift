@@ -10,7 +10,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from core.introspection.extractors.misc_extractor import MiscExtractor
+from dblift.core.introspection.extractors.misc_extractor import MiscExtractor
 
 pytestmark = [pytest.mark.unit]
 
@@ -744,7 +744,7 @@ class TestGetUserDefinedTypes(unittest.TestCase):
         extractor.provider.query_executor.execute_query.side_effect = mock_execute
 
         # Mock get_tables_fn
-        from core.sql_model.table import Table
+        from dblift.core.sql_model.table import Table
 
         mock_table = Table(name="users", schema="public", dialect="postgresql")
 
@@ -836,7 +836,7 @@ class TestGetLinkedServers(unittest.TestCase):
         self.assertEqual(result, [])
 
     def test_returns_linked_server_objects(self):
-        from core.sql_model.linked_server import LinkedServer
+        from dblift.core.sql_model.linked_server import LinkedServer
 
         vq = MagicMock()
         vq.supports_linked_servers.return_value = True
@@ -891,7 +891,7 @@ class TestGetModules(unittest.TestCase):
         self.assertEqual(result, [])
 
     def test_returns_module_objects(self):
-        from core.sql_model.module import Module
+        from dblift.core.sql_model.module import Module
 
         vq = MagicMock()
         vq.supports_modules.return_value = True

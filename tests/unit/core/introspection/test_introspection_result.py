@@ -6,7 +6,7 @@ from unittest.mock import MagicMock
 
 class TestResultSeverity(unittest.TestCase):
     def test_enum_values(self):
-        from core.introspection.result import ResultSeverity
+        from dblift.core.introspection.result import ResultSeverity
 
         self.assertEqual(ResultSeverity.INFO.value, "info")
         self.assertEqual(ResultSeverity.WARNING.value, "warning")
@@ -16,7 +16,7 @@ class TestResultSeverity(unittest.TestCase):
 
 class TestIntrospectionIssue(unittest.TestCase):
     def test_str_basic(self):
-        from core.introspection.result import IntrospectionIssue, ResultSeverity
+        from dblift.core.introspection.result import IntrospectionIssue, ResultSeverity
 
         issue = IntrospectionIssue(severity=ResultSeverity.WARNING, message="test warning")
         s = str(issue)
@@ -24,7 +24,7 @@ class TestIntrospectionIssue(unittest.TestCase):
         self.assertIn("test warning", s)
 
     def test_str_with_object_type_and_name(self):
-        from core.introspection.result import IntrospectionIssue, ResultSeverity
+        from dblift.core.introspection.result import IntrospectionIssue, ResultSeverity
 
         issue = IntrospectionIssue(
             severity=ResultSeverity.ERROR,
@@ -36,7 +36,7 @@ class TestIntrospectionIssue(unittest.TestCase):
         self.assertIn("table.users", s)
 
     def test_str_with_property(self):
-        from core.introspection.result import IntrospectionIssue, ResultSeverity
+        from dblift.core.introspection.result import IntrospectionIssue, ResultSeverity
 
         issue = IntrospectionIssue(
             severity=ResultSeverity.INFO,
@@ -47,7 +47,7 @@ class TestIntrospectionIssue(unittest.TestCase):
         self.assertIn("Property: columns", s)
 
     def test_str_with_exception(self):
-        from core.introspection.result import IntrospectionIssue, ResultSeverity
+        from dblift.core.introspection.result import IntrospectionIssue, ResultSeverity
 
         exc = ValueError("bad value")
         issue = IntrospectionIssue(severity=ResultSeverity.ERROR, message="err", exception=exc)
@@ -57,19 +57,19 @@ class TestIntrospectionIssue(unittest.TestCase):
 
 class TestObjectCaptureStatus(unittest.TestCase):
     def test_completeness_no_properties(self):
-        from core.introspection.result import ObjectCaptureStatus
+        from dblift.core.introspection.result import ObjectCaptureStatus
 
         s = ObjectCaptureStatus(object_type="table", object_name="users")
         self.assertEqual(s.get_completeness_score(), 1.0)
 
     def test_completeness_not_captured(self):
-        from core.introspection.result import ObjectCaptureStatus
+        from dblift.core.introspection.result import ObjectCaptureStatus
 
         s = ObjectCaptureStatus(object_type="table", object_name="users", captured=False)
         self.assertEqual(s.get_completeness_score(), 0.0)
 
     def test_completeness_all_captured(self):
-        from core.introspection.result import ObjectCaptureStatus
+        from dblift.core.introspection.result import ObjectCaptureStatus
 
         s = ObjectCaptureStatus(object_type="table", object_name="users")
         s.add_property_status("columns", True)
@@ -77,7 +77,7 @@ class TestObjectCaptureStatus(unittest.TestCase):
         self.assertEqual(s.get_completeness_score(), 1.0)
 
     def test_completeness_partial(self):
-        from core.introspection.result import ObjectCaptureStatus
+        from dblift.core.introspection.result import ObjectCaptureStatus
 
         s = ObjectCaptureStatus(object_type="table", object_name="users")
         s.add_property_status("columns", True)
@@ -85,7 +85,7 @@ class TestObjectCaptureStatus(unittest.TestCase):
         self.assertEqual(s.get_completeness_score(), 0.5)
 
     def test_add_property_status_with_issue(self):
-        from core.introspection.result import (
+        from dblift.core.introspection.result import (
             IntrospectionIssue,
             ObjectCaptureStatus,
             ResultSeverity,
@@ -99,7 +99,7 @@ class TestObjectCaptureStatus(unittest.TestCase):
 
 class TestIntrospectionResult(unittest.TestCase):
     def _make(self):
-        from core.introspection.result import IntrospectionResult
+        from dblift.core.introspection.result import IntrospectionResult
 
         return IntrospectionResult()
 
@@ -121,7 +121,7 @@ class TestIntrospectionResult(unittest.TestCase):
         self.assertFalse(r.success)
 
     def test_add_object_status(self):
-        from core.introspection.result import ObjectCaptureStatus
+        from dblift.core.introspection.result import ObjectCaptureStatus
 
         r = self._make()
         status = ObjectCaptureStatus("table", "users")

@@ -4,8 +4,8 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-from core.sql_model.base import SqlObjectType
-from core.sql_model.sequence import Sequence
+from dblift.core.sql_model.base import SqlObjectType
+from dblift.core.sql_model.sequence import Sequence
 
 
 @pytest.mark.unit

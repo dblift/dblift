@@ -52,11 +52,11 @@ from typing import Any, List, Optional
 
 import pytest
 
-from core.introspection.extractors.procedure_extractor import ProcedureExtractor
-from core.introspection.extractors.sequence_extractor import SequenceExtractor
-from core.introspection.extractors.trigger_extractor import TriggerExtractor
-from core.introspection.extractors.view_extractor import ViewExtractor
-from core.introspection.vendor_queries_base import VendorMetadataQueries
+from dblift.core.introspection.extractors.procedure_extractor import ProcedureExtractor
+from dblift.core.introspection.extractors.sequence_extractor import SequenceExtractor
+from dblift.core.introspection.extractors.trigger_extractor import TriggerExtractor
+from dblift.core.introspection.extractors.view_extractor import ViewExtractor
+from dblift.core.introspection.vendor_queries_base import VendorMetadataQueries
 
 pytestmark = [pytest.mark.unit]
 

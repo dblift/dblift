@@ -20,11 +20,11 @@ from typing import List, Optional
 
 import pytest
 
-from core.migration.commands.clean_command import CleanCommand
-from db.plugins.mysql.provider import MySqlProvider
-from db.plugins.postgresql.provider import PostgreSqlProvider
-from db.plugins.redshift.provider import RedshiftProvider
-from db.provider_interfaces import DroppableObject
+from dblift.core.migration.commands.clean_command import CleanCommand
+from dblift.db.plugins.mysql.provider import MySqlProvider
+from dblift.db.plugins.postgresql.provider import PostgreSqlProvider
+from dblift.db.plugins.redshift.provider import RedshiftProvider
+from dblift.db.provider_interfaces import DroppableObject
 
 
 class _FakeDialect:

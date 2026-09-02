@@ -3,7 +3,7 @@
 import pytest
 from django.core.exceptions import ImproperlyConfigured
 
-from integrations.django._engine import build_url
+from dblift.integrations.django._engine import build_url
 
 
 def test_postgresql_mapping():

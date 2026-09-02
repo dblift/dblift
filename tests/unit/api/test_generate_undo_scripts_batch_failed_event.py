@@ -16,8 +16,8 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from api._client_operations import generate_undo_scripts_operation
-from api.events import EventType
+from dblift.api._client_operations import generate_undo_scripts_operation
+from dblift.api.events import EventType
 
 
 def _make_client(dialect: str = "postgresql"):

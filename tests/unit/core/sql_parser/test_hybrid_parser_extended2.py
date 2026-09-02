@@ -9,7 +9,7 @@ from unittest.mock import MagicMock, PropertyMock, patch
 import pytest
 from sqlglot import exp, parse_one
 
-from core.sql_model.base import (
+from dblift.core.sql_model.base import (
     ConstraintType,
     ParseResult,
     SqlColumn,
@@ -17,17 +17,19 @@ from core.sql_model.base import (
     SqlStatement,
     SqlStatementType,
 )
-from core.sql_model.index import Index
-from core.sql_model.table import Table
-from core.sql_model.view import View
-from core.sql_parser.hybrid_parser import HybridParser
+from dblift.core.sql_model.index import Index
+from dblift.core.sql_model.table import Table
+from dblift.core.sql_model.view import View
+from dblift.core.sql_parser.hybrid_parser import HybridParser
 
 pytestmark = [pytest.mark.unit]
 
 
 class TestInitSqlglotFailure:
     def test_sqlglot_init_exception_falls_back_to_none(self):
-        with patch("core.sql_parser.hybrid_parser.SqlGlotParser", side_effect=RuntimeError("boom")):
+        with patch(
+            "dblift.core.sql_parser.hybrid_parser.SqlGlotParser", side_effect=RuntimeError("boom")
+        ):
             parser = HybridParser("postgresql")
         assert parser.sqlglot_parser is None
 
@@ -58,7 +60,9 @@ class TestParseSqlValidation:
 class TestSplitStatementsSignature:
     def test_signature_inspection_failure_falls_back(self):
         parser = HybridParser("postgresql")
-        with patch("core.sql_parser.hybrid_parser.inspect.signature", side_effect=ValueError):
+        with patch(
+            "dblift.core.sql_parser.hybrid_parser.inspect.signature", side_effect=ValueError
+        ):
             stmts = parser.split_statements("SELECT 1;")
         assert isinstance(stmts, list)
 
@@ -103,7 +107,8 @@ class TestExtractDependenciesErrorPaths:
         parser = HybridParser("postgresql")
         parser.split_statements = MagicMock(return_value=["SELECT 1"])
         with patch(
-            "core.sql_parser.hybrid_parser.parse_one", side_effect=RuntimeError("parse error")
+            "dblift.core.sql_parser.hybrid_parser.parse_one",
+            side_effect=RuntimeError("parse error"),
         ):
             deps = parser.extract_dependencies("ignored")
         assert deps == {"tables": [], "views": [], "schemas": []}
@@ -111,7 +116,7 @@ class TestExtractDependenciesErrorPaths:
     def test_non_expression_ast_skipped(self):
         parser = HybridParser("postgresql")
         parser.split_statements = MagicMock(return_value=["SELECT 1"])
-        with patch("core.sql_parser.hybrid_parser.parse_one", return_value=None):
+        with patch("dblift.core.sql_parser.hybrid_parser.parse_one", return_value=None):
             deps = parser.extract_dependencies("ignored")
         assert deps == {"tables": [], "views": [], "schemas": []}
 
@@ -442,7 +447,7 @@ class TestParseAlterTableWithRegex:
         assert "status IN ('A', 'B')" in expr
         ddl = f"ALTER TABLE APP.ORDERS ADD CONSTRAINT chk_amount CHECK ({expr})"
         assert ddl.count("(") == ddl.count(")"), ddl
-        from core.sql_generator.basic_table_ddl_generator import BasicTableDdlGenerator
+        from dblift.core.sql_generator.basic_table_ddl_generator import BasicTableDdlGenerator
 
         emitted = BasicTableDdlGenerator(table).generate_alter_check_constraints()
         assert emitted
@@ -752,7 +757,7 @@ class TestParseAlterTableViaSqlglotAstShapes:
         schema_node = exp.Schema(this=inner_table)
         ast = exp.Alter(this=schema_node, kind="TABLE", actions=[])
 
-        with patch("core.sql_parser.hybrid_parser.parse_one", return_value=ast):
+        with patch("dblift.core.sql_parser.hybrid_parser.parse_one", return_value=ast):
             constraints = parser._parse_alter_table_via_sqlglot(
                 "ALTER TABLE sales.orders ADD CONSTRAINT x", "defschema", result
             )
@@ -765,7 +770,7 @@ class TestParseAlterTableViaSqlglotAstShapes:
         result = ParseResult(success=True, statements=[])
         ast = exp.Alter(this=exp.Column(this=exp.Identifier(this="x")), kind="TABLE", actions=[])
 
-        with patch("core.sql_parser.hybrid_parser.parse_one", return_value=ast):
+        with patch("dblift.core.sql_parser.hybrid_parser.parse_one", return_value=ast):
             constraints = parser._parse_alter_table_via_sqlglot("ALTER TABLE x", None, result)
 
         assert constraints == []

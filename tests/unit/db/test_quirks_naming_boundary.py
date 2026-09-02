@@ -77,13 +77,13 @@ from typing import Dict, Iterable, List, Set, Tuple
 
 import pytest
 
-from core.premium_manifest import PREMIUM_COMMANDS
+from dblift.core.premium_manifest import PREMIUM_COMMANDS
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 
 #: The file this repository declares as the only place edition-gated
 #: command names may appear. Excluded from check (2) by construction.
-MANIFEST_FILE = REPO_ROOT / "core" / "premium_manifest.py"
+MANIFEST_FILE = REPO_ROOT / "dblift" / "core" / "premium_manifest.py"
 
 SKIP_DIRS = {
     ".git",
@@ -135,15 +135,15 @@ def _command_key(name: str) -> str:
 # commit that removes the site. Inner keys come from ``_command_key``.
 # ---------------------------------------------------------------------------
 FROZEN_COMMAND_NAME_SITES: Dict[str, Dict[str, int]] = {
-    "db/plugins/cosmosdb/quirks.py": {"3f18d50d7936": 1},
-    "db/plugins/db2/quirks.py": {"3f18d50d7936": 2},
-    "db/plugins/duckdb/quirks.py": {"3f18d50d7936": 1},
-    "db/plugins/mongodb/quirks.py": {"3f18d50d7936": 1},
-    "db/plugins/mysql/quirks.py": {"3f18d50d7936": 2},
-    "db/plugins/oracle/quirks.py": {"3f18d50d7936": 1},
-    "db/plugins/postgresql/quirks.py": {"3f18d50d7936": 2},
-    "db/plugins/sqlite/quirks.py": {"3f18d50d7936": 1},
-    "db/plugins/sqlserver/quirks.py": {"3f18d50d7936": 2},
+    "dblift/db/plugins/cosmosdb/quirks.py": {"3f18d50d7936": 1},
+    "dblift/db/plugins/db2/quirks.py": {"3f18d50d7936": 2},
+    "dblift/db/plugins/duckdb/quirks.py": {"3f18d50d7936": 1},
+    "dblift/db/plugins/mongodb/quirks.py": {"3f18d50d7936": 1},
+    "dblift/db/plugins/mysql/quirks.py": {"3f18d50d7936": 2},
+    "dblift/db/plugins/oracle/quirks.py": {"3f18d50d7936": 1},
+    "dblift/db/plugins/postgresql/quirks.py": {"3f18d50d7936": 2},
+    "dblift/db/plugins/sqlite/quirks.py": {"3f18d50d7936": 1},
+    "dblift/db/plugins/sqlserver/quirks.py": {"3f18d50d7936": 2},
 }
 
 #: Names this repository legitimately mentions but does not define, because
@@ -174,10 +174,10 @@ EXTERNAL_SYMBOLS: frozenset = frozenset(
 def guarded_files() -> List[Path]:
     """The quirks surface: the contract, its base class, every plugin."""
     files = [
-        REPO_ROOT / "db" / "base_quirks.py",
-        REPO_ROOT / "core" / "dialect_boundary.py",
+        REPO_ROOT / "dblift" / "db" / "base_quirks.py",
+        REPO_ROOT / "dblift" / "core" / "dialect_boundary.py",
     ]
-    files.extend(sorted((REPO_ROOT / "db" / "plugins").glob("*/quirks.py")))
+    files.extend(sorted((REPO_ROOT / "dblift" / "db" / "plugins").glob("*/quirks.py")))
     return files
 
 
@@ -231,9 +231,13 @@ def repo_names() -> frozenset:
 
 @functools.lru_cache(maxsize=1)
 def top_level_packages() -> frozenset:
+    """Importable roots: the repository's top-level packages plus the
+    subpackages of ``dblift``, so ``dblift.db.base_quirks.BaseQuirks`` in a
+    docstring still reads as a module path."""
     return frozenset(
         entry.name
-        for entry in REPO_ROOT.iterdir()
+        for parent in (REPO_ROOT, REPO_ROOT / "dblift")
+        for entry in parent.iterdir()
         if entry.is_dir() and (entry / "__init__.py").exists() and entry.name not in SKIP_DIRS
     )
 
@@ -301,6 +305,8 @@ def _missing_segments(ref: str) -> List[str]:
         # Module path: consume as much as the filesystem provides, then the
         # rest must be names defined somewhere in the repository.
         current = REPO_ROOT
+        if segments[0] != "dblift" and (REPO_ROOT / "dblift" / segments[0]).is_dir():
+            current = REPO_ROOT / "dblift"
         remaining = list(segments)
         while remaining:
             candidate = current / remaining[0]
@@ -432,7 +438,9 @@ class TestQuirksNamingBoundary:
         """The guard must not silently stop covering a plugin."""
         files = guarded_files()
         assert all(path.is_file() for path in files), files
-        plugin_dirs = {p.parent.name for p in (REPO_ROOT / "db" / "plugins").glob("*/quirks.py")}
+        plugin_dirs = {
+            p.parent.name for p in (REPO_ROOT / "dblift" / "db" / "plugins").glob("*/quirks.py")
+        }
         covered = {p.parent.name for p in files if p.name == "quirks.py"}
         assert plugin_dirs == covered
 

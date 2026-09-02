@@ -1,9 +1,9 @@
-"""Extended unit tests for :mod:`db.plugins.db2.provider` (Db2Provider)."""
+"""Extended unit tests for :mod:`dblift.db.plugins.db2.provider` (Db2Provider)."""
 
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
-from db.plugins.db2.provider import Db2Provider
+from dblift.db.plugins.db2.provider import Db2Provider
 
 
 class DummyDb2Provider(Db2Provider):
@@ -124,8 +124,8 @@ class TestAcquireMigrationLock:
         )
 
         clock = iter([0.0, 0.0, 0.5])
-        monkeypatch.setattr("db.plugins.db2.provider.time.monotonic", lambda: next(clock))
-        monkeypatch.setattr("db.plugins.db2.provider.time.sleep", lambda _seconds: None)
+        monkeypatch.setattr("dblift.db.plugins.db2.provider.time.monotonic", lambda: next(clock))
+        monkeypatch.setattr("dblift.db.plugins.db2.provider.time.sleep", lambda _seconds: None)
 
         attempts = {"count": 0}
 
@@ -152,7 +152,7 @@ class TestAcquireMigrationLock:
 
         provider._connection = SimpleNamespace(rollback=failing_rollback)
 
-        monkeypatch.setattr("db.plugins.db2.provider.time.sleep", lambda _seconds: None)
+        monkeypatch.setattr("dblift.db.plugins.db2.provider.time.sleep", lambda _seconds: None)
 
         def execute_statement(sql, schema=None, params=None):
             provider.calls.append(("statement", sql, schema, params))

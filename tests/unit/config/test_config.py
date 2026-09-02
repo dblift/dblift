@@ -6,8 +6,8 @@ from unittest.mock import mock_open, patch
 import pytest
 import yaml
 
-from config.database_config import DatabaseConfig
-from config.dblift_config import DbliftConfig
+from dblift.config.database_config import DatabaseConfig
+from dblift.config.dblift_config import DbliftConfig
 
 
 @pytest.mark.unit

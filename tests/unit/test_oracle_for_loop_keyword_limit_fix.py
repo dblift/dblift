@@ -7,7 +7,7 @@ causing FOR...LOOP detection to fail in statements with 16+ total keywords.
 
 import pytest
 
-from db.plugins.oracle.parser.oracle_parser import OracleParser
+from dblift.db.plugins.oracle.parser.oracle_parser import OracleParser
 
 
 @pytest.mark.unit

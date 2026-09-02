@@ -11,17 +11,17 @@ class TestFileDecomposition2016:
     """Verify that all 5 new modules are importable and contain the expected symbols."""
 
     def test_create_parser_still_importable_from_cli_main(self):
-        from cli.main import create_parser
+        from dblift.cli.main import create_parser
 
         assert callable(create_parser)
 
     def test_parse_with_selective_errors_still_importable_from_cli_main(self):
-        from cli.main import parse_with_selective_errors
+        from dblift.cli.main import parse_with_selective_errors
 
         assert callable(parse_with_selective_errors)
 
     def test_partition_handler_importable(self):
-        mod = importlib.import_module("core.sql_parser._partition_handler")
+        mod = importlib.import_module("dblift.core.sql_parser._partition_handler")
         assert hasattr(mod, "apply_partition_metadata")
         assert hasattr(mod, "normalize_partition_columns")
         assert hasattr(mod, "extract_balanced_partition_expression")
@@ -29,13 +29,13 @@ class TestFileDecomposition2016:
         assert hasattr(mod, "strip_outer_function")
 
     def test_client_factory_importable(self):
-        mod = importlib.import_module("api._client_factory")
+        mod = importlib.import_module("dblift.api._client_factory")
         assert hasattr(mod, "client_from_config")
         assert hasattr(mod, "client_from_config_file")
         assert hasattr(mod, "client_from_sqlalchemy")
 
     def test_dblift_client_from_config_still_exists(self):
-        from api.client import DBLiftClient
+        from dblift.api.client import DBLiftClient
 
         assert hasattr(DBLiftClient, "from_config")
         assert callable(DBLiftClient.from_config)
@@ -58,14 +58,14 @@ class TestFileLineCounts2016:
     """
 
     def test_cli_main_under_1200_lines(self):
-        import cli.main as mod
+        import dblift.cli.main as mod
 
         source = inspect.getsource(mod)
         line_count = len(source.splitlines())
         assert line_count < 1200, f"cli/main.py has {line_count} lines (target: < 1200)"
 
     def test_hybrid_parser_under_1580_lines(self):
-        import core.sql_parser.hybrid_parser as mod
+        import dblift.core.sql_parser.hybrid_parser as mod
 
         source = inspect.getsource(mod)
         line_count = len(source.splitlines())
@@ -74,7 +74,7 @@ class TestFileLineCounts2016:
         ), f"hybrid_parser.py has {line_count} lines (AC target: < 1580, original: 1674)"
 
     def test_api_client_under_1400_lines(self):
-        import api.client as mod
+        import dblift.api.client as mod
 
         source = inspect.getsource(mod)
         line_count = len(source.splitlines())

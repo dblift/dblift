@@ -2,8 +2,8 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from db.plugins.sqlserver.provider import SqlServerProvider
-from db.provider_interfaces import DroppableObject
+from dblift.db.plugins.sqlserver.provider import SqlServerProvider
+from dblift.db.provider_interfaces import DroppableObject
 
 
 def _provider_with_catalog_rows():

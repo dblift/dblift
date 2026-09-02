@@ -26,9 +26,9 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock, call, patch
 
-from core.logger.results import BaselineResult, ValidateResult
-from core.migration.commands.baseline_command import BaselineCommand
-from core.migration.commands.validate_command import ValidateCommand
+from dblift.core.logger.results import BaselineResult, ValidateResult
+from dblift.core.migration.commands.baseline_command import BaselineCommand
+from dblift.core.migration.commands.validate_command import ValidateCommand
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -539,7 +539,7 @@ class TestValidateCommandConnectionError(unittest.TestCase):
         cmd = _make_validate_cmd(log=log, history_manager=hm, validator=validator)
 
         with patch(
-            "core.migration.sql.sql_execution_service._format_execution_error",
+            "dblift.core.migration.sql.sql_execution_service._format_execution_error",
             side_effect=ValueError("formatter blew up"),
         ):
             with patch.object(cmd, "_populate_database_info"):

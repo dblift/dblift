@@ -18,10 +18,10 @@ from unittest.mock import patch
 
 import pytest
 
-from config.config_builder import ConfigBuilder
-from config.database_config import BaseDatabaseConfig
-from config.dblift_config import DbliftConfig
-from config.errors import ConfigurationError
+from dblift.config.config_builder import ConfigBuilder
+from dblift.config.database_config import BaseDatabaseConfig
+from dblift.config.dblift_config import DbliftConfig
+from dblift.config.errors import ConfigurationError
 
 
 class TestAllowIncompleteEarlyExit:
@@ -95,7 +95,7 @@ class TestEnvVarMergeModel:
     """A-3: Partial env-var overrides merge into an existing typed config without crash."""
 
     def _pg_config(self) -> DbliftConfig:
-        from config.database_config import BaseDatabaseConfig
+        from dblift.config.database_config import BaseDatabaseConfig
 
         return DbliftConfig.from_dict(
             {
@@ -136,7 +136,7 @@ class TestEnvVarMergeModel:
         )
         env_patch = {"DBLIFT_DB_SCHEMA": "override_schema"}
         with patch.dict(os.environ, env_patch, clear=False):
-            from config.dblift_config import load_config
+            from dblift.config.dblift_config import load_config
 
             config = load_config(str(cfg_file))
         assert config.database.schema == "override_schema"
@@ -163,7 +163,7 @@ class TestTopLevelEnvVarsNotDropped:
             "  url: postgresql+psycopg://localhost:5432/mydb\n"
             "  username: u\n  password: p\n"
         )
-        from config.dblift_config import load_config
+        from dblift.config.dblift_config import load_config
 
         env_patch = {**self._clear_dblift_env(), "DBLIFT_HISTORY_TABLE": "custom_history"}
         with patch.dict(os.environ, env_patch, clear=False):
@@ -177,7 +177,7 @@ class TestTopLevelEnvVarsNotDropped:
             "  url: postgresql+psycopg://localhost:5432/mydb\n"
             "  username: u\n  password: p\n"
         )
-        from config.dblift_config import load_config
+        from dblift.config.dblift_config import load_config
 
         env_patch = {**self._clear_dblift_env(), "DBLIFT_SNAPSHOT_TABLE": "custom_snapshots"}
         with patch.dict(os.environ, env_patch, clear=False):
@@ -191,7 +191,7 @@ class TestTopLevelEnvVarsNotDropped:
             "  url: postgresql+psycopg://localhost:5432/mydb\n"
             "  username: u\n  password: p\n"
         )
-        from config.dblift_config import load_config
+        from dblift.config.dblift_config import load_config
 
         env_patch = {**self._clear_dblift_env(), "DBLIFT_MAX_SNAPSHOTS": "42"}
         with patch.dict(os.environ, env_patch, clear=False):

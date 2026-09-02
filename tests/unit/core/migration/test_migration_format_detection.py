@@ -10,8 +10,8 @@ from pathlib import Path
 
 import pytest
 
-from core.migration.formats import MigrationFormat, MigrationFormatDetector
-from core.migration.migration import Migration, MigrationType
+from dblift.core.migration.formats import MigrationFormat, MigrationFormatDetector
+from dblift.core.migration.migration import Migration, MigrationType
 
 pytestmark = [pytest.mark.unit]
 
@@ -139,13 +139,13 @@ class TestMigrationExecutorArchitecture:
 
     def test_executor_factory_exists(self):
         """Test that MigrationExecutorFactory exists and can be imported."""
-        from core.migration.executors import MigrationExecutorFactory
+        from dblift.core.migration.executors import MigrationExecutorFactory
 
         assert MigrationExecutorFactory is not None
 
     def test_base_executor_exists(self):
         """Test that BaseMigrationExecutor interface exists."""
-        from core.migration.executors import BaseMigrationExecutor
+        from dblift.core.migration.executors import BaseMigrationExecutor
 
         assert BaseMigrationExecutor is not None
 
@@ -158,7 +158,7 @@ class TestMigrationExecutorArchitecture:
         """
         from unittest.mock import Mock
 
-        from core.migration.executors import MigrationExecutorFactory
+        from dblift.core.migration.executors import MigrationExecutorFactory
 
         factory = MigrationExecutorFactory(
             provider=Mock(), config=Mock(database=Mock(type="postgresql")), log=Mock()
@@ -173,7 +173,7 @@ class TestMigrationExecutorArchitecture:
         """The engine must short-circuit SQL before reaching the factory."""
         import inspect
 
-        from core.migration.executor.execution_engine import ExecutionEngine
+        from dblift.core.migration.executor.execution_engine import ExecutionEngine
 
         source = inspect.getsource(ExecutionEngine.execute_migration)
         assert "if migration.format != MigrationFormat.SQL:" in source
@@ -182,7 +182,7 @@ class TestMigrationExecutorArchitecture:
         """Test that architecture is ready to accept new format executors."""
         from unittest.mock import Mock
 
-        from core.migration.executors import BaseMigrationExecutor, MigrationExecutorFactory
+        from dblift.core.migration.executors import BaseMigrationExecutor, MigrationExecutorFactory
 
         # Create a mock executor class for testing
         class MockPythonExecutor(BaseMigrationExecutor):
@@ -190,7 +190,7 @@ class TestMigrationExecutorArchitecture:
                 return migration.format == MigrationFormat.PYTHON
 
             def execute_migration(self, migration, dry_run=False, **kwargs):
-                from core.migration.executors import MigrationExecutionResult
+                from dblift.core.migration.executors import MigrationExecutionResult
 
                 return MigrationExecutionResult(
                     success=True, migration=migration, execution_time_ms=0
@@ -285,7 +285,7 @@ class TestMigrationDetermineType:
 
     def test_callback_prefixes_constant_covers_supported_events(self):
         """_CALLBACK_PREFIXES lists only callback events dispatched by commands."""
-        from core.migration.migration import _CALLBACK_PREFIXES
+        from dblift.core.migration.migration import _CALLBACK_PREFIXES
 
         assert len(_CALLBACK_PREFIXES) == 19
         assert "beforeEachMigrate" in _CALLBACK_PREFIXES
@@ -300,8 +300,8 @@ class TestMigrationDetermineType:
         par MigrationScriptManager.parse_filename (validation fonctionnelle de sync)."""
         from unittest.mock import MagicMock
 
-        from core.migration.migration import _CALLBACK_PREFIXES, MigrationType
-        from core.migration.scripting.migration_script_manager import MigrationScriptManager
+        from dblift.core.migration.migration import _CALLBACK_PREFIXES, MigrationType
+        from dblift.core.migration.scripting.migration_script_manager import MigrationScriptManager
 
         sm = MigrationScriptManager(MagicMock())
         for prefix in _CALLBACK_PREFIXES:

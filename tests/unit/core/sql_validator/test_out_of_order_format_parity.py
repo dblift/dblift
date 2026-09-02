@@ -13,20 +13,20 @@ from unittest.mock import MagicMock, patch
 
 
 def _make_validator():
-    from core.sql_validator.migration_validator import MigrationValidator
+    from dblift.core.sql_validator.migration_validator import MigrationValidator
 
     sm = MagicMock()
     sm.compare_versions.side_effect = lambda a, b: int(a) - int(b)
     hm = MagicMock()
     hm.schema = "public"
     hm.history_table = "dblift_schema_history"
-    with patch("core.sql_validator.migration_validator.SqlAnalyzer"):
+    with patch("dblift.core.sql_validator.migration_validator.SqlAnalyzer"):
         return MigrationValidator(script_manager=sm, history_manager=hm, log=MagicMock())
 
 
 class TestOutOfOrderFormatParity(unittest.TestCase):
     def _versioned_types(self):
-        from core.migration.migration import MigrationType
+        from dblift.core.migration.migration import MigrationType
 
         return [MigrationType.SQL, MigrationType.PYTHON]
 
@@ -58,7 +58,7 @@ class TestOutOfOrderFormatParity(unittest.TestCase):
                 self.assertFalse(validator.validate_out_of_order(script, [applied_v1, applied_v2]))
 
     def test_non_versioned_types_are_never_flagged(self):
-        from core.migration.migration import MigrationType
+        from dblift.core.migration.migration import MigrationType
 
         for mtype in (MigrationType.REPEATABLE, MigrationType.UNDO_SQL, MigrationType.BASELINE):
             with self.subTest(type=mtype):

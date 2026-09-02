@@ -6,16 +6,16 @@ from typing import Any
 import pytest
 from sqlalchemy.engine import make_url
 
-from config.database_config import BaseDatabaseConfig
-from db.plugins.snowflake.config import SnowflakeConfig
-from db.plugins.snowflake.plugin import PLUGIN as SNOWFLAKE_PLUGIN
-from db.plugins.snowflake.provider import (
+from dblift.config.database_config import BaseDatabaseConfig
+from dblift.db.plugins.snowflake.config import SnowflakeConfig
+from dblift.db.plugins.snowflake.plugin import PLUGIN as SNOWFLAKE_PLUGIN
+from dblift.db.plugins.snowflake.provider import (
     SnowflakeProvider,
     _is_lock_timeout_error,
 )
-from db.plugins.snowflake.quirks import SnowflakeQuirks
-from db.provider_registry import ProviderRegistry
-from db.sqlalchemy_provider import SqlAlchemyProvider
+from dblift.db.plugins.snowflake.quirks import SnowflakeQuirks
+from dblift.db.provider_registry import ProviderRegistry
+from dblift.db.sqlalchemy_provider import SqlAlchemyProvider
 
 
 class _DriverError(Exception):

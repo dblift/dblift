@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 from sqlalchemy import create_engine
 
-from api import DBLiftClient
+from dblift.api import DBLiftClient
 
 
 @pytest.mark.integration

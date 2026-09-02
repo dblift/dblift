@@ -2,7 +2,7 @@
 
 import pytest
 
-from core.migration.clean_summary import CleanedObjectInfo, CleanExecutionSummary
+from dblift.core.migration.clean_summary import CleanedObjectInfo, CleanExecutionSummary
 
 
 @pytest.mark.unit

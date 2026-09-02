@@ -6,9 +6,9 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from core.logger.results import MigrateResult
-from core.migration.executor.execution_engine import ExecutionEngine
-from core.migration.migration import MigrationType
+from dblift.core.logger.results import MigrateResult
+from dblift.core.migration.executor.execution_engine import ExecutionEngine
+from dblift.core.migration.migration import MigrationType
 
 
 def _engine():

@@ -6,7 +6,7 @@ from unittest.mock import MagicMock
 
 class TestSQLiteLockingManagerInit(unittest.TestCase):
     def _make(self):
-        from db.plugins.sqlite.sqlite.locking_manager import SQLiteLockingManager
+        from dblift.db.plugins.sqlite.sqlite.locking_manager import SQLiteLockingManager
 
         qe = MagicMock()
         return SQLiteLockingManager(qe, MagicMock()), qe
@@ -16,8 +16,8 @@ class TestSQLiteLockingManagerInit(unittest.TestCase):
         self.assertIs(mgr.query_executor, qe)
 
     def test_null_log_default(self):
-        from core.logger import NullLog
-        from db.plugins.sqlite.sqlite.locking_manager import SQLiteLockingManager
+        from dblift.core.logger import NullLog
+        from dblift.db.plugins.sqlite.sqlite.locking_manager import SQLiteLockingManager
 
         mgr = SQLiteLockingManager(MagicMock())
         self.assertIsInstance(mgr.log, NullLog)
@@ -25,7 +25,7 @@ class TestSQLiteLockingManagerInit(unittest.TestCase):
 
 class TestSQLiteLockingManagerCreateTable(unittest.TestCase):
     def _make(self):
-        from db.plugins.sqlite.sqlite.locking_manager import SQLiteLockingManager
+        from dblift.db.plugins.sqlite.sqlite.locking_manager import SQLiteLockingManager
 
         qe = MagicMock()
         return SQLiteLockingManager(qe, MagicMock()), qe
@@ -45,7 +45,7 @@ class TestSQLiteLockingManagerCreateTable(unittest.TestCase):
 
 class TestSQLiteLockingManagerAcquireRelease(unittest.TestCase):
     def _make(self):
-        from db.plugins.sqlite.sqlite.locking_manager import SQLiteLockingManager
+        from dblift.db.plugins.sqlite.sqlite.locking_manager import SQLiteLockingManager
 
         qe = MagicMock()
         return SQLiteLockingManager(qe, MagicMock()), qe
@@ -65,14 +65,14 @@ class TestSQLiteLockingManagerAcquireRelease(unittest.TestCase):
 
 class TestPostgreSQLAdvisoryLockKey(unittest.TestCase):
     def test_get_advisory_lock_key_deterministic(self):
-        from db.plugins.postgresql.postgresql._lock_key import _get_advisory_lock_key
+        from dblift.db.plugins.postgresql.postgresql._lock_key import _get_advisory_lock_key
 
         k1 = _get_advisory_lock_key("public")
         k2 = _get_advisory_lock_key("public")
         self.assertEqual(k1, k2)
 
     def test_different_schemas_different_keys(self):
-        from db.plugins.postgresql.postgresql._lock_key import _get_advisory_lock_key
+        from dblift.db.plugins.postgresql.postgresql._lock_key import _get_advisory_lock_key
 
         self.assertNotEqual(
             _get_advisory_lock_key("public"),
@@ -80,6 +80,6 @@ class TestPostgreSQLAdvisoryLockKey(unittest.TestCase):
         )
 
     def test_returns_integer(self):
-        from db.plugins.postgresql.postgresql._lock_key import _get_advisory_lock_key
+        from dblift.db.plugins.postgresql.postgresql._lock_key import _get_advisory_lock_key
 
         self.assertIsInstance(_get_advisory_lock_key("test"), int)

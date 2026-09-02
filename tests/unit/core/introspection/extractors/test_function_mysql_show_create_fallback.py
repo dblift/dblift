@@ -18,7 +18,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from core.introspection.extractors.procedure_extractor import ProcedureExtractor
+from dblift.core.introspection.extractors.procedure_extractor import ProcedureExtractor
 
 
 def _make_extractor(dialect: str = "mysql") -> ProcedureExtractor:

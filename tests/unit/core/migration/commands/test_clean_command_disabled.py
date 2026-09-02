@@ -8,9 +8,9 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from cli._parser_setup import create_parser
-from core.migration.commands.clean_command import CleanCommand
-from db.provider_interfaces import DroppableObject
+from dblift.cli._parser_setup import create_parser
+from dblift.core.migration.commands.clean_command import CleanCommand
+from dblift.db.provider_interfaces import DroppableObject
 
 
 def _make_command(clean_disabled: bool = True):

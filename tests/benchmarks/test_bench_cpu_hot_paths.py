@@ -48,13 +48,13 @@ def large_migration_content() -> str:
 
 class TestChecksum:
     def test_small_content(self, benchmark, small_migration_content):
-        from core.migration.migration import calculate_migration_script_checksum
+        from dblift.core.migration.migration import calculate_migration_script_checksum
 
         result = benchmark(calculate_migration_script_checksum, small_migration_content)
         assert isinstance(result, int)
 
     def test_large_content(self, benchmark, large_migration_content):
-        from core.migration.migration import calculate_migration_script_checksum
+        from dblift.core.migration.migration import calculate_migration_script_checksum
 
         result = benchmark(calculate_migration_script_checksum, large_migration_content)
         assert isinstance(result, int)
@@ -68,8 +68,8 @@ class TestChecksum:
 class TestFilenameParsing:
     @pytest.fixture(scope="class")
     def script_manager(self):
-        from core.logger import NullLog
-        from core.migration.scripting.migration_script_manager import MigrationScriptManager
+        from dblift.core.logger import NullLog
+        from dblift.core.migration.scripting.migration_script_manager import MigrationScriptManager
 
         return MigrationScriptManager(NullLog(), "utf-8")
 
@@ -97,8 +97,8 @@ class TestFilenameParsing:
 class TestPlaceholderSubstitution:
     @pytest.fixture(scope="class")
     def placeholder_service(self):
-        from core.logger import NullLog
-        from core.migration.placeholders.placeholder_service import PlaceholderService
+        from dblift.core.logger import NullLog
+        from dblift.core.migration.placeholders.placeholder_service import PlaceholderService
 
         return PlaceholderService(
             placeholders={"schema": "app", "user": "dblift", "env": "prod"},
@@ -128,27 +128,27 @@ class TestPlaceholderSubstitution:
 
 class TestTypeMatchHelpers:
     def test_is_versioned_enum(self, benchmark):
-        from core.migration import MigrationType, is_versioned
+        from dblift.core.migration import MigrationType, is_versioned
 
         benchmark(is_versioned, MigrationType.SQL)
 
     def test_is_versioned_str(self, benchmark):
-        from core.migration import is_versioned
+        from dblift.core.migration import is_versioned
 
         benchmark(is_versioned, "SQL")
 
     def test_is_migration_type_enum_vs_enum(self, benchmark):
-        from core.migration import MigrationType, is_migration_type
+        from dblift.core.migration import MigrationType, is_migration_type
 
         benchmark(is_migration_type, MigrationType.UNDO_SQL, MigrationType.UNDO_SQL)
 
     def test_is_migration_type_str_vs_str(self, benchmark):
-        from core.migration import is_migration_type
+        from dblift.core.migration import is_migration_type
 
         benchmark(is_migration_type, "UNDO_SQL", "UNDO_SQL")
 
     def test_migration_type_name_enum(self, benchmark):
-        from core.migration import MigrationType, migration_type_name
+        from dblift.core.migration import MigrationType, migration_type_name
 
         benchmark(migration_type_name, MigrationType.SQL)
 
@@ -164,13 +164,13 @@ class TestDialectCapabilities:
         ["postgresql", "oracle", "mysql", "sqlserver", "db2", "sqlite", "cosmosdb"],
     )
     def test_get_dialect_capabilities(self, benchmark, dialect):
-        from core.sql_model.dialect import get_dialect_capabilities
+        from dblift.core.sql_model.dialect import get_dialect_capabilities
 
         caps = benchmark(get_dialect_capabilities, dialect)
         assert caps is not None
 
     def test_unknown_dialect_fallback(self, benchmark):
-        from core.sql_model.dialect import get_dialect_capabilities
+        from dblift.core.sql_model.dialect import get_dialect_capabilities
 
         benchmark(get_dialect_capabilities, "not-a-dialect")
 
@@ -189,7 +189,7 @@ class TestStatementSplitting:
         return _build
 
     def test_split_10_statements_postgresql(self, benchmark, content_with_n_statements):
-        from core.migration.migration import Migration
+        from dblift.core.migration.migration import Migration
 
         m = Migration(
             script_name="V1__test.sql",
@@ -202,7 +202,7 @@ class TestStatementSplitting:
         assert len(result) == 10
 
     def test_split_100_statements_postgresql(self, benchmark, content_with_n_statements):
-        from core.migration.migration import Migration
+        from dblift.core.migration.migration import Migration
 
         m = Migration(
             script_name="V1__test.sql",

@@ -14,11 +14,14 @@ import time
 import unittest
 from unittest.mock import MagicMock, patch
 
-from core.exceptions import TransactionAbortedError
-from core.logger.results import OperationResult
-from core.migration.executor.execution_engine import ExecutionEngine, _strip_driver_exception_prefix
-from core.migration.formats import MigrationFormat
-from core.migration.migration import Migration
+from dblift.core.exceptions import TransactionAbortedError
+from dblift.core.logger.results import OperationResult
+from dblift.core.migration.executor.execution_engine import (
+    ExecutionEngine,
+    _strip_driver_exception_prefix,
+)
+from dblift.core.migration.formats import MigrationFormat
+from dblift.core.migration.migration import Migration
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -28,7 +31,7 @@ from core.migration.migration import Migration
 def _make_engine(
     dialect="postgresql", with_history=False, with_config=True, with_placeholder=False
 ):
-    from db.provider_interfaces import TransactionalProvider
+    from dblift.db.provider_interfaces import TransactionalProvider
 
     provider = MagicMock()
     provider.__class__ = TransactionalProvider
@@ -129,7 +132,7 @@ class TestExecutionEngineInit(unittest.TestCase):
 
     def test_null_log_when_log_is_none(self):
         """Line 94: log = log if log is not None else NullLog()"""
-        from core.logger import NullLog
+        from dblift.core.logger import NullLog
 
         provider = MagicMock()
         sql_analyzer = MagicMock()
@@ -286,7 +289,7 @@ class TestProbeDialectKeyAdditional(unittest.TestCase):
         engine.sql_analyzer.dialect = None
         engine.provider.dialect = "mysql"
 
-        with patch("db.provider_capabilities.get_provider_display_url", return_value=None):
+        with patch("dblift.db.provider_capabilities.get_provider_display_url", return_value=None):
             result = engine._probe_dialect_key()
 
         self.assertEqual(result, "mysql")
@@ -320,7 +323,7 @@ class TestProbeDialectKeyAdditional(unittest.TestCase):
         engine.sql_analyzer.dialect = None
         del engine.provider.dialect
 
-        with patch("db.provider_capabilities.get_provider_display_url", return_value=None):
+        with patch("dblift.db.provider_capabilities.get_provider_display_url", return_value=None):
             result = engine._probe_dialect_key()
 
         self.assertIsNone(result)
@@ -331,7 +334,7 @@ class TestProbeDialectKeyAdditional(unittest.TestCase):
         engine.config.database = None
         engine.sql_analyzer.dialect = "postgresql"
 
-        with patch("db.provider_capabilities.get_provider_display_url", return_value=None):
+        with patch("dblift.db.provider_capabilities.get_provider_display_url", return_value=None):
             result = engine._probe_dialect_key()
 
         self.assertEqual(result, "postgresql")
@@ -540,7 +543,7 @@ class TestExecuteStatements(unittest.TestCase):
 
     def test_whenever_sqlerror_continue_skips_statement_error(self):
         """Lines 573-584: WHENEVER SQLERROR CONTINUE → continue on DB error."""
-        from db.plugins.oracle.parser.sqlplus_context import SqlplusContext
+        from dblift.db.plugins.oracle.parser.sqlplus_context import SqlplusContext
 
         engine = _make_engine(dialect="oracle")
         engine._current_sqlplus_ctx = SqlplusContext()
@@ -561,7 +564,7 @@ class TestExecuteStatements(unittest.TestCase):
 
     def test_whenever_sqlerror_continue_does_not_skip_transaction_aborted(self):
         """Lines 573-584: TransactionAbortedError not skipped even with CONTINUE."""
-        from db.plugins.oracle.parser.sqlplus_context import SqlplusContext
+        from dblift.db.plugins.oracle.parser.sqlplus_context import SqlplusContext
 
         engine = _make_engine(dialect="oracle")
         engine._current_sqlplus_ctx = SqlplusContext()
@@ -752,7 +755,7 @@ class TestCommitAndVerifyExtended(unittest.TestCase):
 
     def test_provider_not_transactional_skips_verification(self):
         """Lines 761-766: Non-TransactionalProvider → no verification."""
-        from db.base_provider import BaseProvider
+        from dblift.db.base_provider import BaseProvider
 
         engine = _make_engine()
         engine.provider = MagicMock(spec=BaseProvider)  # NOT TransactionalProvider

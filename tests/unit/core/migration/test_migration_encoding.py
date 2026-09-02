@@ -2,14 +2,14 @@ from __future__ import annotations
 
 import pytest
 
-from config.dblift_config import DbliftConfig
-from core.migration.encoding import (
+from dblift.config.dblift_config import DbliftConfig
+from dblift.core.migration.encoding import (
     MigrationEncodingError,
     detect_file_encoding,
     read_migration_text,
 )
-from core.migration.migration import Migration, MigrationType
-from core.migration.scripting.migration_script_manager import MigrationScriptManager
+from dblift.core.migration.migration import Migration, MigrationType
+from dblift.core.migration.scripting.migration_script_manager import MigrationScriptManager
 
 
 def test_default_utf8_decode_remains_strict(tmp_path):
@@ -50,7 +50,7 @@ def test_detect_encoding_raises_when_detected_codec_cannot_decode(tmp_path, monk
     script = tmp_path / "V1__accent.sql"
     script.write_bytes("SELECT 'é';\n".encode("iso-8859-1"))
 
-    monkeypatch.setattr("core.migration.encoding.detect_file_encoding", lambda _: "ascii")
+    monkeypatch.setattr("dblift.core.migration.encoding.detect_file_encoding", lambda _: "ascii")
 
     with pytest.raises(MigrationEncodingError):
         read_migration_text(script, detect_encoding=True)

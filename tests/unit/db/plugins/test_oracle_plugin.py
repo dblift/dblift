@@ -34,7 +34,7 @@ class TestOracleSchemaOperations(unittest.TestCase):
         return qe
 
     def _make_ops(self, qe=None):
-        from db.plugins.oracle.oracle.schema_operations import OracleSchemaOperations
+        from dblift.db.plugins.oracle.oracle.schema_operations import OracleSchemaOperations
 
         if qe is None:
             qe = self._make_qe()
@@ -44,32 +44,32 @@ class TestOracleSchemaOperations(unittest.TestCase):
     # --- _to_int ---
 
     def test_to_int_with_plain_int(self):
-        from db.plugins.oracle.oracle.schema_operations import OracleSchemaOperations
+        from dblift.db.plugins.oracle.oracle.schema_operations import OracleSchemaOperations
 
         self.assertEqual(5, OracleSchemaOperations._to_int(5))
 
     def test_to_int_with_float(self):
-        from db.plugins.oracle.oracle.schema_operations import OracleSchemaOperations
+        from dblift.db.plugins.oracle.oracle.schema_operations import OracleSchemaOperations
 
         self.assertEqual(3, OracleSchemaOperations._to_int(3.9))
 
     def test_to_int_with_none(self):
-        from db.plugins.oracle.oracle.schema_operations import OracleSchemaOperations
+        from dblift.db.plugins.oracle.oracle.schema_operations import OracleSchemaOperations
 
         self.assertEqual(0, OracleSchemaOperations._to_int(None))
 
     def test_to_int_with_string(self):
-        from db.plugins.oracle.oracle.schema_operations import OracleSchemaOperations
+        from dblift.db.plugins.oracle.oracle.schema_operations import OracleSchemaOperations
 
         self.assertEqual(7, OracleSchemaOperations._to_int("7"))
 
     def test_to_int_with_decimal_string(self):
-        from db.plugins.oracle.oracle.schema_operations import OracleSchemaOperations
+        from dblift.db.plugins.oracle.oracle.schema_operations import OracleSchemaOperations
 
         self.assertEqual(2, OracleSchemaOperations._to_int("2.0"))
 
     def test_to_int_with_non_numeric_returns_zero(self):
-        from db.plugins.oracle.oracle.schema_operations import OracleSchemaOperations
+        from dblift.db.plugins.oracle.oracle.schema_operations import OracleSchemaOperations
 
         self.assertEqual(0, OracleSchemaOperations._to_int("nope"))
 
@@ -318,7 +318,7 @@ class TestOracleSchemaOperations(unittest.TestCase):
         conn, _, _ = _make_connection()
         qe.execute_query.return_value = []
 
-        from core.migration.clean_summary import CleanExecutionSummary
+        from dblift.core.migration.clean_summary import CleanExecutionSummary
 
         summary = ops.clean_schema(conn, "MYSCHEMA")
 
@@ -329,7 +329,7 @@ class TestOracleSchemaOperations(unittest.TestCase):
     def test_drop_db_links_drops_each_link(self):
         ops, qe, log = self._make_ops()
         conn, _, _ = _make_connection()
-        from core.migration.clean_summary import CleanExecutionSummary
+        from dblift.core.migration.clean_summary import CleanExecutionSummary
 
         summary = CleanExecutionSummary()
         qe.execute_query.return_value = [{"db_link": "LINK1", "owner": "MYSCHEMA"}]
@@ -344,7 +344,7 @@ class TestOracleSchemaOperations(unittest.TestCase):
     def test_drop_sequences_skips_system_generated(self):
         ops, qe, log = self._make_ops()
         conn, _, _ = _make_connection()
-        from core.migration.clean_summary import CleanExecutionSummary
+        from dblift.core.migration.clean_summary import CleanExecutionSummary
 
         summary = CleanExecutionSummary()
 
@@ -359,7 +359,7 @@ class TestOracleSchemaOperations(unittest.TestCase):
     def test_drop_sequences_drops_user_sequences(self):
         ops, qe, log = self._make_ops()
         conn, _, _ = _make_connection()
-        from core.migration.clean_summary import CleanExecutionSummary
+        from dblift.core.migration.clean_summary import CleanExecutionSummary
 
         summary = CleanExecutionSummary()
 

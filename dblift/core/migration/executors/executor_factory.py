@@ -1,0 +1,260 @@
+"""
+Migration executor factory.
+
+Routes migrations to the appropriate executor based on their format.
+This is the central "aiguilleur" (router) that detects migration type
+and directs it to the correct executor.
+"""
+
+import logging
+from typing import Any, Dict, List, Optional, Type
+
+from dblift.core.exceptions import UnsupportedMigrationFormatError
+from dblift.core.logger import NullLog
+from dblift.core.migration.formats import MigrationFormat
+from dblift.core.migration.migration import Migration
+
+from .base_executor import BaseMigrationExecutor, MigrationExecutionResult
+from .python_executor import PythonMigrationExecutor
+
+logger = logging.getLogger(__name__)
+
+
+def check_format_supported(quirks: Any, format: MigrationFormat, script_name: str) -> None:
+    """Raise when *quirks*'s dialect cannot run migrations of *format*.
+
+    Document stores declare ``supports_sql_migrations = False``: they have
+    no SQL DDL, so a ``.sql`` migration is a mistake to surface rather than
+    something to translate. Pure — reads only the *quirks* object passed
+    in, so it runs without a live connection and is safe to call from
+    dry-run/validate paths as well as real execution.
+    """
+    if format is not MigrationFormat.SQL:
+        return
+    if quirks is None or getattr(quirks, "supports_sql_migrations", True):
+        return
+
+    dialect = getattr(quirks, "dialect_name", "") or "this dialect"
+    raise UnsupportedMigrationFormatError(
+        f"{UnsupportedMigrationFormatError.code}: '{script_name}' is a SQL "
+        f"migration, but the '{dialect}' dialect does not execute SQL migrations. "
+        "Rewrite it as a Python migration exposing 'def migrate(context)' and drive "
+        "the vendor SDK through 'context.db' / 'context.raw_client'. "
+        "See docs/user-guide/nosql-python-migrations.md."
+    )
+
+
+class MigrationExecutorFactory:
+    """
+    Factory for creating and routing to migration executors.
+
+    This class acts as a router ("aiguilleur") that:
+    1. Detects the format of a migration
+    2. Finds the appropriate executor for that format
+    3. Routes the migration to that executor
+
+    This architecture allows DBLIFT to support multiple migration formats
+    (Python, JavaScript, etc.) without changing the core execution logic.
+
+    **SQL is deliberately not routed here.** ``ExecutionEngine.execute_migration``
+    runs SQL migrations itself because the work interleaves with things the
+    :class:`BaseMigrationExecutor` contract cannot express: placeholder
+    substitution at parse time, batch-separator classification, the
+    transactional-vs-autocommit policy decision, and writing the history row
+    *inside* the migration's transaction before commit. A non-SQL migration is
+    opaque by comparison — the engine hands it over and the executor owns the
+    whole run — which is exactly what this contract models. ``get_executor``
+    therefore returns ``None`` for :attr:`MigrationFormat.SQL`.
+
+    Examples:
+        >>> factory = MigrationExecutorFactory(provider, config, log)
+        >>>
+        >>> # Execute a Python migration
+        >>> migration = Migration(script_path=Path("V1__test.py"))
+        >>> result = factory.execute(migration)
+    """
+
+    def __init__(
+        self,
+        provider: Any,
+        config: Any,
+        log: Any,
+        placeholder_service: Any = None,
+    ):
+        """
+        Initialize the executor factory.
+
+        Args:
+            provider: Database provider instance
+            config: DBLIFT configuration
+            log: Logger instance
+            placeholder_service: Optional placeholder service holding the effective
+                placeholder set, for executors that expose it to migration scripts
+        """
+        self.provider = provider
+        self.config = config
+        self.log = log if log is not None else NullLog()
+        self.placeholder_service = placeholder_service
+
+        # Registry of executor classes by format
+        self._executor_classes: Dict[MigrationFormat, Type[BaseMigrationExecutor]] = {}
+
+        # Cache of initialized executors
+        self._executor_instances: Dict[MigrationFormat, BaseMigrationExecutor] = {}
+
+        # Register default executors. SQL is absent by design — see the class
+        # docstring; ExecutionEngine runs SQL migrations itself.
+        self.register_executor_class(MigrationFormat.PYTHON, PythonMigrationExecutor)
+
+    def register_executor_class(
+        self, format: MigrationFormat, executor_class: Type[BaseMigrationExecutor]
+    ) -> None:
+        """
+        Register an executor class for a migration format.
+
+        Args:
+            format: Migration format this executor handles
+            executor_class: Executor class (not instance) to register
+
+        Examples:
+            >>> factory.register_executor_class(MigrationFormat.PYTHON, PythonMigrationExecutor)
+        """
+        self._executor_classes[format] = executor_class
+        self.log.debug(f"Registered executor {executor_class.__name__} for format {format}")
+
+    def get_executor(self, migration: Migration) -> Optional[BaseMigrationExecutor]:
+        """
+        Get the appropriate executor for a migration.
+
+        This is the core routing logic that determines which executor
+        should handle a given migration based on its format.
+
+        Args:
+            migration: Migration to get executor for
+
+        Returns:
+            Executor instance that can handle the migration, or None if
+            no suitable executor is found
+
+        Examples:
+            >>> migration = Migration(script_path=Path("V1__test.py"))
+            >>> executor = factory.get_executor(migration)
+            >>> print(executor)  # PythonMigrationExecutor(...)
+        """
+        # Determine the migration format
+        if hasattr(migration, "format"):
+            format = migration.format
+        elif hasattr(migration, "path") and migration.path:
+            # Detect format from file extension
+            from dblift.core.migration.formats import MigrationFormatDetector
+
+            format = MigrationFormatDetector.detect_from_path(migration.path)
+        else:
+            # Default to SQL for backward compatibility
+            format = MigrationFormat.SQL
+
+        self.ensure_format_supported(migration, format)
+
+        # Check if format is supported
+        if format not in self._executor_classes:
+            self.log.warning(
+                f"No executor registered for format {format}. "
+                f"Migration: {migration.script_name}"
+            )
+            return None
+
+        # Get or create executor instance for this format
+        if format not in self._executor_instances:
+            executor_class = self._executor_classes[format]
+            executor = executor_class(self.provider, self.config, self.log)
+
+            # Python scripts read placeholders off the migration context, so they
+            # need the same service the SQL path substitutes from. Injected after
+            # construction rather than as a constructor argument so that any
+            # BaseMigrationExecutor subclass can still be registered for a format
+            # with the plain (provider, config, log) signature.
+            if isinstance(executor, PythonMigrationExecutor):
+                executor.placeholder_service = self.placeholder_service
+
+            self._executor_instances[format] = executor
+            self.log.debug(f"Created executor instance: {executor}")
+
+        return self._executor_instances[format]
+
+    def ensure_format_supported(self, migration: Migration, format: MigrationFormat) -> None:
+        """Raise when the target dialect cannot run migrations of *format*.
+
+        Public because callbacks do not route through :meth:`get_executor`
+        — ``ExecutionEngine.execute_callback`` runs SQL callbacks itself and
+        needs the same verdict, or a ``.sql`` callback on a document store
+        would fail later with an opaque parser/driver error instead of
+        ``DBLIFT-NOSQL-001``. Thin wrapper around :func:`check_format_supported`
+        that supplies the provider's quirks.
+        """
+        check_format_supported(
+            getattr(self.provider, "quirks", None), format, migration.script_name
+        )
+
+    def execute(
+        self, migration: Migration, dry_run: bool = False, **kwargs: Any
+    ) -> MigrationExecutionResult:
+        """
+        Execute a migration using the appropriate executor.
+
+        This is a convenience method that:
+        1. Finds the right executor for the migration
+        2. Executes the migration
+        3. Returns the result
+
+        Args:
+            migration: Migration to execute
+            dry_run: If True, simulate execution without making changes
+            **kwargs: Additional executor-specific parameters
+
+        Returns:
+            MigrationExecutionResult from the executor
+
+        Raises:
+            ValueError: If no suitable executor is found
+
+        Examples:
+            >>> result = factory.execute(migration, dry_run=True)
+            >>> print(result.success)
+            True
+        """
+        executor = self.get_executor(migration)
+
+        if executor is None:
+            raise ValueError(
+                f"No executor available for migration {migration.script_name}. "
+                f"Format: {getattr(migration, 'format', 'unknown')}"
+            )
+
+        # Validate before execution
+        is_valid, errors = executor.validate_migration(migration)
+        if not is_valid:
+            from .base_executor import MigrationExecutionResult
+
+            return MigrationExecutionResult(
+                success=False,
+                migration=migration,
+                execution_time_ms=0,
+                error=f"Validation failed: {'; '.join(errors)}",
+            )
+
+        # Execute
+        return executor.execute_migration(migration, dry_run=dry_run, **kwargs)
+
+    def get_supported_formats(self) -> List[MigrationFormat]:
+        """
+        Get list of all supported migration formats.
+
+        Returns:
+            List of MigrationFormat values that have registered executors
+        """
+        return list(self._executor_classes.keys())
+
+    def __str__(self) -> str:
+        """String representation of the factory."""
+        formats = ", ".join(str(f) for f in self.get_supported_formats())
+        return f"MigrationExecutorFactory(supported_formats=[{formats}])"
