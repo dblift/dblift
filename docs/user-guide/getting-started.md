@@ -19,15 +19,7 @@ Other supported extras: `dblift[oracle]`, `dblift[mysql]`, `dblift[sqlserver]`.
 
 ## Step 2: Configure
 
-Set your connection URL as an environment variable:
-
-```bash
-export DBLIFT_DB_URL="postgresql+psycopg://user:password@localhost:5432/mydb"
-```
-
-The rest of this guide uses that variable — all commands below work as-is once it is set.
-
-**Using a config file instead:** create `dblift.yaml` in your project root:
+Create `dblift.yaml` in your project root:
 
 ```yaml
 database:
@@ -38,7 +30,15 @@ migrations:
   directory: "./migrations"
 ```
 
-dblift does not auto-discover `dblift.yaml`. When using a config file, pass `--config dblift.yaml` with every command (e.g. `dblift --config dblift.yaml info`). The env var approach skips that flag.
+Run the commands in this guide from that directory. dblift auto-discovers `dblift.yaml` or `dblift.yml` in the current working directory when you pass neither `--config` nor `--db-url`. Pass `--config` only when the file is not in the current directory or has a non-default name.
+
+**Without a config file:** set the connection URL as an environment variable:
+
+```bash
+export DBLIFT_DB_URL="postgresql+psycopg://user:password@localhost:5432/mydb"
+```
+
+`DBLIFT_DB_URL` works with no yaml on disk, and it overrides `database.url` when a file is loaded (CLI flag > environment variable > yaml).
 
 **More than one environment?** One file can describe them all — declare
 `environments:` blocks (dev, staging, prod, …) and select with `--env <name>`.
