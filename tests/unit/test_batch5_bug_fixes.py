@@ -23,7 +23,7 @@ from unittest.mock import MagicMock, patch
 # ---------------------------------------------------------------------------
 class TestBug02RecursiveOverride(unittest.TestCase):
     def _make_parser(self) -> argparse.ArgumentParser:
-        from cli._parser_setup import create_parser
+        from dblift.cli._parser_setup import create_parser
 
         return create_parser()
 
@@ -42,7 +42,7 @@ class TestBug02RecursiveOverride(unittest.TestCase):
             parser.parse_args(["--recursive", "--no-recursive", "migrate"])
 
     def test_config_helper_honors_no_recursive(self) -> None:
-        from cli._config_helpers import _resolve_scripts_directories
+        from dblift.cli._config_helpers import _resolve_scripts_directories
 
         args = MagicMock()
         args.command = "migrate"
@@ -62,7 +62,7 @@ class TestBug02RecursiveOverride(unittest.TestCase):
         self.assertTrue(any(v is False for v in dir_map.values()))
 
     def test_config_helper_honors_recursive_flag(self) -> None:
-        from cli._config_helpers import _resolve_scripts_directories
+        from dblift.cli._config_helpers import _resolve_scripts_directories
 
         args = MagicMock()
         args.command = "migrate"
@@ -90,22 +90,22 @@ class TestBug02RecursiveOverride(unittest.TestCase):
 # ---------------------------------------------------------------------------
 class TestBug03FromSqlalchemyRaisesConfigurationError(unittest.TestCase):
     def test_from_sqlalchemy_no_args_raises_configuration(self) -> None:
-        from api.client import DBLiftClient
-        from config.errors import ConfigurationError
+        from dblift.api.client import DBLiftClient
+        from dblift.config.errors import ConfigurationError
 
         with self.assertRaises(ConfigurationError):
             DBLiftClient.from_sqlalchemy()  # type: ignore[call-arg]
 
     def test_from_sqlalchemy_none_engine_raises_configuration(self) -> None:
-        from api.client import DBLiftClient
-        from config.errors import ConfigurationError
+        from dblift.api.client import DBLiftClient
+        from dblift.config.errors import ConfigurationError
 
         with self.assertRaises(ConfigurationError):
             DBLiftClient.from_sqlalchemy(None)
 
     def test_from_sqlalchemy_none_engine_and_migrations_raises_configuration(self) -> None:
-        from api.client import DBLiftClient
-        from config.errors import ConfigurationError
+        from dblift.api.client import DBLiftClient
+        from dblift.config.errors import ConfigurationError
 
         with self.assertRaises(ConfigurationError):
             DBLiftClient.from_sqlalchemy(None, "/tmp/migrations")
@@ -116,7 +116,7 @@ class TestBug03FromSqlalchemyRaisesConfigurationError(unittest.TestCase):
 # ---------------------------------------------------------------------------
 class TestBug04CleanDryRunCoversAllObjectTypes(unittest.TestCase):
     def test_clean_command_uses_provider_droppable_object_contract(self) -> None:
-        import core.migration.commands.clean_command as mod
+        import dblift.core.migration.commands.clean_command as mod
 
         src = Path(mod.__file__).read_text()
         self.assertIn("list_droppable_objects", src)
@@ -134,14 +134,14 @@ class TestBug04CleanDryRunCoversAllObjectTypes(unittest.TestCase):
 # ---------------------------------------------------------------------------
 class TestBug06SchemaNameMirrorsTargetSchema(unittest.TestCase):
     def test_info_result_schema_name_falls_back_to_target_schema(self) -> None:
-        from core.logger.results import InfoResult
+        from dblift.core.logger.results import InfoResult
 
         result = InfoResult()
         result.target_schema = "dblift_test"
         self.assertEqual(result.schema_name, "dblift_test")
 
     def test_baseline_repair_undo_result_schema_name_fallback(self) -> None:
-        from core.logger.results import BaselineResult, RepairResult, UndoResult
+        from dblift.core.logger.results import BaselineResult, RepairResult, UndoResult
 
         for cls in (BaselineResult, RepairResult, UndoResult):
             result = cls()
@@ -153,7 +153,7 @@ class TestBug06SchemaNameMirrorsTargetSchema(unittest.TestCase):
             )
 
     def test_explicit_schema_name_overrides_target_schema(self) -> None:
-        from core.logger.results import CleanResult
+        from dblift.core.logger.results import CleanResult
 
         result = CleanResult()
         result.target_schema = "target"
@@ -161,7 +161,7 @@ class TestBug06SchemaNameMirrorsTargetSchema(unittest.TestCase):
         self.assertEqual(result.schema_name, "override")
 
     def test_empty_result_still_reads_empty(self) -> None:
-        from core.logger.results import InfoResult
+        from dblift.core.logger.results import InfoResult
 
         result = InfoResult()
         self.assertEqual(result.schema_name, "")
@@ -177,7 +177,7 @@ class TestBug07ConnectionErrorUsesSqlState(unittest.TestCase):
         return exc
 
     def test_french_locale_08006_returns_english_host_unreachable(self) -> None:
-        from cli.db_utils import _format_connection_error
+        from dblift.cli.db_utils import _format_connection_error
 
         msg = "org.postgresql.util.PSQLException: La tentative de connexion a échoué."
         err = self._make_jdbc_error("08006", msg)
@@ -185,14 +185,14 @@ class TestBug07ConnectionErrorUsesSqlState(unittest.TestCase):
         self.assertEqual(out, "Connection failed: host unreachable or connection timed out")
 
     def test_auth_sqlstate_28p01_returns_invalid_credentials(self) -> None:
-        from cli.db_utils import _format_connection_error
+        from dblift.cli.db_utils import _format_connection_error
 
         err = self._make_jdbc_error("28P01", "Le mot de passe est invalide.")
         out = _format_connection_error(err)
         self.assertEqual(out, "Connection failed: invalid credentials")
 
     def test_sqlserver_08001_login_failure_returns_invalid_credentials(self) -> None:
-        from cli.db_utils import _format_connection_error
+        from dblift.cli.db_utils import _format_connection_error
 
         err = self._make_jdbc_error(
             "08001",
@@ -203,7 +203,7 @@ class TestBug07ConnectionErrorUsesSqlState(unittest.TestCase):
         self.assertEqual(out, "Connection failed: invalid credentials")
 
     def test_invalid_database_sqlstate_3d000_returns_database_not_found(self) -> None:
-        from cli.db_utils import _format_connection_error
+        from dblift.cli.db_utils import _format_connection_error
 
         err = self._make_jdbc_error("3D000", "Base de données introuvable.")
         out = _format_connection_error(err)
@@ -211,13 +211,13 @@ class TestBug07ConnectionErrorUsesSqlState(unittest.TestCase):
 
     def test_english_substring_fallback_still_works(self) -> None:
         """Non-JDBC exceptions still go through the substring classifier."""
-        from cli.db_utils import _format_connection_error
+        from dblift.cli.db_utils import _format_connection_error
 
         out = _format_connection_error(Exception("java.net.ConnectException: Connection refused"))
         self.assertEqual(out, "Connection failed: host unreachable")
 
     def test_unknown_sqlstate_falls_back_to_substring(self) -> None:
-        from cli.db_utils import _format_connection_error
+        from dblift.cli.db_utils import _format_connection_error
 
         err = self._make_jdbc_error("99999", "Connection refused")
         out = _format_connection_error(err)

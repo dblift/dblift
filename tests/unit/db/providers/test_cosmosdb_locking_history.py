@@ -30,7 +30,7 @@ def _make_query_executor(connection_manager=None):
 
 def _make_locking_manager(connection_manager=None, log=None):
     """Build a CosmosDbLockingManager with mock dependencies."""
-    from db.plugins.cosmosdb.cosmosdb.locking_manager import CosmosDbLockingManager
+    from dblift.db.plugins.cosmosdb.cosmosdb.locking_manager import CosmosDbLockingManager
 
     cm = connection_manager or _make_connection_manager()
     qe = _make_query_executor(connection_manager=cm)
@@ -41,7 +41,7 @@ def _make_locking_manager(connection_manager=None, log=None):
 
 def _make_history_manager(connection_manager=None, log=None):
     """Build a CosmosDbHistoryManager with mock dependencies."""
-    from db.plugins.cosmosdb.cosmosdb.history_manager import CosmosDbHistoryManager
+    from dblift.db.plugins.cosmosdb.cosmosdb.history_manager import CosmosDbHistoryManager
 
     cm = connection_manager or _make_connection_manager()
     qe = _make_query_executor(connection_manager=cm)
@@ -74,8 +74,8 @@ class TestCosmosDbLockingManagerInit(unittest.TestCase):
         self.assertIs(mgr.connection_manager, cm)
 
     def test_init_with_none_log_uses_nulllog(self):
-        from core.logger import NullLog
-        from db.plugins.cosmosdb.cosmosdb.locking_manager import CosmosDbLockingManager
+        from dblift.core.logger import NullLog
+        from dblift.db.plugins.cosmosdb.cosmosdb.locking_manager import CosmosDbLockingManager
 
         cm = _make_connection_manager()
         qe = _make_query_executor(connection_manager=cm)
@@ -441,8 +441,8 @@ class TestCosmosDbHistoryManagerInit(unittest.TestCase):
     """Test CosmosDbHistoryManager initialisation."""
 
     def test_inherits_base_history_manager(self):
-        from db.plugins.base_history_manager import BaseHistoryManager
-        from db.plugins.cosmosdb.cosmosdb.history_manager import CosmosDbHistoryManager
+        from dblift.db.plugins.base_history_manager import BaseHistoryManager
+        from dblift.db.plugins.cosmosdb.cosmosdb.history_manager import CosmosDbHistoryManager
 
         self.assertTrue(issubclass(CosmosDbHistoryManager, BaseHistoryManager))
 

@@ -2,7 +2,7 @@
 
 from sqlalchemy import create_engine
 
-from api._engine_config import config_from_engine
+from dblift.api._engine_config import config_from_engine
 
 
 def test_config_from_engine_postgresql():

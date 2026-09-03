@@ -2,7 +2,7 @@
 
 from types import SimpleNamespace
 
-from db.plugins.db2.provider import Db2Provider
+from dblift.db.plugins.db2.provider import Db2Provider
 
 
 class DummyDb2Provider(Db2Provider):

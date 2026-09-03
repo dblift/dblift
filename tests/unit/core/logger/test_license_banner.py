@@ -1,14 +1,14 @@
 """License-banner rendering in TextFormatter.
 
 The banner is inert in a pure OSS install — ``license_info`` stays ``None``
-because no provider is registered on the ``core.seams.license_info`` seam.
+because no provider is registered on the ``dblift.core.seams.license_info`` seam.
 A higher tier that registers a provider populates it and the banner renders.
 These tests cover the rendering itself (OSS-side), independent of any provider.
 """
 
 import pytest
 
-from core.logger._formatters import TextFormatter
+from dblift.core.logger._formatters import TextFormatter
 
 pytestmark = [pytest.mark.unit]
 

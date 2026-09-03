@@ -2,7 +2,7 @@
 
 import pytest
 
-from core.sql_model.database_link import DatabaseLink
+from dblift.core.sql_model.database_link import DatabaseLink
 
 
 @pytest.mark.unit

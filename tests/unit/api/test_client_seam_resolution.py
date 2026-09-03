@@ -2,7 +2,7 @@
 consult the ``dblift.client`` tier-resolution seam (issue #753).
 
 The CLI already resolves its client class through
-``core.seams.client_factory.resolve_client_class()`` (see
+``dblift.core.seams.client_factory.resolve_client_class()`` (see
 ``tests/unit/core/seams/test_client_factory.py`` and
 ``tests/unit/cli/test_build_command_client.py`` for the seam's own
 coverage). The documented programmatic entry point
@@ -20,8 +20,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from api.client import DBLiftClient
-from core.seams import client_factory
+from dblift.api.client import DBLiftClient
+from dblift.core.seams import client_factory
 
 pytestmark = [pytest.mark.unit]
 
@@ -53,9 +53,10 @@ def _factory_patches():
     ever reaching the class-resolution decision under test."""
     return (
         patch(
-            "api._client_factory.ProviderRegistry.create_provider", return_value=MagicMock(spec=[])
+            "dblift.api._client_factory.ProviderRegistry.create_provider",
+            return_value=MagicMock(spec=[]),
         ),
-        patch("api._client_factory.DbliftLogger", return_value=MagicMock()),
+        patch("dblift.api._client_factory.DbliftLogger", return_value=MagicMock()),
     )
 
 
@@ -113,7 +114,7 @@ class TestFromConfigFileSeamResolution:
         with (
             p1,
             p2,
-            patch("api._client_factory.ConfigBuilder.build", return_value=_make_config()),
+            patch("dblift.api._client_factory.ConfigBuilder.build", return_value=_make_config()),
         ):
             client = DBLiftClient.from_config_file("dblift.yaml")
         assert isinstance(client, _UpgradedClient)
@@ -129,7 +130,7 @@ class TestFromConfigFileSeamResolution:
         with (
             p1,
             p2,
-            patch("api._client_factory.ConfigBuilder.build", return_value=_make_config()),
+            patch("dblift.api._client_factory.ConfigBuilder.build", return_value=_make_config()),
             patch.object(DBLiftClient, "__init__", fake_init),
         ):
             client = DBLiftClient.from_config_file("dblift.yaml")
@@ -141,7 +142,7 @@ class TestFromConfigFileSeamResolution:
         with (
             p1,
             p2,
-            patch("api._client_factory.ConfigBuilder.build", return_value=_make_config()),
+            patch("dblift.api._client_factory.ConfigBuilder.build", return_value=_make_config()),
         ):
             client = _OSSSubclass.from_config_file("dblift.yaml")
         assert isinstance(client, _OSSSubclass)
@@ -156,7 +157,7 @@ class TestFromSqlalchemySeamResolution:
         with (
             p1,
             p2,
-            patch("api._client_factory.config_from_engine", return_value=_make_config()),
+            patch("dblift.api._client_factory.config_from_engine", return_value=_make_config()),
         ):
             client = DBLiftClient.from_sqlalchemy(engine=MagicMock(spec=[]))
         assert isinstance(client, _UpgradedClient)
@@ -171,7 +172,7 @@ class TestFromSqlalchemySeamResolution:
         with (
             p1,
             p2,
-            patch("api._client_factory.config_from_engine", return_value=_make_config()),
+            patch("dblift.api._client_factory.config_from_engine", return_value=_make_config()),
             patch.object(DBLiftClient, "__init__", fake_init),
         ):
             client = DBLiftClient.from_sqlalchemy(engine=MagicMock(spec=[]))
@@ -183,7 +184,7 @@ class TestFromSqlalchemySeamResolution:
         with (
             p1,
             p2,
-            patch("api._client_factory.config_from_engine", return_value=_make_config()),
+            patch("dblift.api._client_factory.config_from_engine", return_value=_make_config()),
         ):
             client = _OSSSubclass.from_sqlalchemy(engine=MagicMock(spec=[]))
         assert isinstance(client, _OSSSubclass)

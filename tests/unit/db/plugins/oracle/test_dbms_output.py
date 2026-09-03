@@ -4,7 +4,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from db.plugins.oracle.oracle.dbms_output import enable_dbms_output, read_dbms_output
+from dblift.db.plugins.oracle.oracle.dbms_output import enable_dbms_output, read_dbms_output
 
 
 class TestEnableDbmsOutput:

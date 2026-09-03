@@ -4,7 +4,7 @@ from pathlib import Path
 
 from sqlalchemy import create_engine
 
-from api import DBLiftClient
+from dblift.api import DBLiftClient
 
 
 def _capture(client) -> list[str]:

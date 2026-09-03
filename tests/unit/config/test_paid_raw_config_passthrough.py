@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import pytest
 
-from config.dblift_config import _PAID_RAW_CONFIG_KEYS, DbliftConfig
+from dblift.config.dblift_config import _PAID_RAW_CONFIG_KEYS, DbliftConfig
 
 pytestmark = [pytest.mark.unit]
 

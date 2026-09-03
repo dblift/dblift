@@ -6,7 +6,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from core.migration.executor.migration_executor import MigrationExecutor
+from dblift.core.migration.executor.migration_executor import MigrationExecutor
 
 pytestmark = pytest.mark.unit
 
@@ -30,7 +30,7 @@ def test_executor_does_not_expose_snapshot_service_attribute():
 def test_migrate_does_not_pass_snapshot_service_to_command():
     executor = _minimal_executor()
 
-    with patch("core.migration.commands.migrate_command.MigrateCommand") as command_cls:
+    with patch("dblift.core.migration.commands.migrate_command.MigrateCommand") as command_cls:
         command = command_cls.return_value
         command.execute.return_value = SimpleNamespace(success=True)
 

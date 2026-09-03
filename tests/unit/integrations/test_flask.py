@@ -20,7 +20,7 @@ from unittest.mock import MagicMock
 import pytest
 from sqlalchemy import create_engine
 
-from api import DBLiftClient
+from dblift.api import DBLiftClient
 
 
 def _setup_pending_db(tmp_path: Path) -> tuple[Any, Path, DBLiftClient]:
@@ -50,7 +50,7 @@ def test_init_dblift_wires_client_to_extensions_and_returns_it(tmp_path: Path) -
     pytest.importorskip("flask")
     from flask import Flask
 
-    from integrations.flask import init_dblift
+    from dblift.integrations.flask import init_dblift
 
     engine, mig_dir, setup_client = _setup_pending_db(tmp_path)
     try:
@@ -72,7 +72,7 @@ def test_init_dblift_guard_true_raises_on_pending(tmp_path: Path) -> None:
     pytest.importorskip("flask")
     from flask import Flask
 
-    from integrations.flask import init_dblift
+    from dblift.integrations.flask import init_dblift
 
     engine, mig_dir, setup_client = _setup_pending_db(tmp_path)
     try:
@@ -91,7 +91,7 @@ def test_init_dblift_succeeds_when_current(tmp_path: Path) -> None:
     pytest.importorskip("flask")
     from flask import Flask
 
-    from integrations.flask import init_dblift
+    from dblift.integrations.flask import init_dblift
 
     engine, mig_dir, setup_client = _setup_current_db(tmp_path)
     try:
@@ -107,7 +107,7 @@ def test_register_cli_wires_command_that_calls_client_migrate() -> None:
     pytest.importorskip("flask")
     from flask import Flask
 
-    from integrations.flask import register_cli
+    from dblift.integrations.flask import register_cli
 
     app = Flask(__name__)
     mock_client = MagicMock(spec=DBLiftClient)
@@ -128,7 +128,7 @@ def test_init_dblift_and_register_cli_together(tmp_path: Path) -> None:
     pytest.importorskip("flask")
     from flask import Flask
 
-    from integrations.flask import init_dblift, register_cli
+    from dblift.integrations.flask import init_dblift, register_cli
 
     engine, mig_dir, setup_client = _setup_pending_db(tmp_path)
     try:

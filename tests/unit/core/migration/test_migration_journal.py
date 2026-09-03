@@ -5,7 +5,11 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from core.migration.journals.migration_journal import EntryType, JournalEntry, MigrationJournal
+from dblift.core.migration.journals.migration_journal import (
+    EntryType,
+    JournalEntry,
+    MigrationJournal,
+)
 
 # ---------------------------------------------------------------------------
 # EntryType enum

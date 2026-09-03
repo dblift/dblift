@@ -11,8 +11,8 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from sqlalchemy import create_engine
 
-from api import DBLiftClient
-from integrations.fastapi import (
+from dblift.api import DBLiftClient
+from dblift.integrations.fastapi import (
     check_migrations_current,
     migration_guard,
     health_payload,

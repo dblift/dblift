@@ -4,7 +4,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from core.migration.commands.clean_command import CleanCommand
+from dblift.core.migration.commands.clean_command import CleanCommand
 
 
 @pytest.mark.unit

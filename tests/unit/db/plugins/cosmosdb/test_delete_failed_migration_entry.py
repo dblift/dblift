@@ -10,8 +10,8 @@ relational dialects, ``delete_item`` for Cosmos.
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
-from db.plugins.base_history_manager import BaseHistoryManager
-from db.plugins.cosmosdb.cosmosdb.history_manager import CosmosDbHistoryManager
+from dblift.db.plugins.base_history_manager import BaseHistoryManager
+from dblift.db.plugins.cosmosdb.cosmosdb.history_manager import CosmosDbHistoryManager
 
 
 class _QueryExecutor:
@@ -130,7 +130,7 @@ def test_delete_addresses_the_version_partition_key():
 
 def test_repeatable_migration_uses_the_none_partition_sentinel():
     """R__ rows carry no version and live in the partition-keyless partition."""
-    from db.plugins.cosmosdb.cosmosdb._sdk import NONE_PARTITION_KEY
+    from dblift.db.plugins.cosmosdb.cosmosdb._sdk import NONE_PARTITION_KEY
 
     executor = _QueryExecutor("cosmosdb")
     manager = CosmosDbHistoryManager(executor, None, None)

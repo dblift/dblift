@@ -24,7 +24,7 @@ from typing import Any, Dict, List
 
 import pytest
 
-from core.introspection._schema_orchestrator import introspect_schema
+from dblift.core.introspection._schema_orchestrator import introspect_schema
 
 pytestmark = [pytest.mark.unit]
 

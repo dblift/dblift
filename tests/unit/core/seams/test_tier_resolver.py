@@ -1,13 +1,13 @@
 """Tier-resolver registry: the neutral seam the CLI uses to resolve the
 feature tier of the current invocation.
 
-The resolved tier is opaque to OSS (see ``core.seams.tier_resolver``'s
+The resolved tier is opaque to OSS (see ``dblift.core.seams.tier_resolver``'s
 docstring), so these tests stand in for a real tier with plain sentinel
 values rather than importing a paid tier enum."""
 
 import pytest
 
-from core.seams import tier_resolver
+from dblift.core.seams import tier_resolver
 
 pytestmark = [pytest.mark.unit]
 

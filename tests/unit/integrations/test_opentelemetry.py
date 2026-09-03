@@ -11,8 +11,8 @@ from opentelemetry.sdk.trace.export.in_memory_span_exporter import (
 )
 from sqlalchemy import create_engine
 
-from api import DBLiftClient
-from integrations.opentelemetry import instrument
+from dblift.api import DBLiftClient
+from dblift.integrations.opentelemetry import instrument
 
 
 @pytest.fixture()

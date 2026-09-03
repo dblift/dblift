@@ -2,8 +2,8 @@
 
 import pytest
 
-from core.sql_model.base import SqlStatementType
-from db.plugins.postgresql.parser.postgresql_regex_parser import PostgreSqlRegexParser
+from dblift.core.sql_model.base import SqlStatementType
+from dblift.db.plugins.postgresql.parser.postgresql_regex_parser import PostgreSqlRegexParser
 
 
 @pytest.mark.unit

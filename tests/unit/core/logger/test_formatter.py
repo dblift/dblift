@@ -6,8 +6,8 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-from core.logger.formatters.formatter import OutputFormatter
-from core.logger.results import (
+from dblift.core.logger.formatters.formatter import OutputFormatter
+from dblift.core.logger.results import (
     BaselineResult,
     CleanResult,
     InfoResult,
@@ -22,9 +22,9 @@ from core.logger.results import (
 
 # Migration may still be in legacy location
 try:
-    from core.migration.migration import Migration, MigrationType
+    from dblift.core.migration.migration import Migration, MigrationType
 except ImportError:
-    from core.migration.migration import Migration, MigrationType
+    from dblift.core.migration.migration import Migration, MigrationType
 
 
 pytestmark = [pytest.mark.unit]
@@ -350,7 +350,7 @@ class TestOutputFormatter:
         output = self.formatter.format(result, "text", "override_schema", "test_db")
         assert "Schema: override_schema" in output
 
-    @patch("core.logger.formatters._formatter_impl.HtmlFormatter")
+    @patch("dblift.core.logger.formatters._formatter_impl.HtmlFormatter")
     def test_format_html_when_available(self, mock_html_formatter_class):
         """Test format method with HTML format when available."""
         # Mock the HTML formatter
@@ -369,8 +369,8 @@ class TestOutputFormatter:
         assert output == "<html>Test HTML</html>"
         mock_html_formatter.format_result.assert_called_once()
 
-    @patch("core.logger.formatters._formatter_impl.JSON_AVAILABLE", True)
-    @patch("core.logger.formatters._formatter_impl.JsonFormatter")
+    @patch("dblift.core.logger.formatters._formatter_impl.JSON_AVAILABLE", True)
+    @patch("dblift.core.logger.formatters._formatter_impl.JsonFormatter")
     def test_format_json_when_available(self, mock_json_formatter_class):
         """Test format method with JSON format when available."""
         # Mock the JSON formatter
@@ -405,7 +405,7 @@ class TestOutputFormatter:
         assert "Database Migration Report" in output
         assert "Schema: test_schema" in output
 
-    @patch("core.logger.formatters._formatter_impl.HtmlFormatter", None)
+    @patch("dblift.core.logger.formatters._formatter_impl.HtmlFormatter", None)
     def test_initializer_honors_patched_missing_html_formatter(self):
         """Test initializer does not re-import HTML formatter after an explicit None patch."""
         formatter = OutputFormatter()

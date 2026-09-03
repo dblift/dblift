@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Breaking
+
+- **Everything now lives under the `dblift` package.** The wheel used to
+  install six generic top-level packages (`api`, `cli`, `config`, `core`,
+  `db`, `integrations`). Any project with its own `core/` or `api/` package
+  ahead of site-packages on `sys.path` (a Django project run through
+  `manage.py`, a pytest session with the project root as rootdir) shadowed
+  DBLift's own modules and failed with `No module named 'core.logger'`. The
+  wheel now installs exactly one top-level package, `dblift`, and every
+  import path gains that prefix. The CLI, the config file, the history table
+  and the migration file formats are unchanged. Upgrading:
+
+  | Before | After |
+  |---|---|
+  | `from api import DBLiftClient, MigrationContext` | `from dblift.api import DBLiftClient, MigrationContext` |
+  | `from config import load_config` | `from dblift.config import load_config` |
+  | `from core.migration import Migration` | `from dblift.core.migration import Migration` |
+  | `from integrations.flask import init_dblift` | `from dblift.integrations.flask import init_dblift` |
+  | `INSTALLED_APPS = ["integrations.django"]` | `INSTALLED_APPS = ["dblift.integrations.django"]` |
+  | `python -m cli.main` | `python -m dblift.cli.main` |
+
+  The Django app label stays `dblift`, so `manage.py dblift_migrate`,
+  `dblift_validate`, `dblift_info` and the `dblift.W001` check keep their
+  names. Python migration files are loaded by path, so only their
+  `MigrationContext` import changes. Third-party dialect plugins register
+  through the same `dblift.providers` entry-point group as before.
+
 ### Added
 
 - **README demo GIF** of a real `dblift migrate --dry-run --show-sql` run

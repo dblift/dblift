@@ -5,8 +5,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from core.logger import ConsoleLog, DbliftLogger, LogLevel, MultiLog
-from core.logger.log import Log, LogEvent, LogFormat, LogFormatter, TextFormatter
+from dblift.core.logger import ConsoleLog, DbliftLogger, LogLevel, MultiLog
+from dblift.core.logger.log import Log, LogEvent, LogFormat, LogFormatter, TextFormatter
 
 pytestmark = [pytest.mark.unit]
 

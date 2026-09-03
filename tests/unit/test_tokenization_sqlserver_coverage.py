@@ -2,8 +2,8 @@
 
 import pytest
 
-from core.sql_parser.tokens import TokenType
-from db.plugins.sqlserver.parser.sqlserver_tokenizer import SQLServerTokenizer
+from dblift.core.sql_parser.tokens import TokenType
+from dblift.db.plugins.sqlserver.parser.sqlserver_tokenizer import SQLServerTokenizer
 
 
 class TestSQLServerTokenizerCoverage:

@@ -7,7 +7,7 @@ from unittest.mock import MagicMock
 
 def _make_concrete():
     """Create a minimal concrete BaseHistoryManager subclass."""
-    from db.plugins.base_history_manager import BaseHistoryManager
+    from dblift.db.plugins.base_history_manager import BaseHistoryManager
 
     class ConcreteHistoryManager(BaseHistoryManager):
         def create_migration_history_table_if_not_exists(
@@ -39,8 +39,8 @@ class TestBaseHistoryManagerInit(unittest.TestCase):
         self.assertIsNotNone(mgr.log)
 
     def test_null_log_default(self):
-        from core.logger import NullLog
-        from db.plugins.base_history_manager import BaseHistoryManager
+        from dblift.core.logger import NullLog
+        from dblift.db.plugins.base_history_manager import BaseHistoryManager
 
         class Minimal(BaseHistoryManager):
             def create_migration_history_table_if_not_exists(self, c, s, cs=False, tn="t"):

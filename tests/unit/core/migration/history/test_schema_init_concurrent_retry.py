@@ -17,8 +17,8 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from core.migration.history.migration_history_manager import MigrationHistoryManager
-from db.base_quirks import BaseQuirks
+from dblift.core.migration.history.migration_history_manager import MigrationHistoryManager
+from dblift.db.base_quirks import BaseQuirks
 
 
 def _make_manager(provider: MagicMock) -> MigrationHistoryManager:
@@ -145,7 +145,7 @@ class TestCreateSchemaAndHistoryTableRaceCrossEngine:
 
     def test_db2_sql0601n_race_is_recognized_and_retries(self, monkeypatch):
         monkeypatch.setattr("time.sleep", lambda *_: None)
-        from db.plugins.db2.quirks import Db2Quirks
+        from dblift.db.plugins.db2.quirks import Db2Quirks
 
         provider = MagicMock()
         provider.quirks = Db2Quirks()
@@ -169,7 +169,7 @@ class TestCreateSchemaAndHistoryTableRaceCrossEngine:
 
     def test_oracle_ora00955_race_is_recognized_and_retries(self, monkeypatch):
         monkeypatch.setattr("time.sleep", lambda *_: None)
-        from db.plugins.oracle.quirks import OracleQuirks
+        from dblift.db.plugins.oracle.quirks import OracleQuirks
 
         provider = MagicMock()
         provider.quirks = OracleQuirks()
@@ -192,7 +192,7 @@ class TestCreateSchemaAndHistoryTableRaceCrossEngine:
 
     def test_sqlserver_msg2714_race_is_recognized_and_retries(self, monkeypatch):
         monkeypatch.setattr("time.sleep", lambda *_: None)
-        from db.plugins.sqlserver.quirks import SqlserverQuirks
+        from dblift.db.plugins.sqlserver.quirks import SqlserverQuirks
 
         provider = MagicMock()
         provider.quirks = SqlserverQuirks()
@@ -217,7 +217,7 @@ class TestCreateSchemaAndHistoryTableRaceCrossEngine:
     def test_db2_non_race_error_still_raises_without_retry(self, monkeypatch):
         """Widening the DB2 check must not swallow unrelated DB2 errors."""
         monkeypatch.setattr("time.sleep", lambda *_: None)
-        from db.plugins.db2.quirks import Db2Quirks
+        from dblift.db.plugins.db2.quirks import Db2Quirks
 
         provider = MagicMock()
         provider.quirks = Db2Quirks()

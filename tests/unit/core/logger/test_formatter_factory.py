@@ -5,9 +5,9 @@ from unittest.mock import MagicMock, Mock, patch
 
 import pytest
 
-from core.logger.formatters.factory import OutputFormatterFactory
-from core.logger.formatters.formatter import OutputFormatter
-from core.logger.results import MigrateResult, OperationResult
+from dblift.core.logger.formatters.factory import OutputFormatterFactory
+from dblift.core.logger.formatters.formatter import OutputFormatter
+from dblift.core.logger.results import MigrateResult, OperationResult
 
 pytestmark = [pytest.mark.unit]
 

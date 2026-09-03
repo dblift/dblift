@@ -6,7 +6,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from config.dblift_config import DbliftConfig, load_config
+from dblift.config.dblift_config import DbliftConfig, load_config
 
 
 def _minimal_config(clean_disabled: bool | None = None) -> dict:

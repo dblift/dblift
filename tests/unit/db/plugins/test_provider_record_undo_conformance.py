@@ -27,18 +27,18 @@ import pkgutil
 import unittest
 from unittest.mock import MagicMock
 
-from db.base_provider import BaseProvider
+from dblift.db.base_provider import BaseProvider
 
 
 def _iter_concrete_provider_classes() -> list[type[BaseProvider]]:
-    """Return every concrete subclass of ``BaseProvider`` under ``db.plugins``.
+    """Return every concrete subclass of ``BaseProvider`` under ``dblift.db.plugins``.
 
-    Walks the ``db.plugins`` package tree, imports each ``provider`` module,
+    Walks the ``dblift.db.plugins`` package tree, imports each ``provider`` module,
     and collects classes that subclass ``BaseProvider`` and are not
     abstract. We rely on import side-effects only — no instantiation, so
     optional drivers (JPype, Cosmos SDK) don't need to be installed.
     """
-    import db.plugins as plugins_pkg
+    import dblift.db.plugins as plugins_pkg
 
     discovered: dict[str, type[BaseProvider]] = {}
     for module_info in pkgutil.walk_packages(
@@ -221,7 +221,7 @@ class TestSqliteInheritsDefault(unittest.TestCase):
     """SQLiteProvider's own override was dropped — it must inherit the base."""
 
     def test_sqlite_uses_inherited_record_undo(self) -> None:
-        from db.plugins.sqlite.provider import SQLiteProvider
+        from dblift.db.plugins.sqlite.provider import SQLiteProvider
 
         self.assertNotIn(
             "record_undo",

@@ -10,17 +10,17 @@ import unittest
 from types import SimpleNamespace
 from unittest.mock import MagicMock, PropertyMock, call, patch
 
-from core.introspection._vendor_property_applier import VendorPropertyApplier
-from core.introspection.result import IntrospectionResult
-from core.introspection.schema_introspector import SchemaIntrospector
-from core.logger import NullLog
-from core.sql_model.base import SqlColumn
-from core.sql_model.table import Table
-from db.plugins.db2.quirks import Db2Quirks
-from db.plugins.mysql.quirks import MysqlQuirks
-from db.plugins.oracle.quirks import OracleQuirks
-from db.plugins.postgresql.quirks import PostgresqlQuirks
-from db.plugins.sqlserver.quirks import SqlserverQuirks
+from dblift.core.introspection._vendor_property_applier import VendorPropertyApplier
+from dblift.core.introspection.result import IntrospectionResult
+from dblift.core.introspection.schema_introspector import SchemaIntrospector
+from dblift.core.logger import NullLog
+from dblift.core.sql_model.base import SqlColumn
+from dblift.core.sql_model.table import Table
+from dblift.db.plugins.db2.quirks import Db2Quirks
+from dblift.db.plugins.mysql.quirks import MysqlQuirks
+from dblift.db.plugins.oracle.quirks import OracleQuirks
+from dblift.db.plugins.postgresql.quirks import PostgresqlQuirks
+from dblift.db.plugins.sqlserver.quirks import SqlserverQuirks
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -332,7 +332,7 @@ class TestEnsureMetadata(unittest.TestCase):
         self.assertIs(si.metadata, meta_before)
 
     def test_ensure_metadata_creates_connection_when_none(self):
-        from db.provider_interfaces import ConnectionProvider
+        from dblift.db.provider_interfaces import ConnectionProvider
 
         provider = MagicMock(spec=ConnectionProvider)
         provider.config = SimpleNamespace(database=SimpleNamespace(type="postgresql"))
@@ -355,7 +355,7 @@ class TestEnsureMetadata(unittest.TestCase):
         self.assertIs(si.connection, new_conn)
 
     def test_ensure_metadata_native_does_not_toggle_autocommit(self):
-        from db.provider_interfaces import ConnectionProvider
+        from dblift.db.provider_interfaces import ConnectionProvider
 
         provider = MagicMock(spec=ConnectionProvider)
         provider.config = SimpleNamespace(database=SimpleNamespace(type="postgresql"))
@@ -504,7 +504,7 @@ class TestResultTracking(unittest.TestCase):
         self.assertGreater(len(errors), 0)
 
     def test_track_object_status_when_not_tracking(self):
-        from core.introspection.result import ObjectCaptureStatus
+        from dblift.core.introspection.result import ObjectCaptureStatus
 
         si, _ = _make_si()
         status = si._track_object_status("TABLE", "users", "public")

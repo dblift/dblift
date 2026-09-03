@@ -1,4 +1,4 @@
-from core.sql_model.trigger import Trigger
+from dblift.core.sql_model.trigger import Trigger
 
 
 class TestTriggerSqlModel:

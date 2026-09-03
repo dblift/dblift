@@ -18,10 +18,10 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from core.migration.migration import AppliedMigration, Migration
-from core.sql_validator._migration_filter import handle_baseline_filtering
-from core.sql_validator._strict_mode_validator import validate_strict_mode_rules
-from core.sql_validator.migration_validator import MigrationValidator, ValidationResult
+from dblift.core.migration.migration import AppliedMigration, Migration
+from dblift.core.sql_validator._migration_filter import handle_baseline_filtering
+from dblift.core.sql_validator._strict_mode_validator import validate_strict_mode_rules
+from dblift.core.sql_validator.migration_validator import MigrationValidator, ValidationResult
 
 VERSIONED_EXTENSIONS = (".sql", ".py")
 

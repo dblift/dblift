@@ -29,7 +29,7 @@ from __future__ import annotations
 import unittest
 import warnings
 
-from core.sql_parser.base_tokenizer import TokenizerWarning
+from dblift.core.sql_parser.base_tokenizer import TokenizerWarning
 
 
 class TestTokenizerNoSilentDrop(unittest.TestCase):
@@ -48,7 +48,7 @@ class TestTokenizerNoSilentDrop(unittest.TestCase):
                     tokenizer_cls(sql).tokenize()
 
     def test_mysql_tokenizer_claims_user_variables(self) -> None:
-        from db.plugins.mysql.parser.mysql_tokenizer import MySQLTokenizer
+        from dblift.db.plugins.mysql.parser.mysql_tokenizer import MySQLTokenizer
 
         self._assert_no_drops(
             MySQLTokenizer,
@@ -66,7 +66,7 @@ class TestTokenizerNoSilentDrop(unittest.TestCase):
         )
 
     def test_oracle_tokenizer_claims_double_quotes_and_q_quotes(self) -> None:
-        from db.plugins.oracle.parser.oracle_tokenizer import OracleTokenizer
+        from dblift.db.plugins.oracle.parser.oracle_tokenizer import OracleTokenizer
 
         self._assert_no_drops(
             OracleTokenizer,
@@ -81,7 +81,7 @@ class TestTokenizerNoSilentDrop(unittest.TestCase):
         )
 
     def test_postgresql_tokenizer_claims_dollar_quotes_and_quoted_idents(self) -> None:
-        from db.plugins.postgresql.parser.postgresql_tokenizer import PostgreSQLTokenizer
+        from dblift.db.plugins.postgresql.parser.postgresql_tokenizer import PostgreSQLTokenizer
 
         self._assert_no_drops(
             PostgreSQLTokenizer,
@@ -95,7 +95,7 @@ class TestTokenizerNoSilentDrop(unittest.TestCase):
         )
 
     def test_sqlserver_tokenizer_claims_brackets_and_at_signs(self) -> None:
-        from db.plugins.sqlserver.parser.sqlserver_tokenizer import SQLServerTokenizer
+        from dblift.db.plugins.sqlserver.parser.sqlserver_tokenizer import SQLServerTokenizer
 
         self._assert_no_drops(
             SQLServerTokenizer,
@@ -110,7 +110,7 @@ class TestTokenizerNoSilentDrop(unittest.TestCase):
 
     def test_warning_carries_dialect_char_line_col(self) -> None:
         """Sanity-check the diagnostic shape for new regressions."""
-        from core.sql_parser.base_tokenizer import BaseTokenizer
+        from dblift.core.sql_parser.base_tokenizer import BaseTokenizer
 
         sql = "SELECT 1\nWHERE x \x00 1;"  # NUL is genuinely outside any rule
         with warnings.catch_warnings(record=True) as caught:

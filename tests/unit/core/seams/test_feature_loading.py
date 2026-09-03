@@ -6,8 +6,8 @@ from unittest.mock import MagicMock
 
 import pytest
 
-import core.seams.feature_loading as feature_loading
-from core.seams.feature_loading import load_feature_extensions
+import dblift.core.seams.feature_loading as feature_loading
+from dblift.core.seams.feature_loading import load_feature_extensions
 
 pytestmark = [pytest.mark.unit]
 
@@ -226,7 +226,7 @@ def test_a_colliding_quirks_extension_fails_the_load(monkeypatch):
     real entry-point registrar and asserting the raise escapes
     ``load_feature_extensions`` is what pins the wiring.
     """
-    from core.seams.quirks import (
+    from dblift.core.seams.quirks import (
         QuirksExtensionCollisionError,
         clear_quirks_extensions,
         register_quirks_extension,

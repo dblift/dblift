@@ -2,7 +2,7 @@
 
 import pytest
 
-from db.plugins.sqlserver.quirks import SqlserverQuirks
+from dblift.db.plugins.sqlserver.quirks import SqlserverQuirks
 
 
 def test_sqlserver_quirks_reject_snapshot_table_ddl() -> None:

@@ -24,12 +24,12 @@ from unittest.mock import Mock
 import pytest
 from sqlalchemy import create_engine
 
-from api import DBLiftClient
-from core.logger import DbliftLogger
-from core.migration.executor.execution_engine import ExecutionEngine
-from core.migration.migration import Migration
-from core.migration.placeholders.placeholder_service import PlaceholderService
-from core.migration.sql.sql_analyzer import SqlAnalyzer
+from dblift.api import DBLiftClient
+from dblift.core.logger import DbliftLogger
+from dblift.core.migration.executor.execution_engine import ExecutionEngine
+from dblift.core.migration.migration import Migration
+from dblift.core.migration.placeholders.placeholder_service import PlaceholderService
+from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
 
 pytestmark = [pytest.mark.unit]
 

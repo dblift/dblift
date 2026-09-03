@@ -6,10 +6,10 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from core.logger import NullLog
-from core.migration.migration import MigrationType
-from core.migration.state.migration_state import MigrationEntry, MigrationState
-from core.migration.ui.data_collector import MigrationDataCollector
+from dblift.core.logger import NullLog
+from dblift.core.migration.migration import MigrationType
+from dblift.core.migration.state.migration_state import MigrationEntry, MigrationState
+from dblift.core.migration.ui.data_collector import MigrationDataCollector
 
 pytestmark = pytest.mark.unit
 

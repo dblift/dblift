@@ -31,7 +31,7 @@ def test_api_package_has_py_typed_marker():
     downstream IDEs and mypy runs on consumer projects silently lose
     dblift's type information. Pin the marker's existence.
     """
-    marker = Path(__file__).resolve().parents[3] / "api" / "py.typed"
+    marker = Path(__file__).resolve().parents[3] / "dblift" / "api" / "py.typed"
     assert marker.is_file(), "api/py.typed marker missing. See PEP 561 + docs/semver-policy.md."
 
 
@@ -39,22 +39,22 @@ class TestApiPackageSurface:
     """``from api import ...`` — the top-level entry point."""
 
     def test_dbliftclient_is_a_class(self):
-        from api import DBLiftClient
+        from dblift.api import DBLiftClient
 
         assert isinstance(DBLiftClient, type)
 
     def test_event_emitter_is_importable(self):
-        from api import EventEmitter
+        from dblift.api import EventEmitter
 
         assert EventEmitter is not None
 
     def test_event_type_is_importable(self):
-        from api import EventType
+        from dblift.api import EventType
 
         assert EventType is not None
 
     def test_oss_client_does_not_expose_paid_methods_without_a_stub(self) -> None:
-        """Paid methods with no ``core.premium_manifest`` entry stay fully absent.
+        """Paid methods with no ``dblift.core.premium_manifest`` entry stay fully absent.
 
         ``generate_sql_from_diff`` has no OSS-visible CLI command counterpart
         (it's reached only via the paid ``diff`` command's own options), so it
@@ -62,14 +62,14 @@ class TestApiPackageSurface:
         ``snapshot``/``preflight``, which issue #753 requires to exist as
         stubs. See ``TestDBLiftClientPremiumStubs`` for those.
         """
-        from api import DBLiftClient
+        from dblift.api import DBLiftClient
 
         assert "generate_sql_from_diff" not in dir(DBLiftClient)
 
     def test_all_lists_exactly_four_symbols(self):
         """``api.__all__`` is the contract. Additions (e.g. MigrationContext) are MINOR bumps
         (document in semver-policy.md + CHANGELOG); removals are MAJOR."""
-        import api
+        import dblift.api as api
 
         assert set(api.__all__) == {
             "DBLiftClient",
@@ -83,22 +83,22 @@ class TestConfigPackageSurface:
     """``from config import ...`` — configuration loading."""
 
     def test_dblift_config_is_a_class(self):
-        from config import DbliftConfig
+        from dblift.config import DbliftConfig
 
         assert isinstance(DbliftConfig, type)
 
     def test_database_config_is_a_class(self):
-        from config import DatabaseConfig
+        from dblift.config import DatabaseConfig
 
         assert isinstance(DatabaseConfig, type)
 
     def test_load_config_is_callable(self):
-        from config import load_config
+        from dblift.config import load_config
 
         assert callable(load_config)
 
     def test_all_lists_exactly_three_symbols(self):
-        import config
+        import dblift.config as config
 
         assert set(config.__all__) == {"DatabaseConfig", "DbliftConfig", "load_config"}
 
@@ -106,8 +106,8 @@ class TestConfigPackageSurface:
 class TestMigrationTypeSurface:
     """The documented ``from core.migration import ...`` public path.
 
-    These tests use the documented public path (`core.migration`), NOT
-    the internal implementation module (`core.migration.migration`).
+    These tests use the documented public path (`dblift.core.migration`), NOT
+    the internal implementation module (`dblift.core.migration.migration`).
     Bugbot on PR-14 flagged that the prior version imported from the
     internal path and therefore would have passed even if
     ``core/migration/__init__.py`` stopped re-exporting the symbols —
@@ -115,32 +115,32 @@ class TestMigrationTypeSurface:
     """
 
     def test_migration_type_is_importable_via_public_path(self):
-        from core.migration import MigrationType
+        from dblift.core.migration import MigrationType
 
         assert isinstance(MigrationType, type)
 
     def test_versioned_script_types_is_frozenset_via_public_path(self):
-        from core.migration import VERSIONED_SCRIPT_TYPES
+        from dblift.core.migration import VERSIONED_SCRIPT_TYPES
 
         assert isinstance(VERSIONED_SCRIPT_TYPES, frozenset)
 
     def test_type_match_helpers_are_importable_via_public_path(self):
-        from core.migration import is_migration_type, is_versioned, migration_type_name
+        from dblift.core.migration import is_migration_type, is_versioned, migration_type_name
 
         assert callable(is_migration_type)
         assert callable(is_versioned)
         assert callable(migration_type_name)
 
     def test_migration_class_is_importable_via_public_path(self):
-        from core.migration import Migration
+        from dblift.core.migration import Migration
 
         assert isinstance(Migration, type)
 
     def test_all_lists_the_documented_symbols(self):
-        """``core.migration.__all__`` is the contract enumeration."""
-        import core.migration
+        """``dblift.core.migration.__all__`` is the contract enumeration."""
+        import dblift.core.migration
 
-        assert set(core.migration.__all__) == {
+        assert set(dblift.core.migration.__all__) == {
             "AppliedMigration",
             "Migration",
             "MigrationResource",
@@ -155,7 +155,7 @@ class TestMigrationTypeSurface:
     def test_migration_type_members_are_stable(self):
         """Enum members are part of the public contract. Adding is MINOR;
         removing or renaming is MAJOR."""
-        from core.migration import MigrationType
+        from dblift.core.migration import MigrationType
 
         expected = {
             "SQL",
@@ -173,16 +173,16 @@ class TestMigrationTypeSurface:
         "symbol_name,impl_module",
         [
             # Re-exported from core.migration.migration
-            ("AppliedMigration", "core.migration.migration"),
-            ("Migration", "core.migration.migration"),
-            ("MigrationResource", "core.migration.migration"),
-            ("MigrationType", "core.migration.migration"),
-            ("ResolvedMigration", "core.migration.migration"),
-            ("VERSIONED_SCRIPT_TYPES", "core.migration.migration"),
+            ("AppliedMigration", "dblift.core.migration.migration"),
+            ("Migration", "dblift.core.migration.migration"),
+            ("MigrationResource", "dblift.core.migration.migration"),
+            ("MigrationType", "dblift.core.migration.migration"),
+            ("ResolvedMigration", "dblift.core.migration.migration"),
+            ("VERSIONED_SCRIPT_TYPES", "dblift.core.migration.migration"),
             # Re-exported from core.migration._type_match
-            ("is_migration_type", "core.migration._type_match"),
-            ("is_versioned", "core.migration._type_match"),
-            ("migration_type_name", "core.migration._type_match"),
+            ("is_migration_type", "dblift.core.migration._type_match"),
+            ("is_versioned", "dblift.core.migration._type_match"),
+            ("migration_type_name", "dblift.core.migration._type_match"),
         ],
     )
     def test_public_path_and_implementation_path_return_same_objects(
@@ -190,7 +190,7 @@ class TestMigrationTypeSurface:
     ):
         """Re-export must forward the same object, not a copy / re-binding.
 
-        Parameterised over every symbol in ``core.migration.__all__`` so a
+        Parameterised over every symbol in ``dblift.core.migration.__all__`` so a
         future re-export added to the package's ``__init__`` forces the
         contributor to add a row here — silently re-binding a symbol
         (e.g. ``from core.migration.migration import MigrationType; MigrationType = ...``
@@ -199,14 +199,14 @@ class TestMigrationTypeSurface:
         """
         import importlib
 
-        public_module = importlib.import_module("core.migration")
+        public_module = importlib.import_module("dblift.core.migration")
         implementation_module = importlib.import_module(impl_module)
 
         public_obj = getattr(public_module, symbol_name)
         impl_obj = getattr(implementation_module, symbol_name)
 
         assert public_obj is impl_obj, (
-            f"core.migration.{symbol_name} is not the same object as "
+            f"dblift.core.migration.{symbol_name} is not the same object as "
             f"{impl_module}.{symbol_name}. Re-exports must be direct "
             f"``from X import Y`` aliases, not re-bindings."
         )
@@ -241,15 +241,15 @@ class TestLoggerPackageSurface:
     }
 
     def test_all_lists_the_documented_logger_symbols(self):
-        import core.logger
+        import dblift.core.logger
 
-        assert set(core.logger.__all__) == self.EXPECTED_EXPORTS
+        assert set(dblift.core.logger.__all__) == self.EXPECTED_EXPORTS
 
     @pytest.mark.parametrize("symbol_name", sorted(EXPECTED_EXPORTS))
     def test_logger_public_symbol_is_importable(self, symbol_name):
-        import core.logger
+        import dblift.core.logger
 
-        assert getattr(core.logger, symbol_name) is not None
+        assert getattr(dblift.core.logger, symbol_name) is not None
 
 
 class TestDBLiftClientPublicMethods:
@@ -287,7 +287,7 @@ class TestDBLiftClientPublicMethods:
     )
 
     def test_every_expected_method_exists(self):
-        from api import DBLiftClient
+        from dblift.api import DBLiftClient
 
         for name in self.EXPECTED_PUBLIC_METHODS:
             assert hasattr(DBLiftClient, name), (
@@ -299,7 +299,7 @@ class TestDBLiftClientPublicMethods:
         """Any new public (non-underscore) method on DBLiftClient must be
         added to EXPECTED_PUBLIC_METHODS here AND to docs/semver-policy.md.
         This test red-lines silent surface growth."""
-        from api import DBLiftClient
+        from dblift.api import DBLiftClient
 
         actual = {
             name
@@ -344,8 +344,8 @@ class TestDBLiftClientPublicMethods:
         """
         from unittest.mock import patch
 
-        from api import DBLiftClient
-        from api import client as client_module
+        from dblift.api import DBLiftClient
+        from dblift.api import client as client_module
 
         for name in self.EXPECTED_DECORATED_OPERATIONS:
             method = getattr(DBLiftClient, name)
@@ -399,12 +399,12 @@ class TestDBLiftClientPremiumStubs:
     STUB_METHOD_NAMES = frozenset({"diff", "export_schema", "snapshot", "plan", "preflight"})
 
     def _stub_client(self):
-        from api.client import DBLiftClient
+        from dblift.api.client import DBLiftClient
 
         return DBLiftClient.__new__(DBLiftClient)
 
     def test_every_stub_method_exists(self):
-        from api import DBLiftClient
+        from dblift.api import DBLiftClient
 
         for name in self.STUB_METHOD_NAMES:
             assert callable(getattr(DBLiftClient, name, None)), (
@@ -413,7 +413,7 @@ class TestDBLiftClientPremiumStubs:
             )
 
     def test_calling_a_stub_raises_capability_denied_error(self):
-        from core.seams.capabilities import CapabilityDeniedError
+        from dblift.core.seams.capabilities import CapabilityDeniedError
 
         client = self._stub_client()
         for name in self.STUB_METHOD_NAMES:
@@ -422,11 +422,11 @@ class TestDBLiftClientPremiumStubs:
                 method()
 
     def test_stub_error_message_names_command_edition_and_upgrade_url(self):
-        from core.premium_manifest import PREMIUM_COMMANDS, UPGRADE_URL
+        from dblift.core.premium_manifest import PREMIUM_COMMANDS, UPGRADE_URL
 
         by_api_method = {cmd.api_method: cmd for cmd in PREMIUM_COMMANDS if cmd.api_method}
         assert set(by_api_method) == self.STUB_METHOD_NAMES, (
-            "core.premium_manifest.PREMIUM_COMMANDS must map an api_method "
+            "dblift.core.premium_manifest.PREMIUM_COMMANDS must map an api_method "
             "for exactly the stubbed API methods."
         )
 
@@ -434,7 +434,7 @@ class TestDBLiftClientPremiumStubs:
         for name in self.STUB_METHOD_NAMES:
             cmd = by_api_method[name]
             method = getattr(client, name)
-            from core.seams.capabilities import CapabilityDeniedError
+            from dblift.core.seams.capabilities import CapabilityDeniedError
 
             with pytest.raises(CapabilityDeniedError) as excinfo:
                 method()
@@ -448,7 +448,7 @@ class TestDBLiftClientPremiumStubs:
         """Callers pass paid-only kwargs (e.g. ``snapshot_model=...``); the
         stub must reject on entitlement grounds, not with a TypeError from
         an unexpected argument, so the upsell message is what surfaces."""
-        from core.seams.capabilities import CapabilityDeniedError
+        from dblift.core.seams.capabilities import CapabilityDeniedError
 
         client = self._stub_client()
         for name in self.STUB_METHOD_NAMES:
@@ -468,7 +468,7 @@ class TestClientInfoDisplayHuman:
     def _stub_client(self, mock_executor):
         from unittest.mock import MagicMock
 
-        from api.client import DBLiftClient
+        from dblift.api.client import DBLiftClient
 
         client = DBLiftClient.__new__(DBLiftClient)
         client.events = MagicMock()
@@ -481,7 +481,7 @@ class TestClientInfoDisplayHuman:
         """Default API call sends display_human=False — no stdout side effect."""
         from unittest.mock import MagicMock, patch
 
-        from core.logger.results import InfoResult
+        from dblift.core.logger.results import InfoResult
 
         mock_executor = MagicMock()
         mock_executor.info.return_value = InfoResult()
@@ -500,7 +500,7 @@ class TestClientInfoDisplayHuman:
         """CLI handler sets display_human=True; the value must reach executor."""
         from unittest.mock import MagicMock, patch
 
-        from core.logger.results import InfoResult
+        from dblift.core.logger.results import InfoResult
 
         mock_executor = MagicMock()
         mock_executor.info.return_value = InfoResult()
@@ -515,8 +515,8 @@ class TestClientInfoDisplayHuman:
 
 class TestClientConfigDirectoryShape:
     def test_from_config_does_not_mutate_shared_config_migrations_dir(self):
-        from api.client import DBLiftClient
-        from config.dblift_config import DbliftConfig
+        from dblift.api.client import DBLiftClient
+        from dblift.config.dblift_config import DbliftConfig
 
         config = DbliftConfig.from_dict(
             {
@@ -531,7 +531,7 @@ class TestClientConfigDirectoryShape:
         )
 
         with patch(
-            "api._client_factory.ProviderRegistry.create_provider",
+            "dblift.api._client_factory.ProviderRegistry.create_provider",
             return_value=MagicMock(),
         ):
             client_a = DBLiftClient.from_config(config, migrations_dir="/tmp/client_a")
@@ -542,8 +542,8 @@ class TestClientConfigDirectoryShape:
         assert str(client_b._get_scripts_dir()) == "/tmp/client_b"
 
     def test_from_config_normalizes_dict_migration_directories_for_client_ctor(self):
-        from api._client_factory import client_from_config
-        from config.dblift_config import DbliftConfig
+        from dblift.api._client_factory import client_from_config
+        from dblift.config.dblift_config import DbliftConfig
 
         config = DbliftConfig.from_dict(
             {
@@ -563,7 +563,7 @@ class TestClientConfigDirectoryShape:
                 self.kwargs = kwargs
 
         with patch(
-            "api._client_factory.ProviderRegistry.create_provider",
+            "dblift.api._client_factory.ProviderRegistry.create_provider",
             return_value=MagicMock(),
         ):
             client = client_from_config(config, client_cls=CapturingClient)
@@ -575,8 +575,8 @@ class TestClientConfigDirectoryShape:
         assert getattr(entry, "recursive", None) is True
 
     def test_normalize_migrations_dirs_clears_stale_dict_entries(self):
-        from api._client_factory import normalize_migrations_dirs
-        from config.dblift_config import DbliftConfig
+        from dblift.api._client_factory import normalize_migrations_dirs
+        from dblift.config.dblift_config import DbliftConfig
 
         config = DbliftConfig.from_dict(
             {
@@ -598,7 +598,7 @@ class TestClientConfigDirectoryShape:
 
 class TestInfoResultCompatibilityAliases:
     def test_exposes_applied_and_pending_migration_lists(self):
-        from core.logger.results import InfoResult, MigrationInfo
+        from dblift.core.logger.results import InfoResult, MigrationInfo
 
         result = InfoResult()
         applied = MigrationInfo(script="V1__init.sql", version="1", status="SUCCESS")

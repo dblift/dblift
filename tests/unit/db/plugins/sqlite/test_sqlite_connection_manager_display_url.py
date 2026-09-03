@@ -18,7 +18,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from db.plugins.sqlite.sqlite.connection_manager import SQLiteConnectionManager
+from dblift.db.plugins.sqlite.sqlite.connection_manager import SQLiteConnectionManager
 
 
 def _make_manager(path_attr: dict) -> SQLiteConnectionManager:
@@ -73,7 +73,7 @@ class TestSqliteGetJdbcUrl:
 @pytest.mark.unit
 class TestSqliteProviderDisplayUrl:
     def test_provider_uses_neutral_display_url(self):
-        from db.plugins.sqlite.provider import SQLiteProvider
+        from dblift.db.plugins.sqlite.provider import SQLiteProvider
 
         provider = SQLiteProvider.__new__(SQLiteProvider)
         provider.connection_manager = MagicMock()

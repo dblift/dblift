@@ -5,9 +5,9 @@ from pathlib import Path
 
 import pytest
 
-from config.dblift_config import MigrationsConfig
-from core.logger import DbliftLogger, LogFormat
-from core.migration.scripting.migration_script_manager import MigrationScriptManager
+from dblift.config.dblift_config import MigrationsConfig
+from dblift.core.logger import DbliftLogger, LogFormat
+from dblift.core.migration.scripting.migration_script_manager import MigrationScriptManager
 
 pytestmark = [pytest.mark.unit]
 

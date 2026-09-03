@@ -8,7 +8,7 @@ from typing import Any
 import pytest
 from sqlalchemy import text
 
-from api import DBLiftClient
+from dblift.api import DBLiftClient
 
 
 def test_resolve_dblift_config_reads_cli_url(

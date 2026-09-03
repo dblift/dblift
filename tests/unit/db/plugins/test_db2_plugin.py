@@ -34,7 +34,7 @@ class TestDb2SchemaOperations(unittest.TestCase):
         return qe
 
     def _make_ops(self, qe=None):
-        from db.plugins.db2.db2.schema_operations import Db2SchemaOperations
+        from dblift.db.plugins.db2.db2.schema_operations import Db2SchemaOperations
 
         if qe is None:
             qe = self._make_qe()

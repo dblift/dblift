@@ -4,7 +4,7 @@ provider's canonical_dialect_key, not a hardcoded dialect literal.
 
 from sqlalchemy import create_engine
 
-from api._engine_config import config_from_engine
+from dblift.api._engine_config import config_from_engine
 
 
 class _FlakyURL:

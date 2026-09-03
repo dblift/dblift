@@ -33,7 +33,7 @@ def _memory_settings(tmp_path: Path) -> dict:
 def test_migrate_command_applies(tmp_path):
     with override_settings(**_settings(tmp_path)):
         call_command("dblift_migrate")
-        from integrations.django.checks import pending_migrations_check
+        from dblift.integrations.django.checks import pending_migrations_check
 
         assert pending_migrations_check(None) == []
 
@@ -41,14 +41,14 @@ def test_migrate_command_applies(tmp_path):
 def test_migrate_command_applies_in_memory_sqlite(tmp_path):
     with override_settings(**_memory_settings(tmp_path)):
         call_command("dblift_migrate")
-        from integrations.django.checks import pending_migrations_check
+        from dblift.integrations.django.checks import pending_migrations_check
 
         assert pending_migrations_check(None) == []
 
 
 def test_check_reports_pending_before_migrate(tmp_path):
     with override_settings(**_settings(tmp_path)):
-        from integrations.django.checks import pending_migrations_check
+        from dblift.integrations.django.checks import pending_migrations_check
 
         messages = pending_migrations_check(None)
         assert messages and messages[0].id == "dblift.W001"
@@ -62,8 +62,8 @@ def test_check_reports_failure_instead_of_staying_silent(tmp_path, monkeypatch):
     health — the one outcome an operator must not be given falsely.
     """
     with override_settings(**_settings(tmp_path)):
-        import integrations.django._client as client_module
-        from integrations.django.checks import pending_migrations_check
+        import dblift.integrations.django._client as client_module
+        from dblift.integrations.django.checks import pending_migrations_check
 
         def _boom():
             raise RuntimeError("could not connect")
@@ -80,8 +80,8 @@ def test_check_reports_failure_instead_of_staying_silent(tmp_path, monkeypatch):
 def test_check_masks_credentials_in_the_failure_message(tmp_path, monkeypatch):
     """A driver error often echoes the DSN back, credentials included."""
     with override_settings(**_settings(tmp_path)):
-        import integrations.django._client as client_module
-        from integrations.django.checks import pending_migrations_check
+        import dblift.integrations.django._client as client_module
+        from dblift.integrations.django.checks import pending_migrations_check
 
         def _boom():
             raise RuntimeError("could not connect to postgresql://admin:secret123@h/db")
@@ -99,9 +99,13 @@ def test_info_command_runs(tmp_path):
 
 
 def test_dblift_commands_skip_system_checks():
-    from integrations.django.management.commands.dblift_info import Command as InfoCommand
-    from integrations.django.management.commands.dblift_migrate import Command as MigrateCommand
-    from integrations.django.management.commands.dblift_validate import Command as ValidateCommand
+    from dblift.integrations.django.management.commands.dblift_info import Command as InfoCommand
+    from dblift.integrations.django.management.commands.dblift_migrate import (
+        Command as MigrateCommand,
+    )
+    from dblift.integrations.django.management.commands.dblift_validate import (
+        Command as ValidateCommand,
+    )
 
     assert MigrateCommand.requires_system_checks == []
     assert ValidateCommand.requires_system_checks == []
@@ -110,7 +114,7 @@ def test_dblift_commands_skip_system_checks():
 
 def test_get_client_reuses_engine_for_same_settings(tmp_path):
     with override_settings(**_settings(tmp_path)):
-        from integrations.django._client import get_client
+        from dblift.integrations.django._client import get_client
 
         first = get_client()
         second = get_client()

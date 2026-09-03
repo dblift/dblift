@@ -7,9 +7,9 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-import cli.main as cli_main
-from cli._constants import EXIT_LICENSE_REQUIRED
-from cli._output import CommandOutput
+import dblift.cli.main as cli_main
+from dblift.cli._constants import EXIT_LICENSE_REQUIRED
+from dblift.cli._output import CommandOutput
 
 
 def _ctx(*, strict_on_args: bool = False, strict_on_config: bool = False):
@@ -47,7 +47,7 @@ def test_dispatch_honors_strict_mode_from_args():
         patch.object(cli_main, "_ensure_connection"),
         patch.object(cli_main, "execute_single_command", return_value=(True, MagicMock())),
         patch.object(cli_main, "_close_logs") as close_logs,
-        patch("core.logger._formatters.TextFormatter") as formatter_cls,
+        patch("dblift.core.logger._formatters.TextFormatter") as formatter_cls,
     ):
         formatter_cls.return_value.format_header.return_value = None
         code = cli_main._dispatch_command(ctx, output)
@@ -80,7 +80,7 @@ def test_dispatch_system_exit_flushes_logs_and_reraises():
             side_effect=SystemExit(EXIT_LICENSE_REQUIRED),
         ),
         patch.object(cli_main, "_close_logs") as close_logs,
-        patch("core.logger._formatters.TextFormatter") as formatter_cls,
+        patch("dblift.core.logger._formatters.TextFormatter") as formatter_cls,
     ):
         formatter_cls.return_value.format_header.return_value = None
         with pytest.raises(SystemExit) as excinfo:

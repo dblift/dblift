@@ -2,8 +2,8 @@
 
 from types import SimpleNamespace
 
-from db.plugins.oracle.provider import OracleProvider
-from db.provider_interfaces import DroppableObject
+from dblift.db.plugins.oracle.provider import OracleProvider
+from dblift.db.provider_interfaces import DroppableObject
 
 
 class DummyOracleProvider(OracleProvider):

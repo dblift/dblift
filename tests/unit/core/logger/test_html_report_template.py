@@ -1,5 +1,10 @@
-from core.logger.formatters.htmlformatter import HtmlFormatter
-from core.logger.results import CallbackExecution, MigrateResult, MigrationInfo, OperationResult
+from dblift.core.logger.formatters.htmlformatter import HtmlFormatter
+from dblift.core.logger.results import (
+    CallbackExecution,
+    MigrateResult,
+    MigrationInfo,
+    OperationResult,
+)
 
 
 class _Journal:
@@ -160,7 +165,7 @@ def test_export_js_expands_collapsed_content_on_a_clone():
 
 
 def test_unknown_dblift_version_renders_em_dash_not_bare_v(monkeypatch):
-    from core.logger.formatters import htmlformatter as htmlformatter_mod
+    from dblift.core.logger.formatters import htmlformatter as htmlformatter_mod
 
     monkeypatch.setattr(htmlformatter_mod, "resolve_dblift_package_version", lambda: None)
     html = HtmlFormatter().format_result(MigrateResult(), "public", "demo", "MIGRATE")

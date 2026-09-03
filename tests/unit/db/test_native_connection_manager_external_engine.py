@@ -5,7 +5,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from sqlalchemy import create_engine
 
-from db.native_connection_manager import NativeConnectionManager
+from dblift.db.native_connection_manager import NativeConnectionManager
 
 
 def test_external_engine_not_disposed_on_close():

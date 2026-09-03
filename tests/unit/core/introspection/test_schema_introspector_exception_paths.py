@@ -5,8 +5,8 @@ from unittest.mock import MagicMock
 
 
 def _make_introspector(dialect="postgresql"):
-    from core.introspection.schema_introspector import SchemaIntrospector
-    from db.provider_interfaces import ConnectionProvider
+    from dblift.core.introspection.schema_introspector import SchemaIntrospector
+    from dblift.db.provider_interfaces import ConnectionProvider
 
     provider = MagicMock(spec=ConnectionProvider)
     from types import SimpleNamespace
@@ -20,7 +20,7 @@ def _make_introspector(dialect="postgresql"):
 
 class TestApplyDb2PropertiesIntConversion(unittest.TestCase):
     def test_int_conversion_error_suppressed(self):
-        from db.plugins.db2.quirks import Db2Quirks
+        from dblift.db.plugins.db2.quirks import Db2Quirks
 
         table = MagicMock()
         row = {"data_capture": "invalid_int"}

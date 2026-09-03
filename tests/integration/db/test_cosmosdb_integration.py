@@ -37,9 +37,9 @@ from typing import Any, Dict
 import pytest
 from azure.cosmos import PartitionKey
 
-from config import DbliftConfig
-from core.exceptions import NoSqlWriteNotSupportedError
-from db.provider_registry import ProviderRegistry
+from dblift.config import DbliftConfig
+from dblift.core.exceptions import NoSqlWriteNotSupportedError
+from dblift.db.provider_registry import ProviderRegistry
 from tests.integration.helpers.cli_runner_direct import DBLiftCLIDirect as DBLiftCLI
 from tests.integration.helpers.migration_helper import create_config, create_migration
 

@@ -18,7 +18,7 @@ class TestUndoStatement(unittest.TestCase):
     """Tests for the UndoStatement dataclass (_models.py)."""
 
     def test_basic_construction(self):
-        from core.migration.scripting.undo_script_generator._models import UndoStatement
+        from dblift.core.migration.scripting.undo_script_generator._models import UndoStatement
 
         stmt = UndoStatement(
             sql="DROP TABLE users;",
@@ -32,7 +32,7 @@ class TestUndoStatement(unittest.TestCase):
         self.assertFalse(stmt.requires_manual_review)
 
     def test_optional_warning_and_review_flag(self):
-        from core.migration.scripting.undo_script_generator._models import UndoStatement
+        from dblift.core.migration.scripting.undo_script_generator._models import UndoStatement
 
         stmt = UndoStatement(
             sql="-- WARNING: cannot reverse",
@@ -54,7 +54,9 @@ class TestUndoStatementEmitterGenerateDrop(unittest.TestCase):
     """Tests for _generate_drop_statement in _UndoExtractorsMixin/_extractors.py."""
 
     def _make_emitter(self, dialect="postgresql"):
-        from core.migration.scripting.undo_script_generator._extractors import UndoStatementEmitter
+        from dblift.core.migration.scripting.undo_script_generator._extractors import (
+            UndoStatementEmitter,
+        )
 
         return UndoStatementEmitter(dialect=dialect)
 
@@ -98,7 +100,9 @@ class TestUndoStatementEmitterQuoteIdentifier(unittest.TestCase):
     """Tests for _quote_identifier in _UndoExtractorsMixin."""
 
     def _make_emitter(self, dialect="postgresql"):
-        from core.migration.scripting.undo_script_generator._extractors import UndoStatementEmitter
+        from dblift.core.migration.scripting.undo_script_generator._extractors import (
+            UndoStatementEmitter,
+        )
 
         return UndoStatementEmitter(dialect=dialect)
 
@@ -143,7 +147,9 @@ class TestUndoStatementEmitterExtractVersion(unittest.TestCase):
     """Tests for _extract_version_from_filename in _UndoExtractorsMixin."""
 
     def _make_emitter(self):
-        from core.migration.scripting.undo_script_generator._extractors import UndoStatementEmitter
+        from dblift.core.migration.scripting.undo_script_generator._extractors import (
+            UndoStatementEmitter,
+        )
 
         return UndoStatementEmitter(dialect="postgresql")
 
@@ -177,7 +183,9 @@ class TestUndoStatementEmitterExtractTableFromDrop(unittest.TestCase):
     """Tests for _extract_table_name_from_drop in _UndoExtractorsMixin."""
 
     def _make_emitter(self):
-        from core.migration.scripting.undo_script_generator._extractors import UndoStatementEmitter
+        from dblift.core.migration.scripting.undo_script_generator._extractors import (
+            UndoStatementEmitter,
+        )
 
         return UndoStatementEmitter(dialect="postgresql")
 
@@ -210,7 +218,9 @@ class TestUndoStatementEmitterExtractTableFromComment(unittest.TestCase):
     """Tests for _extract_table_name_from_comment in _UndoExtractorsMixin."""
 
     def _make_emitter(self):
-        from core.migration.scripting.undo_script_generator._extractors import UndoStatementEmitter
+        from dblift.core.migration.scripting.undo_script_generator._extractors import (
+            UndoStatementEmitter,
+        )
 
         return UndoStatementEmitter(dialect="postgresql")
 
@@ -233,7 +243,9 @@ class TestUndoStatementEmitterExtractTableFromInsert(unittest.TestCase):
     """Tests for _extract_table_name_from_insert in _UndoExtractorsMixin."""
 
     def _make_emitter(self, dialect="postgresql"):
-        from core.migration.scripting.undo_script_generator._extractors import UndoStatementEmitter
+        from dblift.core.migration.scripting.undo_script_generator._extractors import (
+            UndoStatementEmitter,
+        )
 
         return UndoStatementEmitter(dialect=dialect)
 
@@ -263,7 +275,9 @@ class TestUndoStatementEmitterExtractTableFromDelete(unittest.TestCase):
     """Tests for _extract_table_name_from_delete in _UndoExtractorsMixin."""
 
     def _make_emitter(self):
-        from core.migration.scripting.undo_script_generator._extractors import UndoStatementEmitter
+        from dblift.core.migration.scripting.undo_script_generator._extractors import (
+            UndoStatementEmitter,
+        )
 
         return UndoStatementEmitter(dialect="postgresql")
 
@@ -286,7 +300,9 @@ class TestUndoStatementEmitterExtractTableFromCreateIndex(unittest.TestCase):
     """Tests for _extract_table_name_from_create_index in _UndoExtractorsMixin."""
 
     def _make_emitter(self):
-        from core.migration.scripting.undo_script_generator._extractors import UndoStatementEmitter
+        from dblift.core.migration.scripting.undo_script_generator._extractors import (
+            UndoStatementEmitter,
+        )
 
         return UndoStatementEmitter(dialect="postgresql")
 
@@ -317,7 +333,9 @@ class TestUndoStatementEmitterExtractTableFromIndex(unittest.TestCase):
     """Tests for _extract_table_name_from_index in _UndoExtractorsMixin."""
 
     def _make_emitter(self):
-        from core.migration.scripting.undo_script_generator._extractors import UndoStatementEmitter
+        from dblift.core.migration.scripting.undo_script_generator._extractors import (
+            UndoStatementEmitter,
+        )
 
         return UndoStatementEmitter(dialect="postgresql")
 
@@ -346,7 +364,9 @@ class TestUndoStatementEmitterExtractCreateObject(unittest.TestCase):
     """Tests for _extract_create_object in _UndoExtractorsMixin."""
 
     def _make_emitter(self):
-        from core.migration.scripting.undo_script_generator._extractors import UndoStatementEmitter
+        from dblift.core.migration.scripting.undo_script_generator._extractors import (
+            UndoStatementEmitter,
+        )
 
         return UndoStatementEmitter(dialect="postgresql")
 
@@ -406,7 +426,9 @@ class TestUndoStatementEmitterExtractColumnFromAdd(unittest.TestCase):
     """Tests for _extract_column_name_from_add in _UndoExtractorsMixin."""
 
     def _make_emitter(self):
-        from core.migration.scripting.undo_script_generator._extractors import UndoStatementEmitter
+        from dblift.core.migration.scripting.undo_script_generator._extractors import (
+            UndoStatementEmitter,
+        )
 
         return UndoStatementEmitter(dialect="postgresql")
 
@@ -432,7 +454,9 @@ class TestUndoStatementEmitterExtractConstraintFromAdd(unittest.TestCase):
     """Tests for _extract_constraint_name_from_add in _UndoExtractorsMixin."""
 
     def _make_emitter(self):
-        from core.migration.scripting.undo_script_generator._extractors import UndoStatementEmitter
+        from dblift.core.migration.scripting.undo_script_generator._extractors import (
+            UndoStatementEmitter,
+        )
 
         return UndoStatementEmitter(dialect="postgresql")
 
@@ -460,7 +484,9 @@ class TestUndoStatementEmitterExtractInsertWhereClause(unittest.TestCase):
     """Tests for _extract_insert_where_clause in _UndoExtractorsMixin."""
 
     def _make_emitter(self):
-        from core.migration.scripting.undo_script_generator._extractors import UndoStatementEmitter
+        from dblift.core.migration.scripting.undo_script_generator._extractors import (
+            UndoStatementEmitter,
+        )
 
         return UndoStatementEmitter(dialect="postgresql")
 
@@ -480,7 +506,9 @@ class TestUndoStatementEmitterExtractInsertWhereClauseFromAst(unittest.TestCase)
     """Tests for _extract_insert_where_clause_from_ast in _UndoExtractorsMixin."""
 
     def _make_emitter(self):
-        from core.migration.scripting.undo_script_generator._extractors import UndoStatementEmitter
+        from dblift.core.migration.scripting.undo_script_generator._extractors import (
+            UndoStatementEmitter,
+        )
 
         return UndoStatementEmitter(dialect="postgresql")
 
@@ -518,7 +546,9 @@ class TestUndoStatementEmitterValueToString(unittest.TestCase):
     """Tests for _value_to_string in _UndoExtractorsMixin."""
 
     def _make_emitter(self):
-        from core.migration.scripting.undo_script_generator._extractors import UndoStatementEmitter
+        from dblift.core.migration.scripting.undo_script_generator._extractors import (
+            UndoStatementEmitter,
+        )
 
         return UndoStatementEmitter(dialect="postgresql")
 
@@ -574,12 +604,12 @@ class TestUndoReversersMixin(unittest.TestCase):
     """Tests for _UndoReversersMixin (_reversers.py)."""
 
     def _make_generator(self, dialect="postgresql"):
-        from core.migration.scripting.undo_script_generator import UndoScriptGenerator
+        from dblift.core.migration.scripting.undo_script_generator import UndoScriptGenerator
 
         return UndoScriptGenerator(dialect=dialect)
 
     def _make_stmt(self, sql, stmt_type=None):
-        from core.sql_model.base import SqlStatementType
+        from dblift.core.sql_model.base import SqlStatementType
 
         stmt = MagicMock()
         stmt.sql_text = sql
@@ -599,7 +629,7 @@ class TestUndoReversersMixin(unittest.TestCase):
         self.assertIn("DROP TABLE", result.sql)
 
     def test_routing_alter_unknown_type(self):
-        from core.sql_model.base import SqlObject, SqlObjectType
+        from dblift.core.sql_model.base import SqlObject, SqlObjectType
 
         gen = self._make_generator()
         stmt = self._make_stmt("ALTER TABLE x ADD COLUMN y INT;")
@@ -617,7 +647,7 @@ class TestUndoReversersMixin(unittest.TestCase):
         with an embedded quote must reverse to a properly escaped
         DROP TABLE, not the malformed form quote_identifier() previously
         produced."""
-        from core.sql_model.base import SqlObjectType
+        from dblift.core.sql_model.base import SqlObjectType
 
         gen = self._make_generator("postgresql")
         stmt = self._make_stmt('CREATE TABLE "say ""hi""" (id INT);')
@@ -661,7 +691,7 @@ class TestUndoReversersMixin(unittest.TestCase):
 
     # _reverse_statement_from_parsed routing with specific SqlStatementType
     def test_routing_create_specific_type(self):
-        from core.sql_model.base import SqlStatementType
+        from dblift.core.sql_model.base import SqlStatementType
 
         gen = self._make_generator()
         stmt = self._make_stmt("CREATE TABLE y (id INT);", SqlStatementType.CREATE)
@@ -669,7 +699,7 @@ class TestUndoReversersMixin(unittest.TestCase):
         self.assertIn("DROP TABLE", result.sql)
 
     def test_routing_alter_specific_type(self):
-        from core.sql_model.base import SqlStatementType
+        from dblift.core.sql_model.base import SqlStatementType
 
         gen = self._make_generator()
         stmt = self._make_stmt("ALTER TABLE y ADD COLUMN z INT;", SqlStatementType.ALTER)
@@ -682,7 +712,7 @@ class TestUndoReversersMixin(unittest.TestCase):
         self.assertIn("DROP COLUMN", result.sql)
 
     def test_routing_drop_specific_type(self):
-        from core.sql_model.base import SqlStatementType
+        from dblift.core.sql_model.base import SqlStatementType
 
         gen = self._make_generator()
         stmt = self._make_stmt("DROP TABLE y;", SqlStatementType.DROP)
@@ -690,7 +720,7 @@ class TestUndoReversersMixin(unittest.TestCase):
         self.assertIn("WARNING", result.sql)
 
     def test_routing_insert_specific_type(self):
-        from core.sql_model.base import SqlStatementType
+        from dblift.core.sql_model.base import SqlStatementType
 
         gen = self._make_generator()
         stmt = self._make_stmt("INSERT INTO y (id) VALUES (1);", SqlStatementType.INSERT)
@@ -698,7 +728,7 @@ class TestUndoReversersMixin(unittest.TestCase):
         self.assertEqual(result.operation_type, "INSERT")
 
     def test_routing_update_specific_type(self):
-        from core.sql_model.base import SqlStatementType
+        from dblift.core.sql_model.base import SqlStatementType
 
         gen = self._make_generator()
         stmt = self._make_stmt("UPDATE y SET z=1;", SqlStatementType.UPDATE)
@@ -706,7 +736,7 @@ class TestUndoReversersMixin(unittest.TestCase):
         self.assertIn("WARNING", result.sql)
 
     def test_routing_delete_specific_type(self):
-        from core.sql_model.base import SqlStatementType
+        from dblift.core.sql_model.base import SqlStatementType
 
         gen = self._make_generator()
         stmt = self._make_stmt("DELETE FROM y;", SqlStatementType.DELETE)
@@ -714,7 +744,7 @@ class TestUndoReversersMixin(unittest.TestCase):
         self.assertIn("WARNING", result.sql)
 
     def test_routing_comment_specific_type(self):
-        from core.sql_model.base import SqlStatementType
+        from dblift.core.sql_model.base import SqlStatementType
 
         gen = self._make_generator()
         stmt = self._make_stmt("COMMENT ON TABLE y IS 'x';", SqlStatementType.COMMENT)
@@ -722,7 +752,7 @@ class TestUndoReversersMixin(unittest.TestCase):
         self.assertIn("IS NULL", result.sql)
 
     def test_routing_dml_generic_type_create_fallback(self):
-        from core.sql_model.base import SqlStatementType
+        from dblift.core.sql_model.base import SqlStatementType
 
         gen = self._make_generator()
         stmt = self._make_stmt("CREATE TABLE z (id INT);", SqlStatementType.DDL)
@@ -730,7 +760,7 @@ class TestUndoReversersMixin(unittest.TestCase):
         self.assertIn("DROP TABLE", result.sql)
 
     def test_routing_unknown_unsupported_statement(self):
-        from core.sql_model.base import SqlStatementType
+        from dblift.core.sql_model.base import SqlStatementType
 
         gen = self._make_generator()
         stmt = self._make_stmt("SOME UNKNOWN STATEMENT;", SqlStatementType.UNKNOWN)
@@ -792,12 +822,12 @@ class TestUndoScriptGeneratorIntegration(unittest.TestCase):
     """Integration tests for UndoScriptGenerator._generator.py methods."""
 
     def _make_generator(self, dialect="postgresql"):
-        from core.migration.scripting.undo_script_generator import UndoScriptGenerator
+        from dblift.core.migration.scripting.undo_script_generator import UndoScriptGenerator
 
         return UndoScriptGenerator(dialect=dialect)
 
     def _make_migration(self, script_name, content):
-        from core.migration.migration import Migration
+        from dblift.core.migration.migration import Migration
 
         parts = script_name.replace(".sql", "").split("__", 1)
         version = parts[0].lstrip("Vv").replace(".", "_")
@@ -868,7 +898,7 @@ class TestUndoScriptGeneratorIntegration(unittest.TestCase):
 
     # generate_undo_script — logger info called
     def test_generate_undo_script_logs_info(self):
-        from core.migration.scripting.undo_script_generator import UndoScriptGenerator
+        from dblift.core.migration.scripting.undo_script_generator import UndoScriptGenerator
 
         logger = MagicMock()
         gen = UndoScriptGenerator(dialect="postgresql", logger=logger)
@@ -880,7 +910,7 @@ class TestUndoScriptGeneratorIntegration(unittest.TestCase):
 
     # generate_undo_script_for_migration
     def test_generate_undo_script_for_migration_happy(self):
-        from core.migration.migration import Migration
+        from dblift.core.migration.migration import Migration
 
         gen = self._make_generator()
         with TemporaryDirectory() as tmpdir:
@@ -891,7 +921,7 @@ class TestUndoScriptGeneratorIntegration(unittest.TestCase):
             self.assertTrue(undo_path.exists())
 
     def test_generate_undo_script_for_migration_no_path_raises(self):
-        from core.migration.migration import Migration
+        from dblift.core.migration.migration import Migration
 
         gen = self._make_generator()
         migration = Migration(
@@ -904,7 +934,7 @@ class TestUndoScriptGeneratorIntegration(unittest.TestCase):
             gen.generate_undo_script_for_migration(migration)
 
     def test_generate_undo_script_for_migration_exists_no_overwrite_raises(self):
-        from core.migration.migration import Migration
+        from dblift.core.migration.migration import Migration
 
         gen = self._make_generator()
         with TemporaryDirectory() as tmpdir:
@@ -917,7 +947,7 @@ class TestUndoScriptGeneratorIntegration(unittest.TestCase):
 
     # get_undo_script_path_for_migration
     def test_get_undo_script_path_for_migration(self):
-        from core.migration.migration import Migration
+        from dblift.core.migration.migration import Migration
 
         gen = self._make_generator()
         with TemporaryDirectory() as tmpdir:
@@ -928,7 +958,7 @@ class TestUndoScriptGeneratorIntegration(unittest.TestCase):
             self.assertTrue(undo_path.name.startswith("U1_2__"))
 
     def test_get_undo_script_path_no_path_raises(self):
-        from core.migration.migration import Migration
+        from dblift.core.migration.migration import Migration
 
         gen = self._make_generator()
         migration = Migration(
@@ -971,7 +1001,7 @@ class TestUndoScriptGeneratorIntegration(unittest.TestCase):
 
     def test_generate_undo_statements_fallback_no_parse_result(self):
         """Test fallback path when parser returns no statements."""
-        from core.migration.migration import Migration
+        from dblift.core.migration.migration import Migration
 
         gen = self._make_generator()
         # Create migration with content that will force parse failure path
@@ -1012,7 +1042,7 @@ class TestUndoScriptGeneratorIntegration(unittest.TestCase):
 
     # _write_undo_script
     def test_write_undo_script_no_warnings(self):
-        from core.migration.scripting.undo_script_generator._models import UndoStatement
+        from dblift.core.migration.scripting.undo_script_generator._models import UndoStatement
 
         gen = self._make_generator()
         migration = self._make_migration("V1__test.sql", "CREATE TABLE t (id INT);")
@@ -1032,7 +1062,7 @@ class TestUndoScriptGeneratorIntegration(unittest.TestCase):
         self.assertNotIn("WARNING: 1 statement(s)", content)
 
     def test_write_undo_script_with_warnings(self):
-        from core.migration.scripting.undo_script_generator._models import UndoStatement
+        from dblift.core.migration.scripting.undo_script_generator._models import UndoStatement
 
         gen = self._make_generator()
         migration = self._make_migration("V1__test.sql", "DROP TABLE t;")
@@ -1062,27 +1092,35 @@ class TestUndoStatementEmitterInit(unittest.TestCase):
     """Tests for UndoStatementEmitter init and API."""
 
     def test_default_dialect(self):
-        from core.migration.scripting.undo_script_generator._extractors import UndoStatementEmitter
+        from dblift.core.migration.scripting.undo_script_generator._extractors import (
+            UndoStatementEmitter,
+        )
 
         emitter = UndoStatementEmitter()
         # Wave C: default changed from "postgresql" to "" (BaseQuirks fallback).
         self.assertEqual(emitter.dialect, "")
 
     def test_custom_dialect(self):
-        from core.migration.scripting.undo_script_generator._extractors import UndoStatementEmitter
+        from dblift.core.migration.scripting.undo_script_generator._extractors import (
+            UndoStatementEmitter,
+        )
 
         emitter = UndoStatementEmitter(dialect="mysql")
         self.assertEqual(emitter.dialect, "mysql")
 
     def test_logger_stored(self):
-        from core.migration.scripting.undo_script_generator._extractors import UndoStatementEmitter
+        from dblift.core.migration.scripting.undo_script_generator._extractors import (
+            UndoStatementEmitter,
+        )
 
         logger = MagicMock()
         emitter = UndoStatementEmitter(dialect="oracle", logger=logger)
         self.assertEqual(emitter.logger, logger)
 
     def test_generate_drop_and_quote(self):
-        from core.migration.scripting.undo_script_generator._extractors import UndoStatementEmitter
+        from dblift.core.migration.scripting.undo_script_generator._extractors import (
+            UndoStatementEmitter,
+        )
 
         emitter = UndoStatementEmitter(dialect="postgresql")
         sql = emitter._generate_drop_statement("VIEW", "my_view", "public")
@@ -1100,12 +1138,12 @@ class TestUndoScriptGeneratorDialects(unittest.TestCase):
     """Tests for dialect-specific behavior in UndoScriptGenerator."""
 
     def _make_generator(self, dialect, default_schema=None):
-        from core.migration.scripting.undo_script_generator import UndoScriptGenerator
+        from dblift.core.migration.scripting.undo_script_generator import UndoScriptGenerator
 
         return UndoScriptGenerator(dialect=dialect, default_schema=default_schema)
 
     def _make_migration(self, content):
-        from core.migration.migration import Migration
+        from dblift.core.migration.migration import Migration
 
         return Migration(
             script_name="V1__test.sql",

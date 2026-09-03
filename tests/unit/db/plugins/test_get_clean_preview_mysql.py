@@ -10,8 +10,8 @@ procedures, events) without executing any DROP.
 import unittest
 from unittest.mock import MagicMock
 
-from db.plugins.mysql.mysql.schema_operations import MySqlSchemaOperations
-from db.plugins.mysql.provider import MySqlProvider
+from dblift.db.plugins.mysql.mysql.schema_operations import MySqlSchemaOperations
+from dblift.db.plugins.mysql.provider import MySqlProvider
 
 
 def _qx_with_rows(rows_by_keyword):

@@ -1,10 +1,10 @@
-"""Unit tests for :class:`db.plugins.mysql.provider.MySqlProvider`."""
+"""Unit tests for :class:`dblift.db.plugins.mysql.provider.MySqlProvider`."""
 
 from unittest.mock import MagicMock
 
-import db.plugins.mysql.provider as mysql_provider_module
-import db.sqlalchemy_provider as sqlalchemy_provider_module
-from db.plugins.mysql.provider import MySqlProvider, _quote_identifier
+import dblift.db.plugins.mysql.provider as mysql_provider_module
+import dblift.db.sqlalchemy_provider as sqlalchemy_provider_module
+from dblift.db.plugins.mysql.provider import MySqlProvider, _quote_identifier
 
 
 class _Provider(MySqlProvider):

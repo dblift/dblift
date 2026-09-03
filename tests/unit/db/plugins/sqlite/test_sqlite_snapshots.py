@@ -14,9 +14,9 @@ capability that misstates the engine.
 
 import pytest
 
-from config import DbliftConfig
-from core.logger import NullLog
-from db.plugins.sqlite.provider import SQLiteProvider
+from dblift.config import DbliftConfig
+from dblift.core.logger import NullLog
+from dblift.db.plugins.sqlite.provider import SQLiteProvider
 
 # Mirrors db/constants.py (SNAPSHOT_ID_VARCHAR_SIZE=64 / CHECKSUM_VARCHAR_SIZE=128)
 # as rendered by BaseQuirks.build_snapshot_table_ddl, which SqliteQuirks

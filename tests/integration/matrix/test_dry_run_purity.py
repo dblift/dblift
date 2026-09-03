@@ -34,7 +34,7 @@ import pytest
 import yaml
 
 DBLIFT_ROOT = Path(__file__).resolve().parents[3]
-CLI = [sys.executable, "-m", "cli.main"]
+CLI = [sys.executable, "-m", "dblift.cli.main"]
 
 
 # --- Fingerprinting helpers -------------------------------------------------

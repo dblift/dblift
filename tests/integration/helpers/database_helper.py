@@ -11,9 +11,9 @@ Provides functions to:
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from config import DbliftConfig
-from core.logger import DbliftLogger, LogFormat, LogLevel
-from db.provider_registry import ProviderRegistry
+from dblift.config import DbliftConfig
+from dblift.core.logger import DbliftLogger, LogFormat, LogLevel
+from dblift.db.provider_registry import ProviderRegistry
 
 
 class DatabaseHelper:
@@ -142,7 +142,7 @@ class DatabaseHelper:
         # This is necessary because some databases (like MySQL) can't execute
         # multiple statements in a single executeUpdate() call
         # Use proper parser to handle PL/SQL blocks with internal semicolons
-        from core.migration.sql.sql_analyzer import SqlAnalyzer
+        from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
 
         db_type = self.db_config.get("type", "postgresql")
         analyzer = SqlAnalyzer(dialect=db_type)

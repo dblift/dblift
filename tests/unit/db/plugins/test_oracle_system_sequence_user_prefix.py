@@ -19,7 +19,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from db.plugins.oracle.oracle.schema_operations import OracleSchemaOperations
+from dblift.db.plugins.oracle.oracle.schema_operations import OracleSchemaOperations
 
 
 @pytest.mark.unit

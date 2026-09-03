@@ -2,7 +2,7 @@
 
 import pytest
 
-from core.utils.url_masking import mask_database_url
+from dblift.core.utils.url_masking import mask_database_url
 
 
 @pytest.mark.unit

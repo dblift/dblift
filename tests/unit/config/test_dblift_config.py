@@ -6,7 +6,7 @@ import yaml
 
 pytestmark = [pytest.mark.unit]
 
-from config.dblift_config import (
+from dblift.config.dblift_config import (
     KNOWN_TOP_LEVEL_CONFIG_KEYS,
     DbliftConfig,
     DirectoryConfig,

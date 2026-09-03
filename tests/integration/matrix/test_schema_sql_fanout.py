@@ -26,12 +26,12 @@ pytestmark = [pytest.mark.integration, pytest.mark.postgresql]
 @pytest.mark.parametrize("db_container", ["postgresql"], indirect=True)
 def test_sequence_introspection_no_cross_schema_fanout(db_container, tmp_path):
     """Create a sequence with the same name in two schemas → introspection returns 1, not 2."""
-    from db.provider_registry import ProviderRegistry
+    from dblift.db.provider_registry import ProviderRegistry
     from tests.integration.helpers.migration_helper import create_config
 
     config_file = create_config(tmp_path, db_container)
 
-    from config.dblift_config import load_config
+    from dblift.config.dblift_config import load_config
 
     config = load_config(str(config_file))
 
@@ -46,7 +46,7 @@ def test_sequence_introspection_no_cross_schema_fanout(db_container, tmp_path):
 
     try:
         # Introspect schema scm_a — we must see 1 sequence, not 2.
-        from core.introspection.schema_introspector import SchemaIntrospector
+        from dblift.core.introspection.schema_introspector import SchemaIntrospector
 
         introspector = SchemaIntrospector(provider)
         sequences = introspector.get_sequences("scm_a")

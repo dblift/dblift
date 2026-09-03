@@ -5,14 +5,14 @@ from unittest.mock import MagicMock, patch
 
 
 def _make_pg_config(url="postgresql+psycopg://user:pass@localhost/db"):
-    from config.database_config import BaseDatabaseConfig
+    from dblift.config.database_config import BaseDatabaseConfig
 
     return BaseDatabaseConfig.from_url(url)
 
 
 class TestMergeDatabaseOverridesTypeChange(unittest.TestCase):
     def test_type_change_creates_new_config(self):
-        from config.config_builder import ConfigBuilder
+        from dblift.config.config_builder import ConfigBuilder
 
         base = _make_pg_config("postgresql+psycopg://user:pass@localhost/db")
         overrides = {"type": "mysql", "username": "user", "password": "pass"}
@@ -23,7 +23,7 @@ class TestMergeDatabaseOverridesTypeChange(unittest.TestCase):
             pass  # May fail if mysql config requires more params
 
     def test_url_override_parses_new_db(self):
-        from config.config_builder import ConfigBuilder
+        from dblift.config.config_builder import ConfigBuilder
 
         base = _make_pg_config()
         overrides = {"url": "mysql+pymysql://user:pass@localhost:3306/mydb"}
@@ -34,7 +34,7 @@ class TestMergeDatabaseOverridesTypeChange(unittest.TestCase):
             pass
 
     def test_no_change_applies_overrides(self):
-        from config.config_builder import ConfigBuilder
+        from dblift.config.config_builder import ConfigBuilder
 
         base = _make_pg_config()
         overrides = {"schema": "myschema"}
@@ -47,7 +47,7 @@ class TestMergeDatabaseOverridesTypeChange(unittest.TestCase):
 
 class TestApplyOverridesToCopy(unittest.TestCase):
     def test_applies_schema_override(self):
-        from config.config_builder import ConfigBuilder
+        from dblift.config.config_builder import ConfigBuilder
 
         base = _make_pg_config()
         overrides = {"schema": "public"}

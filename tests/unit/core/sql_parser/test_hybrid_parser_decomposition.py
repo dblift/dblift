@@ -6,15 +6,15 @@ from unittest.mock import MagicMock, patch
 import pytest
 from sqlglot import exp, parse_one
 
-from core.sql_model.base import (
+from dblift.core.sql_model.base import (
     ConstraintType,
     ParseResult,
     SqlConstraint,
     SqlStatement,
     SqlStatementType,
 )
-from core.sql_model.table import Table
-from core.sql_parser.hybrid_parser import HybridParser
+from dblift.core.sql_model.table import Table
+from dblift.core.sql_parser.hybrid_parser import HybridParser
 
 
 def _make_parser(dialect: str = "mysql") -> HybridParser:

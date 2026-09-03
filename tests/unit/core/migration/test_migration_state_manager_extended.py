@@ -24,11 +24,11 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from core.migration.migration import Migration, MigrationType
-from core.migration.rules.migration_rules import MigrationRules
-from core.migration.state.migration_state import ChecksumChange
-from core.migration.state.migration_state_manager import MigrationStateManager
-from core.migration.version_utils import compare_versions
+from dblift.core.migration.migration import Migration, MigrationType
+from dblift.core.migration.rules.migration_rules import MigrationRules
+from dblift.core.migration.state.migration_state import ChecksumChange
+from dblift.core.migration.state.migration_state_manager import MigrationStateManager
+from dblift.core.migration.version_utils import compare_versions
 
 pytestmark = [pytest.mark.unit]
 

@@ -21,11 +21,11 @@ from unittest.mock import MagicMock, call, patch
 
 from sqlalchemy.exc import OperationalError
 
-from core.logger.results import MigrateResult, MigrationInfo
-from core.migration.commands.migrate_command import MigrateCommand
-from core.migration.migration import MigrationType
-from core.migration.state.migration_display_state import MigrationDisplayState
-from core.migration.state.migration_state import MigrationEntry, MigrationState
+from dblift.core.logger.results import MigrateResult, MigrationInfo
+from dblift.core.migration.commands.migrate_command import MigrateCommand
+from dblift.core.migration.migration import MigrationType
+from dblift.core.migration.state.migration_display_state import MigrationDisplayState
+from dblift.core.migration.state.migration_state import MigrationEntry, MigrationState
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -126,7 +126,7 @@ def _make_migration(
 
 class TestMigrateCommandConstruction(unittest.TestCase):
     def test_log_defaults_to_nulllog_when_none(self):
-        from core.logger import NullLog
+        from dblift.core.logger import NullLog
 
         cmd = MigrateCommand(
             config=MagicMock(),
@@ -447,7 +447,7 @@ class TestExecuteSingleMigration(unittest.TestCase):
         m = _make_migration("V1__a.sql")
         result = MigrateResult()
 
-        with patch("core.migration.commands.migrate_command._emit_script_event"):
+        with patch("dblift.core.migration.commands.migrate_command._emit_script_event"):
             success = cmd._execute_single_migration(
                 m, Path("/migrations"), True, None, None, result
             )
@@ -469,7 +469,7 @@ class TestExecuteSingleMigration(unittest.TestCase):
         m = _make_migration("V1__a.sql")
         result = MigrateResult()
 
-        with patch("core.migration.commands.migrate_command._emit_script_event"):
+        with patch("dblift.core.migration.commands.migrate_command._emit_script_event"):
             success = cmd._execute_single_migration(
                 m, Path("/migrations"), True, None, None, result
             )
@@ -492,7 +492,7 @@ class TestExecuteSingleMigration(unittest.TestCase):
         result = MigrateResult()
         dir_map = {Path("/extra"): False}
 
-        with patch("core.migration.commands.migrate_command._emit_script_event"):
+        with patch("dblift.core.migration.commands.migrate_command._emit_script_event"):
             success = cmd._execute_single_migration(
                 m, Path("/migrations"), True, None, dir_map, result
             )
@@ -513,7 +513,7 @@ class TestExecuteSingleMigration(unittest.TestCase):
         m = _make_migration("V1__a.sql")
         result = MigrateResult()
 
-        with patch("core.migration.commands.migrate_command._emit_script_event"):
+        with patch("dblift.core.migration.commands.migrate_command._emit_script_event"):
             success = cmd._execute_single_migration(
                 m, Path("/migrations"), True, None, None, result
             )
@@ -528,7 +528,7 @@ class TestExecuteSingleMigration(unittest.TestCase):
         m = _make_migration("V1__a.sql")
         result = MigrateResult()
 
-        with patch("core.migration.commands.migrate_command._emit_script_event"):
+        with patch("dblift.core.migration.commands.migrate_command._emit_script_event"):
             cmd._execute_single_migration(m, Path("/migrations"), True, None, None, result)
 
         journal.start_migration.assert_called_once_with("V1__a.sql", details=unittest.mock.ANY)

@@ -2,9 +2,9 @@
 
 import pytest
 
-from core.sql_parser.base_statement_parser import BaseStatementParser
-from core.sql_parser.parser_context import ParserContext
-from core.sql_parser.tokens import Token, TokenType
+from dblift.core.sql_parser.base_statement_parser import BaseStatementParser
+from dblift.core.sql_parser.parser_context import ParserContext
+from dblift.core.sql_parser.tokens import Token, TokenType
 
 
 def make_token(type, text, pos=0, line=1, col=1, parens_depth=0):

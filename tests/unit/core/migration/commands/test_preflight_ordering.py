@@ -56,7 +56,7 @@ def _patch_preflight(monkeypatch, command, recorder):
 
 def _make_minimal_command():
     """Build a BaseCommand without touching real config/provider/logger."""
-    from core.migration.commands.base_command import BaseCommand
+    from dblift.core.migration.commands.base_command import BaseCommand
 
     cmd = BaseCommand.__new__(BaseCommand)
     cmd.log = MagicMock()

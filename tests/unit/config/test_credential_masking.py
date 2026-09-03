@@ -6,8 +6,8 @@ tracebacks, log lines and debugger output in clear text.
 
 import pytest
 
-from config._credential_masking import mask_credentials, mask_url_credentials
-from config._subclasses.dummy_config import DummyDatabaseConfig
+from dblift.config._credential_masking import mask_credentials, mask_url_credentials
+from dblift.config._subclasses.dummy_config import DummyDatabaseConfig
 
 
 @pytest.mark.unit
@@ -72,7 +72,7 @@ class TestToSafeDict:
         inside ``extra_params``, so masking only the known ``password`` field
         left it in clear text in every ``repr``.
         """
-        from db.plugins.cosmosdb.config import CosmosDbConfig
+        from dblift.db.plugins.cosmosdb.config import CosmosDbConfig
 
         cfg = CosmosDbConfig(
             type="cosmosdb",
@@ -105,8 +105,8 @@ class TestToSafeDict:
         prints the password in clear. Guard the whole registry so a new plugin
         cannot reintroduce that.
         """
-        from config.database_config import BaseDatabaseConfig
-        from db.provider_registry import ProviderRegistry
+        from dblift.config.database_config import BaseDatabaseConfig
+        from dblift.db.provider_registry import ProviderRegistry
 
         ProviderRegistry.discover_plugins()  # populate the config registry
 

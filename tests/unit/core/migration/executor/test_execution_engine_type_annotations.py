@@ -6,14 +6,14 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from config.dblift_config import DbliftConfig
-from core.logger import Log
-from core.migration.executor.execution_engine import ExecutionEngine
-from core.migration.history.migration_history_manager import MigrationHistoryManager
-from core.migration.placeholders.placeholder_service import PlaceholderService
-from core.migration.sql.sql_analyzer import SqlAnalyzer
-from core.migration.sql.sql_execution_service import SqlExecutionService
-from db.base_provider import BaseProvider
+from dblift.config.dblift_config import DbliftConfig
+from dblift.core.logger import Log
+from dblift.core.migration.executor.execution_engine import ExecutionEngine
+from dblift.core.migration.history.migration_history_manager import MigrationHistoryManager
+from dblift.core.migration.placeholders.placeholder_service import PlaceholderService
+from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
+from dblift.core.migration.sql.sql_execution_service import SqlExecutionService
+from dblift.db.base_provider import BaseProvider
 
 
 @pytest.mark.unit
@@ -59,18 +59,21 @@ class TestExecutionEngineTypeAnnotations:
 
     def test_imports_present_in_source(self):
         """AC#5: structural test — the 4 imports are present in the module source."""
-        import core.migration.executor.execution_engine as mod
+        import dblift.core.migration.executor.execution_engine as mod
 
         src = inspect.getsource(mod)
-        assert "from config.dblift_config import DbliftConfig" in src
+        assert "from dblift.config.dblift_config import DbliftConfig" in src
         assert (
-            "from core.migration.history.migration_history_manager import MigrationHistoryManager"
+            "from dblift.core.migration.history.migration_history_manager import MigrationHistoryManager"
             in src
         )
         assert (
-            "from core.migration.placeholders.placeholder_service import PlaceholderService" in src
+            "from dblift.core.migration.placeholders.placeholder_service import PlaceholderService"
+            in src
         )
-        assert "from core.migration.sql.sql_execution_service import SqlExecutionService" in src
+        assert (
+            "from dblift.core.migration.sql.sql_execution_service import SqlExecutionService" in src
+        )
 
     def test_init_docstring_preserved(self):
         """AC#6: docstring existante conservée sans modification."""

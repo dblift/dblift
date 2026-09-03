@@ -4,8 +4,8 @@ import warnings
 
 import pytest
 
-from core.sql_parser.base_tokenizer import BaseTokenizer, TokenizerWarning
-from core.sql_parser.tokens import Token, TokenType
+from dblift.core.sql_parser.base_tokenizer import BaseTokenizer, TokenizerWarning
+from dblift.core.sql_parser.tokens import Token, TokenType
 
 # ---------------------------------------------------------------------------
 # Constructor

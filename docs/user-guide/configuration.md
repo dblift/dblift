@@ -123,7 +123,7 @@ So a `DBLIFT_DB_URL` export still overrides the active environment's
 ### Programmatic use
 
 ```python
-from api import DBLiftClient
+from dblift.api import DBLiftClient
 
 with DBLiftClient.from_config_file("dblift.yaml", environment="prod") as client:
     client.migrate()
@@ -364,7 +364,7 @@ organization uses.
 Resolved secrets are cached in process memory for a configurable TTL (default
 60 seconds, set via `secrets.cache_ttl_seconds`). The cache key includes the
 URI plus all provider-specific auth fields so different configs never share a
-cached value. Call `config.secrets.clear_cache()` or restart the process to
+cached value. Call `dblift.config.secrets.clear_cache()` or restart the process to
 force fresh resolution.
 
 ### Custom Provider Registration
@@ -374,8 +374,8 @@ If your organisation uses a secrets backend not bundled with dblift
 a custom provider at startup without forking dblift:
 
 ```python
-from config.secrets import AbstractSecretsProvider, register_provider
-from config.secrets._secrets_config import SecretsConfig
+from dblift.config.secrets import AbstractSecretsProvider, register_provider
+from dblift.config.secrets._secrets_config import SecretsConfig
 from typing import Optional
 
 class CyberArkProvider(AbstractSecretsProvider):

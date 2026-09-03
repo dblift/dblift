@@ -15,10 +15,10 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from core.logger.results import MigrateResult
-from core.migration.executor.execution_engine import ExecutionEngine
-from core.migration.executors.base_executor import MigrationExecutionResult
-from core.migration.formats import MigrationFormat
+from dblift.core.logger.results import MigrateResult
+from dblift.core.migration.executor.execution_engine import ExecutionEngine
+from dblift.core.migration.executors.base_executor import MigrationExecutionResult
+from dblift.core.migration.formats import MigrationFormat
 
 
 def _make_engine():
@@ -26,7 +26,7 @@ def _make_engine():
     engine.log = MagicMock()
     engine.provider = MagicMock()
     # Mark as TransactionalProvider so the code path executes begin/commit.
-    from db.provider_interfaces import TransactionalProvider
+    from dblift.db.provider_interfaces import TransactionalProvider
 
     engine.provider.__class__ = type("FakeProvider", (TransactionalProvider,), {})
     engine.provider.begin_transaction = MagicMock(return_value=True)

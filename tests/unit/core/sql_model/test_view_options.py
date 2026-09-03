@@ -1,4 +1,4 @@
-"""Unit tests for ``core.sql_model.view_options.ViewOptions`` and the
+"""Unit tests for ``dblift.core.sql_model.view_options.ViewOptions`` and the
 ``View.from_options`` / ``View.to_options`` classmethods (SIMP-48).
 
 Mirrors ``test_table_options.py``: instances built via ``from_options``
@@ -13,8 +13,8 @@ import dataclasses
 
 import pytest
 
-from core.sql_model.view import View
-from core.sql_model.view_options import (
+from dblift.core.sql_model.view import View
+from dblift.core.sql_model.view_options import (
     MaterializedViewOptions,
     MySqlViewOptions,
     OracleViewOptions,

@@ -5,7 +5,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from core.introspection.extractors.constraint_extractor import ConstraintExtractor
+from dblift.core.introspection.extractors.constraint_extractor import ConstraintExtractor
 
 
 def _make_extractor(dialect="oracle", vendor_queries=None):
@@ -57,7 +57,7 @@ class TestConstraintExtractorNoHasattr:
         ), "hasattr vendor_queries still present — should have been removed by story 20-18"
 
         # After H.2 the dialect gate lives on Db2Quirks, not the extractor.
-        from db.plugins.db2.quirks import Db2Quirks
+        from dblift.db.plugins.db2.quirks import Db2Quirks
 
         quirks_source = inspect.getsource(Db2Quirks.fetch_unique_constraints)
         assert (

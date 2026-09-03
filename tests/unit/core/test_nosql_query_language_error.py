@@ -7,7 +7,7 @@ query language at all, so reads are rejected too.
 
 import pytest
 
-from core.exceptions import (
+from dblift.core.exceptions import (
     ExecutionError,
     NoSqlQueryLanguageUnsupportedError,
     NoSqlWriteNotSupportedError,

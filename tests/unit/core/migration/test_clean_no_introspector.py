@@ -5,9 +5,9 @@ from unittest.mock import MagicMock
 import sqlalchemy as sa
 from sqlalchemy import create_engine
 
-from api import DBLiftClient
-from core.migration.commands.clean_command import CleanCommand
-from db.provider_interfaces import DroppableObject
+from dblift.api import DBLiftClient
+from dblift.core.migration.commands.clean_command import CleanCommand
+from dblift.db.provider_interfaces import DroppableObject
 
 
 def test_clean_drops_objects_without_introspector(tmp_path: Path):
@@ -52,9 +52,9 @@ def test_clean_drops_sqlite_tables_with_foreign_keys_without_introspector(tmp_pa
 
 
 def test_sqlite_clean_command_emits_foreign_key_control_statements(tmp_path: Path):
-    from config import DbliftConfig
-    from db.plugins.sqlite.config import SQLiteConfig
-    from db.plugins.sqlite.provider import SQLiteProvider
+    from dblift.config import DbliftConfig
+    from dblift.db.plugins.sqlite.config import SQLiteConfig
+    from dblift.db.plugins.sqlite.provider import SQLiteProvider
 
     db_path = tmp_path / "db.sqlite"
     provider = SQLiteProvider(

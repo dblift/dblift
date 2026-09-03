@@ -16,19 +16,15 @@
 
 [importlinter]
 root_packages =
-    api
-    cli
-    config
-    core
-    db
+    dblift
 
 [importlinter:contract:cli-through-api]
 name = cli must reach the database layer through api, not db directly
 type = forbidden
 source_modules =
-    cli
+    dblift.cli
 forbidden_modules =
-    db
+    dblift.db
 # Only DIRECT cli -> db imports breach this contract. cli legitimately
 # reaches db transitively through api/ and core/ — that is the sanctioned
 # route, so forbidding indirect chains would forbid the architecture rather
@@ -39,12 +35,12 @@ allow_indirect_imports = True
 name = cli is the top of the stack; no library layer may import it
 type = forbidden
 source_modules =
-    api
-    config
-    core
-    db
+    dblift.api
+    dblift.config
+    dblift.core
+    dblift.db
 forbidden_modules =
-    cli
+    dblift.cli
 # The complement of the contract above: keeping cli out of db is only
 # meaningful if the lower layers also stay out of cli. api/ is the documented
 # programmatic surface and must stay importable without dragging in the

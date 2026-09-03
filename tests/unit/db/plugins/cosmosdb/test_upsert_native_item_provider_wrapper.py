@@ -15,7 +15,7 @@ anything but a ``SELECT``).
 
 from unittest.mock import MagicMock
 
-from db.plugins.cosmosdb.provider import CosmosDbProvider
+from dblift.db.plugins.cosmosdb.provider import CosmosDbProvider
 
 
 def _provider() -> CosmosDbProvider:

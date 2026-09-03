@@ -5,7 +5,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from core.introspection.vendor_queries_base import VendorMetadataQueries
+from dblift.core.introspection.vendor_queries_base import VendorMetadataQueries
 
 
 class ConcreteVendorQueries(VendorMetadataQueries):
@@ -95,7 +95,7 @@ class TestHasattrRemovedFromIntrospector:
 
     def test_apply_vendor_table_properties_no_hasattr_get_table_properties(self):
         """H1 — hasattr(vendor_queries, 'get_table_properties_query') supprimé du bloc SQL Server."""
-        from core.introspection.schema_introspector import SchemaIntrospector
+        from dblift.core.introspection.schema_introspector import SchemaIntrospector
 
         source = inspect.getsource(SchemaIntrospector._apply_vendor_table_properties)
         assert (
@@ -108,7 +108,7 @@ class TestHasattrRemovedFromIntrospector:
 
     def test_introspect_schema_no_hasattr_get_partition_scheme(self):
         """H2 — hasattr(vendor_queries, 'get_partition_scheme_query') supprimé du call-site."""
-        from core.introspection.schema_introspector import SchemaIntrospector
+        from dblift.core.introspection.schema_introspector import SchemaIntrospector
 
         source = inspect.getsource(SchemaIntrospector.introspect_schema)
         assert (
@@ -126,8 +126,8 @@ class TestQueryNoneGuards:
 
     def test_column_extractor_returns_columns_when_query_is_none(self):
         """M1 — column_extractor retourne les colonnes inchangées si get_column_defaults_query → None."""
-        from core.introspection.extractors.column_extractor import ColumnExtractor
-        from core.sql_model.base import SqlColumn
+        from dblift.core.introspection.extractors.column_extractor import ColumnExtractor
+        from dblift.core.sql_model.base import SqlColumn
 
         provider = MagicMock()
         provider.config.database.type = "sqlserver"
@@ -148,7 +148,7 @@ class TestQueryNoneGuards:
 
     def test_procedure_extractor_returns_empty_when_query_is_none(self):
         """M2 — procedure_extractor retourne [] si get_parameters_query → None."""
-        from core.introspection.extractors.procedure_extractor import ProcedureExtractor
+        from dblift.core.introspection.extractors.procedure_extractor import ProcedureExtractor
 
         provider = MagicMock()
         provider.config.database.type = "mysql"
@@ -172,7 +172,7 @@ class TestNoDoubleMiscLogging:
     """Review M3 — pas de double logging dans les méthodes misc_extractor touchées par la story."""
 
     def _make_misc_extractor(self):
-        from core.introspection.extractors.misc_extractor import MiscExtractor
+        from dblift.core.introspection.extractors.misc_extractor import MiscExtractor
 
         provider = MagicMock()
         provider.config.database.type = "mysql"

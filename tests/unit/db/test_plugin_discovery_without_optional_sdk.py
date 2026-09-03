@@ -3,10 +3,10 @@
 ``pip install dblift`` ships no database client library — each engine's driver
 lives behind its own extra, Cosmos DB's ``azure-cosmos``/``azure-identity``
 included. ``ProviderRegistry.discover_plugins()`` nonetheless imports *every*
-plugin package on startup, so a bare install imports ``db.plugins.cosmosdb``
+plugin package on startup, so a bare install imports ``dblift.db.plugins.cosmosdb``
 with no ``azure`` on the machine. That only works because every ``azure``
 import in the tree is function-local or ``TYPE_CHECKING``-guarded, with the one
-module-scope exception (``db.plugins.cosmosdb.cosmosdb._sdk``) itself imported
+module-scope exception (``dblift.db.plugins.cosmosdb.cosmosdb._sdk``) itself imported
 lazily.
 
 That property is invisible in this repo's own test runs: ``azure-cosmos`` is
@@ -69,7 +69,7 @@ try:
 except ModuleNotFoundError:
     result["blocker_effective"] = True
 
-from db.provider_registry import ProviderRegistry
+from dblift.db.provider_registry import ProviderRegistry
 
 ProviderRegistry.discover_plugins()
 result["dialects"] = sorted(plugin.name for plugin in ProviderRegistry.list_plugins())

@@ -1,4 +1,4 @@
-"""Unit tests for ``core.sql_model.table_options.TableOptions`` and the
+"""Unit tests for ``dblift.core.sql_model.table_options.TableOptions`` and the
 ``Table.from_options`` / ``Table.to_options`` classmethods (SIMP-48).
 
 These tests verify the typed dialect-specific options surface. Since
@@ -13,9 +13,9 @@ import dataclasses
 
 import pytest
 
-from core.sql_model.base import SqlColumn
-from core.sql_model.table import Table
-from core.sql_model.table_options import (
+from dblift.core.sql_model.base import SqlColumn
+from dblift.core.sql_model.table import Table
+from dblift.core.sql_model.table_options import (
     MySqlTableOptions,
     OracleStorageOptions,
     PostgresTableOptions,

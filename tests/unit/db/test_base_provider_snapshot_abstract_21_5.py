@@ -9,8 +9,8 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from config import DbliftConfig
-from db.base_provider import BaseProvider
+from dblift.config import DbliftConfig
+from dblift.db.base_provider import BaseProvider
 
 pytestmark = [pytest.mark.unit]
 
@@ -70,7 +70,7 @@ def test_create_snapshot_default_delegates_to_base_snapshot_manager(monkeypatch)
         def create_snapshot_table_if_not_exists(self, schema, table_name):
             calls.append(("create", schema, table_name))
 
-    from db.plugins import base_snapshot_manager
+    from dblift.db.plugins import base_snapshot_manager
 
     monkeypatch.setattr(base_snapshot_manager, "BaseSnapshotManager", FakeSnapshotManager)
 
@@ -104,8 +104,8 @@ def test_is_connected_has_override_docstring():
 @pytest.mark.parametrize(
     "provider_module,class_name",
     [
-        ("db.plugins.mysql.provider", "MySqlProvider"),
-        ("db.plugins.mariadb.provider", "MariadbProvider"),
+        ("dblift.db.plugins.mysql.provider", "MySqlProvider"),
+        ("dblift.db.plugins.mariadb.provider", "MariadbProvider"),
     ],
 )
 def test_snapshot_hook_removed_provider_remains_concrete(provider_module, class_name):

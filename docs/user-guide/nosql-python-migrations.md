@@ -64,7 +64,7 @@ Each file — versioned (`V…`) or undo companion (`U…`) — defines a top-le
 script with its own `migrate`; it is not an inline `undo` on the versioned file.
 
 ```python
-from api import MigrationContext
+from dblift.api import MigrationContext
 
 
 def migrate(context: MigrationContext) -> None:
@@ -146,7 +146,7 @@ pass back everything you intend to keep.
 ```python
 from azure.cosmos import PartitionKey
 
-from api import MigrationContext
+from dblift.api import MigrationContext
 
 CONTAINER = "users"
 PARTITION_KEY = "/tenant_id"
@@ -171,7 +171,7 @@ def migrate(context: MigrationContext) -> None:
 Companion undo script `migrations/U1_0_0__drop_users_container.py`:
 
 ```python
-from api import MigrationContext
+from dblift.api import MigrationContext
 
 CONTAINER = "users"
 
@@ -192,7 +192,7 @@ def migrate(context: MigrationContext) -> None:
 ```python
 from azure.cosmos import PartitionKey
 
-from api import MigrationContext
+from dblift.api import MigrationContext
 
 CONTAINER = "users"
 EXCLUDED_PATH = "/profile_blob/*"
@@ -349,7 +349,7 @@ DBLIFT-NOSQL-001: 'V1_0_0__create_users.sql' is a SQL migration, but the
 
 **Trigger**: a `.sql` file in your migrations directory was selected for a
 document-store / NoSQL dialect (Cosmos DB or MongoDB). The error is raised by
-`core.exceptions.UnsupportedMigrationFormatError` before anything executes, so
+`dblift.core.exceptions.UnsupportedMigrationFormatError` before anything executes, so
 no partial change is applied.
 
 **Fix**: rewrite the migration as `.py` with the same version and description

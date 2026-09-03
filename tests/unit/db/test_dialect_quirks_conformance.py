@@ -17,10 +17,10 @@ from pathlib import Path
 
 import pytest
 
-from core import dialect_boundary
-from core.dialect_boundary import ConnectionQuirks, DialectQuirks, ErrorQuirks
-from db.base_quirks import BaseQuirks
-from db.provider_registry import ProviderRegistry
+from dblift.core import dialect_boundary
+from dblift.core.dialect_boundary import ConnectionQuirks, DialectQuirks, ErrorQuirks
+from dblift.db.base_quirks import BaseQuirks
+from dblift.db.provider_registry import ProviderRegistry
 
 
 @pytest.fixture(autouse=True)
@@ -51,9 +51,9 @@ KNOWN_ALIASES = ("postgres", "mssql", "sqlite3")
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 _OSS_QUIRKS_SOURCES = (
-    Path("db/base_quirks.py"),
-    Path("db/plugins/cosmosdb/quirks.py"),
-    Path("db/plugins/sqlite/quirks.py"),
+    Path("dblift/db/base_quirks.py"),
+    Path("dblift/db/plugins/cosmosdb/quirks.py"),
+    Path("dblift/db/plugins/sqlite/quirks.py"),
 )
 
 
@@ -108,13 +108,13 @@ def test_unknown_dialect_falls_back_to_base_quirks() -> None:
 @pytest.mark.parametrize("source_path", _OSS_QUIRKS_SOURCES)
 def test_oss_quirks_do_not_type_depend_on_base_introspector(source_path: Path) -> None:
     source = (_REPO_ROOT / source_path).read_text(encoding="utf-8")
-    assert "from core.introspection.base_introspector import BaseIntrospector" not in source
+    assert "from dblift.core.introspection.base_introspector import BaseIntrospector" not in source
     assert "Type[BaseIntrospector]" not in source
 
 
 def test_base_quirks_does_not_reference_rich_introspection_paths() -> None:
-    source = (_REPO_ROOT / "db/base_quirks.py").read_text(encoding="utf-8")
-    assert "core.introspection" not in source
+    source = (_REPO_ROOT / "dblift/db/base_quirks.py").read_text(encoding="utf-8")
+    assert "dblift.core.introspection" not in source
 
 
 @pytest.mark.parametrize("dialect", KNOWN_DIALECTS)

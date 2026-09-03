@@ -17,10 +17,10 @@ from unittest.mock import patch
 
 import pytest
 
-from config.database_config import BaseDatabaseConfig, _resolve_config_class
-from db.base_provider import BaseProvider
-from db.base_quirks import BaseQuirks
-from db.provider_registry import PluginInfo, ProviderRegistry
+from dblift.config.database_config import BaseDatabaseConfig, _resolve_config_class
+from dblift.db.base_provider import BaseProvider
+from dblift.db.base_quirks import BaseQuirks
+from dblift.db.provider_registry import PluginInfo, ProviderRegistry
 
 # ---------------------------------------------------------------------------
 # Synthetic plugin: a minimal but valid third-party plugin that ships its own

@@ -42,18 +42,18 @@ The layout deliberately mirrors `db/plugins/postgresql/` (and siblings) so the s
 
    ```toml
    [project.entry-points."dblift.providers"]
-   myprovider = "db.plugins.myprovider.plugin:PLUGIN"
+   myprovider = "dblift.db.plugins.myprovider.plugin:PLUGIN"
    ```
 
-   Use the explicit `packages = ["db.plugins.myprovider"]` (already in the template) so your distribution only contributes the leaf plugin directory. This avoids clobbering `dblift`'s `db/__init__.py`.
+   Use the explicit `packages = ["dblift.db.plugins.myprovider"]` (already in the template) so your distribution only contributes the leaf plugin directory. This avoids clobbering `dblift`'s `db/__init__.py`.
 
 2. **plugin.py** — the registration point. It must export a module-level `PLUGIN` that is an instance of `PluginInfo`. The structure is identical to first-party:
 
    ```python
-   from db.provider_registry import PluginInfo
-   from db.plugins.myprovider.provider import MyproviderProvider
-   from db.plugins.myprovider.quirks import MyproviderQuirks
-   from db.plugins.myprovider.sqlalchemy_url import build_sqlalchemy_url
+   from dblift.db.provider_registry import PluginInfo
+   from dblift.db.plugins.myprovider.provider import MyproviderProvider
+   from dblift.db.plugins.myprovider.quirks import MyproviderQuirks
+   from dblift.db.plugins.myprovider.sqlalchemy_url import build_sqlalchemy_url
 
    PLUGIN: PluginInfo = PluginInfo(
        name="myprovider",
@@ -103,7 +103,7 @@ The layout deliberately mirrors `db/plugins/postgresql/` (and siblings) so the s
 cd dblift-myprovider
 pip install -e .
 python -c '
-from db.provider_registry import ProviderRegistry
+from dblift.db.provider_registry import ProviderRegistry
 ProviderRegistry.discover_plugins()
 print("myprovider" in ProviderRegistry._plugins)
 print(ProviderRegistry._plugins["myprovider"])

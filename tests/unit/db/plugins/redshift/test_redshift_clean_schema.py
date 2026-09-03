@@ -1,6 +1,6 @@
 """Redshift clean-schema behavior."""
 
-from db.plugins.redshift.provider import RedshiftProvider
+from dblift.db.plugins.redshift.provider import RedshiftProvider
 
 EXPECTED_VIEW_NAME = '"analytics"."active_events"'
 EXPECTED_TABLE_DROP = 'DROP TABLE IF EXISTS "analytics"."events" CASCADE'

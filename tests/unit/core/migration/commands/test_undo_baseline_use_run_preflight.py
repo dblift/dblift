@@ -15,8 +15,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from core.migration.commands.baseline_command import BaselineCommand
-from core.migration.commands.undo_command import UndoCommand
+from dblift.core.migration.commands.baseline_command import BaselineCommand
+from dblift.core.migration.commands.undo_command import UndoCommand
 
 
 class _OrderTrackingProvider:
@@ -55,7 +55,7 @@ def _make_undo_cmd(history_manager=None, provider=None):
     migration_state.pending = []
     state_manager.build_state.return_value = migration_state
     state_manager.get_current_version.return_value = None
-    from core.migration.state.migration_state_manager import MigrationStateManager
+    from dblift.core.migration.state.migration_state_manager import MigrationStateManager
 
     _filter_mgr = MigrationStateManager.__new__(MigrationStateManager)
     state_manager.apply_filters_to_migrations.side_effect = (

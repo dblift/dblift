@@ -51,7 +51,7 @@ RUN mkdir -p /workspace
 WORKDIR /workspace
 
 # Verify installation
-RUN python -m cli.main --version
+RUN python -m dblift.cli.main --version
 
-ENTRYPOINT ["/usr/bin/tini", "--", "python", "-m", "cli.main"]
+ENTRYPOINT ["/usr/bin/tini", "--", "python", "-m", "dblift.cli.main"]
 CMD ["--help"]

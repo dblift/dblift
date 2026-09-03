@@ -8,8 +8,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from core.migration.commands.info_command import InfoCommand
-from core.migration.state.migration_state import MigrationState
+from dblift.core.migration.commands.info_command import InfoCommand
+from dblift.core.migration.state.migration_state import MigrationState
 
 pytestmark = pytest.mark.unit
 
@@ -75,12 +75,12 @@ class TestInfoCommandTargetVersion:
 
 class TestExecutorInfoForwardsTargetVersion:
     def test_info_forwards_target_version_to_command_execute(self):
-        from core.migration.executor.migration_executor import MigrationExecutor
+        from dblift.core.migration.executor.migration_executor import MigrationExecutor
 
         executor = MigrationExecutor.__new__(MigrationExecutor)
         executor._make_command_context = MagicMock(return_value=MagicMock())
 
-        with patch("core.migration.commands.info_command.InfoCommand") as mock_cmd_cls:
+        with patch("dblift.core.migration.commands.info_command.InfoCommand") as mock_cmd_cls:
             command = mock_cmd_cls.return_value
             command.execute.return_value = MagicMock()
             executor.info(Path("/tmp"), target_version="4")

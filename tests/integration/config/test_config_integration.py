@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-from config import DbliftConfig
+from dblift.config import DbliftConfig
 
 
 @pytest.mark.integration

@@ -26,9 +26,9 @@ from typing import Any, Optional
 import pytest
 from sqlglot import exp, parse_one
 
-from core.sql_model.base import ConstraintType
-from core.sql_model.trigger import Trigger
-from core.sql_parser._sqlglot_builders import _SqlglotBuildersMixin, _TriggerHeader
+from dblift.core.sql_model.base import ConstraintType
+from dblift.core.sql_model.trigger import Trigger
+from dblift.core.sql_parser._sqlglot_builders import _SqlglotBuildersMixin, _TriggerHeader
 
 pytestmark = [pytest.mark.unit]
 
@@ -37,8 +37,8 @@ class _Harness(_SqlglotBuildersMixin):
     """Minimal composing class so the mixin's ``self.*`` resolve correctly."""
 
     def __init__(self, dialect: str = "postgresql") -> None:
-        from core.sql_parser.sqlglot_parser import SqlGlotParser
-        from db.provider_registry import ProviderRegistry
+        from dblift.core.sql_parser.sqlglot_parser import SqlGlotParser
+        from dblift.db.provider_registry import ProviderRegistry
 
         self.dialect = dialect
         self._quirks = ProviderRegistry.get_quirks(dialect)

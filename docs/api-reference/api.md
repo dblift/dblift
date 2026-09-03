@@ -4,7 +4,7 @@
 
 The main client class for programmatic access to DBLift.
 
-::: api.client.DBLiftClient
+::: dblift.api.client.DBLiftClient
     options:
       show_root_heading: true
       show_source: true
@@ -14,9 +14,9 @@ The main client class for programmatic access to DBLift.
 ## Quick Start
 
 ```python
-from api.client import DBLiftClient
-from db.plugins.postgresql.provider import PostgreSqlJdbcProvider
-from config import DbliftConfig
+from dblift.api.client import DBLiftClient
+from dblift.db.plugins.postgresql.provider import PostgreSqlJdbcProvider
+from dblift.config import DbliftConfig
 
 # Create provider
 config = DbliftConfig.from_file("dblift.yaml")
@@ -39,8 +39,8 @@ if result.success:
 For convenience, use the factory method:
 
 ```python
-from api.client import DBLiftClient
-from config import DbliftConfig
+from dblift.api.client import DBLiftClient
+from dblift.config import DbliftConfig
 
 # Load config and create client
 config = DbliftConfig.from_file("dblift.yaml")
@@ -136,7 +136,7 @@ print(f"Generated {len(results)} undo scripts")
 DBLiftClient supports events for IDE/tooling integration:
 
 ```python
-from api.events import Event, EventType
+from dblift.api.events import Event, EventType
 
 def on_migration_started(event: Event) -> None:
     # event is a frozen Event dataclass — use attribute access

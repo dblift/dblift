@@ -17,7 +17,7 @@ import inspect
 
 import pytest
 
-from api.client import DBLiftClient
+from dblift.api.client import DBLiftClient
 
 
 @pytest.mark.unit
@@ -49,7 +49,7 @@ class TestFromConfigMigrationsDirParam:
             captured["_config"] = config
             return object()
 
-        monkeypatch.setattr("api.client.client_from_config", fake_factory, raising=True)
+        monkeypatch.setattr("dblift.api.client.client_from_config", fake_factory, raising=True)
 
         cfg = object()
         DBLiftClient.from_config(cfg, logger=None, migrations_dir="/tmp/sql")
@@ -64,7 +64,7 @@ class TestFromConfigMigrationsDirParam:
             captured.update(kwargs)
             return object()
 
-        monkeypatch.setattr("api.client.client_from_config", fake_factory, raising=True)
+        monkeypatch.setattr("dblift.api.client.client_from_config", fake_factory, raising=True)
 
         cfg = object()
         DBLiftClient.from_config(cfg)

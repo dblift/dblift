@@ -8,7 +8,7 @@ is not valid Python. Using ``!r`` formatting instead lets Python choose
 correct quoting/escaping for the value.
 """
 
-from db.plugins.cosmosdb.quirks import CosmosdbQuirks
+from dblift.db.plugins.cosmosdb.quirks import CosmosdbQuirks
 
 
 def test_render_drop_for_table_escapes_single_quote_in_container_name():

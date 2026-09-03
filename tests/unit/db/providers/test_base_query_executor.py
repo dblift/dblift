@@ -5,7 +5,7 @@ from unittest.mock import MagicMock
 
 
 def _make_concrete():
-    from db.plugins.base_query_executor import BaseQueryExecutor
+    from dblift.db.plugins.base_query_executor import BaseQueryExecutor
 
     class Concrete(BaseQueryExecutor):
         def execute_statement(self, conn, sql, params=None, return_generated_keys=False):
@@ -31,8 +31,8 @@ class TestBaseQueryExecutorInit(unittest.TestCase):
         self.assertIs(exec_.connection_manager, cm)
 
     def test_null_log_default(self):
-        from core.logger import NullLog
-        from db.plugins.base_query_executor import BaseQueryExecutor
+        from dblift.core.logger import NullLog
+        from dblift.db.plugins.base_query_executor import BaseQueryExecutor
 
         class Minimal(BaseQueryExecutor):
             def execute_statement(self, c, s, p=None, r=False):

@@ -6,7 +6,7 @@ tls / replica_set / auth_source fields: a URI is the one place to put them.
 
 import pytest
 
-from db.plugins.mongodb.config import MongoDbConfig
+from dblift.db.plugins.mongodb.config import MongoDbConfig
 
 
 def test_url_form_is_accepted():
@@ -95,6 +95,6 @@ def test_connection_props_expose_database_and_uri():
 
 
 def test_registered_under_its_type_name():
-    from config.database_config import BaseDatabaseConfig
+    from dblift.config.database_config import BaseDatabaseConfig
 
     assert BaseDatabaseConfig._registry["mongodb"] is MongoDbConfig

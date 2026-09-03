@@ -17,8 +17,8 @@ from argparse import Namespace
 
 import pytest
 
-from cli._constants import MACHINE_READABLE_FORMATS
-from cli._output import CommandOutput, from_args
+from dblift.cli._constants import MACHINE_READABLE_FORMATS
+from dblift.cli._output import CommandOutput, from_args
 
 
 def _streams() -> tuple[io.StringIO, io.StringIO, CommandOutput]:

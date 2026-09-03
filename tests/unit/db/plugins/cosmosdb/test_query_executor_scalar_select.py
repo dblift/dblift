@@ -17,7 +17,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from db.plugins.cosmosdb.cosmosdb.query_executor import CosmosDbQueryExecutor
+from dblift.db.plugins.cosmosdb.cosmosdb.query_executor import CosmosDbQueryExecutor
 
 
 @pytest.mark.unit

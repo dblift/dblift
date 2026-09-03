@@ -26,7 +26,7 @@ server, and why the no-TimescaleDB case is pinned down explicitly below.
 import unittest
 from unittest.mock import MagicMock
 
-from db.plugins.postgresql.postgresql.schema_operations import PostgreSqlSchemaOperations
+from dblift.db.plugins.postgresql.postgresql.schema_operations import PostgreSqlSchemaOperations
 
 #: Substring identifying the query that reads the aggregate list.
 CAGG_FROM = "FROM timescaledb_information.continuous_aggregates"

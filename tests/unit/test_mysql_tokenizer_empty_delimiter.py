@@ -6,9 +6,9 @@ is followed by whitespace/newline without an actual delimiter string.
 
 import pytest
 
-from core.sql_parser.tokens import TokenType
-from db.plugins.mysql.parser.mysql_statement_parser import MySQLStatementParser
-from db.plugins.mysql.parser.mysql_tokenizer import MySQLTokenizer
+from dblift.core.sql_parser.tokens import TokenType
+from dblift.db.plugins.mysql.parser.mysql_statement_parser import MySQLStatementParser
+from dblift.db.plugins.mysql.parser.mysql_tokenizer import MySQLTokenizer
 
 
 class TestMySQLEmptyDelimiterFix:

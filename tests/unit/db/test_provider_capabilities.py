@@ -7,7 +7,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from db.provider_capabilities import (
+from dblift.db.provider_capabilities import (
     ensure_provider_connection,
     get_clean_preview,
     get_provider_display_url,

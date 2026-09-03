@@ -8,7 +8,7 @@ from unittest.mock import MagicMock, patch
 
 def _make_provider(dialect="postgresql"):
     """Create a minimal mock provider with DbliftConfig."""
-    from config import DbliftConfig
+    from dblift.config import DbliftConfig
 
     config = MagicMock(spec=DbliftConfig)
     config.database = MagicMock()
@@ -29,12 +29,12 @@ def _make_provider(dialect="postgresql"):
 
 def _make_client(tmpdir=None):
     """Create a DBLiftClient with mocked provider."""
-    from api.client import DBLiftClient
+    from dblift.api.client import DBLiftClient
 
     provider, config = _make_provider()
     if tmpdir is None:
         tmpdir = TemporaryDirectory()
-    with patch("api._client_factory.DbliftLogger"):
+    with patch("dblift.api._client_factory.DbliftLogger"):
         client = DBLiftClient(
             provider=provider,
             migrations_dir=str(tmpdir.name) if hasattr(tmpdir, "name") else str(tmpdir),
@@ -51,11 +51,11 @@ class TestDBLiftClientInit(unittest.TestCase):
             self.assertIs(client.config, config)
 
     def test_init_multiple_migrations_dirs(self):
-        from api.client import DBLiftClient
+        from dblift.api.client import DBLiftClient
 
         with TemporaryDirectory() as tmpdir:
             provider, config = _make_provider()
-            with patch("api._client_factory.DbliftLogger"):
+            with patch("dblift.api._client_factory.DbliftLogger"):
                 client = DBLiftClient(
                     provider=provider,
                     migrations_dir=[tmpdir, tmpdir],
@@ -65,11 +65,11 @@ class TestDBLiftClientInit(unittest.TestCase):
             self.assertIsNotNone(client)
 
     def test_init_without_config_uses_provider_config(self):
-        from api.client import DBLiftClient
+        from dblift.api.client import DBLiftClient
 
         with TemporaryDirectory() as tmpdir:
             provider, config = _make_provider()
-            with patch("api._client_factory.DbliftLogger"):
+            with patch("dblift.api._client_factory.DbliftLogger"):
                 client = DBLiftClient(
                     provider=provider,
                     migrations_dir=tmpdir,
@@ -77,7 +77,7 @@ class TestDBLiftClientInit(unittest.TestCase):
             self.assertIs(client.config, config)
 
     def test_init_no_config_no_provider_config_raises(self):
-        from api.client import DBLiftClient
+        from dblift.api.client import DBLiftClient
 
         with TemporaryDirectory() as tmpdir:
             provider = MagicMock()
@@ -99,7 +99,7 @@ class TestDBLiftClientContextManager(unittest.TestCase):
             self.assertIs(result, client)
 
     def test_enter_creates_connection_when_not_connected(self):
-        from db.provider_interfaces import ConnectionProvider
+        from dblift.db.provider_interfaces import ConnectionProvider
 
         with TemporaryDirectory() as tmpdir:
             client, provider, *_ = _make_client(tmpdir)
@@ -145,8 +145,8 @@ class TestDBLiftClientContextManager(unittest.TestCase):
 
 class TestDBLiftClientFromSqlAlchemy(unittest.TestCase):
     def test_from_sqlalchemy_requires_engine_or_connection(self):
-        from api.client import DBLiftClient
-        from config.errors import ConfigurationError
+        from dblift.api.client import DBLiftClient
+        from dblift.config.errors import ConfigurationError
 
         with self.assertRaises(ConfigurationError):
             DBLiftClient.from_sqlalchemy()
@@ -180,8 +180,8 @@ class TestGetDialectForSqlGeneration(unittest.TestCase):
         """ADR-26 E5: when neither provider nor config supplies a dialect, the
         fallback comes from the plugin registry, not a hardcoded ``"postgresql"``.
         """
-        from core.migration.migration import _default_splitter_dialect
-        from db.provider_registry import ProviderRegistry
+        from dblift.core.migration.migration import _default_splitter_dialect
+        from dblift.db.provider_registry import ProviderRegistry
 
         with TemporaryDirectory() as tmpdir:
             client, provider, config, _ = _make_client(tmpdir)

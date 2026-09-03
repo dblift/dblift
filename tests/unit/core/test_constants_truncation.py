@@ -2,8 +2,8 @@
 
 import pytest
 
-import core.constants as constants_module
-from core.constants import (
+import dblift.core.constants as constants_module
+from dblift.core.constants import (
     LOG_STATEMENT_PREVIEW_LENGTH,
     truncate_sql_for_logging,
 )

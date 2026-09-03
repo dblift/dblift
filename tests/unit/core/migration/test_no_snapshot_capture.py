@@ -6,9 +6,9 @@ import inspect
 
 import pytest
 
-from api.events import EventEmitter, EventType
-from core.migration.commands.migrate_command import MigrateCommand
-from core.migration.executor.migration_executor import MigrationExecutor
+from dblift.api.events import EventEmitter, EventType
+from dblift.core.migration.commands.migrate_command import MigrateCommand
+from dblift.core.migration.executor.migration_executor import MigrationExecutor
 
 pytestmark = [pytest.mark.unit]
 

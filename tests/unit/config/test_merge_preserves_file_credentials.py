@@ -13,8 +13,8 @@ import textwrap
 
 import pytest
 
-from config.config_builder import ConfigBuilder
-from config.dblift_config import DbliftConfig
+from dblift.config.config_builder import ConfigBuilder
+from dblift.config.dblift_config import DbliftConfig
 
 
 @pytest.mark.unit

@@ -1,6 +1,6 @@
 import pytest
 
-from core.seams import runtime_checks
+from dblift.core.seams import runtime_checks
 
 
 @pytest.fixture(autouse=True)

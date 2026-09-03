@@ -7,10 +7,12 @@ literals to be lost when _tokens_to_string reconstructed SQL.
 
 import pytest
 
-from db.plugins.mysql.parser.mysql_statement_parser import MySQLStatementParser
-from db.plugins.mysql.parser.mysql_tokenizer import MySQLTokenizer
-from db.plugins.postgresql.parser.postgresql_statement_parser import PostgreSQLStatementParser
-from db.plugins.postgresql.parser.postgresql_tokenizer import PostgreSQLTokenizer
+from dblift.db.plugins.mysql.parser.mysql_statement_parser import MySQLStatementParser
+from dblift.db.plugins.mysql.parser.mysql_tokenizer import MySQLTokenizer
+from dblift.db.plugins.postgresql.parser.postgresql_statement_parser import (
+    PostgreSQLStatementParser,
+)
+from dblift.db.plugins.postgresql.parser.postgresql_tokenizer import PostgreSQLTokenizer
 
 
 class TestMySQLStringPreservation:

@@ -9,7 +9,7 @@ pytestmark = [pytest.mark.unit]
 
 def test_log_py_jinja_available_no_try_except():
     """DEAD-NEW-04: log.py JINJA_AVAILABLE no longer wrapped in dead try/except."""
-    import core.logger.log as mod
+    import dblift.core.logger.log as mod
 
     src = inspect.getsource(mod)
     # The try:pass artifact is gone — JINJA_AVAILABLE should be a direct assignment
@@ -26,14 +26,14 @@ def test_log_py_jinja_available_no_try_except():
 
 def test_log_py_jinja_available_is_true():
     """DEAD-NEW-04: JINJA_AVAILABLE is True at runtime."""
-    from core.logger.log import JINJA_AVAILABLE
+    from dblift.core.logger.log import JINJA_AVAILABLE
 
     assert JINJA_AVAILABLE is True
 
 
 def test_repair_command_execute_no_pass_in_try():
     """DEAD-NEW-04: repair_command execute() MISSING_SCRIPT try block no longer starts with bare pass."""
-    from core.migration.commands.repair_command import RepairCommand
+    from dblift.core.migration.commands.repair_command import RepairCommand
 
     src = inspect.getsource(RepairCommand.execute)
     lines = [l.strip() for l in src.splitlines() if l.strip()]
@@ -53,7 +53,7 @@ def test_get_index_syntax_removed():
     dialect generators (P4 refactor), so we verify the dead helper is absent
     from the generator instead.
     """
-    import core.sql_model.index as index_module
+    import dblift.core.sql_model.index as index_module
 
     src = inspect.getsource(index_module)
     assert (

@@ -6,8 +6,8 @@ from decimal import Decimal
 
 import pytest
 
-from core.logger.formatters.jsonformatter import JsonFormatter
-from core.logger.results import MigrateResult, MigrationQueryResultInfo, MigrationSqlInfo
+from dblift.core.logger.formatters.jsonformatter import JsonFormatter
+from dblift.core.logger.results import MigrateResult, MigrationQueryResultInfo, MigrationSqlInfo
 
 
 @pytest.mark.unit

@@ -1,7 +1,7 @@
 """Redshift dialect quirks."""
 
-from db.plugins.redshift.quirks import RedshiftQuirks
-from db.provider_registry import ProviderRegistry
+from dblift.db.plugins.redshift.quirks import RedshiftQuirks
+from dblift.db.provider_registry import ProviderRegistry
 
 
 def test_redshift_snapshot_table_uses_wide_varchar_payload() -> None:
@@ -27,7 +27,7 @@ def test_redshift_distkey_sortkey_ddl_formats_without_falling_back() -> None:
     falls back to the original, unformatted SQL. Redshift's own sqlglot
     dialect renders it correctly.
     """
-    from core.sql_generator.formatter import SqlFormatter
+    from dblift.core.sql_generator.formatter import SqlFormatter
 
     ProviderRegistry.discover_plugins()
     sql = "CREATE TABLE t (id INT) DISTKEY(id) SORTKEY(id)"

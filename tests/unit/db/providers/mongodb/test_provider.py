@@ -4,12 +4,12 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from config import DbliftConfig
-from core.exceptions import NoSqlQueryLanguageUnsupportedError
-from db.plugins.mongodb.config import MongoDbConfig
-from db.plugins.mongodb.provider import MongoDbProvider
-from db.plugins.nosql_base import DocumentStoreProvider
-from db.provider_interfaces import DroppableObject
+from dblift.config import DbliftConfig
+from dblift.core.exceptions import NoSqlQueryLanguageUnsupportedError
+from dblift.db.plugins.mongodb.config import MongoDbConfig
+from dblift.db.plugins.mongodb.provider import MongoDbProvider
+from dblift.db.plugins.nosql_base import DocumentStoreProvider
+from dblift.db.provider_interfaces import DroppableObject
 
 
 def _provider():
@@ -207,7 +207,7 @@ def test_delete_failed_migration_entry_is_inherited_not_reimplemented():
     """BaseProvider's default already delegates to self.history_manager by
     attribute-name convention — this class must not shadow it with a
     redundant override."""
-    from db.base_provider import BaseProvider
+    from dblift.db.base_provider import BaseProvider
 
     assert (
         MongoDbProvider.delete_failed_migration_entry is BaseProvider.delete_failed_migration_entry

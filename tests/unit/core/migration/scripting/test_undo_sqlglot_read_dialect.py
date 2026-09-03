@@ -2,10 +2,10 @@
 through a shared registry-backed helper instead of hardcoding ``"postgres"``.
 """
 
-from core.migration.scripting.undo_script_generator._helpers import (
+from dblift.core.migration.scripting.undo_script_generator._helpers import (
     resolve_sqlglot_read_dialect,
 )
-from db.provider_registry import ProviderRegistry
+from dblift.db.provider_registry import ProviderRegistry
 
 
 def test_known_dialect_uses_its_own_sqlglot_dialect():

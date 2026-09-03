@@ -12,7 +12,7 @@ from unittest.mock import MagicMock, Mock, mock_open, patch
 
 import pytest
 
-from core.logger.log import (
+from dblift.core.logger.log import (
     AbstractLog,
     ConsoleLog,
     FileLog,
@@ -24,7 +24,7 @@ from core.logger.log import (
     MultiLog,
     TextFormatter,
 )
-from core.logger.results import MigrateResult, MigrationSqlInfo, OperationResult
+from dblift.core.logger.results import MigrateResult, MigrationSqlInfo, OperationResult
 
 
 @pytest.mark.unit
@@ -373,7 +373,7 @@ class TestAbstractLog:
         log._log = lambda level, msg, console_only=None: logged.append((level, msg))
 
         # Mock traceback.format_exc to return a stack trace
-        with patch("core.logger.log.traceback.format_exc", return_value="Traceback..."):
+        with patch("dblift.core.logger.log.traceback.format_exc", return_value="Traceback..."):
             exception = Exception("com.example.JavaException: Error message")
             log.error_with_exception("test", exception)
 
@@ -388,7 +388,7 @@ class TestAbstractLog:
         logged = []
         log._log = lambda level, msg, console_only=None: logged.append((level, msg))
 
-        with patch("core.logger.log.traceback.format_exc", return_value="Traceback..."):
+        with patch("dblift.core.logger.log.traceback.format_exc", return_value="Traceback..."):
             exception = Exception(
                 "First exception\nThe above exception was the direct cause of the following exception\nSecond exception"
             )
@@ -405,7 +405,7 @@ class TestAbstractLog:
         logged = []
         log._log = lambda level, msg, console_only=None: logged.append((level, msg))
 
-        with patch("core.logger.log.traceback.format_exc", return_value="Traceback..."):
+        with patch("dblift.core.logger.log.traceback.format_exc", return_value="Traceback..."):
             exception = Exception("Error")
             log.error_with_exception("Validation failed", exception)
 
@@ -604,7 +604,7 @@ class TestConsoleLog:
         result.success = True
         # Mock the import inside the method to raise exception
         with patch(
-            "core.logger.formatters.formatter.OutputFormatter", side_effect=Exception("Test")
+            "dblift.core.logger.formatters.formatter.OutputFormatter", side_effect=Exception("Test")
         ):
             log._display_result_summary(result)
         # Should not raise

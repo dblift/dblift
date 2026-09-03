@@ -3,8 +3,8 @@ catches without importing any paid tier vocabulary."""
 
 import pytest
 
-from core.exceptions import DbliftError
-from core.seams import capabilities
+from dblift.core.exceptions import DbliftError
+from dblift.core.seams import capabilities
 
 pytestmark = [pytest.mark.unit]
 

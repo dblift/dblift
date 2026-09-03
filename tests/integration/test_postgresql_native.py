@@ -4,12 +4,12 @@ import uuid
 
 import pytest
 
-from api import DBLiftClient
-from config import DbliftConfig
-from core.sql_model.base import ConstraintType
-from db.plugins.postgresql.config import PostgreSqlConfig
-from db.provider_registry import ProviderRegistry
-from db.sqlalchemy_provider import SqlAlchemyProvider
+from dblift.api import DBLiftClient
+from dblift.config import DbliftConfig
+from dblift.core.sql_model.base import ConstraintType
+from dblift.db.plugins.postgresql.config import PostgreSqlConfig
+from dblift.db.provider_registry import ProviderRegistry
+from dblift.db.sqlalchemy_provider import SqlAlchemyProvider
 from tests.integration.helpers.migration_helper import (
     create_repeatable_migration,
     create_versioned_migration,
@@ -156,7 +156,7 @@ def test_postgresql_native_migrate_applies_versioned_and_repeatable(monkeypatch,
 
 def test_postgresql_native_introspects_tables_without_jdbc_metadata() -> None:
     """PostgreSQL native introspection uses SQLAlchemy metadata, not getMetaData()."""
-    from core.introspection.introspector_factory import IntrospectorFactory
+    from dblift.core.introspection.introspector_factory import IntrospectorFactory
 
     schema = f"dblift_native_{uuid.uuid4().hex[:8]}"
     provider = ProviderRegistry.create_provider(_postgres_config(schema))

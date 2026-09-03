@@ -22,7 +22,7 @@ from typing import Dict, Generic, Iterator, List, NamedTuple, Protocol, Tuple, T
 
 import pytest
 
-from core.seams.quirks import (
+from dblift.core.seams.quirks import (
     _DUNDER_REASONS,
     _EXTENSION_SHAPE_ADVICE,
     _GENERIC_DUNDER_REASON,
@@ -33,14 +33,14 @@ from core.seams.quirks import (
     register_quirks_extension,
     validate_quirks_extensions,
 )
-from core.sql_model import table_options
-from core.sql_model.table import Table
-from core.sql_model.table_options import MySqlTableOptions, TableOptions
-from db.base_quirks import BaseQuirks
-from db.plugins.postgresql.quirks import PostgresqlQuirks
-from db.plugins.sqlite.quirks import SqliteQuirks
-from db.plugins.sqlserver.quirks import SqlserverQuirks
-from db.provider_registry import ProviderRegistry
+from dblift.core.sql_model import table_options
+from dblift.core.sql_model.table import Table
+from dblift.core.sql_model.table_options import MySqlTableOptions, TableOptions
+from dblift.db.base_quirks import BaseQuirks
+from dblift.db.plugins.postgresql.quirks import PostgresqlQuirks
+from dblift.db.plugins.sqlite.quirks import SqliteQuirks
+from dblift.db.plugins.sqlserver.quirks import SqlserverQuirks
+from dblift.db.provider_registry import ProviderRegistry
 
 
 @pytest.fixture(autouse=True)

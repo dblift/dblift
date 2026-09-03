@@ -5,12 +5,12 @@ from __future__ import annotations
 import pytest
 from sqlalchemy.engine import make_url
 
-from db.plugins.cockroachdb.sqlalchemy_dialect import (
+from dblift.db.plugins.cockroachdb.sqlalchemy_dialect import (
     ensure_cockroach_drivername,
     parse_cockroach_server_version,
     register_cockroach_dialect,
 )
-from db.plugins.cockroachdb.sqlalchemy_url import build_sqlalchemy_url
+from dblift.db.plugins.cockroachdb.sqlalchemy_url import build_sqlalchemy_url
 
 
 @pytest.mark.unit

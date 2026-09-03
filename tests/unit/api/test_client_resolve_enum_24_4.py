@@ -6,8 +6,8 @@ to the appropriate enum instance.
 
 import pytest
 
-from api._client_factory import _resolve_enum_value
-from core.logger import LogFormat, LogLevel
+from dblift.api._client_factory import _resolve_enum_value
+from dblift.core.logger import LogFormat, LogLevel
 
 pytestmark = [pytest.mark.unit]
 

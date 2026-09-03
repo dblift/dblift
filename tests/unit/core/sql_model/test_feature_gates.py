@@ -1,7 +1,7 @@
 """Conformance tests for version/edition feature gates.
 
-Plugins declare :class:`db.feature_gate.FeatureGate` entries on their
-quirks classes; ``core.sql_model.feature_gates`` derives the lazy registry
+Plugins declare :class:`dblift.db.feature_gate.FeatureGate` entries on their
+quirks classes; ``dblift.core.sql_model.feature_gates`` derives the lazy registry
 and resolves them tri-state. These tests enforce the declaration
 invariants (names in the shared vocabulary, parseable specs, compilable
 patterns) and pin the per-dialect contracts, mirroring
@@ -14,8 +14,8 @@ import re
 
 import pytest
 
-from core.introspection.version_detector import parse_version
-from core.sql_model.feature_gates import (
+from dblift.core.introspection.version_detector import parse_version
+from dblift.core.sql_model.feature_gates import (
     KNOWN_FEATURES,
     FeatureGate,
     get_feature_gates,
@@ -26,7 +26,7 @@ pytestmark = [pytest.mark.unit]
 
 
 def _plugins():
-    from db.provider_registry import ProviderRegistry
+    from dblift.db.provider_registry import ProviderRegistry
 
     ProviderRegistry.discover_plugins()
     return sorted(ProviderRegistry.list_plugins(), key=lambda p: p.name)
@@ -340,7 +340,7 @@ class TestSupportsFeature:
 
     def test_combine_semantics(self):
         """Zero constraints -> True; any False wins over None; None over True."""
-        from core.sql_model.feature_gates import _combine
+        from dblift.core.sql_model.feature_gates import _combine
 
         assert _combine() is True
         assert _combine(True, True) is True
@@ -362,7 +362,7 @@ class TestRegistryRebuild:
     def test_counter_based_rebuild_survives_alias_dedup(self):
         """Shared aliases (mysql/mariadb) dedupe the dict; the counter — not
         ``len()`` — must still converge (PR #241 idiom)."""
-        import core.sql_model.feature_gates as fg
+        import dblift.core.sql_model.feature_gates as fg
 
         fg._FEATURE_GATES.clear()
         fg._feature_gates_seen = 0

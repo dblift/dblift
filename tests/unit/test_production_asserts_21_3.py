@@ -41,13 +41,13 @@ class TestNoRemainingAsserts:
                 )
 
     def test_hybrid_parser_no_assert(self):
-        self._assert_no_bare_assert("core/sql_parser/hybrid_parser.py")
+        self._assert_no_bare_assert("dblift/core/sql_parser/hybrid_parser.py")
 
     def test_python_executor_no_assert(self):
-        self._assert_no_bare_assert("core/migration/executors/python_executor.py")
+        self._assert_no_bare_assert("dblift/core/migration/executors/python_executor.py")
 
     def test_sqlalchemy_provider_no_assert(self):
-        self._assert_no_bare_assert("db/sqlalchemy_provider.py")
+        self._assert_no_bare_assert("dblift/db/sqlalchemy_provider.py")
 
 
 # ---------------------------------------------------------------------------
@@ -59,7 +59,7 @@ class TestHybridParserSqlglotGuard:
     """Verify RuntimeError (not AssertionError) when sqlglot_parser is None."""
 
     def _make_parser_without_sqlglot(self):
-        from core.sql_parser.hybrid_parser import HybridParser
+        from dblift.core.sql_parser.hybrid_parser import HybridParser
 
         p = HybridParser.__new__(HybridParser)
         p.dialect = "mysql"
@@ -104,7 +104,7 @@ class TestPythonExecutorSpecGuard:
     """Verify RuntimeError when spec or spec.loader is None (surfaced via result.error)."""
 
     def _make_executor(self):
-        from core.migration.executors.python_executor import PythonMigrationExecutor
+        from dblift.core.migration.executors.python_executor import PythonMigrationExecutor
 
         return PythonMigrationExecutor(
             provider=MagicMock(),
@@ -113,7 +113,7 @@ class TestPythonExecutorSpecGuard:
         )
 
     def _make_python_migration(self, content: str = "def migrate(ctx): pass"):
-        from core.migration.migration import Migration
+        from dblift.core.migration.migration import Migration
 
         tmp = tempfile.NamedTemporaryFile(suffix=".py", mode="w", delete=False, prefix="V1__test_")
         tmp.write(content)

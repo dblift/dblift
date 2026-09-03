@@ -10,8 +10,8 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from core.migration.commands.clean_command import CleanCommand
-from db.provider_interfaces import DroppableObject
+from dblift.core.migration.commands.clean_command import CleanCommand
+from dblift.db.provider_interfaces import DroppableObject
 
 
 def _make_command():

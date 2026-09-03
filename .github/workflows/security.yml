@@ -32,7 +32,7 @@ jobs:
         run: python -m pip install --upgrade pip bandit
 
       - name: Enforce HIGH severity findings
-        run: bandit -c pyproject.toml -r api/ cli/ config/ core/ db/ --severity-level high
+        run: bandit -c pyproject.toml -r dblift/ --severity-level high
 
   dependency-audit:
     name: Dependency vulnerabilities

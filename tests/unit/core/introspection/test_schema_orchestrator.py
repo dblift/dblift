@@ -1,4 +1,4 @@
-"""Unit tests for :mod:`core.introspection._schema_orchestrator`.
+"""Unit tests for :mod:`dblift.core.introspection._schema_orchestrator`.
 
 ``introspect_schema`` is a plain module function taking a structural-typing
 ``si`` (SchemaIntrospector-like) argument, so it can be exercised directly
@@ -9,10 +9,10 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from core.introspection._schema_orchestrator import introspect_schema
-from core.sql_model._base_sql_column import SqlColumn
-from core.sql_model.base import ConstraintType, SqlConstraint
-from core.sql_model.table import Table
+from dblift.core.introspection._schema_orchestrator import introspect_schema
+from dblift.core.sql_model._base_sql_column import SqlColumn
+from dblift.core.sql_model.base import ConstraintType, SqlConstraint
+from dblift.core.sql_model.table import Table
 
 
 def _make_table(name, columns=None, constraints=None):

@@ -1,4 +1,4 @@
-"""Extended unit tests for :class:`db.plugins.db2.db2.schema_operations.Db2SchemaOperations`.
+"""Extended unit tests for :class:`dblift.db.plugins.db2.db2.schema_operations.Db2SchemaOperations`.
 
 Targets fallback/exception branches not covered by the existing
 ``test_db2_plugin.py`` test file.
@@ -6,7 +6,7 @@ Targets fallback/exception branches not covered by the existing
 
 from unittest.mock import MagicMock
 
-from db.plugins.db2.db2.schema_operations import Db2SchemaOperations
+from dblift.db.plugins.db2.db2.schema_operations import Db2SchemaOperations
 
 
 def _make_qe():

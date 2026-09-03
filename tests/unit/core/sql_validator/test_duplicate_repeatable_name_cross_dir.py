@@ -25,8 +25,8 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from core.migration.migration import Migration, MigrationType
-from core.sql_validator.migration_validator import MigrationValidator
+from dblift.core.migration.migration import Migration, MigrationType
+from dblift.core.sql_validator.migration_validator import MigrationValidator
 
 pytestmark = [pytest.mark.unit]
 

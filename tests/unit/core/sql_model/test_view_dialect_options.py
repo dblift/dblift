@@ -10,7 +10,7 @@ change (or miss one).
 
 import pytest
 
-from core.sql_model.view import View
+from dblift.core.sql_model.view import View
 
 
 @pytest.mark.unit

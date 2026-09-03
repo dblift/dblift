@@ -19,7 +19,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from core.migration.history.migration_history_manager import MigrationHistoryManager
+from dblift.core.migration.history.migration_history_manager import MigrationHistoryManager
 
 
 class _FakeProvider:

@@ -28,8 +28,8 @@ all three call sites at once.
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-from core.migration.migration import Migration
-from core.sql_validator.migration_validator import MigrationValidator
+from dblift.core.migration.migration import Migration
+from dblift.core.sql_validator.migration_validator import MigrationValidator
 
 
 def _validator(dialect: str) -> MigrationValidator:
@@ -39,7 +39,7 @@ def _validator(dialect: str) -> MigrationValidator:
     history_manager.has_history_table = False
     history_manager.provider.config.database.type = dialect
     history_manager.provider.config.strict_mode = False
-    with patch("core.sql_validator.migration_validator.SqlAnalyzer"):
+    with patch("dblift.core.sql_validator.migration_validator.SqlAnalyzer"):
         validator = MigrationValidator(
             script_manager=script_manager, history_manager=history_manager, log=MagicMock()
         )

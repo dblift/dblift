@@ -26,19 +26,19 @@ class TestBug01PostCommitQuoting(unittest.TestCase):
     ``quote_identifier`` and upper-case the idents on Oracle."""
 
     def test_mysql_uses_backticks(self) -> None:
-        from core.sql_model.dialect import quote_identifier
+        from dblift.core.sql_model.dialect import quote_identifier
 
         self.assertEqual(quote_identifier("mysql", "public"), "`public`")
         self.assertEqual(quote_identifier("mysql", "users"), "`users`")
 
     def test_sqlserver_uses_brackets(self) -> None:
-        from core.sql_model.dialect import quote_identifier
+        from dblift.core.sql_model.dialect import quote_identifier
 
         self.assertEqual(quote_identifier("sqlserver", "dbo"), "[dbo]")
         self.assertEqual(quote_identifier("sqlserver", "Users"), "[Users]")
 
     def test_postgres_and_oracle_use_ansi_quotes(self) -> None:
-        from core.sql_model.dialect import quote_identifier
+        from dblift.core.sql_model.dialect import quote_identifier
 
         self.assertEqual(quote_identifier("postgresql", "public"), '"public"')
         self.assertEqual(quote_identifier("oracle", "HR"), '"HR"')
@@ -47,7 +47,7 @@ class TestBug01PostCommitQuoting(unittest.TestCase):
         """Compose the exact same expression the engine builds and assert
         the resulting SELECT text differs by dialect and respects Oracle's
         upper-case folding."""
-        from core.sql_model.dialect import quote_identifier
+        from dblift.core.sql_model.dialect import quote_identifier
 
         def compose(dialect: str, schema: str, table: str) -> str:
             s = schema.upper() if dialect == "oracle" else schema
@@ -89,27 +89,27 @@ class TestIssue911QuoteIdentifierEscaping(unittest.TestCase):
     ``_reversers.py`` and diff-based DDL from ``base_converter.py``."""
 
     def test_postgresql_escapes_embedded_double_quote(self) -> None:
-        from core.sql_model.dialect import quote_identifier
+        from dblift.core.sql_model.dialect import quote_identifier
 
         self.assertEqual(quote_identifier("postgresql", 'say "hi"'), '"say ""hi"""')
 
     def test_sqlite_escapes_embedded_double_quote(self) -> None:
-        from core.sql_model.dialect import quote_identifier
+        from dblift.core.sql_model.dialect import quote_identifier
 
         self.assertEqual(quote_identifier("sqlite", 'say "hi"'), '"say ""hi"""')
 
     def test_mysql_escapes_embedded_backtick(self) -> None:
-        from core.sql_model.dialect import quote_identifier
+        from dblift.core.sql_model.dialect import quote_identifier
 
         self.assertEqual(quote_identifier("mysql", "say `hi`"), "`say ``hi```")
 
     def test_sqlserver_escapes_embedded_close_bracket(self) -> None:
-        from core.sql_model.dialect import quote_identifier
+        from dblift.core.sql_model.dialect import quote_identifier
 
         self.assertEqual(quote_identifier("sqlserver", "say ]hi]"), "[say ]]hi]]]")
 
     def test_identifier_without_quote_character_is_unaffected(self) -> None:
-        from core.sql_model.dialect import quote_identifier
+        from dblift.core.sql_model.dialect import quote_identifier
 
         self.assertEqual(quote_identifier("postgresql", "users"), '"users"')
 
@@ -125,7 +125,7 @@ class TestBug04BaselineVersionAlias(unittest.TestCase):
     version-bearing flag."""
 
     def _run_main(self, argv):
-        from cli import main as cli_main
+        from dblift.cli import main as cli_main
 
         stdout, stderr = io.StringIO(), io.StringIO()
         with patch.object(sys, "argv", argv):
@@ -170,7 +170,7 @@ class TestBug09PythonContextExecuteRouting(unittest.TestCase):
     """SELECT/WITH/VALUES route to query execution instead of statement execution."""
 
     def _ctx(self, provider):
-        from core.migration.executors.python_executor import MigrationContext
+        from dblift.core.migration.executors.python_executor import MigrationContext
 
         return MigrationContext(provider=provider, log=MagicMock(), dry_run=False)
 
@@ -216,7 +216,7 @@ class TestBug09PythonContextExecuteRouting(unittest.TestCase):
         provider.execute_query.assert_not_called()
 
     def test_leading_comment_does_not_hide_select(self) -> None:
-        from core.migration.executors.python_executor import _is_query_statement
+        from dblift.core.migration.executors.python_executor import _is_query_statement
 
         self.assertTrue(_is_query_statement("-- header\nSELECT 1"))
         self.assertTrue(_is_query_statement("/* block */ SELECT 1"))
@@ -225,7 +225,7 @@ class TestBug09PythonContextExecuteRouting(unittest.TestCase):
     def test_call_stays_on_statement_path(self) -> None:
         """CALL may or may not return rows; keep on the statement path so
         drivers that ignore the result set silently stay working."""
-        from core.migration.executors.python_executor import _is_query_statement
+        from dblift.core.migration.executors.python_executor import _is_query_statement
 
         self.assertFalse(_is_query_statement("CALL my_proc()"))
         self.assertFalse(_is_query_statement("EXEC sp_who"))
@@ -237,7 +237,7 @@ class TestBug22UrlPrefixDialect(unittest.TestCase):
     confines the dialect to the actual scheme."""
 
     def _detect(self, url):
-        from config.database_config import _detect_dialect_from_url
+        from dblift.config.database_config import _detect_dialect_from_url
 
         return _detect_dialect_from_url(url)
 
@@ -270,7 +270,7 @@ class TestBug24CosmosCleanInternalContainers(unittest.TestCase):
     """Clean should remove every Cosmos container, including history."""
 
     def _make_ops(self):
-        from db.plugins.cosmosdb.cosmosdb.schema_operations import (
+        from dblift.db.plugins.cosmosdb.cosmosdb.schema_operations import (
             CosmosDbSchemaOperations,
         )
 

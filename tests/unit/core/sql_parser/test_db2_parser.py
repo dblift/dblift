@@ -4,8 +4,8 @@ from unittest.mock import patch
 
 import pytest
 
-from core.sql_model.base import ParseResult, SqlStatementType
-from db.plugins.db2.parser.db2_regex_parser import DB2RegexParser
+from dblift.core.sql_model.base import ParseResult, SqlStatementType
+from dblift.db.plugins.db2.parser.db2_regex_parser import DB2RegexParser
 
 
 @pytest.mark.unit
@@ -217,7 +217,7 @@ class TestDB2RegexParser:
 
     def test_inheritance_from_enhanced_regex_parser(self):
         """Test that DB2RegexParser inherits from EnhancedRegexParser."""
-        from core.sql_parser.enhanced_regex_parser import EnhancedRegexParser
+        from dblift.core.sql_parser.enhanced_regex_parser import EnhancedRegexParser
 
         parser = DB2RegexParser()
         assert isinstance(parser, EnhancedRegexParser)

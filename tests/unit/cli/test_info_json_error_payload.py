@@ -22,7 +22,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from cli._command_handlers import _handle_info
+from dblift.cli._command_handlers import _handle_info
 
 
 def _make_ctx(format_value: str, info_side_effect):

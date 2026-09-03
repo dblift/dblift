@@ -2,10 +2,12 @@
 
 import pytest
 
-from core.sql_parser.parser_context import ParserContext
-from core.sql_parser.tokens import TokenType
-from db.plugins.postgresql.parser.postgresql_statement_parser import PostgreSQLStatementParser
-from db.plugins.postgresql.parser.postgresql_tokenizer import PostgreSQLTokenizer
+from dblift.core.sql_parser.parser_context import ParserContext
+from dblift.core.sql_parser.tokens import TokenType
+from dblift.db.plugins.postgresql.parser.postgresql_statement_parser import (
+    PostgreSQLStatementParser,
+)
+from dblift.db.plugins.postgresql.parser.postgresql_tokenizer import PostgreSQLTokenizer
 
 
 class TestPostgreSQLTokenizer:

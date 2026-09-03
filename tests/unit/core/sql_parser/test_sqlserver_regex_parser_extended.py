@@ -12,7 +12,7 @@ Covers:
 
 import unittest
 
-from db.plugins.sqlserver.parser.sqlserver_regex_parser import SqlServerRegexParser
+from dblift.db.plugins.sqlserver.parser.sqlserver_regex_parser import SqlServerRegexParser
 
 
 class TestSplitStatements(unittest.TestCase):

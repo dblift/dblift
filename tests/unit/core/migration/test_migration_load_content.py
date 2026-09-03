@@ -18,7 +18,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from core.migration.migration import Migration, MigrationType
+from dblift.core.migration.migration import Migration, MigrationType
 
 
 class TestMigrationLoadContent:
@@ -70,7 +70,7 @@ class TestChecksumValidationIncludesPython:
     """B-2: PYTHON migration type is not excluded from checksum validation."""
 
     def test_python_type_not_skipped(self):
-        from core.migration.migration import MigrationType
+        from dblift.core.migration.migration import MigrationType
 
         # The new inverted guard skips only UNKNOWN, DELETE, BASELINE
         skipped = {"UNKNOWN", "DELETE", "BASELINE"}
@@ -81,8 +81,11 @@ class TestChecksumValidationIncludesPython:
 
     def test_validate_checksums_does_not_skip_python(self, tmp_path):
         """PYTHON migration is NOT skipped — has_script_changed is called for it."""
-        from core.migration.migration import Migration, MigrationType
-        from core.sql_validator.migration_validator import MigrationValidator, ValidationResult
+        from dblift.core.migration.migration import Migration, MigrationType
+        from dblift.core.sql_validator.migration_validator import (
+            MigrationValidator,
+            ValidationResult,
+        )
 
         script = tmp_path / "V6__orders.py"
         script.write_text("def migrate(ctx): ctx.execute('CREATE TABLE orders (id INT)')\n")
@@ -114,8 +117,8 @@ class TestChecksumValidationIncludesPython:
 
     def test_has_script_changed_ignores_later_undo_row_for_same_script(self, tmp_path):
         """Synthetic UNDO_SQL rows reuse the script name but must not own the checksum."""
-        from core.logger import NullLog
-        from core.migration.scripting.migration_script_manager import MigrationScriptManager
+        from dblift.core.logger import NullLog
+        from dblift.core.migration.scripting.migration_script_manager import MigrationScriptManager
 
         script = tmp_path / "V7__python_migrate.py"
         script.write_text("def migrate(ctx): ctx.execute('CREATE TABLE t (id INT)')\n")
@@ -142,9 +145,12 @@ class TestChecksumValidationIncludesPython:
 
     def test_validate_checksums_ignores_undo_row_for_same_script(self, tmp_path):
         """Checksum validation should compare against the original row, not UNDO_SQL."""
-        from core.logger import NullLog
-        from core.migration.scripting.migration_script_manager import MigrationScriptManager
-        from core.sql_validator.migration_validator import MigrationValidator, ValidationResult
+        from dblift.core.logger import NullLog
+        from dblift.core.migration.scripting.migration_script_manager import MigrationScriptManager
+        from dblift.core.sql_validator.migration_validator import (
+            MigrationValidator,
+            ValidationResult,
+        )
 
         script = tmp_path / "V7__python_migrate.py"
         script.write_text("def migrate(ctx): ctx.execute('CREATE TABLE t (id INT)')\n")

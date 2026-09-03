@@ -11,14 +11,14 @@ a module-level `PLUGIN` constant.
 
 ```toml
 [project.entry-points."dblift.providers"]
-postgresql = "db.plugins.postgresql.plugin:PLUGIN"
+postgresql = "dblift.db.plugins.postgresql.plugin:PLUGIN"
 ```
 
 Third-party packages use the same pattern:
 
 ```toml
 [project.entry-points."dblift.providers"]
-snowflake = "db.plugins.snowflake.plugin:PLUGIN"
+snowflake = "dblift.db.plugins.snowflake.plugin:PLUGIN"
 ```
 
 The plugin supplies provider classes, URL builders, optional quirks/config
@@ -76,7 +76,7 @@ If you publish a `dblift-foo` provider:
 foo = ["your-native-driver"]
 
 [project.entry-points."dblift.providers"]
-foo = "db.plugins.foo.plugin:PLUGIN"
+foo = "dblift.db.plugins.foo.plugin:PLUGIN"
 ```
 
 See `docs/developer-guide/creating-a-provider.md` for the provider workflow.

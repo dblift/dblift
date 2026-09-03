@@ -27,7 +27,7 @@ from unittest.mock import patch
 
 import pytest
 
-from cli.main import main
+from dblift.cli.main import main
 
 
 @dataclass
@@ -98,7 +98,7 @@ def capture_main_execution(argv_list: List[str]):
         sys.argv = argv_list
         sys.stdout = stdout_capture
         sys.stderr = stderr_capture
-        from core.logger.console import reset_stderr_console, reset_stdout_console
+        from dblift.core.logger.console import reset_stderr_console, reset_stdout_console
 
         reset_stdout_console()
         reset_stderr_console()
@@ -162,7 +162,7 @@ class DBLiftCLIDirect:
         >>> assert "V1_0_0" in result.stdout
     """
 
-    CLI_MODULE = "cli.main"  # Keep same interface as DBLiftCLI
+    CLI_MODULE = "dblift.cli.main"  # Keep same interface as DBLiftCLI
 
     def __init__(
         self,

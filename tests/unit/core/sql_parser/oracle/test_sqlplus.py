@@ -1,10 +1,10 @@
-"""Unit tests for `db.plugins.oracle.parser._sqlplus` (Phase-Oracle-03)."""
+"""Unit tests for `dblift.db.plugins.oracle.parser._sqlplus` (Phase-Oracle-03)."""
 
 from __future__ import annotations
 
 import pytest
 
-from db.plugins.oracle.parser._sqlplus import is_sqlplus_command, parse_whenever_sqlerror
+from dblift.db.plugins.oracle.parser._sqlplus import is_sqlplus_command, parse_whenever_sqlerror
 
 
 @pytest.mark.unit

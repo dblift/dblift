@@ -15,8 +15,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from config.dblift_config import DbliftConfig
-from db.sqlalchemy_provider import SqlAlchemyProvider, _SqlAlchemyQueryExecutor
+from dblift.config.dblift_config import DbliftConfig
+from dblift.db.sqlalchemy_provider import SqlAlchemyProvider, _SqlAlchemyQueryExecutor
 
 # ---------------------------------------------------------------------------
 # Minimal concrete subclass — stubs out the 15 dialect-specific abstracts
@@ -129,8 +129,8 @@ def test_connection_property_returns_active_connection(provider: _Concrete) -> N
 
 def test_query_executor_exposes_mysql_identifier_helpers() -> None:
     """Native schema operations need the same identifier helpers legacy executors had."""
-    from db.plugins.mysql.provider import MySqlProvider
-    from db.plugins.mysql.quirks import MysqlQuirks
+    from dblift.db.plugins.mysql.provider import MySqlProvider
+    from dblift.db.plugins.mysql.quirks import MysqlQuirks
 
     provider = object.__new__(MySqlProvider)
     # object.__new__ skips __init__, so seed the quirks cache directly: the lazy
@@ -144,9 +144,9 @@ def test_query_executor_exposes_mysql_identifier_helpers() -> None:
 
 def test_identifier_quote_chars_derived_from_quirks() -> None:
     """_identifier_quote_chars sources quotes from quirks, not the dialect name."""
-    from db.base_quirks import BaseQuirks
-    from db.plugins.mysql.quirks import MysqlQuirks
-    from db.plugins.sqlserver.quirks import SqlserverQuirks
+    from dblift.db.base_quirks import BaseQuirks
+    from dblift.db.plugins.mysql.quirks import MysqlQuirks
+    from dblift.db.plugins.sqlserver.quirks import SqlserverQuirks
 
     # The dialects that reach this native path are exactly the ones that
     # override quote_* (mysql/sqlserver) plus everything else on the BaseQuirks
@@ -644,7 +644,7 @@ def test_autocommit_statement_skips_restore_on_a_closed_connection(cfg: DbliftCo
 
 def test_autocommit_statement_default_delegates_to_plain_execution() -> None:
     """Base contract: providers whose driver already autocommits change nothing."""
-    from db.provider_interfaces import TransactionalProvider
+    from dblift.db.provider_interfaces import TransactionalProvider
 
     class _Plain(TransactionalProvider):
         def __init__(self) -> None:
@@ -853,7 +853,7 @@ def test_concurrent_execute_query_from_several_threads_does_not_race(tmp_path: A
     the whole test run missing the bug to effectively zero without relying on
     a single lucky interleaving.
     """
-    from db.native_connection_manager import NativeConnectionManager
+    from dblift.db.native_connection_manager import NativeConnectionManager
 
     # A real on-disk file (not ``:memory:``) so the table exists for every
     # round's freshly-constructed provider — an in-memory SQLite database is
@@ -1027,12 +1027,12 @@ def test_getattr_lock_fallback_converges_on_one_lock_under_concurrent_first_touc
     sequence, so the race is real but easy to miss by chance (confirmed live:
     the reviewer needed 32 threads to catch it 3-ways-distinct). To make the
     reproduction deterministic rather than lucky, ``threading.RLock`` is
-    patched (module-locally, in ``db.sqlalchemy_provider``) to add a short
+    patched (module-locally, in ``dblift.db.sqlalchemy_provider``) to add a short
     sleep between construction and return — this only widens the window
     threads race inside, it does not change what either version of
     ``__getattr__`` does with the result.
     """
-    import db.sqlalchemy_provider as sqlalchemy_provider_module
+    import dblift.db.sqlalchemy_provider as sqlalchemy_provider_module
 
     real_rlock = threading.RLock
 

@@ -17,8 +17,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from core.logger import NullLog
-from db.plugins.base_history_manager import BaseHistoryManager
+from dblift.core.logger import NullLog
+from dblift.db.plugins.base_history_manager import BaseHistoryManager
 
 pytestmark = pytest.mark.unit
 

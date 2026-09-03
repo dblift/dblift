@@ -11,12 +11,12 @@ and every serialized key must remain identical before and after the refactor.
 
 import pytest
 
-from core.sql_model.event import Event
-from core.sql_model.index import Index
-from core.sql_model.procedure import Procedure
-from core.sql_model.sequence import Sequence
-from core.sql_model.trigger import Trigger
-from core.sql_model.view import View
+from dblift.core.sql_model.event import Event
+from dblift.core.sql_model.index import Index
+from dblift.core.sql_model.procedure import Procedure
+from dblift.core.sql_model.sequence import Sequence
+from dblift.core.sql_model.trigger import Trigger
+from dblift.core.sql_model.view import View
 
 # ---------------------------------------------------------------------------
 # Event (MySQL)

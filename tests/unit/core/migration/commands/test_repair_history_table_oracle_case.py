@@ -19,10 +19,10 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from core.logger.results import RepairResult
-from core.migration.commands.repair_command import RepairCommand
-from core.migration.history.migration_history_manager import MigrationHistoryManager
-from db.plugins.base_history_manager import BaseHistoryManager
+from dblift.core.logger.results import RepairResult
+from dblift.core.migration.commands.repair_command import RepairCommand
+from dblift.core.migration.history.migration_history_manager import MigrationHistoryManager
+from dblift.db.plugins.base_history_manager import BaseHistoryManager
 
 
 class _OracleQueryExecutorStub:

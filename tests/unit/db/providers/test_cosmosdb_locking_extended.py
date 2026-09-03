@@ -5,7 +5,7 @@ from unittest.mock import MagicMock, patch
 
 
 def _make_mgr():
-    from db.plugins.cosmosdb.cosmosdb.locking_manager import CosmosDbLockingManager
+    from dblift.db.plugins.cosmosdb.cosmosdb.locking_manager import CosmosDbLockingManager
 
     qe = MagicMock()
     log = MagicMock()
@@ -19,8 +19,8 @@ class TestCosmosDbLockingManagerInit(unittest.TestCase):
         self.assertIs(mgr.query_executor, qe)
 
     def test_null_log_default(self):
-        from core.logger import NullLog
-        from db.plugins.cosmosdb.cosmosdb.locking_manager import CosmosDbLockingManager
+        from dblift.core.logger import NullLog
+        from dblift.db.plugins.cosmosdb.cosmosdb.locking_manager import CosmosDbLockingManager
 
         qe = MagicMock()
         mgr = CosmosDbLockingManager(query_executor=qe, log=None)

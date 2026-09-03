@@ -16,7 +16,7 @@ def _cosmos_provider():
     real constructor and inject stubs for the attributes ``clean_schema``
     actually touches.
     """
-    from db.plugins.cosmosdb.provider import CosmosDbProvider
+    from dblift.db.plugins.cosmosdb.provider import CosmosDbProvider
 
     provider = CosmosDbProvider.__new__(CosmosDbProvider)
     provider.log = MagicMock()
@@ -113,7 +113,7 @@ class TestCosmosDbCleanPreview:
         _cosmos_provider.schema_operations.get_clean_preview.assert_called_once_with("ignored")
 
     def test_preview_uses_container_listing_without_deleting(self):
-        from db.plugins.cosmosdb.cosmosdb.schema_operations import CosmosDbSchemaOperations
+        from dblift.db.plugins.cosmosdb.cosmosdb.schema_operations import CosmosDbSchemaOperations
 
         operations = CosmosDbSchemaOperations.__new__(CosmosDbSchemaOperations)
         containers = ["users", "orders", "dblift_schema_history", "dblift_migration_lock"]
@@ -133,7 +133,7 @@ class TestCosmosDbCleanPreview:
         assert "database.delete_container('dblift_migration_lock')" in summary.statements
 
     def test_preview_includes_only_internal_containers_when_they_are_all_that_exists(self):
-        from db.plugins.cosmosdb.cosmosdb.schema_operations import CosmosDbSchemaOperations
+        from dblift.db.plugins.cosmosdb.cosmosdb.schema_operations import CosmosDbSchemaOperations
 
         operations = CosmosDbSchemaOperations.__new__(CosmosDbSchemaOperations)
         operations.list_containers = MagicMock(

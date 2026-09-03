@@ -7,8 +7,8 @@ from unittest.mock import MagicMock, Mock, patch
 
 import pytest
 
-from core.logger.formatters.htmlformatter import HtmlFormatter
-from core.logger.results import (
+from dblift.core.logger.formatters.htmlformatter import HtmlFormatter
+from dblift.core.logger.results import (
     BaselineResult,
     CleanResult,
     InfoResult,
@@ -238,7 +238,7 @@ class TestHtmlFormatter:
         """Test adding log entries."""
         formatter = HtmlFormatter()
 
-        with patch("core.logger.formatters.htmlformatter.datetime") as mock_datetime:
+        with patch("dblift.core.logger.formatters.htmlformatter.datetime") as mock_datetime:
             mock_datetime.now.return_value.strftime.return_value = "2023-01-01 12:00:00"
 
             formatter.add_log_entry("ERROR", "migration", "Test error message")
@@ -269,7 +269,7 @@ class TestHtmlFormatter:
         mock_result.error_message = None
         mock_result.execution_time.return_value = 1500
 
-        with patch("core.logger.formatters.htmlformatter.datetime") as mock_datetime:
+        with patch("dblift.core.logger.formatters.htmlformatter.datetime") as mock_datetime:
             mock_datetime.now.return_value.strftime.return_value = "2023-01-01 12:00:00"
 
             formatter.add_command_result("MIGRATE", mock_result)
@@ -568,7 +568,7 @@ class TestHtmlFormatter:
         """Test get_output_filename generation."""
         formatter = HtmlFormatter()
 
-        with patch("core.logger.formatters.htmlformatter.datetime") as mock_datetime:
+        with patch("dblift.core.logger.formatters.htmlformatter.datetime") as mock_datetime:
             mock_datetime.now.return_value.strftime.return_value = "20230101_120000"
 
             filename = formatter.get_output_filename("test_schema", "test_db", "migrate")
@@ -648,7 +648,10 @@ class TestHtmlFormatter:
         assert "V1__Initial.sql" in call_args["per_migration_journal"]
         assert call_args["per_migration_journal"]["V1__Initial.sql"] == {"total_time": 1500}
 
-    @patch("core.logger.formatters.htmlformatter.resolve_dblift_package_version", return_value=None)
+    @patch(
+        "dblift.core.logger.formatters.htmlformatter.resolve_dblift_package_version",
+        return_value=None,
+    )
     def test_report_metadata_omits_empty_version(self, _mock_version):
         formatter = HtmlFormatter()
         meta = formatter._report_metadata(MigrateResult(), "2026-08-12 19:17:29")

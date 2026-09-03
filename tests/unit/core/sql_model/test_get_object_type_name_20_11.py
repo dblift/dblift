@@ -2,7 +2,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from core.sql_model.base import SqlObjectType, get_object_type_name
+from dblift.core.sql_model.base import SqlObjectType, get_object_type_name
 
 pytestmark = [pytest.mark.unit]
 
@@ -60,7 +60,7 @@ class TestGetObjectTypeName:
         """get_object_type_name est importable depuis core.sql_model.base."""
         import importlib
 
-        mod = importlib.import_module("core.sql_model.base")
+        mod = importlib.import_module("dblift.core.sql_model.base")
         assert hasattr(mod, "get_object_type_name")
         assert callable(mod.get_object_type_name)
 

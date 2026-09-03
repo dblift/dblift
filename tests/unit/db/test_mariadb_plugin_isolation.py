@@ -17,12 +17,12 @@ real new dialect.
 
 from __future__ import annotations
 
-from db.plugins.mariadb.plugin import PLUGIN as MARIADB_PLUGIN
-from db.plugins.mariadb.provider import MariadbProvider
-from db.plugins.mariadb.quirks import MariadbQuirks
-from db.plugins.mysql.provider import MySqlProvider
-from db.plugins.mysql.quirks import MysqlQuirks
-from db.provider_registry import ProviderRegistry
+from dblift.db.plugins.mariadb.plugin import PLUGIN as MARIADB_PLUGIN
+from dblift.db.plugins.mariadb.provider import MariadbProvider
+from dblift.db.plugins.mariadb.quirks import MariadbQuirks
+from dblift.db.plugins.mysql.provider import MySqlProvider
+from dblift.db.plugins.mysql.quirks import MysqlQuirks
+from dblift.db.provider_registry import ProviderRegistry
 
 
 def test_mariadb_is_distinct_plugin_from_mysql():

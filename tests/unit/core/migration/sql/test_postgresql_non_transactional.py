@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import pytest
 
-from core.migration.sql.execution_statement import classify_execution_statement
+from dblift.core.migration.sql.execution_statement import classify_execution_statement
 
 # (statement, the documented sentence that puts it here)
 _NON_TRANSACTIONAL = [

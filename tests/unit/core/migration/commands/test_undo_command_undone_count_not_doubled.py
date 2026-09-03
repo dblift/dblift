@@ -14,10 +14,10 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from core.migration.migration import MigrationType
-from core.migration.state.migration_display_state import MigrationDisplayState
-from core.migration.state.migration_state import MigrationEntry
-from core.migration.state.migration_state_manager import MigrationStateManager
+from dblift.core.migration.migration import MigrationType
+from dblift.core.migration.state.migration_display_state import MigrationDisplayState
+from dblift.core.migration.state.migration_state import MigrationEntry
+from dblift.core.migration.state.migration_state_manager import MigrationStateManager
 
 
 def _make_applied_migration(version: str, mtype):
@@ -44,7 +44,7 @@ def _make_undo_script(version: str):
 
 
 def _make_command(applied_migrations, undo_scripts):
-    from core.migration.commands.undo_command import UndoCommand
+    from dblift.core.migration.commands.undo_command import UndoCommand
 
     state_manager = MagicMock()
     migration_state = MagicMock()

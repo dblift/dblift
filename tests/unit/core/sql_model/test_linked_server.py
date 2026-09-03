@@ -2,7 +2,7 @@
 
 import pytest
 
-from core.sql_model.linked_server import LinkedServer
+from dblift.core.sql_model.linked_server import LinkedServer
 
 
 @pytest.mark.unit

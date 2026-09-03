@@ -7,7 +7,7 @@ from unittest.mock import MagicMock
 
 class TestMigrationHelpersInit(unittest.TestCase):
     def _make(self):
-        from core.migration.executor.migration_helpers import MigrationHelpers
+        from dblift.core.migration.executor.migration_helpers import MigrationHelpers
 
         config = MagicMock()
         log = MagicMock()
@@ -19,8 +19,8 @@ class TestMigrationHelpersInit(unittest.TestCase):
         self.assertIs(helpers.log, log)
 
     def test_null_log_default(self):
-        from core.logger import NullLog
-        from core.migration.executor.migration_helpers import MigrationHelpers
+        from dblift.core.logger import NullLog
+        from dblift.core.migration.executor.migration_helpers import MigrationHelpers
 
         config = MagicMock()
         helpers = MigrationHelpers(config, None)
@@ -29,7 +29,7 @@ class TestMigrationHelpersInit(unittest.TestCase):
 
 class TestSetupMigrationParameters(unittest.TestCase):
     def _make(self):
-        from core.migration.executor.migration_helpers import MigrationHelpers
+        from dblift.core.migration.executor.migration_helpers import MigrationHelpers
 
         config = MagicMock()
         config.migrations.recursive = True
@@ -71,7 +71,7 @@ class TestSetupMigrationParameters(unittest.TestCase):
         self.assertEqual(len(dirs), 2)
 
     def test_config_dirs_accept_directory_config(self):
-        from config.dblift_config import DirectoryConfig
+        from dblift.config.dblift_config import DirectoryConfig
 
         helpers, config = self._make()
         config.migrations.directories = [
@@ -91,7 +91,7 @@ class TestSetupMigrationParameters(unittest.TestCase):
 
 class TestValidateMigrationsForMigrate(unittest.TestCase):
     def _make(self):
-        from core.migration.executor.migration_helpers import MigrationHelpers
+        from dblift.core.migration.executor.migration_helpers import MigrationHelpers
 
         config = MagicMock()
         log = MagicMock()

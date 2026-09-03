@@ -6,8 +6,8 @@ import yaml
 
 pytestmark = [pytest.mark.unit]
 
-from config.database_config import BaseDatabaseConfig
-from config.dblift_config import DbliftConfig
+from dblift.config.database_config import BaseDatabaseConfig
+from dblift.config.dblift_config import DbliftConfig
 
 
 def test_dbliftconfig_load_yaml_file_none(monkeypatch):
@@ -71,7 +71,7 @@ def test_basedatabaseconfig_registry_missing_type(monkeypatch):
     Pass ``type`` explicitly to bypass URL-driven dialect inference,
     which also consults ``ProviderRegistry`` and would race the patch.
     """
-    from db.provider_registry import ProviderRegistry
+    from dblift.db.provider_registry import ProviderRegistry
 
     # Test with empty legacy registry, and force the postgresql plugin's
     # config_class field to None so neither resolution path satisfies.

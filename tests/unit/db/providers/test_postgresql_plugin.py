@@ -44,7 +44,9 @@ class TestPostgreSqlSchemaOperations(unittest.TestCase):
         return qe
 
     def _make_ops(self, qe=None):
-        from db.plugins.postgresql.postgresql.schema_operations import PostgreSqlSchemaOperations
+        from dblift.db.plugins.postgresql.postgresql.schema_operations import (
+            PostgreSqlSchemaOperations,
+        )
 
         if qe is None:
             qe = self._make_qe()
@@ -317,7 +319,7 @@ class TestPostgreSqlSchemaOperations(unittest.TestCase):
         self.assertTrue(any("DROP PROCEDURE" in c for c in calls))
 
     def test_clean_schema_returns_summary(self):
-        from core.migration.clean_summary import CleanExecutionSummary
+        from dblift.core.migration.clean_summary import CleanExecutionSummary
 
         ops, qe, log = self._make_ops()
         conn, _, _ = _make_connection()
@@ -380,7 +382,7 @@ class TestPostgreSqlSchemaOperations(unittest.TestCase):
     def test_drop_views_uses_template_method(self):
         ops, qe, log = self._make_ops()
         conn, _, _ = _make_connection()
-        from core.migration.clean_summary import CleanExecutionSummary
+        from dblift.core.migration.clean_summary import CleanExecutionSummary
 
         summary = CleanExecutionSummary()
 
@@ -395,7 +397,7 @@ class TestPostgreSqlSchemaOperations(unittest.TestCase):
     def test_drop_sequences_uses_template_method(self):
         ops, qe, log = self._make_ops()
         conn, _, _ = _make_connection()
-        from core.migration.clean_summary import CleanExecutionSummary
+        from dblift.core.migration.clean_summary import CleanExecutionSummary
 
         summary = CleanExecutionSummary()
 

@@ -19,7 +19,7 @@ from __future__ import annotations
 import unittest
 from unittest.mock import MagicMock, patch
 
-from core.sql_generator.alter.alter_generator_factory import AlterGeneratorFactory
+from dblift.core.sql_generator.alter.alter_generator_factory import AlterGeneratorFactory
 
 
 def _make_plugin_info(name: str, dialects: list) -> MagicMock:
@@ -36,9 +36,11 @@ class TestEnsurePopulatedLatch(unittest.TestCase):
     def tearDown(self):
         AlterGeneratorFactory.reset()
 
-    @patch("core.sql_generator.alter.alter_generator_factory.attach_registered_sql_generators")
-    @patch("core.sql_generator.alter.alter_generator_factory.load_feature_extensions")
-    @patch("db.provider_registry.ProviderRegistry")
+    @patch(
+        "dblift.core.sql_generator.alter.alter_generator_factory.attach_registered_sql_generators"
+    )
+    @patch("dblift.core.sql_generator.alter.alter_generator_factory.load_feature_extensions")
+    @patch("dblift.db.provider_registry.ProviderRegistry")
     def test_empty_plugin_list_does_not_latch_populated(
         self, mock_registry, mock_load_features, mock_attach
     ):
@@ -54,9 +56,11 @@ class TestEnsurePopulatedLatch(unittest.TestCase):
             "call that WOULD find plugins never retries",
         )
 
-    @patch("core.sql_generator.alter.alter_generator_factory.attach_registered_sql_generators")
-    @patch("core.sql_generator.alter.alter_generator_factory.load_feature_extensions")
-    @patch("db.provider_registry.ProviderRegistry")
+    @patch(
+        "dblift.core.sql_generator.alter.alter_generator_factory.attach_registered_sql_generators"
+    )
+    @patch("dblift.core.sql_generator.alter.alter_generator_factory.load_feature_extensions")
+    @patch("dblift.db.provider_registry.ProviderRegistry")
     def test_a_later_call_with_plugins_available_succeeds_after_an_earlier_empty_call(
         self, mock_registry, mock_load_features, mock_attach
     ):
@@ -80,9 +84,11 @@ class TestEnsurePopulatedLatch(unittest.TestCase):
         self.assertEqual({"postgresql": alter_class}, AlterGeneratorFactory._generators)
         self.assertTrue(AlterGeneratorFactory._populated)
 
-    @patch("core.sql_generator.alter.alter_generator_factory.attach_registered_sql_generators")
-    @patch("core.sql_generator.alter.alter_generator_factory.load_feature_extensions")
-    @patch("db.provider_registry.ProviderRegistry")
+    @patch(
+        "dblift.core.sql_generator.alter.alter_generator_factory.attach_registered_sql_generators"
+    )
+    @patch("dblift.core.sql_generator.alter.alter_generator_factory.load_feature_extensions")
+    @patch("dblift.db.provider_registry.ProviderRegistry")
     def test_non_empty_plugin_list_still_latches_as_before(
         self, mock_registry, mock_load_features, mock_attach
     ):
@@ -107,9 +113,11 @@ class TestEnsurePopulatedLatch(unittest.TestCase):
         AlterGeneratorFactory._ensure_populated()
         mock_registry.list_plugins.assert_not_called()
 
-    @patch("core.sql_generator.alter.alter_generator_factory.attach_registered_sql_generators")
-    @patch("core.sql_generator.alter.alter_generator_factory.load_feature_extensions")
-    @patch("db.provider_registry.ProviderRegistry")
+    @patch(
+        "dblift.core.sql_generator.alter.alter_generator_factory.attach_registered_sql_generators"
+    )
+    @patch("dblift.core.sql_generator.alter.alter_generator_factory.load_feature_extensions")
+    @patch("dblift.db.provider_registry.ProviderRegistry")
     def test_plugins_found_but_none_contribute_a_generator_still_latches(
         self, mock_registry, mock_load_features, mock_attach
     ):

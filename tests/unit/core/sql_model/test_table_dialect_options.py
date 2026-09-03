@@ -4,8 +4,8 @@ from pathlib import Path
 
 import pytest
 
-from core.sql_model.base import SqlColumn
-from core.sql_model.table import Table
+from dblift.core.sql_model.base import SqlColumn
+from dblift.core.sql_model.table import Table
 
 pytestmark = [pytest.mark.unit]
 
@@ -100,7 +100,7 @@ class TestDialectOptionsSerializationContract:
         ``_NS_X`` constants are eliminated for ADR-26 E story 26-5."""
         import ast
 
-        from core.sql_model import table as table_module
+        from dblift.core.sql_model import table as table_module
 
         source = Path(table_module.__file__).read_text(encoding="utf-8")
         tree = ast.parse(source)

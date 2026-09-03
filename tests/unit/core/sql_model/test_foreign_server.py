@@ -4,7 +4,7 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-from core.sql_model.foreign_server import ForeignServer
+from dblift.core.sql_model.foreign_server import ForeignServer
 
 
 @pytest.mark.unit

@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import pytest
 
-from db.plugins.oracle.parser._plsql_block import (
+from dblift.db.plugins.oracle.parser._plsql_block import (
     extract_java_source_block,
     extract_plsql_block,
     handle_plsql_end_keyword,

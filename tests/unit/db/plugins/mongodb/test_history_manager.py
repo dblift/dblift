@@ -8,7 +8,7 @@ be permanently unretryable.
 
 from unittest.mock import MagicMock
 
-from db.plugins.mongodb.mongodb import MongoDbHistoryManager
+from dblift.db.plugins.mongodb.mongodb import MongoDbHistoryManager
 
 
 def _manager(documents=None):
@@ -164,7 +164,7 @@ def test_delete_failed_is_not_the_inherited_sql_version():
     """Regression guard: if this ever resolves to BaseHistoryManager's
     implementation, repair on MongoDB breaks and a failed migration can
     never be retried."""
-    from db.plugins.base_history_manager import BaseHistoryManager
+    from dblift.db.plugins.base_history_manager import BaseHistoryManager
 
     assert (
         MongoDbHistoryManager.delete_failed_migration_entry

@@ -4,7 +4,7 @@ Database provider implementations for each supported database.
 
 ## Base Provider
 
-::: db.base_provider
+::: dblift.db.base_provider
     options:
       show_root_heading: true
       show_source: true
@@ -23,29 +23,29 @@ See the [Database Providers Architecture](../architecture/database-providers.md)
 
 ## Supported Databases
 
-- **PostgreSQL** (`db.plugins.postgresql`) - Native SQLAlchemy provider
-- **CockroachDB** (`db.plugins.cockroachdb`) - PostgreSQL-compatible provider
-- **Redshift** (`db.plugins.redshift`) - PostgreSQL-compatible provider
-- **Snowflake** (`db.plugins.snowflake`) - Native SQLAlchemy provider
-- **MySQL** (`db.plugins.mysql`) - Native SQLAlchemy provider
-- **SQL Server** (`db.plugins.sqlserver`) - Native SQLAlchemy provider
-- **Oracle** (`db.plugins.oracle`) - Native SQLAlchemy provider
-- **DB2** (`db.plugins.db2`) - Native SQLAlchemy provider
-- **SQLite** (`db.plugins.sqlite`) - Python native provider
-- **Cosmos DB** (`db.plugins.cosmosdb`) - Azure SDK provider
+- **PostgreSQL** (`dblift.db.plugins.postgresql`) - Native SQLAlchemy provider
+- **CockroachDB** (`dblift.db.plugins.cockroachdb`) - PostgreSQL-compatible provider
+- **Redshift** (`dblift.db.plugins.redshift`) - PostgreSQL-compatible provider
+- **Snowflake** (`dblift.db.plugins.snowflake`) - Native SQLAlchemy provider
+- **MySQL** (`dblift.db.plugins.mysql`) - Native SQLAlchemy provider
+- **SQL Server** (`dblift.db.plugins.sqlserver`) - Native SQLAlchemy provider
+- **Oracle** (`dblift.db.plugins.oracle`) - Native SQLAlchemy provider
+- **DB2** (`dblift.db.plugins.db2`) - Native SQLAlchemy provider
+- **SQLite** (`dblift.db.plugins.sqlite`) - Python native provider
+- **Cosmos DB** (`dblift.db.plugins.cosmosdb`) - Azure SDK provider
 
 ## Component Interfaces
 
 All providers implement these base interfaces:
 
-- `db.plugins.base_query_executor.BaseQueryExecutor`
-- `db.plugins.base_schema_operations.BaseSchemaOperations`
-- `db.plugins.base_locking_manager.BaseLockingManager`
-- `db.plugins.base_history_manager.BaseHistoryManager`
+- `dblift.db.plugins.base_query_executor.BaseQueryExecutor`
+- `dblift.db.plugins.base_schema_operations.BaseSchemaOperations`
+- `dblift.db.plugins.base_locking_manager.BaseLockingManager`
+- `dblift.db.plugins.base_history_manager.BaseHistoryManager`
 
 Connection management has no shared base class; each provider implements its
-own concrete connection manager, e.g. `db.native_connection_manager.NativeConnectionManager`,
-`db.plugins.sqlite.sqlite.connection_manager.SQLiteConnectionManager`, and
-`db.plugins.cosmosdb.cosmosdb.connection_manager.CosmosDbConnectionManager`.
+own concrete connection manager, e.g. `dblift.db.native_connection_manager.NativeConnectionManager`,
+`dblift.db.plugins.sqlite.sqlite.connection_manager.SQLiteConnectionManager`, and
+`dblift.db.plugins.cosmosdb.cosmosdb.connection_manager.CosmosDbConnectionManager`.
 
 For implementation details, see the source code in `db/plugins/<database>/`.

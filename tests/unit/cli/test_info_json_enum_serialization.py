@@ -18,7 +18,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from cli._command_handlers import _info_result_to_dict
+from dblift.cli._command_handlers import _info_result_to_dict
 
 
 class _FakeMigrationType(Enum):

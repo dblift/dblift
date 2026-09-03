@@ -10,8 +10,8 @@ which the surface-level parity test cannot see.
 
 import pytest
 
-from config.dblift_config import DbliftConfig
-from config.property_registry import PROPERTY_REGISTRY
+from dblift.config.dblift_config import DbliftConfig
+from dblift.config.property_registry import PROPERTY_REGISTRY
 
 # Top-level scalar properties (nested database.* fields are exercised separately
 # via their own connection tests; structured/cli-only specs are excluded).

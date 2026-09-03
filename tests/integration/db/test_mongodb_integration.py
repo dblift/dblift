@@ -33,8 +33,8 @@ from pathlib import Path
 
 import pytest
 
-from config import DbliftConfig
-from db.provider_registry import ProviderRegistry
+from dblift.config import DbliftConfig
+from dblift.db.provider_registry import ProviderRegistry
 from tests.integration.helpers.cli_runner_direct import DBLiftCLIDirect as DBLiftCLI
 from tests.integration.helpers.migration_helper import create_config, create_migration
 

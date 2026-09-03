@@ -6,22 +6,22 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from core.sql_model.base import ParseResult, SqlObject, SqlObjectType, SqlStatementType
-from core.sql_model.event import Event
-from core.sql_model.extension import Extension
-from core.sql_model.foreign_data_wrapper import ForeignDataWrapper
-from core.sql_model.foreign_server import ForeignServer
-from core.sql_model.index import Index
-from core.sql_model.package import Package
-from core.sql_model.partition import Partition
-from core.sql_model.procedure import Procedure
-from core.sql_model.sequence import Sequence
-from core.sql_model.synonym import Synonym
-from core.sql_model.table import Table
-from core.sql_model.trigger import Trigger
-from core.sql_model.user_defined_type import UserDefinedType
-from core.sql_model.view import View
-from core.sql_parser.hybrid_parser import _COLLECT_DISPATCH, HybridParser
+from dblift.core.sql_model.base import ParseResult, SqlObject, SqlObjectType, SqlStatementType
+from dblift.core.sql_model.event import Event
+from dblift.core.sql_model.extension import Extension
+from dblift.core.sql_model.foreign_data_wrapper import ForeignDataWrapper
+from dblift.core.sql_model.foreign_server import ForeignServer
+from dblift.core.sql_model.index import Index
+from dblift.core.sql_model.package import Package
+from dblift.core.sql_model.partition import Partition
+from dblift.core.sql_model.procedure import Procedure
+from dblift.core.sql_model.sequence import Sequence
+from dblift.core.sql_model.synonym import Synonym
+from dblift.core.sql_model.table import Table
+from dblift.core.sql_model.trigger import Trigger
+from dblift.core.sql_model.user_defined_type import UserDefinedType
+from dblift.core.sql_model.view import View
+from dblift.core.sql_parser.hybrid_parser import _COLLECT_DISPATCH, HybridParser
 
 
 @pytest.mark.unit

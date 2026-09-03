@@ -16,7 +16,7 @@ def _make_config(endpoint="https://myaccount.documents.azure.com", db_name="mydb
 
 
 def _make_manager(endpoint="https://myaccount.documents.azure.com", db_name="mydb"):
-    from db.plugins.cosmosdb.cosmosdb.connection_manager import CosmosDbConnectionManager
+    from dblift.db.plugins.cosmosdb.cosmosdb.connection_manager import CosmosDbConnectionManager
 
     config = _make_config(endpoint, db_name)
     log = MagicMock()
@@ -29,7 +29,7 @@ class TestCosmosDbConnectionManagerInit(unittest.TestCase):
         self.assertIs(mgr.config, config)
 
     def test_raises_without_endpoint(self):
-        from db.plugins.cosmosdb.cosmosdb.connection_manager import CosmosDbConnectionManager
+        from dblift.db.plugins.cosmosdb.cosmosdb.connection_manager import CosmosDbConnectionManager
 
         config = _make_config()
         config.database.account_endpoint = None
@@ -38,7 +38,7 @@ class TestCosmosDbConnectionManagerInit(unittest.TestCase):
             CosmosDbConnectionManager(config=config)
 
     def test_raises_without_database_name(self):
-        from db.plugins.cosmosdb.cosmosdb.connection_manager import CosmosDbConnectionManager
+        from dblift.db.plugins.cosmosdb.cosmosdb.connection_manager import CosmosDbConnectionManager
 
         config = _make_config()
         config.database.database_name = None
@@ -47,8 +47,8 @@ class TestCosmosDbConnectionManagerInit(unittest.TestCase):
             CosmosDbConnectionManager(config=config)
 
     def test_null_log_default(self):
-        from core.logger import NullLog
-        from db.plugins.cosmosdb.cosmosdb.connection_manager import CosmosDbConnectionManager
+        from dblift.core.logger import NullLog
+        from dblift.db.plugins.cosmosdb.cosmosdb.connection_manager import CosmosDbConnectionManager
 
         config = _make_config()
         mgr = CosmosDbConnectionManager(config=config, log=None)
@@ -75,7 +75,7 @@ class TestIsEmulatorEndpoint(unittest.TestCase):
 
 class TestCosmosDbConnectionManagerConnect(unittest.TestCase):
     def test_create_connection_stores_client(self):
-        from db.plugins.cosmosdb.cosmosdb.connection_manager import CosmosDbConnectionManager
+        from dblift.db.plugins.cosmosdb.cosmosdb.connection_manager import CosmosDbConnectionManager
 
         config = _make_config()
         config.database.password = "mykey"
@@ -141,8 +141,8 @@ class TestMissingSdkMessage(unittest.TestCase):
 
     @staticmethod
     def _manager(use_managed_identity=False):
-        from db.plugins.cosmosdb.config import CosmosDbConfig
-        from db.plugins.cosmosdb.cosmosdb.connection_manager import CosmosDbConnectionManager
+        from dblift.db.plugins.cosmosdb.config import CosmosDbConfig
+        from dblift.db.plugins.cosmosdb.cosmosdb.connection_manager import CosmosDbConnectionManager
 
         database = CosmosDbConfig(
             type="cosmosdb",

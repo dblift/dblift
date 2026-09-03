@@ -9,7 +9,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from core.migration.migration import Migration
+from dblift.core.migration.migration import Migration
 
 
 @pytest.mark.unit
@@ -49,7 +49,7 @@ class TestMigrationConfigInjection:
         )
 
         # SqlAnalyzer is imported inline inside parse_sql_statements — patch at source module
-        with patch("core.migration.sql.sql_analyzer.SqlAnalyzer") as mock_analyzer_class:
+        with patch("dblift.core.migration.sql.sql_analyzer.SqlAnalyzer") as mock_analyzer_class:
             mock_analyzer = MagicMock()
             mock_analyzer.split_statements.return_value = ["SELECT 1"]
             mock_analyzer_class.return_value = mock_analyzer
@@ -79,7 +79,7 @@ class TestMigrationConfigInjection:
             config=mock_config,
         )
 
-        with patch("core.migration.sql.sql_analyzer.SqlAnalyzer") as mock_analyzer_class:
+        with patch("dblift.core.migration.sql.sql_analyzer.SqlAnalyzer") as mock_analyzer_class:
             mock_analyzer = MagicMock()
             mock_analyzer.split_statements.return_value = ["SELECT 1"]
             mock_analyzer_class.return_value = mock_analyzer
@@ -108,7 +108,7 @@ class TestMigrationConfigInjection:
         migration.logger = mock_logger
 
         with patch.dict("os.environ", {}, clear=True):
-            with patch("core.migration.sql.sql_analyzer.SqlAnalyzer") as mock_analyzer_class:
+            with patch("dblift.core.migration.sql.sql_analyzer.SqlAnalyzer") as mock_analyzer_class:
                 mock_analyzer = MagicMock()
                 mock_analyzer.split_statements.return_value = ["SELECT 1"]
                 mock_analyzer_class.return_value = mock_analyzer
@@ -129,7 +129,7 @@ class TestMigrationConfigInjection:
         path called ``SqlAnalyzer(logger=...)`` with no dialect. The dialect is
         now required, so the caller resolves a registry default and passes it.
         """
-        from db.provider_registry import ProviderRegistry
+        from dblift.db.provider_registry import ProviderRegistry
 
         migration = Migration(
             script_name="V001__test.sql",
@@ -140,7 +140,7 @@ class TestMigrationConfigInjection:
         migration.logger = mock_logger
 
         with patch.dict("os.environ", {}, clear=True):
-            with patch("core.migration.sql.sql_analyzer.SqlAnalyzer") as mock_analyzer_class:
+            with patch("dblift.core.migration.sql.sql_analyzer.SqlAnalyzer") as mock_analyzer_class:
                 mock_analyzer = MagicMock()
                 mock_analyzer.split_statements.return_value = ["SELECT 1"]
                 mock_analyzer_class.return_value = mock_analyzer

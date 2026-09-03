@@ -14,7 +14,7 @@ from typing import Any
 import pytest
 from sqlalchemy import create_engine
 
-from api import DBLiftClient
+from dblift.api import DBLiftClient
 
 # NOTE: imports of the module under test (integrations.fastapi) are performed
 # *inside* each test function. This ensures:
@@ -47,7 +47,7 @@ def _setup_current_db(tmp_path: Path) -> tuple[Any, Path, DBLiftClient]:
 
 def test_check_migrations_current_returns_empty_when_current(tmp_path: Path) -> None:
     """check_migrations_current returns [] when no pending migrations."""
-    from integrations.fastapi import (
+    from dblift.integrations.fastapi import (
         check_migrations_current,
         health_payload,
         migration_guard,
@@ -63,7 +63,7 @@ def test_check_migrations_current_returns_empty_when_current(tmp_path: Path) -> 
 
 def test_check_migrations_current_returns_list_when_pending(tmp_path: Path) -> None:
     """check_migrations_current returns list[str] of pending identifiers when behind."""
-    from integrations.fastapi import (
+    from dblift.integrations.fastapi import (
         check_migrations_current,
         health_payload,
         migration_guard,
@@ -83,7 +83,7 @@ def test_check_migrations_current_returns_list_when_pending(tmp_path: Path) -> N
 
 def test_health_payload_shape_and_current_flag(tmp_path: Path) -> None:
     """health_payload is read-only and returns expected keys + current bool."""
-    from integrations.fastapi import (
+    from dblift.integrations.fastapi import (
         check_migrations_current,
         health_payload,
         migration_guard,
@@ -105,7 +105,7 @@ def test_health_payload_shape_and_current_flag(tmp_path: Path) -> None:
 
 def test_health_payload_reports_pending_when_behind(tmp_path: Path) -> None:
     """health_payload reports pending when migrations not applied."""
-    from integrations.fastapi import (
+    from dblift.integrations.fastapi import (
         check_migrations_current,
         health_payload,
         migration_guard,
@@ -122,7 +122,7 @@ def test_health_payload_reports_pending_when_behind(tmp_path: Path) -> None:
 
 def test_migration_guard_noop_on_current_or_ignore(tmp_path: Path) -> None:
     """migration_guard is a no-op (does not raise) when current or on_pending=ignore."""
-    from integrations.fastapi import (
+    from dblift.integrations.fastapi import (
         check_migrations_current,
         health_payload,
         migration_guard,
@@ -145,7 +145,7 @@ def test_migration_guard_noop_on_current_or_ignore(tmp_path: Path) -> None:
 
 def test_migration_guard_warns_on_pending(tmp_path: Path) -> None:
     """on_pending='warn' emits a warning but does not raise."""
-    from integrations.fastapi import (
+    from dblift.integrations.fastapi import (
         check_migrations_current,
         health_payload,
         migration_guard,
@@ -161,7 +161,7 @@ def test_migration_guard_warns_on_pending(tmp_path: Path) -> None:
 
 def test_migration_guard_raises_on_pending_by_default(tmp_path: Path) -> None:
     """Default (raise) and explicit on_pending='raise' block when pending."""
-    from integrations.fastapi import (
+    from dblift.integrations.fastapi import (
         check_migrations_current,
         health_payload,
         migration_guard,
@@ -189,7 +189,7 @@ def test_fastapi_lifespan_guard_blocks_startup_on_pending(tmp_path: Path) -> Non
     from fastapi import FastAPI
     from fastapi.testclient import TestClient
 
-    from integrations.fastapi import (
+    from dblift.integrations.fastapi import (
         check_migrations_current,
         health_payload,
         migration_guard,
@@ -222,7 +222,7 @@ def test_fastapi_lifespan_succeeds_when_current_and_health_route_works(tmp_path:
     from fastapi import FastAPI
     from fastapi.testclient import TestClient
 
-    from integrations.fastapi import (
+    from dblift.integrations.fastapi import (
         check_migrations_current,
         health_payload,
         migration_guard,
@@ -275,7 +275,7 @@ def test_fastapi_lifespan_ignore_allows_pending_startup(tmp_path: Path) -> None:
     from fastapi import FastAPI
     from fastapi.testclient import TestClient
 
-    from integrations.fastapi import (
+    from dblift.integrations.fastapi import (
         check_migrations_current,
         health_payload,
         migration_guard,

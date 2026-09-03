@@ -4,9 +4,9 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from db.plugins.postgresql.postgresql._lock_key import _get_advisory_lock_key
-from db.plugins.postgresql.provider import PostgreSqlProvider
-from db.sqlalchemy_provider import SqlAlchemyProvider
+from dblift.db.plugins.postgresql.postgresql._lock_key import _get_advisory_lock_key
+from dblift.db.plugins.postgresql.provider import PostgreSqlProvider
+from dblift.db.sqlalchemy_provider import SqlAlchemyProvider
 
 
 class _Provider(PostgreSqlProvider):
@@ -136,7 +136,9 @@ def test_clean_schema_drops_objects_inside_schema_without_recreating_schema(monk
         return 1
 
     provider.execute_query = fake_query
-    monkeypatch.setattr("db.sqlalchemy_provider.SqlAlchemyProvider.execute_statement", fake_execute)
+    monkeypatch.setattr(
+        "dblift.db.sqlalchemy_provider.SqlAlchemyProvider.execute_statement", fake_execute
+    )
 
     summary = provider.clean_schema("tenant_a")
 
@@ -160,8 +162,8 @@ def test_locking_retries_until_timeout(monkeypatch):
     provider = _Provider()
     now = iter([0.0, 0.2, 0.4, 0.6])
     sleeps = []
-    monkeypatch.setattr("db.plugins.postgresql.provider.time.monotonic", lambda: next(now))
-    monkeypatch.setattr("db.plugins.postgresql.provider.time.sleep", sleeps.append)
+    monkeypatch.setattr("dblift.db.plugins.postgresql.provider.time.monotonic", lambda: next(now))
+    monkeypatch.setattr("dblift.db.plugins.postgresql.provider.time.sleep", sleeps.append)
 
     assert provider.acquire_migration_lock("public", wait_timeout_seconds=1) is True
 

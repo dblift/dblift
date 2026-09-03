@@ -9,7 +9,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from db.plugins.cosmosdb.cosmosdb import CosmosDbSnapshotManager
+from dblift.db.plugins.cosmosdb.cosmosdb import CosmosDbSnapshotManager
 
 
 def _provider():
@@ -48,6 +48,6 @@ def test_non_transient_failure_is_not_retried():
 def test_provider_still_exposes_the_entry_point():
     """The provider API must not move — callers reach provisioning through
     ``provider.create_snapshot_table_if_not_exists``."""
-    from db.plugins.cosmosdb.provider import CosmosDbProvider
+    from dblift.db.plugins.cosmosdb.provider import CosmosDbProvider
 
     assert hasattr(CosmosDbProvider, "create_snapshot_table_if_not_exists")

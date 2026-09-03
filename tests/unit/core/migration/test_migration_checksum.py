@@ -5,13 +5,13 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from core.migration.migration import (
+from dblift.core.migration.migration import (
     Migration,
     calculate_migration_script_checksum,
     dict_to_migration,
     normalize_migration_checksum,
 )
-from core.migration.scripting.migration_script_manager import MigrationScriptManager
+from dblift.core.migration.scripting.migration_script_manager import MigrationScriptManager
 
 
 @pytest.mark.unit

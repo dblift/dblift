@@ -3,9 +3,9 @@ from unittest.mock import patch
 
 import pytest
 
-from cli._parser_setup import create_parser
-from config.dblift_config import DbliftConfig, deep_merge_dicts, load_config
-from config.errors import ConfigurationError
+from dblift.cli._parser_setup import create_parser
+from dblift.config.dblift_config import DbliftConfig, deep_merge_dicts, load_config
+from dblift.config.errors import ConfigurationError
 
 
 @pytest.mark.unit
@@ -179,7 +179,7 @@ def test_load_config_wraps_data_shape_errors(tmp_path, exc_cls):
     config_file = tmp_path / "shape.yaml"
     config_file.write_text("key: value")
     with patch(
-        "config.dblift_config.DbliftConfig.load_config_data_from_yaml",
+        "dblift.config.dblift_config.DbliftConfig.load_config_data_from_yaml",
         side_effect=exc_cls("boom"),
     ):
         with pytest.raises(RuntimeError, match="Error loading config file"):
@@ -269,7 +269,7 @@ def test_load_config_plan_chained_resolves_secrets(monkeypatch):
     monkeypatch.setenv("DBLIFT_DB_SCHEMA", "public")
 
     with patch(
-        "config.dblift_config.DbliftConfig.from_dict", wraps=DbliftConfig.from_dict
+        "dblift.config.dblift_config.DbliftConfig.from_dict", wraps=DbliftConfig.from_dict
     ) as mock_from_dict:
         load_config("", Args())
 

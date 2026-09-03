@@ -2,7 +2,7 @@ from dataclasses import fields, is_dataclass
 
 import pytest
 
-from cli.main import CliCommandContext
+from dblift.cli.main import CliCommandContext
 
 
 @pytest.mark.unit

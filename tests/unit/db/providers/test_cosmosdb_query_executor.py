@@ -14,12 +14,12 @@ Focus: uncovered paths that don't require a live Azure endpoint.
 import unittest
 from unittest.mock import MagicMock
 
-from core.exceptions import NoSqlWriteNotSupportedError
+from dblift.core.exceptions import NoSqlWriteNotSupportedError
 
 
 def _make_executor(log=None):
     """Build a CosmosDbQueryExecutor without touching any real Azure SDK."""
-    from db.plugins.cosmosdb.cosmosdb.query_executor import CosmosDbQueryExecutor
+    from dblift.db.plugins.cosmosdb.cosmosdb.query_executor import CosmosDbQueryExecutor
 
     conn_mgr = MagicMock()
     conn_mgr.get_container_client.return_value = MagicMock()
@@ -43,7 +43,7 @@ def _make_container_mock(items=None, pk_path="/id"):
 class TestSubstituteParams(unittest.TestCase):
 
     def _sub(self, sql, params):
-        from db.plugins.cosmosdb.cosmosdb.query_executor import CosmosDbQueryExecutor
+        from dblift.db.plugins.cosmosdb.cosmosdb.query_executor import CosmosDbQueryExecutor
 
         return CosmosDbQueryExecutor._substitute_params(sql, params)
 
@@ -266,7 +266,7 @@ class TestExecuteQueryRouting(unittest.TestCase):
 
         ex = self._make()
         # Config provides a container name
-        from db.plugins.cosmosdb.config import CosmosDbConfig
+        from dblift.db.plugins.cosmosdb.config import CosmosDbConfig
 
         mock_db_config = MagicMock(spec=CosmosDbConfig)
         mock_db_config.container_name = "fallback_container"

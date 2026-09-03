@@ -33,7 +33,7 @@ classifiers = [
 ]
 
 [project.scripts]
-dblift = "cli.main:main"
+dblift = "dblift.cli.main:main"
 
 # Epic 26 story 26-12: dialect plugin discovery via entry-points.
 # First-party plugins ship inside the wheel under db/plugins/<X>/;
@@ -41,29 +41,29 @@ dblift = "cli.main:main"
 # same group. ``ProviderRegistry.discover_plugins`` reads them via
 # ``importlib.metadata.entry_points``.
 [project.entry-points."dblift.providers"]
-postgresql = "db.plugins.postgresql.plugin:PLUGIN"
-mysql = "db.plugins.mysql.plugin:PLUGIN"
-mariadb = "db.plugins.mariadb.plugin:PLUGIN"
-oracle = "db.plugins.oracle.plugin:PLUGIN"
-sqlserver = "db.plugins.sqlserver.plugin:PLUGIN"
-db2 = "db.plugins.db2.plugin:PLUGIN"
-sqlite = "db.plugins.sqlite.plugin:PLUGIN"
-cosmosdb = "db.plugins.cosmosdb.plugin:PLUGIN"
-mongodb = "db.plugins.mongodb.plugin:PLUGIN"
-duckdb = "db.plugins.duckdb.plugin:PLUGIN"
+postgresql = "dblift.db.plugins.postgresql.plugin:PLUGIN"
+mysql = "dblift.db.plugins.mysql.plugin:PLUGIN"
+mariadb = "dblift.db.plugins.mariadb.plugin:PLUGIN"
+oracle = "dblift.db.plugins.oracle.plugin:PLUGIN"
+sqlserver = "dblift.db.plugins.sqlserver.plugin:PLUGIN"
+db2 = "dblift.db.plugins.db2.plugin:PLUGIN"
+sqlite = "dblift.db.plugins.sqlite.plugin:PLUGIN"
+cosmosdb = "dblift.db.plugins.cosmosdb.plugin:PLUGIN"
+mongodb = "dblift.db.plugins.mongodb.plugin:PLUGIN"
+duckdb = "dblift.db.plugins.duckdb.plugin:PLUGIN"
 # PostgreSQL-compatible distributions — reuse the PostgreSQL provider/config/
 # driver, distinct identity only. Users keep their postgresql:// URL and select
 # via `type: <name>`.
-neon = "db.plugins.neon.plugin:PLUGIN"
-supabase = "db.plugins.supabase.plugin:PLUGIN"
-aurora-postgresql = "db.plugins.aurora_postgresql.plugin:PLUGIN"
-alloydb = "db.plugins.alloydb.plugin:PLUGIN"
-yugabytedb = "db.plugins.yugabytedb.plugin:PLUGIN"
-timescaledb = "db.plugins.timescaledb.plugin:PLUGIN"
-citus = "db.plugins.citus.plugin:PLUGIN"
-cockroachdb = "db.plugins.cockroachdb.plugin:PLUGIN"
-redshift = "db.plugins.redshift.plugin:PLUGIN"
-snowflake = "db.plugins.snowflake.plugin:PLUGIN"
+neon = "dblift.db.plugins.neon.plugin:PLUGIN"
+supabase = "dblift.db.plugins.supabase.plugin:PLUGIN"
+aurora-postgresql = "dblift.db.plugins.aurora_postgresql.plugin:PLUGIN"
+alloydb = "dblift.db.plugins.alloydb.plugin:PLUGIN"
+yugabytedb = "dblift.db.plugins.yugabytedb.plugin:PLUGIN"
+timescaledb = "dblift.db.plugins.timescaledb.plugin:PLUGIN"
+citus = "dblift.db.plugins.citus.plugin:PLUGIN"
+cockroachdb = "dblift.db.plugins.cockroachdb.plugin:PLUGIN"
+redshift = "dblift.db.plugins.redshift.plugin:PLUGIN"
+snowflake = "dblift.db.plugins.snowflake.plugin:PLUGIN"
 
 # CLI command parser extensions (third-party packages can add subcommands
 # by loading a function that receives the top-level ArgumentParser).
@@ -178,14 +178,14 @@ all = [
 # Use find directive to automatically discover all packages
 # Exclude non-package directories that setuptools might mistake for packages
 [tool.setuptools.packages.find]
-include = ["api*", "cli*", "config*", "core*", "db*", "integrations*"]
+include = ["dblift*"]
 exclude = ["tests*", "demo*", "scripts*", "docs*", "example*", "logo*", "site*"]
 
 [tool.setuptools.package-data]
-# PEP 561: ship ``api/py.typed`` so downstream type checkers pick up
+# PEP 561: ship ``dblift/api/py.typed`` so downstream type checkers pick up
 # the public API's type annotations. See docs/semver-policy.md.
-api = ["py.typed"]
-"core.logger" = ["templates/*.html"]
+"dblift.api" = ["py.typed"]
+"dblift.core.logger" = ["templates/*.html"]
 
 [tool.black]
 line-length = 100
@@ -209,7 +209,7 @@ exclude = '''
 [tool.isort]
 profile = "black"
 line_length = 100
-known_first_party = ["api", "cli", "config", "core", "db"]
+known_first_party = ["dblift"]
 
 [tool.mypy]
 # Lowest supported Python version; mypy type-checks against this version.
@@ -281,9 +281,9 @@ disable_error_code = ["unreachable"]
 # ---------------------------------------------------------------------------
 [[tool.mypy.overrides]]
 module = [
-    "api.__init__",
-    "api._client_factory",
-    "api.events",
+    "dblift.api.__init__",
+    "dblift.api._client_factory",
+    "dblift.api.events",
 ]
 disallow_any_generics = true
 disallow_subclassing_any = true
@@ -305,8 +305,8 @@ strict_equality = true
 # this carve-out can be removed.
 [[tool.mypy.overrides]]
 module = [
-    "api._client_operations",
-    "api.client",
+    "dblift.api._client_operations",
+    "dblift.api.client",
 ]
 disallow_any_generics = true
 disallow_subclassing_any = true
@@ -324,18 +324,18 @@ strict_equality = true
 # ``no_implicit_reexport`` for the same reason).
 [[tool.mypy.overrides]]
 module = [
-    "core.logger._factory",
-    "core.logger._levels",
-    "core.logger._null",
-    "core.logger.formatters.factory",
-    "core.migration.executor.migration_helpers",
-    "core.migration.executor.placeholder_manager",
-    "core.migration.executor.transaction_policy",
-    "core.migration.commands.validate_command",
+    "dblift.core.logger._factory",
+    "dblift.core.logger._levels",
+    "dblift.core.logger._null",
+    "dblift.core.logger.formatters.factory",
+    "dblift.core.migration.executor.migration_helpers",
+    "dblift.core.migration.executor.placeholder_manager",
+    "dblift.core.migration.executor.transaction_policy",
+    "dblift.core.migration.commands.validate_command",
 
-    "core.migration.scripting.undo_script_generator._extractors",
-    "core.migration.scripting.undo_script_generator._helpers",
-    "core.migration.rules.migration_rules",
+    "dblift.core.migration.scripting.undo_script_generator._extractors",
+    "dblift.core.migration.scripting.undo_script_generator._helpers",
+    "dblift.core.migration.rules.migration_rules",
 ]
 disallow_any_generics = true
 disallow_subclassing_any = true
@@ -352,20 +352,20 @@ strict_equality = true
 # Same flag set as the api/* carve-outs above.
 [[tool.mypy.overrides]]
 module = [
-    "core.sql_parser.hybrid_parser",
-    "core.sql_parser.enhanced_regex_parser",
-    "core.sql_parser.unified_regex_parser",
-    "core.sql_generator.formatter",
-    "core.sql_generator.sql_generator",
-    "core.normalization",
-    "core.sql_model.view_options",
-    "cli.handlers._shared",
-    "cli.handlers.info",
-    "cli._command_handlers",
-    "cli.db_utils",
-    "cli._parser_setup",
-    "cli._config_helpers",
-    "cli.main",
+    "dblift.core.sql_parser.hybrid_parser",
+    "dblift.core.sql_parser.enhanced_regex_parser",
+    "dblift.core.sql_parser.unified_regex_parser",
+    "dblift.core.sql_generator.formatter",
+    "dblift.core.sql_generator.sql_generator",
+    "dblift.core.normalization",
+    "dblift.core.sql_model.view_options",
+    "dblift.cli.handlers._shared",
+    "dblift.cli.handlers.info",
+    "dblift.cli._command_handlers",
+    "dblift.cli.db_utils",
+    "dblift.cli._parser_setup",
+    "dblift.cli._config_helpers",
+    "dblift.cli.main",
 ]
 disallow_any_generics = true
 disallow_subclassing_any = true
@@ -384,21 +384,21 @@ strict_equality = true
 # introspector lazily. Same flag set as the api/* carve-outs above.
 [[tool.mypy.overrides]]
 module = [
-    "core.dialect_boundary",
-    "core.sql_model.dialect",
-    "core.sql_model.feature_gates",
-    "core.sql_model.server_info",
-    "db.base_quirks",
-    "db.base_provider",
-    "db.feature_gate",
-    "db.provider_registry",
-    "db.plugins.cosmosdb.introspection",
-    "db.plugins.db2.introspection",
-    "db.plugins.mysql.introspection",
-    "db.plugins.oracle.introspection",
-    "db.plugins.postgresql.introspection",
-    "db.plugins.sqlite.introspection",
-    "db.plugins.sqlserver.introspection",
+    "dblift.core.dialect_boundary",
+    "dblift.core.sql_model.dialect",
+    "dblift.core.sql_model.feature_gates",
+    "dblift.core.sql_model.server_info",
+    "dblift.db.base_quirks",
+    "dblift.db.base_provider",
+    "dblift.db.feature_gate",
+    "dblift.db.provider_registry",
+    "dblift.db.plugins.cosmosdb.introspection",
+    "dblift.db.plugins.db2.introspection",
+    "dblift.db.plugins.mysql.introspection",
+    "dblift.db.plugins.oracle.introspection",
+    "dblift.db.plugins.postgresql.introspection",
+    "dblift.db.plugins.sqlite.introspection",
+    "dblift.db.plugins.sqlserver.introspection",
 ]
 disallow_any_generics = true
 disallow_subclassing_any = true
@@ -419,33 +419,33 @@ strict_equality = true
 # fixes. Same flag set as the api/* carve-outs above.
 [[tool.mypy.overrides]]
 module = [
-    "core.sql_model",
-    "core.sql_model._base_parse_result",
-    "core.sql_model._base_sql_column",
-    "core.sql_model._base_sql_constraint",
-    "core.sql_model._base_sql_object",
-    "core.sql_model._base_sql_statement",
-    "core.sql_model.base",
-    "core.sql_model.constraint_validator",
-    "core.sql_model.database_link",
-    "core.sql_model.event",
-    "core.sql_model.extension",
-    "core.sql_model.foreign_data_wrapper",
-    "core.sql_model.foreign_server",
-    "core.sql_model.index",
-    "core.sql_model.linked_server",
-    "core.sql_model.module",
-    "core.sql_model.package",
-    "core.sql_model.partition",
-    "core.sql_model.procedure",
-    "core.sql_model.sequence",
-    "core.sql_model.synonym",
-    "core.sql_model.table",
-    "core.sql_model.table_canonicalizer",
-    "core.sql_model.table_options",
-    "core.sql_model.trigger",
-    "core.sql_model.user_defined_type",
-    "core.sql_model.view",
+    "dblift.core.sql_model",
+    "dblift.core.sql_model._base_parse_result",
+    "dblift.core.sql_model._base_sql_column",
+    "dblift.core.sql_model._base_sql_constraint",
+    "dblift.core.sql_model._base_sql_object",
+    "dblift.core.sql_model._base_sql_statement",
+    "dblift.core.sql_model.base",
+    "dblift.core.sql_model.constraint_validator",
+    "dblift.core.sql_model.database_link",
+    "dblift.core.sql_model.event",
+    "dblift.core.sql_model.extension",
+    "dblift.core.sql_model.foreign_data_wrapper",
+    "dblift.core.sql_model.foreign_server",
+    "dblift.core.sql_model.index",
+    "dblift.core.sql_model.linked_server",
+    "dblift.core.sql_model.module",
+    "dblift.core.sql_model.package",
+    "dblift.core.sql_model.partition",
+    "dblift.core.sql_model.procedure",
+    "dblift.core.sql_model.sequence",
+    "dblift.core.sql_model.synonym",
+    "dblift.core.sql_model.table",
+    "dblift.core.sql_model.table_canonicalizer",
+    "dblift.core.sql_model.table_options",
+    "dblift.core.sql_model.trigger",
+    "dblift.core.sql_model.user_defined_type",
+    "dblift.core.sql_model.view",
 ]
 disallow_any_generics = true
 disallow_subclassing_any = true
@@ -460,7 +460,7 @@ strict_equality = true
 # PR-H3: strict db/ error model.
 [[tool.mypy.overrides]]
 module = [
-    "db.error",
+    "dblift.db.error",
 ]
 disallow_any_generics = true
 disallow_subclassing_any = true
@@ -481,23 +481,23 @@ strict_equality = true
 # functions. Same flag set as the api/* carve-outs above.
 [[tool.mypy.overrides]]
 module = [
-    "core.migration.state",
-    "core.migration.state.migration_data_service",
-    "core.migration.state.migration_display_state",
-    "core.migration.state.migration_state",
-    "core.migration.state.migration_state_manager",
-    "core.migration.state.migration_state_service",
-    "core.migration.scripting",
-    "core.migration.scripting.migration_script_manager",
-    "core.migration.sql",
-    "core.migration.sql.execution_statement",
-    "core.migration.sql.sql_analyzer",
-    "core.migration.sql.sql_execution_service",
+    "dblift.core.migration.state",
+    "dblift.core.migration.state.migration_data_service",
+    "dblift.core.migration.state.migration_display_state",
+    "dblift.core.migration.state.migration_state",
+    "dblift.core.migration.state.migration_state_manager",
+    "dblift.core.migration.state.migration_state_service",
+    "dblift.core.migration.scripting",
+    "dblift.core.migration.scripting.migration_script_manager",
+    "dblift.core.migration.sql",
+    "dblift.core.migration.sql.execution_statement",
+    "dblift.core.migration.sql.sql_analyzer",
+    "dblift.core.migration.sql.sql_execution_service",
 
-    "core.migration.sql.statement_splitter",
-    "core.migration.rules",
-    "core.migration.placeholders",
-    "core.migration.placeholders.placeholder_service",
+    "dblift.core.migration.sql.statement_splitter",
+    "dblift.core.migration.rules",
+    "dblift.core.migration.placeholders",
+    "dblift.core.migration.placeholders.placeholder_service",
 ]
 disallow_any_generics = true
 disallow_subclassing_any = true
@@ -525,12 +525,12 @@ strict_equality = true
 # redundant and removable.  Same flag set as the api/* carve-outs above.
 [[tool.mypy.overrides]]
 module = [
-    "core.migration.executor.execution_engine",
-    "core.migration.commands.baseline_command",
-    "core.migration.commands.import_flyway_command",
-    "core.migration.commands.info_command",
-    "core.migration.commands.migrate_command",
-    "core.migration.commands.undo_command",
+    "dblift.core.migration.executor.execution_engine",
+    "dblift.core.migration.commands.baseline_command",
+    "dblift.core.migration.commands.import_flyway_command",
+    "dblift.core.migration.commands.info_command",
+    "dblift.core.migration.commands.migrate_command",
+    "dblift.core.migration.commands.undo_command",
 ]
 disallow_any_generics = true
 disallow_subclassing_any = true
@@ -557,24 +557,24 @@ strict_equality = true
 # Same flag set as the api/* carve-outs above.
 [[tool.mypy.overrides]]
 module = [
-    "core.introspection.result",
-    "core.introspection._partition_enricher",
-    "core.introspection._column_enricher",
-    "core.introspection._vendor_property_applier",
-    "core.introspection.vendor_queries_factory",
-    "core.introspection.introspector_factory",
-    "core.introspection.base_introspector",
-    "core.introspection.extractors.base_extractor",
-    "core.introspection.extractors.column_extractor",
-    "core.introspection.extractors.constraint_extractor",
-    "core.introspection.extractors.index_extractor",
-    "core.introspection.extractors.misc_extractor",
-    "core.introspection.extractors.procedure_extractor",
-    "core.introspection.extractors.table_extractor",
-    "core.introspection.extractors.trigger_extractor",
-    "core.introspection.extractors.view_extractor",
-    "db.plugins.sqlite.introspection.sqlite_introspector",
-    "db.plugins.cosmosdb.introspection.cosmosdb_introspector",
+    "dblift.core.introspection.result",
+    "dblift.core.introspection._partition_enricher",
+    "dblift.core.introspection._column_enricher",
+    "dblift.core.introspection._vendor_property_applier",
+    "dblift.core.introspection.vendor_queries_factory",
+    "dblift.core.introspection.introspector_factory",
+    "dblift.core.introspection.base_introspector",
+    "dblift.core.introspection.extractors.base_extractor",
+    "dblift.core.introspection.extractors.column_extractor",
+    "dblift.core.introspection.extractors.constraint_extractor",
+    "dblift.core.introspection.extractors.index_extractor",
+    "dblift.core.introspection.extractors.misc_extractor",
+    "dblift.core.introspection.extractors.procedure_extractor",
+    "dblift.core.introspection.extractors.table_extractor",
+    "dblift.core.introspection.extractors.trigger_extractor",
+    "dblift.core.introspection.extractors.view_extractor",
+    "dblift.db.plugins.sqlite.introspection.sqlite_introspector",
+    "dblift.db.plugins.cosmosdb.introspection.cosmosdb_introspector",
 ]
 disallow_any_generics = true
 disallow_subclassing_any = true
@@ -590,11 +590,11 @@ strict_equality = true
 # remaining helpers + db2/sqlserver introspectors.
 [[tool.mypy.overrides]]
 module = [
-    "core.introspection.schema_introspector",
-    "core.introspection.vendor_queries_base",
-    "core.introspection.vendor_queries_protocols",
-    "core.introspection.version_detector",
-    "core.introspection._utils",
+    "dblift.core.introspection.schema_introspector",
+    "dblift.core.introspection.vendor_queries_base",
+    "dblift.core.introspection.vendor_queries_protocols",
+    "dblift.core.introspection.version_detector",
+    "dblift.core.introspection._utils",
 ]
 disallow_any_generics = true
 disallow_subclassing_any = true
@@ -610,10 +610,10 @@ strict_equality = true
 # history/locking/query/schema operations across dialects.
 [[tool.mypy.overrides]]
 module = [
-    "db.plugins.base_history_manager",
-    "db.plugins.base_locking_manager",
-    "db.plugins.base_query_executor",
-    "db.plugins.base_schema_operations",
+    "dblift.db.plugins.base_history_manager",
+    "dblift.db.plugins.base_locking_manager",
+    "dblift.db.plugins.base_query_executor",
+    "dblift.db.plugins.base_schema_operations",
 ]
 disallow_any_generics = true
 disallow_subclassing_any = true
@@ -629,20 +629,20 @@ strict_equality = true
 # quirks, plugin entry, sqlite/ subsystem, parser, generator).
 [[tool.mypy.overrides]]
 module = [
-    "db.plugins.sqlite",
-    "db.plugins.sqlite.plugin",
-    "db.plugins.sqlite.config",
-    "db.plugins.sqlite.provider",
-    "db.plugins.sqlite.quirks",
-    "db.plugins.sqlite.sqlite",
-    "db.plugins.sqlite.sqlite.connection_manager",
-    "db.plugins.sqlite.sqlite.history_manager",
-    "db.plugins.sqlite.sqlite.locking_manager",
-    "db.plugins.sqlite.sqlite.query_executor",
-    "db.plugins.sqlite.sqlite.schema_operations",
-    "db.plugins.sqlite.parser",
-    "db.plugins.sqlite.parser.parser_config",
-    "db.plugins.sqlite.parser.sqlite_regex_parser",
+    "dblift.db.plugins.sqlite",
+    "dblift.db.plugins.sqlite.plugin",
+    "dblift.db.plugins.sqlite.config",
+    "dblift.db.plugins.sqlite.provider",
+    "dblift.db.plugins.sqlite.quirks",
+    "dblift.db.plugins.sqlite.sqlite",
+    "dblift.db.plugins.sqlite.sqlite.connection_manager",
+    "dblift.db.plugins.sqlite.sqlite.history_manager",
+    "dblift.db.plugins.sqlite.sqlite.locking_manager",
+    "dblift.db.plugins.sqlite.sqlite.query_executor",
+    "dblift.db.plugins.sqlite.sqlite.schema_operations",
+    "dblift.db.plugins.sqlite.parser",
+    "dblift.db.plugins.sqlite.parser.parser_config",
+    "dblift.db.plugins.sqlite.parser.sqlite_regex_parser",
 ]
 disallow_any_generics = true
 disallow_subclassing_any = true
@@ -660,10 +660,10 @@ strict_equality = true
 # including disallow_subclassing_any is enabled here.
 [[tool.mypy.overrides]]
 module = [
-    "db.plugins.mariadb",
-    "db.plugins.mariadb.plugin",
-    "db.plugins.mariadb.provider",
-    "db.plugins.mariadb.quirks",
+    "dblift.db.plugins.mariadb",
+    "dblift.db.plugins.mariadb.plugin",
+    "dblift.db.plugins.mariadb.provider",
+    "dblift.db.plugins.mariadb.quirks",
 ]
 disallow_any_generics = true
 disallow_subclassing_any = true
@@ -681,43 +681,43 @@ strict_equality = true
 # quirks, so disallow_subclassing_any is safe.
 [[tool.mypy.overrides]]
 module = [
-    "db.plugins.neon",
-    "db.plugins.neon.plugin",
-    "db.plugins.neon.provider",
-    "db.plugins.neon.quirks",
-    "db.plugins.supabase",
-    "db.plugins.supabase.plugin",
-    "db.plugins.supabase.provider",
-    "db.plugins.supabase.quirks",
-    "db.plugins.aurora_postgresql",
-    "db.plugins.aurora_postgresql.plugin",
-    "db.plugins.aurora_postgresql.provider",
-    "db.plugins.aurora_postgresql.quirks",
-    "db.plugins.alloydb",
-    "db.plugins.alloydb.plugin",
-    "db.plugins.alloydb.provider",
-    "db.plugins.alloydb.quirks",
-    "db.plugins.yugabytedb",
-    "db.plugins.yugabytedb.plugin",
-    "db.plugins.yugabytedb.provider",
-    "db.plugins.yugabytedb.quirks",
-    "db.plugins.timescaledb",
-    "db.plugins.timescaledb.plugin",
-    "db.plugins.timescaledb.provider",
-    "db.plugins.timescaledb.quirks",
-    "db.plugins.citus",
-    "db.plugins.citus.plugin",
-    "db.plugins.citus.provider",
-    "db.plugins.citus.quirks",
-    "db.plugins.cockroachdb",
-    "db.plugins.cockroachdb.plugin",
-    "db.plugins.cockroachdb.provider",
-    "db.plugins.cockroachdb.quirks",
-    "db.plugins.redshift",
-    "db.plugins.redshift.plugin",
-    "db.plugins.redshift.provider",
-    "db.plugins.redshift.quirks",
-    "db.plugins.redshift.sqlalchemy_url",
+    "dblift.db.plugins.neon",
+    "dblift.db.plugins.neon.plugin",
+    "dblift.db.plugins.neon.provider",
+    "dblift.db.plugins.neon.quirks",
+    "dblift.db.plugins.supabase",
+    "dblift.db.plugins.supabase.plugin",
+    "dblift.db.plugins.supabase.provider",
+    "dblift.db.plugins.supabase.quirks",
+    "dblift.db.plugins.aurora_postgresql",
+    "dblift.db.plugins.aurora_postgresql.plugin",
+    "dblift.db.plugins.aurora_postgresql.provider",
+    "dblift.db.plugins.aurora_postgresql.quirks",
+    "dblift.db.plugins.alloydb",
+    "dblift.db.plugins.alloydb.plugin",
+    "dblift.db.plugins.alloydb.provider",
+    "dblift.db.plugins.alloydb.quirks",
+    "dblift.db.plugins.yugabytedb",
+    "dblift.db.plugins.yugabytedb.plugin",
+    "dblift.db.plugins.yugabytedb.provider",
+    "dblift.db.plugins.yugabytedb.quirks",
+    "dblift.db.plugins.timescaledb",
+    "dblift.db.plugins.timescaledb.plugin",
+    "dblift.db.plugins.timescaledb.provider",
+    "dblift.db.plugins.timescaledb.quirks",
+    "dblift.db.plugins.citus",
+    "dblift.db.plugins.citus.plugin",
+    "dblift.db.plugins.citus.provider",
+    "dblift.db.plugins.citus.quirks",
+    "dblift.db.plugins.cockroachdb",
+    "dblift.db.plugins.cockroachdb.plugin",
+    "dblift.db.plugins.cockroachdb.provider",
+    "dblift.db.plugins.cockroachdb.quirks",
+    "dblift.db.plugins.redshift",
+    "dblift.db.plugins.redshift.plugin",
+    "dblift.db.plugins.redshift.provider",
+    "dblift.db.plugins.redshift.quirks",
+    "dblift.db.plugins.redshift.sqlalchemy_url",
 ]
 disallow_any_generics = true
 disallow_subclassing_any = true
@@ -736,18 +736,18 @@ strict_equality = true
 # flag set including disallow_subclassing_any is safe here.
 [[tool.mypy.overrides]]
 module = [
-    "db.plugins.postgresql",
-    "db.plugins.postgresql.plugin",
-    "db.plugins.postgresql.config",
-    "db.plugins.postgresql.provider",
-    "db.plugins.postgresql.quirks",
-    "db.plugins.postgresql.postgresql",
-    "db.plugins.postgresql.postgresql.schema_operations",
-    "db.plugins.postgresql.postgresql._lock_key",
-    "db.plugins.postgresql.parser.parser_config",
-    "db.plugins.postgresql.parser.postgresql_regex_parser",
-    "db.plugins.postgresql.parser.postgresql_statement_parser",
-    "db.plugins.postgresql.parser.postgresql_tokenizer",
+    "dblift.db.plugins.postgresql",
+    "dblift.db.plugins.postgresql.plugin",
+    "dblift.db.plugins.postgresql.config",
+    "dblift.db.plugins.postgresql.provider",
+    "dblift.db.plugins.postgresql.quirks",
+    "dblift.db.plugins.postgresql.postgresql",
+    "dblift.db.plugins.postgresql.postgresql.schema_operations",
+    "dblift.db.plugins.postgresql.postgresql._lock_key",
+    "dblift.db.plugins.postgresql.parser.parser_config",
+    "dblift.db.plugins.postgresql.parser.postgresql_regex_parser",
+    "dblift.db.plugins.postgresql.parser.postgresql_statement_parser",
+    "dblift.db.plugins.postgresql.parser.postgresql_tokenizer",
 ]
 disallow_any_generics = true
 disallow_subclassing_any = true
@@ -766,17 +766,17 @@ strict_equality = true
 # including disallow_subclassing_any is safe here.
 [[tool.mypy.overrides]]
 module = [
-    "db.plugins.mysql",
-    "db.plugins.mysql.plugin",
-    "db.plugins.mysql.config",
-    "db.plugins.mysql.provider",
-    "db.plugins.mysql.quirks",
-    "db.plugins.mysql.mysql",
-    "db.plugins.mysql.mysql.schema_operations",
-    "db.plugins.mysql.parser.parser_config",
-    "db.plugins.mysql.parser.mysql_regex_parser",
-    "db.plugins.mysql.parser.mysql_statement_parser",
-    "db.plugins.mysql.parser.mysql_tokenizer",
+    "dblift.db.plugins.mysql",
+    "dblift.db.plugins.mysql.plugin",
+    "dblift.db.plugins.mysql.config",
+    "dblift.db.plugins.mysql.provider",
+    "dblift.db.plugins.mysql.quirks",
+    "dblift.db.plugins.mysql.mysql",
+    "dblift.db.plugins.mysql.mysql.schema_operations",
+    "dblift.db.plugins.mysql.parser.parser_config",
+    "dblift.db.plugins.mysql.parser.mysql_regex_parser",
+    "dblift.db.plugins.mysql.parser.mysql_statement_parser",
+    "dblift.db.plugins.mysql.parser.mysql_tokenizer",
 ]
 disallow_any_generics = true
 disallow_subclassing_any = true
@@ -796,24 +796,24 @@ strict_equality = true
 # strict flag set including disallow_subclassing_any is safe here.
 [[tool.mypy.overrides]]
 module = [
-    "db.plugins.oracle",
-    "db.plugins.oracle.plugin",
-    "db.plugins.oracle.config",
-    "db.plugins.oracle.provider",
-    "db.plugins.oracle.quirks",
-    "db.plugins.oracle.oracle",
-    "db.plugins.oracle.oracle.dbms_output",
-    "db.plugins.oracle.oracle.schema_operations",
-    "db.plugins.oracle.parser",
-    "db.plugins.oracle.parser.oracle_parser",
-    "db.plugins.oracle.parser.oracle_statement_parser",
-    "db.plugins.oracle.parser.oracle_tokenizer",
-    "db.plugins.oracle.parser.sqlplus_context",
-    "db.plugins.oracle.parser._comments",
-    "db.plugins.oracle.parser._object_extractor",
-    "db.plugins.oracle.parser._plsql_block",
-    "db.plugins.oracle.parser._sqlplus",
-    "db.plugins.oracle.parser._statement_splitter",
+    "dblift.db.plugins.oracle",
+    "dblift.db.plugins.oracle.plugin",
+    "dblift.db.plugins.oracle.config",
+    "dblift.db.plugins.oracle.provider",
+    "dblift.db.plugins.oracle.quirks",
+    "dblift.db.plugins.oracle.oracle",
+    "dblift.db.plugins.oracle.oracle.dbms_output",
+    "dblift.db.plugins.oracle.oracle.schema_operations",
+    "dblift.db.plugins.oracle.parser",
+    "dblift.db.plugins.oracle.parser.oracle_parser",
+    "dblift.db.plugins.oracle.parser.oracle_statement_parser",
+    "dblift.db.plugins.oracle.parser.oracle_tokenizer",
+    "dblift.db.plugins.oracle.parser.sqlplus_context",
+    "dblift.db.plugins.oracle.parser._comments",
+    "dblift.db.plugins.oracle.parser._object_extractor",
+    "dblift.db.plugins.oracle.parser._plsql_block",
+    "dblift.db.plugins.oracle.parser._sqlplus",
+    "dblift.db.plugins.oracle.parser._statement_splitter",
 ]
 disallow_any_generics = true
 disallow_subclassing_any = true
@@ -833,18 +833,18 @@ strict_equality = true
 # strict flag set including disallow_subclassing_any is safe here.
 [[tool.mypy.overrides]]
 module = [
-    "db.plugins.sqlserver",
-    "db.plugins.sqlserver.plugin",
-    "db.plugins.sqlserver.config",
-    "db.plugins.sqlserver.provider",
-    "db.plugins.sqlserver.quirks",
-    "db.plugins.sqlserver.sqlserver",
-    "db.plugins.sqlserver.sqlserver.schema_operations",
-    "db.plugins.sqlserver.parser.parser_config",
-    "db.plugins.sqlserver.parser.sqlserver_regex_parser",
-    "db.plugins.sqlserver.parser.sqlserver_statement_parser",
-    "db.plugins.sqlserver.parser.sqlserver_tokenizer",
-    "db.plugins.sqlserver.parser.tsql_batch_separator",
+    "dblift.db.plugins.sqlserver",
+    "dblift.db.plugins.sqlserver.plugin",
+    "dblift.db.plugins.sqlserver.config",
+    "dblift.db.plugins.sqlserver.provider",
+    "dblift.db.plugins.sqlserver.quirks",
+    "dblift.db.plugins.sqlserver.sqlserver",
+    "dblift.db.plugins.sqlserver.sqlserver.schema_operations",
+    "dblift.db.plugins.sqlserver.parser.parser_config",
+    "dblift.db.plugins.sqlserver.parser.sqlserver_regex_parser",
+    "dblift.db.plugins.sqlserver.parser.sqlserver_statement_parser",
+    "dblift.db.plugins.sqlserver.parser.sqlserver_tokenizer",
+    "dblift.db.plugins.sqlserver.parser.tsql_batch_separator",
 ]
 disallow_any_generics = true
 disallow_subclassing_any = true
@@ -867,15 +867,15 @@ strict_equality = true
 # including disallow_subclassing_any is safe here.
 [[tool.mypy.overrides]]
 module = [
-    "db.plugins.db2",
-    "db.plugins.db2.plugin",
-    "db.plugins.db2.config",
-    "db.plugins.db2.provider",
-    "db.plugins.db2.quirks",
-    "db.plugins.db2.db2",
-    "db.plugins.db2.db2.schema_operations",
-    "db.plugins.db2.parser.parser_config",
-    "db.plugins.db2.parser.db2_regex_parser",
+    "dblift.db.plugins.db2",
+    "dblift.db.plugins.db2.plugin",
+    "dblift.db.plugins.db2.config",
+    "dblift.db.plugins.db2.provider",
+    "dblift.db.plugins.db2.quirks",
+    "dblift.db.plugins.db2.db2",
+    "dblift.db.plugins.db2.db2.schema_operations",
+    "dblift.db.plugins.db2.parser.parser_config",
+    "dblift.db.plugins.db2.parser.db2_regex_parser",
 ]
 disallow_any_generics = true
 disallow_subclassing_any = true
@@ -892,18 +892,18 @@ strict_equality = true
 # here until 3.0.0 removed the pseudo-SQL layer they implemented.
 [[tool.mypy.overrides]]
 module = [
-    "db.plugins.cosmosdb",
-    "db.plugins.cosmosdb.plugin",
-    "db.plugins.cosmosdb.config",
-    "db.plugins.cosmosdb.provider",
-    "db.plugins.cosmosdb.quirks",
-    "db.plugins.cosmosdb.cosmosdb",
-    "db.plugins.cosmosdb.cosmosdb._sdk",
-    "db.plugins.cosmosdb.cosmosdb.connection_manager",
-    "db.plugins.cosmosdb.cosmosdb.history_manager",
-    "db.plugins.cosmosdb.cosmosdb.locking_manager",
-    "db.plugins.cosmosdb.cosmosdb.query_executor",
-    "db.plugins.cosmosdb.cosmosdb.schema_operations",
+    "dblift.db.plugins.cosmosdb",
+    "dblift.db.plugins.cosmosdb.plugin",
+    "dblift.db.plugins.cosmosdb.config",
+    "dblift.db.plugins.cosmosdb.provider",
+    "dblift.db.plugins.cosmosdb.quirks",
+    "dblift.db.plugins.cosmosdb.cosmosdb",
+    "dblift.db.plugins.cosmosdb.cosmosdb._sdk",
+    "dblift.db.plugins.cosmosdb.cosmosdb.connection_manager",
+    "dblift.db.plugins.cosmosdb.cosmosdb.history_manager",
+    "dblift.db.plugins.cosmosdb.cosmosdb.locking_manager",
+    "dblift.db.plugins.cosmosdb.cosmosdb.query_executor",
+    "dblift.db.plugins.cosmosdb.cosmosdb.schema_operations",
 ]
 disallow_any_generics = true
 disallow_subclassing_any = true
@@ -918,19 +918,19 @@ strict_equality = true
 # strict db/plugins/mongodb
 [[tool.mypy.overrides]]
 module = [
-    "db.plugins.mongodb",
-    "db.plugins.mongodb.plugin",
-    "db.plugins.mongodb.config",
-    "db.plugins.mongodb.provider",
-    "db.plugins.mongodb.quirks",
-    "db.plugins.mongodb.mongodb",
-    "db.plugins.mongodb.mongodb._sdk",
-    "db.plugins.mongodb.mongodb.connection_manager",
-    "db.plugins.mongodb.mongodb.history_manager",
-    "db.plugins.mongodb.mongodb.locking_manager",
-    "db.plugins.mongodb.mongodb.query_executor",
-    "db.plugins.mongodb.mongodb.schema_operations",
-    "db.plugins.mongodb.mongodb.snapshot_manager",
+    "dblift.db.plugins.mongodb",
+    "dblift.db.plugins.mongodb.plugin",
+    "dblift.db.plugins.mongodb.config",
+    "dblift.db.plugins.mongodb.provider",
+    "dblift.db.plugins.mongodb.quirks",
+    "dblift.db.plugins.mongodb.mongodb",
+    "dblift.db.plugins.mongodb.mongodb._sdk",
+    "dblift.db.plugins.mongodb.mongodb.connection_manager",
+    "dblift.db.plugins.mongodb.mongodb.history_manager",
+    "dblift.db.plugins.mongodb.mongodb.locking_manager",
+    "dblift.db.plugins.mongodb.mongodb.query_executor",
+    "dblift.db.plugins.mongodb.mongodb.schema_operations",
+    "dblift.db.plugins.mongodb.mongodb.snapshot_manager",
 ]
 disallow_any_generics = true
 disallow_subclassing_any = true
@@ -946,14 +946,14 @@ strict_equality = true
 # _shared and info were added in PR-G2.
 [[tool.mypy.overrides]]
 module = [
-    "cli.handlers",
-    "cli.handlers.baseline",
-    "cli.handlers.clean",
-    "cli.handlers.import_flyway",
-    "cli.handlers.migrate",
-    "cli.handlers.repair",
-    "cli.handlers.undo",
-    "cli.handlers.validate",
+    "dblift.cli.handlers",
+    "dblift.cli.handlers.baseline",
+    "dblift.cli.handlers.clean",
+    "dblift.cli.handlers.import_flyway",
+    "dblift.cli.handlers.migrate",
+    "dblift.cli.handlers.repair",
+    "dblift.cli.handlers.undo",
+    "dblift.cli.handlers.validate",
 ]
 disallow_any_generics = true
 disallow_subclassing_any = true
@@ -969,11 +969,11 @@ strict_equality = true
 # strict-zone migration after the per-dialect plugin waves (H9a-h).
 [[tool.mypy.overrides]]
 module = [
-    "db",
+    "dblift.db",
 
-    "db.object_naming",
-    "db.provider_capabilities",
-    "db.provider_interfaces",
+    "dblift.db.object_naming",
+    "dblift.db.provider_capabilities",
+    "dblift.db.provider_interfaces",
 ]
 disallow_any_generics = true
 disallow_subclassing_any = true
@@ -992,15 +992,15 @@ strict_equality = true
 # ``config/_subclasses``.
 [[tool.mypy.overrides]]
 module = [
-    "config",
-    "config._credential_masking",
-    "config._url_builder_mixin",
-    "config.config_builder",
-    "config.database_config",
-    "config.dblift_config",
-    "config.errors",
-    "config._subclasses",
-    "config._subclasses.dummy_config",
+    "dblift.config",
+    "dblift.config._credential_masking",
+    "dblift.config._url_builder_mixin",
+    "dblift.config.config_builder",
+    "dblift.config.database_config",
+    "dblift.config.dblift_config",
+    "dblift.config.errors",
+    "dblift.config._subclasses",
+    "dblift.config._subclasses.dummy_config",
 ]
 disallow_any_generics = true
 disallow_subclassing_any = true
@@ -1015,37 +1015,37 @@ strict_equality = true
 # Roadmap action #8 wave H13a — core/migration/formats/ + history/ sub-packages.
 [[tool.mypy.overrides]]
 module = [
-    "core.migration.formats",
-    "core.migration.formats.format_detector",
-    "core.migration.formats.migration_format",
-    "core.migration.history",
-    "core.migration.history.migration_history_manager",
-    "core.migration.journals",
-    "core.migration.journals.migration_journal",
-    "core.migration.executor",
-    "core.migration.executor.migration_executor",
-    "core.migration.scripting.undo_script_generator",
-    "core.migration.scripting.undo_script_generator._generator",
-    "core.migration.scripting.undo_script_generator._models",
-    "core.migration.scripting.undo_script_generator._reversers",
-    "core.migration.executors",
-    "core.migration.executors.base_executor",
-    "core.migration.executors.executor_factory",
-    "core.migration.executors.python_executor",
-    "core.migration",
-    "core.migration._type_match",
-    "core.migration.clean_summary",
-    "core.migration.encoding",
-    "core.migration.migration",
-    "core.migration.version_utils",
-    "core.migration.ui",
-    "core.migration.ui.data_collector",
-    "core.migration.ui.migration_ui",
-    "core.migration.ui.table_renderer",
-    "core.migration.commands",
-    "core.migration.commands.base_command",
-    "core.migration.commands.clean_command",
-    "core.migration.commands.repair_command",
+    "dblift.core.migration.formats",
+    "dblift.core.migration.formats.format_detector",
+    "dblift.core.migration.formats.migration_format",
+    "dblift.core.migration.history",
+    "dblift.core.migration.history.migration_history_manager",
+    "dblift.core.migration.journals",
+    "dblift.core.migration.journals.migration_journal",
+    "dblift.core.migration.executor",
+    "dblift.core.migration.executor.migration_executor",
+    "dblift.core.migration.scripting.undo_script_generator",
+    "dblift.core.migration.scripting.undo_script_generator._generator",
+    "dblift.core.migration.scripting.undo_script_generator._models",
+    "dblift.core.migration.scripting.undo_script_generator._reversers",
+    "dblift.core.migration.executors",
+    "dblift.core.migration.executors.base_executor",
+    "dblift.core.migration.executors.executor_factory",
+    "dblift.core.migration.executors.python_executor",
+    "dblift.core.migration",
+    "dblift.core.migration._type_match",
+    "dblift.core.migration.clean_summary",
+    "dblift.core.migration.encoding",
+    "dblift.core.migration.migration",
+    "dblift.core.migration.version_utils",
+    "dblift.core.migration.ui",
+    "dblift.core.migration.ui.data_collector",
+    "dblift.core.migration.ui.migration_ui",
+    "dblift.core.migration.ui.table_renderer",
+    "dblift.core.migration.commands",
+    "dblift.core.migration.commands.base_command",
+    "dblift.core.migration.commands.clean_command",
+    "dblift.core.migration.commands.repair_command",
 ]
 disallow_any_generics = true
 disallow_subclassing_any = true

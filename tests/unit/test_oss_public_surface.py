@@ -70,7 +70,7 @@ def test_oss_repo_does_not_ship_removed_tier_modules():
     register into (SqlGeneratorFactory/AlterGeneratorFactory); paid-tier
     implementations live outside this module, not inside it."""
     tracked = _tracked_files()
-    forbidden_roots = ("core/licensing/",)
+    forbidden_roots = ("dblift/core/licensing/",)
     offenders = [
         path for path in sorted(tracked) if any(path.startswith(root) for root in forbidden_roots)
     ]
@@ -83,7 +83,7 @@ def test_oss_cli_does_not_expose_license_key_surface():
     ``--license-key``) — that's paid-tier territory.
 
     The ``license_info`` token is different: it's the neutral banner seam
-    (``core.seams.license_info``) plus its OSS-side *consumer* (cli/main.py
+    (``dblift.core.seams.license_info``) plus its OSS-side *consumer* (cli/main.py
     calls the seam and sets ``formatter.license_info``; _formatters.py renders
     the banner only when a higher tier populated it). That consumer is inert in
     a pure OSS install (the seam returns ``None``) and holds no license logic or
@@ -92,9 +92,9 @@ def test_oss_cli_does_not_expose_license_key_surface():
     # Files where the neutral banner seam/consumer legitimately names
     # ``license_info`` (never ``license_key``).
     license_info_ok = {
-        "core/seams/license_info.py",
-        "cli/main.py",
-        "core/logger/_formatters.py",
+        "dblift/core/seams/license_info.py",
+        "dblift/cli/main.py",
+        "dblift/core/logger/_formatters.py",
         # Tests for the banner seam/consumer legitimately name license_info.
         "tests/unit/core/logger/test_license_banner.py",
         "tests/unit/cli/test_license_banner_wiring.py",
@@ -116,7 +116,7 @@ def test_oss_cli_does_not_expose_license_key_surface():
 
 
 def test_oss_introspection_does_not_define_license_gated_capabilities():
-    capability_matrix = ROOT / "core" / "introspection" / "capability_matrix.py"
+    capability_matrix = ROOT / "dblift" / "core" / "introspection" / "capability_matrix.py"
     if not capability_matrix.exists():
         # The capability matrix was removed upstream; with no module there are no
         # license-gated capabilities to define, so the guard is trivially satisfied.
@@ -133,13 +133,13 @@ def test_published_docs_and_templates_do_not_reference_removed_tier_surfaces():
         ROOT / "docs" / "user-guide" / "getting-started.md",
         ROOT / "docs" / "index.md",
         ROOT / "docs" / "api-reference" / "core.md",
-        ROOT / "core" / "logger" / "templates" / "oldreport.html",
+        ROOT / "dblift" / "core" / "logger" / "templates" / "oldreport.html",
     ]
     forbidden = (
         "--license-key",
         "DBLIFT_LICENSE_KEY",
         "license_info",
-        "core.sql_generator",
+        "dblift.core.sql_generator",
         "dblift license",
         "License Activation",
         "License Management",
@@ -281,7 +281,9 @@ def test_oss_dialect_surface_covers_all_first_party_providers():
 
 def test_core_secrets_docs_do_not_advertise_external_provider_uris():
     """Core may expose the registry, but provider URI docs stay out of OSS."""
-    secrets_init = (ROOT / "config" / "secrets" / "__init__.py").read_text(encoding="utf-8")
+    secrets_init = (ROOT / "dblift" / "config" / "secrets" / "__init__.py").read_text(
+        encoding="utf-8"
+    )
 
     for scheme in (
         "vault://",

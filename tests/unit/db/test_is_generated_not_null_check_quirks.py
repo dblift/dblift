@@ -6,8 +6,8 @@ now lives in the Oracle plugin quirks; the base default is False so
 non-Oracle dialects never lose check constraints.
 """
 
-from db.base_quirks import BaseQuirks
-from db.plugins.oracle.quirks import OracleQuirks
+from dblift.db.base_quirks import BaseQuirks
+from dblift.db.plugins.oracle.quirks import OracleQuirks
 
 
 def test_oracle_filters_generated_not_null_check() -> None:

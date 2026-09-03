@@ -20,7 +20,7 @@ remaining ``# lint: allow-dialect-string`` annotations:
 
 import pytest
 
-from db.provider_registry import ProviderRegistry
+from dblift.db.provider_registry import ProviderRegistry
 
 
 @pytest.mark.unit
@@ -44,7 +44,7 @@ class TestDefaultSqlglotReadFallbackCapability:
         assert ProviderRegistry.get_quirks(flagged[0]).sqlglot_dialect == "postgres"
 
     def test_base_default_is_false(self):
-        from db.base_quirks import BaseQuirks
+        from dblift.db.base_quirks import BaseQuirks
 
         assert BaseQuirks().is_default_sqlglot_read_fallback is False
 
@@ -62,7 +62,7 @@ class TestIsSqlserverFamilyCapability:
         assert ProviderRegistry.get_quirks(alias).is_sqlserver_family is False
 
     def test_base_default_is_false(self):
-        from db.base_quirks import BaseQuirks
+        from dblift.db.base_quirks import BaseQuirks
 
         assert BaseQuirks().is_sqlserver_family is False
 
@@ -79,7 +79,7 @@ class TestRequiresCloudAccountAuthCapability:
         assert ProviderRegistry.get_quirks(alias).requires_cloud_account_auth is False
 
     def test_base_default_is_false(self):
-        from db.base_quirks import BaseQuirks
+        from dblift.db.base_quirks import BaseQuirks
 
         assert BaseQuirks().requires_cloud_account_auth is False
 
@@ -90,12 +90,12 @@ class TestValidateCompleteDataCosmosAuthGate:
     auth on ``requires_cloud_account_auth`` (was ``== "cosmosdb"``)."""
 
     def _validate(self, database):
-        from config.dblift_config import DbliftConfig
+        from dblift.config.dblift_config import DbliftConfig
 
         DbliftConfig.validate_complete_data({"database": database})
 
     def test_cosmosdb_missing_account_key_raises(self):
-        from config.dblift_config import ConfigurationError
+        from dblift.config.dblift_config import ConfigurationError
 
         with pytest.raises(ConfigurationError, match="account_key"):
             self._validate(
@@ -107,13 +107,13 @@ class TestValidateCompleteDataCosmosAuthGate:
             )
 
     def test_cosmosdb_missing_endpoint_raises(self):
-        from config.dblift_config import ConfigurationError
+        from dblift.config.dblift_config import ConfigurationError
 
         with pytest.raises(ConfigurationError, match="account_endpoint or url"):
             self._validate({"type": "cosmosdb", "account_key": "k", "database_name": "db"})
 
     def test_cosmosdb_missing_database_name_raises(self):
-        from config.dblift_config import ConfigurationError
+        from dblift.config.dblift_config import ConfigurationError
 
         with pytest.raises(ConfigurationError, match="database_name or database"):
             self._validate(
@@ -157,7 +157,7 @@ class TestUndoSqlglotFallbackParity:
     derived from the registry capability, not a hardcoded literal."""
 
     def test_unknown_dialect_falls_back_to_postgres(self):
-        from core.migration.scripting.undo_script_generator._helpers import (
+        from dblift.core.migration.scripting.undo_script_generator._helpers import (
             resolve_sqlglot_read_dialect,
         )
 
@@ -168,7 +168,7 @@ class TestUndoSqlglotFallbackParity:
         assert resolve_sqlglot_read_dialect("cosmosdb") == "postgres"
 
     def test_known_dialects_use_their_own(self):
-        from core.migration.scripting.undo_script_generator._helpers import (
+        from dblift.core.migration.scripting.undo_script_generator._helpers import (
             resolve_sqlglot_read_dialect,
         )
 

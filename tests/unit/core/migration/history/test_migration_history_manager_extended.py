@@ -11,11 +11,11 @@ Coverage focus:
 import unittest
 from unittest.mock import MagicMock, call, patch
 
-from core.migration.history.migration_history_manager import (
+from dblift.core.migration.history.migration_history_manager import (
     MigrationHistoryManager,
 )
-from core.migration.migration import AppliedMigration, Migration, MigrationType
-from db.base_quirks import BaseQuirks
+from dblift.core.migration.migration import AppliedMigration, Migration, MigrationType
+from dblift.db.base_quirks import BaseQuirks
 
 
 def _make_manager(schema="public", table="dblift_schema_history", installed_by="test_user"):

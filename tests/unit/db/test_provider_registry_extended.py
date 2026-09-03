@@ -6,8 +6,8 @@ from unittest.mock import MagicMock, patch
 
 class TestPluginInfo(unittest.TestCase):
     def test_basic_creation(self):
-        from db.base_provider import BaseProvider
-        from db.provider_registry import PluginInfo
+        from dblift.db.base_provider import BaseProvider
+        from dblift.db.provider_registry import PluginInfo
 
         class FakeProvider(BaseProvider):
             provider_transport = "native"
@@ -94,19 +94,19 @@ class TestPluginInfo(unittest.TestCase):
 
 class TestProviderRegistryGetProviderClass(unittest.TestCase):
     def test_returns_class_for_known_type(self):
-        from db.provider_registry import ProviderRegistry
+        from dblift.db.provider_registry import ProviderRegistry
 
         cls = ProviderRegistry.get_provider_class("postgresql")
         self.assertIsNotNone(cls)
 
     def test_returns_none_for_unknown_type(self):
-        from db.provider_registry import ProviderRegistry
+        from dblift.db.provider_registry import ProviderRegistry
 
         cls = ProviderRegistry.get_provider_class("unknown_db_xyz")
         self.assertIsNone(cls)
 
     def test_case_insensitive(self):
-        from db.provider_registry import ProviderRegistry
+        from dblift.db.provider_registry import ProviderRegistry
 
         cls1 = ProviderRegistry.get_provider_class("postgresql")
         cls2 = ProviderRegistry.get_provider_class("PostgreSQL")
@@ -115,25 +115,25 @@ class TestProviderRegistryGetProviderClass(unittest.TestCase):
 
 class TestProviderRegistryGetProviderByUrl(unittest.TestCase):
     def test_postgresql_url(self):
-        from db.provider_registry import ProviderRegistry
+        from dblift.db.provider_registry import ProviderRegistry
 
         cls = ProviderRegistry.get_provider_by_url("postgresql+psycopg://localhost/db")
         self.assertIsNotNone(cls)
 
     def test_mysql_url(self):
-        from db.provider_registry import ProviderRegistry
+        from dblift.db.provider_registry import ProviderRegistry
 
         cls = ProviderRegistry.get_provider_by_url("mysql+pymysql://localhost/db")
         self.assertIsNotNone(cls)
 
     def test_db2_sqlalchemy_url(self):
-        from db.provider_registry import ProviderRegistry
+        from dblift.db.provider_registry import ProviderRegistry
 
         cls = ProviderRegistry.get_provider_by_url("ibm_db_sa://localhost:50000/testdb")
         self.assertIsNotNone(cls)
 
     def test_unknown_url(self):
-        from db.provider_registry import ProviderRegistry
+        from dblift.db.provider_registry import ProviderRegistry
 
         cls = ProviderRegistry.get_provider_by_url("jdbc:unknowndb://localhost/db")
         self.assertIsNone(cls)
@@ -141,7 +141,7 @@ class TestProviderRegistryGetProviderByUrl(unittest.TestCase):
 
 class TestProviderRegistryListPlugins(unittest.TestCase):
     def test_returns_list(self):
-        from db.provider_registry import ProviderRegistry
+        from dblift.db.provider_registry import ProviderRegistry
 
         plugins = ProviderRegistry.list_plugins()
         self.assertIsInstance(plugins, list)
@@ -150,15 +150,15 @@ class TestProviderRegistryListPlugins(unittest.TestCase):
 
 class TestNativeDriverManager(unittest.TestCase):
     def test_get_available_drivers(self):
-        from db.provider_registry import NativeDriverManager
+        from dblift.db.provider_registry import NativeDriverManager
 
         result = NativeDriverManager.get_available_drivers([])
         self.assertIsInstance(result, dict)
 
     def test_missing_dotted_driver_module_returns_false(self):
         """A missing parent package must not crash optional driver checks."""
-        from db.base_provider import BaseProvider
-        from db.provider_registry import NativeDriverManager, PluginInfo
+        from dblift.db.base_provider import BaseProvider
+        from dblift.db.provider_registry import NativeDriverManager, PluginInfo
 
         plugin = PluginInfo(
             name="missingdb",

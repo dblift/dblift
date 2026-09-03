@@ -9,8 +9,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from core.introspection.extractors.table_extractor import TableExtractor
-from core.sql_model.base import SqlColumn
+from dblift.core.introspection.extractors.table_extractor import TableExtractor
+from dblift.core.sql_model.base import SqlColumn
 
 pytestmark = [pytest.mark.unit]
 
@@ -52,7 +52,7 @@ def _make_full_extractor(dialect="postgresql", vendor_queries=None, table_rows=N
 
 
 def _patch_si():
-    return patch("core.introspection.schema_introspector.SchemaIntrospector")
+    return patch("dblift.core.introspection.schema_introspector.SchemaIntrospector")
 
 
 class TestGetTablesVendorQueriesMissing(unittest.TestCase):

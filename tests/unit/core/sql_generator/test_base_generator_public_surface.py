@@ -18,11 +18,11 @@ The tests below therefore do two things:
 
 import pytest
 
-from core.sql_generator.base_generator import BaseSqlGenerator
-from core.sql_generator.generator_factory import SqlGeneratorFactory
-from core.sql_generator.options import OrganizationStrategy, ScriptOptions
-from core.sql_model.base import SqlColumn, SqlConstraint
-from core.sql_model.table import Table
+from dblift.core.sql_generator.base_generator import BaseSqlGenerator
+from dblift.core.sql_generator.generator_factory import SqlGeneratorFactory
+from dblift.core.sql_generator.options import OrganizationStrategy, ScriptOptions
+from dblift.core.sql_model.base import SqlColumn, SqlConstraint
+from dblift.core.sql_model.table import Table
 
 pytestmark = [pytest.mark.unit]
 

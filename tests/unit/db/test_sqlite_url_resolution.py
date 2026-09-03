@@ -20,7 +20,7 @@ import os
 import pytest
 import sqlalchemy
 
-from db.plugins.sqlite.sqlalchemy_url import build_sqlalchemy_url
+from dblift.db.plugins.sqlite.sqlalchemy_url import build_sqlalchemy_url
 
 
 class _Cfg:
@@ -38,7 +38,7 @@ class TestThreeSlashesIsRelative:
         ],
     )
     def test_relative_urls_stay_relative(self, url: str, expected: str) -> None:
-        from db.plugins.sqlite.config import sqlite_path_from_url
+        from dblift.db.plugins.sqlite.config import sqlite_path_from_url
 
         assert sqlite_path_from_url(url) == expected
         assert not os.path.isabs(sqlite_path_from_url(url))
@@ -51,13 +51,13 @@ class TestThreeSlashesIsRelative:
         ],
     )
     def test_four_slashes_is_absolute(self, url: str, expected: str) -> None:
-        from db.plugins.sqlite.config import sqlite_path_from_url
+        from dblift.db.plugins.sqlite.config import sqlite_path_from_url
 
         assert sqlite_path_from_url(url) == expected
         assert os.path.isabs(sqlite_path_from_url(url))
 
     def test_memory_is_preserved(self) -> None:
-        from db.plugins.sqlite.config import sqlite_path_from_url
+        from dblift.db.plugins.sqlite.config import sqlite_path_from_url
 
         assert sqlite_path_from_url("sqlite:///:memory:") == ":memory:"
 
@@ -76,7 +76,7 @@ class TestAgreementWithSqlAlchemy:
         ],
     )
     def test_dblift_and_sqlalchemy_resolve_the_same_file(self, url: str) -> None:
-        from db.plugins.sqlite.config import sqlite_path_from_url
+        from dblift.db.plugins.sqlite.config import sqlite_path_from_url
 
         sqlalchemy_path = sqlalchemy.engine.make_url(url).database
         assert os.path.abspath(sqlite_path_from_url(url)) == os.path.abspath(sqlalchemy_path)
@@ -84,7 +84,7 @@ class TestAgreementWithSqlAlchemy:
     @pytest.mark.parametrize("path", ["release.db", "./release.db", "/var/lib/x.db"])
     def test_the_builder_round_trips_through_the_parser(self, path: str) -> None:
         """A path the builder encodes must parse back to the same file."""
-        from db.plugins.sqlite.config import sqlite_path_from_url
+        from dblift.db.plugins.sqlite.config import sqlite_path_from_url
 
         url = build_sqlalchemy_url(_Cfg(path=path))
         assert os.path.abspath(sqlite_path_from_url(url)) == os.path.abspath(path)

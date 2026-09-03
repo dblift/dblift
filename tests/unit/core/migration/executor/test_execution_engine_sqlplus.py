@@ -2,11 +2,11 @@
 
 from unittest.mock import MagicMock, patch
 
-from core.exceptions import TransactionAbortedError
-from core.migration.executor.execution_engine import ExecutionEngine
-from core.migration.formats import MigrationFormat
-from core.migration.migration import Migration
-from db.plugins.oracle.parser.sqlplus_context import SqlplusContext
+from dblift.core.exceptions import TransactionAbortedError
+from dblift.core.migration.executor.execution_engine import ExecutionEngine
+from dblift.core.migration.formats import MigrationFormat
+from dblift.core.migration.migration import Migration
+from dblift.db.plugins.oracle.parser.sqlplus_context import SqlplusContext
 
 
 def _make_engine(dialect="oracle"):
@@ -227,8 +227,8 @@ class TestDbmsOutputIntegration:
         result = MagicMock()
 
         with (
-            patch("db.plugins.oracle.oracle.dbms_output.enable_dbms_output") as mock_enable,
-            patch("db.plugins.oracle.oracle.dbms_output.read_dbms_output") as mock_read,
+            patch("dblift.db.plugins.oracle.oracle.dbms_output.enable_dbms_output") as mock_enable,
+            patch("dblift.db.plugins.oracle.oracle.dbms_output.read_dbms_output") as mock_read,
         ):
             engine._execute_statements(["SELECT 1 FROM DUAL"], migration, result, 0.0)
 
@@ -245,7 +245,7 @@ class TestDbmsOutputIntegration:
         migration.script_name = "V1__test.sql"
         result = MagicMock()
 
-        with patch("db.plugins.oracle.oracle.dbms_output.enable_dbms_output") as mock_enable:
+        with patch("dblift.db.plugins.oracle.oracle.dbms_output.enable_dbms_output") as mock_enable:
             engine._execute_statements(["SELECT 1 FROM DUAL"], migration, result, 0.0)
 
         mock_enable.assert_not_called()
@@ -260,7 +260,7 @@ class TestDbmsOutputIntegration:
         migration.script_name = "V1__test.sql"
         result = MagicMock()
 
-        with patch("db.plugins.oracle.oracle.dbms_output.enable_dbms_output") as mock_enable:
+        with patch("dblift.db.plugins.oracle.oracle.dbms_output.enable_dbms_output") as mock_enable:
             engine._execute_statements(["SELECT 1 FROM DUAL"], migration, result, 0.0)
 
         mock_enable.assert_not_called()

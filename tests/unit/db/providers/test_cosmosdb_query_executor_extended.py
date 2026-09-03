@@ -5,7 +5,7 @@ from unittest.mock import MagicMock
 
 
 def _make_executor():
-    from db.plugins.cosmosdb.cosmosdb.query_executor import CosmosDbQueryExecutor
+    from dblift.db.plugins.cosmosdb.cosmosdb.query_executor import CosmosDbQueryExecutor
 
     cm = MagicMock()
     cm.database = MagicMock()
