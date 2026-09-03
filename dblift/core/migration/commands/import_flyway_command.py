@@ -11,6 +11,21 @@ from dblift.db.object_naming import get_normalized_object_name
 from dblift.db.provider_registry import ProviderRegistry
 
 
+def _as_bool(value: Any) -> bool:
+    """Read Flyway's ``success`` column as a real boolean.
+
+    Flyway declares this column BOOLEAN on PostgreSQL but an integer type on
+    MySQL and SQLite, and a hand-built table can hold the string "0". Our own
+    PostgreSQL history column is BOOLEAN and psycopg refuses an int for it, so
+    the value is normalised here rather than trusted as read.
+    """
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return value.strip().lower() not in ("", "0", "false", "f", "n", "no")
+    return bool(value)
+
+
 class ImportFlywayCommand(BaseCommand):
     """Handles the import-flyway operation."""
 
@@ -102,6 +117,15 @@ class ImportFlywayCommand(BaseCommand):
                 schema, target_table, flyway_rows
             )
 
+            # Map every row before writing any of them. ``_row_with_mapped_type``
+            # raises on a Flyway type with no equivalent here, and that verdict
+            # has to be reached in dry-run too — a dry run that reports success
+            # for an import the real run refuses is worse than no dry run at
+            # all. Doing it up front also means the refusal lands before the
+            # first insert instead of partway through, so a rejected history
+            # leaves the target table untouched rather than half-populated.
+            mapped_rows = [self._row_with_mapped_type(row) for row in rows_to_import]
+
             # BUG-06: emit a user-visible preview in dry-run mode so callers
             # see the list of rows that would be written to dblift_schema_history
             # (previously only log.debug, invisible unless debug logging on).
@@ -118,11 +142,9 @@ class ImportFlywayCommand(BaseCommand):
                     self.log.info(f"  - {script} (version: {version}, checksum: {checksum})")
 
             imported_count = 0
-            for row in rows_to_import:
+            for mapped_row in mapped_rows:
                 if not dry_run:
-                    self.provider.record_migration(
-                        schema, self._row_with_mapped_type(row), target_table
-                    )
+                    self.provider.record_migration(schema, mapped_row, target_table)
                 imported_count += 1
 
             if not dry_run and imported_count:
@@ -226,7 +248,7 @@ class ImportFlywayCommand(BaseCommand):
             # Flyway's convention for a repeatable migration is type=SQL with
             # no version — dblift models this as its own REPEATABLE type.
             mapped_type = MigrationType.REPEATABLE.name
-        return {**row, "type": mapped_type}
+        return {**row, "type": mapped_type, "success": _as_bool(row.get("success", True))}
 
     @staticmethod
     def _normalize_flyway_row(row: Dict[str, Any]) -> Dict[str, Any]:

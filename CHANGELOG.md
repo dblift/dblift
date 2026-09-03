@@ -17,6 +17,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [4.0.0] - 2026-09-02
 
+### Fixed
+
+- **`import-flyway` dry run no longer promises an import that then fails.** The
+  Flyway type mapping, which is what decides whether a history table can be
+  imported at all, was only consulted on the write path. A history holding a
+  type with no equivalent here (`UNDO_JDBC`, for instance) made `--dry-run`
+  report "2 entries would be imported" and exit 0, while the real run exited 1.
+  Every row is now mapped before any is written, so the two modes reach the
+  same verdict.
+- **A refused `import-flyway` no longer leaves a half-filled history table.**
+  The command wrote rows until it reached the unmappable one and then aborted,
+  leaving the target table holding some versions and not others — a state every
+  later command reads as real. Validation now completes before the first
+  insert, so a rejected import writes nothing.
+- **`import-flyway` reads Flyway's `success` column as a boolean.** Flyway
+  declares it BOOLEAN on PostgreSQL but an integer type on MySQL and SQLite,
+  and a hand-built table can hold `"0"`. Our own PostgreSQL column is BOOLEAN
+  and rejects an integer, so the value is normalised on the way in.
+
 ### Breaking
 
 - **Everything now lives under the `dblift` package.** The wheel used to
