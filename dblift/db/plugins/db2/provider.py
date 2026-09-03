@@ -9,7 +9,7 @@ from dblift.config import DbliftConfig
 from dblift.core.logger import Log
 from dblift.core.migration.clean_summary import CleanExecutionSummary
 from dblift.db.object_naming import get_normalized_object_name
-from dblift.db.plugins.base_history_manager import UNDO_HISTORY_TYPE
+from dblift.db.plugins.base_history_manager import UNDO_HISTORY_TYPE, installed_on_to_bind
 from dblift.db.plugins.db2.db2.schema_operations import Db2SchemaOperations
 from dblift.db.provider_interfaces import DroppableObject
 from dblift.db.sqlalchemy_provider import SqlAlchemyProvider
@@ -342,22 +342,28 @@ class Db2Provider(SqlAlchemyProvider):
         """Insert a migration record into the DB2 history table."""
         table_name = _db2_object_name(table_name)
         self.create_migration_history_table_if_not_exists(schema, table_name=table_name)
+        installed_on = installed_on_to_bind(migration_info.get("installed_on"))
+        installed_on_column = ", INSTALLED_ON" if installed_on is not None else ""
+        installed_on_value = ", ?" if installed_on is not None else ""
+        params = [
+            migration_info.get("version"),
+            migration_info.get("description", ""),
+            migration_info.get("type", "SQL"),
+            migration_info.get("script", ""),
+            migration_info.get("checksum"),
+            migration_info.get("installed_by", "dblift"),
+            migration_info.get("execution_time", 0),
+            1 if migration_info.get("success", True) else 0,
+        ]
+        if installed_on is not None:
+            params.append(installed_on)
         self.execute_statement(
             f"""
             INSERT INTO {_schema_object(schema, table_name)}
-                (VERSION, DESCRIPTION, TYPE, SCRIPT, CHECKSUM, INSTALLED_BY, EXECUTION_TIME, SUCCESS)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                (VERSION, DESCRIPTION, TYPE, SCRIPT, CHECKSUM, INSTALLED_BY, EXECUTION_TIME, SUCCESS{installed_on_column})
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?{installed_on_value})
             """,
-            params=[
-                migration_info.get("version"),
-                migration_info.get("description", ""),
-                migration_info.get("type", "SQL"),
-                migration_info.get("script", ""),
-                migration_info.get("checksum"),
-                migration_info.get("installed_by", "dblift"),
-                migration_info.get("execution_time", 0),
-                1 if migration_info.get("success", True) else 0,
-            ],
+            params=params,
         )
 
     def record_undo(

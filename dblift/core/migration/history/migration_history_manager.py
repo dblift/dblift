@@ -1,6 +1,5 @@
 """Migration history manager — persists applied migrations and validates checksums against the DB."""
 
-import datetime
 import logging
 from typing import TYPE_CHECKING, Any, List, Optional, Union
 
@@ -117,7 +116,11 @@ class MigrationHistoryManager:
             "checksum": migration.checksum,
             "success": success_flag,
             "execution_time": execution_time,
-            "installed_on": datetime.datetime.now(),
+            # No ``installed_on``: providers now bind a supplied value, and a
+            # client-side clock here would replace each dialect's own
+            # ``CURRENT_TIMESTAMP`` default (UTC on SQLite, server time
+            # elsewhere) with local time. Only import-flyway, which carries a
+            # date it must preserve, supplies this key.
             "installed_by": self.installed_by,
         }
 

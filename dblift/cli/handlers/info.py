@@ -61,6 +61,10 @@ def _info_result_to_dict(result: Any) -> Dict[str, Any]:
         # so downstream consumers can do ``result["success"]`` on both happy and
         # error paths without a KeyError on the happy path.
         "success": bool(getattr(result, "success", True)),
+        # Same reason ``OutputFormatter.format_info`` prints as ``Error: ...``.
+        # Without it a JSON consumer saw ``success: false`` and nothing else,
+        # while the key was already populated on the handler's exception payload.
+        "error": getattr(result, "error_message", None),
         "current_schema_version": getattr(result, "current_schema_version", None),
         "target_schema": getattr(result, "target_schema", ""),
         "db_version": getattr(result, "db_version", None),
