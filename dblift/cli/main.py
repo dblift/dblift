@@ -46,6 +46,7 @@ from dblift.cli._output import CommandOutput, from_args
 from dblift.cli._parser_setup import create_parser, parse_with_selective_errors
 from dblift.cli.extensions import load_terminal_commands
 from dblift.cli.premium_manifest import render_upsell
+from dblift.config.property_registry import PROPERTY_REGISTRY
 from dblift.core.seams.feature_loading import load_feature_extensions
 from dblift.core.seams.license_info import get_license_info
 
@@ -333,6 +334,43 @@ def main() -> None:
         sys.exit(exit_code)
 
 
+def _apply_config_backed_defaults(args: Any, config: Optional[Any]) -> None:
+    """Fill unset CLI arguments from the loaded configuration.
+
+    ``dblift config`` advertises an environment variable for every registry
+    property and ``DbliftConfig.from_env_dict`` reads them, but the command
+    handlers take their values from the argparse namespace, so anything the
+    handlers own was inert unless it arrived as a flag. ``DBLIFT_DRY_RUN=true
+    dblift migrate`` applied every migration for real, exit 0, silently.
+
+    Precedence stays CLI over environment over file: a value already present
+    on the namespace is never replaced. Only names the namespace already
+    carries are considered, so a subcommand never gains a flag its own parser
+    did not declare. ``database.*`` is skipped — it has its own DBLIFT_DB_*
+    allowlist with aliasing this walk does not model, and its argparse dests
+    do not match the dotted registry names.
+    """
+    if config is None:
+        return
+
+    for spec in PROPERTY_REGISTRY:
+        if spec.cli_only or "." in spec.name:
+            continue
+        if not hasattr(args, spec.name):
+            continue
+        # "Unset" means the namespace still holds the declared default. Testing
+        # for falsiness instead would be wrong for a flag whose default is True:
+        # ``clean_disabled`` defaults True and ``--clean-enabled`` sets it False,
+        # so a falsy test would read that explicit opt-in as absence and put the
+        # guard back on a destructive command the user had just unlocked.
+        if getattr(args, spec.name) != spec.default:
+            continue
+        value = getattr(config, spec.name, None)
+        if value in (None, "", (), []) or value == spec.default:
+            continue
+        setattr(args, spec.name, value)
+
+
 def _parse_argv_and_load_config(argv: List[str]) -> _CliContext:
     """Phase 1: extract commands, build args namespace, load config.
 
@@ -447,6 +485,7 @@ def _parse_argv_and_load_config(argv: List[str]) -> _CliContext:
     # single-command config-only flows from chained invocations.
     args.commands_list = commands
     config = None if commands[0] == "db" else _load_and_merge_config(args, log)
+    _apply_config_backed_defaults(args, config)
     _validate_db_config(args, config, parser, commands)
 
     return _CliContext(

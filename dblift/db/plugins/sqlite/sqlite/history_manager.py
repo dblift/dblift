@@ -7,11 +7,12 @@ creation, recording migrations, retrieving applied migrations, and repair operat
 
 import os
 import sqlite3
+from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 from dblift.core.logger import Log
 from dblift.db.object_naming import get_normalized_object_name
-from dblift.db.plugins.base_history_manager import BaseHistoryManager
+from dblift.db.plugins.base_history_manager import BaseHistoryManager, installed_on_to_bind
 
 
 class SQLiteHistoryManager(BaseHistoryManager):
@@ -134,12 +135,21 @@ class SQLiteHistoryManager(BaseHistoryManager):
             )
 
         try:
+            # An ``installed_on`` supplied by the caller (import-flyway carries
+            # Flyway's own date) is bound; otherwise the row is stamped now, as
+            # before. The column is TEXT, so a datetime is rendered explicitly
+            # rather than left to sqlite3's implicit adapter.
+            installed_on = installed_on_to_bind(migration_info.get("installed_on"))
+            if isinstance(installed_on, datetime):
+                installed_on = installed_on.strftime("%Y-%m-%d %H:%M:%S")
+            installed_on_expr = "?" if installed_on is not None else "datetime('now')"
+
             # SQLite doesn't need manual rank calculation with AUTOINCREMENT
             insert_sql = f"""
             INSERT INTO "{table}" (
                 version, description, type, script,
                 checksum, installed_by, installed_on, execution_time, success
-            ) VALUES (?, ?, ?, ?, ?, ?, datetime('now'), ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, {installed_on_expr}, ?, ?)
             """
 
             # Convert boolean to integer for SQLite
@@ -152,6 +162,10 @@ class SQLiteHistoryManager(BaseHistoryManager):
                 migration_info.get("script"),
                 migration_info.get("checksum"),
                 migration_info.get("installed_by", os.environ.get("USER", "dblift")),
+            ]
+            if installed_on is not None:
+                params.append(installed_on)
+            params += [
                 migration_info.get("execution_time", 0),
                 success_value,
             ]
