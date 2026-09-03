@@ -49,6 +49,8 @@ jobs:
     needs: test
     runs-on: ubuntu-latest
     environment: pypi
+    outputs:
+      publish-pytest-dblift: ${{ steps.pytest_dblift_pypi.outputs.publish }}
 
     steps:
       - uses: actions/checkout@v6
@@ -93,9 +95,32 @@ jobs:
 
       - name: Publish dblift
         uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          skip-existing: true
+
+      - name: Upload pytest-dblift distributions
+        if: steps.pytest_dblift_pypi.outputs.publish == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: pytest-dblift-dist
+          path: packages/pytest-dblift/dist
+
+  publish-pytest-dblift:
+    needs: publish
+    if: needs.publish.outputs.publish-pytest-dblift == 'true'
+    runs-on: ubuntu-latest
+    # Separate environment from the dblift publish job: PyPI trusted-publisher
+    # claims (repo + workflow + environment) must be unique per project, or it
+    # mints a token scoped to the wrong project.
+    environment: pypi-pytest-dblift
+
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: pytest-dblift-dist
+          path: packages/pytest-dblift/dist
 
       - name: Publish pytest-dblift
-        if: steps.pytest_dblift_pypi.outputs.publish == 'true'
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
           packages-dir: packages/pytest-dblift/dist
