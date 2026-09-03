@@ -4,7 +4,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from db.provider_interfaces import ConnectionProvider
+from dblift.db.provider_interfaces import ConnectionProvider
 
 
 @pytest.mark.unit
@@ -18,7 +18,7 @@ class TestEnsureConnectionLogging:
 
     def test_is_connected_exception_is_logged(self):
         """Exception de is_connected() doit être loggée en debug (AC#1)."""
-        from cli.main import _ensure_connection
+        from dblift.cli.main import _ensure_connection
 
         provider = MagicMock(spec=ConnectionProvider)
         provider.is_connected.side_effect = RuntimeError("connection lost")
@@ -37,7 +37,7 @@ class TestEnsureConnectionLogging:
 
     def test_is_connected_exception_still_attempts_connection(self):
         """Après exception is_connected(), la connexion doit être tentée (comportement inchangé)."""
-        from cli.main import _ensure_connection
+        from dblift.cli.main import _ensure_connection
 
         provider = MagicMock(spec=ConnectionProvider)
         provider.is_connected.side_effect = RuntimeError("connection lost")
@@ -51,7 +51,7 @@ class TestEnsureConnectionLogging:
 
     def test_is_connected_success_no_exception_log(self):
         """Si is_connected() réussit, pas de log d'exception (régression)."""
-        from cli.main import _ensure_connection
+        from dblift.cli.main import _ensure_connection
 
         provider = MagicMock(spec=ConnectionProvider)
         provider.is_connected.return_value = True

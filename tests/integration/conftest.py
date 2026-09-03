@@ -14,9 +14,9 @@ from typing import Any, Callable, Dict
 import docker
 import pytest
 
-from config import DbliftConfig
-from core.logger import DbliftLogger, LogFormat, LogLevel
-from core.seams.introspection import attach_registered_introspection
+from dblift.config import DbliftConfig
+from dblift.core.logger import DbliftLogger, LogFormat, LogLevel
+from dblift.core.seams.introspection import attach_registered_introspection
 
 attach_registered_introspection()
 
@@ -624,7 +624,7 @@ def cleanup_database(request):
                 "logging": {"level": "DEBUG", "file": "dblift_cosmosdb_cleanup.log"},
             }
 
-            from api import DBLiftClient
+            from dblift.api import DBLiftClient
 
             config = DbliftConfig.from_dict(cosmosdb_config_dict)
             log_dir = Path("./logs")
@@ -750,7 +750,7 @@ def cleanup_database(request):
 
     # Use DBLiftClient to follow the same code path as users
     # This ensures we test the provider layer through the client API
-    from api import DBLiftClient
+    from dblift.api import DBLiftClient
 
     # Create a temporary migrations directory for the client (required but not used for cleanup)
     temp_migrations_dir = Path("/tmp")

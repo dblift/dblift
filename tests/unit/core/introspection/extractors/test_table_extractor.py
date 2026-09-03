@@ -10,7 +10,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from core.introspection.extractors.table_extractor import TableExtractor
+from dblift.core.introspection.extractors.table_extractor import TableExtractor
 
 pytestmark = [pytest.mark.unit]
 
@@ -172,7 +172,7 @@ class TestIsTemporaryTable(unittest.TestCase):
 class TestGetTablesBasic(unittest.TestCase):
     def _patch_si(self):
         """Patch SchemaIntrospector to avoid circular imports."""
-        return patch("core.introspection.schema_introspector.SchemaIntrospector")
+        return patch("dblift.core.introspection.schema_introspector.SchemaIntrospector")
 
     def test_single_table(self):
         with self._patch_si() as mock_si:
@@ -433,7 +433,7 @@ class TestEnrichPostgresqlTable(unittest.TestCase):
 
     @staticmethod
     def _pg_quirks():
-        from db.provider_registry import ProviderRegistry
+        from dblift.db.provider_registry import ProviderRegistry
 
         return ProviderRegistry.get_quirks("postgresql")
 
@@ -448,7 +448,7 @@ class TestEnrichPostgresqlTable(unittest.TestCase):
             {"row_security": "YES", "force_row_security": "NO"}
         ]
 
-        from core.sql_model.table import Table
+        from dblift.core.sql_model.table import Table
 
         table = Table(name="users", schema="public", dialect="postgresql")
         self._pg_quirks().enrich_table_extra(extractor, "public", "users", table)
@@ -469,7 +469,7 @@ class TestEnrichPostgresqlTable(unittest.TestCase):
             {"parent_schema": "public", "parent_table": "base_table"}
         ]
 
-        from core.sql_model.table import Table
+        from dblift.core.sql_model.table import Table
 
         table = Table(name="child_table", schema="public", dialect="postgresql")
         self._pg_quirks().enrich_table_extra(extractor, "public", "child_table", table)
@@ -487,7 +487,7 @@ class TestEnrichPostgresqlTable(unittest.TestCase):
             {"parent_schema": "other_schema", "parent_table": "base_table"}
         ]
 
-        from core.sql_model.table import Table
+        from dblift.core.sql_model.table import Table
 
         table = Table(name="child_table", schema="public", dialect="postgresql")
         self._pg_quirks().enrich_table_extra(extractor, "public", "child_table", table)
@@ -515,7 +515,7 @@ class TestEnrichPostgresqlTable(unittest.TestCase):
             }
         ]
 
-        from core.sql_model.table import Table
+        from dblift.core.sql_model.table import Table
 
         table = Table(name="secure_data", schema="public", dialect="postgresql")
         self._pg_quirks().enrich_table_extra(extractor, "public", "secure_data", table)
@@ -527,7 +527,7 @@ class TestEnrichPostgresqlTable(unittest.TestCase):
 
     def test_no_vendor_queries_early_return(self):
         extractor = _make_extractor(dialect="postgresql", vendor_queries=None)
-        from core.sql_model.table import Table
+        from dblift.core.sql_model.table import Table
 
         table = Table(name="users", schema="public", dialect="postgresql")
         # Should not raise
@@ -540,7 +540,7 @@ class TestEnrichPostgresqlTable(unittest.TestCase):
 class TestSupplementPartitionedTables(unittest.TestCase):
     def test_non_postgresql_returns_unchanged(self):
         extractor = _make_extractor(dialect="mysql")
-        from core.sql_model.table import Table
+        from dblift.core.sql_model.table import Table
 
         tables = [Table(name="t", schema="s", dialect="mysql")]
         result = extractor._supplement_partitioned_tables("s", tables)
@@ -562,7 +562,7 @@ class TestSupplementPartitionedTables(unittest.TestCase):
             {"table_name": "orders_2024", "remarks": None}
         ]
 
-        from core.sql_model.table import Table
+        from dblift.core.sql_model.table import Table
 
         existing = [Table(name="users", schema="public", dialect="postgresql")]
         result = extractor._supplement_partitioned_tables("public", existing)
@@ -580,7 +580,7 @@ class TestSupplementPartitionedTables(unittest.TestCase):
             {"table_name": "users", "remarks": None}  # already exists
         ]
 
-        from core.sql_model.table import Table
+        from dblift.core.sql_model.table import Table
 
         existing = [Table(name="users", schema="public", dialect="postgresql")]
         result = extractor._supplement_partitioned_tables("public", existing)

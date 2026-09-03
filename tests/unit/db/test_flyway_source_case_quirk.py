@@ -7,13 +7,13 @@ path used to be ``db_type == "oracle"``; it now lives on a quirks
 capability so framework code names no dialect.
 """
 
-from db.base_quirks import BaseQuirks
-from db.plugins.db2.quirks import Db2Quirks
-from db.plugins.mysql.quirks import MysqlQuirks
-from db.plugins.oracle.quirks import OracleQuirks
-from db.plugins.postgresql.quirks import PostgresqlQuirks
-from db.plugins.sqlite.quirks import SqliteQuirks
-from db.plugins.sqlserver.quirks import SqlserverQuirks
+from dblift.db.base_quirks import BaseQuirks
+from dblift.db.plugins.db2.quirks import Db2Quirks
+from dblift.db.plugins.mysql.quirks import MysqlQuirks
+from dblift.db.plugins.oracle.quirks import OracleQuirks
+from dblift.db.plugins.postgresql.quirks import PostgresqlQuirks
+from dblift.db.plugins.sqlite.quirks import SqliteQuirks
+from dblift.db.plugins.sqlserver.quirks import SqlserverQuirks
 
 
 def test_base_default_false():

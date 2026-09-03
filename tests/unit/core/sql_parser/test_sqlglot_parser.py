@@ -2,13 +2,13 @@
 
 import pytest
 
-from core.sql_model.base import (
+from dblift.core.sql_model.base import (
     ParseResult,
     SqlObject,
     SqlObjectType,
     SqlStatementType,
 )
-from core.sql_parser.sqlglot_parser import SqlGlotParser
+from dblift.core.sql_parser.sqlglot_parser import SqlGlotParser
 
 
 @pytest.mark.unit

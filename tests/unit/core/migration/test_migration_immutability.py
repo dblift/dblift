@@ -20,7 +20,7 @@ from __future__ import annotations
 
 import pytest
 
-from core.migration.migration import Migration
+from dblift.core.migration.migration import Migration
 
 
 def _make_migration(content: str) -> Migration:

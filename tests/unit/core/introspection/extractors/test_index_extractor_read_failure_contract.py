@@ -26,8 +26,8 @@ from typing import Any, List, Optional
 
 import pytest
 
-from core.introspection.extractors.index_extractor import IndexExtractor
-from core.introspection.vendor_queries_base import VendorMetadataQueries
+from dblift.core.introspection.extractors.index_extractor import IndexExtractor
+from dblift.core.introspection.vendor_queries_base import VendorMetadataQueries
 
 pytestmark = [pytest.mark.unit]
 
@@ -188,7 +188,7 @@ class TestBaseIntrospectorPropagatesReadFailures:
     """End-to-end through a real BaseIntrospector, not just the extractor."""
 
     def _introspector(self, extractor):
-        from core.introspection.base_introspector import BaseIntrospector
+        from dblift.core.introspection.base_introspector import BaseIntrospector
 
         class _Introspector(BaseIntrospector):
             def _get_index_extractor(self):

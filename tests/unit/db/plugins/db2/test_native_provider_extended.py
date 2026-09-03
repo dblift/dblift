@@ -1,9 +1,9 @@
-"""Extended unit tests for :mod:`db.plugins.db2.provider` (Db2Provider)."""
+"""Extended unit tests for :mod:`dblift.db.plugins.db2.provider` (Db2Provider)."""
 
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
-from db.plugins.db2.provider import Db2Provider
+from dblift.db.plugins.db2.provider import Db2Provider
 
 
 class DummyDb2Provider(Db2Provider):
@@ -124,8 +124,8 @@ class TestAcquireMigrationLock:
         )
 
         clock = iter([0.0, 0.0, 0.5])
-        monkeypatch.setattr("db.plugins.db2.provider.time.monotonic", lambda: next(clock))
-        monkeypatch.setattr("db.plugins.db2.provider.time.sleep", lambda _seconds: None)
+        monkeypatch.setattr("dblift.db.plugins.db2.provider.time.monotonic", lambda: next(clock))
+        monkeypatch.setattr("dblift.db.plugins.db2.provider.time.sleep", lambda _seconds: None)
 
         attempts = {"count": 0}
 
@@ -152,7 +152,7 @@ class TestAcquireMigrationLock:
 
         provider._connection = SimpleNamespace(rollback=failing_rollback)
 
-        monkeypatch.setattr("db.plugins.db2.provider.time.sleep", lambda _seconds: None)
+        monkeypatch.setattr("dblift.db.plugins.db2.provider.time.sleep", lambda _seconds: None)
 
         def execute_statement(sql, schema=None, params=None):
             provider.calls.append(("statement", sql, schema, params))
@@ -337,7 +337,7 @@ class TestRepairMigrationHistory:
 
         assert provider.repair_migration_history("APP", "V1.sql", 123) is False
 
-    def test_without_success_value_sets_success_zero(self) -> None:
+    def test_without_success_value_keeps_stored_flag(self) -> None:
         provider = DummyDb2Provider()
         provider.table_exists = lambda schema, table_name: True
 
@@ -345,8 +345,9 @@ class TestRepairMigrationHistory:
 
         assert result is True
         statement_call = next(c for c in provider.calls if c[0] == "statement")
-        assert "SUCCESS = 0" in statement_call[1]
-        assert statement_call[3] == [999, "V1.sql"]
+        assert "COALESCE(?, SUCCESS)" in statement_call[1]
+        assert "SUCCESS = 0" not in statement_call[1]
+        assert statement_call[3] == [999, None, "V1.sql"]
 
     def test_with_success_value_sets_param(self) -> None:
         provider = DummyDb2Provider()
@@ -356,7 +357,7 @@ class TestRepairMigrationHistory:
 
         assert result is True
         statement_call = next(c for c in provider.calls if c[0] == "statement")
-        assert "SUCCESS = ?" in statement_call[1]
+        assert "COALESCE(?, SUCCESS)" in statement_call[1]
         assert statement_call[3] == [999, 1, "V1.sql"]
 
 

@@ -7,7 +7,7 @@ from unittest.mock import MagicMock
 
 class TestMigrationRulesIsSuccess(unittest.TestCase):
     def _make_rules(self):
-        from core.migration.rules.migration_rules import MigrationRules
+        from dblift.core.migration.rules.migration_rules import MigrationRules
 
         return MigrationRules(logger=MagicMock())
 
@@ -33,7 +33,7 @@ class TestMigrationRulesIsSuccess(unittest.TestCase):
 
 class TestMigrationRulesShouldUndoVersion(unittest.TestCase):
     def _make_rules(self):
-        from core.migration.rules.migration_rules import MigrationRules
+        from dblift.core.migration.rules.migration_rules import MigrationRules
 
         return MigrationRules(logger=MagicMock())
 
@@ -113,7 +113,7 @@ class TestShouldUndoVersionWithEnumTypes(unittest.TestCase):
     """
 
     def _make_rules(self):
-        from core.migration.rules.migration_rules import MigrationRules
+        from dblift.core.migration.rules.migration_rules import MigrationRules
 
         return MigrationRules(logger=MagicMock())
 
@@ -126,12 +126,12 @@ class TestShouldUndoVersionWithEnumTypes(unittest.TestCase):
         )
 
     def _versioned_types(self):
-        from core.migration.migration import MigrationType
+        from dblift.core.migration.migration import MigrationType
 
         return [MigrationType.SQL, MigrationType.PYTHON]
 
     def test_reapplied_version_can_be_undone_again(self):
-        from core.migration.migration import MigrationType
+        from dblift.core.migration.migration import MigrationType
 
         for versioned in self._versioned_types():
             with self.subTest(type=versioned):
@@ -145,7 +145,7 @@ class TestShouldUndoVersionWithEnumTypes(unittest.TestCase):
                 self.assertTrue(can, msg)
 
     def test_next_version_to_undo_is_suggested(self):
-        from core.migration.migration import MigrationType
+        from dblift.core.migration.migration import MigrationType
 
         for versioned in self._versioned_types():
             with self.subTest(type=versioned):
@@ -160,7 +160,7 @@ class TestShouldUndoVersionWithEnumTypes(unittest.TestCase):
                 self.assertIn("specify version 1", msg)
 
     def test_failed_version_is_not_suggested(self):
-        from core.migration.migration import MigrationType
+        from dblift.core.migration.migration import MigrationType
 
         rules = self._make_rules()
         rows = [
@@ -174,7 +174,7 @@ class TestShouldUndoVersionWithEnumTypes(unittest.TestCase):
 
     def test_reapplied_candidate_is_suggested(self):
         """A version undone *and re-applied* is applied, so it is undoable."""
-        from core.migration.migration import MigrationType
+        from dblift.core.migration.migration import MigrationType
 
         rules = self._make_rules()
         rows = [
@@ -190,7 +190,7 @@ class TestShouldUndoVersionWithEnumTypes(unittest.TestCase):
 
     def test_suggestion_uses_semantic_version_order(self):
         """A suggestion of "10" over "2" — must match what undo would pick."""
-        from core.migration.migration import MigrationType
+        from dblift.core.migration.migration import MigrationType
 
         rules = self._make_rules()
         rows = [

@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from api import DBLiftClient
+from dblift.api import DBLiftClient
 
 V1_PY = """\
 def migrate(context):

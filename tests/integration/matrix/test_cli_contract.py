@@ -23,7 +23,7 @@ from typing import List, Tuple
 import pytest
 
 DBLIFT_ROOT = Path(__file__).resolve().parents[3]
-CLI_INVOCATION = [sys.executable, "-m", "cli.main"]
+CLI_INVOCATION = [sys.executable, "-m", "dblift.cli.main"]
 
 
 def run_cli(*argv: str, cwd: Path | None = None) -> Tuple[int, str, str]:

@@ -15,9 +15,9 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from core.migration.commands.undo_command import UndoCommand
-from core.migration.migration import MigrationType
-from core.migration.state.migration_state_manager import MigrationStateManager
+from dblift.core.migration.commands.undo_command import UndoCommand
+from dblift.core.migration.migration import MigrationType
+from dblift.core.migration.state.migration_state_manager import MigrationStateManager
 
 
 def _make_migration(version, mtype=MigrationType.SQL, success=True):

@@ -23,10 +23,10 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from core.migration.commands.baseline_command import BaselineCommand
-from core.migration.commands.info_command import InfoCommand
-from core.migration.commands.repair_command import RepairCommand
-from core.migration.commands.validate_command import ValidateCommand
+from dblift.core.migration.commands.baseline_command import BaselineCommand
+from dblift.core.migration.commands.info_command import InfoCommand
+from dblift.core.migration.commands.repair_command import RepairCommand
+from dblift.core.migration.commands.validate_command import ValidateCommand
 
 
 class _ColdStartProvider:

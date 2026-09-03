@@ -6,8 +6,8 @@ from unittest.mock import MagicMock, patch
 
 
 def _make_validator(dialect="postgresql"):
-    from core.logger import NullLog
-    from core.sql_validator.migration_validator import MigrationValidator
+    from dblift.core.logger import NullLog
+    from dblift.core.sql_validator.migration_validator import MigrationValidator
 
     sm = MagicMock()
     hm = MagicMock()
@@ -17,14 +17,14 @@ def _make_validator(dialect="postgresql"):
     hm.provider = MagicMock()
     hm.provider.config.database.type = dialect
     log = MagicMock()
-    with patch("core.sql_validator.migration_validator.SqlAnalyzer"):
+    with patch("dblift.core.sql_validator.migration_validator.SqlAnalyzer"):
         v = MigrationValidator(script_manager=sm, history_manager=hm, log=log)
     return v, sm, hm, log
 
 
 class TestValidationResult(unittest.TestCase):
     def test_default_success(self):
-        from core.sql_validator.migration_validator import ValidationResult
+        from dblift.core.sql_validator.migration_validator import ValidationResult
 
         r = ValidationResult()
         self.assertTrue(r.success)
@@ -32,7 +32,7 @@ class TestValidationResult(unittest.TestCase):
         self.assertEqual(r.repeatable_migrations_to_reapply, [])
 
     def test_add_modified_repeatable(self):
-        from core.sql_validator.migration_validator import ValidationResult
+        from dblift.core.sql_validator.migration_validator import ValidationResult
 
         r = ValidationResult()
         r.add_modified_repeatable("R__test.sql", 123, 456)
@@ -50,33 +50,33 @@ class TestLastSuccessfulRecord(unittest.TestCase):
         return SimpleNamespace(script_name=script_name, type=mtype, success="1" if success else "0")
 
     def test_returns_none_on_empty(self):
-        from core.sql_validator.migration_validator import _last_successful_non_delete_record
+        from dblift.core.sql_validator.migration_validator import _last_successful_non_delete_record
 
         self.assertIsNone(_last_successful_non_delete_record([], "V1__test.sql"))
 
     def test_finds_matching_successful_migration(self):
-        from core.sql_validator.migration_validator import _last_successful_non_delete_record
+        from dblift.core.sql_validator.migration_validator import _last_successful_non_delete_record
 
         m = self._make_migration("V1__test.sql", "SQL")
         result = _last_successful_non_delete_record([m], "V1__test.sql")
         self.assertIs(result, m)
 
     def test_skips_non_matching_script(self):
-        from core.sql_validator.migration_validator import _last_successful_non_delete_record
+        from dblift.core.sql_validator.migration_validator import _last_successful_non_delete_record
 
         m = self._make_migration("V2__other.sql", "SQL")
         result = _last_successful_non_delete_record([m], "V1__test.sql")
         self.assertIsNone(result)
 
     def test_skips_failed_migration(self):
-        from core.sql_validator.migration_validator import _last_successful_non_delete_record
+        from dblift.core.sql_validator.migration_validator import _last_successful_non_delete_record
 
         m = self._make_migration("V1__test.sql", "SQL", success=False)
         result = _last_successful_non_delete_record([m], "V1__test.sql")
         self.assertIsNone(result)
 
     def test_returns_latest_when_multiple(self):
-        from core.sql_validator.migration_validator import _last_successful_non_delete_record
+        from dblift.core.sql_validator.migration_validator import _last_successful_non_delete_record
 
         m1 = self._make_migration("V1__test.sql", "SQL")
         m2 = self._make_migration("V1__test.sql", "SQL")
@@ -91,24 +91,24 @@ class TestMigrationValidatorInit(unittest.TestCase):
         self.assertIs(v.history_manager, hm)
 
     def test_init_without_config(self):
-        from core.sql_validator.migration_validator import MigrationValidator
+        from dblift.core.sql_validator.migration_validator import MigrationValidator
 
         sm = MagicMock()
         hm = MagicMock()
         hm.provider = MagicMock(spec=[])  # no config
         log = MagicMock()
-        with patch("core.sql_validator.migration_validator.SqlAnalyzer"):
+        with patch("dblift.core.sql_validator.migration_validator.SqlAnalyzer"):
             v = MigrationValidator(sm, hm, log)
         self.assertIsNotNone(v.sql_analyzer)
 
     def test_null_log_when_none(self):
-        from core.logger import NullLog
-        from core.sql_validator.migration_validator import MigrationValidator
+        from dblift.core.logger import NullLog
+        from dblift.core.sql_validator.migration_validator import MigrationValidator
 
         sm, hm = MagicMock(), MagicMock()
         hm.provider = MagicMock()
         hm.provider.config.database.type = "postgresql"
-        with patch("core.sql_validator.migration_validator.SqlAnalyzer"):
+        with patch("dblift.core.sql_validator.migration_validator.SqlAnalyzer"):
             v = MigrationValidator(sm, hm, None)
         self.assertIsInstance(v.log, NullLog)
 
@@ -265,7 +265,7 @@ class TestCheckRepeatableMigrationsRankOrdering(unittest.TestCase):
     (max installed_rank), not the oldest, to determine if a R__ is blocked."""
 
     def _make_script(self, script_name, checksum=42):
-        from core.migration.migration import MigrationType
+        from dblift.core.migration.migration import MigrationType
 
         return SimpleNamespace(
             type=MigrationType.REPEATABLE,
@@ -284,7 +284,10 @@ class TestCheckRepeatableMigrationsRankOrdering(unittest.TestCase):
         )
 
     def _run(self, scripts, applied):
-        from core.sql_validator.migration_validator import MigrationValidator, ValidationResult
+        from dblift.core.sql_validator.migration_validator import (
+            MigrationValidator,
+            ValidationResult,
+        )
 
         v, _, _, _ = _make_validator()
         result = ValidationResult()

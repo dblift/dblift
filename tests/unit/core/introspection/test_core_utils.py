@@ -5,7 +5,7 @@ import unittest
 
 class TestGetRowValue(unittest.TestCase):
     def _get(self, row, key):
-        from core.introspection._utils import get_row_value
+        from dblift.core.introspection._utils import get_row_value
 
         return get_row_value(row, key)
 
@@ -47,7 +47,7 @@ class TestGetRowValue(unittest.TestCase):
 
 class TestParseJsonArray(unittest.TestCase):
     def _parse(self, val):
-        from core.introspection._utils import parse_json_array
+        from dblift.core.introspection._utils import parse_json_array
 
         return parse_json_array(val)
 
@@ -75,7 +75,7 @@ class TestParseJsonArray(unittest.TestCase):
 
 class TestToInt(unittest.TestCase):
     def _to_int(self, val):
-        from core.introspection._utils import to_int
+        from dblift.core.introspection._utils import to_int
 
         return to_int(val)
 
@@ -97,7 +97,7 @@ class TestToInt(unittest.TestCase):
 
 class TestStripLeadingComments(unittest.TestCase):
     def _strip(self, text):
-        from core.introspection._utils import strip_leading_comments
+        from dblift.core.introspection._utils import strip_leading_comments
 
         return strip_leading_comments(text)
 

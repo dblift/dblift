@@ -11,7 +11,7 @@ from typing import Any, Callable, Iterator
 import pytest
 from sqlalchemy import create_engine
 
-from api import DBLiftClient
+from dblift.api import DBLiftClient
 
 from ._client import create_dblift_client, resolve_dblift_config
 

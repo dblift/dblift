@@ -9,10 +9,10 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from core.migration.migration import Migration, MigrationType
-from core.migration.state.migration_state import MigrationState
-from core.migration.ui.migration_ui import MigrationUI
-from core.migration.ui.table_renderer import TableRenderer
+from dblift.core.migration.migration import Migration, MigrationType
+from dblift.core.migration.state.migration_state import MigrationState
+from dblift.core.migration.ui.migration_ui import MigrationUI
+from dblift.core.migration.ui.table_renderer import TableRenderer
 
 pytestmark = [pytest.mark.unit]
 
@@ -183,7 +183,7 @@ class TestMigrationUIInit(unittest.TestCase):
         assert ui.table_renderer is not None
 
     def test_none_log_uses_nulllog(self):
-        from core.logger import NullLog
+        from dblift.core.logger import NullLog
 
         ui = MigrationUI(None)
         assert isinstance(ui.log, NullLog)

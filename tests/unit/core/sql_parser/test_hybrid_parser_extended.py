@@ -5,7 +5,7 @@ import unittest
 
 class TestHybridParserInit(unittest.TestCase):
     def _make(self, dialect="postgresql"):
-        from core.sql_parser.hybrid_parser import HybridParser
+        from dblift.core.sql_parser.hybrid_parser import HybridParser
 
         return HybridParser(dialect=dialect)
 
@@ -24,7 +24,7 @@ class TestHybridParserInit(unittest.TestCase):
 
 class TestHybridParserSplitStatements(unittest.TestCase):
     def _make(self, dialect="postgresql"):
-        from core.sql_parser.hybrid_parser import HybridParser
+        from dblift.core.sql_parser.hybrid_parser import HybridParser
 
         return HybridParser(dialect=dialect)
 
@@ -52,7 +52,7 @@ class TestHybridParserSplitStatements(unittest.TestCase):
 
 class TestHybridParserValidateSql(unittest.TestCase):
     def _make(self, dialect="postgresql"):
-        from core.sql_parser.hybrid_parser import HybridParser
+        from dblift.core.sql_parser.hybrid_parser import HybridParser
 
         return HybridParser(dialect=dialect)
 
@@ -69,7 +69,7 @@ class TestHybridParserValidateSql(unittest.TestCase):
 
 class TestHybridParserExtractObjects(unittest.TestCase):
     def _make(self, dialect="postgresql"):
-        from core.sql_parser.hybrid_parser import HybridParser
+        from dblift.core.sql_parser.hybrid_parser import HybridParser
 
         return HybridParser(dialect=dialect)
 
@@ -91,7 +91,7 @@ class TestHybridParserExtractObjects(unittest.TestCase):
 
 class TestHybridParserExtractDependencies(unittest.TestCase):
     def _make(self, dialect="postgresql"):
-        from core.sql_parser.hybrid_parser import HybridParser
+        from dblift.core.sql_parser.hybrid_parser import HybridParser
 
         return HybridParser(dialect=dialect)
 
@@ -109,7 +109,7 @@ class TestHybridParserExtractDependencies(unittest.TestCase):
 
 class TestHybridParserMysql(unittest.TestCase):
     def _make(self):
-        from core.sql_parser.hybrid_parser import HybridParser
+        from dblift.core.sql_parser.hybrid_parser import HybridParser
 
         return HybridParser(dialect="mysql")
 
@@ -126,7 +126,7 @@ class TestHybridParserMysql(unittest.TestCase):
 
 class TestHybridParserOracle(unittest.TestCase):
     def _make(self):
-        from core.sql_parser.hybrid_parser import HybridParser
+        from dblift.core.sql_parser.hybrid_parser import HybridParser
 
         return HybridParser(dialect="oracle")
 

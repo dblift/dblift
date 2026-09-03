@@ -13,9 +13,9 @@ registered for the command, the same pattern already used for
 (see ``tests/unit/cli/test_build_command_client.py``).
 
 Deliberately kept out of ``test_main_cli.py``: that file's top-of-module
-``patch.dict("sys.modules", {"core.logger": MagicMock(), ...})`` trick
+``patch.dict("sys.modules", {"dblift.core.logger": MagicMock(), ...})`` trick
 collides with a live paid-tier extension environment (entry points pull in
-a real, deep ``core.logger.results`` import chain while the mock is still
+a real, deep ``dblift.core.logger.results`` import chain while the mock is still
 in place) — an environment-contamination issue unrelated to this feature.
 """
 
@@ -42,9 +42,9 @@ def _parser_with_test_command(real_create_parser):
 
 
 def _patch_widget_command(monkeypatch, handler):
-    from cli import _config_helpers as cli_config_helpers
-    from cli import main as cli_main
-    from cli._parser_setup import create_parser as real_create_parser
+    from dblift.cli import _config_helpers as cli_config_helpers
+    from dblift.cli import main as cli_main
+    from dblift.cli._parser_setup import create_parser as real_create_parser
 
     fake_create_parser = _parser_with_test_command(real_create_parser)
     monkeypatch.setattr(cli_main, "create_parser", fake_create_parser)
@@ -92,9 +92,9 @@ def test_chained_invocation_does_not_short_circuit(monkeypatch):
     it falls through to the normal config-requiring pipeline instead, same
     as how ``_build_command_client`` gates its own single-command-only
     optimization (``len(ctx.commands) == 1``)."""
-    from cli import _config_helpers as cli_config_helpers
-    from cli import main as cli_main
-    from cli._parser_setup import create_parser as real_create_parser
+    from dblift.cli import _config_helpers as cli_config_helpers
+    from dblift.cli import main as cli_main
+    from dblift.cli._parser_setup import create_parser as real_create_parser
 
     fake_create_parser = _parser_with_test_command(real_create_parser)
     monkeypatch.setattr(cli_main, "create_parser", fake_create_parser)
@@ -127,7 +127,7 @@ def test_unmarked_command_still_requires_config(monkeypatch):
     ``getattr(handler, "_dblift_zero_config_command", False)`` return a
     truthy mock instead of the intended default and defeat this test.
     """
-    from cli import main as cli_main
+    from dblift.cli import main as cli_main
 
     def handler(ctx):  # pragma: no cover - must not be called
         raise NotImplementedError

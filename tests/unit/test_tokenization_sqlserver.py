@@ -2,10 +2,10 @@
 
 import pytest
 
-from core.sql_parser.parser_context import ParserContext
-from core.sql_parser.tokens import TokenType
-from db.plugins.sqlserver.parser.sqlserver_statement_parser import SQLServerStatementParser
-from db.plugins.sqlserver.parser.sqlserver_tokenizer import SQLServerTokenizer
+from dblift.core.sql_parser.parser_context import ParserContext
+from dblift.core.sql_parser.tokens import TokenType
+from dblift.db.plugins.sqlserver.parser.sqlserver_statement_parser import SQLServerStatementParser
+from dblift.db.plugins.sqlserver.parser.sqlserver_tokenizer import SQLServerTokenizer
 
 
 class TestSQLServerTokenizer:

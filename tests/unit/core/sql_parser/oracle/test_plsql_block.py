@@ -1,10 +1,10 @@
-"""Unit tests for `db.plugins.oracle.parser._plsql_block` (Phase-Oracle-06)."""
+"""Unit tests for `dblift.db.plugins.oracle.parser._plsql_block` (Phase-Oracle-06)."""
 
 from __future__ import annotations
 
 import pytest
 
-from db.plugins.oracle.parser._plsql_block import (
+from dblift.db.plugins.oracle.parser._plsql_block import (
     extract_java_source_block,
     extract_plsql_block,
     is_line_start_slash,

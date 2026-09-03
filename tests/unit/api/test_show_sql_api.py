@@ -7,11 +7,11 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from api.events import EventType
+from dblift.api.events import EventType
 
 
 def _make_client(result: MagicMock):
-    from api.client import DBLiftClient
+    from dblift.api.client import DBLiftClient
 
     client = DBLiftClient.__new__(DBLiftClient)
     client.config = MagicMock()

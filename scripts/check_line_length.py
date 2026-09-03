@@ -1,7 +1,8 @@
 """Line-length (flake8 E501) ratchet.
 
 Enforces a count-based cap on lines > 100 characters in the project's
-source roots (``api/``, ``cli/``, ``config/``, ``core/``, ``db/``). The
+source roots (``dblift/api/``, ``dblift/cli/``, ``dblift/config/``,
+``dblift/core/``, ``dblift/db/``). The
 mechanism mirrors ``scripts/check_api_docstrings.py``: a per-root cap
 loaded from ``--ratchet PATH`` (default ``.flake8-e501-ratchet.json``)
 records the maximum tolerated count. PRs at-or-below their cap pass;
@@ -27,8 +28,8 @@ Running
 ::
 
     python scripts/check_line_length.py                                       # default roots + ratchet
-    python scripts/check_line_length.py --paths api cli                        # subset
-    python scripts/check_line_length.py --paths core --ratchet path/to/r.json
+    python scripts/check_line_length.py --paths dblift/api dblift/cli          # subset
+    python scripts/check_line_length.py --paths dblift/core --ratchet path/to/r.json
 
 Exit code is ``0`` when every configured root is at-or-below its cap
 (loose roots emit a "consider tightening" nudge), ``1`` when any root
@@ -45,7 +46,13 @@ import sys
 from collections import Counter
 from typing import Dict, List, Optional, Sequence
 
-DEFAULT_PATHS: Sequence[str] = ("api", "cli", "config", "core", "db")
+DEFAULT_PATHS: Sequence[str] = (
+    "dblift/api",
+    "dblift/cli",
+    "dblift/config",
+    "dblift/core",
+    "dblift/db",
+)
 DEFAULT_RATCHET = ".flake8-e501-ratchet.json"
 MAX_LINE_LENGTH = 100
 

@@ -5,7 +5,7 @@ from unittest.mock import MagicMock
 
 
 def _make_mgr():
-    from db.plugins.sqlite.sqlite.history_manager import SQLiteHistoryManager
+    from dblift.db.plugins.sqlite.sqlite.history_manager import SQLiteHistoryManager
 
     qe = MagicMock()
     so = MagicMock()
@@ -20,8 +20,8 @@ class TestSQLiteHistoryManagerInit(unittest.TestCase):
         self.assertIs(mgr.query_executor, qe)
 
     def test_null_log_default(self):
-        from core.logger import NullLog
-        from db.plugins.sqlite.sqlite.history_manager import SQLiteHistoryManager
+        from dblift.core.logger import NullLog
+        from dblift.db.plugins.sqlite.sqlite.history_manager import SQLiteHistoryManager
 
         mgr = SQLiteHistoryManager(MagicMock(), MagicMock(), MagicMock(), None)
         self.assertIsInstance(mgr.log, NullLog)

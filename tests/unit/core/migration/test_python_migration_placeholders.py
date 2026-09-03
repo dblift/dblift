@@ -13,8 +13,8 @@ from pathlib import Path
 
 from sqlalchemy import create_engine
 
-from api import DBLiftClient
-from config import DbliftConfig
+from dblift.api import DBLiftClient
+from dblift.config import DbliftConfig
 
 V1_PY = """\
 def migrate(context):

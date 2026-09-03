@@ -1,12 +1,12 @@
 import pytest
 
-from config.database_config import BaseDatabaseConfig, DummyDatabaseConfig
-from config.dblift_config import DbliftConfig, deep_merge_dicts
-from db.plugins.db2.config import Db2Config
-from db.plugins.mysql.config import MySqlConfig
-from db.plugins.oracle.config import OracleConfig
-from db.plugins.postgresql.config import PostgreSqlConfig
-from db.plugins.sqlserver.config import SqlServerConfig
+from dblift.config.database_config import BaseDatabaseConfig, DummyDatabaseConfig
+from dblift.config.dblift_config import DbliftConfig, deep_merge_dicts
+from dblift.db.plugins.db2.config import Db2Config
+from dblift.db.plugins.mysql.config import MySqlConfig
+from dblift.db.plugins.oracle.config import OracleConfig
+from dblift.db.plugins.postgresql.config import PostgreSqlConfig
+from dblift.db.plugins.sqlserver.config import SqlServerConfig
 
 
 @pytest.mark.unit

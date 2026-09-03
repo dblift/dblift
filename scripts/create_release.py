@@ -131,7 +131,10 @@ def update_version_in_files(version, dry_run=False):
         print("Warning: pyproject.toml not found")
         success = False
 
-    init_py = Path("__init__.py")
+    # The package marker moved to dblift/__init__.py when the tree was
+    # collapsed into one namespace (4.0.0). A missing file is an error, not a
+    # skip: a silent skip ships a wheel whose metadata and __version__ differ.
+    init_py = Path("dblift") / "__init__.py"
     if init_py.exists():
         text = init_py.read_text()
         version_pattern = r'__version__\s*=\s*[\'"](\d+\.\d+\.\d+)[\'"]'
@@ -145,6 +148,9 @@ def update_version_in_files(version, dry_run=False):
         else:
             print(f"Warning: No __version__ pattern in {init_py}")
             success = False
+    else:
+        print(f"Warning: {init_py} not found")
+        success = False
 
     return success
 

@@ -4,9 +4,9 @@ from unittest.mock import patch
 
 import pytest
 
-from core.sql_model.base import ParseResult, SqlStatement, SqlStatementType
-from core.sql_parser.common.base_parser import RegexBasedParser
-from core.sql_parser.parser_interface import SqlParserInterface
+from dblift.core.sql_model.base import ParseResult, SqlStatement, SqlStatementType
+from dblift.core.sql_parser.common.base_parser import RegexBasedParser
+from dblift.core.sql_parser.parser_interface import SqlParserInterface
 
 
 @pytest.mark.unit

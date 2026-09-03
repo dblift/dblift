@@ -97,7 +97,7 @@ def test_something(dblift_migrated_db, dblift_client):
 
 ```python
 from sqlalchemy import create_engine
-from api import DBLiftClient
+from dblift.api import DBLiftClient
 
 engine = create_engine("postgresql+psycopg://user:pass@localhost/app")
 with DBLiftClient.from_sqlalchemy(engine, migrations_dir="migrations") as client:
@@ -109,7 +109,7 @@ in a worker thread so it never blocks the event loop):
 
 ```python
 from sqlalchemy import create_engine
-from api.async_client import AsyncDBLiftClient
+from dblift.api.async_client import AsyncDBLiftClient
 
 engine = create_engine("postgresql+psycopg://user:pass@localhost/app")
 async with AsyncDBLiftClient.from_sqlalchemy(engine, migrations_dir="migrations") as client:
@@ -210,8 +210,8 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from sqlalchemy import create_engine
 
-from api import DBLiftClient
-from integrations.fastapi import migration_guard
+from dblift.api import DBLiftClient
+from dblift.integrations.fastapi import migration_guard
 
 engine = create_engine("postgresql+psycopg://user:pass@localhost/app")
 
@@ -240,8 +240,8 @@ a `flask dblift-migrate` command:
 from flask import Flask
 from sqlalchemy import create_engine
 
-from api import DBLiftClient
-from integrations.flask import init_dblift, register_cli
+from dblift.api import DBLiftClient
+from dblift.integrations.flask import init_dblift, register_cli
 
 def create_app() -> Flask:
     app = Flask(__name__)
@@ -262,8 +262,8 @@ pip install "dblift[otel]"
 
 ```python
 from sqlalchemy import create_engine
-from api import DBLiftClient
-from integrations.opentelemetry import instrument
+from dblift.api import DBLiftClient
+from dblift.integrations.opentelemetry import instrument
 
 engine = create_engine("postgresql+psycopg://user:pass@localhost/app")
 client = DBLiftClient.from_sqlalchemy(engine, migrations_dir="migrations")
@@ -334,7 +334,7 @@ V1_0_0__create_users_table.sql
 
 ```python
 # migrations/V2__seed_lookup_tables.py
-from api import MigrationContext
+from dblift.api import MigrationContext
 
 def migrate(context: MigrationContext) -> None:
     """Seed initial lookup data using the injected DBLift context."""
@@ -363,7 +363,7 @@ def migrate(context: MigrationContext) -> None:
 
 ```python
 # migrations/U2__seed_lookup_tables.py  (undo companion for V2)
-from api import MigrationContext
+from dblift.api import MigrationContext
 
 def migrate(context: MigrationContext) -> None:
     """Reverse V2 by removing the seeded lookup rows."""

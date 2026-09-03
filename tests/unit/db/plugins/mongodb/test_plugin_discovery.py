@@ -1,10 +1,10 @@
 """MongoDB plugin registration and dialect resolution."""
 
-from db.plugins.mongodb.config import MongoDbConfig
-from db.plugins.mongodb.plugin import PLUGIN
-from db.plugins.mongodb.provider import MongoDbProvider
-from db.plugins.mongodb.quirks import MongodbQuirks
-from db.provider_registry import ProviderRegistry
+from dblift.db.plugins.mongodb.config import MongoDbConfig
+from dblift.db.plugins.mongodb.plugin import PLUGIN
+from dblift.db.plugins.mongodb.provider import MongoDbProvider
+from dblift.db.plugins.mongodb.quirks import MongodbQuirks
+from dblift.db.provider_registry import ProviderRegistry
 
 
 def test_plugin_metadata():

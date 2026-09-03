@@ -5,7 +5,7 @@ from unittest.mock import MagicMock, patch
 
 
 def _make_config(dialect="postgresql"):
-    from config import DbliftConfig
+    from dblift.config import DbliftConfig
 
     config = MagicMock(spec=DbliftConfig)
     config.database = MagicMock()
@@ -16,7 +16,7 @@ def _make_config(dialect="postgresql"):
 
 def _make_concrete(dialect="postgresql"):
     """Create a minimal concrete BaseProvider subclass."""
-    from db.base_provider import BaseProvider
+    from dblift.db.base_provider import BaseProvider
 
     config = _make_config(dialect)
 
@@ -102,8 +102,8 @@ class TestBaseProviderInit(unittest.TestCase):
         self.assertIsNotNone(provider.log)
 
     def test_null_log_default(self):
-        from core.logger import NullLog
-        from db.base_provider import BaseProvider
+        from dblift.core.logger import NullLog
+        from dblift.db.base_provider import BaseProvider
 
         class Minimal(BaseProvider):
             def create_connection(self):
@@ -180,7 +180,7 @@ class TestBaseProviderInit(unittest.TestCase):
         self.assertIsInstance(provider.log, NullLog)
 
     def test_raises_on_non_dbliftconfig(self):
-        from db.base_provider import BaseProvider
+        from dblift.db.base_provider import BaseProvider
 
         class Minimal(BaseProvider):
             def create_connection(self):
@@ -327,6 +327,6 @@ class TestBaseProviderConnect(unittest.TestCase):
 
 class TestNativeProvider(unittest.TestCase):
     def test_transport_is_native(self):
-        from db.base_provider import NativeProvider
+        from dblift.db.base_provider import NativeProvider
 
         self.assertEqual(NativeProvider.provider_transport, "native")

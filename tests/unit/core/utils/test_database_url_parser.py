@@ -2,7 +2,7 @@
 
 import pytest
 
-from core.utils.database_url_parser import DatabaseUrlParser
+from dblift.core.utils.database_url_parser import DatabaseUrlParser
 
 
 @pytest.mark.unit

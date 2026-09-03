@@ -17,8 +17,8 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from sqlalchemy import create_engine
 
-from api import DBLiftClient
-from integrations.fastapi import migration_guard
+from dblift.api import DBLiftClient
+from dblift.integrations.fastapi import migration_guard
 
 engine = create_engine("postgresql+psycopg://user:password@localhost/app")
 
@@ -48,7 +48,7 @@ app = FastAPI(lifespan=lifespan)
 ## Health Endpoints
 
 ```python
-from integrations.fastapi import check_migrations_current, health_payload
+from dblift.integrations.fastapi import check_migrations_current, health_payload
 
 
 @app.get("/health")
@@ -71,8 +71,8 @@ def pending():
 When using `AsyncDBLiftClient`, import the async mirrors:
 
 ```python
-from api.async_client import AsyncDBLiftClient
-from integrations.fastapi import (
+from dblift.api.async_client import AsyncDBLiftClient
+from dblift.integrations.fastapi import (
     check_migrations_current_async,
     health_payload_async,
     migration_guard_async,

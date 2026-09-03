@@ -8,9 +8,9 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from config import DbliftConfig
-from db.plugins.mongodb.config import MongoDbConfig
-from db.plugins.mongodb.mongodb import MongoDbConnectionManager
+from dblift.config import DbliftConfig
+from dblift.db.plugins.mongodb.config import MongoDbConfig
+from dblift.db.plugins.mongodb.mongodb import MongoDbConnectionManager
 
 
 def _config(**overrides):
@@ -36,7 +36,7 @@ def _patch_mongo_client(fake_client):
     the ``mongodb`` extra is installed, and ``patch("pymongo.MongoClient")``
     fails to resolve without the package on the path."""
     return patch(
-        "db.plugins.mongodb.mongodb.connection_manager._load_mongo_client",
+        "dblift.db.plugins.mongodb.mongodb.connection_manager._load_mongo_client",
         return_value=MagicMock(return_value=fake_client),
     )
 
@@ -93,7 +93,7 @@ def test_database_is_selected_by_name():
 
 def test_missing_driver_gives_an_install_hint():
     manager = MongoDbConnectionManager(_config())
-    with patch("db.plugins.mongodb.mongodb.connection_manager._load_mongo_client") as loader:
+    with patch("dblift.db.plugins.mongodb.mongodb.connection_manager._load_mongo_client") as loader:
         loader.side_effect = ImportError("No module named 'pymongo'")
         with pytest.raises(ImportError, match=r"dblift\[mongodb\]"):
             manager.create_connection()

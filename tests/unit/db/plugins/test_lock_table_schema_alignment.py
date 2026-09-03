@@ -13,8 +13,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from db.plugins.db2.provider import Db2Provider
-from db.plugins.mysql.provider import MySqlProvider
+from dblift.db.plugins.db2.provider import Db2Provider
+from dblift.db.plugins.mysql.provider import MySqlProvider
 
 
 def _provider(provider_class):
@@ -75,7 +75,7 @@ class TestDb2LockTableSchema:
     @pytest.mark.parametrize("column", ["lock_name", "acquired_at", "acquired_by"])
     def test_acquire_dml_uses_the_same_columns(self, column):
         provider = _provider(Db2Provider)
-        with patch("db.plugins.db2.provider.socket.gethostname", return_value="host"):
+        with patch("dblift.db.plugins.db2.provider.socket.gethostname", return_value="host"):
             provider.acquire_migration_lock("myschema", wait_timeout_seconds=0)
 
         assert column in _executed_sql(provider)

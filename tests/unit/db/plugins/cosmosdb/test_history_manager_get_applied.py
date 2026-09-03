@@ -11,7 +11,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from db.plugins.cosmosdb.cosmosdb.history_manager import CosmosDbHistoryManager
+from dblift.db.plugins.cosmosdb.cosmosdb.history_manager import CosmosDbHistoryManager
 
 
 @pytest.mark.unit

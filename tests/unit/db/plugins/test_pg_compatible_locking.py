@@ -4,8 +4,8 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from db.plugins.cockroachdb.provider import CockroachdbProvider
-from db.plugins.redshift.provider import RedshiftProvider
+from dblift.db.plugins.cockroachdb.provider import CockroachdbProvider
+from dblift.db.plugins.redshift.provider import RedshiftProvider
 
 DUPLICATE_KEY_MESSAGE = "duplicate key value violates unique constraint"
 

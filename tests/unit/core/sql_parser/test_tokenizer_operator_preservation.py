@@ -31,10 +31,10 @@ import warnings
 
 import pytest
 
-from db.plugins.mysql.parser.mysql_regex_parser import MySqlRegexParser
-from db.plugins.oracle.parser.oracle_parser import OracleParser
-from db.plugins.postgresql.parser.postgresql_regex_parser import PostgreSqlRegexParser
-from db.plugins.sqlserver.parser.sqlserver_regex_parser import SqlServerRegexParser
+from dblift.db.plugins.mysql.parser.mysql_regex_parser import MySqlRegexParser
+from dblift.db.plugins.oracle.parser.oracle_parser import OracleParser
+from dblift.db.plugins.postgresql.parser.postgresql_regex_parser import PostgreSqlRegexParser
+from dblift.db.plugins.sqlserver.parser.sqlserver_regex_parser import SqlServerRegexParser
 
 # Dialects whose splitting goes through a tokenizer. sqlite, duckdb and db2
 # split by regex over the original text and never reserialize a token stream.
@@ -207,7 +207,7 @@ def test_unclaimed_character_is_preserved_not_deleted() -> None:
     next gap surfaces as a database error or as working SQL, never as a
     statement that succeeds having quietly lost a character.
     """
-    from core.sql_parser.base_tokenizer import BaseTokenizer, TokenizerWarning
+    from dblift.core.sql_parser.base_tokenizer import BaseTokenizer, TokenizerWarning
 
     sql = "SELECT a \\ b;"
     with warnings.catch_warnings(record=True) as caught:
@@ -223,7 +223,7 @@ def test_unclaimed_character_is_preserved_not_deleted() -> None:
 @pytest.mark.unit
 def test_strict_mode_still_rejects_unclaimed_characters() -> None:
     """``strict_unknown_chars`` remains an error, for the validator's use."""
-    from core.sql_parser.base_tokenizer import BaseTokenizer, TokenizerError
+    from dblift.core.sql_parser.base_tokenizer import BaseTokenizer, TokenizerError
 
     with pytest.raises(TokenizerError):
         BaseTokenizer("SELECT a \\ b;", strict_unknown_chars=True).tokenize()
@@ -263,7 +263,7 @@ def test_strict_tokenizer_accepts_widened_operator_characters(dialect: str, sql:
     exactly the statements in this corpus, and exactly the path
     ``core/sql_validator`` uses to certify a migration script.
     """
-    from core.sql_parser.base_tokenizer import TokenizerWarning
+    from dblift.core.sql_parser.base_tokenizer import TokenizerWarning
 
     parser = TOKENIZING_PARSERS[dialect]()
     with warnings.catch_warnings(record=True) as caught:

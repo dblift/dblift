@@ -12,7 +12,7 @@ from unittest.mock import MagicMock, patch
 
 
 def _make_validator(dialect="postgresql"):
-    from core.sql_validator.migration_validator import MigrationValidator
+    from dblift.core.sql_validator.migration_validator import MigrationValidator
 
     sm = MagicMock()
     hm = MagicMock()
@@ -23,7 +23,7 @@ def _make_validator(dialect="postgresql"):
     hm.provider.config.database.type = dialect
     hm.provider.config.strict_mode = False
     log = MagicMock()
-    with patch("core.sql_validator.migration_validator.SqlAnalyzer"):
+    with patch("dblift.core.sql_validator.migration_validator.SqlAnalyzer"):
         v = MigrationValidator(script_manager=sm, history_manager=hm, log=log)
     return v, sm, hm, log
 
@@ -60,7 +60,7 @@ class TestFailedRepeatableFiltering(unittest.TestCase):
 
     def test_failed_repeatable_scheduled_for_reapply_does_not_block_validation(self):
         """A repeatable that failed but has since changed is reapplied, not a blocking failure."""
-        from core.migration.migration import MigrationType
+        from dblift.core.migration.migration import MigrationType
 
         result = self._run(
             scripts=[
@@ -87,7 +87,7 @@ class TestFailedRepeatableFiltering(unittest.TestCase):
 
     def test_scheduled_repeatable_is_excluded_from_the_failed_migration_list(self):
         """Only the genuinely blocking failure is reported, not the scheduled repeatable."""
-        from core.migration.migration import MigrationType
+        from dblift.core.migration.migration import MigrationType
 
         result = self._run(
             scripts=[
@@ -122,7 +122,7 @@ class TestFailedRepeatableFiltering(unittest.TestCase):
 
     def test_unscheduled_failed_repeatable_reports_the_fix_the_script_error(self):
         """A repeatable that failed without executing and has not changed keeps its own message."""
-        from core.migration.migration import MigrationType
+        from dblift.core.migration.migration import MigrationType
 
         result = self._run(
             scripts=[
@@ -155,7 +155,7 @@ class TestCallbackHistoryRowsAreNotFatal(unittest.TestCase):
     """
 
     def test_callback_row_in_history_does_not_fail_validation(self):
-        from core.migration.migration import MigrationType
+        from dblift.core.migration.migration import MigrationType
 
         v, sm, hm, _ = _make_validator()
         hm.has_history_table = True
@@ -172,7 +172,7 @@ class TestCallbackHistoryRowsAreNotFatal(unittest.TestCase):
         import tempfile
         from pathlib import Path
 
-        from core.migration.migration import MigrationType
+        from dblift.core.migration.migration import MigrationType
 
         v, sm, hm, _ = _make_validator()
         hm.has_history_table = True

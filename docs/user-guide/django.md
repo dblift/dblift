@@ -15,7 +15,7 @@ pip install "dblift[django]"
 # settings.py
 INSTALLED_APPS = [
     # ...
-    "integrations.django",
+    "dblift.integrations.django",
 ]
 
 DBLIFT_MIGRATIONS_DIR = BASE_DIR / "migrations"

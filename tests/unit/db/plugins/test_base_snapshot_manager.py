@@ -11,7 +11,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from db.plugins.base_snapshot_manager import BaseSnapshotManager
+from dblift.db.plugins.base_snapshot_manager import BaseSnapshotManager
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -199,12 +199,12 @@ class TestErrorPaths:
 @pytest.mark.unit
 class TestProviderCompatSnapshotDefaults:
     def test_base_quirks_compat_ddl_defaults_to_none(self):
-        from db.base_quirks import BaseQuirks
+        from dblift.db.base_quirks import BaseQuirks
 
         assert BaseQuirks().build_provider_compat_snapshot_ddl("t.snap", 100, 128) is None
 
     def test_base_quirks_skip_existence_check_defaults_false(self):
-        from db.base_quirks import BaseQuirks
+        from dblift.db.base_quirks import BaseQuirks
 
         assert BaseQuirks().provider_compat_snapshot_skips_existence_check is False
 

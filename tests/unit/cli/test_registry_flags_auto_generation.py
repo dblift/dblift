@@ -8,8 +8,8 @@ from __future__ import annotations
 
 import argparse
 
-from cli._parser_setup import _add_registry_flags
-from config.property_registry import PropertySpec
+from dblift.cli._parser_setup import _add_registry_flags
+from dblift.config.property_registry import PropertySpec
 
 
 def test_add_registry_flags_covers_bool_float_and_default_str_types(monkeypatch):
@@ -18,7 +18,7 @@ def test_add_registry_flags_covers_bool_float_and_default_str_types(monkeypatch)
         PropertySpec("new_float_flag", "float", 1.0, help="synthetic float"),
         PropertySpec("new_str_flag", "str", "x", help="synthetic str"),
     ]
-    monkeypatch.setattr("config.property_registry.PROPERTY_REGISTRY", synthetic_registry)
+    monkeypatch.setattr("dblift.config.property_registry.PROPERTY_REGISTRY", synthetic_registry)
 
     parser = argparse.ArgumentParser(add_help=False)
     _add_registry_flags(parser)

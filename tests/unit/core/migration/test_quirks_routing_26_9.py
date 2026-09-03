@@ -2,7 +2,7 @@
 
 import pytest
 
-from db.provider_registry import ProviderRegistry
+from dblift.db.provider_registry import ProviderRegistry
 
 pytestmark = [pytest.mark.unit]
 
@@ -51,7 +51,7 @@ class TestUndoDropIfExistsRoutedThroughQuirks:
         ],
     )
     def test_extractors_mixin_if_exists(self, dialect, expect_if_exists):
-        from core.migration.scripting.undo_script_generator._extractors import (
+        from dblift.core.migration.scripting.undo_script_generator._extractors import (
             UndoStatementEmitter,
         )
 
@@ -73,7 +73,7 @@ class TestUndoDropIfExistsRoutedThroughQuirks:
     )
     def test_extractors_mixin_cascade(self, dialect, expect_cascade):
         """CASCADE on TABLE drops is driven by drop_table_default_cascade quirks."""
-        from core.migration.scripting.undo_script_generator._extractors import (
+        from dblift.core.migration.scripting.undo_script_generator._extractors import (
             UndoStatementEmitter,
         )
 
@@ -91,7 +91,7 @@ class TestNoHardcodedDialectStringsInDropGeneration:
     def test_extractors_no_hardcoded_dialect_check(self):
         import inspect
 
-        from core.migration.scripting.undo_script_generator._extractors import (
+        from dblift.core.migration.scripting.undo_script_generator._extractors import (
             _UndoExtractorsMixin,
         )
 

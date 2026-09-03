@@ -2,7 +2,7 @@
 
 import pytest
 
-from core.sql_parser.hybrid_parser import HybridParser
+from dblift.core.sql_parser.hybrid_parser import HybridParser
 
 pytestmark = [pytest.mark.unit]
 

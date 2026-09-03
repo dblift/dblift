@@ -11,7 +11,7 @@ it.
 
 ## EventType
 
-::: api.events.EventType
+::: dblift.api.events.EventType
     options:
       show_root_heading: true
       show_source: false
@@ -20,7 +20,7 @@ it.
 
 ## Event
 
-::: api.events.Event
+::: dblift.api.events.Event
     options:
       show_root_heading: true
       show_source: true
@@ -29,7 +29,7 @@ it.
 
 ## EventEmitter
 
-::: api.events.EventEmitter
+::: dblift.api.events.EventEmitter
     options:
       show_root_heading: true
       show_source: false

@@ -8,7 +8,7 @@ from unittest.mock import MagicMock, patch
 
 class TestDbliftLoggerInit(unittest.TestCase):
     def _make(self, **kwargs):
-        from core.logger import DbliftLogger
+        from dblift.core.logger import DbliftLogger
 
         return DbliftLogger("test", **kwargs)
 
@@ -28,7 +28,7 @@ class TestDbliftLoggerInit(unittest.TestCase):
 
 class TestDbliftLoggerBasicLogging(unittest.TestCase):
     def _make(self):
-        from core.logger import DbliftLogger
+        from dblift.core.logger import DbliftLogger
 
         return DbliftLogger("test")
 
@@ -58,7 +58,7 @@ class TestDbliftLoggerBasicLogging(unittest.TestCase):
 
 class TestDbliftLoggerSetCommandCompleted(unittest.TestCase):
     def _make(self):
-        from core.logger import DbliftLogger
+        from dblift.core.logger import DbliftLogger
 
         return DbliftLogger("test")
 
@@ -89,9 +89,31 @@ class TestDbliftLoggerSetCommandCompleted(unittest.TestCase):
         # should not raise
 
 
+class TestDbliftLoggerHtmlFinalize(unittest.TestCase):
+    def test_set_command_completed_finalizes_html_file_log_via_log_format(self):
+        """FileLog stores format on ``log_format``; completed HTML reports must
+        still run the finalize/close path."""
+        from dblift.core.logger import DbliftLogger, FileLog, LogFormat
+        from dblift.core.logger.results import OperationResult
+
+        with TemporaryDirectory() as tmpdir:
+            logger = DbliftLogger("test", format=LogFormat.HTML, logfile_dir=Path(tmpdir))
+            file_log = next(log for log in logger.logs if isinstance(log, FileLog))
+            self.assertEqual(file_log.log_format, LogFormat.HTML)
+
+            close_mock = MagicMock(wraps=file_log.close)
+            file_log.close = close_mock
+
+            result = OperationResult()
+            result.complete()
+            logger.set_command_completed(True, "done", "MIGRATE", result)
+
+            close_mock.assert_called()
+
+
 class TestDbliftLoggerAddLog(unittest.TestCase):
     def test_logs_list_accessible(self):
-        from core.logger import DbliftLogger
+        from dblift.core.logger import DbliftLogger
 
         logger = DbliftLogger("test")
         # logs list is directly accessible
@@ -100,14 +122,14 @@ class TestDbliftLoggerAddLog(unittest.TestCase):
 
 class TestDbliftLoggerSetCommandType(unittest.TestCase):
     def test_set_command_type_uppercase(self):
-        from core.logger import DbliftLogger
+        from dblift.core.logger import DbliftLogger
 
         logger = DbliftLogger("test")
         logger.set_command_type("migrate")
         self.assertEqual(logger.command_type, "MIGRATE")
 
     def test_set_command_type_empty_noop(self):
-        from core.logger import DbliftLogger
+        from dblift.core.logger import DbliftLogger
 
         logger = DbliftLogger("test")
         logger.command_type = "PREV"
@@ -117,7 +139,7 @@ class TestDbliftLoggerSetCommandType(unittest.TestCase):
 
 class TestDbliftLoggerWithFileLog(unittest.TestCase):
     def test_init_with_logfile_dir(self):
-        from core.logger import DbliftLogger
+        from dblift.core.logger import DbliftLogger
 
         with TemporaryDirectory() as tmpdir:
             logger = DbliftLogger("test", logfile_dir=Path(tmpdir))
@@ -126,7 +148,7 @@ class TestDbliftLoggerWithFileLog(unittest.TestCase):
 
 class TestDbliftLoggerStartSection(unittest.TestCase):
     def test_start_section(self):
-        from core.logger import DbliftLogger
+        from dblift.core.logger import DbliftLogger
 
         logger = DbliftLogger("test")
         try:
@@ -135,7 +157,7 @@ class TestDbliftLoggerStartSection(unittest.TestCase):
             pass
 
     def test_end_section(self):
-        from core.logger import DbliftLogger
+        from dblift.core.logger import DbliftLogger
 
         logger = DbliftLogger("test")
         try:

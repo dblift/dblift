@@ -12,12 +12,12 @@ import pytest
 
 pytestmark = [pytest.mark.unit]
 
-from config.database_config import BaseDatabaseConfig
-from db.plugins.db2.config import Db2Config
-from db.plugins.mysql.config import MySqlConfig
-from db.plugins.oracle.config import OracleConfig
-from db.plugins.postgresql.config import PostgreSqlConfig
-from db.plugins.sqlserver.config import SqlServerConfig
+from dblift.config.database_config import BaseDatabaseConfig
+from dblift.db.plugins.db2.config import Db2Config
+from dblift.db.plugins.mysql.config import MySqlConfig
+from dblift.db.plugins.oracle.config import OracleConfig
+from dblift.db.plugins.postgresql.config import PostgreSqlConfig
+from dblift.db.plugins.sqlserver.config import SqlServerConfig
 
 
 class TestBuildStandardUrl(unittest.TestCase):

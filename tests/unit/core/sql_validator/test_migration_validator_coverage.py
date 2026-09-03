@@ -11,8 +11,8 @@ from unittest.mock import MagicMock, patch
 
 
 def _make_validator(dialect="postgresql"):
-    from core.logger import NullLog
-    from core.sql_validator.migration_validator import MigrationValidator
+    from dblift.core.logger import NullLog
+    from dblift.core.sql_validator.migration_validator import MigrationValidator
 
     sm = MagicMock()
     hm = MagicMock()
@@ -22,7 +22,7 @@ def _make_validator(dialect="postgresql"):
     hm.provider = MagicMock()
     hm.provider.config.database.type = dialect
     log = MagicMock()
-    with patch("core.sql_validator.migration_validator.SqlAnalyzer"):
+    with patch("dblift.core.sql_validator.migration_validator.SqlAnalyzer"):
         v = MigrationValidator(script_manager=sm, history_manager=hm, log=log)
     return v, sm, hm, log
 
@@ -37,7 +37,7 @@ def _make_migration(
     execution_time=0,
     tags=None,
 ):
-    from core.migration.migration import MigrationType
+    from dblift.core.migration.migration import MigrationType
 
     if mtype is None:
         mtype = MigrationType.SQL
@@ -69,24 +69,24 @@ class TestLastSuccessfulNonDeleteRecord(unittest.TestCase):
         )
 
     def test_skips_delete_type(self):
-        from core.migration.migration import MigrationType
-        from core.sql_validator.migration_validator import _last_successful_non_delete_record
+        from dblift.core.migration.migration import MigrationType
+        from dblift.core.sql_validator.migration_validator import _last_successful_non_delete_record
 
         m = self._make("V1__test.sql", MigrationType.DELETE)
         result = _last_successful_non_delete_record([m], "V1__test.sql")
         self.assertIsNone(result)
 
     def test_skips_undo_sql_type(self):
-        from core.migration.migration import MigrationType
-        from core.sql_validator.migration_validator import _last_successful_non_delete_record
+        from dblift.core.migration.migration import MigrationType
+        from dblift.core.sql_validator.migration_validator import _last_successful_non_delete_record
 
         m = self._make("V1__test.sql", MigrationType.UNDO_SQL)
         result = _last_successful_non_delete_record([m], "V1__test.sql")
         self.assertIsNone(result)
 
     def test_returns_latest_of_multiple_successful(self):
-        from core.migration.migration import MigrationType
-        from core.sql_validator.migration_validator import _last_successful_non_delete_record
+        from dblift.core.migration.migration import MigrationType
+        from dblift.core.sql_validator.migration_validator import _last_successful_non_delete_record
 
         m1 = self._make("V1__test.sql", MigrationType.SQL, success=True)
         m2 = self._make("V1__test.sql", MigrationType.SQL, success=True)
@@ -94,8 +94,8 @@ class TestLastSuccessfulNonDeleteRecord(unittest.TestCase):
         self.assertIs(result, m2)
 
     def test_skips_failed_migration(self):
-        from core.migration.migration import MigrationType
-        from core.sql_validator.migration_validator import _last_successful_non_delete_record
+        from dblift.core.migration.migration import MigrationType
+        from dblift.core.sql_validator.migration_validator import _last_successful_non_delete_record
 
         m_fail = self._make("V1__test.sql", MigrationType.SQL, success=False)
         m_ok = self._make("V1__test.sql", MigrationType.SQL, success=True)
@@ -266,7 +266,7 @@ class TestCheckFlywayHistoryTableCoverage(unittest.TestCase):
 
 class TestLoadAndFilterMigrations(unittest.TestCase):
     def _make_script(self, name, mtype):
-        from core.migration.migration import MigrationType
+        from dblift.core.migration.migration import MigrationType
 
         return SimpleNamespace(
             script_name=name,
@@ -277,7 +277,7 @@ class TestLoadAndFilterMigrations(unittest.TestCase):
         )
 
     def test_filters_unknown_type(self):
-        from core.migration.migration import MigrationType
+        from dblift.core.migration.migration import MigrationType
 
         v, sm, _, _ = _make_validator()
         unknown = self._make_script("junk.py", MigrationType.UNKNOWN)
@@ -288,7 +288,7 @@ class TestLoadAndFilterMigrations(unittest.TestCase):
         self.assertIn(valid, result)
 
     def test_keeps_valid_types(self):
-        from core.migration.migration import MigrationType
+        from dblift.core.migration.migration import MigrationType
 
         v, sm, _, _ = _make_validator()
         scripts = [
@@ -311,7 +311,7 @@ class TestHandleBaselineFiltering(unittest.TestCase):
         )
 
     def test_no_baseline_returns_all(self):
-        from core.migration.migration import MigrationType
+        from dblift.core.migration.migration import MigrationType
 
         v, *_ = _make_validator()
         scripts = [
@@ -322,7 +322,7 @@ class TestHandleBaselineFiltering(unittest.TestCase):
         self.assertEqual(len(result), 2)
 
     def test_baseline_filters_older_versioned(self):
-        from core.migration.migration import MigrationType
+        from dblift.core.migration.migration import MigrationType
 
         v, *_ = _make_validator()
         scripts = [
@@ -337,7 +337,7 @@ class TestHandleBaselineFiltering(unittest.TestCase):
         self.assertIn("B2__base.sql", names)
 
     def test_repeatable_kept_when_baseline_present(self):
-        from core.migration.migration import MigrationType
+        from dblift.core.migration.migration import MigrationType
 
         v, *_ = _make_validator()
         scripts = [
@@ -356,24 +356,24 @@ class TestHandleBaselineFiltering(unittest.TestCase):
 
 class TestNormalizeFilter(unittest.TestCase):
     def test_none_returns_none(self):
-        from core.sql_validator.migration_validator import MigrationValidator
+        from dblift.core.sql_validator.migration_validator import MigrationValidator
 
         self.assertIsNone(MigrationValidator._normalize_filter(None))
 
     def test_string_splits_by_comma(self):
-        from core.sql_validator.migration_validator import MigrationValidator
+        from dblift.core.sql_validator.migration_validator import MigrationValidator
 
         result = MigrationValidator._normalize_filter("a, b, c")
         self.assertEqual(result, ["a", "b", "c"])
 
     def test_list_returns_stripped(self):
-        from core.sql_validator.migration_validator import MigrationValidator
+        from dblift.core.sql_validator.migration_validator import MigrationValidator
 
         result = MigrationValidator._normalize_filter(["x ", " y"])
         self.assertEqual(result, ["x", "y"])
 
     def test_empty_list_returns_empty(self):
-        from core.sql_validator.migration_validator import MigrationValidator
+        from dblift.core.sql_validator.migration_validator import MigrationValidator
 
         result = MigrationValidator._normalize_filter([])
         self.assertEqual(result, [])
@@ -381,7 +381,7 @@ class TestNormalizeFilter(unittest.TestCase):
 
 class TestPassesFilters(unittest.TestCase):
     def _make_migration_with_tags(self, version="1", tags=None):
-        from core.migration.migration import MigrationType
+        from dblift.core.migration.migration import MigrationType
 
         m = SimpleNamespace(
             type=MigrationType.SQL,
@@ -467,7 +467,7 @@ class TestValidateNoScriptsCase(unittest.TestCase):
         self.assertFalse(success)
 
     def test_with_scripts_does_not_return_early(self):
-        from core.migration.migration import MigrationType
+        from dblift.core.migration.migration import MigrationType
 
         v, *_ = _make_validator()
         script = SimpleNamespace(
@@ -485,7 +485,7 @@ class TestValidateNoScriptsCase(unittest.TestCase):
 
 class TestValidateResolvedMigrations(unittest.TestCase):
     def _sql_script(self, name="V1__test.sql", version="1"):
-        from core.migration.migration import MigrationType
+        from dblift.core.migration.migration import MigrationType
 
         return SimpleNamespace(
             type=MigrationType.SQL,
@@ -496,7 +496,7 @@ class TestValidateResolvedMigrations(unittest.TestCase):
         )
 
     def _repeatable_script(self, name="R__rep.sql"):
-        from core.migration.migration import MigrationType
+        from dblift.core.migration.migration import MigrationType
 
         return SimpleNamespace(
             type=MigrationType.REPEATABLE,
@@ -513,7 +513,7 @@ class TestValidateResolvedMigrations(unittest.TestCase):
         self.assertTrue(result.success)
 
     def test_only_unknown_type_returns_success(self):
-        from core.migration.migration import MigrationType
+        from dblift.core.migration.migration import MigrationType
 
         v, sm, hm, _ = _make_validator()
         hm.provider.config = None
@@ -597,7 +597,7 @@ class TestValidateResolvedMigrations(unittest.TestCase):
 
 class TestValidateMigrations(unittest.TestCase):
     def _sql_script(self, name="V1__test.sql", version="1"):
-        from core.migration.migration import MigrationType
+        from dblift.core.migration.migration import MigrationType
 
         return SimpleNamespace(
             type=MigrationType.SQL,
@@ -650,7 +650,7 @@ class TestValidateMigrations(unittest.TestCase):
     def test_strict_mode_missing_applied_scripts_fails(self):
         import tempfile
 
-        from core.migration.migration import MigrationType
+        from dblift.core.migration.migration import MigrationType
 
         v, sm, hm, _ = _make_validator()
         hm.has_history_table = True
@@ -674,7 +674,7 @@ class TestValidateMigrations(unittest.TestCase):
     def test_all_repeatable_scripts_returns_success(self):
         import tempfile
 
-        from core.migration.migration import MigrationType
+        from dblift.core.migration.migration import MigrationType
 
         v, sm, hm, _ = _make_validator()
         hm.has_history_table = False
@@ -705,7 +705,7 @@ class TestValidateMigrations(unittest.TestCase):
     def test_target_version_filter_applied(self):
         import tempfile
 
-        from core.migration.migration import MigrationType
+        from dblift.core.migration.migration import MigrationType
 
         v, sm, hm, _ = _make_validator()
         hm.has_history_table = False
@@ -726,7 +726,7 @@ class TestValidateMigrations(unittest.TestCase):
 
 class TestValidateDuplicateVersions(unittest.TestCase):
     def _sql_script(self, name, version):
-        from core.migration.migration import MigrationType
+        from dblift.core.migration.migration import MigrationType
 
         return SimpleNamespace(
             type=MigrationType.SQL,
@@ -737,7 +737,7 @@ class TestValidateDuplicateVersions(unittest.TestCase):
         )
 
     def _repeatable_script(self, name):
-        from core.migration.migration import MigrationType
+        from dblift.core.migration.migration import MigrationType
 
         return SimpleNamespace(
             type=MigrationType.REPEATABLE,
@@ -746,7 +746,7 @@ class TestValidateDuplicateVersions(unittest.TestCase):
         )
 
     def _callback_script(self, name):
-        from core.migration.migration import MigrationType
+        from dblift.core.migration.migration import MigrationType
 
         return SimpleNamespace(
             type=MigrationType.CALLBACK,
@@ -755,7 +755,7 @@ class TestValidateDuplicateVersions(unittest.TestCase):
         )
 
     def _python_script(self, name, version):
-        from core.migration.migration import MigrationType
+        from dblift.core.migration.migration import MigrationType
 
         return SimpleNamespace(
             type=MigrationType.PYTHON,
@@ -764,7 +764,7 @@ class TestValidateDuplicateVersions(unittest.TestCase):
         )
 
     def _baseline_script(self, name, version):
-        from core.migration.migration import MigrationType
+        from dblift.core.migration.migration import MigrationType
 
         return SimpleNamespace(
             type=MigrationType.BASELINE,
@@ -773,7 +773,7 @@ class TestValidateDuplicateVersions(unittest.TestCase):
         )
 
     def _undo_script(self, name, version):
-        from core.migration.migration import MigrationType
+        from dblift.core.migration.migration import MigrationType
 
         return SimpleNamespace(
             type=MigrationType.UNDO_SQL,
@@ -782,7 +782,7 @@ class TestValidateDuplicateVersions(unittest.TestCase):
         )
 
     def test_no_duplicates_returns_true(self):
-        from core.sql_validator.migration_validator import ValidationResult
+        from dblift.core.sql_validator.migration_validator import ValidationResult
 
         v, *_ = _make_validator()
         result = ValidationResult()
@@ -793,7 +793,7 @@ class TestValidateDuplicateVersions(unittest.TestCase):
         self.assertTrue(r)
 
     def test_duplicate_versions_returns_false(self):
-        from core.sql_validator.migration_validator import ValidationResult
+        from dblift.core.sql_validator.migration_validator import ValidationResult
 
         v, *_ = _make_validator()
         result = ValidationResult()
@@ -805,7 +805,7 @@ class TestValidateDuplicateVersions(unittest.TestCase):
         self.assertFalse(result.success)
 
     def test_repeatable_not_counted_as_duplicate(self):
-        from core.sql_validator.migration_validator import ValidationResult
+        from dblift.core.sql_validator.migration_validator import ValidationResult
 
         v, *_ = _make_validator()
         result = ValidationResult()
@@ -818,7 +818,7 @@ class TestValidateDuplicateVersions(unittest.TestCase):
         self.assertTrue(r)
 
     def test_callback_counted_and_logged(self):
-        from core.sql_validator.migration_validator import ValidationResult
+        from dblift.core.sql_validator.migration_validator import ValidationResult
 
         v, *_ = _make_validator()
         result = ValidationResult()
@@ -831,7 +831,7 @@ class TestValidateDuplicateVersions(unittest.TestCase):
         self.assertTrue(r)
 
     def test_undo_and_baseline_skipped(self):
-        from core.sql_validator.migration_validator import ValidationResult
+        from dblift.core.sql_validator.migration_validator import ValidationResult
 
         v, *_ = _make_validator()
         result = ValidationResult()
@@ -844,7 +844,7 @@ class TestValidateDuplicateVersions(unittest.TestCase):
         self.assertTrue(r)
 
     def test_python_script_counted(self):
-        from core.sql_validator.migration_validator import ValidationResult
+        from dblift.core.sql_validator.migration_validator import ValidationResult
 
         v, *_ = _make_validator()
         result = ValidationResult()
@@ -857,7 +857,7 @@ class TestValidateDuplicateVersions(unittest.TestCase):
         self.assertFalse(r)
 
     def test_baseline_and_sql_same_version_allowed(self):
-        from core.sql_validator.migration_validator import ValidationResult
+        from dblift.core.sql_validator.migration_validator import ValidationResult
 
         v, *_ = _make_validator()
         result = ValidationResult()
@@ -870,8 +870,8 @@ class TestValidateDuplicateVersions(unittest.TestCase):
         self.assertTrue(r)
 
     def test_sql_no_version_skipped(self):
-        from core.migration.migration import MigrationType
-        from core.sql_validator.migration_validator import ValidationResult
+        from dblift.core.migration.migration import MigrationType
+        from dblift.core.sql_validator.migration_validator import ValidationResult
 
         v, *_ = _make_validator()
         result = ValidationResult()
@@ -901,8 +901,8 @@ class TestValidateChecksums(unittest.TestCase):
         )
 
     def test_skip_unknown_type(self):
-        from core.migration.migration import MigrationType
-        from core.sql_validator.migration_validator import ValidationResult
+        from dblift.core.migration.migration import MigrationType
+        from dblift.core.sql_validator.migration_validator import ValidationResult
 
         v, sm, *_ = _make_validator()
         result = ValidationResult()
@@ -912,8 +912,8 @@ class TestValidateChecksums(unittest.TestCase):
         self.assertEqual(issues, [])
 
     def test_skip_delete_type(self):
-        from core.migration.migration import MigrationType
-        from core.sql_validator.migration_validator import ValidationResult
+        from dblift.core.migration.migration import MigrationType
+        from dblift.core.sql_validator.migration_validator import ValidationResult
 
         v, sm, *_ = _make_validator()
         result = ValidationResult()
@@ -923,8 +923,8 @@ class TestValidateChecksums(unittest.TestCase):
         self.assertEqual(issues, [])
 
     def test_skip_undo_sql_type(self):
-        from core.migration.migration import MigrationType
-        from core.sql_validator.migration_validator import ValidationResult
+        from dblift.core.migration.migration import MigrationType
+        from dblift.core.sql_validator.migration_validator import ValidationResult
 
         v, sm, *_ = _make_validator()
         result = ValidationResult()
@@ -934,8 +934,8 @@ class TestValidateChecksums(unittest.TestCase):
         self.assertEqual(issues, [])
 
     def test_skip_baseline_type(self):
-        from core.migration.migration import MigrationType
-        from core.sql_validator.migration_validator import ValidationResult
+        from dblift.core.migration.migration import MigrationType
+        from dblift.core.sql_validator.migration_validator import ValidationResult
 
         v, sm, *_ = _make_validator()
         result = ValidationResult()
@@ -945,8 +945,8 @@ class TestValidateChecksums(unittest.TestCase):
         self.assertEqual(issues, [])
 
     def test_missing_script_strict_mode_adds_issue(self):
-        from core.migration.migration import MigrationType
-        from core.sql_validator.migration_validator import ValidationResult
+        from dblift.core.migration.migration import MigrationType
+        from dblift.core.sql_validator.migration_validator import ValidationResult
 
         v, sm, *_ = _make_validator()
         result = ValidationResult()
@@ -957,8 +957,8 @@ class TestValidateChecksums(unittest.TestCase):
         self.assertTrue(any("missing" in i.lower() for i in issues))
 
     def test_missing_script_not_strict_mode_logs_warning(self):
-        from core.migration.migration import MigrationType
-        from core.sql_validator.migration_validator import ValidationResult
+        from dblift.core.migration.migration import MigrationType
+        from dblift.core.sql_validator.migration_validator import ValidationResult
 
         v, sm, *_ = _make_validator()
         result = ValidationResult()
@@ -970,8 +970,8 @@ class TestValidateChecksums(unittest.TestCase):
         self.assertEqual(issues, [])
 
     def test_missing_script_but_deleted_ok(self):
-        from core.migration.migration import MigrationType
-        from core.sql_validator.migration_validator import ValidationResult
+        from dblift.core.migration.migration import MigrationType
+        from dblift.core.sql_validator.migration_validator import ValidationResult
 
         v, sm, *_ = _make_validator()
         result = ValidationResult()
@@ -984,8 +984,8 @@ class TestValidateChecksums(unittest.TestCase):
         self.assertEqual(issues, [])
 
     def test_missing_script_same_version_different_name(self):
-        from core.migration.migration import MigrationType
-        from core.sql_validator.migration_validator import ValidationResult
+        from dblift.core.migration.migration import MigrationType
+        from dblift.core.sql_validator.migration_validator import ValidationResult
 
         v, sm, *_ = _make_validator()
         result = ValidationResult()
@@ -1004,8 +1004,8 @@ class TestValidateChecksums(unittest.TestCase):
         self.assertTrue(any("repair" in i.lower() for i in issues))
 
     def test_changed_script_not_repeatable_adds_issue(self):
-        from core.migration.migration import MigrationType
-        from core.sql_validator.migration_validator import ValidationResult
+        from dblift.core.migration.migration import MigrationType
+        from dblift.core.sql_validator.migration_validator import ValidationResult
 
         v, sm, *_ = _make_validator()
         result = ValidationResult()
@@ -1031,8 +1031,8 @@ class TestValidateChecksums(unittest.TestCase):
         self.assertIsInstance(result.success, bool)
 
     def test_unchanged_script_no_issue(self):
-        from core.migration.migration import MigrationType
-        from core.sql_validator.migration_validator import ValidationResult
+        from dblift.core.migration.migration import MigrationType
+        from dblift.core.sql_validator.migration_validator import ValidationResult
 
         v, sm, *_ = _make_validator()
         result = ValidationResult()
@@ -1059,7 +1059,7 @@ class TestValidateChecksums(unittest.TestCase):
 
 class TestValidateSqlSyntax(unittest.TestCase):
     def _sql_script(self, name="V1__test.sql", content="SELECT 1;"):
-        from core.migration.migration import MigrationType
+        from dblift.core.migration.migration import MigrationType
 
         return SimpleNamespace(
             type=MigrationType.SQL,
@@ -1071,7 +1071,7 @@ class TestValidateSqlSyntax(unittest.TestCase):
         )
 
     def _baseline_script(self, name="B1__base.sql", content="SELECT 1;"):
-        from core.migration.migration import MigrationType
+        from dblift.core.migration.migration import MigrationType
 
         return SimpleNamespace(
             type=MigrationType.BASELINE,
@@ -1083,7 +1083,7 @@ class TestValidateSqlSyntax(unittest.TestCase):
         )
 
     def _repeatable_script(self, name="R__rep.sql", content="SELECT 1;"):
-        from core.migration.migration import MigrationType
+        from dblift.core.migration.migration import MigrationType
 
         return SimpleNamespace(
             type=MigrationType.REPEATABLE,
@@ -1095,7 +1095,7 @@ class TestValidateSqlSyntax(unittest.TestCase):
         )
 
     def test_skips_non_sql_type(self):
-        from core.sql_validator.migration_validator import ValidationResult
+        from dblift.core.sql_validator.migration_validator import ValidationResult
 
         v, *_ = _make_validator()
         result = ValidationResult()
@@ -1105,7 +1105,7 @@ class TestValidateSqlSyntax(unittest.TestCase):
         self.assertEqual(issues, [])
 
     def test_valid_sql_no_issues(self):
-        from core.sql_validator.migration_validator import ValidationResult
+        from dblift.core.sql_validator.migration_validator import ValidationResult
 
         v, *_ = _make_validator()
         result = ValidationResult()
@@ -1120,7 +1120,7 @@ class TestValidateSqlSyntax(unittest.TestCase):
         self.assertTrue(result.success)
 
     def test_invalid_sql_adds_issue(self):
-        from core.sql_validator.migration_validator import ValidationResult
+        from dblift.core.sql_validator.migration_validator import ValidationResult
 
         v, *_ = _make_validator()
         result = ValidationResult()
@@ -1134,7 +1134,7 @@ class TestValidateSqlSyntax(unittest.TestCase):
         self.assertTrue(any("syntax error" in i.lower() for i in issues))
 
     def test_split_failure_adds_issue(self):
-        from core.sql_validator.migration_validator import ValidationResult
+        from dblift.core.sql_validator.migration_validator import ValidationResult
 
         v, *_ = _make_validator()
         result = ValidationResult()
@@ -1148,7 +1148,7 @@ class TestValidateSqlSyntax(unittest.TestCase):
         self.assertTrue(any("failed to parse" in i.lower() for i in issues))
 
     def test_split_failure_fallback_exception_handled(self):
-        from core.sql_validator.migration_validator import ValidationResult
+        from dblift.core.sql_validator.migration_validator import ValidationResult
 
         v, *_ = _make_validator()
         result = ValidationResult()
@@ -1161,7 +1161,7 @@ class TestValidateSqlSyntax(unittest.TestCase):
         self.assertFalse(result.success)
 
     def test_sql_with_line_number_in_error(self):
-        from core.sql_validator.migration_validator import ValidationResult
+        from dblift.core.sql_validator.migration_validator import ValidationResult
 
         v, *_ = _make_validator()
         result = ValidationResult()
@@ -1174,7 +1174,7 @@ class TestValidateSqlSyntax(unittest.TestCase):
         self.assertFalse(result.success)
 
     def test_baseline_script_validated(self):
-        from core.sql_validator.migration_validator import ValidationResult
+        from dblift.core.sql_validator.migration_validator import ValidationResult
 
         v, *_ = _make_validator()
         result = ValidationResult()
@@ -1191,7 +1191,7 @@ class TestValidateSqlSyntax(unittest.TestCase):
         self.assertEqual(issues, [])
 
     def test_analysis_exception_logged(self):
-        from core.sql_validator.migration_validator import ValidationResult
+        from dblift.core.sql_validator.migration_validator import ValidationResult
 
         v, *_ = _make_validator()
         result = ValidationResult()
@@ -1205,7 +1205,7 @@ class TestValidateSqlSyntax(unittest.TestCase):
         self.assertEqual(issues, [])
 
     def test_split_failure_fallback_valid_no_extra_issue(self):
-        from core.sql_validator.migration_validator import ValidationResult
+        from dblift.core.sql_validator.migration_validator import ValidationResult
 
         v, *_ = _make_validator()
         result = ValidationResult()
@@ -1228,7 +1228,7 @@ class TestValidateSqlSyntax(unittest.TestCase):
 
 class TestCheckRepeatableMigrations(unittest.TestCase):
     def _rep_script(self, name="R__rep.sql", checksum=100):
-        from core.migration.migration import MigrationType
+        from dblift.core.migration.migration import MigrationType
 
         return SimpleNamespace(
             type=MigrationType.REPEATABLE,
@@ -1239,7 +1239,7 @@ class TestCheckRepeatableMigrations(unittest.TestCase):
         )
 
     def _applied_rep(self, name="R__rep.sql", success=True, checksum=100, execution_time=0):
-        from core.migration.migration import MigrationType
+        from dblift.core.migration.migration import MigrationType
 
         return SimpleNamespace(
             type=MigrationType.REPEATABLE,
@@ -1251,7 +1251,7 @@ class TestCheckRepeatableMigrations(unittest.TestCase):
         )
 
     def test_not_applied_adds_to_reapply(self):
-        from core.sql_validator.migration_validator import ValidationResult
+        from dblift.core.sql_validator.migration_validator import ValidationResult
 
         v, sm, *_ = _make_validator()
         result = ValidationResult()
@@ -1261,7 +1261,7 @@ class TestCheckRepeatableMigrations(unittest.TestCase):
         self.assertEqual(result.repeatable_migrations_to_reapply[0]["database_checksum"], "")
 
     def test_not_applied_logs_pending_not_reapplied(self):
-        from core.sql_validator.migration_validator import ValidationResult
+        from dblift.core.sql_validator.migration_validator import ValidationResult
 
         v, _, _, log = _make_validator()
         result = ValidationResult()
@@ -1271,7 +1271,7 @@ class TestCheckRepeatableMigrations(unittest.TestCase):
         self.assertFalse(any("need to be reapplied" in msg for msg in messages), messages)
 
     def test_applied_and_changed_logs_reapplied(self):
-        from core.sql_validator.migration_validator import ValidationResult
+        from dblift.core.sql_validator.migration_validator import ValidationResult
 
         v, sm, _, log = _make_validator()
         result = ValidationResult()
@@ -1287,7 +1287,7 @@ class TestCheckRepeatableMigrations(unittest.TestCase):
         self.assertFalse(any("pending repeatable" in msg for msg in messages), messages)
 
     def test_applied_and_changed_adds_to_reapply(self):
-        from core.sql_validator.migration_validator import ValidationResult
+        from dblift.core.sql_validator.migration_validator import ValidationResult
 
         v, sm, *_ = _make_validator()
         result = ValidationResult()
@@ -1298,7 +1298,7 @@ class TestCheckRepeatableMigrations(unittest.TestCase):
         self.assertEqual(len(result.repeatable_migrations_to_reapply), 1)
 
     def test_applied_and_unchanged_no_reapply(self):
-        from core.sql_validator.migration_validator import ValidationResult
+        from dblift.core.sql_validator.migration_validator import ValidationResult
 
         v, sm, *_ = _make_validator()
         result = ValidationResult()
@@ -1309,7 +1309,7 @@ class TestCheckRepeatableMigrations(unittest.TestCase):
         self.assertEqual(len(result.repeatable_migrations_to_reapply), 0)
 
     def test_failed_applied_same_checksum_sets_error(self):
-        from core.sql_validator.migration_validator import ValidationResult
+        from dblift.core.sql_validator.migration_validator import ValidationResult
 
         v, sm, *_ = _make_validator()
         result = ValidationResult()
@@ -1321,7 +1321,7 @@ class TestCheckRepeatableMigrations(unittest.TestCase):
         self.assertIn("previously failed", result.error_message)
 
     def test_failed_applied_different_checksum_adds_reapply(self):
-        from core.sql_validator.migration_validator import ValidationResult
+        from dblift.core.sql_validator.migration_validator import ValidationResult
 
         v, sm, *_ = _make_validator()
         result = ValidationResult()
@@ -1331,8 +1331,8 @@ class TestCheckRepeatableMigrations(unittest.TestCase):
         self.assertEqual(len(result.repeatable_migrations_to_reapply), 1)
 
     def test_non_repeatable_skipped(self):
-        from core.migration.migration import MigrationType
-        from core.sql_validator.migration_validator import ValidationResult
+        from dblift.core.migration.migration import MigrationType
+        from dblift.core.sql_validator.migration_validator import ValidationResult
 
         v, sm, *_ = _make_validator()
         result = ValidationResult()
@@ -1344,7 +1344,7 @@ class TestCheckRepeatableMigrations(unittest.TestCase):
         self.assertTrue(result.success)
 
     def test_migrate_command_logs_info(self):
-        from core.sql_validator.migration_validator import ValidationResult
+        from dblift.core.sql_validator.migration_validator import ValidationResult
 
         v, sm, *_ = _make_validator()
         result = ValidationResult()
@@ -1359,7 +1359,7 @@ class TestCheckRepeatableMigrations(unittest.TestCase):
         v._check_repeatable_migrations([rep], [applied], result, command="migrate")
 
     def test_info_command_logs_info(self):
-        from core.sql_validator.migration_validator import ValidationResult
+        from dblift.core.sql_validator.migration_validator import ValidationResult
 
         v, sm, *_ = _make_validator()
         result = ValidationResult()
@@ -1371,7 +1371,7 @@ class TestCheckRepeatableMigrations(unittest.TestCase):
         self.assertEqual(len(result.repeatable_migrations_to_reapply), 1)
 
     def test_checksum_none_uses_zero(self):
-        from core.sql_validator.migration_validator import ValidationResult
+        from dblift.core.sql_validator.migration_validator import ValidationResult
 
         v, sm, *_ = _make_validator()
         result = ValidationResult()
@@ -1388,7 +1388,7 @@ class TestCheckRepeatableMigrations(unittest.TestCase):
 
 class TestValidateStrictModeRules(unittest.TestCase):
     def _sql_script(self, name, version):
-        from core.migration.migration import MigrationType
+        from dblift.core.migration.migration import MigrationType
 
         return SimpleNamespace(
             type=MigrationType.SQL,
@@ -1399,7 +1399,7 @@ class TestValidateStrictModeRules(unittest.TestCase):
         )
 
     def _applied(self, name, version, success=True, mtype=None):
-        from core.migration.migration import MigrationType
+        from dblift.core.migration.migration import MigrationType
 
         if mtype is None:
             mtype = MigrationType.SQL
@@ -1413,7 +1413,7 @@ class TestValidateStrictModeRules(unittest.TestCase):
         )
 
     def test_all_applied_present_returns_true(self):
-        from core.sql_validator.migration_validator import ValidationResult
+        from dblift.core.sql_validator.migration_validator import ValidationResult
 
         v, sm, *_ = _make_validator()
         sm.compare_versions.return_value = 0
@@ -1425,7 +1425,7 @@ class TestValidateStrictModeRules(unittest.TestCase):
         self.assertTrue(r)
 
     def test_missing_applied_script_returns_false(self):
-        from core.sql_validator.migration_validator import ValidationResult
+        from dblift.core.sql_validator.migration_validator import ValidationResult
 
         v, sm, *_ = _make_validator()
         result = ValidationResult()
@@ -1437,8 +1437,8 @@ class TestValidateStrictModeRules(unittest.TestCase):
         self.assertTrue(any("Strict mode" in i for i in issues))
 
     def test_baseline_applied_skipped(self):
-        from core.migration.migration import MigrationType
-        from core.sql_validator.migration_validator import ValidationResult
+        from dblift.core.migration.migration import MigrationType
+        from dblift.core.sql_validator.migration_validator import ValidationResult
 
         v, sm, *_ = _make_validator()
         result = ValidationResult()
@@ -1449,8 +1449,8 @@ class TestValidateStrictModeRules(unittest.TestCase):
         self.assertTrue(r)
 
     def test_undo_applied_skipped(self):
-        from core.migration.migration import MigrationType
-        from core.sql_validator.migration_validator import ValidationResult
+        from dblift.core.migration.migration import MigrationType
+        from dblift.core.sql_validator.migration_validator import ValidationResult
 
         v, sm, *_ = _make_validator()
         result = ValidationResult()
@@ -1467,7 +1467,7 @@ class TestValidateStrictModeRules(unittest.TestCase):
         V2 must be in scripts so it is not flagged as a missing applied migration.
         V1 is pending (not applied), V2 is applied — V1 version < highest applied (V2).
         """
-        from core.sql_validator.migration_validator import ValidationResult
+        from dblift.core.sql_validator.migration_validator import ValidationResult
 
         v, sm, *_ = _make_validator()
         result = ValidationResult()
@@ -1483,7 +1483,7 @@ class TestValidateStrictModeRules(unittest.TestCase):
         self.assertTrue(any("lower" in i.lower() or "strict mode" in i.lower() for i in issues))
 
     def test_no_applied_migrations_returns_true(self):
-        from core.sql_validator.migration_validator import ValidationResult
+        from dblift.core.sql_validator.migration_validator import ValidationResult
 
         v, sm, *_ = _make_validator()
         result = ValidationResult()
@@ -1493,7 +1493,7 @@ class TestValidateStrictModeRules(unittest.TestCase):
         self.assertTrue(r)
 
     def test_all_pending_applied_returns_true(self):
-        from core.sql_validator.migration_validator import ValidationResult
+        from dblift.core.sql_validator.migration_validator import ValidationResult
 
         v, sm, *_ = _make_validator()
         sm.compare_versions.return_value = 0
@@ -1512,7 +1512,7 @@ class TestValidateStrictModeRules(unittest.TestCase):
 
 class TestValidateOutOfOrder(unittest.TestCase):
     def _sql_migration(self, name, version):
-        from core.migration.migration import MigrationType
+        from dblift.core.migration.migration import MigrationType
 
         return SimpleNamespace(
             type=MigrationType.SQL,
@@ -1531,7 +1531,7 @@ class TestValidateOutOfOrder(unittest.TestCase):
         self.assertFalse(v.validate_out_of_order(migration, []))
 
     def test_not_versioned_returns_false(self):
-        from core.migration.migration import MigrationType
+        from dblift.core.migration.migration import MigrationType
 
         v, sm, *_ = _make_validator()
         rep = SimpleNamespace(
@@ -1601,8 +1601,8 @@ class TestValidateOutOfOrder(unittest.TestCase):
 
 class TestValidateReappearedMigrations(unittest.TestCase):
     def test_no_deleted_migrations_returns_early(self):
-        from core.migration.migration import MigrationType
-        from core.sql_validator.migration_validator import ValidationResult
+        from dblift.core.migration.migration import MigrationType
+        from dblift.core.sql_validator.migration_validator import ValidationResult
 
         v, *_ = _make_validator()
         result = ValidationResult()
@@ -1618,8 +1618,8 @@ class TestValidateReappearedMigrations(unittest.TestCase):
         self.assertTrue(result.success)
 
     def test_reappeared_migration_fails(self):
-        from core.migration.migration import MigrationType
-        from core.sql_validator.migration_validator import ValidationResult
+        from dblift.core.migration.migration import MigrationType
+        from dblift.core.sql_validator.migration_validator import ValidationResult
 
         v, *_ = _make_validator()
         hm = v.history_manager
@@ -1642,8 +1642,8 @@ class TestValidateReappearedMigrations(unittest.TestCase):
         self.assertTrue(any("reappeared" in i.lower() for i in issues))
 
     def test_deleted_but_not_reappeared_no_error(self):
-        from core.migration.migration import MigrationType
-        from core.sql_validator.migration_validator import ValidationResult
+        from dblift.core.migration.migration import MigrationType
+        from dblift.core.sql_validator.migration_validator import ValidationResult
 
         v, *_ = _make_validator()
         result = ValidationResult()
@@ -1662,7 +1662,7 @@ class TestValidateReappearedMigrations(unittest.TestCase):
 
 class TestValidateFailedMigrations(unittest.TestCase):
     def _make_applied(self, name, version, success, mtype=None):
-        from core.migration.migration import MigrationType
+        from dblift.core.migration.migration import MigrationType
 
         if mtype is None:
             mtype = MigrationType.SQL
@@ -1675,7 +1675,7 @@ class TestValidateFailedMigrations(unittest.TestCase):
         )
 
     def test_no_failed_migrations_returns_early(self):
-        from core.sql_validator.migration_validator import ValidationResult
+        from dblift.core.sql_validator.migration_validator import ValidationResult
 
         v, *_ = _make_validator()
         result = ValidationResult()
@@ -1686,7 +1686,7 @@ class TestValidateFailedMigrations(unittest.TestCase):
         self.assertTrue(result.success)
 
     def test_failed_migration_adds_issue(self):
-        from core.sql_validator.migration_validator import ValidationResult
+        from dblift.core.sql_validator.migration_validator import ValidationResult
 
         v, *_ = _make_validator()
         result = ValidationResult()
@@ -1697,8 +1697,8 @@ class TestValidateFailedMigrations(unittest.TestCase):
         self.assertTrue(any("failed" in i.lower() for i in issues))
 
     def test_failed_repeatable_adds_specific_error(self):
-        from core.migration.migration import MigrationType
-        from core.sql_validator.migration_validator import ValidationResult
+        from dblift.core.migration.migration import MigrationType
+        from dblift.core.sql_validator.migration_validator import ValidationResult
 
         v, *_ = _make_validator()
         result = ValidationResult()
@@ -1710,8 +1710,8 @@ class TestValidateFailedMigrations(unittest.TestCase):
         self.assertTrue(len(issues) > 0)
 
     def test_repeatable_scheduled_for_reapply_skipped(self):
-        from core.migration.migration import MigrationType
-        from core.sql_validator.migration_validator import ValidationResult
+        from dblift.core.migration.migration import MigrationType
+        from dblift.core.sql_validator.migration_validator import ValidationResult
 
         v, *_ = _make_validator()
         result = ValidationResult()
@@ -1733,7 +1733,7 @@ class TestValidateFailedMigrations(unittest.TestCase):
         self.assertIsInstance(result.success, bool)
 
     def test_mixed_failed_migrations(self):
-        from core.sql_validator.migration_validator import ValidationResult
+        from dblift.core.sql_validator.migration_validator import ValidationResult
 
         v, *_ = _make_validator()
         result = ValidationResult()
@@ -1753,7 +1753,7 @@ class TestValidateFailedMigrations(unittest.TestCase):
 
 class TestValidateMigrationsIssuesPaths(unittest.TestCase):
     def _sql_script(self, name="V1__test.sql", version="1"):
-        from core.migration.migration import MigrationType
+        from dblift.core.migration.migration import MigrationType
 
         return SimpleNamespace(
             type=MigrationType.SQL,
@@ -1771,7 +1771,7 @@ class TestValidateMigrationsIssuesPaths(unittest.TestCase):
         hm.has_history_table = True
         config = SimpleNamespace(strict_mode=False)
         hm.provider.config = config
-        from core.migration.migration import MigrationType
+        from dblift.core.migration.migration import MigrationType
 
         failed = SimpleNamespace(
             type=MigrationType.SQL,
@@ -1792,7 +1792,7 @@ class TestValidateMigrationsIssuesPaths(unittest.TestCase):
     def test_reappeared_migration_detected_in_validate(self):
         import tempfile
 
-        from core.migration.migration import MigrationType
+        from dblift.core.migration.migration import MigrationType
 
         v, sm, hm, _ = _make_validator()
         hm.has_history_table = True
@@ -1823,7 +1823,7 @@ class TestValidateMigrationsIssuesPaths(unittest.TestCase):
 
 class TestApplyFilters(unittest.TestCase):
     def _sql_script(self, version, name=None, tags=None):
-        from core.migration.migration import MigrationType
+        from dblift.core.migration.migration import MigrationType
 
         return SimpleNamespace(
             type=MigrationType.SQL,

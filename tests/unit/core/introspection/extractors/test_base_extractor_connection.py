@@ -4,7 +4,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from core.introspection.extractors.base_extractor import BaseExtractor
+from dblift.core.introspection.extractors.base_extractor import BaseExtractor
 
 pytestmark = [pytest.mark.unit]
 

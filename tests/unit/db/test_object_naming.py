@@ -2,7 +2,7 @@
 
 import pytest
 
-from db.object_naming import get_normalized_object_name, normalized_quoted_identifier
+from dblift.db.object_naming import get_normalized_object_name, normalized_quoted_identifier
 
 
 @pytest.mark.unit
@@ -114,7 +114,7 @@ class TestCaseDerivedFromQuirks:
 
     def test_case_matches_registry_quirks_for_all_dialects(self):
         """Casing for every known dialect follows its quirks, not a literal set."""
-        from db.provider_registry import ProviderRegistry
+        from dblift.db.provider_registry import ProviderRegistry
 
         for dialect in (
             "oracle",
@@ -131,7 +131,7 @@ class TestCaseDerivedFromQuirks:
 
     def test_no_hardcoded_dialect_sets(self):
         """The hardcoded dialect frozensets must not exist on the module."""
-        from db import object_naming
+        from dblift.db import object_naming
 
         assert not hasattr(object_naming, "UPPERCASE_DIALECTS")
         assert not hasattr(object_naming, "LOWERCASE_DIALECTS")

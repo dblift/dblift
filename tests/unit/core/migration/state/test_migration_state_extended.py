@@ -7,7 +7,7 @@ from types import SimpleNamespace
 
 class TestChecksumChange(unittest.TestCase):
     def test_to_dict(self):
-        from core.migration.state.migration_state import ChecksumChange
+        from dblift.core.migration.state.migration_state import ChecksumChange
 
         cc = ChecksumChange("V1__test.sql", "old_checksum", "new_checksum")
         d = cc.to_dict()
@@ -16,7 +16,7 @@ class TestChecksumChange(unittest.TestCase):
         self.assertEqual(d["current"], "new_checksum")
 
     def test_to_dict_none_values(self):
-        from core.migration.state.migration_state import ChecksumChange
+        from dblift.core.migration.state.migration_state import ChecksumChange
 
         cc = ChecksumChange("V1.sql", None, None)
         d = cc.to_dict()
@@ -26,7 +26,7 @@ class TestChecksumChange(unittest.TestCase):
 
 class TestMigrationEntry(unittest.TestCase):
     def test_basic_to_dict(self):
-        from core.migration.state.migration_state import MigrationEntry
+        from dblift.core.migration.state.migration_state import MigrationEntry
 
         entry = MigrationEntry(
             script="V1__test.sql",
@@ -42,26 +42,26 @@ class TestMigrationEntry(unittest.TestCase):
         self.assertEqual(d["status"], "SUCCESS")
 
     def test_format_datetime_none(self):
-        from core.migration.state.migration_state import MigrationEntry
+        from dblift.core.migration.state.migration_state import MigrationEntry
 
         result = MigrationEntry._format_datetime(None)
         self.assertIsNone(result)
 
     def test_format_datetime_string(self):
-        from core.migration.state.migration_state import MigrationEntry
+        from dblift.core.migration.state.migration_state import MigrationEntry
 
         result = MigrationEntry._format_datetime("2024-01-15 10:30:00")
         self.assertIsInstance(result, str)
 
     def test_format_datetime_object(self):
-        from core.migration.state.migration_state import MigrationEntry
+        from dblift.core.migration.state.migration_state import MigrationEntry
 
         dt = datetime.datetime(2024, 1, 15, 10, 30, 0)
         result = MigrationEntry._format_datetime(dt)
         self.assertIsInstance(result, str)
 
     def test_from_migration_basic(self):
-        from core.migration.state.migration_state import MigrationEntry
+        from dblift.core.migration.state.migration_state import MigrationEntry
 
         m = SimpleNamespace(
             script_name="V1__test.sql",
@@ -79,7 +79,7 @@ class TestMigrationEntry(unittest.TestCase):
         self.assertEqual(entry.status, "SUCCESS")
 
     def test_from_migration_no_status(self):
-        from core.migration.state.migration_state import MigrationEntry
+        from dblift.core.migration.state.migration_state import MigrationEntry
 
         m = SimpleNamespace(
             script_name="V2.sql",
@@ -98,7 +98,7 @@ class TestMigrationEntry(unittest.TestCase):
 
 class TestMigrationState(unittest.TestCase):
     def _make(self):
-        from core.migration.state.migration_state import MigrationState
+        from dblift.core.migration.state.migration_state import MigrationState
 
         return MigrationState()
 
@@ -115,7 +115,7 @@ class TestMigrationState(unittest.TestCase):
         self.assertEqual(state.checksum_change_count, 0)  # property
 
     def test_has_failures_with_failed(self):
-        from core.migration.state.migration_state import MigrationEntry, MigrationState
+        from dblift.core.migration.state.migration_state import MigrationEntry, MigrationState
 
         state = MigrationState()
         failed = MigrationEntry("V1.sql", "1", "test", "SQL", "FAILED", None)
@@ -123,7 +123,7 @@ class TestMigrationState(unittest.TestCase):
         self.assertTrue(state.has_failures)
 
     def test_has_pending_with_pending(self):
-        from core.migration.state.migration_state import MigrationEntry, MigrationState
+        from dblift.core.migration.state.migration_state import MigrationEntry, MigrationState
 
         state = MigrationState()
         pending = MigrationEntry("V2.sql", "2", "test", "SQL", "Pending", None)
@@ -138,7 +138,7 @@ class TestMigrationState(unittest.TestCase):
         self.assertIn("failed", d)
 
     def test_copy_is_independent(self):
-        from core.migration.state.migration_state import MigrationEntry, MigrationState
+        from dblift.core.migration.state.migration_state import MigrationEntry, MigrationState
 
         state = MigrationState()
         entry = MigrationEntry("V1.sql", "1", "test", "SQL", "SUCCESS", None)
@@ -150,7 +150,7 @@ class TestMigrationState(unittest.TestCase):
         self.assertEqual(len(copy.applied), 1)
 
     def test_checksum_change_count(self):
-        from core.migration.state.migration_state import ChecksumChange, MigrationState
+        from dblift.core.migration.state.migration_state import ChecksumChange, MigrationState
 
         state = MigrationState()
         state.checksum_changes = [
@@ -160,13 +160,13 @@ class TestMigrationState(unittest.TestCase):
         self.assertEqual(state.checksum_change_count, 2)
 
     def _entry(self, script, version, status, type_="SQL"):
-        from core.migration.state.migration_state import MigrationEntry
+        from dblift.core.migration.state.migration_state import MigrationEntry
 
         return MigrationEntry(script, version, "test", type_, status, None)
 
     def test_executable_pending_objects_returns_only_pending_status(self):
-        from core.migration.state.migration_display_state import MigrationDisplayState
-        from core.migration.state.migration_state import MigrationState
+        from dblift.core.migration.state.migration_display_state import MigrationDisplayState
+        from dblift.core.migration.state.migration_state import MigrationState
 
         below = SimpleNamespace(script_name="V1__a.sql")
         pending_obj = SimpleNamespace(script_name="V3__b.sql")
@@ -186,8 +186,8 @@ class TestMigrationState(unittest.TestCase):
         self.assertTrue(state.has_pending)
 
     def test_has_pending_false_when_only_non_executable_statuses(self):
-        from core.migration.state.migration_display_state import MigrationDisplayState
-        from core.migration.state.migration_state import MigrationState
+        from dblift.core.migration.state.migration_display_state import MigrationDisplayState
+        from dblift.core.migration.state.migration_state import MigrationState
 
         state = MigrationState(
             pending=[

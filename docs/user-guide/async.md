@@ -7,7 +7,7 @@ thread.
 ```python
 from sqlalchemy import create_engine
 
-from api.async_client import AsyncDBLiftClient
+from dblift.api.async_client import AsyncDBLiftClient
 
 
 async def run():
@@ -26,8 +26,8 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
-from api.async_client import AsyncDBLiftClient
-from integrations.fastapi import migration_guard_async
+from dblift.api.async_client import AsyncDBLiftClient
+from dblift.integrations.fastapi import migration_guard_async
 
 
 @asynccontextmanager

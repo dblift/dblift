@@ -24,8 +24,8 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from core.migration.migration import Migration, MigrationType
-from core.migration.scripting.migration_script_manager import MigrationScriptManager
+from dblift.core.migration.migration import Migration, MigrationType
+from dblift.core.migration.scripting.migration_script_manager import MigrationScriptManager
 
 
 def _manager() -> MigrationScriptManager:

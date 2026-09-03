@@ -4,8 +4,8 @@ import json
 
 import pytest
 
-from core.introspection import _utils as compatibility_utils
-from core.utils.row_access import (
+from dblift.core.introspection import _utils as compatibility_utils
+from dblift.core.utils.row_access import (
     get_row_value,
     parse_json_array,
     parse_pg_options,

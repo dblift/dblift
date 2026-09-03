@@ -10,13 +10,13 @@ import re
 
 import pytest
 
-from db.base_quirks import BaseQuirks
-from db.error import DatabaseErrorClassifier, ErrorCategory
-from db.plugins.db2.quirks import Db2Quirks
-from db.plugins.mariadb.quirks import MariadbQuirks
-from db.plugins.mysql.quirks import MysqlQuirks
-from db.plugins.oracle.quirks import OracleQuirks
-from db.plugins.postgresql.quirks import PostgresqlQuirks
+from dblift.db.base_quirks import BaseQuirks
+from dblift.db.error import DatabaseErrorClassifier, ErrorCategory
+from dblift.db.plugins.db2.quirks import Db2Quirks
+from dblift.db.plugins.mariadb.quirks import MariadbQuirks
+from dblift.db.plugins.mysql.quirks import MysqlQuirks
+from dblift.db.plugins.oracle.quirks import OracleQuirks
+from dblift.db.plugins.postgresql.quirks import PostgresqlQuirks
 
 
 def _classify(patterns, text):

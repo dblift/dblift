@@ -10,7 +10,7 @@ class TestSQLiteRegexParser:
 
     def test_split_simple_statements(self):
         """Test splitting simple SQL statements."""
-        from db.plugins.sqlite.parser.sqlite_regex_parser import SQLiteRegexParser
+        from dblift.db.plugins.sqlite.parser.sqlite_regex_parser import SQLiteRegexParser
 
         parser = SQLiteRegexParser()
 
@@ -28,7 +28,7 @@ class TestSQLiteRegexParser:
 
     def test_split_trigger_with_begin_end(self):
         """Test splitting trigger with BEGIN/END block."""
-        from db.plugins.sqlite.parser.sqlite_regex_parser import SQLiteRegexParser
+        from dblift.db.plugins.sqlite.parser.sqlite_regex_parser import SQLiteRegexParser
 
         parser = SQLiteRegexParser()
 
@@ -51,7 +51,7 @@ class TestSQLiteRegexParser:
 
     def test_extract_table_from_create(self):
         """Test extracting table object from CREATE TABLE."""
-        from db.plugins.sqlite.parser.sqlite_regex_parser import SQLiteRegexParser
+        from dblift.db.plugins.sqlite.parser.sqlite_regex_parser import SQLiteRegexParser
 
         parser = SQLiteRegexParser()
 
@@ -64,7 +64,7 @@ class TestSQLiteRegexParser:
 
     def test_extract_view_from_create(self):
         """Test extracting view object from CREATE VIEW."""
-        from db.plugins.sqlite.parser.sqlite_regex_parser import SQLiteRegexParser
+        from dblift.db.plugins.sqlite.parser.sqlite_regex_parser import SQLiteRegexParser
 
         parser = SQLiteRegexParser()
 
@@ -77,7 +77,7 @@ class TestSQLiteRegexParser:
 
     def test_extract_index_from_create(self):
         """Test extracting index object from CREATE INDEX."""
-        from db.plugins.sqlite.parser.sqlite_regex_parser import SQLiteRegexParser
+        from dblift.db.plugins.sqlite.parser.sqlite_regex_parser import SQLiteRegexParser
 
         parser = SQLiteRegexParser()
 
@@ -90,7 +90,7 @@ class TestSQLiteRegexParser:
 
     def test_extract_trigger_from_create(self):
         """Test extracting trigger object from CREATE TRIGGER."""
-        from db.plugins.sqlite.parser.sqlite_regex_parser import SQLiteRegexParser
+        from dblift.db.plugins.sqlite.parser.sqlite_regex_parser import SQLiteRegexParser
 
         parser = SQLiteRegexParser()
 
@@ -104,8 +104,8 @@ class TestSQLiteRegexParser:
 
     def test_extract_virtual_table_from_create(self):
         """CREATE VIRTUAL TABLE must keep VIRTUAL_TABLE type (not UNKNOWN)."""
-        from core.sql_model.base import SqlObjectType
-        from db.plugins.sqlite.parser.sqlite_regex_parser import SQLiteRegexParser
+        from dblift.core.sql_model.base import SqlObjectType
+        from dblift.db.plugins.sqlite.parser.sqlite_regex_parser import SQLiteRegexParser
 
         parser = SQLiteRegexParser()
 
@@ -118,7 +118,7 @@ class TestSQLiteRegexParser:
 
     def test_handle_comments(self):
         """Test handling of SQL comments."""
-        from db.plugins.sqlite.parser.sqlite_regex_parser import SQLiteRegexParser
+        from dblift.db.plugins.sqlite.parser.sqlite_regex_parser import SQLiteRegexParser
 
         parser = SQLiteRegexParser()
 
@@ -135,7 +135,7 @@ class TestSQLiteRegexParser:
 
     def test_handle_quoted_semicolons(self):
         """Test handling semicolons inside strings."""
-        from db.plugins.sqlite.parser.sqlite_regex_parser import SQLiteRegexParser
+        from dblift.db.plugins.sqlite.parser.sqlite_regex_parser import SQLiteRegexParser
 
         parser = SQLiteRegexParser()
 
@@ -154,14 +154,14 @@ class TestSQLiteConfig:
 
     def test_name_property(self):
         """Test dialect name property."""
-        from db.plugins.sqlite.parser.parser_config import SQLiteConfig
+        from dblift.db.plugins.sqlite.parser.parser_config import SQLiteConfig
 
         config = SQLiteConfig()
         assert config.name == "sqlite"
 
     def test_supports_features(self):
         """Test feature support flags."""
-        from db.plugins.sqlite.parser.parser_config import SQLiteConfig
+        from dblift.db.plugins.sqlite.parser.parser_config import SQLiteConfig
 
         config = SQLiteConfig()
 
@@ -174,7 +174,7 @@ class TestSQLiteConfig:
 
     def test_ddl_keywords(self):
         """Test DDL keywords."""
-        from db.plugins.sqlite.parser.parser_config import SQLiteConfig
+        from dblift.db.plugins.sqlite.parser.parser_config import SQLiteConfig
 
         config = SQLiteConfig()
         keywords = config.get_ddl_keywords()
@@ -188,7 +188,7 @@ class TestSQLiteConfig:
 
     def test_dml_keywords(self):
         """Test DML keywords."""
-        from db.plugins.sqlite.parser.parser_config import SQLiteConfig
+        from dblift.db.plugins.sqlite.parser.parser_config import SQLiteConfig
 
         config = SQLiteConfig()
         keywords = config.get_dml_keywords()
@@ -202,7 +202,7 @@ class TestSQLiteConfig:
         """Test identifier pattern."""
         import re
 
-        from db.plugins.sqlite.parser.parser_config import SQLiteConfig
+        from dblift.db.plugins.sqlite.parser.parser_config import SQLiteConfig
 
         config = SQLiteConfig()
         pattern = config.get_identifier_pattern()
@@ -217,7 +217,7 @@ class TestSQLiteConfig:
 
     def test_normalize_identifier(self):
         """Test identifier normalization."""
-        from db.plugins.sqlite.parser.parser_config import SQLiteConfig
+        from dblift.db.plugins.sqlite.parser.parser_config import SQLiteConfig
 
         config = SQLiteConfig()
 

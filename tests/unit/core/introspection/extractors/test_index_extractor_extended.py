@@ -17,7 +17,7 @@ from unittest.mock import MagicMock, call, patch
 
 import pytest
 
-from core.introspection.extractors.index_extractor import (
+from dblift.core.introspection.extractors.index_extractor import (
     IndexExtractor,
     normalize_postgresql_index_predicate,
 )
@@ -1005,7 +1005,7 @@ class TestSupportsSortDirection:
 class TestIsOracleHiddenColumn:
     @staticmethod
     def _quirks():
-        from db.provider_registry import ProviderRegistry
+        from dblift.db.provider_registry import ProviderRegistry
 
         return ProviderRegistry.get_quirks("oracle")
 
@@ -1037,7 +1037,7 @@ class TestIsOracleHiddenColumn:
 class TestSanitizeIndexName:
     @staticmethod
     def _quirks(dialect: str):
-        from db.provider_registry import ProviderRegistry
+        from dblift.db.provider_registry import ProviderRegistry
 
         return ProviderRegistry.get_quirks(dialect)
 

@@ -6,7 +6,7 @@ import argparse
 
 import pytest
 
-from cli.db_utils import setup_db_utils_parser
+from dblift.cli.db_utils import setup_db_utils_parser
 
 
 def _make_parser() -> argparse.ArgumentParser:

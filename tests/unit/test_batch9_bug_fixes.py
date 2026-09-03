@@ -25,7 +25,7 @@ class TestBug01CosmosDbParamSubstitution(unittest.TestCase):
     contract stays pinned here."""
 
     def _make_executor(self):
-        from db.plugins.cosmosdb.cosmosdb.query_executor import CosmosDbQueryExecutor
+        from dblift.db.plugins.cosmosdb.cosmosdb.query_executor import CosmosDbQueryExecutor
 
         executor = CosmosDbQueryExecutor.__new__(CosmosDbQueryExecutor)
         executor.log = MagicMock()
@@ -35,7 +35,7 @@ class TestBug01CosmosDbParamSubstitution(unittest.TestCase):
 
     # ---- _substitute_params helper ----------------------------------------
     def test_substitute_params_replaces_single_placeholder(self) -> None:
-        from db.plugins.cosmosdb.cosmosdb.query_executor import CosmosDbQueryExecutor
+        from dblift.db.plugins.cosmosdb.cosmosdb.query_executor import CosmosDbQueryExecutor
 
         out = CosmosDbQueryExecutor._substitute_params(
             "script = ? AND success = false", ["V1__foo.py"]
@@ -43,13 +43,13 @@ class TestBug01CosmosDbParamSubstitution(unittest.TestCase):
         self.assertEqual(out, "script = 'V1__foo.py' AND success = false")
 
     def test_substitute_params_escapes_single_quotes(self) -> None:
-        from db.plugins.cosmosdb.cosmosdb.query_executor import CosmosDbQueryExecutor
+        from dblift.db.plugins.cosmosdb.cosmosdb.query_executor import CosmosDbQueryExecutor
 
         out = CosmosDbQueryExecutor._substitute_params("name = ?", ["O'Brien"])
         self.assertEqual(out, "name = 'O''Brien'")
 
     def test_substitute_params_renders_bool_none_number_verbatim(self) -> None:
-        from db.plugins.cosmosdb.cosmosdb.query_executor import CosmosDbQueryExecutor
+        from dblift.db.plugins.cosmosdb.cosmosdb.query_executor import CosmosDbQueryExecutor
 
         out = CosmosDbQueryExecutor._substitute_params(
             "a = ? AND b = ? AND c = ? AND d = ?", [True, False, None, 42]
@@ -57,14 +57,14 @@ class TestBug01CosmosDbParamSubstitution(unittest.TestCase):
         self.assertEqual(out, "a = true AND b = false AND c = null AND d = 42")
 
     def test_substitute_params_mismatch_raises(self) -> None:
-        from db.plugins.cosmosdb.cosmosdb.query_executor import CosmosDbQueryExecutor
+        from dblift.db.plugins.cosmosdb.cosmosdb.query_executor import CosmosDbQueryExecutor
 
         with self.assertRaises(ValueError) as ctx:
             CosmosDbQueryExecutor._substitute_params("a = ? AND b = ?", ["x"])
         self.assertIn("Parameter count mismatch", str(ctx.exception))
 
     def test_substitute_params_no_placeholder_returns_unchanged(self) -> None:
-        from db.plugins.cosmosdb.cosmosdb.query_executor import CosmosDbQueryExecutor
+        from dblift.db.plugins.cosmosdb.cosmosdb.query_executor import CosmosDbQueryExecutor
 
         out = CosmosDbQueryExecutor._substitute_params("a = 'x'", [])
         self.assertEqual(out, "a = 'x'")
@@ -75,7 +75,7 @@ class TestBug01CosmosDbParamSubstitution(unittest.TestCase):
 # ---------------------------------------------------------------------------
 class TestNote01MigrationContextNotSubscriptable(unittest.TestCase):
     def test_dict_style_access_raises_actionable_typeerror(self) -> None:
-        from core.migration.executors.python_executor import MigrationContext
+        from dblift.core.migration.executors.python_executor import MigrationContext
 
         ctx = MigrationContext(provider=MagicMock(), log=MagicMock(), dry_run=False)
         with self.assertRaises(TypeError) as err:
@@ -89,7 +89,7 @@ class TestNote01MigrationContextNotSubscriptable(unittest.TestCase):
 
     def test_new_api_attributes_still_work(self) -> None:
         """Sanity: __getitem__ doesn't shadow the typed attribute accessors."""
-        from core.migration.executors.python_executor import MigrationContext
+        from dblift.core.migration.executors.python_executor import MigrationContext
 
         provider = MagicMock()
         provider.connection_manager.database = "DB_PROXY"
@@ -105,7 +105,7 @@ class TestNote01MigrationContextNotSubscriptable(unittest.TestCase):
 # ---------------------------------------------------------------------------
 class TestNote02ValidateConfigCredentialWarning(unittest.TestCase):
     def _run_validate(self, db_type, username, password):
-        from cli import db_utils
+        from dblift.cli import db_utils
 
         urls = {
             "postgres": "postgresql+psycopg://localhost/testdb",
@@ -125,13 +125,13 @@ class TestNote02ValidateConfigCredentialWarning(unittest.TestCase):
 
         stdout, stderr = io.StringIO(), io.StringIO()
         with (
-            patch("cli.db_utils.load_config", return_value=config),
-            patch("cli.db_utils.ProviderRegistry") as reg,
+            patch("dblift.cli.db_utils.load_config", return_value=config),
+            patch("dblift.cli.db_utils.ProviderRegistry") as reg,
         ):
             reg.validate_database_configuration.return_value = (True, None)
             # Pass get_quirks through to the real registry so credentialless
             # detection works correctly; only validate_database_configuration is mocked.
-            from db.provider_registry import ProviderRegistry as _RealReg
+            from dblift.db.provider_registry import ProviderRegistry as _RealReg
 
             reg.get_quirks.side_effect = _RealReg.get_quirks
             with redirect_stdout(stdout), redirect_stderr(stderr):

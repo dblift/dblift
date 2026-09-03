@@ -132,7 +132,7 @@ You can call DBLift directly from Python instead of the CLI:
 
 ```python
 from sqlalchemy import create_engine
-from api import DBLiftClient
+from dblift.api import DBLiftClient
 
 engine = create_engine("postgresql+psycopg://user:password@localhost:5432/mydb")
 with DBLiftClient.from_sqlalchemy(engine, migrations_dir="migrations") as client:

@@ -17,14 +17,14 @@ from __future__ import annotations
 
 import pytest
 
-from db.provider_interfaces import (
+from dblift.db.provider_interfaces import (
     ConnectionProvider,
     MigrationProvider,
     QueryProvider,
     SchemaProvider,
     TransactionalProvider,
 )
-from db.provider_registry import ProviderRegistry
+from dblift.db.provider_registry import ProviderRegistry
 
 ALL_INTERFACES = [
     ConnectionProvider,
@@ -44,7 +44,7 @@ def plugins():
 @pytest.mark.integration
 def test_every_provider_is_subclass_of_baseprovider(plugins):
     """All registered provider_class entries must subclass BaseProvider."""
-    from db.base_provider import BaseProvider
+    from dblift.db.base_provider import BaseProvider
 
     for plugin in plugins:
         assert issubclass(

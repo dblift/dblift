@@ -8,10 +8,10 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from core.migration.commands.migrate_command import MigrateCommand
-from core.migration.migration import MigrationType
-from core.migration.state.migration_display_state import MigrationDisplayState
-from core.migration.state.migration_state import MigrationEntry, MigrationState
+from dblift.core.migration.commands.migrate_command import MigrateCommand
+from dblift.core.migration.migration import MigrationType
+from dblift.core.migration.state.migration_display_state import MigrationDisplayState
+from dblift.core.migration.state.migration_state import MigrationEntry, MigrationState
 
 
 def _command_with_pending_migration(monkeypatch, provider: MagicMock) -> MigrateCommand:

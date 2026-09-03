@@ -2,7 +2,7 @@
 
 import pytest
 
-from core.sql_model.base import ConstraintType, get_constraint_type_name
+from dblift.core.sql_model.base import ConstraintType, get_constraint_type_name
 
 pytestmark = [pytest.mark.unit]
 
@@ -66,11 +66,11 @@ class TestGetConstraintTypeNameExported:
     """AC#1 — function is reachable from core.sql_model package."""
 
     def test_importable_from_package(self) -> None:
-        from core.sql_model import get_constraint_type_name as fn  # noqa: F401
+        from dblift.core.sql_model import get_constraint_type_name as fn  # noqa: F401
 
         assert callable(fn)
 
     def test_in_all(self) -> None:
-        import core.sql_model as pkg
+        import dblift.core.sql_model as pkg
 
         assert "get_constraint_type_name" in pkg.__all__

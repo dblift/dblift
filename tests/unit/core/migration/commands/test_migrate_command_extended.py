@@ -21,11 +21,11 @@ from unittest.mock import MagicMock, call, patch
 
 from sqlalchemy.exc import OperationalError
 
-from core.logger.results import MigrateResult, MigrationInfo
-from core.migration.commands.migrate_command import MigrateCommand
-from core.migration.migration import MigrationType
-from core.migration.state.migration_display_state import MigrationDisplayState
-from core.migration.state.migration_state import MigrationEntry, MigrationState
+from dblift.core.logger.results import MigrateResult, MigrationInfo
+from dblift.core.migration.commands.migrate_command import MigrateCommand
+from dblift.core.migration.migration import MigrationType
+from dblift.core.migration.state.migration_display_state import MigrationDisplayState
+from dblift.core.migration.state.migration_state import MigrationEntry, MigrationState
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -48,6 +48,13 @@ def _pending_entries(objects):
 
 def _pass_through_filters(migrations, **kwargs):
     return list(migrations)
+
+
+def _callback_dir_recursive_map(call):
+    """Return dir_recursive_map from an _execute_callbacks call (pos or kw)."""
+    if len(call.args) >= 5:
+        return call.args[4]
+    return call.kwargs.get("dir_recursive_map")
 
 
 def _make_cmd(
@@ -119,7 +126,7 @@ def _make_migration(
 
 class TestMigrateCommandConstruction(unittest.TestCase):
     def test_log_defaults_to_nulllog_when_none(self):
-        from core.logger import NullLog
+        from dblift.core.logger import NullLog
 
         cmd = MigrateCommand(
             config=MagicMock(),
@@ -278,6 +285,22 @@ class TestExecuteBeforeCallbacks(unittest.TestCase):
         events = [c.args[1] for c in cmd._execute_callbacks.call_args_list]
         self.assertNotIn("beforeRepeatable", events)
 
+    def test_before_versioned_forwards_dir_recursive_map(self):
+        cmd = _make_cmd()
+        cmd._execute_callbacks = MagicMock()
+        m = _make_migration()
+        dir_map = {Path("/extra"): False}
+        cmd._execute_before_callbacks(
+            Path("/migrations"), [m], [], True, None, dir_map, MigrateResult()
+        )
+        versioned = [
+            c for c in cmd._execute_callbacks.call_args_list if c.args[1] == "beforeVersioned"
+        ]
+        self.assertEqual(len(versioned), 1)
+        self.assertIs(_callback_dir_recursive_map(versioned[0]), dir_map)
+        migrate = [c for c in cmd._execute_callbacks.call_args_list if c.args[1] == "beforeMigrate"]
+        self.assertIs(_callback_dir_recursive_map(migrate[0]), dir_map)
+
 
 # ---------------------------------------------------------------------------
 # _execute_after_callbacks
@@ -326,6 +349,23 @@ class TestExecuteAfterCallbacks(unittest.TestCase):
 
         events = [c.args[1] for c in cmd._execute_callbacks.call_args_list]
         self.assertIn("afterRepeatable", events)
+
+    def test_after_versioned_forwards_dir_recursive_map(self):
+        cmd = _make_cmd()
+        cmd._execute_callbacks = MagicMock()
+        m = _make_migration()
+        result = MigrateResult()
+        dir_map = {Path("/extra"): False}
+
+        cmd._execute_after_callbacks(Path("/migrations"), [m], [], True, None, dir_map, result)
+
+        versioned = [
+            c for c in cmd._execute_callbacks.call_args_list if c.args[1] == "afterVersioned"
+        ]
+        self.assertEqual(len(versioned), 1)
+        self.assertIs(_callback_dir_recursive_map(versioned[0]), dir_map)
+        migrate = [c for c in cmd._execute_callbacks.call_args_list if c.args[1] == "afterMigrate"]
+        self.assertIs(_callback_dir_recursive_map(migrate[0]), dir_map)
 
 
 # ---------------------------------------------------------------------------
@@ -407,7 +447,7 @@ class TestExecuteSingleMigration(unittest.TestCase):
         m = _make_migration("V1__a.sql")
         result = MigrateResult()
 
-        with patch("core.migration.commands.migrate_command._emit_script_event"):
+        with patch("dblift.core.migration.commands.migrate_command._emit_script_event"):
             success = cmd._execute_single_migration(
                 m, Path("/migrations"), True, None, None, result
             )
@@ -429,12 +469,40 @@ class TestExecuteSingleMigration(unittest.TestCase):
         m = _make_migration("V1__a.sql")
         result = MigrateResult()
 
-        with patch("core.migration.commands.migrate_command._emit_script_event"):
+        with patch("dblift.core.migration.commands.migrate_command._emit_script_event"):
             success = cmd._execute_single_migration(
                 m, Path("/migrations"), True, None, None, result
             )
 
         self.assertFalse(success)
+
+    def test_engine_error_after_migrate_error_forwards_dir_recursive_map(self):
+        """afterMigrateError on the execute_migration failure path must receive
+        the same dir_recursive_map as sibling callbacks."""
+
+        def _set_error(migration, result):
+            result.set_error("migration failed")
+
+        execution_engine = MagicMock()
+        execution_engine.execute_migration.side_effect = _set_error
+        cmd = _make_cmd(execution_engine=execution_engine)
+        cmd._execute_callbacks = MagicMock()
+        cmd.journal = None
+        m = _make_migration("V1__a.sql")
+        result = MigrateResult()
+        dir_map = {Path("/extra"): False}
+
+        with patch("dblift.core.migration.commands.migrate_command._emit_script_event"):
+            success = cmd._execute_single_migration(
+                m, Path("/migrations"), True, None, dir_map, result
+            )
+
+        self.assertFalse(success)
+        error_calls = [
+            c for c in cmd._execute_callbacks.call_args_list if c.args[1] == "afterMigrateError"
+        ]
+        self.assertEqual(len(error_calls), 1)
+        self.assertIs(_callback_dir_recursive_map(error_calls[0]), dir_map)
 
     def test_exception_in_execute_migration_returns_false(self):
         execution_engine = MagicMock()
@@ -445,7 +513,7 @@ class TestExecuteSingleMigration(unittest.TestCase):
         m = _make_migration("V1__a.sql")
         result = MigrateResult()
 
-        with patch("core.migration.commands.migrate_command._emit_script_event"):
+        with patch("dblift.core.migration.commands.migrate_command._emit_script_event"):
             success = cmd._execute_single_migration(
                 m, Path("/migrations"), True, None, None, result
             )
@@ -460,7 +528,7 @@ class TestExecuteSingleMigration(unittest.TestCase):
         m = _make_migration("V1__a.sql")
         result = MigrateResult()
 
-        with patch("core.migration.commands.migrate_command._emit_script_event"):
+        with patch("dblift.core.migration.commands.migrate_command._emit_script_event"):
             cmd._execute_single_migration(m, Path("/migrations"), True, None, None, result)
 
         journal.start_migration.assert_called_once_with("V1__a.sql", details=unittest.mock.ANY)

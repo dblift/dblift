@@ -6,7 +6,7 @@ import pytest
 
 pytestmark = [pytest.mark.unit]
 
-from config.secrets._cache import SecretsCache
+from dblift.config.secrets._cache import SecretsCache
 
 
 class TestSecretsCache:

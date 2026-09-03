@@ -5,10 +5,10 @@ from types import SimpleNamespace
 import pytest
 from sqlalchemy.engine import make_url
 
-from config.dblift_config import DbliftConfig
-from db.plugins.mariadb.plugin import PLUGIN as MARIADB_PLUGIN
-from db.plugins.mysql.plugin import PLUGIN as MYSQL_PLUGIN
-from db.provider_registry import ProviderRegistry
+from dblift.config.dblift_config import DbliftConfig
+from dblift.db.plugins.mariadb.plugin import PLUGIN as MARIADB_PLUGIN
+from dblift.db.plugins.mysql.plugin import PLUGIN as MYSQL_PLUGIN
+from dblift.db.provider_registry import ProviderRegistry
 
 
 @pytest.fixture
@@ -182,7 +182,7 @@ def test_mariadb_field_based_native_config_passes_validation() -> None:
 
 def test_mysql_session_variables_string_values_are_quoted() -> None:
     """String session variable values must be SQL-quoted to avoid parse errors."""
-    from db.plugins.mysql.sqlalchemy_url import build_sqlalchemy_url
+    from dblift.db.plugins.mysql.sqlalchemy_url import build_sqlalchemy_url
 
     db = SimpleNamespace(
         type="mysql",

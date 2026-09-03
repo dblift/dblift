@@ -20,7 +20,7 @@ import pytest
 @pytest.mark.unit
 class TestCosmosDbProviderGetJdbcUrl:
     def _make_provider(self, connection_url: str):
-        from db.plugins.cosmosdb.provider import CosmosDbProvider
+        from dblift.db.plugins.cosmosdb.provider import CosmosDbProvider
 
         provider = CosmosDbProvider.__new__(CosmosDbProvider)
         provider.log = MagicMock()

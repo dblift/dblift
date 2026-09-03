@@ -1,15 +1,15 @@
-"""Unit tests for `db.plugins.oracle.parser._object_extractor` (Phase-Oracle-04)."""
+"""Unit tests for `dblift.db.plugins.oracle.parser._object_extractor` (Phase-Oracle-04)."""
 
 from __future__ import annotations
 
 import pytest
 
-from core.sql_model.index import Index
-from core.sql_model.procedure import Procedure
-from core.sql_model.sequence import Sequence
-from core.sql_model.table import Table
-from core.sql_model.view import View
-from db.plugins.oracle.parser._object_extractor import extract_objects
+from dblift.core.sql_model.index import Index
+from dblift.core.sql_model.procedure import Procedure
+from dblift.core.sql_model.sequence import Sequence
+from dblift.core.sql_model.table import Table
+from dblift.core.sql_model.view import View
+from dblift.db.plugins.oracle.parser._object_extractor import extract_objects
 
 
 @pytest.mark.unit

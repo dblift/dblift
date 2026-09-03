@@ -19,18 +19,18 @@ import inspect
 import pkgutil
 import unittest
 
-from db.base_provider import BaseProvider
+from dblift.db.base_provider import BaseProvider
 
 _REQUIRED_PARAMETERS = ("schema", "script_name", "checksum", "table_name", "success_value")
 
 
 def _iter_concrete_provider_classes() -> list[type[BaseProvider]]:
-    """Every concrete ``BaseProvider`` subclass under ``db.plugins``.
+    """Every concrete ``BaseProvider`` subclass under ``dblift.db.plugins``.
 
     Import side-effects only — no instantiation, so optional drivers need not
     be installed.
     """
-    import db.plugins as plugins_pkg
+    import dblift.db.plugins as plugins_pkg
 
     discovered: dict[str, type[BaseProvider]] = {}
     for module_info in pkgutil.walk_packages(

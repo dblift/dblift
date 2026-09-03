@@ -16,7 +16,7 @@ Coverage focus:
 import unittest
 from unittest.mock import MagicMock, patch
 
-from core.migration.sql.sql_analyzer import SqlAnalyzer
+from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
 
 
 class TestSqlAnalyzerDialectRequired(unittest.TestCase):
@@ -482,7 +482,7 @@ class TestSqlAnalyzerInit(unittest.TestCase):
 
     def test_parser_factory_init_failure_falls_back(self):
         """When SqlParserFactory raises for regex parser, _db_specific_parser is None."""
-        with patch("core.migration.sql.sql_analyzer.SqlParserFactory") as mock_factory_cls:
+        with patch("dblift.core.migration.sql.sql_analyzer.SqlParserFactory") as mock_factory_cls:
             instance = MagicMock()
             instance.get_parser.side_effect = Exception("no regex parser")
             mock_factory_cls.return_value = instance

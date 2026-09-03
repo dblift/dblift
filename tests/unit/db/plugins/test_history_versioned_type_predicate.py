@@ -25,9 +25,9 @@ from pathlib import Path
 import pytest
 from sqlalchemy import create_engine
 
-from api import DBLiftClient
-from core.migration.migration import MigrationType
-from db.plugins.base_history_manager import (
+from dblift.api import DBLiftClient
+from dblift.core.migration.migration import MigrationType
+from dblift.db.plugins.base_history_manager import (
     VERSIONED_HISTORY_TYPES,
     VERSIONED_HISTORY_TYPES_SQL_IN,
 )
@@ -46,16 +46,16 @@ _BODIES = {"sql": (V_SQL, U_SQL), "py": (V_PY, U_PY)}
 # providers that own their history inline, and the two dialects that still
 # attach a history component.
 _HISTORY_SOURCES = [
-    "db/plugins/base_history_manager.py",
-    "db/plugins/postgresql/provider.py",
-    "db/plugins/oracle/provider.py",
-    "db/plugins/snowflake/provider.py",
-    "db/plugins/mysql/provider.py",
-    "db/plugins/sqlserver/provider.py",
-    "db/plugins/duckdb/provider.py",
-    "db/plugins/db2/provider.py",
-    "db/plugins/sqlite/sqlite/history_manager.py",
-    "db/plugins/cosmosdb/cosmosdb/history_manager.py",
+    "dblift/db/plugins/base_history_manager.py",
+    "dblift/db/plugins/postgresql/provider.py",
+    "dblift/db/plugins/oracle/provider.py",
+    "dblift/db/plugins/snowflake/provider.py",
+    "dblift/db/plugins/mysql/provider.py",
+    "dblift/db/plugins/sqlserver/provider.py",
+    "dblift/db/plugins/duckdb/provider.py",
+    "dblift/db/plugins/db2/provider.py",
+    "dblift/db/plugins/sqlite/sqlite/history_manager.py",
+    "dblift/db/plugins/cosmosdb/cosmosdb/history_manager.py",
 ]
 
 

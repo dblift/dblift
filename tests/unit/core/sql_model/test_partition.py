@@ -2,8 +2,8 @@
 
 import pytest
 
-from core.sql_model.base import SqlObjectType
-from core.sql_model.partition import Partition
+from dblift.core.sql_model.base import SqlObjectType
+from dblift.core.sql_model.partition import Partition
 
 pytestmark = [pytest.mark.unit]
 

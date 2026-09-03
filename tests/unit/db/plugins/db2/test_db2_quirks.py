@@ -6,8 +6,8 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from core.sql_generator.sql_statement import SqlStatement
-from db.plugins.db2.quirks import Db2Quirks
+from dblift.core.sql_generator.sql_statement import SqlStatement
+from dblift.db.plugins.db2.quirks import Db2Quirks
 
 
 def test_build_snapshot_table_ddl_refuses_db2_snapshot_ddl() -> None:
@@ -190,4 +190,4 @@ def test_db2_retry_drop_lookup_failure_logs_under_this_modules_own_logger(caplog
     emitters = {
         record.name for record in caplog.records if "catalog unavailable" in record.getMessage()
     }
-    assert emitters == {"db.plugins.db2.quirks"}
+    assert emitters == {"dblift.db.plugins.db2.quirks"}

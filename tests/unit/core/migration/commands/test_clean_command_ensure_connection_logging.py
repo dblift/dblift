@@ -4,7 +4,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from core.migration.commands.clean_command import CleanCommand
+from dblift.core.migration.commands.clean_command import CleanCommand
 
 
 @pytest.mark.unit
@@ -39,7 +39,7 @@ class TestCleanCommandEnsureConnectionLogging:
         """AC#3.1: _ensure_connection raises → log.debug called with '_ensure_connection skipped'.
 
         ``_ensure_connected`` now formats connection failures via
-        ``db.error.format_connection_error`` before re-raising (so every
+        ``dblift.db.error.format_connection_error`` before re-raising (so every
         command reports connection errors the same friendly way), so the
         debug log carries that formatted message rather than the raw
         driver text.

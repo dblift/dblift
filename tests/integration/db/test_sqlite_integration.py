@@ -19,7 +19,7 @@ from pathlib import Path
 
 import pytest
 
-from core.logger import Log
+from dblift.core.logger import Log
 
 
 class DummyLogger(Log):
@@ -90,8 +90,8 @@ class TestSQLiteProviderConnection:
 
     def test_connect_file_database(self, sqlite_temp_db, dummy_logger):
         """Test connecting to a file-based SQLite database."""
-        from config import DbliftConfig
-        from db.plugins.sqlite.provider import SQLiteProvider
+        from dblift.config import DbliftConfig
+        from dblift.db.plugins.sqlite.provider import SQLiteProvider
 
         config_dict = {
             "database": {
@@ -119,8 +119,8 @@ class TestSQLiteProviderConnection:
 
     def test_connect_memory_database(self, sqlite_memory_db, dummy_logger):
         """Test connecting to an in-memory SQLite database."""
-        from config import DbliftConfig
-        from db.plugins.sqlite.provider import SQLiteProvider
+        from dblift.config import DbliftConfig
+        from dblift.db.plugins.sqlite.provider import SQLiteProvider
 
         config_dict = {
             "database": {
@@ -147,8 +147,8 @@ class TestSQLiteProviderConnection:
 
     def test_execute_statement(self, sqlite_temp_db, dummy_logger):
         """Test executing SQL statements."""
-        from config import DbliftConfig
-        from db.plugins.sqlite.provider import SQLiteProvider
+        from dblift.config import DbliftConfig
+        from dblift.db.plugins.sqlite.provider import SQLiteProvider
 
         config_dict = {
             "database": {
@@ -190,8 +190,8 @@ class TestSQLiteHistoryManagement:
 
     def test_create_history_table(self, sqlite_temp_db, dummy_logger):
         """Test creating migration history table."""
-        from config import DbliftConfig
-        from db.plugins.sqlite.provider import SQLiteProvider
+        from dblift.config import DbliftConfig
+        from dblift.db.plugins.sqlite.provider import SQLiteProvider
 
         config_dict = {
             "database": {
@@ -220,8 +220,8 @@ class TestSQLiteHistoryManagement:
 
     def test_record_migration(self, sqlite_temp_db, dummy_logger):
         """Test recording a migration in history."""
-        from config import DbliftConfig
-        from db.plugins.sqlite.provider import SQLiteProvider
+        from dblift.config import DbliftConfig
+        from dblift.db.plugins.sqlite.provider import SQLiteProvider
 
         config_dict = {
             "database": {
@@ -262,8 +262,8 @@ class TestSQLiteHistoryManagement:
 
     def test_get_applied_migrations_empty(self, sqlite_temp_db, dummy_logger):
         """Test getting migrations when none exist."""
-        from config import DbliftConfig
-        from db.plugins.sqlite.provider import SQLiteProvider
+        from dblift.config import DbliftConfig
+        from dblift.db.plugins.sqlite.provider import SQLiteProvider
 
         config_dict = {
             "database": {
@@ -295,8 +295,8 @@ class TestSQLiteSchemaOperations:
 
     def test_clean_schema(self, sqlite_temp_db, dummy_logger):
         """Test cleaning database objects."""
-        from config import DbliftConfig
-        from db.plugins.sqlite.provider import SQLiteProvider
+        from dblift.config import DbliftConfig
+        from dblift.db.plugins.sqlite.provider import SQLiteProvider
 
         config_dict = {
             "database": {
@@ -337,8 +337,8 @@ class TestSQLiteSchemaOperations:
 
     def test_get_database_version(self, sqlite_temp_db, dummy_logger):
         """Test getting database version."""
-        from config import DbliftConfig
-        from db.plugins.sqlite.provider import SQLiteProvider
+        from dblift.config import DbliftConfig
+        from dblift.db.plugins.sqlite.provider import SQLiteProvider
 
         config_dict = {
             "database": {
@@ -371,8 +371,8 @@ class TestSQLiteLocking:
 
     def test_acquire_and_release_lock(self, sqlite_temp_db, dummy_logger):
         """Test acquiring and releasing migration lock."""
-        from config import DbliftConfig
-        from db.plugins.sqlite.provider import SQLiteProvider
+        from dblift.config import DbliftConfig
+        from dblift.db.plugins.sqlite.provider import SQLiteProvider
 
         config_dict = {
             "database": {
@@ -403,8 +403,8 @@ class TestSQLiteLocking:
 
     def test_lock_prevents_concurrent_acquisition(self, sqlite_temp_db, dummy_logger):
         """Test that lock prevents concurrent acquisition."""
-        from config import DbliftConfig
-        from db.plugins.sqlite.provider import SQLiteProvider
+        from dblift.config import DbliftConfig
+        from dblift.db.plugins.sqlite.provider import SQLiteProvider
 
         config_dict = {
             "database": {
@@ -452,8 +452,8 @@ class TestSQLiteTransactions:
 
     def test_transaction_commit(self, sqlite_temp_db, dummy_logger):
         """Test transaction commit."""
-        from config import DbliftConfig
-        from db.plugins.sqlite.provider import SQLiteProvider
+        from dblift.config import DbliftConfig
+        from dblift.db.plugins.sqlite.provider import SQLiteProvider
 
         config_dict = {
             "database": {
@@ -493,8 +493,8 @@ class TestSQLiteTransactions:
 
     def test_transaction_rollback(self, sqlite_temp_db, dummy_logger):
         """Test transaction rollback."""
-        from config import DbliftConfig
-        from db.plugins.sqlite.provider import SQLiteProvider
+        from dblift.config import DbliftConfig
+        from dblift.db.plugins.sqlite.provider import SQLiteProvider
 
         config_dict = {
             "database": {

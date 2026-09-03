@@ -20,7 +20,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from db.plugins.sqlserver.sqlserver.schema_operations import SqlServerSchemaOperations
+from dblift.db.plugins.sqlserver.sqlserver.schema_operations import SqlServerSchemaOperations
 
 
 def _make_two_schema_query_executor():

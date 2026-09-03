@@ -10,7 +10,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from core.introspection.extractors.column_extractor import ColumnExtractor
+from dblift.core.introspection.extractors.column_extractor import ColumnExtractor
 
 pytestmark = [pytest.mark.unit]
 
@@ -312,7 +312,7 @@ class TestEnhanceWithVendorQueries(unittest.TestCase):
         extractor = _make_extractor(dialect="sqlserver", vendor_queries=vq)
 
         # Create fake column with no default
-        from core.sql_model.base import SqlColumn
+        from dblift.core.sql_model.base import SqlColumn
 
         col = SqlColumn(
             name="created_at", data_type="DATETIME2", is_nullable=True, dialect="sqlserver"
@@ -326,7 +326,7 @@ class TestEnhanceWithVendorQueries(unittest.TestCase):
 
     def test_non_sqlserver_returns_columns_unchanged(self):
         extractor = _make_extractor(dialect="postgresql")
-        from core.sql_model.base import SqlColumn
+        from dblift.core.sql_model.base import SqlColumn
 
         col = SqlColumn(name="id", data_type="int4", is_nullable=False, dialect="postgresql")
         result = extractor._enhance_with_vendor_queries("public", "t", [col])
@@ -334,7 +334,7 @@ class TestEnhanceWithVendorQueries(unittest.TestCase):
 
     def test_sqlserver_no_vendor_queries_returns_unchanged(self):
         extractor = _make_extractor(dialect="sqlserver", vendor_queries=None)
-        from core.sql_model.base import SqlColumn
+        from dblift.core.sql_model.base import SqlColumn
 
         col = SqlColumn(name="id", data_type="int", is_nullable=False, dialect="sqlserver")
         result = extractor._enhance_with_vendor_queries("dbo", "t", [col])
@@ -344,7 +344,7 @@ class TestEnhanceWithVendorQueries(unittest.TestCase):
         vq = MagicMock()
         vq.get_column_defaults_query.return_value = ("SELECT 1", [])
         extractor = _make_extractor(dialect="sqlserver", vendor_queries=vq)
-        from core.sql_model.base import SqlColumn
+        from dblift.core.sql_model.base import SqlColumn
 
         col = SqlColumn(
             name="status",

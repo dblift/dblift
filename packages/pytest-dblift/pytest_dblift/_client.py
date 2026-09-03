@@ -7,7 +7,7 @@ from typing import Any
 
 import pytest
 
-from api import DBLiftClient
+from dblift.api import DBLiftClient
 
 
 def _worker_id(config: pytest.Config) -> str:

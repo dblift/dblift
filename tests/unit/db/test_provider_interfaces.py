@@ -11,8 +11,8 @@ Vérifie que :
 
 import pytest
 
-from db.base_provider import BaseProvider, NativeProvider
-from db.provider_interfaces import (
+from dblift.db.base_provider import BaseProvider, NativeProvider
+from dblift.db.provider_interfaces import (
     ConnectionProvider,
     MigrationProvider,
     QueryProvider,
@@ -133,14 +133,14 @@ class TestCannotInstantiateABCs:
 class TestNativeProviderImplementsAllInterfaces:
     @pytest.mark.parametrize("interface", ALL_INTERFACES, ids=lambda i: i.__name__)
     def test_db2_implements_interface(self, interface):
-        from db.plugins.db2.provider import Db2Provider
+        from dblift.db.plugins.db2.provider import Db2Provider
 
         assert issubclass(Db2Provider, interface)
         assert issubclass(Db2Provider, NativeProvider)
 
     @pytest.mark.parametrize("interface", ALL_INTERFACES, ids=lambda i: i.__name__)
     def test_oracle_implements_interface(self, interface):
-        from db.plugins.oracle.provider import OracleProvider
+        from dblift.db.plugins.oracle.provider import OracleProvider
 
         assert issubclass(OracleProvider, interface)
         assert issubclass(OracleProvider, NativeProvider)
@@ -153,12 +153,12 @@ class TestNativeProviderImplementsAllInterfaces:
 
 class TestCosmosDbProviderInheritance:
     def test_cosmosdb_is_subclass_of_base_provider(self):
-        from db.plugins.cosmosdb.provider import CosmosDbProvider
+        from dblift.db.plugins.cosmosdb.provider import CosmosDbProvider
 
         assert issubclass(CosmosDbProvider, BaseProvider)
 
     def test_cosmosdb_is_subclass_of_all_interfaces(self):
-        from db.plugins.cosmosdb.provider import CosmosDbProvider
+        from dblift.db.plugins.cosmosdb.provider import CosmosDbProvider
 
         for interface in ALL_INTERFACES:
             assert issubclass(
@@ -168,13 +168,13 @@ class TestCosmosDbProviderInheritance:
 
 class TestSQLiteProviderInheritance:
     def test_sqlite_is_subclass_of_base_provider(self):
-        from db.plugins.sqlite.provider import SQLiteProvider
+        from dblift.db.plugins.sqlite.provider import SQLiteProvider
 
         assert issubclass(SQLiteProvider, BaseProvider)
         assert issubclass(SQLiteProvider, NativeProvider)
 
     def test_sqlite_is_subclass_of_all_interfaces(self):
-        from db.plugins.sqlite.provider import SQLiteProvider
+        from dblift.db.plugins.sqlite.provider import SQLiteProvider
 
         for interface in ALL_INTERFACES:
             assert issubclass(
@@ -184,13 +184,13 @@ class TestSQLiteProviderInheritance:
 
 class TestMySqlProviderInheritance:
     def test_mysql_is_subclass_of_base_provider(self):
-        from db.plugins.mysql.provider import MySqlProvider
+        from dblift.db.plugins.mysql.provider import MySqlProvider
 
         assert issubclass(MySqlProvider, BaseProvider)
         assert issubclass(MySqlProvider, NativeProvider)
 
     def test_mysql_is_subclass_of_all_interfaces(self):
-        from db.plugins.mysql.provider import MySqlProvider
+        from dblift.db.plugins.mysql.provider import MySqlProvider
 
         for interface in ALL_INTERFACES:
             assert issubclass(
@@ -200,13 +200,13 @@ class TestMySqlProviderInheritance:
 
 class TestSqlServerProviderInheritance:
     def test_sqlserver_is_subclass_of_base_provider(self):
-        from db.plugins.sqlserver.provider import SqlServerProvider
+        from dblift.db.plugins.sqlserver.provider import SqlServerProvider
 
         assert issubclass(SqlServerProvider, BaseProvider)
         assert issubclass(SqlServerProvider, NativeProvider)
 
     def test_sqlserver_is_subclass_of_all_interfaces(self):
-        from db.plugins.sqlserver.provider import SqlServerProvider
+        from dblift.db.plugins.sqlserver.provider import SqlServerProvider
 
         for interface in ALL_INTERFACES:
             assert issubclass(
@@ -221,7 +221,7 @@ class TestSqlServerProviderInheritance:
 
 class TestCosmosDbSupportsTransactions:
     def test_supports_transactions_returns_false(self):
-        from db.plugins.cosmosdb.provider import CosmosDbProvider
+        from dblift.db.plugins.cosmosdb.provider import CosmosDbProvider
 
         # Use __new__ to avoid __init__ dependencies
         provider = CosmosDbProvider.__new__(CosmosDbProvider)
@@ -235,13 +235,13 @@ class TestCosmosDbSupportsTransactions:
 
 class TestNativeSupportsTransactions:
     def test_db2_supports_transactions(self):
-        from db.plugins.db2.provider import Db2Provider
+        from dblift.db.plugins.db2.provider import Db2Provider
 
         provider = Db2Provider.__new__(Db2Provider)
         assert provider.supports_transactions() is True
 
     def test_oracle_supports_transactions(self):
-        from db.plugins.oracle.provider import OracleProvider
+        from dblift.db.plugins.oracle.provider import OracleProvider
 
         provider = OracleProvider.__new__(OracleProvider)
         assert provider.supports_transactions() is True

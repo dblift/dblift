@@ -7,26 +7,26 @@ from unittest.mock import MagicMock, patch
 
 class TestMigrationExecutorGuards(unittest.TestCase):
     def test_executor_does_not_expose_paid_diff_or_plan_methods(self):
-        from core.migration.executor.migration_executor import MigrationExecutor
+        from dblift.core.migration.executor.migration_executor import MigrationExecutor
 
         self.assertFalse(hasattr(MigrationExecutor, "diff"))
         self.assertFalse(hasattr(MigrationExecutor, "plan"))
 
     def test_raises_when_provider_none(self):
-        from core.migration.executor.migration_executor import MigrationExecutor
+        from dblift.core.migration.executor.migration_executor import MigrationExecutor
 
         with self.assertRaises(ValueError) as ctx:
             MigrationExecutor(provider=None, config=MagicMock(), log=MagicMock())
         self.assertIn("provider", str(ctx.exception).lower())
 
     def test_raises_when_config_none(self):
-        from core.migration.executor.migration_executor import MigrationExecutor
+        from dblift.core.migration.executor.migration_executor import MigrationExecutor
 
         with self.assertRaises((ValueError, AttributeError)):
             MigrationExecutor(provider=MagicMock(), config=None, log=MagicMock())
 
     def test_raises_when_log_none(self):
-        from core.migration.executor.migration_executor import MigrationExecutor
+        from dblift.core.migration.executor.migration_executor import MigrationExecutor
 
         with self.assertRaises((ValueError, AttributeError)):
             MigrationExecutor(provider=MagicMock(), config=None, log=None)
@@ -35,7 +35,7 @@ class TestMigrationExecutorGuards(unittest.TestCase):
 class TestGetInstalledBy(unittest.TestCase):
     def _make_executor(self):
         """Create minimal executor without full provider setup."""
-        from core.migration.executor.migration_executor import MigrationExecutor
+        from dblift.core.migration.executor.migration_executor import MigrationExecutor
 
         config = MagicMock()
         config.installed_by = None
@@ -50,7 +50,7 @@ class TestGetInstalledBy(unittest.TestCase):
         log = MagicMock()
 
         with patch.multiple(
-            "core.migration.executor.migration_executor",
+            "dblift.core.migration.executor.migration_executor",
             MigrationScriptManager=MagicMock(),
             MigrationHistoryManager=MagicMock(),
             MigrationValidator=MagicMock(),
@@ -63,9 +63,11 @@ class TestGetInstalledBy(unittest.TestCase):
             MigrationHelpers=MagicMock(),
             ExecutionEngine=MagicMock(),
         ):
-            from core.migration.executor.migration_executor import MigrationExecutor
+            from dblift.core.migration.executor.migration_executor import MigrationExecutor
 
-            with patch("core.migration.sql.sql_execution_service.SqlExecutionService", MagicMock()):
+            with patch(
+                "dblift.core.migration.sql.sql_execution_service.SqlExecutionService", MagicMock()
+            ):
                 try:
                     executor = MigrationExecutor(provider=provider, config=config, log=log)
                     return executor, config

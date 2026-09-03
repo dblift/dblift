@@ -1,0 +1,431 @@
+"""Column enrichment helpers for ``SchemaIntrospector``.
+
+Extracted from :mod:`dblift.core.introspection.schema_introspector` to keep the
+orchestrator focused. ``SchemaIntrospector`` keeps thin wrapper methods
+(``enrich_columns_with_computed``, ``enrich_columns_with_identity``)
+that delegate here, preserving the public surface used by tests and
+callers.
+
+The two helpers take the introspector instance as their first parameter
+(``si``) instead of being bound methods so the dependency on
+``self.vendor_queries`` / ``self.provider`` / ``self.connection`` /
+``self.dialect`` / ``self.log`` and the helpers ``self._get_row_value``
+/ ``self._ensure_metadata`` is explicit.
+"""
+
+from __future__ import annotations
+
+import traceback
+from typing import TYPE_CHECKING, Any, List
+
+if TYPE_CHECKING:
+    from dblift.core.introspection.schema_introspector import SchemaIntrospector
+    from dblift.core.sql_model.base import SqlColumn
+
+
+def enrich_columns_with_computed(
+    si: "SchemaIntrospector", schema: str, table: str, columns: List["SqlColumn"]
+) -> None:
+    """Enrich *columns* with computed/generated column metadata.
+
+    The base column extractor loads the coarse computed flag from the
+    plugin's column query. This pass enriches matching columns with
+    expression/storage details from the plugin's computed-column query.
+    """
+    # Columns may already have is_computed set from the plugin's column query.
+    # This method adds detailed metadata (expression, stored flag).
+
+    # Try to add detailed metadata from vendor queries if available
+    if not si.vendor_queries or not si.vendor_queries.supports_computed_columns():
+        si.log.debug(
+            "enrich_columns_with_computed: vendor queries not available or "
+            "don't support computed columns"
+        )
+        return
+
+    # Ensure we have a connection without requesting metadata on native providers.
+    if getattr(si.provider, "provider_transport", "native") == "native":
+        si._ensure_native_connection()
+    else:
+        si._ensure_metadata()
+
+    try:
+        sql, params = si.vendor_queries.get_computed_columns_query(schema, table)
+        if not sql:
+            si.log.debug(
+                f"enrich_columns_with_computed: no SQL query returned for {schema}.{table}"
+            )
+            return
+
+        si.log.debug(
+            f"enrich_columns_with_computed: querying computed columns for "
+            f"{schema}.{table} with params {params}"
+        )
+
+        results = si.provider.query_executor.execute_query(si.connection, sql, params)
+
+        si.log.debug(
+            f"enrich_columns_with_computed: query returned {len(results)} rows "
+            f"for {schema}.{table}"
+        )
+
+        # Create a mapping of column name to computed metadata
+        computed_map = {}
+        for row in results:
+            si.log.debug(f"enrich_columns_with_computed: processing row: {row}")
+            column_name = (
+                si._get_row_value(row, "column_name")
+                or row.get("COLUMN_NAME")
+                or row.get("column_name")
+            )
+            if column_name:
+                # Get computation expression - try multiple column name variations.
+                # DB2 TEXT column contains full definition like
+                # "GENERATED ALWAYS AS (price * quantity)" — extract just the expression part.
+                computation_expr = (
+                    si._get_row_value(row, "computation_expression")
+                    or row.get("COMPUTATION_EXPRESSION")
+                    or row.get("computation_expression")
+                    or si._get_row_value(row, "text")
+                    or row.get("TEXT")
+                    or row.get("text")
+                )
+                # Vendor-specific wrapper extraction (DB2 unwraps
+                # ``GENERATED ALWAYS AS (...)`` from SYSCAT.COLUMNS.TEXT;
+                # other dialects return the expression as-is).
+                if computation_expr:
+                    from dblift.db.provider_registry import ProviderRegistry
+
+                    quirks = ProviderRegistry.get_quirks(si.dialect or "")
+                    computation_expr = quirks.extract_computed_column_expression(computation_expr)
+                # Convert to string if it's not already (handles CLOB objects)
+                if computation_expr is not None:
+                    if not isinstance(computation_expr, str):
+                        computation_expr = str(computation_expr)
+                    # Strip whitespace and check if not empty
+                    computation_expr = computation_expr.strip()
+                    # DB2: Handle empty strings - if expression is empty, skip this column.
+                    # Empty expression means the column might not actually be computed
+                    if not computation_expr:
+                        si.log.debug(
+                            f"DB2 computed column {column_name} has empty expression, "
+                            "skipping enrichment"
+                        )
+                        continue
+                # Only add to map if expression is not None and not empty
+                if computation_expr:
+                    computed_map[column_name.upper()] = {
+                        "computation_expression": computation_expr,
+                        "is_stored": (
+                            si._get_row_value(row, "is_stored")
+                            or row.get("IS_STORED")
+                            or row.get("is_stored")
+                        ),
+                    }
+                    si.log.debug(
+                        f"enrich_columns_with_computed: added computed column "
+                        f"{column_name} with expression: {computation_expr}"
+                    )
+                else:
+                    # Log when we have a computed column but couldn't extract expression
+                    si.log.debug(
+                        f"Could not extract computation expression for column "
+                        f"{column_name} from row: {row}"
+                    )
+
+        si.log.debug(
+            f"enrich_columns_with_computed: computed_map has {len(computed_map)} "
+            f"entries: {list(computed_map.keys())}"
+        )
+        si.log.debug(
+            f"enrich_columns_with_computed: checking {len(columns)} columns: "
+            f"{[col.name for col in columns]}"
+        )
+
+        # Enrich matching columns with detailed metadata
+        for column in columns:
+            computed_data = computed_map.get(column.name.upper())
+            si.log.debug(
+                f"enrich_columns_with_computed: column {column.name} "
+                f"(upper: {column.name.upper()}) -> computed_data: "
+                f"{computed_data is not None}"
+            )
+            if computed_data:
+                # Mark as computed (may already be marked from the column query)
+                column.is_computed = True
+                # Add detailed metadata using SQL Model attribute names
+                column.computed_expression = computed_data["computation_expression"]
+                # Convert is_stored boolean to computed_stored.
+                # Handle both string ('Y'/'N') and boolean values
+                is_stored_value = computed_data["is_stored"]
+                if is_stored_value is not None:
+                    if isinstance(is_stored_value, str):
+                        # String values: 'Y', 'YES', 'TRUE' -> True, else False
+                        column.computed_stored = is_stored_value.upper() in (
+                            "Y",
+                            "YES",
+                            "TRUE",
+                            "1",
+                        )
+                    else:
+                        # Boolean or numeric values
+                        column.computed_stored = bool(is_stored_value)
+            elif getattr(column, "is_computed", False):
+                # Column was marked as computed but we couldn't find expression.
+                # Clear the flag to avoid generating invalid SQL.
+                # This handles cases where a catalog source marks columns as computed
+                # even though the dialect query has no expression for them.
+                si.log.debug(
+                    f"Column {column.name} was marked as computed but no expression "
+                    "found, clearing is_computed flag"
+                )
+                column.is_computed = False
+                column.computed_expression = None
+
+        if computed_map:
+            si.log.debug(
+                f"Enriched {len(computed_map)} computed columns with detailed "
+                f"metadata for {schema}.{table}"
+            )
+
+    except Exception as e:
+        si.log.warning(f"Error enriching computed columns for {schema}.{table}: {e}")
+        si.log.debug(f"Traceback: {traceback.format_exc()}")
+        si.log.warning(
+            f"Could not enrich computed columns with detailed metadata "
+            f"for {schema}.{table}: {e}"
+        )
+        si._track_error(
+            f"Error getting computed_columns: {e}",
+            object_type="table",
+            object_name=table,
+            property_name="computed_columns",
+            exception=e,
+        )
+        raise
+
+
+def enrich_columns_with_identity(
+    si: "SchemaIntrospector", schema: str, table: str, columns: List["SqlColumn"]
+) -> None:
+    """Enrich *columns* with identity/auto-increment metadata.
+
+    The base column extractor loads the coarse identity flag from the
+    plugin's column query. This pass enriches matching columns with seed,
+    increment, current-value and generation-kind details from the plugin's
+    identity query.
+    """
+    # Columns may already have is_identity set from the plugin's column query.
+    # This method adds detailed metadata (seed, increment) from vendor queries
+
+    # Try to add detailed metadata from vendor queries if available
+    if not si.vendor_queries:
+        return
+
+    # Ensure we have a connection without requesting metadata on native providers.
+    if getattr(si.provider, "provider_transport", "native") == "native":
+        si._ensure_native_connection()
+    else:
+        si._ensure_metadata()
+
+    try:
+        sql, params = si.vendor_queries.get_identity_columns_query(schema, table)
+        if not sql:
+            return
+
+        results = si.provider.query_executor.execute_query(si.connection, sql, params)
+
+        # Create a mapping of column name to identity metadata
+        identity_map = {}
+        for row in results:
+            column_name = (
+                si._get_row_value(row, "column_name")
+                or row.get("COLUMN_NAME")
+                or row.get("column_name")
+            )
+            if column_name:
+                # Generation kind -- whether INSERT may override the
+                # generated value. Optional: dialects whose identity
+                # syntax has no such concept (SQL Server IDENTITY, MySQL
+                # AUTO_INCREMENT) simply don't select it, and the column
+                # keeps ``identity_generation = None``.
+                #
+                # Trimmed here, at the one place a catalog row becomes
+                # model state, because the stored text is what ``to_dict``
+                # serializes and what a snapshot comparison comes back to:
+                # a blank-padded ``'ALWAYS  '`` -- which is what a
+                # ``CHAR(n)`` catalog column hands back, padded to its
+                # declared width -- would read as a difference against the
+                # same kind captured anywhere else. Renderers trim again
+                # on their own side; they cannot assume this pass is what
+                # populated the field.
+                #
+                # A value that is *only* blanks collapses to ``None``
+                # rather than ``''``: a ``CHAR(1)`` catalog blank means
+                # "not generated", so it reports absence, and absence is
+                # already spelled ``None`` by the row that omits the
+                # column entirely. Storing ``''`` would leave the same
+                # "nothing reported" state serializing two unequal ways.
+                generation = (
+                    si._get_row_value(row, "identity_generation")
+                    or row.get("IDENTITY_GENERATION")
+                    or row.get("identity_generation")
+                )
+                if isinstance(generation, str):
+                    generation = generation.strip() or None
+                identity_map[column_name.upper()] = {
+                    "seed_value": (
+                        si._get_row_value(row, "seed_value")
+                        or row.get("SEED_VALUE")
+                        or row.get("seed_value")
+                    ),
+                    "increment_value": (
+                        si._get_row_value(row, "increment_value")
+                        or row.get("INCREMENT_VALUE")
+                        or row.get("increment_value")
+                    ),
+                    "last_value": (
+                        si._get_row_value(row, "last_value")
+                        or row.get("LAST_VALUE")
+                        or row.get("last_value")
+                    ),
+                    "identity_generation": generation,
+                }
+
+        # sql_variant columns (e.g. SQL Server's
+        # sys.identity_columns.seed_value/increment_value/last_value) can
+        # arrive via pymssql/FreeTDS as raw on-wire bytes rather than an int
+        # (e.g. the int 1 as b'\x01\x00\x00\x00'). Normalize those to a plain
+        # int here so every downstream consumer -- regardless of which
+        # dialect's driver quirks produced the raw value -- can rely on
+        # identity_seed/identity_increment/identity_last_value already being
+        # an int. Non-bytes values (str, int, None) pass through unchanged,
+        # exactly as before.
+        #
+        # Bytes are only decoded when their length matches a standard
+        # two's-complement integer width (1, 2, 4, or 8 bytes --
+        # tinyint/smallint/int/bigint). SQL Server also permits IDENTITY on
+        # decimal/numeric columns, whose sql_variant wire shape is a sign
+        # byte plus an *unsigned* magnitude -- not a plain two's-complement
+        # integer -- so decoding those the same way would silently produce a
+        # plausible-looking but wrong value. For any other byte length,
+        # refuse to guess and raise instead; the outer try/except around
+        # this whole enrichment pass logs a warning for it.
+        def _decode_sql_variant_int(column_name: str, field_name: str, value: Any) -> Any:
+            if not isinstance(value, bytes):
+                return value
+            if len(value) not in (1, 2, 4, 8):
+                raise ValueError(
+                    f"Column {column_name!r}: {field_name} arrived as "
+                    f"{len(value)} raw bytes, which is not a standard "
+                    f"two's-complement integer width (1, 2, 4, or 8 bytes). "
+                    f"This looks like a non-integer sql_variant encoding "
+                    f"(e.g. decimal/numeric IDENTITY) that isn't supported yet."
+                )
+            return int.from_bytes(value, byteorder="little", signed=True)
+
+        # Enrich matching columns with detailed metadata
+        for column in columns:
+            identity_data = identity_map.get(column.name.upper())
+            if identity_data:
+                # Mark as identity (may already be marked from the column
+                # query) for now -- the except block below reverts this if
+                # decoding seed OR increment fails, since a column whose real
+                # identity parameters we can't decode must not still claim
+                # is_identity (see that block for why). last_value is decoded
+                # separately below and its failure does NOT revert this: it
+                # has no downstream DDL consumer, so losing it carries none
+                # of the "silently wrong seed/increment" risk the reset here
+                # exists to guard against.
+                column.is_identity = True
+                # A decode failure (see _decode_sql_variant_int above) is
+                # isolated to THIS column, not the whole table: without this,
+                # one decimal/numeric-typed IDENTITY column sitting alongside
+                # ordinary int-typed ones would raise past this loop into the
+                # table-level except below, silently losing seed/increment/
+                # last_value for every column processed after it too -- a
+                # wider blast radius than the single bad column the raise is
+                # actually about.
+                try:
+                    # Add detailed metadata
+                    column.identity_seed = _decode_sql_variant_int(
+                        column.name, "seed_value", identity_data["seed_value"]
+                    )
+                    column.identity_increment = _decode_sql_variant_int(
+                        column.name, "increment_value", identity_data["increment_value"]
+                    )
+                except ValueError as decode_error:
+                    si.log.warning(
+                        f"Could not decode identity metadata for column "
+                        f"{column.name!r} in {schema}.{table}: {decode_error}"
+                    )
+                    # A decode failure means we cannot reliably tell "seed
+                    # decoded fine, increment failed" apart from "failed
+                    # immediately" -- either way, downstream DDL rendering
+                    # must not mistake a leftover None for "never asked, use
+                    # SQL Server's own default". Reset is_identity and the
+                    # three fields render_identity_clause reads so the column
+                    # falls out of identity handling entirely rather than
+                    # rendering a guessed IDENTITY(1,1).
+                    #
+                    # identity_generation is cleared here even though the
+                    # else branch below is what assigns it: an earlier pass
+                    # may already have put one on the column (it is the
+                    # field name information_schema.columns uses), and a
+                    # reset that only undoes this function's own writes
+                    # would leave an is_identity=False column still
+                    # serializing ALWAYS through to_dict.
+                    column.is_identity = False
+                    column.identity_seed = None
+                    column.identity_increment = None
+                    column.identity_generation = None
+                else:
+                    # seed/increment decoded fine -- only now attempt
+                    # last_value, in its own try/except so that a
+                    # last_value-only decode failure (e.g. a non-standard
+                    # byte width) doesn't discard the good seed/increment we
+                    # just stored. Note: last_value is not part of SQL Model,
+                    # store as custom attribute if needed.
+                    #
+                    # identity_generation is assigned here rather than
+                    # alongside is_identity above so it shares the fate of
+                    # seed/increment: render_identity_clause reads it too,
+                    # and a column whose identity metadata could not be
+                    # decoded must fall out of identity handling entirely.
+                    # This placement keeps a value we would immediately
+                    # discard from being written at all; the clear in the
+                    # except branch covers one an earlier pass had already
+                    # put there. Both are needed for the invariant "an
+                    # is_identity=False column carries no generation kind"
+                    # to hold whatever the row and the column arrived with.
+                    column.identity_generation = identity_data["identity_generation"]
+                    if identity_data["last_value"] is not None:
+                        try:
+                            column.identity_last_value = _decode_sql_variant_int(  # type: ignore[attr-defined]
+                                column.name, "last_value", identity_data["last_value"]
+                            )
+                        except ValueError as decode_error:
+                            si.log.warning(
+                                f"Could not decode identity metadata for column "
+                                f"{column.name!r} in {schema}.{table}: {decode_error}"
+                            )
+
+        if identity_map:
+            si.log.debug(
+                f"Enriched {len(identity_map)} identity columns with detailed "
+                f"metadata for {schema}.{table}"
+            )
+
+    except Exception as e:
+        si.log.warning(
+            f"Could not enrich identity columns with detailed metadata "
+            f"for {schema}.{table}: {e}"
+        )
+        si._track_error(
+            f"Error getting identity_columns: {e}",
+            object_type="table",
+            object_name=table,
+            property_name="identity_columns",
+            exception=e,
+        )
+        raise

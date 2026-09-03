@@ -23,7 +23,7 @@ class TestBug01ScriptsDirKwargGuard(unittest.TestCase):
     """
 
     def _make_client(self):
-        from api.client import DBLiftClient
+        from dblift.api.client import DBLiftClient
 
         client = DBLiftClient.__new__(DBLiftClient)
         client.config = MagicMock()
@@ -80,19 +80,19 @@ class TestBug01ScriptsDirKwargGuard(unittest.TestCase):
 # ---------------------------------------------------------------------------
 class TestBug02MigrationAppliedAlias(unittest.TestCase):
     def test_migration_applied_exists(self) -> None:
-        from api.events import EventType
+        from dblift.api.events import EventType
 
         self.assertTrue(hasattr(EventType, "MIGRATION_APPLIED"))
 
     def test_migration_applied_aliases_script_completed(self) -> None:
         """Python collapses enum members with identical values → ``is`` check
         holds and a single listener fires for either name."""
-        from api.events import EventType
+        from dblift.api.events import EventType
 
         self.assertIs(EventType.MIGRATION_APPLIED, EventType.MIGRATION_SCRIPT_COMPLETED)
 
     def test_migration_applied_has_expected_value(self) -> None:
-        from api.events import EventType
+        from dblift.api.events import EventType
 
         self.assertEqual(EventType.MIGRATION_APPLIED.value, "migration.script.completed")
 
@@ -107,14 +107,14 @@ class TestBug02MigrationAppliedAlias(unittest.TestCase):
 
     def test_migration_applied_name_is_canonical(self) -> None:
         """``.name`` resolves to the canonical member name — MIGRATION_APPLIED is now primary."""
-        from api.events import EventType
+        from dblift.api.events import EventType
 
         self.assertEqual(EventType.MIGRATION_APPLIED.name, "MIGRATION_APPLIED")
 
     def test_migration_script_completed_is_alias(self) -> None:
         """Iterating ``EventType`` yields MIGRATION_APPLIED (canonical) once;
         MIGRATION_SCRIPT_COMPLETED is the alias and does not appear separately."""
-        from api.events import EventType
+        from dblift.api.events import EventType
 
         names = [e.name for e in EventType]
         self.assertIn("MIGRATION_APPLIED", names)
@@ -124,7 +124,7 @@ class TestBug02MigrationAppliedAlias(unittest.TestCase):
     def test_migration_applied_lookup_returns_canonical(self) -> None:
         """``EventType["MIGRATION_SCRIPT_COMPLETED"]`` resolves to the canonical
         MIGRATION_APPLIED member — alias lookup via ``_member_map_``."""
-        from api.events import EventType
+        from dblift.api.events import EventType
 
         self.assertIs(EventType["MIGRATION_SCRIPT_COMPLETED"], EventType.MIGRATION_APPLIED)
 
@@ -155,7 +155,7 @@ class TestBug05SQLiteFts5ShadowFilter(unittest.TestCase):
 
         ``rows_by_query`` maps a substring → list[dict] used as the query result.
         """
-        from db.plugins.sqlite.sqlite.schema_operations import SQLiteSchemaOperations
+        from dblift.db.plugins.sqlite.sqlite.schema_operations import SQLiteSchemaOperations
 
         qe = MagicMock()
 
@@ -225,7 +225,7 @@ class TestBug05SQLiteFts5ShadowFilter(unittest.TestCase):
         """If the FTS5 query itself fails, the method must return an empty set
         so the caller falls back to the pre-fix behavior (no filtering) rather
         than raising and blocking all introspection."""
-        from db.plugins.sqlite.sqlite.schema_operations import SQLiteSchemaOperations
+        from dblift.db.plugins.sqlite.sqlite.schema_operations import SQLiteSchemaOperations
 
         qe = MagicMock()
         qe.execute_query.side_effect = RuntimeError("boom")
@@ -238,7 +238,7 @@ class TestBug05SQLiteFts5ShadowFilter(unittest.TestCase):
 # ---------------------------------------------------------------------------
 class TestBug06ImportFlywayDryRunPreview(unittest.TestCase):
     def _make_command(self, rows):
-        from core.migration.commands.import_flyway_command import ImportFlywayCommand
+        from dblift.core.migration.commands.import_flyway_command import ImportFlywayCommand
 
         cmd = ImportFlywayCommand.__new__(ImportFlywayCommand)
         cmd.log = MagicMock()

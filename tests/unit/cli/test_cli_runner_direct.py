@@ -60,7 +60,7 @@ class TestCLIRunnerDirect:
         assert hasattr(cli, "config_file")
         assert hasattr(cli, "migrations_dir")
         assert hasattr(cli, "CLI_MODULE")
-        assert cli.CLI_MODULE == "cli.main"
+        assert cli.CLI_MODULE == "dblift.cli.main"
 
         # Should have same methods
         assert hasattr(cli, "migrate")
@@ -87,7 +87,7 @@ class TestCLIRunnerDirect:
 
     def test_capture_resets_cached_rich_stdout_console(self, capsys):
         """Cached Rich consoles must write into the per-command capture stream."""
-        from core.logger.console import get_stdout_console, reset_stdout_console
+        from dblift.core.logger.console import get_stdout_console, reset_stdout_console
 
         reset_stdout_console()
         get_stdout_console().print("before capture")

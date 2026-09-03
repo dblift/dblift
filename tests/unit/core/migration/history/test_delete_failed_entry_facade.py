@@ -15,7 +15,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from core.migration.history.migration_history_manager import MigrationHistoryManager
+from dblift.core.migration.history.migration_history_manager import MigrationHistoryManager
 
 
 def _manager(rows_deleted, *, remaining=None, dialect="postgresql", false_literal="FALSE"):

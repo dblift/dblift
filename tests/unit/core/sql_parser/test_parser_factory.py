@@ -5,16 +5,16 @@ from unittest.mock import MagicMock, Mock, patch
 
 import pytest
 
-from core.exceptions import ParserNotAvailableError, UnsupportedDialectError
-from core.sql_model.base import (
+from dblift.core.exceptions import ParserNotAvailableError, UnsupportedDialectError
+from dblift.core.sql_model.base import (
     ParseResult,
     SqlObject,
     SqlStatement,
     SqlStatementType,
 )
-from core.sql_parser.common.base_parser import RegexBasedParser
-from core.sql_parser.parser_factory import SqlParserFactory
-from core.sql_parser.parser_interface import SqlParserInterface
+from dblift.core.sql_parser.common.base_parser import RegexBasedParser
+from dblift.core.sql_parser.parser_factory import SqlParserFactory
+from dblift.core.sql_parser.parser_interface import SqlParserInterface
 
 
 @pytest.mark.unit
@@ -47,7 +47,7 @@ class TestSqlParserFactory:
         """Story 26-9: parser classes come from plugin Quirks. Each
         first-party plugin must return a non-None class for the
         ``"hybrid"`` parser type."""
-        from db.provider_registry import ProviderRegistry
+        from dblift.db.provider_registry import ProviderRegistry
 
         ProviderRegistry.discover_plugins()
         for dialect in (
@@ -71,7 +71,7 @@ class TestSqlParserFactory:
         migrations are Python now, so asking for one is an error rather
         than a silent fallback.
         """
-        from core.exceptions import UnsupportedDialectError
+        from dblift.core.exceptions import UnsupportedDialectError
 
         factory = SqlParserFactory("cosmosdb", parser_type="regex")
 
@@ -88,8 +88,8 @@ class TestSqlParserFactory:
 
     def test_hybrid_parser_class_is_HybridParser_for_jdbc_dialects(self):
         """Story 26-9: most dialects route ``hybrid`` to HybridParser."""
-        from core.sql_parser.hybrid_parser import HybridParser
-        from db.provider_registry import ProviderRegistry
+        from dblift.core.sql_parser.hybrid_parser import HybridParser
+        from dblift.db.provider_registry import ProviderRegistry
 
         for dialect in ("oracle", "sqlserver", "db2", "postgresql", "mysql"):
             cls = ProviderRegistry.get_quirks(dialect).parser_class("hybrid")
@@ -98,7 +98,7 @@ class TestSqlParserFactory:
     def test_create_parser_quirks_failure_propagates_as_parser_not_available(self):
         """When a plugin's ``parser_class`` raises, the factory wraps it."""
         factory = SqlParserFactory("postgresql")
-        from db.provider_registry import ProviderRegistry
+        from dblift.db.provider_registry import ProviderRegistry
 
         quirks = ProviderRegistry.get_quirks("postgresql")
         with patch.object(quirks, "parser_class", side_effect=Exception("Boom")):
@@ -489,7 +489,7 @@ class TestSqlParserFactory:
         """When a plugin's ``parser_class`` raises during ``get_parser``,
         the factory wraps it in ``ParserNotAvailableError``."""
         factory = SqlParserFactory("postgresql")
-        from db.provider_registry import ProviderRegistry
+        from dblift.db.provider_registry import ProviderRegistry
 
         quirks = ProviderRegistry.get_quirks("oracle")
         with patch.object(quirks, "parser_class", side_effect=Exception("Boom")):
@@ -510,7 +510,7 @@ class TestSqlParserFactory:
         """``get_parser("ORACLE")`` resolves the same plugin as
         ``get_parser("oracle")``. Case-insensitive lookup happens
         inside ``ProviderRegistry.get_quirks``."""
-        from core.sql_parser.hybrid_parser import HybridParser
+        from dblift.core.sql_parser.hybrid_parser import HybridParser
 
         factory = SqlParserFactory("postgresql")
         parser = factory.get_parser("ORACLE")

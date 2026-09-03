@@ -3,8 +3,8 @@
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
-from cli._command_handlers import CliCommandContext
-from cli.handlers.baseline import _handle_baseline
+from dblift.cli._command_handlers import CliCommandContext
+from dblift.cli.handlers.baseline import _handle_baseline
 
 
 def test_handle_baseline_forwards_dry_run():

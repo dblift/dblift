@@ -21,7 +21,7 @@ from unittest.mock import MagicMock
 
 class TestResolveConfigOrRaise(unittest.TestCase):
     def _resolve(self, provider, explicit_config):
-        from api._client_factory import resolve_config_or_raise
+        from dblift.api._client_factory import resolve_config_or_raise
 
         return resolve_config_or_raise(provider, explicit_config)
 
@@ -38,7 +38,7 @@ class TestResolveConfigOrRaise(unittest.TestCase):
         self.assertIs(result, provider_cfg)
 
     def test_raises_configuration_error_when_no_config_anywhere(self):
-        from config.errors import ConfigurationError
+        from dblift.config.errors import ConfigurationError
 
         provider = SimpleNamespace(config=None)
         with self.assertRaises(ConfigurationError) as ctx:
@@ -58,8 +58,8 @@ class TestBuildDefaultLogger(unittest.TestCase):
         return cfg
 
     def test_returns_dbliftlogger_with_defaults(self):
-        from api._client_factory import build_default_logger
-        from core.logger import DbliftLogger, LogFormat, LogLevel
+        from dblift.api._client_factory import build_default_logger
+        from dblift.core.logger import DbliftLogger, LogFormat, LogLevel
 
         cfg = self._config()
         log = build_default_logger(cfg, None, None, None)
@@ -70,8 +70,8 @@ class TestBuildDefaultLogger(unittest.TestCase):
         self.assertEqual(log.level, LogLevel.INFO)
 
     def test_ctor_overrides_take_priority_over_config(self):
-        from api._client_factory import build_default_logger
-        from core.logger import LogFormat, LogLevel
+        from dblift.api._client_factory import build_default_logger
+        from dblift.core.logger import LogFormat, LogLevel
 
         # Config says TEXT/INFO; ctor says JSON/DEBUG.
         cfg = self._config(log_format="text", log_level="info")
@@ -81,8 +81,8 @@ class TestBuildDefaultLogger(unittest.TestCase):
         self.assertEqual(log.level, LogLevel.DEBUG)
 
     def test_falls_back_to_config_when_no_ctor_overrides(self):
-        from api._client_factory import build_default_logger
-        from core.logger import LogFormat, LogLevel
+        from dblift.api._client_factory import build_default_logger
+        from dblift.core.logger import LogFormat, LogLevel
 
         cfg = self._config(log_format="json", log_level="debug")
         log = build_default_logger(cfg, None, None, None)
@@ -100,21 +100,21 @@ class TestNormalizeMigrationsDirs(unittest.TestCase):
         return cfg
 
     def test_string_path_assigned_as_primary(self):
-        from api._client_factory import normalize_migrations_dirs
+        from dblift.api._client_factory import normalize_migrations_dirs
 
         cfg = self._config()
         normalize_migrations_dirs(cfg, "/tmp/migrations")
         self.assertEqual(cfg.migrations.directory, "/tmp/migrations")
 
     def test_pathlib_path_assigned_as_primary(self):
-        from api._client_factory import normalize_migrations_dirs
+        from dblift.api._client_factory import normalize_migrations_dirs
 
         cfg = self._config()
         normalize_migrations_dirs(cfg, Path("/tmp/migrations"))
         self.assertEqual(cfg.migrations.directory, "/tmp/migrations")
 
     def test_single_element_list_only_sets_primary(self):
-        from api._client_factory import normalize_migrations_dirs
+        from dblift.api._client_factory import normalize_migrations_dirs
 
         cfg = self._config()
         normalize_migrations_dirs(cfg, ["/tmp/a"])
@@ -123,7 +123,7 @@ class TestNormalizeMigrationsDirs(unittest.TestCase):
         self.assertEqual(cfg.migrations.directories, [])
 
     def test_multi_element_list_first_is_primary_rest_are_extras(self):
-        from api._client_factory import normalize_migrations_dirs
+        from dblift.api._client_factory import normalize_migrations_dirs
 
         cfg = self._config()
         normalize_migrations_dirs(cfg, ["/tmp/a", "/tmp/b", "/tmp/c"])
@@ -131,12 +131,44 @@ class TestNormalizeMigrationsDirs(unittest.TestCase):
         self.assertEqual(cfg.migrations.directories, ["/tmp/b", "/tmp/c"])
 
     def test_empty_list_leaves_config_unchanged(self):
-        from api._client_factory import normalize_migrations_dirs
+        from dblift.api._client_factory import normalize_migrations_dirs
 
         cfg = self._config()
         normalize_migrations_dirs(cfg, [])
         self.assertIsNone(cfg.migrations.directory)
         self.assertEqual(cfg.migrations.directories, [])
+
+    def test_directory_config_recursive_false_not_replaced_by_global_default(self):
+        from dblift.api._client_factory import normalize_migrations_dirs
+        from dblift.config.dblift_config import DbliftConfig, DirectoryConfig
+
+        config = DbliftConfig.from_dict(
+            {
+                "database": {"url": "sqlite:////tmp/test.db", "schema": "main"},
+                "migrations": {"recursive": True, "directory": "/tmp/other"},
+            }
+        )
+        normalize_migrations_dirs(config, [DirectoryConfig(path="/tmp/scripts", recursive=False)])
+        configs = config.migrations.get_directory_configs()
+        self.assertEqual(len(configs), 1)
+        self.assertEqual(configs[0].path, "/tmp/scripts")
+        self.assertFalse(configs[0].recursive)
+
+    def test_directory_config_recursive_true_not_replaced_by_global_default(self):
+        from dblift.api._client_factory import normalize_migrations_dirs
+        from dblift.config.dblift_config import DbliftConfig, DirectoryConfig
+
+        config = DbliftConfig.from_dict(
+            {
+                "database": {"url": "sqlite:////tmp/test.db", "schema": "main"},
+                "migrations": {"recursive": False, "directory": "/tmp/other"},
+            }
+        )
+        normalize_migrations_dirs(config, [DirectoryConfig(path="/tmp/scripts", recursive=True)])
+        configs = config.migrations.get_directory_configs()
+        self.assertEqual(len(configs), 1)
+        self.assertEqual(configs[0].path, "/tmp/scripts")
+        self.assertTrue(configs[0].recursive)
 
 
 class TestApplyCtorOverrides(unittest.TestCase):
@@ -146,14 +178,14 @@ class TestApplyCtorOverrides(unittest.TestCase):
         return SimpleNamespace(log_level=None, log_format=None, log_file=None)
 
     def test_known_kwargs_are_applied(self):
-        from api._client_factory import apply_ctor_overrides
+        from dblift.api._client_factory import apply_ctor_overrides
 
         cfg = self._config()
         apply_ctor_overrides(cfg, {"log_level": "DEBUG"}, None, None, None)
         self.assertEqual(cfg.log_level, "DEBUG")
 
     def test_unknown_kwargs_are_silently_skipped(self):
-        from api._client_factory import apply_ctor_overrides
+        from dblift.api._client_factory import apply_ctor_overrides
 
         cfg = self._config()
         # ``unknown_field`` is not declared on the config — must not crash.
@@ -161,7 +193,7 @@ class TestApplyCtorOverrides(unittest.TestCase):
         self.assertFalse(hasattr(cfg, "unknown_field"))
 
     def test_explicit_log_overrides_take_priority(self):
-        from api._client_factory import apply_ctor_overrides
+        from dblift.api._client_factory import apply_ctor_overrides
 
         cfg = self._config()
         # kwargs say one thing, explicit overrides say another — explicit wins.
@@ -177,7 +209,7 @@ class TestApplyCtorOverrides(unittest.TestCase):
         self.assertEqual(cfg.log_file, "/tmp/x.log")
 
     def test_none_explicit_overrides_dont_override_kwargs(self):
-        from api._client_factory import apply_ctor_overrides
+        from dblift.api._client_factory import apply_ctor_overrides
 
         cfg = self._config()
         apply_ctor_overrides(cfg, {"log_level": "DEBUG"}, None, None, None)

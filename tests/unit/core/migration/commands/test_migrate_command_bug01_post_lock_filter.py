@@ -13,8 +13,8 @@ import unittest
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
-from core.migration.commands.migrate_command import MigrateCommand
-from core.migration.migration import AppliedMigration, MigrationType
+from dblift.core.migration.commands.migrate_command import MigrateCommand
+from dblift.core.migration.migration import AppliedMigration, MigrationType
 
 
 def _cmd(log=None):

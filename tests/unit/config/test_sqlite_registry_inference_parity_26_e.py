@@ -13,13 +13,13 @@ unknown/legacy (jdbc:) unchanged.
 
 import pytest
 
-from config.config_builder import ConfigBuilder
-from config.database_config import (
+from dblift.config.config_builder import ConfigBuilder
+from dblift.config.database_config import (
     _infer_type_from_uri,
     _infer_type_from_url_scheme,
 )
-from config.dblift_config import DbliftConfig
-from db.plugins.sqlserver.config import SqlServerConfig  # relocated per ADR-26 D
+from dblift.config.dblift_config import DbliftConfig
+from dblift.db.plugins.sqlserver.config import SqlServerConfig  # relocated per ADR-26 D
 
 SQLITE_URLS = [
     "sqlite:///abs/path.db",

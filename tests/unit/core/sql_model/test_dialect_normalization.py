@@ -8,9 +8,15 @@ import inspect
 
 import pytest
 
-from core.sql_model.base import SqlColumn, SqlConstraint, SqlObject, SqlObjectType, SqlStatement
-from core.sql_model.index import Index
-from core.sql_model.procedure import Parameter
+from dblift.core.sql_model.base import (
+    SqlColumn,
+    SqlConstraint,
+    SqlObject,
+    SqlObjectType,
+    SqlStatement,
+)
+from dblift.core.sql_model.index import Index
+from dblift.core.sql_model.procedure import Parameter
 
 
 @pytest.mark.unit
@@ -79,7 +85,7 @@ class TestParameterDialectNormalization:
 
     def test_procedure_propagates_normalized_dialect_to_params(self):
         """M3 fix: Procedure.__init__ doit propager self.dialect (normalisé) aux paramètres."""
-        from core.sql_model.procedure import Procedure
+        from dblift.core.sql_model.procedure import Procedure
 
         param = Parameter(name="p", data_type="INT", dialect=None)
         proc = Procedure(name="my_proc", parameters=[param], dialect="ORACLE")
@@ -102,15 +108,15 @@ class TestNoSelfDialectLowerInSqlModel:
 
     def test_no_self_dialect_lower_in_sql_model(self):
         """Verify that no source file in core/sql_model/ uses self.dialect.lower()."""
-        import core.sql_model.base as base_mod
-        import core.sql_model.event as event_mod
-        import core.sql_model.index as index_mod
-        import core.sql_model.procedure as proc_mod
-        import core.sql_model.sequence as seq_mod
-        import core.sql_model.synonym as syn_mod
-        import core.sql_model.trigger as trig_mod
-        import core.sql_model.user_defined_type as udt_mod
-        import core.sql_model.view as view_mod
+        import dblift.core.sql_model.base as base_mod
+        import dblift.core.sql_model.event as event_mod
+        import dblift.core.sql_model.index as index_mod
+        import dblift.core.sql_model.procedure as proc_mod
+        import dblift.core.sql_model.sequence as seq_mod
+        import dblift.core.sql_model.synonym as syn_mod
+        import dblift.core.sql_model.trigger as trig_mod
+        import dblift.core.sql_model.user_defined_type as udt_mod
+        import dblift.core.sql_model.view as view_mod
 
         modules = [
             base_mod,

@@ -12,8 +12,8 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from db.plugins.cosmosdb.provider import CosmosDbProvider
-from db.provider_interfaces import DroppableObject
+from dblift.db.plugins.cosmosdb.provider import CosmosDbProvider
+from dblift.db.provider_interfaces import DroppableObject
 
 
 def _provider() -> CosmosDbProvider:
@@ -57,7 +57,7 @@ def test_clean_command_drops_through_the_provider_hook():
     """The command must call ``drop_object``, not ``execute_statement``."""
     import inspect
 
-    from core.migration.commands.clean_command import CleanCommand
+    from dblift.core.migration.commands.clean_command import CleanCommand
 
     source = inspect.getsource(CleanCommand)
     assert "self.provider.drop_object(obj)" in source

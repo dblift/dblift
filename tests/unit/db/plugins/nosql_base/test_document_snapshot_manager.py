@@ -8,8 +8,8 @@ it is a TypeError at construction, not a failure during a migrate run.
 
 import pytest
 
-from core.constants import DBLIFT_SCHEMA_SNAPSHOTS_TABLE
-from db.plugins.nosql_base import DocumentSnapshotManager
+from dblift.core.constants import DBLIFT_SCHEMA_SNAPSHOTS_TABLE
+from dblift.db.plugins.nosql_base import DocumentSnapshotManager
 
 
 class _Recording(DocumentSnapshotManager):

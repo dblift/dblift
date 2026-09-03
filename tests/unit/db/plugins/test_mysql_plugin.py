@@ -35,7 +35,7 @@ class TestMySqlSchemaOperations(unittest.TestCase):
         return qe
 
     def _make_ops(self, qe=None):
-        from db.plugins.mysql.mysql.schema_operations import MySqlSchemaOperations
+        from dblift.db.plugins.mysql.mysql.schema_operations import MySqlSchemaOperations
 
         if qe is None:
             qe = self._make_qe()
@@ -256,7 +256,7 @@ class TestMySqlSchemaOperations(unittest.TestCase):
         conn, _, _ = _make_connection()
         qe.execute_query.return_value = []
 
-        from core.migration.clean_summary import CleanExecutionSummary
+        from dblift.core.migration.clean_summary import CleanExecutionSummary
 
         summary = ops.clean_schema(conn, "mydb")
 
@@ -287,7 +287,7 @@ class TestMySqlSchemaOperations(unittest.TestCase):
     def test_drop_triggers_drops_each_trigger(self):
         ops, qe, log = self._make_ops()
         conn, _, _ = _make_connection()
-        from core.migration.clean_summary import CleanExecutionSummary
+        from dblift.core.migration.clean_summary import CleanExecutionSummary
 
         summary = CleanExecutionSummary()
 

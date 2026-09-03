@@ -18,8 +18,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-import cli.main as cli_main
-from cli._output import CommandOutput
+import dblift.cli.main as cli_main
+from dblift.cli._output import CommandOutput
 
 
 def _ctx():
@@ -71,7 +71,7 @@ def test_dispatch_logs_client_scripts_dir_not_stale_local_value(tmp_path):
         patch.object(cli_main, "_ensure_connection"),
         patch.object(cli_main, "execute_single_command", return_value=(True, MagicMock())),
         patch.object(cli_main, "_close_logs"),
-        patch("core.logger._formatters.TextFormatter") as formatter_cls,
+        patch("dblift.core.logger._formatters.TextFormatter") as formatter_cls,
     ):
         formatter_cls.return_value.format_header.return_value = None
         cli_main._dispatch_command(ctx, output)

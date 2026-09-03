@@ -4,7 +4,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from core.migration.executors.python_executor import MigrationContext
+from dblift.core.migration.executors.python_executor import MigrationContext
 
 
 def _make_sqlite_provider_with_engine():

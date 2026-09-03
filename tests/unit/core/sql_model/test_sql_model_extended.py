@@ -8,7 +8,7 @@ Targets uncovered paths in:
 
 import unittest
 
-from core.sql_model.base import (
+from dblift.core.sql_model.base import (
     ConstraintType,
     ParseResult,
     SqlColumn,
@@ -22,9 +22,9 @@ from core.sql_model.base import (
     get_constraint_type_name,
     get_object_type_name,
 )
-from core.sql_model.procedure import Parameter, Procedure
-from core.sql_model.table import Table
-from core.sql_model.table_options import (
+from dblift.core.sql_model.procedure import Parameter, Procedure
+from dblift.core.sql_model.table import Table
+from dblift.core.sql_model.table_options import (
     OracleStorageOptions,
     PostgresTableOptions,
     SqlServerTableOptions,
@@ -505,12 +505,12 @@ class TestSqlConstraint(unittest.TestCase):
 class TestParseResult(unittest.TestCase):
 
     def _make_table(self, name):
-        from core.sql_model.table import Table
+        from dblift.core.sql_model.table import Table
 
         return Table(name, columns=[])
 
     def _make_view(self, name):
-        from core.sql_model.view import View
+        from dblift.core.sql_model.view import View
 
         return View(name)
 
@@ -518,13 +518,13 @@ class TestParseResult(unittest.TestCase):
         return Procedure(name)
 
     def _make_trigger(self, name, table_name="t"):
-        from core.sql_model.trigger import Trigger
+        from dblift.core.sql_model.trigger import Trigger
 
         trig = Trigger(name, table_name=table_name)
         return trig
 
     def _make_pkg(self, name, schema=None):
-        from core.sql_model.package import Package
+        from dblift.core.sql_model.package import Package
 
         return Package(name, schema=schema)
 
@@ -575,7 +575,7 @@ class TestParseResult(unittest.TestCase):
 
     def test_add_index(self):
         pr = ParseResult(success=True)
-        from core.sql_model.index import Index
+        from dblift.core.sql_model.index import Index
 
         idx = Index("idx_1", table_name="t", columns=["id"])
         pr.add_index(idx)
@@ -583,7 +583,7 @@ class TestParseResult(unittest.TestCase):
 
     def test_add_sequence(self):
         pr = ParseResult(success=True)
-        from core.sql_model.sequence import Sequence
+        from dblift.core.sql_model.sequence import Sequence
 
         seq = Sequence("seq1")
         pr.add_sequence(seq)
@@ -611,7 +611,7 @@ class TestParseResult(unittest.TestCase):
 
     def test_add_synonym(self):
         pr = ParseResult(success=True)
-        from core.sql_model.synonym import Synonym
+        from dblift.core.sql_model.synonym import Synonym
 
         syn = Synonym("syn1", target_object="other_table")
         pr.add_synonym(syn)
@@ -619,7 +619,7 @@ class TestParseResult(unittest.TestCase):
 
     def test_add_user_defined_type(self):
         pr = ParseResult(success=True)
-        from core.sql_model.user_defined_type import UserDefinedType
+        from dblift.core.sql_model.user_defined_type import UserDefinedType
 
         udt = UserDefinedType("my_type", type_category="OBJECT")
         pr.add_user_defined_type(udt)
@@ -649,7 +649,7 @@ class TestParseResult(unittest.TestCase):
 
     def test_add_event(self):
         pr = ParseResult(success=True)
-        from core.sql_model.event import Event
+        from dblift.core.sql_model.event import Event
 
         ev = Event("ev1")
         pr.add_event(ev)
@@ -657,7 +657,7 @@ class TestParseResult(unittest.TestCase):
 
     def test_add_extension(self):
         pr = ParseResult(success=True)
-        from core.sql_model.extension import Extension
+        from dblift.core.sql_model.extension import Extension
 
         ext = Extension("pgcrypto")
         pr.add_extension(ext)
@@ -665,7 +665,7 @@ class TestParseResult(unittest.TestCase):
 
     def test_add_foreign_data_wrapper(self):
         pr = ParseResult(success=True)
-        from core.sql_model.foreign_data_wrapper import ForeignDataWrapper
+        from dblift.core.sql_model.foreign_data_wrapper import ForeignDataWrapper
 
         fdw = ForeignDataWrapper("postgres_fdw")
         pr.add_foreign_data_wrapper(fdw)
@@ -673,7 +673,7 @@ class TestParseResult(unittest.TestCase):
 
     def test_add_foreign_server(self):
         pr = ParseResult(success=True)
-        from core.sql_model.foreign_server import ForeignServer
+        from dblift.core.sql_model.foreign_server import ForeignServer
 
         fs = ForeignServer("remote_server", fdw_name="postgres_fdw")
         pr.add_foreign_server(fs)
@@ -681,7 +681,7 @@ class TestParseResult(unittest.TestCase):
 
     def test_add_database_link(self):
         pr = ParseResult(success=True)
-        from core.sql_model.database_link import DatabaseLink
+        from dblift.core.sql_model.database_link import DatabaseLink
 
         dl = DatabaseLink("dblink1")
         pr.add_database_link(dl)
@@ -689,7 +689,7 @@ class TestParseResult(unittest.TestCase):
 
     def test_add_partition(self):
         pr = ParseResult(success=True)
-        from core.sql_model.partition import Partition
+        from dblift.core.sql_model.partition import Partition
 
         part = Partition("p1", table="t", partition_method="RANGE")
         pr.add_partition(part)

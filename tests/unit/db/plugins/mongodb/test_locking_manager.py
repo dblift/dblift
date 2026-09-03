@@ -15,7 +15,7 @@ import pytest
 pytest.importorskip("pymongo")
 from pymongo.errors import DuplicateKeyError  # noqa: E402
 
-from db.plugins.mongodb.mongodb import MongoDbLockingManager
+from dblift.db.plugins.mongodb.mongodb import MongoDbLockingManager
 
 
 def _manager():

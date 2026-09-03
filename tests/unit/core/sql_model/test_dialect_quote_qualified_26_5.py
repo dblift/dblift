@@ -11,7 +11,7 @@ but DB2 (which shares Oracle's identifier-folding quirks) does NOT.
 
 import pytest
 
-from core.sql_model.dialect import quote_qualified
+from dblift.core.sql_model.dialect import quote_qualified
 
 pytestmark = [pytest.mark.unit]
 

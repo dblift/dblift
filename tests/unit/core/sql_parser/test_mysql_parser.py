@@ -4,8 +4,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from core.sql_model.base import ParseResult, SqlStatementType
-from db.plugins.mysql.parser.mysql_regex_parser import MySqlRegexParser
+from dblift.core.sql_model.base import ParseResult, SqlStatementType
+from dblift.db.plugins.mysql.parser.mysql_regex_parser import MySqlRegexParser
 
 
 @pytest.mark.unit
@@ -215,7 +215,7 @@ class TestMySqlParser:
 
     def test_mysql_parser_inheritance(self):
         """Test that MySQL parser inherits from EnhancedRegexParser."""
-        from core.sql_parser.enhanced_regex_parser import EnhancedRegexParser
+        from dblift.core.sql_parser.enhanced_regex_parser import EnhancedRegexParser
 
         parser = MySqlRegexParser()
         assert isinstance(parser, EnhancedRegexParser)

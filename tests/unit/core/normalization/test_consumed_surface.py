@@ -1,6 +1,6 @@
 """Guard the type-normalization surface consumed by extension packages.
 
-``core.normalization`` and the ``type_equivalents()`` quirks hook have no
+``dblift.core.normalization`` and the ``type_equivalents()`` quirks hook have no
 call sites inside this repository — schema comparison is not part of the
 open-source command set. A repository-local search therefore reads them as
 dead code, and an audit acting on that reading would break every installed
@@ -12,8 +12,8 @@ instead of downstream.
 
 import pytest
 
-from core.normalization import DataTypeNormalizer
-from db.provider_registry import ProviderRegistry
+from dblift.core.normalization import DataTypeNormalizer
+from dblift.db.provider_registry import ProviderRegistry
 
 # Dialects whose plugins ship a non-empty alias table. Kept explicit: an
 # accidental emptying is the failure mode this guards against.

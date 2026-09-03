@@ -2,7 +2,7 @@
 
 import pytest
 
-from core.utils.string_utils import safe_split_first
+from dblift.core.utils.string_utils import safe_split_first
 
 
 @pytest.mark.unit

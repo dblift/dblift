@@ -20,7 +20,7 @@ from unittest.mock import MagicMock, patch
 # ---------------------------------------------------------------------------
 class TestBug01MigrationContextClose(unittest.TestCase):
     def test_close_is_callable_and_returns_none(self) -> None:
-        from core.migration.executors.python_executor import MigrationContext
+        from dblift.core.migration.executors.python_executor import MigrationContext
 
         ctx = MigrationContext(provider=MagicMock(), log=MagicMock())
         self.assertTrue(hasattr(ctx, "close"))
@@ -28,7 +28,7 @@ class TestBug01MigrationContextClose(unittest.TestCase):
 
     def test_full_dbapi_cursor_close_cycle(self) -> None:
         """Classic DBAPI idiom: cur = conn.cursor(); cur.execute(...); cur.close()."""
-        from core.migration.executors.python_executor import MigrationContext
+        from dblift.core.migration.executors.python_executor import MigrationContext
 
         provider = MagicMock()
         ctx = MigrationContext(provider=provider, log=MagicMock())
@@ -53,14 +53,14 @@ class TestBug02UndoChecksumZeroSentinel(unittest.TestCase):
         # Every module that builds an UNDO_SQL history row: the shared base
         # plus each relational provider, which own their history inline.
         return [
-            Path("db/plugins/base_history_manager.py"),
-            Path("db/plugins/postgresql/provider.py"),
-            Path("db/plugins/mysql/provider.py"),
-            Path("db/plugins/oracle/provider.py"),
-            Path("db/plugins/sqlserver/provider.py"),
-            Path("db/plugins/db2/provider.py"),
-            Path("db/plugins/duckdb/provider.py"),
-            Path("db/plugins/snowflake/provider.py"),
+            Path("dblift/db/plugins/base_history_manager.py"),
+            Path("dblift/db/plugins/postgresql/provider.py"),
+            Path("dblift/db/plugins/mysql/provider.py"),
+            Path("dblift/db/plugins/oracle/provider.py"),
+            Path("dblift/db/plugins/sqlserver/provider.py"),
+            Path("dblift/db/plugins/db2/provider.py"),
+            Path("dblift/db/plugins/duckdb/provider.py"),
+            Path("dblift/db/plugins/snowflake/provider.py"),
         ]
 
     def test_no_source_still_uses_checksum_none(self) -> None:
@@ -103,8 +103,8 @@ class TestBug03UnknownJdbcUrlClearsType(unittest.TestCase):
         )
 
     def test_unknown_jdbc_scheme_raises_configuration_error(self) -> None:
-        from config.dblift_config import load_config
-        from config.errors import ConfigurationError
+        from dblift.config.dblift_config import load_config
+        from dblift.config.errors import ConfigurationError
 
         args = self._make_args("jdbc:testdriver://localhost:1234/test")
         with self.assertRaisesRegex(
@@ -114,15 +114,15 @@ class TestBug03UnknownJdbcUrlClearsType(unittest.TestCase):
 
     def test_sqlite_still_inferred(self) -> None:
         """Guard that the new clause doesn't regress the SQLite inference."""
-        from config.dblift_config import load_config
+        from dblift.config.dblift_config import load_config
 
         args = self._make_args("sqlite:///tmp/x.db")
         config = load_config(None, args)
         self.assertEqual(config.database.type, "sqlite")
 
     def test_jdbc_sqlite_is_rejected(self) -> None:
-        from config.dblift_config import load_config
-        from config.errors import ConfigurationError
+        from dblift.config.dblift_config import load_config
+        from dblift.config.errors import ConfigurationError
 
         args = self._make_args("jdbc:sqlite:/tmp/x.db")
         with self.assertRaisesRegex(
@@ -132,7 +132,7 @@ class TestBug03UnknownJdbcUrlClearsType(unittest.TestCase):
 
     def test_valid_native_scheme_unaffected(self) -> None:
         """Valid URLs still round-trip through the primary parse branch."""
-        from config.dblift_config import load_config
+        from dblift.config.dblift_config import load_config
 
         args = self._make_args("postgresql+psycopg://localhost:5432/test")
         config = load_config(None, args)
@@ -140,7 +140,7 @@ class TestBug03UnknownJdbcUrlClearsType(unittest.TestCase):
 
     def test_validate_rejects_empty_type(self) -> None:
         """The BUG-03 fix is only useful if downstream validation fails."""
-        from db.provider_registry import ProviderRegistry
+        from dblift.db.provider_registry import ProviderRegistry
 
         cfg = MagicMock()
         cfg.database.type = ""
@@ -167,7 +167,7 @@ class TestBug04ValidateConfigRequiresExplicitInput(unittest.TestCase):
         return argparse.Namespace(**defaults)
 
     def test_validate_config_without_any_input_fails(self) -> None:
-        from cli.db_utils import validate_config
+        from dblift.cli.db_utils import validate_config
 
         buf_err = io.StringIO()
         # Ensure env vars don't leak a URL into the test
@@ -184,7 +184,7 @@ class TestBug04ValidateConfigRequiresExplicitInput(unittest.TestCase):
 
     def test_validate_config_with_env_var_does_not_short_circuit(self) -> None:
         """With DBLIFT_DB_URL set, validate-config proceeds to the real validator."""
-        from cli.db_utils import validate_config
+        from dblift.cli.db_utils import validate_config
 
         buf_out = io.StringIO()
         buf_err = io.StringIO()
@@ -202,7 +202,7 @@ class TestBug04ValidateConfigRequiresExplicitInput(unittest.TestCase):
         self.assertIn(rc, (0, 1))
 
     def test_validate_config_with_cli_url_proceeds(self) -> None:
-        from cli.db_utils import validate_config
+        from dblift.cli.db_utils import validate_config
 
         buf_err = io.StringIO()
         env_backup = {k: os.environ.pop(k, None) for k in ("DBLIFT_DB_URL", "DBLIFT_DATABASE_URL")}
@@ -221,7 +221,7 @@ class TestBug04ValidateConfigRequiresExplicitInput(unittest.TestCase):
 # ---------------------------------------------------------------------------
 class TestBug05EventEmitterSubscribeAlias(unittest.TestCase):
     def test_subscribe_alias_registers_and_fires(self) -> None:
-        from api.events import EventEmitter, EventType
+        from dblift.api.events import EventEmitter, EventType
 
         emitter = EventEmitter()
         received = []
@@ -231,7 +231,7 @@ class TestBug05EventEmitterSubscribeAlias(unittest.TestCase):
         self.assertEqual(received[0].version, "42")
 
     def test_unsubscribe_alias_removes_listener(self) -> None:
-        from api.events import EventEmitter, EventType
+        from dblift.api.events import EventEmitter, EventType
 
         emitter = EventEmitter()
         received = []
@@ -242,7 +242,7 @@ class TestBug05EventEmitterSubscribeAlias(unittest.TestCase):
         self.assertEqual(received, [])
 
     def test_subscribe_and_on_are_interchangeable(self) -> None:
-        from api.events import EventEmitter, EventType
+        from dblift.api.events import EventEmitter, EventType
 
         emitter = EventEmitter()
         received = []
@@ -267,7 +267,7 @@ class TestBug06PerClientEventIsolation(unittest.TestCase):
 
     def test_emitters_are_distinct_per_client(self) -> None:
         """DBLiftClient instances must own independent emitters."""
-        from api.events import EventEmitter
+        from dblift.api.events import EventEmitter
 
         # Construct EventEmitter the way DBLiftClient.__init__ now does.
         emitter_a = EventEmitter()
@@ -276,7 +276,7 @@ class TestBug06PerClientEventIsolation(unittest.TestCase):
 
     def test_emit_event_prefers_bound_client_emitter(self) -> None:
         """emit_event routes to the active client emitter when one is bound."""
-        from api.events import EventEmitter, emit_event, use_client_emitter
+        from dblift.api.events import EventEmitter, emit_event, use_client_emitter
 
         client_emitter = EventEmitter()
         received: list = []
@@ -290,7 +290,7 @@ class TestBug06PerClientEventIsolation(unittest.TestCase):
 
     def test_emit_event_falls_back_to_default_outside_client_scope(self) -> None:
         """When no client emitter is bound, emit_event targets the singleton."""
-        from api.events import emit_event, get_default_emitter
+        from dblift.api.events import emit_event, get_default_emitter
 
         received: list = []
         get_default_emitter().on("migration.script.completed", received.append)
@@ -299,7 +299,7 @@ class TestBug06PerClientEventIsolation(unittest.TestCase):
 
     def test_sibling_client_does_not_see_other_clients_events(self) -> None:
         """Events bound to client A must not leak into client B's listeners."""
-        from api.events import EventEmitter, emit_event, use_client_emitter
+        from dblift.api.events import EventEmitter, emit_event, use_client_emitter
 
         client_a = EventEmitter()
         client_b = EventEmitter()
@@ -318,7 +318,7 @@ class TestBug06PerClientEventIsolation(unittest.TestCase):
 
     def test_use_client_emitter_with_none_is_noop(self) -> None:
         """Passing None must not corrupt the contextvar or raise."""
-        from api.events import emit_event, get_default_emitter, use_client_emitter
+        from dblift.api.events import emit_event, get_default_emitter, use_client_emitter
 
         received: list = []
         get_default_emitter().on("migration.script.failed", received.append)
@@ -330,7 +330,7 @@ class TestBug06PerClientEventIsolation(unittest.TestCase):
         """DBLiftClient source no longer wires self.events to the singleton."""
         from pathlib import Path
 
-        src = Path("api/client.py").read_text()
+        src = Path("dblift/api/client.py").read_text()
         # The regression was ``self.events = get_default_emitter()``; the fix
         # restores ``self.events = EventEmitter()``.
         self.assertNotIn("self.events = get_default_emitter()", src)
@@ -350,7 +350,7 @@ class TestBug06bUndoBindsClientEmitter(unittest.TestCase):
         import ast
         from pathlib import Path
 
-        src = Path("api/client.py").read_text()
+        src = Path("dblift/api/client.py").read_text()
         tree = ast.parse(src)
         for node in ast.walk(tree):
             if isinstance(node, ast.FunctionDef) and node.name == method_name:

@@ -13,8 +13,8 @@ is ``runtime_checkable``, so this exercises the same capability check a
 caller performs.
 """
 
-from db.plugins.cosmosdb.provider import CosmosDbProvider
-from db.plugins.nosql_base import DocumentStoreProvider
+from dblift.db.plugins.cosmosdb.provider import CosmosDbProvider
+from dblift.db.plugins.nosql_base import DocumentStoreProvider
 
 
 def test_cosmosdb_provider_satisfies_the_document_store_contract():

@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import pytest
 
-from config.database_config import BaseDatabaseConfig
+from dblift.config.database_config import BaseDatabaseConfig
 
 
 class TestAllowIncompleteUrlGuard:

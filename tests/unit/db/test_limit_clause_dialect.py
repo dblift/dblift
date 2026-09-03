@@ -7,7 +7,7 @@ its Oracle-style override.
 
 from unittest.mock import MagicMock
 
-from db.plugins.base_history_manager import BaseHistoryManager
+from dblift.db.plugins.base_history_manager import BaseHistoryManager
 
 # ===========================================================================
 # Provider-level get_row_limit_clause removed in X-11 (dead code at provider

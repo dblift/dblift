@@ -21,7 +21,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from core.logger.results import CleanResult
+from dblift.core.logger.results import CleanResult
 
 
 def _simulate_target_schema_assignment(database) -> str:

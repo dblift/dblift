@@ -4,9 +4,9 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from core.sql_model.base import ParseResult, SqlObject, SqlObjectType, SqlStatementType
-from core.sql_parser.enhanced_regex_parser import EnhancedRegexParser
-from db.plugins.mysql.parser.parser_config import MySqlConfig
+from dblift.core.sql_model.base import ParseResult, SqlObject, SqlObjectType, SqlStatementType
+from dblift.core.sql_parser.enhanced_regex_parser import EnhancedRegexParser
+from dblift.db.plugins.mysql.parser.parser_config import MySqlConfig
 
 
 @pytest.mark.unit
@@ -38,7 +38,7 @@ class TestEnhancedRegexParser:
 
     def test_split_statements_with_batch_separators(self):
         """Test split_statements with batch separators."""
-        from db.plugins.sqlserver.parser.parser_config import SqlServerConfig
+        from dblift.db.plugins.sqlserver.parser.parser_config import SqlServerConfig
 
         config = SqlServerConfig()
         parser = EnhancedRegexParser(config)
@@ -205,7 +205,7 @@ class TestEnhancedRegexParser:
 
     def test_has_batch_separators(self):
         """Test batch separator detection."""
-        from db.plugins.sqlserver.parser.parser_config import SqlServerConfig
+        from dblift.db.plugins.sqlserver.parser.parser_config import SqlServerConfig
 
         config = SqlServerConfig()
         parser = EnhancedRegexParser(config)
@@ -224,7 +224,7 @@ class TestEnhancedRegexParser:
 
     def test_split_with_batch_separators(self):
         """Test splitting with batch separators."""
-        from db.plugins.sqlserver.parser.parser_config import SqlServerConfig
+        from dblift.db.plugins.sqlserver.parser.parser_config import SqlServerConfig
 
         config = SqlServerConfig()
         parser = EnhancedRegexParser(config)

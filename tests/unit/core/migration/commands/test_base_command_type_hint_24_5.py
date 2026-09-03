@@ -8,27 +8,27 @@ import inspect
 
 import pytest
 
-from core.migration.commands.base_command import BaseCommand
+from dblift.core.migration.commands.base_command import BaseCommand
 
 pytestmark = [pytest.mark.unit]
 
 _COMMAND_MODULES = [
-    "core.migration.commands.base_command",
-    "core.migration.commands.info_command",
-    "core.migration.commands.baseline_command",
-    "core.migration.commands.repair_command",
-    "core.migration.commands.clean_command",
-    "core.migration.commands.migrate_command",
-    "core.migration.commands.undo_command",
-    "core.migration.commands.validate_command",
+    "dblift.core.migration.commands.base_command",
+    "dblift.core.migration.commands.info_command",
+    "dblift.core.migration.commands.baseline_command",
+    "dblift.core.migration.commands.repair_command",
+    "dblift.core.migration.commands.clean_command",
+    "dblift.core.migration.commands.migrate_command",
+    "dblift.core.migration.commands.undo_command",
+    "dblift.core.migration.commands.validate_command",
 ]
 
 # Commands that directly reference BaseProvider in their own source (not just
 # inherited from BaseCommand). Leaf commands that only extend BaseCommand without
 # re-declaring the provider parameter do not need the import.
 _MODULES_WITH_BASE_PROVIDER_IMPORT = [
-    "core.migration.commands.base_command",
-    "core.migration.commands.migrate_command",
+    "dblift.core.migration.commands.base_command",
+    "dblift.core.migration.commands.migrate_command",
 ]
 
 
@@ -44,7 +44,7 @@ class TestNoJdbcProviderImport:
         mod = importlib.import_module(module_path)
         source = inspect.getsource(mod)
         assert (
-            "from db.jdbc_provider import JdbcProvider" not in source
+            "from dblift.db.jdbc_provider import JdbcProvider" not in source
         ), f"{module_path} still imports JdbcProvider"
 
     @pytest.mark.parametrize(
@@ -58,7 +58,7 @@ class TestNoJdbcProviderImport:
         mod = importlib.import_module(module_path)
         source = inspect.getsource(mod)
         assert (
-            "from db.base_provider import BaseProvider" in source
+            "from dblift.db.base_provider import BaseProvider" in source
         ), f"{module_path} does not import BaseProvider"
 
 

@@ -15,7 +15,7 @@ import argparse
 
 import pytest
 
-from cli._parser_setup import _add_baseline_options
+from dblift.cli._parser_setup import _add_baseline_options
 
 
 def _make_baseline_parser():

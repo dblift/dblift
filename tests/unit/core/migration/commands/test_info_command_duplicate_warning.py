@@ -6,9 +6,9 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from core.migration.commands.info_command import InfoCommand, _normalize_filter
-from core.migration.migration import MigrationType
-from core.migration.state.migration_state import MigrationState
+from dblift.core.migration.commands.info_command import InfoCommand, _normalize_filter
+from dblift.core.migration.migration import MigrationType
+from dblift.core.migration.state.migration_state import MigrationState
 
 
 def _make_command(script_objects, applied_objects=None):

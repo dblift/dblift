@@ -28,8 +28,8 @@ from typing import Any
 import pytest
 from sqlalchemy import create_engine, text
 
-from api import DBLiftClient
-from core.migration.migration import MigrationType, calculate_migration_script_checksum
+from dblift.api import DBLiftClient
+from dblift.core.migration.migration import MigrationType, calculate_migration_script_checksum
 
 pytestmark = [pytest.mark.unit, pytest.mark.sqlite]
 

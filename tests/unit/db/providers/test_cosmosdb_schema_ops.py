@@ -5,7 +5,7 @@ from unittest.mock import MagicMock
 
 
 def _make_ops():
-    from db.plugins.cosmosdb.cosmosdb.schema_operations import CosmosDbSchemaOperations
+    from dblift.db.plugins.cosmosdb.cosmosdb.schema_operations import CosmosDbSchemaOperations
 
     qe = MagicMock()
     qe.connection_manager = MagicMock()
@@ -20,8 +20,8 @@ class TestCosmosDbSchemaOpsInit(unittest.TestCase):
         self.assertIs(ops.query_executor, qe)
 
     def test_null_log_default(self):
-        from core.logger import NullLog
-        from db.plugins.cosmosdb.cosmosdb.schema_operations import CosmosDbSchemaOperations
+        from dblift.core.logger import NullLog
+        from dblift.db.plugins.cosmosdb.cosmosdb.schema_operations import CosmosDbSchemaOperations
 
         qe = MagicMock()
         qe.connection_manager = MagicMock()

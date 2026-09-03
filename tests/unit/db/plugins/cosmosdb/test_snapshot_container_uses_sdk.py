@@ -13,8 +13,8 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from core.exceptions import NoSqlWriteNotSupportedError
-from db.plugins.cosmosdb.provider import CosmosDbProvider
+from dblift.core.exceptions import NoSqlWriteNotSupportedError
+from dblift.db.plugins.cosmosdb.provider import CosmosDbProvider
 
 
 def _provider() -> CosmosDbProvider:
@@ -66,7 +66,7 @@ def test_transient_503_is_retried_then_surfaced():
 
 def test_a_write_statement_would_indeed_have_failed():
     """Pins why the override exists: execute_statement rejects DDL now."""
-    from db.plugins.cosmosdb.cosmosdb.query_executor import CosmosDbQueryExecutor
+    from dblift.db.plugins.cosmosdb.cosmosdb.query_executor import CosmosDbQueryExecutor
 
     executor = CosmosDbQueryExecutor.__new__(CosmosDbQueryExecutor)
     executor.log = MagicMock()

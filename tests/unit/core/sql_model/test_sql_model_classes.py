@@ -4,7 +4,7 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-from core.sql_model.base import (
+from dblift.core.sql_model.base import (
     ConstraintType,
     ParseResult,
     SqlColumn,
@@ -14,12 +14,16 @@ from core.sql_model.base import (
     SqlStatement,
     SqlStatementType,
 )
-from core.sql_model.index import Index
-from core.sql_model.procedure import Procedure
-from core.sql_model.sequence import Sequence
-from core.sql_model.table import Table
-from core.sql_model.table_options import OracleStorageOptions, PostgresTableOptions, TableOptions
-from core.sql_model.view import View
+from dblift.core.sql_model.index import Index
+from dblift.core.sql_model.procedure import Procedure
+from dblift.core.sql_model.sequence import Sequence
+from dblift.core.sql_model.table import Table
+from dblift.core.sql_model.table_options import (
+    OracleStorageOptions,
+    PostgresTableOptions,
+    TableOptions,
+)
+from dblift.core.sql_model.view import View
 
 pytestmark = [pytest.mark.unit]
 
@@ -792,8 +796,8 @@ class TestProcedure:
 
     def test_procedure_create_statement_without_paid_generator_returns_empty(self, monkeypatch):
         """OSS core does not require paid routine DDL generators."""
-        from core.seams.sql_generators import clear_sql_generator_registrars
-        from core.sql_generator.generator_factory import SqlGeneratorFactory
+        from dblift.core.seams.sql_generators import clear_sql_generator_registrars
+        from dblift.core.sql_generator.generator_factory import SqlGeneratorFactory
 
         monkeypatch.setenv("DBLIFT_DISABLE_CLI_EXTENSIONS", "1")
         clear_sql_generator_registrars()
@@ -1118,7 +1122,7 @@ class TestSqlConstraintFromDictReferenceSchema:
 
     def test_reference_schema_round_trip(self):
         """FK with reference_schema serialized to dict then deserialized preserves the field."""
-        from core.sql_model.table import Table
+        from dblift.core.sql_model.table import Table
 
         constraint = SqlConstraint(
             name="fk_order_customer",
@@ -1141,7 +1145,7 @@ class TestTableEqComment:
 
     def test_tables_differ_by_comment_are_not_equal(self):
         """Two tables identical except for comment should not be equal."""
-        from core.sql_model.table import Table
+        from dblift.core.sql_model.table import Table
 
         t1 = Table(name="orders", schema="public", dialect="postgresql", comment="v1")
         t2 = Table(name="orders", schema="public", dialect="postgresql", comment="v2")
@@ -1201,7 +1205,7 @@ class TestTableEqOracleStorageParams:
 
     def test_table_eq_export_partitions_differ(self):
         """Two tables with different export_partitions should not be equal."""
-        from core.sql_model.partition import Partition
+        from dblift.core.sql_model.partition import Partition
 
         p1 = Partition(
             name="p1", table="sales", partition_method="RANGE", partition_description="100"

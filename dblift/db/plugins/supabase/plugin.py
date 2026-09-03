@@ -1,0 +1,18 @@
+"""Entry-point declaration for the supabase plugin.
+
+This engine is wire-compatible with PostgreSQL, so it reuses PostgreSQL's
+provider, config, SQLAlchemy URL builder, and ``psycopg`` driver through the
+shared factory in :mod:`dblift.db.plugins._pg_compatible`, attaching only a distinct
+dialect identity. Users keep their ``postgresql://`` connection string and
+select this engine via ``type: supabase``.
+"""
+
+from __future__ import annotations
+
+from dblift.db.plugins._pg_compatible import make_pg_compatible_plugin
+from dblift.db.provider_registry import PluginInfo
+
+PLUGIN: PluginInfo = make_pg_compatible_plugin(
+    "supabase",
+    "Supabase (PostgreSQL) database provider",
+)

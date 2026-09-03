@@ -28,7 +28,7 @@ from typing import Dict, Iterable, List, Tuple
 
 import pytest
 
-from cli._parser_setup import create_parser
+from dblift.cli._parser_setup import create_parser
 
 # --- helpers -----------------------------------------------------------------
 
@@ -329,7 +329,7 @@ def test_oss_parser_lists_paid_commands_only_as_labeled_stubs(
     """
     import argparse
 
-    from cli.premium_manifest import PREMIUM_COMMANDS
+    from dblift.cli.premium_manifest import PREMIUM_COMMANDS
 
     monkeypatch.setenv("DBLIFT_DISABLE_CLI_EXTENSIONS", "1")
     parser = create_parser()
@@ -493,7 +493,7 @@ def test_every_top_level_flag_is_covered_or_exempted():
 
 
 def _registry_native_dialect_names() -> List[str]:
-    from db.provider_registry import ProviderRegistry
+    from dblift.db.provider_registry import ProviderRegistry
 
     return sorted(
         p.name
@@ -521,7 +521,7 @@ class TestPlaceholderTokensMultiFlag:
     """BUG-01: multiple --placeholders flags must all survive, not last-wins."""
 
     def _tokens(self, raw):
-        from cli._config_helpers import _placeholder_tokens
+        from dblift.cli._config_helpers import _placeholder_tokens
 
         return _placeholder_tokens(raw)
 

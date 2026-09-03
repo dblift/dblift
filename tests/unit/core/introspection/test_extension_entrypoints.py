@@ -13,7 +13,7 @@ class _EntryPoint:
 
 
 def test_introspector_factory_loads_registered_introspection_extensions(monkeypatch):
-    from core.introspection.introspector_factory import IntrospectorFactory
+    from dblift.core.introspection.introspector_factory import IntrospectorFactory
 
     calls = []
 
@@ -26,7 +26,7 @@ def test_introspector_factory_loads_registered_introspection_extensions(monkeypa
         IntrospectorFactory.register("registered_db", RegisteredIntrospector)
 
     monkeypatch.setattr(
-        "core.introspection.introspector_factory.entry_points",
+        "dblift.core.introspection.introspector_factory.entry_points",
         lambda group: (
             [_EntryPoint("registered", register)] if group == "dblift.introspection" else []
         ),
@@ -43,16 +43,16 @@ def test_introspector_factory_loads_registered_introspection_extensions(monkeypa
 
 
 def test_introspector_factory_logs_failed_introspection_extensions(monkeypatch, caplog):
-    from core.introspection.introspector_factory import IntrospectorFactory
+    from dblift.core.introspection.introspector_factory import IntrospectorFactory
 
     def register():
         raise RuntimeError("extension failed")
 
     monkeypatch.setattr(
-        "core.introspection.introspector_factory.entry_points",
+        "dblift.core.introspection.introspector_factory.entry_points",
         lambda group: [_EntryPoint("broken", register)] if group == "dblift.introspection" else [],
     )
-    monkeypatch.setattr("db.provider_registry.ProviderRegistry.list_plugins", lambda: [])
+    monkeypatch.setattr("dblift.db.provider_registry.ProviderRegistry.list_plugins", lambda: [])
     IntrospectorFactory._DIALECT_MAP.clear()
 
     IntrospectorFactory._register_defaults()
@@ -61,9 +61,9 @@ def test_introspector_factory_logs_failed_introspection_extensions(monkeypatch, 
 
 
 def test_vendor_queries_factory_loads_registered_introspection_extensions(monkeypatch):
-    from core.introspection import vendor_queries_factory
-    from core.introspection.vendor_queries_base import VendorMetadataQueries
-    from core.introspection.vendor_queries_factory import VendorQueriesFactory
+    from dblift.core.introspection import vendor_queries_factory
+    from dblift.core.introspection.vendor_queries_base import VendorMetadataQueries
+    from dblift.core.introspection.vendor_queries_factory import VendorQueriesFactory
 
     class RegisteredQueries(VendorMetadataQueries):
         def get_tables_query(self, schema, table_pattern="%"):
@@ -91,7 +91,7 @@ def test_vendor_queries_factory_loads_registered_introspection_extensions(monkey
         vendor_queries_factory.register_vendor_queries("registered_db", RegisteredQueries)
 
     monkeypatch.setattr(
-        "core.introspection.vendor_queries_factory.entry_points",
+        "dblift.core.introspection.vendor_queries_factory.entry_points",
         lambda group: (
             [_EntryPoint("registered", register)] if group == "dblift.introspection" else []
         ),
@@ -105,16 +105,16 @@ def test_vendor_queries_factory_loads_registered_introspection_extensions(monkey
 
 
 def test_vendor_queries_factory_logs_failed_introspection_extensions(monkeypatch, caplog):
-    from core.introspection import vendor_queries_factory
+    from dblift.core.introspection import vendor_queries_factory
 
     def register():
         raise RuntimeError("extension failed")
 
     monkeypatch.setattr(
-        "core.introspection.vendor_queries_factory.entry_points",
+        "dblift.core.introspection.vendor_queries_factory.entry_points",
         lambda group: [_EntryPoint("broken", register)] if group == "dblift.introspection" else [],
     )
-    monkeypatch.setattr("db.provider_registry.ProviderRegistry.list_plugins", lambda: [])
+    monkeypatch.setattr("dblift.db.provider_registry.ProviderRegistry.list_plugins", lambda: [])
     vendor_queries_factory._VENDOR_QUERIES_REGISTRY.clear()
     vendor_queries_factory._DEFAULTS_REGISTERED = False
 

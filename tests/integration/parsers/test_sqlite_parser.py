@@ -66,7 +66,7 @@ def sqlite_container(tmp_path):
 @pytest.fixture
 def sqlite_config(sqlite_db, tmp_path):
     """Create SQLite configuration for testing."""
-    from config import DbliftConfig
+    from dblift.config import DbliftConfig
 
     migrations_dir = tmp_path / "migrations"
     migrations_dir.mkdir(parents=True, exist_ok=True)
@@ -94,7 +94,7 @@ class TestSQLiteParser:
 
     def test_basic_table_creation(self, sqlite_db):
         """Test parsing and executing basic CREATE TABLE."""
-        from db.plugins.sqlite.parser.sqlite_regex_parser import SQLiteRegexParser
+        from dblift.db.plugins.sqlite.parser.sqlite_regex_parser import SQLiteRegexParser
 
         parser = SQLiteRegexParser()
 
@@ -131,7 +131,7 @@ class TestSQLiteParser:
 
     def test_trigger_with_begin_end(self, sqlite_db):
         """Test parsing and executing trigger with BEGIN/END block."""
-        from db.plugins.sqlite.parser.sqlite_regex_parser import SQLiteRegexParser
+        from dblift.db.plugins.sqlite.parser.sqlite_regex_parser import SQLiteRegexParser
 
         parser = SQLiteRegexParser()
 
@@ -172,7 +172,7 @@ class TestSQLiteParser:
 
     def test_view_creation(self, sqlite_db):
         """Test parsing and executing CREATE VIEW."""
-        from db.plugins.sqlite.parser.sqlite_regex_parser import SQLiteRegexParser
+        from dblift.db.plugins.sqlite.parser.sqlite_regex_parser import SQLiteRegexParser
 
         parser = SQLiteRegexParser()
 
@@ -209,7 +209,7 @@ class TestSQLiteParser:
 
     def test_index_creation(self, sqlite_db):
         """Test parsing and executing CREATE INDEX statements."""
-        from db.plugins.sqlite.parser.sqlite_regex_parser import SQLiteRegexParser
+        from dblift.db.plugins.sqlite.parser.sqlite_regex_parser import SQLiteRegexParser
 
         parser = SQLiteRegexParser()
 
@@ -246,7 +246,7 @@ class TestSQLiteParser:
 
     def test_comments_handling(self, sqlite_db):
         """Test parsing SQL with various comment styles."""
-        from db.plugins.sqlite.parser.sqlite_regex_parser import SQLiteRegexParser
+        from dblift.db.plugins.sqlite.parser.sqlite_regex_parser import SQLiteRegexParser
 
         parser = SQLiteRegexParser()
 
@@ -281,7 +281,7 @@ class TestSQLiteParser:
 
     def test_string_with_semicolons(self, sqlite_db):
         """Test parsing SQL with semicolons inside string literals."""
-        from db.plugins.sqlite.parser.sqlite_regex_parser import SQLiteRegexParser
+        from dblift.db.plugins.sqlite.parser.sqlite_regex_parser import SQLiteRegexParser
 
         parser = SQLiteRegexParser()
 
@@ -313,7 +313,7 @@ class TestSQLiteParser:
 
     def test_complex_trigger(self, sqlite_db):
         """Test complex trigger with multiple statements in body."""
-        from db.plugins.sqlite.parser.sqlite_regex_parser import SQLiteRegexParser
+        from dblift.db.plugins.sqlite.parser.sqlite_regex_parser import SQLiteRegexParser
 
         parser = SQLiteRegexParser()
 
@@ -362,7 +362,7 @@ class TestSQLiteParser:
 
     def test_cte_with_recursive(self, sqlite_db):
         """Test parsing Common Table Expression with RECURSIVE."""
-        from db.plugins.sqlite.parser.sqlite_regex_parser import SQLiteRegexParser
+        from dblift.db.plugins.sqlite.parser.sqlite_regex_parser import SQLiteRegexParser
 
         parser = SQLiteRegexParser()
 
@@ -407,7 +407,7 @@ class TestSQLiteParser:
 
     def test_on_conflict_clause(self, sqlite_db):
         """Test parsing INSERT with ON CONFLICT clause."""
-        from db.plugins.sqlite.parser.sqlite_regex_parser import SQLiteRegexParser
+        from dblift.db.plugins.sqlite.parser.sqlite_regex_parser import SQLiteRegexParser
 
         parser = SQLiteRegexParser()
 

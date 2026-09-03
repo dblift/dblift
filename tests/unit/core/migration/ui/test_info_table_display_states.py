@@ -13,9 +13,9 @@ from pathlib import Path
 
 import pytest
 
-from core.logger import NullLog
-from core.migration.ui.data_collector import MigrationDataCollector
-from core.migration.ui.table_renderer import TableRenderer
+from dblift.core.logger import NullLog
+from dblift.core.migration.ui.data_collector import MigrationDataCollector
+from dblift.core.migration.ui.table_renderer import TableRenderer
 from tests.unit.core.migration.test_migration_state_manager_extended import (
     _mk_baseline,
     _mk_manager,

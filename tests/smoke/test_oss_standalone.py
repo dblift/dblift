@@ -9,7 +9,16 @@ from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
-OSS_ROOTS = ("api", "cli", "config", "core", "db", "integrations")
+OSS_ROOTS = ("dblift",)
+OSS_MODULES = (
+    "dblift",
+    "dblift.api",
+    "dblift.cli",
+    "dblift.config",
+    "dblift.core",
+    "dblift.db",
+    "dblift.integrations",
+)
 
 
 def test_oss_roots_discoverable_without_higher_tier_packages(tmp_path):
@@ -22,7 +31,7 @@ def test_oss_roots_discoverable_without_higher_tier_packages(tmp_path):
 
     env = os.environ.copy()
     env["PYTHONPATH"] = str(oss_source)
-    roots = repr(OSS_ROOTS)
+    roots = repr(OSS_MODULES)
 
     probe = f"""
 import importlib.util
@@ -61,8 +70,8 @@ def _oss_builtin_command_choices(monkeypatch):
     lifecycle commands plus the premium-command stubs registered natively by
     ``_register_premium_stub_parsers``.
     """
-    from cli import extensions
-    from cli._parser_setup import create_parser
+    from dblift.cli import extensions
+    from dblift.cli._parser_setup import create_parser
 
     monkeypatch.setattr(extensions.metadata, "entry_points", lambda group: [])
     parser = create_parser()

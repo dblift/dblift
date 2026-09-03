@@ -2,7 +2,7 @@
 
 import pytest
 
-from core.introspection.extractors.index_extractor import IndexExtractor
+from dblift.core.introspection.extractors.index_extractor import IndexExtractor
 
 
 @pytest.mark.unit

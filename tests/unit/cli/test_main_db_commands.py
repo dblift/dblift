@@ -7,7 +7,7 @@ from unittest.mock import patch
 
 import pytest
 
-from cli.main import main
+from dblift.cli.main import main
 
 pytestmark = [pytest.mark.unit]
 
@@ -15,9 +15,9 @@ pytestmark = [pytest.mark.unit]
 def test_db_list_drivers_does_not_require_global_config_load(capsys):
     with (
         patch.object(sys, "argv", ["dblift", "db", "list-drivers"]),
-        patch("cli.main._load_and_merge_config") as load_config,
+        patch("dblift.cli.main._load_and_merge_config") as load_config,
         patch(
-            "cli.db_utils.ProviderRegistry.get_available_drivers",
+            "dblift.cli.db_utils.ProviderRegistry.get_available_drivers",
             return_value={"cosmosdb": True},
         ),
     ):

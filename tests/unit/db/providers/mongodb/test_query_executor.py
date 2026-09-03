@@ -4,8 +4,8 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from core.exceptions import NoSqlQueryLanguageUnsupportedError
-from db.plugins.mongodb.mongodb import MongoDbQueryExecutor
+from dblift.core.exceptions import NoSqlQueryLanguageUnsupportedError
+from dblift.db.plugins.mongodb.mongodb import MongoDbQueryExecutor
 
 
 def _executor():

@@ -1,6 +1,6 @@
 """Conformance tests for the dialect capability matrix.
 
-``core.sql_model.dialect.DialectCapabilities`` is the authoritative
+``dblift.core.sql_model.dialect.DialectCapabilities`` is the authoritative
 declaration of what each dialect supports. Providers must match. If
 a provider changes its behaviour (e.g. CosmosDB gains transactional
 support), these tests flag the drift and force the matrix — the single
@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import pytest
 
-from core.sql_model.dialect import (
+from dblift.core.sql_model.dialect import (
     _CAPABILITIES,
     SCHEMA_OPTIONAL_DIALECTS,
     SCHEMA_OPTIONAL_DIALECTS_FROM_MATRIX,
@@ -37,7 +37,7 @@ def _canonical_dialect_names():
     Replaces the removed ``list(DialectEnum)`` vocabulary (story 26-5);
     the plugin registry is now the single source of canonical names.
     """
-    from db.provider_registry import ProviderRegistry
+    from dblift.db.provider_registry import ProviderRegistry
 
     return sorted(p.name for p in ProviderRegistry.list_plugins())
 
@@ -207,13 +207,13 @@ class TestProviderConformance:
 
     # Each entry: (provider class, dialect string)
     _INSTANTIABLE_PROVIDERS = [
-        ("cosmosdb", "db.plugins.cosmosdb.provider", "CosmosDbProvider"),
-        ("db2", "db.plugins.db2.provider", "Db2Provider"),
-        ("mysql", "db.plugins.mysql.provider", "MySqlProvider"),
-        ("oracle", "db.plugins.oracle.provider", "OracleProvider"),
-        ("postgresql", "db.plugins.postgresql.provider", "PostgreSqlProvider"),
-        ("sqlite", "db.plugins.sqlite.provider", "SQLiteProvider"),
-        ("sqlserver", "db.plugins.sqlserver.provider", "SqlServerProvider"),
+        ("cosmosdb", "dblift.db.plugins.cosmosdb.provider", "CosmosDbProvider"),
+        ("db2", "dblift.db.plugins.db2.provider", "Db2Provider"),
+        ("mysql", "dblift.db.plugins.mysql.provider", "MySqlProvider"),
+        ("oracle", "dblift.db.plugins.oracle.provider", "OracleProvider"),
+        ("postgresql", "dblift.db.plugins.postgresql.provider", "PostgreSqlProvider"),
+        ("sqlite", "dblift.db.plugins.sqlite.provider", "SQLiteProvider"),
+        ("sqlserver", "dblift.db.plugins.sqlserver.provider", "SqlServerProvider"),
     ]
 
     @staticmethod

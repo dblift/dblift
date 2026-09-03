@@ -7,10 +7,10 @@ import pytest
 
 pytestmark = [pytest.mark.unit]
 
-from config.secrets._provider_base import AbstractSecretsProvider, SecretsResolutionError
-from config.secrets._registry import _providers, register
-from config.secrets._resolver import clear_cache, resolve_secret_refs
-from config.secrets._secrets_config import SecretsConfig
+from dblift.config.secrets._provider_base import AbstractSecretsProvider, SecretsResolutionError
+from dblift.config.secrets._registry import _providers, register
+from dblift.config.secrets._resolver import clear_cache, resolve_secret_refs
+from dblift.config.secrets._secrets_config import SecretsConfig
 
 
 class _StubProvider(AbstractSecretsProvider):

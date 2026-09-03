@@ -3,7 +3,7 @@
 import unittest
 from unittest.mock import MagicMock
 
-from api.events import Event, EventEmitter, EventType
+from dblift.api.events import Event, EventEmitter, EventType
 
 
 class TestEventEmitterOn(unittest.TestCase):
@@ -136,13 +136,13 @@ class TestWildcardMatch(unittest.TestCase):
 
 class TestGetDefaultEmitter(unittest.TestCase):
     def test_returns_emitter(self):
-        from api.events import get_default_emitter
+        from dblift.api.events import get_default_emitter
 
         emitter = get_default_emitter()
         self.assertIsInstance(emitter, EventEmitter)
 
     def test_returns_same_instance(self):
-        from api.events import get_default_emitter
+        from dblift.api.events import get_default_emitter
 
         e1 = get_default_emitter()
         e2 = get_default_emitter()
@@ -151,7 +151,7 @@ class TestGetDefaultEmitter(unittest.TestCase):
 
 class TestEmitEvent(unittest.TestCase):
     def test_emit_event_no_crash(self):
-        from api.events import emit_event
+        from dblift.api.events import emit_event
 
         # Should not crash even with no listeners.
         emit_event(EventType.MIGRATION_APPLIED, {"version": "1.0"})
@@ -159,7 +159,7 @@ class TestEmitEvent(unittest.TestCase):
     def test_emit_event_unknown_string_raises(self):
         """Strings that do not correspond to an EventType member must raise
         ValueError instead of being silently emitted."""
-        from api.events import emit_event
+        from dblift.api.events import emit_event
 
         with self.assertRaises(ValueError):
             emit_event("not.a.real.event", {})

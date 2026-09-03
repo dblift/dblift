@@ -21,7 +21,7 @@ pytest.importorskip("duckdb_engine", reason="duckdb_engine dialect not installed
 @pytest.mark.unit
 class TestDuckDBRegistration:
     def test_plugin_metadata(self) -> None:
-        from db.plugins.duckdb.plugin import PLUGIN
+        from dblift.db.plugins.duckdb.plugin import PLUGIN
 
         assert PLUGIN.name == "duckdb"
         assert PLUGIN.dialects == ["duckdb"]
@@ -29,7 +29,7 @@ class TestDuckDBRegistration:
         assert PLUGIN.provider_class.__name__ == "DuckDBProvider"
 
     def test_capability_matrix_from_quirks(self) -> None:
-        from db.plugins.duckdb.quirks import DuckDBQuirks
+        from dblift.db.plugins.duckdb.quirks import DuckDBQuirks
 
         q = DuckDBQuirks()
         assert q.supports_transactions is True
@@ -40,7 +40,7 @@ class TestDuckDBRegistration:
         assert q.boolean_false_literal == "FALSE"
 
     def test_pro_hooks_none_in_oss(self) -> None:
-        from db.plugins.duckdb.quirks import DuckDBQuirks
+        from dblift.db.plugins.duckdb.quirks import DuckDBQuirks
 
         q = DuckDBQuirks()
         assert q.ddl_generator_class() is None
@@ -55,7 +55,7 @@ class TestDuckDBParamBinding:
         """duckdb_engine's dialect reports ``numeric_dollar``; the raw
         exec_driver_sql path must emit ``$1``/``$2`` (its DBAPI accepts them),
         not the unbindable ``:p0`` fallback."""
-        from db.sqlalchemy_provider import SqlAlchemyProvider
+        from dblift.db.sqlalchemy_provider import SqlAlchemyProvider
 
         sql, params = SqlAlchemyProvider._driver_bind(
             "SELECT * FROM t WHERE a = ? AND b = ?", ["x", "y"], "numeric_dollar"
@@ -67,7 +67,7 @@ class TestDuckDBParamBinding:
 @pytest.mark.unit
 class TestDuckDBSplitter:
     def test_splits_respecting_strings_and_comments(self) -> None:
-        from db.plugins.duckdb.parser.duckdb_regex_parser import DuckDBRegexParser
+        from dblift.db.plugins.duckdb.parser.duckdb_regex_parser import DuckDBRegexParser
 
         parser = DuckDBRegexParser()
         sql = "CREATE TABLE t (a INT); INSERT INTO t VALUES (';');\n-- c; still comment\nSELECT 1;"
@@ -76,14 +76,14 @@ class TestDuckDBSplitter:
         assert stmts[1] == "INSERT INTO t VALUES (';');"
 
     def test_strict_mode_does_not_raise(self) -> None:
-        from db.plugins.duckdb.parser.duckdb_regex_parser import DuckDBRegexParser
+        from dblift.db.plugins.duckdb.parser.duckdb_regex_parser import DuckDBRegexParser
 
         parser = DuckDBRegexParser()
         stmts = parser.split_statements("CREATE TABLE t (a INT);", strict_tokenizer=True)
         assert stmts == ["CREATE TABLE t (a INT);"]
 
     def test_extract_objects_from_create(self) -> None:
-        from db.plugins.duckdb.parser.duckdb_regex_parser import DuckDBRegexParser
+        from dblift.db.plugins.duckdb.parser.duckdb_regex_parser import DuckDBRegexParser
 
         parser = DuckDBRegexParser()
         objs = parser.extract_objects("CREATE TABLE main.foo (a int)")
@@ -92,9 +92,9 @@ class TestDuckDBSplitter:
 
 @pytest.fixture()
 def duckdb_provider():
-    from config import DbliftConfig
-    from db.plugins.duckdb.config import DuckDBConfig
-    from db.plugins.duckdb.provider import DuckDBProvider
+    from dblift.config import DbliftConfig
+    from dblift.db.plugins.duckdb.config import DuckDBConfig
+    from dblift.db.plugins.duckdb.provider import DuckDBProvider
 
     tmp = Path(tempfile.mkdtemp())
     dbfile = tmp / "test.duckdb"
@@ -108,7 +108,7 @@ def duckdb_provider():
 @pytest.mark.unit
 class TestDuckDBRoundTrip:
     def test_migrate_creates_schema_and_records_history(self, duckdb_provider) -> None:
-        from api.client import DBLiftClient
+        from dblift.api.client import DBLiftClient
 
         provider, tmp = duckdb_provider
         migrations = tmp / "migrations"
@@ -167,8 +167,8 @@ class TestDuckDBRoundTrip:
 @pytest.mark.unit
 class TestDuckDBDmlRowcount:
     def _provider(self, tmp_path: Path) -> "DuckDBProvider":
-        from config import DatabaseConfig, DbliftConfig
-        from db.plugins.duckdb.provider import DuckDBProvider
+        from dblift.config import DatabaseConfig, DbliftConfig
+        from dblift.db.plugins.duckdb.provider import DuckDBProvider
 
         db_file = tmp_path / "rc.duckdb"
         cfg = DbliftConfig(
@@ -278,7 +278,7 @@ class TestDuckDBDmlRowcount:
         assert isinstance(rc, int)
 
     def test_strip_sql_comments_helpers(self) -> None:
-        from db.plugins.duckdb.provider import DuckDBProvider
+        from dblift.db.plugins.duckdb.provider import DuckDBProvider
 
         strip = DuckDBProvider._strip_sql_comments
         assert strip("-- only comment") == ""
@@ -292,7 +292,7 @@ class TestDuckDBDmlRowcount:
         assert strip("UPDATE t SET v = 'a--b'") == "UPDATE t SET v = 'a--b'"
 
     def test_has_top_level_semicolon_helpers(self) -> None:
-        from db.plugins.duckdb.provider import DuckDBProvider
+        from dblift.db.plugins.duckdb.provider import DuckDBProvider
 
         has = DuckDBProvider._has_top_level_semicolon
         assert has("UPDATE t SET v = 1") is False
@@ -318,7 +318,7 @@ class TestDuckDBDmlRowcount:
         assert provider.execute_statement(sql) == 1
 
     def test_has_top_level_keyword_helpers(self) -> None:
-        from db.plugins.duckdb.provider import DuckDBProvider
+        from dblift.db.plugins.duckdb.provider import DuckDBProvider
 
         has = DuckDBProvider._has_top_level_keyword
         strip = DuckDBProvider._strip_sql_comments

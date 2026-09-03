@@ -11,7 +11,7 @@ import pytest
 
 pytestmark = [pytest.mark.unit]
 
-from cli.db_utils import (
+from dblift.cli.db_utils import (
     check_connection,
     diagnose_connection,
     list_drivers,
@@ -24,7 +24,7 @@ from cli.db_utils import (
 class TestListDrivers:
     """Test list_drivers functionality."""
 
-    @patch("cli.db_utils.ProviderRegistry")
+    @patch("dblift.cli.db_utils.ProviderRegistry")
     def test_list_drivers_success(self, mock_provider_registry, capsys):
         """Test successful driver listing."""
 
@@ -44,7 +44,7 @@ class TestListDrivers:
         assert "Available" in captured.out
         assert "Not available" in captured.out
 
-    @patch("cli.db_utils.ProviderRegistry")
+    @patch("dblift.cli.db_utils.ProviderRegistry")
     def test_list_drivers_with_missing_drivers(self, mock_provider_registry, capsys):
         """Test driver listing with missing drivers."""
         mock_provider_registry.get_available_drivers.return_value = {
@@ -60,7 +60,7 @@ class TestListDrivers:
         captured = capsys.readouterr()
         assert "Install missing drivers" in captured.out
 
-    @patch("cli.db_utils.ProviderRegistry")
+    @patch("dblift.cli.db_utils.ProviderRegistry")
     def test_list_drivers_error(self, mock_provider_registry, capsys):
         """Test driver listing with error."""
         mock_provider_registry.get_available_drivers.side_effect = Exception("Test error")
@@ -76,8 +76,8 @@ class TestListDrivers:
 class TestValidateConfig:
     """Test validate_config functionality."""
 
-    @patch("cli.db_utils.load_config")
-    @patch("cli.db_utils.ProviderRegistry")
+    @patch("dblift.cli.db_utils.load_config")
+    @patch("dblift.cli.db_utils.ProviderRegistry")
     def test_validate_config_success_reads_config_file(
         self, mock_provider_registry, mock_load_config, capsys
     ):
@@ -95,8 +95,8 @@ class TestValidateConfig:
         captured = capsys.readouterr()
         assert "Database configuration and driver are valid" in captured.out
 
-    @patch("cli.db_utils.load_config")
-    @patch("cli.db_utils.ProviderRegistry")
+    @patch("dblift.cli.db_utils.load_config")
+    @patch("dblift.cli.db_utils.ProviderRegistry")
     def test_validate_config_without_config_uses_load_config(
         self, mock_provider_registry, mock_load_config, capsys
     ):
@@ -117,7 +117,7 @@ class TestValidateConfig:
         captured = capsys.readouterr()
         assert "Error: Invalid config" in captured.err
 
-    @patch("cli.db_utils.load_config")
+    @patch("dblift.cli.db_utils.load_config")
     def test_validate_config_missing_file_returns_1(self, mock_load_config, capsys):
         """--config pointing at a missing file exits 1 with a clean error."""
         mock_load_config.side_effect = FileNotFoundError("Config file not found: /nope.yaml")
@@ -131,7 +131,7 @@ class TestValidateConfig:
         captured = capsys.readouterr()
         assert "Config file not found" in captured.err
 
-    @patch("cli.db_utils.load_config")
+    @patch("dblift.cli.db_utils.load_config")
     def test_validate_config_exception(self, mock_load_config, capsys):
         """Unexpected exception from load_config is caught and returns 1."""
         mock_load_config.side_effect = Exception("Config error")
@@ -247,7 +247,9 @@ class TestDiagnoseConnection:
         captured = capsys.readouterr()
         assert "drivers" in captured.out
 
-    @patch("cli.db_utils.ProviderRegistry.list_plugins", side_effect=Exception("registry error"))
+    @patch(
+        "dblift.cli.db_utils.ProviderRegistry.list_plugins", side_effect=Exception("registry error")
+    )
     def test_diagnose_connection_error(self, _mock_list_plugins, capsys):
         """Test native diagnostics with error."""
         args = Mock()
@@ -263,9 +265,9 @@ class TestDiagnoseConnection:
 class TestCheckConnection:
     """Test check_connection functionality."""
 
-    @patch("cli.db_utils.ProviderRegistry.create_provider")
-    @patch("cli.db_utils.load_config")
-    @patch("cli.db_utils.DbliftLogger")
+    @patch("dblift.cli.db_utils.ProviderRegistry.create_provider")
+    @patch("dblift.cli.db_utils.load_config")
+    @patch("dblift.cli.db_utils.DbliftLogger")
     def test_check_connection_success(
         self, mock_logger, mock_load_config, mock_create_provider, capsys
     ):
@@ -291,9 +293,9 @@ class TestCheckConnection:
         assert "Connection successful!" in captured.out
         mock_create_provider.assert_called_once_with(mock_config_instance, mock_logger.return_value)
 
-    @patch("cli.db_utils.ProviderRegistry.create_provider")
-    @patch("cli.db_utils.load_config")
-    @patch("cli.db_utils.DbliftLogger")
+    @patch("dblift.cli.db_utils.ProviderRegistry.create_provider")
+    @patch("dblift.cli.db_utils.load_config")
+    @patch("dblift.cli.db_utils.DbliftLogger")
     def test_check_connection_success_prints_active_schema(
         self, mock_logger, mock_load_config, mock_create_provider, capsys
     ):
@@ -317,9 +319,9 @@ class TestCheckConnection:
         captured = capsys.readouterr()
         assert "schema: app_schema" in captured.out
 
-    @patch("cli.db_utils.ProviderRegistry.create_provider")
-    @patch("cli.db_utils.load_config")
-    @patch("cli.db_utils.DbliftLogger")
+    @patch("dblift.cli.db_utils.ProviderRegistry.create_provider")
+    @patch("dblift.cli.db_utils.load_config")
+    @patch("dblift.cli.db_utils.DbliftLogger")
     def test_check_connection_accepts_host_database_config(
         self, mock_logger, mock_load_config, mock_create_provider, capsys
     ):
@@ -348,7 +350,7 @@ class TestCheckConnection:
         assert "Connection successful!" in captured.out
         mock_create_provider.assert_called_once_with(mock_config_instance, mock_logger.return_value)
 
-    @patch("cli.db_utils.load_config")
+    @patch("dblift.cli.db_utils.load_config")
     def test_check_connection_config_error(self, mock_load_config, capsys):
         """Test connection check with config error."""
         mock_load_config.side_effect = Exception("Config error")
@@ -362,9 +364,9 @@ class TestCheckConnection:
         captured = capsys.readouterr()
         assert "Error creating configuration" in captured.err
 
-    @patch("cli.db_utils.ProviderRegistry.create_provider")
-    @patch("cli.db_utils.load_config")
-    @patch("cli.db_utils.DbliftLogger")
+    @patch("dblift.cli.db_utils.ProviderRegistry.create_provider")
+    @patch("dblift.cli.db_utils.load_config")
+    @patch("dblift.cli.db_utils.DbliftLogger")
     def test_check_connection_unsupported_db(
         self, mock_logger, mock_load_config, mock_create_provider, capsys
     ):
@@ -387,8 +389,8 @@ class TestCheckConnection:
         assert "Unsupported database type" in output_data["error"]
         mock_create_provider.assert_called_once()
 
-    @patch("cli.db_utils.load_config")
-    @patch("cli.db_utils.DbliftLogger")
+    @patch("dblift.cli.db_utils.load_config")
+    @patch("dblift.cli.db_utils.DbliftLogger")
     def test_check_connection_missing_params(self, mock_logger, mock_load_config, capsys):
         """Test connection check with missing connection parameters."""
         mock_config_instance = Mock()
@@ -407,9 +409,9 @@ class TestCheckConnection:
         captured = capsys.readouterr()
         assert "Missing required connection parameters" in captured.err
 
-    @patch("cli.db_utils.ProviderRegistry.create_provider")
-    @patch("cli.db_utils.load_config")
-    @patch("cli.db_utils.DbliftLogger")
+    @patch("dblift.cli.db_utils.ProviderRegistry.create_provider")
+    @patch("dblift.cli.db_utils.load_config")
+    @patch("dblift.cli.db_utils.DbliftLogger")
     def test_check_connection_driver_validation_failure(
         self, mock_logger, mock_load_config, mock_create_provider, capsys
     ):
@@ -434,9 +436,9 @@ class TestCheckConnection:
         assert output_data["success"] is False
         assert "Connection failed: host unreachable" in output_data["error"]
 
-    @patch("cli.db_utils.ProviderRegistry.create_provider")
-    @patch("cli.db_utils.load_config")
-    @patch("cli.db_utils.DbliftLogger")
+    @patch("dblift.cli.db_utils.ProviderRegistry.create_provider")
+    @patch("dblift.cli.db_utils.load_config")
+    @patch("dblift.cli.db_utils.DbliftLogger")
     def test_check_connection_postgresql(
         self, mock_logger, mock_load_config, mock_create_provider, capsys
     ):
@@ -462,9 +464,9 @@ class TestCheckConnection:
         mock_create_provider.assert_called_once_with(mock_config_instance, mock_logger.return_value)
         mock_provider.close.assert_called_once()
 
-    @patch("cli.db_utils.ProviderRegistry.create_provider")
-    @patch("cli.db_utils.load_config")
-    @patch("cli.db_utils.DbliftLogger")
+    @patch("dblift.cli.db_utils.ProviderRegistry.create_provider")
+    @patch("dblift.cli.db_utils.load_config")
+    @patch("dblift.cli.db_utils.DbliftLogger")
     def test_check_connection_oracle(
         self, mock_logger, mock_load_config, mock_create_provider, capsys
     ):
@@ -492,9 +494,9 @@ class TestCheckConnection:
         mock_create_provider.assert_called_once_with(mock_config_instance, mock_logger.return_value)
         mock_provider.close.assert_called_once()
 
-    @patch("cli.db_utils.ProviderRegistry.create_provider")
-    @patch("cli.db_utils.load_config")
-    @patch("cli.db_utils.DbliftLogger")
+    @patch("dblift.cli.db_utils.ProviderRegistry.create_provider")
+    @patch("dblift.cli.db_utils.load_config")
+    @patch("dblift.cli.db_utils.DbliftLogger")
     def test_check_connection_connection_error(
         self, mock_logger, mock_load_config, mock_create_provider, capsys
     ):
@@ -518,9 +520,9 @@ class TestCheckConnection:
         captured = capsys.readouterr()
         assert "Connection failed" in captured.err
 
-    @patch("cli.db_utils.ProviderRegistry.create_provider")
-    @patch("cli.db_utils.load_config")
-    @patch("cli.db_utils.DbliftLogger")
+    @patch("dblift.cli.db_utils.ProviderRegistry.create_provider")
+    @patch("dblift.cli.db_utils.load_config")
+    @patch("dblift.cli.db_utils.DbliftLogger")
     def test_check_connection_refused_has_no_traceback(
         self, mock_logger, mock_load_config, mock_create_provider, capsys
     ):
@@ -550,9 +552,9 @@ class TestCheckConnection:
         assert 'File "' not in captured.err
         assert "Traceback" not in captured.err
 
-    @patch("cli.db_utils.ProviderRegistry.create_provider")
-    @patch("cli.db_utils.load_config")
-    @patch("cli.db_utils.DbliftLogger")
+    @patch("dblift.cli.db_utils.ProviderRegistry.create_provider")
+    @patch("dblift.cli.db_utils.load_config")
+    @patch("dblift.cli.db_utils.DbliftLogger")
     def test_close_connection_called_if_get_version_raises(
         self, mock_logger, mock_load_config, mock_create_provider
     ):
@@ -574,10 +576,10 @@ class TestCheckConnection:
         assert result == 1
         mock_provider.close.assert_called_once()
 
-    @patch("cli.db_utils.ProviderRegistry.create_provider")
-    @patch("cli.db_utils.get_provider_display_url")
-    @patch("cli.db_utils.load_config")
-    @patch("cli.db_utils.DbliftLogger")
+    @patch("dblift.cli.db_utils.ProviderRegistry.create_provider")
+    @patch("dblift.cli.db_utils.get_provider_display_url")
+    @patch("dblift.cli.db_utils.load_config")
+    @patch("dblift.cli.db_utils.DbliftLogger")
     def test_close_connection_called_if_get_database_url_raises(
         self, mock_logger, mock_load_config, mock_display_url, mock_create_provider
     ):
@@ -600,9 +602,9 @@ class TestCheckConnection:
         assert result == 1
         mock_provider.close.assert_called_once()
 
-    @patch("cli.db_utils.ProviderRegistry.create_provider")
-    @patch("cli.db_utils.load_config")
-    @patch("cli.db_utils.DbliftLogger")
+    @patch("dblift.cli.db_utils.ProviderRegistry.create_provider")
+    @patch("dblift.cli.db_utils.load_config")
+    @patch("dblift.cli.db_utils.DbliftLogger")
     def test_close_connection_called_once_on_nominal_path(
         self, mock_logger, mock_load_config, mock_create_provider, capsys
     ):
@@ -629,9 +631,9 @@ class TestCheckConnection:
 class TestCheckConnectionLogFile:
     """BUG-02: db check-connection must honour --log-file."""
 
-    @patch("cli.db_utils.ProviderRegistry.create_provider")
-    @patch("cli.db_utils.load_config")
-    @patch("cli.db_utils.DbliftLogger")
+    @patch("dblift.cli.db_utils.ProviderRegistry.create_provider")
+    @patch("dblift.cli.db_utils.load_config")
+    @patch("dblift.cli.db_utils.DbliftLogger")
     def test_log_file_pattern_passed_to_logger(
         self, mock_logger, mock_load_config, mock_create_provider
     ):
@@ -657,9 +659,9 @@ class TestCheckConnectionLogFile:
         _, kwargs = mock_logger.call_args
         assert kwargs.get("log_file_pattern") == "/tmp/dblift_test/logs/log.json"
 
-    @patch("cli.db_utils.ProviderRegistry.create_provider")
-    @patch("cli.db_utils.load_config")
-    @patch("cli.db_utils.DbliftLogger")
+    @patch("dblift.cli.db_utils.ProviderRegistry.create_provider")
+    @patch("dblift.cli.db_utils.load_config")
+    @patch("dblift.cli.db_utils.DbliftLogger")
     def test_closes_logger_on_success(self, mock_logger, mock_load_config, mock_create_provider):
         mock_config_instance = Mock()
         mock_config_instance.database.url = "mssql+pymssql://localhost:1433/test"
@@ -681,9 +683,9 @@ class TestCheckConnectionLogFile:
 
         mock_logger.return_value.close.assert_called_once()
 
-    @patch("cli.db_utils.ProviderRegistry.create_provider")
-    @patch("cli.db_utils.load_config")
-    @patch("cli.db_utils.DbliftLogger")
+    @patch("dblift.cli.db_utils.ProviderRegistry.create_provider")
+    @patch("dblift.cli.db_utils.load_config")
+    @patch("dblift.cli.db_utils.DbliftLogger")
     def test_closes_logger_on_connection_failure(
         self, mock_logger, mock_load_config, mock_create_provider
     ):
@@ -713,7 +715,7 @@ class TestPrintConnectionResults:
 
     def test_print_connection_results_text_success(self, capsys):
         """Test printing successful connection results in text format."""
-        from cli._output import CommandOutput
+        from dblift.cli._output import CommandOutput
 
         results = {
             "success": True,
@@ -733,7 +735,7 @@ class TestPrintConnectionResults:
 
     def test_print_connection_results_text_failure(self, capsys):
         """Test printing failed connection results in text format."""
-        from cli._output import CommandOutput
+        from dblift.cli._output import CommandOutput
 
         results = {"success": False, "error": "Connection timeout", "connection_info": {}}
 
@@ -745,7 +747,7 @@ class TestPrintConnectionResults:
 
     def test_print_connection_results_json_format(self, capsys):
         """Test printing connection results in JSON format."""
-        from cli._output import CommandOutput
+        from dblift.cli._output import CommandOutput
 
         results = {
             "success": True,
@@ -762,7 +764,7 @@ class TestPrintConnectionResults:
 
     def test_print_connection_results_pretty_format(self, capsys):
         """Test printing connection results in pretty format."""
-        from cli._output import CommandOutput
+        from dblift.cli._output import CommandOutput
 
         results = {"success": True, "connection_info": {"db_type": "test"}}
 
@@ -878,7 +880,7 @@ class TestUtilityFunctions:
 
     def test_to_python_function(self):
         """Test _to_python utility function."""
-        from cli.db_utils import _to_python
+        from dblift.cli.db_utils import _to_python
 
         # Test with dict
         test_dict = {"key": "value", "nested": {"inner": "data"}}
@@ -924,9 +926,9 @@ class TestUtilityFunctions:
                 # Some functions may raise exceptions, which is also valid
                 pass
 
-    @patch("cli.db_utils.ProviderRegistry.create_provider")
-    @patch("cli.db_utils.load_config")
-    @patch("cli.db_utils.DbliftLogger")
+    @patch("dblift.cli.db_utils.ProviderRegistry.create_provider")
+    @patch("dblift.cli.db_utils.load_config")
+    @patch("dblift.cli.db_utils.DbliftLogger")
     def test_check_connection_driver_validation_failed(
         self, mock_logger, mock_load_config, mock_create_provider, capsys
     ):
@@ -951,9 +953,9 @@ class TestUtilityFunctions:
         assert output_data["success"] is False
         assert "Connection failed: host unreachable" in output_data["error"]
 
-    @patch("cli.db_utils.ProviderRegistry.create_provider")
-    @patch("cli.db_utils.load_config")
-    @patch("cli.db_utils.DbliftLogger")
+    @patch("dblift.cli.db_utils.ProviderRegistry.create_provider")
+    @patch("dblift.cli.db_utils.load_config")
+    @patch("dblift.cli.db_utils.DbliftLogger")
     def test_check_connection_provider_connection_error(
         self, mock_logger, mock_load_config, mock_create_provider, capsys
     ):
@@ -977,9 +979,9 @@ class TestUtilityFunctions:
         captured = capsys.readouterr()
         assert "Connection failed" in captured.err
 
-    @patch("cli.db_utils.ProviderRegistry.create_provider")
-    @patch("cli.db_utils.load_config")
-    @patch("cli.db_utils.DbliftLogger")
+    @patch("dblift.cli.db_utils.ProviderRegistry.create_provider")
+    @patch("dblift.cli.db_utils.load_config")
+    @patch("dblift.cli.db_utils.DbliftLogger")
     def test_check_connection_oracle_provider(
         self, mock_logger, mock_load_config, mock_create_provider, capsys
     ):
@@ -1005,9 +1007,9 @@ class TestUtilityFunctions:
         captured = capsys.readouterr()
         assert "Connection successful!" in captured.out
 
-    @patch("cli.db_utils.ProviderRegistry.create_provider")
-    @patch("cli.db_utils.load_config")
-    @patch("cli.db_utils.DbliftLogger")
+    @patch("dblift.cli.db_utils.ProviderRegistry.create_provider")
+    @patch("dblift.cli.db_utils.load_config")
+    @patch("dblift.cli.db_utils.DbliftLogger")
     def test_check_connection_mysql_provider(
         self, mock_logger, mock_load_config, mock_create_provider, capsys
     ):
@@ -1029,8 +1031,8 @@ class TestUtilityFunctions:
         assert output_data["success"] is False
         assert "Unsupported database type" in output_data["error"]
 
-    @patch("cli.db_utils.load_config")
-    @patch("cli.db_utils.DbliftLogger")
+    @patch("dblift.cli.db_utils.load_config")
+    @patch("dblift.cli.db_utils.DbliftLogger")
     def test_check_connection_none_database_type_with_url(
         self, mock_logger, mock_load_config, capsys
     ):
@@ -1050,8 +1052,8 @@ class TestUtilityFunctions:
         captured = capsys.readouterr()
         assert "Missing database type" in captured.err
 
-    @patch("cli.db_utils.load_config")
-    @patch("cli.db_utils.DbliftLogger")
+    @patch("dblift.cli.db_utils.load_config")
+    @patch("dblift.cli.db_utils.DbliftLogger")
     def test_check_connection_none_database_type_without_url(
         self, mock_logger, mock_load_config, capsys
     ):

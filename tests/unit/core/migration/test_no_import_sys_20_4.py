@@ -7,12 +7,12 @@ import pytest
 
 # fmt: off
 _FILES_UNDER_TEST = [
-    "core/migration/rules/migration_rules.py",
-    "core/migration/state/migration_state_manager.py",
-    "core/migration/state/migration_data_service.py",
-    "core/migration/ui/migration_ui.py",
-    "core/migration/executor/migration_helpers.py",
-    "core/migration/executor/placeholder_manager.py",
+    "dblift/core/migration/rules/migration_rules.py",
+    "dblift/core/migration/state/migration_state_manager.py",
+    "dblift/core/migration/state/migration_data_service.py",
+    "dblift/core/migration/ui/migration_ui.py",
+    "dblift/core/migration/executor/migration_helpers.py",
+    "dblift/core/migration/executor/placeholder_manager.py",
 ]
 # fmt: on
 

@@ -2,7 +2,7 @@
 
 import pytest
 
-from core.migration.version_utils import compare_versions
+from dblift.core.migration.version_utils import compare_versions
 
 pytestmark = [pytest.mark.unit]
 
@@ -81,7 +81,7 @@ def test_empty_strings_equal():
 def test_migration_script_manager_no_inline_body():
     import inspect
 
-    from core.migration.scripting.migration_script_manager import MigrationScriptManager
+    from dblift.core.migration.scripting.migration_script_manager import MigrationScriptManager
 
     src = inspect.getsource(MigrationScriptManager.compare_versions)
     assert "_compare_versions_shared" in src

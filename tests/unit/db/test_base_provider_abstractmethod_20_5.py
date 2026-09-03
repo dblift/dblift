@@ -5,8 +5,8 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from config import DbliftConfig
-from db.base_provider import BaseProvider
+from dblift.config import DbliftConfig
+from dblift.db.base_provider import BaseProvider
 
 pytestmark = [pytest.mark.unit]
 

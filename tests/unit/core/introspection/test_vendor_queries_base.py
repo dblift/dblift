@@ -2,7 +2,7 @@
 
 import pytest
 
-from core.introspection.vendor_queries_base import VendorMetadataQueries
+from dblift.core.introspection.vendor_queries_base import VendorMetadataQueries
 
 
 class ConcreteVendorQueries(VendorMetadataQueries):

@@ -2,7 +2,7 @@
 
 import pytest
 
-from api.events import Event, EventEmitter, EventType
+from dblift.api.events import Event, EventEmitter, EventType
 
 
 @pytest.mark.unit

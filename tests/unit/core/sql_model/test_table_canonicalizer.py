@@ -10,9 +10,9 @@ Mirrors comparator equality semantics in core.sql_model.base:
 
 import pytest
 
-from core.sql_model.base import ConstraintType, SqlColumn, SqlConstraint
-from core.sql_model.table import Table
-from core.sql_model.table_canonicalizer import TableCanonicalizer
+from dblift.core.sql_model.base import ConstraintType, SqlColumn, SqlConstraint
+from dblift.core.sql_model.table import Table
+from dblift.core.sql_model.table_canonicalizer import TableCanonicalizer
 
 
 def _col(name="id", data_type="int4", **kwargs):

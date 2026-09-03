@@ -6,7 +6,7 @@ Core modules for migration execution, SQL parsing, and schema management.
 
 The migration engine orchestrates all database migration operations.
 
-::: core.migration.executor.migration_executor.MigrationExecutor
+::: dblift.core.migration.executor.migration_executor.MigrationExecutor
     options:
       show_root_heading: true
       show_source: true
@@ -22,27 +22,27 @@ The migration engine orchestrates all database migration operations.
 
 Command pattern implementation for all migration operations.
 
-::: core.migration.commands.migrate_command.MigrateCommand
+::: dblift.core.migration.commands.migrate_command.MigrateCommand
     options:
       show_root_heading: true
       show_source: true
 
-::: core.migration.commands.undo_command.UndoCommand
+::: dblift.core.migration.commands.undo_command.UndoCommand
     options:
       show_root_heading: true
       show_source: true
 
-::: core.migration.commands.baseline_command.BaselineCommand
+::: dblift.core.migration.commands.baseline_command.BaselineCommand
     options:
       show_root_heading: true
       show_source: true
 
-::: core.migration.commands.info_command.InfoCommand
+::: dblift.core.migration.commands.info_command.InfoCommand
     options:
       show_root_heading: true
       show_source: true
 
-::: core.migration.commands.validate_command.ValidateCommand
+::: dblift.core.migration.commands.validate_command.ValidateCommand
     options:
       show_root_heading: true
       show_source: true
@@ -51,7 +51,7 @@ Command pattern implementation for all migration operations.
 
 Manages migration state and determines which migrations need to run.
 
-::: core.migration.state.migration_state_manager.MigrationStateManager
+::: dblift.core.migration.state.migration_state_manager.MigrationStateManager
     options:
       show_root_heading: true
       show_source: true
@@ -66,7 +66,7 @@ Manages migration state and determines which migrations need to run.
 
 Discovers and loads migration scripts from filesystem.
 
-::: core.migration.scripting.migration_script_manager.MigrationScriptManager
+::: dblift.core.migration.scripting.migration_script_manager.MigrationScriptManager
     options:
       show_root_heading: true
       show_source: true
@@ -81,7 +81,7 @@ Discovers and loads migration scripts from filesystem.
 
 Parses SQL scripts and extracts statements.
 
-::: core.sql_parser
+::: dblift.core.sql_parser
     options:
       show_root_heading: true
       show_source: true

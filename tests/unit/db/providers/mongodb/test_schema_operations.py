@@ -2,7 +2,7 @@
 
 from unittest.mock import MagicMock
 
-from db.plugins.mongodb.mongodb import MongoDbSchemaOperations
+from dblift.db.plugins.mongodb.mongodb import MongoDbSchemaOperations
 
 
 def _operations(collection_names=None):

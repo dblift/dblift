@@ -1,4 +1,4 @@
-"""Extended unit tests for :class:`db.plugins.oracle.provider.OracleProvider`."""
+"""Extended unit tests for :class:`dblift.db.plugins.oracle.provider.OracleProvider`."""
 
 from types import SimpleNamespace
 from unittest.mock import MagicMock
@@ -6,8 +6,13 @@ from unittest.mock import MagicMock
 import pytest
 from sqlalchemy.exc import DatabaseError
 
-import db.plugins.oracle.provider as oracle_provider_module
-from db.plugins.oracle.provider import DroppableObject, OracleProvider, _oracle_name, _schema_object
+import dblift.db.plugins.oracle.provider as oracle_provider_module
+from dblift.db.plugins.oracle.provider import (
+    DroppableObject,
+    OracleProvider,
+    _oracle_name,
+    _schema_object,
+)
 
 
 def _raise(exc):
@@ -612,8 +617,9 @@ class TestRepairMigrationHistory:
 
         assert result is True
         sql, _schema, params = p.statements[-1]
-        assert "SUCCESS = 0" in sql
-        assert params == [999, "V1.sql"]
+        assert "COALESCE(?, SUCCESS)" in sql
+        assert "SUCCESS = 0" not in sql
+        assert params == [999, None, "V1.sql"]
 
     def test_with_success_value(self):
         p = _Provider()
@@ -623,7 +629,7 @@ class TestRepairMigrationHistory:
 
         assert result is True
         sql, _schema, params = p.statements[-1]
-        assert "SUCCESS = ?" in sql
+        assert "COALESCE(?, SUCCESS)" in sql
         assert params == [999, 1, "V1.sql"]
 
 

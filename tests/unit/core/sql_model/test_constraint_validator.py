@@ -4,8 +4,8 @@ from unittest.mock import Mock
 
 import pytest
 
-from core.sql_model.base import ConstraintType, SqlColumn, SqlConstraint
-from core.sql_model.constraint_validator import ConstraintValidator, ValidationError
+from dblift.core.sql_model.base import ConstraintType, SqlColumn, SqlConstraint
+from dblift.core.sql_model.constraint_validator import ConstraintValidator, ValidationError
 
 # ---------------------------------------------------------------------------
 # Helpers

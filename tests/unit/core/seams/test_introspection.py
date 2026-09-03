@@ -1,6 +1,6 @@
 import importlib
 
-from core.seams.introspection import attach_registered_introspection
+from dblift.core.seams.introspection import attach_registered_introspection
 
 
 class _EntryPoint:
@@ -20,7 +20,7 @@ def test_attach_registered_introspection_loads_entrypoints(monkeypatch):
         calls.append("registered")
 
     monkeypatch.setattr(
-        "core.seams.introspection.entry_points",
+        "dblift.core.seams.introspection.entry_points",
         lambda group: [_EntryPoint(registrar)] if group == "dblift.introspection" else [],
     )
 
@@ -31,7 +31,7 @@ def test_attach_registered_introspection_loads_entrypoints(monkeypatch):
 
 def test_attach_registered_introspection_uses_entrypoints_only(monkeypatch, caplog):
     monkeypatch.setattr(
-        "core.seams.introspection.entry_points",
+        "dblift.core.seams.introspection.entry_points",
         lambda group: [],
     )
     monkeypatch.setattr(

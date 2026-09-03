@@ -8,7 +8,7 @@ from unittest.mock import patch
 
 import pytest
 
-from core.logger._formatters import resolve_dblift_package_version
+from dblift.core.logger._formatters import resolve_dblift_package_version
 
 
 def _read_version_line(init_file: Path) -> str:
@@ -24,7 +24,7 @@ def test_resolve_version_matches_running_source():
     ``importlib.metadata`` happens to resolve — a same-named distribution
     installed elsewhere on ``sys.path`` (or a stale editable-install record)
     must not shadow the code that is actually executing."""
-    import core.logger._formatters as formatters_module
+    import dblift.core.logger._formatters as formatters_module
 
     repo_root_init = Path(formatters_module.__file__).resolve().parent.parent.parent / "__init__.py"
     expected = _read_version_line(repo_root_init)
@@ -43,7 +43,7 @@ def test_resolve_version_prefers_bundled_init_over_shadowed_metadata(tmp_path, m
     (tmp_path / "__init__.py").write_text('__version__ = "9.9.9-bundled"\n', encoding="utf-8")
     fake_formatters_file = tmp_path / "core" / "logger" / "_formatters.py"
 
-    monkeypatch.setattr("core.logger._formatters.__file__", str(fake_formatters_file))
+    monkeypatch.setattr("dblift.core.logger._formatters.__file__", str(fake_formatters_file))
     monkeypatch.setattr("sys.frozen", False, raising=False)
 
     def _shadowed_version(name):
@@ -65,7 +65,7 @@ def test_resolve_version_prefers_metadata_when_frozen(tmp_path, monkeypatch):
     (tmp_path / "__init__.py").write_text('__version__ = "9.9.9-bundled"\n', encoding="utf-8")
     fake_formatters_file = tmp_path / "core" / "logger" / "_formatters.py"
 
-    monkeypatch.setattr("core.logger._formatters.__file__", str(fake_formatters_file))
+    monkeypatch.setattr("dblift.core.logger._formatters.__file__", str(fake_formatters_file))
     monkeypatch.setattr("sys.frozen", True, raising=False)
 
     def _frozen_version(name):

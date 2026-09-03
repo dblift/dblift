@@ -7,7 +7,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from core.sql_validator.migration_validator import MigrationValidator
+from dblift.core.sql_validator.migration_validator import MigrationValidator
 
 
 def _make_validator(provider: MagicMock) -> MigrationValidator:

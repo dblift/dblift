@@ -4,7 +4,7 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-from core.sql_model.extension import Extension
+from dblift.core.sql_model.extension import Extension
 
 
 @pytest.mark.unit

@@ -7,12 +7,12 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from core.migration.executors.python_executor import (
+from dblift.core.migration.executors.python_executor import (
     MigrationContext,
     PythonMigrationExecutor,
 )
-from core.migration.formats import MigrationFormat
-from core.migration.migration import Migration
+from dblift.core.migration.formats import MigrationFormat
+from dblift.core.migration.migration import Migration
 
 # Track temp files created by _make_migration for session-end cleanup
 _TEMP_MIGRATION_FILES: list = []

@@ -20,12 +20,12 @@ fi
 echo -e "\n===== Checking formatting with black ====="
 # Use line length specified in pyproject.toml (100) - check only, don't fix
 # Check all Python source directories
-black --check --diff api/ cli/ config/ core/ db/ tests/ scripts/ || { echo "❌ Formatting issues found. Run 'black .' to fix them."; exit_code=1; }
+black --check --diff dblift/ tests/ scripts/ || { echo "❌ Formatting issues found. Run 'black .' to fix them."; exit_code=1; }
 
 echo -e "\n===== Checking imports with isort ====="
 # Check import order without fixing automatically (like GitHub workflow)
 # Check all Python source directories
-isort --check --diff api/ cli/ config/ core/ db/ tests/ scripts/ || { echo "❌ Import order issues found. Run 'isort .' to fix them."; exit_code=1; }
+isort --check --diff dblift/ tests/ scripts/ || { echo "❌ Import order issues found. Run 'isort .' to fix them."; exit_code=1; }
 
 echo -e "\n===== Checking style with flake8 ====="
 # Use the .flake8 file from the project root.
@@ -39,9 +39,9 @@ if [ ! -f "$FLAKE8_CONFIG" ]; then
     FLAKE8_CONFIG="setup.cfg"
 fi
 if [ -f "$FLAKE8_CONFIG" ]; then
-    flake8 --config="$FLAKE8_CONFIG" api/ cli/ config/ core/ db/
+    flake8 --config="$FLAKE8_CONFIG" dblift/
 else
-    flake8 api/ cli/ config/ core/ db/
+    flake8 dblift/
 fi
 if [ $? -ne 0 ]; then
     exit_code=1
@@ -65,9 +65,9 @@ fi
 # Run mypy with error reporting
 # Check all Python source directories
 mypy_exit_code=0
-if [ -d "api" ] || [ -d "cli" ] || [ -d "config" ] || [ -d "core" ] || [ -d "db" ]; then
+if [ -d "dblift" ]; then
     echo "Type checking source directories..."
-    "$PYTHON_BIN" -m mypy api/ cli/ config/ core/ db/ --config-file pyproject.toml --show-error-codes || mypy_exit_code=$?
+    "$PYTHON_BIN" -m mypy dblift/ --config-file pyproject.toml --show-error-codes || mypy_exit_code=$?
 else
     echo "⚠️  Source directories not found, skipping mypy..."
 fi
@@ -103,7 +103,7 @@ echo -e "\n===== Public-API docstring linter (ratchet) ====="
 # measured count. New missing-docstring sites push a count above its
 # cap and fail.
 "$PYTHON_BIN" scripts/check_api_docstrings.py \
-    --paths api cli core db \
+    --paths dblift/api dblift/cli dblift/core dblift/db \
     --ratchet .docstring-ratchet.json \
     || { echo "❌ Public-API docstrings: ratchet exceeded."; exit_code=1; }
 

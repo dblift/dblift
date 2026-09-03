@@ -6,7 +6,7 @@ instead of comparing dialect strings.
 
 from typing import Any, Dict, List
 
-from db.plugins.nosql_base import DocumentStoreProvider
+from dblift.db.plugins.nosql_base import DocumentStoreProvider
 
 
 class _Complete:

@@ -15,7 +15,7 @@ import pytest
 
 
 def _make_provider(existing_connection=None):
-    from db.provider_interfaces import ConnectionProvider
+    from dblift.db.provider_interfaces import ConnectionProvider
 
     provider = MagicMock(spec=ConnectionProvider)
     provider.connection = existing_connection
@@ -29,7 +29,7 @@ def _make_provider(existing_connection=None):
 @pytest.mark.unit
 class TestEnsureMetadataReuseConnection:
     def test_reuses_existing_provider_connection(self):
-        from core.introspection.schema_introspector import SchemaIntrospector
+        from dblift.core.introspection.schema_introspector import SchemaIntrospector
 
         existing = MagicMock()
         existing.getAutoCommit.return_value = True
@@ -49,7 +49,7 @@ class TestEnsureMetadataReuseConnection:
         assert si.connection is existing
 
     def test_native_metadata_does_not_toggle_provider_autocommit(self):
-        from core.introspection.schema_introspector import SchemaIntrospector
+        from dblift.core.introspection.schema_introspector import SchemaIntrospector
 
         existing = MagicMock()
         existing.getAutoCommit.return_value = False
@@ -74,7 +74,7 @@ class TestEnsureMetadataReuseConnection:
         assert si.metadata is None
 
     def test_creates_connection_when_none_exists(self):
-        from core.introspection.schema_introspector import SchemaIntrospector
+        from dblift.core.introspection.schema_introspector import SchemaIntrospector
 
         provider, new_conn = _make_provider(existing_connection=None)
 
@@ -90,7 +90,7 @@ class TestEnsureMetadataReuseConnection:
         assert si.connection is new_conn
 
     def test_skips_ensure_when_metadata_already_set(self):
-        from core.introspection.schema_introspector import SchemaIntrospector
+        from dblift.core.introspection.schema_introspector import SchemaIntrospector
 
         provider, _ = _make_provider()
         existing_meta = MagicMock()

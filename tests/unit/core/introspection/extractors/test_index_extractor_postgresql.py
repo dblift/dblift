@@ -4,7 +4,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from core.introspection.extractors.index_extractor import (
+from dblift.core.introspection.extractors.index_extractor import (
     IndexExtractor,
     normalize_postgresql_index_predicate,
 )

@@ -68,7 +68,7 @@ class DBLiftCLI:
     # Production CLI - this is what gets distributed to users
     # Use absolute module path (cli.main) instead of relative (.cli.main)
     # Relative imports don't work with python -m
-    CLI_MODULE = "cli.main"
+    CLI_MODULE = "dblift.cli.main"
 
     def __init__(
         self,

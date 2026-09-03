@@ -16,7 +16,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from core.migration.commands.base_command import BaseCommand
+from dblift.core.migration.commands.base_command import BaseCommand
 
 
 def _make_base_command_stub() -> BaseCommand:
@@ -65,7 +65,7 @@ class TestFormatCommandFooterRendersErrorMessage:
         import io
         import sys
 
-        from core.logger.console import reset_stdout_console
+        from dblift.core.logger.console import reset_stdout_console
 
         cmd = _make_base_command_stub()
 
@@ -77,7 +77,7 @@ class TestFormatCommandFooterRendersErrorMessage:
             execution_time=lambda: 42,
         )
 
-        from core.logger.log import ConsoleLog
+        from dblift.core.logger.log import ConsoleLog
 
         cmd.log = ConsoleLog.__new__(ConsoleLog)
         cmd._log_text_block = lambda _b: None  # type: ignore[assignment]

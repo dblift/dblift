@@ -2,7 +2,7 @@
 
 from rich.text import Text
 
-from core.logger.console import render_records_table, state_text
+from dblift.core.logger.console import render_records_table, state_text
 
 
 def test_render_records_table_is_plain_text_with_title_and_cells():

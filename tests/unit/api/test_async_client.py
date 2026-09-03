@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 from sqlalchemy import create_engine
 
-from api.async_client import AsyncDBLiftClient
+from dblift.api.async_client import AsyncDBLiftClient
 
 
 def _make(tmp_path: Path) -> AsyncDBLiftClient:

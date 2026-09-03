@@ -9,7 +9,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from cli.main import _validate_migrate_options, create_parser
+from dblift.cli.main import _validate_migrate_options, create_parser
 
 pytestmark = [pytest.mark.unit]
 

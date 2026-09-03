@@ -3,8 +3,8 @@
 import inspect
 from unittest.mock import MagicMock, patch
 
-import db.provider_registry as reg_mod
-from db.provider_registry import ProviderRegistry
+import dblift.db.provider_registry as reg_mod
+from dblift.db.provider_registry import ProviderRegistry
 
 
 class TestProviderRegistryLogging:
@@ -23,7 +23,7 @@ class TestProviderRegistryLogging:
         assert hasattr(
             reg_mod, "_logger"
         ), "_logger should exist at module level in provider_registry"
-        assert reg_mod._logger.name == "db.provider_registry"
+        assert reg_mod._logger.name == "dblift.db.provider_registry"
 
     def test_no_local_logger_variable_in_discover_plugins(self):
         """AC#4 — No local 'logger' variable should remain in discover_plugins."""
@@ -54,7 +54,7 @@ class TestProviderRegistryLogging:
 
             with patch.object(ProviderRegistry, "_load_plugin", side_effect=Exception("boom")):
                 with patch.object(reg_mod._logger, "warning") as mock_warn:
-                    with patch("db.provider_registry.Path") as mock_path:
+                    with patch("dblift.db.provider_registry.Path") as mock_path:
                         mock_path_instance = MagicMock()
                         mock_path_instance.parent.__truediv__ = MagicMock(
                             return_value=mock_plugins_dir

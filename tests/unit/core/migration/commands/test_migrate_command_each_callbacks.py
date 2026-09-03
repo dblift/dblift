@@ -8,8 +8,8 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from core.logger.results import MigrateResult
-from core.migration.commands.migrate_command import MigrateCommand
+from dblift.core.logger.results import MigrateResult
+from dblift.core.migration.commands.migrate_command import MigrateCommand
 
 
 @pytest.mark.unit
@@ -97,7 +97,7 @@ def test_each_callback_banner_logs_once_per_migration_in_a_batch():
     first, even though the callbacks themselves executed correctly for each
     migration (confirmed via a side-effect log table in the original report).
     """
-    from core.logger.log import AbstractLog
+    from dblift.core.logger.log import AbstractLog
 
     logged_messages: list[str] = []
 

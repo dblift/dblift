@@ -13,7 +13,7 @@ import json
 
 import pytest
 
-from config.dblift_config import ConfigEnvDiagnostics, DbliftConfig
+from dblift.config.dblift_config import ConfigEnvDiagnostics, DbliftConfig
 
 
 class TestFromEnvDictAutoMapping:

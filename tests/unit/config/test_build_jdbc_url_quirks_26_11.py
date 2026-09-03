@@ -4,8 +4,8 @@ import inspect
 
 import pytest
 
-from config.database_config import BaseDatabaseConfig
-from db.plugins.sqlserver.config import SqlServerConfig
+from dblift.config.database_config import BaseDatabaseConfig
+from dblift.db.plugins.sqlserver.config import SqlServerConfig
 
 pytestmark = [pytest.mark.unit]
 
@@ -26,19 +26,19 @@ class TestQuirksPropertiesPerDialect:
     """AC#2: quirks properties expose native-driver behaviour per dialect."""
 
     def test_sqlserver_quirks_native_driver_display(self):
-        from db.provider_registry import ProviderRegistry
+        from dblift.db.provider_registry import ProviderRegistry
 
         quirks = ProviderRegistry.get_quirks("sqlserver")
         assert quirks.native_driver_display == "pymssql"
 
     def test_db2_quirks_session_autocommit(self):
-        from db.provider_registry import ProviderRegistry
+        from dblift.db.provider_registry import ProviderRegistry
 
         quirks = ProviderRegistry.get_quirks("db2")
         assert quirks.supports_session_autocommit is False
 
     def test_oracle_quirks_native_driver_display(self):
-        from db.provider_registry import ProviderRegistry
+        from dblift.db.provider_registry import ProviderRegistry
 
         quirks = ProviderRegistry.get_quirks("oracle")
         assert quirks.native_driver_display == "python-oracledb"

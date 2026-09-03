@@ -7,8 +7,8 @@ as block starts.
 
 import pytest
 
-from db.plugins.mysql.parser.mysql_statement_parser import MySQLStatementParser
-from db.plugins.mysql.parser.mysql_tokenizer import MySQLTokenizer
+from dblift.db.plugins.mysql.parser.mysql_statement_parser import MySQLStatementParser
+from dblift.db.plugins.mysql.parser.mysql_tokenizer import MySQLTokenizer
 
 
 class TestMySQLStoredProgramFlagReset:

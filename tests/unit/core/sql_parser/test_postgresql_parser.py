@@ -4,7 +4,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from db.plugins.postgresql.parser.postgresql_regex_parser import PostgreSqlRegexParser
+from dblift.db.plugins.postgresql.parser.postgresql_regex_parser import PostgreSqlRegexParser
 
 
 @pytest.mark.unit

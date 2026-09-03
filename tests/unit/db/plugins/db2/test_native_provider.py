@@ -4,9 +4,9 @@ import logging
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
-from config import DbliftConfig
-from core.migration.clean_summary import CleanExecutionSummary
-from db.plugins.db2.provider import DB2_LOCK_STALE_SECONDS, Db2Provider
+from dblift.config import DbliftConfig
+from dblift.core.migration.clean_summary import CleanExecutionSummary
+from dblift.db.plugins.db2.provider import DB2_LOCK_STALE_SECONDS, Db2Provider
 
 
 class DummyDb2Provider(Db2Provider):
@@ -153,8 +153,8 @@ def test_acquire_migration_lock_honors_timeout_when_row_is_held(monkeypatch) -> 
     provider.create_migration_lock_table_if_not_exists = lambda schema: None
 
     clock = iter([0.0, 0.0, 0.5, 2.0])
-    monkeypatch.setattr("db.plugins.db2.provider.time.monotonic", lambda: next(clock))
-    monkeypatch.setattr("db.plugins.db2.provider.time.sleep", lambda _seconds: None)
+    monkeypatch.setattr("dblift.db.plugins.db2.provider.time.monotonic", lambda: next(clock))
+    monkeypatch.setattr("dblift.db.plugins.db2.provider.time.sleep", lambda _seconds: None)
 
     def fail_insert(sql, schema=None, params=None):
         provider.calls.append(("statement", sql, schema, params))

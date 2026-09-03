@@ -21,10 +21,10 @@ from unittest.mock import MagicMock, call, patch
 
 import pytest
 
-from core.migration.sql.sql_execution_service import SqlExecutionService
-from core.sql_model.base import SqlStatementType
-from db.plugins.sqlserver.quirks import SqlserverQuirks
-from db.provider_interfaces import TransactionalProvider
+from dblift.core.migration.sql.sql_execution_service import SqlExecutionService
+from dblift.core.sql_model.base import SqlStatementType
+from dblift.db.plugins.sqlserver.quirks import SqlserverQuirks
+from dblift.db.provider_interfaces import TransactionalProvider
 
 pytestmark = [pytest.mark.unit]
 
@@ -234,7 +234,7 @@ class TestDdlStatementType(unittest.TestCase):
 
     def test_object_changes_recorded_with_parser_factory(self):
         """When parser_factory is available and returns objects, record_object_changes called."""
-        from core.sql_model.base import SqlObject, SqlObjectType
+        from dblift.core.sql_model.base import SqlObject, SqlObjectType
 
         svc, provider, sql_analyzer, _, journal = _make_service(
             stmt_type=SqlStatementType.DDL.value,
@@ -375,7 +375,7 @@ class TestExceptionHandling(unittest.TestCase):
 class TestNullLogDefault(unittest.TestCase):
 
     def test_no_logger_uses_nulllog(self):
-        from core.logger import NullLog
+        from dblift.core.logger import NullLog
 
         provider = MagicMock()
         provider.execute_statement.return_value = 0

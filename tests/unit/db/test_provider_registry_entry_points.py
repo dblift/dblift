@@ -14,10 +14,10 @@ from unittest.mock import patch
 
 import pytest
 
-import db.plugins
-from db.base_provider import BaseProvider
-from db.base_quirks import BaseQuirks
-from db.provider_registry import PluginInfo, ProviderRegistry
+import dblift.db.plugins
+from dblift.db.base_provider import BaseProvider
+from dblift.db.base_quirks import BaseQuirks
+from dblift.db.provider_registry import PluginInfo, ProviderRegistry
 
 # Fields that ``_load_plugin`` derives itself from the filesystem/package
 # scan (module name, dunder attrs, class introspection) and must therefore
@@ -155,7 +155,7 @@ def test_filesystem_discovery_does_not_reload_hyphenated_dir_mismatch(_reset_reg
     reloaded from the filesystem, and the freshly reconstructed
     ``PluginInfo`` clobbers the richer, previously-registered one.
     """
-    from db.plugins.aurora_postgresql.plugin import PLUGIN as declared_aurora
+    from dblift.db.plugins.aurora_postgresql.plugin import PLUGIN as declared_aurora
 
     ProviderRegistry.register_plugin(declared_aurora)
     ProviderRegistry._discover_via_filesystem()
@@ -183,9 +183,9 @@ def test_load_plugin_preserves_all_non_filesystem_declared_fields(_reset_registr
     bug that dropped ``install_extra`` previously (a field-by-field
     reconstruction that wasn't updated when the field was added).
     """
-    from db.plugins.aurora_postgresql.plugin import PLUGIN as declared_aurora
+    from dblift.db.plugins.aurora_postgresql.plugin import PLUGIN as declared_aurora
 
-    plugin_dir = Path(db.plugins.__file__).parent / "aurora_postgresql"
+    plugin_dir = Path(dblift.db.plugins.__file__).parent / "aurora_postgresql"
     loaded = ProviderRegistry._load_plugin(plugin_dir)
 
     assert loaded is not None

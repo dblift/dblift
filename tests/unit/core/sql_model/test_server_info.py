@@ -1,4 +1,4 @@
-"""Parsing tests for :class:`core.sql_model.server_info.ServerInfo`.
+"""Parsing tests for :class:`dblift.core.sql_model.server_info.ServerInfo`.
 
 The "version zoo": real-world banner strings from every probed dialect
 must parse into comparable ``DatabaseVersion`` values, and anything
@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import pytest
 
-from core.sql_model.server_info import ServerInfo
+from dblift.core.sql_model.server_info import ServerInfo
 
 pytestmark = [pytest.mark.unit]
 

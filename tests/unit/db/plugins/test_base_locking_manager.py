@@ -4,9 +4,9 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from core.logger import NullLog
-from db.plugins.base_locking_manager import BaseLockingManager
-from db.plugins.sqlite.sqlite.locking_manager import SQLiteLockingManager
+from dblift.core.logger import NullLog
+from dblift.db.plugins.base_locking_manager import BaseLockingManager
+from dblift.db.plugins.sqlite.sqlite.locking_manager import SQLiteLockingManager
 
 
 @pytest.mark.unit
@@ -98,7 +98,7 @@ class TestBaseLockingManagerInterface:
 
     def test_cosmosdb_does_not_inherit_from_base(self):
         """CosmosDbLockingManager does NOT inherit from BaseLockingManager (different API)."""
-        from db.plugins.cosmosdb.cosmosdb.locking_manager import CosmosDbLockingManager
+        from dblift.db.plugins.cosmosdb.cosmosdb.locking_manager import CosmosDbLockingManager
 
         assert not issubclass(CosmosDbLockingManager, BaseLockingManager), (
             "CosmosDbLockingManager must NOT inherit from BaseLockingManager "

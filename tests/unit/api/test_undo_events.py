@@ -22,12 +22,12 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from api.events import EventType
+from dblift.api.events import EventType
 
 
 def _make_client(undo_result):
     """Build a minimal Client stub for event-emission tests."""
-    from api.client import DBLiftClient
+    from dblift.api.client import DBLiftClient
 
     provider = MagicMock()
     provider.supports_transactions.return_value = False
@@ -91,7 +91,7 @@ class TestUndoEvents:
         assert failed_calls[0].args[1]["error"] == "No undo script for V2"
 
     def test_undo_exception_still_emits_failed(self):
-        from api.client import DBLiftClient
+        from dblift.api.client import DBLiftClient
 
         provider = MagicMock()
         provider.supports_transactions.return_value = False

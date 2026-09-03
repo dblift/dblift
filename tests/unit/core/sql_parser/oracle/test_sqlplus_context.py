@@ -2,7 +2,7 @@
 
 import pytest
 
-from db.plugins.oracle.parser.sqlplus_context import (
+from dblift.db.plugins.oracle.parser.sqlplus_context import (
     SqlplusContext,
     apply_define_substitution,
     extract_sqlplus_context,
