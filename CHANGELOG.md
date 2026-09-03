@@ -19,6 +19,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A migration that cannot be decoded now fails the command.** An undecodable
+  script was collected as an "invalid script", logged at warning level and
+  skipped, so `migrate` reported "No pending migrations found" and exited 0 — a
+  latin-1 migration produced a green deploy that applied nothing. The cause was
+  narrow: `MigrationEncodingError` subclasses `ValueError`, and the scan caught
+  `ValueError` to skip files that are not migrations at all. A file that cannot
+  be read is a different thing, and its verdict now reaches the command. Files
+  that genuinely are not migrations are still skipped as before.
+- **Encoding detection recognises Windows-1252.** `iso-8859-1` decodes every
+  possible byte sequence, so it matched first for anything non-UTF-8 and no
+  later candidate was reachable. A Windows-1252 file was reported as latin-1
+  and its `€` (0x80) became a C1 control character, silently. Detection now
+  tries `cp1252` first when bytes in 0x80–0x9F are present, which real SQL does
+  not otherwise contain; outside that range the two encodings agree, so plain
+  latin-1 accents read exactly as before.
+- **Environment variables the CLI advertises are honoured.** `dblift config`
+  lists an environment variable for every property and `from_env_dict` reads
+  them, but two gaps left the layer inert: the argparse defaults were written
+  back over the environment during the merge, and the command handlers read the
+  argument namespace rather than the resolved config. `DBLIFT_DRY_RUN=true
+  dblift migrate` therefore applied every migration for real and exited 0.
+  "Unset" is now the value still equal to its declared default, so a flag the
+  user did change still wins — including `--clean-enabled`, whose False is an
+  explicit opt-in rather than an absence.
+- **`import-flyway` preserves Flyway's `installed_on`.** The imported row kept
+  the original `installed_by` but took the time of the import, so a row carried
+  a real person's name against a fabricated date. Providers now write the value
+  when one is supplied; `migrate` and `undo` still let the column default stamp
+  the row, unchanged.
+- **`info --format json` carries the failure reason.** A failed run reported
+  `success: false` with no `error` key, while the exception path emitted one.
+
 - **`import-flyway` dry run no longer promises an import that then fails.** The
   Flyway type mapping, which is what decides whether a history table can be
   imported at all, was only consulted on the write path. A history holding a

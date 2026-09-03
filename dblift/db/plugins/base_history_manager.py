@@ -36,6 +36,25 @@ VERSIONED_HISTORY_TYPES_SQL_IN: str = (
 UNDO_HISTORY_TYPE: str = MigrationType.UNDO_SQL.name
 
 
+def installed_on_to_bind(value: Any) -> Optional[Any]:
+    """Return the ``installed_on`` value to bind, or ``None`` to keep the column default.
+
+    ``record_migration`` normally omits ``installed_on`` so the history table's
+    ``CURRENT_TIMESTAMP`` default stamps the row. ``import-flyway`` instead
+    carries the source row's own timestamp, which has to survive the copy —
+    otherwise an imported row pairs Flyway's real ``installed_by`` with the
+    date of the import.
+
+    A missing or blank value falls back to the default rather than binding
+    ``NULL``, which several dialects declare the column ``NOT NULL``.
+    """
+    if value is None:
+        return None
+    if isinstance(value, str) and not value.strip():
+        return None
+    return value
+
+
 class BaseHistoryManager(ABC):
     """Abstract base class for database-specific history managers.
 
@@ -581,7 +600,9 @@ class BaseHistoryManager(ABC):
                 # "no checksum".
                 "checksum": 0,
                 "installed_by": os.environ.get("USER", os.environ.get("USERNAME", "dblift")),
-                "installed_on": datetime.datetime.now(),
+                # No ``installed_on``: ``record_migration`` now binds a supplied
+                # value, and a client-side clock here would override the history
+                # table's own timestamp default for undo rows.
                 "execution_time": 0,
                 "success": True,
             }

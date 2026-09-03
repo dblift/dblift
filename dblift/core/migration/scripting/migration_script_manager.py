@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple
 
 from dblift.core.logger import Log
-from dblift.core.migration.encoding import read_migration_text
+from dblift.core.migration.encoding import MigrationEncodingError, read_migration_text
 from dblift.core.migration.migration import (
     _CALLBACK_PREFIXES,
     Migration,
@@ -724,6 +724,15 @@ class MigrationScriptManager:
                     detect_encoding=self.detect_encoding,
                 )
                 migrations[migration_type].append(migration)
+            except MigrationEncodingError:
+                # Deliberately not collected as an "invalid script". That branch
+                # exists for files which are not migrations at all — a stray
+                # README, a wrong filename — and downgrades them to a warning.
+                # This file IS a migration; we simply cannot read it. Skipping it
+                # let `migrate` report "No pending migrations found" and exit 0,
+                # so a latin-1 script produced a green deploy that applied
+                # nothing. Let it reach the command.
+                raise
             except ValueError as e:
                 invalid_files.append((rel_script_path, str(e)))
                 continue

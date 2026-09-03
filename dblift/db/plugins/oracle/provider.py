@@ -9,7 +9,7 @@ from dblift.config import DbliftConfig
 from dblift.core.logger import Log
 from dblift.core.migration.clean_summary import CleanExecutionSummary
 from dblift.db.object_naming import get_normalized_object_name
-from dblift.db.plugins.base_history_manager import UNDO_HISTORY_TYPE
+from dblift.db.plugins.base_history_manager import UNDO_HISTORY_TYPE, installed_on_to_bind
 from dblift.db.provider_interfaces import DroppableObject
 from dblift.db.sqlalchemy_provider import SqlAlchemyProvider
 
@@ -468,23 +468,27 @@ class OracleProvider(SqlAlchemyProvider):
         table = _oracle_name(raw_table)
         self.create_migration_history_table_if_not_exists(schema, table_name=raw_table)
         success_value = 1 if migration_info.get("success", True) else 0
+        installed_on = installed_on_to_bind(migration_info.get("installed_on"))
+        installed_on_expr = "?" if installed_on is not None else "SYSDATE"
+        params = [
+            migration_info.get("version"),
+            migration_info.get("description", ""),
+            migration_info.get("type", "SQL"),
+            migration_info.get("script", ""),
+            migration_info.get("checksum"),
+            migration_info.get("installed_by", "dblift"),
+        ]
+        if installed_on is not None:
+            params.append(installed_on)
+        params.extend([migration_info.get("execution_time", 0), success_value])
         self.execute_statement(
             f"""
             INSERT INTO {_schema_object(schema, table)} (
                 VERSION, DESCRIPTION, TYPE, SCRIPT,
                 CHECKSUM, INSTALLED_BY, INSTALLED_ON, EXECUTION_TIME, SUCCESS
-            ) VALUES (?, ?, ?, ?, ?, ?, SYSDATE, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, {installed_on_expr}, ?, ?)
             """,
-            params=[
-                migration_info.get("version"),
-                migration_info.get("description", ""),
-                migration_info.get("type", "SQL"),
-                migration_info.get("script", ""),
-                migration_info.get("checksum"),
-                migration_info.get("installed_by", "dblift"),
-                migration_info.get("execution_time", 0),
-                success_value,
-            ],
+            params=params,
         )
 
     def get_applied_migrations(

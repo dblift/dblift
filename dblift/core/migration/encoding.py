@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Tuple
 
 
 class MigrationEncodingError(ValueError):
@@ -60,8 +60,18 @@ def _detect_bytes_encoding(raw: bytes) -> Optional[str]:
     if header_encoding:
         return header_encoding
 
+    # ``iso-8859-1`` decodes every possible byte sequence, so listing it first
+    # makes every later candidate unreachable. Bytes in 0x80-0x9F are C1 control
+    # codes there and printable characters in Windows-1252 (0x80 is the euro
+    # sign), and real SQL does not carry C1 controls — so when any appear,
+    # cp1252 is tried first. Outside that range the two agree, which keeps
+    # plain latin-1 accents reading exactly as before.
+    candidates: Tuple[str, ...] = ("utf-8", "iso-8859-1", "utf-16")
+    if any(0x80 <= byte <= 0x9F for byte in raw):
+        candidates = ("utf-8", "cp1252", "iso-8859-1", "utf-16")
+
     detected: Optional[str] = None
-    for encoding in ("utf-8", "iso-8859-1", "utf-16"):
+    for encoding in candidates:
         if _can_decode(raw, encoding):
             detected = encoding
             break
