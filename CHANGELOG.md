@@ -15,6 +15,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
+## [4.0.1] - 2026-09-05
+
+### Changed
+
+- **sqlglot is capped below 31.** 4.0.0 declared `sqlglot>=30.0.0` with no
+  upper bound, so a fresh install pulled 30.18 the day after release. The
+  parser now accepts that AST shape, but sqlglot rewrites it often enough
+  that a major bump should be an explicit upgrade rather than a silent
+  `pip install`. The declared range is `sqlglot>=30.0.0,<31`. (#272)
+
+### Fixed
+
+- **DROP statements again report the tables they name.** sqlglot 30.18 moved
+  DROP targets from `ast.this` to `ast.args["tables"]` and left `ast.this`
+  empty. The parser only read `ast.this`, so every DROP produced an empty
+  `affected_objects` list — the result a fresh 4.0.0 install still gets
+  today. Both shapes are read now, and a multi-table DROP reports every
+  table instead of only the first. (#271)
+
 ## [4.0.0] - 2026-09-02
 
 ### Fixed
