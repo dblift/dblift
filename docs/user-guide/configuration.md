@@ -346,6 +346,8 @@ migrations:
 
 When detection is enabled, DBLift uses the detected encoding for that file. If detection or decoding fails, the migration fails with a clear encoding error.
 
+These keys live under `migrations:` in `dblift.yaml`. There is no encoding environment variable.
+
 ## Configuration Templates
 
 Sample configuration files for different databases are available in the repository:
