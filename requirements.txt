@@ -5,7 +5,7 @@ typing-extensions>=4.7.1
 click>=8.1.7
 rich>=13.3.0
 Jinja2>=3.1.0
-sqlglot>=30.0.0
+sqlglot>=30.0.0,<31
 packaging>=23.0
 SQLAlchemy>=2.0.0
 # Database drivers are NOT listed here. Every engine — Cosmos DB included —

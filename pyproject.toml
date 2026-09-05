@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "dblift"
-version = "4.0.0"
+version = "4.0.1"
 description = "Flyway-style raw-SQL migrations for Python teams. No JVM, and you see the exact SQL before it runs."
 keywords = ["flyway", "migrations", "python", "sql", "postgresql", "mysql"]
 readme = "README.md"
@@ -17,7 +17,7 @@ dependencies = [
     "click>=8.1.7",
     "rich>=13.3.0",
     "Jinja2>=3.1.0",
-    "sqlglot>=30.0.0",
+    "sqlglot>=30.0.0,<31",
     "packaging>=23.0",
     # Security floor: Python 3.11 minimum (see CHANGELOG).
     "SQLAlchemy>=2.0.0",
