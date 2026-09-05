@@ -32,7 +32,9 @@ Everything you need to use DBLift effectively:
 
 - **[Getting Started](user-guide/getting-started.md)** - Installation and your first migration
 - **[Configuration](user-guide/configuration.md)** - Database setup and configuration options
+- **[File Encoding](user-guide/configuration.md#file-encoding)** - `script_encoding` (strict UTF-8 by default) and optional `detect_encoding`
 - **[Commands](user-guide/commands.md)** - All available commands and their usage
+- **[Oracle SQL*Plus directives](user-guide/oracle-sqlplus.md)** - How Oracle `.sql` migrations handle SQL*Plus client commands
 - **[Best Practices](user-guide/best-practices.md)** - Tips for effective database migrations
 - **[Troubleshooting](user-guide/troubleshooting.md)** - Solutions to common problems
 
@@ -81,7 +83,7 @@ DBLift supports the following databases:
 - **Snowflake** - Native SQLAlchemy support
 - **MySQL** - Native SQLAlchemy support
 - **SQL Server** - Native SQLAlchemy support
-- **Oracle** - Native SQLAlchemy support
+- **Oracle** - Native SQLAlchemy support ([SQL*Plus directives](user-guide/oracle-sqlplus.md))
 - **DB2** - Native SQLAlchemy support
 - **SQLite** - Native Python support
 - **Azure Cosmos DB** - Azure SDK integration

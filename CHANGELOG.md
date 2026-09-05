@@ -15,6 +15,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
+### Documentation
+
+- **File encoding is easier to find.** Getting Started, the docs index, and the
+  PostgreSQL config template now point at the existing `script_encoding` /
+  `detect_encoding` options (strict UTF-8 by default; detection is opt-in).
+- **Oracle SQL*Plus directives.** New user-guide page covering filtered client
+  commands, positional `WHENEVER SQLERROR` policy, `DEFINE` substitution,
+  `SET SERVEROUTPUT`, `PROMPT` logging, and limitations. Linked from
+  Configuration, Troubleshooting, and the docs index.
+
+
 ## [4.0.0] - 2026-09-02
 
 ### Fixed

@@ -67,6 +67,16 @@ migrations:
 
 If detection or decoding fails, DBLift stops with an encoding error so accented characters are not silently corrupted.
 
+See [Configuration → File Encoding](configuration.md#file-encoding) for the same options in the configuration guide.
+
+## Oracle SQL*Plus Directives in Migrations
+
+**Problem**: An Oracle `.sql` migration contains SQL*Plus client commands (`SET`, `DEFINE`, `PROMPT`, `WHENEVER SQLERROR`, `@script.sql`, …) and you need to know what DBLift does with them.
+
+**Explanation**: DBLift is not SQL*Plus. It preprocesses recognized client directives so the native Oracle driver is not sent client-only commands. `WHENEVER SQLERROR CONTINUE` / `EXIT` change the failure policy for later statements; most other directives are filtered. `@` / `@@` includes are not executed as nested scripts.
+
+See [Oracle SQL*Plus directives](oracle-sqlplus.md).
+
 ## Migration Out of Order
 
 **Problem**: Someone created a migration with an older version number than what's already applied.

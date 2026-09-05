@@ -143,13 +143,18 @@ DBLift works with these databases:
 | Redshift | `postgresql+psycopg://cluster.example.com:5439/dev` | `dblift[redshift]` |
 | Snowflake | `snowflake://user:password@account_identifier/database/schema?warehouse=WH&role=ROLE` | `dblift[snowflake]` |
 | SQL Server | `mssql+pymssql://localhost:1433/mydb` | `dblift[sqlserver]` |
-| Oracle | `oracle+oracledb://localhost:1521?sid=SID` | `dblift[oracle]` |
+| Oracle | `oracle+oracledb://localhost:1521?sid=SID` (see [Oracle SQL*Plus directives](oracle-sqlplus.md)) | `dblift[oracle]` |
 | MySQL | `mysql+pymysql://localhost:3306/mydb` | `dblift[mysql]` |
 | MariaDB | `mysql+pymysql://localhost:3306/mydb` | `dblift[mariadb]` |
 | DB2 | `ibm_db_sa://localhost:50000/mydb` | `dblift[db2]` |
 | SQLite | `/path/to/database.db` or `:memory:` (see [SQLite Configuration](#sqlite-configuration)) |
 | Azure Cosmos DB | `https://account.documents.azure.com:443/` (see [CosmosDB Configuration](#cosmosdb-configuration)) | `dblift[cosmosdb]` |
 | MongoDB | `mongodb://host:27017` or `mongodb+srv://…` (see [MongoDB Configuration](#mongodb-configuration)) | `dblift[mongodb]` |
+
+Oracle `.sql` migrations that contain SQL*Plus client directives (`SET`,
+`DEFINE`, `PROMPT`, `WHENEVER SQLERROR`, …) are preprocessed so those
+client-only commands are not sent to the native driver. See
+**[Oracle SQL*Plus directives](oracle-sqlplus.md)**.
 
 ## SQLite Configuration
 
@@ -424,3 +429,4 @@ it via your CI platform's native secret store rather than committing it.
 - Learn about **[Commands](commands.md)** to use DBLift effectively
 - Check out **[Best Practices](best-practices.md)** for configuration tips
 - See **[Troubleshooting](troubleshooting.md)** if you encounter issues
+- Oracle scripts with SQL*Plus client commands: **[Oracle SQL*Plus directives](oracle-sqlplus.md)**

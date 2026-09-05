@@ -10,6 +10,8 @@ database:
 migrations:
   directory: ./migrations
   recursive: true
+  # script_encoding: "utf-8"  # Strict by default; decoding errors fail the migration
+  # detect_encoding: true     # Optional: detect encoding per file (opt-in)
 
   # Alternative: Use 'directories' for multiple directories
   # directories:

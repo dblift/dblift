@@ -11,6 +11,7 @@ docs/
 │   ├── getting-started.md
 │   ├── configuration.md
 │   ├── commands.md
+│   ├── oracle-sqlplus.md
 │   ├── nosql-python-migrations.md
 │   ├── best-practices.md
 │   ├── ci-cd.md

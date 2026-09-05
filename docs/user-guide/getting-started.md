@@ -64,6 +64,8 @@ Migration filenames follow the pattern `V<version>__<description>.sql`. The vers
 
 **Targeting Cosmos DB or MongoDB?** Document stores have no SQL DDL surface, so their migrations are Python files (`V1_0_0__create_users.py`) that call the vendor SDK; a `.sql` migration fails with `DBLIFT-NOSQL-001`. Everything else in this guide is the same. See [NoSQL Python migrations](nosql-python-migrations.md).
 
+**Accented characters in `.sql` files?** DBLift reads migration files as strict UTF-8 by default (`migrations.script_encoding`). If a file is not valid for that encoding, the run fails instead of replacing characters. For mixed or legacy encodings, set `detect_encoding: true`. See [Configuration → File Encoding](configuration.md#file-encoding).
+
 ## Step 4: Check state
 
 ```bash
@@ -169,5 +171,6 @@ The commands in this guide are all OSS (Apache 2.0). When your team needs strong
 
 - [Commands reference](commands.md) — full CLI options and flags
 - [Configuration guide](configuration.md) — all `dblift.yaml` options and environment variables
+- [File encoding](configuration.md#file-encoding) — `script_encoding` and optional `detect_encoding` for accented characters
 - [CI/CD recipes](ci-cd.md) — GitHub Actions, GitLab CI, and pre-commit hook examples
 - [Best practices](best-practices.md) — naming conventions, rollback strategy, team workflows
