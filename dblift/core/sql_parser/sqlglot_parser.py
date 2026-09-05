@@ -389,7 +389,8 @@ class SqlGlotParser(SqlParserInterface):
                             objects.append(obj)
                         target = None  # Already handled
 
-                if target:
+                targets = self._drop_targets(ast) if isinstance(ast, exp.Drop) else [target]
+                for target in filter(None, targets):
                     target_obj = self._table_to_sqlobject(target, default_schema)
                     if target_obj:
                         obj = target_obj
@@ -455,6 +456,14 @@ class SqlGlotParser(SqlParserInterface):
 
         return objects
 
+    @staticmethod
+    def _drop_targets(ast: exp.Drop) -> List[exp.Table]:
+        """Tables named by a DROP. sqlglot < 30.18 puts the single table in
+        ``ast.this``; 30.18+ lists every table under ``ast.args["tables"]``."""
+        if isinstance(ast.this, exp.Table):
+            return [ast.this]
+        return [t for t in (ast.args.get("tables") or []) if isinstance(t, exp.Table)]
+
     def _extract_affected_objects(
         self, ast: exp.Expression, default_schema: Optional[str]
     ) -> List[SqlObject]:
@@ -480,7 +489,8 @@ class SqlGlotParser(SqlParserInterface):
             elif isinstance(ast.this, exp.Table):
                 target = ast.this
 
-            if target:
+            targets = self._drop_targets(ast) if isinstance(ast, exp.Drop) else [target]
+            for target in filter(None, targets):
                 obj = self._table_to_sqlobject(target, default_schema)
                 if obj:
                     # Set the correct object type based on CREATE/DROP kind
