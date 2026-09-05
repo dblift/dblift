@@ -6,6 +6,7 @@ would emit a SQL DELETE, which on MongoDB raises — and the migration would
 be permanently unretryable.
 """
 
+import datetime
 from unittest.mock import MagicMock
 
 from dblift.db.plugins.mongodb.mongodb import MongoDbHistoryManager
@@ -45,11 +46,36 @@ def _framework_migration_info(**overrides):
         "checksum": 123456,
         "success": True,
         "execution_time": 42,
-        "installed_on": "2026-01-01T00:00:00",
         "installed_by": "app",
     }
     info.update(overrides)
     return info
+
+
+def test_record_migration_stamps_installed_on_when_the_caller_omits_it():
+    """The framework leaves ``installed_on`` out so relational history tables
+    fall back to their column default. A collection has no default, so the
+    manager must stamp the apply time itself or ``info`` shows an empty
+    Installed On column for every MongoDB migration."""
+    manager, query_executor, _ = _manager()
+    before = datetime.datetime.now(datetime.timezone.utc)
+    manager.record_migration(None, "ignored", _framework_migration_info())
+    _, document = query_executor.upsert_document.call_args.args
+    installed_on = document["installed_on"]
+    assert isinstance(installed_on, datetime.datetime)
+    assert installed_on.tzinfo is not None
+    assert before <= installed_on <= datetime.datetime.now(datetime.timezone.utc)
+
+
+def test_record_migration_keeps_a_caller_supplied_installed_on():
+    """import-flyway carries the original apply date and must not have it
+    replaced by the import time."""
+    manager, query_executor, _ = _manager()
+    manager.record_migration(
+        None, "ignored", _framework_migration_info(installed_on="2026-01-01T00:00:00")
+    )
+    _, document = query_executor.upsert_document.call_args.args
+    assert document["installed_on"] == "2026-01-01T00:00:00"
 
 
 def test_record_writes_a_document_keyed_by_installed_rank():
