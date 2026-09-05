@@ -5,6 +5,11 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+  schedule:
+    # Monday 06:00 UTC: run against the newest dependency releases instead of
+    # constraints-ci.txt, so a breaking release surfaces here and not on the
+    # next unrelated pull request.
+    - cron: "0 6 * * 1"
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -20,6 +25,10 @@ jobs:
     strategy:
       matrix:
         python-version: ["3.11", "3.12"]
+    env:
+      # Pull requests install the exact versions in constraints-ci.txt; the
+      # weekly schedule installs whatever pip resolves today.
+      PIP_CONSTRAINT: ${{ github.event_name == 'schedule' && '' || 'constraints-ci.txt' }}
 
     steps:
       - uses: actions/checkout@v6
@@ -56,7 +65,7 @@ jobs:
             --timeout=120
 
       - name: Upload coverage to Codecov
-        if: matrix.python-version == '3.12'
+        if: matrix.python-version == '3.12' && github.event_name != 'schedule'
         uses: codecov/codecov-action@v5
         with:
           files: ./coverage.xml
