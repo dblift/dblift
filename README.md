@@ -16,7 +16,7 @@ Flyway-style raw-SQL migrations for Python teams. No JVM, and you see the exact 
 [![codecov](https://codecov.io/gh/dblift/dblift/graph/badge.svg)](https://codecov.io/gh/dblift/dblift)
 [![Security Policy](https://img.shields.io/badge/Security-Policy-green)](SECURITY.md)
 
-Application code usually has tests, CI pipelines, and pull request review. Database changes often skip one or more of those stages. DBLift is a Python-native migration toolkit that shows you exactly what SQL will run before it runs — and keeps the full migration lifecycle inside your Python workflow. No JVM required.
+DBLift applies numbered SQL migration files, Flyway-style, from Python: `pip install`, no JVM. `dblift migrate --dry-run --show-sql` prints the exact statements before anything touches the database. Use it as a CLI or a Python client, with Django, FastAPI, Flask and pytest integrations, on PostgreSQL, MySQL, SQL Server, Oracle, SQLite, DuckDB and DB2. Apache 2.0.
 
 ```bash
 pip install "dblift[postgresql]"
