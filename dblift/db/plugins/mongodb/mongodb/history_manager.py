@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import datetime
 from typing import Any, Dict, List, Optional
 
 from dblift.core.logger import Log
@@ -72,6 +73,11 @@ class MongoDbHistoryManager(DocumentHistoryManager):
         document = dict(migration_info)
         document["installed_rank"] = next_rank
         document["_id"] = str(next_rank)
+        if document.get("installed_on") is None:
+            # The framework omits ``installed_on`` so relational history tables
+            # take their column default. A collection has no default, so stamp
+            # the apply time here; import-flyway supplies its own and keeps it.
+            document["installed_on"] = datetime.datetime.now(datetime.timezone.utc)
         self.query_executor.upsert_document(collection, document)
 
     def get_applied_migrations(
