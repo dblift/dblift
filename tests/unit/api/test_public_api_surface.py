@@ -603,10 +603,15 @@ class TestInfoResultCompatibilityAliases:
         result = InfoResult()
         applied = MigrationInfo(script="V1__init.sql", version="1", status="SUCCESS")
         pending = MigrationInfo(script="V2__next.sql", version="2", status="PENDING")
+        failed = MigrationInfo(script="V3__bad.sql", version="3", status="FAILED")
         result.add_migration(applied)
         result.add_migration(pending)
+        result.add_migration(failed)
 
         assert result.applied_migrations == [applied]
         assert result.pending_migrations == [pending]
+        assert result.failed_migrations == [failed]
         assert result.pending_count == 1
+        assert result.failed_count == 1
         assert InfoResult().pending_count == 0
+        assert InfoResult().failed_count == 0

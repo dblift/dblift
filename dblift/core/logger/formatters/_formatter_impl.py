@@ -316,6 +316,8 @@ class OutputFormatter:
                 output.append(f"Error: {result.error_message}")
 
         output.append(f"Current schema version: {result.current_schema_version or 'n/a'}")
+        output.append(f"Pending migrations: {result.pending_count}")
+        output.append(f"Failed migrations: {result.failed_count}")
         output.append(f"Execution time: {result.execution_time()} ms")
         output.append("")
 

@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, Dict, List, Optional, cast
 
 if TYPE_CHECKING:
     pass
-from dblift.core.logger.results import InfoResult, MigrationInfo
+from dblift.core.logger.results import InfoResult, MigrationInfo, is_failed_migration_status
 from dblift.core.migration.migration import VERSIONED_SCRIPT_TYPES, MigrationType
 from dblift.core.migration.state.migration_state import MigrationState
 from dblift.core.utils.url_masking import mask_database_url
@@ -24,7 +24,7 @@ def normalize_migration_info_status(ui_state: Optional[str]) -> str:
     status_upper = ui_state.upper() if ui_state else "UNKNOWN"
     if status_upper in ("SUCCESS", "APPLIED"):
         return "SUCCESS"
-    if status_upper == "FAILED":
+    if is_failed_migration_status(status_upper):
         return "FAILED"
     if status_upper == "PENDING":
         return "PENDING"

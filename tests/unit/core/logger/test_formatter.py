@@ -12,6 +12,7 @@ from dblift.core.logger.results import (
     CleanResult,
     InfoResult,
     MigrateResult,
+    MigrationInfo,
     MigrationQueryResultInfo,
     MigrationSqlInfo,
     OperationResult,
@@ -279,6 +280,25 @@ class TestOutputFormatter:
         assert "Schema: test_schema" in formatted
         assert "Status: SUCCESS" in formatted
         assert "Current schema version: 1.0.0" in formatted
+        assert "Pending migrations: 0" in formatted
+        assert "Failed migrations: 0" in formatted
+
+    def test_format_info_surfaces_failed_history_rows(self):
+        """Failed history must appear even when pending is zero."""
+        result = InfoResult()
+        result.success = True
+        result.schema_name = "test_schema"
+        result.start_time = datetime.now()
+        result.end_time = datetime.now()
+        result.add_migration(MigrationInfo("V1__ok.sql", version="1", status="SUCCESS"))
+        result.add_migration(MigrationInfo("V2__bad.sql", version="2", status="FAILED"))
+
+        formatted = self.formatter.format_info(result)
+
+        assert "Pending migrations: 0" in formatted
+        assert "Failed migrations: 1" in formatted
+        assert "FAILED" in formatted
+        assert "V2__bad.sql" in formatted or "2" in formatted
 
     def test_format_validate(self):
         """Test formatting validate results."""

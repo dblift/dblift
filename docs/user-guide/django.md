@@ -38,7 +38,9 @@ python manage.py dblift_info
 ```
 
 `dblift_migrate` applies pending dblift migrations. `dblift_validate` checks
-checksums, order, and applied state. `dblift_info` prints current pending status.
+checksums, order, and applied state. `dblift_info` prints pending and failed
+history status; a failed (`success=0`) row is not pending, and is listed
+separately. Repair guidance stays on `dblift_validate`.
 
 ## System check
 
