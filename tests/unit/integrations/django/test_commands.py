@@ -111,7 +111,7 @@ def _info_result(*migrations):
 
 def _run_info_with_result(tmp_path, monkeypatch, info):
     with override_settings(**_settings(tmp_path)):
-        import dblift.integrations.django._client as client_module
+        from dblift.integrations.django.management.commands import dblift_info as info_cmd
 
         class _Client:
             def info(self):
@@ -120,7 +120,7 @@ def _run_info_with_result(tmp_path, monkeypatch, info):
             def close(self):
                 pass
 
-        monkeypatch.setattr(client_module, "get_client", lambda: _Client())
+        monkeypatch.setattr(info_cmd, "get_client", lambda: _Client())
         out = StringIO()
         call_command("dblift_info", stdout=out)
         return out.getvalue()
