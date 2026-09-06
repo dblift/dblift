@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from dblift.core.logger import Log, NullLog
+from dblift.core.logger.results import is_failed_migration_status
 from dblift.core.migration.migration import Migration
 from dblift.core.migration.scripting.migration_script_manager import MigrationScriptManager
 from dblift.core.migration.state.migration_state import MigrationState
@@ -121,7 +122,9 @@ class MigrationUI:
             ]
         )
         total_pending = len([m for m in migrations_data if m.get("state", "").upper() == "PENDING"])
-        total_failed = len([m for m in migrations_data if m.get("state", "").upper() == "FAILED"])
+        total_failed = len(
+            [m for m in migrations_data if is_failed_migration_status(m.get("state", ""))]
+        )
 
         stats = {
             "total_migrations": len(migrations_data),

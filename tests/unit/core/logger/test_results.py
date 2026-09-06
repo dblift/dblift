@@ -504,6 +504,36 @@ class TestInfoResult:
 
         assert result.migrations_applied == ["1", "R__refresh.sql"]
 
+    def test_failed_migrations_are_separate_from_pending(self):
+        """Failed history rows are not pending and must still be visible."""
+        from dblift.core.logger.results import is_failed_migration_status
+
+        clean = InfoResult()
+        clean.add_migration(MigrationInfo("V1__ok.sql", version="1", status="SUCCESS"))
+        assert clean.pending_count == 0
+        assert clean.failed_count == 0
+        assert clean.failed_migrations == []
+
+        pending_only = InfoResult()
+        pending_only.add_migration(MigrationInfo("V1__ok.sql", version="1", status="SUCCESS"))
+        pending_only.add_migration(MigrationInfo("V2__next.sql", version="2", status="PENDING"))
+        assert pending_only.pending_count == 1
+        assert pending_only.failed_count == 0
+
+        failed_only = InfoResult()
+        failed_only.add_migration(MigrationInfo("V1__ok.sql", version="1", status="SUCCESS"))
+        failed_only.add_migration(MigrationInfo("V2__bad.sql", version="2", status="FAILED"))
+        assert failed_only.pending_count == 0
+        assert failed_only.failed_count == 1
+        assert failed_only.failed_migrations[0].script == "V2__bad.sql"
+
+        both = InfoResult()
+        both.add_migration(MigrationInfo("V2__bad.sql", version="2", status="Failed missing"))
+        both.add_migration(MigrationInfo("V3__next.sql", version="3", status="PENDING"))
+        assert both.pending_count == 1
+        assert both.failed_count == 1
+        assert is_failed_migration_status("Failed missing")
+
 
 class TestBaselineResult:
     """Test BaselineResult class."""

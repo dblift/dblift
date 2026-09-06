@@ -168,6 +168,10 @@ class TestNormalizeMigrationInfoStatus(unittest.TestCase):
     def test_failed_maps_to_FAILED(self):
         self.assertEqual(self.fn("failed"), "FAILED")
 
+    def test_failed_missing_and_future_map_to_FAILED(self):
+        self.assertEqual(self.fn("Failed missing"), "FAILED")
+        self.assertEqual(self.fn("FAILED_FUTURE"), "FAILED")
+
     def test_pending_maps_to_PENDING(self):
         self.assertEqual(self.fn("Pending"), "PENDING")
 

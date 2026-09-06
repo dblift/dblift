@@ -430,6 +430,18 @@ class ValidateResult(OperationResult):
         self.success = False
 
 
+def is_failed_migration_status(status: Any) -> bool:
+    """True when a migration info/UI status represents a failed history row.
+
+    Matches ``FAILED`` and qualified forms such as ``Failed missing`` /
+    ``FAILED_FUTURE``. Pending and success are separate dimensions.
+    """
+    if status is None:
+        return False
+    normalized = str(status).upper().replace("_", " ").strip()
+    return normalized == "FAILED" or normalized.startswith("FAILED ")
+
+
 class InfoResult(OperationResult):
     """Result of an info operation."""
 
@@ -476,6 +488,25 @@ class InfoResult(OperationResult):
     def pending_count(self) -> int:
         """Number of pending migrations."""
         return len(self.pending_migrations)
+
+    @property
+    def failed_migrations(self) -> List[MigrationInfo]:
+        """Get failed history rows for API consumers.
+
+        Pending and failed are separate dimensions: a success=0 row is not
+        pending, but it is not healthy either. Callers that only inspect
+        ``pending_migrations`` will miss these.
+        """
+        return [
+            migration
+            for migration in self.migrations
+            if is_failed_migration_status(migration.status)
+        ]
+
+    @property
+    def failed_count(self) -> int:
+        """Number of failed history rows."""
+        return len(self.failed_migrations)
 
     def get_current_version(self) -> Optional[str]:
         """Get the current schema version."""

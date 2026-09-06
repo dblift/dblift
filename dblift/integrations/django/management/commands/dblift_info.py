@@ -20,6 +20,16 @@ class Command(BaseCommand):
         finally:
             client.close()
         pending = getattr(info, "pending_migrations", []) or []
+        failed = getattr(info, "failed_migrations", []) or []
+        # Pending and failed are separate dimensions. Printing only
+        # "0 pending" looks clean after a success=0 history row.
         self.stdout.write(f"dblift: {len(pending)} pending migration(s)")
         for migration in pending:
             self.stdout.write(f"  - {getattr(migration, 'script', migration)}")
+        failed_line = f"dblift: {len(failed)} failed migration(s)"
+        if failed:
+            self.stdout.write(self.style.ERROR(failed_line))
+            for migration in failed:
+                self.stdout.write(f"  - {getattr(migration, 'script', migration)}")
+        else:
+            self.stdout.write(failed_line)

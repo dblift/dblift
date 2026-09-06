@@ -170,3 +170,125 @@ def test_reapplied_repeatable_shows_superseded_then_success():
     assert "Superseded" in table
     assert "Success" in table
     assert "Outdated" not in table
+
+
+def _failed_pipeline_counts(rows):
+    pending = [row for row in rows if str(row.get("state", "")).upper() == "PENDING"]
+    failed = [
+        row for row in rows if str(row.get("state", "")).upper().replace("_", " ").startswith("FAILED")
+    ]
+    return pending, failed
+
+
+def test_info_table_clean_history_has_no_failed_or_pending():
+    applied = _mk_versioned("1", rank=1, success=True)
+    on_disk = _mk_versioned("1")
+    mgr = _mk_manager(applied=[applied], scripts=[on_disk])
+
+    with tempfile.TemporaryDirectory() as tmp:
+        scripts_dir = Path(tmp)
+        (scripts_dir / on_disk.script_name).write_text(on_disk.content)
+        state, rows, table = _pipeline(mgr, scripts_dir)
+
+    pending, failed = _failed_pipeline_counts(rows)
+    assert pending == []
+    assert failed == []
+    assert not state.has_failures
+    assert not state.has_pending
+    assert "Failed" not in table
+
+
+def test_info_table_pending_only_does_not_report_failed():
+    on_disk = _mk_versioned("1")
+    mgr = _mk_manager(applied=[], scripts=[on_disk])
+
+    with tempfile.TemporaryDirectory() as tmp:
+        scripts_dir = Path(tmp)
+        (scripts_dir / on_disk.script_name).write_text(on_disk.content)
+        state, rows, table = _pipeline(mgr, scripts_dir)
+
+    pending, failed = _failed_pipeline_counts(rows)
+    assert [row["script"] for row in pending] == [on_disk.script_name]
+    assert failed == []
+    assert not state.has_failures
+    assert "Pending" in table
+    assert "Failed" not in table
+
+
+@pytest.mark.parametrize("success_value", [False, 0], ids=["bool_false", "int_zero"])
+def test_info_table_failed_only_is_visible_with_zero_pending(success_value):
+    applied = _mk_versioned("2", rank=1, success=success_value)
+    on_disk = _mk_versioned("2")
+    mgr = _mk_manager(applied=[applied], scripts=[on_disk])
+
+    with tempfile.TemporaryDirectory() as tmp:
+        scripts_dir = Path(tmp)
+        (scripts_dir / on_disk.script_name).write_text(on_disk.content)
+        state, rows, table = _pipeline(mgr, scripts_dir)
+
+    pending, failed = _failed_pipeline_counts(rows)
+    assert pending == []
+    assert not state.has_pending
+    assert [row["script"] for row in failed] == [applied.script_name]
+    assert failed[0]["state"] == "Failed"
+    assert "Failed" in table
+    assert state.has_failures
+
+
+def test_info_table_failed_and_pending_are_both_visible():
+    failed_applied = _mk_versioned("2", rank=1, success=False)
+    failed_on_disk = _mk_versioned("2")
+    pending_on_disk = _mk_versioned("3")
+    mgr = _mk_manager(applied=[failed_applied], scripts=[failed_on_disk, pending_on_disk])
+
+    with tempfile.TemporaryDirectory() as tmp:
+        scripts_dir = Path(tmp)
+        (scripts_dir / failed_on_disk.script_name).write_text(failed_on_disk.content)
+        (scripts_dir / pending_on_disk.script_name).write_text(pending_on_disk.content)
+        state, rows, table = _pipeline(mgr, scripts_dir)
+
+    pending, failed = _failed_pipeline_counts(rows)
+    assert [row["script"] for row in failed] == [failed_applied.script_name]
+    assert [row["script"] for row in pending] == [pending_on_disk.script_name]
+    assert "Failed" in table
+    assert "Pending" in table
+    assert state.has_failures
+    assert state.has_pending
+
+
+class _CaptureLog:
+    def __init__(self):
+        self.infos = []
+        self.logs = []
+
+    def info(self, msg, *args, **kwargs):
+        self.infos.append(msg)
+
+    def file_only_info(self, msg, *args, **kwargs):
+        pass
+
+    def debug(self, *args, **kwargs):
+        pass
+
+
+def test_info_summary_counts_failed_when_pending_is_zero():
+    from dblift.core.migration.ui.migration_ui import MigrationUI
+
+    applied = _mk_versioned("2", rank=1, success=False)
+    on_disk = _mk_versioned("2")
+    mgr = _mk_manager(applied=[applied], scripts=[on_disk])
+
+    with tempfile.TemporaryDirectory() as tmp:
+        scripts_dir = Path(tmp)
+        (scripts_dir / on_disk.script_name).write_text(on_disk.content)
+        state = mgr.build_state(scripts_dir)
+        log = _CaptureLog()
+        MigrationUI(log).display_migration_info(  # type: ignore[arg-type]
+            migration_state=state,
+            all_applied_migrations=list(state.all_applied_objects),
+            scripts_dir=scripts_dir,
+        )
+
+    summary = "\n".join(log.infos)
+    assert "Pending Migrations: 0" in summary
+    assert "Failed Migrations: 1" in summary
