@@ -13,14 +13,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+### Removed
+
+## [4.0.2] - 2026-09-06
+
+### Fixed
+
 - **`dblift info` reports failed history rows.** A `success=0` history row
   is not pending (it was already attempted), so info could print
   ``0 pending`` and look clean while `validate` reported the failure.
   Pending and failed are now both shown — CLI summary/report counts and
   `manage.py dblift_info` list failed scripts. Repair guidance stays on
-  `validate`.
-
-### Removed
+  `validate`. (#276)
 
 ## [4.0.1] - 2026-09-05
 
