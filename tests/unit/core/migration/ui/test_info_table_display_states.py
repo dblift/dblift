@@ -175,7 +175,9 @@ def test_reapplied_repeatable_shows_superseded_then_success():
 def _failed_pipeline_counts(rows):
     pending = [row for row in rows if str(row.get("state", "")).upper() == "PENDING"]
     failed = [
-        row for row in rows if str(row.get("state", "")).upper().replace("_", " ").startswith("FAILED")
+        row
+        for row in rows
+        if str(row.get("state", "")).upper().replace("_", " ").startswith("FAILED")
     ]
     return pending, failed
 
