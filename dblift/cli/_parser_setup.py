@@ -582,6 +582,12 @@ def create_parser(
         action="store_true",
         help="List all properties and how to set them (config key / env var / CLI flag)",
     )
+    # `dblift mcp` serves the read-only commands as MCP tools over stdio. It is a
+    # zero-config command: the server loads the project config per tool call.
+    subparsers.add_parser(
+        "mcp",
+        help="Serve dblift commands as MCP tools over stdio (requires dblift[mcp])",
+    )
     import_module("dblift.cli.extensions").load_command_extensions(parser)
     # Stubs fill whatever gaps the extensions left — never the reverse.
     _register_premium_stub_parsers(parser)
