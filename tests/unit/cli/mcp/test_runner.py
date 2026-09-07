@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
@@ -151,3 +150,64 @@ def test_two_calls_do_not_duplicate_log_lines(sqlite_project, capsys):
 
     assert first == 1
     assert capsys.readouterr().err.count("Using database name") == 1
+
+
+@pytest.mark.unit
+def test_client_is_closed_after_the_call_even_when_the_handler_raises(sqlite_project, monkeypatch):
+    from dblift.cli import main as cli_main
+
+    client = MagicMock()
+    monkeypatch.setattr(cli_main, "_build_command_client", lambda ctx: client)
+
+    def boom(ctx):
+        raise RuntimeError("handler exploded")
+
+    _install_fake_handler(monkeypatch, "info", boom)
+
+    with pytest.raises(CommandInvocationError):
+        run_command(["--config", str(sqlite_project)], "info", [])
+
+    client.close.assert_called_once_with()
+
+
+@pytest.mark.unit
+def test_client_is_closed_after_a_successful_call(sqlite_project, monkeypatch):
+    from dblift.cli import main as cli_main
+
+    client = MagicMock()
+    monkeypatch.setattr(cli_main, "_build_command_client", lambda ctx: client)
+
+    def ok(ctx):
+        print(json.dumps({"success": True}))
+        return (True, None)
+
+    _install_fake_handler(monkeypatch, "info", ok)
+
+    run_command(["--config", str(sqlite_project)], "info", [])
+
+    client.close.assert_called_once_with()
+
+
+@pytest.mark.unit
+def test_unexpected_exception_becomes_invocation_error(sqlite_project, monkeypatch):
+    def boom(ctx):
+        raise RuntimeError("handler exploded")
+
+    _install_fake_handler(monkeypatch, "info", boom)
+
+    with pytest.raises(CommandInvocationError) as exc_info:
+        run_command(["--config", str(sqlite_project)], "info", [])
+
+    assert str(exc_info.value) == "RuntimeError: handler exploded"
+    assert exc_info.value.exit_code == 1
+
+
+@pytest.mark.unit
+def test_keyboard_interrupt_propagates(sqlite_project, monkeypatch):
+    def interrupt(ctx):
+        raise KeyboardInterrupt
+
+    _install_fake_handler(monkeypatch, "info", interrupt)
+
+    with pytest.raises(KeyboardInterrupt):
+        run_command(["--config", str(sqlite_project)], "info", [])

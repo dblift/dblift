@@ -12,6 +12,14 @@ Stderr is captured too (so a failed command's detail can be quoted in the
 raised error) but is *mirrored* rather than swallowed: the command's log
 lines still reach the real stderr, which is where a stdio MCP server's own
 diagnostics belong, leaving only stdout reserved for the JSON-RPC channel.
+
+Any exception the handler raises — not just :class:`SystemExit` and
+:class:`~dblift.core.seams.capabilities.CapabilityDeniedError` — becomes a
+:class:`CommandInvocationError`; only :class:`KeyboardInterrupt` and other
+non-:class:`Exception` signals still propagate. The client built for the
+call is closed afterward when it exposes a callable ``close`` (some
+handlers get a config-only stand-in with none), so a long-lived server
+making many calls does not leak one connection per call.
 """
 
 from __future__ import annotations
@@ -87,6 +95,7 @@ def run_command(
     stdout_buf, stderr_buf = io.StringIO(), io.StringIO()
     stderr_tee = _TeeStream(stderr_buf, sys.stderr)
     log: Any = None
+    client: Any = None
     success = False
     try:
         with contextlib.redirect_stdout(stdout_buf), contextlib.redirect_stderr(stderr_tee):
@@ -128,7 +137,15 @@ def run_command(
         raise CommandInvocationError(
             f"dblift {command} exited with code {code}: {detail}", code
         ) from exc
+    except Exception as exc:
+        raise CommandInvocationError(f"{type(exc).__name__}: {exc}", 1) from exc
     finally:
+        close = getattr(client, "close", None)
+        if callable(close):
+            try:
+                close()
+            except Exception:
+                pass
         if log is not None:
             cli_main._close_logs(log)
 
