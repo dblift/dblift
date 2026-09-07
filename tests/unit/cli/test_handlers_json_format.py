@@ -148,3 +148,60 @@ def test_info_result_to_dict_payload_is_unchanged():
         "execution_time",
         "error",
     ]
+
+
+@pytest.mark.unit
+def test_validate_result_to_dict_shape():
+    from dblift.cli.handlers.validate import _validate_result_to_dict
+
+    result = SimpleNamespace(
+        success=False,
+        error_message="checksum mismatch",
+        target_schema="main",
+        error_count=1,
+        validated_migrations=[_migration()],
+        failed_migrations=[_migration(status="FAILED")],
+    )
+
+    data = _validate_result_to_dict(result)
+
+    assert data == {
+        "success": False,
+        "error": "checksum mismatch",
+        "target_schema": "main",
+        "error_count": 1,
+        "validated_migrations": [_migration_info_to_dict(result.validated_migrations[0])],
+        "failed_migrations": [_migration_info_to_dict(result.failed_migrations[0])],
+    }
+
+
+@pytest.mark.unit
+def test_handle_validate_json_emits_payload_only(capsys):
+    from dblift.cli.handlers.validate import _handle_validate
+
+    client = MagicMock()
+    client.validate.return_value = SimpleNamespace(
+        success=True,
+        error_message=None,
+        target_schema="main",
+        error_count=0,
+        validated_migrations=[],
+        failed_migrations=[],
+    )
+    ctx = CliCommandContext(client=client, args=SimpleNamespace(format="json"), log=MagicMock())
+
+    ok, _ = _handle_validate(ctx)
+
+    assert ok is True
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["success"] is True and payload["validated_migrations"] == []
+
+
+@pytest.mark.unit
+def test_validate_parser_accepts_format_json():
+    from dblift.cli._parser_setup import create_parser
+
+    args = create_parser(exit_on_error=False).parse_args(["validate", "--format", "json"])
+
+    assert args.format == "json"
+    assert create_parser(exit_on_error=False).parse_args(["validate"]).format == "console"

@@ -560,6 +560,14 @@ def create_parser(
         default="table",
         help="Output format (default: table)",
     )
+    # validate / migrate --format option (JSON output for scripting and agents)
+    for _machine_parser in (validate_parser, migrate_parser):
+        _machine_parser.add_argument(
+            "--format",
+            choices=["console", "json"],
+            default="console",
+            help="Output format (default: console)",
+        )
     # DB utility commands
     db_parser = subparsers.add_parser("db", help="Database utility commands")
     db_subparsers = db_parser.add_subparsers(dest="db_command", required=True)
