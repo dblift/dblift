@@ -6,12 +6,15 @@ import builtins
 from typing import List, Optional
 from unittest.mock import patch
 
-import anyio
 import pytest
 
-from dblift.cli.mcp.runner import CommandInvocationError
-
+# Both skips must come before *any* import of the optional stack: `anyio`
+# arrives with the `mcp` extra, so a plain `import anyio` at module level
+# turns a skip into a collection error on an install without it.
 pytest.importorskip("mcp")
+anyio = pytest.importorskip("anyio")
+
+from dblift.cli.mcp.runner import CommandInvocationError  # noqa: E402
 
 
 def _server(global_argv=()):

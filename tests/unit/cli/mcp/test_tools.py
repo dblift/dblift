@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
-import anyio
 import pytest
 import yaml
 
+# Before any import of the optional stack: `anyio` ships with the `mcp`
+# extra, so a module-level `import anyio` would make this a collection
+# error rather than a skip on an install without it.
 pytest.importorskip("mcp")
+anyio = pytest.importorskip("anyio")
 
 from dblift.cli._parser_setup import create_parser  # noqa: E402
 from dblift.cli.mcp.tools import info_argv, migrate_dry_run_argv, validate_argv  # noqa: E402

@@ -148,6 +148,10 @@ def test_stdio_round_trip_keeps_stdout_pure(tmp_path: Path):
         assert returncode == 0, f"dblift mcp exited {returncode}; stderr={stderr!r}"
         frames = [json.loads(line) for line in non_blank]  # raises if anything non-JSON leaked
         by_id = {f.get("id"): f for f in frames}
+        # Report the frames rather than dying with a bare KeyError: a missing
+        # id means the server answered something else (or nothing) and the
+        # frames are the only evidence of what.
+        assert 2 in by_id and 3 in by_id, f"missing responses; frames={frames!r}; stderr={stderr!r}"
         assert {t["name"] for t in by_id[2]["result"]["tools"]} >= {
             "info",
             "validate",

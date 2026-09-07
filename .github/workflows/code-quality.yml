@@ -27,7 +27,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           python -m pip install -r requirements-dev.txt
-          python -m pip install -e ".[dev]"
+          python -m pip install -e ".[dev,mcp]"
 
       - name: Check formatting
         run: black --check --diff dblift/ tests/ scripts/
@@ -55,5 +55,8 @@ jobs:
       - name: Line-length (ratchet)
         run: python scripts/check_line_length.py
 
-      - name: Check public OSS surface
-        run: python -m pytest tests/unit/test_oss_public_surface.py tests/smoke/test_oss_standalone.py -q
+      - name: Check public OSS surface and the MCP stdio round trip
+        run: |
+          python -m pytest tests/unit/test_oss_public_surface.py \
+            tests/smoke/test_oss_standalone.py \
+            tests/smoke/test_mcp_stdio.py -q
