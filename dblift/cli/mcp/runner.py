@@ -20,6 +20,17 @@ non-:class:`Exception` signals still propagate. The client built for the
 call is closed afterward when it exposes a callable ``close`` (some
 handlers get a config-only stand-in with none), so a long-lived server
 making many calls does not leak one connection per call.
+
+Calls are serialised by a module-level lock. A client may issue several
+tool calls at once and the SDK runs synchronous tool bodies in worker
+threads, but everything a call reaches for is process-global: ``sys.argv``
+(rewritten while the argv is parsed), ``sys.stdout`` and ``sys.stderr``
+(redirected here), the ``LogFactory`` class attributes and the console
+header flag. Concurrent calls therefore dismantle each other's redirects
+and namespaces — one command's payload can be returned for another, and
+bytes meant for a tool result escape to the real stdout, which is the
+JSON-RPC channel. One command at a time is the only safe reading of that
+shared state.
 """
 
 from __future__ import annotations
@@ -28,6 +39,7 @@ import contextlib
 import io
 import json
 import sys
+import threading
 from typing import Any, Dict, Optional, Sequence
 
 from dblift.cli._constants import EXIT_LICENSE_REQUIRED
@@ -38,6 +50,7 @@ from dblift.core.seams.tier_resolver import resolve_tier
 JSON_FORMAT_ARGV: tuple[str, ...] = ("--format", "json")
 _LICENSE_FALLBACK = "This command requires a license that is not available."
 _TAIL = 2000
+_CALL_LOCK = threading.Lock()
 
 
 class CommandInvocationError(Exception):
@@ -49,12 +62,16 @@ class CommandInvocationError(Exception):
         self.exit_code = exit_code
 
 
-class _TeeStream:
+class _TeeStream(io.TextIOBase):
     """A write target that both records text and mirrors it to another stream.
 
     Used for stderr: :func:`run_command` needs the text to build a detailed
     :class:`CommandInvocationError`, but the lines themselves must still
     reach the real stderr rather than vanish, unlike stdout.
+
+    Subclasses :class:`io.TextIOBase` so a command reaching past ``write`` —
+    ``writelines``, ``isatty``, ``fileno`` — meets a real text stream rather
+    than an :class:`AttributeError`.
     """
 
     def __init__(self, buffer: io.StringIO, mirror: Optional[Any]) -> None:
@@ -68,6 +85,10 @@ class _TeeStream:
         if self._mirror is not None:
             self._mirror.write(text)
         return len(text)
+
+    def writable(self) -> bool:
+        """Report the stream as writable — that is the only thing it is for."""
+        return True
 
     def flush(self) -> None:
         """Flush the mirror stream, if any."""
@@ -87,7 +108,22 @@ def run_command(
     With *json_argv* (default ``--format json``) the return value is the parsed
     stdout document. With ``json_argv=None`` the command has no machine format;
     the return value is ``{"success": <handler result>, "output": <stdout>}``.
+
+    One call at a time: the module docstring lists the process-global state a
+    call rewrites. A second caller waits rather than corrupting the first.
     """
+    with _CALL_LOCK:
+        return _run_command_locked(global_argv, command, argv, json_argv=json_argv)
+
+
+def _run_command_locked(
+    global_argv: Sequence[str],
+    command: str,
+    argv: Sequence[str],
+    *,
+    json_argv: Optional[Sequence[str]],
+) -> Dict[str, Any]:
+    """Body of :func:`run_command`; the caller must hold :data:`_CALL_LOCK`."""
     from dblift.cli import main as cli_main
     from dblift.cli._command_handlers import _COMMAND_HANDLERS, _validate_migrate_options
 
@@ -144,8 +180,9 @@ def run_command(
         if callable(close):
             try:
                 close()
-            except Exception:
-                pass
+            except Exception as exc:  # a failed close must not mask the result
+                if log is not None:
+                    log.debug(f"Closing the client for '{command}' failed: {exc}")
         if log is not None:
             cli_main._close_logs(log)
 

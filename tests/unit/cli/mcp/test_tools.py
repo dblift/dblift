@@ -129,3 +129,42 @@ def test_validate_reports_success(project):
     result = anyio.run(_session, scenario)
 
     assert result.structured_content["success"] is True
+
+
+@pytest.mark.unit
+def test_concurrent_tool_calls_do_not_corrupt_each_other(project, capsys):
+    """Two tools called in parallel must each get their own payload, and leave stdout alone.
+
+    The runner rewrites process-global state — ``sys.argv`` while parsing, and
+    ``sys.stdout`` for the whole call — and the SDK runs sync tool bodies in
+    worker threads. Without serialisation one call's redirect is torn down
+    under the other: a result carries the wrong command's JSON, payload bytes
+    escape to the real stdout (the JSON-RPC channel), and ``sys.stdout`` is
+    left as a dead buffer.
+    """
+    import sys
+
+    stdout_before = sys.stdout
+
+    async def scenario(client):
+        results = {}
+
+        async def call(name):
+            results[name] = await client.call_tool(name, {})
+
+        async with anyio.create_task_group() as group:
+            group.start_soon(call, "info")
+            group.start_soon(call, "migrate_dry_run")
+        return results
+
+    for _ in range(5):
+        results = anyio.run(_session, scenario)
+
+        info, dry = results["info"], results["migrate_dry_run"]
+        assert info.is_error is False, info.content[0].text
+        assert dry.is_error is False, dry.content[0].text
+        assert "migrations" in info.structured_content
+        assert "dry_run" not in info.structured_content
+        assert dry.structured_content["dry_run"] is True
+        assert sys.stdout is stdout_before
+        assert capsys.readouterr().out == ""
