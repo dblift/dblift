@@ -205,3 +205,76 @@ def test_validate_parser_accepts_format_json():
 
     assert args.format == "json"
     assert create_parser(exit_on_error=False).parse_args(["validate"]).format == "console"
+
+
+@pytest.mark.unit
+def test_migrate_result_to_dict_shape():
+    from dblift.cli.handlers.migrate import _migrate_result_to_dict
+
+    result = SimpleNamespace(
+        success=True,
+        error_message=None,
+        target_schema="main",
+        current_schema_version="1",
+        dry_run_count=2,
+        migrations=[_migration(status="SUCCESS")],
+        migrations_applied=["1"],
+    )
+
+    data = _migrate_result_to_dict(result, dry_run=True)
+
+    assert data == {
+        "success": True,
+        "error": None,
+        "dry_run": True,
+        "target_schema": "main",
+        "current_schema_version": "1",
+        "dry_run_count": 2,
+        "migrations": [_migration_info_to_dict(result.migrations[0])],
+        "migrations_applied": ["1"],
+    }
+
+
+@pytest.mark.unit
+def test_handle_migrate_dry_run_json(capsys):
+    from dblift.cli.handlers.migrate import _handle_migrate
+
+    client = MagicMock()
+    client.migrate.return_value = SimpleNamespace(
+        success=True,
+        error_message=None,
+        target_schema="main",
+        current_schema_version=None,
+        dry_run_count=1,
+        migrations=[],
+        migrations_applied=[],
+    )
+    args = SimpleNamespace(format="json", dry_run=True, validate_only=False)
+    ctx = CliCommandContext(client=client, args=args, log=MagicMock())
+
+    ok, _ = _handle_migrate(ctx)
+
+    assert ok is True
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["dry_run"] is True and payload["dry_run_count"] == 1
+    assert client.migrate.call_args.kwargs["dry_run"] is True
+
+
+@pytest.mark.unit
+def test_handle_migrate_validate_only_json_uses_validate_payload(capsys):
+    from dblift.cli.handlers.migrate import _handle_migrate
+
+    client = MagicMock()
+    client.validate.return_value = SimpleNamespace(
+        success=True,
+        error_message=None,
+        target_schema="main",
+        error_count=0,
+        validated_migrations=[],
+        failed_migrations=[],
+    )
+    args = SimpleNamespace(format="json", dry_run=False, validate_only=True)
+
+    _handle_migrate(CliCommandContext(client=client, args=args, log=MagicMock()))
+
+    assert "validated_migrations" in json.loads(capsys.readouterr().out)
