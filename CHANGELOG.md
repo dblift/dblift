@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - `validate --format json` and `migrate --format json` — machine-readable payloads sharing the row shape of `info --format json`.
+- `dblift mcp` — stdio MCP server exposing `info`, `validate`, `migrate_dry_run` and a `dblift://history` resource; add-ons register tools through the new `dblift.mcp_tools` entry-point group; the SDK ships in the `mcp` extra.
 
 ### Changed
 

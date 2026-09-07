@@ -335,6 +335,9 @@ dblift undo --target-version=1.0.0                 # Roll back to version
 dblift migrate --tags=core                         # Apply tagged migrations
 dblift migrate --scripts=./migrations/core --scripts=./migrations/features  # Multiple directories
 dblift info --scripts=./custom/migrations          # Use different directory
+
+# Coding agents
+dblift mcp                                          # Serve read-only commands as MCP tools (pip install "dblift[mcp]")
 ```
 
 ## Next Steps

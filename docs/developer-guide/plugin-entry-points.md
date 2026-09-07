@@ -43,6 +43,16 @@ Value: a callable returning `dict[str, TerminalCommand]`, where
 
 Reserved extension point. OSS treats this as neutral metadata.
 
+### `dblift.mcp_tools`
+
+Value: a callable `register(server) -> None` receiving the `dblift mcp` server.
+Call `server.command_tool(name=..., command=..., description=..., fn=...)` where
+`fn(**params) -> list[str]` maps tool parameters to the subcommand's argv; the
+tool result is that command's `--format json` payload. For a tool whose body
+needs more than one command run, call `server.raw_tool(name=..., description=...,
+fn=..., signature_of=...)` instead, supplying the handler directly. Tools are
+read-only by contract. See `docs/user-guide/mcp.md`.
+
 ## Install Extras
 
 The main `dblift` wheel contains all first-party provider code. Extras install
@@ -56,6 +66,7 @@ the corresponding native drivers or thin integration dependencies.
 | `dblift[cosmosdb]` | `azure-cosmos`, `azure-identity` | Enables Azure Cosmos DB connections. |
 | `dblift[fastapi]` | `fastapi` | Enables FastAPI integration helpers. |
 | `dblift[flask]` | `flask` | Enables Flask integration helpers. |
+| `dblift[mcp]` | `mcp` | Enables the `dblift mcp` server. |
 | `dblift[all]` | every engine extra above | Convenience meta-extra. |
 
 A bare `pip install dblift` installs **no** database driver or SDK — including
