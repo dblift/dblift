@@ -322,6 +322,7 @@ NON_ENGINE_EXTRAS = frozenset(
         "django",  # web framework integrations
         "fastapi",
         "flask",
+        "mcp",  # MCP SDK, no database client
         "otel",  # opentelemetry-api, tracing only
     }
 )
