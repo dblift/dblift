@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import builtins
+from typing import List, Optional
 from unittest.mock import patch
 
 import anyio
@@ -198,3 +199,61 @@ def test_missing_sdk_is_reported_with_the_extra_name(monkeypatch):
 
     with pytest.raises(server_mod.MissingMcpSdkError, match='pip install "dblift\\[mcp\\]"'):
         server_mod.build_server([])
+
+
+@pytest.mark.unit
+def test_tool_registration_resolves_string_annotations():
+    """A registrar written with ``typing`` names under PEP 563 must still register.
+
+    This module has ``from __future__ import annotations``, so ``Optional[str]``
+    reaches the SDK as the *string* ``"Optional[str]"`` unless the server
+    resolves it. The SDK cannot build a schema from an unresolved name and
+    rejects the tool at registration — which aborts ``build_server``, so
+    ``dblift mcp`` never starts.
+    """
+    server = _server()
+
+    def shape(*, snapshot: Optional[str] = None, tags: List[str] = []) -> list[str]:
+        """Shape only."""
+        return []
+
+    server.raw_tool(name="report", description="d", fn=lambda **kw: {}, signature_of=shape)
+
+    async def scenario(client):
+        return (await client.list_tools()).tools
+
+    (tool,) = anyio.run(_with_client, server, scenario)
+    properties = tool.input_schema["properties"]
+    assert set(properties) == {"snapshot", "tags"}
+    assert properties["tags"]["type"] == "array"
+    assert properties["tags"]["items"] == {"type": "string"}
+
+
+@pytest.mark.unit
+def test_resource_failure_carries_the_cli_message():
+    """A failing resource must report the CLI's own message, like a tool does."""
+    server = _server()
+    server.command_resource(
+        uri="dblift://history",
+        name="history",
+        description="d",
+        command="info",
+        argv=[],
+        pick=lambda payload: payload["migrations"],
+    )
+
+    with patch(
+        "dblift.cli.mcp.server.run_command",
+        side_effect=CommandInvocationError("no config here", 1),
+    ):
+
+        async def scenario(client):
+            from mcp.shared.exceptions import MCPError
+
+            with pytest.raises(MCPError) as exc_info:
+                await client.read_resource("dblift://history")
+            return str(exc_info.value)
+
+        message = anyio.run(_with_client, server, scenario)
+
+    assert "no config here" in message

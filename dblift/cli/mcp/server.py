@@ -11,7 +11,7 @@ that registers the ``mcp`` subcommand — import on installs without the
 from __future__ import annotations
 
 import inspect
-from typing import Any, Callable, Dict, List, Optional, Sequence
+from typing import Any, Callable, Dict, List, Optional, Sequence, get_type_hints
 
 from dblift.cli.mcp.registry import load_mcp_tool_registrars
 from dblift.cli.mcp.runner import JSON_FORMAT_ARGV, CommandInvocationError, run_command
@@ -44,6 +44,25 @@ def _import_sdk() -> Any:
     except ImportError as exc:  # the extra is optional by design
         raise MissingMcpSdkError(SDK_HINT) from exc
     return MCPServer
+
+
+def _resolved_hints(func: Callable[..., Any]) -> Dict[str, Any]:
+    """Return ``func``'s annotations as objects, not the strings PEP 563 leaves behind.
+
+    A registrar module with ``from __future__ import annotations`` stores
+    ``"Optional[str]"``; the SDK builds its input schema with pydantic, which
+    cannot resolve a bare name and raises at registration — which would abort
+    :func:`build_server` and stop ``dblift mcp`` from starting at all. Note
+    that ``inspect.signature(..., eval_str=True)`` cannot do this job here: it
+    short-circuits on the ``__signature__`` the caller sets and returns it
+    unevaluated. A name that still fails to resolve (a quoted forward
+    reference to something not importable at runtime) is left as written, so
+    the SDK reports it against that tool rather than the whole server.
+    """
+    try:
+        return dict(get_type_hints(func, include_extras=True))
+    except Exception:
+        return dict(getattr(func, "__annotations__", {}))
 
 
 class DbliftMcpServer:
@@ -125,18 +144,21 @@ class DbliftMcpServer:
 
         tool.__name__ = name
         tool.__doc__ = description
+        hints = _resolved_hints(signature_of)
+        signature = inspect.signature(signature_of)
         # `func_metadata` special-cases a return annotation of the *builtin*
         # ``dict[str, Any]`` (a ``types.GenericAlias``) to produce
         # structuredContent from the dict directly; `typing.Dict[str, Any]`
         # is a different runtime type and falls through to its generic
         # branch, which wraps the result in ``{"result": ...}`` instead.
-        tool.__signature__ = inspect.signature(signature_of).replace(  # type: ignore[attr-defined]
-            return_annotation=dict[str, Any]
+        tool.__signature__ = signature.replace(  # type: ignore[attr-defined]
+            parameters=[
+                parameter.replace(annotation=hints.get(parameter.name, parameter.annotation))
+                for parameter in signature.parameters.values()
+            ],
+            return_annotation=dict[str, Any],
         )
-        tool.__annotations__ = {
-            **getattr(signature_of, "__annotations__", {}),
-            "return": dict[str, Any],
-        }
+        tool.__annotations__ = {**hints, "return": dict[str, Any]}
         self.mcpserver.add_tool(
             tool,
             name=name,
@@ -156,14 +178,27 @@ class DbliftMcpServer:
         argv: Sequence[str],
         pick: Callable[[Dict[str, Any]], Any],
     ) -> None:
-        """Register a resource whose content is ``pick(run_command(...))`` as JSON."""
+        """Register a resource whose content is ``pick(run_command(...))`` as JSON.
+
+        A :class:`CommandInvocationError` surfaces as a resource error carrying
+        the CLI's message, the way a tool's does.
+        """
         import json
+
+        from mcp.server.mcpserver.exceptions import ResourceError
 
         global_argv = self.global_argv
         argv_list = list(argv)
 
         def resource() -> str:
-            return json.dumps(pick(run_command(global_argv, command, argv_list)), indent=2)
+            try:
+                payload = run_command(global_argv, command, argv_list)
+            except CommandInvocationError as exc:
+                # As with `ToolError` above: any other exception type has its
+                # message replaced by a generic "Error reading resource" and
+                # is logged as a traceback.
+                raise ResourceError(str(exc)) from exc
+            return json.dumps(pick(payload), indent=2)
 
         self.mcpserver.resource(
             uri, name=name, description=description, mime_type="application/json"

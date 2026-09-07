@@ -23,6 +23,12 @@ def _handle_mcp(ctx: CliCommandContext) -> Tuple[bool, Any]:
     except MissingMcpSdkError as exc:
         CommandOutput("console").error(str(exc))
         return (False, None)
+    except Exception as exc:
+        # A registrar contributed by an installed add-on package can fail the
+        # build — a duplicate tool name, a signature the SDK rejects. Report
+        # it as a CLI error; a traceback is not something the user can act on.
+        CommandOutput("console").error(f"dblift mcp: could not start the server: {exc}")
+        return (False, None)
     server.run_stdio()
     return (True, None)
 

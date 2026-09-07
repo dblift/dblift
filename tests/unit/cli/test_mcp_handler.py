@@ -63,3 +63,20 @@ def test_zero_config_dispatch_passes_global_arguments(monkeypatch):
 
     assert exc_info.value.code == 0
     assert seen["global"] == ["--config", "x.yaml", "--log-level", "debug"]
+
+
+@pytest.mark.unit
+def test_handle_mcp_reports_a_failed_build_instead_of_a_traceback(capsys):
+    """A registrar that raises must not reach the user as an unhandled traceback."""
+    pytest.importorskip("mcp")
+
+    def broken(server):
+        raise ValueError("Duplicate MCP tool: info")
+
+    with patch("dblift.cli.mcp.server.load_mcp_tool_registrars", return_value=[broken]):
+        assert _handle_mcp(CliCommandContext(args=SimpleNamespace())) == (False, None)
+
+    captured = capsys.readouterr()
+    assert "could not start the server" in captured.err
+    assert "Duplicate MCP tool: info" in captured.err
+    assert captured.out == ""
