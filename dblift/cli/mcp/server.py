@@ -1,4 +1,4 @@
-"""The ``dblift mcp`` server: a FastMCP instance fed by command tools.
+"""The ``dblift mcp`` server: an MCPServer instance fed by command tools.
 
 Tools never touch the SDK. A registrar hands :meth:`DbliftMcpServer.command_tool`
 a function that maps typed parameters to CLI argv; the server wraps it in a
@@ -40,24 +40,27 @@ class MissingMcpSdkError(RuntimeError):
 
 def _import_sdk() -> Any:
     try:
-        from mcp.server.fastmcp import FastMCP
+        from mcp.server.mcpserver import MCPServer
     except ImportError as exc:  # the extra is optional by design
         raise MissingMcpSdkError(SDK_HINT) from exc
-    return FastMCP
+    return MCPServer
 
 
 class DbliftMcpServer:
-    """Owns the FastMCP instance and the argv the CLI was started with."""
+    """Owns the MCPServer instance and the argv the CLI was started with."""
 
     def __init__(self, global_argv: Sequence[str]) -> None:
         """Create an empty server; ``global_argv`` is prepended to every tool invocation."""
-        fastmcp_cls = _import_sdk()
+        mcpserver_cls = _import_sdk()
         from mcp.types import ToolAnnotations
 
         self.global_argv: List[str] = list(global_argv)
-        self.fastmcp = fastmcp_cls("dblift", instructions=SERVER_INSTRUCTIONS)
+        self.mcpserver = mcpserver_cls("dblift", instructions=SERVER_INSTRUCTIONS)
         self._annotations = ToolAnnotations(
-            readOnlyHint=True, destructiveHint=False, idempotentHint=True, openWorldHint=False
+            read_only_hint=True,
+            destructive_hint=False,
+            idempotent_hint=True,
+            open_world_hint=False,
         )
         self._names: List[str] = []
 
@@ -109,11 +112,16 @@ class DbliftMcpServer:
         if name in self._names:
             raise ValueError(f"Duplicate MCP tool: {name}")
 
+        from mcp.server.mcpserver.exceptions import ToolError
+
         def tool(**kwargs: Any) -> Dict[str, Any]:
             try:
                 return fn(**kwargs)
             except CommandInvocationError as exc:
-                raise RuntimeError(str(exc)) from exc
+                # `ToolError` (not a bare exception) is what makes the SDK put
+                # this message in the is_error result's content instead of
+                # withholding it behind a generic "Error executing tool" crash.
+                raise ToolError(str(exc)) from exc
 
         tool.__name__ = name
         tool.__doc__ = description
@@ -129,7 +137,7 @@ class DbliftMcpServer:
             **getattr(signature_of, "__annotations__", {}),
             "return": dict[str, Any],
         }
-        self.fastmcp.add_tool(
+        self.mcpserver.add_tool(
             tool,
             name=name,
             description=description,
@@ -157,13 +165,13 @@ class DbliftMcpServer:
         def resource() -> str:
             return json.dumps(pick(run_command(global_argv, command, argv_list)), indent=2)
 
-        self.fastmcp.resource(
+        self.mcpserver.resource(
             uri, name=name, description=description, mime_type="application/json"
         )(resource)
 
     def run_stdio(self) -> None:
         """Serve on stdin/stdout until the client closes the stream."""
-        self.fastmcp.run(transport="stdio")
+        self.mcpserver.run(transport="stdio")
 
 
 def build_server(global_argv: Sequence[str]) -> DbliftMcpServer:

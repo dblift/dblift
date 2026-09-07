@@ -1,4 +1,4 @@
-"""``DbliftMcpServer`` — FastMCP wrapper, exercised through the SDK's in-memory client."""
+"""``DbliftMcpServer`` — MCPServer wrapper, exercised through the SDK's in-memory client."""
 
 from __future__ import annotations
 
@@ -20,9 +20,9 @@ def _server(global_argv=()):
 
 
 async def _with_client(server, fn):
-    from mcp.shared.memory import create_connected_server_and_client_session
+    from mcp import Client
 
-    async with create_connected_server_and_client_session(server.fastmcp) as client:
+    async with Client(server.mcpserver) as client:
         return await fn(client)
 
 
@@ -43,9 +43,9 @@ def test_command_tool_exposes_signature_and_read_only_annotations():
     (tool,) = tools
     assert tool.name == "echo"
     assert tool.description == "Echo tool"
-    assert set(tool.inputSchema["properties"]) == {"name", "loud"}
-    assert tool.annotations.readOnlyHint is True
-    assert tool.annotations.destructiveHint is False
+    assert set(tool.input_schema["properties"]) == {"name", "loud"}
+    assert tool.annotations.read_only_hint is True
+    assert tool.annotations.destructive_hint is False
 
 
 @pytest.mark.unit
@@ -65,8 +65,8 @@ def test_command_tool_runs_command_with_global_argv_and_returns_structured_conte
     rc.assert_called_once_with(
         ["--config", "x.yaml"], "info", ["--versions", "1"], json_argv=("--format", "json")
     )
-    assert result.isError is False
-    assert result.structuredContent == {"success": True, "v": "1"}
+    assert result.is_error is False
+    assert result.structured_content == {"success": True, "v": "1"}
 
 
 @pytest.mark.unit
@@ -84,7 +84,7 @@ def test_invocation_error_becomes_is_error_result_with_message():
 
         result = anyio.run(_with_client, server, scenario)
 
-    assert result.isError is True
+    assert result.is_error is True
     assert "Plan requires an ENTERPRISE license (exit code 4)" in result.content[0].text
 
 
@@ -144,9 +144,9 @@ def test_raw_tool_uses_signature_of_and_calls_fn_directly():
 
     tools, result = anyio.run(_with_client, server, scenario)
 
-    assert set(tools[0].inputSchema["properties"]) == {"snapshot", "fail_on"}
-    assert tools[0].annotations.readOnlyHint is True
-    assert result.structuredContent == {
+    assert set(tools[0].input_schema["properties"]) == {"snapshot", "fail_on"}
+    assert tools[0].annotations.read_only_hint is True
+    assert result.structured_content == {
         "success": True,
         "kw": {"snapshot": "s.json", "fail_on": "error"},
     }
