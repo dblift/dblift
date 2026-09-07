@@ -59,8 +59,10 @@ def _resolved_hints(func: Callable[..., Any]) -> Dict[str, Any]:
     that ``inspect.signature(..., eval_str=True)`` cannot do this job here: it
     short-circuits on the ``__signature__`` the caller sets and returns it
     unevaluated. A name that still fails to resolve (a quoted forward
-    reference to something not importable at runtime) is left as written, so
-    the SDK reports it against that tool rather than the whole server.
+    reference to something not importable at runtime) is left as written; the
+    SDK's error then names the offending tool, but registration still fails
+    and :func:`dblift.cli.handlers.mcp._handle_mcp` turns that into a CLI
+    error instead of a traceback.
     """
     try:
         return dict(get_type_hints(func, include_extras=True))
