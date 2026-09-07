@@ -80,7 +80,9 @@ def test_invocation_error_becomes_is_error_result_with_message():
 
     with patch(
         "dblift.cli.mcp.server.run_command",
-        side_effect=CommandInvocationError("Plan requires an ENTERPRISE license (exit code 4)", 4),
+        side_effect=CommandInvocationError(
+            "Feature requires a higher license tier (exit code 4)", 4
+        ),
     ):
 
         async def scenario(client):
@@ -89,7 +91,7 @@ def test_invocation_error_becomes_is_error_result_with_message():
         result = anyio.run(_with_client, server, scenario)
 
     assert result.is_error is True
-    assert "Plan requires an ENTERPRISE license (exit code 4)" in result.content[0].text
+    assert "Feature requires a higher license tier (exit code 4)" in result.content[0].text
 
 
 @pytest.mark.unit

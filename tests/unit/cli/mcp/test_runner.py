@@ -71,14 +71,17 @@ def test_run_command_prepends_global_argv(sqlite_project, monkeypatch):
 @pytest.mark.unit
 def test_capability_denied_becomes_invocation_error_with_cli_message(sqlite_project, monkeypatch):
     def denied(ctx):
-        raise CapabilityDeniedError("Plan requires an ENTERPRISE license (current: NONE)")
+        # Deliberately not the runner's own fallback text: the point of the
+        # assertion is that the raised message is carried through, not
+        # replaced.
+        raise CapabilityDeniedError("Feature requires a higher license tier")
 
     _install_fake_handler(monkeypatch, "info", denied)
 
     with pytest.raises(CommandInvocationError) as exc_info:
         run_command(["--config", str(sqlite_project)], "info", [])
 
-    assert "Plan requires an ENTERPRISE license" in str(exc_info.value)
+    assert "Feature requires a higher license tier" in str(exc_info.value)
     assert exc_info.value.exit_code == 4
 
 
