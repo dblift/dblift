@@ -7,9 +7,8 @@ tool's input schema.
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional
+from typing import Dict, List, Optional
 
-from dblift.cli.mcp.runner import run_command
 from dblift.cli.mcp.server import DbliftMcpServer
 
 _FILTERS = (
@@ -86,22 +85,11 @@ def register_oss_tools(server: DbliftMcpServer) -> None:
         description=str(validate_argv.__doc__),
         fn=validate_argv,
     )
-
-    def migrate_dry_run(**kwargs: Any) -> Dict[str, Any]:
-        # ``--dry-run`` is defined only on the root parser (`_parser_setup.py`):
-        # `dblift migrate --dry-run` is rejected as an unrecognized argument,
-        # only `dblift --dry-run migrate` parses. `migrate_dry_run_argv` puts
-        # it first in its returned argv (its contract, asserted by
-        # `test_migrate_dry_run_argv_always_carries_dry_run`), so it is moved
-        # ahead of the subcommand here rather than passed through unchanged.
-        argv = migrate_dry_run_argv(**kwargs)
-        return run_command([*server.global_argv, "--dry-run"], "migrate", argv[1:])
-
-    server.raw_tool(
+    server.command_tool(
         name="migrate_dry_run",
+        command="migrate",
         description=str(migrate_dry_run_argv.__doc__),
-        fn=migrate_dry_run,
-        signature_of=migrate_dry_run_argv,
+        fn=migrate_dry_run_argv,
     )
     server.command_resource(
         uri="dblift://history",

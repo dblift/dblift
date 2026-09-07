@@ -12,6 +12,17 @@ from dblift.cli._parser_setup import create_parser  # noqa: E402
 from dblift.cli.mcp.tools import info_argv, migrate_dry_run_argv, validate_argv  # noqa: E402
 
 
+def _parse_like_cli(command, argv):
+    """Parse ``[command, *argv]`` the way ``main()`` does: root-only flags may follow the command."""
+    from dblift.cli._config_helpers import _GLOBAL_BOOLEAN_FLAGS, _extract_commands_from_argv
+    from dblift.cli.main import _AVAILABLE_COMMANDS, _GLOBAL_ONLY_ARGS
+
+    commands, global_args, sub_args = _extract_commands_from_argv(
+        [command, *argv], list(_AVAILABLE_COMMANDS), list(_GLOBAL_ONLY_ARGS), _GLOBAL_BOOLEAN_FLAGS
+    )
+    return create_parser(exit_on_error=False).parse_args([*global_args, *commands, *sub_args])
+
+
 @pytest.mark.unit
 @pytest.mark.parametrize(
     "builder, command",
@@ -22,17 +33,11 @@ def test_argv_parses_through_the_real_parser(builder, command):
         target_version="2", tags="core", exclude_tags=None, versions=None, exclude_versions="9"
     )
 
-    # `--dry-run` is defined only on the root parser (`_parser_setup.py`), not
-    # on the `migrate` subparser: `dblift migrate --dry-run` is rejected as an
-    # unrecognized argument, only `dblift --dry-run migrate` parses. Route it
-    # ahead of the subcommand name, same as `register_oss_tools` does.
-    global_flags = [a for a in argv if a == "--dry-run"]
-    command_flags = [a for a in argv if a != "--dry-run"]
-    ns = create_parser(exit_on_error=False).parse_args(
-        [*global_flags, command, *command_flags, "--format", "json"]
-    )
+    ns = _parse_like_cli(command, [*argv, "--format", "json"])
 
     assert ns.target_version == "2" and ns.tags == "core" and ns.exclude_versions == "9"
+    if command == "migrate":
+        assert ns.dry_run is True
 
 
 @pytest.mark.unit
@@ -46,11 +51,7 @@ def test_migrate_dry_run_argv_always_carries_dry_run():
 def test_migrate_dry_run_argv_placeholders():
     argv = migrate_dry_run_argv(placeholders={"env": "dev", "owner": "app"})
 
-    # `--dry-run` is root-parser-only (see the comment in
-    # test_argv_parses_through_the_real_parser above), so it must precede
-    # the subcommand name for this to parse.
-    command_flags = [a for a in argv if a != "--dry-run"]
-    ns = create_parser(exit_on_error=False).parse_args(["--dry-run", "migrate", *command_flags])
+    ns = _parse_like_cli("migrate", argv)
     # `--placeholders` is `nargs="+"` + `action="append"` (see
     # `_make_filter_parent` in `_parser_setup.py`), so argparse yields a
     # list-of-lists: one inner list per `--placeholders` occurrence.
