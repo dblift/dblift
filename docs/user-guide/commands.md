@@ -340,6 +340,8 @@ dblift info --scripts=./custom/migrations          # Use different directory
 dblift mcp                                          # Serve read-only commands as MCP tools (pip install "dblift[mcp]")
 ```
 
+See **[Coding agents (MCP)](mcp.md)** for the tool list and the client setup.
+
 ## Next Steps
 
 - Learn about **[Best Practices](best-practices.md)** for effective migrations

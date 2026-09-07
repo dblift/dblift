@@ -33,6 +33,7 @@ Everything you need to use DBLift effectively:
 - **[Getting Started](user-guide/getting-started.md)** - Installation and your first migration
 - **[Configuration](user-guide/configuration.md)** - Database setup and configuration options
 - **[Commands](user-guide/commands.md)** - All available commands and their usage
+- **[Coding agents (MCP)](user-guide/mcp.md)** - Serve the read-only commands as MCP tools
 - **[Best Practices](user-guide/best-practices.md)** - Tips for effective database migrations
 - **[Troubleshooting](user-guide/troubleshooting.md)** - Solutions to common problems
 
