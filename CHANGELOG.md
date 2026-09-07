@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `validate --format json` and `migrate --format json` — machine-readable payloads sharing the row shape of `info --format json`.
+
 ### Changed
 
 ### Fixed
