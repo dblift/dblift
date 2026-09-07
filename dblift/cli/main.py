@@ -473,6 +473,8 @@ def _parse_argv_and_load_config(argv: List[str]) -> _CliContext:
         commands[0], "_dblift_zero_config_command", False
     ):
         handler = _COMMAND_HANDLERS[commands[0]]
+        # Terminal-style commands (e.g. `mcp`) replay these root flags per call.
+        args.global_arguments = global_arguments
         success, _payload = handler(CliCommandContext(args=args))
         sys.exit(0 if success else 1)
 
