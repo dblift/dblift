@@ -19,6 +19,7 @@ from dblift.cli.handlers.baseline import _handle_baseline
 from dblift.cli.handlers.clean import _handle_clean
 from dblift.cli.handlers.import_flyway import _handle_import_flyway
 from dblift.cli.handlers.info import _handle_info, _info_result_to_dict  # noqa: F401
+from dblift.cli.handlers.mcp import _handle_mcp
 from dblift.cli.handlers.migrate import _handle_migrate
 from dblift.cli.handlers.repair import _handle_repair
 from dblift.cli.handlers.undo import _handle_undo
@@ -36,6 +37,7 @@ _COMMAND_HANDLERS: Dict[str, Callable[[CliCommandContext], Tuple[bool, Any]]] = 
     "baseline": _handle_baseline,
     "repair": _handle_repair,
     "import-flyway": _handle_import_flyway,
+    "mcp": _handle_mcp,
 }
 
 _extension_handlers = load_command_handlers()

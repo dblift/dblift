@@ -38,6 +38,14 @@ dblift migrate --dry-run
 ```
 This shows you what would happen without actually making changes.
 
+Both `validate` and `migrate` accept `--format json` for scripts and agents. The payload
+carries `success`, `error` and the per-migration rows (`script`, `version`, `status`,
+`checksum`, …); `migrate --dry-run --format json` also reports `dry_run_count`:
+
+```bash
+dblift migrate --dry-run --format json
+```
+
 ### Checking Migration Status
 
 **View all migrations:**
@@ -327,7 +335,12 @@ dblift undo --target-version=1.0.0                 # Roll back to version
 dblift migrate --tags=core                         # Apply tagged migrations
 dblift migrate --scripts=./migrations/core --scripts=./migrations/features  # Multiple directories
 dblift info --scripts=./custom/migrations          # Use different directory
+
+# Coding agents
+dblift mcp                                          # Serve read-only commands as MCP tools (pip install "dblift[mcp]")
 ```
+
+See **[Coding agents (MCP)](mcp.md)** for the tool list and the client setup.
 
 ## Next Steps
 

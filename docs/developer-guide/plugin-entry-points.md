@@ -43,6 +43,31 @@ Value: a callable returning `dict[str, TerminalCommand]`, where
 
 Reserved extension point. OSS treats this as neutral metadata.
 
+### `dblift.mcp_tools`
+
+Value: a callable `register(server) -> None` receiving the `dblift mcp` server.
+Call `server.command_tool(name=..., command=..., description=..., fn=...)` where
+`fn(**params) -> list[str]` maps tool parameters to the subcommand's argv; the
+tool result is that command's `--format json` payload. For a tool whose body
+needs more than one command run, call `server.raw_tool(name=..., description=...,
+fn=..., signature_of=...)` instead, supplying the handler directly. Tools are
+read-only by contract. See `docs/user-guide/mcp.md`.
+
+`fn`'s keyword-only parameters and their annotations become the tool's input
+schema, and its docstring the description. Write those annotations however you
+normally would — `Optional[str]`, `List[str]`, `dict[str, str]`, with or without
+`from __future__ import annotations`; the server resolves them before handing
+the signature to the SDK.
+
+Pass `json_argv=None` to `command_tool` for a command that has no `--format`
+option. The tool then returns `{"success": <bool>, "output": <stdout>}` — the
+command's text output, unparsed — instead of a JSON payload.
+
+Raise the SDK's `ToolError` (`mcp.server.mcpserver.exceptions`) for a failure of
+your own: the SDK carries that message to the model and replaces the message of
+any other exception type with a generic one. A `CommandInvocationError` from a
+command run is already converted for you.
+
 ## Install Extras
 
 The main `dblift` wheel contains all first-party provider code. Extras install
@@ -56,6 +81,7 @@ the corresponding native drivers or thin integration dependencies.
 | `dblift[cosmosdb]` | `azure-cosmos`, `azure-identity` | Enables Azure Cosmos DB connections. |
 | `dblift[fastapi]` | `fastapi` | Enables FastAPI integration helpers. |
 | `dblift[flask]` | `flask` | Enables Flask integration helpers. |
+| `dblift[mcp]` | `mcp` | Enables the `dblift mcp` server. |
 | `dblift[all]` | every engine extra above | Convenience meta-extra. |
 
 A bare `pip install dblift` installs **no** database driver or SDK — including
