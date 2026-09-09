@@ -50,7 +50,7 @@ jobs:
             --dist=loadscope \
             -p no:benchmark \
             --timeout=120 \
-            --cov=api --cov=cli --cov=config --cov=core --cov=db --cov=integrations \
+            --cov=dblift \
             --cov-report=xml
 
       - name: Install pytest-dblift
