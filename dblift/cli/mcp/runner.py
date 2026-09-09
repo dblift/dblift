@@ -107,7 +107,11 @@ def run_command(
 
     With *json_argv* (default ``--format json``) the return value is the parsed
     stdout document. With ``json_argv=None`` the command has no machine format;
-    the return value is ``{"success": <handler result>, "output": <stdout>}``.
+    the return value is ``{"success": <handler result>, "output": <text>}``,
+    where *text* is the captured stdout followed by the captured stderr (each
+    stripped, joined with a newline, empty parts omitted) — a command's real
+    content is rendered through the console logger, which writes to stderr,
+    so stdout alone would only ever carry the "DBLIFT COMMAND" banner.
 
     One call at a time: the module docstring lists the process-global state a
     call rewrites. A second caller waits rather than corrupting the first.
@@ -188,7 +192,12 @@ def _run_command_locked(
 
     stdout = stdout_buf.getvalue()
     if json_argv is None:
-        return {"success": bool(success), "output": stdout.strip()}
+        # A text-mode command's real content is rendered through the console
+        # logger, which writes to stderr — only the "DBLIFT COMMAND" banner
+        # (if any) reaches stdout. Join both, stdout first, so the caller
+        # gets the actual output rather than just the banner.
+        parts = [part.strip() for part in (stdout, stderr_buf.getvalue()) if part.strip()]
+        return {"success": bool(success), "output": "\n".join(parts)}
     try:
         payload = json.loads(stdout)
     except json.JSONDecodeError as exc:

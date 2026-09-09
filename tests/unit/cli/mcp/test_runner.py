@@ -146,6 +146,40 @@ def test_migrate_option_validation_runs(sqlite_project):
 
 
 @pytest.mark.unit
+def test_text_mode_output_includes_console_log_lines(sqlite_project, monkeypatch):
+    """A text-mode command's real content is rendered through the console
+    logger (stderr), not printed to stdout. ``output`` must carry both,
+    stdout first, or an agent only ever sees the banner."""
+
+    def logs_and_prints(ctx):
+        print("DBLIFT COMMAND")
+        ctx.log.info("DRIFT: widgets")
+        return (True, None)
+
+    _install_fake_handler(monkeypatch, "info", logs_and_prints)
+
+    result = run_command(["--config", str(sqlite_project)], "info", [], json_argv=None)
+
+    assert "DBLIFT COMMAND" in result["output"]
+    assert "DRIFT: widgets" in result["output"]
+    assert result["output"].index("DBLIFT COMMAND") < result["output"].index("DRIFT: widgets")
+
+
+@pytest.mark.unit
+def test_json_mode_output_never_carries_stderr(sqlite_project, monkeypatch):
+    def logs_and_json(ctx):
+        ctx.log.info("noisy console line that must not reach the payload")
+        print(json.dumps({"success": True}))
+        return (True, None)
+
+    _install_fake_handler(monkeypatch, "info", logs_and_json)
+
+    result = run_command(["--config", str(sqlite_project)], "info", [])
+
+    assert result == {"success": True}
+
+
+@pytest.mark.unit
 def test_two_calls_do_not_duplicate_log_lines(sqlite_project, capsys):
     run_command(["--config", str(sqlite_project), "--log-level", "debug"], "info", [])
     first = capsys.readouterr().err.count("Using database name")
