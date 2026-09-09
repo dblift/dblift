@@ -95,9 +95,7 @@ def test_the_regenerate_recipe_names_the_extras_the_unit_tests_install():
     ``mcp``, the recipe did not, and the next regeneration would have dropped
     the pins again even once they are added."""
     recipe = _extras_of(CONSTRAINTS.read_text(encoding="utf-8"), CONSTRAINTS)
-    workflow = _extras_of(
-        UNIT_TESTS_WORKFLOW.read_text(encoding="utf-8"), UNIT_TESTS_WORKFLOW
-    )
+    workflow = _extras_of(UNIT_TESTS_WORKFLOW.read_text(encoding="utf-8"), UNIT_TESTS_WORKFLOW)
 
     assert recipe == workflow, (
         "constraints-ci.txt's regenerate recipe and unit-tests.yml install "
