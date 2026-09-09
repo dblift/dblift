@@ -34,11 +34,19 @@ UNIT_TESTS_WORKFLOW = ROOT / ".github" / "workflows" / "unit-tests.yml"
 # ``pip install -e ".[a,b,c]"`` — the extras list of an editable install.
 _EXTRAS_INSTALL = re.compile(r'pip install -e "\.\[([^\]]+)\]"')
 
-# Every distribution `pip install -c constraints-ci.txt "mcp>=2.2,<3"` resolves
-# that no other extra already pins, on Python 3.11, against mcp 2.2.0. The list
-# is deliberately explicit: when an SDK release adds or drops a dependency the
-# regenerated file changes, this test fails, and the change gets read rather
-# than absorbed silently. Names are canonicalised on both sides.
+# The SDK release MCP_SUBTREE was derived from. Pinned separately so that
+# bumping ``mcp`` in constraints-ci.txt by hand — the cheap move, since a real
+# regeneration needs a twelve-extra virtualenv — cannot leave the subtree list
+# describing the previous release.
+MCP_VERSION = "2.2.0"
+
+# Every distribution the workflow's install line adds when the ``mcp`` extra is
+# appended to it, on Python 3.11, against mcp 2.2.0. The list is a hand-written
+# constant on purpose: it holds with no SDK installed, which is what makes it a
+# usable gate. It catches a *dropped* pin on its own; a dependency the SDK
+# *adds* is caught by MCP_VERSION above and, when the SDK is importable, by
+# ``test_the_subtree_list_still_covers_what_the_sdk_requires`` below.
+# Names are canonicalised on both sides.
 MCP_SUBTREE = frozenset(
     {
         "annotated-types",
@@ -71,14 +79,29 @@ def _extras_of(text: str, source: Path) -> set[str]:
     return {extra.strip() for extra in match.group(1).split(",")}
 
 
-def _pinned_distributions() -> set[str]:
-    names: set[str] = set()
+def _pins() -> dict[str, str]:
+    pins: dict[str, str] = {}
     for line in CONSTRAINTS.read_text(encoding="utf-8").splitlines():
         stripped = line.strip()
         if not stripped or stripped.startswith("#"):
             continue
-        names.add(canonicalize_name(Requirement(stripped).name))
-    return names
+        requirement = Requirement(stripped)
+        pins[canonicalize_name(requirement.name)] = str(requirement.specifier).lstrip("=")
+    return pins
+
+
+def _pinned_distributions() -> set[str]:
+    return set(_pins())
+
+
+def _mcp_requirement(entries: list[str]) -> Requirement:
+    matches = [
+        Requirement(entry)
+        for entry in entries
+        if canonicalize_name(Requirement(entry).name) == "mcp"
+    ]
+    assert len(matches) == 1, f"expected exactly one mcp requirement, found {matches}"
+    return matches[0]
 
 
 def _optional_dependencies() -> dict[str, list[str]]:
@@ -118,26 +141,74 @@ def test_constraints_pin_every_distribution_the_mcp_extra_installs():
 
 
 @pytest.mark.unit
-def test_the_mcp_extra_is_capped_below_the_next_major():
+def test_the_subtree_list_describes_the_pinned_sdk_release():
+    """MCP_SUBTREE is a snapshot of one SDK release's dependencies, so the two
+    have to move together. Without this, bumping ``mcp`` in constraints-ci.txt
+    by hand leaves the list describing the previous release, and a dependency
+    the new one added installs unpinned while every test stays green."""
+    assert _pins()["mcp"] == MCP_VERSION, (
+        f"constraints-ci.txt pins mcp {_pins()['mcp']} but MCP_SUBTREE was "
+        f"derived from {MCP_VERSION}: re-derive the list, then update "
+        "MCP_VERSION"
+    )
+
+
+@pytest.mark.unit
+def test_the_subtree_list_still_covers_what_the_sdk_requires():
+    """The reverse direction, available only when the SDK is installed: every
+    dependency mcp declares for this environment must be pinned, whether the
+    hand-written list anticipated it or not. Direct requirements only — a
+    transitive addition is still caught by the release pin above."""
+    pytest.importorskip("mcp")
+    from importlib.metadata import metadata
+
+    declared = metadata("mcp").get_all("Requires-Dist") or []
+    required = {
+        canonicalize_name(requirement.name)
+        for requirement in map(Requirement, declared)
+        # Requirements behind an ``extra`` marker are not installed by a bare
+        # ``pip install mcp``; platform markers are evaluated for this run.
+        if requirement.marker is None or requirement.marker.evaluate({"extra": ""})
+    }
+    unpinned = sorted(required - _pinned_distributions())
+
+    assert not unpinned, (
+        f"mcp {MCP_VERSION} requires these and constraints-ci.txt does not " f"pin them: {unpinned}"
+    )
+
+
+@pytest.mark.unit
+def test_the_mcp_extra_declares_an_upper_bound():
     """``mcp`` is used against ``mcp.server.mcpserver``, an API surface that
     differs from the widely published 1.x layout: the rename happened across a
     major. An uncapped requirement means the next major installs cleanly, type
     checks cleanly, and fails at runtime when the server starts. Same argument
-    as the ``sqlglot`` cap in ``[project].dependencies``."""
-    requirements = _optional_dependencies()["mcp"]
-    specifiers = Requirement(requirements[0]).specifier
+    as the ``sqlglot`` cap in ``[project].dependencies``. This asserts only
+    that a bound exists — which release to cap at is a judgement call, and the
+    cap in the file today is ``<3``."""
+    requirement = _mcp_requirement(_optional_dependencies()["mcp"])
 
     assert any(
-        spec.operator in {"<", "<=", "==", "~="} for spec in specifiers
-    ), f"the mcp extra has no upper bound: {requirements[0]!r}"
+        spec.operator in {"<", "<=", "==", "~="} for spec in requirement.specifier
+    ), f"the mcp extra has no upper bound: {str(requirement)!r}"
 
 
 @pytest.mark.unit
-def test_the_dev_extra_carries_the_mcp_sdk():
+def test_the_dev_extra_carries_the_mcp_sdk_on_the_same_specifier():
     """Without the SDK, ``pytest.importorskip("mcp")`` removes every test that
     speaks the protocol — the server, the tool registration and the stdio
     smoke test — and the suite still reports success. A contributor installing
-    ``.[dev]`` to run the tests has to get the tests."""
-    dev = {canonicalize_name(Requirement(entry).name) for entry in _optional_dependencies()["dev"]}
+    ``.[dev]`` to run the tests has to get the tests.
 
-    assert "mcp" in dev, "pip install -e '.[dev]' silently skips the MCP protocol tests"
+    The specifiers have to match, not merely the name: ``.[dev]`` is installed
+    on its own by ``.github/workflows/security.yml``, so a ``dev`` entry that
+    drifted off the cap would let that job resolve an SDK major the code does
+    not target."""
+    dev = _optional_dependencies()["dev"]
+    names = {canonicalize_name(Requirement(entry).name) for entry in dev}
+
+    assert "mcp" in names, "pip install -e '.[dev]' silently skips the MCP protocol tests"
+    assert (
+        _mcp_requirement(dev).specifier
+        == _mcp_requirement(_optional_dependencies()["mcp"]).specifier
+    ), "the dev entry and the mcp extra ask for different SDK versions"
