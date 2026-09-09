@@ -64,6 +64,20 @@ def test_server_instructions_scope_validate_to_history_not_sql():
 
 
 @pytest.mark.unit
+def test_server_instructions_scope_read_only_to_built_in_tools():
+    """`read_only=False` add-on tools exist, so the instructions must not
+    claim the whole server is read-only or that no tool changes data; they
+    must scope those claims to the built-in tools and defer to each tool's
+    own read-only hint."""
+    from dblift.cli.mcp.server import SERVER_INSTRUCTIONS
+
+    normalized = " ".join(SERVER_INSTRUCTIONS.split())
+    assert "(read-only)" not in normalized
+    assert "built-in" in normalized
+    assert "own read-only hint" in normalized
+
+
+@pytest.mark.unit
 def test_command_tool_read_only_false_flips_annotations():
     server = _server()
 

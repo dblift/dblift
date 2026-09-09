@@ -1,7 +1,7 @@
 # dblift with coding agents (MCP)
 
-`dblift mcp` serves the read-only commands as tools over the Model Context
-Protocol on stdin/stdout. A coding agent (Claude Code, Cursor, Copilot) starts it
+`dblift mcp` serves dblift's built-in read-only commands as tools over the
+Model Context Protocol on stdin/stdout. A coding agent (Claude Code, Cursor, Copilot) starts it
 as a subprocess in your project directory; it uses the same `dblift.yaml`,
 environment variables and secrets your shell would.
 
@@ -38,10 +38,13 @@ Installed add-on packages can contribute further tools through the
 `dblift.mcp_tools` entry-point group.
 
 **Not exposed, on purpose:** applying migrations, `undo`, `clean`, `baseline`,
-`repair`. No tool applies, undoes or cleans a migration, and none changes your
-data; an agent that needs one of those should ask you to run it. The one write
-a tool can cause is the one every dblift command can: the first call against a
-database with no schema-history table creates that table.
+`repair`. None of the built-in tools above applies, undoes or cleans a
+migration, and none changes your data; an agent that needs one of those
+should ask you to run it. The one write a built-in tool can cause is the one
+every dblift command can: the first call against a database with no
+schema-history table creates that table. An add-on tool may not be
+read-only — each tool declares its own read-only hint, and a client should
+trust that per-tool hint over this paragraph.
 
 Tool errors carry the same message the CLI prints (a missing configuration, a
 command the installed edition does not cover, …) and never stop the server.
