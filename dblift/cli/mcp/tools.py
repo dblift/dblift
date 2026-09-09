@@ -7,7 +7,7 @@ tool's input schema.
 
 from __future__ import annotations
 
-from typing import Dict, List, Optional
+from typing import Dict, List
 
 from dblift.cli.mcp.server import DbliftMcpServer
 
@@ -20,22 +20,25 @@ _FILTERS = (
 )
 
 
-def _filter_argv(values: Dict[str, Optional[str]]) -> List[str]:
+def _filter_argv(values: Dict[str, "str | List[str] | None"]) -> List[str]:
     argv: List[str] = []
     for key, flag in _FILTERS:
         value = values.get(key)
-        if value:
-            argv += [flag, value]
+        if not value:
+            continue
+        # The CLI flag takes a CSV string; an agent may naturally pass a
+        # list instead (a pydantic list-typed argument), so join it here.
+        argv += [flag, ",".join(value) if isinstance(value, list) else value]
     return argv
 
 
 def info_argv(
     *,
     target_version: "str | None" = None,
-    tags: "str | None" = None,
-    exclude_tags: "str | None" = None,
-    versions: "str | None" = None,
-    exclude_versions: "str | None" = None,
+    tags: "str | list[str] | None" = None,
+    exclude_tags: "str | list[str] | None" = None,
+    versions: "str | list[str] | None" = None,
+    exclude_versions: "str | list[str] | None" = None,
 ) -> List[str]:
     """Schema history: every migration with its status, checksum and install time."""
     return _filter_argv(locals())
@@ -44,10 +47,10 @@ def info_argv(
 def validate_argv(
     *,
     target_version: "str | None" = None,
-    tags: "str | None" = None,
-    exclude_tags: "str | None" = None,
-    versions: "str | None" = None,
-    exclude_versions: "str | None" = None,
+    tags: "str | list[str] | None" = None,
+    exclude_tags: "str | list[str] | None" = None,
+    versions: "str | list[str] | None" = None,
+    exclude_versions: "str | list[str] | None" = None,
 ) -> List[str]:
     """Validate migration scripts against the history (checksums, ordering, missing files)."""
     return _filter_argv(locals())
@@ -56,10 +59,10 @@ def validate_argv(
 def migrate_dry_run_argv(
     *,
     target_version: "str | None" = None,
-    tags: "str | None" = None,
-    exclude_tags: "str | None" = None,
-    versions: "str | None" = None,
-    exclude_versions: "str | None" = None,
+    tags: "str | list[str] | None" = None,
+    exclude_tags: "str | list[str] | None" = None,
+    versions: "str | list[str] | None" = None,
+    exclude_versions: "str | list[str] | None" = None,
     placeholders: "dict[str, str] | None" = None,
 ) -> List[str]:
     """Show which migrations would be applied. Never writes: ``--dry-run`` is fixed."""

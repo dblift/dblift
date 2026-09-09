@@ -44,6 +44,20 @@ def test_argv_parses_through_the_real_parser(builder, command):
 
 
 @pytest.mark.unit
+def test_info_argv_accepts_a_list_for_tags():
+    argv = info_argv(tags=["a", "b"])
+
+    assert argv == ["--tags", "a,b"]
+
+
+@pytest.mark.unit
+def test_info_argv_still_accepts_a_csv_string_for_tags():
+    argv = info_argv(tags="a,b")
+
+    assert argv == ["--tags", "a,b"]
+
+
+@pytest.mark.unit
 def test_migrate_dry_run_argv_always_carries_dry_run():
     argv = migrate_dry_run_argv()
 
@@ -94,6 +108,16 @@ def test_list_tools_is_exactly_the_oss_three(project):
         return sorted(t.name for t in (await client.list_tools()).tools)
 
     assert anyio.run(_session, scenario) == ["info", "migrate_dry_run", "validate"]
+
+
+@pytest.mark.unit
+def test_call_tool_info_accepts_a_list_for_tags(project):
+    async def scenario(client):
+        return await client.call_tool("info", {"tags": ["x"]})
+
+    result = anyio.run(_session, scenario)
+
+    assert result.is_error is False
 
 
 @pytest.mark.unit
