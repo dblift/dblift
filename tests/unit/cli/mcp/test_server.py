@@ -53,6 +53,33 @@ def test_command_tool_exposes_signature_and_read_only_annotations():
 
 
 @pytest.mark.unit
+def test_command_tool_read_only_false_flips_annotations():
+    server = _server()
+
+    server.command_tool(
+        name="writer",
+        command="info",
+        description="Writes a file",
+        fn=lambda: [],
+        read_only=False,
+    )
+    server.command_tool(name="reader", command="info", description="Reads only", fn=lambda: [])
+
+    async def scenario(client):
+        return {t.name: t for t in (await client.list_tools()).tools}
+
+    tools = anyio.run(_with_client, server, scenario)
+
+    assert tools["writer"].annotations.read_only_hint is False
+    assert tools["writer"].annotations.idempotent_hint is False
+    assert tools["writer"].annotations.destructive_hint is False
+    assert tools["writer"].annotations.open_world_hint is False
+
+    assert tools["reader"].annotations.read_only_hint is True
+    assert tools["reader"].annotations.idempotent_hint is True
+
+
+@pytest.mark.unit
 def test_command_tool_runs_command_with_global_argv_and_returns_structured_content():
     server = _server(["--config", "x.yaml"])
     server.command_tool(
