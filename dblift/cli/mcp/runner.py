@@ -8,10 +8,13 @@ first unlicensed call. Everything that would exit the CLI process becomes a
 :class:`CommandInvocationError` carrying the exit code, and stdout is
 redirected for the whole call: the JSON-RPC transport owns the real stream.
 
-Stderr is captured too (so a failed command's detail can be quoted in the
-raised error) but is *mirrored* rather than swallowed: the command's log
-lines still reach the real stderr, which is where a stdio MCP server's own
-diagnostics belong, leaving only stdout reserved for the JSON-RPC channel.
+Stderr is captured too: a command's content may render through the stdout
+console or through the console logger, which writes to stderr, and a
+text-mode call joins both so the logger's lines are not lost. Capture also
+lets a failed command's detail be quoted in the raised error. It is
+*mirrored* rather than swallowed: the command's log lines still reach the
+real stderr, which is where a stdio MCP server's own diagnostics belong —
+only stdout is reserved outright for the JSON-RPC channel.
 
 Any exception the handler raises — not just :class:`SystemExit` and
 :class:`~dblift.core.seams.capabilities.CapabilityDeniedError` — becomes a
@@ -107,7 +110,12 @@ def run_command(
 
     With *json_argv* (default ``--format json``) the return value is the parsed
     stdout document. With ``json_argv=None`` the command has no machine format;
-    the return value is ``{"success": <handler result>, "output": <stdout>}``.
+    the return value is ``{"success": <handler result>, "output": <text>}``,
+    where *text* is the captured stdout followed by the captured stderr (each
+    stripped, joined with a newline, empty parts omitted). A command's content
+    may land on either console — some commands render through the stdout
+    console, others through the console logger, which writes to stderr — so
+    both are joined rather than risk losing whichever one carried it.
 
     One call at a time: the module docstring lists the process-global state a
     call rewrites. A second caller waits rather than corrupting the first.
@@ -188,7 +196,13 @@ def _run_command_locked(
 
     stdout = stdout_buf.getvalue()
     if json_argv is None:
-        return {"success": bool(success), "output": stdout.strip()}
+        # A text-mode command's content may land on either console: some
+        # commands render through the stdout console, others through the
+        # console logger, which writes to stderr. Join both, stdout first,
+        # so the caller gets the actual output regardless of which stream
+        # carried it.
+        parts = [part.strip() for part in (stdout, stderr_buf.getvalue()) if part.strip()]
+        return {"success": bool(success), "output": "\n".join(parts)}
     try:
         payload = json.loads(stdout)
     except json.JSONDecodeError as exc:

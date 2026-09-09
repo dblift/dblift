@@ -246,8 +246,11 @@ class MigrateResult(OperationResult):
         """Check if the migration was successful."""
         if not self.migrations:
             return self.success
-        # Handle both "SUCCESS" and "Success" for backward compatibility
-        return self.success and all(m.status in ["SUCCESS", "Success"] for m in self.migrations)
+        # PENDING rows come from a dry run and are neutral: only executed
+        # migrations can fail the result. Handle both "SUCCESS" and "Success"
+        # for backward compatibility.
+        executed = [m for m in self.migrations if m.status != "PENDING"]
+        return self.success and all(m.status in ["SUCCESS", "Success"] for m in executed)
 
     @property
     def error(self) -> Optional[str]:

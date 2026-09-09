@@ -50,8 +50,11 @@ Call `server.command_tool(name=..., command=..., description=..., fn=...)` where
 `fn(**params) -> list[str]` maps tool parameters to the subcommand's argv; the
 tool result is that command's `--format json` payload. For a tool whose body
 needs more than one command run, call `server.raw_tool(name=..., description=...,
-fn=..., signature_of=...)` instead, supplying the handler directly. Tools are
-read-only by contract. See `docs/user-guide/mcp.md`.
+fn=..., signature_of=...)` instead, supplying the handler directly. Tools default
+to read-only (`read_only_hint` and `idempotent_hint` both true, `destructive_hint`
+always false). A registrar whose tool writes a file the caller names — not one of
+these commands — should pass `read_only=False` to either call, which reports the
+tool as neither read-only nor idempotent. See `docs/user-guide/mcp.md`.
 
 `fn`'s keyword-only parameters and their annotations become the tool's input
 schema, and its docstring the description. Write those annotations however you
@@ -60,8 +63,13 @@ normally would — `Optional[str]`, `List[str]`, `dict[str, str]`, with or witho
 the signature to the SDK.
 
 Pass `json_argv=None` to `command_tool` for a command that has no `--format`
-option. The tool then returns `{"success": <bool>, "output": <stdout>}` — the
-command's text output, unparsed — instead of a JSON payload.
+option. The tool then returns `{"success": <bool>, "output": <text>}` instead of
+a JSON payload — `text` is the command's captured stdout followed by its
+captured stderr (each stripped, joined with a newline, empty parts omitted).
+A command's content may land on either console — some commands render
+through the stdout console, others through the console logger, which writes
+to stderr — so both are joined rather than risk losing whichever one
+carried it.
 
 Raise the SDK's `ToolError` (`mcp.server.mcpserver.exceptions`) for a failure of
 your own: the SDK carries that message to the model and replaces the message of
