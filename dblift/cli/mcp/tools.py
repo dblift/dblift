@@ -27,8 +27,9 @@ def _filter_argv(values: Dict[str, "str | List[str] | None"]) -> List[str]:
         if not value:
             continue
         # The CLI flag takes a CSV string; an agent may naturally pass a
-        # list instead (a pydantic list-typed argument), so join it here.
-        argv += [flag, ",".join(value) if isinstance(value, list) else value]
+        # list or tuple instead (a pydantic sequence-typed argument), so
+        # join it here.
+        argv += [flag, ",".join(value) if isinstance(value, (list, tuple)) else value]
     return argv
 
 

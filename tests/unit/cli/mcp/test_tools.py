@@ -58,6 +58,13 @@ def test_info_argv_still_accepts_a_csv_string_for_tags():
 
 
 @pytest.mark.unit
+def test_info_argv_accepts_a_tuple_for_tags():
+    argv = info_argv(tags=("a", "b"))
+
+    assert argv == ["--tags", "a,b"]
+
+
+@pytest.mark.unit
 def test_migrate_dry_run_argv_always_carries_dry_run():
     argv = migrate_dry_run_argv()
 
