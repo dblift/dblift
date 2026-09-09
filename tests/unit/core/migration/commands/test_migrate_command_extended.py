@@ -171,6 +171,25 @@ class TestHandleDryRun(unittest.TestCase):
             returned = cmd._handle_dry_run([], result)
         self.assertIs(returned, result)
 
+    def test_populates_result_migrations_with_pending_status(self):
+        cmd = _make_cmd()
+        m1 = _make_migration("V1__a.sql", version="1", description="a")
+        m2 = _make_migration("V2__b.sql", version="2", description="b")
+        result = MigrateResult()
+
+        with patch.object(cmd, "_log_command_completion"):
+            cmd._handle_dry_run([m1, m2], result)
+
+        self.assertEqual(len(result.migrations), 2)
+        self.assertEqual(result.migrations[0].script, "V1__a.sql")
+        self.assertEqual(result.migrations[0].version, "1")
+        self.assertEqual(result.migrations[0].status, "PENDING")
+        self.assertEqual(result.migrations[1].script, "V2__b.sql")
+        self.assertEqual(result.migrations[1].status, "PENDING")
+        self.assertEqual(result.dry_run_count, 2)
+        # Dry-run reports what would happen; it must not flip `success` False.
+        self.assertTrue(result.success)
+
     def test_show_sql_collects_executable_sql(self):
         cmd = _make_cmd()
         cmd.execution_engine.get_executable_sql_statements.return_value = [

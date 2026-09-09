@@ -306,6 +306,22 @@ class TestMigrateResult:
 
         assert result.is_successful() is False
 
+    def test_is_successful_with_pending_dry_run_row(self):
+        """A PENDING row (dry-run) is neutral: it must not flip a clean result."""
+        result = MigrateResult()
+        result.migrations.append(MigrationInfo("test1.sql", status="PENDING"))
+
+        assert result.success is True
+        assert result.is_successful() is True
+
+    def test_is_successful_with_pending_and_failure(self):
+        """A PENDING row does not mask a real failure elsewhere in the run."""
+        result = MigrateResult()
+        result.migrations.append(MigrationInfo("test1.sql", status="PENDING"))
+        result.add_migration(MigrationInfo("test2.sql", status="FAILED"))
+
+        assert result.is_successful() is False
+
     def test_error_property(self):
         """Test error property."""
         result = MigrateResult()
