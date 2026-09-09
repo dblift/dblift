@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- `dblift mcp` server instructions and `docs/user-guide/mcp.md` scope the read-only statement to the built-in tools and tell clients to trust each tool's own read-only hint, now that add-on packages can register tools that write files.
 - `dblift mcp` server instructions and `docs/user-guide/mcp.md` now say what
   `validate` checks (migration history against the scripts on disk —
   checksums, ordering, missing files) and that it does not parse or check the
