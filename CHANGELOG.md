@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+### Changed
+
+### Fixed
+
+### Removed
+
+## [4.2.0] - 2026-09-08
+
+### Added
+
 - A registrar contributing an MCP tool through `dblift.mcp_tools` can now
   pass `read_only=False` when its tool writes a file the caller names.
 
