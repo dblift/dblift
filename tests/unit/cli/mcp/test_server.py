@@ -53,6 +53,17 @@ def test_command_tool_exposes_signature_and_read_only_annotations():
 
 
 @pytest.mark.unit
+def test_server_instructions_scope_validate_to_history_not_sql():
+    """The instructions must not oversell `validate`: it checks migration
+    history against scripts (checksums, ordering, missing files); it does
+    not parse or check the SQL inside them."""
+    from dblift.cli.mcp.server import SERVER_INSTRUCTIONS
+
+    normalized = " ".join(SERVER_INSTRUCTIONS.split())
+    assert "does not parse or check the SQL" in normalized
+
+
+@pytest.mark.unit
 def test_command_tool_read_only_false_flips_annotations():
     server = _server()
 

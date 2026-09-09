@@ -29,6 +29,11 @@ behind, not one per server run.
 | `migrate_dry_run` | `migrate --dry-run --format json` | what would be applied — applies nothing |
 | resource `dblift://history` | `info --format json` | the `migrations` array |
 
+`validate` checks the migration history against the scripts on disk —
+checksums, script order, missing files — it does not parse or check the SQL
+inside them; a script with invalid SQL passes both `validate` and
+`migrate_dry_run`.
+
 Installed add-on packages can contribute further tools through the
 `dblift.mcp_tools` entry-point group.
 

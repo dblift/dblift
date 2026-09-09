@@ -22,9 +22,13 @@ SDK_HINT = 'The MCP server needs the "mcp" package. Install it with: pip install
 SERVER_INSTRUCTIONS = """dblift database migration tools (read-only).
 
 Before proposing a migration: run `validate`, then `migrate_dry_run` and read
-its `migrations` list. `info` shows the schema history; the `dblift://history`
-resource is the same list. Every tool runs against the project's dblift.yaml in
-the working directory (or the --config the server was started with).
+its `migrations` list. `validate` checks the migration history against the
+scripts on disk — checksums, ordering, missing files; it does not parse or
+check the SQL inside them, so a script with invalid SQL still passes both
+`validate` and `migrate_dry_run`. `info` shows the schema history; the
+`dblift://history` resource is the same list. Every tool runs against the
+project's dblift.yaml in the working directory (or the --config the server
+was started with).
 
 No tool applies, undoes or cleans a migration, and none changes your data;
 those commands are not exposed — ask the human to run them. The one write
