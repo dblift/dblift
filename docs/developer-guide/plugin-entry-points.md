@@ -65,9 +65,11 @@ the signature to the SDK.
 Pass `json_argv=None` to `command_tool` for a command that has no `--format`
 option. The tool then returns `{"success": <bool>, "output": <text>}` instead of
 a JSON payload — `text` is the command's captured stdout followed by its
-captured stderr (each stripped, joined with a newline, empty parts omitted),
-since a command with no JSON contract renders its real output through the
-console logger, which writes to stderr.
+captured stderr (each stripped, joined with a newline, empty parts omitted).
+A command's content may land on either console — some commands render
+through the stdout console, others through the console logger, which writes
+to stderr — so both are joined rather than risk losing whichever one
+carried it.
 
 Raise the SDK's `ToolError` (`mcp.server.mcpserver.exceptions`) for a failure of
 your own: the SDK carries that message to the model and replaces the message of

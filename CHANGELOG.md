@@ -9,14 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- A registrar contributing an MCP tool through `dblift.mcp_tools` can now
+  pass `read_only=False` when its tool writes a file the caller names.
+
 ### Changed
 
 - `dblift mcp` server instructions and `docs/user-guide/mcp.md` now say what
   `validate` checks (migration history against the scripts on disk —
   checksums, ordering, missing files) and that it does not parse or check the
-  SQL inside a script. A registrar contributing an MCP tool through
-  `dblift.mcp_tools` can now pass `read_only=False` when its tool writes a
-  file the caller names.
+  SQL inside a script.
 
 ### Fixed
 
@@ -24,8 +25,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   lists each pending migration in the `migrations` field of the JSON payload,
   with status `PENDING`; it previously reported an empty list even though the
   console output listed the pending scripts.
-- An MCP tool built on a command with no JSON contract now returns its real
-  console output in the tool result, not just the "DBLIFT COMMAND" banner.
+- An MCP tool built on a command with no JSON contract now returns the
+  command's full console output, not only whichever part happened to
+  render on stdout.
 - `dblift mcp`'s `tags`, `exclude_tags`, `versions` and `exclude_versions`
   tool parameters now also accept a list of strings, not only a
   comma-separated string.
