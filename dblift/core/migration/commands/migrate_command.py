@@ -165,6 +165,19 @@ class MigrateCommand(BaseCommand):
         self.log.info("DRY RUN: Would execute the following migrations:")
         for migration in pending_migrations:
             self.log.info(f"  - {migration.script_name}")
+            # Appended directly (not via `result.add_migration`): that method
+            # flips `result.success` to False for any non-SUCCESS status,
+            # which would wrongly mark a clean dry run as failed.
+            result.migrations.append(
+                MigrationInfo(
+                    script=migration.script_name,
+                    version=migration.version,
+                    description=migration.description,
+                    type=migration.type.value if migration.type else "SQL",
+                    status="PENDING",
+                    checksum=migration.checksum,
+                )
+            )
         result.dry_run_count = len(pending_migrations)
         # Note: Callbacks are NOT executed in dry-run mode
         self._log_command_completion("migrate", result)

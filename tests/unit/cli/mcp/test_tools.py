@@ -123,6 +123,11 @@ def test_migrate_dry_run_applies_nothing(project):
     assert dry.structured_content["dry_run_count"] == 1
     assert after.structured_content["migrations"][0]["status"] == "PENDING"
 
+    dry_migrations = dry.structured_content["migrations"]
+    assert len(dry_migrations) == 1
+    assert dry_migrations[0]["script"] == "V1__init.sql"
+    assert dry_migrations[0]["status"] == "PENDING"
+
 
 @pytest.mark.unit
 def test_validate_reports_success(project):
