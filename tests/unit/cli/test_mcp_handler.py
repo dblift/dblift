@@ -88,6 +88,7 @@ def test_handle_mcp_reports_a_failed_build_instead_of_a_traceback(capsys):
 def _quiet_server():
     """A server double that skipped nothing and matched every allowlisted name."""
     server = MagicMock()
+    server.tool_names.return_value = []
     server.skipped_tools.return_value = []
     server.unmatched_allowed_tools.return_value = []
     return server
@@ -177,6 +178,8 @@ def test_handle_mcp_reports_each_skipped_tool_on_stderr_and_still_serves(capsys)
 def test_handle_mcp_refuses_to_start_on_an_unknown_allowlisted_tool(capsys):
     """A name nothing registered is an operator error, not a quieter server."""
     server = _quiet_server()
+    server.tool_names.return_value = ["info"]
+    server.skipped_tools.return_value = [("validate", "not in the allowed tool list")]
     server.unmatched_allowed_tools.return_value = ["nope"]
     ctx = CliCommandContext(
         args=SimpleNamespace(global_arguments=[], read_only=False, tools="info,nope")
@@ -188,6 +191,9 @@ def test_handle_mcp_refuses_to_start_on_an_unknown_allowlisted_tool(capsys):
     captured = capsys.readouterr()
     assert captured.out == ""
     assert "nope" in captured.err and "--tools" in captured.err
+    # Actionable: the message names what this install offers, registered or
+    # skipped, so the operator can correct the list without reading the docs.
+    assert "info" in captured.err and "validate" in captured.err
     server.run_stdio.assert_not_called()
 
 

@@ -526,3 +526,27 @@ def test_build_server_defaults_are_permissive():
     assert server.allow_writes is True
     assert server.tool_names() == ["info", "validate", "migrate_dry_run"]
     assert server.skipped_tools() == []
+
+
+@pytest.mark.unit
+def test_instructions_tell_a_restricted_session_to_trust_tools_list():
+    """The instructions name `validate`, `migrate_dry_run` and `info` as the
+    workflow. Under `--tools` or `--read-only` some of those may not be served,
+    so a restricted server must say so and point the agent at `tools/list`;
+    an unrestricted server keeps the instructions unchanged."""
+    from dblift.cli.mcp.server import SERVER_INSTRUCTIONS, DbliftMcpServer
+
+    async def scenario(client):
+        return client.instructions
+
+    plain = anyio.run(_with_client, DbliftMcpServer([]), scenario)
+    assert plain == SERVER_INSTRUCTIONS
+
+    allowlisted = anyio.run(_with_client, DbliftMcpServer([], allowed_tools=["info"]), scenario)
+    assert allowlisted.startswith(SERVER_INSTRUCTIONS)
+    assert "tools/list" in allowlisted
+    assert "restricted" in allowlisted
+
+    write_forbidding = anyio.run(_with_client, DbliftMcpServer([], allow_writes=False), scenario)
+    assert write_forbidding.startswith(SERVER_INSTRUCTIONS)
+    assert "tools/list" in write_forbidding
