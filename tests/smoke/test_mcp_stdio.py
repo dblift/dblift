@@ -26,7 +26,14 @@ def _frame(msg_id, method, params=None):
 
 
 @pytest.mark.integration
-def test_stdio_round_trip_keeps_stdout_pure(tmp_path: Path):
+@pytest.mark.parametrize(
+    "restriction",
+    [[], ["--tools", "info"], ["--read-only"]],
+    ids=["unrestricted", "allowlist", "read-only"],
+)
+def test_stdio_round_trip_keeps_stdout_pure(tmp_path: Path, restriction: list[str]):
+    """Every stdout line is a JSON-RPC frame. The restricted variants also
+    prove the start-up skip report goes to stderr, not the protocol channel."""
     migrations = tmp_path / "migrations"
     migrations.mkdir()
     (migrations / "V1__init.sql").write_text("CREATE TABLE widgets (id INTEGER PRIMARY KEY);")
@@ -60,6 +67,7 @@ def test_stdio_round_trip_keeps_stdout_pure(tmp_path: Path):
             "--log-level",
             "debug",
             "mcp",
+            *restriction,
         ],
         stdin=subprocess.PIPE,
         stdout=subprocess.PIPE,
@@ -152,11 +160,13 @@ def test_stdio_round_trip_keeps_stdout_pure(tmp_path: Path):
         # id means the server answered something else (or nothing) and the
         # frames are the only evidence of what.
         assert 2 in by_id and 3 in by_id, f"missing responses; frames={frames!r}; stderr={stderr!r}"
-        assert {t["name"] for t in by_id[2]["result"]["tools"]} >= {
-            "info",
-            "validate",
-            "migrate_dry_run",
-        }
+        served = {t["name"] for t in by_id[2]["result"]["tools"]}
+        if restriction == ["--tools", "info"]:
+            assert served == {"info"}
+            assert "skipped tool validate" in stderr and "skipped tool migrate_dry_run" in stderr
+        else:
+            assert served >= {"info", "validate", "migrate_dry_run"}
+            assert "skipped tool" not in stderr
         assert by_id[3]["result"]["isError"] is False
         assert by_id[3]["result"]["structuredContent"]["migrations"][0]["script"] == "V1__init.sql"
     finally:

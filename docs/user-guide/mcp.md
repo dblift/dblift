@@ -34,8 +34,36 @@ checksums, script order, missing files — it does not parse or check the SQL
 inside them; a script with invalid SQL passes both `validate` and
 `migrate_dry_run`.
 
+## Restricting a session
+
+`dblift mcp --read-only` skips every tool whose registrar declared it
+`read_only=False`. It trusts declarations: it catches an honest add-on's
+writing tool, not a dishonest one. The built-in tools are all read-only and
+are unaffected.
+
+`dblift mcp --tools NAME[,NAME...]` is the allowlist: only the named tools
+are served, built-in or add-on, and everything else is skipped. An unknown
+name makes the server refuse to start, so a typo cannot silently shrink the
+tool list. This is the right choice for CI and for agents that should see
+nothing beyond `info`, `validate` and `migrate_dry_run`:
+
+```json
+{
+  "mcpServers": {
+    "dblift": { "command": "dblift", "args": ["mcp", "--tools", "info,validate,migrate_dry_run"] }
+  }
+}
+```
+
+The two flags compose: `--read-only --tools export_schema` admits the name
+and still skips the tool if it declares `read_only=False`. Skipped tools are
+listed on stderr when the server starts; the server still serves what is
+left. Resources (`dblift://history`) are unaffected by either flag.
+
 Installed add-on packages can contribute further tools through the
-`dblift.mcp_tools` entry-point group.
+`dblift.mcp_tools` entry-point group. An add-on tool that overwrites a file
+you name reports `destructive_hint` true, and a client that auto-approves
+non-destructive tools should prompt for it.
 
 **Not exposed, on purpose:** applying migrations, `undo`, `clean`, `baseline`,
 `repair`. None of the built-in tools above applies, undoes or cleans a

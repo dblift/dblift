@@ -15,6 +15,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
+## [4.3.0] - 2026-09-10
+
+### Added
+
+- A registrar contributing an MCP tool through `dblift.mcp_tools` can now
+  pass `destructive=True` (with `read_only=False`) when its tool overwrites a
+  file the caller names, so a client that auto-approves non-destructive tools
+  should prompt for it.
+- `dblift mcp --read-only` serves only the tools that declare themselves
+  read-only; an add-on tool registered `read_only=False` is skipped and listed
+  on stderr at start.
+- `dblift mcp --tools NAME[,NAME...]` serves only the named tools, built-in or
+  add-on, and refuses to start on a name no installed registrar offers, so a
+  typo cannot silently shrink the tool list.
+
+### Changed
+
+- The `mcp` extra now requires `mcp>=2.2,<3`. `dblift mcp` is written against
+  the SDK's 2.x API, so a future major release would have installed cleanly and
+  failed only when the server started.
+- The `dev` extra now installs the MCP SDK. Without it the tests that speak the
+  protocol are skipped and the suite still reports success. It brings the SDK's
+  HTTP transport dependencies with it, which `dblift mcp` itself does not use —
+  it serves over stdio.
+- CI pins the MCP SDK and its dependencies, which were resolved fresh on every
+  run instead of from `constraints-ci.txt`.
+
+### Fixed
+
+### Removed
+
 ## [4.2.0] - 2026-09-08
 
 ### Added
