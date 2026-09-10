@@ -11,6 +11,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- The `mcp` extra now requires `mcp>=2.2,<3`. `dblift mcp` is written against
+  the SDK's 2.x API, so a future major release would have installed cleanly and
+  failed only when the server started.
+- The `dev` extra now installs the MCP SDK. Without it the tests that speak the
+  protocol are skipped and the suite still reports success. It brings the SDK's
+  HTTP transport dependencies with it, which `dblift mcp` itself does not use —
+  it serves over stdio.
+- CI pins the MCP SDK and its dependencies, which were resolved fresh on every
+  run instead of from `constraints-ci.txt`.
+
 ### Fixed
 
 ### Removed
