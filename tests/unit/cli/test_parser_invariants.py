@@ -182,6 +182,8 @@ def _leaf_subcommand_invocations() -> List[Tuple[str, List[str]]]:
         ("repair", ["repair"]),
         ("import-flyway", ["import-flyway"]),
         ("mcp", ["mcp"]),
+        ("mcp --read-only", ["mcp", "--read-only"]),
+        ("mcp --tools", ["mcp", "--tools", "info,validate"]),
         ("db list-drivers", ["db", "list-drivers"]),
         ("db validate-config", ["db", "validate-config"]),
         ("db diagnose-connection", ["db", "diagnose-connection"]),

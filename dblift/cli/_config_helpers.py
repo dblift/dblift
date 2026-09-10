@@ -42,6 +42,7 @@ _SUBCOMMAND_BOOLEAN_FLAGS = frozenset(
         "--managed-only",
         "--mark-as-executed",
         "--no-performance",
+        "--read-only",  # `dblift mcp`: the splitter would otherwise take the next token as a value
         "--show-sql",
         "--rehearse-rollback",
         "--skip-replay",

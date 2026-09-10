@@ -338,6 +338,7 @@ dblift info --scripts=./custom/migrations          # Use different directory
 
 # Coding agents
 dblift mcp                                          # Serve read-only commands as MCP tools (pip install "dblift[mcp]")
+dblift mcp --tools info,validate,migrate_dry_run    # Serve an allowlist only
 ```
 
 See **[Coding agents (MCP)](mcp.md)** for the tool list and the client setup.

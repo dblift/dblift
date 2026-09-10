@@ -314,3 +314,239 @@ def test_resource_failure_carries_the_cli_message():
         message = anyio.run(_with_client, server, scenario)
 
     assert "no config here" in message
+
+
+# --- v2: destructive=, the write boundary, the allowlist ---------------------
+
+
+@pytest.mark.unit
+def test_destructive_true_sets_destructive_hint_on_a_writing_tool():
+    """A tool that overwrites a caller-named path must be able to say so.
+
+    ``destructive_hint`` is only meaningful when ``read_only_hint`` is
+    False (MCP spec); a writing tool that does not pass ``destructive=``
+    stays additive (False), so an honest registrar has to opt in.
+    """
+    server = _server()
+
+    server.command_tool(
+        name="overwriter",
+        command="info",
+        description="Replaces a file",
+        fn=lambda: [],
+        read_only=False,
+        destructive=True,
+    )
+    server.command_tool(
+        name="appender",
+        command="info",
+        description="Adds a file",
+        fn=lambda: [],
+        read_only=False,
+    )
+    server.raw_tool(
+        name="raw_overwriter",
+        description="Replaces a file",
+        fn=lambda **kw: {},
+        signature_of=lambda: [],
+        read_only=False,
+        destructive=True,
+    )
+
+    async def scenario(client):
+        return {t.name: t for t in (await client.list_tools()).tools}
+
+    tools = anyio.run(_with_client, server, scenario)
+
+    assert tools["overwriter"].annotations.read_only_hint is False
+    assert tools["overwriter"].annotations.destructive_hint is True
+    assert tools["overwriter"].annotations.idempotent_hint is False
+    assert tools["raw_overwriter"].annotations.destructive_hint is True
+    assert tools["appender"].annotations.destructive_hint is False
+
+
+@pytest.mark.unit
+def test_destructive_requires_read_only_false():
+    """A read-only destructive tool is a contradiction, and a registrar bug."""
+    server = _server()
+
+    with pytest.raises(ValueError, match="destructive=True requires read_only=False"):
+        server.command_tool(
+            name="nonsense",
+            command="info",
+            description="d",
+            fn=lambda: [],
+            destructive=True,
+        )
+    with pytest.raises(ValueError, match="destructive=True requires read_only=False"):
+        server.raw_tool(
+            name="nonsense",
+            description="d",
+            fn=lambda **kw: {},
+            signature_of=lambda: [],
+            destructive=True,
+        )
+    assert server.tool_names() == []
+
+
+@pytest.mark.unit
+def test_write_forbidding_server_skips_writing_tools_and_logs_each(caplog):
+    """The extension boundary: a registrar declaring ``read_only=False`` on a
+    server that forbids writes has that tool skipped — not raised, which would
+    abort ``build_server`` and leave the operator with no server at all."""
+    import logging
+
+    from dblift.cli.mcp.server import DbliftMcpServer
+
+    server = DbliftMcpServer([], allow_writes=False)
+    assert server.allow_writes is False
+
+    with caplog.at_level(logging.WARNING, logger="dblift.cli.mcp.server"):
+        server.command_tool(
+            name="writer", command="info", description="Writes", fn=lambda: [], read_only=False
+        )
+        server.raw_tool(
+            name="raw_writer",
+            description="Writes",
+            fn=lambda **kw: {},
+            signature_of=lambda: [],
+            read_only=False,
+            destructive=True,
+        )
+        server.command_tool(name="reader", command="info", description="Reads", fn=lambda: [])
+
+    async def scenario(client):
+        return [t.name for t in (await client.list_tools()).tools]
+
+    assert anyio.run(_with_client, server, scenario) == ["reader"]
+    assert server.tool_names() == ["reader"]
+
+    skipped = dict(server.skipped_tools())
+    assert set(skipped) == {"writer", "raw_writer"}
+    assert "read_only=False" in skipped["writer"]
+    logged = [r.getMessage() for r in caplog.records if r.levelno >= logging.WARNING]
+    assert any("writer" in line for line in logged)
+    assert any("raw_writer" in line for line in logged)
+
+
+@pytest.mark.unit
+def test_a_permissive_server_records_no_skips():
+    server = _server()
+    server.command_tool(
+        name="writer", command="info", description="Writes", fn=lambda: [], read_only=False
+    )
+
+    assert server.allow_writes is True
+    assert server.skipped_tools() == []
+    assert server.unmatched_allowed_tools() == []
+
+
+@pytest.mark.unit
+def test_skipped_tool_names_are_still_reserved():
+    """A skipped registration must not free its name for a later registrar —
+    the tool list would otherwise depend on install order (see registry)."""
+    from dblift.cli.mcp.server import DbliftMcpServer
+
+    server = DbliftMcpServer([], allow_writes=False)
+    server.command_tool(
+        name="writer", command="info", description="Writes", fn=lambda: [], read_only=False
+    )
+
+    with pytest.raises(ValueError, match="Duplicate MCP tool: writer"):
+        server.command_tool(name="writer", command="info", description="Reads", fn=lambda: [])
+
+
+@pytest.mark.unit
+def test_allowlist_admits_only_the_named_tools():
+    """The restricted mode is an allowlist (D3): a tool a registrar forgot to
+    describe — or described dishonestly — is not admitted by omission."""
+    from dblift.cli.mcp.server import build_server
+
+    def registrar(server):
+        server.command_tool(name="extra", command="info", description="d", fn=lambda: [])
+        server.command_tool(
+            name="writer", command="info", description="d", fn=lambda: [], read_only=False
+        )
+
+    with patch("dblift.cli.mcp.server.load_mcp_tool_registrars", return_value=[registrar]):
+        server = build_server([], allowed_tools=["info", "writer"])
+
+    async def scenario(client):
+        return sorted(t.name for t in (await client.list_tools()).tools)
+
+    assert anyio.run(_with_client, server, scenario) == ["info", "writer"]
+    assert {name for name, _reason in server.skipped_tools()} == {
+        "validate",
+        "migrate_dry_run",
+        "extra",
+    }
+    assert server.unmatched_allowed_tools() == []
+
+
+@pytest.mark.unit
+def test_allowlist_names_nothing_offered_are_reported_not_ignored():
+    """A typo in the allowlist must not silently produce a smaller server."""
+    from dblift.cli.mcp.server import build_server
+
+    with patch("dblift.cli.mcp.server.load_mcp_tool_registrars", return_value=[]):
+        server = build_server([], allowed_tools=["info", "nope", "export_schema"])
+
+    assert server.tool_names() == ["info"]
+    assert server.unmatched_allowed_tools() == ["export_schema", "nope"]
+
+
+@pytest.mark.unit
+def test_allowlist_and_write_boundary_compose():
+    """``--read-only --tools writer``: the allowlist admits the name, the
+    boundary still refuses the declaration. Both reasons are visible."""
+    from dblift.cli.mcp.server import build_server
+
+    def registrar(server):
+        server.command_tool(
+            name="writer", command="info", description="d", fn=lambda: [], read_only=False
+        )
+
+    with patch("dblift.cli.mcp.server.load_mcp_tool_registrars", return_value=[registrar]):
+        server = build_server([], allow_writes=False, allowed_tools=["info", "writer"])
+
+    assert server.tool_names() == ["info"]
+    skipped = dict(server.skipped_tools())
+    assert "writer" in skipped and "read_only=False" in skipped["writer"]
+    assert server.unmatched_allowed_tools() == []
+
+
+@pytest.mark.unit
+def test_build_server_defaults_are_permissive():
+    """No flag, no restriction: the v1 behaviour is unchanged."""
+    from dblift.cli.mcp.server import build_server
+
+    with patch("dblift.cli.mcp.server.load_mcp_tool_registrars", return_value=[]):
+        server = build_server([])
+
+    assert server.allow_writes is True
+    assert server.tool_names() == ["info", "validate", "migrate_dry_run"]
+    assert server.skipped_tools() == []
+
+
+@pytest.mark.unit
+def test_instructions_tell_a_restricted_session_to_trust_tools_list():
+    """The instructions name `validate`, `migrate_dry_run` and `info` as the
+    workflow. Under `--tools` or `--read-only` some of those may not be served,
+    so a restricted server must say so and point the agent at `tools/list`;
+    an unrestricted server keeps the instructions unchanged."""
+    from dblift.cli.mcp.server import SERVER_INSTRUCTIONS, DbliftMcpServer
+
+    async def scenario(client):
+        return client.instructions
+
+    plain = anyio.run(_with_client, DbliftMcpServer([]), scenario)
+    assert plain == SERVER_INSTRUCTIONS
+
+    allowlisted = anyio.run(_with_client, DbliftMcpServer([], allowed_tools=["info"]), scenario)
+    assert allowlisted.startswith(SERVER_INSTRUCTIONS)
+    assert "tools/list" in allowlisted
+    assert "restricted" in allowlisted
+
+    write_forbidding = anyio.run(_with_client, DbliftMcpServer([], allow_writes=False), scenario)
+    assert write_forbidding.startswith(SERVER_INSTRUCTIONS)
+    assert "tools/list" in write_forbidding
