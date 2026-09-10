@@ -584,9 +584,28 @@ def create_parser(
     )
     # `dblift mcp` serves the read-only commands as MCP tools over stdio. It is a
     # zero-config command: the server loads the project config per tool call.
-    subparsers.add_parser(
+    # `--read-only` and `--tools` restrict which registered tools are served;
+    # the handler reports what was skipped on stderr (stdout is the protocol).
+    mcp_parser = subparsers.add_parser(
         "mcp",
         help="Serve dblift commands as MCP tools over stdio (requires dblift[mcp])",
+    )
+    mcp_parser.add_argument(
+        "--read-only",
+        action="store_true",
+        help=(
+            "Serve only tools that declare themselves read-only; an add-on tool "
+            "registered read_only=False is skipped (its declaration is trusted; "
+            "use --tools for an allowlist)"
+        ),
+    )
+    mcp_parser.add_argument(
+        "--tools",
+        metavar="NAME[,NAME...]",
+        help=(
+            "Serve only the named tools, built-in or add-on; every other tool is "
+            "skipped, and an unknown name refuses to start"
+        ),
     )
     import_module("dblift.cli.extensions").load_command_extensions(parser)
     # Stubs fill whatever gaps the extensions left — never the reverse.

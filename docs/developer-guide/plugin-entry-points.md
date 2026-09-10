@@ -52,9 +52,20 @@ tool result is that command's `--format json` payload. For a tool whose body
 needs more than one command run, call `server.raw_tool(name=..., description=...,
 fn=..., signature_of=...)` instead, supplying the handler directly. Tools default
 to read-only (`read_only_hint` and `idempotent_hint` both true, `destructive_hint`
-always false). A registrar whose tool writes a file the caller names — not one of
+false). A registrar whose tool writes a file the caller names — not one of
 these commands — should pass `read_only=False` to either call, which reports the
-tool as neither read-only nor idempotent. See `docs/user-guide/mcp.md`.
+tool as neither read-only nor idempotent. A writing tool is additive by default;
+pass `destructive=True` as well when it overwrites a caller-named path, which
+sets `destructive_hint`. `destructive=True` with `read_only=True` is a
+contradiction and raises `ValueError` (`destructive_hint` is only meaningful
+when `read_only_hint` is false). See `docs/user-guide/mcp.md`.
+
+The server may have been started `--read-only` or with `--tools NAME[,...]`. A
+tool it will not accept — `read_only=False` on a write-forbidding server, or a
+name outside the allowlist — is skipped and logged, never raised, so the server
+still starts with what remains; `server.skipped_tools()` lists the skips. A
+registrar can read `server.allow_writes` to decide what to offer. A skipped name
+stays reserved: registering it again is still a duplicate.
 
 `fn`'s keyword-only parameters and their annotations become the tool's input
 schema, and its docstring the description. Write those annotations however you

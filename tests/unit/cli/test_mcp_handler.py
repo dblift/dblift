@@ -23,7 +23,7 @@ def test_mcp_is_a_registered_zero_config_command():
 
 @pytest.mark.unit
 def test_handle_mcp_builds_server_with_global_argv_and_serves():
-    server = MagicMock()
+    server = _quiet_server()
     ctx = CliCommandContext(args=SimpleNamespace(global_arguments=["--config", "x.yaml"]))
 
     with patch("dblift.cli.mcp.server.build_server", return_value=server) as build:
@@ -158,8 +158,8 @@ def test_handle_mcp_reports_each_skipped_tool_on_stderr_and_still_serves(capsys)
     """Skips are diagnostics: stderr, never stdout (the JSON-RPC channel)."""
     server = _quiet_server()
     server.skipped_tools.return_value = [
-        ("export_schema", "declares read_only=False and the server was started --read-only"),
-        ("validate", "not in --tools"),
+        ("export_schema", "declares read_only=False and this server does not allow writes"),
+        ("validate", "not in the allowed tool list"),
     ]
     ctx = CliCommandContext(args=SimpleNamespace(global_arguments=[], read_only=True, tools=None))
 
@@ -178,7 +178,9 @@ def test_handle_mcp_refuses_to_start_on_an_unknown_allowlisted_tool(capsys):
     """A name nothing registered is an operator error, not a quieter server."""
     server = _quiet_server()
     server.unmatched_allowed_tools.return_value = ["nope"]
-    ctx = CliCommandContext(args=SimpleNamespace(global_arguments=[], read_only=False, tools="info,nope"))
+    ctx = CliCommandContext(
+        args=SimpleNamespace(global_arguments=[], read_only=False, tools="info,nope")
+    )
 
     with patch("dblift.cli.mcp.server.build_server", return_value=server):
         assert _handle_mcp(ctx) == (False, None)
