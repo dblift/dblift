@@ -63,9 +63,17 @@ when `read_only_hint` is false). See `docs/user-guide/mcp.md`.
 The server may have been started `--read-only` or with `--tools NAME[,...]`. A
 tool it will not accept — `read_only=False` on a write-forbidding server, or a
 name outside the allowlist — is skipped and logged, never raised, so the server
-still starts with what remains; `server.skipped_tools()` lists the skips. A
-registrar can read `server.allow_writes` to decide what to offer. A skipped name
-stays reserved: registering it again is still a duplicate.
+still starts with what remains; `server.skipped_tools()` lists the skips. Offer
+every tool unconditionally and let the server skip — do not consult
+`server.allow_writes` (it is informational only) to withhold a tool: a tool the
+registrar never offers is invisible to `--tools`, which then counts its name as
+unknown and refuses to start, whereas an offered-but-skipped tool is admitted by
+name and skipped with a reason. A skipped name stays reserved: registering it
+again is still a duplicate.
+
+`command_resource` is outside the write boundary: it takes no `read_only` and is
+never skipped by `--read-only` or `--tools`, so a resource must not run a
+writing command.
 
 `fn`'s keyword-only parameters and their annotations become the tool's input
 schema, and its docstring the description. Write those annotations however you

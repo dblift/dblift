@@ -43,8 +43,15 @@ def _handle_mcp(ctx: CliCommandContext) -> Tuple[bool, Any]:
         return (False, None)
     unmatched = list(server.unmatched_allowed_tools())
     if unmatched:
+        # Name what this install offers, registered or skipped, so the
+        # operator can correct the list without reading the docs.
+        offered = sorted(
+            set(server.tool_names()) | {name for name, _reason in server.skipped_tools()}
+        )
         CommandOutput("console").error(
-            f"dblift mcp: unknown tool(s) in --tools: {', '.join(unmatched)}"
+            f"dblift mcp: unknown tool(s) in --tools: {', '.join(unmatched)}. "
+            f"Tools this install offers: {', '.join(offered)}. "
+            "(dblift://history is a resource, not a tool.)"
         )
         return (False, None)
     for name, reason in server.skipped_tools():
