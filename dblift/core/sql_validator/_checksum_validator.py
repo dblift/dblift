@@ -108,6 +108,8 @@ def validate_checksums(
         if migration_type == MigrationType.BASELINE:
             continue
 
+        result.add_checked_script(script_name)
+
         if script_name not in full_script_names and (
             not script_name or Path(script_name).name not in full_script_names
         ):

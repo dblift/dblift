@@ -58,6 +58,7 @@ def test_failed_validation_names_every_failing_migration():
     ]
     vr.error_message = vr.issues[0]
     vr.failed_scripts = ["V1__a.sql", "V3__c.sql"]
+    vr.checked_scripts = ["V1__a.sql", "V2__b.sql", "V3__c.sql"]
 
     result = _command_with(vr).execute(Path("/tmp/migrations"))
 
@@ -79,6 +80,7 @@ def test_json_payload_carries_the_failures_and_every_issue():
     ]
     vr.error_message = vr.issues[0]
     vr.failed_scripts = ["V1__a.sql", "V3__c.sql"]
+    vr.checked_scripts = ["V1__a.sql", "V3__c.sql"]
 
     payload = _validate_result_to_dict(_command_with(vr).execute(Path("/tmp/migrations")))
 
@@ -94,6 +96,7 @@ def test_successful_validation_lists_what_it_validated():
     vr = ValidationResult()
     vr.success = True
     vr.migrations = [_script("V1__a.sql", "1"), _script("V2__b.sql", "2")]
+    vr.checked_scripts = ["V1__a.sql", "V2__b.sql"]
 
     result = _command_with(vr).execute(Path("/tmp/migrations"))
 
@@ -112,3 +115,42 @@ def test_add_failed_migration_still_drives_count_and_success():
     r.add_failed_migration(MagicMock())
 
     assert r.success is False and r.error_count == 1
+
+
+@pytest.mark.unit
+def test_unverified_scripts_are_not_reported_as_validated():
+    """Undo scripts are collected, then exempted from every check.
+
+    ``validate`` gathers ``U__`` scripts with the rest, but the checksum
+    validator lists ``UNDO_SQL`` as exempt from drift detection, the syntax
+    validator handles only ``SQL``/``BASELINE``, and the duplicate-version check
+    skips them too. Reporting them as validated would claim a check that never
+    ran — an applied undo script can be edited on disk and validate still
+    passes.
+    """
+    vr = ValidationResult()
+    vr.success = True
+    vr.migrations = [_script("V1__a.sql", "1"), _script("U1__undo_a.sql", "1")]
+    vr.checked_scripts = ["V1__a.sql"]
+
+    result = _command_with(vr).execute(Path("/tmp/migrations"))
+
+    assert {m.script for m in result.validated_migrations} == {"V1__a.sql"}
+    assert "U1__undo_a.sql" not in {m.script for m in result.validated_migrations}
+
+
+@pytest.mark.unit
+def test_a_failed_script_is_reported_even_if_it_was_not_recorded_as_checked():
+    """Failure wins: a script that raised an issue is reported whatever else."""
+    vr = ValidationResult()
+    vr.success = False
+    vr.migrations = [_script("V1__a.sql", "1")]
+    vr.checked_scripts = []
+    vr.failed_scripts = ["V1__a.sql"]
+    vr.issues = ["Strict mode validation failed for V1__a.sql"]
+    vr.error_message = vr.issues[0]
+
+    result = _command_with(vr).execute(Path("/tmp/migrations"))
+
+    assert {m.script for m in result.failed_migrations} == {"V1__a.sql"}
+    assert result.error_count == 1

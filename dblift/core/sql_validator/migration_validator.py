@@ -41,6 +41,20 @@ class ValidationResult:
         self.execution_time = 0
         self.issues: List[str] = []
         self.failed_scripts: List[str] = []
+        self.checked_scripts: List[str] = []
+
+    def add_checked_script(self, script_name: Optional[str]) -> None:
+        """Record that a check actually ran against *script_name*.
+
+        Collection is wider than checking: undo scripts are gathered with the
+        rest, then exempted from drift detection, skipped by the syntax
+        validator and skipped again by the duplicate-version check — so they
+        receive no verification at all. Reporting them as validated would claim
+        a check that never ran. Recording it at the point of the check is what
+        keeps the reported set honest if a validator's scope later changes.
+        """
+        if script_name and script_name not in self.checked_scripts:
+            self.checked_scripts.append(script_name)
 
     def add_failed_script(self, script_name: Optional[str]) -> None:
         """Record that an issue was raised against *script_name*.

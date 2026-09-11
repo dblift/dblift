@@ -40,6 +40,8 @@ def validate_sql_syntax(
         if script.type not in (MigrationType.SQL, MigrationType.BASELINE):
             continue
 
+        result.add_checked_script(script.script_name)
+
         # Log that we're validating this script
         mv.log.debug(f"Validating SQL syntax for {script.script_name}")
 

@@ -11,7 +11,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `validate --format json` gains an `issues` key carrying every issue the
   console logs. `error` holds only the first, so a machine-readable caller
-  previously lost every later one.
+  previously lost every later one. `validated_migrations` lists the scripts a
+  check actually ran against, which is narrower than the set `validate`
+  collects: undo scripts are gathered and then exempted from drift detection,
+  skipped by the syntax validator and skipped by the duplicate-version check, so
+  they are not reported as validated. (An applied undo script can still be
+  edited on disk without `validate` noticing — that is unchanged behaviour, now
+  simply not misreported.)
 
 ### Changed
 

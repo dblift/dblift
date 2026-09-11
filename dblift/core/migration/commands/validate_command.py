@@ -27,9 +27,15 @@ class ValidateCommand(BaseCommand):
         had only the first issue, as ``error_message``, to go on.
         """
         failed = list(getattr(validation_result, "failed_scripts", []))
+        checked = set(getattr(validation_result, "checked_scripts", []))
         for migration in getattr(validation_result, "migrations", []):
             script_name = getattr(migration, "script_name", None)
             if script_name is None:
+                continue
+            # Collection is wider than checking — undo scripts are gathered and
+            # then exempted from every check — so reporting a script nothing
+            # verified would claim a check that never ran.
+            if script_name not in checked and script_name not in failed:
                 continue
             migration_type = getattr(migration, "type", None)
             info = MigrationInfo(
