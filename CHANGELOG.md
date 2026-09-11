@@ -9,9 +9,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `validate --format json` gains an `issues` key carrying every issue the
+  console logs. `error` holds only the first, so a machine-readable caller
+  previously lost every later one.
+
 ### Changed
 
+- `dblift config --list` derives its CLI column from the built parser. A
+  property whose flag this build does not register now reads `(none)` rather
+  than naming a flag that answers `unrecognized arguments`; its environment
+  variable and config key are listed as before, and a build that does register
+  the flag lists it again.
+
 ### Fixed
+
+- **A failed `validate` now reports which migrations failed.** `ValidateResult`
+  never populated `error_count`, `validated_migrations` or `failed_migrations`,
+  so every `validate --format json` payload answered `error_count: 0` with two
+  empty lists however the run went — a count that directly contradicts
+  `success: false`, and the payload the `dblift mcp` `validate` tool serves. The
+  only failure detail reaching a caller was `error_message`, the *first* issue:
+  with two drifted scripts the console named both and the payload named one, so
+  fixing what it reported still left a broken migration behind.
+- **MongoDB's host form authenticates against the configured database.** The
+  assembled URI was `mongodb://user:pass@host:port` with no database path, which
+  the driver reads as the default `authSource` — so with none it authenticated
+  against `admin` and refused every user created in the database being migrated.
+  `db check-connection` answered `invalid credentials` for credentials that were
+  correct, while the `url` form worked, leaving the two documented input shapes
+  disagreeing. Invisible against a MongoDB with auth disabled.
 
 ### Removed
 
