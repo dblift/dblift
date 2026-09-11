@@ -50,7 +50,11 @@ def test_failed_validation_names_every_failing_migration():
     """Two drifted scripts: both must reach the result, not only the first."""
     vr = ValidationResult()
     vr.success = False
-    vr.migrations = [_script("V1__a.sql", "1"), _script("V2__b.sql", "2"), _script("V3__c.sql", "3")]
+    vr.migrations = [
+        _script("V1__a.sql", "1"),
+        _script("V2__b.sql", "2"),
+        _script("V3__c.sql", "3"),
+    ]
     vr.issues = [
         "Migration script V1__a.sql has been modified since it was applied.",
         "Migration script V3__c.sql has been modified since it was applied.",

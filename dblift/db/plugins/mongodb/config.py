@@ -58,8 +58,9 @@ class MongoDbConfig(BaseDatabaseConfig):
 
         port = self.port or DEFAULT_MONGODB_PORT
         # ``quote`` not ``quote_plus``: this is a path segment, where "+" is a
-        # literal plus rather than a space.
-        database = quote(self.database, safe="")
+        # literal plus rather than a space. ``__post_init__`` rejects a config
+        # with no database, so the fallback is unreachable.
+        database = quote(self.database or "", safe="")
         if self.username:
             credentials = quote_plus(self.username)
             if self.password:
