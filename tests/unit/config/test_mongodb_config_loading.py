@@ -27,17 +27,17 @@ def test_host_port_form_builds_a_uri():
         password="s3cret",
         database="appdb",
     )
-    assert config.build_connection_string() == "mongodb://app:s3cret@localhost:27017"
+    assert config.build_connection_string() == "mongodb://app:s3cret@localhost:27017/appdb"
 
 
 def test_host_form_without_credentials():
     config = MongoDbConfig(type="mongodb", host="localhost", port=27017, database="appdb")
-    assert config.build_connection_string() == "mongodb://localhost:27017"
+    assert config.build_connection_string() == "mongodb://localhost:27017/appdb"
 
 
 def test_port_defaults_to_27017():
     config = MongoDbConfig(type="mongodb", host="localhost", database="appdb")
-    assert config.build_connection_string() == "mongodb://localhost:27017"
+    assert config.build_connection_string() == "mongodb://localhost:27017/appdb"
 
 
 def test_url_wins_over_host():
