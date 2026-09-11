@@ -147,6 +147,7 @@ def validate_checksums(
                         )
                     if strict_mode:
                         issues.append(msg)
+                        result.add_failed_script(script_name)
                     else:
                         mv.log.warning(msg)
                 else:
@@ -238,6 +239,7 @@ def validate_checksums(
                         script_name in issue and "has been modified" in issue for issue in issues
                     ):
                         issues.append(error_message)
+                    result.add_failed_script(script_name)
                 else:
                     # For repeatable migrations, just log at debug level
                     mv.log.debug(

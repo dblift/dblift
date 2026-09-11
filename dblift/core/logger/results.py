@@ -421,6 +421,9 @@ class ValidateResult(OperationResult):
         self.error_count: int = 0
         self.validated_migrations: List[MigrationInfo] = []
         self.failed_migrations: List[MigrationInfo] = []
+        # Every issue the console logs. ``error_message`` holds only the first,
+        # so without this a machine-readable caller loses every later one.
+        self.issues: List[str] = []
 
     def add_validated_migration(self, migration: MigrationInfo) -> None:
         """Add a validated migration to the result."""

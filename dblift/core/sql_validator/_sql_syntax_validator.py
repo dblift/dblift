@@ -112,6 +112,7 @@ def validate_sql_syntax(
                         f"SQL syntax error in {script.script_name} at {line_info}: " f"{stmt_error}"
                     )
                     issues.append(error_msg)
+                    result.add_failed_script(script.script_name)
                     result.success = False
                     if not result.error_message:
                         result.error_message = error_msg
@@ -146,6 +147,7 @@ def validate_sql_syntax(
             )
             mv.log.warning(split_msg)
             issues.append(split_msg)
+            result.add_failed_script(script.script_name)
             result.success = False
             if not result.error_message:
                 result.error_message = split_msg

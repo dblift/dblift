@@ -29,6 +29,7 @@ class ValidationResult:
         migrations: List of migration objects (populated by validator)
         execution_time: Time taken for validation (ms)
         issues: List of issues found during validation
+        failed_scripts: Script names an issue was raised against
     """
 
     def __init__(self) -> None:
@@ -39,6 +40,20 @@ class ValidationResult:
         self.migrations: List[Migration] = []
         self.execution_time = 0
         self.issues: List[str] = []
+        self.failed_scripts: List[str] = []
+
+    def add_failed_script(self, script_name: Optional[str]) -> None:
+        """Record that an issue was raised against *script_name*.
+
+        ``issues`` is free text and several entries are summaries that name no
+        single script, so the script identity a caller needs cannot be recovered
+        from it. Recording it here is what lets the command layer report which
+        migrations failed instead of only that validation failed. Duplicates are
+        dropped: a script can raise more than one issue and is still one failed
+        migration.
+        """
+        if script_name and script_name not in self.failed_scripts:
+            self.failed_scripts.append(script_name)
 
     def add_modified_repeatable(
         self, script_name: str, checksum: Union[str, int], current_checksum: Union[str, int]

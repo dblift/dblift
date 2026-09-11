@@ -7,13 +7,48 @@ from typing import TYPE_CHECKING, Dict, List, Optional
 
 if TYPE_CHECKING:
     pass
-from dblift.core.logger.results import ValidateResult
+from dblift.core.logger.results import MigrationInfo, ValidateResult
 
 from .base_command import BaseCommand
 
 
 class ValidateCommand(BaseCommand):
     """Handles the 'validate' command execution."""
+
+    @staticmethod
+    def _record_validated_migrations(result: ValidateResult, validation_result: object) -> None:
+        """Split the validated scripts into passed / failed on the result.
+
+        The validator reports its findings as free-text ``issues`` plus the
+        script names it raised them against. Without this, ``ValidateResult``
+        kept its initial ``error_count = 0`` and two empty lists however the run
+        went, so a caller reading the structured fields — ``--format json``, and
+        the MCP tool built on it — saw no failures on a failed validation and
+        had only the first issue, as ``error_message``, to go on.
+        """
+        failed = list(getattr(validation_result, "failed_scripts", []))
+        for migration in getattr(validation_result, "migrations", []):
+            script_name = getattr(migration, "script_name", None)
+            if script_name is None:
+                continue
+            migration_type = getattr(migration, "type", None)
+            info = MigrationInfo(
+                script=script_name,
+                version=getattr(migration, "version", None),
+                description=getattr(migration, "description", "") or "",
+                type=getattr(migration_type, "value", migration_type) or "SQL",
+                status="FAILED" if script_name in failed else "SUCCESS",
+                checksum=getattr(migration, "checksum", None),
+            )
+            if script_name in failed:
+                result.add_failed_migration(info)
+            else:
+                result.add_validated_migration(info)
+
+        # A failure that names no single script — duplicate versions, say — still
+        # has to count, or ``error_count`` contradicts ``success``.
+        if not result.success and result.error_count == 0:
+            result.error_count = len(result.issues) or 1
 
     def execute(
         self,
@@ -98,6 +133,8 @@ class ValidateCommand(BaseCommand):
 
             result.success = validation_result.success
             result.error_message = validation_result.error_message or ""
+            result.issues = list(getattr(validation_result, "issues", []))
+            self._record_validated_migrations(result, validation_result)
             # execution_time is calculated automatically by the base class
 
             if validation_result.success:
