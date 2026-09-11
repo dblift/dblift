@@ -106,6 +106,29 @@ def _make_history_table_parent() -> argparse.ArgumentParser:
     return p
 
 
+def collect_option_strings(parser: argparse.ArgumentParser) -> "set[str]":
+    """Every option string the parser accepts, walking root and subcommands.
+
+    Which flags exist depends on what is installed, so callers that need to
+    know whether a flag is really reachable must ask the built parser rather
+    than assume. Used to decide where to emit a registry flag, and by
+    ``dblift config --list`` to avoid advertising one that is not there.
+    """
+    found: "set[str]" = set()
+
+    def _collect(p: argparse.ArgumentParser) -> None:
+        for action in p._actions:
+            found.update(action.option_strings)
+            choices = getattr(action, "choices", None)
+            if isinstance(choices, dict):
+                for sub in choices.values():
+                    if isinstance(sub, argparse.ArgumentParser):
+                        _collect(sub)
+
+    _collect(parser)
+    return found
+
+
 def _add_registry_flags(parser: argparse.ArgumentParser) -> None:
     """Emit a --flag for every registry property that lacks one.
 
@@ -124,18 +147,7 @@ def _add_registry_flags(parser: argparse.ArgumentParser) -> None:
     # subcommands; a root-only ``existing`` set would treat them as missing and
     # emit a duplicate root flag, colliding with the subparser dest. This helper
     # therefore runs AFTER subparsers are registered so the tree walk sees them.
-    existing: set[str] = set()
-
-    def _collect(p: argparse.ArgumentParser) -> None:
-        for action in p._actions:
-            existing.update(action.option_strings)
-            choices = getattr(action, "choices", None)
-            if isinstance(choices, dict):
-                for sub in choices.values():
-                    if isinstance(sub, argparse.ArgumentParser):
-                        _collect(sub)
-
-    _collect(parser)
+    existing = collect_option_strings(parser)
     for spec in PROPERTY_REGISTRY:
         if spec.cli_only or spec.cli_exempt or "." in spec.name:
             continue
