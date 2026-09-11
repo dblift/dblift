@@ -307,6 +307,7 @@ class MigrationValidator:
                 result.success = False
                 result.error_message = str(e)
                 issues.append(str(e))
+                result.add_failed_script(script.script_name)
                 return False
         return True
 
@@ -806,6 +807,9 @@ class MigrationValidator:
                 )
                 issues.append("Validation failed: Found migration scripts with duplicate versions")
                 issues.append(duplicate_error)
+                # Both sides of the collision are implicated, and both are on disk.
+                result.add_failed_script(version_map[script.version].script_name)
+                result.add_failed_script(script.script_name)
                 result.success = False
                 result.error_message = (
                     f"Version {script.version} is used by both "
@@ -1009,6 +1013,8 @@ class MigrationValidator:
             issues.append(error_message)
             issues.append(repair_message)
             result.error_message = f"{error_message}\n{repair_message}"
+            for reappeared in reappeared_scripts:
+                result.add_failed_script(str(reappeared["script"]))
             for script in reappeared_scripts:
                 self.log.debug(
                     f"Reappeared migration: {script['script']} (version: {script['version']})"
@@ -1060,6 +1066,7 @@ class MigrationValidator:
         issues.append(repair_message)
         result.error_message = f"{error_message}\n{repair_message}"
         for m in filtered_failed:
+            result.add_failed_script(getattr(m, "script_name", None))
             self.log.debug(
                 f"Failed migration: {getattr(m, 'script_name', None)} (version: {getattr(m, 'version', 'unknown')})"
             )

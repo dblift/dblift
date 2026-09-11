@@ -42,8 +42,19 @@ def test_assembled_uri_carries_the_database_without_credentials():
 
 
 @pytest.mark.unit
-def test_database_name_is_percent_encoded_like_the_credentials():
-    assert "/db%20name" in _cfg(database="db name").build_connection_string()
+def test_database_name_is_percent_encoded_for_a_path_segment():
+    """``quote`` not ``quote_plus``: a "+" in a path is a literal plus.
+
+    A space is not a legal MongoDB database name (pymongo rejects the URI
+    outright), so the case worth pinning is a legal name that still needs
+    encoding. ``quote_plus`` would emit a bare "+" here, which pymongo's
+    ``unquote_plus`` would then read back as a space.
+    """
+    uri = _cfg(database="db+name").build_connection_string()
+    assert uri.endswith("/db%2Bname")
+
+    pymongo = pytest.importorskip("pymongo")
+    assert pymongo.uri_parser.parse_uri(uri)["database"] == "db+name"
 
 
 @pytest.mark.unit

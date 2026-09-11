@@ -3,7 +3,7 @@ Validate command implementation.
 """
 
 from pathlib import Path
-from typing import TYPE_CHECKING, Dict, List, Optional
+from typing import TYPE_CHECKING, Dict, List, Optional, Set
 
 if TYPE_CHECKING:
     pass
@@ -28,6 +28,7 @@ class ValidateCommand(BaseCommand):
         """
         failed = list(getattr(validation_result, "failed_scripts", []))
         checked = set(getattr(validation_result, "checked_scripts", []))
+        reported: Set[str] = set()
         for migration in getattr(validation_result, "migrations", []):
             script_name = getattr(migration, "script_name", None)
             if script_name is None:
@@ -48,13 +49,25 @@ class ValidateCommand(BaseCommand):
             )
             if script_name in failed:
                 result.add_failed_migration(info)
+                reported.add(script_name)
             else:
                 result.add_validated_migration(info)
 
-        # A failure that names no single script — duplicate versions, say — still
-        # has to count, or ``error_count`` contradicts ``success``.
+        # A script can fail precisely because it is *not* on disk — an applied
+        # migration whose file is gone under --strict, say — and the loop above
+        # only walks the scripts that are. Reporting it with what is known beats
+        # dropping the one name the operator needs.
+        for script_name in failed:
+            if script_name in reported:
+                continue
+            result.add_failed_migration(
+                MigrationInfo(script=script_name, description="", type="SQL", status="FAILED")
+            )
+
+        # A failure that names no single script still has to count, or
+        # ``error_count`` contradicts ``success``.
         if not result.success and result.error_count == 0:
-            result.error_count = len(result.issues) or 1
+            result.error_count = 1
 
     def execute(
         self,
