@@ -108,6 +108,8 @@ def validate_checksums(
         if migration_type == MigrationType.BASELINE:
             continue
 
+        result.add_checked_script(script_name)
+
         if script_name not in full_script_names and (
             not script_name or Path(script_name).name not in full_script_names
         ):
@@ -147,6 +149,7 @@ def validate_checksums(
                         )
                     if strict_mode:
                         issues.append(msg)
+                        result.add_failed_script(script_name)
                     else:
                         mv.log.warning(msg)
                 else:
@@ -238,6 +241,7 @@ def validate_checksums(
                         script_name in issue and "has been modified" in issue for issue in issues
                     ):
                         issues.append(error_message)
+                    result.add_failed_script(script_name)
                 else:
                     # For repeatable migrations, just log at debug level
                     mv.log.debug(

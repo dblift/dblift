@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+
 import pytest
 import yaml
 
@@ -139,6 +141,19 @@ def test_info_and_history_resource_agree(project):
     assert info.is_error is False
     assert info.structured_content["migrations"][0]["status"] == "PENDING"
     assert '"V1__init.sql"' in history.contents[0].text
+
+
+@pytest.mark.unit
+def test_migrate_dry_run_and_pending_resource_agree(project):
+    async def scenario(client):
+        dry_run = await client.call_tool("migrate_dry_run", {})
+        pending = await client.read_resource("dblift://pending")
+        return dry_run, pending
+
+    dry_run, pending = anyio.run(_session, scenario)
+
+    assert json.loads(pending.contents[0].text) == dry_run.structured_content["migrations"]
+    assert '"V1__init.sql"' in pending.contents[0].text
 
 
 @pytest.mark.unit

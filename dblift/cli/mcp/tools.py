@@ -79,7 +79,7 @@ def migrate_dry_run_argv(
 
 
 def register_oss_tools(server: DbliftMcpServer) -> None:
-    """Register ``info``, ``validate``, ``migrate_dry_run`` and ``dblift://history``."""
+    """Register ``info``, ``validate``, ``migrate_dry_run`` and the ``dblift://`` resources."""
     server.command_tool(
         name="info", command="info", description=str(info_argv.__doc__), fn=info_argv
     )
@@ -101,5 +101,13 @@ def register_oss_tools(server: DbliftMcpServer) -> None:
         description="Migration history as a JSON array (same rows as the info tool).",
         command="info",
         argv=[],
+        pick=lambda payload: payload.get("migrations", []),
+    )
+    server.command_resource(
+        uri="dblift://pending",
+        name="pending",
+        description="Migrations not yet applied, as a JSON array (same rows as migrate_dry_run).",
+        command="migrate",
+        argv=["--dry-run"],
         pick=lambda payload: payload.get("migrations", []),
     )

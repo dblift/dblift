@@ -67,6 +67,8 @@ def validate_strict_mode_rules(
             f"migration(s) without corresponding script files: {script_list}. ."
         )
         issues.append(error_message)
+        for missing in missing_migrations:
+            result.add_failed_script(getattr(missing, "script_name", None))
         result.error_message = error_message
         return False
 
@@ -133,6 +135,8 @@ def validate_strict_mode_rules(
                 f"version ({highest_applied_version}): {script_list}. ."
             )
             issues.append(error_message)
+            for out_of_order in out_of_order_migrations:
+                result.add_failed_script(getattr(out_of_order, "script_name", None))
             result.error_message = error_message
             return False
 
