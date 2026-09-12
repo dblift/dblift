@@ -47,9 +47,10 @@ its `migrations` list. `validate` checks the migration history against the
 scripts on disk — checksums, ordering, missing files; it does not parse or
 check the SQL inside them, so a script with invalid SQL still passes both
 `validate` and `migrate_dry_run`. `info` shows the schema history; the
-`dblift://history` resource is the same list. Every tool runs against the
-project's dblift.yaml in the working directory (or the --config the server
-was started with).
+`dblift://history` resource is the same list, and `dblift://pending` is the
+same list `migrate_dry_run` returns. Every tool runs against the project's
+dblift.yaml in the working directory (or the --config the server was started
+with).
 
 The built-in tools above are read-only: none of them applies, undoes or
 cleans a migration, and none changes your data; those commands are not

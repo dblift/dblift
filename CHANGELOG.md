@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `dblift mcp` now exposes a `dblift://pending` resource: migrations not yet
+  applied, as a JSON array (the same rows `migrate_dry_run` returns).
+
 ### Changed
 
 ### Fixed
