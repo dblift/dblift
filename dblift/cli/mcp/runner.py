@@ -65,8 +65,11 @@ _LOG_FILE: Optional[Path] = None
 def _pinned_log_file() -> Optional[Path]:
     """The file earlier calls opened, or ``None`` to open a fresh one.
 
-    A file that has disappeared (rotated away, tmpdir cleaned) unpins itself:
-    the next call opens a new one rather than resurrecting a deleted path.
+    A file that has disappeared (rotated away, tmpdir cleaned) unpins itself
+    so the next call opens a new one. Dropping the pin is only half of that:
+    the caller must also clear the factory's pattern, which still holds the
+    deleted path, or the logger built while the config loads would write the
+    file back.
     """
     global _LOG_FILE
     if _LOG_FILE is not None and not _LOG_FILE.exists():
@@ -196,11 +199,19 @@ def _run_command_locked(
     try:
         with contextlib.redirect_stdout(stdout_buf), contextlib.redirect_stderr(stderr_tee):
             pinned = _pinned_log_file()
-            if pinned is not None:
-                # Config loading builds a logger of its own before the call's
-                # own configuration lands, so the pattern has to be in place
-                # before the parse, not only on ``args``.
-                LogFactory.set_log_file_pattern(str(pinned))
+            # Config loading builds a logger of its own before the call's own
+            # configuration lands, so the pattern has to be stated before the
+            # parse and not only on ``args`` — and stated on every call, pin
+            # or no pin, because the factory still carries the previous
+            # call's. An empty pattern is the factory's "no pattern": it is
+            # the falsy branch in ``FileLog._get_log_file``, its only reader.
+            # Without it a call whose pin has just been dropped would build
+            # that logger from the deleted path and write the file back.
+            # ``_configure_logging`` overwrites the pattern from
+            # ``args.log_file`` moments later; a call that fails before then
+            # leaves the value set here in place until the next call sets it
+            # again, which is why it is re-stated rather than restored.
+            LogFactory.set_log_file_pattern(str(pinned) if pinned is not None else "")
             ctx = cli_main._parse_argv_and_load_config(full_argv)
             if pinned is not None:
                 # ``_configure_logging`` passes this straight through as the

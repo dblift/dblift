@@ -323,3 +323,43 @@ def test_user_supplied_log_file_pattern_is_expanded_once(sqlite_project, _clock)
     assert sorted(p.name for p in (sqlite_project.parent / "logs").glob("custom_*.log")) == (
         after_first
     )
+
+
+@pytest.mark.unit
+def test_a_deleted_log_file_is_not_recreated(sqlite_project, _clock):
+    """Deleting the pinned file unpins it: later calls open and then share a
+    fresh file, and the deleted path is never written back."""
+    logs = sqlite_project.parent / "logs"
+    run_command([], "info", [])
+    run_command([], "info", [])
+    (pinned,) = logs.glob("*.log")
+    pinned.unlink()
+
+    run_command([], "info", [])
+    assert not pinned.exists()
+
+    # The re-opening call also leaves behind the file the config load opens
+    # before the call configures its own logging — pre-existing behaviour for
+    # any unpinned call, so the count is not asserted. What must hold is that
+    # the new file is pinned in turn: the call after it adds nothing.
+    after_reopen = sorted(path.name for path in logs.glob("*.log"))
+    run_command([], "info", [])
+
+    assert sorted(path.name for path in logs.glob("*.log")) == after_reopen
+
+
+@pytest.mark.unit
+def test_an_additional_file_format_keeps_one_text_file_per_call(sqlite_project, _clock):
+    """``text,html`` opens a second file sink that takes the same pattern, so
+    the pin must not apply: sharing it would let the HTML sink rewrite the
+    text log."""
+    logs = sqlite_project.parent / "logs"
+
+    run_command(["--log-format", "text,html"], "info", [])
+    after_first = sorted(path.name for path in logs.glob("*.log"))
+    run_command(["--log-format", "text,html"], "info", [])
+
+    assert len(after_first) == 1
+    # More than one, not exactly two: an unpinned call also opens a file while
+    # the config loads, before its own logging is configured.
+    assert len(list(logs.glob("*.log"))) > 1

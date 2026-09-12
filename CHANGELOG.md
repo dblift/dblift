@@ -18,7 +18,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   which appends to it. HTML and JSON log formats keep one file per call —
   HTML rewrites the whole file on every result and JSON writes the complete
   document when the log closes, so a shared file would erase the previous
-  call's log.
+  call's log. Asking for a second format alongside text (for example
+  `--log-format text,html`) keeps one file per call for both, since both
+  files are named from the same pattern.
 
 ### Removed
 
