@@ -421,6 +421,9 @@ class ValidateResult(OperationResult):
         self.error_count: int = 0
         self.validated_migrations: List[MigrationInfo] = []
         self.failed_migrations: List[MigrationInfo] = []
+        # Every issue the console logs. ``error_message`` holds only the first,
+        # so without this a machine-readable caller loses every later one.
+        self.issues: List[str] = []
 
     def add_validated_migration(self, migration: MigrationInfo) -> None:
         """Add a validated migration to the result."""
@@ -431,6 +434,19 @@ class ValidateResult(OperationResult):
         self.failed_migrations.append(migration)
         self.error_count += 1
         self.success = False
+
+    def set_error(self, error_message: str) -> None:
+        """Mark the validation failed, keeping ``error_count`` consistent.
+
+        A command-level failure — the history table could not be created, the
+        connection was refused — never reaches the per-migration accounting, so
+        without this the payload reported ``error_count: 0`` beside
+        ``success: false``, which reads as a clean run to anything consuming the
+        count rather than the message.
+        """
+        super().set_error(error_message)
+        if self.error_count == 0:
+            self.error_count = 1
 
 
 def is_failed_migration_status(status: Any) -> bool:

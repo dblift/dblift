@@ -3,17 +3,71 @@ Validate command implementation.
 """
 
 from pathlib import Path
-from typing import TYPE_CHECKING, Dict, List, Optional
+from typing import TYPE_CHECKING, Dict, List, Optional, Set
 
 if TYPE_CHECKING:
     pass
-from dblift.core.logger.results import ValidateResult
+from dblift.core.logger.results import MigrationInfo, ValidateResult
 
 from .base_command import BaseCommand
 
 
 class ValidateCommand(BaseCommand):
     """Handles the 'validate' command execution."""
+
+    @staticmethod
+    def _record_validated_migrations(result: ValidateResult, validation_result: object) -> None:
+        """Split the validated scripts into passed / failed on the result.
+
+        The validator reports its findings as free-text ``issues`` plus the
+        script names it raised them against. Without this, ``ValidateResult``
+        kept its initial ``error_count = 0`` and two empty lists however the run
+        went, so a caller reading the structured fields — ``--format json``, and
+        the MCP tool built on it — saw no failures on a failed validation and
+        had only the first issue, as ``error_message``, to go on.
+        """
+        failed = list(getattr(validation_result, "failed_scripts", []))
+        checked = set(getattr(validation_result, "checked_scripts", []))
+        reported: Set[str] = set()
+        for migration in getattr(validation_result, "migrations", []):
+            script_name = getattr(migration, "script_name", None)
+            if script_name is None:
+                continue
+            # Collection is wider than checking — undo scripts are gathered and
+            # then exempted from every check — so reporting a script nothing
+            # verified would claim a check that never ran.
+            if script_name not in checked and script_name not in failed:
+                continue
+            migration_type = getattr(migration, "type", None)
+            info = MigrationInfo(
+                script=script_name,
+                version=getattr(migration, "version", None),
+                description=getattr(migration, "description", "") or "",
+                type=getattr(migration_type, "value", migration_type) or "SQL",
+                status="FAILED" if script_name in failed else "SUCCESS",
+                checksum=getattr(migration, "checksum", None),
+            )
+            if script_name in failed:
+                result.add_failed_migration(info)
+                reported.add(script_name)
+            else:
+                result.add_validated_migration(info)
+
+        # A script can fail precisely because it is *not* on disk — an applied
+        # migration whose file is gone under --strict, say — and the loop above
+        # only walks the scripts that are. Reporting it with what is known beats
+        # dropping the one name the operator needs.
+        for script_name in failed:
+            if script_name in reported:
+                continue
+            result.add_failed_migration(
+                MigrationInfo(script=script_name, description="", type="SQL", status="FAILED")
+            )
+
+        # A failure that names no single script still has to count, or
+        # ``error_count`` contradicts ``success``.
+        if not result.success and result.error_count == 0:
+            result.error_count = 1
 
     def execute(
         self,
@@ -98,6 +152,8 @@ class ValidateCommand(BaseCommand):
 
             result.success = validation_result.success
             result.error_message = validation_result.error_message or ""
+            result.issues = list(getattr(validation_result, "issues", []))
+            self._record_validated_migrations(result, validation_result)
             # execution_time is calculated automatically by the base class
 
             if validation_result.success:

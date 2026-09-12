@@ -7,12 +7,49 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Breaking
+
+- **MongoDB's host form now authenticates against the configured database.** The
+  assembled URI was `mongodb://user:pass@host:port` with no database path; it is
+  now `mongodb://user:pass@host:port/<database>`. The driver reads that path as
+  the default `authSource`, so this changes which database credentials are
+  checked against — it does not merely add one.
+
+  | User defined in | Before | After |
+  |---|---|---|
+  | the database being migrated | refused | works |
+  | `admin` (with rights on that database) | works | **refused** |
+
+  The first row is the bug this fixes: `db check-connection` answered
+  `invalid credentials` for credentials that were correct, while the `url` form
+  worked, so the two documented input shapes disagreed. The second row is the
+  cost, and it is the shape `MONGO_INITDB_ROOT_USERNAME` produces in the
+  official image and the one Atlas gives you.
+
+  **If your user lives in `admin`, move to the URI form and name the auth source:**
+
+  ```yaml
+  database:
+    type: "mongodb"
+    url: "mongodb://user:pass@localhost:27017/?authSource=admin"
+    database: "myapp"
+  ```
+
+  Neither shape is affected when authentication is disabled, which is why this
+  is invisible in a default local container.
+
 ### Added
 
 - `dblift mcp` now exposes a `dblift://pending` resource: migrations not yet
   applied, as a JSON array (the same rows `migrate_dry_run` returns).
 
 ### Changed
+
+- `dblift config --list` derives its CLI column from the built parser. A
+  property whose flag this build does not register now reads `(none)` rather
+  than naming a flag that answers `unrecognized arguments`; its environment
+  variable and config key are listed as before, and a build that does register
+  the flag lists it again.
 
 ### Fixed
 

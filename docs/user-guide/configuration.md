@@ -261,6 +261,26 @@ database:
   # password: "secret"
 ```
 
+!!! warning "The host form authenticates against `database`"
+
+    The assembled URI ends in `/<database>`, which the driver reads as the
+    authentication source. A user created **in that database** — what
+    `db.getSiblingDB('myapp').createUser(...)` produces — therefore works.
+
+    A user created in `admin` does **not**, even with rights on `myapp`. That
+    is the shape `MONGO_INITDB_ROOT_USERNAME` produces in the official image,
+    and the one Atlas gives you. Before DBLift 4.4 the host form authenticated
+    against `admin` and the opposite was true.
+
+    For an `admin`-scoped user, use the URI form and say so explicitly:
+
+    ```yaml
+    database:
+      type: "mongodb"
+      url: "mongodb://user:pass@localhost:27017/?authSource=admin"
+      database: "myapp"
+    ```
+
 ### URI Form
 
 Atlas, TLS, replica sets and auth sources are URI query parameters — pass them
