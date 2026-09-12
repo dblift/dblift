@@ -13,6 +13,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `dblift mcp` now writes one text log file per server session instead of one
+  per tool call: the first call's log file is reused for every later call,
+  which appends to it. HTML and JSON log formats keep one file per call —
+  HTML rewrites the whole file on every result and JSON writes the complete
+  document when the log closes, so a shared file would erase the previous
+  call's log.
+
 ### Removed
 
 ## [4.3.0] - 2026-09-10

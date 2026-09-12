@@ -34,6 +34,47 @@ def sqlite_project(tmp_path, monkeypatch):
     return config
 
 
+@pytest.fixture
+def _clock(monkeypatch):
+    """Freeze the log-file timestamp and advance it one second per read.
+
+    The default file name is ``Dblift_<schema>_<db>_<%Y%m%d_%H%M%S>.log``, so
+    two calls inside the same second would share a name and a naive test
+    would pass before any change.
+    """
+    import datetime as real_datetime
+
+    from dblift.core.logger import log as log_module
+
+    ticks = iter(range(100))
+
+    class Clock(real_datetime.datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return real_datetime.datetime(2026, 9, 12, 12, 0, next(ticks), tzinfo=tz)
+
+    monkeypatch.setattr(log_module, "datetime", Clock)
+
+
+@pytest.fixture(autouse=True)
+def _fresh_server(monkeypatch):
+    """Start each test where a freshly launched server starts.
+
+    ``dblift mcp`` short-circuits before logging is configured, so the first
+    tool call of a server meets a ``LogFactory`` that has no log directory and
+    therefore opens no file while the config loads. In a test process earlier
+    tests leave the factory configured, which would add a file nothing in the
+    server ever writes. The pinned log file is reset for the same reason: one
+    test is one server lifetime.
+    """
+    from dblift.cli.mcp import runner
+    from dblift.core.logger import LogFactory
+
+    monkeypatch.setattr(runner, "_LOG_FILE", None, raising=False)
+    monkeypatch.setattr(LogFactory, "_log_dir", None)
+    monkeypatch.setattr(LogFactory, "_log_file_pattern", None)
+
+
 def _install_fake_handler(monkeypatch, name, fn):
     from dblift.cli import _command_handlers, main
 
@@ -248,3 +289,37 @@ def test_keyboard_interrupt_propagates(sqlite_project, monkeypatch):
 
     with pytest.raises(KeyboardInterrupt):
         run_command(["--config", str(sqlite_project)], "info", [])
+
+
+@pytest.mark.unit
+def test_two_calls_share_one_text_log_file(sqlite_project, _clock):
+    run_command([], "info", [])
+    run_command([], "info", [])
+
+    assert len(list((sqlite_project.parent / "logs").glob("*.log"))) == 1
+
+
+@pytest.mark.unit
+def test_json_log_format_keeps_one_file_per_call(sqlite_project, _clock):
+    """JSON writes the complete log on close, so a shared file would clobber
+    the previous call: the pin is TEXT-only."""
+    run_command(["--log-format", "json"], "info", [])
+    run_command(["--log-format", "json"], "info", [])
+
+    assert len(list((sqlite_project.parent / "logs").glob("*.json"))) == 2
+
+
+@pytest.mark.unit
+def test_user_supplied_log_file_pattern_is_expanded_once(sqlite_project, _clock):
+    """``<timestamp>`` in a user ``--log-file`` expands on the first call and
+    the resolved path is reused, not re-expanded per call."""
+    argv = ["--log-file", "custom_<timestamp>.log"]
+
+    run_command(argv, "info", [])
+    after_first = sorted(p.name for p in (sqlite_project.parent / "logs").glob("custom_*.log"))
+    run_command(argv, "info", [])
+
+    assert len(after_first) == 1
+    assert sorted(p.name for p in (sqlite_project.parent / "logs").glob("custom_*.log")) == (
+        after_first
+    )

@@ -43,10 +43,12 @@ import io
 import json
 import sys
 import threading
+from pathlib import Path
 from typing import Any, Dict, Optional, Sequence
 
 from dblift.cli._constants import EXIT_LICENSE_REQUIRED
 from dblift.cli.handlers._shared import CliCommandContext
+from dblift.core.logger import LogFactory
 from dblift.core.seams.capabilities import CapabilityDeniedError
 from dblift.core.seams.tier_resolver import resolve_tier
 
@@ -54,6 +56,56 @@ JSON_FORMAT_ARGV: tuple[str, ...] = ("--format", "json")
 _LICENSE_FALLBACK = "This command requires a license that is not available."
 _TAIL = 2000
 _CALL_LOCK = threading.Lock()
+
+#: The text log file the first call of this server's lifetime opened. Later
+#: calls log into it instead of opening a new timestamped file each time.
+_LOG_FILE: Optional[Path] = None
+
+
+def _pinned_log_file() -> Optional[Path]:
+    """The file earlier calls opened, or ``None`` to open a fresh one.
+
+    A file that has disappeared (rotated away, tmpdir cleaned) unpins itself:
+    the next call opens a new one rather than resurrecting a deleted path.
+    """
+    global _LOG_FILE
+    if _LOG_FILE is not None and not _LOG_FILE.exists():
+        _LOG_FILE = None
+    return _LOG_FILE
+
+
+def _writes_one_text_file(args: Any) -> bool:
+    """Whether this call's only file sink is a TEXT one, which appends.
+
+    Read off ``args.log_format`` rather than ``LogFactory._log_format``
+    because the decision is needed *before* logging is configured, so one
+    check governs both pinning the file and reusing it — and it needs no
+    private factory state. Only TEXT appends: HTML rewrites the whole file on
+    every result and JSON writes the complete document on close, so sharing a
+    file across calls would make the second call erase the first. A second,
+    additional format (``--log-format text,html``) also opens a file sink,
+    and both sinks take the same pattern, so that combination is left alone
+    too.
+    """
+    raw = getattr(args, "log_format", None) or "text"
+    return [fmt.strip().lower() for fmt in raw.split(",")] == ["text"]
+
+
+def _remember_log_file(log: Any) -> None:
+    """Pin the file sink's path off *log* so later calls reuse it.
+
+    ``log.logs`` is the sink list :func:`dblift.cli._config_helpers._close_logs`
+    walks; the file sink is the entry carrying a ``log_file``. The path is
+    resolved so it is absolute and has a directory component, which is what
+    makes ``FileLog._get_log_file`` hand it back verbatim instead of
+    re-expanding a pattern or nesting it under the log directory.
+    """
+    global _LOG_FILE
+    for sink in getattr(log, "logs", []):
+        log_file = getattr(sink, "log_file", None)
+        if log_file is not None:
+            _LOG_FILE = Path(log_file).resolve()
+            return
 
 
 class CommandInvocationError(Exception):
@@ -143,9 +195,22 @@ def _run_command_locked(
     success = False
     try:
         with contextlib.redirect_stdout(stdout_buf), contextlib.redirect_stderr(stderr_tee):
+            pinned = _pinned_log_file()
+            if pinned is not None:
+                # Config loading builds a logger of its own before the call's
+                # own configuration lands, so the pattern has to be in place
+                # before the parse, not only on ``args``.
+                LogFactory.set_log_file_pattern(str(pinned))
             ctx = cli_main._parse_argv_and_load_config(full_argv)
+            if pinned is not None:
+                # ``_configure_logging`` passes this straight through as the
+                # file pattern, and an absolute path with no placeholders is
+                # used verbatim: the TEXT sink reopens it in append mode.
+                ctx.args.log_file = str(pinned)
             cli_main._setup_logging_and_output(ctx)
             log = ctx.log
+            if pinned is None and _writes_one_text_file(ctx.args):
+                _remember_log_file(ctx.log)
             scripts_dir, additional_dirs, recursive, dir_map = (
                 cli_main._resolve_scripts_directories(
                     ctx.args, ctx.config, ctx.parser, ctx.commands
