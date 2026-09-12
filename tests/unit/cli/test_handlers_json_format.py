@@ -159,6 +159,7 @@ def test_validate_result_to_dict_shape():
         error_message="checksum mismatch",
         target_schema="main",
         error_count=1,
+        issues=["checksum mismatch", "Validation failed. Detected modified migration scripts."],
         validated_migrations=[_migration()],
         failed_migrations=[_migration(status="FAILED")],
     )
@@ -170,6 +171,11 @@ def test_validate_result_to_dict_shape():
         "error": "checksum mismatch",
         "target_schema": "main",
         "error_count": 1,
+        # ``error`` is only the first issue; the console logs every one of them.
+        "issues": [
+            "checksum mismatch",
+            "Validation failed. Detected modified migration scripts.",
+        ],
         "validated_migrations": [_migration_info_to_dict(result.validated_migrations[0])],
         "failed_migrations": [_migration_info_to_dict(result.failed_migrations[0])],
     }

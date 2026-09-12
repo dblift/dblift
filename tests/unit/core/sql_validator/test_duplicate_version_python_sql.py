@@ -14,7 +14,10 @@ from unittest.mock import MagicMock
 import pytest
 
 from dblift.core.migration.migration import MigrationType
-from dblift.core.sql_validator.migration_validator import MigrationValidator
+from dblift.core.sql_validator.migration_validator import (
+    MigrationValidator,
+    ValidationResult,
+)
 
 
 def _make_script(version: str, name: str, mtype: MigrationType):
@@ -25,10 +28,10 @@ def _make_script(version: str, name: str, mtype: MigrationType):
     return s
 
 
-class _Result:
-    def __init__(self):
-        self.success = True
-        self.error_message = ""
+# The real result object rather than a stub: it has no dependencies to avoid,
+# and a hand-rolled double silently drifts from the interface the validator
+# actually calls.
+_Result = ValidationResult
 
 
 @pytest.mark.unit

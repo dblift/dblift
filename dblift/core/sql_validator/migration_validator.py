@@ -29,6 +29,7 @@ class ValidationResult:
         migrations: List of migration objects (populated by validator)
         execution_time: Time taken for validation (ms)
         issues: List of issues found during validation
+        failed_scripts: Script names an issue was raised against
     """
 
     def __init__(self) -> None:
@@ -39,6 +40,34 @@ class ValidationResult:
         self.migrations: List[Migration] = []
         self.execution_time = 0
         self.issues: List[str] = []
+        self.failed_scripts: List[str] = []
+        self.checked_scripts: List[str] = []
+
+    def add_checked_script(self, script_name: Optional[str]) -> None:
+        """Record that a check actually ran against *script_name*.
+
+        Collection is wider than checking: undo scripts are gathered with the
+        rest, then exempted from drift detection, skipped by the syntax
+        validator and skipped again by the duplicate-version check — so they
+        receive no verification at all. Reporting them as validated would claim
+        a check that never ran. Recording it at the point of the check is what
+        keeps the reported set honest if a validator's scope later changes.
+        """
+        if script_name and script_name not in self.checked_scripts:
+            self.checked_scripts.append(script_name)
+
+    def add_failed_script(self, script_name: Optional[str]) -> None:
+        """Record that an issue was raised against *script_name*.
+
+        ``issues`` is free text and several entries are summaries that name no
+        single script, so the script identity a caller needs cannot be recovered
+        from it. Recording it here is what lets the command layer report which
+        migrations failed instead of only that validation failed. Duplicates are
+        dropped: a script can raise more than one issue and is still one failed
+        migration.
+        """
+        if script_name and script_name not in self.failed_scripts:
+            self.failed_scripts.append(script_name)
 
     def add_modified_repeatable(
         self, script_name: str, checksum: Union[str, int], current_checksum: Union[str, int]
@@ -278,6 +307,7 @@ class MigrationValidator:
                 result.success = False
                 result.error_message = str(e)
                 issues.append(str(e))
+                result.add_failed_script(script.script_name)
                 return False
         return True
 
@@ -777,6 +807,9 @@ class MigrationValidator:
                 )
                 issues.append("Validation failed: Found migration scripts with duplicate versions")
                 issues.append(duplicate_error)
+                # Both sides of the collision are implicated, and both are on disk.
+                result.add_failed_script(version_map[script.version].script_name)
+                result.add_failed_script(script.script_name)
                 result.success = False
                 result.error_message = (
                     f"Version {script.version} is used by both "
@@ -980,6 +1013,8 @@ class MigrationValidator:
             issues.append(error_message)
             issues.append(repair_message)
             result.error_message = f"{error_message}\n{repair_message}"
+            for reappeared in reappeared_scripts:
+                result.add_failed_script(str(reappeared["script"]))
             for script in reappeared_scripts:
                 self.log.debug(
                     f"Reappeared migration: {script['script']} (version: {script['version']})"
@@ -1031,6 +1066,7 @@ class MigrationValidator:
         issues.append(repair_message)
         result.error_message = f"{error_message}\n{repair_message}"
         for m in filtered_failed:
+            result.add_failed_script(getattr(m, "script_name", None))
             self.log.debug(
                 f"Failed migration: {getattr(m, 'script_name', None)} (version: {getattr(m, 'version', 'unknown')})"
             )

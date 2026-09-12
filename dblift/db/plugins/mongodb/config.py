@@ -2,7 +2,7 @@
 
 from dataclasses import dataclass
 from typing import Any, Dict
-from urllib.parse import quote_plus
+from urllib.parse import quote, quote_plus
 
 from dblift.config.database_config import BaseDatabaseConfig, register_database_type
 
@@ -45,17 +45,28 @@ class MongoDbConfig(BaseDatabaseConfig):
         Credentials are percent-encoded: a password containing ``@`` or
         ``/`` otherwise produces a URI the driver parses as a different
         host.
+
+        The assembled URI ends in ``/<database>``. The driver reads that path
+        as the default ``authSource``, so omitting it sent authentication to
+        ``admin`` and refused every user created in the database being
+        migrated. ``database`` is required on this config, so the value is
+        always available. An explicit ``url`` is returned untouched — it
+        carries its own auth source, as a query parameter or in its own path.
         """
         if self.url:
             return self.url
 
         port = self.port or DEFAULT_MONGODB_PORT
+        # ``quote`` not ``quote_plus``: this is a path segment, where "+" is a
+        # literal plus rather than a space. ``__post_init__`` rejects a config
+        # with no database, so the fallback is unreachable.
+        database = quote(self.database or "", safe="")
         if self.username:
             credentials = quote_plus(self.username)
             if self.password:
                 credentials = f"{credentials}:{quote_plus(self.password)}"
-            return f"mongodb://{credentials}@{self.host}:{port}"
-        return f"mongodb://{self.host}:{port}"
+            return f"mongodb://{credentials}@{self.host}:{port}/{database}"
+        return f"mongodb://{self.host}:{port}/{database}"
 
     def build_database_url(self) -> str:
         """Return the URI with any password replaced by ``***``.

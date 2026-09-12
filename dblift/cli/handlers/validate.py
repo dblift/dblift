@@ -19,6 +19,7 @@ def _validate_result_to_dict(result: Any) -> Dict[str, Any]:
         "error": getattr(result, "error_message", None),
         "target_schema": getattr(result, "target_schema", ""),
         "error_count": getattr(result, "error_count", 0),
+        "issues": list(getattr(result, "issues", [])),
         "validated_migrations": [
             _migration_info_to_dict(m) for m in getattr(result, "validated_migrations", [])
         ],
