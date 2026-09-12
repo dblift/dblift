@@ -40,15 +40,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- `validate --format json` gains an `issues` key carrying every issue the
-  console logs. `error` holds only the first, so a machine-readable caller
-  previously lost every later one. `validated_migrations` lists the scripts a
-  check actually ran against, which is narrower than the set `validate`
-  collects: undo scripts are gathered and then exempted from drift detection,
-  skipped by the syntax validator and skipped by the duplicate-version check, so
-  they are not reported as validated. (An applied undo script can still be
-  edited on disk without `validate` noticing — that is unchanged behaviour, now
-  simply not misreported.)
+- `dblift mcp` now exposes a `dblift://pending` resource: migrations not yet
+  applied, as a JSON array (the same rows `migrate_dry_run` returns).
 
 ### Changed
 
@@ -60,14 +53,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- **A failed `validate` now reports which migrations failed.** `ValidateResult`
-  never populated `error_count`, `validated_migrations` or `failed_migrations`,
-  so every `validate --format json` payload answered `error_count: 0` with two
-  empty lists however the run went — a count that directly contradicts
-  `success: false`, and the payload the `dblift mcp` `validate` tool serves. The
-  only failure detail reaching a caller was `error_message`, the *first* issue:
-  with two drifted scripts the console named both and the payload named one, so
-  fixing what it reported still left a broken migration behind.
+- `dblift mcp` now writes one text log file per server session instead of one
+  per tool call: the first call's log file is reused for every later call,
+  which appends to it. HTML and JSON log formats do not share a file across
+  calls — HTML rewrites the whole file on every result and JSON writes the
+  complete document when the log closes, so a shared file would erase the
+  previous call's log. Asking for a second format alongside text (for
+  example `--log-format text,html`) is not shared either, since both files
+  are named from the same pattern.
 
 ### Removed
 
