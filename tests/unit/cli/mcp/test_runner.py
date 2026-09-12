@@ -56,25 +56,6 @@ def _clock(monkeypatch):
     monkeypatch.setattr(log_module, "datetime", Clock)
 
 
-@pytest.fixture(autouse=True)
-def _fresh_server(monkeypatch):
-    """Start each test where a freshly launched server starts.
-
-    ``dblift mcp`` short-circuits before logging is configured, so the first
-    tool call of a server meets a ``LogFactory`` that has no log directory and
-    therefore opens no file while the config loads. In a test process earlier
-    tests leave the factory configured, which would add a file nothing in the
-    server ever writes. The pinned log file is reset for the same reason: one
-    test is one server lifetime.
-    """
-    from dblift.cli.mcp import runner
-    from dblift.core.logger import LogFactory
-
-    monkeypatch.setattr(runner, "_LOG_FILE", None, raising=False)
-    monkeypatch.setattr(LogFactory, "_log_dir", None)
-    monkeypatch.setattr(LogFactory, "_log_file_pattern", None)
-
-
 def _install_fake_handler(monkeypatch, name, fn):
     from dblift.cli import _command_handlers, main
 
@@ -363,3 +344,29 @@ def test_an_additional_file_format_keeps_one_text_file_per_call(sqlite_project, 
     # More than one, not exactly two: an unpinned call also opens a file while
     # the config loads, before its own logging is configured.
     assert len(list(logs.glob("*.log"))) > 1
+
+
+@pytest.mark.unit
+def test_a_call_asking_for_another_format_is_not_forced_onto_the_pinned_file(
+    sqlite_project, _clock
+):
+    """The reuse is TEXT-only in both directions: a later JSON call writes its
+    own file instead of overwriting the text log the pin accumulated."""
+    logs = sqlite_project.parent / "logs"
+
+    run_command([], "info", [])
+    (pinned,) = logs.glob("*.log")
+    text_so_far = pinned.read_text()
+
+    run_command(["--log-format", "json"], "info", [])
+
+    assert [path.name for path in logs.glob("*.log")] == [pinned.name]
+    assert pinned.read_text().startswith(text_so_far)
+    assert not pinned.read_text().lstrip().startswith(("{", "["))
+    assert len(list(logs.glob("*.json"))) == 1
+
+    # The pin survives the interruption: the next text call appends to it.
+    run_command([], "info", [])
+
+    assert [path.name for path in logs.glob("*.log")] == [pinned.name]
+    assert len(pinned.read_text()) > len(text_so_far)

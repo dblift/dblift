@@ -213,14 +213,21 @@ def _run_command_locked(
             # again, which is why it is re-stated rather than restored.
             LogFactory.set_log_file_pattern(str(pinned) if pinned is not None else "")
             ctx = cli_main._parse_argv_and_load_config(full_argv)
-            if pinned is not None:
+            text_only = _writes_one_text_file(ctx.args)
+            if pinned is not None and text_only:
                 # ``_configure_logging`` passes this straight through as the
                 # file pattern, and an absolute path with no placeholders is
                 # used verbatim: the TEXT sink reopens it in append mode.
+                # Re-checked here and not only where the file was pinned: a
+                # later call may ask for another format, and handing it the
+                # pinned path would have a JSON sink overwrite the text log
+                # the earlier calls accumulated, or drop an additional
+                # format's sink (``configure(log_file=...)`` takes the
+                # existing-file branch, which builds the primary sink only).
                 ctx.args.log_file = str(pinned)
             cli_main._setup_logging_and_output(ctx)
             log = ctx.log
-            if pinned is None and _writes_one_text_file(ctx.args):
+            if pinned is None and text_only:
                 _remember_log_file(ctx.log)
             scripts_dir, additional_dirs, recursive, dir_map = (
                 cli_main._resolve_scripts_directories(

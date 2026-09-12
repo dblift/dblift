@@ -21,12 +21,13 @@ Root flags go before `mcp` and apply to every tool call:
 Each tool call logs under `--log-dir`, exactly as one CLI invocation does.
 With the default text log format, the server writes one log file per
 session: the first call's file is reused and appended to for every later
-call in that process. HTML and JSON log formats stay one file per call —
-HTML rewrites the whole file on every result and JSON writes the complete
-document when the log closes, so a shared file would erase the previous
-call's log. Asking for a second format alongside text (`--log-format
-text,html`) also keeps one file per call, since both formats are named from
-the same pattern.
+call in that process. HTML and JSON log formats do not share a file across
+calls — HTML rewrites the whole file on every result and JSON writes the
+complete document when the log closes, so a shared file would erase the
+previous call's log. Asking for a second format alongside text
+(`--log-format text,html`) is not shared either, since both formats are
+named from the same pattern. Those formats name their file after the time
+it was opened, so calls within the same second still land in one file.
 
 | Tool | Runs | Returns |
 |---|---|---|
