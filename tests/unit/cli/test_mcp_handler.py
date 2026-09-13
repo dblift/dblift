@@ -359,6 +359,32 @@ def test_handle_mcp_refuses_an_empty_resource_allowlist(capsys):
 
 
 @pytest.mark.unit
+def test_handle_mcp_reports_unknown_tools_and_resources_in_one_pass(capsys):
+    """Both allowlists are checked before the refusal, so an operator who
+    mistyped a name in each is told both times rather than made to fix the tool
+    list, restart, and only then discover the resource list was wrong too."""
+    server = _quiet_server()
+    server.tool_names.return_value = ["info"]
+    server.resource_names.return_value = ["history"]
+    server.unmatched_allowed_tools.return_value = ["nope"]
+    server.unmatched_allowed_resources.return_value = ["histroy"]
+    ctx = CliCommandContext(
+        args=SimpleNamespace(
+            global_arguments=[], read_only=False, tools="info,nope", resources="history,histroy"
+        )
+    )
+
+    with patch("dblift.cli.mcp.server.build_server", return_value=server):
+        assert _handle_mcp(ctx) == (False, None)
+
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert "nope" in captured.err and "--tools" in captured.err
+    assert "histroy" in captured.err and "--resources" in captured.err
+    server.run_stdio.assert_not_called()
+
+
+@pytest.mark.unit
 def test_handle_mcp_reports_each_skipped_resource_on_stderr(capsys):
     server = _quiet_server()
     server.skipped_resources.return_value = [("pending", "not in the allowed resource list")]

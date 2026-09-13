@@ -72,6 +72,9 @@ def _handle_mcp(ctx: CliCommandContext) -> Tuple[bool, Any]:
         # it as a CLI error; a traceback is not something the user can act on.
         CommandOutput("console").error(f"dblift mcp: could not start the server: {exc}")
         return (False, None)
+    # Both allowlists are checked before refusing, so a typo in each is
+    # reported once rather than one restart at a time.
+    unknown_names = False
     unmatched = list(server.unmatched_allowed_tools())
     if unmatched:
         # Name what this install offers, registered or skipped, so the
@@ -84,7 +87,7 @@ def _handle_mcp(ctx: CliCommandContext) -> Tuple[bool, Any]:
             f"Tools this install offers: {', '.join(offered)}. "
             "(Resources are fenced by --resources, not --tools.)"
         )
-        return (False, None)
+        unknown_names = True
     unmatched_resources = list(server.unmatched_allowed_resources())
     if unmatched_resources:
         offered = sorted(
@@ -95,6 +98,8 @@ def _handle_mcp(ctx: CliCommandContext) -> Tuple[bool, Any]:
             f"Resources this install offers: {', '.join(offered)} "
             "(their dblift:// URIs are accepted too)."
         )
+        unknown_names = True
+    if unknown_names:
         return (False, None)
     if offline:
         # Said once at start-up, on stderr: the alternative is an operator who

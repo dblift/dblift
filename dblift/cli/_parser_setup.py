@@ -619,7 +619,7 @@ def create_parser(
         metavar="NAME[,NAME...]",
         help=(
             "Serve only the named tools, built-in or add-on; every other tool is "
-            "skipped, and an unknown name refuses to start"
+            "skipped, and an unknown name — or an empty list — refuses to start"
         ),
     )
     mcp_parser.add_argument(
@@ -628,7 +628,7 @@ def create_parser(
         help=(
             "Serve only the named resources (history, pending — the "
             "dblift:// URI is accepted too); every other resource is "
-            "skipped, and an unknown name refuses to start"
+            "skipped, and an unknown name — or an empty list — refuses to start"
         ),
     )
     mcp_parser.add_argument(
