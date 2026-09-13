@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, Dict, List, Optional, cast
 if TYPE_CHECKING:
     pass
 from dblift.core.logger.results import InfoResult, MigrationInfo, is_failed_migration_status
-from dblift.core.migration.migration import VERSIONED_SCRIPT_TYPES, Migration, MigrationType
+from dblift.core.migration.migration import VERSIONED_SCRIPT_TYPES, MigrationType
 from dblift.core.migration.state.migration_state import MigrationState
 from dblift.core.utils.url_masking import mask_database_url
 from dblift.db.provider_capabilities import get_provider_display_url, get_provider_driver_display
@@ -75,11 +75,7 @@ class InfoCommand(BaseCommand):
         normalized_versions = _normalize_filter(versions)
         normalized_exclude_versions = _normalize_filter(exclude_versions)
 
-        initial_records: Optional[List[Migration]] = None
-
-        def capture_history(records: List[Migration]) -> None:
-            nonlocal initial_records
-            initial_records = records
+        read_snapshot = self.state_manager.new_read_snapshot()
 
         def _body() -> None:
             # Use MigrationStateManager to get centralized migration state
@@ -90,7 +86,7 @@ class InfoCommand(BaseCommand):
                     additional_dirs=additional_dirs,
                     dir_recursive_map=dir_recursive_map,
                     target_version=target_version,
-                    preloaded_records=initial_records,
+                    read_snapshot=read_snapshot,
                 )
             except Exception as e:
                 # If build_state fails, create empty state
@@ -103,7 +99,7 @@ class InfoCommand(BaseCommand):
             try:
                 all_script_objects = migration_state.resolved_objects
                 if all_script_objects is None:
-                    all_script_objects = self.script_manager.get_migration_scripts(
+                    all_script_objects = self.state_manager.get_resolved_migrations(
                         scripts_dir,
                         recursive=recursive,
                         additional_dirs=additional_dirs or [],
@@ -231,7 +227,7 @@ class InfoCommand(BaseCommand):
                 result,
                 _body,
                 preflight=lambda: self._run_preflight(result, ensure_history=True),
-                header_kwargs={"on_history_loaded": capture_history},
+                header_kwargs={"read_snapshot": read_snapshot},
                 error_message_prefix="Info operation failed",
             ),
         )

@@ -9,9 +9,45 @@ from __future__ import annotations
 
 import datetime as _dt
 from dataclasses import asdict, dataclass, field
-from typing import Any, Dict, List, Optional
+from pathlib import Path
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 from dblift.core.migration.state.migration_display_state import MigrationDisplayState
+
+if TYPE_CHECKING:
+    from dblift.core.migration.migration import Migration
+    from dblift.core.migration.state.migration_state_manager import MigrationStateManager
+
+
+@dataclass(slots=True)
+class MigrationReadSnapshot:
+    """Lazy history for one read phase, collected through its owning state manager."""
+
+    _state_manager: MigrationStateManager = field(repr=False)
+    _applied_records: Optional[List[Migration]] = field(default=None, init=False, repr=False)
+
+    def get_applied_migrations(self) -> List[Migration]:
+        """Request this phase's history from the owning state manager."""
+        return self._state_manager.get_applied_migrations(self)
+
+    def get_resolved_migrations(
+        self,
+        scripts_dir: Path,
+        *,
+        recursive: bool = True,
+        additional_dirs: Optional[List[Path]] = None,
+    ) -> List[Migration]:
+        """Request a fresh ScriptManager catalog through the owning state manager."""
+        return self._state_manager.get_resolved_migrations(
+            scripts_dir, recursive=recursive, additional_dirs=additional_dirs
+        )
+
+
+@dataclass(slots=True)
+class CallbackReadSnapshot:
+    """Callback catalog for one command, populated by the state manager at its first event."""
+
+    _catalog: Optional[List[Migration]] = field(default=None, init=False, repr=False)
 
 
 @dataclass(slots=True)

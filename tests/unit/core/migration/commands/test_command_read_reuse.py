@@ -7,14 +7,16 @@ import sqlite3
 from collections import Counter
 from contextlib import contextmanager
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 from sqlalchemy import create_engine
 
 from dblift.api import DBLiftClient
 from dblift.core.migration.commands.base_command import BaseCommand
+from dblift.core.migration.commands.info_command import InfoCommand
 from dblift.core.migration.commands.migrate_command import MigrateCommand
+from dblift.core.migration.commands.validate_command import ValidateCommand
 from dblift.core.migration.state.migration_state import MigrationState
 
 pytestmark = [pytest.mark.unit, pytest.mark.sqlite]
@@ -124,11 +126,14 @@ def test_commands_reuse_initial_reads(
 def test_empty_history_snapshot_is_used_by_state_and_strict_validation(database_client):
     client, engine, migrations, _ = database_client
     (migrations / "V1__app.sql").write_text("CREATE TABLE app (id INTEGER PRIMARY KEY);")
+    client.executor.history_manager.create_schema_and_history_table(create_schema=False)
+    snapshot = client.executor.state_manager.new_read_snapshot()
+    assert snapshot.get_applied_migrations() == []
     assert client.migrate().success
     client.config.strict_mode = True
 
     with observe_reads(client, migrations) as counts:
-        state = client.executor.state_manager.build_state(migrations, preloaded_records=[])
+        state = client.executor.state_manager.build_state(migrations, read_snapshot=snapshot)
         validation = client.executor.validator.validate_migrations(
             migrations, "validate", resolved_migrations=[], preloaded_records=[]
         )
@@ -379,8 +384,15 @@ def test_nonempty_recursion_map_preserves_validator_discovery_scope(database_cli
     nested = migrations / "nested"
     nested.mkdir()
     (nested / "V1__duplicate.sql").write_text("SELECT 1;")
+    validator_scripts = MagicMock(wraps=client.executor.script_manager)
+    validator_scripts.get_migration_scripts.side_effect = AssertionError(
+        "Validator bypassed the state manager for mapped migrate catalog"
+    )
 
-    with observe_reads(client, migrations) as counts:
+    with (
+        observe_reads(client, migrations) as counts,
+        patch.object(client.executor.validator, "script_manager", validator_scripts),
+    ):
         result = client.migrate(recursive=True, dir_recursive_map={migrations: False})
 
     # State omits the nested file, but legacy validation independently uses recursive=True.
@@ -479,3 +491,163 @@ def test_filtered_migrate_keeps_full_catalog_for_missing_file_validation(databas
     assert not strict_missing.success
     assert excluded.name in strict_missing.error_message
     assert "without corresponding script files" in strict_missing.error_message
+
+
+@pytest.mark.parametrize("command_type", [MigrateCommand, InfoCommand, ValidateCommand])
+def test_commands_consume_history_through_state_manager(database_client, command_type):
+    client, _, migrations, _ = database_client
+    (migrations / "V1__app.sql").write_text("CREATE TABLE app (id INTEGER PRIMARY KEY);")
+    (migrations / "beforeEach__check.sql").write_text("SELECT 1;")
+    command = command_type(client.executor._make_command_context())
+    command.history_manager = MagicMock(wraps=client.executor.history_manager)
+    command.history_manager.get_applied_migrations.side_effect = AssertionError(
+        "Command bypassed the state manager for history"
+    )
+    command.history_manager.get_applied_migration_records.side_effect = AssertionError(
+        "Command bypassed the state manager for typed history"
+    )
+    command.script_manager = MagicMock(wraps=client.executor.script_manager)
+    for method in ("load_migration_scripts", "get_migration_scripts", "get_callbacks_by_event"):
+        getattr(command.script_manager, method).side_effect = AssertionError(
+            "Command bypassed the state manager for script data"
+        )
+    command.validator.script_manager = command.script_manager
+
+    with observe_reads(client, migrations) as counts:
+        result = command.execute(migrations)
+
+    assert result.success, result.error_message
+    command.history_manager.get_applied_migrations.assert_not_called()
+    command.history_manager.get_applied_migration_records.assert_not_called()
+    command.script_manager.load_migration_scripts.assert_not_called()
+    command.script_manager.get_migration_scripts.assert_not_called()
+    command.script_manager.get_callbacks_by_event.assert_not_called()
+    assert counts["history"] == (4 if command_type is MigrateCommand else 2)
+
+
+def test_info_catalog_fallback_consumes_state_manager_data(database_client):
+    client, _, migrations, _ = database_client
+    (migrations / "V1__first.sql").write_text("SELECT 1;")
+    (migrations / "V1__duplicate.sql").write_text("SELECT 2;")
+    command = InfoCommand(client.executor._make_command_context())
+    command.script_manager = MagicMock(wraps=client.executor.script_manager)
+    command.script_manager.get_migration_scripts.side_effect = AssertionError(
+        "Command bypassed the state manager for fallback catalog"
+    )
+
+    with (
+        observe_reads(client, migrations) as counts,
+        patch.object(
+            command.state_manager, "build_state", side_effect=RuntimeError("state unavailable")
+        ),
+        patch.object(command.log, "warning", wraps=command.log.warning) as warnings,
+    ):
+        result = command.execute(migrations, display_human=False)
+
+    assert result.success, result.error_message
+    assert any("Duplicate version 1" in call.args[0] for call in warnings.call_args_list)
+    command.script_manager.get_migration_scripts.assert_not_called()
+    assert counts["scans"] == 1
+
+
+@pytest.mark.parametrize(
+    "rows,expected_version",
+    [
+        ([("BASELINE", "3", True)], "3"),
+        ([("SQL", "1", True), ("SQL", "2", True), ("UNDO_SQL", "2", True)], "1"),
+        (
+            [
+                ("SQL", "1", True),
+                ("SQL", "2", True),
+                ("UNDO_SQL", "2", True),
+                ("SQL", "2", True),
+            ],
+            "2",
+        ),
+        ([("SQL", "1", True), ("SQL", "3", False)], "1"),
+    ],
+)
+def test_state_manager_snapshot_preserves_header_version_semantics(
+    database_client, rows, expected_version
+):
+    client, _, migrations, database = database_client
+    client.executor.history_manager.create_schema_and_history_table(create_schema=False)
+    with sqlite3.connect(database) as connection:
+        for rank, (migration_type, version, success) in enumerate(rows, 1):
+            connection.execute(
+                "INSERT INTO dblift_schema_history "
+                "(installed_rank, script, type, version, success) VALUES (?, ?, ?, ?, ?)",
+                (rank, f"{migration_type}{version}__test.sql", migration_type, version, success),
+            )
+    manager = client.executor.state_manager
+    command = InfoCommand(client.executor._make_command_context())
+    with observe_reads(client, migrations) as counts:
+        snapshot = manager.new_read_snapshot()
+        assert counts["history"] == 0
+        assert manager.resolve_current_schema_version(snapshot) == expected_version
+        assert command._resolve_current_schema_version(read_snapshot=snapshot) == expected_version
+        assert len(manager.build_state(None, read_snapshot=snapshot).all_applied_objects) == len(
+            rows
+        )
+    assert counts["history"] == 1
+
+
+def test_manager_snapshot_retries_failed_reads_and_retains_successful_empty_history(
+    database_client,
+):
+    client, _, migrations, _ = database_client
+    client.executor.history_manager.create_schema_and_history_table(create_schema=False)
+    manager = client.executor.state_manager
+    snapshot = manager.new_read_snapshot()
+    command = InfoCommand(client.executor._make_command_context())
+    read_history = client.executor.history_manager.get_applied_migrations
+    attempts = 0
+
+    def fail_once():
+        nonlocal attempts
+        attempts += 1
+        if attempts == 1:
+            raise RuntimeError("temporary history failure")
+        return read_history()
+
+    with (
+        observe_reads(client, migrations) as counts,
+        patch.object(client.executor.history_manager, "get_applied_migrations", fail_once),
+    ):
+        assert command._resolve_current_schema_version(read_snapshot=snapshot) is None
+        assert manager.build_state(migrations, read_snapshot=snapshot).all_applied_objects == []
+        assert snapshot.get_applied_migrations() == []
+    assert attempts == 2
+    assert counts["history"] == 1
+
+
+def test_callback_discovery_sees_file_created_during_lock_acquisition(database_client):
+    client, _, migrations, database = database_client
+    (migrations / "V1__app.sql").write_text("CREATE TABLE app (id INTEGER PRIMARY KEY);")
+    acquire_lock = client.provider.acquire_migration_lock
+
+    def create_callback_then_lock(*args, **kwargs):
+        (migrations / "beforeMigrate__late.sql").write_text(
+            "CREATE TABLE callback_discovered_after_lock (id INTEGER);"
+        )
+        return acquire_lock(*args, **kwargs)
+
+    with (
+        observe_reads(client, migrations) as counts,
+        patch.object(client.provider, "acquire_migration_lock", create_callback_then_lock),
+    ):
+        result = client.migrate()
+
+    assert result.success, result.error_message
+    assert [(record.phase, record.file, record.status) for record in result.callbacks] == [
+        ("beforeMigrate", "beforeMigrate__late.sql", "OK")
+    ]
+    assert counts == {
+        "history": 4,
+        "files": {"V1__app.sql": 2, "beforeMigrate__late.sql": 1},
+        "scans": 2,
+    }
+    with sqlite3.connect(database) as connection:
+        assert connection.execute(
+            "SELECT count(*) FROM callback_discovered_after_lock"
+        ).fetchone() == (0,)

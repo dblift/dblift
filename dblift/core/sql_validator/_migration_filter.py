@@ -25,6 +25,7 @@ from dblift.core.migration.migration import Migration, MigrationType
 from dblift.core.migration.version_utils import compare_versions
 
 if TYPE_CHECKING:
+    from dblift.core.migration.state.migration_state import MigrationReadSnapshot
     from dblift.core.sql_validator.migration_validator import MigrationValidator
 
 
@@ -36,16 +37,20 @@ def load_and_filter_migrations(
     issues: List[str],
     *,
     resolved_migrations: Optional[List[Migration]] = None,
+    read_snapshot: Optional[MigrationReadSnapshot] = None,
 ) -> List[Migration]:
     """Load all migration scripts and drop unsupported types."""
     # Load all migrations from script files - use our existing logger
-    all_scripts = (
-        resolved_migrations
-        if resolved_migrations is not None
-        else mv.script_manager.get_migration_scripts(
+    if resolved_migrations is not None:
+        all_scripts = resolved_migrations
+    elif read_snapshot is not None:
+        all_scripts = read_snapshot.get_resolved_migrations(
             scripts_dir, recursive=recursive, additional_dirs=additional_dirs
         )
-    )
+    else:
+        all_scripts = mv.script_manager.get_migration_scripts(
+            scripts_dir, recursive=recursive, additional_dirs=additional_dirs
+        )
 
     # Filter out ignored/malformed scripts (e.g., not versioned/repeatable/callback/baseline/undo)
     valid_scripts = []
@@ -218,6 +223,7 @@ def validate_no_scripts_case(
     issues: List[str],
     *,
     preloaded_records: Optional[List[Migration]] = None,
+    read_snapshot: Optional[MigrationReadSnapshot] = None,
 ) -> Tuple[bool, bool]:
     """Validate the case where there are no valid scripts.
 
@@ -232,11 +238,12 @@ def validate_no_scripts_case(
         config = getattr(mv.history_manager, "provider", {})
         config = getattr(config, "config", None)
         if getattr(config, "strict_mode", False):
-            applied_migrations = (
-                preloaded_records
-                if preloaded_records is not None
-                else mv.history_manager.get_applied_migrations()
-            )
+            if preloaded_records is not None:
+                applied_migrations = preloaded_records
+            elif read_snapshot is not None:
+                applied_migrations = read_snapshot.get_applied_migrations()
+            else:
+                applied_migrations = mv.history_manager.get_applied_migrations()
             if applied_migrations:
                 return True, False
 

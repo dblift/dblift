@@ -10,6 +10,7 @@ import pytest
 
 from dblift.core.logger.results import MigrateResult
 from dblift.core.migration.commands.migrate_command import MigrateCommand
+from dblift.core.migration.state.migration_state_manager import MigrationStateManager
 
 
 @pytest.mark.unit
@@ -112,6 +113,9 @@ def test_each_callback_banner_logs_once_per_migration_in_a_batch():
     callback = SimpleNamespace(script_name="beforeEachMigrate__mark.sql")
     command.script_manager = MagicMock()
     command.script_manager.get_callbacks_by_event.return_value = [callback]
+    command.state_manager = MigrationStateManager(
+        command.log, MagicMock(), command.script_manager, MagicMock()
+    )
 
     scripts_dir = Path("migrations")
 
@@ -154,6 +158,9 @@ def test_each_callback_banner_falls_back_when_len_raises():
     command.execution_engine = MagicMock()
     command.script_manager = MagicMock()
     command.script_manager.get_callbacks_by_event.return_value = _BrokenLen()
+    command.state_manager = MigrationStateManager(
+        command.log, MagicMock(), command.script_manager, MagicMock()
+    )
 
     command._execute_callbacks(Path("migrations"), "beforeEachMigrate", True, None, None)
 

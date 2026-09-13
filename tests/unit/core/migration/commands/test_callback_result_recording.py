@@ -11,6 +11,7 @@ from dblift.core.logger.results import CallbackExecution, MigrateResult
 from dblift.core.migration.commands.migrate_command import MigrateCommand
 from dblift.core.migration.formats import MigrationFormat
 from dblift.core.migration.migration import Migration
+from dblift.core.migration.state.migration_state_manager import MigrationStateManager
 
 
 def _command_with_callbacks(callbacks):
@@ -19,6 +20,9 @@ def _command_with_callbacks(callbacks):
     command.execution_engine = MagicMock()
     command.script_manager = MagicMock()
     command.script_manager.get_callbacks_by_event.return_value = callbacks
+    command.state_manager = MigrationStateManager(
+        command.log, MagicMock(), command.script_manager, MagicMock()
+    )
     return command
 
 

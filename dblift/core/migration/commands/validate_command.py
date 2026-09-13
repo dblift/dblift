@@ -8,7 +8,6 @@ from typing import TYPE_CHECKING, Dict, List, Optional, Set
 if TYPE_CHECKING:
     pass
 from dblift.core.logger.results import MigrationInfo, ValidateResult
-from dblift.core.migration.migration import Migration
 
 from .base_command import BaseCommand
 
@@ -87,11 +86,7 @@ class ValidateCommand(BaseCommand):
         result = ValidateResult()
         result.target_schema = self.config.database.schema
 
-        initial_records: Optional[List[Migration]] = None
-
-        def capture_history(records: List[Migration]) -> None:
-            nonlocal initial_records
-            initial_records = records
+        read_snapshot = self.state_manager.new_read_snapshot()
 
         # Log command execution with filters
         # Populate database connection information
@@ -126,7 +121,7 @@ class ValidateCommand(BaseCommand):
                 exclude_tags=exclude_tags,
                 versions=versions,
                 exclude_versions=exclude_versions,
-                on_history_loaded=capture_history,
+                read_snapshot=read_snapshot,
             )
 
             self._execute_callbacks(
@@ -138,6 +133,9 @@ class ValidateCommand(BaseCommand):
                 result=result,
             )
 
+            if result.callbacks:
+                read_snapshot = self.state_manager.new_read_snapshot()
+
             validation_result = self.validator.validate_migrations(
                 scripts_dir,
                 "validate",
@@ -148,8 +146,7 @@ class ValidateCommand(BaseCommand):
                 exclude_tags=exclude_tags,
                 versions=versions,
                 exclude_versions=exclude_versions,
-                # beforeValidate may change history; an absent callback has no write boundary.
-                preloaded_records=initial_records if not result.callbacks else None,
+                read_snapshot=read_snapshot,
             )
 
             self._execute_callbacks(

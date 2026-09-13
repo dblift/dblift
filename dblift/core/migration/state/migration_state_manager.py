@@ -8,14 +8,21 @@ from typing import Any, Dict, Iterable, List, Optional, Sequence, Set, Tuple, ca
 
 from dblift.core.logger import Log
 from dblift.core.migration.history.migration_history_manager import MigrationHistoryManager
-from dblift.core.migration.migration import VERSIONED_SCRIPT_TYPES, Migration, MigrationType
+from dblift.core.migration.migration import (
+    VERSIONED_SCRIPT_TYPES,
+    AppliedMigration,
+    Migration,
+    MigrationType,
+)
 from dblift.core.migration.rules.migration_rules import MigrationRules
 from dblift.core.migration.scripting.migration_script_manager import MigrationScriptManager
 from dblift.core.migration.state.migration_data_service import MigrationDataService
 from dblift.core.migration.state.migration_display_state import MigrationDisplayState
 from dblift.core.migration.state.migration_state import (
+    CallbackReadSnapshot,
     ChecksumChange,
     MigrationEntry,
+    MigrationReadSnapshot,
     MigrationState,
 )
 from dblift.core.migration.state.migration_state_service import MigrationStateService
@@ -65,6 +72,113 @@ class MigrationStateManager:
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
+    def new_read_snapshot(self) -> MigrationReadSnapshot:
+        """Create an empty read phase; no database access occurs until it is consumed."""
+        return MigrationReadSnapshot(self)
+
+    def get_applied_migrations(
+        self, snapshot: Optional[MigrationReadSnapshot] = None
+    ) -> List[Migration]:
+        """Return HistoryManager data once per phase, or read afresh without a snapshot."""
+        if snapshot is None:
+            return self.history_manager.get_applied_migrations()
+        if snapshot._applied_records is None:
+            snapshot._applied_records = self.history_manager.get_applied_migrations()
+        return snapshot._applied_records
+
+    def get_applied_migration_records(self) -> List[AppliedMigration]:
+        """Read fresh typed history, including after acquiring the migration lock."""
+        return self.history_manager.get_applied_migration_records()
+
+    def new_callback_snapshot(self) -> CallbackReadSnapshot:
+        """Create a command callback scope without discovering scripts yet."""
+        return CallbackReadSnapshot()
+
+    def get_callbacks_by_event(
+        self,
+        scripts_dir: Path,
+        event_prefix: str,
+        *,
+        read_snapshot: CallbackReadSnapshot,
+        recursive: bool = True,
+        additional_dirs: Optional[List[Path]] = None,
+        dir_recursive_map: Optional[Dict[Path, bool]] = None,
+    ) -> List[Migration]:
+        """Aggregate callback data; discovery and event matching stay in the script manager."""
+        if read_snapshot._catalog is None:
+            read_snapshot._catalog = self.script_manager.load_migration_scripts(
+                scripts_dir,
+                recursive=recursive,
+                additional_dirs=additional_dirs,
+                dir_recursive_map=dir_recursive_map,
+            )[MigrationType.CALLBACK]
+        return self.script_manager.get_callbacks_by_event(
+            scripts_dir,
+            event_prefix,
+            recursive=recursive,
+            additional_dirs=additional_dirs,
+            dir_recursive_map=dir_recursive_map,
+            callback_catalog=read_snapshot._catalog,
+        )
+
+    def get_resolved_migrations(
+        self,
+        scripts_dir: Path,
+        *,
+        recursive: bool = True,
+        additional_dirs: Optional[List[Path]] = None,
+        dir_recursive_map: Optional[Dict[Path, bool]] = None,
+    ) -> List[Migration]:
+        """Return the ScriptManager catalog when no built state is available to consume."""
+        return self.script_manager.get_migration_scripts(
+            scripts_dir,
+            recursive=recursive,
+            additional_dirs=additional_dirs,
+            dir_recursive_map=dir_recursive_map,
+        )
+
+    def resolve_current_schema_version(
+        self, snapshot: Optional[MigrationReadSnapshot] = None
+    ) -> Optional[str]:
+        """Derive the header/footer version, excluding undone but not reapplied versions."""
+        applied_migrations = self.get_applied_migrations(snapshot)
+        if not applied_migrations:
+            self.logger.debug("No applied migrations found, schema version will be <none>")
+            return None
+
+        data_service = MigrationDataService(self.logger, scripts_dir=None)
+        analysis_context = data_service._build_analysis_context(applied_migrations)
+        history = self._analyse_history(applied_migrations, analysis_context)
+
+        undone_but_not_reapplied = history.undone_versions - history.reapplied_versions
+        applied_migrations_filtered = [
+            m
+            for m in applied_migrations
+            if (
+                self._get_type_name(m) not in VERSIONED_SCRIPT_TYPES
+                or str(getattr(m, "version", "")) not in undone_but_not_reapplied
+            )
+        ]
+        current_version = self.get_current_version(applied_migrations_filtered)
+        schema_version = current_version if current_version else None
+
+        try:
+            applied_count = (
+                len(applied_migrations) if hasattr(applied_migrations, "__len__") else "unknown"
+            )
+            filtered_count = (
+                len(applied_migrations_filtered)
+                if hasattr(applied_migrations_filtered, "__len__")
+                else "unknown"
+            )
+            self.logger.debug(
+                f"Retrieved schema version: {schema_version} from {applied_count} applied migrations (filtered: {filtered_count})"
+            )
+        except (TypeError, AttributeError):
+            pass
+
+        return schema_version
+
     def build_state(
         self,
         scripts_dir: Optional[Path],
@@ -77,7 +191,7 @@ class MigrationStateManager:
         exclude_tags: Optional[Sequence[str]] = None,
         versions: Optional[Sequence[str]] = None,
         exclude_versions: Optional[Sequence[str]] = None,
-        preloaded_records: Optional[List[Migration]] = None,
+        read_snapshot: Optional[MigrationReadSnapshot] = None,
     ) -> MigrationState:
         """Rebuild and return the current migration state as a JSON-ready snapshot.
 
@@ -85,15 +199,11 @@ class MigrationStateManager:
         not migrate's execute-list. ``target_version`` labels Above target and
         does not drop rows. ``tags`` / ``versions`` stay on the signature for
         callers; they are not omit filters here.
-        ``preloaded_records`` reuses a history read from the same command phase;
-        an empty list is an available snapshot, while ``None`` fetches history.
+        ``read_snapshot`` reuses history from the same command phase. Without a
+        snapshot history is read afresh; an empty successful read remains cached.
         """
 
-        applied_migrations = (
-            preloaded_records
-            if preloaded_records is not None
-            else self.history_manager.get_applied_migrations()
-        )
+        applied_migrations = self.get_applied_migrations(read_snapshot)
         self.logger.debug(f"Loaded {len(applied_migrations)} applied migrations from history")
 
         data_service = MigrationDataService(

@@ -21,6 +21,7 @@ from dblift.core.migration.scripting.migration_script_manager import (  # noqa: 
     _last_successful_non_delete_record as _last_successful_non_delete_record,
 )
 from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
+from dblift.core.migration.state.migration_state import MigrationReadSnapshot
 from dblift.core.migration.version_utils import is_migration_failure
 
 
@@ -197,6 +198,7 @@ class MigrationValidator:
         issues: List[str],
         *,
         resolved_migrations: Optional[List[Migration]] = None,
+        read_snapshot: Optional[MigrationReadSnapshot] = None,
     ) -> List[Migration]:
         """Delegate to
         :func:`dblift.core.sql_validator._migration_filter.load_and_filter_migrations`.
@@ -210,6 +212,7 @@ class MigrationValidator:
             additional_dirs,
             issues,
             resolved_migrations=resolved_migrations,
+            read_snapshot=read_snapshot,
         )
 
     def _handle_baseline_filtering(self, valid_scripts: List[Migration]) -> List[Migration]:
@@ -281,13 +284,20 @@ class MigrationValidator:
         issues: List[str],
         *,
         preloaded_records: Optional[List[Migration]] = None,
+        read_snapshot: Optional[MigrationReadSnapshot] = None,
     ) -> Tuple[bool, bool]:
         """Delegate to
         :func:`dblift.core.sql_validator._migration_filter.validate_no_scripts_case`.
         """
         from dblift.core.sql_validator._migration_filter import validate_no_scripts_case as _impl
 
-        return _impl(self, valid_scripts, issues, preloaded_records=preloaded_records)
+        return _impl(
+            self,
+            valid_scripts,
+            issues,
+            preloaded_records=preloaded_records,
+            read_snapshot=read_snapshot,
+        )
 
     def _validate_format_supported(
         self, scripts: List[Migration], result: ValidationResult, issues: List[str]
@@ -461,6 +471,7 @@ class MigrationValidator:
         *,
         resolved_migrations: Optional[List[Migration]] = None,
         preloaded_records: Optional[List[Migration]] = None,
+        read_snapshot: Optional[MigrationReadSnapshot] = None,
     ) -> ValidationResult:
         """Validate migrations against the database.
 
@@ -478,6 +489,7 @@ class MigrationValidator:
             exclude_versions: Optional versions to exclude
             resolved_migrations: Full resolved catalog before baseline and command filters
             preloaded_records: History snapshot from the same read phase; None fetches history
+            read_snapshot: Manager-owned lazy inputs, read only where validation requires them
 
         Returns:
             ValidationResult: Result of the validation
@@ -509,7 +521,7 @@ class MigrationValidator:
         try:
 
             # Load and filter migration scripts
-            if resolved_migrations is None:
+            if resolved_migrations is None and read_snapshot is None:
                 valid_scripts = self._load_and_filter_migrations(
                     scripts_dir, recursive, additional_dirs or [], issues
                 )
@@ -520,6 +532,7 @@ class MigrationValidator:
                     additional_dirs or [],
                     issues,
                     resolved_migrations=resolved_migrations,
+                    read_snapshot=read_snapshot,
                 )
 
             # Handle baseline filtering
@@ -551,13 +564,16 @@ class MigrationValidator:
                 return validation_result
 
             # Validate no scripts case
-            if preloaded_records is None:
+            if preloaded_records is None and read_snapshot is None:
                 should_return_early, validation_success = self._validate_no_scripts_case(
                     valid_scripts, issues
                 )
             else:
                 should_return_early, validation_success = self._validate_no_scripts_case(
-                    valid_scripts, issues, preloaded_records=preloaded_records
+                    valid_scripts,
+                    issues,
+                    preloaded_records=preloaded_records,
+                    read_snapshot=read_snapshot,
                 )
             if should_return_early:
                 validation_result.success = validation_success
@@ -572,11 +588,12 @@ class MigrationValidator:
             applied_migrations = []
             if history_table_exists:
                 try:
-                    applied_migrations = (
-                        preloaded_records
-                        if preloaded_records is not None
-                        else self.history_manager.get_applied_migrations()
-                    )
+                    if preloaded_records is not None:
+                        applied_migrations = preloaded_records
+                    elif read_snapshot is not None:
+                        applied_migrations = read_snapshot.get_applied_migrations()
+                    else:
+                        applied_migrations = self.history_manager.get_applied_migrations()
                 except Exception as e:
                     self.log.error(f"Error getting applied migrations: {e}")
                     applied_migrations = []

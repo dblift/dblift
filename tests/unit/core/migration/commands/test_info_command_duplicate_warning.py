@@ -20,6 +20,7 @@ def _make_command(script_objects, applied_objects=None):
     state_manager.build_state.return_value = MigrationState(
         applied_objects=applied_objects or [],
         pending_objects=[],
+        resolved_objects=script_objects,
     )
     state_manager.get_current_version.return_value = "1"
 
