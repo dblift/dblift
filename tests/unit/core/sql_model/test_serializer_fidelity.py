@@ -601,8 +601,8 @@ def test_a_model_file_in_the_pre_fidelity_shape_still_loads() -> None:
     assert column.nullable is False
     assert column.is_primary_key is False
     assert column.is_unique is False
-    # The inlined column dict carries no dialect of its own; the table injects
-    # its own, as it did before the serializers were delegated.
+    # This column dict carries no dialect key at all, so the table's is used —
+    # as it was before the serializers were delegated.
     assert column.dialect == "postgresql"
 
 
@@ -632,3 +632,36 @@ def test_to_dict_keeps_every_pre_fidelity_key_and_is_json_serializable() -> None
     (legacy_column,) = PRE_FIDELITY_TABLE_DICT["columns"]
     (emitted_column,) = emitted["columns"]
     assert set(emitted_column) >= set(legacy_column)
+
+
+def test_a_child_that_carries_its_own_dialect_keeps_it_through_a_round_trip() -> None:
+    """The table's dialect is a fallback for its children, never an override.
+
+    ``Table.from_dict`` passes its own dialect down because a child dict
+    written by an earlier version carries none — but ``dialect`` is a field
+    this serializer now emits, so a child dict that *does* carry one must keep
+    it, or the field fails the round trip it was just added to. Nothing else
+    would notice: a child of the table's own dialect is overwritten with the
+    value it already had.
+    """
+    table = Table(
+        name="orders",
+        schema="public",
+        dialect="postgresql",
+        columns=[SqlColumn(name="id", data_type="integer", dialect="mysql")],
+        constraints=[
+            SqlConstraint(
+                constraint_type=ConstraintType.UNIQUE,
+                name="orders_id_key",
+                column_names=["id"],
+                dialect="mysql",
+            )
+        ],
+    )
+    assert table.columns[0].dialect == "mysql", "Table.__init__ backfills only a falsy dialect"
+
+    restored = Table.from_dict(table.to_dict())
+
+    assert restored.dialect == "postgresql"
+    assert restored.columns[0].dialect == "mysql"
+    assert restored.constraints[0].dialect == "mysql"

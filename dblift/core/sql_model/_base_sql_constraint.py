@@ -244,7 +244,7 @@ class SqlConstraint:
 
         Args:
             data: Dictionary with constraint attributes
-            dialect: SQL dialect to apply, overriding any ``dialect`` in *data*
+            dialect: Fallback dialect, used only when *data* carries none
 
         Returns:
             SqlConstraint instance
@@ -256,7 +256,7 @@ class SqlConstraint:
             reference_table=data.get("reference_table"),
             reference_columns=data.get("reference_columns"),
             check_expression=data.get("check_expression"),
-            dialect=dialect if dialect is not None else data.get("dialect"),
+            dialect=data.get("dialect") or dialect,
             on_delete=data.get("on_delete"),
             on_update=data.get("on_update"),
             is_enabled=data.get("is_enabled"),

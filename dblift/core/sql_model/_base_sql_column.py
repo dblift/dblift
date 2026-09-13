@@ -165,9 +165,10 @@ class SqlColumn:
 
         Args:
             data: Dictionary with column attributes
-            dialect: SQL dialect to apply, overriding any ``dialect`` in *data*.
-                A column dict inlined in a table dict carries no dialect of its
-                own, so the owning table injects its dialect here.
+            dialect: Fallback dialect, used only when *data* carries none.
+                A column dict inlined in a table dict by an earlier version
+                has no dialect of its own, so the owning table passes its
+                own down; a dialect in *data* wins over it.
 
         Returns:
             SqlColumn instance
@@ -189,7 +190,7 @@ class SqlColumn:
             comment=data.get("comment"),
             ordinal_position=data.get("ordinal_position"),
             collation=data.get("collation"),
-            dialect=dialect if dialect is not None else data.get("dialect"),
+            dialect=data.get("dialect") or dialect,
         )
         # Restore explicit_properties if present in the serialized data
         if "explicit_properties" in data:

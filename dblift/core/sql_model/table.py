@@ -709,8 +709,9 @@ class Table(SqlObject):
             except ValueError:
                 object_type = SqlObjectType.TABLE
 
-        # Columns and constraints deserialize themselves; the table injects its
-        # own dialect, which an inlined child dict does not carry.
+        # Columns and constraints deserialize themselves. The table's dialect
+        # goes down as a fallback only, for the inlined child dicts written
+        # before a child carried one of its own.
         columns = [
             SqlColumn.from_dict(col_data, dialect=dialect) for col_data in data.get("columns", [])
         ]
