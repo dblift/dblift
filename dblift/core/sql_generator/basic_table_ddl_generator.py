@@ -156,6 +156,7 @@ def _build_fk_body_sql(
     on_update: Optional[str] = None,
     suppress_no_action: bool = True,
     suppress_on_update: bool = False,
+    suppress_restrict: bool = False,
 ) -> str:
     """Build the core FK body: FOREIGN KEY (...) REFERENCES ... (...) [ON DELETE ...] [ON UPDATE ...].
 
@@ -167,8 +168,12 @@ def _build_fk_body_sql(
         format_identifier: Callable for quoting/formatting identifiers.
         on_delete: ON DELETE action string, or None.
         on_update: ON UPDATE action string, or None.
-        suppress_no_action: If True, omit ON DELETE/UPDATE when action is NO ACTION or RESTRICT.
+        suppress_no_action: If True, omit ON DELETE/UPDATE when the action is NO ACTION,
+            which every engine applies by default.
         suppress_on_update: If True, omit ON UPDATE clause entirely.
+        suppress_restrict: If True, omit ON DELETE/UPDATE when the action is RESTRICT.
+            Only for engines that have no such keyword or record it as NO ACTION;
+            elsewhere RESTRICT is a stricter constraint and must survive.
 
     Returns:
         FK body string starting with "FOREIGN KEY".
@@ -181,14 +186,20 @@ def _build_fk_body_sql(
     if ref_cols_str:
         body += f" ({ref_cols_str})"
 
+    suppressed: Set[str] = set()
+    if suppress_no_action:
+        suppressed.add("NO ACTION")
+    if suppress_restrict:
+        suppressed.add("RESTRICT")
+
     if on_delete:
         action = str(on_delete).upper()
-        if not suppress_no_action or action not in {"NO ACTION", "RESTRICT"}:
+        if action not in suppressed:
             body += f" ON DELETE {action}"
 
     if not suppress_on_update and on_update:
         action = str(on_update).upper()
-        if not suppress_no_action or action not in {"NO ACTION", "RESTRICT"}:
+        if action not in suppressed:
             body += f" ON UPDATE {action}"
 
     return body
@@ -249,6 +260,7 @@ class BasicTableDdlGenerator:
             on_update=getattr(constraint, "on_update", None),
             suppress_no_action=True,
             suppress_on_update=suppress_on_update,
+            suppress_restrict=not _quirks_for(self.table.dialect).table_fk_supports_restrict,
         )
 
     def generate_create_statement(self) -> str:
