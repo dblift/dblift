@@ -22,5 +22,14 @@ User explicitly requested root reviews; no separate reviewer agent substitutes f
 
 ## Status
 
-- Plan/spec written; baseline verification in progress.
-- Tasks 1–7 pending implementation and personal review.
+- Baseline on isolated develop archive: 2325 passed, 1 skipped, 57 subtests passed. Clean environment: /tmp/dblift-oss-performance-venv/bin/python.
+- Task 1 complete; Tasks 2–7 pending.
+
+## Task 1 — personally reviewed and accepted
+
+- Commit: b0b0101; reviewed complete production and test diff against 6cc7670.
+- Constant full-catalog loads: 3 for both 3 and 12 real SQLite migrations (before: 18 and 54).
+- 525 focused tests passed; seven new regressions passed after commit; formatting clean.
+- Personal review correction: test-owned SQLAlchemy engines now dispose in finally, including assertion failures.
+- Verified per-execution reset in all four callback-using commands, empty-catalog reuse, fresh direct manager calls, preserved matching/order and placeholder execution.
+- No open correctness findings. Next catalog/history work may reduce remaining three initial loads.
