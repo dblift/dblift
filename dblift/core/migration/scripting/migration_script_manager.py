@@ -297,15 +297,7 @@ class MigrationScriptManager:
         all_migrations = []
 
         # Add versioned migrations first (already sorted by version in load_migration_scripts)
-        def _cmp_migration(a: Migration, b: Migration) -> int:
-            return self.compare_versions(a.version, b.version)
-
-        all_migrations.extend(
-            sorted(
-                migrations[MigrationType.SQL],
-                key=cmp_to_key(_cmp_migration),
-            )
-        )
+        all_migrations.extend(migrations[MigrationType.SQL])
 
         # Then add repeatable migrations
         all_migrations.extend(migrations[MigrationType.REPEATABLE])
@@ -452,6 +444,9 @@ class MigrationScriptManager:
         recursive: bool = True,
         additional_dirs: Optional[List[Path]] = None,
         dir_recursive_map: Optional[Dict[Path, bool]] = None,
+        _filename_metadata: Optional[
+            Dict[str, Tuple[MigrationType, Optional[str], str, List[str]]]
+        ] = None,
     ) -> List[str]:
         """Return a list of all migration script filenames in the directory and its subdirectories.
 
@@ -566,7 +561,13 @@ class MigrationScriptManager:
                             f"directory '{dir_path}'"
                         )
                         continue
-                    if self.is_valid_script_name(script_path.name):
+                    filename_metadata = self.parse_filename(script_path.name)
+                    if filename_metadata[0] in (
+                        MigrationType.SQL,
+                        MigrationType.REPEATABLE,
+                        MigrationType.UNDO_SQL,
+                        MigrationType.CALLBACK,
+                    ):
                         # Store the script with its source directory information
                         # For additional directories, prefix with the directory name to track the source
                         # Compare resolved paths to handle different path representations
@@ -581,11 +582,14 @@ class MigrationScriptManager:
                             # came from while preserving its location within that
                             # directory.
                             rel_path = script_path.relative_to(dir_path)
-                            scripts.append(f"{dir_path}/{rel_path.as_posix()}")
+                            script_reference = f"{dir_path}/{rel_path.as_posix()}"
                         else:
                             # For the primary directory, use the relative path as-is
                             rel_path = script_path.relative_to(dir_path)
-                            scripts.append(str(rel_path))
+                            script_reference = str(rel_path)
+                        scripts.append(script_reference)
+                        if _filename_metadata is not None:
+                            _filename_metadata[script_reference] = filename_metadata
                     else:
                         self._report_callback_naming_violation(script_path.name)
 
@@ -653,12 +657,14 @@ class MigrationScriptManager:
             MigrationType.CALLBACK: [],
         }
 
-        # Get all scripts from the directory and its subdirectories
+        # Get all scripts and retain their parsed metadata for this load only.
+        filename_metadata: Dict[str, Tuple[MigrationType, Optional[str], str, List[str]]] = {}
         script_paths = self.get_all_scripts(
             scripts_directory,
             recursive=recursive,
             additional_dirs=additional_dirs,
             dir_recursive_map=dir_recursive_map,
+            _filename_metadata=filename_metadata,
         )
 
         # First pass: collect all scripts
@@ -711,20 +717,11 @@ class MigrationScriptManager:
                 seen_files.add(script_path)
 
             try:
-                # Check if it's a callback script (case-insensitive matching)
                 script_name = script_path.name
-                if _callback_event_prefix(script_name) is not None:
-                    # Create Migration object with the logger and encoding
-                    migration = Migration(
-                        script_path,
-                        logger=self.logger,
-                        script_encoding=self.script_encoding,
-                        detect_encoding=self.detect_encoding,
-                    )
-                    callbacks.append(migration)
-                    continue
-
-                migration_type, version, description, _ = self.parse_filename(script_name)
+                parsed_metadata = filename_metadata.get(rel_script_path)
+                if parsed_metadata is None:
+                    parsed_metadata = self.parse_filename(script_name)
+                migration_type = parsed_metadata[0]
                 # Exclude files that are classified as BASELINE but do not match the naming convention
                 if migration_type == MigrationType.BASELINE and not any(
                     script_name.startswith(prefix) for prefix in _CALLBACK_PREFIXES
@@ -737,8 +734,12 @@ class MigrationScriptManager:
                     logger=self.logger,
                     script_encoding=self.script_encoding,
                     detect_encoding=self.detect_encoding,
+                    _filename_metadata=parsed_metadata,
                 )
-                migrations[migration_type].append(migration)
+                if migration_type == MigrationType.CALLBACK:
+                    callbacks.append(migration)
+                else:
+                    migrations[migration_type].append(migration)
             except MigrationEncodingError:
                 # Deliberately not collected as an "invalid script". That branch
                 # exists for files which are not migrations at all — a stray
