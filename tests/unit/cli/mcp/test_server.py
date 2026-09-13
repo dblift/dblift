@@ -14,6 +14,7 @@ import pytest
 pytest.importorskip("mcp")
 anyio = pytest.importorskip("anyio")
 
+import dblift  # noqa: E402
 from dblift.cli.mcp.runner import CommandInvocationError  # noqa: E402
 
 
@@ -1199,3 +1200,20 @@ def test_the_restricted_paragraph_names_every_flag_that_can_reach_it():
     assert RESTRICTED_INSTRUCTIONS.strip() in anyio.run(
         _with_client, DbliftMcpServer([], mode="review"), scenario
     )
+
+
+@pytest.mark.unit
+def test_the_server_reports_the_package_version_in_its_server_info():
+    """A client that pins or logs server identity needs a real version.
+
+    The SDK defaults ``version`` to the empty string, so an unversioned
+    server is what a client saw until the constructor passed one.
+    """
+
+    async def scenario(client):
+        return client.server_info
+
+    server_info = anyio.run(_with_client, _server(), scenario)
+
+    assert server_info.name == "dblift"
+    assert server_info.version == dblift.__version__
