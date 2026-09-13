@@ -69,11 +69,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   actions.** The shared builder behind that statement passed no `ON DELETE` /
   `ON UPDATE`, so a foreign key defined with, say, `ON DELETE SET NULL` was
   re-added without it, and a model whose only change was a referential action
-  produced a script that did not apply it. `NO ACTION` and `RESTRICT` are still
-  omitted, exactly as they are on `CREATE TABLE`, and the `ON UPDATE` clause is
-  still left out for engines that have none. ALTER generators supplied by
+  produced a script that did not apply it. `NO ACTION` is still omitted, exactly
+  as it is on `CREATE TABLE`, and the `ON UPDATE` clause is still left out for
+  engines that have none. ALTER generators supplied by
   add-on packages that do not override the constraint builder inherit this fix,
   so the clause now appears in the SQL they emit.
+- **A foreign key keeps its `RESTRICT` action.** `ON DELETE RESTRICT` and
+  `ON UPDATE RESTRICT` were dropped from generated `CREATE TABLE` and
+  `ALTER TABLE … ADD CONSTRAINT`, leaving the engine to apply its `NO ACTION`
+  default — a weaker rule, checked later and, where deferrable constraints
+  exist, deferrable. The clause is now kept on PostgreSQL, CockroachDB, SQLite,
+  Db2, MySQL, MariaDB and Snowflake. SQL Server, Oracle, Redshift and DuckDB
+  still omit it, because they have no `RESTRICT` to write or record the key as
+  `NO ACTION` anyway. MariaDB's catalogue reports `RESTRICT` for a key created
+  with no action clause at all, so DDL generated from an introspected MariaDB
+  schema now spells the action out — the same behaviour, written explicitly.
 - **`dblift mcp` reports its version.** The `initialize` reply carried
   `serverInfo.version: ""`; it now carries the installed `dblift` version, so a
   client that logs or pins server identity has one to read.
