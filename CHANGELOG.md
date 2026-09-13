@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Opt-in SQLite benchmarks cover fresh migrations of 10 and 100 scripts with
+  and without callbacks, plus no-op migration, validation and info against
+  populated history. Each measured round uses its own database and verifies
+  the command results and database contents.
 - `dblift mcp --offline` refuses every tool and resource that would open a
   database connection, without connecting: the tool stays listed and the call
   returns an error naming the flag. The server starts even where no database
@@ -30,7 +34,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Reduce repeated script discovery, file reads and history queries in `migrate`,
+  `info` and `validate`. Callback catalogs are reused within each command, while
+  subsequent commands observe changed files and history is refreshed after lock
+  acquisition and writes. ([#300](https://github.com/dblift/dblift/pull/300))
+- Commands consume script and history data through StateManager. ScriptManager
+  retains script and callback discovery and event matching; HistoryManager
+  retains history collection. Repair and baseline reads use the same boundary.
+- Index checksum/history lookups, parse filename metadata once per loaded script
+  and remove redundant sorting. Share the common validation checks and MySQL
+  quoted-string readers while preserving filtering, callback order and dialect
+  behavior.
+
 ### Fixed
+
+- `MigrationValidator.validate_resolved_migrations()` now checks that script
+  formats are supported by the selected provider, matching directory-based
+  validation.
 
 ### Removed
 
