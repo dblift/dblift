@@ -43,12 +43,16 @@ class Parameter:
             direction: Parameter direction (IN, OUT, INOUT)
             default_value: Default value for the parameter
             dialect: SQL dialect (optional)
+            volatility: Volatility classification (IMMUTABLE, STABLE, VOLATILE)
+            security_definer: Whether the routine runs as SECURITY DEFINER
         """
         self.name = name
         self.data_type = data_type
         self.direction = direction.upper()  # IN, OUT, INOUT
         self.default_value = default_value
         self.dialect = dialect.lower() if dialect else None
+        self.volatility = volatility
+        self.security_definer = security_definer
 
     def __str__(self) -> str:
         """String representation of the parameter."""
@@ -80,6 +84,8 @@ class Parameter:
             "direction": self.direction,
             "default_value": self.default_value,
             "dialect": self.dialect,
+            "volatility": self.volatility,
+            "security_definer": self.security_definer,
         }
 
     @classmethod
@@ -91,6 +97,8 @@ class Parameter:
             direction=data.get("direction", "IN"),
             default_value=data.get("default_value"),
             dialect=data.get("dialect"),
+            volatility=data.get("volatility"),
+            security_definer=data.get("security_definer"),
         )
 
 

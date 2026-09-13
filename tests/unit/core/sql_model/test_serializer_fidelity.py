@@ -117,22 +117,10 @@ EXPECTED_MODEL_CLASS_NAMES: FrozenSet[str] = frozenset(
 INTENTIONALLY_NOT_SERIALIZED: Dict[type, Dict[str, str]] = {}
 
 #: class -> parameter -> the loss observed on the sentinel-coverage check.
-KNOWN_COVERAGE_GAPS: Dict[type, Dict[str, str]] = {
-    Parameter: {
-        "volatility": "Parameter.__init__ accepts 'volatility' and assigns it to no attribute, "
-        "so to_dict has nothing to emit; the value is discarded at construction.",
-    },
-}
+KNOWN_COVERAGE_GAPS: Dict[type, Dict[str, str]] = {}
 
 #: class -> parameter -> the loss observed on the round-trip check.
-KNOWN_ROUND_TRIP_GAPS: Dict[type, Dict[str, str]] = {
-    Parameter: {
-        "volatility": "Parameter.__init__ accepts 'volatility' and stores it on no attribute; "
-        "the value is discarded at construction, before serialization is reached.",
-        "security_definer": "Parameter.__init__ accepts 'security_definer' and stores it on no "
-        "attribute; the value is discarded at construction, before serialization is reached.",
-    },
-}
+KNOWN_ROUND_TRIP_GAPS: Dict[type, Dict[str, str]] = {}
 
 #: parameter name -> value. Three parameters are normalised or fall back on
 #: load, so a sentinel in them is silently replaced and the row would go red
@@ -653,6 +641,33 @@ def test_an_index_dict_without_a_definition_key_still_loads() -> None:
     assert index.definition is None
 
     emitted = index.to_dict()
+    json.dumps(emitted)
+    assert set(emitted) >= set(legacy)
+    for key, value in legacy.items():
+        assert emitted[key] == value, key
+
+
+def test_a_parameter_dict_without_the_routine_keys_still_loads() -> None:
+    """``volatility`` and ``security_definer`` are additive: absent, they read as ``None``.
+
+    Every parameter dict already on disk carries exactly the five keys below —
+    the extractors that build a ``Parameter`` pass neither of the two, so no
+    file has ever held them — and must keep loading.
+    """
+    legacy: Dict[str, Any] = {
+        "name": "p_customer_id",
+        "data_type": "integer",
+        "direction": "IN",
+        "default_value": None,
+        "dialect": "postgresql",
+    }
+
+    parameter = Parameter.from_dict(legacy)
+
+    assert parameter.volatility is None
+    assert parameter.security_definer is None
+
+    emitted = parameter.to_dict()
     json.dumps(emitted)
     assert set(emitted) >= set(legacy)
     for key, value in legacy.items():
