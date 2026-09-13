@@ -32,7 +32,7 @@ import inspect
 import pkgutil
 import sys
 import typing
-from typing import Any, Dict, Iterator, List, NamedTuple, Optional, Tuple
+from typing import Any, Dict, FrozenSet, Iterator, List, NamedTuple, Optional, Tuple
 
 import pytest
 
@@ -67,6 +67,42 @@ def _discover_model_classes() -> List[type]:
 
 MODEL_CLASSES: List[type] = _discover_model_classes()
 MODEL_CLASSES_BY_NAME: Dict[str, type] = {cls.__name__: cls for cls in MODEL_CLASSES}
+
+#: The classes this harness covers, frozen by name.
+#:
+#: Discovery protects against a class being *added* and forgotten. It does not
+#: protect against one *disappearing*: delete ``Index.from_dict`` and ``Index``
+#: drops silently out of ``MODEL_CLASSES``, taking all of its rows with it and
+#: leaving a green suite that proves nothing about indexes. This set closes
+#: that direction — every change to it is deliberate and reviewable.
+#:
+#: Nineteen classes carry a ``to_dict``/``from_dict`` pair (``procedure.py``
+#: holds two of them); ``SqlConstraint`` is the twentieth, added explicitly
+#: because it carries neither yet.
+EXPECTED_MODEL_CLASS_NAMES: FrozenSet[str] = frozenset(
+    {
+        "DatabaseLink",
+        "Event",
+        "Extension",
+        "ForeignDataWrapper",
+        "ForeignServer",
+        "Index",
+        "LinkedServer",
+        "Module",
+        "Package",
+        "Parameter",
+        "Partition",
+        "Procedure",
+        "Sequence",
+        "SqlColumn",
+        "SqlConstraint",
+        "Synonym",
+        "Table",
+        "Trigger",
+        "UserDefinedType",
+        "View",
+    }
+)
 
 
 # ---------------------------------------------------------------------------
@@ -386,6 +422,59 @@ def _differences(expected: Any, actual: Any, path: str) -> List[str]:
 
 
 # ---------------------------------------------------------------------------
+# Guards — run at import, before any row is built
+# ---------------------------------------------------------------------------
+
+
+def _check_no_model_class_vanished() -> None:
+    """Fail the module if the discovered class set drifted from the frozen one."""
+    discovered = {cls.__name__ for cls in MODEL_CLASSES}
+    missing = sorted(EXPECTED_MODEL_CLASS_NAMES - discovered)
+    unexpected = sorted(discovered - EXPECTED_MODEL_CLASS_NAMES)
+    if missing:
+        raise AssertionError(
+            f"{missing} no longer carries a to_dict/from_dict pair, so the harness silently "
+            "stopped covering it. Restore the pair, or drop the name from "
+            "EXPECTED_MODEL_CLASS_NAMES in the same change that removes the serializer."
+        )
+    if unexpected:
+        raise AssertionError(
+            f"{unexpected} is newly serializable and uncovered. Add it to "
+            "EXPECTED_MODEL_CLASS_NAMES once its rows are green or carry a reasoned xfail."
+        )
+
+
+def _check_gap_tables_name_live_parameters() -> None:
+    """Fail the module if an allowlist or gap entry outlived what it described."""
+    tables = {
+        "INTENTIONALLY_NOT_SERIALIZED": INTENTIONALLY_NOT_SERIALIZED,
+        "KNOWN_COVERAGE_GAPS": KNOWN_COVERAGE_GAPS,
+        "KNOWN_ROUND_TRIP_GAPS": KNOWN_ROUND_TRIP_GAPS,
+    }
+    stale: List[str] = []
+    for table_name, table in tables.items():
+        for cls, params in table.items():
+            if cls not in MODEL_CLASSES:
+                stale.append(f"{table_name}[{cls.__name__}]: class is not under test")
+                continue
+            live = set(_constructor_parameters(cls))
+            stale += [
+                f"{table_name}[{cls.__name__}][{param!r}]: not a constructor parameter"
+                for param in params
+                if param not in live
+            ]
+    if stale:
+        raise AssertionError(
+            "Stale entries — an xfail or allowlist entry naming a parameter that no longer "
+            "exists suppresses nothing and misleads the next reader: " + "; ".join(sorted(stale))
+        )
+
+
+_check_no_model_class_vanished()
+_check_gap_tables_name_live_parameters()
+
+
+# ---------------------------------------------------------------------------
 # Parametrisation
 # ---------------------------------------------------------------------------
 
@@ -434,9 +523,12 @@ def test_to_dict_covers_constructor_parameter(model_cls: type, param: str) -> No
     """``to_dict()`` emits the value the constructor was given for *param*."""
     built = _build(model_cls)
     sentinel = built.sentinels[param]
-    # Case-insensitively: several classes normalise case on the way in
-    # (``dialect`` lowercased, ``Partition.partition_method`` uppercased).
-    # Case folding is not field loss — the round-trip check compares values.
+    # Case-insensitively: three constructors uppercase the value on the way in,
+    # and exactly these three rows go red without the folding (measured by
+    # running this check case-sensitively) — ``Parameter.direction``,
+    # ``Partition.partition_method`` and ``UserDefinedType.type_category``.
+    # Case folding is not field loss; the round-trip check compares the stored
+    # values as they are.
     leaves = {leaf.lower() for leaf in _leaf_strings(built.instance.to_dict())}
     assert any(sentinel.lower() in leaf for leaf in leaves), (
         f"{model_cls.__name__}.to_dict() does not emit {param!r} "
