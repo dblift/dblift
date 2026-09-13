@@ -112,10 +112,11 @@ EXPECTED_MODEL_CLASS_NAMES: FrozenSet[str] = frozenset(
 #: class -> parameter -> why the value is not expected to survive a round trip.
 #: An entry here says "by design"; anything else that fails is a defect. It is
 #: empty: no parameter measured so far is dropped on purpose. ``dialect`` was
-#: the candidate — ``Table.from_dict`` re-injects the table's dialect into the
-#: columns and constraints it rebuilds rather than reading a per-child key —
-#: but the value that arrives is the same one that left, so the row is green
-#: and needs no entry.
+#: the candidate — a column or constraint rebuilt by ``Table.from_dict`` reads
+#: its own ``dialect`` key and falls back to the table's only when it carries
+#: none, as a dict written before that key existed does — but either way the
+#: value that arrives is the same one that left, so the row is green and needs
+#: no entry.
 INTENTIONALLY_NOT_SERIALIZED: Dict[type, Dict[str, str]] = {}
 
 #: class -> parameter -> the loss observed on the sentinel-coverage check.

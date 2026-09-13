@@ -87,7 +87,16 @@ def test_add_constraint_suppresses_on_update_where_the_engine_has_no_such_clause
 
 @pytest.mark.parametrize("action", ["NO ACTION", "RESTRICT"])
 def test_add_constraint_omits_the_implicit_default_actions(action: str) -> None:
-    """``NO ACTION`` / ``RESTRICT`` are the engine default; the CREATE path omits them."""
+    """The builder suppresses both actions, so ALTER emits what CREATE emits.
+
+    ``basic_table_ddl_generator`` suppresses ``NO ACTION`` and ``RESTRICT``
+    alike, so a modelled ``ON DELETE RESTRICT`` reaches the SQL with no action
+    clause at all. That suppression predates this path and is separately wrong:
+    ``RESTRICT`` is not the PostgreSQL default and, unlike ``NO ACTION``, its
+    check cannot be deferred. What this test pins is only that the ALTER path
+    renders the same clause the CREATE path does; changing the suppression
+    would be a change to both.
+    """
     (statement,) = _AlterGenerator("postgresql").generate_alter_table_statements(
         "orders", add_constraints=[_foreign_key(on_delete=action, on_update=action)]
     )
