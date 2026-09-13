@@ -52,8 +52,9 @@ are unaffected.
 `dblift mcp --tools NAME[,NAME...]` is the allowlist: only the named tools
 are served, built-in or add-on, and everything else is skipped. An unknown
 name makes the server refuse to start, so a typo cannot silently shrink the
-tool list. This is the right choice for CI and for agents that should see
-nothing beyond `info`, `validate` and `migrate_dry_run`:
+tool list, and so does a list with no usable name in it (`--tools ""`) rather
+than serving everything. This is the right choice for CI and for agents that
+should see nothing beyond `info`, `validate` and `migrate_dry_run`:
 
 ```json
 {
@@ -63,12 +64,42 @@ nothing beyond `info`, `validate` and `migrate_dry_run`:
 }
 ```
 
-The two flags compose: `--read-only --tools export_schema` admits the name
-and still skips the tool if it declares `read_only=False`. Skipped tools are
-listed on stderr when the server starts; the server still serves what is
-left. Resources (`dblift://history`, `dblift://pending`) are unaffected by
-either flag: both connect to the database regardless of `--read-only` or
-`--tools` — an allowlist fences tools, not resources.
+`dblift mcp --mode review` serves a review session. It withholds the same
+tools `--read-only` does — every tool whose registrar declared it
+`read_only=False` — and additionally tells the agent, in the server
+instructions, that the session is for reading and reporting rather than for
+producing files. Use `--read-only` when you are fencing a job's capabilities
+and `--mode review` when you are telling an agent what it is there for; the
+default, `--mode author`, restricts nothing. The mode is the only thing the
+server does with it: where an add-on command reads the mode and softens a
+stop into a warning — a stale input a review may report on but an authoring
+run must not build from — that behaviour is the command's, not the server's.
+
+`dblift mcp --resources NAME[,NAME...]` is the allowlist for resources, the
+way `--tools` is the one for tools. `--resources history` serves
+`dblift://history` and withholds `dblift://pending`; either spelling works
+(`history` or `dblift://history`), and an unknown name — or an empty list —
+makes the server refuse to start, as with `--tools`. `--tools` has never
+fenced resources and still does not: an allowlist written before this flag
+existed keeps serving both resources.
+
+`dblift mcp --offline` refuses every tool and resource that would open a
+database connection. The refusal happens when the tool is called, not when
+the server starts: the tool stays in `tools/list` and the call returns an
+error naming `--offline`, so an agent is told why rather than left to guess
+from a missing tool. **All three built-in tools and both built-in resources
+read the schema-history table**, so on an install with no add-on packages an
+offline server refuses everything; the flag is for installs whose add-on
+tools run from the project's files. The server starts even with no
+`dblift.yaml` and no database configured — nothing is loaded until a tool is
+called. Start-up prints, on stderr, which registrations will refuse.
+
+The flags compose: `--read-only --tools export_schema` admits the name and
+still skips the tool if it declares `read_only=False`; `--offline --tools
+info` serves `info` and refuses every call to it; `--tools` and `--resources`
+fence their own lists side by side, and a name unknown to either refuses the
+start. Skipped tools and resources are listed on stderr when the server
+starts; the server still serves what is left.
 
 Installed add-on packages can contribute further tools through the
 `dblift.mcp_tools` entry-point group. An add-on tool that overwrites a file

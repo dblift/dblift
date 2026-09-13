@@ -9,6 +9,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `dblift mcp --offline` refuses every tool and resource that would open a
+  database connection, without connecting: the tool stays listed and the call
+  returns an error naming the flag. The server starts even where no database
+  is configured. All built-in tools and resources read the schema-history
+  table, so this is for sessions whose tools run from the project's files;
+  add-on packages declare which of their tools connect.
+- `dblift mcp --resources NAME[,NAME...]` withholds the resources you do not
+  name (`history`, `pending`, or their `dblift://` URIs), the way `--tools`
+  does for tools. An unknown name refuses to start. `--tools` still fences
+  tools only.
+- `dblift mcp --mode review` serves a review session: the tools that write a
+  file you name are withheld, as with `--read-only`, and the server tells the
+  agent the session is for reading and reporting. `--mode author` is the
+  default and restricts nothing.
 - Add-on packages can now contribute resources that are not command payloads —
   a document the package ships, or one derived from your configuration, served
   under its own media type. `--resources` fences them and `--offline` refuses

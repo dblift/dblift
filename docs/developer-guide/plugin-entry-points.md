@@ -60,6 +60,12 @@ sets `destructive_hint`. `destructive=True` with `read_only=True` is a
 contradiction and raises `ValueError` (`destructive_hint` is only meaningful
 when `read_only_hint` is false). See `docs/user-guide/mcp.md`.
 
+Pass `connects=False` when the command your tool runs needs no database
+connection — it runs from the project's files and configuration. The default is
+`True`: a tool that does not say is assumed to connect, and a server started
+`--offline` fails every such call with an error naming that flag. The tool is
+still registered and listed; only the call refuses.
+
 The server may have been started `--read-only` or with `--tools NAME[,...]`. A
 tool it will not accept — `read_only=False` on a write-forbidding server, or a
 name outside the allowlist — is skipped and logged, never raised, so the server
@@ -69,11 +75,14 @@ every tool unconditionally and let the server skip — do not consult
 registrar never offers is invisible to `--tools`, which then counts its name as
 unknown and refuses to start, whereas an offered-but-skipped tool is admitted by
 name and skipped with a reason. A skipped name stays reserved: registering it
-again is still a duplicate.
+again is still a duplicate. `--resources NAME[,...]` fences resources the same
+way: `server.skipped_resources()` lists those skips, and a name in that
+allowlist that nothing offered refuses to start, as with `--tools`.
 
-`command_resource` is outside the write boundary: it takes no `read_only` and is
-never skipped by `--read-only` or `--tools`, so a resource must not run a
-writing command.
+`command_resource` is outside the **write** boundary — it takes no `read_only`,
+so a resource must not run a writing command — but it is fenced by
+`--resources NAME[,NAME...]` (which accepts the resource's name or its URI) and
+it takes `connects=` exactly as a tool does.
 
 A tool `fn`'s keyword-only parameters and their annotations become the tool's
 input schema, and its docstring the description. Write those annotations however
