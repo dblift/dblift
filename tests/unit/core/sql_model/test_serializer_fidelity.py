@@ -520,11 +520,11 @@ def test_round_trip_preserves_constructor_parameter(model_cls: type, param: str)
 
 #: A table dict exactly as ``Table.to_dict`` produced it before the constraint
 #: serializer landed, captured by running it on OSS ``eab4b59`` against a table
-#: carrying one column and one foreign key, then mapping the raw
-#: ``ConstraintType`` enum to its ``.value`` the way the JSON writers do — so
-#: this literal is the shape every model file already on disk carries, not an
-#: invented one. Eight constraint keys; no ``is_primary_key`` / ``is_unique``
-#: on the column.
+#: carrying one column and one foreign key. That dict held the raw
+#: ``ConstraintType`` enum, which ``json.dumps`` cannot write, so the literal
+#: below carries the enum's ``.value`` instead: the form a JSON model file can
+#: hold at all, and one ``from_dict`` accepts. Eight constraint keys; no
+#: ``is_primary_key`` / ``is_unique`` on the column.
 PRE_FIDELITY_TABLE_DICT: Dict[str, Any] = {
     "name": "orders",
     "schema": "public",
