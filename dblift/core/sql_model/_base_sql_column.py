@@ -203,7 +203,11 @@ class SqlColumn:
                 for constraint_data in data.get("constraints", [])
             ],
         )
-        # Restore explicit_properties if present in the serialized data
-        if "explicit_properties" in data:
-            column.explicit_properties = data["explicit_properties"]
+        # Restore explicit_properties mark by mark, the way SqlConstraint does.
+        # Assigning the caller's dict would alias it, so marking a property on
+        # one column would write through into every other column built from the
+        # same dict.
+        for prop, is_explicit in (data.get("explicit_properties") or {}).items():
+            if is_explicit:
+                column.mark_property_explicit(prop)
         return column
