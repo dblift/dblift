@@ -23,7 +23,7 @@ User explicitly requested root reviews; no separate reviewer agent substitutes f
 ## Status
 
 - Baseline on isolated develop archive: 2325 passed, 1 skipped, 57 subtests passed. Clean environment: /tmp/dblift-oss-performance-venv/bin/python.
-- Tasks 1–4 complete, including the data ownership correction; Tasks 5–7 pending.
+- Tasks 1–5 complete, including the data ownership correction; Tasks 6–7 pending.
 
 ## Task 1 — personally reviewed and accepted
 
@@ -89,3 +89,13 @@ User explicitly requested root reviews; no separate reviewer agent substitutes f
 - Test collaborator updates add the required state aggregator; no direct-collector production fallback was added for outdated fixtures.
 - 2392 migration/validator tests passed, one skipped; 23 SQLite CLI/JSON checks passed. All formatting, typing, import contracts and repository ratchets pass.
 - Read-count gains remain unchanged; no open correctness or ownership findings.
+
+## Task 5 — personally reviewed and accepted
+
+- Commits: a94a07a and af40fb9; personally reviewed the full production/test diff and final fixture correction.
+- Both validation adapters now share the prepared-input check sequence. Input collection remains in the adapters; the shared validator performs no discovery or history reads.
+- Full/scoped script and history inputs remain separate. Root requested keyword-only arguments to prevent accidental interchange.
+- Twelve public-result parity cases cover duplicates, failed history, strict drift, repeatables, filtered and missing files, empty history, and format support. The resolved entry point now performs its missing format check.
+- Root rejected a permissive production attribute fallback introduced for an incomplete test fixture. The final correction restores the normal format guard and supplies the fixture's intended context explicitly.
+- 2404 migration/validator tests passed, one skipped; 23 SQLite CLI/JSON checks passed. After the final correction, 17 affected tests and all 232 SQL-validator tests passed. Formatting, typing, import contracts and repository ratchets passed.
+- No open correctness or ownership findings.

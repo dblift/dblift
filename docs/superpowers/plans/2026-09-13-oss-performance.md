@@ -24,7 +24,7 @@
 
 ## Execution and review
 
-Coding models: GPT-5.6 Sol with high reasoning for focused refactoring; GPT-6 Astra with high reasoning for checksum semantics and command data ownership. Root performs the specification review and code-quality review itself, as explicitly requested. No implementer may spawn another agent. Workers must work only in the isolated worktree, record their base SHA, run focused checks, write a report and commit only their assigned changes.
+Coding models: GPT-5.6 Sol with medium or high reasoning for focused refactoring; GPT-6 Astra with high reasoning for checksum semantics and command data ownership. Root performs the specification review and code-quality review itself, as explicitly requested. No implementer may spawn another agent. Workers must work only in the isolated worktree, record their base SHA, run focused checks, write a report and commit only their assigned changes.
 
 For each task: reproduce the undesirable operation count (or record existing behavioral coverage for pure refactoring), implement the smallest change, verify, commit, then root reads the complete diff and relevant surrounding code. Any correctness finding returns to the implementer for correction and another personal review. Status is recorded in the adjacent review ledger.
 
@@ -123,10 +123,10 @@ Explicit user clarification: each specialized manager collects required data, th
 
 **Interfaces:** Retain `validate_migrations(...)` and `validate_resolved_migrations(...)`. The shared core consumes full catalog, scoped scripts and the appropriate history snapshot separately; adapters remain responsible for directory resolution and caller scope.
 
-- [ ] Add parity tests for duplicate versions/repeatables, failed history, strict drift checks and unsupported formats. Explicitly cover filtered scripts present on disk and genuinely missing files.
-- [ ] Extract the repeated check sequence into a private common method; route both entry points to it. Both run format-support checks. Preserve checked/failed lists, issue order, error strings and early-return behavior except the identified missing format check.
-- [ ] Keep tests independent of method-internal call layout; assert public ValidationResult behavior.
-- [ ] Run the full SQL-validator unit suite and command validation tests; commit `refactor: share migration validation pipeline`.
+- [x] Add parity tests for duplicate versions/repeatables, failed history, strict drift checks and unsupported formats. Explicitly cover filtered scripts present on disk and genuinely missing files.
+- [x] Extract the repeated check sequence into a private common method; route both entry points to it. Both run format-support checks. Preserve checked/failed lists, issue order, error strings and early-return behavior except the identified missing format check.
+- [x] Keep tests independent of method-internal call layout; assert public ValidationResult behavior.
+- [x] Run the full SQL-validator unit suite and command validation tests; commit `refactor: share migration validation pipeline`.
 
 ### Task 6: Deduplicate MySQL quoted-string readers
 
