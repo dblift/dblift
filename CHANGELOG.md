@@ -99,6 +99,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `NO ACTION` anyway. MariaDB's catalogue reports `RESTRICT` for a key created
   with no action clause at all, so DDL generated from an introspected MariaDB
   schema now spells the action out — the same behaviour, written explicitly.
+  ALTER generators supplied by add-on packages that do not override the
+  constraint builder inherit this through the engine's quirks; one that calls
+  the shared foreign-key builder directly now receives `RESTRICT` unless it
+  passes the new `suppress_restrict` flag.
 - **`dblift mcp` reports its version.** The `initialize` reply carried
   `serverInfo.version: ""`; it now carries the installed `dblift` version, so a
   client that logs or pins server identity has one to read.

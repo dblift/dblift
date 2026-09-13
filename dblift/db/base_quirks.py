@@ -894,11 +894,14 @@ class BaseQuirks:
     table_inline_unique_single_col: bool = False
     #: FK ON UPDATE suppressed in DDL (Oracle does not support it).
     table_fk_suppress_on_update: bool = False
-    #: ``RESTRICT`` is a referential action the engine accepts and records, so
-    #: the clause is emitted instead of collapsing into the ``NO ACTION``
-    #: default -- which is a different, deferrable constraint. False where the
-    #: keyword does not exist (SQL Server, Oracle, Redshift) or where it parses
-    #: but is stored as ``NO ACTION`` (DuckDB).
+    #: The engine accepts ``RESTRICT`` as a referential action and keeps it as
+    #: written, so the clause is emitted rather than collapsed into the
+    #: ``NO ACTION`` default. The test is "accepted and kept", not "does it
+    #: differ from NO ACTION": on PostgreSQL, SQLite and Db2 it is a stricter,
+    #: immediate check; on MySQL and MariaDB it is a synonym the catalogue still
+    #: reports as written. False where the engine has no such keyword (SQL
+    #: Server, Oracle), no referential-action clause at all (Redshift), or
+    #: parses the keyword but stores ``NO ACTION`` (DuckDB).
     table_fk_supports_restrict: bool = True
     #: Constraint deferrable clauses supported (PG, Oracle).
     table_supports_deferrable_constraints: bool = False
