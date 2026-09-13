@@ -23,7 +23,7 @@ User explicitly requested root reviews; no separate reviewer agent substitutes f
 ## Status
 
 - Baseline on isolated develop archive: 2325 passed, 1 skipped, 57 subtests passed. Clean environment: /tmp/dblift-oss-performance-venv/bin/python.
-- Tasks 1–5 complete, including the data ownership correction; Tasks 6–7 pending.
+- Tasks 1–6 complete; ownership completion for repair/baseline and Task 7 pending.
 
 ## Task 1 — personally reviewed and accepted
 
@@ -99,3 +99,10 @@ User explicitly requested root reviews; no separate reviewer agent substitutes f
 - Root rejected a permissive production attribute fallback introduced for an incomplete test fixture. The final correction restores the normal format guard and supplies the fixture's intended context explicitly.
 - 2404 migration/validator tests passed, one skipped; 23 SQLite CLI/JSON checks passed. After the final correction, 17 affected tests and all 232 SQL-validator tests passed. Formatting, typing, import contracts and repository ratchets passed.
 - No open correctness or ownership findings.
+
+## Task 6 — personally reviewed and accepted
+
+- Commit: f971f75; personally reviewed both changed files against 5dac860.
+- Both quote-reader entry points retain their signatures and delegate to the same unchanged tokenization body inside the MySQL plugin.
+- Ten behavior cases passed before and after extraction: doubled quotes, backslashes, other quote characters, multiline positions, subsequent-token positions and unterminated input. Full MySQL tokenizer/parser unit set: 149 passed.
+- Black, isort, production flake8, targeted mypy and diff check passed. No SQL-mode, delimiter or dialect ownership changes; no open findings.

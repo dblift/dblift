@@ -134,15 +134,21 @@ Explicit user clarification: each specialized manager collects required data, th
 
 **Interfaces:** Retain both existing reader methods if callers/tests rely on them; delegate to one implementation that reads its delimiter from input. Do not move dialect-specific escaping rules into a central registry.
 
-- [ ] Verify existing coverage and add missing behavior examples only: doubled quotes, backslash escapes, embedded other quote, multiline positions and current unterminated-input behavior.
-- [ ] Share the identical implementation with thin wrappers; preserve token text/type/position and cursor advancement.
-- [ ] Run the MySQL tokenizer/parser suite; commit `refactor: share MySQL quoted string tokenization`.
+- [x] Verify existing coverage and add missing behavior examples only: doubled quotes, backslash escapes, embedded other quote, multiline positions and current unterminated-input behavior.
+- [x] Share the identical implementation with thin wrappers; preserve token text/type/position and cursor advancement.
+- [x] Run the MySQL tokenizer/parser suite; commit `refactor: share MySQL quoted string tokenization`.
 
 Example equivalence cases:
 ```python
 samples = ["'O''Reilly'", '\"a\"\"b\"', "'a\\'b'", '\"a\\\"b\"']
 ```
 Use the actual tokenizer public API from existing tests to assert token values and following-token positions.
+
+### Ownership completion before Task 7
+
+- [ ] Route the two remaining repair catalog reads through a fresh grouped-catalog StateManager accessor; preserve ScriptManager discovery, group order, options and distinct error handling.
+- [ ] Route baseline dry-run history rows through the existing fresh StateManager accessor. Preserve history-table preconditions and writes.
+- [ ] Verify repair/baseline outcomes and dry-run purity; root reviews the complete diff. Historical provider-specific import and cleanup inventory are outside this optimization scope.
 
 ### Task 7: End-to-end benchmarks and final verification
 
