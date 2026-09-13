@@ -13,6 +13,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Serialized table models keep every constraint field.** A constraint written
+  to a model file lost its `ON DELETE` / `ON UPDATE` actions, its enabled and
+  validated state, its deferrability and its comment, because only eight of its
+  fourteen fields were written. All of them are written now, and the added keys
+  are optional on read, so a file produced by an earlier version still loads —
+  with the fields it never carried left empty. `constraint_type` is written as
+  its string value (`"FOREIGN KEY"`), which is what those files already carry.
+
 ### Removed
 
 ## [4.4.0] - 2026-09-12

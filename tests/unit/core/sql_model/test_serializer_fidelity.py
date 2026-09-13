@@ -29,6 +29,7 @@ from __future__ import annotations
 import enum
 import importlib
 import inspect
+import json
 import pkgutil
 import sys
 import typing
@@ -50,8 +51,7 @@ def _discover_model_classes() -> List[type]:
     """Return every class in the package that carries a ``to_dict``/``from_dict`` pair.
 
     Discovery is by introspection so a class added to the package cannot be
-    forgotten here. ``SqlConstraint`` is appended explicitly: it has neither
-    method today, and the resulting failure is the point.
+    forgotten here.
     """
     found: Dict[str, type] = {}
     for module_info in pkgutil.iter_modules(sql_model_package.__path__):
@@ -61,7 +61,6 @@ def _discover_model_classes() -> List[type]:
                 continue
             if hasattr(obj, "to_dict") and hasattr(obj, "from_dict"):
                 found[obj.__qualname__] = obj
-    found.setdefault(SqlConstraint.__qualname__, SqlConstraint)
     return sorted(found.values(), key=lambda cls: cls.__name__)
 
 
@@ -76,9 +75,8 @@ MODEL_CLASSES_BY_NAME: Dict[str, type] = {cls.__name__: cls for cls in MODEL_CLA
 #: leaving a green suite that proves nothing about indexes. This set closes
 #: that direction — every change to it is deliberate and reviewable.
 #:
-#: Nineteen classes carry a ``to_dict``/``from_dict`` pair (``procedure.py``
-#: holds two of them); ``SqlConstraint`` is the twentieth, added explicitly
-#: because it carries neither yet.
+#: Twenty classes carry a ``to_dict``/``from_dict`` pair (``procedure.py``
+#: holds two of them).
 EXPECTED_MODEL_CLASS_NAMES: FrozenSet[str] = frozenset(
     {
         "DatabaseLink",
@@ -118,31 +116,6 @@ EXPECTED_MODEL_CLASS_NAMES: FrozenSet[str] = frozenset(
 #: and needs no entry.
 INTENTIONALLY_NOT_SERIALIZED: Dict[type, Dict[str, str]] = {}
 
-#: Every parameter of ``SqlConstraint``, in declaration order. Written out
-#: rather than introspected so the list a reviewer reads is the list the xfails
-#: cover, and so a parameter added later goes red instead of being absorbed.
-_SQL_CONSTRAINT_PARAMS: Tuple[str, ...] = (
-    "constraint_type",
-    "name",
-    "column_names",
-    "reference_table",
-    "reference_columns",
-    "check_expression",
-    "dialect",
-    "on_delete",
-    "on_update",
-    "is_enabled",
-    "is_validated",
-    "is_deferrable",
-    "initially_deferred",
-    "comment",
-)
-
-_SQL_CONSTRAINT_HAS_NO_SERIALIZER = (
-    "SqlConstraint has neither to_dict nor from_dict, so no parameter survives the pair. "
-    "Table.to_dict inlines eight constraint keys by hand instead."
-)
-
 #: class -> parameter -> the loss observed on the sentinel-coverage check.
 KNOWN_COVERAGE_GAPS: Dict[type, Dict[str, str]] = {
     Index: {
@@ -153,19 +126,6 @@ KNOWN_COVERAGE_GAPS: Dict[type, Dict[str, str]] = {
         "volatility": "Parameter.__init__ accepts 'volatility' and assigns it to no attribute, "
         "so to_dict has nothing to emit; the value is discarded at construction.",
     },
-    SqlConstraint: dict.fromkeys(
-        (
-            "name",
-            "column_names",
-            "reference_table",
-            "reference_columns",
-            "check_expression",
-            "on_delete",
-            "on_update",
-            "comment",
-        ),
-        _SQL_CONSTRAINT_HAS_NO_SERIALIZER,
-    ),
 }
 
 #: class -> parameter -> the loss observed on the round-trip check.
@@ -184,16 +144,10 @@ KNOWN_ROUND_TRIP_GAPS: Dict[type, Dict[str, str]] = {
         "constraints": "SqlColumn.constraints: [SqlConstraint] -> []. to_dict emits no "
         "'constraints' key and from_dict passes none to the constructor.",
     },
-    SqlConstraint: dict.fromkeys(_SQL_CONSTRAINT_PARAMS, _SQL_CONSTRAINT_HAS_NO_SERIALIZER),
     Table: {
-        "columns": "Table.columns[0]: is_primary_key True -> False, is_unique True -> False, "
-        "constraints [SqlConstraint] -> []. Table.to_dict writes the column dict by hand and "
-        "omits all three, instead of delegating to SqlColumn.to_dict which emits the first two.",
-        "constraints": "Table.constraints[0]: on_delete '<SqlConstraint.on_delete>' -> None, "
-        "on_update '<SqlConstraint.on_update>' -> None, is_enabled True -> None, is_validated "
-        "True -> None, is_deferrable True -> None, initially_deferred True -> None, comment "
-        "'<SqlConstraint.comment>' -> None. Table.to_dict inlines eight constraint keys and "
-        "emits none of these seven.",
+        "columns": "Table.columns[0].constraints: [SqlConstraint] -> []. Table.to_dict now "
+        "delegates to SqlColumn.to_dict, so the two flags it used to drop survive; what is "
+        "left is SqlColumn's own gap above, which no change to Table can close.",
     },
 }
 
@@ -553,3 +507,128 @@ def test_round_trip_preserves_constructor_parameter(model_cls: type, param: str)
             getattr(instance, attr), getattr(restored, attr, None), f"{model_cls.__name__}.{attr}"
         )
     assert not differences, "; ".join(differences)
+
+
+# ---------------------------------------------------------------------------
+# File-format compatibility
+# ---------------------------------------------------------------------------
+
+#: A table dict exactly as ``Table.to_dict`` produced it before the constraint
+#: serializer landed, captured by running it on OSS ``eab4b59`` against a table
+#: carrying one column and one foreign key, then mapping the raw
+#: ``ConstraintType`` enum to its ``.value`` the way the JSON writers do — so
+#: this literal is the shape every model file already on disk carries, not an
+#: invented one. Eight constraint keys; no ``is_primary_key`` / ``is_unique``
+#: on the column.
+PRE_FIDELITY_TABLE_DICT: Dict[str, Any] = {
+    "name": "orders",
+    "schema": "public",
+    "object_type": "TABLE",
+    "dialect": "postgresql",
+    "columns": [
+        {
+            "name": "id",
+            "data_type": "integer",
+            "nullable": False,
+            "default_value": None,
+            "is_identity": False,
+            "identity_generation": None,
+            "identity_seed": None,
+            "identity_increment": None,
+            "is_computed": False,
+            "computed_expression": None,
+            "computed_stored": False,
+            "comment": None,
+            "ordinal_position": None,
+            "collation": None,
+            "explicit_properties": {},
+        }
+    ],
+    "constraints": [
+        {
+            "name": "orders_customer_fk",
+            "constraint_type": "FOREIGN KEY",
+            "columns": ["customer_id"],
+            "reference_table": "customers",
+            "reference_schema": "public",
+            "reference_columns": ["id"],
+            "check_expression": None,
+            "explicit_properties": {},
+        }
+    ],
+    "temporary": False,
+    "tablespace": None,
+    "comment": None,
+    "partition_method": None,
+    "partition_columns": None,
+    "partitions": [],
+    "export_partitions": [],
+    "derived_from": None,
+    "raw_ddl": None,
+    "metadata": {},
+    "dialect_options": {},
+    "explicit_properties": {},
+}
+
+
+def test_a_model_file_in_the_pre_fidelity_shape_still_loads() -> None:
+    """Every model file already on disk carries the dict above; it must keep loading.
+
+    The seven constraint attributes the old shape never wrote read as ``None``,
+    and the two column flags it never wrote read as ``False`` — a missing new
+    key is a default, never a load error.
+    """
+    table = Table.from_dict(PRE_FIDELITY_TABLE_DICT)
+
+    (fk,) = table.constraints
+    assert fk.constraint_type is ConstraintType.FOREIGN_KEY
+    assert fk.name == "orders_customer_fk"
+    assert fk.column_names == ["customer_id"]
+    assert fk.reference_table == "customers"
+    assert fk.reference_schema == "public"
+    assert fk.reference_columns == ["id"]
+    assert fk.dialect == "postgresql"
+    assert fk.on_delete is None
+    assert fk.on_update is None
+    assert fk.is_enabled is None
+    assert fk.is_validated is None
+    assert fk.is_deferrable is None
+    assert fk.initially_deferred is None
+    assert fk.comment is None
+
+    (column,) = table.columns
+    assert column.name == "id"
+    assert column.nullable is False
+    assert column.is_primary_key is False
+    assert column.is_unique is False
+    # The inlined column dict carries no dialect of its own; the table injects
+    # its own, as it did before the serializers were delegated.
+    assert column.dialect == "postgresql"
+
+
+def test_to_dict_keeps_every_pre_fidelity_key_and_is_json_serializable() -> None:
+    """The emitted dict stays a superset of the old one, and dumps on its own.
+
+    Two claims, and the second is the one nothing else pins. The harness maps
+    an ``Enum`` to its ``.value`` when it flattens a dict, so it is blind to
+    ``constraint_type`` being emitted as the raw enum — which is what
+    ``Table.to_dict`` did, leaving the dict un-``json.dumps``-able until some
+    later writer converted it. Emitting the value makes the dict serializable
+    where it is produced, and matches what every file on disk already carries.
+    """
+    table = Table.from_dict(PRE_FIDELITY_TABLE_DICT)
+    emitted = table.to_dict()
+
+    json.dumps(emitted)
+
+    assert set(emitted) == set(PRE_FIDELITY_TABLE_DICT)
+    (legacy_constraint,) = PRE_FIDELITY_TABLE_DICT["constraints"]
+    (emitted_constraint,) = emitted["constraints"]
+    assert set(emitted_constraint) >= set(legacy_constraint)
+    assert emitted_constraint["constraint_type"] == "FOREIGN KEY"
+    for key, value in legacy_constraint.items():
+        assert emitted_constraint[key] == value, key
+
+    (legacy_column,) = PRE_FIDELITY_TABLE_DICT["columns"]
+    (emitted_column,) = emitted["columns"]
+    assert set(emitted_column) >= set(legacy_column)

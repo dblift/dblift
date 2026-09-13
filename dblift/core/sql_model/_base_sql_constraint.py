@@ -203,6 +203,74 @@ class SqlConstraint:
             )
         )
 
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert constraint to dictionary representation.
+
+        The eight keys written by earlier versions keep their names and their
+        meanings, so a model file produced by this method still loads
+        everywhere the old shape did. ``constraint_type`` is emitted as its
+        string value ("FOREIGN KEY"), which is what every serialized model file
+        already carries and what makes the dict serializable on its own.
+
+        Returns:
+            Dictionary with constraint attributes
+        """
+        return {
+            "name": self.name,
+            "constraint_type": self.constraint_type.value,
+            "columns": self.column_names,
+            "reference_table": self.reference_table,
+            "reference_schema": self.reference_schema,
+            "reference_columns": self.reference_columns,
+            "check_expression": self.check_expression,
+            "on_delete": self.on_delete,
+            "on_update": self.on_update,
+            "is_enabled": self.is_enabled,
+            "is_validated": self.is_validated,
+            "is_deferrable": self.is_deferrable,
+            "initially_deferred": self.initially_deferred,
+            "comment": self.comment,
+            "dialect": self.dialect,
+            "explicit_properties": self.explicit_properties,
+        }
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any], *, dialect: Optional[str] = None) -> "SqlConstraint":
+        """Create SqlConstraint from dictionary representation.
+
+        ``constraint_type`` and ``columns`` are required; every other key is
+        optional, so a dictionary in the older eight-key shape loads with the
+        newer attributes left at ``None``.
+
+        Args:
+            data: Dictionary with constraint attributes
+            dialect: SQL dialect to apply, overriding any ``dialect`` in *data*
+
+        Returns:
+            SqlConstraint instance
+        """
+        constraint = cls(
+            constraint_type=data["constraint_type"],
+            name=data.get("name"),
+            column_names=data["columns"],
+            reference_table=data.get("reference_table"),
+            reference_columns=data.get("reference_columns"),
+            check_expression=data.get("check_expression"),
+            dialect=dialect if dialect is not None else data.get("dialect"),
+            on_delete=data.get("on_delete"),
+            on_update=data.get("on_update"),
+            is_enabled=data.get("is_enabled"),
+            is_validated=data.get("is_validated"),
+            is_deferrable=data.get("is_deferrable"),
+            initially_deferred=data.get("initially_deferred"),
+            comment=data.get("comment"),
+        )
+        constraint.reference_schema = data.get("reference_schema")
+        for prop, is_explicit in (data.get("explicit_properties") or {}).items():
+            if is_explicit:
+                constraint.mark_property_explicit(prop)
+        return constraint
+
     def mark_property_explicit(self, property_name: str) -> None:
         """Mark a property as explicitly defined (not using a schema default).
 

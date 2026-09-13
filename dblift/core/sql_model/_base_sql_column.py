@@ -160,11 +160,14 @@ class SqlColumn:
         }
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "SqlColumn":
+    def from_dict(cls, data: Dict[str, Any], *, dialect: Optional[str] = None) -> "SqlColumn":
         """Create SqlColumn from dictionary representation.
 
         Args:
             data: Dictionary with column attributes
+            dialect: SQL dialect to apply, overriding any ``dialect`` in *data*.
+                A column dict inlined in a table dict carries no dialect of its
+                own, so the owning table injects its dialect here.
 
         Returns:
             SqlColumn instance
@@ -186,7 +189,7 @@ class SqlColumn:
             comment=data.get("comment"),
             ordinal_position=data.get("ordinal_position"),
             collation=data.get("collation"),
-            dialect=data.get("dialect"),
+            dialect=dialect if dialect is not None else data.get("dialect"),
         )
         # Restore explicit_properties if present in the serialized data
         if "explicit_properties" in data:
