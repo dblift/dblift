@@ -23,7 +23,7 @@ User explicitly requested root reviews; no separate reviewer agent substitutes f
 ## Status
 
 - Baseline on isolated develop archive: 2325 passed, 1 skipped, 57 subtests passed. Clean environment: /tmp/dblift-oss-performance-venv/bin/python.
-- Tasks 1–3 complete; Tasks 4–7 pending.
+- Tasks 1–4 complete; Tasks 5–7 pending.
 
 ## Task 1 — personally reviewed and accepted
 
@@ -57,3 +57,20 @@ User explicitly requested root reviews; no separate reviewer agent substitutes f
 - Verified direct constructor overrides (truthy, falsey and path precedence), baseline markers, SQL/Python format behavior, callback buckets and path identity. No persistent metadata cache.
 - 2141 migration tests passed, one skipped; 15 focused regressions passed after commit. Mypy, Black, isort, flake8 and both import contracts pass.
 - No open correctness findings.
+
+## Task 4 — personally reviewed and accepted
+
+- Commit: ae44ad3; reviewed complete production and test diff against cb52908.
+- Real SQLite history SELECTs: fresh migrate 7 to 4, no-op migrate 5 to 2, info 4 to 2, validate without a before callback 3 to 2. File reads and discovery passes also reduced.
+- Verified command-local history capture, empty snapshots, full versus scoped catalogs, unchanged public JSON, pending versus validation ordering, and info fallback on state failure.
+- Real regressions cover callback file/history mutations, fresh footer after callback writes, a second client applying a migration before lock acquisition, reused-command read failure recovery, changed directories/placeholders and byte-identical dry runs.
+- Compatibility corrections preserve old private helper call arity when snapshots are omitted and existing string-keyed state catalogs.
+- 2382 migration/validator tests passed, one skipped; 21 focused regressions and 23 SQLite CLI dry-run/JSON checks passed. Black/isort/flake8, targeted mypy and import contracts pass.
+- Preserved limitations: a nonempty per-directory recursion map retains separate validator discovery to avoid changing its historical scope; existing strict rules may reject applied files outside a tag filter even when the checksum checker receives the full catalog. Neither behavior is changed by this optimization.
+- No open correctness findings.
+
+## Intermediate measured evidence after Tasks 1–3
+
+- Frozen cb52908 source and develop 8645f3b used the same isolated Python 3.12.12 environment and SQLite probe.
+- Fresh 100-migration run: decoded SQL reads 40600 to 300; catalog loads 406 to 3; local elapsed time 13.4713s to 0.2061s. Both runs verified 100 actual tables.
+- These intermediate timings are observations on this machine, not performance guarantees. Final evidence follows after all lots.

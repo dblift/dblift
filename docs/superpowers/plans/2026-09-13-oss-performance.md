@@ -96,11 +96,11 @@ all_migrations.extend(migrations[MigrationType.SQL])
 
 **Interfaces:** Keep public result serialization unchanged. An internal resolved catalog on the state, or optional input to state construction, must not appear as raw Migration objects in JSON. Optional preloaded history must distinguish an empty list from unavailable data. Preserve no-argument compatibility of header helpers.
 
-- [ ] Count real file reads and history SELECTs in migrate/no-op migrate/info/validate. Verify current version, duplicate-version warnings and applied/pending lists.
-- [ ] Reuse the full catalog already loaded by build_state for duplicate detection and validation. Never pass only pending scripts where full-catalog missing-file validation is required.
-- [ ] Remove the obsolete debug-only history fetch, and share history with header/state/validation in the initial read phase where no callback/write intervenes. Keep post-lock and final-state reads; invalidate at callback/write boundaries.
-- [ ] Add same-client repeated-operation tests and a concurrency regression proving post-lock history still prevents duplicate application. Preserve dry-run behavior.
-- [ ] Run state, info, migration concurrency, preflight, dry-run and result-schema tests; commit `perf: reuse command catalog and history snapshots`.
+- [x] Count real file reads and history SELECTs in migrate/no-op migrate/info/validate. Verify current version, duplicate-version warnings and applied/pending lists.
+- [x] Reuse the full catalog already loaded by build_state for duplicate detection and validation. Never pass only pending scripts where full-catalog missing-file validation is required.
+- [x] Remove the obsolete debug-only history fetch, and share history with header/state/validation in the initial read phase where no callback/write intervenes. Keep post-lock and final-state reads; invalidate at callback/write boundaries.
+- [x] Add same-client repeated-operation tests and a concurrency regression proving post-lock history still prevents duplicate application. Preserve dry-run behavior.
+- [x] Run state, info, migration concurrency, preflight, dry-run and result-schema tests; commit `perf: reuse command catalog and history snapshots`.
 
 Required empty-snapshot semantics:
 ```python
