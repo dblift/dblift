@@ -39,6 +39,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   are optional on read, so a file produced by an earlier version still loads —
   with the fields it never carried left empty. `constraint_type` is written as
   its string value (`"FOREIGN KEY"`), which is what those files already carry.
+- **A column's own constraints survive a model file round trip.** A constraint
+  attached to a column rather than to the table was dropped on the way out and
+  on the way back in: the column wrote no `constraints` key and read none. Both
+  happen now. The key is optional on read, so a file written by an earlier
+  version still loads, with no column-level constraints. It is written as the
+  last key of each column, so re-exporting such a file appends one line per
+  column instead of splitting every column apart.
+- **A model file keeps an index's `definition`.** The vendor DDL an index can
+  carry verbatim was neither written nor read back, so it was lost whenever a
+  model file was rewritten. The key is optional on read — a file written by an
+  earlier version still loads — and rewriting one adds `"definition": null` to
+  every index that carries no such DDL.
+- **`ALTER TABLE … ADD CONSTRAINT` for a foreign key carries its referential
+  actions.** The shared builder behind that statement passed no `ON DELETE` /
+  `ON UPDATE`, so a foreign key defined with, say, `ON DELETE SET NULL` was
+  re-added without it, and a model whose only change was a referential action
+  produced a script that did not apply it. `NO ACTION` stays implicit, and the
+  `ON UPDATE` clause is still left out for engines that have none. ALTER
+  generators supplied by add-on packages inherit this builder, so the clause
+  now appears in the SQL they emit.
+- **`dblift mcp` reports its version.** The `initialize` reply carried
+  `serverInfo.version: ""`; it now carries the installed `dblift` version, so a
+  client that logs or pins server identity has one to read.
+- A routine parameter's `volatility` and `security_definer` are now stored and
+  serialized. The constructor accepted both and discarded them, so neither ever
+  reached a model file. Nothing sets or reads either one today, so the only
+  difference in a rewritten file is the two keys, written as `null`, on each
+  parameter.
 
 ### Removed
 
