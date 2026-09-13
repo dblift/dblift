@@ -781,6 +781,7 @@ class MigrationScriptManager:
         recursive: bool = True,
         additional_dirs: Optional[List[Path]] = None,
         dir_recursive_map: Optional[Dict[Path, bool]] = None,
+        callback_catalog: Optional[List[Migration]] = None,
     ) -> List[Migration]:
         """Get callbacks for a specific event (e.g., 'beforeMigrate', 'afterMigrateError').
 
@@ -789,18 +790,22 @@ class MigrationScriptManager:
             event_prefix: Callback event prefix to filter by (case-insensitive)
             recursive: Whether to search subdirectories recursively
             additional_dirs: Optional list of additional directories to search
+            dir_recursive_map: Optional mapping of directories to recursive settings
+            callback_catalog: Optional command-scoped callback list to filter
 
         Returns:
             List of Migration objects for the specified callback event, sorted alphabetically
         """
-        migrations = self.load_migration_scripts(
-            scripts_dir,
-            recursive=recursive,
-            additional_dirs=additional_dirs,
-            dir_recursive_map=dir_recursive_map,
-        )
-
-        callbacks = migrations[MigrationType.CALLBACK]
+        if callback_catalog is None:
+            migrations = self.load_migration_scripts(
+                scripts_dir,
+                recursive=recursive,
+                additional_dirs=additional_dirs,
+                dir_recursive_map=dir_recursive_map,
+            )
+            callbacks = migrations[MigrationType.CALLBACK]
+        else:
+            callbacks = callback_catalog
 
         # Filter callbacks by event prefix (case-insensitive, delimiter-aware matching)
         filtered_callbacks: List[Migration] = []

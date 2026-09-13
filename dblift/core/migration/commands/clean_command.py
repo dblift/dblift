@@ -33,6 +33,7 @@ class CleanCommand(BaseCommand):
             dir_recursive_map: Map of directories to their recursive setting.
             **kwargs: Reserved for forward compatibility; passed through from API/executor.
         """
+        self._reset_callback_catalog()
         result = CleanResult()
         clean_enabled = kwargs.pop("clean_enabled", False) is True
         result.show_query_results = kwargs.pop("show_query_results", False) is True

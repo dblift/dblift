@@ -722,6 +722,7 @@ class MigrateCommand(BaseCommand):
         from dblift.core.seams.runtime_checks import run_checks
 
         run_checks("command.pre_migrate")
+        self._reset_callback_catalog()
         result = MigrateResult()
         result.show_sql = show_sql
         result.show_query_results = show_query_results

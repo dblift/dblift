@@ -82,6 +82,7 @@ class ValidateCommand(BaseCommand):
         exclude_versions: Optional[str] = None,
     ) -> ValidateResult:
         """Validate migration scripts."""
+        self._reset_callback_catalog()
         result = ValidateResult()
         result.target_schema = self.config.database.schema
 

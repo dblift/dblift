@@ -27,7 +27,7 @@ from dblift.core.logger.results import CallbackExecution
 from dblift.core.migration.executor.execution_engine import ExecutionEngine
 from dblift.core.migration.executor.migration_helpers import MigrationHelpers
 from dblift.core.migration.history.migration_history_manager import MigrationHistoryManager
-from dblift.core.migration.migration import VERSIONED_SCRIPT_TYPES
+from dblift.core.migration.migration import VERSIONED_SCRIPT_TYPES, Migration, MigrationType
 from dblift.core.migration.rules.migration_rules import MigrationRules
 from dblift.core.migration.scripting.migration_script_manager import MigrationScriptManager
 from dblift.core.migration.state.migration_state_manager import MigrationStateManager
@@ -238,6 +238,11 @@ class BaseCommand:
         self.migration_rules = ctx.migration_rules
         self.journal = ctx.journal
         self.placeholder_service = ctx.placeholder_service
+        self._callback_catalog: Optional[List[Migration]] = None
+
+    def _reset_callback_catalog(self) -> None:
+        """Discard callback discovery state before a command execution."""
+        self._callback_catalog = None
 
     def _execute_callbacks(
         self,
@@ -262,12 +267,23 @@ class BaseCommand:
         Raises:
             Exception: If any callback fails (except for error callbacks which only log warnings)
         """
+        callback_catalog = getattr(self, "_callback_catalog", None)
+        if callback_catalog is None:
+            callback_catalog = self.script_manager.load_migration_scripts(
+                scripts_dir,
+                recursive=use_recursive,
+                additional_dirs=use_additional_dirs,
+                dir_recursive_map=dir_recursive_map,
+            )[MigrationType.CALLBACK]
+            self._callback_catalog = callback_catalog
+
         callbacks = self.script_manager.get_callbacks_by_event(
             scripts_dir,
             event_prefix,
             recursive=use_recursive,
             additional_dirs=use_additional_dirs,
             dir_recursive_map=dir_recursive_map,
+            callback_catalog=callback_catalog,
         )
 
         if callbacks:
