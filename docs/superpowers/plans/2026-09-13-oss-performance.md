@@ -40,10 +40,10 @@ The explicit plugins avoid an unrelated globally installed pytest-dblift entry p
 
 **Interfaces:** Keep `get_callbacks_by_event` callable with existing arguments. Use a private command-owned catalog or an explicitly bounded scope; never put an unbounded cache on the shared script manager. Existing direct callers outside a command must retain fresh discovery.
 
-- [ ] Add SQLite tests with 3 and 12 migrations and zero callbacks: the number of catalog loads must be independent of migration count, and every migration must really be applied. Add events proving beforeEach/afterEach still execute for every migration, including failure behavior.
-- [ ] Test two calls on the same client after adding/changing callbacks and after a failed run. Test directory/recursive settings and placeholder freshness. Record failing scan-count evidence before editing production code.
-- [ ] Implement one callback catalog per command and filter/sort its callbacks by event using existing matching rules. Cache empty results too. Keep callback execution uncached.
-- [ ] Verify callback event, each-callback, placeholder and command suites; commit `perf: reuse callback catalog within each command`.
+- [x] Add SQLite tests with 3 and 12 migrations and zero callbacks: the number of catalog loads must be independent of migration count, and every migration must really be applied. Add events proving beforeEach/afterEach still execute for every migration, including failure behavior.
+- [x] Test two calls on the same client after adding/changing callbacks and after a failed run. Test directory/recursive settings and placeholder freshness. Record failing scan-count evidence before editing production code.
+- [x] Implement one callback catalog per command and filter/sort its callbacks by event using existing matching rules. Cache empty results too. Keep callback execution uncached.
+- [x] Verify callback event, each-callback, placeholder and command suites; commit `perf: reuse callback catalog within each command`.
 
 Suggested regression structure (use existing SQLite fixture conventions):
 ```python
@@ -61,11 +61,11 @@ Measure the real manager wired into the command, and compare small/large batches
 
 **Interfaces:** Preserve `has_script_changed(...)` for standalone callers and the historical import of `_last_successful_non_delete_record` from migration_validator. The optimized validation path may pass precomputed matches/checksums through a private helper, keeping one implementation of matching rules.
 
-- [ ] Add tests counting decoded reads on unchanged and changed files with populated history; verify the reported mismatches and missing-file messages.
-- [ ] Add a large-history deterministic regression for matching/index construction. Preserve repeated records, successful rows, UNDO/DELETE exclusions, signed/unsigned checksum values, qualified legacy names, encoding and filtered-out scripts.
-- [ ] Build `scripts_by_name`, membership sets, deleted-script sets and latest-successful-record indexes once per validation call. Reuse the resolved file checksum; do not reread the file solely to confirm a difference. Preserve fallback behavior for standalone calls and legacy objects without resolved content.
-- [ ] Remove the duplicate history helper implementation with a compatibility reexport. Replace quadratic checked-script deduplication if it remains on this measured path, retaining ordered public lists.
-- [ ] Run checksum, repeatable, strict-mode, encoding and validation-result tests; commit `perf: index checksum validation inputs`.
+- [x] Add tests counting decoded reads on unchanged and changed files with populated history; verify the reported mismatches and missing-file messages.
+- [x] Add a large-history deterministic regression for matching/index construction. Preserve repeated records, successful rows, UNDO/DELETE exclusions, signed/unsigned checksum values, qualified legacy names, encoding and filtered-out scripts.
+- [x] Build `scripts_by_name`, membership sets, deleted-script sets and latest-successful-record indexes once per validation call. Reuse the resolved file checksum; do not reread the file solely to confirm a difference. Preserve fallback behavior for standalone calls and legacy objects without resolved content.
+- [x] Remove the duplicate history helper implementation with a compatibility reexport. Replace quadratic checked-script deduplication if it remains on this measured path, retaining ordered public lists.
+- [x] Run checksum, repeatable, strict-mode, encoding and validation-result tests; commit `perf: index checksum validation inputs`.
 
 Index shape:
 ```python

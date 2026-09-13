@@ -23,7 +23,7 @@ User explicitly requested root reviews; no separate reviewer agent substitutes f
 ## Status
 
 - Baseline on isolated develop archive: 2325 passed, 1 skipped, 57 subtests passed. Clean environment: /tmp/dblift-oss-performance-venv/bin/python.
-- Task 1 complete; Tasks 2–7 pending.
+- Tasks 1–2 complete; Tasks 3–7 pending.
 
 ## Task 1 — personally reviewed and accepted
 
@@ -33,3 +33,13 @@ User explicitly requested root reviews; no separate reviewer agent substitutes f
 - Personal review correction: test-owned SQLAlchemy engines now dispose in finally, including assertion failures.
 - Verified per-execution reset in all four callback-using commands, empty-catalog reuse, fresh direct manager calls, preserved matching/order and placeholder execution.
 - No open correctness findings. Next catalog/history work may reduce remaining three initial loads.
+
+## Task 2 — personally reviewed and accepted
+
+- Commit: 46fdef2; reviewed complete production and test diff against f1b0436.
+- 2346 tests passed, one skipped; final focused suite: 258 passed. Targeted mypy and Black passed.
+- Resolved checksum comparisons perform no additional decoded reads. A 600-row history requires 1800 visits; repeatable lookup visits 160 rows twice.
+- Verified first-match basename selection, supplied-order successful history, separately ranked repeatable history, encoding, audit exclusions, legacy fallback and both compatibility reexports.
+- Standalone change detection retains fresh reads. Ordered result lists remain public; repository callers mutate them only through the indexed addition methods.
+- Deliberate limitation: existing substring-based diagnostic suppression remains quadratic when many scripts drift (7140 issue visits for 120 drifts). Changing to exact-name deduplication would change visible diagnostics. Normal checksum lookup is linear.
+- No open correctness findings.
