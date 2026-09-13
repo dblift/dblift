@@ -926,3 +926,111 @@ def test_a_raw_resource_can_declare_its_own_media_type():
     assert listed.mime_type == "text/markdown"
     assert result.contents[0].mime_type == "text/markdown"
     assert result.contents[0].text == "# Guide"
+
+
+# --- v3: review mode ----------------------------------------------------------
+
+
+@pytest.mark.unit
+def test_review_mode_withholds_writers_and_says_why():
+    """Same barrier as --read-only, different reason: the operator reading
+    stderr must be able to tell which flag withheld the tool."""
+    from dblift.cli.mcp.server import DbliftMcpServer
+
+    server = DbliftMcpServer([], mode="review")
+    server.command_tool(
+        name="writer", command="info", description="d", fn=lambda: [], read_only=False
+    )
+    server.command_tool(name="reader", command="info", description="d", fn=lambda: [])
+
+    assert server.mode == "review"
+    assert server.allow_writes is False
+    assert server.tool_names() == ["reader"]
+    reason = dict(server.skipped_tools())["writer"]
+    assert "read_only=False" in reason
+    assert "review session" in reason
+
+
+@pytest.mark.unit
+def test_read_only_keeps_its_own_reason():
+    from dblift.cli.mcp.server import DbliftMcpServer
+
+    server = DbliftMcpServer([], allow_writes=False)
+    server.command_tool(
+        name="writer", command="info", description="d", fn=lambda: [], read_only=False
+    )
+
+    reason = dict(server.skipped_tools())["writer"]
+    assert "does not allow writes" in reason
+    assert "review session" not in reason
+
+
+@pytest.mark.unit
+def test_author_mode_is_the_default_and_restricts_nothing():
+    from dblift.cli.mcp.server import DbliftMcpServer
+
+    server = DbliftMcpServer([])
+    server.command_tool(
+        name="writer", command="info", description="d", fn=lambda: [], read_only=False
+    )
+
+    assert server.mode == "author"
+    assert server.allow_writes is True
+    assert server.tool_names() == ["writer"]
+    assert server.skipped_tools() == []
+
+
+@pytest.mark.unit
+def test_an_unknown_mode_is_rejected():
+    from dblift.cli.mcp.server import DbliftMcpServer
+
+    with pytest.raises(ValueError, match="Unknown MCP server mode: audit"):
+        DbliftMcpServer([], mode="audit")
+
+
+@pytest.mark.unit
+def test_review_instructions_say_the_session_is_a_review():
+    from dblift.cli.mcp.server import (
+        REVIEW_INSTRUCTIONS,
+        SERVER_INSTRUCTIONS,
+        DbliftMcpServer,
+    )
+
+    async def scenario(client):
+        return client.instructions
+
+    review = anyio.run(_with_client, DbliftMcpServer([], mode="review"), scenario)
+
+    assert review.startswith(SERVER_INSTRUCTIONS)
+    assert REVIEW_INSTRUCTIONS.strip() in review
+    assert "review session" in review
+    # Writers are withheld, so the agent is also pointed at tools/list.
+    assert "tools/list" in review
+    assert anyio.run(_with_client, DbliftMcpServer([]), scenario) == SERVER_INSTRUCTIONS
+
+
+@pytest.mark.unit
+def test_build_server_forwards_the_mode():
+    from dblift.cli.mcp.server import build_server
+
+    with patch("dblift.cli.mcp.server.load_mcp_tool_registrars", return_value=[]):
+        server = build_server([], mode="review")
+
+    assert server.mode == "review"
+    assert server.allow_writes is False
+
+
+@pytest.mark.unit
+def test_the_restricted_paragraph_names_every_flag_that_can_reach_it():
+    """`--mode review` withholds writers on its own, so the paragraph it
+    appends must not tell the agent the server was started with `--tools`,
+    `--resources` or `--read-only` when none of them was passed."""
+    from dblift.cli.mcp.server import RESTRICTED_INSTRUCTIONS, DbliftMcpServer
+
+    async def scenario(client):
+        return client.instructions
+
+    assert "--mode review" in RESTRICTED_INSTRUCTIONS
+    assert RESTRICTED_INSTRUCTIONS.strip() in anyio.run(
+        _with_client, DbliftMcpServer([], mode="review"), scenario
+    )

@@ -35,6 +35,7 @@ def test_handle_mcp_builds_server_with_global_argv_and_serves():
         allowed_tools=None,
         allowed_resources=None,
         offline=False,
+        mode="author",
     )
     server.run_stdio.assert_called_once_with()
 
@@ -167,6 +168,7 @@ def test_handle_mcp_passes_the_restrictions_to_build_server():
         allowed_tools=["info", "validate"],
         allowed_resources=None,
         offline=False,
+        mode="author",
     )
     server.run_stdio.assert_called_once_with()
 
@@ -394,3 +396,60 @@ def test_zero_config_dispatch_keeps_resources_value_out_of_the_command_list(monk
 
     assert exc_info.value.code == 0
     assert seen == {"resources": "plan"}
+
+
+# --- v3: `--mode review` ------------------------------------------------------
+
+
+@pytest.mark.unit
+def test_mcp_parser_accepts_mode_review():
+    parser = create_parser(exit_on_error=False)
+
+    assert parser.parse_args(["mcp"]).mode == "author"
+    assert parser.parse_args(["mcp", "--mode", "review"]).mode == "review"
+    with pytest.raises(SystemExit):
+        parser.parse_args(["mcp", "--mode", "audit"])
+
+
+@pytest.mark.unit
+def test_handle_mcp_passes_the_mode_to_build_server():
+    server = _quiet_server()
+    ctx = CliCommandContext(
+        args=SimpleNamespace(global_arguments=[], read_only=False, tools=None, mode="review")
+    )
+
+    with patch("dblift.cli.mcp.server.build_server", return_value=server) as build:
+        assert _handle_mcp(ctx) == (True, None)
+
+    assert build.call_args.kwargs["mode"] == "review"
+    # `--mode review` is not `--read-only`: the handler forwards the mode and
+    # lets the server decide, rather than translating one flag into the other.
+    assert build.call_args.kwargs["allow_writes"] is True
+
+
+@pytest.mark.unit
+def test_mode_takes_a_value_and_stays_out_of_the_boolean_flag_list(monkeypatch):
+    """`--mode` carries a value, so listing it in `_SUBCOMMAND_BOOLEAN_FLAGS`
+    would stop the splitter reserving the next token for it — and a later
+    choice named after a command would then be read as a chained command. The
+    membership assertion is what pins that: today's two choices are not command
+    names, so the dispatch below would survive the mistake on its own."""
+    from dblift.cli import main as cli_main
+    from dblift.cli._config_helpers import _SUBCOMMAND_BOOLEAN_FLAGS
+
+    assert "--mode" not in _SUBCOMMAND_BOOLEAN_FLAGS
+
+    seen = {}
+
+    def fake(ctx):
+        seen["mode"] = ctx.args.mode
+        return (True, None)
+
+    fake._dblift_zero_config_command = True
+    monkeypatch.setattr(cli_main, "_COMMAND_HANDLERS", {**cli_main._COMMAND_HANDLERS, "mcp": fake})
+
+    with pytest.raises(SystemExit) as exc_info:
+        cli_main._parse_argv_and_load_config(["mcp", "--mode", "review"])
+
+    assert exc_info.value.code == 0
+    assert seen == {"mode": "review"}

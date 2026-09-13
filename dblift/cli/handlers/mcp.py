@@ -37,13 +37,17 @@ def _handle_mcp(ctx: CliCommandContext) -> Tuple[bool, Any]:
     starts; an allowlisted name nothing registered refuses to start.
     ``--offline`` skips nothing: every tool and resource that opens a database
     connection stays served and refuses at call time, and which ones those are
-    is reported on stderr at start-up.
+    is reported on stderr at start-up. ``--mode review`` withholds the same
+    tools ``--read-only`` does and says the session is for review; the mode is
+    forwarded as it stands rather than translated into ``allow_writes``, so the
+    skip reason on stderr names the flag that withheld each tool.
     """
     from dblift.cli.mcp.server import MissingMcpSdkError, build_server
 
     global_argv: List[str] = list(getattr(ctx.args, "global_arguments", None) or [])
     read_only = bool(getattr(ctx.args, "read_only", False))
     offline = bool(getattr(ctx.args, "offline", False))
+    mode = str(getattr(ctx.args, "mode", None) or "author")
     allowed_tools, tools_ok = _name_list(getattr(ctx.args, "tools", None), "--tools")
     allowed_resources, resources_ok = _name_list(
         getattr(ctx.args, "resources", None), "--resources"
@@ -57,6 +61,7 @@ def _handle_mcp(ctx: CliCommandContext) -> Tuple[bool, Any]:
             allowed_tools=allowed_tools,
             allowed_resources=allowed_resources,
             offline=offline,
+            mode=mode,
         )
     except MissingMcpSdkError as exc:
         CommandOutput("console").error(str(exc))

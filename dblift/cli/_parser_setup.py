@@ -640,6 +640,17 @@ def create_parser(
             "project's files still answer"
         ),
     )
+    mcp_parser.add_argument(
+        "--mode",
+        choices=("author", "review"),
+        default="author",
+        help=(
+            "'review' serves a review session: tools that write a file the "
+            "caller names are skipped (as with --read-only) and the server "
+            "instructions say the session is for review. Default 'author' "
+            "applies no restriction"
+        ),
+    )
     import_module("dblift.cli.extensions").load_command_extensions(parser)
     # Stubs fill whatever gaps the extensions left — never the reverse.
     _register_premium_stub_parsers(parser)
