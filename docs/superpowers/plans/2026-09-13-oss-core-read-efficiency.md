@@ -49,15 +49,15 @@ for name, checksum in repeatable_checksums.items():
 
 **Interfaces:** Public `get_all_scripts(...) -> List[str]` and `load_migration_scripts(...) -> Dict[MigrationType, List[Migration]]` remain callable. Carry path, resolved path and filename metadata from discovery to loading in one private per-call record/map; use a small internal tuple/dataclass only if it reduces repeated reconstruction. The existing Migration `_filename_metadata` constructor input remains unchanged. No cache survives one load.
 
-- [ ] Add red tests proving a 10/100-file normal load currently calls each filesystem predicate/resolution twice; assert all actual migrations are returned.
-- [ ] Verify nonrecursive/recursive/additional/overlapping directories, relative roots, symlink exclusion, out-of-root resolution, missing/unreadable files, encoding failures and unchanged filename parse counts.
-- [ ] Remove the immediately repeated is_file/is_symlink checks and reuse the already guarded resolved path for deduplication. Retain path references, ordering and the traversal guard:
+- [x] Add red tests proving a 10/100-file normal load currently calls each filesystem predicate/resolution twice; assert all actual migrations are returned.
+- [x] Verify nonrecursive/recursive/additional/overlapping directories, relative roots, symlink exclusion, out-of-root resolution, missing/unreadable files, encoding failures and unchanged filename parse counts.
+- [x] Remove the immediately repeated is_file/is_symlink checks and reuse the already guarded resolved path for deduplication. Retain path references, ordering and the traversal guard:
 ```python
 resolved_script_path = script_path.resolve()
 resolved_script_path.relative_to(resolved_dir_path)
 # Carry this value with the original path and parsed filename for this load.
 ```
-- [ ] Preserve standalone get_all_scripts behavior and justified legacy input paths; update incomplete test collaborators rather than weakening production guards. Run scripting/filename/path-security/encoding suites plus lint/type checks. Commit `perf: reuse script discovery filesystem metadata`.
+- [x] Preserve standalone get_all_scripts behavior and justified legacy input paths; update incomplete test collaborators rather than weakening production guards. Run scripting/filename/path-security/encoding suites plus lint/type checks. Commit `perf: reuse script discovery filesystem metadata`.
 
 ### Task 3: Calculate schema version without display analysis
 

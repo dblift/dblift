@@ -36,3 +36,7 @@ Develop 8f8e2a3, isolated audit worktree, task-specific environments:
 ## Task 1 — accepted
 
 Reviewed complete 7d67440..195c222 diff. Exact/bare/first-qualified checksum precedence and direct-call fallback are preserved. Indexes live only in each aggregation and are lazy, including the correction identified during review. Independent run: all 8 new regressions passed. Counting inputs drop from 250,000 membership visits and 125,250 checksum visits to 500 each; versioned-only paths visit neither input.
+
+## Task 2 — accepted
+
+Reviewed complete 993e64b..0fd266f production and test changes. The containment guard remains in discovery; only the redundant predicates and second normal-path resolution disappear. Per-load records preserve filename metadata precedence, ambiguous reference routing and metadata-free override fallback. Independent run: 16 new regressions passed. Focused discovery/encoding/command suites: 431 passed, 1 existing platform skip; formatting, lint and targeted typing passed. Normal 10/100-file loads now perform one of each filesystem check per file.
