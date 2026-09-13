@@ -208,7 +208,7 @@ class TestOtherCommandsColdStartRegression:
             failed_objects=[],
             all_applied_objects=[],
         )
-        cmd.script_manager.load_migration_scripts.return_value = {}
+        cmd.state_manager.get_grouped_migrations.return_value = {}
 
         result = cmd.execute(scripts_dir=MagicMock())
 

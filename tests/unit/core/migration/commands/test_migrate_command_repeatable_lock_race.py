@@ -51,6 +51,9 @@ def _cmd(pending, applied_after_lock, execute_side_effect=None):
     ]
 
     state_manager = MagicMock()
+    state_manager.get_applied_migration_records.side_effect = (
+        history_manager.get_applied_migration_records
+    )
     state_manager.build_state.return_value = state
     state_manager.get_current_version.return_value = None
     state_manager.apply_filters_to_migrations.side_effect = lambda migrations, **kwargs: list(

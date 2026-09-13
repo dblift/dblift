@@ -103,6 +103,7 @@ class UndoCommand(BaseCommand):
         dir_recursive_map: Optional[Dict[Path, bool]] = None,
     ) -> UndoResult:
         """Undo migrations to a target version."""
+        self._reset_callback_catalog()
         normalized_tags = self._normalize_filter_values(tags)
         normalized_exclude_tags = self._normalize_filter_values(exclude_tags)
         tag_filter_active = bool(normalized_tags or normalized_exclude_tags)

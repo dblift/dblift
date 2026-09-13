@@ -11,6 +11,8 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from dblift.config import DbliftConfig
 from dblift.core.logger import Log, NullLog
+from dblift.core.migration.migration import Migration
+from dblift.core.migration.state.migration_state import MigrationReadSnapshot
 from dblift.core.sql_validator.migration_validator import MigrationValidator
 
 
@@ -96,6 +98,10 @@ class MigrationHelpers:
         exclude_tags: Optional[Sequence[str]] = None,
         versions: Optional[Sequence[str]] = None,
         exclude_versions: Optional[Sequence[str]] = None,
+        *,
+        resolved_migrations: Optional[List[Migration]] = None,
+        preloaded_records: Optional[List[Migration]] = None,
+        read_snapshot: Optional[MigrationReadSnapshot] = None,
     ) -> Tuple[bool, Optional[str], float]:
         """Validate migrations for the migrate command.
 
@@ -124,6 +130,9 @@ class MigrationHelpers:
             exclude_tags=exclude_tags,
             versions=versions,
             exclude_versions=exclude_versions,
+            resolved_migrations=resolved_migrations,
+            preloaded_records=preloaded_records,
+            read_snapshot=read_snapshot,
         )
         validation_time = time.time() - start_validation_time
 

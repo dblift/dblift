@@ -4,9 +4,10 @@ import os
 import re
 from functools import cmp_to_key
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any, Dict, Iterable, Iterator, List, Optional, Set, Tuple
 
 from dblift.core.logger import Log
+from dblift.core.migration._type_match import is_migration_type
 from dblift.core.migration.encoding import MigrationEncodingError, read_migration_text
 from dblift.core.migration.migration import (
     _CALLBACK_PREFIXES,
@@ -22,6 +23,56 @@ from dblift.core.migration.migration import (
 )
 from dblift.core.migration.version_utils import compare_versions as _compare_versions_shared
 from dblift.core.migration.version_utils import is_migration_success
+
+
+def _successful_non_delete_records(migrations: Iterable[Migration]) -> Iterator[Migration]:
+    """Yield successful non-audit rows in the supplied history order."""
+    for migration in migrations:
+        migration_type = getattr(migration, "type", None)
+        if (
+            not is_migration_type(migration_type, "DELETE")
+            and not is_migration_type(migration_type, "UNDO_SQL")
+            and is_migration_success(getattr(migration, "success", False))
+        ):
+            yield migration
+
+
+def _last_successful_non_delete_record(
+    applied_migrations: List[Migration], script_name: str
+) -> Optional[Migration]:
+    """Find the last successful non-audit row in the supplied history order."""
+    return next(
+        (
+            migration
+            for migration in _successful_non_delete_records(reversed(applied_migrations))
+            if getattr(migration, "script_name", None) == script_name
+        ),
+        None,
+    )
+
+
+def _current_script_checksum(
+    manager: "MigrationScriptManager",
+    script_path: Optional[Path],
+    script: Optional[Migration] = None,
+) -> Optional[int]:
+    """Reuse resolved content's checksum, or read a legacy/standalone script once."""
+    if script is not None and isinstance(getattr(script, "content", None), str):
+        checksum = normalize_migration_checksum(getattr(script, "checksum", None))
+        if checksum is not None:
+            return checksum
+    if script_path and script_path.exists():
+        raw_text = read_migration_text(
+            script_path,
+            configured_encoding=manager.script_encoding,
+            detect_encoding=manager.detect_encoding,
+        )
+        checksum = normalize_migration_checksum(manager.calculate_checksum(raw_text))
+        if checksum is None:
+            checksum = calculate_migration_script_checksum(raw_text)
+        return checksum
+    return None
+
 
 # A version must start with a digit. Later segments may mix letters and
 # digits (``V3.2A``, ``V1.2.3RC1``) — dblift is deliberately looser than
@@ -246,15 +297,7 @@ class MigrationScriptManager:
         all_migrations = []
 
         # Add versioned migrations first (already sorted by version in load_migration_scripts)
-        def _cmp_migration(a: Migration, b: Migration) -> int:
-            return self.compare_versions(a.version, b.version)
-
-        all_migrations.extend(
-            sorted(
-                migrations[MigrationType.SQL],
-                key=cmp_to_key(_cmp_migration),
-            )
-        )
+        all_migrations.extend(migrations[MigrationType.SQL])
 
         # Then add repeatable migrations
         all_migrations.extend(migrations[MigrationType.REPEATABLE])
@@ -358,25 +401,7 @@ class MigrationScriptManager:
             )
             return True
 
-        # Find the last applied version of this script (excluding DELETE entries)
-        applied_script = None
-        for migration in reversed(applied_migrations):
-            # All applied_migrations should now be Migration objects
-            migration_script_name = getattr(migration, "script_name", None)
-            migration_success = getattr(migration, "success", False)
-            migration_type = getattr(migration, "type", None)
-
-            # Skip audit rows when looking for the original applied migration.
-            is_audit_type = self._is_migration_type_equal(
-                migration_type, "DELETE"
-            ) or self._is_migration_type_equal(migration_type, "UNDO_SQL")
-            if (
-                migration_script_name == script_name
-                and is_migration_success(migration_success)
-                and not is_audit_type
-            ):
-                applied_script = migration
-                break
+        applied_script = _last_successful_non_delete_record(applied_migrations, script_name)
 
         # If script has never been successfully applied, consider it changed
         if not applied_script:
@@ -386,26 +411,8 @@ class MigrationScriptManager:
         # Get applied checksum (normalize driver unsigned 32-bit vs signed Flyway CRC32)
         applied_checksum = normalize_migration_checksum(getattr(applied_script, "checksum", None))
 
-        # Get current checksum
-        current_checksum = None
-        if script_path and script_path.exists():
-            # Calculate checksum from the same decoded text used for migration execution.
-            raw_text = read_migration_text(
-                script_path,
-                configured_encoding=self.script_encoding,
-                detect_encoding=self.detect_encoding,
-            )
-            current_checksum = normalize_migration_checksum(self.calculate_checksum(raw_text))
-            # Legacy: calculate_checksum once returned MD5 hex (non-numeric); Flyway CRC32 is authoritative
-            if current_checksum is None:
-                current_checksum = calculate_migration_script_checksum(raw_text)
-        else:
-            # We need to find the script file
-            # This could be improved by allowing script_dir to be passed in
-            self.logger.debug(
-                f"No script path provided for {script_name}, checksum comparison not possible"
-            )
-            return True
+        # Standalone callers always read the current file, without a resolved snapshot.
+        current_checksum = _current_script_checksum(self, script_path)
 
         if applied_checksum is None:
             self.logger.debug(
@@ -437,6 +444,9 @@ class MigrationScriptManager:
         recursive: bool = True,
         additional_dirs: Optional[List[Path]] = None,
         dir_recursive_map: Optional[Dict[Path, bool]] = None,
+        _filename_metadata: Optional[
+            Dict[str, Tuple[MigrationType, Optional[str], str, List[str]]]
+        ] = None,
     ) -> List[str]:
         """Return a list of all migration script filenames in the directory and its subdirectories.
 
@@ -551,7 +561,13 @@ class MigrationScriptManager:
                             f"directory '{dir_path}'"
                         )
                         continue
-                    if self.is_valid_script_name(script_path.name):
+                    filename_metadata = self.parse_filename(script_path.name)
+                    if filename_metadata[0] in (
+                        MigrationType.SQL,
+                        MigrationType.REPEATABLE,
+                        MigrationType.UNDO_SQL,
+                        MigrationType.CALLBACK,
+                    ):
                         # Store the script with its source directory information
                         # For additional directories, prefix with the directory name to track the source
                         # Compare resolved paths to handle different path representations
@@ -566,11 +582,14 @@ class MigrationScriptManager:
                             # came from while preserving its location within that
                             # directory.
                             rel_path = script_path.relative_to(dir_path)
-                            scripts.append(f"{dir_path}/{rel_path.as_posix()}")
+                            script_reference = f"{dir_path}/{rel_path.as_posix()}"
                         else:
                             # For the primary directory, use the relative path as-is
                             rel_path = script_path.relative_to(dir_path)
-                            scripts.append(str(rel_path))
+                            script_reference = str(rel_path)
+                        scripts.append(script_reference)
+                        if _filename_metadata is not None:
+                            _filename_metadata[script_reference] = filename_metadata
                     else:
                         self._report_callback_naming_violation(script_path.name)
 
@@ -638,12 +657,14 @@ class MigrationScriptManager:
             MigrationType.CALLBACK: [],
         }
 
-        # Get all scripts from the directory and its subdirectories
+        # Get all scripts and retain their parsed metadata for this load only.
+        filename_metadata: Dict[str, Tuple[MigrationType, Optional[str], str, List[str]]] = {}
         script_paths = self.get_all_scripts(
             scripts_directory,
             recursive=recursive,
             additional_dirs=additional_dirs,
             dir_recursive_map=dir_recursive_map,
+            _filename_metadata=filename_metadata,
         )
 
         # First pass: collect all scripts
@@ -696,20 +717,11 @@ class MigrationScriptManager:
                 seen_files.add(script_path)
 
             try:
-                # Check if it's a callback script (case-insensitive matching)
                 script_name = script_path.name
-                if _callback_event_prefix(script_name) is not None:
-                    # Create Migration object with the logger and encoding
-                    migration = Migration(
-                        script_path,
-                        logger=self.logger,
-                        script_encoding=self.script_encoding,
-                        detect_encoding=self.detect_encoding,
-                    )
-                    callbacks.append(migration)
-                    continue
-
-                migration_type, version, description, _ = self.parse_filename(script_name)
+                parsed_metadata = filename_metadata.get(rel_script_path)
+                if parsed_metadata is None:
+                    parsed_metadata = self.parse_filename(script_name)
+                migration_type = parsed_metadata[0]
                 # Exclude files that are classified as BASELINE but do not match the naming convention
                 if migration_type == MigrationType.BASELINE and not any(
                     script_name.startswith(prefix) for prefix in _CALLBACK_PREFIXES
@@ -722,8 +734,12 @@ class MigrationScriptManager:
                     logger=self.logger,
                     script_encoding=self.script_encoding,
                     detect_encoding=self.detect_encoding,
+                    _filename_metadata=parsed_metadata,
                 )
-                migrations[migration_type].append(migration)
+                if migration_type == MigrationType.CALLBACK:
+                    callbacks.append(migration)
+                else:
+                    migrations[migration_type].append(migration)
             except MigrationEncodingError:
                 # Deliberately not collected as an "invalid script". That branch
                 # exists for files which are not migrations at all — a stray
@@ -781,6 +797,7 @@ class MigrationScriptManager:
         recursive: bool = True,
         additional_dirs: Optional[List[Path]] = None,
         dir_recursive_map: Optional[Dict[Path, bool]] = None,
+        callback_catalog: Optional[List[Migration]] = None,
     ) -> List[Migration]:
         """Get callbacks for a specific event (e.g., 'beforeMigrate', 'afterMigrateError').
 
@@ -789,18 +806,22 @@ class MigrationScriptManager:
             event_prefix: Callback event prefix to filter by (case-insensitive)
             recursive: Whether to search subdirectories recursively
             additional_dirs: Optional list of additional directories to search
+            dir_recursive_map: Optional mapping of directories to recursive settings
+            callback_catalog: Optional command-scoped callback list to filter
 
         Returns:
             List of Migration objects for the specified callback event, sorted alphabetically
         """
-        migrations = self.load_migration_scripts(
-            scripts_dir,
-            recursive=recursive,
-            additional_dirs=additional_dirs,
-            dir_recursive_map=dir_recursive_map,
-        )
-
-        callbacks = migrations[MigrationType.CALLBACK]
+        if callback_catalog is None:
+            migrations = self.load_migration_scripts(
+                scripts_dir,
+                recursive=recursive,
+                additional_dirs=additional_dirs,
+                dir_recursive_map=dir_recursive_map,
+            )
+            callbacks = migrations[MigrationType.CALLBACK]
+        else:
+            callbacks = callback_catalog
 
         # Filter callbacks by event prefix (case-insensitive, delimiter-aware matching)
         filtered_callbacks: List[Migration] = []

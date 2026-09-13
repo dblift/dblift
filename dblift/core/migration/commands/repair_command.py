@@ -258,7 +258,7 @@ class RepairCommand(BaseCommand):
         # that the directory exists for every command except ``baseline``;
         # anything that raises here is the operator's to fix before repair
         # can proceed safely.
-        filesystem_migrations = self.script_manager.load_migration_scripts(
+        filesystem_migrations = self.state_manager.get_grouped_migrations(
             scripts_dir,
             recursive=recursive,
             additional_dirs=additional_dirs,
@@ -373,7 +373,7 @@ class RepairCommand(BaseCommand):
         # Additional safeguard: detect checksum drift for applied versioned migrations
         # MigrationState currently only tracks repeatable checksum changes, so perform an explicit comparison
         try:
-            filesystem_migrations = self.script_manager.load_migration_scripts(
+            filesystem_migrations = self.state_manager.get_grouped_migrations(
                 scripts_dir,
                 recursive=recursive,
                 additional_dirs=additional_dirs,

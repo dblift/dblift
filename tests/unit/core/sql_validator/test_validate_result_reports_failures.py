@@ -17,6 +17,7 @@ import pytest
 from dblift.cli.handlers.validate import _validate_result_to_dict
 from dblift.core.logger.results import ValidateResult
 from dblift.core.migration.commands.validate_command import ValidateCommand
+from dblift.core.migration.state.migration_state_manager import MigrationStateManager
 from dblift.core.sql_validator.migration_validator import ValidationResult
 
 
@@ -38,6 +39,9 @@ def _command_with(validation_result: ValidationResult) -> ValidateCommand:
     cmd.validator = MagicMock()
     cmd.validator.validate_migrations.return_value = validation_result
     cmd.history_manager = MagicMock()
+    cmd.state_manager = MigrationStateManager(
+        cmd.log, cmd.history_manager, MagicMock(), MagicMock()
+    )
     cmd._populate_database_info = MagicMock()
     cmd._log_command_header_update = MagicMock()
     cmd._log_command_completion = MagicMock()
