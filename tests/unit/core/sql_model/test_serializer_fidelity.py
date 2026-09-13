@@ -433,14 +433,16 @@ def _rows(gaps: Dict[type, Dict[str, str]], sentinel_only: bool) -> List[Any]:
 
 
 def _check_no_row_is_still_xfailed() -> None:
-    """Fail the module if any row carries an xfail mark.
+    """Fail the module if a gap table still marks a row.
 
     Both gap tables are empty: every constructor parameter of every class
-    survives its round trip. Keeping them empty is the point of the check —
-    it reads the marks the rows actually carry, not the tables, so a row
-    marked by any route is caught. A class that regresses has to be fixed
-    rather than marked, and without this a fresh entry would read as one of
-    the pre-existing gaps instead of the regression it is.
+    survives its round trip, and keeping them empty is the point of the
+    check. The gap tables are the only route by which a row built here is
+    marked, so that — and only that — is what this inspects: an xfail
+    attached anywhere else (to the test function, the module, a conftest
+    hook) is outside its reach. What it adds over ``strict=True`` is the one
+    case strict xfail cannot report: an entry left in a gap table after the
+    loss it names was fixed, where the resulting XPASS has been suppressed.
     """
     marked = sorted(
         row.id

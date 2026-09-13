@@ -144,11 +144,6 @@ class SqlColumn:
             "default_value": self.default_value,
             "is_primary_key": self.is_primary_key,
             "is_unique": self.is_unique,
-            # Column-level constraints serialize themselves, the way a table's
-            # do. A column carrying one is independent of the owning table's
-            # constraint list: neither is rebuilt from the other, so a
-            # constraint listed in both round-trips through both.
-            "constraints": [constraint.to_dict() for constraint in self.constraints],
             "is_identity": self.is_identity,
             "identity_generation": self.identity_generation,
             "identity_seed": self.identity_seed,
@@ -161,6 +156,13 @@ class SqlColumn:
             "collation": self.collation,
             "dialect": self.dialect,
             "explicit_properties": self.explicit_properties,
+            # Column-level constraints serialize themselves, the way a table's
+            # do. A column carrying one is independent of the owning table's
+            # constraint list: neither is rebuilt from the other, so a
+            # constraint listed in both round-trips through both. Last key, so
+            # re-exporting a model file written before it existed appends a
+            # line per column rather than splitting every column object.
+            "constraints": [constraint.to_dict() for constraint in self.constraints],
         }
 
     @classmethod
