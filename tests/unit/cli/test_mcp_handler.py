@@ -30,7 +30,11 @@ def test_handle_mcp_builds_server_with_global_argv_and_serves():
         assert _handle_mcp(ctx) == (True, None)
 
     build.assert_called_once_with(
-        ["--config", "x.yaml"], allow_writes=True, allowed_tools=None, offline=False
+        ["--config", "x.yaml"],
+        allow_writes=True,
+        allowed_tools=None,
+        allowed_resources=None,
+        offline=False,
     )
     server.run_stdio.assert_called_once_with()
 
@@ -95,6 +99,9 @@ def _quiet_server():
     server.unmatched_allowed_tools.return_value = []
     server.connection_bound_tools.return_value = []
     server.connection_bound_resources.return_value = []
+    server.resource_names.return_value = []
+    server.skipped_resources.return_value = []
+    server.unmatched_allowed_resources.return_value = []
     return server
 
 
@@ -155,7 +162,11 @@ def test_handle_mcp_passes_the_restrictions_to_build_server():
         assert _handle_mcp(ctx) == (True, None)
 
     build.assert_called_once_with(
-        [], allow_writes=False, allowed_tools=["info", "validate"], offline=False
+        [],
+        allow_writes=False,
+        allowed_tools=["info", "validate"],
+        allowed_resources=None,
+        offline=False,
     )
     server.run_stdio.assert_called_once_with()
 
@@ -282,3 +293,80 @@ def test_a_connected_server_says_nothing_about_offline(capsys):
         assert _handle_mcp(ctx) == (True, None)
 
     assert "--offline" not in capsys.readouterr().err
+
+
+# --- v3: `--resources` --------------------------------------------------------
+
+
+@pytest.mark.unit
+def test_mcp_parser_accepts_resources():
+    parser = create_parser(exit_on_error=False)
+
+    assert parser.parse_args(["mcp"]).resources is None
+    assert parser.parse_args(["mcp", "--resources", "history"]).resources == "history"
+
+
+@pytest.mark.unit
+def test_handle_mcp_passes_the_resource_allowlist_to_build_server():
+    server = _quiet_server()
+    ctx = CliCommandContext(
+        args=SimpleNamespace(
+            global_arguments=[], read_only=False, tools=None, resources=" history, pending,,"
+        )
+    )
+
+    with patch("dblift.cli.mcp.server.build_server", return_value=server) as build:
+        assert _handle_mcp(ctx) == (True, None)
+
+    assert build.call_args.kwargs["allowed_resources"] == ["history", "pending"]
+
+
+@pytest.mark.unit
+def test_handle_mcp_refuses_to_start_on_an_unknown_resource(capsys):
+    server = _quiet_server()
+    server.resource_names.return_value = ["history"]
+    server.unmatched_allowed_resources.return_value = ["histroy"]
+    ctx = CliCommandContext(
+        args=SimpleNamespace(
+            global_arguments=[], read_only=False, tools=None, resources="history,histroy"
+        )
+    )
+
+    with patch("dblift.cli.mcp.server.build_server", return_value=server):
+        assert _handle_mcp(ctx) == (False, None)
+
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert "histroy" in captured.err and "--resources" in captured.err
+    assert "history" in captured.err
+    server.run_stdio.assert_not_called()
+
+
+@pytest.mark.unit
+def test_handle_mcp_refuses_an_empty_resource_allowlist(capsys):
+    server = _quiet_server()
+    ctx = CliCommandContext(
+        args=SimpleNamespace(global_arguments=[], read_only=False, tools=None, resources=" , ")
+    )
+
+    with patch("dblift.cli.mcp.server.build_server", return_value=server) as build:
+        assert _handle_mcp(ctx) == (False, None)
+
+    build.assert_not_called()
+    assert "--resources" in capsys.readouterr().err
+
+
+@pytest.mark.unit
+def test_handle_mcp_reports_each_skipped_resource_on_stderr(capsys):
+    server = _quiet_server()
+    server.skipped_resources.return_value = [("pending", "not in the allowed resource list")]
+    ctx = CliCommandContext(
+        args=SimpleNamespace(global_arguments=[], read_only=False, tools=None, resources="history")
+    )
+
+    with patch("dblift.cli.mcp.server.build_server", return_value=server):
+        assert _handle_mcp(ctx) == (True, None)
+
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert "skipped resource pending" in captured.err

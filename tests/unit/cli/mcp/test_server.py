@@ -703,3 +703,85 @@ def test_offline_instructions_say_the_refusal_exists_before_any_call():
     assert OFFLINE_INSTRUCTIONS.strip() in offline
     assert "--offline" in offline
     assert anyio.run(_with_client, DbliftMcpServer([]), scenario) == SERVER_INSTRUCTIONS
+
+
+# --- v3: the resource allowlist ----------------------------------------------
+
+
+@pytest.mark.unit
+def test_resource_allowlist_admits_only_the_named_resources():
+    from dblift.cli.mcp.server import build_server
+
+    with patch("dblift.cli.mcp.server.load_mcp_tool_registrars", return_value=[]):
+        server = build_server([], allowed_resources=["history"])
+
+    async def scenario(client):
+        return sorted(str(resource.uri) for resource in (await client.list_resources()).resources)
+
+    assert anyio.run(_with_client, server, scenario) == ["dblift://history"]
+    assert server.resource_names() == ["history"]
+    assert dict(server.skipped_resources()) == {"pending": "not in the allowed resource list"}
+    assert server.unmatched_allowed_resources() == []
+    # The tools are untouched: this flag fences resources only.
+    assert server.tool_names() == ["info", "validate", "migrate_dry_run"]
+
+
+@pytest.mark.unit
+def test_resource_allowlist_accepts_the_uri_spelling_too():
+    """The user guide's table shows `dblift://history`; an operator copying
+    that spelling into --resources must not be refused for it."""
+    from dblift.cli.mcp.server import build_server
+
+    with patch("dblift.cli.mcp.server.load_mcp_tool_registrars", return_value=[]):
+        server = build_server([], allowed_resources=["dblift://pending"])
+
+    assert server.resource_names() == ["pending"]
+    assert server.unmatched_allowed_resources() == []
+
+
+@pytest.mark.unit
+def test_resource_allowlist_names_nothing_offered_are_reported():
+    from dblift.cli.mcp.server import build_server
+
+    with patch("dblift.cli.mcp.server.load_mcp_tool_registrars", return_value=[]):
+        server = build_server([], allowed_resources=["history", "nope"])
+
+    assert server.resource_names() == ["history"]
+    assert server.unmatched_allowed_resources() == ["nope"]
+
+
+@pytest.mark.unit
+def test_no_resource_allowlist_serves_every_resource():
+    from dblift.cli.mcp.server import build_server
+
+    with patch("dblift.cli.mcp.server.load_mcp_tool_registrars", return_value=[]):
+        server = build_server([])
+
+    assert server.resource_names() == ["history", "pending"]
+    assert server.skipped_resources() == []
+    assert server.unmatched_allowed_resources() == []
+
+
+@pytest.mark.unit
+def test_the_tool_allowlist_does_not_fence_resources():
+    """`--tools` keeps its published meaning: it fences tools only."""
+    from dblift.cli.mcp.server import build_server
+
+    with patch("dblift.cli.mcp.server.load_mcp_tool_registrars", return_value=[]):
+        server = build_server([], allowed_tools=["info"])
+
+    assert server.tool_names() == ["info"]
+    assert server.resource_names() == ["history", "pending"]
+
+
+@pytest.mark.unit
+def test_a_resource_restriction_points_the_agent_at_the_lists():
+    from dblift.cli.mcp.server import SERVER_INSTRUCTIONS, DbliftMcpServer
+
+    async def scenario(client):
+        return client.instructions
+
+    fenced = anyio.run(_with_client, DbliftMcpServer([], allowed_resources=["history"]), scenario)
+
+    assert fenced.startswith(SERVER_INSTRUCTIONS)
+    assert "resources/list" in fenced

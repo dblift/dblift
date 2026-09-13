@@ -8,6 +8,22 @@ from dblift.cli._output import CommandOutput
 from dblift.cli.handlers._shared import CliCommandContext
 
 
+def _name_list(raw: Optional[str], flag: str) -> Tuple[Optional[List[str]], bool]:
+    """Split a comma-separated allowlist; the bool is False when it is empty.
+
+    ``(None, True)`` means the flag was not passed, which is "no allowlist" —
+    distinct from a flag passed with nothing usable in it, which is an
+    operator error and refuses to start.
+    """
+    if raw is None:
+        return (None, True)
+    names = [name.strip() for name in raw.split(",") if name.strip()]
+    if not names:
+        CommandOutput("console").error(f"dblift mcp: {flag} needs at least one name")
+        return (None, False)
+    return (names, True)
+
+
 def _handle_mcp(ctx: CliCommandContext) -> Tuple[bool, Any]:
     """Build the MCP server and block on stdin/stdout until the client disconnects.
 
@@ -16,8 +32,9 @@ def _handle_mcp(ctx: CliCommandContext) -> Tuple[bool, Any]:
     this process was started with (``ctx.args.global_arguments``).
 
     ``--read-only`` builds the server write-forbidding; ``--tools`` gives it an
-    allowlist. A tool the server skipped is reported on stderr and the server
-    still starts; an allowlisted name nothing registered refuses to start.
+    allowlist and ``--resources`` gives the resources their own. A tool or
+    resource the server skipped is reported on stderr and the server still
+    starts; an allowlisted name nothing registered refuses to start.
     ``--offline`` skips nothing: every tool and resource that opens a database
     connection stays served and refuses at call time, and which ones those are
     is reported on stderr at start-up.
@@ -27,18 +44,18 @@ def _handle_mcp(ctx: CliCommandContext) -> Tuple[bool, Any]:
     global_argv: List[str] = list(getattr(ctx.args, "global_arguments", None) or [])
     read_only = bool(getattr(ctx.args, "read_only", False))
     offline = bool(getattr(ctx.args, "offline", False))
-    raw_tools = getattr(ctx.args, "tools", None)
-    allowed_tools: Optional[List[str]] = None
-    if raw_tools is not None:
-        allowed_tools = [name.strip() for name in raw_tools.split(",") if name.strip()]
-        if not allowed_tools:
-            CommandOutput("console").error("dblift mcp: --tools needs at least one tool name")
-            return (False, None)
+    allowed_tools, tools_ok = _name_list(getattr(ctx.args, "tools", None), "--tools")
+    allowed_resources, resources_ok = _name_list(
+        getattr(ctx.args, "resources", None), "--resources"
+    )
+    if not tools_ok or not resources_ok:
+        return (False, None)
     try:
         server = build_server(
             global_argv,
             allow_writes=not read_only,
             allowed_tools=allowed_tools,
+            allowed_resources=allowed_resources,
             offline=offline,
         )
     except MissingMcpSdkError as exc:
@@ -60,7 +77,18 @@ def _handle_mcp(ctx: CliCommandContext) -> Tuple[bool, Any]:
         CommandOutput("console").error(
             f"dblift mcp: unknown tool(s) in --tools: {', '.join(unmatched)}. "
             f"Tools this install offers: {', '.join(offered)}. "
-            "(dblift://history is a resource, not a tool.)"
+            "(Resources are fenced by --resources, not --tools.)"
+        )
+        return (False, None)
+    unmatched_resources = list(server.unmatched_allowed_resources())
+    if unmatched_resources:
+        offered = sorted(
+            set(server.resource_names()) | {name for name, _reason in server.skipped_resources()}
+        )
+        CommandOutput("console").error(
+            f"dblift mcp: unknown resource(s) in --resources: {', '.join(unmatched_resources)}. "
+            f"Resources this install offers: {', '.join(offered)} "
+            "(their dblift:// URIs are accepted too)."
         )
         return (False, None)
     if offline:
@@ -78,6 +106,8 @@ def _handle_mcp(ctx: CliCommandContext) -> Tuple[bool, Any]:
         # stdout is the JSON-RPC channel; `.error()` is the only method that
         # always goes to stderr.
         CommandOutput("console").error(f"dblift mcp: skipped tool {name}: {reason}")
+    for name, reason in server.skipped_resources():
+        CommandOutput("console").error(f"dblift mcp: skipped resource {name}: {reason}")
     server.run_stdio()
     return (True, None)
 
