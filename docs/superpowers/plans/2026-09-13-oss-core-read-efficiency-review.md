@@ -44,3 +44,7 @@ Reviewed complete 993e64b..0fd266f production and test changes. The containment 
 ## Task 3 — accepted
 
 Reviewed complete 7edc508..8bd7cb9 changes. Header/footer aggregation preserves undo presence, shared rank predicates, baseline contribution, type/success normalization and fresh/snapshot read ownership. Public state calculation is untouched. Independent new-state plus complete command-read-reuse run: 70 passed. Broader state/commands/CLI suite: 1,454 passed, 18 skipped; static checks passed. The real populated command regressions reduce display sorting/analysis from three calls to one while retaining two history reads and one catalog read.
+
+## Task 4 — accepted
+
+Reviewed complete 01a9511..b401442 changes, including explicit missing-catalog fields in the two affected test fixtures. StateManager retains the original grouping; repair consumes it with an explicit None fallback. No execute-path fallback or error handling changed. Copy clones the grouped mapping/lists, and public JSON/repr remain unchanged. Independent focused run: 32 passed. Broader repair/commands/state/v110/provider conformance: 704 passed, 38 subtests passed; static checks passed. Normal no-op/preview catalog loads drop 3 to 1; writes retain a second fresh load. Docker integration setup could not run because no Docker socket was available; real SQLite regressions and unit CI coverage passed.

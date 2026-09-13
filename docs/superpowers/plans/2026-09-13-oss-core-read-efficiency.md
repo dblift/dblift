@@ -81,16 +81,16 @@ ranks = latest_successful_ranks(applied_migrations)
 
 **Interfaces:** Built state must expose the original grouped full catalog internally (repr=False, excluded from to_dict, copied correctly) or an equivalent StateManager-owned accessor with the same grouped traversal order. A missing catalog is None; an empty loaded catalog is valid. Existing `get_grouped_migrations` remains fresh when no built catalog is supplied. Repair rules and writes stay in RepairCommand/history/engine.
 
-- [ ] Add red real SQLite no-op/preview tests: three current loads should become one; verify result and unchanged database bytes for preview.
-- [ ] Preserve grouped-order last-wins duplicate-basename behavior; do not flatten via resolved_objects if that changes ordering. Reuse the same initial catalog for missing-script and drift detection:
+- [x] Add red real SQLite no-op/preview tests: three current loads should become one; verify result and unchanged database bytes for preview.
+- [x] Preserve grouped-order last-wins duplicate-basename behavior; do not flatten via resolved_objects if that changes ordering. Reuse the same initial catalog for missing-script and drift detection:
 ```python
 catalog = migration_state.grouped_objects
 if catalog is None:
     catalog = self.state_manager.get_grouped_migrations(scripts_dir, ...)
 # Use an explicit None check; an empty dictionary is authoritative.
 ```
-- [ ] Preserve failed build fallback, empty-directory refusal, missing-scan error propagation and drift-warning behavior for direct helper calls. Do not silently turn errors into an empty catalog. Refresh post-write state and on a subsequent command.
-- [ ] Verify real checksum repair then validate, failed-row deletion, missing/delete/baseline markers, SQL/Python scripts, recursion maps and dry-run purity. Run all repair tests including v110, state serialization/copy tests and static checks. Commit `perf: reuse repair catalog before history writes`.
+- [x] Preserve failed build fallback, empty-directory refusal, missing-scan error propagation and drift-warning behavior for direct helper calls. Do not silently turn errors into an empty catalog. Refresh post-write state and on a subsequent command.
+- [x] Verify real checksum repair then validate, failed-row deletion, missing/delete/baseline markers, SQL/Python scripts, recursion maps and dry-run purity. Run all repair tests including v110, state serialization/copy tests and static checks. Commit `perf: reuse repair catalog before history writes`.
 
 ### Task 5: Remove retired private validation and data-service code
 
