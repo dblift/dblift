@@ -27,6 +27,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   a document the package ships, or one derived from your configuration, served
   under its own media type. `--resources` fences them and `--offline` refuses
   them exactly as it does the built-in ones.
+- Opt-in SQLite benchmarks cover fresh migrations of 10 and 100 scripts with
+  and without callbacks, plus no-op migration, validation and info against
+  populated history. Each measured round uses its own database and verifies
+  the command results and database contents.
 
 ### Changed
 
@@ -40,6 +44,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   edit theirs as well, or drop their `dialect` keys to let the table's apply
   again. A file written by an earlier version carries no such key and is
   unaffected until it is rewritten.
+- Reduce repeated script discovery, file reads and history queries in `migrate`,
+  `info` and `validate`. Callback catalogs are reused within each command, while
+  subsequent commands observe changed files and history is refreshed after lock
+  acquisition and writes. ([#300](https://github.com/dblift/dblift/pull/300))
+- Commands consume script and history data through StateManager. ScriptManager
+  retains script and callback discovery and event matching; HistoryManager
+  retains history collection. Repair and baseline reads use the same boundary.
+- Index checksum/history lookups, parse filename metadata once per loaded script
+  and remove redundant sorting. Share the common validation checks and MySQL
+  quoted-string readers while preserving filtering, callback order and dialect
+  behavior.
 
 ### Fixed
 
@@ -92,6 +107,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   reached a model file. Nothing sets or reads either one today, so the only
   difference in a rewritten file is the two keys, written as `null`, on each
   parameter.
+- `MigrationValidator.validate_resolved_migrations()` now checks that script
+  formats are supported by the selected provider, matching directory-based
+  validation.
 
 ### Removed
 
