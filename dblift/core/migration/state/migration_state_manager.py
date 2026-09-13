@@ -121,6 +121,22 @@ class MigrationStateManager:
             callback_catalog=read_snapshot._catalog,
         )
 
+    def get_grouped_migrations(
+        self,
+        scripts_dir: Path,
+        *,
+        recursive: bool = True,
+        additional_dirs: Optional[List[Path]] = None,
+        dir_recursive_map: Optional[Dict[Path, bool]] = None,
+    ) -> Dict[MigrationType, List[Migration]]:
+        """Return fresh ScriptManager data with its migration-type grouping preserved."""
+        return self.script_manager.load_migration_scripts(
+            scripts_dir,
+            recursive=recursive,
+            additional_dirs=additional_dirs,
+            dir_recursive_map=dir_recursive_map,
+        )
+
     def get_resolved_migrations(
         self,
         scripts_dir: Path,

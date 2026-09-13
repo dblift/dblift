@@ -38,7 +38,7 @@ class BaselineCommand(BaseCommand):
                 # precondition the real run would hit, so dry-run can't report
                 # false success for a baseline that would actually fail.
                 if self.history_manager.has_history_table:
-                    existing = self.history_manager.get_applied_migration_records()
+                    existing = self.state_manager.get_applied_migration_records()
                     if existing:
                         raise RuntimeError(
                             f"Schema {result.target_schema} already contains a migration "

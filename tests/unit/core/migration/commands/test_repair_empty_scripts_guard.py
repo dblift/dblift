@@ -9,7 +9,7 @@ and produced one MISSING_SCRIPT repair per applied row — and without
 orphaning the migration table. A silent false-positive factory.
 
 This test constructs a minimally-wired RepairCommand (the detection
-method itself only needs a ``script_manager`` and a ``log``) and asserts
+method itself only needs a ``state_manager`` and a ``log``) and asserts
 that the new safety gate refuses to mass-mark when no filesystem scripts
 are visible.
 """
@@ -26,6 +26,7 @@ import pytest
 from dblift.core.migration.commands.repair_command import RepairCommand, RepairSafetyError
 from dblift.core.migration.migration import MigrationType
 from dblift.core.migration.state.migration_state import MigrationState
+from dblift.core.migration.state.migration_state_manager import MigrationStateManager
 
 
 def _make_applied(script_name: str, version: str = "1") -> SimpleNamespace:
@@ -41,7 +42,7 @@ def _make_applied(script_name: str, version: str = "1") -> SimpleNamespace:
 def _make_repair_command(script_manager_mock: MagicMock) -> RepairCommand:
     """Bypass BaseCommand.__init__ — we only exercise _detect_missing_migrations.
 
-    ``_detect_missing_migrations`` uses two attributes: ``script_manager``
+    ``_detect_missing_migrations`` uses two attributes: ``state_manager``
     and ``log``. Everything else on the instance is irrelevant for this
     path, so constructing without running BaseCommand's heavy init keeps
     the test hermetic.
@@ -49,6 +50,9 @@ def _make_repair_command(script_manager_mock: MagicMock) -> RepairCommand:
     cmd = RepairCommand.__new__(RepairCommand)
     cmd.script_manager = script_manager_mock
     cmd.log = MagicMock()
+    cmd.state_manager = MigrationStateManager(
+        cmd.log, MagicMock(), script_manager_mock, MagicMock()
+    )
     return cmd
 
 

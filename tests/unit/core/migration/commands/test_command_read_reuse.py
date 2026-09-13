@@ -14,8 +14,10 @@ from sqlalchemy import create_engine
 
 from dblift.api import DBLiftClient
 from dblift.core.migration.commands.base_command import BaseCommand
+from dblift.core.migration.commands.baseline_command import BaselineCommand
 from dblift.core.migration.commands.info_command import InfoCommand
 from dblift.core.migration.commands.migrate_command import MigrateCommand
+from dblift.core.migration.commands.repair_command import RepairCommand
 from dblift.core.migration.commands.validate_command import ValidateCommand
 from dblift.core.migration.state.migration_state import MigrationState
 
@@ -651,3 +653,113 @@ def test_callback_discovery_sees_file_created_during_lock_acquisition(database_c
         assert connection.execute(
             "SELECT count(*) FROM callback_discovered_after_lock"
         ).fetchone() == (0,)
+
+
+def test_grouped_state_catalog_preserves_collector_data_and_refreshes(database_client):
+    client, _, migrations, _ = database_client
+    (migrations / "V1__app.sql").write_text("SELECT 1;")
+    (migrations / "U1__app.sql").write_text("SELECT 2;")
+    (migrations / "R__app.sql").write_text("SELECT 3;")
+    (migrations / "beforeMigrate__app.sql").write_text("SELECT 4;")
+    additional = migrations.parent / "additional"
+    additional.mkdir()
+    (additional / "V2__extra.sql").write_text("SELECT 5;")
+    options = {
+        "recursive": False,
+        "additional_dirs": [additional],
+        "dir_recursive_map": {additional: True},
+    }
+    collector = client.executor.script_manager
+    collected = []
+    original_load = collector.load_migration_scripts
+
+    def capture_catalog(*args, **kwargs):
+        catalog = original_load(*args, **kwargs)
+        collected.append(catalog)
+        return catalog
+
+    with patch.object(collector, "load_migration_scripts", side_effect=capture_catalog) as load:
+        first = client.executor.state_manager.get_grouped_migrations(migrations, **options)
+        (migrations / "V1__app.sql").write_text("SELECT 100;")
+        second = client.executor.state_manager.get_grouped_migrations(migrations, **options)
+
+    assert first is collected[0]
+    assert second is collected[1]
+    assert first is not second
+    assert [kind.name for kind in first] == [
+        "SQL",
+        "UNDO_SQL",
+        "REPEATABLE",
+        "BASELINE",
+        "CALLBACK",
+    ]
+    assert [[migration.script_name for migration in group] for group in first.values()] == [
+        ["V1__app.sql", "V2__extra.sql"],
+        ["U1__app.sql"],
+        ["R__app.sql"],
+        [],
+        ["beforeMigrate__app.sql"],
+    ]
+    assert next(iter(first.values()))[0].checksum != next(iter(second.values()))[0].checksum
+    assert load.call_count == 2
+    for invocation in load.call_args_list:
+        assert invocation.args == (migrations,)
+        assert invocation.kwargs == options
+
+
+def test_repair_consumes_fresh_grouped_state_data_for_preview_and_write(database_client):
+    client, _, migrations, database = database_client
+    script = migrations / "V1__app.sql"
+    script.write_text("CREATE TABLE app (id INTEGER PRIMARY KEY);")
+    assert client.migrate().success
+    script.write_text("CREATE TABLE app (id INTEGER PRIMARY KEY);\n-- changed checksum\n")
+    command = RepairCommand(client.executor._make_command_context())
+    command.script_manager = MagicMock(wraps=client.executor.script_manager)
+    command.script_manager.load_migration_scripts.side_effect = AssertionError(
+        "Repair bypassed the state manager for grouped scripts"
+    )
+    before = database.read_bytes()
+    preview = command.execute(migrations, dry_run=True)
+    assert preview.success, preview.error_message
+    assert database.read_bytes() == before
+    assert not client.validate().success
+
+    repaired = command.execute(migrations)
+    assert repaired.success, repaired.error_message
+    assert client.validate().success
+    command.script_manager.load_migration_scripts.assert_not_called()
+
+
+def test_baseline_dry_run_consumes_fresh_typed_state_history(database_client):
+    client, _, _, database = database_client
+    history = client.executor.history_manager
+    command = BaselineCommand(client.executor._make_command_context())
+
+    class HistoryOperationsOnly:
+        def __getattr__(self, name):
+            if name == "get_applied_migration_records":
+                raise AssertionError("Baseline bypassed the state manager for typed history")
+            return getattr(history, name)
+
+    command.history_manager = HistoryOperationsOnly()
+    manager = command.state_manager
+    with patch.object(
+        manager, "get_applied_migration_records", wraps=manager.get_applied_migration_records
+    ) as read:
+        absent = command.execute("2", dry_run=True)
+        assert absent.success, absent.error_message
+        read.assert_not_called()
+        assert not history.has_history_table
+
+        history.create_schema_and_history_table(create_schema=False)
+        empty = command.execute("2", dry_run=True)
+        assert empty.success, empty.error_message
+        assert read.call_count == 1
+
+        assert client.baseline("1").success
+        before = database.read_bytes()
+        populated = command.execute("2", dry_run=True)
+        assert not populated.success
+        assert "1 migration(s)" in populated.error_message
+        assert read.call_count == 2
+        assert database.read_bytes() == before
