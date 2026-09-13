@@ -156,16 +156,16 @@ Use the actual tokenizer public API from existing tests to assert token values a
 
 **Interfaces:** pytest-benchmark remains opt-in, no runtime dependency or CI timing threshold. Fresh migration databases must be reset outside the timed function each round; never accidentally benchmark a no-op after the first round.
 
-- [ ] Add fresh migrate benchmarks for 10/100 scripts with/without callbacks, plus populated-history no-op migrate, validate and info. Assert real database/result outcomes.
-- [ ] Use `benchmark.pedantic(..., setup=..., iterations=1)` or equivalent isolation so each timed fresh-migrate invocation has a fresh database. Dispose connections and remove temporary artifacts safely.
-- [ ] Correct README coverage and commands to actual test names; do not overwrite a historical timing baseline with unrelated hardware measurements.
-- [ ] Run benchmark smoke with explicit pytest-benchmark plugin, unit suites covering all changed areas, formatting/type checks on changed production modules, and personal root review of the whole branch.
-- [ ] Compare operation counts and a local 100-migration timing against develop; document hardware/profiling limitations and final review results. Commit `test: benchmark SQLite migration command workloads`.
+- [x] Add fresh migrate benchmarks for 10/100 scripts with/without callbacks, plus populated-history no-op migrate, validate and info. Assert real database/result outcomes.
+- [x] Use `benchmark.pedantic(..., setup=..., iterations=1)` or equivalent isolation so each timed fresh-migrate invocation has a fresh database. Dispose connections and remove temporary artifacts safely.
+- [x] Correct README coverage and commands to actual test names; do not overwrite a historical timing baseline with unrelated hardware measurements.
+- [x] Run benchmark smoke with explicit pytest-benchmark plugin, unit suites covering all changed areas, formatting/type checks on changed production modules, and personal root review of the whole branch.
+- [x] Compare operation counts and a local 100-migration timing against develop; document hardware/profiling limitations and final review results. Commit `test: benchmark SQLite migration command workloads`.
 
 ## Personal review checklist for every lot
 
-- [ ] Every changed production line maps to this task and spec.
-- [ ] No global caches, hidden dialect coupling or unrelated refactors.
-- [ ] Freshness, error paths, ordering, filters and public payloads preserved.
-- [ ] Tests exercise real outcomes and demonstrate the relevant regression.
-- [ ] Focused test outputs read; complete diff personally reviewed; findings fixed.
+- [x] Every changed production line maps to this task and spec.
+- [x] No global caches, hidden dialect coupling or unrelated refactors.
+- [x] Freshness, error paths, ordering, filters and public payloads preserved.
+- [x] Tests exercise real outcomes and demonstrate the relevant regression.
+- [x] Focused test outputs read; complete diff personally reviewed; findings fixed.

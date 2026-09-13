@@ -23,7 +23,7 @@ User explicitly requested root reviews; no separate reviewer agent substitutes f
 ## Status
 
 - Baseline on isolated develop archive: 2325 passed, 1 skipped, 57 subtests passed. Clean environment: /tmp/dblift-oss-performance-venv/bin/python.
-- Tasks 1–6 and repair/baseline ownership completion accepted; Task 7 pending.
+- All seven tasks and the ownership corrections are complete and personally accepted. Final verification is recorded below.
 
 ## Task 1 — personally reviewed and accepted
 
@@ -115,3 +115,35 @@ User explicitly requested root reviews; no separate reviewer agent substitutes f
 - 2407 migration/validator tests passed, one skipped; 429 command/roundtrip tests and 23 SQLite CLI checks passed. All formatting, typing, import and repository ratchet checks passed.
 - No direct script/history row collector calls remain in migration commands. Existing provider-level Flyway import reads (raw source types, case-sensitive tables), clean object inventory and connection metadata are separate historical concerns; changing their collection contracts is outside this optimization scope.
 - No open findings in the optimized paths. Specialized collection rules, repair decisions, transactions and writes retain their owners.
+
+## Task 7 — personally reviewed and accepted
+
+- Commit: 9ca3f63; personally reviewed both benchmark files against ace0918 and all review corrections.
+- Seven real SQLite workloads each verify three measured rounds: fresh 10/100 migrations with/without callbacks, and populated-history no-op migrate, validate and info.
+- Database creation/copy, engine/client construction and assertions stay outside timing. Every round verifies command results and actual tables/history; callback cases verify event counts and inserted rows. Populated rounds preserve exact database bytes.
+- Root review removed duplicated populated setup, required explicit sqlite3 connection closure, strengthened unchanged-data assertions, included journal/WAL/shared-memory cleanup and removed a one-use assertion wrapper.
+- ExitStack closes clients and disposes engines before deleting files even on setup, execution or assertion failure. Only setup is used from the pedantic API, compatible with the declared pytest-benchmark 4 minimum.
+- README now matches the two actual benchmark files and supported local commands. No invented CI/hardware claims, timing gate, dependency changes or historical baseline overwrite.
+- Root final benchmark smoke: 31 passed (including seven new SQLite cases, 21 verified SQLite rounds). Benchmark file formatting and import ordering pass; no open findings.
+
+## Final verification
+
+- Root directly ran all migration/validator unit tests, four MySQL tokenizer/parser files, SQLite dry-run purity/completeness and the three info JSON suites: **2579 passed, 1 skipped, 57 subtests passed** in 22.10s.
+- Root ran the complete benchmark directory with the explicit plugin: **31 passed** in 6.74s using a short CPU calibration window. SQLite workloads retain their fixed three rounds. The implementation agent also ran the full default benchmark settings successfully.
+- Black and isort passed on all changed Python files; flake8 and targeted mypy passed on all 17 changed production modules. Both import contracts, AST pattern checks, docstring/line-length ratchets and the complete branch diff check passed. No ratchet caps changed.
+- Every implementation and correction diff was personally reviewed. Machine author/committer identity is cmodiano <cmodiano@gmail.com>, with no attribution trailers. Branch fix/oss-migration-hot-paths descends from origin/develop 8645f3b; the original detached checkout at 92bf375 remains clean and unchanged. Work remains local.
+
+## Final measured comparison with develop
+
+Same isolated Python 3.12.12 environment, local macOS 26.0.1 arm64 and real temporary SQLite databases. Baseline source: develop 8645f3b; final source: 9ca3f63. Each workload contains 100 versioned scripts. Fresh migrate creates and verifies 100 actual tables; the following operations verify those tables remain present.
+
+| Operation | Decoded SQL file reads | Catalog loads | History SELECTs | Local seconds |
+|---|---:|---:|---:|---:|
+| Fresh migrate | 40600 → 200 | 406 → 2 | 7 → 4 | 13.4713 → 0.1607 |
+| No-op migrate | 300 → 100 | 2 → 1 | 5 → 2 | 0.1081 → 0.0440 |
+| Validate | 400 → 200 | 3 → 2 | 3 → 2 | 0.1242 → 0.0737 |
+| Info | 200 → 100 | 2 → 1 | 4 → 2 | 0.0863 → 0.0422 |
+
+The probe counts Path.read_text only for workload SQL files, ScriptManager.load_migration_scripts calls, and the typed history SELECT using SQLite tracing. Timings include this instrumentation and are single local observations, not speed guarantees or a CI threshold. An earlier optimized run measured 0.1733s for fresh migrate, with identical counts. Deterministic regression tests protect the operation-count gains.
+
+The known compatibility limitations remain those recorded above: substring-based all-drift diagnostic deduplication, existing strict tag-filter behavior and separate validator discovery with a per-directory recursion map. Historical provider-level import/inventory collection is a separate architecture follow-up. No open correctness findings remain in this optimization scope.
