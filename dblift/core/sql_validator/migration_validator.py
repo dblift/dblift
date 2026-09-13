@@ -320,7 +320,7 @@ class MigrationValidator:
             if format is None:
                 continue
             try:
-                check_format_supported(getattr(self, "_quirks", None), format, script.script_name)
+                check_format_supported(self._quirks, format, script.script_name)
             except UnsupportedMigrationFormatError as e:
                 result.success = False
                 result.error_message = str(e)
