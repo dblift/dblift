@@ -17,8 +17,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   add-on packages declare which of their tools connect.
 - `dblift mcp --resources NAME[,NAME...]` withholds the resources you do not
   name (`history`, `pending`, or their `dblift://` URIs), the way `--tools`
-  does for tools. An unknown name refuses to start. `--tools` still fences
-  tools only.
+  does for tools. An unknown name refuses to start, and so does an empty list
+  — as `--tools` does. `--tools` still fences tools only.
 - `dblift mcp --mode review` serves a review session: the tools that write a
   file you name are withheld, as with `--read-only`, and the server tells the
   agent the session is for reading and reporting. `--mode author` is the

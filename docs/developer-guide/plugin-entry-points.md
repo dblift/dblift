@@ -66,9 +66,10 @@ connection — it runs from the project's files and configuration. The default i
 `--offline` fails every such call with an error naming that flag. The tool is
 still registered and listed; only the call refuses.
 
-The server may have been started `--read-only` or with `--tools NAME[,...]`. A
-tool it will not accept — `read_only=False` on a write-forbidding server, or a
-name outside the allowlist — is skipped and logged, never raised, so the server
+The server may have been started `--read-only`, `--mode review` or with
+`--tools NAME[,...]`. A tool it will not accept — `read_only=False` on a
+write-forbidding server or on a review session, or a name outside the
+allowlist — is skipped and logged, never raised, so the server
 still starts with what remains; `server.skipped_tools()` lists the skips. Offer
 every tool unconditionally and let the server skip — do not consult
 `server.allow_writes` (it is informational only) to withhold a tool: a tool the

@@ -201,7 +201,7 @@ class DbliftMcpServer:
         :class:`ValueError` — argparse's ``choices`` catches a CLI typo, but a
         programmatic caller must not be handed a silently permissive server.
         Nothing else in this package reads ``mode``: a command that varies its
-        own behaviour by it (treating a stale snapshot as a warning while
+        own behaviour by it (treating a stale input as a warning while
         reviewing and a stop while authoring) lives in an add-on package,
         which reads :attr:`mode` from the server it is registered on.
         """

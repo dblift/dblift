@@ -340,7 +340,7 @@ dblift info --scripts=./custom/migrations          # Use different directory
 dblift mcp                                          # Serve read-only commands as MCP tools (pip install "dblift[mcp]")
 dblift mcp --tools info,validate,migrate_dry_run    # Serve an allowlist only
 dblift mcp --resources history                      # Serve an allowlist of resources
-dblift mcp --offline                                # Refuse every tool that would connect
+dblift mcp --offline                                # Refuse every tool and resource that would connect
 dblift mcp --mode review                            # Review session: no file-writing tools
 ```
 

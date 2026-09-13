@@ -94,8 +94,9 @@ tools run from the project's files. The server starts even with no
 `dblift.yaml` and no database configured — nothing is loaded until a tool is
 called. Start-up prints, on stderr, which registrations will refuse.
 
-The flags compose: `--read-only --tools export_schema` admits the name and
-still skips the tool if it declares `read_only=False`; `--offline --tools
+The flags compose: `--read-only --tools my_addon_tool` admits the name an
+add-on contributed and still skips the tool if it declares
+`read_only=False`; `--offline --tools
 info` serves `info` and refuses every call to it; `--tools` and `--resources`
 fence their own lists side by side, and a name unknown to either refuses the
 start. Skipped tools and resources are listed on stderr when the server
