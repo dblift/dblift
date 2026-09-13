@@ -19,9 +19,11 @@ Two checks per constructor parameter, both name-agnostic so a key rename
 
 Parameters that are *intentionally* not serialized go in
 ``INTENTIONALLY_NOT_SERIALIZED`` with a reason a reviewer can check.
-Parameters that are dropped by accident are marked ``xfail(strict=True)`` in
-``KNOWN_COVERAGE_GAPS`` / ``KNOWN_ROUND_TRIP_GAPS`` with the observed loss.
-Strict, so removing a gap without removing its entry fails the suite.
+``KNOWN_COVERAGE_GAPS`` / ``KNOWN_ROUND_TRIP_GAPS`` held the parameters that
+were dropped by accident, as ``xfail(strict=True)``; every one of them has
+since been fixed and both tables are now empty, which
+``_check_no_row_is_still_xfailed`` enforces — a gap that appears from here on
+is a regression to fix in the serializer, not an entry to add.
 """
 
 from __future__ import annotations
@@ -117,9 +119,11 @@ EXPECTED_MODEL_CLASS_NAMES: FrozenSet[str] = frozenset(
 INTENTIONALLY_NOT_SERIALIZED: Dict[type, Dict[str, str]] = {}
 
 #: class -> parameter -> the loss observed on the sentinel-coverage check.
+#: Empty, and kept empty by ``_check_no_row_is_still_xfailed``.
 KNOWN_COVERAGE_GAPS: Dict[type, Dict[str, str]] = {}
 
 #: class -> parameter -> the loss observed on the round-trip check.
+#: Empty, and kept empty by ``_check_no_row_is_still_xfailed``.
 KNOWN_ROUND_TRIP_GAPS: Dict[type, Dict[str, str]] = {}
 
 #: parameter name -> value. Three parameters are normalised or fall back on
@@ -426,6 +430,33 @@ def _rows(gaps: Dict[type, Dict[str, str]], sentinel_only: bool) -> List[Any]:
                 marks.append(pytest.mark.xfail(strict=True, reason=reason))
             rows.append(pytest.param(cls, param, marks=marks, id=f"{cls.__name__}.{param}"))
     return rows
+
+
+def _check_no_row_is_still_xfailed() -> None:
+    """Fail the module if any row carries an xfail mark.
+
+    Both gap tables are empty: every constructor parameter of every class
+    survives its round trip. Keeping them empty is the point of the check —
+    it reads the marks the rows actually carry, not the tables, so a row
+    marked by any route is caught. A class that regresses has to be fixed
+    rather than marked, and without this a fresh entry would read as one of
+    the pre-existing gaps instead of the regression it is.
+    """
+    marked = sorted(
+        row.id
+        for row in _rows(KNOWN_COVERAGE_GAPS, sentinel_only=True)
+        + _rows(KNOWN_ROUND_TRIP_GAPS, sentinel_only=False)
+        if row.marks
+    )
+    if marked:
+        raise AssertionError(
+            f"{marked} is xfail-marked. The serializer covers every parameter of every class, "
+            "so a gap is a regression to fix in the serializer, not an entry to add to "
+            "KNOWN_COVERAGE_GAPS / KNOWN_ROUND_TRIP_GAPS."
+        )
+
+
+_check_no_row_is_still_xfailed()
 
 
 # ---------------------------------------------------------------------------

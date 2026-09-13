@@ -161,7 +161,8 @@ def test_stdio_round_trip_keeps_stdout_pure(tmp_path: Path, restriction: list[st
         # Report the frames rather than dying with a bare KeyError: a missing
         # id means the server answered something else (or nothing) and the
         # frames are the only evidence of what.
-        assert 2 in by_id and 3 in by_id, f"missing responses; frames={frames!r}; stderr={stderr!r}"
+        missing = [request_id for request_id in (1, 2, 3) if request_id not in by_id]
+        assert not missing, f"no response to {missing}; frames={frames!r}; stderr={stderr!r}"
         # A client that logs or pins server identity needs a version; the SDK
         # defaults it to the empty string when the server does not pass one.
         assert by_id[1]["result"]["serverInfo"]["version"] == dblift.__version__

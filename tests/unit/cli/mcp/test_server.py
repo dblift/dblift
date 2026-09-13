@@ -14,6 +14,7 @@ import pytest
 pytest.importorskip("mcp")
 anyio = pytest.importorskip("anyio")
 
+import dblift  # noqa: E402
 from dblift.cli.mcp.runner import CommandInvocationError  # noqa: E402
 
 
@@ -1208,7 +1209,6 @@ def test_the_server_reports_the_package_version_in_its_server_info():
     The SDK defaults ``version`` to the empty string, so an unversioned
     server is what a client saw until the constructor passed one.
     """
-    import dblift
 
     async def scenario(client):
         return client.server_info
