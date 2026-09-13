@@ -241,6 +241,7 @@ class MigrationStateManager:
 
         pending_migrations: List[Migration] = []
         all_scripts: List[Migration] = []
+        grouped_scripts: Optional[Dict[Any, List[Migration]]] = {} if scripts_dir else None
         if scripts_dir:
             # Use NEW centralized pending computation method
             # (all_scripts is populated as a side effect, reusing this same filesystem scan
@@ -256,6 +257,7 @@ class MigrationStateManager:
                 additional_dirs=list(additional_dirs) if additional_dirs else None,
                 dir_recursive_map=dir_recursive_map,
                 out_all_scripts=all_scripts,
+                out_grouped_migrations=grouped_scripts,
             )
 
         self._mark_resolved_status(
@@ -322,6 +324,7 @@ class MigrationStateManager:
             executed_scripts=sorted(history.executed_scripts),
             repeatable_checksums=dict(history.repeatable_checksums),
             resolved_objects=all_scripts if scripts_dir else None,
+            grouped_objects=grouped_scripts,
         )
 
         self.logger.debug("Migration state snapshot generated")
@@ -595,6 +598,7 @@ class MigrationStateManager:
         additional_dirs: Optional[List[Path]] = None,
         dir_recursive_map: Optional[Dict[Path, bool]] = None,
         out_all_scripts: Optional[List[Migration]] = None,
+        out_grouped_migrations: Optional[Dict[Any, List[Migration]]] = None,
     ) -> List[Migration]:
         """Catalog unresolved on-disk scripts (not migrate's execute-list).
 
@@ -609,6 +613,9 @@ class MigrationStateManager:
             additional_dirs=additional_dirs,
             dir_recursive_map=dir_recursive_map,
         )
+        if out_grouped_migrations is not None:
+            # Repair's duplicate resolution follows the original grouped traversal.
+            out_grouped_migrations.update(all_migrations)
 
         # Flatten into a single list for processing
         all_scripts: List[Migration] = []

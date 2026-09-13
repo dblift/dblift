@@ -91,6 +91,7 @@ class TestRepairDeletesFailedMigrations:
         state.deleted_scripts = set()
         state.applied_objects = []
         state.failed_objects = [failed]
+        state.grouped_objects = None
 
         post_state = Mock()
         post_state.checksum_changes = []
