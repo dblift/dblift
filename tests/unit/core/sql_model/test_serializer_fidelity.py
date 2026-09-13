@@ -118,10 +118,6 @@ INTENTIONALLY_NOT_SERIALIZED: Dict[type, Dict[str, str]] = {}
 
 #: class -> parameter -> the loss observed on the sentinel-coverage check.
 KNOWN_COVERAGE_GAPS: Dict[type, Dict[str, str]] = {
-    Index: {
-        "definition": "Index.to_dict emits no 'definition' key, so the preserved vendor DDL "
-        "never reaches the serialized form.",
-    },
     Parameter: {
         "volatility": "Parameter.__init__ accepts 'volatility' and assigns it to no attribute, "
         "so to_dict has nothing to emit; the value is discarded at construction.",
@@ -130,10 +126,6 @@ KNOWN_COVERAGE_GAPS: Dict[type, Dict[str, str]] = {
 
 #: class -> parameter -> the loss observed on the round-trip check.
 KNOWN_ROUND_TRIP_GAPS: Dict[type, Dict[str, str]] = {
-    Index: {
-        "definition": "Index.definition: '<Index.definition>' -> None. to_dict emits no "
-        "'definition' key and from_dict reads none.",
-    },
     Parameter: {
         "volatility": "Parameter.__init__ accepts 'volatility' and stores it on no attribute; "
         "the value is discarded at construction, before serialization is reached.",
@@ -632,6 +624,46 @@ def test_to_dict_keeps_every_pre_fidelity_key_and_is_json_serializable() -> None
     (legacy_column,) = PRE_FIDELITY_TABLE_DICT["columns"]
     (emitted_column,) = emitted["columns"]
     assert set(emitted_column) >= set(legacy_column)
+
+
+def test_an_index_dict_without_a_definition_key_still_loads() -> None:
+    """``definition`` is additive: a file written before it existed reads as ``None``.
+
+    ``from_dict`` must not require the key, and the dict it round-trips back
+    out stays a superset of the one that came in.
+    """
+    legacy: Dict[str, Any] = {
+        "name": "idx_orders_customer",
+        "schema": "public",
+        "object_type": "INDEX",
+        "dialect": "postgresql",
+        "table_name": "orders",
+        "table_schema": "public",
+        "columns": ["customer_id"],
+        "unique": False,
+        "type": "BTREE",
+        "condition": None,
+        "include_columns": [],
+        "sort_directions": [],
+        "online": None,
+        "concurrently": False,
+        "tablespace": None,
+        "is_local": None,
+        "expression_flags": [False],
+        "fillfactor": None,
+        "compression": None,
+        "comment": None,
+    }
+
+    index = Index.from_dict(legacy)
+
+    assert index.definition is None
+
+    emitted = index.to_dict()
+    json.dumps(emitted)
+    assert set(emitted) >= set(legacy)
+    for key, value in legacy.items():
+        assert emitted[key] == value, key
 
 
 def test_a_child_that_carries_its_own_dialect_keeps_it_through_a_round_trip() -> None:
