@@ -341,7 +341,7 @@ dblift mcp                                          # Serve read-only commands a
 dblift mcp --tools info,validate,migrate_dry_run    # Serve an allowlist only
 dblift mcp --resources history                      # Serve an allowlist of resources
 dblift mcp --offline                                # Refuse every tool and resource that would connect
-dblift mcp --mode review                            # Review session: no file-writing tools
+dblift mcp --mode review                            # Review session: writers withheld, instructions say so
 ```
 
 See **[Coding agents (MCP)](mcp.md)** for the tool list and the client setup.

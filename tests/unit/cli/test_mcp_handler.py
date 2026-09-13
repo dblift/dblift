@@ -266,7 +266,9 @@ def test_handle_mcp_passes_offline_to_build_server():
 @pytest.mark.unit
 def test_handle_mcp_names_the_connection_bound_registrations_on_stderr(capsys):
     """An operator who starts an offline server must be told, at start-up,
-    which tools will refuse — not discover it one failed agent call at a time."""
+    which tools will refuse — not discover it one failed agent call at a time.
+    Tools and resources are labelled groups: they are fenced by different flags
+    and one run-on list leaves the reader to guess which name is which."""
     server = _quiet_server()
     server.connection_bound_tools.return_value = ["info", "validate"]
     server.connection_bound_resources.return_value = ["dblift://history"]
@@ -280,7 +282,27 @@ def test_handle_mcp_names_the_connection_bound_registrations_on_stderr(capsys):
     captured = capsys.readouterr()
     assert captured.out == ""
     assert "--offline" in captured.err
-    assert "info" in captured.err and "dblift://history" in captured.err
+    assert "tools: info, validate" in captured.err
+    assert "resources: dblift://history" in captured.err
+
+
+@pytest.mark.unit
+def test_the_offline_note_omits_a_group_that_is_empty(capsys):
+    """An install whose registrations all read from files has no connection-bound
+    resource; the note must not print an empty `resources:` label."""
+    server = _quiet_server()
+    server.connection_bound_tools.return_value = ["info"]
+    server.connection_bound_resources.return_value = []
+    ctx = CliCommandContext(
+        args=SimpleNamespace(global_arguments=[], read_only=False, tools=None, offline=True)
+    )
+
+    with patch("dblift.cli.mcp.server.build_server", return_value=server):
+        assert _handle_mcp(ctx) == (True, None)
+
+    err = capsys.readouterr().err
+    assert "tools: info" in err
+    assert "resources:" not in err
 
 
 @pytest.mark.unit

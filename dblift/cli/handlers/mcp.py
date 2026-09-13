@@ -106,10 +106,17 @@ def _handle_mcp(ctx: CliCommandContext) -> Tuple[bool, Any]:
         # learns which tools refuse one failed agent call at a time.
         bound = list(server.connection_bound_tools())
         bound_resources = list(server.connection_bound_resources())
-        if bound or bound_resources:
+        # Two labelled groups, not one run-on list: a resource reads as a URI
+        # and a tool as a bare name, and the operator has a flag for each.
+        groups = []
+        if bound:
+            groups.append(f"tools: {', '.join(bound)}")
+        if bound_resources:
+            groups.append(f"resources: {', '.join(bound_resources)}")
+        if groups:
             CommandOutput("console").error(
                 "dblift mcp: --offline: these open a database connection and will "
-                f"refuse every call: {', '.join([*bound, *bound_resources])}"
+                f"refuse every call: {'; '.join(groups)}"
             )
     for name, reason in server.skipped_tools():
         # `.error()` on purpose: `.status()` routes to stdout in human mode and

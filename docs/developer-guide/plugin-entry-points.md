@@ -100,11 +100,14 @@ the sibling of `raw_tool`, and it is fenced exactly as `command_resource` is:
 by `--resources`, and by `--offline` unless you pass `connects=False`.
 `connects` defaults to `True` as it does everywhere else — a registrar that
 forgets it must not get an offline pass by omission — so pass `connects=False`
-only when your body reads nothing but files and configuration. It is outside
-the write boundary too: neither `--read-only` nor `--tools` fences a resource,
-so its body must not write. Raise the SDK's `ResourceError`, or a
-`CommandInvocationError`, to send a message of your own to the client; any
-other exception type has its message replaced.
+only when your body reads nothing but files and configuration. A duplicate
+resource name or URI raises, exactly as a duplicate tool name does, and the
+error says which of the two collided; a resource the `--resources` allowlist
+skipped keeps both spellings reserved. It is outside the write boundary too:
+neither `--read-only` nor `--tools` fences a resource, so its body must not
+write. Raise the SDK's `ResourceError`, or a `CommandInvocationError`, to send
+a message of your own to the client; any other exception type has its message
+replaced.
 
 Pass `json_argv=None` to `command_tool` for a command that has no `--format`
 option. The tool then returns `{"success": <bool>, "output": <text>}` instead of
