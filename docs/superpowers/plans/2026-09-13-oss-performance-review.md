@@ -23,7 +23,7 @@ User explicitly requested root reviews; no separate reviewer agent substitutes f
 ## Status
 
 - Baseline on isolated develop archive: 2325 passed, 1 skipped, 57 subtests passed. Clean environment: /tmp/dblift-oss-performance-venv/bin/python.
-- Tasks 1–2 complete; Tasks 3–7 pending.
+- Tasks 1–3 complete; Tasks 4–7 pending.
 
 ## Task 1 — personally reviewed and accepted
 
@@ -42,4 +42,18 @@ User explicitly requested root reviews; no separate reviewer agent substitutes f
 - Verified first-match basename selection, supplied-order successful history, separately ranked repeatable history, encoding, audit exclusions, legacy fallback and both compatibility reexports.
 - Standalone change detection retains fresh reads. Ordered result lists remain public; repository callers mutate them only through the indexed addition methods.
 - Deliberate limitation: existing substring-based diagnostic suppression remains quadratic when many scripts drift (7140 issue visits for 120 drifts). Changing to exact-name deduplication would change visible diagnostics. Normal checksum lookup is linear.
+- No open correctness findings.
+
+### Task 2 additional style review
+
+- Root installed the declared style tools in the isolated environment and found F401 on the two intentional compatibility reexports.
+- Personally reviewed correction 455453b: explicit import-only suppressions, no behavior changes. Flake8 and isort now pass for both modules.
+
+## Task 3 — personally reviewed and accepted
+
+- Commit: 58c62b7; reviewed complete production and test diff against 455453b.
+- One filename parse per loaded resource (previously four for callbacks, five for other scripts); redundant version sorting removed.
+- Root review caught object-type drift for malformed V__.sql/V__.py. Two failing regressions reproduced it; retaining the existing inexpensive type classifier preserves UNKNOWN while keeping the one-parse improvement.
+- Verified direct constructor overrides (truthy, falsey and path precedence), baseline markers, SQL/Python format behavior, callback buckets and path identity. No persistent metadata cache.
+- 2141 migration tests passed, one skipped; 15 focused regressions passed after commit. Mypy, Black, isort, flake8 and both import contracts pass.
 - No open correctness findings.

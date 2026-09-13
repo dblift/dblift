@@ -80,10 +80,10 @@ Do not silently change first-match/last-match semantics for ambiguous names; est
 
 **Interfaces:** Preserve `Migration(...)` public constructor and its explicit override behavior. Keep filename metadata logic in `parse_filename`; supply or reuse that tuple internally without introducing a configurable parser/cache.
 
-- [ ] Add operation-count coverage for one file load and behavior cases for SQL/Python, repeatable, undo, baseline, callbacks, tags and semantically ordered versions.
-- [ ] Use a single filename parse to populate type/version/description/tags, preserving path identity, encoding and format detection. Remove repeated manager construction from that path.
-- [ ] Extend the already sorted versioned list directly in `get_migration_scripts`, avoiding its second `sorted(...cmp_to_key...)`.
-- [ ] Run migration model, filename, recursive-path and version-sort tests; commit `perf: resolve migration filename metadata once`.
+- [x] Add operation-count coverage for one file load and behavior cases for SQL/Python, repeatable, undo, baseline, callbacks, tags and semantically ordered versions.
+- [x] Use a single filename parse to populate type/version/description/tags, preserving path identity, encoding and format detection. Remove repeated manager construction from that path.
+- [x] Extend the already sorted versioned list directly in `get_migration_scripts`, avoiding its second `sorted(...cmp_to_key...)`.
+- [x] Run migration model, filename, recursive-path and version-sort tests; commit `perf: resolve migration filename metadata once`.
 
 Target duplicate-sort replacement:
 ```python
