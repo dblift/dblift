@@ -212,3 +212,119 @@ def test_hung_server_is_reaped():
         reader.join(timeout=5)
 
     assert proc.poll() is not None
+
+
+@pytest.mark.integration
+def test_offline_server_starts_without_a_dsn_and_refuses_info(tmp_path: Path):
+    """`dblift mcp --offline` is startable where nothing is configured: the
+    handshake completes, `info` is listed, and calling it returns an error
+    result naming the flag rather than trying to connect."""
+    migrations = tmp_path / "migrations"
+    migrations.mkdir()
+    (migrations / "V1__init.sql").write_text("CREATE TABLE widgets (id INTEGER PRIMARY KEY);")
+    config = tmp_path / "dblift.yaml"
+    # No `database:` section at all: no DSN exists anywhere for this server.
+    config.write_text(yaml.safe_dump({"migrations": {"directory": str(migrations)}}))
+
+    proc = subprocess.Popen(
+        [
+            sys.executable,
+            "-m",
+            "dblift.cli.main",
+            "--config",
+            str(config),
+            "--log-dir",
+            str(tmp_path / "logs"),
+            "mcp",
+            "--offline",
+        ],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        cwd=ROOT,
+        bufsize=1,
+    )
+
+    lines: list[str] = []
+    line_queue: "queue.Queue[str | None]" = queue.Queue()
+
+    def _pump_stdout() -> None:
+        for line in iter(proc.stdout.readline, ""):
+            lines.append(line)
+            line_queue.put(line)
+        line_queue.put(None)
+
+    reader = threading.Thread(target=_pump_stdout, daemon=True)
+    reader.start()
+    deadline = time.monotonic() + 60
+
+    def _next_line() -> str:
+        try:
+            item = line_queue.get(timeout=max(deadline - time.monotonic(), 0))
+        except queue.Empty:
+            item = None
+        if item is None:
+            proc.kill()
+            proc.wait(timeout=5)
+            raise AssertionError(
+                f"stdout closed/timed out before expected frame; stderr={proc.stderr.read()!r}"
+            )
+        return item
+
+    try:
+        try:
+            proc.stdin.write(
+                _frame(
+                    1,
+                    "initialize",
+                    {
+                        "protocolVersion": "2025-06-18",
+                        "capabilities": {},
+                        "clientInfo": {"name": "smoke", "version": "0"},
+                    },
+                )
+            )
+            proc.stdin.flush()
+            _next_line()
+
+            proc.stdin.write(
+                json.dumps({"jsonrpc": "2.0", "method": "notifications/initialized"}) + "\n"
+            )
+            proc.stdin.flush()
+
+            proc.stdin.write(_frame(2, "tools/list"))
+            proc.stdin.flush()
+            _next_line()
+
+            proc.stdin.write(_frame(3, "tools/call", {"name": "info", "arguments": {}}))
+            proc.stdin.flush()
+            _next_line()
+        finally:
+            proc.stdin.close()
+
+        try:
+            returncode = proc.wait(timeout=60)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            returncode = proc.wait(timeout=10)
+            pytest.fail(f"server did not exit after stdin closed; stderr={proc.stderr.read()!r}")
+
+        reader.join(timeout=5)
+        stderr = proc.stderr.read()
+        frames = [json.loads(line) for line in lines if line.strip()]
+        by_id = {f.get("id"): f for f in frames}
+
+        assert returncode == 0, f"dblift mcp --offline exited {returncode}; stderr={stderr!r}"
+        assert 1 in by_id and "serverInfo" in by_id[1]["result"]
+        assert {t["name"] for t in by_id[2]["result"]["tools"]} >= {"info"}
+        assert by_id[3]["result"]["isError"] is True
+        assert "--offline" in by_id[3]["result"]["content"][0]["text"]
+        # The start-up note is a diagnostic, so it goes to stderr, never to the
+        # protocol channel.
+        assert "--offline" in stderr
+    finally:
+        if proc.poll() is None:
+            proc.kill()
+        proc.wait(timeout=10)
+        reader.join(timeout=5)

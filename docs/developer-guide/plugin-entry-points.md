@@ -60,26 +60,54 @@ sets `destructive_hint`. `destructive=True` with `read_only=True` is a
 contradiction and raises `ValueError` (`destructive_hint` is only meaningful
 when `read_only_hint` is false). See `docs/user-guide/mcp.md`.
 
-The server may have been started `--read-only` or with `--tools NAME[,...]`. A
-tool it will not accept — `read_only=False` on a write-forbidding server, or a
-name outside the allowlist — is skipped and logged, never raised, so the server
+Pass `connects=False` when the command your tool runs needs no database
+connection — it runs from the project's files and configuration. The default is
+`True`: a tool that does not say is assumed to connect, and a server started
+`--offline` fails every such call with an error naming that flag. The tool is
+still registered and listed; only the call refuses.
+
+The server may have been started `--read-only`, `--mode review` or with
+`--tools NAME[,...]`. A tool it will not accept — `read_only=False` on a
+write-forbidding server or on a review session, or a name outside the
+allowlist — is skipped and logged, never raised, so the server
 still starts with what remains; `server.skipped_tools()` lists the skips. Offer
 every tool unconditionally and let the server skip — do not consult
 `server.allow_writes` (it is informational only) to withhold a tool: a tool the
 registrar never offers is invisible to `--tools`, which then counts its name as
 unknown and refuses to start, whereas an offered-but-skipped tool is admitted by
 name and skipped with a reason. A skipped name stays reserved: registering it
-again is still a duplicate.
+again is still a duplicate. `--resources NAME[,...]` fences resources the same
+way: `server.skipped_resources()` lists those skips, and a name in that
+allowlist that nothing offered refuses to start, as with `--tools`.
 
-`command_resource` is outside the write boundary: it takes no `read_only` and is
-never skipped by `--read-only` or `--tools`, so a resource must not run a
-writing command.
+`command_resource` is outside the **write** boundary — it takes no `read_only`,
+so a resource must not run a writing command — but it is fenced by
+`--resources NAME[,NAME...]` (which accepts the resource's name or its URI) and
+it takes `connects=` exactly as a tool does.
 
-`fn`'s keyword-only parameters and their annotations become the tool's input
-schema, and its docstring the description. Write those annotations however you
-normally would — `Optional[str]`, `List[str]`, `dict[str, str]`, with or without
-`from __future__ import annotations`; the server resolves them before handing
-the signature to the SDK.
+A tool `fn`'s keyword-only parameters and their annotations become the tool's
+input schema, and its docstring the description. Write those annotations however
+you normally would — `Optional[str]`, `List[str]`, `dict[str, str]`, with or
+without `from __future__ import annotations`; the server resolves them before
+handing the signature to the SDK.
+
+For a resource whose content is not a command's output — a document your
+package ships, or one derived from the loaded configuration — call
+`server.resource(uri=..., name=..., description=..., fn=...)` instead, where
+`fn() -> str` takes no parameters and returns the resource text; `mime_type=`
+(default `application/json`) labels it, and nothing is encoded for you. It is
+the sibling of `raw_tool`, and it is fenced exactly as `command_resource` is:
+by `--resources`, and by `--offline` unless you pass `connects=False`.
+`connects` defaults to `True` as it does everywhere else — a registrar that
+forgets it must not get an offline pass by omission — so pass `connects=False`
+only when your body reads nothing but files and configuration. A duplicate
+resource name or URI raises, exactly as a duplicate tool name does, and the
+error says which of the two collided; a resource the `--resources` allowlist
+skipped keeps both spellings reserved. It is outside the write boundary too:
+neither `--read-only` nor `--tools` fences a resource, so its body must not
+write. Raise the SDK's `ResourceError`, or a `CommandInvocationError`, to send
+a message of your own to the client; any other exception type has its message
+replaced.
 
 Pass `json_argv=None` to `command_tool` for a command that has no `--format`
 option. The tool then returns `{"success": <bool>, "output": <text>}` instead of

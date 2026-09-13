@@ -120,6 +120,17 @@ def test_list_tools_is_exactly_the_oss_three(project):
 
 
 @pytest.mark.unit
+def test_list_resources_is_exactly_the_oss_two(project):
+    """OSS registers no raw resource: the new seam is for add-on packages, and
+    adding it must not change what this install serves."""
+
+    async def scenario(client):
+        return sorted(str(res.uri) for res in (await client.list_resources()).resources)
+
+    assert anyio.run(_session, scenario) == ["dblift://history", "dblift://pending"]
+
+
+@pytest.mark.unit
 def test_call_tool_info_accepts_a_list_for_tags(project):
     async def scenario(client):
         return await client.call_tool("info", {"tags": ["x"]})
@@ -222,3 +233,59 @@ def test_concurrent_tool_calls_do_not_corrupt_each_other(project, capsys):
         assert dry.structured_content["dry_run"] is True
         assert sys.stdout is stdout_before
         assert capsys.readouterr().out == ""
+
+
+async def _offline_session(fn):
+    from mcp import Client
+
+    from dblift.cli.mcp.server import build_server
+
+    server = build_server([], offline=True)
+    async with Client(server.mcpserver) as client:
+        return await fn(client)
+
+
+@pytest.mark.unit
+def test_offline_refuses_every_built_in_tool_and_resource(project):
+    """All three built-in tools read the schema-history table, and so do both
+    resources, so an OSS-only offline server serves the list and refuses every
+    call. The database file must not be created by any of it."""
+    from mcp.shared.exceptions import MCPError
+
+    async def scenario(client):
+        listed = sorted(tool.name for tool in (await client.list_tools()).tools)
+        results = {name: await client.call_tool(name, {}) for name in listed}
+        with pytest.raises(MCPError) as exc_info:
+            await client.read_resource("dblift://history")
+        return listed, results, str(exc_info.value)
+
+    listed, results, resource_error = anyio.run(_offline_session, scenario)
+
+    assert listed == ["info", "migrate_dry_run", "validate"]
+    for name, result in results.items():
+        assert result.is_error is True, name
+        assert "--offline" in result.content[0].text
+    assert "--offline" in resource_error
+    assert not (project / "t.sqlite").exists()
+
+
+@pytest.mark.unit
+def test_an_offline_server_starts_with_no_config_and_no_dsn(tmp_path, monkeypatch):
+    """`dblift mcp` is zero-config: nothing is loaded until a tool is called,
+    so `--offline` must still start where no dblift.yaml and no DSN exist —
+    and the refusal must be the flag's, not the config loader's. Without
+    `--offline` the same call in the same empty directory fails with
+    `Database URL is required`, which is the difference this asserts: the
+    tool list alone is identical either way."""
+    monkeypatch.chdir(tmp_path)
+
+    async def scenario(client):
+        listed = sorted(tool.name for tool in (await client.list_tools()).tools)
+        return listed, await client.call_tool("info", {})
+
+    listed, result = anyio.run(_offline_session, scenario)
+
+    assert listed == ["info", "migrate_dry_run", "validate"]
+    assert result.is_error is True
+    assert "--offline" in result.content[0].text
+    assert "Database URL is required" not in result.content[0].text
