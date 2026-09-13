@@ -948,7 +948,7 @@ def test_review_mode_withholds_writers_and_says_why():
     assert server.tool_names() == ["reader"]
     reason = dict(server.skipped_tools())["writer"]
     assert "read_only=False" in reason
-    assert "review session" in reason
+    assert "--mode review" in reason
 
 
 @pytest.mark.unit
@@ -961,8 +961,8 @@ def test_read_only_keeps_its_own_reason():
     )
 
     reason = dict(server.skipped_tools())["writer"]
-    assert "does not allow writes" in reason
-    assert "review session" not in reason
+    assert "--read-only" in reason
+    assert "--mode review" not in reason
 
 
 @pytest.mark.unit

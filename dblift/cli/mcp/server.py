@@ -205,21 +205,25 @@ class DbliftMcpServer:
         reviewing and a stop while authoring) lives in an add-on package,
         which reads :attr:`mode` from the server it is registered on.
         """
+        # Before the SDK import: an unknown mode is the caller's mistake and
+        # must not be masked by `MissingMcpSdkError` on an install without the
+        # `mcp` extra.
+        if mode not in SERVER_MODES:
+            raise ValueError(f"Unknown MCP server mode: {mode}")
         mcpserver_cls = _import_sdk()
         from mcp.types import ToolAnnotations
 
-        if mode not in SERVER_MODES:
-            raise ValueError(f"Unknown MCP server mode: {mode}")
         self.global_argv: List[str] = list(global_argv)
         self.mode: str = mode
         # A review session withholds exactly what `--read-only` withholds; the
         # two differ in what the server *says* it is for, and in the reason a
-        # skipped tool carries, so stderr names the flag that withheld it.
+        # skipped tool carries, which spells out the flag that withheld it so
+        # the stderr line is greppable.
         self.allow_writes: bool = allow_writes and mode != "review"
         self._write_skip_reason: str = (
-            "declares read_only=False and this is a review session"
+            "declares read_only=False and this server was started with --mode review"
             if mode == "review"
-            else "declares read_only=False and this server does not allow writes"
+            else "declares read_only=False and this server was started with --read-only"
         )
         self.offline: bool = offline
         self._allowed_tools: Optional[FrozenSet[str]] = (
@@ -595,7 +599,7 @@ def build_server(
     :meth:`DbliftMcpServer.connection_bound_resources`. ``mode="review"``
     implies ``allow_writes=False``: the server withholds every registration
     declaring ``read_only=False`` whatever ``allow_writes`` was asked for, and
-    the skip reason names the review session rather than ``--read-only``.
+    the skip reason names ``--mode review`` rather than ``--read-only``.
     """
     from dblift.cli.mcp.tools import register_oss_tools
 

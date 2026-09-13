@@ -178,7 +178,7 @@ def test_handle_mcp_reports_each_skipped_tool_on_stderr_and_still_serves(capsys)
     """Skips are diagnostics: stderr, never stdout (the JSON-RPC channel)."""
     server = _quiet_server()
     server.skipped_tools.return_value = [
-        ("export_schema", "declares read_only=False and this server does not allow writes"),
+        ("export_schema", "declares read_only=False and this server was started with --read-only"),
         ("validate", "not in the allowed tool list"),
     ]
     ctx = CliCommandContext(args=SimpleNamespace(global_arguments=[], read_only=True, tools=None))
