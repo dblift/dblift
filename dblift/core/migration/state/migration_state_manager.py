@@ -491,6 +491,7 @@ class MigrationStateManager:
         previous_checksums: Dict[str, str],
     ) -> List[ChecksumChange]:
         changes: List[ChecksumChange] = []
+        basename_checksums: Optional[Dict[str, str]] = None
 
         for migration in pending_migrations:
             if getattr(migration, "type", None) != MigrationType.REPEATABLE:
@@ -500,8 +501,17 @@ class MigrationStateManager:
             if not current_checksum:
                 continue
 
+            if basename_checksums is None:
+                basename_checksums = {}
+                for name, checksum in previous_checksums.items():
+                    basename_checksums.setdefault(Path(name).name, checksum)
+
             script_key = getattr(migration, "script_name", "")
-            previous_checksum = self._lookup_checksum(previous_checksums, script_key)
+            previous_checksum = self._lookup_checksum(
+                previous_checksums,
+                script_key,
+                basename_checksums=basename_checksums,
+            )
 
             if previous_checksum and self.state_service._checksums_differ(
                 previous_checksum, current_checksum
@@ -539,7 +549,12 @@ class MigrationStateManager:
         return int(getattr(migration, "installed_rank", 0) or 0)
 
     @staticmethod
-    def _lookup_checksum(checksums: Dict[str, str], script_name: str) -> Optional[str]:
+    def _lookup_checksum(
+        checksums: Dict[str, str],
+        script_name: str,
+        *,
+        basename_checksums: Optional[Dict[str, str]] = None,
+    ) -> Optional[str]:
         if script_name in checksums:
             return checksums[script_name]
 
@@ -549,6 +564,8 @@ class MigrationStateManager:
         basename = Path(script_name).name
         if basename in checksums:
             return checksums[basename]
+        if basename_checksums is not None:
+            return basename_checksums.get(basename)
         for key, value in checksums.items():
             if Path(key).name == basename:
                 return value
@@ -635,6 +652,8 @@ class MigrationStateManager:
         # Step 4: Catalog unresolved on-disk scripts (do not omit by
         # baseline/target/undo/tags — commands select from this set later)
         pending: List[Migration] = []
+        executed_basenames: Optional[Set[str]] = None
+        basename_checksums: Optional[Dict[str, str]] = None
 
         for migration in all_scripts:
             script_name = migration.script_name
@@ -652,8 +671,19 @@ class MigrationStateManager:
                     pending.append(migration)
 
             elif migration_type_name == "REPEATABLE":
+                if executed_basenames is None:
+                    executed_basenames = {Path(name).name for name in executed_scripts}
+                if basename_checksums is None:
+                    basename_checksums = {}
+                    for name, checksum in repeatable_checksums.items():
+                        basename_checksums.setdefault(Path(name).name, checksum)
                 if self._is_repeatable_pending(
-                    script_name, migration, executed_scripts, repeatable_checksums
+                    script_name,
+                    migration,
+                    executed_scripts,
+                    repeatable_checksums,
+                    executed_basenames=executed_basenames,
+                    basename_checksums=basename_checksums,
                 ):
                     pending.append(migration)
 
@@ -754,6 +784,9 @@ class MigrationStateManager:
         migration: Migration,
         executed_scripts: Set[str],
         repeatable_checksums: Dict[str, str],
+        *,
+        executed_basenames: Optional[Set[str]] = None,
+        basename_checksums: Optional[Dict[str, str]] = None,
     ) -> bool:
         """Check if a repeatable migration is pending."""
         # Never executed — check script_name directly, falling back to a
@@ -765,8 +798,10 @@ class MigrationStateManager:
         # already-qualified executed_scripts entry matches. Mirrors
         # _is_versioned_pending's fallback.
         script_basename = Path(script_name).name
-        is_executed = script_name in executed_scripts or any(
-            Path(executed).name == script_basename for executed in executed_scripts
+        is_executed = script_name in executed_scripts or (
+            script_basename in executed_basenames
+            if executed_basenames is not None
+            else any(Path(executed).name == script_basename for executed in executed_scripts)
         )
         if not is_executed:
             return True
@@ -778,7 +813,11 @@ class MigrationStateManager:
             if migration.content:
                 current_checksum = self.script_manager.calculate_checksum(migration.content)
 
-        stored_checksum = self._lookup_checksum(repeatable_checksums, script_name)
+        stored_checksum = self._lookup_checksum(
+            repeatable_checksums,
+            script_name,
+            basename_checksums=basename_checksums,
+        )
 
         # If checksum changed, it's pending
         if (
