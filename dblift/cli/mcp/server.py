@@ -96,9 +96,10 @@ def _offline_refusal(what: str) -> CommandInvocationError:
     """The error a connection-bound registration raises under ``--offline``.
 
     A :class:`CommandInvocationError` rather than a new type: ``raw_tool`` and
-    ``command_resource`` already convert that one into the SDK's ``ToolError``
-    / ``ResourceError``, which is what puts the message in the result the
-    model reads instead of a generic "Error executing tool".
+    ``resource`` (the seam ``command_resource`` delegates to) already convert
+    that one into the SDK's ``ToolError`` / ``ResourceError``, which is what
+    puts the message in the result the model reads instead of a generic
+    "Error executing tool".
     """
     return CommandInvocationError(_OFFLINE_REFUSAL.format(what=what), 1)
 
@@ -436,25 +437,27 @@ class DbliftMcpServer:
         name: str,
         description: str,
         fn: Callable[[], str],
-        connects: bool = False,
+        mime_type: str = "application/json",
+        connects: bool = True,
     ) -> None:
         """Register a resource whose content is ``fn()``, already rendered.
 
         The sibling of :meth:`raw_tool`: use it for a payload that is not a
         command's output — a document a package ships, or one derived from the
-        loaded configuration. ``fn`` returns the resource text as it should be
-        served; this method encodes nothing.
+        loaded configuration. ``fn`` returns the text; ``mime_type`` labels it;
+        nothing is encoded.
 
         A :class:`CommandInvocationError` raised by ``fn`` surfaces as a
         resource error carrying its message, the way a tool's does. The
         resource is fenced by ``--resources`` (skipped and recorded, never
         raised) and, when ``connects=True``, refused by ``--offline``.
 
-        ``connects`` defaults to ``False`` — the opposite of
-        :meth:`command_resource`, whose command always builds a client. Here
-        the body is the registrar's own and this seam exists for payloads
-        built from files and configuration; a body that does open a
-        connection must pass ``connects=True``.
+        ``connects`` (default ``True``) declares that ``fn`` opens a database
+        connection; on an ``offline`` server such a resource is still
+        registered and refuses when read. The default is ``True`` because an
+        undeclared resource is assumed to connect — a registrar that forgets
+        ``connects`` must not get an offline pass by omission. A body that
+        reads only files and configuration passes ``connects=False``.
         """
         from mcp.server.mcpserver.exceptions import ResourceError
 
@@ -481,9 +484,7 @@ class DbliftMcpServer:
                 # is logged as a traceback.
                 raise ResourceError(str(exc)) from exc
 
-        self.mcpserver.resource(
-            uri, name=name, description=description, mime_type="application/json"
-        )(body)
+        self.mcpserver.resource(uri, name=name, description=description, mime_type=mime_type)(body)
         self._resource_names.append(name)
         if connects:
             self._connection_bound_resources.append(uri)

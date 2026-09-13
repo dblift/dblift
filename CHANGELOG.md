@@ -10,8 +10,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - Add-on packages can now contribute resources that are not command payloads —
-  a document the package ships, or one derived from your configuration. They
-  are listed, fenced and refused exactly as the built-in resources are.
+  a document the package ships, or one derived from your configuration, served
+  under its own media type. `--resources` fences them and `--offline` refuses
+  them exactly as it does the built-in ones.
 
 ### Changed
 

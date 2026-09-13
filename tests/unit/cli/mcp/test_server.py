@@ -860,14 +860,21 @@ def test_the_resource_allowlist_fences_a_raw_resource_too():
 
 
 @pytest.mark.unit
-def test_offline_refuses_a_raw_resource_that_declares_it_connects():
-    """`connects=False` is the default because the body is the registrar's own
-    and the seam exists for payloads built from files; a body that does connect
-    says so, and `--offline` then fences it like everything else."""
+def test_offline_refuses_a_raw_resource_unless_it_declares_connects_false():
+    """`connects` defaults to ``True`` here as everywhere else: a registrar
+    that forgets it must not get an offline pass by omission. A body that
+    reads only files says `connects=False` and is served."""
     from dblift.cli.mcp.server import DbliftMcpServer
 
     server = DbliftMcpServer([], offline=True)
-    server.resource(uri="dblift://policy", name="policy", description="d", fn=lambda: "{}")
+    server.resource(
+        uri="dblift://policy",
+        name="policy",
+        description="d",
+        fn=lambda: "{}",
+        connects=False,
+    )
+    server.resource(uri="dblift://undeclared", name="undeclared", description="d", fn=lambda: "{}")
     server.resource(
         uri="dblift://live",
         name="live",
@@ -880,12 +887,42 @@ def test_offline_refuses_a_raw_resource_that_declares_it_connects():
         from mcp.shared.exceptions import MCPError
 
         offline_ok = await client.read_resource("dblift://policy")
-        with pytest.raises(MCPError) as exc_info:
-            await client.read_resource("dblift://live")
-        return offline_ok, str(exc_info.value)
+        refused = {}
+        for uri in ("dblift://undeclared", "dblift://live"):
+            with pytest.raises(MCPError) as exc_info:
+                await client.read_resource(uri)
+            refused[uri] = str(exc_info.value)
+        return offline_ok, refused
 
-    offline_ok, message = anyio.run(_with_client, server, scenario)
+    offline_ok, refused = anyio.run(_with_client, server, scenario)
 
     assert offline_ok.contents[0].text == "{}"
-    assert "--offline" in message and "dblift://live" in message
-    assert server.connection_bound_resources() == ["dblift://live"]
+    for uri, message in refused.items():
+        assert "--offline" in message and uri in message
+    assert server.connection_bound_resources() == ["dblift://undeclared", "dblift://live"]
+
+
+@pytest.mark.unit
+def test_a_raw_resource_can_declare_its_own_media_type():
+    """`fn` returns the text and `mime_type` labels it: a package shipping a
+    Markdown document must not have it announced as `application/json`."""
+    from dblift.cli.mcp.server import DbliftMcpServer
+
+    server = DbliftMcpServer([])
+    server.resource(
+        uri="dblift://guide",
+        name="guide",
+        description="d",
+        fn=lambda: "# Guide",
+        mime_type="text/markdown",
+    )
+
+    async def scenario(client):
+        listed = (await client.list_resources()).resources
+        return listed, await client.read_resource("dblift://guide")
+
+    (listed,), result = anyio.run(_with_client, server, scenario)
+
+    assert listed.mime_type == "text/markdown"
+    assert result.contents[0].mime_type == "text/markdown"
+    assert result.contents[0].text == "# Guide"
