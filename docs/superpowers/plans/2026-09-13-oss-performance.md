@@ -146,9 +146,9 @@ Use the actual tokenizer public API from existing tests to assert token values a
 
 ### Ownership completion before Task 7
 
-- [ ] Route the two remaining repair catalog reads through a fresh grouped-catalog StateManager accessor; preserve ScriptManager discovery, group order, options and distinct error handling.
-- [ ] Route baseline dry-run history rows through the existing fresh StateManager accessor. Preserve history-table preconditions and writes.
-- [ ] Verify repair/baseline outcomes and dry-run purity; root reviews the complete diff. Historical provider-specific import and cleanup inventory are outside this optimization scope.
+- [x] Route the two remaining repair catalog reads through a fresh grouped-catalog StateManager accessor; preserve ScriptManager discovery, group order, options and distinct error handling.
+- [x] Route baseline dry-run history rows through the existing fresh StateManager accessor. Preserve history-table preconditions and writes.
+- [x] Verify repair/baseline outcomes and dry-run purity; root reviews the complete diff. Historical provider-specific import and cleanup inventory are outside this optimization scope.
 
 ### Task 7: End-to-end benchmarks and final verification
 

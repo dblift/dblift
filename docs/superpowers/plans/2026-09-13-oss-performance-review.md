@@ -23,7 +23,7 @@ User explicitly requested root reviews; no separate reviewer agent substitutes f
 ## Status
 
 - Baseline on isolated develop archive: 2325 passed, 1 skipped, 57 subtests passed. Clean environment: /tmp/dblift-oss-performance-venv/bin/python.
-- Tasks 1–6 complete; ownership completion for repair/baseline and Task 7 pending.
+- Tasks 1–6 and repair/baseline ownership completion accepted; Task 7 pending.
 
 ## Task 1 — personally reviewed and accepted
 
@@ -106,3 +106,12 @@ User explicitly requested root reviews; no separate reviewer agent substitutes f
 - Both quote-reader entry points retain their signatures and delegate to the same unchanged tokenization body inside the MySQL plugin.
 - Ten behavior cases passed before and after extraction: doubled quotes, backslashes, other quote characters, multiline positions, subsequent-token positions and unterminated input. Full MySQL tokenizer/parser unit set: 149 passed.
 - Black, isort, production flake8, targeted mypy and diff check passed. No SQL-mode, delimiter or dialect ownership changes; no open findings.
+
+## Final command ownership completion — personally reviewed and accepted
+
+- Commit: f28f823; personally reviewed all eight changed files against 52d3f54.
+- Repair consumes a fresh grouped ScriptManager catalog through StateManager, preserving grouping/order/options, separate loads and its distinct load-failure handling. Baseline dry-run consumes the existing fresh typed-history accessor.
+- Three real regressions first failed and then passed: grouped catalog identity and file refresh; repair dry-run byte purity followed by real checksum repair and successful validation; baseline absent/empty/populated history on the same command.
+- 2407 migration/validator tests passed, one skipped; 429 command/roundtrip tests and 23 SQLite CLI checks passed. All formatting, typing, import and repository ratchet checks passed.
+- No direct script/history row collector calls remain in migration commands. Existing provider-level Flyway import reads (raw source types, case-sensitive tables), clean object inventory and connection metadata are separate historical concerns; changing their collection contracts is outside this optimization scope.
+- No open findings in the optimized paths. Specialized collection rules, repair decisions, transactions and writes retain their owners.
