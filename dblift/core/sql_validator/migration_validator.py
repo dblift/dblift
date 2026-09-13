@@ -14,11 +14,9 @@ from dblift.core.migration.migration import (
     Migration,
     MigrationType,
 )
-from dblift.core.migration.scripting.migration_script_manager import (
-    MigrationScriptManager,
-)
 from dblift.core.migration.scripting.migration_script_manager import (  # noqa: F401
-    _last_successful_non_delete_record as _last_successful_non_delete_record,
+    MigrationScriptManager,
+    _last_successful_non_delete_record,
 )
 from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
 from dblift.core.migration.state.migration_state import MigrationReadSnapshot

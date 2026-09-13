@@ -147,3 +147,11 @@ Same isolated Python 3.12.12 environment, local macOS 26.0.1 arm64 and real temp
 The probe counts Path.read_text only for workload SQL files, ScriptManager.load_migration_scripts calls, and the typed history SELECT using SQLite tracing. Timings include this instrumentation and are single local observations, not speed guarantees or a CI threshold. An earlier optimized run measured 0.1733s for fresh migrate, with identical counts. Deterministic regression tests protect the operation-count gains.
 
 The known compatibility limitations remain those recorded above: substring-based all-drift diagnostic deduplication, existing strict tag-filter behavior and separate validator discovery with a per-directory recursion map. Historical provider-level import/inventory collection is a separate architecture follow-up. No open correctness findings remain in this optimization scope.
+
+## PR 300 CI correction
+
+- CI exposed two gaps in the initial local verification: the flake8-tidy-imports plugin was missing, and tests/unit/test_v110_regressions.py was outside the selected regression suites.
+- Reproduced I250 on the two redundant compatibility import aliases with flake8-tidy-imports 4.12.0. Removed the aliases and let isort combine the imports; both historical module imports still resolve to the original callable. No lint configuration was weakened.
+- Reproduced the repair regression: its StateManager mock returned a non-iterable Mock instead of the grouped catalog. Updated the fixture to supply the existing empty catalog through StateManager. Production behavior and every delete/update assertion remain unchanged. Personally reviewed all three code/test diffs.
+- Recreated the full unit workflow dependencies using constraints-ci.txt. Complete Python 3.12 unit suite: 11325 passed, 35 skipped. The pytest-dblift package suite: 12 passed, 1 skipped.
+- Ran the complete quality workflow locally under Python 3.11, including flake8-tidy-imports, full-tree formatting/import ordering, typing, layering, ratchets and 23 public-surface/standalone/MCP checks; all passed. A preliminary Python 3.12 lint run reported existing f-string style diagnostics; the quality workflow uses Python 3.11, where they are absent. Those unrelated files remain unchanged.

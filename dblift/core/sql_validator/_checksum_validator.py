@@ -10,13 +10,11 @@ from dblift.core.migration.migration import (
     MigrationType,
     normalize_migration_checksum,
 )
-from dblift.core.migration.scripting.migration_script_manager import (
-    _current_script_checksum,
-)
 from dblift.core.migration.scripting.migration_script_manager import (  # noqa: F401
-    _last_successful_non_delete_record as _last_successful_non_delete_record,
+    _current_script_checksum,
+    _last_successful_non_delete_record,
+    _successful_non_delete_records,
 )
-from dblift.core.migration.scripting.migration_script_manager import _successful_non_delete_records
 from dblift.core.migration.version_utils import is_migration_success
 
 if TYPE_CHECKING:
