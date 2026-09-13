@@ -22,3 +22,7 @@ Source: the reviewed optimization recommendations and the user request to addres
 - Test performance regressions with real temporary files and SQLite plus narrow read/scan spies. Assert actual outputs as well as operation counts.
 - Each lot has an implementation commit, a personal root review, focused tests and corrections before dependent work proceeds.
 - Work branch fix/oss-migration-hot-paths starts at origin/develop 8645f3b. Do not modify or push develop. No publication requested.
+
+## Clarified responsibility boundaries
+
+Specialized managers collect their required data; MigrationStateManager aggregates it; commands consume the aggregate. ScriptManager owns discovery and reading of scripts and callbacks, including classification/event matching. HistoryManager owns history access. StateManager owns aggregation and bounded read snapshots, not discovery rules, validation rules or execution. Validator retains validation rules; commands retain operation orchestration. Data snapshots expire at the documented callback/write/lock boundaries.

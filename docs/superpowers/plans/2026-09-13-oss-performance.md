@@ -24,7 +24,7 @@
 
 ## Execution and review
 
-Coding model: GPT-5.6 Sol with high reasoning for integration lots. Root performs the specification review and code-quality review itself, as explicitly requested. No implementer may spawn another agent. Workers must work only in the isolated worktree, record their base SHA, run focused checks, write a report and commit only their assigned changes.
+Coding models: GPT-5.6 Sol with high reasoning for focused refactoring; GPT-6 Astra with high reasoning for checksum semantics and command data ownership. Root performs the specification review and code-quality review itself, as explicitly requested. No implementer may spawn another agent. Workers must work only in the isolated worktree, record their base SHA, run focused checks, write a report and commit only their assigned changes.
 
 For each task: reproduce the undesirable operation count (or record existing behavioral coverage for pure refactoring), implement the smallest change, verify, commit, then root reads the complete diff and relevant surrounding code. Any correctness finding returns to the implementer for correction and another personal review. Status is recorded in the adjacent review ledger.
 
@@ -111,11 +111,11 @@ records = preloaded_records if preloaded_records is not None else history_manage
 
 Explicit user clarification: each specialized manager collects required data, the state manager aggregates it, and commands consume it. This supersedes the header-to-state capture mechanism in the first Task 4 implementation.
 
-- [ ] Introduce a small lazy read snapshot created by MigrationStateManager. HistoryManager remains responsible for database collection; state manager owns aggregation and schema-version derivation. Commands do not collect and feed back raw history.
-- [ ] Remove capture_history/on_history_loaded; header/state/validation consume the manager-created snapshot. Preserve empty versus unavailable data, retry after failed reads and validation's existing lazy read/error boundaries.
-- [ ] Route touched commands' history/catalog/callback data acquisition through the state manager, leaving collection and callback matching rules in specialized managers. Preserve distinct command callback and history read-phase lifetimes.
-- [ ] Keep post-lock, post-callback and final reads fresh. Preserve baseline/undo schema-version behavior without reinterpreting MigrationState.current_version.
-- [ ] Re-run real read-count/freshness/concurrency regressions, full migration/validator suites and static checks; root personally reviews the ownership correction before resuming Task 5.
+- [x] Introduce a small lazy read snapshot created by MigrationStateManager. HistoryManager remains responsible for database collection; state manager owns aggregation and schema-version derivation. Commands do not collect and feed back raw history.
+- [x] Remove capture_history/on_history_loaded; header/state/validation consume the manager-created snapshot. Preserve empty versus unavailable data, retry after failed reads and validation's existing lazy read/error boundaries.
+- [x] Route touched commands' history/catalog/callback data acquisition through the state manager, leaving collection and callback matching rules in specialized managers. Preserve distinct command callback and history read-phase lifetimes.
+- [x] Keep post-lock, post-callback and final reads fresh. Preserve baseline/undo schema-version behavior without reinterpreting MigrationState.current_version.
+- [x] Re-run real read-count/freshness/concurrency regressions, full migration/validator suites and static checks; root personally reviews the ownership correction before resuming Task 5.
 
 ### Task 5: Shared validation pipeline
 

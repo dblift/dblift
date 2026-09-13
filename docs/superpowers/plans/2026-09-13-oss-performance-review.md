@@ -23,7 +23,7 @@ User explicitly requested root reviews; no separate reviewer agent substitutes f
 ## Status
 
 - Baseline on isolated develop archive: 2325 passed, 1 skipped, 57 subtests passed. Clean environment: /tmp/dblift-oss-performance-venv/bin/python.
-- Tasks 1–3 complete; Task 4 data ownership follow-up active; Tasks 5–7 pending.
+- Tasks 1–4 complete, including the data ownership correction; Tasks 5–7 pending.
 
 ## Task 1 — personally reviewed and accepted
 
@@ -75,8 +75,17 @@ User explicitly requested root reviews; no separate reviewer agent substitutes f
 - Fresh 100-migration run: decoded SQL reads 40600 to 300; catalog loads 406 to 3; local elapsed time 13.4713s to 0.2061s. Both runs verified 100 actual tables.
 - These intermediate timings are observations on this machine, not performance guarantees. Final evidence follows after all lots.
 
-## Task 4 ownership follow-up — active
+## Task 4 ownership follow-up — personally reviewed and accepted
 
 - User clarified that specialized managers collect data, MigrationStateManager aggregates it, and commands consume it.
 - The first Task 4 history capture mechanism is being replaced: header display must not be the upstream source of state data.
 - Task 5 was paused; its small uncommitted format-guard regression and implementation are preserved in an ignored patch for later resumption.
+
+- Correction commit: 2a030f4; personally reviewed all production and fixture changes against 0187793. This supersedes the header capture mechanism described in the initial Task 4 record.
+- HistoryManager remains the history collector; ScriptManager retains script/callback discovery, classification and event matching. StateManager aggregates their data and creates bounded history/callback snapshots. Commands consume those aggregates and orchestrate execution; validation rules remain in Validator.
+- Base schema-version derivation moved into StateManager without changing baseline/undo semantics. Commands no longer directly fetch script/history data, including info fallback and post-lock typed history.
+- Command-driven validator inputs also go through manager-owned snapshots at their existing lazy read points. Explicit state catalogs remain preferred; standalone validator input compatibility is retained.
+- Separate lazy callback scope preserves first-event discovery after lock acquisition. A real test creates a callback during lock acquisition and verifies it executes; existing callback order/failure/freshness tests remain green.
+- Test collaborator updates add the required state aggregator; no direct-collector production fallback was added for outdated fixtures.
+- 2392 migration/validator tests passed, one skipped; 23 SQLite CLI/JSON checks passed. All formatting, typing, import contracts and repository ratchets pass.
+- Read-count gains remain unchanged; no open correctness or ownership findings.
