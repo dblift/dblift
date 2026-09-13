@@ -14,9 +14,12 @@ from dblift.core.migration.migration import (
     Migration,
     MigrationType,
 )
-from dblift.core.migration.scripting.migration_script_manager import MigrationScriptManager
+from dblift.core.migration.scripting.migration_script_manager import (
+    MigrationScriptManager,
+    _last_successful_non_delete_record as _last_successful_non_delete_record,
+)
 from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
-from dblift.core.migration.version_utils import is_migration_failure, is_migration_success
+from dblift.core.migration.version_utils import is_migration_failure
 
 
 class ValidationResult:
@@ -42,6 +45,8 @@ class ValidationResult:
         self.issues: List[str] = []
         self.failed_scripts: List[str] = []
         self.checked_scripts: List[str] = []
+        self._checked_script_names: set[str] = set()
+        self._failed_script_names: set[str] = set()
 
     def add_checked_script(self, script_name: Optional[str]) -> None:
         """Record that a check actually ran against *script_name*.
@@ -53,7 +58,8 @@ class ValidationResult:
         a check that never ran. Recording it at the point of the check is what
         keeps the reported set honest if a validator's scope later changes.
         """
-        if script_name and script_name not in self.checked_scripts:
+        if script_name and script_name not in self._checked_script_names:
+            self._checked_script_names.add(script_name)
             self.checked_scripts.append(script_name)
 
     def add_failed_script(self, script_name: Optional[str]) -> None:
@@ -66,7 +72,8 @@ class ValidationResult:
         dropped: a script can raise more than one issue and is still one failed
         migration.
         """
-        if script_name and script_name not in self.failed_scripts:
+        if script_name and script_name not in self._failed_script_names:
+            self._failed_script_names.add(script_name)
             self.failed_scripts.append(script_name)
 
     def add_modified_repeatable(
@@ -86,24 +93,6 @@ class ValidationResult:
                 "filesystem_checksum": current_checksum,
             }
         )
-
-
-def _last_successful_non_delete_record(
-    applied_migrations: List[Migration], script_name: str
-) -> Optional[Migration]:
-    """Match :meth:`MigrationScriptManager.has_script_changed` — latest successful row only."""
-    for migration in reversed(applied_migrations):
-        if getattr(migration, "script_name", None) != script_name:
-            continue
-        migration_type = getattr(migration, "type", None)
-        if is_migration_type(migration_type, "DELETE") or is_migration_type(
-            migration_type, "UNDO_SQL"
-        ):
-            continue
-        if not is_migration_success(getattr(migration, "success", False)):
-            continue
-        return migration
-    return None
 
 
 class MigrationValidator:

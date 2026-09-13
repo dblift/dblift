@@ -30,7 +30,13 @@ def _make_validator(dialect="postgresql"):
 
 def _script(mtype, name, version=None, checksum=100):
     return SimpleNamespace(
-        type=mtype, script_name=name, version=version, checksum=checksum, path=None, tags=[]
+        type=mtype,
+        script_name=name,
+        version=version,
+        checksum=checksum,
+        content="SELECT 1;",
+        path=None,
+        tags=[],
     )
 
 
@@ -54,7 +60,6 @@ class TestFailedRepeatableFiltering(unittest.TestCase):
     def _run(self, scripts, history):
         v, sm, hm, _ = _make_validator()
         hm.has_history_table = True
-        sm.has_script_changed.return_value = False
         hm.get_applied_migrations.return_value = history
         return v.validate_resolved_migrations(scripts)
 
@@ -131,6 +136,7 @@ class TestFailedRepeatableFiltering(unittest.TestCase):
             ],
             history=[
                 _history_row(MigrationType.SQL, "V1__a.sql", version="1", checksum=100, rank=1),
+                _history_row(MigrationType.REPEATABLE, "R__x.sql", checksum=200, rank=1),
                 _history_row(
                     MigrationType.REPEATABLE,
                     "R__x.sql",

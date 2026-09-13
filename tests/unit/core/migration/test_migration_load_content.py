@@ -79,41 +79,34 @@ class TestChecksumValidationIncludesPython:
             if t == MigrationType.PYTHON:
                 assert not should_skip, "PYTHON must NOT be skipped in checksum validation"
 
-    def test_validate_checksums_does_not_skip_python(self, tmp_path):
-        """PYTHON migration is NOT skipped — has_script_changed is called for it."""
-        from dblift.core.migration.migration import Migration, MigrationType
+    @pytest.mark.parametrize("changed", [False, True])
+    def test_validate_checksums_does_not_skip_python(self, tmp_path, changed):
+        """PYTHON migrations report real checksum drift just like SQL migrations."""
+        from dblift.core.logger import NullLog
+        from dblift.core.migration.scripting.migration_script_manager import MigrationScriptManager
         from dblift.core.sql_validator.migration_validator import (
             MigrationValidator,
             ValidationResult,
         )
 
-        script = tmp_path / "V6__orders.py"
-        script.write_text("def migrate(ctx): ctx.execute('CREATE TABLE orders (id INT)')\n")
-
-        applied = Migration(script_path=script)
-        applied.type = MigrationType.PYTHON
-
-        log = MagicMock()
-        script_manager = MagicMock()
-        script_manager.has_script_changed.return_value = False  # no actual mismatch
-        script_manager.script_encoding = "utf-8"
-        script_manager.calculate_checksum.return_value = 12345
+        path = tmp_path / "V6__orders.py"
+        path.write_text("def migrate(ctx): ctx.execute('CREATE TABLE orders (id INT)')\n")
+        applied = Migration(path)
+        applied.success = True
+        if changed:
+            path.write_text("def migrate(ctx): ctx.execute('CREATE TABLE orders (id BIGINT)')\n")
+        script = Migration(path)
 
         validator = MigrationValidator.__new__(MigrationValidator)
-        validator.log = log
-        validator.script_manager = script_manager
-
+        validator.log = NullLog()
+        validator.script_manager = MigrationScriptManager(validator.log)
         issues: list = []
-        result = MagicMock(spec=ValidationResult)
-        validator._validate_checksums(
-            scripts=[applied],
-            applied_migrations=[applied],
-            result=result,
-            issues=issues,
-            strict_mode=False,
-        )
-        # PYTHON type must reach has_script_changed — not skipped by the type guard
-        script_manager.has_script_changed.assert_called()
+        result = ValidationResult()
+        validator._validate_checksums([script], [applied], result, issues)
+
+        assert result.checked_scripts == [script.script_name]
+        assert result.failed_scripts == ([script.script_name] if changed else [])
+        assert any("has been modified" in issue for issue in issues) == changed
 
     def test_has_script_changed_ignores_later_undo_row_for_same_script(self, tmp_path):
         """Synthetic UNDO_SQL rows reuse the script name but must not own the checksum."""

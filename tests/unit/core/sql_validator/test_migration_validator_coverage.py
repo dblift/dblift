@@ -1044,9 +1044,9 @@ class TestValidateChecksums(unittest.TestCase):
             type=MigrationType.SQL,
             version="1",
             checksum=100,
+            content="SELECT 1;",
             path=None,
         )
-        sm.has_script_changed.return_value = False
         v._validate_checksums([script], [applied], result, issues)
         self.assertEqual(issues, [])
         self.assertTrue(result.success)
@@ -1235,6 +1235,7 @@ class TestCheckRepeatableMigrations(unittest.TestCase):
             version=None,
             script_name=name,
             checksum=checksum,
+            content="SELECT 1;",
             path=None,
         )
 
@@ -1275,7 +1276,6 @@ class TestCheckRepeatableMigrations(unittest.TestCase):
 
         v, sm, _, log = _make_validator()
         result = ValidationResult()
-        sm.has_script_changed.return_value = True
         v._check_repeatable_migrations(
             [self._rep_script(checksum=200)],
             [self._applied_rep(success=True, checksum=100)],
@@ -1293,7 +1293,6 @@ class TestCheckRepeatableMigrations(unittest.TestCase):
         result = ValidationResult()
         rep = self._rep_script(checksum=200)
         applied = self._applied_rep(success=True, checksum=100)
-        sm.has_script_changed.return_value = True
         v._check_repeatable_migrations([rep], [applied], result)
         self.assertEqual(len(result.repeatable_migrations_to_reapply), 1)
 
@@ -1304,7 +1303,6 @@ class TestCheckRepeatableMigrations(unittest.TestCase):
         result = ValidationResult()
         rep = self._rep_script(checksum=100)
         applied = self._applied_rep(success=True, checksum=100)
-        sm.has_script_changed.return_value = False
         v._check_repeatable_migrations([rep], [applied], result)
         self.assertEqual(len(result.repeatable_migrations_to_reapply), 0)
 
@@ -1349,7 +1347,6 @@ class TestCheckRepeatableMigrations(unittest.TestCase):
         v, sm, *_ = _make_validator()
         result = ValidationResult()
         rep = self._rep_script(checksum=100)
-        sm.has_script_changed.return_value = False
         applied = self._applied_rep(success=True, checksum=100)
         # Force add_modified_repeatable to produce entries
         result.repeatable_migrations_to_reapply = [
@@ -1364,7 +1361,6 @@ class TestCheckRepeatableMigrations(unittest.TestCase):
         v, sm, *_ = _make_validator()
         result = ValidationResult()
         rep = self._rep_script(checksum=100)
-        sm.has_script_changed.return_value = True
         applied = self._applied_rep(success=True, checksum=50)
         v._check_repeatable_migrations([rep], [applied], result, command="info")
         # Should have one entry

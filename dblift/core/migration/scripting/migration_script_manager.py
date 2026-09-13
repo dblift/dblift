@@ -4,9 +4,10 @@ import os
 import re
 from functools import cmp_to_key
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any, Dict, Iterable, Iterator, List, Optional, Set, Tuple
 
 from dblift.core.logger import Log
+from dblift.core.migration._type_match import is_migration_type
 from dblift.core.migration.encoding import MigrationEncodingError, read_migration_text
 from dblift.core.migration.migration import (
     _CALLBACK_PREFIXES,
@@ -22,6 +23,56 @@ from dblift.core.migration.migration import (
 )
 from dblift.core.migration.version_utils import compare_versions as _compare_versions_shared
 from dblift.core.migration.version_utils import is_migration_success
+
+
+def _successful_non_delete_records(migrations: Iterable[Migration]) -> Iterator[Migration]:
+    """Yield successful non-audit rows in the supplied history order."""
+    for migration in migrations:
+        migration_type = getattr(migration, "type", None)
+        if (
+            not is_migration_type(migration_type, "DELETE")
+            and not is_migration_type(migration_type, "UNDO_SQL")
+            and is_migration_success(getattr(migration, "success", False))
+        ):
+            yield migration
+
+
+def _last_successful_non_delete_record(
+    applied_migrations: List[Migration], script_name: str
+) -> Optional[Migration]:
+    """Find the last successful non-audit row in the supplied history order."""
+    return next(
+        (
+            migration
+            for migration in _successful_non_delete_records(reversed(applied_migrations))
+            if getattr(migration, "script_name", None) == script_name
+        ),
+        None,
+    )
+
+
+def _current_script_checksum(
+    manager: "MigrationScriptManager",
+    script_path: Optional[Path],
+    script: Optional[Migration] = None,
+) -> Optional[int]:
+    """Reuse resolved content's checksum, or read a legacy/standalone script once."""
+    if script is not None and isinstance(getattr(script, "content", None), str):
+        checksum = normalize_migration_checksum(getattr(script, "checksum", None))
+        if checksum is not None:
+            return checksum
+    if script_path and script_path.exists():
+        raw_text = read_migration_text(
+            script_path,
+            configured_encoding=manager.script_encoding,
+            detect_encoding=manager.detect_encoding,
+        )
+        checksum = normalize_migration_checksum(manager.calculate_checksum(raw_text))
+        if checksum is None:
+            checksum = calculate_migration_script_checksum(raw_text)
+        return checksum
+    return None
+
 
 # A version must start with a digit. Later segments may mix letters and
 # digits (``V3.2A``, ``V1.2.3RC1``) — dblift is deliberately looser than
@@ -358,25 +409,7 @@ class MigrationScriptManager:
             )
             return True
 
-        # Find the last applied version of this script (excluding DELETE entries)
-        applied_script = None
-        for migration in reversed(applied_migrations):
-            # All applied_migrations should now be Migration objects
-            migration_script_name = getattr(migration, "script_name", None)
-            migration_success = getattr(migration, "success", False)
-            migration_type = getattr(migration, "type", None)
-
-            # Skip audit rows when looking for the original applied migration.
-            is_audit_type = self._is_migration_type_equal(
-                migration_type, "DELETE"
-            ) or self._is_migration_type_equal(migration_type, "UNDO_SQL")
-            if (
-                migration_script_name == script_name
-                and is_migration_success(migration_success)
-                and not is_audit_type
-            ):
-                applied_script = migration
-                break
+        applied_script = _last_successful_non_delete_record(applied_migrations, script_name)
 
         # If script has never been successfully applied, consider it changed
         if not applied_script:
@@ -386,26 +419,8 @@ class MigrationScriptManager:
         # Get applied checksum (normalize driver unsigned 32-bit vs signed Flyway CRC32)
         applied_checksum = normalize_migration_checksum(getattr(applied_script, "checksum", None))
 
-        # Get current checksum
-        current_checksum = None
-        if script_path and script_path.exists():
-            # Calculate checksum from the same decoded text used for migration execution.
-            raw_text = read_migration_text(
-                script_path,
-                configured_encoding=self.script_encoding,
-                detect_encoding=self.detect_encoding,
-            )
-            current_checksum = normalize_migration_checksum(self.calculate_checksum(raw_text))
-            # Legacy: calculate_checksum once returned MD5 hex (non-numeric); Flyway CRC32 is authoritative
-            if current_checksum is None:
-                current_checksum = calculate_migration_script_checksum(raw_text)
-        else:
-            # We need to find the script file
-            # This could be improved by allowing script_dir to be passed in
-            self.logger.debug(
-                f"No script path provided for {script_name}, checksum comparison not possible"
-            )
-            return True
+        # Standalone callers always read the current file, without a resolved snapshot.
+        current_checksum = _current_script_checksum(self, script_path)
 
         if applied_checksum is None:
             self.logger.debug(
