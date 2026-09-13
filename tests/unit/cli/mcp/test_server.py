@@ -785,3 +785,107 @@ def test_a_resource_restriction_points_the_agent_at_the_lists():
 
     assert fenced.startswith(SERVER_INSTRUCTIONS)
     assert "resources/list" in fenced
+
+
+# --- v3: the raw resource seam ------------------------------------------------
+
+
+@pytest.mark.unit
+def test_resource_serves_text_from_the_registrars_own_callable():
+    """The sibling of `raw_tool`: a resource whose payload is not a command's
+    output — a document shipped in a package, or one derived from the loaded
+    configuration — needs a seam that takes a body instead of an argv."""
+    from dblift.cli.mcp.server import DbliftMcpServer
+
+    server = DbliftMcpServer([])
+    server.resource(
+        uri="dblift://policy",
+        name="policy",
+        description="The effective policy",
+        fn=lambda: '{"allow_drops": false}',
+    )
+
+    async def scenario(client):
+        listed = sorted(str(res.uri) for res in (await client.list_resources()).resources)
+        return listed, await client.read_resource("dblift://policy")
+
+    listed, result = anyio.run(_with_client, server, scenario)
+
+    assert listed == ["dblift://policy"]
+    assert result.contents[0].text == '{"allow_drops": false}'
+    assert server.resource_names() == ["policy"]
+
+
+@pytest.mark.unit
+def test_a_raw_resource_failure_carries_the_cli_message():
+    """As with `command_resource`: any exception type other than the SDK's
+    `ResourceError` has its message replaced by a generic one."""
+    from dblift.cli.mcp.runner import CommandInvocationError as CIE
+    from dblift.cli.mcp.server import DbliftMcpServer
+
+    server = DbliftMcpServer([])
+
+    def boom() -> str:
+        raise CIE("no policy block in this configuration", 1)
+
+    server.resource(uri="dblift://policy", name="policy", description="d", fn=boom)
+
+    async def scenario(client):
+        from mcp.shared.exceptions import MCPError
+
+        with pytest.raises(MCPError) as exc_info:
+            await client.read_resource("dblift://policy")
+        return str(exc_info.value)
+
+    assert "no policy block in this configuration" in anyio.run(_with_client, server, scenario)
+
+
+@pytest.mark.unit
+def test_the_resource_allowlist_fences_a_raw_resource_too():
+    """One resource surface, not two: a raw resource is withheld, skipped and
+    reported exactly as a command resource is."""
+    from dblift.cli.mcp.server import DbliftMcpServer
+
+    server = DbliftMcpServer([], allowed_resources=["policy"])
+    server.resource(uri="dblift://policy", name="policy", description="d", fn=lambda: "{}")
+    server.resource(uri="dblift://secrets", name="secrets", description="d", fn=lambda: "{}")
+
+    async def scenario(client):
+        return sorted(str(res.uri) for res in (await client.list_resources()).resources)
+
+    assert anyio.run(_with_client, server, scenario) == ["dblift://policy"]
+    assert server.resource_names() == ["policy"]
+    assert dict(server.skipped_resources()) == {"secrets": "not in the allowed resource list"}
+    assert server.unmatched_allowed_resources() == []
+
+
+@pytest.mark.unit
+def test_offline_refuses_a_raw_resource_that_declares_it_connects():
+    """`connects=False` is the default because the body is the registrar's own
+    and the seam exists for payloads built from files; a body that does connect
+    says so, and `--offline` then fences it like everything else."""
+    from dblift.cli.mcp.server import DbliftMcpServer
+
+    server = DbliftMcpServer([], offline=True)
+    server.resource(uri="dblift://policy", name="policy", description="d", fn=lambda: "{}")
+    server.resource(
+        uri="dblift://live",
+        name="live",
+        description="d",
+        fn=lambda: "{}",
+        connects=True,
+    )
+
+    async def scenario(client):
+        from mcp.shared.exceptions import MCPError
+
+        offline_ok = await client.read_resource("dblift://policy")
+        with pytest.raises(MCPError) as exc_info:
+            await client.read_resource("dblift://live")
+        return offline_ok, str(exc_info.value)
+
+    offline_ok, message = anyio.run(_with_client, server, scenario)
+
+    assert offline_ok.contents[0].text == "{}"
+    assert "--offline" in message and "dblift://live" in message
+    assert server.connection_bound_resources() == ["dblift://live"]

@@ -429,6 +429,65 @@ class DbliftMcpServer:
         if connects:
             self._connection_bound_tools.append(name)
 
+    def resource(
+        self,
+        *,
+        uri: str,
+        name: str,
+        description: str,
+        fn: Callable[[], str],
+        connects: bool = False,
+    ) -> None:
+        """Register a resource whose content is ``fn()``, already rendered.
+
+        The sibling of :meth:`raw_tool`: use it for a payload that is not a
+        command's output — a document a package ships, or one derived from the
+        loaded configuration. ``fn`` returns the resource text as it should be
+        served; this method encodes nothing.
+
+        A :class:`CommandInvocationError` raised by ``fn`` surfaces as a
+        resource error carrying its message, the way a tool's does. The
+        resource is fenced by ``--resources`` (skipped and recorded, never
+        raised) and, when ``connects=True``, refused by ``--offline``.
+
+        ``connects`` defaults to ``False`` — the opposite of
+        :meth:`command_resource`, whose command always builds a client. Here
+        the body is the registrar's own and this seam exists for payloads
+        built from files and configuration; a body that does open a
+        connection must pass ``connects=True``.
+        """
+        from mcp.server.mcpserver.exceptions import ResourceError
+
+        self._offered_resources.update((name, uri))
+        if self._allowed_resources is not None and not (
+            name in self._allowed_resources or uri in self._allowed_resources
+        ):
+            # Recorded and logged like a skipped tool, never raised: raising
+            # would abort `build_server` and leave the operator no server.
+            self._skipped_resources.append((name, "not in the allowed resource list"))
+            _LOG.warning("Skipping MCP resource %s: not in the allowed resource list", uri)
+            return
+
+        refuse_offline = self.offline and connects
+
+        def body() -> str:
+            try:
+                if refuse_offline:
+                    raise _offline_refusal(f"the {uri} resource")
+                return fn()
+            except CommandInvocationError as exc:
+                # As with `ToolError` above: any other exception type has its
+                # message replaced by a generic "Error reading resource" and
+                # is logged as a traceback.
+                raise ResourceError(str(exc)) from exc
+
+        self.mcpserver.resource(
+            uri, name=name, description=description, mime_type="application/json"
+        )(body)
+        self._resource_names.append(name)
+        if connects:
+            self._connection_bound_resources.append(uri)
+
     def command_resource(
         self,
         *,
@@ -457,40 +516,13 @@ class DbliftMcpServer:
         """
         import json
 
-        self._offered_resources.update((name, uri))
-        if self._allowed_resources is not None and not (
-            name in self._allowed_resources or uri in self._allowed_resources
-        ):
-            # Recorded and logged like a skipped tool, never raised: raising
-            # would abort `build_server` and leave the operator no server.
-            self._skipped_resources.append((name, "not in the allowed resource list"))
-            _LOG.warning("Skipping MCP resource %s: not in the allowed resource list", uri)
-            return
-
-        from mcp.server.mcpserver.exceptions import ResourceError
-
         global_argv = self.global_argv
         argv_list = list(argv)
-        refuse_offline = self.offline and connects
 
-        def resource() -> str:
-            try:
-                if refuse_offline:
-                    raise _offline_refusal(f"the {uri} resource")
-                payload = run_command(global_argv, command, argv_list)
-            except CommandInvocationError as exc:
-                # As with `ToolError` above: any other exception type has its
-                # message replaced by a generic "Error reading resource" and
-                # is logged as a traceback.
-                raise ResourceError(str(exc)) from exc
-            return json.dumps(pick(payload), indent=2)
+        def render() -> str:
+            return json.dumps(pick(run_command(global_argv, command, argv_list)), indent=2)
 
-        self.mcpserver.resource(
-            uri, name=name, description=description, mime_type="application/json"
-        )(resource)
-        self._resource_names.append(name)
-        if connects:
-            self._connection_bound_resources.append(uri)
+        self.resource(uri=uri, name=name, description=description, fn=render, connects=connects)
 
     def run_stdio(self) -> None:
         """Serve on stdin/stdout until the client closes the stream."""

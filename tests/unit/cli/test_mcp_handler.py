@@ -370,3 +370,27 @@ def test_handle_mcp_reports_each_skipped_resource_on_stderr(capsys):
     captured = capsys.readouterr()
     assert captured.out == ""
     assert "skipped resource pending" in captured.err
+
+
+@pytest.mark.unit
+def test_zero_config_dispatch_keeps_resources_value_out_of_the_command_list(monkeypatch):
+    """`--resources` takes a value, so it must stay out of
+    `_SUBCOMMAND_BOOLEAN_FLAGS`: a resource may be named after a command (an
+    add-on serving `dblift://plan`), and the splitter would then read that
+    name as a second chained command instead of as the flag's value."""
+    from dblift.cli import main as cli_main
+
+    seen = {}
+
+    def fake(ctx):
+        seen["resources"] = ctx.args.resources
+        return (True, None)
+
+    fake._dblift_zero_config_command = True
+    monkeypatch.setattr(cli_main, "_COMMAND_HANDLERS", {**cli_main._COMMAND_HANDLERS, "mcp": fake})
+
+    with pytest.raises(SystemExit) as exc_info:
+        cli_main._parse_argv_and_load_config(["mcp", "--resources", "plan"])
+
+    assert exc_info.value.code == 0
+    assert seen == {"resources": "plan"}

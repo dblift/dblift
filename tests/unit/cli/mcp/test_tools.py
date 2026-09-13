@@ -120,6 +120,17 @@ def test_list_tools_is_exactly_the_oss_three(project):
 
 
 @pytest.mark.unit
+def test_list_resources_is_exactly_the_oss_two(project):
+    """OSS registers no raw resource: the new seam is for add-on packages, and
+    adding it must not change what this install serves."""
+
+    async def scenario(client):
+        return sorted(str(res.uri) for res in (await client.list_resources()).resources)
+
+    assert anyio.run(_session, scenario) == ["dblift://history", "dblift://pending"]
+
+
+@pytest.mark.unit
 def test_call_tool_info_accepts_a_list_for_tags(project):
     async def scenario(client):
         return await client.call_tool("info", {"tags": ["x"]})

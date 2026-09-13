@@ -75,6 +75,18 @@ again is still a duplicate.
 never skipped by `--read-only` or `--tools`, so a resource must not run a
 writing command.
 
+For a resource whose content is not a command's output — a document your
+package ships, or one derived from the loaded configuration — call
+`server.resource(uri=..., name=..., description=..., fn=...)` instead, where
+`fn() -> str` returns the resource text already rendered; nothing encodes it
+for you. It is the sibling of `raw_tool`, and it is fenced exactly as
+`command_resource` is: by `--resources`, and by `--offline` when you pass
+`connects=True`. `connects` defaults to `False` here, because the body is
+yours and this seam exists for payloads built from files and configuration —
+if your body opens a database connection, you must say so. Raise the SDK's
+`ResourceError`, or a `CommandInvocationError`, to send a message of your own
+to the client; any other exception type has its message replaced.
+
 `fn`'s keyword-only parameters and their annotations become the tool's input
 schema, and its docstring the description. Write those annotations however you
 normally would — `Optional[str]`, `List[str]`, `dict[str, str]`, with or without
