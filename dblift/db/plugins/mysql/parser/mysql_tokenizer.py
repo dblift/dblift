@@ -229,42 +229,7 @@ class MySQLTokenizer(BaseTokenizer):
         Returns:
             String token
         """
-        start_pos = self.pos
-        start_line = self.line
-        start_col = self.col
-
-        # Capture entire string including quotes
-        string_text = ""
-        quote_char = self.read()  # '
-        string_text += quote_char
-
-        while self.pos < len(self.sql):
-            char = self.peek()
-
-            # Handle backslash escape
-            if char == "\\" and self.pos + 1 < len(self.sql):
-                string_text += self.read(2)  # Capture backslash and next character
-                continue
-
-            # Handle closing quote
-            if char == quote_char:
-                # Check for doubled quote (SQL escape: 'O''Reilly')
-                if self.peek(2) == quote_char + quote_char:
-                    string_text += self.read(2)
-                else:
-                    string_text += self.read()  # Closing quote
-                    break
-            else:
-                string_text += self.read()
-
-        return Token(
-            TokenType.STRING,
-            string_text,
-            start_pos,
-            start_line,
-            start_col,
-            self.parens_depth,
-        )
+        return self._handle_quoted_string()
 
     def _handle_double_quoted_string(self) -> Token:
         """Handle double-quoted string with backslash escapes.
@@ -272,13 +237,17 @@ class MySQLTokenizer(BaseTokenizer):
         Returns:
             String token
         """
+        return self._handle_quoted_string()
+
+    def _handle_quoted_string(self) -> Token:
+        """Handle a quoted string using the delimiter at the current position."""
         start_pos = self.pos
         start_line = self.line
         start_col = self.col
 
         # Capture entire string including quotes
         string_text = ""
-        quote_char = self.read()  # "
+        quote_char = self.read()
         string_text += quote_char
 
         while self.pos < len(self.sql):

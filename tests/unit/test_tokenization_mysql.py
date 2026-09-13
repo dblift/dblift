@@ -67,6 +67,59 @@ class TestMySQLTokenizer:
         string_tokens = [t for t in tokens if t.type == TokenType.STRING]
         assert len(string_tokens) >= 1
 
+    @pytest.mark.parametrize(
+        ("quoted", "next_pos", "next_col"),
+        [
+            ("'O''Reilly'", 12, 13),
+            ('"a""b"', 7, 8),
+            ("'a\\'b'", 7, 8),
+            ('"a\\"b"', 7, 8),
+            ("'a\"b'", 6, 7),
+            ('"a\'b"', 6, 7),
+        ],
+    )
+    def test_quoted_strings_preserve_text_and_advance_to_next_token(
+        self, quoted, next_pos, next_col
+    ):
+        """Matching escapes stay in the string and the other quote stays literal."""
+        tokens = MySQLTokenizer(f"{quoted} next").tokenize()
+
+        assert tokens[0].type == TokenType.STRING
+        assert tokens[0].text == quoted
+        assert (tokens[0].pos, tokens[0].line, tokens[0].col) == (0, 1, 1)
+        assert tokens[1].type == TokenType.IDENTIFIER
+        assert tokens[1].text == "next"
+        assert (tokens[1].pos, tokens[1].line, tokens[1].col) == (
+            next_pos,
+            1,
+            next_col,
+        )
+
+    @pytest.mark.parametrize("quote", ["'", '"'])
+    def test_multiline_quoted_strings_advance_following_token_position(self, quote):
+        """Newlines inside either string style update the following token position."""
+        quoted = f"{quote}first\nsecond{quote}"
+        tokens = MySQLTokenizer(f"{quoted}\nnext").tokenize()
+
+        assert tokens[0].type == TokenType.STRING
+        assert tokens[0].text == quoted
+        assert (tokens[0].pos, tokens[0].line, tokens[0].col) == (0, 1, 1)
+        assert tokens[1].type == TokenType.IDENTIFIER
+        assert tokens[1].text == "next"
+        assert (tokens[1].pos, tokens[1].line, tokens[1].col) == (15, 3, 1)
+
+    @pytest.mark.parametrize("quote", ["'", '"'])
+    def test_unterminated_quoted_strings_are_preserved_to_end(self, quote):
+        """An unterminated string remains one token through the end of input."""
+        sql = f"{quote}first\nsecond"
+
+        tokens = MySQLTokenizer(sql).tokenize()
+
+        assert len(tokens) == 1
+        assert tokens[0].type == TokenType.STRING
+        assert tokens[0].text == sql
+        assert (tokens[0].pos, tokens[0].line, tokens[0].col) == (0, 1, 1)
+
 
 class TestMySQLStatementParser:
     """Test MySQL-specific statement parsing."""
