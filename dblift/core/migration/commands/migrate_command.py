@@ -4,7 +4,7 @@ Migrate command implementation.
 
 import time
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Union
 
 from dblift.config import DbliftConfig
 
@@ -100,6 +100,7 @@ class MigrateCommand(BaseCommand):
         placeholders: Optional[Dict[str, Any]],
         recursive: Optional[bool],
         additional_dirs: Optional[List[Path]],
+        on_history_loaded: Optional[Callable[[List[Migration]], None]] = None,
     ) -> tuple[bool, bool, Optional[List[Path]]]:
         """Initialize migration execution and resolve migration parameters.
 
@@ -121,10 +122,8 @@ class MigrateCommand(BaseCommand):
             exclude_versions=exclude_versions,
             mark_as_executed=mark_as_executed,
             show_sql=show_sql,
+            on_history_loaded=on_history_loaded,
         )
-
-        # Display current schema version (for debug logs)
-        self._log_current_schema_version()
 
         # Setup migration parameters
         use_recursive, use_additional_dirs = self.migration_helpers.setup_migration_parameters(
@@ -731,6 +730,12 @@ class MigrateCommand(BaseCommand):
         if not getattr(self, "migration_helpers", None):
             self.migration_helpers = MigrationHelpers(self.config, self.log)
 
+        initial_records: Optional[List[Migration]] = None
+
+        def capture_history(records: List[Migration]) -> None:
+            nonlocal initial_records
+            initial_records = records
+
         try:
             # Initialize and validate migrations
             validation_success, use_recursive, use_additional_dirs = (
@@ -748,6 +753,7 @@ class MigrateCommand(BaseCommand):
                     placeholders,
                     recursive,
                     additional_dirs,
+                    on_history_loaded=capture_history,
                 )
             )
             if not validation_success:
@@ -762,6 +768,7 @@ class MigrateCommand(BaseCommand):
                 additional_dirs=use_additional_dirs,
                 dir_recursive_map=dir_recursive_map,
                 target_version=target_version,
+                preloaded_records=initial_records,
             )
 
             # Store current schema version in result for HTML reports
@@ -794,6 +801,12 @@ class MigrateCommand(BaseCommand):
                         exclude_tags=exclude_tags,
                         versions=versions,
                         exclude_versions=exclude_versions,
+                        # Validator discovery historically ignores per-directory recursion.
+                        # Keep that scope when the state catalog was resolved with a map.
+                        resolved_migrations=(
+                            migration_state.resolved_objects if not dir_recursive_map else None
+                        ),
+                        preloaded_records=migration_state.all_applied_objects,
                     )
                 )
             if not validation_success:

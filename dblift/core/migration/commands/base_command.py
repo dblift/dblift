@@ -936,17 +936,25 @@ class BaseCommand:
 
         return filters
 
-    def _resolve_current_schema_version(self) -> Optional[str]:
+    def _resolve_current_schema_version(
+        self,
+        *,
+        on_history_loaded: Optional[Callable[[List[Migration]], None]] = None,
+    ) -> Optional[str]:
         """Resolve the current schema version from applied migration history.
 
         Filters out undone (but not reapplied) migrations before determining
         the current version.
+        ``on_history_loaded`` lets the command reuse a successful header read,
+        including an empty history. Footer callers omit it and always read afresh.
 
         Returns:
             Current schema version string, or ``None`` if not determinable.
         """
         try:
             applied_migrations = self.history_manager.get_applied_migrations()
+            if on_history_loaded is not None:
+                on_history_loaded(applied_migrations)
             if not applied_migrations:
                 self.log.debug("No applied migrations found, schema version will be <none>")
                 return None
@@ -1087,6 +1095,7 @@ class BaseCommand:
         exclude_tags: Optional[str] = None,
         versions: Optional[str] = None,
         exclude_versions: Optional[str] = None,
+        on_history_loaded: Optional[Callable[[List[Migration]], None]] = None,
         **kwargs: Any,
     ) -> None:
         """Update command header with schema version and connection info after connection is established.
@@ -1117,7 +1126,11 @@ class BaseCommand:
             exclude_versions=exclude_versions,
             **kwargs,
         )
-        schema_version = self._resolve_current_schema_version()
+        schema_version = (
+            self._resolve_current_schema_version(on_history_loaded=on_history_loaded)
+            if on_history_loaded is not None
+            else self._resolve_current_schema_version()
+        )
         database_url = self._resolve_database_url_masked()
         connection_info = self._resolve_connection_info()
 

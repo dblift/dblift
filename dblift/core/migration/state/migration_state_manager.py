@@ -77,6 +77,7 @@ class MigrationStateManager:
         exclude_tags: Optional[Sequence[str]] = None,
         versions: Optional[Sequence[str]] = None,
         exclude_versions: Optional[Sequence[str]] = None,
+        preloaded_records: Optional[List[Migration]] = None,
     ) -> MigrationState:
         """Rebuild and return the current migration state as a JSON-ready snapshot.
 
@@ -84,9 +85,15 @@ class MigrationStateManager:
         not migrate's execute-list. ``target_version`` labels Above target and
         does not drop rows. ``tags`` / ``versions`` stay on the signature for
         callers; they are not omit filters here.
+        ``preloaded_records`` reuses a history read from the same command phase;
+        an empty list is an available snapshot, while ``None`` fetches history.
         """
 
-        applied_migrations = self.history_manager.get_applied_migrations()
+        applied_migrations = (
+            preloaded_records
+            if preloaded_records is not None
+            else self.history_manager.get_applied_migrations()
+        )
         self.logger.debug(f"Loaded {len(applied_migrations)} applied migrations from history")
 
         data_service = MigrationDataService(
@@ -180,6 +187,7 @@ class MigrationStateManager:
             failed_objects=history.failed_migrations,
             executed_scripts=sorted(history.executed_scripts),
             repeatable_checksums=dict(history.repeatable_checksums),
+            resolved_objects=all_scripts if scripts_dir else None,
         )
 
         self.logger.debug("Migration state snapshot generated")
@@ -443,17 +451,8 @@ class MigrationStateManager:
         or checksum-changed, and undo scripts. Baseline, target, undo type,
         tags, and versions do not omit rows; commands select later.
         """
-        # Step 1: Get all scripts from filesystem
-        all_script_paths = self.script_manager.get_all_scripts(
-            scripts_dir,
-            recursive=recursive,
-            additional_dirs=additional_dirs,
-            dir_recursive_map=dir_recursive_map,
-        )
-        self.logger.debug(f"Found {len(all_script_paths)} total scripts on filesystem")
-
-        # Step 2: Load and parse all scripts
-        all_migrations = self.script_manager.load_migration_scripts(
+        # Load and parse all scripts in one discovery pass.
+        all_migrations: Dict[Any, List[Migration]] = self.script_manager.load_migration_scripts(
             scripts_dir,
             recursive=recursive,
             additional_dirs=additional_dirs,
@@ -468,8 +467,18 @@ class MigrationStateManager:
         self.logger.debug(f"Loaded {len(all_scripts)} migration objects")
 
         if out_all_scripts is not None:
-            # Let callers reuse this scan instead of re-scanning the filesystem themselves.
-            out_all_scripts.extend(all_scripts)
+            # Match get_migration_scripts order for consumers reusing the full catalog,
+            # while leaving pending-state traversal below in its existing order.
+            for migration_type in (
+                MigrationType.SQL,
+                MigrationType.REPEATABLE,
+                MigrationType.UNDO_SQL,
+                MigrationType.BASELINE,
+                MigrationType.CALLBACK,
+            ):
+                out_all_scripts.extend(
+                    all_migrations.get(migration_type, all_migrations.get(migration_type.name, []))
+                )
 
         # Step 3: Determine current version from applied migrations (excluding undone ones)
         # Filter out undone migrations before calculating current version.
