@@ -40,3 +40,7 @@ Reviewed complete 7d67440..195c222 diff. Exact/bare/first-qualified checksum pre
 ## Task 2 — accepted
 
 Reviewed complete 993e64b..0fd266f production and test changes. The containment guard remains in discovery; only the redundant predicates and second normal-path resolution disappear. Per-load records preserve filename metadata precedence, ambiguous reference routing and metadata-free override fallback. Independent run: 16 new regressions passed. Focused discovery/encoding/command suites: 431 passed, 1 existing platform skip; formatting, lint and targeted typing passed. Normal 10/100-file loads now perform one of each filesystem check per file.
+
+## Task 3 — accepted
+
+Reviewed complete 7edc508..8bd7cb9 changes. Header/footer aggregation preserves undo presence, shared rank predicates, baseline contribution, type/success normalization and fresh/snapshot read ownership. Public state calculation is untouched. Independent new-state plus complete command-read-reuse run: 70 passed. Broader state/commands/CLI suite: 1,454 passed, 18 skipped; static checks passed. The real populated command regressions reduce display sorting/analysis from three calls to one while retaining two history reads and one catalog read.

@@ -65,15 +65,15 @@ resolved_script_path.relative_to(resolved_dir_path)
 
 **Interfaces:** `resolve_current_schema_version(snapshot=None)` retains its signature, return values, exception behavior and fresh/snapshot read ownership. Leave `MigrationState.current_version` and display-state computation unchanged. Keep rank rules in existing migration helpers.
 
-- [ ] Add red test: a real populated SQLite info/no-op migrate currently builds/sorts display analysis three times; the optimized path should do it only for build_state.
-- [ ] Compare old and proposed results for baseline-only, undo/reapply chains, repeated/tied ranks, successful/failed/None/string-success records, out-of-order and alphanumeric versions. Preserve both header and footer results.
-- [ ] Derive the same effective undone/reapplied sets from history without constructing unused display context, repeatable indexes or grouping/sorting versioned history for header/footer:
+- [x] Add red test: a real populated SQLite info/no-op migrate currently builds/sorts display analysis three times; the optimized path should do it only for build_state.
+- [x] Compare old and proposed results for baseline-only, undo/reapply chains, repeated/tied ranks, successful/failed/None/string-success records, out-of-order and alphanumeric versions. Preserve both header and footer results.
+- [x] Derive the same effective undone/reapplied sets from history without constructing unused display context, repeatable indexes or grouping/sorting versioned history for header/footer:
 ```python
 ranks = latest_successful_ranks(applied_migrations)
 # Preserve the existing undo-presence and reapplied predicates, including ties.
 # Filter effective undone versioned rows, then reuse get_current_version.
 ```
-- [ ] Confirm history read counts remain unchanged, fresh post-write/footer and post-lock behavior remain covered, and public state payloads are unchanged. Run state/commands/CLI JSON suites and static checks. Commit `perf: avoid display analysis for schema version headers`.
+- [x] Confirm history read counts remain unchanged, fresh post-write/footer and post-lock behavior remain covered, and public state payloads are unchanged. Run state/commands/CLI JSON suites and static checks. Commit `perf: avoid display analysis for schema version headers`.
 
 ### Task 4: Reuse repair's pre-write catalog through StateManager
 
