@@ -1,0 +1,463 @@
+"""Field-level serializer fidelity for every class in ``dblift.core.sql_model``.
+
+A model file written by ``to_dict`` and read back by ``from_dict`` must be a
+faithful copy of the object it came from. The per-class tests elsewhere in this
+directory spot-check individual fields; nothing asserted that the serializer
+covers the *constructor* — so a parameter added to ``__init__`` and never added
+to ``to_dict`` is silently dropped on every round trip.
+
+Two checks per constructor parameter, both name-agnostic so a key rename
+(``is_nullable`` -> ``nullable``) needs no per-class table:
+
+1. **Coverage by sentinel** — the instance is built with a unique string
+   sentinel in every string/list/dict parameter; ``to_dict()`` is flattened to
+   its leaf values and the sentinel must appear.
+2. **Round trip by attribute** — ``cls.from_dict(instance.to_dict())`` must
+   carry the same value on the attribute the parameter feeds, compared
+   field-by-field for nested model objects (their ``__eq__`` is a deliberate
+   partial comparison and would hide a dropped field).
+
+Parameters that are *intentionally* not serialized go in
+``INTENTIONALLY_NOT_SERIALIZED`` with a reason a reviewer can check.
+Parameters that are dropped by accident are marked ``xfail(strict=True)`` in
+``KNOWN_COVERAGE_GAPS`` / ``KNOWN_ROUND_TRIP_GAPS`` with the observed loss.
+Strict, so removing a gap without removing its entry fails the suite.
+"""
+
+from __future__ import annotations
+
+import enum
+import importlib
+import inspect
+import pkgutil
+import sys
+import typing
+from typing import Any, Dict, Iterator, List, NamedTuple, Optional, Tuple
+
+import pytest
+
+from dblift.core import sql_model as sql_model_package
+from dblift.core.sql_model import Index, Parameter, Table
+from dblift.core.sql_model._base_sql_constraint import ConstraintType
+from dblift.core.sql_model.base import SqlColumn, SqlConstraint, SqlObjectType
+
+# ---------------------------------------------------------------------------
+# Discovery
+# ---------------------------------------------------------------------------
+
+
+def _discover_model_classes() -> List[type]:
+    """Return every class in the package that carries a ``to_dict``/``from_dict`` pair.
+
+    Discovery is by introspection so a class added to the package cannot be
+    forgotten here. ``SqlConstraint`` is appended explicitly: it has neither
+    method today, and the resulting failure is the point.
+    """
+    found: Dict[str, type] = {}
+    for module_info in pkgutil.iter_modules(sql_model_package.__path__):
+        module = importlib.import_module(f"{sql_model_package.__name__}.{module_info.name}")
+        for obj in vars(module).values():
+            if not inspect.isclass(obj) or obj.__module__ != module.__name__:
+                continue
+            if hasattr(obj, "to_dict") and hasattr(obj, "from_dict"):
+                found[obj.__qualname__] = obj
+    found.setdefault(SqlConstraint.__qualname__, SqlConstraint)
+    return sorted(found.values(), key=lambda cls: cls.__name__)
+
+
+MODEL_CLASSES: List[type] = _discover_model_classes()
+MODEL_CLASSES_BY_NAME: Dict[str, type] = {cls.__name__: cls for cls in MODEL_CLASSES}
+
+
+# ---------------------------------------------------------------------------
+# Allowlist and known gaps
+# ---------------------------------------------------------------------------
+
+#: class -> parameter -> why the value is not expected to survive a round trip.
+#: An entry here says "by design"; anything else that fails is a defect. It is
+#: empty: no parameter measured so far is dropped on purpose. ``dialect`` was
+#: the candidate — ``Table.from_dict`` re-injects the table's dialect into the
+#: columns and constraints it rebuilds rather than reading a per-child key —
+#: but the value that arrives is the same one that left, so the row is green
+#: and needs no entry.
+INTENTIONALLY_NOT_SERIALIZED: Dict[type, Dict[str, str]] = {}
+
+#: Every parameter of ``SqlConstraint``, in declaration order. Written out
+#: rather than introspected so the list a reviewer reads is the list the xfails
+#: cover, and so a parameter added later goes red instead of being absorbed.
+_SQL_CONSTRAINT_PARAMS: Tuple[str, ...] = (
+    "constraint_type",
+    "name",
+    "column_names",
+    "reference_table",
+    "reference_columns",
+    "check_expression",
+    "dialect",
+    "on_delete",
+    "on_update",
+    "is_enabled",
+    "is_validated",
+    "is_deferrable",
+    "initially_deferred",
+    "comment",
+)
+
+_SQL_CONSTRAINT_HAS_NO_SERIALIZER = (
+    "SqlConstraint has neither to_dict nor from_dict, so no parameter survives the pair. "
+    "Table.to_dict inlines eight constraint keys by hand instead."
+)
+
+#: class -> parameter -> the loss observed on the sentinel-coverage check.
+KNOWN_COVERAGE_GAPS: Dict[type, Dict[str, str]] = {
+    Index: {
+        "definition": "Index.to_dict emits no 'definition' key, so the preserved vendor DDL "
+        "never reaches the serialized form.",
+    },
+    Parameter: {
+        "volatility": "Parameter.__init__ accepts 'volatility' and assigns it to no attribute, "
+        "so to_dict has nothing to emit; the value is discarded at construction.",
+    },
+    SqlConstraint: dict.fromkeys(
+        (
+            "name",
+            "column_names",
+            "reference_table",
+            "reference_columns",
+            "check_expression",
+            "on_delete",
+            "on_update",
+            "comment",
+        ),
+        _SQL_CONSTRAINT_HAS_NO_SERIALIZER,
+    ),
+}
+
+#: class -> parameter -> the loss observed on the round-trip check.
+KNOWN_ROUND_TRIP_GAPS: Dict[type, Dict[str, str]] = {
+    Index: {
+        "definition": "Index.definition: '<Index.definition>' -> None. to_dict emits no "
+        "'definition' key and from_dict reads none.",
+    },
+    Parameter: {
+        "volatility": "Parameter.__init__ accepts 'volatility' and stores it on no attribute; "
+        "the value is discarded at construction, before serialization is reached.",
+        "security_definer": "Parameter.__init__ accepts 'security_definer' and stores it on no "
+        "attribute; the value is discarded at construction, before serialization is reached.",
+    },
+    SqlColumn: {
+        "constraints": "SqlColumn.constraints: [SqlConstraint] -> []. to_dict emits no "
+        "'constraints' key and from_dict passes none to the constructor.",
+    },
+    SqlConstraint: dict.fromkeys(_SQL_CONSTRAINT_PARAMS, _SQL_CONSTRAINT_HAS_NO_SERIALIZER),
+    Table: {
+        "columns": "Table.columns[0]: is_primary_key True -> False, is_unique True -> False, "
+        "constraints [SqlConstraint] -> []. Table.to_dict writes the column dict by hand and "
+        "omits all three, instead of delegating to SqlColumn.to_dict which emits the first two.",
+        "constraints": "Table.constraints[0]: on_delete '<SqlConstraint.on_delete>' -> None, "
+        "on_update '<SqlConstraint.on_update>' -> None, is_enabled True -> None, is_validated "
+        "True -> None, is_deferrable True -> None, initially_deferred True -> None, comment "
+        "'<SqlConstraint.comment>' -> None. Table.to_dict inlines eight constraint keys and "
+        "emits none of these seven.",
+    },
+}
+
+#: parameter name -> value. Three parameters are normalised or fall back on
+#: load, so a sentinel in them is silently replaced and the row would go red
+#: for a reason that is not fidelity. They get a valid, non-default value
+#: instead: an unknown ``object_type`` becomes ``TABLE``, an unknown
+#: ``constraint_type`` becomes ``UNKNOWN``, and ``dialect`` is lowercased.
+VALID_NON_DEFAULT: Dict[str, Any] = {
+    "object_type": SqlObjectType.VIEW,
+    "constraint_type": ConstraintType.UNIQUE,
+    "dialect": "postgresql",
+}
+
+#: (class, parameter) -> attribute name(s) the parameter feeds, where the
+#: constructor renames it. Every other parameter is read off the attribute of
+#: the same name, and a parameter that reaches neither is a finding.
+ATTRIBUTE_ALIASES: Dict[Tuple[type, str], Tuple[str, ...]] = {
+    (SqlColumn, "is_nullable"): ("nullable",),
+    (SqlConstraint, "column_names"): ("column_names", "columns"),
+}
+
+#: How deep the builder nests model objects inside one another before it stops
+#: populating model-valued parameters. Two is enough to reach a constraint
+#: inside a column inside a table, and it terminates ``Partition.subpartitions``.
+MAX_NESTING_DEPTH = 2
+
+
+# ---------------------------------------------------------------------------
+# Instance builder
+# ---------------------------------------------------------------------------
+
+
+class Built(NamedTuple):
+    """An instance plus the sentinels that were planted in it."""
+
+    instance: Any
+    sentinels: Dict[str, str]
+
+
+def _type_hints(cls: type) -> Dict[str, Any]:
+    """Resolve ``__init__`` annotations, including the TYPE_CHECKING-only ones."""
+    module_globals = vars(sys.modules[cls.__module__])
+    namespace = {**module_globals, **MODEL_CLASSES_BY_NAME}
+    return typing.get_type_hints(cls.__init__, globalns=namespace)
+
+
+def _constructor_parameters(cls: type) -> List[str]:
+    """Return the named constructor parameters of *cls*, in declaration order.
+
+    ``*args`` / ``**kwargs`` are excluded: they name no field, and the values
+    they collect (``Partition.metadata``) are not addressable per parameter.
+    """
+    signature = inspect.signature(cls.__init__)
+    return [
+        name
+        for name, parameter in signature.parameters.items()
+        if name != "self"
+        and parameter.kind not in (inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.VAR_KEYWORD)
+    ]
+
+
+def _unwrap_optional(annotation: Any) -> Any:
+    """Return ``T`` for ``Optional[T]``, and the annotation itself otherwise."""
+    if typing.get_origin(annotation) is typing.Union:
+        args = [arg for arg in typing.get_args(annotation) if arg is not type(None)]
+        if len(args) == 1:
+            return args[0]
+    return annotation
+
+
+def _model_class(annotation: Any) -> Optional[type]:
+    """Return the model class *annotation* refers to, if it is one."""
+    if inspect.isclass(annotation) and annotation in MODEL_CLASSES:
+        return annotation
+    return None
+
+
+def _build_value(
+    cls: type,
+    name: str,
+    annotation: Any,
+    default: Any,
+    ordinal: int,
+    depth: int,
+) -> Tuple[Any, Optional[str]]:
+    """Return the value to pass for one parameter, and its sentinel if it has one.
+
+    ``None`` for the value means "leave the parameter out" — used for nested
+    model objects once the nesting limit is reached.
+    """
+    if name in VALID_NON_DEFAULT:
+        return VALID_NON_DEFAULT[name], None
+
+    sentinel = f"<{cls.__name__}.{name}>"
+    annotation = _unwrap_optional(annotation)
+    origin = typing.get_origin(annotation)
+    args = typing.get_args(annotation)
+
+    if annotation is str:
+        return sentinel, sentinel
+    if annotation is bool:
+        return default is not True, None
+    if annotation is int:
+        return 4200 + ordinal, None
+
+    if origin in (list, typing.List):
+        item = _unwrap_optional(args[0]) if args else str
+        nested = _model_class(item)
+        if nested is not None:
+            if depth >= MAX_NESTING_DEPTH:
+                return None, None
+            return [_build(nested, depth + 1).instance], None
+        if item is bool:
+            return [True], None
+        if item is int:
+            return [4200 + ordinal], None
+        if typing.get_origin(item) in (dict, typing.Dict):
+            return [{sentinel: sentinel}], sentinel
+        return [sentinel], sentinel
+
+    if origin in (dict, typing.Dict):
+        value_type = _unwrap_optional(args[1]) if len(args) == 2 else str
+        if value_type is bool:
+            return {sentinel: True}, sentinel
+        return {sentinel: sentinel}, sentinel
+
+    nested = _model_class(annotation)
+    if nested is not None:
+        if depth >= MAX_NESTING_DEPTH:
+            return None, None
+        return _build(nested, depth + 1).instance, None
+
+    raise AssertionError(
+        f"{cls.__name__}.{name}: the builder has no value for annotation {annotation!r}. "
+        "Teach it one rather than skipping the parameter."
+    )
+
+
+def _build(cls: type, depth: int = 0) -> Built:
+    """Instantiate *cls* with a distinctive, valid non-default value everywhere."""
+    hints = _type_hints(cls)
+    signature = inspect.signature(cls.__init__)
+    kwargs: Dict[str, Any] = {}
+    sentinels: Dict[str, str] = {}
+    for ordinal, name in enumerate(_constructor_parameters(cls)):
+        annotation = hints.get(name, str)
+        default = signature.parameters[name].default
+        value, sentinel = _build_value(cls, name, annotation, default, ordinal, depth)
+        if value is None:
+            continue
+        kwargs[name] = value
+        if sentinel is not None:
+            sentinels[name] = sentinel
+    return Built(cls(**kwargs), sentinels)
+
+
+# ---------------------------------------------------------------------------
+# Comparison helpers
+# ---------------------------------------------------------------------------
+
+
+def _attribute_names(cls: type, param: str) -> Tuple[str, ...]:
+    """Return the attribute name(s) *param* feeds on *cls*."""
+    return ATTRIBUTE_ALIASES.get((cls, param), (param,))
+
+
+def _leaf_strings(value: Any) -> Iterator[str]:
+    """Yield every string reachable in *value*, dict keys included."""
+    if isinstance(value, str):
+        yield value
+    elif isinstance(value, enum.Enum):
+        yield str(value.value)
+    elif isinstance(value, dict):
+        for key, item in value.items():
+            yield from _leaf_strings(key)
+            yield from _leaf_strings(item)
+    elif isinstance(value, (list, tuple, set)):
+        for item in value:
+            yield from _leaf_strings(item)
+
+
+def _differences(expected: Any, actual: Any, path: str) -> List[str]:
+    """Compare field-by-field, descending into model objects and containers.
+
+    Model classes define a deliberately partial ``__eq__`` (``SqlColumn``
+    compares name, type and collation only), so ``==`` on a nested object would
+    report a faithful copy where fields were dropped.
+    """
+    if type(expected) in MODEL_CLASSES:
+        if type(actual) is not type(expected):
+            return [f"{path}: {type(expected).__name__} -> {type(actual).__name__}"]
+        nested_cls = type(expected)
+        allowed = INTENTIONALLY_NOT_SERIALIZED.get(nested_cls, {})
+        found: List[str] = []
+        for param in _constructor_parameters(nested_cls):
+            if param in allowed:
+                continue
+            for attr in _attribute_names(nested_cls, param):
+                if not hasattr(expected, attr):
+                    continue
+                found += _differences(
+                    getattr(expected, attr), getattr(actual, attr, None), f"{path}.{attr}"
+                )
+        return found
+
+    if isinstance(expected, (list, tuple)):
+        if not isinstance(actual, (list, tuple)) or len(expected) != len(actual):
+            return [f"{path}: {expected!r} -> {actual!r}"]
+        found = []
+        for index, item in enumerate(expected):
+            found += _differences(item, actual[index], f"{path}[{index}]")
+        return found
+
+    if isinstance(expected, dict):
+        if not isinstance(actual, dict) or set(expected) != set(actual):
+            return [f"{path}: {expected!r} -> {actual!r}"]
+        found = []
+        for key, item in expected.items():
+            found += _differences(item, actual[key], f"{path}[{key!r}]")
+        return found
+
+    if expected != actual:
+        return [f"{path}: {expected!r} -> {actual!r}"]
+    return []
+
+
+# ---------------------------------------------------------------------------
+# Parametrisation
+# ---------------------------------------------------------------------------
+
+
+def _rows(gaps: Dict[type, Dict[str, str]], sentinel_only: bool) -> List[Any]:
+    """Build the (class, parameter) rows, xfail-marking the ones known red."""
+    rows: List[Any] = []
+    for cls in MODEL_CLASSES:
+        allowed = INTENTIONALLY_NOT_SERIALIZED.get(cls, {})
+        try:
+            sentinels = _build(cls).sentinels
+        except Exception:
+            # Collection must not die on an unbuildable class; the failure is
+            # reported by test_builder_instantiates_every_model_class instead.
+            sentinels = {}
+        for param in _constructor_parameters(cls):
+            if param in allowed:
+                continue
+            if sentinel_only and param not in sentinels:
+                continue
+            marks = []
+            reason = gaps.get(cls, {}).get(param)
+            if reason is not None:
+                marks.append(pytest.mark.xfail(strict=True, reason=reason))
+            rows.append(pytest.param(cls, param, marks=marks, id=f"{cls.__name__}.{param}"))
+    return rows
+
+
+# ---------------------------------------------------------------------------
+# Tests
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("model_cls", MODEL_CLASSES, ids=lambda cls: cls.__name__)
+def test_builder_instantiates_every_model_class(model_cls: type) -> None:
+    """Every discovered class can be built with a non-default value everywhere.
+
+    A class that cannot be is a finding, not a row to skip.
+    """
+    built = _build(model_cls)
+    assert isinstance(built.instance, model_cls)
+
+
+@pytest.mark.parametrize(("model_cls", "param"), _rows(KNOWN_COVERAGE_GAPS, sentinel_only=True))
+def test_to_dict_covers_constructor_parameter(model_cls: type, param: str) -> None:
+    """``to_dict()`` emits the value the constructor was given for *param*."""
+    built = _build(model_cls)
+    sentinel = built.sentinels[param]
+    # Case-insensitively: several classes normalise case on the way in
+    # (``dialect`` lowercased, ``Partition.partition_method`` uppercased).
+    # Case folding is not field loss — the round-trip check compares values.
+    leaves = {leaf.lower() for leaf in _leaf_strings(built.instance.to_dict())}
+    assert any(sentinel.lower() in leaf for leaf in leaves), (
+        f"{model_cls.__name__}.to_dict() does not emit {param!r} "
+        f"(sentinel {sentinel!r} absent from the serialized form)."
+    )
+
+
+@pytest.mark.parametrize(("model_cls", "param"), _rows(KNOWN_ROUND_TRIP_GAPS, sentinel_only=False))
+def test_round_trip_preserves_constructor_parameter(model_cls: type, param: str) -> None:
+    """``from_dict(to_dict())`` carries *param* through unchanged."""
+    instance = _build(model_cls).instance
+    reachable = [attr for attr in _attribute_names(model_cls, param) if hasattr(instance, attr)]
+    assert reachable, (
+        f"{model_cls.__name__}.__init__ takes {param!r} and stores it on no attribute, so "
+        "the value is discarded at construction. Add an ATTRIBUTE_ALIASES entry if the "
+        "constructor renames it; otherwise the parameter is dead."
+    )
+    restored = model_cls.from_dict(instance.to_dict())  # type: ignore[attr-defined]
+    differences: List[str] = []
+    for attr in reachable:
+        differences += _differences(
+            getattr(instance, attr), getattr(restored, attr, None), f"{model_cls.__name__}.{attr}"
+        )
+    assert not differences, "; ".join(differences)
