@@ -47,6 +47,7 @@ from typing import (
     get_type_hints,
 )
 
+import dblift
 from dblift.cli.mcp.registry import load_mcp_tool_registrars
 from dblift.cli.mcp.runner import JSON_FORMAT_ARGV, CommandInvocationError, run_command
 from dblift.core.seams.feature_loading import load_feature_extensions
@@ -252,7 +253,11 @@ class DbliftMcpServer:
             # served, so point the agent at tools/list and resources/list
             # instead.
             instructions += RESTRICTED_INSTRUCTIONS
-        self.mcpserver = mcpserver_cls("dblift", instructions=instructions)
+        # Without a version the SDK reports ``serverInfo.version: ""``, and a
+        # client that logs or pins server identity sees an unversioned server.
+        self.mcpserver = mcpserver_cls(
+            "dblift", instructions=instructions, version=dblift.__version__
+        )
         self._tool_annotations_cls = ToolAnnotations
         self._names: List[str] = []
         self._skipped: List[Tuple[str, str]] = []

@@ -13,6 +13,8 @@ from pathlib import Path
 import pytest
 import yaml
 
+import dblift
+
 pytest.importorskip("mcp")
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -159,7 +161,11 @@ def test_stdio_round_trip_keeps_stdout_pure(tmp_path: Path, restriction: list[st
         # Report the frames rather than dying with a bare KeyError: a missing
         # id means the server answered something else (or nothing) and the
         # frames are the only evidence of what.
-        assert 2 in by_id and 3 in by_id, f"missing responses; frames={frames!r}; stderr={stderr!r}"
+        missing = [request_id for request_id in (1, 2, 3) if request_id not in by_id]
+        assert not missing, f"no response to {missing}; frames={frames!r}; stderr={stderr!r}"
+        # A client that logs or pins server identity needs a version; the SDK
+        # defaults it to the empty string when the server does not pass one.
+        assert by_id[1]["result"]["serverInfo"]["version"] == dblift.__version__
         served = {t["name"] for t in by_id[2]["result"]["tools"]}
         if restriction == ["--tools", "info"]:
             assert served == {"info"}
@@ -316,7 +322,10 @@ def test_offline_server_starts_without_a_dsn_and_refuses_info(tmp_path: Path):
         by_id = {f.get("id"): f for f in frames}
 
         assert returncode == 0, f"dblift mcp --offline exited {returncode}; stderr={stderr!r}"
-        assert 1 in by_id and "serverInfo" in by_id[1]["result"]
+        missing = [request_id for request_id in (1, 2, 3) if request_id not in by_id]
+        assert not missing, f"no response to {missing}; frames={frames!r}; stderr={stderr!r}"
+        assert "serverInfo" in by_id[1]["result"]
+        assert by_id[1]["result"]["serverInfo"]["version"] == dblift.__version__
         assert {t["name"] for t in by_id[2]["result"]["tools"]} >= {"info"}
         assert by_id[3]["result"]["isError"] is True
         assert "--offline" in by_id[3]["result"]["content"][0]["text"]

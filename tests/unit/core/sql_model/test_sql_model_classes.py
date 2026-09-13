@@ -215,10 +215,42 @@ class TestSqlColumn:
         assert restored.is_property_explicit("collation") is True
         assert restored.explicit_properties == {"is_nullable": True, "collation": True}
 
+    def test_from_dict_does_not_alias_the_source_explicit_properties(self):
+        """Two columns built from one dict must not share its explicit marks.
+
+        A caller that parses a model file once and builds two columns from the
+        same dict (a before/after pair, say) marks a property on the first one;
+        the second must not be born carrying that mark.
+        """
+        data = SqlColumn("name", "VARCHAR(100)").to_dict()
+
+        first = SqlColumn.from_dict(data)
+        second = SqlColumn.from_dict(data)
+        first.mark_property_explicit("collation")
+
+        assert second.is_property_explicit("collation") is False
+        assert data["explicit_properties"] == {}
+
 
 @pytest.mark.unit
 class TestSqlConstraint:
     """Test SqlConstraint functionality."""
+
+    def test_from_dict_restores_the_explicit_property_marks(self):
+        """A marked property survives to_dict/from_dict; an unmarked one stays unmarked."""
+        constraint = SqlConstraint(
+            ConstraintType.FOREIGN_KEY,
+            "fk_user_orders",
+            ["user_id"],
+            reference_table="users",
+            on_delete="CASCADE",
+        )
+        constraint.mark_property_explicit("on_delete")
+
+        restored = SqlConstraint.from_dict(constraint.to_dict())
+
+        assert restored.is_property_explicit("on_delete") is True
+        assert restored.is_property_explicit("on_update") is False
 
     def test_constraint_creation(self):
         """Test constraint creation."""

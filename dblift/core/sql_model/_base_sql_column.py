@@ -7,10 +7,9 @@ this module is re-exported by the ``base`` façade.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
-if TYPE_CHECKING:
-    from dblift.core.sql_model._base_sql_constraint import SqlConstraint
+from dblift.core.sql_model._base_sql_constraint import SqlConstraint
 
 
 class SqlColumn:
@@ -157,18 +156,30 @@ class SqlColumn:
             "collation": self.collation,
             "dialect": self.dialect,
             "explicit_properties": self.explicit_properties,
+            # Column-level constraints serialize themselves, the way a table's
+            # do. A column carrying one is independent of the owning table's
+            # constraint list: neither is rebuilt from the other, so a
+            # constraint listed in both round-trips through both. Last key, so
+            # re-exporting a model file written before it existed appends a
+            # line per column rather than splitting every column object.
+            "constraints": [constraint.to_dict() for constraint in self.constraints],
         }
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "SqlColumn":
+    def from_dict(cls, data: Dict[str, Any], *, dialect: Optional[str] = None) -> "SqlColumn":
         """Create SqlColumn from dictionary representation.
 
         Args:
             data: Dictionary with column attributes
+            dialect: Fallback dialect, used only when *data* carries none.
+                A column dict inlined in a table dict by an earlier version
+                has no dialect of its own, so the owning table passes its
+                own down; a dialect in *data* wins over it.
 
         Returns:
             SqlColumn instance
         """
+        column_dialect = data.get("dialect") or dialect
         column = cls(
             name=data["name"],
             data_type=data["data_type"],
@@ -186,9 +197,17 @@ class SqlColumn:
             comment=data.get("comment"),
             ordinal_position=data.get("ordinal_position"),
             collation=data.get("collation"),
-            dialect=data.get("dialect"),
+            dialect=column_dialect,
+            constraints=[
+                SqlConstraint.from_dict(constraint_data, dialect=column_dialect)
+                for constraint_data in data.get("constraints", [])
+            ],
         )
-        # Restore explicit_properties if present in the serialized data
-        if "explicit_properties" in data:
-            column.explicit_properties = data["explicit_properties"]
+        # Restore explicit_properties mark by mark, the way SqlConstraint does.
+        # Assigning the caller's dict would alias it, so marking a property on
+        # one column would write through into every other column built from the
+        # same dict.
+        for prop, is_explicit in (data.get("explicit_properties") or {}).items():
+            if is_explicit:
+                column.mark_property_explicit(prop)
         return column

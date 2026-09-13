@@ -189,6 +189,7 @@ class Index(SqlObject):
             fillfactor=data.get("fillfactor"),
             compression=data.get("compression"),
             comment=data.get("comment"),
+            definition=data.get("definition"),
         )
 
     def to_dict(self) -> Dict[str, Any]:
@@ -218,4 +219,5 @@ class Index(SqlObject):
             "fillfactor": self.fillfactor,
             "compression": self.compression,
             "comment": self.comment,
+            "definition": self.definition,
         }

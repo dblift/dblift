@@ -7,7 +7,7 @@ import logging
 from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING, List, Optional
 
-from dblift.core.sql_generator.basic_table_ddl_generator import _build_fk_body_sql
+from dblift.core.sql_generator.basic_table_ddl_generator import _build_fk_body_sql, _quirks_for
 from dblift.core.sql_model.base import SqlConstraint, get_constraint_type_name
 
 if TYPE_CHECKING:
@@ -132,8 +132,10 @@ class BaseAlterGenerator(ABC):
                 ref_table=constraint.reference_table,
                 ref_schema=constraint.reference_schema,
                 format_identifier=self._format_identifier,
-                on_delete=None,
-                on_update=None,
+                on_delete=getattr(constraint, "on_delete", None),
+                on_update=getattr(constraint, "on_update", None),
+                suppress_no_action=True,
+                suppress_on_update=_quirks_for(self.dialect).table_fk_suppress_on_update,
             )
             constraint_def = fk_body
             if constraint.name:

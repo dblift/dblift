@@ -659,39 +659,11 @@ class Table(SqlObject):
             "schema": self.schema,
             "object_type": self.object_type.value,
             "dialect": self.dialect,
-            "columns": [
-                {
-                    "name": col.name,
-                    "data_type": col.data_type,
-                    "nullable": col.nullable,
-                    "default_value": col.default_value,
-                    "is_identity": getattr(col, "is_identity", False),
-                    "identity_generation": getattr(col, "identity_generation", None),
-                    "identity_seed": getattr(col, "identity_seed", None),
-                    "identity_increment": getattr(col, "identity_increment", None),
-                    "is_computed": getattr(col, "is_computed", False),
-                    "computed_expression": getattr(col, "computed_expression", None),
-                    "computed_stored": getattr(col, "computed_stored", False),
-                    "comment": getattr(col, "comment", None),
-                    "ordinal_position": getattr(col, "ordinal_position", None),
-                    "collation": getattr(col, "collation", None),
-                    "explicit_properties": getattr(col, "explicit_properties", {}),
-                }
-                for col in self.columns
-            ],
-            "constraints": [
-                {
-                    "name": c.name,
-                    "constraint_type": c.constraint_type,
-                    "columns": c.columns,
-                    "reference_table": c.reference_table,
-                    "reference_schema": c.reference_schema,
-                    "reference_columns": c.reference_columns,
-                    "check_expression": getattr(c, "check_expression", None),
-                    "explicit_properties": getattr(c, "explicit_properties", {}),
-                }
-                for c in self.constraints
-            ],
+            # Columns and constraints serialize themselves: an inlined dict
+            # written here drifts from the class that owns the fields, and
+            # silently drops every parameter added to it since.
+            "columns": [col.to_dict() for col in self.columns],
+            "constraints": [c.to_dict() for c in self.constraints],
             "temporary": self.temporary,
             "tablespace": self.tablespace,
             "comment": self.comment,
@@ -737,52 +709,16 @@ class Table(SqlObject):
             except ValueError:
                 object_type = SqlObjectType.TABLE
 
-        # Create columns
-        columns = []
-        for col_data in data.get("columns", []):
-            col = SqlColumn(
-                name=col_data["name"],
-                data_type=col_data["data_type"],
-                is_nullable=col_data.get("nullable", True),
-                default_value=col_data.get("default_value"),
-                is_identity=col_data.get("is_identity", False),
-                identity_generation=col_data.get("identity_generation"),
-                identity_seed=col_data.get("identity_seed"),
-                identity_increment=col_data.get("identity_increment"),
-                is_computed=col_data.get("is_computed", False),
-                computed_expression=col_data.get("computed_expression"),
-                computed_stored=col_data.get("computed_stored", False),
-                comment=col_data.get("comment"),
-                ordinal_position=col_data.get("ordinal_position"),
-                collation=col_data.get("collation"),
-                dialect=dialect,
-            )
-            # Restore explicit properties
-            if col_data.get("explicit_properties"):
-                for prop, is_explicit in col_data["explicit_properties"].items():
-                    if is_explicit:
-                        col.mark_property_explicit(prop)
-            columns.append(col)
-
-        # Create constraints
-        constraints = []
-        for c_data in data.get("constraints", []):
-            constraint = SqlConstraint(
-                name=c_data.get("name"),
-                constraint_type=c_data["constraint_type"],
-                column_names=c_data["columns"],
-                reference_table=c_data.get("reference_table"),
-                reference_columns=c_data.get("reference_columns"),
-                check_expression=c_data.get("check_expression"),
-                dialect=dialect,
-            )
-            constraint.reference_schema = c_data.get("reference_schema")
-            # Restore explicit properties
-            if c_data.get("explicit_properties"):
-                for prop, is_explicit in c_data["explicit_properties"].items():
-                    if is_explicit:
-                        constraint.mark_property_explicit(prop)
-            constraints.append(constraint)
+        # Columns and constraints deserialize themselves. The table's dialect
+        # goes down as a fallback only, for the inlined child dicts written
+        # before a child carried one of its own.
+        columns = [
+            SqlColumn.from_dict(col_data, dialect=dialect) for col_data in data.get("columns", [])
+        ]
+        constraints = [
+            SqlConstraint.from_dict(c_data, dialect=dialect)
+            for c_data in data.get("constraints", [])
+        ]
 
         from dblift.core.sql_model.table_options import (
             MySqlTableOptions,
