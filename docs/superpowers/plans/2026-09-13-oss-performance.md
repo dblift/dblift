@@ -4,7 +4,7 @@
 
 **Goal:** Address all six audit recommendations, prioritizing repeated I/O and quadratic work before local deduplication.
 
-**Architecture:** Keep catalog reuse scoped to one command and history reuse scoped to one read phase. Build local lookup indexes, preserve plugin ownership and use a shared validation core with thin input adapters. Subagents implement sequentially in the isolated worktree; root reviews every lot and the combined diff.
+**Architecture:** Specialized managers collect their own data; MigrationStateManager aggregates it into command-scoped read snapshots and migration state; commands consume those aggregates. Keep catalog reuse scoped to one command and history reuse scoped to one read phase. Build local lookup indexes, preserve plugin ownership and use a shared validation core with thin input adapters. Subagents implement sequentially in the isolated worktree; root reviews every lot and the combined diff.
 
 **Tech Stack:** Python 3.11+, pytest, sqlite3, SQLAlchemy, pytest-benchmark (development only).
 
@@ -106,6 +106,16 @@ Required empty-snapshot semantics:
 ```python
 records = preloaded_records if preloaded_records is not None else history_manager.get_applied_migrations()
 ```
+
+### Task 4 follow-up: State manager owns data aggregation
+
+Explicit user clarification: each specialized manager collects required data, the state manager aggregates it, and commands consume it. This supersedes the header-to-state capture mechanism in the first Task 4 implementation.
+
+- [ ] Introduce a small lazy read snapshot created by MigrationStateManager. HistoryManager remains responsible for database collection; state manager owns aggregation and schema-version derivation. Commands do not collect and feed back raw history.
+- [ ] Remove capture_history/on_history_loaded; header/state/validation consume the manager-created snapshot. Preserve empty versus unavailable data, retry after failed reads and validation's existing lazy read/error boundaries.
+- [ ] Route touched commands' history/catalog/callback data acquisition through the state manager, leaving collection and callback matching rules in specialized managers. Preserve distinct command callback and history read-phase lifetimes.
+- [ ] Keep post-lock, post-callback and final reads fresh. Preserve baseline/undo schema-version behavior without reinterpreting MigrationState.current_version.
+- [ ] Re-run real read-count/freshness/concurrency regressions, full migration/validator suites and static checks; root personally reviews the ownership correction before resuming Task 5.
 
 ### Task 5: Shared validation pipeline
 

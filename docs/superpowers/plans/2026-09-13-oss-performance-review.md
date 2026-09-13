@@ -23,7 +23,7 @@ User explicitly requested root reviews; no separate reviewer agent substitutes f
 ## Status
 
 - Baseline on isolated develop archive: 2325 passed, 1 skipped, 57 subtests passed. Clean environment: /tmp/dblift-oss-performance-venv/bin/python.
-- Tasks 1–4 complete; Tasks 5–7 pending.
+- Tasks 1–3 complete; Task 4 data ownership follow-up active; Tasks 5–7 pending.
 
 ## Task 1 — personally reviewed and accepted
 
@@ -74,3 +74,9 @@ User explicitly requested root reviews; no separate reviewer agent substitutes f
 - Frozen cb52908 source and develop 8645f3b used the same isolated Python 3.12.12 environment and SQLite probe.
 - Fresh 100-migration run: decoded SQL reads 40600 to 300; catalog loads 406 to 3; local elapsed time 13.4713s to 0.2061s. Both runs verified 100 actual tables.
 - These intermediate timings are observations on this machine, not performance guarantees. Final evidence follows after all lots.
+
+## Task 4 ownership follow-up — active
+
+- User clarified that specialized managers collect data, MigrationStateManager aggregates it, and commands consume it.
+- The first Task 4 history capture mechanism is being replaced: header display must not be the upstream source of state data.
+- Task 5 was paused; its small uncommitted format-guard regression and implementation are preserved in an ignored patch for later resumption.
