@@ -32,16 +32,16 @@ Use a task-specific environment installed from `constraints-ci.txt` with the sam
 
 **Interfaces:** Keep `_lookup_checksum(checksums, script_name)` and `_is_repeatable_pending(script_name, migration, executed_scripts, repeatable_checksums)` callable. Optional keyword-only precomputed indexes may extend them. Build indexes in aggregation callers, never as persistent manager attributes. `_compute_pending_migrations` and `_determine_checksum_changes` consume them.
 
-- [ ] Add red regressions for 500 new repeatables versus 500 executed names and 500 bare names versus qualified checksum keys. Count input visits; verify returned pending/checksum results.
-- [ ] Cover direct full-key priority, direct basename priority, first qualified match on collisions, missing names, unchanged/changed repeatables and subsequent calls with changed inputs.
-- [ ] Build basename membership once and a first-match checksum map with setdefault; pass them into loops while retaining direct-call behavior:
+- [x] Add red regressions for 500 new repeatables versus 500 executed names and 500 bare names versus qualified checksum keys. Count input visits; verify returned pending/checksum results.
+- [x] Cover direct full-key priority, direct basename priority, first qualified match on collisions, missing names, unchanged/changed repeatables and subsequent calls with changed inputs.
+- [x] Build basename membership once and a first-match checksum map with setdefault; pass them into loops while retaining direct-call behavior:
 ```python
 executed_basenames = {Path(name).name for name in executed_scripts}
 basename_checksums = {}
 for name, checksum in repeatable_checksums.items():
     basename_checksums.setdefault(Path(name).name, checksum)
 ```
-- [ ] Verify linear input visits and real SQLite repeatable state/reapply outcomes; run state, repeatable and command read-reuse tests, formatting, lint and targeted typing. Commit `perf: index repeatable state lookups`.
+- [x] Verify linear input visits and real SQLite repeatable state/reapply outcomes; run state, repeatable and command read-reuse tests, formatting, lint and targeted typing. Commit `perf: index repeatable state lookups`.
 
 ### Task 2: Reuse ScriptManager discovery metadata
 
