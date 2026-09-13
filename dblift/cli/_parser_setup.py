@@ -596,8 +596,11 @@ def create_parser(
     )
     # `dblift mcp` serves the read-only commands as MCP tools over stdio. It is a
     # zero-config command: the server loads the project config per tool call.
-    # `--read-only` and `--tools` restrict which registered tools are served;
-    # the handler reports what was skipped on stderr (stdout is the protocol).
+    # `--read-only` and `--tools` restrict which registered tools are served,
+    # `--resources` does the same for resources (a separate flag because
+    # `--tools` is documented to leave them alone), and `--offline` keeps the
+    # connection-bound ones served but refusing; the handler reports each on
+    # stderr (stdout is the protocol).
     mcp_parser = subparsers.add_parser(
         "mcp",
         help="Serve dblift commands as MCP tools over stdio (requires dblift[mcp])",
@@ -616,7 +619,36 @@ def create_parser(
         metavar="NAME[,NAME...]",
         help=(
             "Serve only the named tools, built-in or add-on; every other tool is "
-            "skipped, and an unknown name refuses to start"
+            "skipped, and an unknown name — or an empty list — refuses to start"
+        ),
+    )
+    mcp_parser.add_argument(
+        "--resources",
+        metavar="NAME[,NAME...]",
+        help=(
+            "Serve only the named resources (history, pending — the "
+            "dblift:// URI is accepted too); every other resource is "
+            "skipped, and an unknown name — or an empty list — refuses to start"
+        ),
+    )
+    mcp_parser.add_argument(
+        "--offline",
+        action="store_true",
+        help=(
+            "Refuse every tool and resource that would open a database "
+            "connection, without connecting; tools that run from the "
+            "project's files still answer"
+        ),
+    )
+    mcp_parser.add_argument(
+        "--mode",
+        choices=("author", "review"),
+        default="author",
+        help=(
+            "'review' serves a review session: tools that write a file the "
+            "caller names are skipped (as with --read-only) and the server "
+            "instructions say the session is for review. Default 'author' "
+            "applies no restriction"
         ),
     )
     import_module("dblift.cli.extensions").load_command_extensions(parser)
