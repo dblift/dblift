@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Set, Tuple, cast
 
 from dblift.core.logger import Log
+from dblift.core.migration._type_match import migration_type_name
 from dblift.core.migration.history.migration_history_manager import MigrationHistoryManager
 from dblift.core.migration.migration import (
     VERSIONED_SCRIPT_TYPES,
@@ -27,7 +28,7 @@ from dblift.core.migration.state.migration_state import (
 )
 from dblift.core.migration.state.migration_state_service import MigrationStateService
 from dblift.core.migration.state.rank_wins import latest_successful_ranks
-from dblift.core.migration.version_utils import is_migration_failure
+from dblift.core.migration.version_utils import is_migration_failure, is_migration_success
 
 
 class StrictModeError(ValueError):
@@ -162,11 +163,18 @@ class MigrationStateManager:
             self.logger.debug("No applied migrations found, schema version will be <none>")
             return None
 
-        data_service = MigrationDataService(self.logger, scripts_dir=None)
-        analysis_context = data_service._build_analysis_context(applied_migrations)
-        history = self._analyse_history(applied_migrations, analysis_context)
-
-        undone_but_not_reapplied = history.undone_versions - history.reapplied_versions
+        ranks = latest_successful_ranks(applied_migrations)
+        # Undo presence also counts zero/missing ranks and case-insensitive types,
+        # while the shared reapply predicate keeps its existing rank/type rules.
+        undone_versions = {
+            str(m.version)
+            for m in applied_migrations
+            if migration_type_name(getattr(m, "type", None)).upper() == "UNDO_SQL"
+            and getattr(m, "version", None)
+            and is_migration_success(getattr(m, "success", None))
+        }
+        reapplied_versions = {version for version, state in ranks.items() if state.reapplied}
+        undone_but_not_reapplied = undone_versions - reapplied_versions
         applied_migrations_filtered = [
             m
             for m in applied_migrations
