@@ -18,11 +18,15 @@ def _handle_mcp(ctx: CliCommandContext) -> Tuple[bool, Any]:
     ``--read-only`` builds the server write-forbidding; ``--tools`` gives it an
     allowlist. A tool the server skipped is reported on stderr and the server
     still starts; an allowlisted name nothing registered refuses to start.
+    ``--offline`` skips nothing: every tool and resource that opens a database
+    connection stays served and refuses at call time, and which ones those are
+    is reported on stderr at start-up.
     """
     from dblift.cli.mcp.server import MissingMcpSdkError, build_server
 
     global_argv: List[str] = list(getattr(ctx.args, "global_arguments", None) or [])
     read_only = bool(getattr(ctx.args, "read_only", False))
+    offline = bool(getattr(ctx.args, "offline", False))
     raw_tools = getattr(ctx.args, "tools", None)
     allowed_tools: Optional[List[str]] = None
     if raw_tools is not None:
@@ -31,7 +35,12 @@ def _handle_mcp(ctx: CliCommandContext) -> Tuple[bool, Any]:
             CommandOutput("console").error("dblift mcp: --tools needs at least one tool name")
             return (False, None)
     try:
-        server = build_server(global_argv, allow_writes=not read_only, allowed_tools=allowed_tools)
+        server = build_server(
+            global_argv,
+            allow_writes=not read_only,
+            allowed_tools=allowed_tools,
+            offline=offline,
+        )
     except MissingMcpSdkError as exc:
         CommandOutput("console").error(str(exc))
         return (False, None)
@@ -54,6 +63,16 @@ def _handle_mcp(ctx: CliCommandContext) -> Tuple[bool, Any]:
             "(dblift://history is a resource, not a tool.)"
         )
         return (False, None)
+    if offline:
+        # Said once at start-up, on stderr: the alternative is an operator who
+        # learns which tools refuse one failed agent call at a time.
+        bound = list(server.connection_bound_tools())
+        bound_resources = list(server.connection_bound_resources())
+        if bound or bound_resources:
+            CommandOutput("console").error(
+                "dblift mcp: --offline: these open a database connection and will "
+                f"refuse every call: {', '.join([*bound, *bound_resources])}"
+            )
     for name, reason in server.skipped_tools():
         # `.error()` on purpose: `.status()` routes to stdout in human mode and
         # stdout is the JSON-RPC channel; `.error()` is the only method that

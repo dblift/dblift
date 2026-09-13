@@ -29,7 +29,9 @@ def test_handle_mcp_builds_server_with_global_argv_and_serves():
     with patch("dblift.cli.mcp.server.build_server", return_value=server) as build:
         assert _handle_mcp(ctx) == (True, None)
 
-    build.assert_called_once_with(["--config", "x.yaml"], allow_writes=True, allowed_tools=None)
+    build.assert_called_once_with(
+        ["--config", "x.yaml"], allow_writes=True, allowed_tools=None, offline=False
+    )
     server.run_stdio.assert_called_once_with()
 
 
@@ -91,6 +93,8 @@ def _quiet_server():
     server.tool_names.return_value = []
     server.skipped_tools.return_value = []
     server.unmatched_allowed_tools.return_value = []
+    server.connection_bound_tools.return_value = []
+    server.connection_bound_resources.return_value = []
     return server
 
 
@@ -150,7 +154,9 @@ def test_handle_mcp_passes_the_restrictions_to_build_server():
     with patch("dblift.cli.mcp.server.build_server", return_value=server) as build:
         assert _handle_mcp(ctx) == (True, None)
 
-    build.assert_called_once_with([], allow_writes=False, allowed_tools=["info", "validate"])
+    build.assert_called_once_with(
+        [], allow_writes=False, allowed_tools=["info", "validate"], offline=False
+    )
     server.run_stdio.assert_called_once_with()
 
 
@@ -207,3 +213,72 @@ def test_handle_mcp_refuses_an_empty_allowlist(capsys):
 
     build.assert_not_called()
     assert "--tools" in capsys.readouterr().err
+
+
+# --- v3: `--offline` ---------------------------------------------------------
+
+
+@pytest.mark.unit
+def test_mcp_parser_accepts_offline():
+    parser = create_parser(exit_on_error=False)
+
+    assert parser.parse_args(["mcp"]).offline is False
+    assert parser.parse_args(["mcp", "--offline"]).offline is True
+
+
+@pytest.mark.unit
+def test_offline_is_a_known_subcommand_boolean_flag():
+    """`--offline mcp`-style argv: the splitter takes the token after an
+    unknown `--flag` as its value, so a store_true flag must be listed or it
+    swallows the next token."""
+    from dblift.cli._config_helpers import _SUBCOMMAND_BOOLEAN_FLAGS
+
+    assert "--offline" in _SUBCOMMAND_BOOLEAN_FLAGS
+
+
+@pytest.mark.unit
+def test_handle_mcp_passes_offline_to_build_server():
+    server = _quiet_server()
+    ctx = CliCommandContext(
+        args=SimpleNamespace(global_arguments=[], read_only=False, tools=None, offline=True)
+    )
+
+    with patch("dblift.cli.mcp.server.build_server", return_value=server) as build:
+        assert _handle_mcp(ctx) == (True, None)
+
+    assert build.call_args.kwargs["offline"] is True
+    server.run_stdio.assert_called_once_with()
+
+
+@pytest.mark.unit
+def test_handle_mcp_names_the_connection_bound_registrations_on_stderr(capsys):
+    """An operator who starts an offline server must be told, at start-up,
+    which tools will refuse — not discover it one failed agent call at a time."""
+    server = _quiet_server()
+    server.connection_bound_tools.return_value = ["info", "validate"]
+    server.connection_bound_resources.return_value = ["dblift://history"]
+    ctx = CliCommandContext(
+        args=SimpleNamespace(global_arguments=[], read_only=False, tools=None, offline=True)
+    )
+
+    with patch("dblift.cli.mcp.server.build_server", return_value=server):
+        assert _handle_mcp(ctx) == (True, None)
+
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert "--offline" in captured.err
+    assert "info" in captured.err and "dblift://history" in captured.err
+
+
+@pytest.mark.unit
+def test_a_connected_server_says_nothing_about_offline(capsys):
+    server = _quiet_server()
+    server.connection_bound_tools.return_value = ["info"]
+    ctx = CliCommandContext(
+        args=SimpleNamespace(global_arguments=[], read_only=False, tools=None, offline=False)
+    )
+
+    with patch("dblift.cli.mcp.server.build_server", return_value=server):
+        assert _handle_mcp(ctx) == (True, None)
+
+    assert "--offline" not in capsys.readouterr().err

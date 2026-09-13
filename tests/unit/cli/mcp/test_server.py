@@ -550,3 +550,156 @@ def test_instructions_tell_a_restricted_session_to_trust_tools_list():
     write_forbidding = anyio.run(_with_client, DbliftMcpServer([], allow_writes=False), scenario)
     assert write_forbidding.startswith(SERVER_INSTRUCTIONS)
     assert "tools/list" in write_forbidding
+
+
+# --- v3: the offline boundary -------------------------------------------------
+
+
+@pytest.mark.unit
+def test_offline_server_refuses_a_connecting_tool_at_call_time():
+    """`--offline` fails closed: the tool is still listed (so an allowlist
+    written for a connected session still resolves), and calling it returns an
+    error naming the flag instead of opening a connection."""
+    from dblift.cli.mcp.server import DbliftMcpServer
+
+    server = DbliftMcpServer([], offline=True)
+    server.command_tool(name="t", command="info", description="d", fn=lambda: [])
+
+    with patch("dblift.cli.mcp.server.run_command") as rc:
+
+        async def scenario(client):
+            listed = [tool.name for tool in (await client.list_tools()).tools]
+            return listed, await client.call_tool("t", {})
+
+        listed, result = anyio.run(_with_client, server, scenario)
+
+    assert listed == ["t"]
+    assert result.is_error is True
+    assert "--offline" in result.content[0].text
+    assert "t" in result.content[0].text
+    rc.assert_not_called()
+
+
+@pytest.mark.unit
+def test_offline_server_runs_a_tool_that_declares_it_does_not_connect():
+    """`connects=False` is the registrar's declaration that the command runs
+    with no live provider; those tools are the point of an offline session."""
+    from dblift.cli.mcp.server import DbliftMcpServer
+
+    server = DbliftMcpServer([], offline=True)
+    server.command_tool(
+        name="offline_tool", command="info", description="d", fn=lambda: [], connects=False
+    )
+
+    with patch("dblift.cli.mcp.server.run_command", return_value={"success": True}):
+
+        async def scenario(client):
+            return await client.call_tool("offline_tool", {})
+
+        result = anyio.run(_with_client, server, scenario)
+
+    assert result.is_error is False
+    assert result.structured_content == {"success": True}
+
+
+@pytest.mark.unit
+def test_an_undeclared_tool_is_assumed_to_connect():
+    """The honest default: a registrar built before `connects` existed, or one
+    that forgot it, must not get an offline pass by omission."""
+    from dblift.cli.mcp.server import DbliftMcpServer
+
+    server = DbliftMcpServer([], offline=True)
+    server.raw_tool(
+        name="legacy", description="d", fn=lambda **kw: {"success": True}, signature_of=lambda: []
+    )
+
+    async def scenario(client):
+        return await client.call_tool("legacy", {})
+
+    result = anyio.run(_with_client, server, scenario)
+
+    assert result.is_error is True
+    assert "--offline" in result.content[0].text
+
+
+@pytest.mark.unit
+def test_offline_server_refuses_a_connecting_resource():
+    from dblift.cli.mcp.server import DbliftMcpServer
+
+    server = DbliftMcpServer([], offline=True)
+    server.command_resource(
+        uri="dblift://history",
+        name="history",
+        description="d",
+        command="info",
+        argv=[],
+        pick=lambda payload: payload["migrations"],
+    )
+
+    with patch("dblift.cli.mcp.server.run_command") as rc:
+
+        async def scenario(client):
+            from mcp.shared.exceptions import MCPError
+
+            with pytest.raises(MCPError) as exc_info:
+                await client.read_resource("dblift://history")
+            return str(exc_info.value)
+
+        message = anyio.run(_with_client, server, scenario)
+
+    assert "--offline" in message and "dblift://history" in message
+    rc.assert_not_called()
+
+
+@pytest.mark.unit
+def test_build_server_records_which_registrations_are_connection_bound():
+    """The record is what the handler reports and what an operator reads: the
+    three built-ins all read the schema-history table, and so do both
+    resources."""
+    from dblift.cli.mcp.server import build_server
+
+    def registrar(server):
+        server.command_tool(
+            name="from_files", command="info", description="d", fn=lambda: [], connects=False
+        )
+
+    with patch("dblift.cli.mcp.server.load_mcp_tool_registrars", return_value=[registrar]):
+        server = build_server([], offline=True)
+
+    assert server.connection_bound_tools() == ["info", "validate", "migrate_dry_run"]
+    assert server.connection_bound_resources() == ["dblift://history", "dblift://pending"]
+    assert server.offline is True
+
+
+@pytest.mark.unit
+def test_a_connected_server_runs_everything_and_records_nothing_extra():
+    """No flag, no refusal: `connects=` changes nothing unless `--offline` is on."""
+    from dblift.cli.mcp.server import DbliftMcpServer
+
+    server = DbliftMcpServer([])
+    server.command_tool(name="t", command="info", description="d", fn=lambda: [])
+
+    with patch("dblift.cli.mcp.server.run_command", return_value={"success": True}):
+
+        async def scenario(client):
+            return await client.call_tool("t", {})
+
+        result = anyio.run(_with_client, server, scenario)
+
+    assert server.offline is False
+    assert result.is_error is False
+
+
+@pytest.mark.unit
+def test_offline_instructions_say_the_refusal_exists_before_any_call():
+    from dblift.cli.mcp.server import OFFLINE_INSTRUCTIONS, SERVER_INSTRUCTIONS, DbliftMcpServer
+
+    async def scenario(client):
+        return client.instructions
+
+    offline = anyio.run(_with_client, DbliftMcpServer([], offline=True), scenario)
+
+    assert offline.startswith(SERVER_INSTRUCTIONS)
+    assert OFFLINE_INSTRUCTIONS.strip() in offline
+    assert "--offline" in offline
+    assert anyio.run(_with_client, DbliftMcpServer([]), scenario) == SERVER_INSTRUCTIONS

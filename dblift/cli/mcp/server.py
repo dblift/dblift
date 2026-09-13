@@ -14,6 +14,11 @@ and recorded, never raised. A registrar offers every tool unconditionally and
 lets the server skip: a tool it withholds never reaches the server, so
 ``--tools`` cannot name it and counts it as unknown. ``server.allow_writes``
 is informational only.
+
+``offline=True`` (the CLI's ``--offline``) is a different kind of restriction:
+it skips nothing. Every registration declaring ``connects=True`` — the default,
+so an undeclared one counts — is registered as usual and refuses when it is
+called, with a message naming the flag.
 """
 
 from __future__ import annotations
@@ -69,6 +74,33 @@ returns; a tool named above but absent from that list is not available in
 this session.
 """
 
+OFFLINE_INSTRUCTIONS = """
+This server was started with --offline. Every tool and resource that opens a
+database connection refuses to run in this session: calling one returns an
+error naming --offline, and nothing connects. tools/list and resources/list
+still show them, so you can see what the session is missing. Use the tools
+that answer from the project's files and configuration, and ask the human to
+run anything that needs the database.
+"""
+
+_OFFLINE_REFUSAL = (
+    "dblift mcp: {what} opens a database connection and this server was "
+    "started with --offline. Restart the server without --offline, or use a "
+    "tool that runs from the project's files."
+)
+
+
+def _offline_refusal(what: str) -> CommandInvocationError:
+    """The error a connection-bound registration raises under ``--offline``.
+
+    A :class:`CommandInvocationError` rather than a new type: ``raw_tool`` and
+    ``command_resource`` already convert that one into the SDK's ``ToolError``
+    / ``ResourceError``, which is what puts the message in the result the
+    model reads instead of a generic "Error executing tool".
+    """
+    return CommandInvocationError(_OFFLINE_REFUSAL.format(what=what), 1)
+
+
 ArgvBuilder = Callable[..., List[str]]
 
 _LOG = logging.getLogger(__name__)
@@ -116,6 +148,7 @@ class DbliftMcpServer:
         *,
         allow_writes: bool = True,
         allowed_tools: Optional[Iterable[str]] = None,
+        offline: bool = False,
     ) -> None:
         """Create an empty server; ``global_argv`` is prepended to every tool invocation.
 
@@ -126,16 +159,25 @@ class DbliftMcpServer:
         server instructions; an unrestricted server keeps them unchanged.
         ``allow_writes`` is exposed for information only — a registrar offers
         every tool regardless and lets the server skip.
+
+        ``offline=True`` (the CLI's ``--offline``) registers every tool and
+        resource as usual and refuses the connection-bound ones when they are
+        called, appending :data:`OFFLINE_INSTRUCTIONS` so the refusal is
+        readable before any call. It is not a skip: a name an allowlist was
+        written for still resolves. See :meth:`connection_bound_tools`.
         """
         mcpserver_cls = _import_sdk()
         from mcp.types import ToolAnnotations
 
         self.global_argv: List[str] = list(global_argv)
         self.allow_writes: bool = allow_writes
+        self.offline: bool = offline
         self._allowed_tools: Optional[FrozenSet[str]] = (
             None if allowed_tools is None else frozenset(allowed_tools)
         )
         instructions = SERVER_INSTRUCTIONS
+        if offline:
+            instructions += OFFLINE_INSTRUCTIONS
         if not allow_writes or self._allowed_tools is not None:
             # The static workflow names `validate`, `migrate_dry_run`, `info`
             # and `dblift://history`; under a restriction some may not be
@@ -148,6 +190,8 @@ class DbliftMcpServer:
         # Every name a registrar offered, registered or skipped: a skipped
         # name stays reserved so the tool list cannot depend on install order.
         self._offered: Set[str] = set()
+        self._connection_bound_tools: List[str] = []
+        self._connection_bound_resources: List[str] = []
 
     def _annotations(self, read_only: bool, destructive: bool) -> Any:
         """Build the tool annotations for one registration.
@@ -174,6 +218,14 @@ class DbliftMcpServer:
     def skipped_tools(self) -> List[Tuple[str, str]]:
         """``(name, reason)`` for every tool offered but not registered, in offer order."""
         return list(self._skipped)
+
+    def connection_bound_tools(self) -> List[str]:
+        """Registered tool names declared ``connects=True``, in registration order."""
+        return list(self._connection_bound_tools)
+
+    def connection_bound_resources(self) -> List[str]:
+        """Registered resource URIs declared ``connects=True``, in registration order."""
+        return list(self._connection_bound_resources)
 
     def unmatched_allowed_tools(self) -> List[str]:
         """Sorted allowlist names that no registrar offered, registered or skipped.
@@ -204,6 +256,7 @@ class DbliftMcpServer:
         json_argv: Optional[Sequence[str]] = JSON_FORMAT_ARGV,
         read_only: bool = True,
         destructive: bool = False,
+        connects: bool = True,
     ) -> None:
         """Register a tool running ``command`` with the argv ``fn`` builds.
 
@@ -221,6 +274,12 @@ class DbliftMcpServer:
         server will not accept (``read_only=False`` on a write-forbidding
         server, or a name outside its allowlist) is skipped, not raised — see
         :meth:`skipped_tools`.
+
+        ``connects`` (default ``True``) declares that the command opens a
+        database connection; on an ``offline`` server such a tool is still
+        registered and refuses when called. The default is ``True`` because an
+        undeclared tool is assumed to connect — a registrar that forgets
+        ``connects`` must not get an offline pass by omission.
         """
         global_argv = self.global_argv
         argv_tuple = tuple(json_argv) if json_argv is not None else None
@@ -235,6 +294,7 @@ class DbliftMcpServer:
             signature_of=fn,
             read_only=read_only,
             destructive=destructive,
+            connects=connects,
         )
 
     def raw_tool(
@@ -246,6 +306,7 @@ class DbliftMcpServer:
         signature_of: Callable[..., Any],
         read_only: bool = True,
         destructive: bool = False,
+        connects: bool = True,
     ) -> None:
         """Register a tool whose body is ``fn(**kwargs)`` itself.
 
@@ -263,6 +324,12 @@ class DbliftMcpServer:
         server will not accept (``read_only=False`` on a write-forbidding
         server, or a name outside its allowlist) is skipped, not raised — see
         :meth:`skipped_tools`.
+
+        ``connects`` (default ``True``) declares that ``fn`` opens a database
+        connection; on an ``offline`` server such a tool is still registered
+        and refuses when called. The default is ``True`` because an undeclared
+        tool is assumed to connect — a registrar that forgets ``connects``
+        must not get an offline pass by omission.
         """
         if name in self._offered:
             raise ValueError(f"Duplicate MCP tool: {name}")
@@ -277,8 +344,14 @@ class DbliftMcpServer:
 
         from mcp.server.mcpserver.exceptions import ToolError
 
+        refuse_offline = self.offline and connects
+
         def tool(**kwargs: Any) -> Dict[str, Any]:
             try:
+                if refuse_offline:
+                    # Raised, not returned: the `except` below is what turns a
+                    # CLI-style message into an is_error result the model reads.
+                    raise _offline_refusal(f"the {name} tool")
                 return fn(**kwargs)
             except CommandInvocationError as exc:
                 # `ToolError` (not a bare exception) is what makes the SDK put
@@ -312,6 +385,8 @@ class DbliftMcpServer:
         )
         self._offered.add(name)
         self._names.append(name)
+        if connects:
+            self._connection_bound_tools.append(name)
 
     def command_resource(
         self,
@@ -322,11 +397,18 @@ class DbliftMcpServer:
         command: str,
         argv: Sequence[str],
         pick: Callable[[Dict[str, Any]], Any],
+        connects: bool = True,
     ) -> None:
         """Register a resource whose content is ``pick(run_command(...))`` as JSON.
 
         A :class:`CommandInvocationError` surfaces as a resource error carrying
         the CLI's message, the way a tool's does.
+
+        ``connects`` (default ``True``) declares that ``command`` opens a
+        database connection; on an ``offline`` server such a resource is still
+        registered and refuses when read. The default is ``True`` because an
+        undeclared resource is assumed to connect — a registrar that forgets
+        ``connects`` must not get an offline pass by omission.
         """
         import json
 
@@ -334,9 +416,12 @@ class DbliftMcpServer:
 
         global_argv = self.global_argv
         argv_list = list(argv)
+        refuse_offline = self.offline and connects
 
         def resource() -> str:
             try:
+                if refuse_offline:
+                    raise _offline_refusal(f"the {uri} resource")
                 payload = run_command(global_argv, command, argv_list)
             except CommandInvocationError as exc:
                 # As with `ToolError` above: any other exception type has its
@@ -348,6 +433,8 @@ class DbliftMcpServer:
         self.mcpserver.resource(
             uri, name=name, description=description, mime_type="application/json"
         )(resource)
+        if connects:
+            self._connection_bound_resources.append(uri)
 
     def run_stdio(self) -> None:
         """Serve on stdin/stdout until the client closes the stream."""
@@ -359,20 +446,27 @@ def build_server(
     *,
     allow_writes: bool = True,
     allowed_tools: Optional[Iterable[str]] = None,
+    offline: bool = False,
 ) -> DbliftMcpServer:
     """Build the server with the built-in tools plus every ``dblift.mcp_tools`` registrar.
 
-    ``allow_writes`` and ``allowed_tools`` go to :class:`DbliftMcpServer`
-    unchanged; a registration they refuse is skipped and listed by
-    :meth:`DbliftMcpServer.skipped_tools`, and an allowlisted name no
-    registrar offered by :meth:`DbliftMcpServer.unmatched_allowed_tools`.
+    ``allow_writes``, ``allowed_tools`` and ``offline`` go to
+    :class:`DbliftMcpServer` unchanged; a registration they refuse is skipped
+    and listed by :meth:`DbliftMcpServer.skipped_tools`, and an allowlisted
+    name no registrar offered by
+    :meth:`DbliftMcpServer.unmatched_allowed_tools`. ``offline`` skips
+    nothing: what it refuses is listed by
+    :meth:`DbliftMcpServer.connection_bound_tools` and
+    :meth:`DbliftMcpServer.connection_bound_resources`.
     """
     from dblift.cli.mcp.tools import register_oss_tools
 
     # Idempotent; main() already ran it for `dblift mcp`, but a server built
     # programmatically (tests, embedding) needs the tier and licence seams too.
     load_feature_extensions()
-    server = DbliftMcpServer(global_argv, allow_writes=allow_writes, allowed_tools=allowed_tools)
+    server = DbliftMcpServer(
+        global_argv, allow_writes=allow_writes, allowed_tools=allowed_tools, offline=offline
+    )
     register_oss_tools(server)
     for register in load_mcp_tool_registrars():
         register(server)
