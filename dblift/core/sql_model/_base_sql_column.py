@@ -7,10 +7,9 @@ this module is re-exported by the ``base`` façade.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
-if TYPE_CHECKING:
-    from dblift.core.sql_model._base_sql_constraint import SqlConstraint
+from dblift.core.sql_model._base_sql_constraint import SqlConstraint
 
 
 class SqlColumn:
@@ -145,6 +144,11 @@ class SqlColumn:
             "default_value": self.default_value,
             "is_primary_key": self.is_primary_key,
             "is_unique": self.is_unique,
+            # Column-level constraints serialize themselves, the way a table's
+            # do. A column carrying one is independent of the owning table's
+            # constraint list: neither is rebuilt from the other, so a
+            # constraint listed in both round-trips through both.
+            "constraints": [constraint.to_dict() for constraint in self.constraints],
             "is_identity": self.is_identity,
             "identity_generation": self.identity_generation,
             "identity_seed": self.identity_seed,
@@ -173,6 +177,7 @@ class SqlColumn:
         Returns:
             SqlColumn instance
         """
+        column_dialect = data.get("dialect") or dialect
         column = cls(
             name=data["name"],
             data_type=data["data_type"],
@@ -190,7 +195,11 @@ class SqlColumn:
             comment=data.get("comment"),
             ordinal_position=data.get("ordinal_position"),
             collation=data.get("collation"),
-            dialect=data.get("dialect") or dialect,
+            dialect=column_dialect,
+            constraints=[
+                SqlConstraint.from_dict(constraint_data, dialect=column_dialect)
+                for constraint_data in data.get("constraints", [])
+            ],
         )
         # Restore explicit_properties if present in the serialized data
         if "explicit_properties" in data:

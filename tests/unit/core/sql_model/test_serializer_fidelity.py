@@ -132,15 +132,6 @@ KNOWN_ROUND_TRIP_GAPS: Dict[type, Dict[str, str]] = {
         "security_definer": "Parameter.__init__ accepts 'security_definer' and stores it on no "
         "attribute; the value is discarded at construction, before serialization is reached.",
     },
-    SqlColumn: {
-        "constraints": "SqlColumn.constraints: [SqlConstraint] -> []. to_dict emits no "
-        "'constraints' key and from_dict passes none to the constructor.",
-    },
-    Table: {
-        "columns": "Table.columns[0].constraints: [SqlConstraint] -> []. Table.to_dict now "
-        "delegates to SqlColumn.to_dict, so the two flags it used to drop survive; what is "
-        "left is SqlColumn's own gap above, which no change to Table can close.",
-    },
 }
 
 #: parameter name -> value. Three parameters are normalised or fall back on
@@ -567,8 +558,9 @@ def test_a_model_file_in_the_pre_fidelity_shape_still_loads() -> None:
     """Every model file already on disk carries the dict above; it must keep loading.
 
     The seven constraint attributes the old shape never wrote read as ``None``,
-    and the two column flags it never wrote read as ``False`` — a missing new
-    key is a default, never a load error.
+    the two column flags it never wrote read as ``False``, and the column-level
+    constraint list it never wrote reads as ``[]`` — a missing new key is a
+    default, never a load error.
     """
     table = Table.from_dict(PRE_FIDELITY_TABLE_DICT)
 
@@ -593,6 +585,7 @@ def test_a_model_file_in_the_pre_fidelity_shape_still_loads() -> None:
     assert column.nullable is False
     assert column.is_primary_key is False
     assert column.is_unique is False
+    assert column.constraints == []
     # This column dict carries no dialect key at all, so the table's is used —
     # as it was before the serializers were delegated.
     assert column.dialect == "postgresql"
