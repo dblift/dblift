@@ -236,10 +236,10 @@ def parse_migration_filename(filename: str) -> FilenameMetadata:
             MigrationType.REPEATABLE, None, repeatable_match.group(1), tuple(tags)
         )
 
-    # Handle malformed versioned migration: V__.<extension> (no version, no description)
+    # Reject versionless files while preserving their empty compatibility description.
     malformed_versioned = f"V__{file_extension}"
     if filename_without_tags == malformed_versioned or filename_without_tags == "V__.sql":
-        return FilenameMetadata(MigrationType.SQL, None, "", tuple(tags))
+        return FilenameMetadata(MigrationType.UNKNOWN, None, "", tuple(tags))
 
     # Any other file is unrecognized/invalid (baselines don't exist as script files)
     # For malformed script names, return the filename for debugging/logging purposes
