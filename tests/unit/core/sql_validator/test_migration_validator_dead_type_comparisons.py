@@ -8,7 +8,7 @@ validation outcomes that those comparisons were meant to produce.
 
 import unittest
 from types import SimpleNamespace
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 
 def _make_validator(dialect="postgresql"):
@@ -23,8 +23,7 @@ def _make_validator(dialect="postgresql"):
     hm.provider.config.database.type = dialect
     hm.provider.config.strict_mode = False
     log = MagicMock()
-    with patch("dblift.core.sql_validator.migration_validator.SqlAnalyzer"):
-        v = MigrationValidator(script_manager=sm, history_manager=hm, log=log)
+    v = MigrationValidator(script_manager=sm, history_manager=hm, log=log)
     return v, sm, hm, log
 
 

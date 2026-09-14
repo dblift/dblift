@@ -130,11 +130,10 @@ def test_unverified_scripts_are_not_reported_as_validated():
     """Undo scripts are collected, then exempted from every check.
 
     ``validate`` gathers ``U__`` scripts with the rest, but the checksum
-    validator lists ``UNDO_SQL`` as exempt from drift detection, the syntax
-    validator handles only ``SQL``/``BASELINE``, and the duplicate-version check
-    skips them too. Reporting them as validated would claim a check that never
-    ran — an applied undo script can be edited on disk and validate still
-    passes.
+    validator lists ``UNDO_SQL`` as exempt from drift detection and the
+    duplicate-version check skips them too. Reporting them as validated would
+    claim a check that never ran — an applied undo script can be edited on disk
+    and validate still passes.
     """
     vr = ValidationResult()
     vr.success = True

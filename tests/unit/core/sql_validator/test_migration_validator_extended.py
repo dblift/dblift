@@ -2,7 +2,7 @@
 
 import unittest
 from types import SimpleNamespace
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 
 def _make_validator(dialect="postgresql"):
@@ -17,8 +17,7 @@ def _make_validator(dialect="postgresql"):
     hm.provider = MagicMock()
     hm.provider.config.database.type = dialect
     log = MagicMock()
-    with patch("dblift.core.sql_validator.migration_validator.SqlAnalyzer"):
-        v = MigrationValidator(script_manager=sm, history_manager=hm, log=log)
+    v = MigrationValidator(script_manager=sm, history_manager=hm, log=log)
     return v, sm, hm, log
 
 
@@ -97,9 +96,8 @@ class TestMigrationValidatorInit(unittest.TestCase):
         hm = MagicMock()
         hm.provider = MagicMock(spec=[])  # no config
         log = MagicMock()
-        with patch("dblift.core.sql_validator.migration_validator.SqlAnalyzer"):
-            v = MigrationValidator(sm, hm, log)
-        self.assertIsNotNone(v.sql_analyzer)
+        v = MigrationValidator(sm, hm, log)
+        self.assertIsNotNone(v._quirks)
 
     def test_null_log_when_none(self):
         from dblift.core.logger import NullLog
@@ -108,22 +106,8 @@ class TestMigrationValidatorInit(unittest.TestCase):
         sm, hm = MagicMock(), MagicMock()
         hm.provider = MagicMock()
         hm.provider.config.database.type = "postgresql"
-        with patch("dblift.core.sql_validator.migration_validator.SqlAnalyzer"):
-            v = MigrationValidator(sm, hm, None)
+        v = MigrationValidator(sm, hm, None)
         self.assertIsInstance(v.log, NullLog)
-
-
-class TestMigrationValidatorReplacePlaceholders(unittest.TestCase):
-    def test_replaces_placeholder(self):
-        v, *_ = _make_validator()
-        v.placeholders = {"env": "prod"}
-        result = v._replace_placeholders("SELECT * FROM ${env}_table")
-        self.assertIsInstance(result, str)
-
-    def test_no_placeholders_returns_same(self):
-        v, *_ = _make_validator()
-        result = v._replace_placeholders("SELECT 1")
-        self.assertIn("SELECT 1", result)
 
 
 class TestValidateFlywayCaching(unittest.TestCase):

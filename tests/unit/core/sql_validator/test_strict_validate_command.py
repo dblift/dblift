@@ -9,6 +9,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from dblift.core.migration.migration import MigrationType
+from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
 from dblift.core.sql_validator.migration_validator import MigrationValidator
 
 
@@ -43,7 +44,6 @@ def _validator(strict_result: bool) -> MigrationValidator:
     validator._validate_no_scripts_case = MagicMock(return_value=(False, True))
     validator._check_repeatable_migrations = MagicMock()
     validator._validate_duplicate_versions = MagicMock(return_value=True)
-    validator._validate_sql_syntax = MagicMock()
     validator._validate_strict_mode_rules = MagicMock(return_value=strict_result)
     validator._validate_failed_migrations = MagicMock()
     validator._validate_checksums = MagicMock()
@@ -92,7 +92,6 @@ def _filtering_validator() -> MigrationValidator:
     validator._validate_checksums = MagicMock()
     validator._validate_reappeared_migrations = MagicMock()
 
-    validator._validate_sql_syntax = MagicMock()
     return validator
 
 
@@ -140,7 +139,6 @@ def test_validate_does_not_parse_in_scope_placeholder_script(tmp_path: Path):
     result = validator.validate_migrations(tmp_path, command="validate", target_version="3")
 
     assert result.success is True
-    validator._validate_sql_syntax.assert_not_called()
     warnings = [call.args[0] for call in validator.log.warning.call_args_list]
     assert not any("MY_LABEL" in warning for warning in warnings)
 
@@ -162,7 +160,6 @@ def test_validate_ignores_unresolved_placeholder_outside_sql_literal(tmp_path: P
     result = validator.validate_migrations(tmp_path, command="validate")
 
     assert result.success is True
-    validator._validate_sql_syntax.assert_not_called()
     warnings = [call.args[0] for call in validator.log.warning.call_args_list]
     assert not any("TABLE_NAME" in warning for warning in warnings)
 
@@ -182,7 +179,43 @@ def test_validate_resolved_migrations_does_not_parse_pending_sql():
     result = validator.validate_resolved_migrations(scripts, command="migrate")
 
     assert result.success is True
-    validator._validate_sql_syntax.assert_not_called()
+
+
+@pytest.mark.unit
+def test_metadata_validation_does_not_construct_analyzer_or_read_sql(monkeypatch):
+    class UnreadableSqlMigration:
+        script_name = "V5__pending.sql"
+        type = MigrationType.SQL
+        version = "5"
+
+        @property
+        def content(self):
+            raise AssertionError("metadata validation must not read SQL content")
+
+    def fail_analyzer_init(*_args, **_kwargs):
+        raise AssertionError("metadata validation must not construct SqlAnalyzer")
+
+    monkeypatch.setattr(SqlAnalyzer, "__init__", fail_analyzer_init)
+    history_manager = SimpleNamespace(
+        has_history_table=False,
+        provider=SimpleNamespace(
+            config=SimpleNamespace(
+                database=SimpleNamespace(type="postgresql"),
+                strict_mode=False,
+            )
+        ),
+    )
+    validator = MigrationValidator(
+        script_manager=SimpleNamespace(),
+        history_manager=history_manager,
+        log=MagicMock(),
+    )
+
+    migration = UnreadableSqlMigration()
+    result = validator.validate_resolved_migrations([migration])
+
+    assert result.success is True
+    assert result.migrations == [migration]
 
 
 @pytest.mark.unit
