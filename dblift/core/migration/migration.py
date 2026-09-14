@@ -18,12 +18,10 @@ from dblift.core.migration.encoding import read_migration_text
 from dblift.core.migration.formats import MigrationFormat, MigrationFormatDetector
 from dblift.core.migration.migration_types import (  # noqa: F401 - public compatibility re-export
     VERSIONED_SCRIPT_TYPES,
+    MigrationType,
 )
-from dblift.core.migration.migration_types import MigrationType
 from dblift.core.migration.scripting.filename_parser import (  # noqa: F401 - compatibility for existing callback imports
     _CALLBACK_PREFIXES,
-)
-from dblift.core.migration.scripting.filename_parser import (
     strip_migration_tags,
 )
 

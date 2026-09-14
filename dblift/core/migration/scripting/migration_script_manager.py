@@ -137,15 +137,24 @@ class MigrationScriptManager:
         script_path: Path,
         *,
         filename_metadata: Optional[Tuple[MigrationType, Optional[str], str, List[str]]] = None,
+        require_versioned: bool = False,
     ) -> Migration:
         """Read one resource with configured encoding and construct a resolved migration."""
         from dblift.core.migration.formats import MigrationFormat
+
+        if require_versioned and not script_path.exists():
+            raise FileNotFoundError(f"Migration file not found: {script_path}")
 
         metadata = (
             filename_metadata
             if filename_metadata is not None
             else self.parse_filename(script_path.name)
         )
+        if require_versioned and (metadata[0] != MigrationType.SQL or not metadata[1]):
+            raise ValueError(
+                f"File is not a versioned migration: {script_path.name}. "
+                "Expected a versioned migration filename (V*__description.<ext>)."
+            )
         content = read_migration_text(
             script_path,
             configured_encoding=self.script_encoding,
@@ -166,6 +175,17 @@ class MigrationScriptManager:
         ):
             migration.type = MigrationType.PYTHON
         return migration
+
+    def find_undo_candidates(self, scripts_directory: Path, recursive: bool = True) -> List[Path]:
+        """Discover the undo API's loose V* candidates in filesystem order."""
+        from dblift.core.migration.formats import MigrationFormatDetector
+
+        pattern = "**/V*" if recursive else "V*"
+        return [
+            path
+            for path in scripts_directory.glob(pattern)
+            if path.is_file() and MigrationFormatDetector.is_migration_file(path)
+        ]
 
     def is_versioned_script_name(self, filename: str) -> bool:
         """True if *filename* is a Flyway versioned migration (V*__), any registered extension.

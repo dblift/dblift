@@ -10,7 +10,7 @@ from typing import List, Optional
 
 from dblift.core.logger import DbliftLogger, Log
 from dblift.core.migration.formats import MigrationFormat
-from dblift.core.migration.migration import Migration, MigrationType
+from dblift.core.migration.migration import Migration
 from dblift.core.migration.scripting.migration_script_manager import MigrationScriptManager
 from dblift.core.migration.scripting.undo_script_generator._extractors import _UndoExtractorsMixin
 from dblift.core.migration.scripting.undo_script_generator._models import UndoStatement
@@ -65,22 +65,8 @@ class UndoScriptGenerator(_UndoReversersMixin, _UndoExtractorsMixin):
             ValueError: If migration_path is not a versioned migration
             FileExistsError: If undo script exists and overwrite=False
         """
-        # Validate migration file
-        if not migration_path.exists():
-            raise FileNotFoundError(f"Migration file not found: {migration_path}")
-
         script_manager = MigrationScriptManager(self.logger or DbliftLogger())
-        filename_metadata = script_manager.parse_filename(migration_path.name)
-        if filename_metadata[0] != MigrationType.SQL or not filename_metadata[1]:
-            raise ValueError(
-                f"File is not a versioned migration: {migration_path.name}. "
-                "Expected a versioned migration filename (V*__description.<ext>)."
-            )
-
-        # Parse migration to get version and description
-        migration = script_manager.load_migration_script(
-            migration_path, filename_metadata=filename_metadata
-        )
+        migration = script_manager.load_migration_script(migration_path, require_versioned=True)
         if migration.format != MigrationFormat.SQL:
             raise ValueError(
                 f"Cannot auto-generate undo for {migration_path.name}: only SQL versioned "
