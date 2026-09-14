@@ -9,15 +9,16 @@ silently dropped the action. The CREATE path has always read the constraint's
 own values, so the two paths disagreed about the same constraint.
 
 The CREATE path also honours ``DialectQuirks.table_fk_suppress_on_update`` for
-the engine that has no ``ON UPDATE`` clause at all; the ALTER path must apply
-the same suppression or it emits syntax that engine rejects.
+the engine that has no ``ON UPDATE`` clause at all, and
+``DialectQuirks.table_fk_supports_restrict`` for the engines whose grammar has
+no ``RESTRICT``; the ALTER path must apply the same suppressions or it emits
+syntax those engines reject — and must keep ``RESTRICT`` everywhere else,
+because it is a stricter constraint than the ``NO ACTION`` default.
 """
 
 from __future__ import annotations
 
 from typing import List, Optional
-
-import pytest
 
 from dblift.core.sql_generator.alter.base_alter_generator import BaseAlterGenerator
 from dblift.core.sql_model.base import ConstraintType, SqlConstraint
@@ -85,20 +86,34 @@ def test_add_constraint_suppresses_on_update_where_the_engine_has_no_such_clause
     assert "ON UPDATE" not in statement
 
 
-@pytest.mark.parametrize("action", ["NO ACTION", "RESTRICT"])
-def test_add_constraint_omits_the_implicit_default_actions(action: str) -> None:
-    """The builder suppresses both actions, so ALTER emits what CREATE emits.
+def test_add_constraint_omits_the_implicit_default_action() -> None:
+    """``NO ACTION`` is the referential default everywhere, so the clause is noise."""
+    (statement,) = _AlterGenerator("postgresql").generate_alter_table_statements(
+        "orders", add_constraints=[_foreign_key(on_delete="NO ACTION", on_update="NO ACTION")]
+    )
 
-    ``basic_table_ddl_generator`` suppresses ``NO ACTION`` and ``RESTRICT``
-    alike, so a modelled ``ON DELETE RESTRICT`` reaches the SQL with no action
-    clause at all. That suppression predates this path and is separately wrong:
-    ``RESTRICT`` is not the PostgreSQL default and, unlike ``NO ACTION``, its
-    check cannot be deferred. What this test pins is only that the ALTER path
-    renders the same clause the CREATE path does; changing the suppression
-    would be a change to both.
+    assert "ON DELETE" not in statement
+    assert "ON UPDATE" not in statement
+
+
+def test_add_constraint_keeps_restrict_where_the_engine_distinguishes_it() -> None:
+    """``RESTRICT`` is a different constraint from ``NO ACTION``, not a synonym.
+
+    PostgreSQL checks a ``RESTRICT`` action immediately and cannot defer it, so
+    dropping the clause substitutes the deferrable default instead.
     """
     (statement,) = _AlterGenerator("postgresql").generate_alter_table_statements(
-        "orders", add_constraints=[_foreign_key(on_delete=action, on_update=action)]
+        "orders", add_constraints=[_foreign_key(on_delete="RESTRICT", on_update="RESTRICT")]
+    )
+
+    assert "ON DELETE RESTRICT" in statement
+    assert "ON UPDATE RESTRICT" in statement
+
+
+def test_add_constraint_omits_restrict_where_the_engine_lacks_the_keyword() -> None:
+    """SQL Server's referential-action grammar has no ``RESTRICT`` to emit."""
+    (statement,) = _AlterGenerator("sqlserver").generate_alter_table_statements(
+        "orders", add_constraints=[_foreign_key(on_delete="RESTRICT", on_update="RESTRICT")]
     )
 
     assert "ON DELETE" not in statement

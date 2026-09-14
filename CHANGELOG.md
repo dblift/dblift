@@ -31,6 +31,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   a document the package ships, or one derived from your configuration, served
   under its own media type. `--resources` fences them and `--offline` refuses
   them exactly as it does the built-in ones.
+- Add-on packages can now contribute resources that are not command payloads —
+  a document the package ships, or one derived from your configuration, served
+  under its own media type. `--resources` fences them and `--offline` refuses
+  them exactly as it does the built-in ones.
+- Opt-in SQLite benchmarks cover fresh migrations of 10 and 100 scripts with
+  and without callbacks, plus no-op migration, validation and info against
+  populated history. Each measured round uses its own database and verifies
+  the command results and database contents.
 
 ### Changed
 
@@ -52,12 +60,75 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and remove redundant sorting. Share the common validation checks and MySQL
   quoted-string readers while preserving filtering, callback order and dialect
   behavior.
+- **A column or constraint in a model file now carries its own `dialect`.** The
+  first rewrite by this version adds `dialect`, `is_primary_key`, `is_unique`
+  and `constraints` to every column, and `dialect`, `on_delete`, `on_update`,
+  `is_enabled`, `is_validated`, `is_deferrable`, `initially_deferred` and
+  `comment` to every constraint. Once a child carries its own `dialect`, that
+  value is read in preference to the table's, so editing the table-level
+  `dialect` by hand no longer retargets the columns and constraints below it:
+  edit theirs as well, or drop their `dialect` keys to let the table's apply
+  again. A file written by an earlier version carries no such key and is
+  unaffected until it is rewritten.
 
 ### Fixed
 
 - `MigrationValidator.validate_resolved_migrations()` now checks that script
   formats are supported by the selected provider, matching directory-based
   validation.
+- **Serialized table models keep every constraint field.** A constraint written
+  to a model file lost its `ON DELETE` / `ON UPDATE` actions, its enabled and
+  validated state, its deferrability and its comment, because only eight of its
+  sixteen keys were written. All of them are written now, and the added keys
+  are optional on read, so a file produced by an earlier version still loads —
+  with the fields it never carried left empty. `constraint_type` is written as
+  its string value (`"FOREIGN KEY"`), so a constraint reads back as itself and
+  the dict is JSON-serializable on its own. A file that instead carries the
+  enum's `str()` form (`"ConstraintType.FOREIGN_KEY"`) loads as an `UNKNOWN`
+  constraint type, as it did before.
+- **A column's own constraints survive a model file round trip.** A constraint
+  attached to a column rather than to the table was dropped on the way out and
+  on the way back in: the column wrote no `constraints` key and read none. Both
+  happen now. The key is optional on read, so a file written by an earlier
+  version still loads, with no column-level constraints. It is written as the
+  last key of each column, so re-exporting such a file appends one line per
+  column instead of splitting every column apart.
+- **A model file keeps an index's `definition`.** The vendor DDL an index can
+  carry verbatim was neither written nor read back, so it was lost whenever a
+  model file was rewritten. The key is optional on read — a file written by an
+  earlier version still loads — and rewriting one adds `"definition": null` to
+  every index that carries no such DDL.
+- **`ALTER TABLE … ADD CONSTRAINT` for a foreign key carries its referential
+  actions.** The shared builder behind that statement passed no `ON DELETE` /
+  `ON UPDATE`, so a foreign key defined with, say, `ON DELETE SET NULL` was
+  re-added without it, and a model whose only change was a referential action
+  produced a script that did not apply it. `NO ACTION` is still omitted, exactly
+  as it is on `CREATE TABLE`, and the `ON UPDATE` clause is still left out for
+  engines that have none. ALTER generators supplied by
+  add-on packages that do not override the constraint builder inherit this fix,
+  so the clause now appears in the SQL they emit.
+- **A foreign key keeps its `RESTRICT` action.** `ON DELETE RESTRICT` and
+  `ON UPDATE RESTRICT` were dropped from generated `CREATE TABLE` and
+  `ALTER TABLE … ADD CONSTRAINT`, leaving the engine to apply its `NO ACTION`
+  default — a weaker rule, checked later and, where deferrable constraints
+  exist, deferrable. The clause is now kept on PostgreSQL, CockroachDB, SQLite,
+  Db2, MySQL, MariaDB and Snowflake. SQL Server, Oracle, Redshift and DuckDB
+  still omit it, because they have no `RESTRICT` to write or record the key as
+  `NO ACTION` anyway. MariaDB's catalogue reports `RESTRICT` for a key created
+  with no action clause at all, so DDL generated from an introspected MariaDB
+  schema now spells the action out — the same behaviour, written explicitly.
+  ALTER generators supplied by add-on packages that do not override the
+  constraint builder inherit this through the engine's quirks; one that calls
+  the shared foreign-key builder directly now receives `RESTRICT` unless it
+  passes the new `suppress_restrict` flag.
+- **`dblift mcp` reports its version.** The `initialize` reply carried
+  `serverInfo.version: ""`; it now carries the installed `dblift` version, so a
+  client that logs or pins server identity has one to read.
+- A routine parameter's `volatility` and `security_definer` are now stored and
+  serialized. The constructor accepted both and discarded them, so neither ever
+  reached a model file. Nothing sets or reads either one today, so the only
+  difference in a rewritten file is the two keys, written as `null`, on each
+  parameter.
 
 ### Removed
 
