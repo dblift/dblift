@@ -627,3 +627,87 @@ class TestComposeWhereGuardsPrecedence:
         """Callers reach for ``None`` when threading an optional predicate."""
         assert quirks("oracle").row_limit_clauses(10).compose_where(None) == (" WHERE ROWNUM <= 10")
         assert quirks("postgresql").row_limit_clauses(10).compose_where(None) == ""
+
+
+# --------------------------------------------------------------------------
+# table_fk_supports_restrict
+# --------------------------------------------------------------------------
+
+
+class TestTableFkSupportsRestrict:
+    """The bug this capability closes.
+
+    The FK body builder suppressed ``NO ACTION`` and ``RESTRICT`` together, on
+    every dialect, so a foreign key modelled with ``ON DELETE RESTRICT`` was
+    generated with no action clause — the engine default ``NO ACTION``, which
+    on PostgreSQL, SQLite and Db2 is a weaker, deferrable constraint. Whether
+    the clause may be written is an engine fact, so it is declared per engine
+    rather than assumed uniform.
+    """
+
+    @pytest.mark.parametrize(
+        "dialect, expected",
+        [
+            ("postgresql", True),
+            ("cockroachdb", True),
+            ("mysql", True),
+            ("mariadb", True),
+            ("sqlite", True),
+            ("db2", True),
+            ("snowflake", True),
+            ("sqlserver", False),
+            ("oracle", False),
+            ("redshift", False),
+            ("duckdb", False),
+            # No FK DDL is generated for the document stores at all, so the
+            # value is never read; they hold the inherited default.
+            ("mongodb", True),
+            ("cosmosdb", True),
+        ],
+    )
+    def test_declared_value(self, dialect: str, expected: bool) -> None:
+        assert quirks(dialect).table_fk_supports_restrict is expected
+
+    def test_redshift_does_not_inherit_postgresqls_restrict(self) -> None:
+        """Redshift's FK grammar is ``REFERENCES reftable [(refcolumn)]``.
+
+        There is no referential-action clause of any kind to put ``RESTRICT``
+        in, so inheriting ``PostgresqlQuirks``' ``True`` would be a claim about
+        syntax Redshift does not have — the same never-declared-only-inherited
+        gap ``upsert_style`` and ``json_bind_cast_type`` already fixed.
+        """
+        assert quirks("redshift").table_fk_supports_restrict is False
+
+    def test_duckdb_collapses_restrict_to_no_action(self) -> None:
+        """DuckDB parses ``ON DELETE RESTRICT`` and then forgets it.
+
+        Probed on 1.5.5: after creating the key,
+        ``information_schema.referential_constraints.delete_rule`` reads
+        ``NO ACTION``. Emitting the keyword would suggest a stricter
+        constraint than the engine actually stores.
+        """
+        assert quirks("duckdb").table_fk_supports_restrict is False
+
+    @pytest.mark.parametrize("dialect", ["citus", "timescaledb", "yugabytedb", "neon"])
+    def test_pg_wire_engines_inherit_restrict(self, dialect: str) -> None:
+        """These run PostgreSQL's own FK grammar, so the inherited ``True`` holds."""
+        assert quirks(dialect).table_fk_supports_restrict is True
+
+    def test_the_default_is_to_keep_a_modelled_action(self) -> None:
+        """An engine that declares nothing must not silently drop the clause."""
+        assert BaseQuirks(dialect_name="anything").table_fk_supports_restrict is True
+
+    def test_every_dialect_declares_a_boolean(self) -> None:
+        for dialect in all_registered_dialects():
+            assert isinstance(quirks(dialect).table_fk_supports_restrict, bool), dialect
+
+    def test_overrides_are_declared_on_the_quirks_class(self) -> None:
+        """Pin the override mechanism, not only the value it resolves to."""
+        from dblift.db.plugins.duckdb.quirks import DuckDBQuirks
+        from dblift.db.plugins.oracle.quirks import OracleQuirks
+        from dblift.db.plugins.sqlserver.quirks import SqlserverQuirks
+
+        assert "table_fk_supports_restrict" in vars(RedshiftQuirks)
+        assert "table_fk_supports_restrict" in vars(DuckDBQuirks)
+        assert "table_fk_supports_restrict" in vars(OracleQuirks)
+        assert "table_fk_supports_restrict" in vars(SqlserverQuirks)

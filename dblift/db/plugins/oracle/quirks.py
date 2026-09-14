@@ -191,6 +191,9 @@ class OracleQuirks(BaseQuirks):
     table_temporary_style = "global_temporary"
     table_not_null_implicit_on_inline_pk = True
     table_fk_suppress_on_update = True
+    # Oracle's ON DELETE takes only CASCADE or SET NULL; it has no NO ACTION
+    # or RESTRICT keyword, and no ON UPDATE clause (suppressed above).
+    table_fk_supports_restrict = False
     table_supports_deferrable_constraints = True
     table_supports_constraint_state = True
     table_tablespace_style = "quoted"

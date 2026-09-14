@@ -126,6 +126,7 @@ class BaseAlterGenerator(ABC):
                 return None
             local_cols = list(constraint.columns)
             ref_cols = list(constraint.reference_columns or [])
+            quirks = _quirks_for(self.dialect)
             fk_body = _build_fk_body_sql(
                 local_cols=local_cols,
                 ref_cols=ref_cols,
@@ -135,7 +136,8 @@ class BaseAlterGenerator(ABC):
                 on_delete=getattr(constraint, "on_delete", None),
                 on_update=getattr(constraint, "on_update", None),
                 suppress_no_action=True,
-                suppress_on_update=_quirks_for(self.dialect).table_fk_suppress_on_update,
+                suppress_on_update=quirks.table_fk_suppress_on_update,
+                suppress_restrict=not quirks.table_fk_supports_restrict,
             )
             constraint_def = fk_body
             if constraint.name:
