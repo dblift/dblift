@@ -57,9 +57,9 @@ def test_execution_paths_do_not_call_model_sql_parser(operation, monkeypatch):
         engine.execute_callback(migration)
     else:
         assert engine.get_executable_sql_statements(migration, result) == [
-            "CREATE TABLE example (id INT)"
+            "CREATE TABLE example (id INT);"
         ]
-    assert not result.has_error(), result.error
+    assert not result.error, result.error
     if operation != "preview":
         provider.execute_statement.assert_called_once_with("CREATE TABLE example (id INT);")
     else:
