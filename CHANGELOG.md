@@ -13,6 +13,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- SQL callbacks now honor autocommit requirements and reject incompatible mixed
+  transaction modes. Callback SQL also receives the same placeholder and
+  dialect preprocessing as migrations, including SQL*Plus directives.
+
 ### Removed
 
 ## [4.5.0] - 2026-09-14
