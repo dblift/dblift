@@ -57,7 +57,7 @@ def _engine_for(dialect: str, tmp_path: Path, placeholders=PLACEHOLDERS):
         placeholder_service=(
             PlaceholderService(dict(placeholders), log) if placeholders is not None else None
         ),
-        config=Mock(),
+        config=None,
     )
     return engine, provider, log
 

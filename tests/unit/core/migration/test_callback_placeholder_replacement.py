@@ -50,7 +50,7 @@ class TestCallbackPlaceholderReplacement:
             sql_analyzer=self.sql_analyzer,
             log=self.log,
             placeholder_service=self.placeholder_service,
-            config=Mock(),
+            config=None,
         )
 
     def teardown_method(self):
@@ -161,7 +161,7 @@ class TestCallbackPlaceholderReplacement:
             sql_analyzer=self.sql_analyzer,
             log=self.log,
             placeholder_service=None,
-            config=Mock(),
+            config=None,
         )
 
         callback_content = """
