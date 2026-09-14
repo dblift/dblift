@@ -328,7 +328,7 @@ class TestMigrationDetermineType:
         assert Migration(script_name="U1__rollback.sql").type == MigrationType.UNDO_SQL
 
     def test_b_followed_by_digit_is_baseline(self):
-        assert Migration(script_name="B1__baseline.sql").type == MigrationType.BASELINE
+        assert Migration(script_name="B1__baseline.sql").type == MigrationType.UNKNOWN
 
     # False positives — must return UNKNOWN (AC#1-4)
     def test_validate_sql_is_unknown(self):

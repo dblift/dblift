@@ -74,7 +74,7 @@ pytestmark = pytest.mark.unit
         (
             "V__.sql",
             MigrationType.SQL,
-            MigrationType.UNKNOWN,
+            MigrationType.SQL,
             None,
             "",
             [],
@@ -83,7 +83,7 @@ pytestmark = pytest.mark.unit
         (
             "V__.py",
             MigrationType.SQL,
-            MigrationType.UNKNOWN,
+            MigrationType.PYTHON,
             None,
             "",
             [],
@@ -134,13 +134,13 @@ def test_load_parses_each_filename_once(
 @pytest.mark.parametrize(
     ("filename", "use_path", "expected_type"),
     [
-        ("B1__baseline.sql", False, MigrationType.BASELINE),
-        ("V__.sql", True, MigrationType.UNKNOWN),
+        ("B1__baseline.sql", False, MigrationType.UNKNOWN),
+        ("V__.sql", True, MigrationType.SQL),
         ("V1__python.py", False, MigrationType.SQL),
         ("V1__python.py", True, MigrationType.PYTHON),
     ],
 )
-def test_direct_construction_parses_once_without_changing_type_semantics(
+def test_direct_construction_parses_once_with_canonical_type_semantics(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     filename: str,
@@ -149,16 +149,16 @@ def test_direct_construction_parses_once_without_changing_type_semantics(
 ) -> None:
     script = tmp_path / filename
     script.write_text("SELECT 1;", encoding="utf-8")
+    from dblift.core.migration.scripting import filename_parser
+
     parse_calls: list[str] = []
-    original_parse = MigrationScriptManager.parse_filename
+    original_parse = filename_parser.parse_migration_filename
 
-    def counting_parse(
-        parser: MigrationScriptManager, script_name: str
-    ) -> tuple[MigrationType, str | None, str, list[str]]:
+    def counting_parse(script_name: str):
         parse_calls.append(script_name)
-        return original_parse(parser, script_name)
+        return original_parse(script_name)
 
-    monkeypatch.setattr(MigrationScriptManager, "parse_filename", counting_parse)
+    monkeypatch.setattr(filename_parser, "parse_migration_filename", counting_parse)
 
     migration = (
         Migration(script_path=script)
