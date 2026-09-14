@@ -144,22 +144,28 @@ class MigrationStateManager:
         applied_migrations: Optional[List[Migration]] = None,
     ) -> MigrationValidationSnapshot:
         """Aggregate catalog and history data without deciding validation outcomes."""
-        directory_exists = (
-            resolved_migrations is not None
-            or scripts_dir is None
-            or self.script_manager.migration_directory_exists(scripts_dir)
-        )
-        if resolved_migrations is None:
-            resolved_migrations = (
-                self.get_resolved_migrations(
-                    scripts_dir,
-                    recursive=recursive,
-                    additional_dirs=additional_dirs,
-                    dir_recursive_map=dir_recursive_map,
-                )
-                if scripts_dir is not None and directory_exists
-                else []
+        catalog_read_error = None
+        directory_exists = False
+        try:
+            directory_exists = (
+                resolved_migrations is not None
+                or scripts_dir is None
+                or self.script_manager.migration_directory_exists(scripts_dir)
             )
+            if resolved_migrations is None:
+                resolved_migrations = (
+                    self.get_resolved_migrations(
+                        scripts_dir,
+                        recursive=recursive,
+                        additional_dirs=additional_dirs,
+                        dir_recursive_map=dir_recursive_map,
+                    )
+                    if scripts_dir is not None and directory_exists
+                    else []
+                )
+        except Exception as error:
+            catalog_read_error = str(error)
+            resolved_migrations = []
         catalog = [
             m
             for m in resolved_migrations
@@ -213,6 +219,7 @@ class MigrationStateManager:
             strict_mode=strict_mode,
             scripts_directory=scripts_dir,
             history_read_error=history_read_error,
+            catalog_read_error=catalog_read_error,
         )
 
     def get_applied_migrations(

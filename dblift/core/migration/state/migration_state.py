@@ -33,6 +33,7 @@ class MigrationValidationSnapshot:
     strict_mode: bool
     scripts_directory: Optional[Path] = None
     history_read_error: str = ""
+    catalog_read_error: Optional[str] = None
 
 
 @dataclass(slots=True)

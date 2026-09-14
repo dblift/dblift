@@ -268,6 +268,10 @@ class MigrationValidator:
         """Validate immutable inputs without collecting scripts or history."""
         result = ValidationResult()
         issues: List[str] = []
+        if snapshot.catalog_read_error is not None:
+            result.success = False
+            result.error_message = f"Validation failed: {snapshot.catalog_read_error}"
+            return result
         if not snapshot.scripts_directory_exists:
             result.success = False
             result.error_message = (
