@@ -214,3 +214,45 @@ def test_sql_execution_persists_history_without_transaction_methods(failure):
     assert len(provider.records) == 1
     assert provider.records[0]["success"] is (not failure)
     assert provider.transaction_lookups == []
+
+
+@pytest.mark.parametrize("failure", [False, True])
+def test_python_execution_persists_history_without_transaction_methods(tmp_path, failure):
+    provider = NonTransactionalProvider()
+    script = tmp_path / "V1__items.py"
+    content = "def migrate(context):\n    context.provider.statements.append('python ran')\n"
+    if failure:
+        content += "    raise RuntimeError('script failed')\n"
+    script.write_text(content)
+    history = MigrationHistoryManager(provider, "main", "tester", NullLog())
+    engine = ExecutionEngine(
+        provider, SqlAnalyzer(dialect="sqlite"), NullLog(), history_manager=history
+    )
+    result = MigrateResult()
+    engine.execute_migration(Migration(script_path=script), result)
+    assert result.success is (not failure), result.error_message
+    assert provider.statements == ["python ran"]
+    assert len(provider.records) == 1
+    assert provider.records[0]["success"] is (not failure)
+    assert provider.transaction_lookups == []
+
+
+@pytest.mark.parametrize("failure", [False, True])
+def test_sql_callback_never_uses_missing_transaction_methods(failure):
+    provider = NonTransactionalProvider()
+    callback = Migration(
+        script_name="beforeMigrate__items.sql", content="CREATE TABLE items(id INT);"
+    )
+    engine = ExecutionEngine(provider, SqlAnalyzer(dialect="sqlite"), NullLog())
+    if failure:
+
+        def fail(*args, **kwargs):
+            raise RuntimeError("callback failed")
+
+        provider.execute_statement = fail
+        with pytest.raises(RuntimeError, match="callback failed"):
+            engine.execute_callback(callback)
+    else:
+        engine.execute_callback(callback)
+        assert len(provider.statements) == 1
+    assert provider.transaction_lookups == []

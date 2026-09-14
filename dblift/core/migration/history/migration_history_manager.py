@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING, Any, List, Optional, Union
 
 from dblift.core.logger import Log
 from dblift.core.migration.migration import AppliedMigration, Migration, MigrationType
+from dblift.db.provider_interfaces import TransactionalProvider
 
 if TYPE_CHECKING:
     from .migration_script_manager import MigrationScriptManager
@@ -183,7 +184,7 @@ class MigrationHistoryManager:
                 # Clear any aborted-transaction state on the provider's connection
                 # so the retry can issue statements again. Swallow failures — the
                 # retry itself will surface any real issue.
-                if hasattr(self.provider, "rollback_transaction"):
+                if isinstance(self.provider, TransactionalProvider):
                     try:
                         self.provider.rollback_transaction()
                     except Exception:

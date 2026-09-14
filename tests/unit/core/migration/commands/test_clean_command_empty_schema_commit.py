@@ -11,11 +11,12 @@ from unittest.mock import MagicMock
 import pytest
 
 from dblift.core.migration.commands.clean_command import CleanCommand
-from dblift.db.provider_interfaces import DroppableObject
+from dblift.db.provider_interfaces import DroppableObject, TransactionalProvider
 
 
 def _make_command():
     provider = MagicMock()
+    provider.__class__ = TransactionalProvider
     provider.list_droppable_objects.return_value = []
     config = MagicMock()
     config.database.schema = "myschema"

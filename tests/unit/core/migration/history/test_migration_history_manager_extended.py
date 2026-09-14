@@ -16,11 +16,13 @@ from dblift.core.migration.history.migration_history_manager import (
 )
 from dblift.core.migration.migration import AppliedMigration, Migration, MigrationType
 from dblift.db.base_quirks import BaseQuirks
+from dblift.db.provider_interfaces import TransactionalProvider
 
 
 def _make_manager(schema="public", table="dblift_schema_history", installed_by="test_user"):
     """Build a MigrationHistoryManager with a mocked provider."""
     provider = MagicMock()
+    provider.__class__ = TransactionalProvider
     provider.get_normalized_object_name.side_effect = lambda name: name.lower()
     provider.table_exists.return_value = True
     # Race detection (create_schema_and_history_table) delegates to

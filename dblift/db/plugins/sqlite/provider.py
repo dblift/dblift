@@ -18,10 +18,10 @@ from dblift.db.plugins.sqlite.sqlite import (
     SQLiteQueryExecutor,
     SQLiteSchemaOperations,
 )
-from dblift.db.provider_interfaces import DroppableObject
+from dblift.db.provider_interfaces import DroppableObject, TransactionalProvider
 
 
-class SQLiteProvider(NativeProvider):
+class SQLiteProvider(NativeProvider, TransactionalProvider):
     """SQLite provider implementation using Python's native sqlite3 module."""
 
     canonical_dialect_key = "sqlite"

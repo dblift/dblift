@@ -12,6 +12,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from dblift.db.plugins.base_snapshot_manager import BaseSnapshotManager
+from dblift.db.provider_interfaces import TransactionalProvider
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -43,6 +44,7 @@ def _make_provider(
 ):
     """Build a duck-typed provider matching BaseSnapshotManager's contract."""
     provider = MagicMock()
+    provider.__class__ = TransactionalProvider
     provider.log = MagicMock()
     provider.config = SimpleNamespace(database=SimpleNamespace(type=dialect))
     provider.is_connected.return_value = True

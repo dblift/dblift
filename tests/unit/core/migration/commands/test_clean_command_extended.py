@@ -14,7 +14,7 @@ from unittest.mock import MagicMock, patch
 
 from dblift.core.logger.results import CleanResult
 from dblift.core.migration.commands.clean_command import CleanCommand
-from dblift.db.provider_interfaces import DroppableObject
+from dblift.db.provider_interfaces import DroppableObject, TransactionalProvider
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -387,6 +387,7 @@ class TestCleanCommandCleanSchema(unittest.TestCase):
     def test_commit_error_raises(self):
         """commit_transaction failure should propagate (caught by outer except)."""
         provider = MagicMock()
+        provider.__class__ = TransactionalProvider
         provider.list_droppable_objects.return_value = [
             DroppableObject(name="t", object_type="table", drop_sql='DROP TABLE "t"')
         ]

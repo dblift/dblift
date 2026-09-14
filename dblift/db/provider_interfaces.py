@@ -262,8 +262,8 @@ class TransactionalProvider(ABC):
     def supports_transactions(self) -> bool:
         """Retourne True si ce provider supporte les transactions traditionnelles.
 
-        Override dans les providers non-transactionnels (ex: CosmosDB).
-        Permet aux callers de vérifier avant d'appeler begin/commit/rollback.
+        Kept for source compatibility. Runtime dispatch uses
+        isinstance(provider, TransactionalProvider); offline reporting uses quirks.
         """
         return True
 

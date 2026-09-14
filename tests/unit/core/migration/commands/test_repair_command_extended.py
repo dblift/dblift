@@ -485,6 +485,7 @@ class TestDeleteFailedMigrationEntry(unittest.TestCase):
 class TestExecuteRepairLoop(unittest.TestCase):
     def _make_cmd_for_repair_loop(self):
         provider = MagicMock()
+        provider.__class__ = TransactionalProvider
         provider.begin_transaction.return_value = None
         provider.commit_transaction.return_value = None
 
@@ -662,6 +663,7 @@ class TestExecuteRepairLoop(unittest.TestCase):
 
     def test_error_triggers_rollback(self):
         provider = MagicMock()
+        provider.__class__ = TransactionalProvider
         provider.begin_transaction.return_value = None
         provider.rollback_transaction.return_value = None
 
@@ -685,6 +687,7 @@ class TestExecuteRepairLoop(unittest.TestCase):
 
     def test_commit_failure_triggers_rollback(self):
         provider = MagicMock()
+        provider.__class__ = TransactionalProvider
         provider.begin_transaction.return_value = None
         provider.commit_transaction.side_effect = RuntimeError("commit failed")
         provider.rollback_transaction.return_value = None
