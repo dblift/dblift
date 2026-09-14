@@ -327,7 +327,7 @@ class TestMigrationDetermineType:
     def test_u_followed_by_digit_is_undo(self):
         assert Migration(script_name="U1__rollback.sql").type == MigrationType.UNDO_SQL
 
-    def test_b_followed_by_digit_is_baseline(self):
+    def test_baseline_filename_is_not_an_implicit_script_type(self):
         assert Migration(script_name="B1__baseline.sql").type == MigrationType.UNKNOWN
 
     # False positives — must return UNKNOWN (AC#1-4)
@@ -367,11 +367,8 @@ class TestMigrationDetermineType:
     def test_va_alpha_version_is_unknown(self):
         """Va__create.sql : V + lettre (pas chiffre) → UNKNOWN.
 
-        _determine_type() utilise intentionnellement ^v\\d (digit-only) plutôt que
-        ^v[a-z0-9] pour éviter de classer 'validate.sql' comme SQL.
-        parse_filename() accepte les versions alphabétiques (ex: VA__), mais
-        _determine_type() est un pré-filtre strict — la validation complète est
-        déléguée à MigrationScriptManager (cohérence AC#5 limitée au cas digit).
+        The canonical grammar requires a leading digit for versioned scripts,
+        so ordinary filenames such as validate.sql cannot become migrations.
         """
         assert Migration(script_name="Va__create.sql").type == MigrationType.UNKNOWN
 

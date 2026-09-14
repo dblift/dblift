@@ -198,7 +198,7 @@ def parse_migration_filename(filename: str) -> FilenameMetadata:
     # Escape the extension for use in regex patterns
     extension_escaped = re.escape(file_extension)
 
-    # Check for callback scripts first (before the generic baseline catch-all).
+    # Check for callback scripts before the versioned migration patterns.
     # Case-insensitive, and the "__" separator is mandatory: a name without it
     # is not a callback and falls through to the UNKNOWN catch-all below.
     callback_event = _callback_event_prefix(filename_without_tags)

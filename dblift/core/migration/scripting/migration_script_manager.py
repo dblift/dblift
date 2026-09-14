@@ -139,7 +139,12 @@ class MigrationScriptManager:
         filename_metadata: Optional[Tuple[MigrationType, Optional[str], str, List[str]]] = None,
         require_versioned: bool = False,
     ) -> Migration:
-        """Read one resource with configured encoding and construct a resolved migration."""
+        """Read a resource and construct a migration from its resolved metadata.
+
+        ``require_versioned`` preserves undo input validation before reading: a
+        missing path raises FileNotFoundError, then invalid filenames raise ValueError.
+        Normal discovery retains the encoding reader's errors for vanished files.
+        """
         from dblift.core.migration.formats import MigrationFormat
 
         if require_versioned and not script_path.exists():
