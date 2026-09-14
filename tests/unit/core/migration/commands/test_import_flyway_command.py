@@ -317,3 +317,15 @@ class TestImportFlywayCommand:
         assert "CUSTOM_RESOLVER" in result.error_message
         mock_dependencies["provider"].record_migration.assert_not_called()
         mock_dependencies["log"].error.assert_called()
+
+
+def test_import_reads_rows_through_state_manager():
+    from unittest.mock import MagicMock
+    command = ImportFlywayCommand.__new__(ImportFlywayCommand)
+    command.config = MagicMock()
+    command.state_manager = MagicMock()
+    command.provider = MagicMock()
+    command.state_manager.read_history_rows.return_value = [{"version": "1"}]
+    assert command._get_flyway_rows("public", "flyway_schema_history") == [{"version": "1"}]
+    command.state_manager.read_history_rows.assert_called_once_with("public", "flyway_schema_history", flyway_source=True)
+    command.provider.get_applied_migrations.assert_not_called()
