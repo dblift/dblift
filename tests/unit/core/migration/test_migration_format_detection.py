@@ -348,9 +348,9 @@ class TestMigrationDetermineType:
         """V__ sans numéro de version → UNKNOWN (pas convention Flyway)."""
         assert Migration(script_name="V__nodescription.sql").type == MigrationType.UNKNOWN
 
-    def test_r_lowercase_double_underscore_is_repeatable(self):
-        """r__ en minuscule → REPEATABLE (case-insensitive via .lower())."""
-        assert Migration(script_name="r__lowercase.sql").type == MigrationType.REPEATABLE
+    def test_r_lowercase_double_underscore_is_unknown(self):
+        """Lowercase r is excluded by the canonical discovery grammar."""
+        assert Migration(script_name="r__lowercase.sql").type == MigrationType.UNKNOWN
 
     def test_views_setup_sql_is_unknown(self):
         """views_setup.sql commence par 'v' mais n'est pas Flyway → UNKNOWN."""
