@@ -71,13 +71,15 @@ class BaselineCommand(BaseCommand):
                     # Continue - some databases might use autoCommit mode
 
             # Create baseline migration record without script_path since baseline doesn't have a file
+            script_name = f"B{baseline_version}__{baseline_description}.sql"
             baseline_migration = Migration(
-                script_name=f"B{baseline_version}__{baseline_description}.sql",
+                script_name=script_name,
                 content=f"-- Baseline migration for version {baseline_version}",
                 version=baseline_version,
                 description=baseline_description,
                 type=MigrationType.BASELINE,
                 logger=self.log,
+                _filename_metadata=self.script_manager.parse_filename(script_name),
             )
 
             # Record the baseline

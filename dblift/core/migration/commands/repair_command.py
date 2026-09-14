@@ -600,10 +600,14 @@ class RepairCommand(BaseCommand):
                         # Store original type in description: [DELETE:ORIGINAL_TYPE] description
                         enriched_description = f"[DELETE:{original_type_name}] {delete_reason}"
 
-                        delete_migration = Migration.create_delete_migration(
+                        delete_migration = Migration(
                             script_name=script_name,
+                            content=f"-- Delete operation: {enriched_description}",
                             version=version,
-                            reason=enriched_description,
+                            description=enriched_description,
+                            type=MigrationType.DELETE,
+                            tags=[],
+                            _filename_metadata=self.script_manager.parse_filename(script_name),
                         )
 
                         self.log.debug(
