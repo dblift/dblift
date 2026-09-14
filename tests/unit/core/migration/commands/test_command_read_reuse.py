@@ -878,3 +878,74 @@ def test_migrate_preloaded_catalog_remains_authoritative_on_probe_failure(databa
     directory.assert_not_called()
     with sqlite3.connect(database) as connection:
         assert connection.execute("SELECT count(*) FROM app").fetchone() == (0,)
+
+
+@pytest.mark.parametrize(
+    "description,expected_description", [("", "B1__"), ("snapshot", "snapshot")]
+)
+def test_baseline_synthetic_record_never_uses_model_filename_inference(
+    database_client, monkeypatch, description, expected_description
+):
+    from dblift.core.migration.migration import Migration
+
+    client, _, _, database = database_client
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError("synthetic record invoked model filename inference")
+
+    monkeypatch.setattr(Migration, "_parse_filename", forbidden)
+    result = client.baseline("1", description=description)
+    assert result.success, result.error_message
+    with sqlite3.connect(database) as connection:
+        rows = connection.execute(
+            "SELECT script, version, description, type FROM dblift_schema_history"
+        ).fetchall()
+    assert rows == [(f"B1__{description}.sql", "1", expected_description, "BASELINE")]
+
+
+@pytest.mark.parametrize("version,expected_version", [(None, "1.2"), ("9", "9")])
+def test_repair_delete_record_never_uses_model_filename_inference(
+    database_client, monkeypatch, version, expected_version
+):
+    from dblift.core.logger.results import RepairResult
+    from dblift.core.migration.migration import Migration, MigrationType
+
+    client, _, _, database = database_client
+    history = client.executor.history_manager
+    history.create_schema_and_history_table(create_schema=False)
+    command = RepairCommand(client.executor._make_command_context())
+    stored = []
+    record = history.record_migration
+
+    def record_and_capture(migration, **kwargs):
+        stored.append(migration)
+        return record(migration, **kwargs)
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError("synthetic record invoked model filename inference")
+
+    monkeypatch.setattr(history, "record_migration", record_and_capture)
+    monkeypatch.setattr(Migration, "_parse_filename", forbidden)
+    result = RepairResult()
+    count, failed = command._execute_repair_loop(
+        [
+            {
+                "type": "MISSING_SCRIPT",
+                "script": "V1_2__missing[tag].sql",
+                "version": version,
+                "description": "missing",
+                "original_type": MigrationType.SQL,
+            }
+        ],
+        result,
+    )
+    assert not failed, result.error_message
+    assert count == 1
+    assert result.deleted_migrations_marked == 1
+    assert stored[0].tags == ["tag"]
+    assert stored[0].content == "-- Delete operation: [DELETE:SQL] missing"
+    with sqlite3.connect(database) as connection:
+        rows = connection.execute(
+            "SELECT script, version, description, type FROM dblift_schema_history"
+        ).fetchall()
+    assert rows == [("V1_2__missing[tag].sql", expected_version, "[DELETE:SQL] missing", "DELETE")]

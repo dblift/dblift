@@ -165,3 +165,12 @@ def test_history_materialization_uses_script_manager_metadata(monkeypatch, injec
     assert migrations[0].success is True
     assert migrations[1].installed_rank == 7
     assert names == ["V1_2__from_name[tag].sql", "V3__from_name[tag].sql", "Base Migration"]
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("version,expected", [(None, "1.2"), ("9", "9")])
+def test_public_delete_factory_preserves_optional_version_inference(version, expected):
+    migration = Migration.create_delete_migration("V1_2__removed[tag].sql", version=version)
+    assert migration.version == expected
+    assert migration.tags == ["tag"]
+    assert migration.type == MigrationType.DELETE
