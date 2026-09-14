@@ -7,11 +7,10 @@ for filtering, parameter setup, validation, and analysis.
 
 import time
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Sequence, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from dblift.config import DbliftConfig
 from dblift.core.logger import Log, NullLog
-from dblift.core.migration.migration import Migration
 from dblift.core.migration.state.migration_state import MigrationValidationSnapshot
 from dblift.core.sql_validator.migration_validator import MigrationValidator
 
