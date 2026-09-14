@@ -965,11 +965,18 @@ def test_versionless_scripts_are_never_validated_executed_or_recorded(
     (migrations / filename).write_text(malformed, encoding="utf-8")
     (migrations / "V1__control.sql").write_text("CREATE TABLE control (id INT);", encoding="utf-8")
 
-    result = getattr(client, operation)()
+    validator = client.executor.validator
+    with patch.object(validator, "validate_snapshot", wraps=validator.validate_snapshot) as validate:
+        result = getattr(client, operation)()
 
     assert result.success, result.error_message
     if operation == "validate":
-        assert [migration.script for migration in result.validated_migrations] == [
+        validate.assert_called_once()
+        snapshot = validate.call_args.args[0]
+        assert [migration.script_name for migration in snapshot.resolved_migrations] == [
+            "V1__control.sql"
+        ]
+        assert [migration.script_name for migration in snapshot.selected_migrations] == [
             "V1__control.sql"
         ]
     with sqlite3.connect(database) as connection:
