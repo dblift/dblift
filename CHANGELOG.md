@@ -31,15 +31,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   a document the package ships, or one derived from your configuration, served
   under its own media type. `--resources` fences them and `--offline` refuses
   them exactly as it does the built-in ones.
-- Add-on packages can now contribute resources that are not command payloads —
-  a document the package ships, or one derived from your configuration, served
-  under its own media type. `--resources` fences them and `--offline` refuses
-  them exactly as it does the built-in ones.
-- Opt-in SQLite benchmarks cover fresh migrations of 10 and 100 scripts with
-  and without callbacks, plus no-op migration, validation and info against
-  populated history. Each measured round uses its own database and verifies
-  the command results and database contents.
-
 ### Changed
 
 - Build repeatable basename indexes on demand so legacy checksum lookups and
