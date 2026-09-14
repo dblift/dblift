@@ -179,6 +179,13 @@ class SchemaProvider(ABC):
         """
         self.execute_statement(obj.drop_sql)  # type: ignore[attr-defined]
 
+    def supports_snapshots(self) -> bool:
+        """Return True if the provider supports schema snapshot persistence.
+
+        Override to False in providers where snapshot persistence is unavailable.
+        """
+        return True
+
     @abstractmethod
     def create_snapshot_table_if_not_exists(
         self, schema: str, table_name: str = "dblift_schema_snapshots"
@@ -268,12 +275,8 @@ class TransactionalProvider(ABC):
         return True
 
     def supports_snapshots(self) -> bool:
-        """Return True if the provider supports schema snapshot persistence.
-
-        Override to False in providers where the snapshot repository queries
-        cannot be executed. Defaults to True for all SQL providers including CosmosDB.
-        """
-        return True
+        """Delegate to the schema capability default for source compatibility."""
+        return SchemaProvider.supports_snapshots(cast(SchemaProvider, self))
 
     def supports_transactional_ddl(self) -> bool:
         """Return True if the database supports transactional DDL (rollback of CREATE/ALTER/DROP).

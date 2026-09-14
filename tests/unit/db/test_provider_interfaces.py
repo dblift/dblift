@@ -95,6 +95,17 @@ class TestTransactionalProviderABC:
 
         assert ConcreteTransactional().supports_transactions() is True
 
+    def test_supports_snapshots_compatibility_shim_delegates_to_schema(self, monkeypatch):
+        class ConcreteTransactional(TransactionalProvider):
+            def begin_transaction(self) -> None: ...
+            def commit_transaction(self) -> None: ...
+            def rollback_transaction(self) -> None: ...
+
+        provider = ConcreteTransactional()
+        assert provider.supports_snapshots() is True
+        monkeypatch.setattr(SchemaProvider, "supports_snapshots", lambda self: False)
+        assert provider.supports_snapshots() is False
+
 
 class TestMigrationProviderABC:
     def test_abstract_methods(self):
@@ -226,6 +237,20 @@ def test_runtime_transaction_capability(dialect):
     plugin = next(p for p in ProviderRegistry.list_plugins() if p.name == dialect)
     provider = plugin.provider_class.__new__(plugin.provider_class)
     assert isinstance(provider, TransactionalProvider) is (dialect == "sqlite")
+
+
+@pytest.mark.parametrize("dialect", ["cosmosdb", "mongodb", "sqlite", "postgresql"])
+def test_snapshot_support_is_independent_of_transactions(dialect):
+    from dblift.db.provider_registry import ProviderRegistry
+
+    plugin = next(p for p in ProviderRegistry.list_plugins() if p.name == dialect)
+    provider = plugin.provider_class.__new__(plugin.provider_class)
+    assert provider.supports_snapshots() is True
+    assert isinstance(provider, SchemaProvider)
+    assert isinstance(provider, TransactionalProvider) is (dialect in {"sqlite", "postgresql"})
+    if dialect in {"cosmosdb", "mongodb"}:
+        for method in ("begin_transaction", "commit_transaction", "rollback_transaction"):
+            assert not hasattr(provider, method)
 
 
 # ---------------------------------------------------------------------------
