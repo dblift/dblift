@@ -98,22 +98,22 @@ if catalog is None:
 
 **Interfaces:** Keep public validate_migrations/validate_resolved_migrations, format support checks, placeholders constructor parameter/attribute, compatibility history imports and executor SqlAnalyzer. Remove only production-unreferenced private `_validate_sql_syntax`, `_replace_placeholders` if still exclusively used by the removed path, validator's unused analyzer setup, MigrationDataService.state_service, `_is_version_reapplied`, `_get_undo_rank`. Do not remove live filter helpers.
 
-- [ ] Verify repository/package/doc references again and identify tests exercising only retired internals. Keep behavior tests; remove obsolete implementation-only tests and unused fixture setup.
-- [ ] Add or retain meaningful regression proving migration metadata validation performs no SQL syntax parsing while format validation and active SQL execution/lint still work.
-- [ ] Remove the unused module/adapter/analyzer allocation; retain dialect derivation for quirks:
+- [x] Verify repository/package/doc references again and identify tests exercising only retired internals. Keep behavior tests; remove obsolete implementation-only tests and unused fixture setup.
+- [x] Add or retain meaningful regression proving migration metadata validation performs no SQL syntax parsing while format validation and active SQL execution/lint still work.
+- [x] Remove the unused module/adapter/analyzer allocation; retain dialect derivation for quirks:
 ```python
 dblift_config = getattr(self.history_manager.provider, "config", None)
 dialect = dblift_config.database.type if dblift_config else ""
 self._quirks = ProviderRegistry.get_quirks(dialect)
 ```
-- [ ] Remove the unreferenced data-service allocation/two helpers; retain rank aggregation methods. Run complete validator/state/SQL-parser and active CLI SQL-lint tests, inspect public imports, and run static checks. Commit `refactor: remove retired migration validation helpers`.
+- [x] Remove the unreferenced data-service allocation/two helpers; retain rank aggregation methods. Run complete validator/state/SQL-parser and active CLI SQL-lint tests, inspect public imports, and run static checks. Commit `refactor: remove retired migration validation helpers`.
 
 ### Task 6: Final review, changelog and PR (controller)
 
 **Files:** `CHANGELOG.md`, this plan and adjacent review ledger. No unrelated runtime edits.
 
-- [ ] Update Unreleased with performance changes and removed private helpers; retain released entries and version number.
-- [ ] Personally review the combined branch diff, all manager boundaries and all task corrections. Resolve findings through their implementers before publication.
-- [ ] Run complete unit suite with CI extras/constraints on Python 3.12, then pytest-dblift package tests; run complete quality workflow on Python 3.11, all existing benchmarks and focused operation-count probes.
-- [ ] Compare baseline/final counts and local timings on identical workloads; report scope and avoid timing guarantees. Verify git identity, branch prefix, clean state and no forbidden publication text.
+- [x] Update Unreleased with performance changes and removed private helpers; retain released entries and version number.
+- [x] Personally review the combined branch diff, all manager boundaries and all task corrections. Resolve findings through their implementers before publication.
+- [x] Run complete unit suite with CI extras/constraints on Python 3.12, then pytest-dblift package tests; run complete quality workflow on Python 3.11, all existing benchmarks and focused operation-count probes.
+- [x] Compare baseline/final counts and local timings on identical workloads; report scope and avoid timing guarantees. Verify git identity, branch prefix, clean state and no forbidden publication text.
 - [ ] Push fix/oss-core-read-efficiency and create a PR to develop with concise scope, validation and compatibility notes. Wait for CI and correct any failures. Do not merge.

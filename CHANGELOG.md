@@ -34,6 +34,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Build repeatable basename indexes on demand so legacy checksum lookups and
+  pending checks avoid scanning history for every script, without adding scans
+  to versioned-only catalogs.
+- Reuse guarded filesystem metadata within script loading and the StateManager
+  catalog during repair pre-write checks. Header/footer version calculation
+  avoids full display analysis; post-write and subsequent-command reads remain
+  fresh.
 - Reduce repeated script discovery, file reads and history queries in `migrate`,
   `info` and `validate`. Callback catalogs are reused within each command, while
   subsequent commands observe changed files and history is refreshed after lock
@@ -53,6 +60,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   validation.
 
 ### Removed
+
+- Retired internal SQL-syntax validation module and the unused
+  `MigrationValidator._validate_sql_syntax` and `_replace_placeholders` helpers,
+  including their unused analyzer allocation. Supported migration validation
+  and SQL execution entry points remain intact.
+- Unused `MigrationDataService._is_version_reapplied`, `_get_undo_rank` and
+  its unused state-service allocation.
 
 ## [4.4.0] - 2026-09-12
 

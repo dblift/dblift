@@ -16,7 +16,7 @@ Base: develop 8f8e2a3. Branch: fix/oss-core-read-efficiency.
 | 5 | Removal compatibility | Remove undocumented private paths only, keep supported entry points and disclose removals. |
 | 6 | Quality and publication | Full CI extras and tidy-imports required; changelog and PR are explicit deliverables. |
 
-All tasks pending. User explicitly requested personal controller review and publication; no additional publication approval is needed.
+Task acceptance and verification are recorded below. Publication to develop is authorized; the PR must not be merged.
 
 ## Baseline verification
 
@@ -48,3 +48,29 @@ Reviewed complete 7edc508..8bd7cb9 changes. Header/footer aggregation preserves 
 ## Task 4 — accepted
 
 Reviewed complete 01a9511..b401442 changes, including explicit missing-catalog fields in the two affected test fixtures. StateManager retains the original grouping; repair consumes it with an explicit None fallback. No execute-path fallback or error handling changed. Copy clones the grouped mapping/lists, and public JSON/repr remain unchanged. Independent focused run: 32 passed. Broader repair/commands/state/v110/provider conformance: 704 passed, 38 subtests passed; static checks passed. Normal no-op/preview catalog loads drop 3 to 1; writes retain a second fresh load. Docker integration setup could not run because no Docker socket was available; real SQLite regressions and unit CI coverage passed.
+
+## Task 5 — accepted
+
+Reviewed complete a0891ea..c245cb8 changes. Only the retired validator path, its unused analyzer/placeholder adapter and unused data-service members are removed. Retained dialect quirks, format checks, public validation entry points, compatibility imports, active analyzer/execution paths and live filters. Review preserved the live failed-reapply regression and excluded an unrelated integration-test assertion change. Independent validation/data-service run: 38 passed. Broader focused suite: 1,140 passed, 19 skipped, 41 subtests passed. Full static quality script passed with Python 3.11.8 and flake8-tidy-imports 4.12.0. This task removes 242 net core source lines; the combined branch removes 165.
+
+## Final combined verification
+
+- Full Python 3.12 unit suite with CI constraints/extras: 11,768 passed, 35 skipped.
+- Python 3.11 public-surface and standalone/MCP smoke checks: 23 passed.
+- Full quality workflow static checks passed on the final code, including all formatting, lint, typing, layering and ratchets. Unchanged ratchet limits retained.
+- Every implementation diff was personally reviewed; all returned findings were corrected and reviewed again. Collection remains with specialized managers and commands consume StateManager data.
+- pytest-dblift package suite: 12 passed, 1 skipped. All 31 existing benchmarks passed; existing baseline artifacts were not overwritten.
+
+### Final operation counts and local timings
+
+Identical real SQLite workload with 500 applied migrations, baseline 8f8e2a3 versus final code c245cb8:
+
+| Operation | Full display analyses before/after | Catalog loads before/after | Each file predicate/resolve before/after | History reads before/after | Warm median before/after |
+|---|---|---|---|---|---|
+| info | 3 / 1 | 1 / 1 | 1,000 / 500 | 2 / 2 | 203.4 / 175.2 ms |
+| no-op migrate | 3 / 1 | 1 / 1 | 1,000 / 500 | 2 / 2 | 200.6 / 169.8 ms |
+| no-op repair | 3 / 1 | 3 / 1 | 3,000 / 500 | 3 / 3 | 520.2 / 175.4 ms |
+
+Each timing is the median of seven warm local samples, measured separately from instrumentation and other test runs. These are observations on this machine, not general speed guarantees. Operation-count probes also asserted successful results and unchanged history-read counts. The complete branch changes seven core files with 167 inserted and 332 deleted lines: 165 fewer core source lines.
+
+Local unit/quality/package/benchmark verification is complete. Publication and remote CI are the remaining steps; no merge is authorized.
