@@ -48,6 +48,8 @@ def _make_baseline_cmd(
     _log = log or MagicMock()
     _provider = provider or MagicMock()
     _hm = history_manager or MagicMock()
+    _stm = MagicMock()
+    _stm.get_applied_migration_records.side_effect = _hm.get_applied_migration_records
 
     cmd = BaselineCommand(
         config=_config,
@@ -58,7 +60,7 @@ def _make_baseline_cmd(
         validator=MagicMock(),
         execution_engine=MagicMock(),
         migration_helpers=MagicMock(),
-        state_manager=MagicMock(),
+        state_manager=_stm,
         migration_ui=MagicMock(),
         migration_rules=MagicMock(),
     )

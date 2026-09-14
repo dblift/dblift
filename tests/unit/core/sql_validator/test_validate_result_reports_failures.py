@@ -17,6 +17,7 @@ import pytest
 from dblift.cli.handlers.validate import _validate_result_to_dict
 from dblift.core.logger.results import ValidateResult
 from dblift.core.migration.commands.validate_command import ValidateCommand
+from dblift.core.migration.state.migration_state_manager import MigrationStateManager
 from dblift.core.sql_validator.migration_validator import ValidationResult
 
 
@@ -38,6 +39,9 @@ def _command_with(validation_result: ValidationResult) -> ValidateCommand:
     cmd.validator = MagicMock()
     cmd.validator.validate_migrations.return_value = validation_result
     cmd.history_manager = MagicMock()
+    cmd.state_manager = MigrationStateManager(
+        cmd.log, cmd.history_manager, MagicMock(), MagicMock()
+    )
     cmd._populate_database_info = MagicMock()
     cmd._log_command_header_update = MagicMock()
     cmd._log_command_completion = MagicMock()
@@ -126,11 +130,10 @@ def test_unverified_scripts_are_not_reported_as_validated():
     """Undo scripts are collected, then exempted from every check.
 
     ``validate`` gathers ``U__`` scripts with the rest, but the checksum
-    validator lists ``UNDO_SQL`` as exempt from drift detection, the syntax
-    validator handles only ``SQL``/``BASELINE``, and the duplicate-version check
-    skips them too. Reporting them as validated would claim a check that never
-    ran — an applied undo script can be edited on disk and validate still
-    passes.
+    validator lists ``UNDO_SQL`` as exempt from drift detection and the
+    duplicate-version check skips them too. Reporting them as validated would
+    claim a check that never ran — an applied undo script can be edited on disk
+    and validate still passes.
     """
     vr = ValidationResult()
     vr.success = True

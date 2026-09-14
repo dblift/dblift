@@ -22,8 +22,7 @@ def _make_validator(dialect="postgresql"):
     hm.provider = MagicMock()
     hm.provider.config.database.type = dialect
     log = MagicMock()
-    with patch("dblift.core.sql_validator.migration_validator.SqlAnalyzer"):
-        v = MigrationValidator(script_manager=sm, history_manager=hm, log=log)
+    v = MigrationValidator(script_manager=sm, history_manager=hm, log=log)
     return v, sm, hm, log
 
 
@@ -1044,181 +1043,12 @@ class TestValidateChecksums(unittest.TestCase):
             type=MigrationType.SQL,
             version="1",
             checksum=100,
+            content="SELECT 1;",
             path=None,
         )
-        sm.has_script_changed.return_value = False
         v._validate_checksums([script], [applied], result, issues)
         self.assertEqual(issues, [])
         self.assertTrue(result.success)
-
-
-# ---------------------------------------------------------------------------
-# Lines 1288-1390: _validate_sql_syntax
-# ---------------------------------------------------------------------------
-
-
-class TestValidateSqlSyntax(unittest.TestCase):
-    def _sql_script(self, name="V1__test.sql", content="SELECT 1;"):
-        from dblift.core.migration.migration import MigrationType
-
-        return SimpleNamespace(
-            type=MigrationType.SQL,
-            version="1",
-            script_name=name,
-            checksum=100,
-            path=None,
-            content=content,
-        )
-
-    def _baseline_script(self, name="B1__base.sql", content="SELECT 1;"):
-        from dblift.core.migration.migration import MigrationType
-
-        return SimpleNamespace(
-            type=MigrationType.BASELINE,
-            version="1",
-            script_name=name,
-            checksum=100,
-            path=None,
-            content=content,
-        )
-
-    def _repeatable_script(self, name="R__rep.sql", content="SELECT 1;"):
-        from dblift.core.migration.migration import MigrationType
-
-        return SimpleNamespace(
-            type=MigrationType.REPEATABLE,
-            version=None,
-            script_name=name,
-            checksum=100,
-            path=None,
-            content=content,
-        )
-
-    def test_skips_non_sql_type(self):
-        from dblift.core.sql_validator.migration_validator import ValidationResult
-
-        v, *_ = _make_validator()
-        result = ValidationResult()
-        issues = []
-        rep = self._repeatable_script()
-        v._validate_sql_syntax([rep], result, issues)
-        self.assertEqual(issues, [])
-
-    def test_valid_sql_no_issues(self):
-        from dblift.core.sql_validator.migration_validator import ValidationResult
-
-        v, *_ = _make_validator()
-        result = ValidationResult()
-        issues = []
-        v.sql_analyzer.split_statements.return_value = ["SELECT 1"]
-        v.sql_analyzer.validate_sql.return_value = (True, None)
-        v.sql_analyzer.analyze_statement.return_value = {"objects": []}
-        v.sql_analyzer.dialect = "postgresql"
-        script = self._sql_script()
-        v._validate_sql_syntax([script], result, issues)
-        self.assertEqual(issues, [])
-        self.assertTrue(result.success)
-
-    def test_invalid_sql_adds_issue(self):
-        from dblift.core.sql_validator.migration_validator import ValidationResult
-
-        v, *_ = _make_validator()
-        result = ValidationResult()
-        issues = []
-        v.sql_analyzer.split_statements.return_value = ["INVALID SQL!!!"]
-        v.sql_analyzer.validate_sql.return_value = (False, "Syntax error at line 1:0")
-        v.sql_analyzer.dialect = "postgresql"
-        script = self._sql_script()
-        v._validate_sql_syntax([script], result, issues)
-        self.assertFalse(result.success)
-        self.assertTrue(any("syntax error" in i.lower() for i in issues))
-
-    def test_split_failure_adds_issue(self):
-        from dblift.core.sql_validator.migration_validator import ValidationResult
-
-        v, *_ = _make_validator()
-        result = ValidationResult()
-        issues = []
-        v.sql_analyzer.split_statements.side_effect = RuntimeError("parse error")
-        v.sql_analyzer.validate_sql.return_value = (False, "fallback error")
-        v.sql_analyzer.dialect = "postgresql"
-        script = self._sql_script()
-        v._validate_sql_syntax([script], result, issues)
-        self.assertFalse(result.success)
-        self.assertTrue(any("failed to parse" in i.lower() for i in issues))
-
-    def test_split_failure_fallback_exception_handled(self):
-        from dblift.core.sql_validator.migration_validator import ValidationResult
-
-        v, *_ = _make_validator()
-        result = ValidationResult()
-        issues = []
-        v.sql_analyzer.split_statements.side_effect = RuntimeError("parse error")
-        v.sql_analyzer.validate_sql.side_effect = RuntimeError("fallback also failed")
-        v.sql_analyzer.dialect = "postgresql"
-        script = self._sql_script()
-        v._validate_sql_syntax([script], result, issues)
-        self.assertFalse(result.success)
-
-    def test_sql_with_line_number_in_error(self):
-        from dblift.core.sql_validator.migration_validator import ValidationResult
-
-        v, *_ = _make_validator()
-        result = ValidationResult()
-        issues = []
-        v.sql_analyzer.split_statements.return_value = ["BAD SQL"]
-        v.sql_analyzer.validate_sql.return_value = (False, "error at line 2:5")
-        v.sql_analyzer.dialect = "postgresql"
-        script = self._sql_script()
-        v._validate_sql_syntax([script], result, issues)
-        self.assertFalse(result.success)
-
-    def test_baseline_script_validated(self):
-        from dblift.core.sql_validator.migration_validator import ValidationResult
-
-        v, *_ = _make_validator()
-        result = ValidationResult()
-        issues = []
-        v.sql_analyzer.split_statements.return_value = ["SELECT 1"]
-        v.sql_analyzer.validate_sql.return_value = (True, None)
-        v.sql_analyzer.analyze_statement.return_value = {
-            "objects": [{"object_type": "TABLE", "object_name": "t"}],
-            "type": "SELECT",
-        }
-        v.sql_analyzer.dialect = "postgresql"
-        script = self._baseline_script()
-        v._validate_sql_syntax([script], result, issues)
-        self.assertEqual(issues, [])
-
-    def test_analysis_exception_logged(self):
-        from dblift.core.sql_validator.migration_validator import ValidationResult
-
-        v, *_ = _make_validator()
-        result = ValidationResult()
-        issues = []
-        v.sql_analyzer.split_statements.return_value = ["SELECT 1"]
-        v.sql_analyzer.validate_sql.return_value = (True, None)
-        v.sql_analyzer.analyze_statement.side_effect = RuntimeError("analysis failed")
-        v.sql_analyzer.dialect = "postgresql"
-        script = self._sql_script()
-        v._validate_sql_syntax([script], result, issues)
-        self.assertEqual(issues, [])
-
-    def test_split_failure_fallback_valid_no_extra_issue(self):
-        from dblift.core.sql_validator.migration_validator import ValidationResult
-
-        v, *_ = _make_validator()
-        result = ValidationResult()
-        issues = []
-        v.sql_analyzer.split_statements.side_effect = RuntimeError("parse error")
-        v.sql_analyzer.validate_sql.return_value = (True, None)  # fallback says valid
-        v.sql_analyzer.dialect = "postgresql"
-        script = self._sql_script()
-        v._validate_sql_syntax([script], result, issues)
-        # Still fails due to split failure
-        self.assertFalse(result.success)
-        # No extra fallback issue added
-        self.assertEqual(len([i for i in issues if "SQL syntax validation context" in i]), 0)
 
 
 # ---------------------------------------------------------------------------
@@ -1235,6 +1065,7 @@ class TestCheckRepeatableMigrations(unittest.TestCase):
             version=None,
             script_name=name,
             checksum=checksum,
+            content="SELECT 1;",
             path=None,
         )
 
@@ -1275,7 +1106,6 @@ class TestCheckRepeatableMigrations(unittest.TestCase):
 
         v, sm, _, log = _make_validator()
         result = ValidationResult()
-        sm.has_script_changed.return_value = True
         v._check_repeatable_migrations(
             [self._rep_script(checksum=200)],
             [self._applied_rep(success=True, checksum=100)],
@@ -1293,7 +1123,6 @@ class TestCheckRepeatableMigrations(unittest.TestCase):
         result = ValidationResult()
         rep = self._rep_script(checksum=200)
         applied = self._applied_rep(success=True, checksum=100)
-        sm.has_script_changed.return_value = True
         v._check_repeatable_migrations([rep], [applied], result)
         self.assertEqual(len(result.repeatable_migrations_to_reapply), 1)
 
@@ -1304,7 +1133,6 @@ class TestCheckRepeatableMigrations(unittest.TestCase):
         result = ValidationResult()
         rep = self._rep_script(checksum=100)
         applied = self._applied_rep(success=True, checksum=100)
-        sm.has_script_changed.return_value = False
         v._check_repeatable_migrations([rep], [applied], result)
         self.assertEqual(len(result.repeatable_migrations_to_reapply), 0)
 
@@ -1349,7 +1177,6 @@ class TestCheckRepeatableMigrations(unittest.TestCase):
         v, sm, *_ = _make_validator()
         result = ValidationResult()
         rep = self._rep_script(checksum=100)
-        sm.has_script_changed.return_value = False
         applied = self._applied_rep(success=True, checksum=100)
         # Force add_modified_repeatable to produce entries
         result.repeatable_migrations_to_reapply = [
@@ -1364,7 +1191,6 @@ class TestCheckRepeatableMigrations(unittest.TestCase):
         v, sm, *_ = _make_validator()
         result = ValidationResult()
         rep = self._rep_script(checksum=100)
-        sm.has_script_changed.return_value = True
         applied = self._applied_rep(success=True, checksum=50)
         v._check_repeatable_migrations([rep], [applied], result, command="info")
         # Should have one entry

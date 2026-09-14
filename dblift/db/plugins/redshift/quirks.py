@@ -46,6 +46,13 @@ class RedshiftQuirks(PostgresqlQuirks):
     # above already fixed for other capabilities.
     supports_concurrent_index = False
 
+    # Redshift's foreign-key grammar is ``FOREIGN KEY (...) REFERENCES
+    # reftable [(refcolumn)]`` — there is no referential-action clause of any
+    # kind, so inheriting PostgreSQL's ``True`` would claim syntax this engine
+    # does not have, the same never-declared-only-inherited gap the three
+    # capabilities above already close.
+    table_fk_supports_restrict = False
+
     def __init__(self, dialect_name: str = "redshift") -> None:
         super().__init__(dialect_name=dialect_name)
 

@@ -27,6 +27,7 @@ from dblift.core.migration.migration import (
 )
 from dblift.core.migration.rules.migration_rules import MigrationRules
 from dblift.core.migration.scripting.migration_script_manager import MigrationScriptManager
+from dblift.core.migration.state.migration_state import MigrationReadSnapshot
 from dblift.core.migration.state.migration_state_manager import (
     MigrationStateManager,
     StrictModeError,
@@ -100,6 +101,7 @@ class MigrateCommand(BaseCommand):
         placeholders: Optional[Dict[str, Any]],
         recursive: Optional[bool],
         additional_dirs: Optional[List[Path]],
+        read_snapshot: Optional[MigrationReadSnapshot] = None,
     ) -> tuple[bool, bool, Optional[List[Path]]]:
         """Initialize migration execution and resolve migration parameters.
 
@@ -121,10 +123,8 @@ class MigrateCommand(BaseCommand):
             exclude_versions=exclude_versions,
             mark_as_executed=mark_as_executed,
             show_sql=show_sql,
+            read_snapshot=read_snapshot,
         )
-
-        # Display current schema version (for debug logs)
-        self._log_current_schema_version()
 
         # Setup migration parameters
         use_recursive, use_additional_dirs = self.migration_helpers.setup_migration_parameters(
@@ -722,6 +722,7 @@ class MigrateCommand(BaseCommand):
         from dblift.core.seams.runtime_checks import run_checks
 
         run_checks("command.pre_migrate")
+        self._reset_callback_catalog()
         result = MigrateResult()
         result.show_sql = show_sql
         result.show_query_results = show_query_results
@@ -729,6 +730,8 @@ class MigrateCommand(BaseCommand):
         result.journal = self.journal
         if not getattr(self, "migration_helpers", None):
             self.migration_helpers = MigrationHelpers(self.config, self.log)
+
+        read_snapshot = self.state_manager.new_read_snapshot()
 
         try:
             # Initialize and validate migrations
@@ -747,6 +750,7 @@ class MigrateCommand(BaseCommand):
                     placeholders,
                     recursive,
                     additional_dirs,
+                    read_snapshot=read_snapshot,
                 )
             )
             if not validation_success:
@@ -761,6 +765,7 @@ class MigrateCommand(BaseCommand):
                 additional_dirs=use_additional_dirs,
                 dir_recursive_map=dir_recursive_map,
                 target_version=target_version,
+                read_snapshot=read_snapshot,
             )
 
             # Store current schema version in result for HTML reports
@@ -793,6 +798,13 @@ class MigrateCommand(BaseCommand):
                         exclude_tags=exclude_tags,
                         versions=versions,
                         exclude_versions=exclude_versions,
+                        # Validator discovery historically ignores per-directory recursion.
+                        # Keep that scope when the state catalog was resolved with a map.
+                        resolved_migrations=(
+                            migration_state.resolved_objects if not dir_recursive_map else None
+                        ),
+                        preloaded_records=migration_state.all_applied_objects,
+                        read_snapshot=read_snapshot,
                     )
                 )
             if not validation_success:
@@ -851,7 +863,7 @@ class MigrateCommand(BaseCommand):
                     # process may have applied versioned migrations while we
                     # were waiting; running them again would fail and write
                     # duplicate failure rows into the history table.
-                    applied_after_lock = self.history_manager.get_applied_migration_records()
+                    applied_after_lock = self.state_manager.get_applied_migration_records()
                     filtered_pending = self._filter_already_applied(
                         pending_migrations, applied_after_lock
                     )

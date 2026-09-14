@@ -327,6 +327,7 @@ def test_index_to_dict_pins_keys():
         "fillfactor": None,
         "compression": None,
         "comment": None,
+        "definition": None,
     }
 
 

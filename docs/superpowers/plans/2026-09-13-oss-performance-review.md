@@ -1,0 +1,157 @@
+# OSS performance execution and personal review ledger
+
+Base: origin/develop 8645f3b. Worktree: .worktrees/oss-performance.
+User explicitly requested root reviews; no separate reviewer agent substitutes for root.
+
+## Preflight consistency review
+
+| Tasks | Shared surface | Resolution |
+|---|---|---|
+| 1 / 3 | script manager loading | Sequential; filename work preserves callback catalog contract. |
+| 1 / 4 | BaseCommand lifecycle | Sequential; history snapshots remain separate from callback catalog. |
+| 2 / 4 / 5 | validation inputs | Preserve full catalog and scoped scripts separately; scoped history is not a global cache. |
+| 3 / 4 | resolved Migration metadata | Catalog reuse consumes canonical content/checksum only. |
+| 1–6 / 7 | performance evidence | Functional count tests accompany implementation; timing added at the end. |
+| 1 | command-scoped cache and repeated operations | Tests explicitly cover cache expiry/failure and placeholders. |
+| 2 | indexing and history matching | Preserve name and latest-success semantics with regression cases. |
+| 3 | metadata overrides and sorting | Preserve constructor behavior and comparator ordering. |
+| 4 | read reuse and concurrency | Reuse only before writes; retain post-lock refresh. |
+| 5 | shared checks and input scoping | Adapters carry full/scoped catalogs independently. |
+| 6 | quote-reader deduplication | Retain dialect-local behavior and token positions. |
+| 7 | fresh migration benchmark | Setup fresh database outside each timed iteration. |
+
+## Status
+
+- Baseline on isolated develop archive: 2325 passed, 1 skipped, 57 subtests passed. Clean environment: /tmp/dblift-oss-performance-venv/bin/python.
+- All seven tasks and the ownership corrections are complete and personally accepted. Final verification is recorded below.
+
+## Task 1 — personally reviewed and accepted
+
+- Commit: b0b0101; reviewed complete production and test diff against 6cc7670.
+- Constant full-catalog loads: 3 for both 3 and 12 real SQLite migrations (before: 18 and 54).
+- 525 focused tests passed; seven new regressions passed after commit; formatting clean.
+- Personal review correction: test-owned SQLAlchemy engines now dispose in finally, including assertion failures.
+- Verified per-execution reset in all four callback-using commands, empty-catalog reuse, fresh direct manager calls, preserved matching/order and placeholder execution.
+- No open correctness findings. Next catalog/history work may reduce remaining three initial loads.
+
+## Task 2 — personally reviewed and accepted
+
+- Commit: 46fdef2; reviewed complete production and test diff against f1b0436.
+- 2346 tests passed, one skipped; final focused suite: 258 passed. Targeted mypy and Black passed.
+- Resolved checksum comparisons perform no additional decoded reads. A 600-row history requires 1800 visits; repeatable lookup visits 160 rows twice.
+- Verified first-match basename selection, supplied-order successful history, separately ranked repeatable history, encoding, audit exclusions, legacy fallback and both compatibility reexports.
+- Standalone change detection retains fresh reads. Ordered result lists remain public; repository callers mutate them only through the indexed addition methods.
+- Deliberate limitation: existing substring-based diagnostic suppression remains quadratic when many scripts drift (7140 issue visits for 120 drifts). Changing to exact-name deduplication would change visible diagnostics. Normal checksum lookup is linear.
+- No open correctness findings.
+
+### Task 2 additional style review
+
+- Root installed the declared style tools in the isolated environment and found F401 on the two intentional compatibility reexports.
+- Personally reviewed correction 455453b: explicit import-only suppressions, no behavior changes. Flake8 and isort now pass for both modules.
+
+## Task 3 — personally reviewed and accepted
+
+- Commit: 58c62b7; reviewed complete production and test diff against 455453b.
+- One filename parse per loaded resource (previously four for callbacks, five for other scripts); redundant version sorting removed.
+- Root review caught object-type drift for malformed V__.sql/V__.py. Two failing regressions reproduced it; retaining the existing inexpensive type classifier preserves UNKNOWN while keeping the one-parse improvement.
+- Verified direct constructor overrides (truthy, falsey and path precedence), baseline markers, SQL/Python format behavior, callback buckets and path identity. No persistent metadata cache.
+- 2141 migration tests passed, one skipped; 15 focused regressions passed after commit. Mypy, Black, isort, flake8 and both import contracts pass.
+- No open correctness findings.
+
+## Task 4 — personally reviewed and accepted
+
+- Commit: ae44ad3; reviewed complete production and test diff against cb52908.
+- Real SQLite history SELECTs: fresh migrate 7 to 4, no-op migrate 5 to 2, info 4 to 2, validate without a before callback 3 to 2. File reads and discovery passes also reduced.
+- Verified command-local history capture, empty snapshots, full versus scoped catalogs, unchanged public JSON, pending versus validation ordering, and info fallback on state failure.
+- Real regressions cover callback file/history mutations, fresh footer after callback writes, a second client applying a migration before lock acquisition, reused-command read failure recovery, changed directories/placeholders and byte-identical dry runs.
+- Compatibility corrections preserve old private helper call arity when snapshots are omitted and existing string-keyed state catalogs.
+- 2382 migration/validator tests passed, one skipped; 21 focused regressions and 23 SQLite CLI dry-run/JSON checks passed. Black/isort/flake8, targeted mypy and import contracts pass.
+- Preserved limitations: a nonempty per-directory recursion map retains separate validator discovery to avoid changing its historical scope; existing strict rules may reject applied files outside a tag filter even when the checksum checker receives the full catalog. Neither behavior is changed by this optimization.
+- No open correctness findings.
+
+## Intermediate measured evidence after Tasks 1–3
+
+- Frozen cb52908 source and develop 8645f3b used the same isolated Python 3.12.12 environment and SQLite probe.
+- Fresh 100-migration run: decoded SQL reads 40600 to 300; catalog loads 406 to 3; local elapsed time 13.4713s to 0.2061s. Both runs verified 100 actual tables.
+- These intermediate timings are observations on this machine, not performance guarantees. Final evidence follows after all lots.
+
+## Task 4 ownership follow-up — personally reviewed and accepted
+
+- User clarified that specialized managers collect data, MigrationStateManager aggregates it, and commands consume it.
+- The first Task 4 history capture mechanism is being replaced: header display must not be the upstream source of state data.
+- Task 5 was paused; its small uncommitted format-guard regression and implementation are preserved in an ignored patch for later resumption.
+
+- Correction commit: 2a030f4; personally reviewed all production and fixture changes against 0187793. This supersedes the header capture mechanism described in the initial Task 4 record.
+- HistoryManager remains the history collector; ScriptManager retains script/callback discovery, classification and event matching. StateManager aggregates their data and creates bounded history/callback snapshots. Commands consume those aggregates and orchestrate execution; validation rules remain in Validator.
+- Base schema-version derivation moved into StateManager without changing baseline/undo semantics. Commands no longer directly fetch script/history data, including info fallback and post-lock typed history.
+- Command-driven validator inputs also go through manager-owned snapshots at their existing lazy read points. Explicit state catalogs remain preferred; standalone validator input compatibility is retained.
+- Separate lazy callback scope preserves first-event discovery after lock acquisition. A real test creates a callback during lock acquisition and verifies it executes; existing callback order/failure/freshness tests remain green.
+- Test collaborator updates add the required state aggregator; no direct-collector production fallback was added for outdated fixtures.
+- 2392 migration/validator tests passed, one skipped; 23 SQLite CLI/JSON checks passed. All formatting, typing, import contracts and repository ratchets pass.
+- Read-count gains remain unchanged; no open correctness or ownership findings.
+
+## Task 5 — personally reviewed and accepted
+
+- Commits: a94a07a and af40fb9; personally reviewed the full production/test diff and final fixture correction.
+- Both validation adapters now share the prepared-input check sequence. Input collection remains in the adapters; the shared validator performs no discovery or history reads.
+- Full/scoped script and history inputs remain separate. Root requested keyword-only arguments to prevent accidental interchange.
+- Twelve public-result parity cases cover duplicates, failed history, strict drift, repeatables, filtered and missing files, empty history, and format support. The resolved entry point now performs its missing format check.
+- Root rejected a permissive production attribute fallback introduced for an incomplete test fixture. The final correction restores the normal format guard and supplies the fixture's intended context explicitly.
+- 2404 migration/validator tests passed, one skipped; 23 SQLite CLI/JSON checks passed. After the final correction, 17 affected tests and all 232 SQL-validator tests passed. Formatting, typing, import contracts and repository ratchets passed.
+- No open correctness or ownership findings.
+
+## Task 6 — personally reviewed and accepted
+
+- Commit: f971f75; personally reviewed both changed files against 5dac860.
+- Both quote-reader entry points retain their signatures and delegate to the same unchanged tokenization body inside the MySQL plugin.
+- Ten behavior cases passed before and after extraction: doubled quotes, backslashes, other quote characters, multiline positions, subsequent-token positions and unterminated input. Full MySQL tokenizer/parser unit set: 149 passed.
+- Black, isort, production flake8, targeted mypy and diff check passed. No SQL-mode, delimiter or dialect ownership changes; no open findings.
+
+## Final command ownership completion — personally reviewed and accepted
+
+- Commit: f28f823; personally reviewed all eight changed files against 52d3f54.
+- Repair consumes a fresh grouped ScriptManager catalog through StateManager, preserving grouping/order/options, separate loads and its distinct load-failure handling. Baseline dry-run consumes the existing fresh typed-history accessor.
+- Three real regressions first failed and then passed: grouped catalog identity and file refresh; repair dry-run byte purity followed by real checksum repair and successful validation; baseline absent/empty/populated history on the same command.
+- 2407 migration/validator tests passed, one skipped; 429 command/roundtrip tests and 23 SQLite CLI checks passed. All formatting, typing, import and repository ratchet checks passed.
+- No direct script/history row collector calls remain in migration commands. Existing provider-level Flyway import reads (raw source types, case-sensitive tables), clean object inventory and connection metadata are separate historical concerns; changing their collection contracts is outside this optimization scope.
+- No open findings in the optimized paths. Specialized collection rules, repair decisions, transactions and writes retain their owners.
+
+## Task 7 — personally reviewed and accepted
+
+- Commit: 9ca3f63; personally reviewed both benchmark files against ace0918 and all review corrections.
+- Seven real SQLite workloads each verify three measured rounds: fresh 10/100 migrations with/without callbacks, and populated-history no-op migrate, validate and info.
+- Database creation/copy, engine/client construction and assertions stay outside timing. Every round verifies command results and actual tables/history; callback cases verify event counts and inserted rows. Populated rounds preserve exact database bytes.
+- Root review removed duplicated populated setup, required explicit sqlite3 connection closure, strengthened unchanged-data assertions, included journal/WAL/shared-memory cleanup and removed a one-use assertion wrapper.
+- ExitStack closes clients and disposes engines before deleting files even on setup, execution or assertion failure. Only setup is used from the pedantic API, compatible with the declared pytest-benchmark 4 minimum.
+- README now matches the two actual benchmark files and supported local commands. No invented CI/hardware claims, timing gate, dependency changes or historical baseline overwrite.
+- Root final benchmark smoke: 31 passed (including seven new SQLite cases, 21 verified SQLite rounds). Benchmark file formatting and import ordering pass; no open findings.
+
+## Final verification
+
+- Root directly ran all migration/validator unit tests, four MySQL tokenizer/parser files, SQLite dry-run purity/completeness and the three info JSON suites: **2579 passed, 1 skipped, 57 subtests passed** in 22.10s.
+- Root ran the complete benchmark directory with the explicit plugin: **31 passed** in 6.74s using a short CPU calibration window. SQLite workloads retain their fixed three rounds. The implementation agent also ran the full default benchmark settings successfully.
+- Black and isort passed on all changed Python files; flake8 and targeted mypy passed on all 17 changed production modules. Both import contracts, AST pattern checks, docstring/line-length ratchets and the complete branch diff check passed. No ratchet caps changed.
+- Every implementation and correction diff was personally reviewed. Machine author/committer identity is cmodiano <cmodiano@gmail.com>, with no attribution trailers. Branch fix/oss-migration-hot-paths descends from origin/develop 8645f3b; the original detached checkout at 92bf375 remains clean and unchanged. Work remains local.
+
+## Final measured comparison with develop
+
+Same isolated Python 3.12.12 environment, local macOS 26.0.1 arm64 and real temporary SQLite databases. Baseline source: develop 8645f3b; final source: 9ca3f63. Each workload contains 100 versioned scripts. Fresh migrate creates and verifies 100 actual tables; the following operations verify those tables remain present.
+
+| Operation | Decoded SQL file reads | Catalog loads | History SELECTs | Local seconds |
+|---|---:|---:|---:|---:|
+| Fresh migrate | 40600 → 200 | 406 → 2 | 7 → 4 | 13.4713 → 0.1607 |
+| No-op migrate | 300 → 100 | 2 → 1 | 5 → 2 | 0.1081 → 0.0440 |
+| Validate | 400 → 200 | 3 → 2 | 3 → 2 | 0.1242 → 0.0737 |
+| Info | 200 → 100 | 2 → 1 | 4 → 2 | 0.0863 → 0.0422 |
+
+The probe counts Path.read_text only for workload SQL files, ScriptManager.load_migration_scripts calls, and the typed history SELECT using SQLite tracing. Timings include this instrumentation and are single local observations, not speed guarantees or a CI threshold. An earlier optimized run measured 0.1733s for fresh migrate, with identical counts. Deterministic regression tests protect the operation-count gains.
+
+The known compatibility limitations remain those recorded above: substring-based all-drift diagnostic deduplication, existing strict tag-filter behavior and separate validator discovery with a per-directory recursion map. Historical provider-level import/inventory collection is a separate architecture follow-up. No open correctness findings remain in this optimization scope.
+
+## PR 300 CI correction
+
+- CI exposed two gaps in the initial local verification: the flake8-tidy-imports plugin was missing, and tests/unit/test_v110_regressions.py was outside the selected regression suites.
+- Reproduced I250 on the two redundant compatibility import aliases with flake8-tidy-imports 4.12.0. Removed the aliases and let isort combine the imports; both historical module imports still resolve to the original callable. No lint configuration was weakened.
+- Reproduced the repair regression: its StateManager mock returned a non-iterable Mock instead of the grouped catalog. Updated the fixture to supply the existing empty catalog through StateManager. Production behavior and every delete/update assertion remain unchanged. Personally reviewed all three code/test diffs.
+- Recreated the full unit workflow dependencies using constraints-ci.txt. Complete Python 3.12 unit suite: 11325 passed, 35 skipped. The pytest-dblift package suite: 12 passed, 1 skipped.
+- Ran the complete quality workflow locally under Python 3.11, including flake8-tidy-imports, full-tree formatting/import ordering, typing, layering, ratchets and 23 public-surface/standalone/MCP checks; all passed. A preliminary Python 3.12 lint run reported existing f-string style diagnostics; the quality workflow uses Python 3.11, where they are absent. Those unrelated files remain unchanged.

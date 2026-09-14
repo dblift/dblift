@@ -75,6 +75,8 @@ class InfoCommand(BaseCommand):
         normalized_versions = _normalize_filter(versions)
         normalized_exclude_versions = _normalize_filter(exclude_versions)
 
+        read_snapshot = self.state_manager.new_read_snapshot()
+
         def _body() -> None:
             # Use MigrationStateManager to get centralized migration state
             try:
@@ -84,6 +86,7 @@ class InfoCommand(BaseCommand):
                     additional_dirs=additional_dirs,
                     dir_recursive_map=dir_recursive_map,
                     target_version=target_version,
+                    read_snapshot=read_snapshot,
                 )
             except Exception as e:
                 # If build_state fails, create empty state
@@ -94,12 +97,14 @@ class InfoCommand(BaseCommand):
             # Synthetic history rows, such as baseline command markers, are not
             # resolved script files and must not participate in this check.
             try:
-                all_script_objects = self.script_manager.get_migration_scripts(
-                    scripts_dir,
-                    recursive=recursive,
-                    additional_dirs=additional_dirs or [],
-                    dir_recursive_map=dir_recursive_map,
-                )
+                all_script_objects = migration_state.resolved_objects
+                if all_script_objects is None:
+                    all_script_objects = self.state_manager.get_resolved_migrations(
+                        scripts_dir,
+                        recursive=recursive,
+                        additional_dirs=additional_dirs or [],
+                        dir_recursive_map=dir_recursive_map,
+                    )
             except Exception as e:
                 self.log.debug(f"Could not scan scripts for duplicate version warning: {e}")
                 all_script_objects = []
@@ -222,7 +227,7 @@ class InfoCommand(BaseCommand):
                 result,
                 _body,
                 preflight=lambda: self._run_preflight(result, ensure_history=True),
-                before_body=self._log_current_schema_version,
+                header_kwargs={"read_snapshot": read_snapshot},
                 error_message_prefix="Info operation failed",
             ),
         )

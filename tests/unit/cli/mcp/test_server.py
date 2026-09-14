@@ -14,6 +14,7 @@ import pytest
 pytest.importorskip("mcp")
 anyio = pytest.importorskip("anyio")
 
+import dblift  # noqa: E402
 from dblift.cli.mcp.runner import CommandInvocationError  # noqa: E402
 
 
@@ -550,3 +551,669 @@ def test_instructions_tell_a_restricted_session_to_trust_tools_list():
     write_forbidding = anyio.run(_with_client, DbliftMcpServer([], allow_writes=False), scenario)
     assert write_forbidding.startswith(SERVER_INSTRUCTIONS)
     assert "tools/list" in write_forbidding
+
+
+# --- v3: the offline boundary -------------------------------------------------
+
+
+@pytest.mark.unit
+def test_offline_server_refuses_a_connecting_tool_at_call_time():
+    """`--offline` fails closed: the tool is still listed (so an allowlist
+    written for a connected session still resolves), and calling it returns an
+    error naming the flag instead of opening a connection."""
+    from dblift.cli.mcp.server import DbliftMcpServer
+
+    server = DbliftMcpServer([], offline=True)
+    server.command_tool(name="t", command="info", description="d", fn=lambda: [])
+
+    with patch("dblift.cli.mcp.server.run_command") as rc:
+
+        async def scenario(client):
+            listed = [tool.name for tool in (await client.list_tools()).tools]
+            return listed, await client.call_tool("t", {})
+
+        listed, result = anyio.run(_with_client, server, scenario)
+
+    assert listed == ["t"]
+    assert result.is_error is True
+    assert "--offline" in result.content[0].text
+    assert "t" in result.content[0].text
+    rc.assert_not_called()
+
+
+@pytest.mark.unit
+def test_offline_server_runs_a_tool_that_declares_it_does_not_connect():
+    """`connects=False` is the registrar's declaration that the command runs
+    with no live provider; those tools are the point of an offline session."""
+    from dblift.cli.mcp.server import DbliftMcpServer
+
+    server = DbliftMcpServer([], offline=True)
+    server.command_tool(
+        name="offline_tool", command="info", description="d", fn=lambda: [], connects=False
+    )
+
+    with patch("dblift.cli.mcp.server.run_command", return_value={"success": True}):
+
+        async def scenario(client):
+            return await client.call_tool("offline_tool", {})
+
+        result = anyio.run(_with_client, server, scenario)
+
+    assert result.is_error is False
+    assert result.structured_content == {"success": True}
+
+
+@pytest.mark.unit
+def test_an_undeclared_tool_is_assumed_to_connect():
+    """The honest default: a registrar built before `connects` existed, or one
+    that forgot it, must not get an offline pass by omission."""
+    from dblift.cli.mcp.server import DbliftMcpServer
+
+    server = DbliftMcpServer([], offline=True)
+    server.raw_tool(
+        name="legacy", description="d", fn=lambda **kw: {"success": True}, signature_of=lambda: []
+    )
+
+    async def scenario(client):
+        return await client.call_tool("legacy", {})
+
+    result = anyio.run(_with_client, server, scenario)
+
+    assert result.is_error is True
+    assert "--offline" in result.content[0].text
+
+
+@pytest.mark.unit
+def test_offline_server_refuses_a_connecting_resource():
+    from dblift.cli.mcp.server import DbliftMcpServer
+
+    server = DbliftMcpServer([], offline=True)
+    server.command_resource(
+        uri="dblift://history",
+        name="history",
+        description="d",
+        command="info",
+        argv=[],
+        pick=lambda payload: payload["migrations"],
+    )
+
+    with patch("dblift.cli.mcp.server.run_command") as rc:
+
+        async def scenario(client):
+            from mcp.shared.exceptions import MCPError
+
+            with pytest.raises(MCPError) as exc_info:
+                await client.read_resource("dblift://history")
+            return str(exc_info.value)
+
+        message = anyio.run(_with_client, server, scenario)
+
+    assert "--offline" in message and "dblift://history" in message
+    rc.assert_not_called()
+
+
+@pytest.mark.unit
+def test_build_server_records_which_registrations_are_connection_bound():
+    """The record is what the handler reports and what an operator reads: the
+    three built-ins all read the schema-history table, and so do both
+    resources."""
+    from dblift.cli.mcp.server import build_server
+
+    def registrar(server):
+        server.command_tool(
+            name="from_files", command="info", description="d", fn=lambda: [], connects=False
+        )
+
+    with patch("dblift.cli.mcp.server.load_mcp_tool_registrars", return_value=[registrar]):
+        server = build_server([], offline=True)
+
+    assert server.connection_bound_tools() == ["info", "validate", "migrate_dry_run"]
+    assert server.connection_bound_resources() == ["dblift://history", "dblift://pending"]
+    assert server.offline is True
+
+
+@pytest.mark.unit
+def test_a_connected_server_runs_everything_and_records_nothing_extra():
+    """No flag, no refusal: `connects=` changes nothing unless `--offline` is on."""
+    from dblift.cli.mcp.server import DbliftMcpServer
+
+    server = DbliftMcpServer([])
+    server.command_tool(name="t", command="info", description="d", fn=lambda: [])
+
+    with patch("dblift.cli.mcp.server.run_command", return_value={"success": True}):
+
+        async def scenario(client):
+            return await client.call_tool("t", {})
+
+        result = anyio.run(_with_client, server, scenario)
+
+    assert server.offline is False
+    assert result.is_error is False
+
+
+@pytest.mark.unit
+def test_offline_instructions_say_the_refusal_exists_before_any_call():
+    from dblift.cli.mcp.server import OFFLINE_INSTRUCTIONS, SERVER_INSTRUCTIONS, DbliftMcpServer
+
+    async def scenario(client):
+        return client.instructions
+
+    offline = anyio.run(_with_client, DbliftMcpServer([], offline=True), scenario)
+
+    assert offline.startswith(SERVER_INSTRUCTIONS)
+    assert OFFLINE_INSTRUCTIONS.strip() in offline
+    assert "--offline" in offline
+    assert anyio.run(_with_client, DbliftMcpServer([]), scenario) == SERVER_INSTRUCTIONS
+
+
+# --- v3: the resource allowlist ----------------------------------------------
+
+
+@pytest.mark.unit
+def test_resource_allowlist_admits_only_the_named_resources():
+    from dblift.cli.mcp.server import build_server
+
+    with patch("dblift.cli.mcp.server.load_mcp_tool_registrars", return_value=[]):
+        server = build_server([], allowed_resources=["history"])
+
+    async def scenario(client):
+        return sorted(str(resource.uri) for resource in (await client.list_resources()).resources)
+
+    assert anyio.run(_with_client, server, scenario) == ["dblift://history"]
+    assert server.resource_names() == ["history"]
+    assert dict(server.skipped_resources()) == {"pending": "not in the allowed resource list"}
+    assert server.unmatched_allowed_resources() == []
+    # The tools are untouched: this flag fences resources only.
+    assert server.tool_names() == ["info", "validate", "migrate_dry_run"]
+
+
+@pytest.mark.unit
+def test_resource_allowlist_accepts_the_uri_spelling_too():
+    """The user guide's table shows `dblift://history`; an operator copying
+    that spelling into --resources must not be refused for it."""
+    from dblift.cli.mcp.server import build_server
+
+    with patch("dblift.cli.mcp.server.load_mcp_tool_registrars", return_value=[]):
+        server = build_server([], allowed_resources=["dblift://pending"])
+
+    assert server.resource_names() == ["pending"]
+    assert server.unmatched_allowed_resources() == []
+
+
+@pytest.mark.unit
+def test_resource_allowlist_names_nothing_offered_are_reported():
+    from dblift.cli.mcp.server import build_server
+
+    with patch("dblift.cli.mcp.server.load_mcp_tool_registrars", return_value=[]):
+        server = build_server([], allowed_resources=["history", "nope"])
+
+    assert server.resource_names() == ["history"]
+    assert server.unmatched_allowed_resources() == ["nope"]
+
+
+@pytest.mark.unit
+def test_no_resource_allowlist_serves_every_resource():
+    from dblift.cli.mcp.server import build_server
+
+    with patch("dblift.cli.mcp.server.load_mcp_tool_registrars", return_value=[]):
+        server = build_server([])
+
+    assert server.resource_names() == ["history", "pending"]
+    assert server.skipped_resources() == []
+    assert server.unmatched_allowed_resources() == []
+
+
+@pytest.mark.unit
+def test_the_tool_allowlist_does_not_fence_resources():
+    """`--tools` keeps its published meaning: it fences tools only."""
+    from dblift.cli.mcp.server import build_server
+
+    with patch("dblift.cli.mcp.server.load_mcp_tool_registrars", return_value=[]):
+        server = build_server([], allowed_tools=["info"])
+
+    assert server.tool_names() == ["info"]
+    assert server.resource_names() == ["history", "pending"]
+
+
+@pytest.mark.unit
+def test_a_resource_restriction_points_the_agent_at_the_lists():
+    from dblift.cli.mcp.server import SERVER_INSTRUCTIONS, DbliftMcpServer
+
+    async def scenario(client):
+        return client.instructions
+
+    fenced = anyio.run(_with_client, DbliftMcpServer([], allowed_resources=["history"]), scenario)
+
+    assert fenced.startswith(SERVER_INSTRUCTIONS)
+    assert "resources/list" in fenced
+
+
+# --- v3: the raw resource seam ------------------------------------------------
+
+
+@pytest.mark.unit
+def test_resource_serves_text_from_the_registrars_own_callable():
+    """The sibling of `raw_tool`: a resource whose payload is not a command's
+    output — a document shipped in a package, or one derived from the loaded
+    configuration — needs a seam that takes a body instead of an argv."""
+    from dblift.cli.mcp.server import DbliftMcpServer
+
+    server = DbliftMcpServer([])
+    server.resource(
+        uri="dblift://policy",
+        name="policy",
+        description="The effective policy",
+        fn=lambda: '{"allow_drops": false}',
+    )
+
+    async def scenario(client):
+        listed = sorted(str(res.uri) for res in (await client.list_resources()).resources)
+        return listed, await client.read_resource("dblift://policy")
+
+    listed, result = anyio.run(_with_client, server, scenario)
+
+    assert listed == ["dblift://policy"]
+    assert result.contents[0].text == '{"allow_drops": false}'
+    assert server.resource_names() == ["policy"]
+
+
+@pytest.mark.unit
+def test_a_raw_resource_failure_carries_the_cli_message():
+    """As with `command_resource`: any exception type other than the SDK's
+    `ResourceError` has its message replaced by a generic one."""
+    from dblift.cli.mcp.runner import CommandInvocationError as CIE
+    from dblift.cli.mcp.server import DbliftMcpServer
+
+    server = DbliftMcpServer([])
+
+    def boom() -> str:
+        raise CIE("no policy block in this configuration", 1)
+
+    server.resource(uri="dblift://policy", name="policy", description="d", fn=boom)
+
+    async def scenario(client):
+        from mcp.shared.exceptions import MCPError
+
+        with pytest.raises(MCPError) as exc_info:
+            await client.read_resource("dblift://policy")
+        return str(exc_info.value)
+
+    assert "no policy block in this configuration" in anyio.run(_with_client, server, scenario)
+
+
+@pytest.mark.unit
+def test_the_resource_allowlist_fences_a_raw_resource_too():
+    """One resource surface, not two: a raw resource is withheld, skipped and
+    reported exactly as a command resource is."""
+    from dblift.cli.mcp.server import DbliftMcpServer
+
+    server = DbliftMcpServer([], allowed_resources=["policy"])
+    server.resource(uri="dblift://policy", name="policy", description="d", fn=lambda: "{}")
+    server.resource(uri="dblift://secrets", name="secrets", description="d", fn=lambda: "{}")
+
+    async def scenario(client):
+        return sorted(str(res.uri) for res in (await client.list_resources()).resources)
+
+    assert anyio.run(_with_client, server, scenario) == ["dblift://policy"]
+    assert server.resource_names() == ["policy"]
+    assert dict(server.skipped_resources()) == {"secrets": "not in the allowed resource list"}
+    assert server.unmatched_allowed_resources() == []
+
+
+@pytest.mark.unit
+def test_offline_refuses_a_raw_resource_unless_it_declares_connects_false():
+    """`connects` defaults to ``True`` here as everywhere else: a registrar
+    that forgets it must not get an offline pass by omission. A body that
+    reads only files says `connects=False` and is served."""
+    from dblift.cli.mcp.server import DbliftMcpServer
+
+    server = DbliftMcpServer([], offline=True)
+    server.resource(
+        uri="dblift://policy",
+        name="policy",
+        description="d",
+        fn=lambda: "{}",
+        connects=False,
+    )
+    server.resource(uri="dblift://undeclared", name="undeclared", description="d", fn=lambda: "{}")
+    server.resource(
+        uri="dblift://live",
+        name="live",
+        description="d",
+        fn=lambda: "{}",
+        connects=True,
+    )
+
+    async def scenario(client):
+        from mcp.shared.exceptions import MCPError
+
+        offline_ok = await client.read_resource("dblift://policy")
+        refused = {}
+        for uri in ("dblift://undeclared", "dblift://live"):
+            with pytest.raises(MCPError) as exc_info:
+                await client.read_resource(uri)
+            refused[uri] = str(exc_info.value)
+        return offline_ok, refused
+
+    offline_ok, refused = anyio.run(_with_client, server, scenario)
+
+    assert offline_ok.contents[0].text == "{}"
+    for uri, message in refused.items():
+        assert "--offline" in message and uri in message
+    assert server.connection_bound_resources() == ["dblift://undeclared", "dblift://live"]
+
+
+@pytest.mark.unit
+def test_a_raw_resource_can_declare_its_own_media_type():
+    """`fn` returns the text and `mime_type` labels it: a package shipping a
+    Markdown document must not have it announced as `application/json`."""
+    from dblift.cli.mcp.server import DbliftMcpServer
+
+    server = DbliftMcpServer([])
+    server.resource(
+        uri="dblift://guide",
+        name="guide",
+        description="d",
+        fn=lambda: "# Guide",
+        mime_type="text/markdown",
+    )
+
+    async def scenario(client):
+        listed = (await client.list_resources()).resources
+        return listed, await client.read_resource("dblift://guide")
+
+    (listed,), result = anyio.run(_with_client, server, scenario)
+
+    assert listed.mime_type == "text/markdown"
+    assert result.contents[0].mime_type == "text/markdown"
+    assert result.contents[0].text == "# Guide"
+
+
+# --- v3: review mode ----------------------------------------------------------
+
+
+@pytest.mark.unit
+def test_review_mode_withholds_writers_and_says_why():
+    """Same barrier as --read-only, different reason: the operator reading
+    stderr must be able to tell which flag withheld the tool."""
+    from dblift.cli.mcp.server import DbliftMcpServer
+
+    server = DbliftMcpServer([], mode="review")
+    server.command_tool(
+        name="writer", command="info", description="d", fn=lambda: [], read_only=False
+    )
+    server.command_tool(name="reader", command="info", description="d", fn=lambda: [])
+
+    assert server.mode == "review"
+    assert server.allow_writes is False
+    assert server.tool_names() == ["reader"]
+    reason = dict(server.skipped_tools())["writer"]
+    assert "read_only=False" in reason
+    assert "--mode review" in reason
+
+
+@pytest.mark.unit
+def test_read_only_keeps_its_own_reason():
+    from dblift.cli.mcp.server import DbliftMcpServer
+
+    server = DbliftMcpServer([], allow_writes=False)
+    server.command_tool(
+        name="writer", command="info", description="d", fn=lambda: [], read_only=False
+    )
+
+    reason = dict(server.skipped_tools())["writer"]
+    assert "--read-only" in reason
+    assert "--mode review" not in reason
+
+
+@pytest.mark.unit
+def test_author_mode_is_the_default_and_restricts_nothing():
+    from dblift.cli.mcp.server import DbliftMcpServer
+
+    server = DbliftMcpServer([])
+    server.command_tool(
+        name="writer", command="info", description="d", fn=lambda: [], read_only=False
+    )
+
+    assert server.mode == "author"
+    assert server.allow_writes is True
+    assert server.tool_names() == ["writer"]
+    assert server.skipped_tools() == []
+
+
+@pytest.mark.unit
+def test_an_unknown_mode_is_rejected():
+    from dblift.cli.mcp.server import DbliftMcpServer
+
+    with pytest.raises(ValueError, match="Unknown MCP server mode: audit"):
+        DbliftMcpServer([], mode="audit")
+
+
+@pytest.mark.unit
+def test_review_instructions_say_the_session_is_a_review():
+    from dblift.cli.mcp.server import (
+        REVIEW_INSTRUCTIONS,
+        SERVER_INSTRUCTIONS,
+        DbliftMcpServer,
+    )
+
+    async def scenario(client):
+        return client.instructions
+
+    review = anyio.run(_with_client, DbliftMcpServer([], mode="review"), scenario)
+
+    assert review.startswith(SERVER_INSTRUCTIONS)
+    assert REVIEW_INSTRUCTIONS.strip() in review
+    assert "review session" in review
+    # Writers are withheld, so the agent is also pointed at tools/list.
+    assert "tools/list" in review
+    assert anyio.run(_with_client, DbliftMcpServer([]), scenario) == SERVER_INSTRUCTIONS
+
+
+@pytest.mark.unit
+def test_build_server_forwards_the_mode():
+    from dblift.cli.mcp.server import build_server
+
+    with patch("dblift.cli.mcp.server.load_mcp_tool_registrars", return_value=[]):
+        server = build_server([], mode="review")
+
+    assert server.mode == "review"
+    assert server.allow_writes is False
+
+
+@pytest.mark.unit
+def test_duplicate_resource_uri_is_rejected():
+    """The resource surface owes the same guarantee the tool surface gives: a
+    second registration of a URI already offered is a registrar bug, not a
+    silently doubled entry in `resources/list`."""
+    from dblift.cli.mcp.server import DbliftMcpServer
+
+    server = DbliftMcpServer([])
+    server.resource(uri="dblift://history", name="history", description="d", fn=lambda: "{}")
+
+    with pytest.raises(ValueError, match="Duplicate MCP resource URI: dblift://history"):
+        server.resource(uri="dblift://history", name="other", description="d", fn=lambda: "{}")
+
+    assert server.resource_names() == ["history"]
+
+
+@pytest.mark.unit
+def test_duplicate_resource_name_is_rejected_and_the_error_says_which():
+    """A second registrar may collide on the name rather than the URI, which
+    would leave two entries called `history` in `resource_names()`. The message
+    names the spelling that collided — the correction differs."""
+    from dblift.cli.mcp.server import DbliftMcpServer
+
+    server = DbliftMcpServer([])
+    server.resource(uri="dblift://history", name="history", description="d", fn=lambda: "{}")
+
+    with pytest.raises(ValueError, match="Duplicate MCP resource name: history"):
+        server.resource(uri="dblift://other", name="history", description="d", fn=lambda: "{}")
+
+    assert server.resource_names() == ["history"]
+
+
+@pytest.mark.unit
+def test_a_skipped_resource_name_is_still_reserved():
+    """Same rule as a skipped tool: a name the allowlist withheld stays taken,
+    so the resource list cannot depend on install order."""
+    from dblift.cli.mcp.server import DbliftMcpServer
+
+    server = DbliftMcpServer([], allowed_resources=["policy"])
+    server.resource(uri="dblift://history", name="history", description="d", fn=lambda: "{}")
+    assert server.resource_names() == []
+
+    with pytest.raises(ValueError, match="Duplicate MCP resource URI: dblift://history"):
+        server.resource(uri="dblift://history", name="history", description="d", fn=lambda: "{}")
+
+
+@pytest.mark.unit
+def test_a_registrar_redefining_a_built_in_resource_fails_the_build():
+    """What an add-on actually does wrong: re-register `dblift://history`.
+    Before this it registered twice and `resource_names()` over-reported."""
+    from dblift.cli.mcp.server import build_server
+
+    def registrar(server):
+        server.command_resource(
+            uri="dblift://history",
+            name="history",
+            description="d",
+            command="info",
+            argv=[],
+            pick=lambda payload: payload["migrations"],
+        )
+
+    with patch("dblift.cli.mcp.server.load_mcp_tool_registrars", return_value=[registrar]):
+        with pytest.raises(ValueError, match="Duplicate MCP resource URI: dblift://history"):
+            build_server([])
+
+
+# --- v3: the flags compose ----------------------------------------------------
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    "kwargs, expected_tools, expected_resources",
+    [
+        (
+            {"offline": True, "allowed_tools": ["info"]},
+            ["info"],
+            ["dblift://history", "dblift://pending"],
+        ),
+        (
+            {"offline": True, "allowed_resources": ["pending"]},
+            ["info", "validate", "migrate_dry_run"],
+            ["dblift://pending"],
+        ),
+        (
+            {"allowed_tools": ["info"], "allowed_resources": ["pending"]},
+            ["info"],
+            ["dblift://pending"],
+        ),
+        (
+            {
+                "allow_writes": False,
+                "mode": "review",
+                "offline": True,
+                "allowed_tools": ["info"],
+                "allowed_resources": ["pending"],
+            },
+            ["info"],
+            ["dblift://pending"],
+        ),
+    ],
+    ids=["offline+tools", "offline+resources", "tools+resources", "everything"],
+)
+def test_the_session_flags_compose(kwargs, expected_tools, expected_resources):
+    """The compositions the user guide teaches, checked through the client.
+
+    Each flag fences its own surface and `--offline` fences neither: it leaves
+    what is served listed and refuses it at call time. The instructions are
+    asserted against the *served* sets, so a paragraph the composition
+    contradicts fails here.
+    """
+    from dblift.cli.mcp.server import (
+        OFFLINE_INSTRUCTIONS,
+        RESTRICTED_INSTRUCTIONS,
+        REVIEW_INSTRUCTIONS,
+        build_server,
+    )
+
+    with patch("dblift.cli.mcp.server.load_mcp_tool_registrars", return_value=[]):
+        server = build_server([], **kwargs)
+
+    async def scenario(client):
+        from mcp.shared.exceptions import MCPError
+
+        tools = [tool.name for tool in (await client.list_tools()).tools]
+        resources = [str(res.uri) for res in (await client.list_resources()).resources]
+        refusals = []
+        if kwargs.get("offline"):
+            # Every built-in reads the schema-history table, so everything
+            # still served must refuse — including the one the allowlist kept.
+            for name in tools:
+                result = await client.call_tool(name, {})
+                assert result.is_error is True
+                refusals.append(result.content[0].text)
+            for uri in resources:
+                with pytest.raises(MCPError) as exc_info:
+                    await client.read_resource(uri)
+                refusals.append(str(exc_info.value))
+        return tools, resources, client.instructions, refusals
+
+    with patch("dblift.cli.mcp.server.run_command") as run:
+        tools, resources, instructions, refusals = anyio.run(_with_client, server, scenario)
+
+    assert tools == expected_tools
+    assert resources == expected_resources
+    assert server.unmatched_allowed_tools() == []
+    assert server.unmatched_allowed_resources() == []
+
+    if kwargs.get("offline"):
+        run.assert_not_called()
+        assert refusals and all("--offline" in message for message in refusals)
+        assert OFFLINE_INSTRUCTIONS.strip() in instructions
+        # The served sets must not contradict the paragraph: under an allowlist
+        # the withheld names are *not* listed, so the instructions must not
+        # promise that the lists show everything the session is missing.
+        assert "you can see what the session is missing" not in instructions
+        assert "withheld by an allowlist is not listed" in instructions
+    else:
+        assert OFFLINE_INSTRUCTIONS.strip() not in instructions
+
+    assert (REVIEW_INSTRUCTIONS.strip() in instructions) is (kwargs.get("mode") == "review")
+    # Every composition here fences at least one surface.
+    assert RESTRICTED_INSTRUCTIONS.strip() in instructions
+
+
+@pytest.mark.unit
+def test_the_restricted_paragraph_names_every_flag_that_can_reach_it():
+    """`--mode review` withholds writers on its own, so the paragraph it
+    appends must not tell the agent the server was started with `--tools`,
+    `--resources` or `--read-only` when none of them was passed."""
+    from dblift.cli.mcp.server import RESTRICTED_INSTRUCTIONS, DbliftMcpServer
+
+    async def scenario(client):
+        return client.instructions
+
+    assert "--mode review" in RESTRICTED_INSTRUCTIONS
+    assert RESTRICTED_INSTRUCTIONS.strip() in anyio.run(
+        _with_client, DbliftMcpServer([], mode="review"), scenario
+    )
+
+
+@pytest.mark.unit
+def test_the_server_reports_the_package_version_in_its_server_info():
+    """A client that pins or logs server identity needs a real version.
+
+    The SDK defaults ``version`` to the empty string, so an unversioned
+    server is what a client saw until the constructor passed one.
+    """
+
+    async def scenario(client):
+        return client.server_info
+
+    server_info = anyio.run(_with_client, _server(), scenario)
+
+    assert server_info.name == "dblift"
+    assert server_info.version == dblift.__version__

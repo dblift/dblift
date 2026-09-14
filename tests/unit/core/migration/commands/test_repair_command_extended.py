@@ -55,6 +55,7 @@ def _make_cmd(
     _hm = history_manager or MagicMock()
     _sm = script_manager or MagicMock()
     _stm = state_manager or MagicMock()
+    _stm.get_grouped_migrations.side_effect = _sm.load_migration_scripts
 
     cmd = RepairCommand(
         config=_config,

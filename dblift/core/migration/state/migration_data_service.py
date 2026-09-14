@@ -10,7 +10,6 @@ from typing import Any, Dict, List, Optional, Set
 
 from dblift.core.logger import Log
 from dblift.core.migration.migration import VERSIONED_SCRIPT_TYPES, Migration
-from dblift.core.migration.state.migration_state_service import MigrationStateService
 from dblift.core.migration.state.rank_wins import latest_successful_ranks
 from dblift.core.migration.version_utils import compare_versions as _compare_versions_shared
 from dblift.core.migration.version_utils import is_migration_success
@@ -32,7 +31,6 @@ class MigrationDataService:
         self.logger = logger
         self.scripts_dir = scripts_dir
         self.target_version = target_version
-        self.state_service = MigrationStateService(logger)
 
     def _build_analysis_context(self, applied_migrations: List[Migration]) -> Dict[str, Any]:
         """Build context for migration state analysis.
@@ -93,38 +91,6 @@ class MigrationDataService:
         """
         ranks = latest_successful_ranks(migrations)
         return {version for version, state in ranks.items() if state.reapplied}
-
-    def _is_version_reapplied(self, migrations: List[Migration], version: str) -> bool:
-        """Check if a version was reapplied after being undone.
-
-        Args:
-            migrations: List of migrations
-            version: Version to check
-
-        Returns:
-            bool: True if version was reapplied
-        """
-        state = latest_successful_ranks(migrations).get(str(version))
-        return bool(state and state.reapplied)
-
-    def _get_undo_rank(self, migrations: List[Migration], version: str) -> int:
-        """Get the installed rank of the undo migration for a version.
-
-        Args:
-            migrations: List of migrations
-            version: Version to find undo rank for
-
-        Returns:
-            int: Installed rank of undo migration, or -1 if not found
-        """
-        # A version can be undone more than once (undo, reapply, undo again),
-        # so the latest undo -- not the first one found -- determines whether
-        # a later reapply superseded it. Sentinel -1 matches the previous
-        # helper contract when no successful undo exists.
-        state = latest_successful_ranks(migrations).get(str(version))
-        if state is None or state.undo <= 0:
-            return -1
-        return state.undo
 
     def _get_baseline_version(self, applied_migrations: List[Migration]) -> Optional[str]:
         """Get the baseline version from applied migrations.

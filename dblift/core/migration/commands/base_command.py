@@ -27,9 +27,9 @@ from dblift.core.logger.results import CallbackExecution
 from dblift.core.migration.executor.execution_engine import ExecutionEngine
 from dblift.core.migration.executor.migration_helpers import MigrationHelpers
 from dblift.core.migration.history.migration_history_manager import MigrationHistoryManager
-from dblift.core.migration.migration import VERSIONED_SCRIPT_TYPES
 from dblift.core.migration.rules.migration_rules import MigrationRules
 from dblift.core.migration.scripting.migration_script_manager import MigrationScriptManager
+from dblift.core.migration.state.migration_state import CallbackReadSnapshot, MigrationReadSnapshot
 from dblift.core.migration.state.migration_state_manager import MigrationStateManager
 from dblift.core.migration.ui.migration_ui import MigrationUI
 from dblift.core.sql_validator.migration_validator import MigrationValidator
@@ -238,6 +238,11 @@ class BaseCommand:
         self.migration_rules = ctx.migration_rules
         self.journal = ctx.journal
         self.placeholder_service = ctx.placeholder_service
+        self._callback_snapshot: Optional[CallbackReadSnapshot] = None
+
+    def _reset_callback_catalog(self) -> None:
+        """Discard the manager snapshot reference before a command execution."""
+        self._callback_snapshot = None
 
     def _execute_callbacks(
         self,
@@ -262,9 +267,15 @@ class BaseCommand:
         Raises:
             Exception: If any callback fails (except for error callbacks which only log warnings)
         """
-        callbacks = self.script_manager.get_callbacks_by_event(
+        read_snapshot = getattr(self, "_callback_snapshot", None)
+        if read_snapshot is None:
+            read_snapshot = self.state_manager.new_callback_snapshot()
+            self._callback_snapshot = read_snapshot
+
+        callbacks = self.state_manager.get_callbacks_by_event(
             scripts_dir,
             event_prefix,
+            read_snapshot=read_snapshot,
             recursive=use_recursive,
             additional_dirs=use_additional_dirs,
             dir_recursive_map=dir_recursive_map,
@@ -342,7 +353,7 @@ class BaseCommand:
         """
         try:
             # Get applied migrations to determine current version
-            applied_migrations = self.history_manager.get_applied_migrations()
+            applied_migrations = self.state_manager.get_applied_migrations()
 
             # Check if applied_migrations is empty (handle Mock objects in tests)
             try:
@@ -920,57 +931,12 @@ class BaseCommand:
 
         return filters
 
-    def _resolve_current_schema_version(self) -> Optional[str]:
-        """Resolve the current schema version from applied migration history.
-
-        Filters out undone (but not reapplied) migrations before determining
-        the current version.
-
-        Returns:
-            Current schema version string, or ``None`` if not determinable.
-        """
+    def _resolve_current_schema_version(
+        self, *, read_snapshot: Optional[MigrationReadSnapshot] = None
+    ) -> Optional[str]:
+        """Ask the state manager for the current version; unavailable history omits it."""
         try:
-            applied_migrations = self.history_manager.get_applied_migrations()
-            if not applied_migrations:
-                self.log.debug("No applied migrations found, schema version will be <none>")
-                return None
-
-            from dblift.core.migration.state.migration_data_service import MigrationDataService
-
-            data_service = MigrationDataService(self.log, scripts_dir=None)
-            analysis_context = data_service._build_analysis_context(applied_migrations)
-            history = self.state_manager._analyse_history(applied_migrations, analysis_context)
-
-            undone_but_not_reapplied = history.undone_versions - history.reapplied_versions
-            applied_migrations_filtered = [
-                m
-                for m in applied_migrations
-                if (
-                    # Keep non-versioned migrations (repeatable, callback, etc.)
-                    self.state_manager._get_type_name(m) not in VERSIONED_SCRIPT_TYPES
-                    # Keep versioned migrations that haven't been undone
-                    or str(getattr(m, "version", "")) not in undone_but_not_reapplied
-                )
-            ]
-            current_version = self.state_manager.get_current_version(applied_migrations_filtered)
-            schema_version = current_version if current_version else None
-
-            try:
-                applied_count = (
-                    len(applied_migrations) if hasattr(applied_migrations, "__len__") else "unknown"
-                )
-                filtered_count = (
-                    len(applied_migrations_filtered)
-                    if hasattr(applied_migrations_filtered, "__len__")
-                    else "unknown"
-                )
-                self.log.debug(
-                    f"Retrieved schema version: {schema_version} from {applied_count} applied migrations (filtered: {filtered_count})"
-                )
-            except (TypeError, AttributeError):
-                pass
-
-            return schema_version
+            return self.state_manager.resolve_current_schema_version(read_snapshot)
         except Exception as e:
             self.log.debug(f"Could not retrieve schema version: {e}")
             return None
@@ -1071,6 +1037,7 @@ class BaseCommand:
         exclude_tags: Optional[str] = None,
         versions: Optional[str] = None,
         exclude_versions: Optional[str] = None,
+        read_snapshot: Optional[MigrationReadSnapshot] = None,
         **kwargs: Any,
     ) -> None:
         """Update command header with schema version and connection info after connection is established.
@@ -1101,7 +1068,11 @@ class BaseCommand:
             exclude_versions=exclude_versions,
             **kwargs,
         )
-        schema_version = self._resolve_current_schema_version()
+        schema_version = (
+            self._resolve_current_schema_version(read_snapshot=read_snapshot)
+            if read_snapshot is not None
+            else self._resolve_current_schema_version()
+        )
         database_url = self._resolve_database_url_masked()
         connection_info = self._resolve_connection_info()
 

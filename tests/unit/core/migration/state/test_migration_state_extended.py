@@ -149,6 +149,28 @@ class TestMigrationState(unittest.TestCase):
         state.applied.append(entry)
         self.assertEqual(len(copy.applied), 1)
 
+    def test_grouped_catalog_copy_preserves_order_and_independent_containers(self):
+        from dblift.core.migration.state.migration_state import MigrationState
+
+        migration = SimpleNamespace(script_name="V1__a.sql")
+        state = MigrationState(grouped_objects={"UNDO_SQL": [], "SQL": [migration]})
+        copied = state.copy()
+        self.assertEqual(list(copied.grouped_objects), ["UNDO_SQL", "SQL"])
+        self.assertIs(copied.grouped_objects["SQL"][0], migration)
+        state.grouped_objects["SQL"].clear()
+        state.grouped_objects.clear()
+        self.assertEqual(copied.grouped_objects, {"UNDO_SQL": [], "SQL": [migration]})
+        self.assertNotIn("grouped_objects", copied.to_dict())
+        self.assertNotIn("grouped_objects", repr(copied))
+
+    def test_grouped_catalog_copy_distinguishes_missing_and_empty(self):
+        from dblift.core.migration.state.migration_state import MigrationState
+
+        self.assertIsNone(MigrationState().copy().grouped_objects)
+        state = MigrationState(grouped_objects={})
+        self.assertEqual(state.copy().grouped_objects, {})
+        self.assertIsNot(state.copy().grouped_objects, state.grouped_objects)
+
     def test_checksum_change_count(self):
         from dblift.core.migration.state.migration_state import ChecksumChange, MigrationState
 

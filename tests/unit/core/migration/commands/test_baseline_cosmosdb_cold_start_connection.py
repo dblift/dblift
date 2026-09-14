@@ -203,12 +203,13 @@ class TestOtherCommandsColdStartRegression:
         cmd = _make_command(RepairCommand, provider, history_manager)
         cmd.state_manager.build_state.return_value = SimpleNamespace(
             checksum_changes=[],
+            grouped_objects=None,
             applied_objects=[],
             deleted_scripts=set(),
             failed_objects=[],
             all_applied_objects=[],
         )
-        cmd.script_manager.load_migration_scripts.return_value = {}
+        cmd.state_manager.get_grouped_migrations.return_value = {}
 
         result = cmd.execute(scripts_dir=MagicMock())
 

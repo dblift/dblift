@@ -379,6 +379,7 @@ class Migration:
         script_encoding: str = "utf-8",
         detect_encoding: bool = False,
         config: Any = None,
+        _filename_metadata: Optional[Tuple[MigrationType, Optional[str], str, List[str]]] = None,
     ) -> None:
         """
         Initialize a Migration object.
@@ -423,10 +424,9 @@ class Migration:
                 configured_encoding=self.script_encoding,
                 detect_encoding=self.detect_encoding,
             )
-            self.version = self._extract_version()
-            self.description = self._extract_description()
+            filename_metadata = _filename_metadata or self._parse_filename()
+            _, self.version, self.description, self.tags = filename_metadata
             self.type = self._determine_type()
-            self.tags = self._extract_tags()
             self._sql_statements = None
             # Detect migration format from file extension
             self.format = MigrationFormatDetector.detect_from_path(script_path)
@@ -444,8 +444,14 @@ class Migration:
             self.path = None
             self.script_name = script_name
             self.content = content or ""
-            self.version = version or self._extract_version()
-            self.description = description or self._extract_description()
+            provided_metadata = _filename_metadata
+            if provided_metadata is None and (not version or not description or not tags):
+                provided_metadata = self._parse_filename()
+            parsed_version = provided_metadata[1] if provided_metadata else None
+            parsed_description = provided_metadata[2] if provided_metadata else ""
+            parsed_tags = provided_metadata[3] if provided_metadata else []
+            self.version = version or parsed_version
+            self.description = description or parsed_description
 
             # Validate migration type
             if type is not None and not isinstance(type, MigrationType):
@@ -454,7 +460,7 @@ class Migration:
                 )
             self.type = type or self._determine_type()
 
-            self.tags = tags or self._extract_tags()
+            self.tags = tags or parsed_tags
             self._sql_statements = sql_statements
             # Detect format from script name extension (handles DB-loaded migrations where
             # script_path is not available but the extension encodes the format).
@@ -724,16 +730,10 @@ class Migration:
         """Get the migration type as a string."""
         return self.type.value
 
-    def _extract_version(self) -> Optional[str]:
-        """Extract version from script name.
-
-        Uses MigrationScriptManager's parsing for consistency.
-        """
-        # Import here to avoid circular imports
-        # Use provided logger or create a new one
+    def _parse_filename(self) -> Tuple[MigrationType, Optional[str], str, List[str]]:
+        """Parse ``script_name`` once through the canonical filename parser."""
         from dblift.core.logger import DbliftLogger
 
-        # Import here to avoid circular imports
         from .scripting.migration_script_manager import MigrationScriptManager
 
         logger = self.logger
@@ -743,28 +743,15 @@ class Migration:
             cast(Log, logger), self.script_encoding, self.detect_encoding
         )
 
-        return script_manager.extract_version(self.script_name)
+        return script_manager.parse_filename(self.script_name)
+
+    def _extract_version(self) -> Optional[str]:
+        """Extract version from script name through the canonical parser."""
+        return self._parse_filename()[1]
 
     def _extract_description(self) -> str:
-        """Extract description from script name.
-
-        Uses MigrationScriptManager's parsing for consistency.
-        """
-        # Import here to avoid circular imports
-        # Use provided logger or create a new one
-        from dblift.core.logger import DbliftLogger
-
-        # Import here to avoid circular imports
-        from .scripting.migration_script_manager import MigrationScriptManager
-
-        logger = self.logger
-        if logger is None:
-            logger = DbliftLogger()
-        script_manager = MigrationScriptManager(
-            cast(Log, logger), self.script_encoding, self.detect_encoding
-        )
-
-        return script_manager.extract_description(self.script_name)
+        """Extract description from script name through the canonical parser."""
+        return self._parse_filename()[2]
 
     def _determine_type(self) -> MigrationType:
         """Determine the type of migration based on the script name."""
@@ -808,25 +795,8 @@ class Migration:
         return MigrationType.UNKNOWN
 
     def _extract_tags(self) -> List[str]:
-        """Extract tags from script name.
-
-        Uses MigrationScriptManager's parsing for consistency.
-        """
-        # Import here to avoid circular imports
-        # Use provided logger or create a new one
-        from dblift.core.logger import DbliftLogger
-
-        # Import here to avoid circular imports
-        from .scripting.migration_script_manager import MigrationScriptManager
-
-        logger = self.logger
-        if logger is None:
-            logger = DbliftLogger()
-        script_manager = MigrationScriptManager(
-            cast(Log, logger), self.script_encoding, self.detect_encoding
-        )
-
-        return script_manager.extract_tags(self.script_name)
+        """Extract tags from script name through the canonical parser."""
+        return self._parse_filename()[3]
 
     def _calculate_checksum(self) -> int:
         """Calculate a CRC32 checksum compatible with Flyway.

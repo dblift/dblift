@@ -82,8 +82,11 @@ class ValidateCommand(BaseCommand):
         exclude_versions: Optional[str] = None,
     ) -> ValidateResult:
         """Validate migration scripts."""
+        self._reset_callback_catalog()
         result = ValidateResult()
         result.target_schema = self.config.database.schema
+
+        read_snapshot = self.state_manager.new_read_snapshot()
 
         # Log command execution with filters
         # Populate database connection information
@@ -118,6 +121,7 @@ class ValidateCommand(BaseCommand):
                 exclude_tags=exclude_tags,
                 versions=versions,
                 exclude_versions=exclude_versions,
+                read_snapshot=read_snapshot,
             )
 
             self._execute_callbacks(
@@ -129,6 +133,9 @@ class ValidateCommand(BaseCommand):
                 result=result,
             )
 
+            if result.callbacks:
+                read_snapshot = self.state_manager.new_read_snapshot()
+
             validation_result = self.validator.validate_migrations(
                 scripts_dir,
                 "validate",
@@ -139,6 +146,7 @@ class ValidateCommand(BaseCommand):
                 exclude_tags=exclude_tags,
                 versions=versions,
                 exclude_versions=exclude_versions,
+                read_snapshot=read_snapshot,
             )
 
             self._execute_callbacks(

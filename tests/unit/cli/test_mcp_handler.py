@@ -29,7 +29,14 @@ def test_handle_mcp_builds_server_with_global_argv_and_serves():
     with patch("dblift.cli.mcp.server.build_server", return_value=server) as build:
         assert _handle_mcp(ctx) == (True, None)
 
-    build.assert_called_once_with(["--config", "x.yaml"], allow_writes=True, allowed_tools=None)
+    build.assert_called_once_with(
+        ["--config", "x.yaml"],
+        allow_writes=True,
+        allowed_tools=None,
+        allowed_resources=None,
+        offline=False,
+        mode="author",
+    )
     server.run_stdio.assert_called_once_with()
 
 
@@ -91,6 +98,11 @@ def _quiet_server():
     server.tool_names.return_value = []
     server.skipped_tools.return_value = []
     server.unmatched_allowed_tools.return_value = []
+    server.connection_bound_tools.return_value = []
+    server.connection_bound_resources.return_value = []
+    server.resource_names.return_value = []
+    server.skipped_resources.return_value = []
+    server.unmatched_allowed_resources.return_value = []
     return server
 
 
@@ -150,7 +162,14 @@ def test_handle_mcp_passes_the_restrictions_to_build_server():
     with patch("dblift.cli.mcp.server.build_server", return_value=server) as build:
         assert _handle_mcp(ctx) == (True, None)
 
-    build.assert_called_once_with([], allow_writes=False, allowed_tools=["info", "validate"])
+    build.assert_called_once_with(
+        [],
+        allow_writes=False,
+        allowed_tools=["info", "validate"],
+        allowed_resources=None,
+        offline=False,
+        mode="author",
+    )
     server.run_stdio.assert_called_once_with()
 
 
@@ -159,7 +178,7 @@ def test_handle_mcp_reports_each_skipped_tool_on_stderr_and_still_serves(capsys)
     """Skips are diagnostics: stderr, never stdout (the JSON-RPC channel)."""
     server = _quiet_server()
     server.skipped_tools.return_value = [
-        ("export_schema", "declares read_only=False and this server does not allow writes"),
+        ("export_schema", "declares read_only=False and this server was started with --read-only"),
         ("validate", "not in the allowed tool list"),
     ]
     ctx = CliCommandContext(args=SimpleNamespace(global_arguments=[], read_only=True, tools=None))
@@ -207,3 +226,278 @@ def test_handle_mcp_refuses_an_empty_allowlist(capsys):
 
     build.assert_not_called()
     assert "--tools" in capsys.readouterr().err
+
+
+# --- v3: `--offline` ---------------------------------------------------------
+
+
+@pytest.mark.unit
+def test_mcp_parser_accepts_offline():
+    parser = create_parser(exit_on_error=False)
+
+    assert parser.parse_args(["mcp"]).offline is False
+    assert parser.parse_args(["mcp", "--offline"]).offline is True
+
+
+@pytest.mark.unit
+def test_offline_is_a_known_subcommand_boolean_flag():
+    """`--offline mcp`-style argv: the splitter takes the token after an
+    unknown `--flag` as its value, so a store_true flag must be listed or it
+    swallows the next token."""
+    from dblift.cli._config_helpers import _SUBCOMMAND_BOOLEAN_FLAGS
+
+    assert "--offline" in _SUBCOMMAND_BOOLEAN_FLAGS
+
+
+@pytest.mark.unit
+def test_handle_mcp_passes_offline_to_build_server():
+    server = _quiet_server()
+    ctx = CliCommandContext(
+        args=SimpleNamespace(global_arguments=[], read_only=False, tools=None, offline=True)
+    )
+
+    with patch("dblift.cli.mcp.server.build_server", return_value=server) as build:
+        assert _handle_mcp(ctx) == (True, None)
+
+    assert build.call_args.kwargs["offline"] is True
+    server.run_stdio.assert_called_once_with()
+
+
+@pytest.mark.unit
+def test_handle_mcp_names_the_connection_bound_registrations_on_stderr(capsys):
+    """An operator who starts an offline server must be told, at start-up,
+    which tools will refuse — not discover it one failed agent call at a time.
+    Tools and resources are labelled groups: they are fenced by different flags
+    and one run-on list leaves the reader to guess which name is which."""
+    server = _quiet_server()
+    server.connection_bound_tools.return_value = ["info", "validate"]
+    server.connection_bound_resources.return_value = ["dblift://history"]
+    ctx = CliCommandContext(
+        args=SimpleNamespace(global_arguments=[], read_only=False, tools=None, offline=True)
+    )
+
+    with patch("dblift.cli.mcp.server.build_server", return_value=server):
+        assert _handle_mcp(ctx) == (True, None)
+
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert "--offline" in captured.err
+    assert "tools: info, validate" in captured.err
+    assert "resources: dblift://history" in captured.err
+
+
+@pytest.mark.unit
+def test_the_offline_note_omits_a_group_that_is_empty(capsys):
+    """An install whose registrations all read from files has no connection-bound
+    resource; the note must not print an empty `resources:` label."""
+    server = _quiet_server()
+    server.connection_bound_tools.return_value = ["info"]
+    server.connection_bound_resources.return_value = []
+    ctx = CliCommandContext(
+        args=SimpleNamespace(global_arguments=[], read_only=False, tools=None, offline=True)
+    )
+
+    with patch("dblift.cli.mcp.server.build_server", return_value=server):
+        assert _handle_mcp(ctx) == (True, None)
+
+    err = capsys.readouterr().err
+    assert "tools: info" in err
+    assert "resources:" not in err
+
+
+@pytest.mark.unit
+def test_a_connected_server_says_nothing_about_offline(capsys):
+    server = _quiet_server()
+    server.connection_bound_tools.return_value = ["info"]
+    ctx = CliCommandContext(
+        args=SimpleNamespace(global_arguments=[], read_only=False, tools=None, offline=False)
+    )
+
+    with patch("dblift.cli.mcp.server.build_server", return_value=server):
+        assert _handle_mcp(ctx) == (True, None)
+
+    assert "--offline" not in capsys.readouterr().err
+
+
+# --- v3: `--resources` --------------------------------------------------------
+
+
+@pytest.mark.unit
+def test_mcp_parser_accepts_resources():
+    parser = create_parser(exit_on_error=False)
+
+    assert parser.parse_args(["mcp"]).resources is None
+    assert parser.parse_args(["mcp", "--resources", "history"]).resources == "history"
+
+
+@pytest.mark.unit
+def test_handle_mcp_passes_the_resource_allowlist_to_build_server():
+    server = _quiet_server()
+    ctx = CliCommandContext(
+        args=SimpleNamespace(
+            global_arguments=[], read_only=False, tools=None, resources=" history, pending,,"
+        )
+    )
+
+    with patch("dblift.cli.mcp.server.build_server", return_value=server) as build:
+        assert _handle_mcp(ctx) == (True, None)
+
+    assert build.call_args.kwargs["allowed_resources"] == ["history", "pending"]
+
+
+@pytest.mark.unit
+def test_handle_mcp_refuses_to_start_on_an_unknown_resource(capsys):
+    server = _quiet_server()
+    server.resource_names.return_value = ["history"]
+    server.unmatched_allowed_resources.return_value = ["histroy"]
+    ctx = CliCommandContext(
+        args=SimpleNamespace(
+            global_arguments=[], read_only=False, tools=None, resources="history,histroy"
+        )
+    )
+
+    with patch("dblift.cli.mcp.server.build_server", return_value=server):
+        assert _handle_mcp(ctx) == (False, None)
+
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert "histroy" in captured.err and "--resources" in captured.err
+    assert "history" in captured.err
+    server.run_stdio.assert_not_called()
+
+
+@pytest.mark.unit
+def test_handle_mcp_refuses_an_empty_resource_allowlist(capsys):
+    server = _quiet_server()
+    ctx = CliCommandContext(
+        args=SimpleNamespace(global_arguments=[], read_only=False, tools=None, resources=" , ")
+    )
+
+    with patch("dblift.cli.mcp.server.build_server", return_value=server) as build:
+        assert _handle_mcp(ctx) == (False, None)
+
+    build.assert_not_called()
+    assert "--resources" in capsys.readouterr().err
+
+
+@pytest.mark.unit
+def test_handle_mcp_reports_unknown_tools_and_resources_in_one_pass(capsys):
+    """Both allowlists are checked before the refusal, so an operator who
+    mistyped a name in each is told both times rather than made to fix the tool
+    list, restart, and only then discover the resource list was wrong too."""
+    server = _quiet_server()
+    server.tool_names.return_value = ["info"]
+    server.resource_names.return_value = ["history"]
+    server.unmatched_allowed_tools.return_value = ["nope"]
+    server.unmatched_allowed_resources.return_value = ["histroy"]
+    ctx = CliCommandContext(
+        args=SimpleNamespace(
+            global_arguments=[], read_only=False, tools="info,nope", resources="history,histroy"
+        )
+    )
+
+    with patch("dblift.cli.mcp.server.build_server", return_value=server):
+        assert _handle_mcp(ctx) == (False, None)
+
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert "nope" in captured.err and "--tools" in captured.err
+    assert "histroy" in captured.err and "--resources" in captured.err
+    server.run_stdio.assert_not_called()
+
+
+@pytest.mark.unit
+def test_handle_mcp_reports_each_skipped_resource_on_stderr(capsys):
+    server = _quiet_server()
+    server.skipped_resources.return_value = [("pending", "not in the allowed resource list")]
+    ctx = CliCommandContext(
+        args=SimpleNamespace(global_arguments=[], read_only=False, tools=None, resources="history")
+    )
+
+    with patch("dblift.cli.mcp.server.build_server", return_value=server):
+        assert _handle_mcp(ctx) == (True, None)
+
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert "skipped resource pending" in captured.err
+
+
+@pytest.mark.unit
+def test_zero_config_dispatch_keeps_resources_value_out_of_the_command_list(monkeypatch):
+    """`--resources` takes a value, so it must stay out of
+    `_SUBCOMMAND_BOOLEAN_FLAGS`: a resource may be named after a command (an
+    add-on serving `dblift://info`), and the splitter would then read that
+    name as a second chained command instead of as the flag's value."""
+    from dblift.cli import main as cli_main
+
+    seen = {}
+
+    def fake(ctx):
+        seen["resources"] = ctx.args.resources
+        return (True, None)
+
+    fake._dblift_zero_config_command = True
+    monkeypatch.setattr(cli_main, "_COMMAND_HANDLERS", {**cli_main._COMMAND_HANDLERS, "mcp": fake})
+
+    with pytest.raises(SystemExit) as exc_info:
+        cli_main._parse_argv_and_load_config(["mcp", "--resources", "info"])
+
+    assert exc_info.value.code == 0
+    assert seen == {"resources": "info"}
+
+
+# --- v3: `--mode review` ------------------------------------------------------
+
+
+@pytest.mark.unit
+def test_mcp_parser_accepts_mode_review():
+    parser = create_parser(exit_on_error=False)
+
+    assert parser.parse_args(["mcp"]).mode == "author"
+    assert parser.parse_args(["mcp", "--mode", "review"]).mode == "review"
+    with pytest.raises(SystemExit):
+        parser.parse_args(["mcp", "--mode", "audit"])
+
+
+@pytest.mark.unit
+def test_handle_mcp_passes_the_mode_to_build_server():
+    server = _quiet_server()
+    ctx = CliCommandContext(
+        args=SimpleNamespace(global_arguments=[], read_only=False, tools=None, mode="review")
+    )
+
+    with patch("dblift.cli.mcp.server.build_server", return_value=server) as build:
+        assert _handle_mcp(ctx) == (True, None)
+
+    assert build.call_args.kwargs["mode"] == "review"
+    # `--mode review` is not `--read-only`: the handler forwards the mode and
+    # lets the server decide, rather than translating one flag into the other.
+    assert build.call_args.kwargs["allow_writes"] is True
+
+
+@pytest.mark.unit
+def test_mode_takes_a_value_and_stays_out_of_the_boolean_flag_list(monkeypatch):
+    """`--mode` carries a value, so listing it in `_SUBCOMMAND_BOOLEAN_FLAGS`
+    would stop the splitter reserving the next token for it — and a later
+    choice named after a command would then be read as a chained command. The
+    membership assertion is what pins that: today's two choices are not command
+    names, so the dispatch below would survive the mistake on its own."""
+    from dblift.cli import main as cli_main
+    from dblift.cli._config_helpers import _SUBCOMMAND_BOOLEAN_FLAGS
+
+    assert "--mode" not in _SUBCOMMAND_BOOLEAN_FLAGS
+
+    seen = {}
+
+    def fake(ctx):
+        seen["mode"] = ctx.args.mode
+        return (True, None)
+
+    fake._dblift_zero_config_command = True
+    monkeypatch.setattr(cli_main, "_COMMAND_HANDLERS", {**cli_main._COMMAND_HANDLERS, "mcp": fake})
+
+    with pytest.raises(SystemExit) as exc_info:
+        cli_main._parse_argv_and_load_config(["mcp", "--mode", "review"])
+
+    assert exc_info.value.code == 0
+    assert seen == {"mode": "review"}

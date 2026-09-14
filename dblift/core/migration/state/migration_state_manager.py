@@ -7,20 +7,28 @@ from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Set, Tuple, cast
 
 from dblift.core.logger import Log
+from dblift.core.migration._type_match import migration_type_name
 from dblift.core.migration.history.migration_history_manager import MigrationHistoryManager
-from dblift.core.migration.migration import VERSIONED_SCRIPT_TYPES, Migration, MigrationType
+from dblift.core.migration.migration import (
+    VERSIONED_SCRIPT_TYPES,
+    AppliedMigration,
+    Migration,
+    MigrationType,
+)
 from dblift.core.migration.rules.migration_rules import MigrationRules
 from dblift.core.migration.scripting.migration_script_manager import MigrationScriptManager
 from dblift.core.migration.state.migration_data_service import MigrationDataService
 from dblift.core.migration.state.migration_display_state import MigrationDisplayState
 from dblift.core.migration.state.migration_state import (
+    CallbackReadSnapshot,
     ChecksumChange,
     MigrationEntry,
+    MigrationReadSnapshot,
     MigrationState,
 )
 from dblift.core.migration.state.migration_state_service import MigrationStateService
 from dblift.core.migration.state.rank_wins import latest_successful_ranks
-from dblift.core.migration.version_utils import is_migration_failure
+from dblift.core.migration.version_utils import is_migration_failure, is_migration_success
 
 
 class StrictModeError(ValueError):
@@ -65,6 +73,136 @@ class MigrationStateManager:
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
+    def new_read_snapshot(self) -> MigrationReadSnapshot:
+        """Create an empty read phase; no database access occurs until it is consumed."""
+        return MigrationReadSnapshot(self)
+
+    def get_applied_migrations(
+        self, snapshot: Optional[MigrationReadSnapshot] = None
+    ) -> List[Migration]:
+        """Return HistoryManager data once per phase, or read afresh without a snapshot."""
+        if snapshot is None:
+            return self.history_manager.get_applied_migrations()
+        if snapshot._applied_records is None:
+            snapshot._applied_records = self.history_manager.get_applied_migrations()
+        return snapshot._applied_records
+
+    def get_applied_migration_records(self) -> List[AppliedMigration]:
+        """Read fresh typed history, including after acquiring the migration lock."""
+        return self.history_manager.get_applied_migration_records()
+
+    def new_callback_snapshot(self) -> CallbackReadSnapshot:
+        """Create a command callback scope without discovering scripts yet."""
+        return CallbackReadSnapshot()
+
+    def get_callbacks_by_event(
+        self,
+        scripts_dir: Path,
+        event_prefix: str,
+        *,
+        read_snapshot: CallbackReadSnapshot,
+        recursive: bool = True,
+        additional_dirs: Optional[List[Path]] = None,
+        dir_recursive_map: Optional[Dict[Path, bool]] = None,
+    ) -> List[Migration]:
+        """Aggregate callback data; discovery and event matching stay in the script manager."""
+        if read_snapshot._catalog is None:
+            read_snapshot._catalog = self.script_manager.load_migration_scripts(
+                scripts_dir,
+                recursive=recursive,
+                additional_dirs=additional_dirs,
+                dir_recursive_map=dir_recursive_map,
+            )[MigrationType.CALLBACK]
+        return self.script_manager.get_callbacks_by_event(
+            scripts_dir,
+            event_prefix,
+            recursive=recursive,
+            additional_dirs=additional_dirs,
+            dir_recursive_map=dir_recursive_map,
+            callback_catalog=read_snapshot._catalog,
+        )
+
+    def get_grouped_migrations(
+        self,
+        scripts_dir: Path,
+        *,
+        recursive: bool = True,
+        additional_dirs: Optional[List[Path]] = None,
+        dir_recursive_map: Optional[Dict[Path, bool]] = None,
+    ) -> Dict[MigrationType, List[Migration]]:
+        """Return fresh ScriptManager data with its migration-type grouping preserved."""
+        return self.script_manager.load_migration_scripts(
+            scripts_dir,
+            recursive=recursive,
+            additional_dirs=additional_dirs,
+            dir_recursive_map=dir_recursive_map,
+        )
+
+    def get_resolved_migrations(
+        self,
+        scripts_dir: Path,
+        *,
+        recursive: bool = True,
+        additional_dirs: Optional[List[Path]] = None,
+        dir_recursive_map: Optional[Dict[Path, bool]] = None,
+    ) -> List[Migration]:
+        """Return the ScriptManager catalog when no built state is available to consume."""
+        return self.script_manager.get_migration_scripts(
+            scripts_dir,
+            recursive=recursive,
+            additional_dirs=additional_dirs,
+            dir_recursive_map=dir_recursive_map,
+        )
+
+    def resolve_current_schema_version(
+        self, snapshot: Optional[MigrationReadSnapshot] = None
+    ) -> Optional[str]:
+        """Derive the header/footer version, excluding undone but not reapplied versions."""
+        applied_migrations = self.get_applied_migrations(snapshot)
+        if not applied_migrations:
+            self.logger.debug("No applied migrations found, schema version will be <none>")
+            return None
+
+        ranks = latest_successful_ranks(applied_migrations)
+        # Undo presence also counts zero/missing ranks and case-insensitive types,
+        # while the shared reapply predicate keeps its existing rank/type rules.
+        undone_versions = {
+            str(m.version)
+            for m in applied_migrations
+            if migration_type_name(getattr(m, "type", None)).upper() == "UNDO_SQL"
+            and getattr(m, "version", None)
+            and is_migration_success(getattr(m, "success", None))
+        }
+        reapplied_versions = {version for version, state in ranks.items() if state.reapplied}
+        undone_but_not_reapplied = undone_versions - reapplied_versions
+        applied_migrations_filtered = [
+            m
+            for m in applied_migrations
+            if (
+                self._get_type_name(m) not in VERSIONED_SCRIPT_TYPES
+                or str(getattr(m, "version", "")) not in undone_but_not_reapplied
+            )
+        ]
+        current_version = self.get_current_version(applied_migrations_filtered)
+        schema_version = current_version if current_version else None
+
+        try:
+            applied_count = (
+                len(applied_migrations) if hasattr(applied_migrations, "__len__") else "unknown"
+            )
+            filtered_count = (
+                len(applied_migrations_filtered)
+                if hasattr(applied_migrations_filtered, "__len__")
+                else "unknown"
+            )
+            self.logger.debug(
+                f"Retrieved schema version: {schema_version} from {applied_count} applied migrations (filtered: {filtered_count})"
+            )
+        except (TypeError, AttributeError):
+            pass
+
+        return schema_version
+
     def build_state(
         self,
         scripts_dir: Optional[Path],
@@ -77,6 +215,7 @@ class MigrationStateManager:
         exclude_tags: Optional[Sequence[str]] = None,
         versions: Optional[Sequence[str]] = None,
         exclude_versions: Optional[Sequence[str]] = None,
+        read_snapshot: Optional[MigrationReadSnapshot] = None,
     ) -> MigrationState:
         """Rebuild and return the current migration state as a JSON-ready snapshot.
 
@@ -84,9 +223,11 @@ class MigrationStateManager:
         not migrate's execute-list. ``target_version`` labels Above target and
         does not drop rows. ``tags`` / ``versions`` stay on the signature for
         callers; they are not omit filters here.
+        ``read_snapshot`` reuses history from the same command phase. Without a
+        snapshot history is read afresh; an empty successful read remains cached.
         """
 
-        applied_migrations = self.history_manager.get_applied_migrations()
+        applied_migrations = self.get_applied_migrations(read_snapshot)
         self.logger.debug(f"Loaded {len(applied_migrations)} applied migrations from history")
 
         data_service = MigrationDataService(
@@ -100,6 +241,7 @@ class MigrationStateManager:
 
         pending_migrations: List[Migration] = []
         all_scripts: List[Migration] = []
+        grouped_scripts: Optional[Dict[Any, List[Migration]]] = {} if scripts_dir else None
         if scripts_dir:
             # Use NEW centralized pending computation method
             # (all_scripts is populated as a side effect, reusing this same filesystem scan
@@ -115,6 +257,7 @@ class MigrationStateManager:
                 additional_dirs=list(additional_dirs) if additional_dirs else None,
                 dir_recursive_map=dir_recursive_map,
                 out_all_scripts=all_scripts,
+                out_grouped_migrations=grouped_scripts,
             )
 
         self._mark_resolved_status(
@@ -180,6 +323,8 @@ class MigrationStateManager:
             failed_objects=history.failed_migrations,
             executed_scripts=sorted(history.executed_scripts),
             repeatable_checksums=dict(history.repeatable_checksums),
+            resolved_objects=all_scripts if scripts_dir else None,
+            grouped_objects=grouped_scripts,
         )
 
         self.logger.debug("Migration state snapshot generated")
@@ -357,6 +502,7 @@ class MigrationStateManager:
         previous_checksums: Dict[str, str],
     ) -> List[ChecksumChange]:
         changes: List[ChecksumChange] = []
+        basename_checksums: Optional[Dict[str, str]] = None
 
         for migration in pending_migrations:
             if getattr(migration, "type", None) != MigrationType.REPEATABLE:
@@ -366,8 +512,17 @@ class MigrationStateManager:
             if not current_checksum:
                 continue
 
+            if basename_checksums is None:
+                basename_checksums = {}
+                for name, checksum in previous_checksums.items():
+                    basename_checksums.setdefault(Path(name).name, checksum)
+
             script_key = getattr(migration, "script_name", "")
-            previous_checksum = self._lookup_checksum(previous_checksums, script_key)
+            previous_checksum = self._lookup_checksum(
+                previous_checksums,
+                script_key,
+                basename_checksums=basename_checksums,
+            )
 
             if previous_checksum and self.state_service._checksums_differ(
                 previous_checksum, current_checksum
@@ -405,7 +560,12 @@ class MigrationStateManager:
         return int(getattr(migration, "installed_rank", 0) or 0)
 
     @staticmethod
-    def _lookup_checksum(checksums: Dict[str, str], script_name: str) -> Optional[str]:
+    def _lookup_checksum(
+        checksums: Dict[str, str],
+        script_name: str,
+        *,
+        basename_checksums: Optional[Dict[str, str]] = None,
+    ) -> Optional[str]:
         if script_name in checksums:
             return checksums[script_name]
 
@@ -415,6 +575,8 @@ class MigrationStateManager:
         basename = Path(script_name).name
         if basename in checksums:
             return checksums[basename]
+        if basename_checksums is not None:
+            return basename_checksums.get(basename)
         for key, value in checksums.items():
             if Path(key).name == basename:
                 return value
@@ -436,6 +598,7 @@ class MigrationStateManager:
         additional_dirs: Optional[List[Path]] = None,
         dir_recursive_map: Optional[Dict[Path, bool]] = None,
         out_all_scripts: Optional[List[Migration]] = None,
+        out_grouped_migrations: Optional[Dict[Any, List[Migration]]] = None,
     ) -> List[Migration]:
         """Catalog unresolved on-disk scripts (not migrate's execute-list).
 
@@ -443,22 +606,16 @@ class MigrationStateManager:
         or checksum-changed, and undo scripts. Baseline, target, undo type,
         tags, and versions do not omit rows; commands select later.
         """
-        # Step 1: Get all scripts from filesystem
-        all_script_paths = self.script_manager.get_all_scripts(
+        # Load and parse all scripts in one discovery pass.
+        all_migrations: Dict[Any, List[Migration]] = self.script_manager.load_migration_scripts(
             scripts_dir,
             recursive=recursive,
             additional_dirs=additional_dirs,
             dir_recursive_map=dir_recursive_map,
         )
-        self.logger.debug(f"Found {len(all_script_paths)} total scripts on filesystem")
-
-        # Step 2: Load and parse all scripts
-        all_migrations = self.script_manager.load_migration_scripts(
-            scripts_dir,
-            recursive=recursive,
-            additional_dirs=additional_dirs,
-            dir_recursive_map=dir_recursive_map,
-        )
+        if out_grouped_migrations is not None:
+            # Repair's duplicate resolution follows the original grouped traversal.
+            out_grouped_migrations.update(all_migrations)
 
         # Flatten into a single list for processing
         all_scripts: List[Migration] = []
@@ -468,8 +625,18 @@ class MigrationStateManager:
         self.logger.debug(f"Loaded {len(all_scripts)} migration objects")
 
         if out_all_scripts is not None:
-            # Let callers reuse this scan instead of re-scanning the filesystem themselves.
-            out_all_scripts.extend(all_scripts)
+            # Match get_migration_scripts order for consumers reusing the full catalog,
+            # while leaving pending-state traversal below in its existing order.
+            for migration_type in (
+                MigrationType.SQL,
+                MigrationType.REPEATABLE,
+                MigrationType.UNDO_SQL,
+                MigrationType.BASELINE,
+                MigrationType.CALLBACK,
+            ):
+                out_all_scripts.extend(
+                    all_migrations.get(migration_type, all_migrations.get(migration_type.name, []))
+                )
 
         # Step 3: Determine current version from applied migrations (excluding undone ones)
         # Filter out undone migrations before calculating current version.
@@ -500,6 +667,8 @@ class MigrationStateManager:
         # Step 4: Catalog unresolved on-disk scripts (do not omit by
         # baseline/target/undo/tags — commands select from this set later)
         pending: List[Migration] = []
+        executed_basenames: Optional[Set[str]] = None
+        basename_checksums: Optional[Dict[str, str]] = None
 
         for migration in all_scripts:
             script_name = migration.script_name
@@ -517,8 +686,19 @@ class MigrationStateManager:
                     pending.append(migration)
 
             elif migration_type_name == "REPEATABLE":
+                if executed_basenames is None:
+                    executed_basenames = {Path(name).name for name in executed_scripts}
+                if basename_checksums is None:
+                    basename_checksums = {}
+                    for name, checksum in repeatable_checksums.items():
+                        basename_checksums.setdefault(Path(name).name, checksum)
                 if self._is_repeatable_pending(
-                    script_name, migration, executed_scripts, repeatable_checksums
+                    script_name,
+                    migration,
+                    executed_scripts,
+                    repeatable_checksums,
+                    executed_basenames=executed_basenames,
+                    basename_checksums=basename_checksums,
                 ):
                     pending.append(migration)
 
@@ -619,6 +799,9 @@ class MigrationStateManager:
         migration: Migration,
         executed_scripts: Set[str],
         repeatable_checksums: Dict[str, str],
+        *,
+        executed_basenames: Optional[Set[str]] = None,
+        basename_checksums: Optional[Dict[str, str]] = None,
     ) -> bool:
         """Check if a repeatable migration is pending."""
         # Never executed — check script_name directly, falling back to a
@@ -630,8 +813,10 @@ class MigrationStateManager:
         # already-qualified executed_scripts entry matches. Mirrors
         # _is_versioned_pending's fallback.
         script_basename = Path(script_name).name
-        is_executed = script_name in executed_scripts or any(
-            Path(executed).name == script_basename for executed in executed_scripts
+        is_executed = script_name in executed_scripts or (
+            script_basename in executed_basenames
+            if executed_basenames is not None
+            else any(Path(executed).name == script_basename for executed in executed_scripts)
         )
         if not is_executed:
             return True
@@ -643,7 +828,11 @@ class MigrationStateManager:
             if migration.content:
                 current_checksum = self.script_manager.calculate_checksum(migration.content)
 
-        stored_checksum = self._lookup_checksum(repeatable_checksums, script_name)
+        stored_checksum = self._lookup_checksum(
+            repeatable_checksums,
+            script_name,
+            basename_checksums=basename_checksums,
+        )
 
         # If checksum changed, it's pending
         if (

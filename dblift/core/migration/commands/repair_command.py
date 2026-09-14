@@ -251,19 +251,22 @@ class RepairCommand(BaseCommand):
         applied_migrations = getattr(migration_state, "applied_objects", [])
         deleted_scripts: Set[str] = getattr(migration_state, "deleted_scripts", set())
 
-        # Load filesystem scripts. A load failure (permission denied, missing
+        # Reuse the built catalog, or load filesystem scripts when unavailable.
+        # A load failure (permission denied, missing
         # directory not caught by the CLI layer, malformed script) propagates
         # — silently falling back to an empty set turned this into a
         # mass-mark-missing footgun (BUG-04). The CLI has already verified
         # that the directory exists for every command except ``baseline``;
         # anything that raises here is the operator's to fix before repair
         # can proceed safely.
-        filesystem_migrations = self.script_manager.load_migration_scripts(
-            scripts_dir,
-            recursive=recursive,
-            additional_dirs=additional_dirs,
-            dir_recursive_map=dir_recursive_map,
-        )
+        filesystem_migrations = migration_state.grouped_objects
+        if filesystem_migrations is None:
+            filesystem_migrations = self.state_manager.get_grouped_migrations(
+                scripts_dir,
+                recursive=recursive,
+                additional_dirs=additional_dirs,
+                dir_recursive_map=dir_recursive_map,
+            )
         filesystem_scripts: Set[str] = set()
         for migration_group in filesystem_migrations.values():
             for migration in migration_group:
@@ -373,12 +376,14 @@ class RepairCommand(BaseCommand):
         # Additional safeguard: detect checksum drift for applied versioned migrations
         # MigrationState currently only tracks repeatable checksum changes, so perform an explicit comparison
         try:
-            filesystem_migrations = self.script_manager.load_migration_scripts(
-                scripts_dir,
-                recursive=recursive,
-                additional_dirs=additional_dirs,
-                dir_recursive_map=dir_recursive_map,
-            )
+            filesystem_migrations = migration_state.grouped_objects
+            if filesystem_migrations is None:
+                filesystem_migrations = self.state_manager.get_grouped_migrations(
+                    scripts_dir,
+                    recursive=recursive,
+                    additional_dirs=additional_dirs,
+                    dir_recursive_map=dir_recursive_map,
+                )
             filesystem_lookup: Dict[str, object] = {}
             for migration_group in filesystem_migrations.values():
                 for migration_entry in migration_group:

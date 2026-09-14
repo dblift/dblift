@@ -25,6 +25,16 @@ class SnowflakeQuirks(BaseQuirks):
     default_schema_name = "PUBLIC"
     drop_supports_if_exists = True
     table_drop_style = "if_exists_cascade"
+    # The constraint grammar accepts ``ON DELETE/UPDATE { CASCADE | SET NULL |
+    # SET DEFAULT | RESTRICT | NO ACTION }`` and the catalogue carries the rule
+    # (INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS.UPDATE_RULE / DELETE_RULE),
+    # so the keyword is written out. Nothing is enforced on standard tables,
+    # and whether the catalogue stores RESTRICT as written or as NO ACTION is
+    # not documented and was not probed; if it normalises, a model that says
+    # RESTRICT will diff against the live schema until the model says
+    # NO ACTION. https://docs.snowflake.com/en/sql-reference/constraints-properties
+    # https://docs.snowflake.com/en/sql-reference/info-schema/referential_constraints
+    table_fk_supports_restrict = True
     unquoted_identifier_case = "uppercase"
     quote_qualified_folds_to_uppercase = True
     connection_identifier_attrs = ("url", "account")

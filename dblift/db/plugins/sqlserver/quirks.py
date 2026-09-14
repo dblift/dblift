@@ -106,6 +106,9 @@ class SqlserverQuirks(BaseQuirks):
     # Table DDL (story 26-5).
     table_temporary_style = "hash_prefix"
     table_supports_constraint_nocheck = True
+    # T-SQL's referential-action grammar is ON DELETE/UPDATE { NO ACTION |
+    # CASCADE | SET NULL | SET DEFAULT } -- RESTRICT is not a keyword here.
+    table_fk_supports_restrict = False
     # Wave A hooks (story 26-6).
     table_supports_memory_optimized = True
     table_supports_system_versioned = True
