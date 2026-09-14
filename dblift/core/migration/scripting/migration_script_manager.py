@@ -20,11 +20,9 @@ from dblift.core.migration.scripting.filename_parser import (
     _CALLBACK_PREFIXES,
     _callback_prefix_missing_separator,
     _looks_like_migration,
+    _matches_callback_event,
+    parse_migration_filename,
 )
-from dblift.core.migration.scripting.filename_parser import (
-    _matches_callback_event as _matches_callback_event,
-)
-from dblift.core.migration.scripting.filename_parser import parse_migration_filename
 from dblift.core.migration.version_utils import compare_versions as _compare_versions_shared
 from dblift.core.migration.version_utils import is_migration_success
 

@@ -15,6 +15,7 @@ from dblift.core.migration.scripting.migration_script_manager import MigrationSc
 from dblift.core.migration.scripting.undo_script_generator._extractors import _UndoExtractorsMixin
 from dblift.core.migration.scripting.undo_script_generator._models import UndoStatement
 from dblift.core.migration.scripting.undo_script_generator._reversers import _UndoReversersMixin
+from dblift.core.migration.sql.migration_sql_parser import parse_migration_sql
 from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
 from dblift.core.sql_parser.parser_factory import SqlParserFactory
 
@@ -196,7 +197,9 @@ class UndoScriptGenerator(_UndoReversersMixin, _UndoExtractorsMixin):
 
         if not parse_result.success or not parse_result.statements:
             # Fallback to simple statement splitting
-            statements = migration.parse_sql_statements(dialect=self.dialect)
+            statements = parse_migration_sql(
+                self.sql_analyzer, migration.content, self.logger or DbliftLogger()
+            )
             undo_statements = []
             for statement in reversed(statements):
                 undo_stmt = self._reverse_statement(statement)

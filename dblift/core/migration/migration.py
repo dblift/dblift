@@ -16,17 +16,15 @@ from typing import Any, Dict, List, Optional, Tuple, Union, cast
 from dblift.core.logger import Log
 from dblift.core.migration.encoding import read_migration_text
 from dblift.core.migration.formats import MigrationFormat, MigrationFormatDetector
-from dblift.core.migration.migration_types import VERSIONED_SCRIPT_TYPES as VERSIONED_SCRIPT_TYPES
-from dblift.core.migration.migration_types import MigrationType as MigrationType
-from dblift.core.migration.scripting.filename_parser import _CALLBACK_PREFIXES as _CALLBACK_PREFIXES
-from dblift.core.migration.scripting.filename_parser import (
-    _callback_event_prefix as _callback_event_prefix,
+from dblift.core.migration.migration_types import (  # noqa: F401 - public compatibility re-export
+    VERSIONED_SCRIPT_TYPES,
+)
+from dblift.core.migration.migration_types import MigrationType
+from dblift.core.migration.scripting.filename_parser import (  # noqa: F401 - compatibility for existing callback imports
+    _CALLBACK_PREFIXES,
 )
 from dblift.core.migration.scripting.filename_parser import (
-    _callback_prefix_missing_separator as _callback_prefix_missing_separator,
-)
-from dblift.core.migration.scripting.filename_parser import (
-    strip_migration_tags as strip_migration_tags,
+    strip_migration_tags,
 )
 
 
@@ -514,12 +512,12 @@ class Migration:
     def parse_sql_statements(
         self, dialect: Optional[str] = None, content_override: Optional[str] = None
     ) -> List[str]:
-        """Parse SQL statements from the migration content.
+        """Parse SQL through the 4.x compatibility shim; removal is planned for a major version.
 
         Args:
             dialect: The SQL dialect to use for parsing (e.g., 'sqlserver', 'oracle')
             content_override: If provided, parse this text instead of self.content.
-                Used by the execution engine to pass placeholder-substituted content so
+                Allows external callers to pass placeholder-substituted content so
                 that the tokeniser never sees raw ``${...}`` fragments embedded in
                 identifiers (which would otherwise cause it to insert whitespace and
                 produce un-executable SQL like ``app _config``).
@@ -573,43 +571,22 @@ class Migration:
                     dialect = db_type.lower()
                     log.info(f"Using dialect '{dialect}' from environment variable")
 
-        # If no dialect determined from any source, we can't proceed properly.
-        # Statement splitting still needs *a* dialect for its regex splitter;
-        # resolve a generic relational dialect from the plugin registry rather
-        # than hardcoding one (ADR-26 E5).
+        from dblift.core.migration.sql.migration_sql_parser import (
+            fallback_migration_sql,
+            parse_migration_sql,
+        )
+        from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
+
         if not dialect:
             log.warning("No dialect available from config, defaulting to simple parser")
-            from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
+            dialect = _default_splitter_dialect()
 
-            sql_analyzer = SqlAnalyzer(dialect=_default_splitter_dialect(), logger=log)
-            statements = sql_analyzer.split_statements(content)
-            if cache_result:
-                self._sql_statements = statements
-            return statements
-
-        # Use SqlAnalyzer to handle dialect-specific statement parsing
-        # This will follow the cascading approach defined in the architecture:
-        # 1. ANTLR with Visitors (primary method)
-        # 2. ANTLR with Regex Fallback
-        # 3. Regex (fallback)
         try:
-            from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
-
             sql_analyzer = SqlAnalyzer(dialect=dialect, logger=log)
-            statements = sql_analyzer.split_statements(content)
-            log.debug(f"SqlAnalyzer split returned {len(statements)} statements")
-        except Exception as e:
-            log.warning(
-                f"Error using SqlAnalyzer: {str(e)}. Falling back to simple semicolon-based parser."
-            )
-            # Fallback: split on semicolons, filter empty statements
-            raw = content or ""
-            statements = [s.strip() for s in raw.split(";") if s.strip()]
-            log.debug(f"Fallback parser produced {len(statements)} statements")
-
-        # Final pass: ensure we don't have any empty statements
-        if statements:
-            statements = [stmt for stmt in statements if stmt.strip()]
+        except Exception as exc:
+            statements = fallback_migration_sql(content, log, exc)
+        else:
+            statements = parse_migration_sql(sql_analyzer, content, log)
 
         # Cache only when the parse used canonical content. When called with
         # content_override (placeholder-substituted), the result is per-execution

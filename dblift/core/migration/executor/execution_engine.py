@@ -33,6 +33,10 @@ from dblift.core.migration.sql.execution_statement import (
     ExecutionStatement,
     classify_execution_statement,
 )
+from dblift.core.migration.sql.migration_sql_parser import (
+    fallback_migration_sql,
+    parse_migration_sql,
+)
 from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
 from dblift.core.migration.sql.sql_execution_service import SqlExecutionService
 from dblift.core.sql_model.dialect import quote_qualified
@@ -381,9 +385,14 @@ class ExecutionEngine:
             if substituted != base:
                 content_override = substituted
 
-        return migration.parse_sql_statements(
-            dialect=dialect_key, content_override=content_override
-        )
+        content = content_override if content_override is not None else migration.content
+        analyzer = self.sql_analyzer
+        if analyzer.dialect != dialect_key:
+            try:
+                analyzer = SqlAnalyzer(dialect=dialect_key, logger=self.log)
+            except Exception as exc:
+                return fallback_migration_sql(content, self.log, exc)
+        return parse_migration_sql(analyzer, content, self.log)
 
     def _prepare_transaction(self, migration: Migration) -> bool:
         """Prepare transaction state: rollback any active transaction, then begin new one.

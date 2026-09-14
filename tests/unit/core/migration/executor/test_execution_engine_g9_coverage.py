@@ -77,7 +77,6 @@ def _make_sql_migration(content="SELECT 1;", name="V1__test.sql", statements=Non
     m.type = MagicMock()
     m.type.value = "SQL"
     m.type.name = "VERSIONED"
-    m.parse_sql_statements.return_value = statements if statements is not None else ["SELECT 1"]
     return m
 
 
@@ -187,13 +186,10 @@ class TestParseSqlStatementsMssqlAlias(unittest.TestCase):
         migration = _make_sql_migration(content="SELECT 1;")
         result = MagicMock()
 
-        # Capture the dialect that ``parse_sql_statements`` is invoked with.
-        engine._parse_sql_statements(migration, result)
-
-        kwargs = migration.parse_sql_statements.call_args.kwargs
-        # The canonical name "sqlserver" should reach the parser despite the
-        # config saying "mssql".
-        assert kwargs["dialect"] == "sqlserver"
+        with patch("dblift.core.migration.executor.execution_engine.SqlAnalyzer") as analyzer:
+            analyzer.return_value.split_statements.return_value = ["SELECT 1"]
+            assert engine._parse_sql_statements(migration, result) == ["SELECT 1"]
+        assert analyzer.call_args.kwargs["dialect"] == "sqlserver"
 
     def test_postgres_alias_passes_through_unchanged(self):
         # Sanity check: the alias normalisation is gated on "sqlserver" only.
@@ -204,10 +200,10 @@ class TestParseSqlStatementsMssqlAlias(unittest.TestCase):
         migration = _make_sql_migration(content="SELECT 1;")
         result = MagicMock()
 
-        engine._parse_sql_statements(migration, result)
-
-        kwargs = migration.parse_sql_statements.call_args.kwargs
-        assert kwargs["dialect"] == "postgres"
+        with patch("dblift.core.migration.executor.execution_engine.SqlAnalyzer") as analyzer:
+            analyzer.return_value.split_statements.return_value = ["SELECT 1"]
+            assert engine._parse_sql_statements(migration, result) == ["SELECT 1"]
+        assert analyzer.call_args.kwargs["dialect"] == "postgres"
 
 
 # ---------------------------------------------------------------------------

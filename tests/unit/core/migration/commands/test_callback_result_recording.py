@@ -78,6 +78,7 @@ def _engine_with_query_result(rows):
     provider = MagicMock()
     sql_analyzer = MagicMock()
     sql_analyzer.dialect = "postgresql"
+    sql_analyzer.split_statements.side_effect = lambda content: [content]
     mock_ses = MagicMock()
     mock_ses.execute_statement.return_value = (True, rows)
     return ExecutionEngine(
@@ -96,7 +97,7 @@ def _sql_callback(script_name, description, statement):
     cb.version = None
     cb.description = description
     cb.dialect = "postgresql"
-    cb.parse_sql_statements.return_value = [statement]
+    cb.content = statement
     return cb
 
 
@@ -138,6 +139,7 @@ def test_execute_callback_records_result_set_without_sql_execution_service():
     provider.execute_query.return_value = [{"status": "ok"}]
     sql_analyzer = MagicMock()
     sql_analyzer.dialect = "postgresql"
+    sql_analyzer.split_statements.side_effect = lambda content: [content]
     sql_analyzer.get_statement_type.return_value = "QUERY"
     engine = ExecutionEngine(
         provider=provider,
