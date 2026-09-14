@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+### Changed
+
+### Fixed
+
+### Removed
+
+## [4.5.0] - 2026-09-13
+
+### Added
+
 - `dblift mcp --offline` refuses every tool and resource that would open a
   database connection, without connecting: the tool stays listed and the call
   returns an error naming the flag. The server starts even where no database
