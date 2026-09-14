@@ -150,3 +150,78 @@ def test_shim_recomputes_canonical_cache_and_leaves_overrides_uncached():
     migration.content = "SELECT 3;"
     assert migration.parse_sql_statements() == ["SELECT 3;"]
     assert migration._sql_statements == ["SELECT 3;"]
+
+
+@pytest.mark.parametrize("source", ["migration", "config", "environment", "default"])
+def test_empty_analyzer_dialect_uses_legacy_split_fallbacks(source, monkeypatch):
+    monkeypatch.setenv("DBLIFT_DATABASE_TYPE", "mysql")
+    migration = Migration(script_name="V1__x.sql", content="SELECT 1\nGO\nSELECT 2\nGO")
+    if source == "migration":
+        migration.dialect = "sqlserver"
+        migration.config = SimpleNamespace(database=SimpleNamespace(type="mysql"))
+    elif source == "config":
+        migration.config = SimpleNamespace(database=SimpleNamespace(type="SQLSERVER"))
+    elif source == "environment":
+        monkeypatch.setenv("DBLIFT_DATABASE_TYPE", "SQLSERVER")
+    else:
+        monkeypatch.delenv("DBLIFT_DATABASE_TYPE")
+        migration.content = "SELECT 1; SELECT 2;"
+    original_dialect = migration.dialect
+    analyzer = SqlAnalyzer("")
+    analyzer.split_statements = MagicMock(side_effect=AssertionError("empty dialect reused"))
+    log = MagicMock()
+    engine = ExecutionEngine(MagicMock(), analyzer, log)
+    monkeypatch.setattr(
+        Migration, "parse_sql_statements", MagicMock(side_effect=AssertionError("model parser"))
+    )
+
+    statements = engine._prepare_sql_statements(migration)
+
+    assert [statement.rstrip(";") for statement in statements] == ["SELECT 1", "SELECT 2"]
+    analyzer.split_statements.assert_not_called()
+    assert migration.dialect == original_dialect
+    if source == "default":
+        log.warning.assert_called_once_with(
+            "No dialect available from config, defaulting to simple parser"
+        )
+
+
+def test_execution_dialect_is_available_to_subsequent_compatibility_parse(monkeypatch):
+    migration = Migration(
+        script_name="V1__x.sql", content="SELECT 1\nGO\nSELECT 2\nGO", dialect="mysql"
+    )
+    engine = ExecutionEngine(
+        MagicMock(),
+        SqlAnalyzer("sqlite"),
+        NullLog(),
+        config=SimpleNamespace(database=SimpleNamespace(type="mssql")),
+    )
+    with monkeypatch.context() as forbidden:
+        forbidden.setattr(
+            Migration, "parse_sql_statements", MagicMock(side_effect=AssertionError("model parser"))
+        )
+        assert engine._prepare_sql_statements(migration) == ["SELECT 1", "SELECT 2"]
+    assert migration.dialect == "sqlserver"
+    assert migration.parse_sql_statements() == ["SELECT 1", "SELECT 2"]
+
+
+def test_split_fallback_does_not_retroactively_enable_sqlplus_preprocessing(monkeypatch):
+    engine = ExecutionEngine(MagicMock(), SqlAnalyzer(""), MagicMock())
+    migration = Migration(
+        script_name="V1__x.sql",
+        content="DEFINE owner = APP\nSELECT * FROM &owner.users;",
+        dialect="oracle",
+    )
+    monkeypatch.setattr(
+        Migration, "parse_sql_statements", MagicMock(side_effect=AssertionError("model parser"))
+    )
+    engine._prepare_sql_statements(migration)
+    assert engine._current_sqlplus_ctx is None
+    engine.log.info.assert_not_called()
+
+
+def test_empty_execution_content_keeps_legacy_no_dialect_mutation():
+    engine = ExecutionEngine(MagicMock(), SqlAnalyzer("sqlserver"), NullLog())
+    migration = Migration(script_name="V1__x.sql", content="", dialect="mysql")
+    assert engine._prepare_sql_statements(migration) == []
+    assert migration.dialect == "mysql"

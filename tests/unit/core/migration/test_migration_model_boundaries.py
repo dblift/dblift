@@ -115,3 +115,53 @@ def test_state_layer_marks_history_rows_distinct_from_resolved_scripts():
 
     assert applied.resolved is False
     assert pending.resolved is True
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("injected_manager", [False, True])
+def test_history_materialization_uses_script_manager_metadata(monkeypatch, injected_manager):
+    provider = MagicMock()
+    provider.get_applied_migrations.return_value = [
+        {
+            "script": "V1_2__from_name[tag].sql",
+            "version": None,
+            "description": "",
+            "type": "SQL",
+            "checksum": 12,
+            "success": True,
+        },
+        {
+            "script": "V3__from_name[tag].sql",
+            "version": "99",
+            "description": "history description",
+            "type": "DELETE",
+            "tags": ["stored"],
+            "installed_rank": 7,
+        },
+        {"script": "Base Migration", "version": "0", "description": "baseline", "type": "BASELINE"},
+    ]
+    manager = MigrationHistoryManager(provider, "public", "tester", MagicMock())
+    if injected_manager:
+        manager.script_manager = MigrationScriptManager(MagicMock())
+    parse = MigrationScriptManager.parse_filename
+    names = []
+
+    def tracked_parse(script_manager, name):
+        names.append(name)
+        return parse(script_manager, name)
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError("history model must receive resolved filename metadata")
+
+    monkeypatch.setattr(MigrationScriptManager, "parse_filename", tracked_parse)
+    monkeypatch.setattr(Migration, "_parse_filename", forbidden)
+    migrations = manager.get_applied_migrations()
+    assert [(m.version, m.description, m.type, m.tags) for m in migrations] == [
+        ("1.2", "from_name", MigrationType.SQL, ["tag"]),
+        ("99", "history description", MigrationType.DELETE, ["tag"]),
+        ("0", "baseline", MigrationType.BASELINE, []),
+    ]
+    assert migrations[0].checksum == 12
+    assert migrations[0].success is True
+    assert migrations[1].installed_rank == 7
+    assert names == ["V1_2__from_name[tag].sql", "V3__from_name[tag].sql", "Base Migration"]
