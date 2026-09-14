@@ -126,3 +126,57 @@ def test_missing_directory_and_empty_strict_catalog_preserve_public_results(clie
     assert not result.success
     assert result.error_message == ""
     assert result.issues == []
+
+
+@pytest.mark.parametrize("probe", ["directory", "history", "both"])
+@pytest.mark.parametrize("populated", [False, True])
+def test_preloaded_inputs_skip_existence_and_collection_probes(client, tmp_path, probe, populated):
+    from unittest.mock import PropertyMock
+
+    from dblift.core.migration.history.migration_history_manager import MigrationHistoryManager
+
+    manager = client.executor.state_manager
+    if populated:
+        (tmp_path / "V1__init.sql").write_text("SELECT 1;")
+        assert client.migrate().success
+    prepared = manager.build_validation_snapshot(tmp_path)
+    with (
+        patch.object(
+            manager.script_manager,
+            "migration_directory_exists",
+            side_effect=(
+                AssertionError("directory probe") if probe in ("directory", "both") else None
+            ),
+            return_value=True,
+        ) as directory,
+        patch.object(
+            MigrationHistoryManager,
+            "has_history_table",
+            new_callable=PropertyMock,
+            side_effect=AssertionError("history probe") if probe in ("history", "both") else None,
+            return_value=True,
+        ) as table,
+        patch.object(
+            manager.script_manager,
+            "get_migration_scripts",
+            side_effect=AssertionError("catalog read"),
+        ) as scripts,
+        patch.object(
+            manager.history_manager,
+            "get_applied_migrations",
+            side_effect=AssertionError("history read"),
+        ) as history,
+        patch.object(
+            client.provider, "table_exists", side_effect=AssertionError("provider probe")
+        ) as provider,
+    ):
+        snapshot = manager.build_validation_snapshot(
+            tmp_path / "no-longer-present",
+            resolved_migrations=list(prepared.resolved_migrations),
+            applied_migrations=list(prepared.all_applied_migrations),
+        )
+    assert snapshot.scripts_directory_exists and snapshot.history_table_exists
+    assert snapshot.resolved_migrations == prepared.resolved_migrations
+    assert snapshot.all_applied_migrations == prepared.all_applied_migrations
+    for read in (directory, table, scripts, history, provider):
+        read.assert_not_called()
