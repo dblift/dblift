@@ -796,7 +796,7 @@ class TestExecuteCallback(unittest.TestCase):
         engine.execute_callback(cb)
 
         engine.sql_execution_service.execute_statement.assert_called_once_with(
-            "CREATE TABLE callback_log (id INT)"
+            "CREATE TABLE callback_log (id INT)", autocommit=False
         )
         engine.provider.execute_statement.assert_not_called()
         engine.provider.commit_transaction.assert_called_once()

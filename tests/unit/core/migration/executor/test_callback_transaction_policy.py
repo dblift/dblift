@@ -23,7 +23,8 @@ def callback():
 
 @pytest.fixture
 def engine():
-    provider = MagicMock(spec=TransactionalProvider)
+    provider = MagicMock()
+    provider.__class__ = TransactionalProvider
     provider.supports_transactions.return_value = True
     service = MagicMock()
     service.execute_statement.return_value = (False, 0)

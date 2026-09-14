@@ -20,7 +20,10 @@ from dblift.core.exceptions import CallbackExecutionError, TransactionAbortedErr
 from dblift.core.logger import Log, NullLog
 from dblift.core.logger.console import render_records_table, rows_to_columns_and_values
 from dblift.core.logger.results import CallbackExecution, MigrationInfo, OperationResult
-from dblift.core.migration.executor.transaction_policy import TransactionPolicy
+from dblift.core.migration.executor.transaction_policy import (
+    TransactionPolicy,
+    TransactionPolicyDecision,
+)
 from dblift.core.migration.executors import MigrationExecutorFactory
 from dblift.core.migration.formats import MigrationFormat
 from dblift.core.migration.history.migration_history_manager import MigrationHistoryManager
@@ -157,8 +160,7 @@ class ExecutionEngine:
         if statements is None:
             return
 
-        execution_statements = self._classify_execution_statements(statements)
-        policy = self.transaction_policy.decide(execution_statements, self.provider)
+        policy = self._plan_sql_execution(statements)
         if policy.unsupported_mixed_mode:
             result.set_error(
                 f"Migration {migration.script_name} mixes transactional and autocommit-only statements: {policy.reason}"
@@ -219,6 +221,10 @@ class ExecutionEngine:
                         f"Could not rollback transaction after unexpected error: {rollback_e}"
                     )
             raise
+
+    def _plan_sql_execution(self, statements: List[str]) -> TransactionPolicyDecision:
+        execution_statements = self._classify_execution_statements(statements)
+        return self.transaction_policy.decide(execution_statements, self.provider)
 
     def _classify_execution_statements(self, statements: List[str]) -> List[ExecutionStatement]:
         """Attach transaction metadata to executable SQL statements."""
@@ -1116,17 +1122,24 @@ class ExecutionEngine:
             )
             raise
 
-        # Begin transaction for callback execution
-        transaction_started = False
-        try:
-            self.provider.begin_transaction()
-            transaction_started = True
-            self.log.debug(f"Started transaction for callback {callback.script_name}")
-        except Exception as e:
-            self.log.warning(
-                f"Could not begin transaction for callback {callback.script_name}: {e}"
+        policy = self._plan_sql_execution(sql_statements)
+        if policy.unsupported_mixed_mode:
+            raise CallbackExecutionError(
+                f"Callback {callback.script_name} mixes transactional and "
+                f"autocommit-only statements: {policy.reason}"
             )
-            # Continue without explicit transaction management
+
+        transaction_started = False
+        if policy.transactional:
+            try:
+                self.provider.begin_transaction()
+                transaction_started = True
+                self.log.debug(f"Started transaction for callback {callback.script_name}")
+            except Exception as e:
+                self.log.warning(
+                    f"Could not begin transaction for callback {callback.script_name}: {e}"
+                )
+                # Continue without explicit transaction management
 
         schema = getattr(getattr(self.config, "database", None), "schema", None)
         if isinstance(schema, str) and schema:
@@ -1161,7 +1174,7 @@ class ExecutionEngine:
                 try:
                     if self.sql_execution_service:
                         is_query, result_data = self.sql_execution_service.execute_statement(
-                            statement
+                            statement, autocommit=policy.autocommit_required
                         )
                         if is_query:
                             if not isinstance(result_data, list):
@@ -1246,7 +1259,12 @@ class ExecutionEngine:
                                     )
                     else:
                         # This is DDL or DML - execute as regular SQL
-                        rows_affected = self.provider.execute_statement(statement)
+                        if policy.autocommit_required and isinstance(
+                            self.provider, TransactionalProvider
+                        ):
+                            rows_affected = self.provider.execute_autocommit_statement(statement)
+                        else:
+                            rows_affected = self.provider.execute_statement(statement)
                         if _is_ddl_statement_for_success_log(statement):
                             self.log.info("Statement executed successfully")
                         elif rows_affected is not None and rows_affected >= 0:
@@ -1261,15 +1279,16 @@ class ExecutionEngine:
                     self.log.error(f"Failed statement: {statement}")
                     raise
 
-            # Commit transaction for successful callback execution
-            try:
-                self.provider.commit_transaction()
-                self.log.debug(f"Committed transaction for callback {callback.script_name}")
-            except Exception as e:
-                self.log.warning(
-                    f"Could not commit transaction for callback {callback.script_name}: {e}"
-                )
-                # Continue - the transaction might already be committed
+            if transaction_started:
+                # Commit transaction for successful callback execution
+                try:
+                    self.provider.commit_transaction()
+                    self.log.debug(f"Committed transaction for callback {callback.script_name}")
+                except Exception as e:
+                    self.log.warning(
+                        f"Could not commit transaction for callback {callback.script_name}: {e}"
+                    )
+                    # Continue - the transaction might already be committed
 
         except Exception:
             # Rollback safety net for callback execution. Same rationale as the
