@@ -71,24 +71,6 @@ pytestmark = pytest.mark.unit
             ["prod"],
             MigrationFormat.PYTHON,
         ),
-        (
-            "V__.sql",
-            MigrationType.SQL,
-            MigrationType.SQL,
-            None,
-            "",
-            [],
-            MigrationFormat.SQL,
-        ),
-        (
-            "V__.py",
-            MigrationType.SQL,
-            MigrationType.PYTHON,
-            None,
-            "",
-            [],
-            MigrationFormat.PYTHON,
-        ),
     ],
 )
 def test_load_parses_each_filename_once(
@@ -135,7 +117,8 @@ def test_load_parses_each_filename_once(
     ("filename", "use_path", "expected_type"),
     [
         ("B1__baseline.sql", False, MigrationType.UNKNOWN),
-        ("V__.sql", True, MigrationType.SQL),
+        ("V__.sql", True, MigrationType.UNKNOWN),
+        ("V__.py", True, MigrationType.UNKNOWN),
         ("V1__python.py", False, MigrationType.SQL),
         ("V1__python.py", True, MigrationType.PYTHON),
     ],

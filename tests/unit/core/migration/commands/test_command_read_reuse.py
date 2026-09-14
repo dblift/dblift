@@ -949,3 +949,35 @@ def test_repair_delete_record_never_uses_model_filename_inference(
             "SELECT script, version, description, type FROM dblift_schema_history"
         ).fetchall()
     assert rows == [("V1_2__missing[tag].sql", expected_version, "[DELETE:SQL] missing", "DELETE")]
+
+
+@pytest.mark.parametrize("filename", ["V__.sql", "V__.py"])
+@pytest.mark.parametrize("operation", ["validate", "migrate"])
+def test_versionless_scripts_are_never_validated_executed_or_recorded(
+    database_client, filename, operation
+):
+    client, _, migrations, database = database_client
+    malformed = (
+        "CREATE TABLE malformed_ran (id INT);"
+        if filename.endswith(".sql")
+        else 'def migrate(context):\n    context.execute("CREATE TABLE malformed_ran (id INT)")\n'
+    )
+    (migrations / filename).write_text(malformed, encoding="utf-8")
+    (migrations / "V1__control.sql").write_text("CREATE TABLE control (id INT);", encoding="utf-8")
+
+    result = getattr(client, operation)()
+
+    assert result.success, result.error_message
+    if operation == "validate":
+        assert [migration.script for migration in result.validated_migrations] == [
+            "V1__control.sql"
+        ]
+    with sqlite3.connect(database) as connection:
+        user_tables = connection.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name IN ('control', 'malformed_ran')"
+        ).fetchall()
+        recorded = connection.execute(
+            "SELECT script FROM dblift_schema_history ORDER BY installed_rank"
+        ).fetchall()
+    assert user_tables == ([("control",)] if operation == "migrate" else [])
+    assert recorded == ([("V1__control.sql",)] if operation == "migrate" else [])

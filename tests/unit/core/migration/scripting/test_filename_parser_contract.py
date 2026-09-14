@@ -31,7 +31,8 @@ pytestmark = pytest.mark.unit
             ["prod"],
         ),
         ("AFTERMIGRATE__notify.SQL", "CALLBACK", None, "AFTERMIGRATE__notify.SQL", []),
-        ("V__.sql", "SQL", None, "", []),
+        ("V__.sql", "UNKNOWN", None, "", []),
+        ("V__.py", "UNKNOWN", None, "", []),
         ("B1__baseline.sql", "UNKNOWN", None, "B1__baseline", []),
         ("v1__create.sql", "UNKNOWN", None, "v1__create", []),
         ("u1__undo.sql", "UNKNOWN", None, "u1__undo", []),
@@ -134,3 +135,23 @@ def test_undo_resource_input_uses_script_manager(tmp_path, monkeypatch):
     )
     output = generator.generate_undo_script(script)
     assert "DROP TABLE" in output.read_text()
+
+
+@pytest.mark.parametrize("filename", ["V__.sql", "V__.py"])
+def test_versionless_scripts_are_excluded_before_reading_and_warn_once(
+    tmp_path, monkeypatch, filename
+):
+    from dblift.core.migration.scripting import migration_script_manager as module
+
+    script = tmp_path / filename
+    script.write_text("SELECT 1;", encoding="utf-8")
+    log = MagicMock()
+    manager = MigrationScriptManager(log)
+    read = MagicMock(wraps=module.read_migration_text)
+    monkeypatch.setattr(module, "read_migration_text", read)
+    assert manager.get_migration_scripts(tmp_path) == []
+    assert manager.get_migration_scripts(tmp_path) == []
+    read.assert_not_called()
+    log.warning.assert_called_once()
+    assert f"Script '{filename}' starts with a migration prefix" in log.warning.call_args.args[0]
+    assert "It will be excluded from migration." in log.warning.call_args.args[0]
