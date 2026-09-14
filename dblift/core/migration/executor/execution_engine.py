@@ -36,6 +36,7 @@ from dblift.core.migration.sql.execution_statement import (
 from dblift.core.migration.sql.migration_sql_parser import (
     fallback_migration_sql,
     parse_migration_sql,
+    resolve_migration_sql_dialect,
 )
 from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
 from dblift.core.migration.sql.sql_execution_service import SqlExecutionService
@@ -386,6 +387,14 @@ class ExecutionEngine:
                 content_override = substituted
 
         content = content_override if content_override is not None else migration.content
+        if not content:
+            return []
+        if dialect_key:
+            migration.dialect = dialect_key
+        else:
+            dialect_key = resolve_migration_sql_dialect(
+                migration.dialect, migration.config, self.log
+            )
         analyzer = self.sql_analyzer
         if analyzer.dialect != dialect_key:
             try:

@@ -7,7 +7,6 @@ plus helpers for checksum calculation and dict <-> object conversion.
 """
 
 import logging as _logging
-import os
 import zlib
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -24,26 +23,9 @@ from dblift.core.migration.scripting.filename_parser import (  # noqa: F401 - co
     _CALLBACK_PREFIXES,
     strip_migration_tags,
 )
-
-
-def _default_splitter_dialect() -> str:
-    """Registry-derived generic dialect for statement splitting (ADR-26 E5).
-
-    Used only on the no-dialect fallback path where no dialect could be
-    resolved from explicit args, config, or environment. The statement
-    splitter still needs *a* relational dialect for its regex tokenizer;
-    we take the first relational native dialect the plugin registry
-    advertises (sorted by name) so no dialect-name literal is hardcoded.
-    """
-    from dblift.db.provider_registry import ProviderRegistry
-
-    relational = sorted(
-        p.name
-        for p in ProviderRegistry.list_plugins()
-        if ProviderRegistry.is_native_dialect(p.name)
-        and ProviderRegistry.get_quirks(p.name).sqlglot_dialect
-    )
-    return relational[0] if relational else ""
+from dblift.core.migration.sql.migration_sql_parser import (  # noqa: F401 - compatibility re-export
+    _default_splitter_dialect,
+)
 
 
 @dataclass(frozen=True)
@@ -183,6 +165,7 @@ class AppliedMigration:
         logger: Optional[Union[Log, _logging.Logger]] = None,
         dialect: Optional[str] = None,
         tags: Optional[List[str]] = None,
+        _filename_metadata: Optional[Tuple[MigrationType, Optional[str], str, List[str]]] = None,
     ) -> "Migration":
         """Build a mutable :class:`Migration` from this applied record (empty content, raw fields copied)."""
         migration = Migration(
@@ -194,6 +177,7 @@ class AppliedMigration:
             tags=tags or [],
             logger=logger,
             dialect=dialect,
+            _filename_metadata=_filename_metadata,
         )
         migration.checksum = self.checksum
         for key, value in self.raw.items():
@@ -550,34 +534,16 @@ class Migration:
             logger = DbliftLogger()
         log = cast(Log, logger)
 
-        # Use dialect if provided, otherwise try to determine
-        if dialect:
-            self.dialect = dialect
-        elif self.dialect:
-            dialect = self.dialect
-        else:
-            # If no dialect provided, try to determine from config
-            config = self.config
-            if config and hasattr(config, "database") and config.database.type:
-                dialect = config.database.type.lower()
-                log.info(f"Using dialect '{dialect}' from config")
-
-            # If still no dialect, check for environment variables
-            if not dialect:
-                db_type = os.environ.get("DBLIFT_DATABASE_TYPE")
-                if db_type:
-                    dialect = db_type.lower()
-                    log.info(f"Using dialect '{dialect}' from environment variable")
-
         from dblift.core.migration.sql.migration_sql_parser import (
             fallback_migration_sql,
             parse_migration_sql,
+            resolve_migration_sql_dialect,
         )
         from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
 
-        if not dialect:
-            log.warning("No dialect available from config, defaulting to simple parser")
-            dialect = _default_splitter_dialect()
+        if dialect:
+            self.dialect = dialect
+        dialect = resolve_migration_sql_dialect(dialect or self.dialect, self.config, log)
 
         try:
             sql_analyzer = SqlAnalyzer(dialect=dialect, logger=log)
