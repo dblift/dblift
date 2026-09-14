@@ -3,8 +3,8 @@ Tests de conformité ISP pour les interfaces focalisées des providers.
 
 Vérifie que :
 - Les 5 ABCs déclarent les bonnes méthodes abstraites
-- Tous les providers SQL implémentent les 5 interfaces via BaseProvider
-- CosmosDbProvider.supports_transactions() retourne False
+- Les providers SQL implémentent explicitement les interfaces transactionnelles
+- Les document stores ne déclarent pas de capacité transactionnelle
 - Les providers SQL supports_transactions() retournent True
 - Les ABCs ne peuvent pas être instanciées directement
 """
@@ -157,10 +157,10 @@ class TestCosmosDbProviderInheritance:
 
         assert issubclass(CosmosDbProvider, BaseProvider)
 
-    def test_cosmosdb_is_subclass_of_all_interfaces(self):
+    def test_cosmosdb_implements_only_non_transactional_interfaces(self):
         from dblift.db.plugins.cosmosdb.provider import CosmosDbProvider
 
-        for interface in ALL_INTERFACES:
+        for interface in set(ALL_INTERFACES) - {TransactionalProvider}:
             assert issubclass(
                 CosmosDbProvider, interface
             ), f"CosmosDbProvider should be subclass of {interface.__name__}"
@@ -215,17 +215,17 @@ class TestSqlServerProviderInheritance:
 
 
 # ---------------------------------------------------------------------------
-# T5.2 — CosmosDbProvider.supports_transactions() → False
+# Document stores must not enter explicit transaction paths.
 # ---------------------------------------------------------------------------
 
 
-class TestCosmosDbSupportsTransactions:
-    def test_supports_transactions_returns_false(self):
-        from dblift.db.plugins.cosmosdb.provider import CosmosDbProvider
+@pytest.mark.parametrize("dialect", ["cosmosdb", "mongodb", "sqlite"])
+def test_runtime_transaction_capability(dialect):
+    from dblift.db.provider_registry import ProviderRegistry
 
-        # Use __new__ to avoid __init__ dependencies
-        provider = CosmosDbProvider.__new__(CosmosDbProvider)
-        assert provider.supports_transactions() is False
+    plugin = next(p for p in ProviderRegistry.list_plugins() if p.name == dialect)
+    provider = plugin.provider_class.__new__(plugin.provider_class)
+    assert isinstance(provider, TransactionalProvider) is (dialect == "sqlite")
 
 
 # ---------------------------------------------------------------------------
