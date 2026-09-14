@@ -878,3 +878,115 @@ def test_migrate_preloaded_catalog_remains_authoritative_on_probe_failure(databa
     directory.assert_not_called()
     with sqlite3.connect(database) as connection:
         assert connection.execute("SELECT count(*) FROM app").fetchone() == (0,)
+
+
+@pytest.mark.parametrize(
+    "description,expected_description", [("", "B1__"), ("snapshot", "snapshot")]
+)
+def test_baseline_synthetic_record_never_uses_model_filename_inference(
+    database_client, monkeypatch, description, expected_description
+):
+    from dblift.core.migration.migration import Migration
+
+    client, _, _, database = database_client
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError("synthetic record invoked model filename inference")
+
+    monkeypatch.setattr(Migration, "_parse_filename", forbidden)
+    result = client.baseline("1", description=description)
+    assert result.success, result.error_message
+    with sqlite3.connect(database) as connection:
+        rows = connection.execute(
+            "SELECT script, version, description, type FROM dblift_schema_history"
+        ).fetchall()
+    assert rows == [(f"B1__{description}.sql", "1", expected_description, "BASELINE")]
+
+
+@pytest.mark.parametrize("version,expected_version", [(None, "1.2"), ("9", "9")])
+def test_repair_delete_record_never_uses_model_filename_inference(
+    database_client, monkeypatch, version, expected_version
+):
+    from dblift.core.logger.results import RepairResult
+    from dblift.core.migration.migration import Migration, MigrationType
+
+    client, _, _, database = database_client
+    history = client.executor.history_manager
+    history.create_schema_and_history_table(create_schema=False)
+    command = RepairCommand(client.executor._make_command_context())
+    stored = []
+    record = history.record_migration
+
+    def record_and_capture(migration, **kwargs):
+        stored.append(migration)
+        return record(migration, **kwargs)
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError("synthetic record invoked model filename inference")
+
+    monkeypatch.setattr(history, "record_migration", record_and_capture)
+    monkeypatch.setattr(Migration, "_parse_filename", forbidden)
+    result = RepairResult()
+    count, failed = command._execute_repair_loop(
+        [
+            {
+                "type": "MISSING_SCRIPT",
+                "script": "V1_2__missing[tag].sql",
+                "version": version,
+                "description": "missing",
+                "original_type": MigrationType.SQL,
+            }
+        ],
+        result,
+    )
+    assert not failed, result.error_message
+    assert count == 1
+    assert result.deleted_migrations_marked == 1
+    assert stored[0].tags == ["tag"]
+    assert stored[0].content == "-- Delete operation: [DELETE:SQL] missing"
+    with sqlite3.connect(database) as connection:
+        rows = connection.execute(
+            "SELECT script, version, description, type FROM dblift_schema_history"
+        ).fetchall()
+    assert rows == [("V1_2__missing[tag].sql", expected_version, "[DELETE:SQL] missing", "DELETE")]
+
+
+@pytest.mark.parametrize("filename", ["V__.sql", "V__.py"])
+@pytest.mark.parametrize("operation", ["validate", "migrate"])
+def test_versionless_scripts_are_never_validated_executed_or_recorded(
+    database_client, filename, operation
+):
+    client, _, migrations, database = database_client
+    malformed = (
+        "CREATE TABLE malformed_ran (id INT);"
+        if filename.endswith(".sql")
+        else 'def migrate(context):\n    context.execute("CREATE TABLE malformed_ran (id INT)")\n'
+    )
+    (migrations / filename).write_text(malformed, encoding="utf-8")
+    (migrations / "V1__control.sql").write_text("CREATE TABLE control (id INT);", encoding="utf-8")
+
+    validator = client.executor.validator
+    with patch.object(
+        validator, "validate_snapshot", wraps=validator.validate_snapshot
+    ) as validate:
+        result = getattr(client, operation)()
+
+    assert result.success, result.error_message
+    if operation == "validate":
+        validate.assert_called_once()
+        snapshot = validate.call_args.args[0]
+        assert [migration.script_name for migration in snapshot.resolved_migrations] == [
+            "V1__control.sql"
+        ]
+        assert [migration.script_name for migration in snapshot.selected_migrations] == [
+            "V1__control.sql"
+        ]
+    with sqlite3.connect(database) as connection:
+        user_tables = connection.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name IN ('control', 'malformed_ran')"
+        ).fetchall()
+        recorded = connection.execute(
+            "SELECT script FROM dblift_schema_history ORDER BY installed_rank"
+        ).fetchall()
+    assert user_tables == ([("control",)] if operation == "migrate" else [])
+    assert recorded == ([("V1__control.sql",)] if operation == "migrate" else [])

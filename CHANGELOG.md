@@ -11,6 +11,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Migration filename classification and resource loading now use the same
+  ScriptManager grammar across discovery, history, callbacks, and undo
+  generation. Migration execution and undo generation split SQL through the
+  migration services; the 4.x model parsing method remains available for
+  compatibility.
 - Commands and Validator now consume StateManager validation snapshots, with
   one version/tag selector and immutable Flyway compatibility inputs. Reusing
   resolved scripts and applied history avoids duplicate collection; Flyway
@@ -18,6 +23,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Malformed versionless scripts such as `V__.sql` and `V__.py` are excluded from
+  migration and reported with a naming warning, preventing execution and
+  null-version history entries.
 - Providers now declare explicit transaction support accurately; migration commands
   and callbacks skip transaction calls for providers without that capability.
 - SQL callbacks now honor autocommit requirements and reject incompatible mixed

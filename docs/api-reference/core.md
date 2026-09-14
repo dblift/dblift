@@ -81,6 +81,13 @@ Discovers and loads migration scripts from filesystem.
 
 Parses SQL scripts and extracts statements.
 
+Migration execution and undo generation use the stateless
+`dblift.core.migration.sql.migration_sql_parser.parse_migration_sql` helper.
+`Migration.parse_sql_statements(dialect=None, content_override=None)` remains a
+deprecated compatibility API throughout 4.x; its removal is planned for a future
+major version. Calls without an override recompute and store canonical statements.
+Overrides, including an empty string, leave that cache untouched.
+
 ::: dblift.core.sql_parser
     options:
       show_root_heading: true

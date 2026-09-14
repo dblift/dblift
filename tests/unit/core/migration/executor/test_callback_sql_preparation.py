@@ -82,7 +82,9 @@ def test_preparation_errors_keep_migration_result_and_callback_exception_contrac
     failure = ValueError("invalid script")
     result = MigrateResult()
 
-    with patch.object(script, "parse_sql_statements", side_effect=failure):
+    with patch(
+        "dblift.core.migration.executor.execution_engine.parse_migration_sql", side_effect=failure
+    ):
         with pytest.raises(ValueError) as exc:
             engine._prepare_sql_statements(script)
         assert exc.value is failure
@@ -106,7 +108,9 @@ def test_callback_skips_non_executable_statements(dialect, non_executable):
         script_name="beforeMigrate__log.sql", content="SELECT 1", logger=engine.log
     )
     with patch.object(
-        callback, "parse_sql_statements", return_value=[non_executable, "CREATE TABLE t (id INT)"]
+        engine.sql_analyzer,
+        "split_statements",
+        return_value=[non_executable, "CREATE TABLE t (id INT)"],
     ):
         engine.execute_callback(callback)
 

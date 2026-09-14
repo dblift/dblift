@@ -43,6 +43,7 @@ def _make_engine(
 
     sql_analyzer = MagicMock()
     sql_analyzer.dialect = dialect
+    sql_analyzer.split_statements.return_value = ["SELECT 1"]
 
     log = MagicMock()
 
@@ -78,7 +79,6 @@ def _make_sql_migration(content="SELECT 1;", name="V1__test.sql", statements=Non
     m.type = MagicMock()
     m.type.value = "SQL"
     m.type.name = "VERSIONED"
-    m.parse_sql_statements.return_value = statements if statements is not None else ["SELECT 1"]
     return m
 
 
@@ -222,7 +222,7 @@ class TestParseSqlStatements(unittest.TestCase):
         engine = _make_engine(with_placeholder=True)
         engine.placeholder_service.replace_placeholders.return_value = "SELECT 42"
         migration = _make_sql_migration()
-        migration.parse_sql_statements.return_value = ["SELECT 42"]
+        engine.sql_analyzer.split_statements.return_value = ["SELECT 42"]
 
         result = engine._parse_sql_statements(
             migration, MagicMock(), placeholder_service=engine.placeholder_service
@@ -245,10 +245,13 @@ class TestParseSqlStatements(unittest.TestCase):
         """Lines 306-313: Exception → result.set_error, return None."""
         engine = _make_engine()
         migration = _make_sql_migration()
-        migration.parse_sql_statements.side_effect = Exception("parse error")
+        engine.placeholder_service = MagicMock()
+        engine.placeholder_service.replace_placeholders.side_effect = Exception("parse error")
         result = MagicMock()
 
-        ret = engine._parse_sql_statements(migration, result)
+        ret = engine._parse_sql_statements(
+            migration, result, placeholder_service=engine.placeholder_service
+        )
 
         self.assertIsNone(ret)
         result.set_error.assert_called_once()
@@ -901,10 +904,11 @@ class TestExecuteCallbackAdditional(unittest.TestCase):
         engine.sql_analyzer.get_statement_type.return_value = "DML"
         engine.provider.execute_statement.return_value = None
         cb = MagicMock(spec=Migration)
+        cb.content = "SELECT 1;"
         cb.format = MigrationFormat.SQL
         cb.script_name = "after.sql"
         cb.dialect = "postgresql"
-        cb.parse_sql_statements.return_value = ["DELETE FROM t WHERE id=99"]
+        engine.sql_analyzer.split_statements.return_value = ["DELETE FROM t WHERE id=99"]
 
         engine.execute_callback(cb)
 
@@ -917,10 +921,11 @@ class TestExecuteCallbackAdditional(unittest.TestCase):
         engine.sql_analyzer.get_statement_type.return_value = "DDL"
         engine.provider.execute_statement.return_value = 0
         cb = MagicMock(spec=Migration)
+        cb.content = "SELECT 1;"
         cb.format = MigrationFormat.SQL
         cb.script_name = "after.sql"
         cb.dialect = "postgresql"
-        cb.parse_sql_statements.return_value = ["CREATE VIEW v AS SELECT 1"]
+        engine.sql_analyzer.split_statements.return_value = ["CREATE VIEW v AS SELECT 1"]
 
         engine.execute_callback(cb)
 
@@ -935,10 +940,11 @@ class TestExecuteCallbackAdditional(unittest.TestCase):
         engine.provider.execute_statement.side_effect = Exception("exec failed")
 
         cb = MagicMock(spec=Migration)
+        cb.content = "SELECT 1;"
         cb.format = MigrationFormat.SQL
         cb.script_name = "after.sql"
         cb.dialect = "postgresql"
-        cb.parse_sql_statements.return_value = ["INSERT INTO t VALUES (1)"]
+        engine.sql_analyzer.split_statements.return_value = ["INSERT INTO t VALUES (1)"]
 
         with self.assertRaises(Exception):
             engine.execute_callback(cb)
@@ -955,10 +961,11 @@ class TestExecuteCallbackAdditional(unittest.TestCase):
         engine.provider.rollback_transaction.side_effect = Exception("rollback also failed")
 
         cb = MagicMock(spec=Migration)
+        cb.content = "SELECT 1;"
         cb.format = MigrationFormat.SQL
         cb.script_name = "after.sql"
         cb.dialect = "postgresql"
-        cb.parse_sql_statements.return_value = ["INSERT INTO t VALUES (1)"]
+        engine.sql_analyzer.split_statements.return_value = ["INSERT INTO t VALUES (1)"]
 
         with self.assertRaises(Exception):
             engine.execute_callback(cb)
@@ -1030,12 +1037,13 @@ class TestQueryResultCapture(unittest.TestCase):
         mock_ses.execute_statement.return_value = (True, [{"status": "active"}])
         engine.sql_execution_service = mock_ses
         cb = MagicMock(spec=Migration)
+        cb.content = "SELECT 1;"
         cb.format = MigrationFormat.SQL
         cb.script_name = "beforeMigrate/cb.sql"
         cb.version = None
         cb.description = ""
         cb.dialect = "postgresql"
-        cb.parse_sql_statements.return_value = ["SELECT status FROM jobs"]
+        engine.sql_analyzer.split_statements.return_value = ["SELECT status FROM jobs"]
         result = OperationResult()
         result.show_query_results = True
 
@@ -1054,10 +1062,11 @@ class TestQueryResultCapture(unittest.TestCase):
         mock_ses.execute_statement.return_value = (True, [{"id": 1}])
         engine.sql_execution_service = mock_ses
         cb = MagicMock(spec=Migration)
+        cb.content = "SELECT 1;"
         cb.format = MigrationFormat.SQL
         cb.script_name = "before.sql"
         cb.dialect = "postgresql"
-        cb.parse_sql_statements.return_value = ["SELECT id FROM t"]
+        engine.sql_analyzer.split_statements.return_value = ["SELECT id FROM t"]
 
         engine.execute_callback(cb)  # no result passed
 
@@ -1070,12 +1079,13 @@ class TestQueryResultCapture(unittest.TestCase):
         mock_ses.execute_statement.return_value = (True, [])
         engine.sql_execution_service = mock_ses
         cb = MagicMock(spec=Migration)
+        cb.content = "SELECT 1;"
         cb.format = MigrationFormat.SQL
         cb.script_name = "beforeMigrate/cb.sql"
         cb.version = None
         cb.description = ""
         cb.dialect = "postgresql"
-        cb.parse_sql_statements.return_value = ["SELECT status FROM jobs WHERE 1=0"]
+        engine.sql_analyzer.split_statements.return_value = ["SELECT status FROM jobs WHERE 1=0"]
         result = OperationResult()
         result.show_query_results = True
 
@@ -1100,12 +1110,13 @@ class TestQueryResultCapture(unittest.TestCase):
         engine.sql_analyzer.get_statement_type.return_value = "QUERY"
         engine.provider.execute_query.return_value = []
         cb = MagicMock(spec=Migration)
+        cb.content = "SELECT 1;"
         cb.format = MigrationFormat.SQL
         cb.script_name = "beforeMigrate/cb.sql"
         cb.version = None
         cb.description = ""
         cb.dialect = "postgresql"
-        cb.parse_sql_statements.return_value = ["SELECT status FROM jobs WHERE 1=0"]
+        engine.sql_analyzer.split_statements.return_value = ["SELECT status FROM jobs WHERE 1=0"]
         result = OperationResult()
         result.show_query_results = True
 

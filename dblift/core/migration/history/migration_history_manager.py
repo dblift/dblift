@@ -3,14 +3,12 @@
 import logging
 from dataclasses import dataclass
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Any, Dict, List, Mapping, Optional, Union, cast
+from typing import Any, Dict, List, Mapping, Optional, Union, cast
 
 from dblift.core.logger import Log
 from dblift.core.migration.migration import AppliedMigration, Migration, MigrationType
+from dblift.core.migration.scripting.migration_script_manager import MigrationScriptManager
 from dblift.db.provider_interfaces import TransactionalProvider
-
-if TYPE_CHECKING:
-    from .migration_script_manager import MigrationScriptManager
 
 
 @dataclass(frozen=True)
@@ -179,8 +177,13 @@ class MigrationHistoryManager:
 
     def get_applied_migrations(self) -> List[Migration]:
         """Get list of applied migrations from history table as Migration objects."""
+        if self.script_manager is None:
+            self.script_manager = MigrationScriptManager(cast(Log, self.logger))
         return [
-            applied.to_migration(logger=self.logger)
+            applied.to_migration(
+                logger=self.logger,
+                _filename_metadata=self.script_manager.parse_filename(applied.script_name),
+            )
             for applied in self.get_applied_migration_records()
         ]
 

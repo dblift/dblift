@@ -33,6 +33,9 @@ def _make_engine(dialect="postgresql", with_history=False, with_config=True):
 
     sql_analyzer = MagicMock()
     sql_analyzer.dialect = dialect
+    sql_analyzer.split_statements.side_effect = lambda content: [
+        statement.strip() for statement in content.split(";") if statement.strip()
+    ]
 
     log = MagicMock()
 
@@ -65,7 +68,8 @@ def _make_sql_migration(content="SELECT 1;", name="V1__test.sql", statements=Non
     m.type = MagicMock()
     m.type.value = "SQL"
     m.type.name = "VERSIONED"
-    m.parse_sql_statements.return_value = statements if statements is not None else ["SELECT 1"]
+    if statements is not None:
+        m.content = ";".join(statements)
     return m
 
 
@@ -756,7 +760,7 @@ class TestExecuteCallback(unittest.TestCase):
         cb.format = MigrationFormat.SQL
         cb.script_name = name
         cb.dialect = "postgresql"
-        cb.parse_sql_statements.return_value = sql_statements or ["INSERT INTO t VALUES (1)"]
+        cb.content = ";".join(sql_statements or ["INSERT INTO t VALUES (1)"])
         return cb
 
     def test_sql_callback_executes_dml_statement(self):
@@ -885,7 +889,8 @@ class TestExecuteCallback(unittest.TestCase):
     def test_sql_callback_parse_error_reraises(self):
         engine = _make_engine()
         cb = self._make_callback()
-        cb.parse_sql_statements.side_effect = Exception("parse error")
+        engine.placeholder_service = MagicMock()
+        engine.placeholder_service.replace_placeholders.side_effect = Exception("parse error")
 
         with self.assertRaises(Exception):
             engine.execute_callback(cb)
@@ -905,10 +910,7 @@ class TestExecuteCallback(unittest.TestCase):
         engine.placeholder_service.replace_placeholders.assert_called_once_with(
             "INSERT INTO t VALUES (${val})"
         )
-        assert (
-            cb.parse_sql_statements.call_args.kwargs["content_override"]
-            == "INSERT INTO t VALUES (42)"
-        )
+        assert engine.sql_analyzer.split_statements.call_args.args[0] == "INSERT INTO t VALUES (42)"
 
     def test_query_result_zero_rows_logs_info(self):
         engine = _make_engine()

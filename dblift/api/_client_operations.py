@@ -104,24 +104,15 @@ def generate_undo_scripts_operation(
     **kwargs: Any,
 ) -> List[GenerateUndoScriptResult]:
     """Generate many undo scripts for ``DBLiftClient.generate_undo_scripts``."""
-    from dblift.core.migration.formats import MigrationFormatDetector
-
     results: List[GenerateUndoScriptResult] = []
 
     if migration_paths is None:
         migrations_dir = (
             client._get_scripts_dir() if migrations_dir is None else Path(migrations_dir)
         )
-        # Discover versioned migration files of any supported format (not just
-        # .sql) so that non-SQL migrations (e.g. CosmosDB's Python-only
-        # migrations) still show up as per-file results below explaining why
-        # they were skipped, instead of vanishing from a SQL-only glob.
-        pattern = "**/V*" if recursive else "V*"
-        migration_paths = [
-            f
-            for f in migrations_dir.glob(pattern)
-            if f.is_file() and MigrationFormatDetector.is_migration_file(f)
-        ]
+        migration_paths = _undo_script_manager(client).find_undo_candidates(
+            migrations_dir, recursive=recursive
+        )
     else:
         migration_paths = [Path(p) for p in migration_paths]
 
@@ -184,6 +175,16 @@ def generate_undo_scripts_operation(
     return results
 
 
+def _undo_script_manager(client: Any) -> Any:
+    """Reuse configured script input settings when the client owns an executor."""
+    from dblift.core.migration.scripting.migration_script_manager import MigrationScriptManager
+
+    manager = getattr(getattr(client, "executor", None), "script_manager", None)
+    if isinstance(manager, MigrationScriptManager):
+        return manager
+    return MigrationScriptManager(client.logger)
+
+
 def _prepare_undo_generation_migration(client: Any, migration_path: Path) -> Any:
     """Validate a path once and return the parsed SQL versioned migration.
 
@@ -192,20 +193,10 @@ def _prepare_undo_generation_migration(client: Any, migration_path: Path) -> Any
     pulls in ``api`` via the executor).
     """
     from dblift.core.migration.formats import MigrationFormat
-    from dblift.core.migration.migration import Migration
-    from dblift.core.migration.scripting.migration_script_manager import MigrationScriptManager
 
-    if not migration_path.exists():
-        raise FileNotFoundError(f"Migration file not found: {migration_path}")
-
-    script_manager = MigrationScriptManager(client.logger)
-    if not script_manager.is_versioned_script_name(migration_path.name):
-        raise ValueError(
-            f"File is not a versioned migration: {migration_path.name}. "
-            "Expected a versioned migration filename (V*__description.<ext>)."
-        )
-
-    migration = Migration(script_path=migration_path, logger=client.logger)
+    migration = _undo_script_manager(client).load_migration_script(
+        migration_path, require_versioned=True
+    )
     if not migration.version:
         raise ValueError(f"Could not extract version from: {migration_path.name}")
     if migration.format != MigrationFormat.SQL:

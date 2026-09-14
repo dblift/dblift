@@ -7,146 +7,25 @@ plus helpers for checksum calculation and dict <-> object conversion.
 """
 
 import logging as _logging
-import os
-import re
 import zlib
 from dataclasses import dataclass, field
-from enum import Enum
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Union, cast
 
 from dblift.core.logger import Log
 from dblift.core.migration.encoding import read_migration_text
 from dblift.core.migration.formats import MigrationFormat, MigrationFormatDetector
-
-# Forward declare MigrationScriptManager to avoid circular imports
-MigrationScriptManager = None
-
-
-def _default_splitter_dialect() -> str:
-    """Registry-derived generic dialect for statement splitting (ADR-26 E5).
-
-    Used only on the no-dialect fallback path where no dialect could be
-    resolved from explicit args, config, or environment. The statement
-    splitter still needs *a* relational dialect for its regex tokenizer;
-    we take the first relational native dialect the plugin registry
-    advertises (sorted by name) so no dialect-name literal is hardcoded.
-    """
-    from dblift.db.provider_registry import ProviderRegistry
-
-    relational = sorted(
-        p.name
-        for p in ProviderRegistry.list_plugins()
-        if ProviderRegistry.is_native_dialect(p.name)
-        and ProviderRegistry.get_quirks(p.name).sqlglot_dialect
-    )
-    return relational[0] if relational else ""
-
-
-# Canonical list of callback event prefixes (camelCase).
-# Must stay in sync with MigrationScriptManager.callback_prefixes
-# (core/migration/scripting/migration_script_manager.py).
-_CALLBACK_PREFIXES = [
-    "beforeMigrate",
-    "afterMigrate",
-    "afterMigrateError",
-    "beforeEach",
-    "afterEach",
-    "beforeValidate",
-    "afterValidate",
-    "beforeClean",
-    "afterClean",
-    "afterCleanError",
-    "beforeUndo",
-    "afterUndo",
-    "afterUndoError",
-    "beforeEachMigrate",
-    "afterEachMigrate",
-    "beforeVersioned",
-    "afterVersioned",
-    "beforeRepeatable",
-    "afterRepeatable",
-]
-
-# Separator between a callback's event prefix and its description. Mandatory:
-# callback files are named ``<eventPrefix>__<description>.<ext>``.
-_CALLBACK_SEPARATOR = "__"
-
-
-def strip_migration_tags(filename: str) -> Tuple[str, List[str]]:
-    """Split ``filename`` into its untagged form and its ``[tag1,tag2]`` tags.
-
-    The single implementation of the tag syntax. Every path that reasons about
-    a script name — ``MigrationScriptManager.parse_filename`` for classification,
-    the callback helpers below for event matching — normalizes through this, so
-    the two cannot disagree about what a name means. They did once: matching
-    read the raw name while classification read the stripped one, so
-    ``afterMigrate[prod]__notify.sql`` was filed as a callback and then
-    dispatched to no event, running silently never.
-
-    The pattern is deliberately positionless, matching the documented
-    ``<name>__<description>[tag1,tag2].<ext>`` form and also the tag groups
-    users have been able to place elsewhere in the name.
-    """
-    tag_match = re.search(r"\[(.*?)\]", filename)
-    if not tag_match:
-        return filename, []
-
-    tags = [tag.strip() for tag in tag_match.group(1).split(",") if tag.strip()]
-    return filename.replace(tag_match.group(0), ""), tags
-
-
-def _callback_event_prefix(base_name: str) -> Optional[str]:
-    """Return the callback event ``base_name`` is a well-formed file for, else None.
-
-    Requires ``__`` right after the prefix, on the tag-stripped name. Without
-    that boundary, five prefixes are literal substrings of others
-    (``afterMigrate`` / ``afterMigrateError``, ``beforeEach`` /
-    ``beforeEachMigrate``, ``afterEach`` / ``afterEachMigrate``, ``afterClean``
-    / ``afterCleanError``, ``afterUndo`` / ``afterUndoError``) and a file for
-    the longer event also answers to the shorter one.
-
-    At most one prefix can match: every longer prefix continues with a letter
-    where the shorter one requires ``__``.
-    """
-    lowered = strip_migration_tags(base_name)[0].lower()
-    for prefix in _CALLBACK_PREFIXES:
-        if lowered.startswith(prefix.lower() + _CALLBACK_SEPARATOR):
-            return prefix
-    return None
-
-
-def _callback_prefix_missing_separator(base_name: str) -> Optional[str]:
-    """Return the event ``base_name`` looks named for but is malformed for, else None.
-
-    Catches ``afterMigrate.sql`` and ``afterMigrate_notify.sql``: named for an
-    event, but with no ``__`` separator, so they are not callbacks. Reported to
-    the user rather than silently ignored — such a file sits in the migrations
-    directory looking like a callback and never runs.
-    """
-    if _callback_event_prefix(base_name) is not None:
-        return None
-
-    lowered = strip_migration_tags(base_name)[0].lower()
-    candidates = [prefix for prefix in _CALLBACK_PREFIXES if lowered.startswith(prefix.lower())]
-    # Longest wins, so "afterMigrateError.sql" is reported against the event it
-    # was plainly meant to be, not against "afterMigrate".
-    return max(candidates, key=len) if candidates else None
-
-
-class MigrationType(Enum):
-    """Enum for migration types."""
-
-    # Flyway-style versioned scripts (V*__description.*); parse_filename uses SQL for
-    # every supported extension (.sql, .py, …), not "SQL format only".
-    SQL = "SQL"
-    PYTHON = "PYTHON"  # non-SQL versioned script migrations (.py, .js, etc.)
-    REPEATABLE = "REPEATABLE"  # Repeatable migrations (R*.sql)
-    UNDO_SQL = "UNDO_SQL"  # Undo migrations (U*.sql)
-    BASELINE = "BASELINE"  # Baseline command entries (not actual script files)
-    CALLBACK = "CALLBACK"  # Callback scripts
-    DELETE = "DELETE"  # Delete operation entries (for audit trail when scripts are removed)
-    UNKNOWN = "UNKNOWN"  # Unknown migration type
+from dblift.core.migration.migration_types import (  # noqa: F401 - public compatibility re-export
+    VERSIONED_SCRIPT_TYPES,
+    MigrationType,
+)
+from dblift.core.migration.scripting.filename_parser import (  # noqa: F401 - compatibility for existing callback imports
+    _CALLBACK_PREFIXES,
+    strip_migration_tags,
+)
+from dblift.core.migration.sql.migration_sql_parser import (  # noqa: F401 - compatibility re-export
+    _default_splitter_dialect,
+)
 
 
 @dataclass(frozen=True)
@@ -286,6 +165,7 @@ class AppliedMigration:
         logger: Optional[Union[Log, _logging.Logger]] = None,
         dialect: Optional[str] = None,
         tags: Optional[List[str]] = None,
+        _filename_metadata: Optional[Tuple[MigrationType, Optional[str], str, List[str]]] = None,
     ) -> "Migration":
         """Build a mutable :class:`Migration` from this applied record (empty content, raw fields copied)."""
         migration = Migration(
@@ -297,6 +177,7 @@ class AppliedMigration:
             tags=tags or [],
             logger=logger,
             dialect=dialect,
+            _filename_metadata=_filename_metadata,
         )
         migration.checksum = self.checksum
         for key, value in self.raw.items():
@@ -315,17 +196,6 @@ class AppliedMigration:
                 setattr(migration, key, value)
         migration.applied_migration = self
         return migration
-
-
-# Subset of MigrationType names that behave like versioned, ordered, run-once
-# scripts. Consulted from state/command modules to decide whether a migration
-# should participate in version-based pending/applied/undone accounting.
-# Extend when a new scripted format is implemented — this is the single source
-# of truth (the former duplicated copies in core/migration/state/*.py and the
-# hardcoded literal in base_command.py have been removed).
-VERSIONED_SCRIPT_TYPES: frozenset[str] = frozenset(
-    {MigrationType.SQL.value, MigrationType.PYTHON.value}
-)
 
 
 def calculate_migration_script_checksum(content: str) -> int:
@@ -425,8 +295,7 @@ class Migration:
                 detect_encoding=self.detect_encoding,
             )
             filename_metadata = _filename_metadata or self._parse_filename()
-            _, self.version, self.description, self.tags = filename_metadata
-            self.type = self._determine_type()
+            self.type, self.version, self.description, self.tags = filename_metadata
             self._sql_statements = None
             # Detect migration format from file extension
             self.format = MigrationFormatDetector.detect_from_path(script_path)
@@ -445,7 +314,9 @@ class Migration:
             self.script_name = script_name
             self.content = content or ""
             provided_metadata = _filename_metadata
-            if provided_metadata is None and (not version or not description or not tags):
+            if provided_metadata is None and (
+                type is None or not version or not description or not tags
+            ):
                 provided_metadata = self._parse_filename()
             parsed_version = provided_metadata[1] if provided_metadata else None
             parsed_description = provided_metadata[2] if provided_metadata else ""
@@ -458,7 +329,9 @@ class Migration:
                 raise ValueError(
                     f"Invalid migration type: {type}. Must be a MigrationType enum value."
                 )
-            self.type = type or self._determine_type()
+            self.type = type or (
+                provided_metadata[0] if provided_metadata else MigrationType.UNKNOWN
+            )
 
             self.tags = tags or parsed_tags
             self._sql_statements = sql_statements
@@ -621,12 +494,12 @@ class Migration:
     def parse_sql_statements(
         self, dialect: Optional[str] = None, content_override: Optional[str] = None
     ) -> List[str]:
-        """Parse SQL statements from the migration content.
+        """Parse SQL through the 4.x compatibility shim; removal is planned for a major version.
 
         Args:
             dialect: The SQL dialect to use for parsing (e.g., 'sqlserver', 'oracle')
             content_override: If provided, parse this text instead of self.content.
-                Used by the execution engine to pass placeholder-substituted content so
+                Allows external callers to pass placeholder-substituted content so
                 that the tokeniser never sees raw ``${...}`` fragments embedded in
                 identifiers (which would otherwise cause it to insert whitespace and
                 produce un-executable SQL like ``app _config``).
@@ -661,62 +534,23 @@ class Migration:
             logger = DbliftLogger()
         log = cast(Log, logger)
 
-        # Use dialect if provided, otherwise try to determine
+        from dblift.core.migration.sql.migration_sql_parser import (
+            fallback_migration_sql,
+            parse_migration_sql,
+            resolve_migration_sql_dialect,
+        )
+        from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
+
         if dialect:
             self.dialect = dialect
-        elif self.dialect:
-            dialect = self.dialect
-        else:
-            # If no dialect provided, try to determine from config
-            config = self.config
-            if config and hasattr(config, "database") and config.database.type:
-                dialect = config.database.type.lower()
-                log.info(f"Using dialect '{dialect}' from config")
+        dialect = resolve_migration_sql_dialect(dialect or self.dialect, self.config, log)
 
-            # If still no dialect, check for environment variables
-            if not dialect:
-                db_type = os.environ.get("DBLIFT_DATABASE_TYPE")
-                if db_type:
-                    dialect = db_type.lower()
-                    log.info(f"Using dialect '{dialect}' from environment variable")
-
-        # If no dialect determined from any source, we can't proceed properly.
-        # Statement splitting still needs *a* dialect for its regex splitter;
-        # resolve a generic relational dialect from the plugin registry rather
-        # than hardcoding one (ADR-26 E5).
-        if not dialect:
-            log.warning("No dialect available from config, defaulting to simple parser")
-            from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
-
-            sql_analyzer = SqlAnalyzer(dialect=_default_splitter_dialect(), logger=log)
-            statements = sql_analyzer.split_statements(content)
-            if cache_result:
-                self._sql_statements = statements
-            return statements
-
-        # Use SqlAnalyzer to handle dialect-specific statement parsing
-        # This will follow the cascading approach defined in the architecture:
-        # 1. ANTLR with Visitors (primary method)
-        # 2. ANTLR with Regex Fallback
-        # 3. Regex (fallback)
         try:
-            from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
-
             sql_analyzer = SqlAnalyzer(dialect=dialect, logger=log)
-            statements = sql_analyzer.split_statements(content)
-            log.debug(f"SqlAnalyzer split returned {len(statements)} statements")
-        except Exception as e:
-            log.warning(
-                f"Error using SqlAnalyzer: {str(e)}. Falling back to simple semicolon-based parser."
-            )
-            # Fallback: split on semicolons, filter empty statements
-            raw = content or ""
-            statements = [s.strip() for s in raw.split(";") if s.strip()]
-            log.debug(f"Fallback parser produced {len(statements)} statements")
-
-        # Final pass: ensure we don't have any empty statements
-        if statements:
-            statements = [stmt for stmt in statements if stmt.strip()]
+        except Exception as exc:
+            statements = fallback_migration_sql(content, log, exc)
+        else:
+            statements = parse_migration_sql(sql_analyzer, content, log)
 
         # Cache only when the parse used canonical content. When called with
         # content_override (placeholder-substituted), the result is per-execution
@@ -732,18 +566,10 @@ class Migration:
 
     def _parse_filename(self) -> Tuple[MigrationType, Optional[str], str, List[str]]:
         """Parse ``script_name`` once through the canonical filename parser."""
-        from dblift.core.logger import DbliftLogger
+        from dblift.core.migration.scripting.filename_parser import parse_migration_filename
 
-        from .scripting.migration_script_manager import MigrationScriptManager
-
-        logger = self.logger
-        if logger is None:
-            logger = DbliftLogger()
-        script_manager = MigrationScriptManager(
-            cast(Log, logger), self.script_encoding, self.detect_encoding
-        )
-
-        return script_manager.parse_filename(self.script_name)
+        metadata = parse_migration_filename(self.script_name)
+        return metadata.migration_type, metadata.version, metadata.description, list(metadata.tags)
 
     def _extract_version(self) -> Optional[str]:
         """Extract version from script name through the canonical parser."""
@@ -757,42 +583,7 @@ class Migration:
         """Determine the type of migration based on the script name."""
         if not self.script_name:
             return MigrationType.UNKNOWN
-
-        script_name = self.script_name.lower()
-
-        # Check for callback scripts first — <eventPrefix>__<description>.<ext>.
-        # Must agree with MigrationScriptManager.parse_filename: the validator
-        # reads Migration.type while the loader reads parse_filename, and a file
-        # the two disagree about is loaded but dispatched to no event.
-        if _callback_event_prefix(script_name) is not None:
-            return MigrationType.CALLBACK
-
-        # Check for versioned migrations — Flyway convention: V<version>__<desc>
-        # NOTE: Uses \d (digit-only) rather than [a-z0-9] to avoid false positives:
-        # "validate.sql" starts with "va" — 'a' would match [a-z0-9] and be misclassified.
-        # A version must therefore start with a digit; MigrationScriptManager.parse_filename
-        # applies the same rule, and the two must stay in step (they disagreed once, and
-        # the stricter one silently won). _determine_type() remains a fast pre-check; full
-        # validation with version extraction is done later by MigrationScriptManager.
-        if re.match(r"^v\d", script_name):
-            return MigrationType.SQL
-
-        # Check for repeatable migrations — Flyway convention: R__<desc> (no version number)
-        # "R1__setup.sql" (versioned repeatable) is intentionally rejected (not standard Flyway).
-        if script_name.startswith("r__"):
-            return MigrationType.REPEATABLE
-
-        # Check for baseline migrations — convention: B<version>__<desc>
-        # Uses \d for same reason as versioned: avoids "backup.sql" false positive.
-        if re.match(r"^b\d", script_name):
-            return MigrationType.BASELINE
-
-        # Check for undo migrations — Flyway convention: U<version>__<desc>
-        # Uses \d for same reason: avoids "undo.sql", "update.sql" false positives.
-        if re.match(r"^u\d", script_name):
-            return MigrationType.UNDO_SQL
-
-        return MigrationType.UNKNOWN
+        return self._parse_filename()[0]
 
     def _extract_tags(self) -> List[str]:
         """Extract tags from script name through the canonical parser."""
@@ -808,7 +599,7 @@ class Migration:
         return calculate_migration_script_checksum(self.content)
 
     def __repr__(self) -> str:
-        # Deferred import: _type_match imports MigrationType from this module.
+        # Import the shared type matcher only when formatting a migration.
         from dblift.core.migration._type_match import migration_type_name
 
         type_str = migration_type_name(self.type)
@@ -833,14 +624,7 @@ def dict_to_migration(
     tags = normalized_dict.get("tags")
     # If tags not in dict, extract from script_name (tags are in brackets in filename)
     if not tags and script_name:
-        # Import here to avoid circular imports
-        from dblift.core.logger import DbliftLogger
-
-        from .scripting.migration_script_manager import MigrationScriptManager
-
-        script_logger = logger or DbliftLogger()
-        script_manager = MigrationScriptManager(script_logger)
-        tags = script_manager.extract_tags(script_name)
+        tags = strip_migration_tags(script_name)[1]
 
     applied = AppliedMigration.from_history_row(normalized_dict)
     return applied.to_migration(logger=logger, dialect=dialect, tags=tags or [])
