@@ -153,48 +153,15 @@ class CosmosDbProvider(NativeProvider):
         connection = self._get_connection_or_raise()
         return self.schema_operations.get_database_version(connection)
 
-    def supports_transactions(self) -> bool:
-        """CosmosDB ne supporte pas les transactions ACID traditionnelles.
-
-        Cosmos DB utilise la concurrence optimiste par opération.
-        Les callers doivent vérifier supports_transactions() avant d'appeler
-        begin_transaction(), commit_transaction(), rollback_transaction().
-        """
-        return False
-
     def supports_transactional_ddl(self) -> bool:
         """CosmosDB is NoSQL; it has no DDL and therefore no transactional DDL.
 
-        Overrides the ``TransactionalProvider`` default of ``True``.
         Kept aligned with ``DialectCapabilities`` for "cosmosdb" in
         ``core/sql_model/dialect.py`` — the conformance test in
         ``tests/unit/core/sql_model/test_dialect_capabilities.py`` asserts
         this pair stays in lockstep.
         """
         return False
-
-    def begin_transaction(self) -> None:
-        """Begin a database transaction (no-op: supports_transactions() returns False).
-
-        Cosmos DB uses optimistic concurrency per-operation.
-        """
-        self.log.debug("Cosmos DB uses optimistic concurrency - transaction started")
-
-    def commit_transaction(self) -> None:
-        """Commit the current transaction (no-op: supports_transactions() returns False).
-
-        Cosmos DB uses optimistic concurrency per-operation.
-        """
-        self.log.debug("Cosmos DB transaction committed")
-
-    def rollback_transaction(self) -> None:
-        """Rollback the current transaction (no-op: supports_transactions() returns False).
-
-        Cosmos DB doesn't support traditional rollback — operations are committed immediately.
-        """
-        self.log.warning(
-            "Cosmos DB doesn't support traditional rollback - operations are committed immediately"
-        )
 
     def set_current_schema(self, schema: str) -> None:
         """Set the current schema (not applicable to Cosmos DB)."""

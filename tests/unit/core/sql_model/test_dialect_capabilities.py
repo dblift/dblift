@@ -27,6 +27,7 @@ from dblift.core.sql_model.dialect import (
     dialect_uses_uppercase_identifiers,
     get_dialect_capabilities,
 )
+from dblift.db.provider_interfaces import TransactionalProvider
 
 # --- Matrix-level invariants -------------------------------------------------
 
@@ -232,8 +233,8 @@ class TestProviderConformance:
     )
     def test_supports_transactions_matches_matrix(self, dialect, module_path, class_name):
         stub = self._stub(module_path, class_name)
-        assert stub.supports_transactions() is dialect_supports_transactions(dialect), (
-            f"{class_name}.supports_transactions() does not match "
+        assert isinstance(stub, TransactionalProvider) is dialect_supports_transactions(dialect), (
+            f"{class_name} transaction interface does not match "
             f"DialectCapabilities for {dialect!r}. Update either the override "
             f"or the matrix — both must agree."
         )

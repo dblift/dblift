@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
 
 from dblift.config import DbliftConfig
+from dblift.db.provider_interfaces import TransactionalProvider
 
 if TYPE_CHECKING:
     from dblift.core.migration.journals.migration_journal import MigrationJournal
@@ -832,7 +833,8 @@ class MigrateCommand(BaseCommand):
                     self._log_command_completion("migrate", result)
                     return result
                 try:
-                    self.provider.commit_transaction()
+                    if isinstance(self.provider, TransactionalProvider):
+                        self.provider.commit_transaction()
                 except Exception as commit_error:
                     self.log.error(
                         f"Failed to commit mark-as-executed history records: {commit_error}"

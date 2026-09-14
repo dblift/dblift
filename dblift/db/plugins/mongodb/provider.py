@@ -77,31 +77,9 @@ class MongoDbProvider(NativeProvider):
 
     # --- transactions (absent) -------------------------------------------
 
-    def supports_transactions(self) -> bool:
-        """False: dblift cannot own a transaction around a script's own calls.
-
-        MongoDB does have multi-document transactions on a replica set, but
-        pymongo requires an explicit ``session=`` on every operation. dblift
-        never sees the driver calls a Python migration makes, so it cannot
-        enrol them. A script that wants a transaction opens its own session.
-        """
-        return False
-
     def supports_transactional_ddl(self) -> bool:
-        """False — see :meth:`supports_transactions`."""
+        """MongoDB has no transactional DDL managed by DBLift."""
         return False
-
-    def begin_transaction(self) -> None:
-        """No-op: the framework calls this unconditionally."""
-        return None
-
-    def commit_transaction(self) -> None:
-        """No-op — see :meth:`begin_transaction`."""
-        return None
-
-    def rollback_transaction(self) -> None:
-        """No-op — see :meth:`begin_transaction`."""
-        return None
 
     # --- document store contract -----------------------------------------
 

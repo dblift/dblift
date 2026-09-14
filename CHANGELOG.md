@@ -13,6 +13,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Providers now declare explicit transaction support accurately; migration commands
+  and callbacks skip transaction calls for providers without that capability.
 - SQL callbacks now honor autocommit requirements and reject incompatible mixed
   transaction modes. Callback SQL also receives the same placeholder and
   dialect preprocessing as migrations, including SQL*Plus directives.

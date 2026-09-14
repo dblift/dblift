@@ -208,7 +208,7 @@ class ExecutionEngine:
             # transaction open. The re-raise on the last line preserves the original
             # type for upstream classification — broad catch here, typed handling
             # happens at the call site.
-            if transaction_started:
+            if transaction_started and isinstance(self.provider, TransactionalProvider):
                 try:
                     self.provider.rollback_transaction()
                     self.log.debug(
@@ -391,6 +391,8 @@ class ExecutionEngine:
         Returns:
             True if begin_transaction succeeded, False otherwise.
         """
+        if not isinstance(self.provider, TransactionalProvider):
+            return False
         try:
             # Check connection state before beginning
             if (
@@ -568,15 +570,9 @@ class ExecutionEngine:
             stmt_start_time = time.time()
             try:
                 # Pre-check transaction state (PostgreSQL anti-aborted-transaction).
-                # Skip when supports_transactions() is False (e.g. Cosmos DB): the provider
-                # still exposes ``connection`` and TransactionalProvider, but there is no SQL
-                # session and execute_query("SELECT 1") would run against a default container
-                # that may not exist yet.
+                # Only transactional providers own a SQL transaction to probe.
                 try:
-                    run_precheck = (
-                        isinstance(self.provider, TransactionalProvider)
-                        and self.provider.supports_transactions()
-                    )
+                    run_precheck = isinstance(self.provider, TransactionalProvider)
                     if run_precheck:
                         if hasattr(self.provider, "connection") and self.provider.connection:
                             conn = self.provider.connection
@@ -735,8 +731,11 @@ class ExecutionEngine:
 
         # Rollback transaction for failed migration FIRST
         try:
-            self.provider.rollback_transaction()
-            self.log.debug(f"Rolled back transaction for failed migration {migration.script_name}")
+            if isinstance(self.provider, TransactionalProvider):
+                self.provider.rollback_transaction()
+                self.log.debug(
+                    f"Rolled back transaction for failed migration {migration.script_name}"
+                )
         except Exception as rollback_e:
             self.log.warning(
                 f"Could not rollback transaction for {migration.script_name}: {rollback_e}"
@@ -761,16 +760,18 @@ class ExecutionEngine:
         # Use a separate transaction to persist the failure record
         if self.history_manager:
             try:
-                self.provider.begin_transaction()
+                if isinstance(self.provider, TransactionalProvider):
+                    self.provider.begin_transaction()
                 self.log.debug(
                     f"Recording failed migration {migration.script_name} in history table"
                 )
                 self.history_manager.record_migration(
                     migration, success=False, execution_time=total_ms
                 )
-                self.provider.commit_transaction()
+                if isinstance(self.provider, TransactionalProvider):
+                    self.provider.commit_transaction()
                 result.failed_history_persisted = True
-                self.log.debug(f"Committed failed migration record for {migration.script_name}")
+                self.log.debug(f"Recorded failed migration in history for {migration.script_name}")
             except Exception as history_e:
                 result.failed_history_persisted = False
                 if hasattr(result, "add_warning"):
@@ -781,7 +782,8 @@ class ExecutionEngine:
                     f"Could not record failed migration {migration.script_name} in history: {history_e}"
                 )
                 try:
-                    self.provider.rollback_transaction()
+                    if isinstance(self.provider, TransactionalProvider):
+                        self.provider.rollback_transaction()
                 except Exception as rollback_history_e:
                     self.log.debug(
                         f"Could not rollback history record transaction for {migration.script_name}: {rollback_history_e}"
@@ -801,13 +803,13 @@ class ExecutionEngine:
             self.history_manager.record_migration(
                 migration, success=True, execution_time=execution_time
             )
-            if transaction_started:
+            if transaction_started and isinstance(self.provider, TransactionalProvider):
                 self.provider.commit_transaction()
         except Exception as history_error:
             self.log.error(
                 f"Failed to record migration history for {migration.script_name}: {history_error}"
             )
-            if transaction_started:
+            if transaction_started and isinstance(self.provider, TransactionalProvider):
                 try:
                     self.provider.rollback_transaction()
                 except Exception as rollback_e:
@@ -833,7 +835,8 @@ class ExecutionEngine:
                 f"Failed to record migration history for {migration.script_name}: {history_error}"
             )
             try:
-                self.provider.rollback_transaction()
+                if isinstance(self.provider, TransactionalProvider):
+                    self.provider.rollback_transaction()
                 self.log.debug(
                     f"Rolled back transaction due to history recording failure for {migration.script_name}"
                 )
@@ -855,6 +858,8 @@ class ExecutionEngine:
             Post-commit verification failures (CREATE TABLE SELECT check) are non-critical
             and are caught internally — they do not raise.
         """
+        if not isinstance(self.provider, TransactionalProvider):
+            return
         try:
             self.provider.commit_transaction()
 
@@ -1118,7 +1123,7 @@ class ExecutionEngine:
             )
 
         transaction_started = False
-        if policy.transactional:
+        if policy.transactional and isinstance(self.provider, TransactionalProvider):
             try:
                 self.provider.begin_transaction()
                 transaction_started = True
@@ -1282,7 +1287,7 @@ class ExecutionEngine:
                     self.log.error(f"Failed statement: {statement}")
                     raise
 
-            if transaction_started:
+            if transaction_started and isinstance(self.provider, TransactionalProvider):
                 # Commit transaction for successful callback execution
                 try:
                     self.provider.commit_transaction()
@@ -1297,7 +1302,7 @@ class ExecutionEngine:
             # Rollback safety net for callback execution. Same rationale as the
             # migration-execution path above: ANY uncaught error here must rollback
             # before re-raise, narrowing would let unexpected types skip rollback.
-            if transaction_started:
+            if transaction_started and isinstance(self.provider, TransactionalProvider):
                 try:
                     self.provider.rollback_transaction()
                     self.log.debug(

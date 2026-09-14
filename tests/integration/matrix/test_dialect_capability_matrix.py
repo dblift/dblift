@@ -2,7 +2,7 @@
 
 Every provider class declares what it supports via ISP protocols
 (ConnectionProvider, TransactionalProvider, SchemaProvider, etc.) and via
-``supports_transactions()``. If a provider implements a protocol but raises
+plugin-owned quirks metadata. If a provider implements a protocol but raises
 ``NotImplementedError`` at runtime — or vice versa — that's the exact class
 of bug that caused:
   * BUG-COSMOS-1 — ``_capture_snapshot`` fired SQL queries at CosmosDB
@@ -53,39 +53,15 @@ def test_every_provider_is_subclass_of_baseprovider(plugins):
 
 
 @pytest.mark.integration
-def test_supports_transactions_is_explicit_bool(plugins):
-    """``supports_transactions`` must be a concrete method returning bool — not inherited NotImplementedError."""
+def test_runtime_transaction_capability_matches_plugin_metadata(plugins):
+    """Check the plugin contract without constructing providers or connections."""
+    from dblift.db.base_quirks import BaseQuirks
+
     for plugin in plugins:
-        cls = plugin.provider_class
-        assert hasattr(
-            cls, "supports_transactions"
-        ), f"{plugin.name}: no supports_transactions() method"
-        # Must not be abstract on concrete classes
-        method = cls.supports_transactions
-        assert not getattr(
-            method, "__isabstractmethod__", False
-        ), f"{plugin.name}: supports_transactions is still abstract"
-
-
-@pytest.mark.integration
-def test_cosmos_declares_no_transaction_support(plugins):
-    """CosmosDB must declare supports_transactions=False — runtime guards depend on it."""
-    cosmos = [p for p in plugins if p.name.lower() == "cosmosdb"]
-    if not cosmos:
-        pytest.skip("CosmosDB plugin not registered")
-
-    # Instantiating CosmosDbProvider needs a config; read the class-level default.
-    # If supports_transactions is a @staticmethod/classmethod, call it directly.
-    cls = cosmos[0].provider_class
-    # Best-effort: read the source default without instantiating.
-    # The bug surface is if it *returned* True, which would route callers down
-    # the SQL transaction path.
-    import inspect
-
-    src = inspect.getsource(cls.supports_transactions)
-    assert "False" in src, (
-        f"CosmosDbProvider.supports_transactions appears not to return False. " f"Source:\n{src}"
-    )
+        quirks_class = plugin.quirks_class or BaseQuirks
+        assert issubclass(plugin.provider_class, TransactionalProvider) is bool(
+            quirks_class.supports_transactions
+        ), plugin.name
 
 
 @pytest.mark.integration

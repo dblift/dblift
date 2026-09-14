@@ -5,9 +5,8 @@ This module defines the common provider contract and the transport-family
 markers used by DBLift's registry. Database providers expose SQL semantics;
 native providers use drivers, SDKs, or embedded APIs behind the same boundary.
 
-BaseProvider hérite des 5 interfaces focalisées (ISP) :
-    ConnectionProvider, QueryProvider, SchemaProvider,
-    TransactionalProvider, MigrationProvider
+BaseProvider hérite des interfaces communes (ISP) :
+    ConnectionProvider, QueryProvider, SchemaProvider, MigrationProvider
 
 Les providers concrets (SQLAlchemy, CosmosDB, SQLite) héritent de BaseProvider.
 Pour vérifier les capacités, utiliser isinstance :
@@ -33,10 +32,9 @@ class BaseProvider(
     ConnectionProvider,
     QueryProvider,
     SchemaProvider,
-    TransactionalProvider,
     MigrationProvider,
 ):
-    """Base pour tous les providers — hérite des 5 interfaces focalisées.
+    """Base pour tous les providers — expose les capacités communes.
 
     Les providers concrets (SQLAlchemy, CosmosDB, SQLite) héritent de BaseProvider.
     Pour vérifier les capacités, utiliser isinstance :
@@ -226,7 +224,7 @@ class BaseProvider(
         try:
             self.execute_statement(ddl)
             # best effort commit for some providers
-            if hasattr(self, "commit_transaction"):
+            if isinstance(self, TransactionalProvider):
                 try:
                     self.commit_transaction()
                 except Exception:

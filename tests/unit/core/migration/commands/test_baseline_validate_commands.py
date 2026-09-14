@@ -29,6 +29,7 @@ from unittest.mock import MagicMock, call, patch
 from dblift.core.logger.results import BaselineResult, ValidateResult
 from dblift.core.migration.commands.baseline_command import BaselineCommand
 from dblift.core.migration.commands.validate_command import ValidateCommand
+from dblift.db.provider_interfaces import TransactionalProvider
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -47,6 +48,7 @@ def _make_baseline_cmd(
     )
     _log = log or MagicMock()
     _provider = provider or MagicMock()
+    _provider.__class__ = TransactionalProvider
     _hm = history_manager or MagicMock()
     _stm = MagicMock()
     _stm.get_applied_migration_records.side_effect = _hm.get_applied_migration_records

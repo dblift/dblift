@@ -9,7 +9,7 @@ from dblift.core.exceptions import NoSqlQueryLanguageUnsupportedError
 from dblift.db.plugins.mongodb.config import MongoDbConfig
 from dblift.db.plugins.mongodb.provider import MongoDbProvider
 from dblift.db.plugins.nosql_base import DocumentStoreProvider
-from dblift.db.provider_interfaces import DroppableObject
+from dblift.db.provider_interfaces import DroppableObject, TransactionalProvider
 
 
 def _provider():
@@ -60,16 +60,8 @@ def test_statements_are_rejected():
 
 def test_transactions_are_not_claimed():
     provider = _provider()
-    assert provider.supports_transactions() is False
+    assert not isinstance(provider, TransactionalProvider)
     assert provider.supports_transactional_ddl() is False
-
-
-def test_transaction_calls_are_no_ops():
-    """The framework calls these unconditionally; they must not raise."""
-    provider = _provider()
-    provider.begin_transaction()
-    provider.commit_transaction()
-    provider.rollback_transaction()
 
 
 def test_display_url_is_masked():
