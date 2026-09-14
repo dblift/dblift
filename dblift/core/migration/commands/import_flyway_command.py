@@ -7,8 +7,6 @@ from dblift.core.logger.results import OperationResult
 from dblift.core.migration.commands.base_command import BaseCommand
 from dblift.core.migration.migration import MigrationType
 from dblift.core.sql_validator._flyway_compatibility import FLYWAY_TYPE_TO_MIGRATION_TYPE
-from dblift.db.object_naming import get_normalized_object_name
-from dblift.db.provider_registry import ProviderRegistry
 
 
 def _as_bool(value: Any) -> bool:
@@ -50,15 +48,7 @@ class ImportFlywayCommand(BaseCommand):
         result.target_schema = self.config.database.schema
         default_source_table = "flyway_schema_history"
         source_table = (flyway_table or default_source_table).strip()
-        db_type = str(getattr(self.config.database, "type", "") or "").lower()
-        if (
-            source_table == default_source_table
-            and ProviderRegistry.get_quirks(db_type).flyway_source_table_case_sensitive
-        ):
-            # No explicit --flyway-table override: normalize the default name to
-            # the dialect's unquoted-identifier case so it matches a real Flyway
-            # installation's table (e.g. Oracle/DB2 fold unquoted DDL to uppercase).
-            source_table = get_normalized_object_name(source_table, db_type)
+        source_table = self.state_manager.resolve_flyway_source_table(source_table)
         configured_target = getattr(self.config, "history_table", None)
         target_table = (
             configured_target.strip()
@@ -91,9 +81,7 @@ class ImportFlywayCommand(BaseCommand):
             # (benign but still notable). get_applied_migrations silently returns
             # [] for both, so a user staring at "0 entries imported" cannot tell
             # whether their --db-url is pointing at the wrong database.
-            if hasattr(self.provider, "table_exists") and not self.provider.table_exists(
-                schema, source_table
-            ):
+            if not self.state_manager.history_source_exists(schema, source_table):
                 msg = (
                     f"{source_table} table not found in schema '{schema}'. "
                     "Verify the database connection points at a Flyway-managed schema, "
@@ -175,26 +163,12 @@ class ImportFlywayCommand(BaseCommand):
             return result
 
     def _get_flyway_rows(self, schema: str, source_table: str) -> List[Dict[str, Any]]:
-        db_type = str(getattr(self.config.database, "type", "") or "").lower()
-        quirks = ProviderRegistry.get_quirks(db_type)
-        if not quirks.flyway_source_table_case_sensitive:
-            return self.provider.get_applied_migrations(schema, source_table)
-
-        qualified_table = self.provider.get_schema_qualified_name(schema, source_table)
-        query = f"""
-        SELECT script, installed_rank, version, description,
-               type, checksum, installed_by, installed_on,
-               execution_time, success
-        FROM {qualified_table}
-        ORDER BY installed_rank
-        """
-        rows = self.provider.execute_query(query)
-        return [self._normalize_flyway_row(row) for row in rows]
+        return self.state_manager.read_history_rows(schema, source_table, flyway_source=True)
 
     def _filter_existing_rows(
         self, schema: str, target_table: str, flyway_rows: List[Dict[str, Any]]
     ) -> tuple[List[Dict[str, Any]], int]:
-        existing_rows = self.provider.get_applied_migrations(schema, target_table)
+        existing_rows = self.state_manager.read_history_rows(schema, target_table)
         existing_versions = {
             str(row["version"]) for row in existing_rows if row.get("version") not in (None, "")
         }
@@ -249,23 +223,3 @@ class ImportFlywayCommand(BaseCommand):
             # no version — dblift models this as its own REPEATABLE type.
             mapped_type = MigrationType.REPEATABLE.name
         return {**row, "type": mapped_type, "success": _as_bool(row.get("success", True))}
-
-    @staticmethod
-    def _normalize_flyway_row(row: Dict[str, Any]) -> Dict[str, Any]:
-        fields = (
-            "script",
-            "installed_rank",
-            "version",
-            "description",
-            "type",
-            "checksum",
-            "installed_by",
-            "installed_on",
-            "execution_time",
-            "success",
-        )
-
-        def get_value(name: str) -> Any:
-            return row.get(name, row.get(name.upper(), row.get(name.lower())))
-
-        return {field: get_value(field) for field in fields}

@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional
 from dblift.core.migration.state.migration_display_state import MigrationDisplayState
 
 if TYPE_CHECKING:
+    from dblift.core.migration.history.migration_history_manager import FlywayCompatibilitySnapshot
     from dblift.core.migration.migration import Migration
     from dblift.core.migration.state.migration_state_manager import MigrationStateManager
 
@@ -31,6 +32,7 @@ class MigrationValidationSnapshot:
     scripts_directory_exists: bool
     strict_mode: bool
     scripts_directory: Optional[Path] = None
+    history_read_error: str = ""
 
 
 @dataclass(slots=True)
@@ -39,6 +41,10 @@ class MigrationReadSnapshot:
 
     _state_manager: MigrationStateManager = field(repr=False)
     _applied_records: Optional[List[Migration]] = field(default=None, init=False, repr=False)
+
+    _flyway_data: Optional[FlywayCompatibilitySnapshot] = field(
+        default=None, init=False, repr=False
+    )
 
     def get_applied_migrations(self) -> List[Migration]:
         """Request this phase's history from the owning state manager."""

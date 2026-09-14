@@ -12,7 +12,7 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple
 from dblift.config import DbliftConfig
 from dblift.core.logger import Log, NullLog
 from dblift.core.migration.migration import Migration
-from dblift.core.migration.state.migration_state import MigrationReadSnapshot
+from dblift.core.migration.state.migration_state import MigrationValidationSnapshot
 from dblift.core.sql_validator.migration_validator import MigrationValidator
 
 
@@ -90,50 +90,11 @@ class MigrationHelpers:
     def validate_migrations_for_migrate(
         self,
         validator: MigrationValidator,
-        scripts_dir: Path,
-        use_recursive: bool,
-        use_additional_dirs: List[Path],
-        target_version: Optional[str] = None,
-        tags: Optional[Sequence[str]] = None,
-        exclude_tags: Optional[Sequence[str]] = None,
-        versions: Optional[Sequence[str]] = None,
-        exclude_versions: Optional[Sequence[str]] = None,
-        *,
-        resolved_migrations: Optional[List[Migration]] = None,
-        preloaded_records: Optional[List[Migration]] = None,
-        read_snapshot: Optional[MigrationReadSnapshot] = None,
+        snapshot: MigrationValidationSnapshot,
     ) -> Tuple[bool, Optional[str], float]:
-        """Validate migrations for the migrate command.
-
-        Args:
-            validator: Migration validator instance
-            scripts_dir: Directory containing migration scripts
-            use_recursive: Whether to recursively search for migrations
-            use_additional_dirs: Additional directories to search
-            target_version: Optional target version filter
-            tags: Optional tags to include
-            exclude_tags: Optional tags to exclude
-            versions: Optional versions to include
-            exclude_versions: Optional versions to exclude
-
-        Returns:
-            Tuple of (validation_success, error_message, validation_time)
-        """
+        """Run migrate preflight over the StateManager's prepared inputs."""
         start_validation_time = time.time()
-        validation_result = validator.validate_migrations(
-            scripts_dir,
-            "migrate",
-            recursive=use_recursive,
-            additional_dirs=use_additional_dirs,
-            target_version=target_version,
-            tags=tags,
-            exclude_tags=exclude_tags,
-            versions=versions,
-            exclude_versions=exclude_versions,
-            resolved_migrations=resolved_migrations,
-            preloaded_records=preloaded_records,
-            read_snapshot=read_snapshot,
-        )
+        validation_result = validator.validate_snapshot(snapshot, "migrate")
         validation_time = time.time() - start_validation_time
 
         error_message_raw = getattr(validation_result, "error_message", "") or ""

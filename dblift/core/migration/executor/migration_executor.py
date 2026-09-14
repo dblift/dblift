@@ -119,7 +119,12 @@ class MigrationExecutor:
         )
 
         self.validator = MigrationValidator(
-            self.script_manager, self.history_manager, log, self.placeholders
+            self.script_manager,
+            self.history_manager,
+            log,
+            self.placeholders,
+            state_manager=self.state_manager,
+            quirks=self.provider.quirks,
         )
         self.ui = MigrationUI(log)
         self.migration_ui = self.ui  # Alias for backward compatibility/consistency

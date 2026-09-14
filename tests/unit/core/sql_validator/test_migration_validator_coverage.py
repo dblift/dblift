@@ -21,8 +21,17 @@ def _make_validator(dialect="postgresql"):
     hm.normalized_history_table = "dblift_schema_history"
     hm.provider = MagicMock()
     hm.provider.config.database.type = dialect
+    from dblift.core.migration.history.migration_history_manager import MigrationHistoryManager
+    from dblift.core.migration.scripting.migration_script_manager import MigrationScriptManager
+    from dblift.db.base_quirks import BaseQuirks
+
+    hm.collect_flyway_compatibility_snapshot.side_effect = (
+        lambda: MigrationHistoryManager.collect_flyway_compatibility_snapshot(hm)
+    )
+    hm.ensure_history_table.side_effect = lambda: MigrationHistoryManager.ensure_history_table(hm)
+    sm.migration_directory_exists.side_effect = MigrationScriptManager.migration_directory_exists
     log = MagicMock()
-    v = MigrationValidator(script_manager=sm, history_manager=hm, log=log)
+    v = MigrationValidator(script_manager=sm, history_manager=hm, log=log, quirks=BaseQuirks())
     return v, sm, hm, log
 
 
@@ -114,7 +123,7 @@ class TestValidateFlywayCompatibilityBranches(unittest.TestCase):
         result = v.validate_flyway_compatibility()
         self.assertFalse(result["flyway_exists"])
         self.assertTrue(result["compatible"])
-        self.assertIsNotNone(v._flyway_compatibility_cache)
+        self.assertIsNotNone(v.state_manager._read_phase._flyway_data)
 
     def test_flyway_exists_no_dblift_caches_and_returns(self):
         v, _, hm, _ = _make_validator()
@@ -220,21 +229,17 @@ class TestCheckFlywayHistoryTableCoverage(unittest.TestCase):
     def test_both_compatible_returns_success(self):
         v, _, hm, _ = _make_validator()
         hm.provider.table_exists.return_value = True
-        v.validate_flyway_compatibility = MagicMock(
-            return_value={"compatible": True, "error_message": ""}
-        )
+        hm.provider.execute_query.return_value = []
         result = v.check_flyway_history_table()
         self.assertTrue(result.success)
 
     def test_both_incompatible_returns_failure(self):
         v, _, hm, _ = _make_validator()
         hm.provider.table_exists.return_value = True
-        v.validate_flyway_compatibility = MagicMock(
-            return_value={"compatible": False, "error_message": "mismatch error"}
-        )
+        hm.provider.execute_query.side_effect = [[{"version": "1"}], []]
         result = v.check_flyway_history_table()
         self.assertFalse(result.success)
-        self.assertIn("mismatch error", result.error_message)
+        self.assertIn("Flyway has 1 migrations", result.error_message)
 
     def test_exception_in_check_returns_failure(self):
         v, _, hm, _ = _make_validator()
@@ -282,7 +287,9 @@ class TestLoadAndFilterMigrations(unittest.TestCase):
         unknown = self._make_script("junk.py", MigrationType.UNKNOWN)
         valid = self._make_script("V1__ok.sql", MigrationType.SQL)
         sm.get_migration_scripts.return_value = [unknown, valid]
-        result = v._load_and_filter_migrations(Path("/fake"), True, [], [])
+        result = v.state_manager.build_validation_snapshot(
+            None, resolved_migrations=sm.get_migration_scripts.return_value
+        ).resolved_migrations
         self.assertNotIn(unknown, result)
         self.assertIn(valid, result)
 
@@ -299,7 +306,9 @@ class TestLoadAndFilterMigrations(unittest.TestCase):
             self._make_script("V1__py.py", MigrationType.PYTHON),
         ]
         sm.get_migration_scripts.return_value = scripts
-        result = v._load_and_filter_migrations(Path("/fake"), True, [], [])
+        result = v.state_manager.build_validation_snapshot(
+            None, resolved_migrations=sm.get_migration_scripts.return_value
+        ).resolved_migrations
         self.assertEqual(len(result), 6)
 
 
@@ -452,18 +461,16 @@ class TestValidateNoScriptsCase(unittest.TestCase):
     def test_no_scripts_returns_early_true(self):
         v, _, hm, _ = _make_validator()
         hm.provider.config = None
-        should_return, success = v._validate_no_scripts_case([], [])
-        self.assertTrue(should_return)
-        self.assertTrue(success)
+        result = v.validate_resolved_migrations([])
+        self.assertTrue(result.success)
 
     def test_no_scripts_strict_mode_with_applied_returns_false(self):
         v, _, hm, _ = _make_validator()
         config = SimpleNamespace(strict_mode=True)
         hm.provider.config = config
         hm.get_applied_migrations.return_value = [_make_migration()]
-        should_return, success = v._validate_no_scripts_case([], [])
-        self.assertTrue(should_return)
-        self.assertFalse(success)
+        result = v.validate_resolved_migrations([])
+        self.assertFalse(result.success)
 
     def test_with_scripts_does_not_return_early(self):
         from dblift.core.migration.migration import MigrationType
@@ -472,9 +479,10 @@ class TestValidateNoScriptsCase(unittest.TestCase):
         script = SimpleNamespace(
             type=MigrationType.SQL, version="1", script_name="V1__t.sql", checksum=1, path=None
         )
-        should_return, success = v._validate_no_scripts_case([script], [])
-        self.assertFalse(should_return)
-        self.assertTrue(success)
+        v.state_manager.history_manager.has_history_table = False
+        result = v.validate_resolved_migrations([script])
+        self.assertEqual(result.migrations, [script])
+        self.assertTrue(result.success)
 
 
 # ---------------------------------------------------------------------------
@@ -1448,7 +1456,7 @@ class TestValidateReappearedMigrations(unittest.TestCase):
         from dblift.core.sql_validator.migration_validator import ValidationResult
 
         v, *_ = _make_validator()
-        hm = v.history_manager
+        hm = v.state_manager.history_manager
         hm.schema = "public"
         hm.history_table = "dblift_schema_history"
         result = ValidationResult()
@@ -1681,7 +1689,7 @@ class TestApplyFilters(unittest.TestCase):
     def test_scope_applied_only_uses_version_filters(self):
         v, sm, *_ = _make_validator()
         scripts = [self._sql_script("1"), self._sql_script("2")]
-        result = v._scope_applied_migrations_for_validation(scripts, versions=["1"])
+        result = v.state_manager.apply_filters_to_migrations(scripts, versions=["1"])
         self.assertEqual(len(result), 1)
 
     def test_target_version_filter(self):

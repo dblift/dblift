@@ -11,7 +11,6 @@ from dblift.core.migration.migration import (
     normalize_migration_checksum,
 )
 from dblift.core.migration.scripting.migration_script_manager import (  # noqa: F401
-    _current_script_checksum,
     _last_successful_non_delete_record,
     _successful_non_delete_records,
 )
@@ -159,8 +158,8 @@ def validate_checksums(
         script_obj = cast(Migration, script_obj)
         checksum_key = script_obj.script_name
         if checksum_key not in current_checksums:
-            current_checksums[checksum_key] = _current_script_checksum(
-                mv.script_manager, getattr(script_obj, "path", None), script_obj
+            current_checksums[checksum_key] = normalize_migration_checksum(
+                getattr(script_obj, "checksum", None)
             )
         current_checksum = current_checksums[checksum_key]
         if (
@@ -271,7 +270,7 @@ def check_repeatable_migrations(
             applied_checksum = normalize_migration_checksum(
                 getattr(successful_record, "checksum", None)
             )
-            current_checksum = _current_script_checksum(mv.script_manager, script.path, script)
+            current_checksum = normalize_migration_checksum(getattr(script, "checksum", None))
             script_changed = (
                 applied_checksum is None
                 or current_checksum is None

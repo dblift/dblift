@@ -8,7 +8,10 @@ from typing import Any, Dict, Iterable, List, Optional, Sequence, Set, Tuple, ca
 
 from dblift.core.logger import Log
 from dblift.core.migration._type_match import migration_type_name
-from dblift.core.migration.history.migration_history_manager import MigrationHistoryManager
+from dblift.core.migration.history.migration_history_manager import (
+    FlywayCompatibilitySnapshot,
+    MigrationHistoryManager,
+)
 from dblift.core.migration.migration import (
     VERSIONED_SCRIPT_TYPES,
     AppliedMigration,
@@ -19,6 +22,12 @@ from dblift.core.migration.rules.migration_rules import MigrationRules
 from dblift.core.migration.scripting.migration_script_manager import MigrationScriptManager
 from dblift.core.migration.state.migration_data_service import MigrationDataService
 from dblift.core.migration.state.migration_display_state import MigrationDisplayState
+from dblift.core.migration.state.migration_selector import (
+    normalize_filter,
+    passes_filters,
+    prune_baseline_migrations,
+    select_migrations,
+)
 from dblift.core.migration.state.migration_state import (
     CallbackReadSnapshot,
     ChecksumChange,
@@ -30,10 +39,10 @@ from dblift.core.migration.state.migration_state import (
 from dblift.core.migration.state.migration_state_service import MigrationStateService
 from dblift.core.migration.state.rank_wins import latest_successful_ranks
 from dblift.core.migration.version_utils import (
-    compare_versions,
     is_migration_failure,
     is_migration_success,
 )
+from dblift.db.base_quirks import BaseQuirks
 
 
 class StrictModeError(ValueError):
@@ -74,13 +83,47 @@ class MigrationStateManager:
         self.migration_rules = migration_rules
 
         self.state_service = MigrationStateService(logger)
+        self._read_phase = MigrationReadSnapshot(self)
 
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
     def new_read_snapshot(self) -> MigrationReadSnapshot:
         """Create an empty read phase; no database access occurs until it is consumed."""
-        return MigrationReadSnapshot(self)
+        self._read_phase = MigrationReadSnapshot(self)
+        return self._read_phase
+
+    def get_validation_quirks(self) -> BaseQuirks:
+        """Expose the provider-owned format policy for legacy validator construction."""
+        return getattr(self.history_manager.provider, "quirks", None) or BaseQuirks()
+
+    def read_history_rows(
+        self, schema: str, table: str, *, flyway_source: bool = False
+    ) -> List[Dict[str, Any]]:
+        """Expose HistoryManager-owned import inputs to commands."""
+        return self.history_manager.read_history_rows(schema, table, flyway_source=flyway_source)
+
+    def history_source_exists(self, schema: str, table: str) -> bool:
+        """Expose source-table existence through the history data owner."""
+        return self.history_manager.history_source_exists(schema, table)
+
+    def resolve_flyway_source_table(self, table: str) -> str:
+        """Delegate the provider-owned source-table naming policy."""
+        return self.history_manager.resolve_flyway_source_table(table)
+
+    def get_flyway_compatibility_snapshot(
+        self, read_snapshot: Optional[MigrationReadSnapshot] = None
+    ) -> FlywayCompatibilitySnapshot:
+        """Aggregate immutable Flyway table data once per read phase."""
+        phase = read_snapshot if read_snapshot is not None else self._read_phase
+        if phase._flyway_data is None:
+            phase._flyway_data = self.history_manager.collect_flyway_compatibility_snapshot()
+        return phase._flyway_data
+
+    def ensure_history_table(self) -> None:
+        """Delegate legacy history initialization to its owner."""
+        self.history_manager.ensure_history_table()
+        self.new_read_snapshot()
 
     def build_validation_snapshot(
         self,
@@ -130,27 +173,16 @@ class MigrationStateManager:
         ]
         # The resolved-list 4.x adapter already receives its caller's execution scope.
         if scripts_dir is not None:
-            baselines = [
-                m.version for m in catalog if m.type == MigrationType.BASELINE and m.version
-            ]
-            highest = None
-            for version in baselines:
-                if highest is None or compare_versions(version, highest) > 0:
-                    highest = version
-            if highest is not None:
-                catalog = [
-                    m
-                    for m in catalog
-                    if self._get_type_name(m) not in VERSIONED_SCRIPT_TYPES
-                    or compare_versions(m.version, highest) > 0
-                ]
+            catalog = prune_baseline_migrations(catalog)
         history_exists = bool(self.history_manager.has_history_table)
+        history_read_error = ""
         if applied_migrations is None:
             try:
                 applied_migrations = (
                     self.get_applied_migrations(read_snapshot) if history_exists else []
                 )
             except Exception as error:
+                history_read_error = str(error)
                 self.logger.error(f"Error getting applied migrations: {error}")
                 applied_migrations = []
         if strict_mode is None:
@@ -176,6 +208,7 @@ class MigrationStateManager:
             scripts_directory_exists=directory_exists,
             strict_mode=strict_mode,
             scripts_directory=scripts_dir,
+            history_read_error=history_read_error,
         )
 
     def get_applied_migrations(
@@ -641,13 +674,7 @@ class MigrationStateManager:
     # ------------------------------------------------------------------
     # Utility helpers
     # ------------------------------------------------------------------
-    @staticmethod
-    def _normalize_filter(value: Optional[Sequence[str]]) -> Optional[List[str]]:
-        if value is None:
-            return None
-        if isinstance(value, str):
-            return [part.strip() for part in value.split(",") if part.strip()]
-        return [str(item) for item in value if str(item).strip()]
+    _normalize_filter = staticmethod(normalize_filter)
 
     @staticmethod
     def _get_type_name(migration: Migration) -> str:
@@ -945,104 +972,5 @@ class MigrationStateManager:
 
         return False
 
-    def _passes_filters(
-        self,
-        migration: Migration,
-        target_version: Optional[str],
-        tags: Optional[List[str]],
-        exclude_tags: Optional[List[str]],
-        versions: Optional[List[str]],
-        exclude_versions: Optional[List[str]],
-    ) -> bool:
-        """Check if migration passes all filter criteria."""
-        version = getattr(migration, "version", None)
-        migration_tags = getattr(migration, "tags", []) or []
-
-        # Target version filter
-        if target_version and version:
-            if self.script_manager.compare_versions(version, target_version) > 0:
-                return False
-
-        # Versions inclusion filter
-        if versions and version:
-            if str(version) not in versions:
-                return False
-
-        # Versions exclusion filter
-        if exclude_versions and version:
-            if str(version) in exclude_versions:
-                return False
-
-        # Tags inclusion filter
-        if tags:
-            # Ensure migration_tags is a list (defensive check)
-            if not isinstance(migration_tags, list):
-                migration_tags = list(migration_tags) if migration_tags else []
-            # Normalize tags for comparison (strip whitespace, handle case)
-            normalized_migration_tags = [str(tag).strip().lower() for tag in migration_tags if tag]
-            normalized_filter_tags = [str(tag).strip().lower() for tag in tags if tag]
-            # If migration has no tags and we're filtering by tags, exclude it
-            # If migration has tags but none match the filter tags, exclude it
-            if not normalized_migration_tags or not any(
-                tag in normalized_migration_tags for tag in normalized_filter_tags
-            ):
-                return False
-
-        # Tags exclusion filter
-        if exclude_tags:
-            # Ensure migration_tags is a list (defensive check)
-            if not isinstance(migration_tags, list):
-                migration_tags = list(migration_tags) if migration_tags else []
-            # Normalize tags for comparison
-            normalized_migration_tags = [str(tag).strip().lower() for tag in migration_tags if tag]
-            normalized_exclude_tags = [str(tag).strip().lower() for tag in exclude_tags if tag]
-            if normalized_migration_tags and any(
-                tag in normalized_migration_tags for tag in normalized_exclude_tags
-            ):
-                return False
-
-        return True
-
-    def apply_filters_to_migrations(
-        self,
-        migrations: List[Migration],
-        target_version: Optional[str] = None,
-        tags: Optional[Sequence[str]] = None,
-        exclude_tags: Optional[Sequence[str]] = None,
-        versions: Optional[Sequence[str]] = None,
-        exclude_versions: Optional[Sequence[str]] = None,
-    ) -> List[Migration]:
-        """Apply filter criteria to a list of migrations.
-
-        This is a PUBLIC method that can be used by migration-state commands
-        to filter migrations by version, tags, etc.
-
-        Args:
-            migrations: List of migrations to filter
-            target_version: Optional target version filter
-            tags: Optional list of tags to include
-            exclude_tags: Optional list of tags to exclude
-            versions: Optional list of versions to include
-            exclude_versions: Optional list of versions to exclude
-
-        Returns:
-            Filtered list of migrations
-        """
-        normalized_tags = self._normalize_filter(tags)
-        normalized_exclude_tags = self._normalize_filter(exclude_tags)
-        normalized_versions = self._normalize_filter(versions)
-        normalized_exclude_versions = self._normalize_filter(exclude_versions)
-
-        filtered = []
-        for migration in migrations:
-            if self._passes_filters(
-                migration,
-                target_version,
-                normalized_tags,
-                normalized_exclude_tags,
-                normalized_versions,
-                normalized_exclude_versions,
-            ):
-                filtered.append(migration)
-
-        return filtered
+    _passes_filters = staticmethod(passes_filters)
+    apply_filters_to_migrations = staticmethod(select_migrations)

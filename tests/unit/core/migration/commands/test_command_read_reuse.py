@@ -433,26 +433,12 @@ def test_nonempty_recursion_map_preserves_validator_discovery_scope(database_cli
     nested = migrations / "nested"
     nested.mkdir()
     (nested / "V1__duplicate.sql").write_text("SELECT 1;")
-    validator_scripts = MagicMock(wraps=client.executor.script_manager)
-    validator_scripts.get_migration_scripts.side_effect = AssertionError(
-        "Validator bypassed the state manager for mapped migrate catalog"
-    )
-
-    with (
-        observe_reads(client, migrations) as counts,
-        patch.object(client.executor.validator, "script_manager", validator_scripts),
-    ):
+    with observe_reads(client, migrations) as counts:
         result = client.migrate(recursive=True, dir_recursive_map={migrations: False})
 
-    # State omits the nested file, but legacy validation independently uses recursive=True.
-    assert not result.success
-    assert "duplicate" in result.error_message.lower()
-    assert result.migrations == []
-    assert counts == {
-        "history": 2,
-        "files": {"V1__app.sql": 2, "V1__duplicate.sql": 1},
-        "scans": 2,
-    }
+    assert result.success, result.error_message
+    assert [m.script for m in result.migrations] == ["V1__app.sql"]
+    assert counts == {"history": 4, "files": {"V1__app.sql": 2}, "scans": 2}
 
 
 @pytest.mark.parametrize("state_fails", [False, True])
@@ -810,3 +796,29 @@ def test_baseline_dry_run_consumes_fresh_typed_state_history(database_client):
         assert "1 migration(s)" in populated.error_message
         assert read.call_count == 2
         assert database.read_bytes() == before
+
+
+@pytest.mark.parametrize("operation", ["validate", "migrate"])
+def test_commands_validate_state_snapshots_without_public_collection_adapters(
+    database_client, operation
+):
+    client, _, migrations, _ = database_client
+    (migrations / "V1__app.sql").write_text("SELECT 1;")
+    manager = client.executor.state_manager
+    validator = client.executor.validator
+    with (
+        patch.object(
+            manager, "build_validation_snapshot", wraps=manager.build_validation_snapshot
+        ) as build,
+        patch.object(validator, "validate_snapshot", wraps=validator.validate_snapshot) as validate,
+        patch.object(
+            validator, "validate_migrations", side_effect=AssertionError("legacy adapter")
+        ),
+        patch.object(
+            validator, "validate_resolved_migrations", side_effect=AssertionError("legacy adapter")
+        ),
+    ):
+        result = getattr(client, operation)()
+    assert result.success, result.error_message
+    assert build.call_count == validate.call_count == 1
+    assert validate.call_args.args[0].selected_migrations[0].script_name == "V1__app.sql"

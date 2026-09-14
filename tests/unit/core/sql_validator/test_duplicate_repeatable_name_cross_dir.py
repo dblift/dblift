@@ -133,7 +133,7 @@ class TestDuplicateRepeatableNameWiredIntoAllRepeatableEarlyReturn:
         v.history_manager = MagicMock()
         v.history_manager.has_history_table = False
         v.script_manager = MagicMock()
-        v._quirks = None
+        v = MigrationValidator(v.script_manager, v.history_manager, v.log)
 
         primary = Migration(
             script_name="R__cleanup.sql",

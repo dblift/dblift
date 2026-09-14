@@ -39,6 +39,34 @@ class TestImportFlywayCommand:
     @pytest.fixture
     def command(self, mock_dependencies):
         """Create an ImportFlywayCommand with mocked dependencies."""
+        from dblift.core.migration.history.migration_history_manager import MigrationHistoryManager
+        from dblift.core.migration.state.migration_state_manager import MigrationStateManager
+        from dblift.db.base_quirks import BaseQuirks
+
+        provider = mock_dependencies["provider"]
+        provider.quirks = BaseQuirks()
+        history = mock_dependencies["history_manager"]
+        history.provider = provider
+        history._normalize_flyway_row = MigrationHistoryManager._normalize_flyway_row
+        history.history_source_exists = (
+            lambda schema, table: MigrationHistoryManager.history_source_exists(
+                history, schema, table
+            )
+        )
+        history.read_history_rows = (
+            lambda *args, **kwargs: MigrationHistoryManager.read_history_rows(
+                history, *args, **kwargs
+            )
+        )
+        history.resolve_flyway_source_table = (
+            lambda table: MigrationHistoryManager.resolve_flyway_source_table(history, table)
+        )
+        mock_dependencies["state_manager"] = MigrationStateManager(
+            mock_dependencies["log"],
+            history,
+            mock_dependencies["script_manager"],
+            mock_dependencies["migration_rules"],
+        )
         return ImportFlywayCommand(**mock_dependencies)
 
     def _make_flyway_row(self, version, script, checksum=12345, type_val="SQL"):
@@ -182,6 +210,12 @@ class TestImportFlywayCommand:
             "SUCCESS": True,
         }
         mock_dependencies["config"].database.type = "oracle"
+        from dblift.db.plugins.oracle.quirks import OracleQuirks
+
+        mock_dependencies["provider"].quirks = OracleQuirks()
+        mock_dependencies["provider"].get_normalized_object_name.side_effect = (
+            lambda name: name.upper()
+        )
         mock_dependencies["provider"].get_schema_qualified_name.return_value = (
             '"public"."FLYWAY_SCHEMA_HISTORY"'
         )
@@ -209,6 +243,12 @@ class TestImportFlywayCommand:
         even on Oracle — only the unspecified default name gets normalized.
         """
         mock_dependencies["config"].database.type = "oracle"
+        from dblift.db.plugins.oracle.quirks import OracleQuirks
+
+        mock_dependencies["provider"].quirks = OracleQuirks()
+        mock_dependencies["provider"].get_normalized_object_name.side_effect = (
+            lambda name: name.upper()
+        )
         mock_dependencies["provider"].get_schema_qualified_name.return_value = (
             '"public"."Custom_Flyway_Tbl"'
         )
@@ -321,11 +361,14 @@ class TestImportFlywayCommand:
 
 def test_import_reads_rows_through_state_manager():
     from unittest.mock import MagicMock
+
     command = ImportFlywayCommand.__new__(ImportFlywayCommand)
     command.config = MagicMock()
     command.state_manager = MagicMock()
     command.provider = MagicMock()
     command.state_manager.read_history_rows.return_value = [{"version": "1"}]
     assert command._get_flyway_rows("public", "flyway_schema_history") == [{"version": "1"}]
-    command.state_manager.read_history_rows.assert_called_once_with("public", "flyway_schema_history", flyway_source=True)
+    command.state_manager.read_history_rows.assert_called_once_with(
+        "public", "flyway_schema_history", flyway_source=True
+    )
     command.provider.get_applied_migrations.assert_not_called()

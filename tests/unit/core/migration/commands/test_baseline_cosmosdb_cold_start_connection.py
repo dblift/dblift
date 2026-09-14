@@ -189,7 +189,7 @@ class TestOtherCommandsColdStartRegression:
         validation_result.success = True
         validation_result.error_message = ""
         validation_result.issues = []
-        validator.validate_migrations.return_value = validation_result
+        validator.validate_snapshot.return_value = validation_result
 
         cmd = _make_command(ValidateCommand, provider, history_manager, validator=validator)
 

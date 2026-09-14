@@ -81,9 +81,14 @@ def test_sequence_and_string_filters_normalize_identically(client, tmp_path):
     manager = client.executor.state_manager
     scripts = manager.get_resolved_migrations(tmp_path)
     scripts[0].tags = ["alpha"]
-    assert manager.apply_filters_to_migrations(scripts, versions=" 1 ") == manager.apply_filters_to_migrations(scripts, versions=[" 1 "])
+    assert manager.apply_filters_to_migrations(
+        scripts, versions=" 1 "
+    ) == manager.apply_filters_to_migrations(scripts, versions=[" 1 "])
     from dblift.core.migration.state.migration_selector import select_migrations
-    assert select_migrations(scripts, tags=" alpha, beta ") == select_migrations(scripts, tags=[" alpha", "beta "])
+
+    assert select_migrations(scripts, tags=" alpha, beta ") == select_migrations(
+        scripts, tags=[" alpha", "beta "]
+    )
 
 
 def test_snapshot_validation_never_collects(client, tmp_path):
@@ -93,8 +98,31 @@ def test_snapshot_validation_never_collects(client, tmp_path):
     snapshot = manager.build_validation_snapshot(tmp_path, "validate", strict_mode=True)
     (tmp_path / "V1__init.sql").unlink()
     with (
-        patch.object(manager, "build_validation_snapshot", side_effect=AssertionError("collection")),
-        patch.object(manager.history_manager, "get_applied_migrations", side_effect=AssertionError("history")),
-        patch.object(manager.script_manager, "get_migration_scripts", side_effect=AssertionError("scripts")),
+        patch.object(
+            manager, "build_validation_snapshot", side_effect=AssertionError("collection")
+        ),
+        patch.object(
+            manager.history_manager, "get_applied_migrations", side_effect=AssertionError("history")
+        ),
+        patch.object(
+            manager.script_manager, "get_migration_scripts", side_effect=AssertionError("scripts")
+        ),
     ):
         assert client.executor.validator.validate_snapshot(snapshot, "validate").success
+
+
+def test_missing_directory_and_empty_strict_catalog_preserve_public_results(client, tmp_path):
+    missing = tmp_path / "missing"
+    result = client.executor.validator.validate_migrations(missing)
+    assert not result.success
+    assert result.error_message == f"Migration scripts directory not found: {missing}"
+    assert result.issues == []
+    (tmp_path / "V1__init.sql").write_text("SELECT 1;")
+    assert client.migrate().success
+    snapshot = client.executor.state_manager.build_validation_snapshot(
+        tmp_path, strict_mode=True, resolved_migrations=[]
+    )
+    result = client.executor.validator.validate_snapshot(snapshot)
+    assert not result.success
+    assert result.error_message == ""
+    assert result.issues == []

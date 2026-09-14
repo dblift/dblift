@@ -788,24 +788,26 @@ class MigrateCommand(BaseCommand):
             if getattr(self, "validator", None) is None:
                 validation_success, validation_errors, validation_time = True, None, 0.0
             else:
+                validation_snapshot = self.state_manager.build_validation_snapshot(
+                    scripts_dir,
+                    "migrate",
+                    recursive=use_recursive,
+                    additional_dirs=use_additional_dirs or [],
+                    dir_recursive_map=dir_recursive_map,
+                    target_version=target_version,
+                    tags=tags,
+                    exclude_tags=exclude_tags,
+                    versions=versions,
+                    exclude_versions=exclude_versions,
+                    strict_mode=strict_mode,
+                    resolved_migrations=migration_state.resolved_objects,
+                    applied_migrations=migration_state.all_applied_objects,
+                    read_snapshot=read_snapshot,
+                )
                 validation_success, validation_errors, validation_time = (
                     self.migration_helpers.validate_migrations_for_migrate(
                         self.validator,
-                        scripts_dir,
-                        use_recursive,
-                        use_additional_dirs or [],
-                        target_version=target_version,
-                        tags=tags,
-                        exclude_tags=exclude_tags,
-                        versions=versions,
-                        exclude_versions=exclude_versions,
-                        # Validator discovery historically ignores per-directory recursion.
-                        # Keep that scope when the state catalog was resolved with a map.
-                        resolved_migrations=(
-                            migration_state.resolved_objects if not dir_recursive_map else None
-                        ),
-                        preloaded_records=migration_state.all_applied_objects,
-                        read_snapshot=read_snapshot,
+                        validation_snapshot,
                     )
                 )
             if not validation_success:

@@ -30,6 +30,7 @@ from unittest.mock import MagicMock
 
 from dblift.core.migration.migration import Migration
 from dblift.core.sql_validator.migration_validator import MigrationValidator
+from dblift.db.provider_registry import ProviderRegistry
 
 
 def _validator(dialect: str) -> MigrationValidator:
@@ -40,9 +41,12 @@ def _validator(dialect: str) -> MigrationValidator:
     history_manager.provider.config.database.type = dialect
     history_manager.provider.config.strict_mode = False
     validator = MigrationValidator(
-        script_manager=script_manager, history_manager=history_manager, log=MagicMock()
+        script_manager=script_manager,
+        history_manager=history_manager,
+        log=MagicMock(),
+        quirks=ProviderRegistry.get_quirks(dialect),
     )
-    validator._load_and_filter_migrations = MagicMock()
+    validator.state_manager.get_resolved_migrations = MagicMock()
     validator._handle_baseline_filtering = MagicMock(side_effect=lambda scripts: scripts)
     return validator
 
@@ -61,7 +65,7 @@ def _python_migration(tmp_path: Path, name: str) -> Migration:
 
 def test_plain_validate_rejects_sql_migration_on_cosmosdb(tmp_path):
     validator = _validator("cosmosdb")
-    validator._load_and_filter_migrations.return_value = [
+    validator.state_manager.get_resolved_migrations.return_value = [
         _sql_migration(tmp_path, "V1_0_0__create.sql")
     ]
 
@@ -77,7 +81,7 @@ def test_validate_only_rejects_sql_migration_on_cosmosdb(tmp_path):
     ``validate_migrations(..., "validate", ...)`` call as plain ``validate``.
     """
     validator = _validator("cosmosdb")
-    validator._load_and_filter_migrations.return_value = [
+    validator.state_manager.get_resolved_migrations.return_value = [
         _sql_migration(tmp_path, "V1_0_1__seed.sql")
     ]
 
@@ -91,7 +95,7 @@ def test_validate_only_rejects_sql_migration_on_cosmosdb(tmp_path):
 def test_migrate_dry_run_preflight_rejects_sql_migration_on_cosmosdb(tmp_path):
     """``migrate --dry-run``'s pre-flight calls ``validate_migrations(..., "migrate", ...)``."""
     validator = _validator("cosmosdb")
-    validator._load_and_filter_migrations.return_value = [
+    validator.state_manager.get_resolved_migrations.return_value = [
         _sql_migration(tmp_path, "V1_0_2__index.sql")
     ]
 
@@ -104,7 +108,7 @@ def test_migrate_dry_run_preflight_rejects_sql_migration_on_cosmosdb(tmp_path):
 
 def test_python_migration_on_cosmosdb_is_unaffected(tmp_path):
     validator = _validator("cosmosdb")
-    validator._load_and_filter_migrations.return_value = [
+    validator.state_manager.get_resolved_migrations.return_value = [
         _python_migration(tmp_path, "V1_0_0__create.py")
     ]
 
@@ -115,7 +119,7 @@ def test_python_migration_on_cosmosdb_is_unaffected(tmp_path):
 
 def test_sql_migration_on_relational_dialect_is_unaffected(tmp_path):
     validator = _validator("postgresql")
-    validator._load_and_filter_migrations.return_value = [
+    validator.state_manager.get_resolved_migrations.return_value = [
         _sql_migration(tmp_path, "V1_0_0__create.sql")
     ]
 
