@@ -966,7 +966,9 @@ def test_versionless_scripts_are_never_validated_executed_or_recorded(
     (migrations / "V1__control.sql").write_text("CREATE TABLE control (id INT);", encoding="utf-8")
 
     validator = client.executor.validator
-    with patch.object(validator, "validate_snapshot", wraps=validator.validate_snapshot) as validate:
+    with patch.object(
+        validator, "validate_snapshot", wraps=validator.validate_snapshot
+    ) as validate:
         result = getattr(client, operation)()
 
     assert result.success, result.error_message
