@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import unittest
 from types import SimpleNamespace
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 
 def _make_validator():
@@ -20,8 +20,7 @@ def _make_validator():
     hm = MagicMock()
     hm.schema = "public"
     hm.history_table = "dblift_schema_history"
-    with patch("dblift.core.sql_validator.migration_validator.SqlAnalyzer"):
-        return MigrationValidator(script_manager=sm, history_manager=hm, log=MagicMock())
+    return MigrationValidator(script_manager=sm, history_manager=hm, log=MagicMock())
 
 
 class TestOutOfOrderFormatParity(unittest.TestCase):

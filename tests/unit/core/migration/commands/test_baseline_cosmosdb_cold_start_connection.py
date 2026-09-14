@@ -203,6 +203,7 @@ class TestOtherCommandsColdStartRegression:
         cmd = _make_command(RepairCommand, provider, history_manager)
         cmd.state_manager.build_state.return_value = SimpleNamespace(
             checksum_changes=[],
+            grouped_objects=None,
             applied_objects=[],
             deleted_scripts=set(),
             failed_objects=[],

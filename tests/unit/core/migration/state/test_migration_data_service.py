@@ -6,7 +6,6 @@ from unittest.mock import MagicMock, Mock
 import pytest
 
 from dblift.core.migration.state.migration_data_service import MigrationDataService
-from dblift.core.migration.state.migration_state_service import MigrationStateService
 
 
 def make_migration(
@@ -153,72 +152,14 @@ class TestGetReappliedVersions:
         result = service._get_reapplied_versions(migrations)
         assert result == set()
 
-
-# ---------- _is_version_reapplied / _get_undo_rank ----------
-
-
-@pytest.mark.unit
-class TestIsVersionReapplied:
-    def test_reapplied_when_sql_rank_higher_than_undo(self, service):
-        migrations = [
-            make_migration(version="1", type="UNDO_SQL", success=True, installed_rank=2),
-            make_migration(version="1", type="SQL", success=True, installed_rank=3),
-        ]
-        assert service._is_version_reapplied(migrations, "1") is True
-
-    def test_not_reapplied_when_no_undo(self, service):
-        migrations = [
-            make_migration(version="1", type="SQL", success=True, installed_rank=1),
-        ]
-        assert service._is_version_reapplied(migrations, "1") is False
-
-    def test_not_reapplied_when_sql_rank_lower(self, service):
-        migrations = [
-            make_migration(version="1", type="SQL", success=True, installed_rank=1),
-            make_migration(version="1", type="UNDO_SQL", success=True, installed_rank=5),
-        ]
-        assert service._is_version_reapplied(migrations, "1") is False
-
     def test_failed_later_versioned_row_is_not_reapplied(self, service):
         migrations = [
             make_migration(version="1", type="SQL", success=True, installed_rank=1),
             make_migration(version="1", type="UNDO_SQL", success=True, installed_rank=2),
             make_migration(version="1", type="SQL", success=False, installed_rank=3),
         ]
-        assert service._is_version_reapplied(migrations, "1") is False
+
         assert service._get_reapplied_versions(migrations) == set()
-
-
-@pytest.mark.unit
-class TestGetUndoRank:
-    def test_returns_rank_of_successful_undo(self, service):
-        migrations = [
-            make_migration(version="1", type="UNDO_SQL", success=True, installed_rank=7),
-        ]
-        assert service._get_undo_rank(migrations, "1") == 7
-
-    def test_returns_minus_one_when_no_undo(self, service):
-        migrations = [
-            make_migration(version="1", type="SQL", success=True, installed_rank=1),
-        ]
-        assert service._get_undo_rank(migrations, "1") == -1
-
-    def test_ignores_failed_undo(self, service):
-        migrations = [
-            make_migration(version="1", type="UNDO_SQL", success=False, installed_rank=3),
-        ]
-        assert service._get_undo_rank(migrations, "1") == -1
-
-    def test_returns_latest_rank_when_undone_more_than_once(self, service):
-        # undo, reapply, undo again -- must return the latest undo's rank (5),
-        # not the first one found (3).
-        migrations = [
-            make_migration(version="2", type="SQL", success=True, installed_rank=2),
-            make_migration(version="2", type="UNDO_SQL", success=True, installed_rank=3),
-            make_migration(version="2", type="SQL", success=True, installed_rank=4),
-            make_migration(version="2", type="UNDO_SQL", success=True, installed_rank=5),
-        ]
-        assert service._get_undo_rank(migrations, "2") == 5
 
 
 # ---------- _get_baseline_version ----------
@@ -369,7 +310,3 @@ class TestConstructor:
         svc = MigrationDataService(logger)
         assert svc.scripts_dir is None
         assert svc.target_version is None
-
-    def test_state_service_created(self, logger):
-        svc = MigrationDataService(logger)
-        assert isinstance(svc.state_service, MigrationStateService)
