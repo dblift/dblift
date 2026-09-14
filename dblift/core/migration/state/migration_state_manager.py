@@ -25,10 +25,15 @@ from dblift.core.migration.state.migration_state import (
     MigrationEntry,
     MigrationReadSnapshot,
     MigrationState,
+    MigrationValidationSnapshot,
 )
 from dblift.core.migration.state.migration_state_service import MigrationStateService
 from dblift.core.migration.state.rank_wins import latest_successful_ranks
-from dblift.core.migration.version_utils import is_migration_failure, is_migration_success
+from dblift.core.migration.version_utils import (
+    compare_versions,
+    is_migration_failure,
+    is_migration_success,
+)
 
 
 class StrictModeError(ValueError):
@@ -76,6 +81,102 @@ class MigrationStateManager:
     def new_read_snapshot(self) -> MigrationReadSnapshot:
         """Create an empty read phase; no database access occurs until it is consumed."""
         return MigrationReadSnapshot(self)
+
+    def build_validation_snapshot(
+        self,
+        scripts_dir: Optional[Path],
+        command: str = "migrate",
+        recursive: bool = True,
+        additional_dirs: Optional[List[Path]] = None,
+        target_version: Optional[str] = None,
+        tags: Optional[Sequence[str]] = None,
+        exclude_tags: Optional[Sequence[str]] = None,
+        versions: Optional[Sequence[str]] = None,
+        exclude_versions: Optional[Sequence[str]] = None,
+        *,
+        dir_recursive_map: Optional[Dict[Path, bool]] = None,
+        strict_mode: Optional[bool] = None,
+        read_snapshot: Optional[MigrationReadSnapshot] = None,
+        resolved_migrations: Optional[List[Migration]] = None,
+        applied_migrations: Optional[List[Migration]] = None,
+    ) -> MigrationValidationSnapshot:
+        """Aggregate catalog and history data without deciding validation outcomes."""
+        directory_exists = scripts_dir is None or self.script_manager.migration_directory_exists(
+            scripts_dir
+        )
+        if resolved_migrations is None:
+            resolved_migrations = (
+                self.get_resolved_migrations(
+                    scripts_dir,
+                    recursive=recursive,
+                    additional_dirs=additional_dirs,
+                    dir_recursive_map=dir_recursive_map,
+                )
+                if scripts_dir is not None and directory_exists
+                else []
+            )
+        catalog = [
+            m
+            for m in resolved_migrations
+            if m.type
+            in (
+                MigrationType.SQL,
+                MigrationType.PYTHON,
+                MigrationType.REPEATABLE,
+                MigrationType.CALLBACK,
+                MigrationType.BASELINE,
+                MigrationType.UNDO_SQL,
+            )
+        ]
+        # The resolved-list 4.x adapter already receives its caller's execution scope.
+        if scripts_dir is not None:
+            baselines = [
+                m.version for m in catalog if m.type == MigrationType.BASELINE and m.version
+            ]
+            highest = None
+            for version in baselines:
+                if highest is None or compare_versions(version, highest) > 0:
+                    highest = version
+            if highest is not None:
+                catalog = [
+                    m
+                    for m in catalog
+                    if self._get_type_name(m) not in VERSIONED_SCRIPT_TYPES
+                    or compare_versions(m.version, highest) > 0
+                ]
+        history_exists = bool(self.history_manager.has_history_table)
+        if applied_migrations is None:
+            try:
+                applied_migrations = (
+                    self.get_applied_migrations(read_snapshot) if history_exists else []
+                )
+            except Exception as error:
+                self.logger.error(f"Error getting applied migrations: {error}")
+                applied_migrations = []
+        if strict_mode is None:
+            config = getattr(self.history_manager.provider, "config", None)
+            strict_mode = bool(getattr(config, "strict_mode", False))
+        return MigrationValidationSnapshot(
+            resolved_migrations=tuple(catalog),
+            selected_migrations=tuple(
+                self.apply_filters_to_migrations(
+                    catalog, target_version, tags, exclude_tags, versions, exclude_versions
+                )
+            ),
+            all_applied_migrations=tuple(applied_migrations),
+            scoped_applied_migrations=tuple(
+                self.apply_filters_to_migrations(
+                    applied_migrations,
+                    target_version,
+                    versions=versions,
+                    exclude_versions=exclude_versions,
+                )
+            ),
+            history_table_exists=history_exists,
+            scripts_directory_exists=directory_exists,
+            strict_mode=strict_mode,
+            scripts_directory=scripts_dir,
+        )
 
     def get_applied_migrations(
         self, snapshot: Optional[MigrationReadSnapshot] = None

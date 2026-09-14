@@ -19,6 +19,20 @@ if TYPE_CHECKING:
     from dblift.core.migration.state.migration_state_manager import MigrationStateManager
 
 
+@dataclass(frozen=True)
+class MigrationValidationSnapshot:
+    """Manager-owned data for pure migration validation."""
+
+    resolved_migrations: tuple[Migration, ...]
+    selected_migrations: tuple[Migration, ...]
+    all_applied_migrations: tuple[Migration, ...]
+    scoped_applied_migrations: tuple[Migration, ...]
+    history_table_exists: bool
+    scripts_directory_exists: bool
+    strict_mode: bool
+    scripts_directory: Optional[Path] = None
+
+
 @dataclass(slots=True)
 class MigrationReadSnapshot:
     """Lazy history for one read phase, collected through its owning state manager."""

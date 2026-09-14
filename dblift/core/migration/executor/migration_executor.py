@@ -109,12 +109,20 @@ class MigrationExecutor:
 
         # Link components together
         self.history_manager.script_manager = self.script_manager
+        self.rules = MigrationRules(log)
+        # Initialize MigrationStateManager for centralized state management
+        self.state_manager = MigrationStateManager(
+            log,
+            history_manager=self.history_manager,
+            script_manager=self.script_manager,
+            migration_rules=self.rules,
+        )
+
         self.validator = MigrationValidator(
             self.script_manager, self.history_manager, log, self.placeholders
         )
         self.ui = MigrationUI(log)
         self.migration_ui = self.ui  # Alias for backward compatibility/consistency
-        self.rules = MigrationRules(log)
 
         # Initialize SQL analyzer and execution engine
         self.sql_analyzer = SqlAnalyzer(dialect=config.database.type)
@@ -141,14 +149,6 @@ class MigrationExecutor:
             self.history_manager,
             self.placeholder_service,
             config=self.config,
-        )
-
-        # Initialize MigrationStateManager for centralized state management
-        self.state_manager = MigrationStateManager(
-            log,
-            history_manager=self.history_manager,
-            script_manager=self.script_manager,
-            migration_rules=self.rules,
         )
 
     def _make_command_context(self) -> "BaseCommandContext":
