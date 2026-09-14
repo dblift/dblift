@@ -575,10 +575,7 @@ class MigrationScriptManager:
                     # Store the script with its source directory information
                     # For additional directories, prefix with the directory name to track the source
                     # Compare resolved paths to handle different path representations
-                    try:
-                        is_additional_dir = resolved_dir_path != resolved_migrations_dir
-                    except (OSError, RuntimeError):
-                        is_additional_dir = dir_path != migrations_dir
+                    is_additional_dir = resolved_dir_path != resolved_migrations_dir
 
                     if is_additional_dir:
                         # Store as "dir_name/relative_path" (which may include

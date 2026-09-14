@@ -74,3 +74,9 @@ Identical real SQLite workload with 500 applied migrations, baseline 8f8e2a3 ver
 Each timing is the median of seven warm local samples, measured separately from instrumentation and other test runs. These are observations on this machine, not general speed guarantees. Operation-count probes also asserted successful results and unchanged history-read counts. The complete branch changes seven core files with 167 inserted and 332 deleted lines: 165 fewer core source lines.
 
 Local unit/quality/package/benchmark verification is complete. Published as [PR #303](https://github.com/dblift/dblift/pull/303) from fix/oss-core-read-efficiency to develop. Remote CI results are recorded in the PR checks. The PR remains open; no merge is authorized.
+
+## Codecov follow-up — 2026-09-14
+
+The coverage comment reported 69/71 changed executable lines covered (97.18%), even though the GitHub check passed its configured threshold. Both misses were the exception handler around the resolved-directory Path comparison. Python 3.11 and 3.12 implement that comparison using normalized path components, without filesystem I/O; the filesystem-error fallback was unreachable. Removed only that handler, retaining the actual resolve/containment error handling and all directory-routing behavior.
+
+Verification after the develop merge: 11,825 unit tests passed, 35 skipped. CI-matching coverage covers 69/69 changed executable lines (100%); the separately installed pytest-dblift plugin was disabled for this unit run to match CI's install order. Formatting, import order, flake8 and targeted typing passed. The combined core reduction is now 168 source lines. No coverage exclusions or threshold changes were added.
