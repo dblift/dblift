@@ -42,6 +42,7 @@ def _make_ctx(format_value: str, info_side_effect):
         args=args,
         log=MagicMock(),
         recursive=True,
+        dir_recursive_map={},
         additional_scripts_dirs=None,
     )
     return ctx

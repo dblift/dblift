@@ -23,6 +23,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- CLI and API commands preserve per-directory recursion settings, including
+  recursive secondary directories after a non-recursive primary directory.
+  API commands use configured directories and recursion by default; explicit
+  call options still override configuration.
+- Oracle statement splitting recognizes `IF [NOT] EXISTS` in DDL headers
+  without absorbing following statements, while preserving procedural IF blocks.
 - Malformed versionless scripts such as `V__.sql` and `V__.py` are excluded from
   migration and reported with a naming warning, preventing execution and
   null-version history entries.

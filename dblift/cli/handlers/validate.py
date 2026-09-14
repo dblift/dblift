@@ -42,6 +42,7 @@ def _handle_validate(ctx: CliCommandContext) -> Tuple[bool, Any]:
             versions=versions,
             exclude_versions=exclude_versions,
             recursive=ctx.recursive,
+            dir_recursive_map=ctx.dir_recursive_map or None,
             additional_dirs=ctx.additional_scripts_dirs if ctx.additional_scripts_dirs else None,
         )
 

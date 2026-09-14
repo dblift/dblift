@@ -27,6 +27,7 @@ def _handle_undo(ctx: CliCommandContext) -> Tuple[bool, Any]:
         show_query_results=getattr(ctx.args, "show_query_results", False),
         placeholders=ctx.placeholders,
         recursive=ctx.recursive,
+        dir_recursive_map=ctx.dir_recursive_map or None,
         additional_dirs=ctx.additional_scripts_dirs if ctx.additional_scripts_dirs else None,
     )
     _set_command_completed(ctx.log, result, "UNDO")

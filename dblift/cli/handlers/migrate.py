@@ -44,6 +44,7 @@ def _handle_migrate(ctx: CliCommandContext) -> Tuple[bool, Any]:
                 versions=versions,
                 exclude_versions=exclude_versions,
                 recursive=ctx.recursive,
+                dir_recursive_map=ctx.dir_recursive_map or None,
                 additional_dirs=additional_dirs,
             )
 
@@ -64,6 +65,7 @@ def _handle_migrate(ctx: CliCommandContext) -> Tuple[bool, Any]:
             show_query_results=getattr(ctx.args, "show_query_results", False),
             placeholders=ctx.placeholders,
             recursive=ctx.recursive,
+            dir_recursive_map=ctx.dir_recursive_map or None,
             additional_dirs=additional_dirs,
         )
 

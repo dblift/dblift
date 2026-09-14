@@ -469,8 +469,10 @@ class TestClientInfoDisplayHuman:
         from unittest.mock import MagicMock
 
         from dblift.api.client import DBLiftClient
+        from dblift.config import DbliftConfig
 
         client = DBLiftClient.__new__(DBLiftClient)
+        client.config = DbliftConfig.from_dict({"database": {"type": "sqlite", "path": ":memory:"}})
         client.events = MagicMock()
         client.events.emit = MagicMock()
         client._migrations_dir = None
