@@ -16,8 +16,17 @@ def _make_validator(dialect="postgresql"):
     hm.normalized_history_table = "dblift_schema_history"
     hm.provider = MagicMock()
     hm.provider.config.database.type = dialect
+    from dblift.core.migration.history.migration_history_manager import MigrationHistoryManager
+    from dblift.core.migration.scripting.migration_script_manager import MigrationScriptManager
+    from dblift.db.base_quirks import BaseQuirks
+
+    hm.collect_flyway_compatibility_snapshot.side_effect = (
+        lambda: MigrationHistoryManager.collect_flyway_compatibility_snapshot(hm)
+    )
+    hm.ensure_history_table.side_effect = lambda: MigrationHistoryManager.ensure_history_table(hm)
+    sm.migration_directory_exists.side_effect = MigrationScriptManager.migration_directory_exists
     log = MagicMock()
-    v = MigrationValidator(script_manager=sm, history_manager=hm, log=log)
+    v = MigrationValidator(script_manager=sm, history_manager=hm, log=log, quirks=BaseQuirks())
     return v, sm, hm, log
 
 
@@ -86,8 +95,8 @@ class TestLastSuccessfulRecord(unittest.TestCase):
 class TestMigrationValidatorInit(unittest.TestCase):
     def test_init_with_config(self):
         v, sm, hm, log = _make_validator()
-        self.assertIs(v.script_manager, sm)
-        self.assertIs(v.history_manager, hm)
+        self.assertIs(v.state_manager.script_manager, sm)
+        self.assertIs(v.state_manager.history_manager, hm)
 
     def test_init_without_config(self):
         from dblift.core.sql_validator.migration_validator import MigrationValidator
@@ -113,12 +122,11 @@ class TestMigrationValidatorInit(unittest.TestCase):
 class TestValidateFlywayCaching(unittest.TestCase):
     def test_returns_cached_result(self):
         v, _, hm, _ = _make_validator()
-        cached = {"flyway_exists": True, "compatible": True}
-        v._flyway_compatibility_cache = cached
+        hm.provider.table_exists.return_value = False
+        first = v.validate_flyway_compatibility()
         result = v.validate_flyway_compatibility()
-        self.assertIs(result, cached)
-        # Provider should NOT be called since cache is hit
-        hm.provider.table_exists.assert_not_called()
+        self.assertEqual(result, first)
+        hm.provider.table_exists.assert_called_once()
 
     def test_no_flyway_table(self):
         v, _, hm, _ = _make_validator()
@@ -127,7 +135,7 @@ class TestValidateFlywayCaching(unittest.TestCase):
         self.assertFalse(result["flyway_exists"])
         self.assertTrue(result["compatible"])
         # Result is now cached
-        self.assertIsNotNone(v._flyway_compatibility_cache)
+        self.assertIsNotNone(v.state_manager._read_phase._flyway_data)
 
     def test_flyway_exists_no_dblift(self):
         v, _, hm, _ = _make_validator()
@@ -221,21 +229,17 @@ class TestCheckFlywaHistoryTable(unittest.TestCase):
     def test_both_compatible_passes(self):
         v, _, hm, _ = _make_validator()
         hm.provider.table_exists.return_value = True
-        v.validate_flyway_compatibility = MagicMock(
-            return_value={"compatible": True, "error_message": ""}
-        )
+        hm.provider.execute_query.return_value = []
         result = v.check_flyway_history_table()
         self.assertTrue(result.success)
 
     def test_both_incompatible_fails(self):
         v, _, hm, _ = _make_validator()
         hm.provider.table_exists.return_value = True
-        v.validate_flyway_compatibility = MagicMock(
-            return_value={"compatible": False, "error_message": "Mismatch"}
-        )
+        hm.provider.execute_query.side_effect = [[{"version": "1"}], []]
         result = v.check_flyway_history_table()
         self.assertFalse(result.success)
-        self.assertIn("Mismatch", result.error_message)
+        self.assertIn("Flyway has 1 migrations", result.error_message)
 
     def test_exception_returns_error(self):
         v, _, hm, _ = _make_validator()

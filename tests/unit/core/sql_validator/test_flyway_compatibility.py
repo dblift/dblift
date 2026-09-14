@@ -11,16 +11,17 @@ from dblift.core.sql_validator.migration_validator import MigrationValidator
 
 
 def _make_validator(provider: MagicMock) -> MigrationValidator:
-    validator = MigrationValidator.__new__(MigrationValidator)
-    validator.log = MagicMock()
-    validator.history_manager = SimpleNamespace(
-        provider=provider,
-        schema="public",
-        history_table="dblift_schema_history",
-        normalized_history_table="dblift_schema_history",
+    from dblift.core.logger import NullLog
+    from dblift.core.migration.history.migration_history_manager import MigrationHistoryManager
+    from dblift.core.migration.scripting.migration_script_manager import MigrationScriptManager
+    from dblift.db.base_quirks import BaseQuirks
+
+    provider.get_schema_qualified_name.return_value = "public.dblift_schema_history"
+    provider.get_normalized_object_name.side_effect = lambda name: name
+    history = MigrationHistoryManager(provider, "public", "tester", NullLog())
+    return MigrationValidator(
+        MigrationScriptManager(NullLog()), history, NullLog(), quirks=BaseQuirks()
     )
-    validator._flyway_compatibility_cache = None
-    return validator
 
 
 def _row(
@@ -66,7 +67,7 @@ class TestFlywayCompatibilityCache:
         first = validator.validate_flyway_compatibility()
         second = validator.validate_flyway_compatibility()
 
-        assert first is second
+        assert first == second
         assert first["compatible"] is True
         assert provider.table_exists.call_count == 2
         assert provider.execute_query.call_count == 2
@@ -157,3 +158,72 @@ class TestFlywayCompatibilityAcceptedTypes:
 
         assert result["compatible"] is False
         assert "Migration type mismatch" in str(result["error_message"])
+
+
+def test_state_read_phase_caches_data_and_new_phase_refreshes():
+    provider = MagicMock()
+    provider.table_exists.return_value = True
+    provider.execute_query.side_effect = [[_row()], [_row()], [_row()], []]
+    validator = _make_validator(provider)
+    manager = validator.state_manager
+    snapshot = manager.get_flyway_compatibility_snapshot()
+    with pytest.raises(TypeError):
+        snapshot.flyway_migrations[0]["version"] = "changed"
+    first = validator.validate_flyway_compatibility()
+    first["compatible"] = False
+    assert validator.validate_flyway_compatibility()["compatible"] is True
+    assert provider.execute_query.call_count == 2
+    manager.new_read_snapshot()
+    assert validator.validate_flyway_compatibility()["compatible"] is False
+    assert provider.execute_query.call_count == 4
+
+
+def test_legacy_table_check_creates_history_through_state_manager():
+    provider = MagicMock()
+    provider.table_exists.return_value = False
+    validator = _make_validator(provider)
+    history = validator.state_manager.history_manager
+    from unittest.mock import patch
+
+    with patch.object(history, "create_schema_and_history_table") as create:
+        validator._check_table_compatibility([])
+    create.assert_called_once_with()
+
+
+def test_history_check_preserves_compatibility_query_error_message():
+    provider = MagicMock()
+    provider.table_exists.return_value = True
+    provider.execute_query.side_effect = RuntimeError("history unavailable")
+    result = _make_validator(provider).check_flyway_history_table()
+    assert not result.success
+    assert result.error_message == "Error checking Flyway compatibility: history unavailable"
+
+
+@pytest.mark.parametrize("side", ["flyway", "dblift"])
+@pytest.mark.parametrize("bad_type", [None, 17])
+@pytest.mark.parametrize(
+    "entrypoint", ["pure", "validate_flyway_compatibility", "check_flyway_history_table"]
+)
+def test_malformed_row_types_return_compatibility_errors(side, bad_type, entrypoint):
+    provider = MagicMock()
+    provider.table_exists.return_value = True
+    flyway_row, dblift_row = _row(), _row()
+    (flyway_row if side == "flyway" else dblift_row)["type"] = bad_type
+    provider.execute_query.side_effect = [[flyway_row], [dblift_row]]
+    validator = _make_validator(provider)
+    if entrypoint == "pure":
+        from dblift.core.sql_validator._flyway_compatibility import validate_flyway_compatibility
+
+        result = validate_flyway_compatibility(
+            validator.state_manager.get_flyway_compatibility_snapshot()
+        )
+    else:
+        result = getattr(validator, entrypoint)()
+    expected = f"Error checking Flyway compatibility: '{type(bad_type).__name__}' object has no attribute 'upper'"
+    if entrypoint == "check_flyway_history_table":
+        assert result.success is False
+        assert result.error_message == expected
+    else:
+        assert result["compatible"] is False
+        assert result["error_message"] == expected
+        assert result["flyway_count"] == result["Dblift_count"] == 1

@@ -9,8 +9,12 @@ from unittest.mock import MagicMock
 import pytest
 
 from dblift.core.migration.migration import MigrationType
+from dblift.core.migration.rules.migration_rules import MigrationRules
+from dblift.core.migration.scripting.migration_script_manager import MigrationScriptManager
 from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
+from dblift.core.migration.state.migration_state_manager import MigrationStateManager
 from dblift.core.sql_validator.migration_validator import MigrationValidator
+from dblift.db.base_quirks import BaseQuirks
 
 
 def _validator(strict_result: bool) -> MigrationValidator:
@@ -30,7 +34,14 @@ def _validator(strict_result: bool) -> MigrationValidator:
             ]
         ),
     )
-    validator._load_and_filter_migrations = MagicMock(
+    validator.state_manager = MigrationStateManager(
+        validator.log,
+        validator.history_manager,
+        MigrationScriptManager(validator.log),
+        MigrationRules(validator.log),
+    )
+    validator._quirks = BaseQuirks()
+    validator.state_manager.get_resolved_migrations = MagicMock(
         return_value=[
             SimpleNamespace(
                 script_name="V2__new.sql",
@@ -92,13 +103,20 @@ def _filtering_validator() -> MigrationValidator:
     validator._validate_checksums = MagicMock()
     validator._validate_reappeared_migrations = MagicMock()
 
+    validator.state_manager = MigrationStateManager(
+        validator.log,
+        validator.history_manager,
+        MigrationScriptManager(validator.log),
+        MigrationRules(validator.log),
+    )
+    validator._quirks = BaseQuirks()
     return validator
 
 
 @pytest.mark.unit
 def test_target_version_filter_skips_out_of_scope_placeholder_warnings(tmp_path: Path):
     validator = _filtering_validator()
-    validator._load_and_filter_migrations = MagicMock(
+    validator.state_manager.get_resolved_migrations = MagicMock(
         return_value=[
             SimpleNamespace(
                 script_name="V1__init.sql",
@@ -125,7 +143,7 @@ def test_target_version_filter_skips_out_of_scope_placeholder_warnings(tmp_path:
 @pytest.mark.unit
 def test_validate_does_not_parse_in_scope_placeholder_script(tmp_path: Path):
     validator = _filtering_validator()
-    validator._load_and_filter_migrations = MagicMock(
+    validator.state_manager.get_resolved_migrations = MagicMock(
         return_value=[
             SimpleNamespace(
                 script_name="V3__placeholder.sql",
@@ -146,7 +164,7 @@ def test_validate_does_not_parse_in_scope_placeholder_script(tmp_path: Path):
 @pytest.mark.unit
 def test_validate_ignores_unresolved_placeholder_outside_sql_literal(tmp_path: Path):
     validator = _filtering_validator()
-    validator._load_and_filter_migrations = MagicMock(
+    validator.state_manager.get_resolved_migrations = MagicMock(
         return_value=[
             SimpleNamespace(
                 script_name="V5__placeholder.sql",
@@ -226,7 +244,7 @@ def test_target_version_filter_keeps_applied_scripts_in_checksum_scope(tmp_path:
         SimpleNamespace(script_name="V3__applied.sql", type=MigrationType.SQL, version="3"),
         SimpleNamespace(script_name="V5__future.sql", type=MigrationType.SQL, version="5"),
     ]
-    validator._load_and_filter_migrations = MagicMock(
+    validator.state_manager.get_resolved_migrations = MagicMock(
         return_value=[
             SimpleNamespace(
                 script_name="V3__applied.sql",

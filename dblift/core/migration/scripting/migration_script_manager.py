@@ -276,6 +276,11 @@ class MigrationScriptManager:
         """Compare two version strings (e.g. '1.0.0' vs '1.0.1', '1_2_3' vs '1_2_4', '3.2A' vs '3.2B'). Handles None as empty string."""
         return _compare_versions_shared(version1, version2)
 
+    @staticmethod
+    def migration_directory_exists(path: Path) -> bool:
+        """Report filesystem status for migration input collection."""
+        return path.exists()
+
     def get_migration_scripts(
         self,
         scripts_dir: Path,

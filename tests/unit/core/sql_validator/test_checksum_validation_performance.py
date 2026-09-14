@@ -147,13 +147,15 @@ def test_qualified_names_choose_first_match_and_filtered_deleted_missing_rows(tm
     assert "V3__missing.sql' is missing from the migration directory" in issues[0]
 
 
-def test_legacy_script_reads_once_and_standalone_observes_edits(tmp_path):
+def test_validation_uses_supplied_checksum_and_standalone_observes_edits(tmp_path):
     path = tmp_path / "V1__example.sql"
     path.write_text("SELECT 1;\n")
     script = Migration(path)
     rows = [history(script)]
     path.write_text("SELECT 2;\n")
-    legacy = SimpleNamespace(script_name=script.script_name, path=path, version="1")
+    legacy = SimpleNamespace(
+        script_name=script.script_name, path=path, version="1", checksum=Migration(path).checksum
+    )
     instance = validator()
     result, issues = ValidationResult(), []
     with patch(
@@ -163,7 +165,7 @@ def test_legacy_script_reads_once_and_standalone_observes_edits(tmp_path):
         instance._validate_checksums([legacy], rows, result, issues)
     assert result.failed_scripts == [script.script_name]
     assert "has been modified" in issues[0]
-    assert reads.call_count == 1
+    assert reads.call_count == 0
     assert instance.script_manager.has_script_changed(script.script_name, rows, path)
     path.write_text("SELECT 1;\n")
     assert not instance.script_manager.has_script_changed(script.script_name, rows, path)

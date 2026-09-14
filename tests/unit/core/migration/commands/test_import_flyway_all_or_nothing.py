@@ -57,6 +57,29 @@ def mock_dependencies():
 
 @pytest.fixture
 def command(mock_dependencies):
+    from dblift.core.migration.history.migration_history_manager import MigrationHistoryManager
+    from dblift.core.migration.state.migration_state_manager import MigrationStateManager
+    from dblift.db.base_quirks import BaseQuirks
+
+    provider = mock_dependencies["provider"]
+    provider.quirks = BaseQuirks()
+    history = mock_dependencies["history_manager"]
+    history.provider = provider
+    history.history_source_exists = (
+        lambda schema, table: MigrationHistoryManager.history_source_exists(history, schema, table)
+    )
+    history.read_history_rows = lambda *args, **kwargs: MigrationHistoryManager.read_history_rows(
+        history, *args, **kwargs
+    )
+    history.resolve_flyway_source_table = (
+        lambda table: MigrationHistoryManager.resolve_flyway_source_table(history, table)
+    )
+    mock_dependencies["state_manager"] = MigrationStateManager(
+        mock_dependencies["log"],
+        history,
+        mock_dependencies["script_manager"],
+        mock_dependencies["migration_rules"],
+    )
     return ImportFlywayCommand(**mock_dependencies)
 
 

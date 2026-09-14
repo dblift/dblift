@@ -103,8 +103,8 @@ class TestValidateMigrationsForMigrate(unittest.TestCase):
         validation_result = MagicMock()
         validation_result.success = True
         validation_result.error_message = ""
-        validator.validate_migrations.return_value = validation_result
-        ok, msg, t = helpers.validate_migrations_for_migrate(validator, Path("/tmp"), True, [])
+        validator.validate_snapshot.return_value = validation_result
+        ok, msg, t = helpers.validate_migrations_for_migrate(validator, MagicMock())
         self.assertTrue(ok)
         self.assertEqual(msg, "")
 
@@ -115,8 +115,8 @@ class TestValidateMigrationsForMigrate(unittest.TestCase):
         validation_result.success = False
         validation_result.error_message = "Missing migrations"
         validation_result.issues = ["issue1"]
-        validator.validate_migrations.return_value = validation_result
-        ok, msg, t = helpers.validate_migrations_for_migrate(validator, Path("/tmp"), True, [])
+        validator.validate_snapshot.return_value = validation_result
+        ok, msg, t = helpers.validate_migrations_for_migrate(validator, MagicMock())
         self.assertFalse(ok)
         self.assertIn("Missing", msg)
 
@@ -126,27 +126,16 @@ class TestValidateMigrationsForMigrate(unittest.TestCase):
         validation_result = MagicMock()
         validation_result.success = False
         validation_result.error_message = "modified migration scripts found"
-        validator.validate_migrations.return_value = validation_result
-        ok, msg, t = helpers.validate_migrations_for_migrate(validator, Path("/tmp"), True, [])
+        validator.validate_snapshot.return_value = validation_result
+        ok, msg, t = helpers.validate_migrations_for_migrate(validator, MagicMock())
         # Checksum errors are NOT fatal - returns success=False but continues
         self.assertFalse(ok)
 
-    def test_passes_filters(self):
+    def test_passes_state_snapshot(self):
         helpers = self._make()
         validator = MagicMock()
-        validation_result = MagicMock()
-        validation_result.success = True
-        validation_result.error_message = ""
-        validator.validate_migrations.return_value = validation_result
-        helpers.validate_migrations_for_migrate(
-            validator,
-            Path("/tmp"),
-            True,
-            [],
-            target_version="1.0",
-            tags=["tag1"],
-            exclude_tags=["skip"],
-        )
-        validator.validate_migrations.assert_called_once()
-        call_kwargs = validator.validate_migrations.call_args[1]
-        self.assertEqual(call_kwargs.get("target_version"), "1.0")
+        snapshot = MagicMock()
+        validator.validate_snapshot.return_value.success = True
+        validator.validate_snapshot.return_value.error_message = ""
+        helpers.validate_migrations_for_migrate(validator, snapshot)
+        validator.validate_snapshot.assert_called_once_with(snapshot, "migrate")

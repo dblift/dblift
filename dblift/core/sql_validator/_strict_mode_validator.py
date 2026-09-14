@@ -19,7 +19,7 @@ from typing import TYPE_CHECKING, List
 
 from dblift.core.migration import is_versioned
 from dblift.core.migration.migration import Migration, MigrationType
-from dblift.core.migration.version_utils import is_migration_success
+from dblift.core.migration.version_utils import compare_versions, is_migration_success
 
 if TYPE_CHECKING:
     from dblift.core.sql_validator.migration_validator import (
@@ -102,11 +102,7 @@ def validate_strict_mode_rules(
     sorted_versions = applied_versions.copy()
     sorted_versions.sort(
         key=lambda v: (
-            sum(
-                1
-                for other_v in applied_versions
-                if mv.script_manager.compare_versions(v, other_v) > 0
-            ),
+            sum(1 for other_v in applied_versions if compare_versions(v, other_v) > 0),
             v,
         )
     )
@@ -115,9 +111,7 @@ def validate_strict_mode_rules(
     if highest_applied_version:
         out_of_order_migrations = []
         for script in pending_versioned:
-            comparison_result = mv.script_manager.compare_versions(
-                script.version, highest_applied_version
-            )
+            comparison_result = compare_versions(script.version, highest_applied_version)
             if comparison_result < 0:
                 out_of_order_migrations.append(script)
 
