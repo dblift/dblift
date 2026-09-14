@@ -192,20 +192,23 @@ def _prepare_undo_generation_migration(client: Any, migration_path: Path) -> Any
     pulls in ``api`` via the executor).
     """
     from dblift.core.migration.formats import MigrationFormat
-    from dblift.core.migration.migration import Migration
+    from dblift.core.migration.migration_types import MigrationType
     from dblift.core.migration.scripting.migration_script_manager import MigrationScriptManager
 
     if not migration_path.exists():
         raise FileNotFoundError(f"Migration file not found: {migration_path}")
 
     script_manager = MigrationScriptManager(client.logger)
-    if not script_manager.is_versioned_script_name(migration_path.name):
+    filename_metadata = script_manager.parse_filename(migration_path.name)
+    if filename_metadata[0] != MigrationType.SQL or not filename_metadata[1]:
         raise ValueError(
             f"File is not a versioned migration: {migration_path.name}. "
             "Expected a versioned migration filename (V*__description.<ext>)."
         )
 
-    migration = Migration(script_path=migration_path, logger=client.logger)
+    migration = script_manager.load_migration_script(
+        migration_path, filename_metadata=filename_metadata
+    )
     if not migration.version:
         raise ValueError(f"Could not extract version from: {migration_path.name}")
     if migration.format != MigrationFormat.SQL:
