@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+### Changed
+
+### Fixed
+
+### Removed
+
+## [4.5.0] - 2026-09-14
+
+### Added
+
 - Opt-in SQLite benchmarks cover fresh migrations of 10 and 100 scripts with
   and without callbacks, plus no-op migration, validation and info against
   populated history. Each measured round uses its own database and verifies
