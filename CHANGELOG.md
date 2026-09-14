@@ -11,6 +11,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Commands and Validator now consume StateManager validation snapshots, with
+  one version/tag selector and immutable Flyway compatibility inputs. Reusing
+  resolved scripts and applied history avoids duplicate collection; Flyway
+  imports refresh cached inputs after writes.
+
 ### Fixed
 
 - Providers now declare explicit transaction support accurately; migration commands
