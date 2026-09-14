@@ -827,8 +827,9 @@ def test_commands_validate_state_snapshots_without_public_collection_adapters(
 @pytest.mark.parametrize(
     "collection_method", ["get_migration_scripts", "migration_directory_exists"]
 )
+@pytest.mark.parametrize("error_message", ["catalog unavailable", ""])
 def test_validate_catalog_error_preserves_after_validate_callback(
-    database_client, collection_method
+    database_client, collection_method, error_message
 ):
     client, _, migrations, database = database_client
     (migrations / "V1__app.sql").write_text("CREATE TABLE callback_audit (event TEXT);")
@@ -840,12 +841,12 @@ def test_validate_catalog_error_preserves_after_validate_callback(
     with patch.object(
         client.executor.script_manager,
         collection_method,
-        side_effect=PermissionError("catalog unavailable"),
+        side_effect=PermissionError(error_message),
     ):
         result = client.validate()
 
     assert result.success is False
-    assert result.error_message == "Validation failed: catalog unavailable"
+    assert result.error_message == f"Validation failed: {error_message}"
     assert [(record.phase, record.status) for record in result.callbacks] == [
         ("afterValidate", "OK")
     ]
