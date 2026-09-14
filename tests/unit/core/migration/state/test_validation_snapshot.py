@@ -180,3 +180,22 @@ def test_preloaded_inputs_skip_existence_and_collection_probes(client, tmp_path,
     assert snapshot.all_applied_migrations == prepared.all_applied_migrations
     for read in (directory, table, scripts, history, provider):
         read.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "collection_method", ["get_migration_scripts", "migration_directory_exists"]
+)
+def test_catalog_collection_failure_is_immutable_snapshot_input(
+    client, tmp_path, collection_method
+):
+    manager = client.executor.state_manager
+    with patch.object(
+        manager.script_manager,
+        collection_method,
+        side_effect=PermissionError("catalog unavailable"),
+    ):
+        snapshot = manager.build_validation_snapshot(tmp_path)
+    assert snapshot.catalog_read_error == "catalog unavailable"
+    assert snapshot.resolved_migrations == snapshot.selected_migrations == ()
+    with pytest.raises(FrozenInstanceError):
+        snapshot.catalog_read_error = "changed"

@@ -822,3 +822,58 @@ def test_commands_validate_state_snapshots_without_public_collection_adapters(
     assert result.success, result.error_message
     assert build.call_count == validate.call_count == 1
     assert validate.call_args.args[0].selected_migrations[0].script_name == "V1__app.sql"
+
+
+@pytest.mark.parametrize(
+    "collection_method", ["get_migration_scripts", "migration_directory_exists"]
+)
+def test_validate_catalog_error_preserves_after_validate_callback(
+    database_client, collection_method
+):
+    client, _, migrations, database = database_client
+    (migrations / "V1__app.sql").write_text("CREATE TABLE callback_audit (event TEXT);")
+    assert client.migrate().success
+    (migrations / "afterValidate__audit.sql").write_text(
+        "INSERT INTO callback_audit VALUES ('afterValidate');"
+    )
+
+    with patch.object(
+        client.executor.script_manager,
+        collection_method,
+        side_effect=PermissionError("catalog unavailable"),
+    ):
+        result = client.validate()
+
+    assert result.success is False
+    assert result.error_message == "Validation failed: catalog unavailable"
+    assert [(record.phase, record.status) for record in result.callbacks] == [
+        ("afterValidate", "OK")
+    ]
+    with sqlite3.connect(database) as connection:
+        assert connection.execute("SELECT event FROM callback_audit").fetchall() == [
+            ("afterValidate",)
+        ]
+
+
+def test_migrate_preloaded_catalog_remains_authoritative_on_probe_failure(database_client):
+    client, _, migrations, database = database_client
+    (migrations / "V1__app.sql").write_text("CREATE TABLE app (id INTEGER);")
+    with (
+        patch.object(
+            client.executor.script_manager,
+            "get_migration_scripts",
+            side_effect=PermissionError("catalog unavailable"),
+        ) as catalog,
+        patch.object(
+            client.executor.script_manager,
+            "migration_directory_exists",
+            side_effect=PermissionError("directory unavailable"),
+        ) as directory,
+    ):
+        result = client.migrate()
+    assert result.success, result.error_message
+    assert [row.script for row in result.migrations] == ["V1__app.sql"]
+    catalog.assert_not_called()
+    directory.assert_not_called()
+    with sqlite3.connect(database) as connection:
+        assert connection.execute("SELECT count(*) FROM app").fetchone() == (0,)
