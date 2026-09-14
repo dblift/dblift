@@ -144,8 +144,10 @@ class MigrationStateManager:
         applied_migrations: Optional[List[Migration]] = None,
     ) -> MigrationValidationSnapshot:
         """Aggregate catalog and history data without deciding validation outcomes."""
-        directory_exists = scripts_dir is None or self.script_manager.migration_directory_exists(
-            scripts_dir
+        directory_exists = (
+            resolved_migrations is not None
+            or scripts_dir is None
+            or self.script_manager.migration_directory_exists(scripts_dir)
         )
         if resolved_migrations is None:
             resolved_migrations = (
@@ -174,7 +176,9 @@ class MigrationStateManager:
         # The resolved-list 4.x adapter already receives its caller's execution scope.
         if scripts_dir is not None:
             catalog = prune_baseline_migrations(catalog)
-        history_exists = bool(self.history_manager.has_history_table)
+        history_exists = applied_migrations is not None or bool(
+            self.history_manager.has_history_table
+        )
         history_read_error = ""
         if applied_migrations is None:
             try:

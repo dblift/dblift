@@ -66,68 +66,73 @@ def validate_flyway_compatibility(snapshot: FlywayCompatibilitySnapshot) -> Dict
         return result
     flyway_migrations = snapshot.flyway_migrations
     Dblift_migrations = snapshot.dblift_migrations
-    # Compare migration counts
-    if len(flyway_migrations) != len(Dblift_migrations):
+    try:
+        # Compare migration counts
+        if len(flyway_migrations) != len(Dblift_migrations):
+            result["compatible"] = False
+            result["error_message"] = (
+                f"Flyway has {len(flyway_migrations)} migrations but Dblift has "
+                f"{len(Dblift_migrations)} migrations. ."
+            )
+            return result
+
+        # Compare each migration (excluding checksums)
+        for i, flyway_migration in enumerate(flyway_migrations):
+            Dblift_migration = Dblift_migrations[i]
+
+            # Check version
+            if flyway_migration.get("version") != Dblift_migration.get("version"):
+                result["compatible"] = False
+                result["error_message"] = (
+                    f"Migration version mismatch at position {i+1}: "
+                    f"Flyway version '{flyway_migration.get('version')}' vs "
+                    f"Dblift version '{Dblift_migration.get('version')}'. ."
+                )
+                break
+
+            # Check type
+            flyway_type = flyway_migration.get("type", "").upper()
+            Dblift_type = Dblift_migration.get("type", "").upper()
+
+            if flyway_type not in FLYWAY_VALID_TYPES:
+                result["compatible"] = False
+                result["error_message"] = (
+                    f"Unsupported migration type at position {i+1}: "
+                    f"Flyway type '{flyway_type}'.  ."
+                )
+                break
+            if Dblift_type not in DBLIFT_VALID_TYPES:
+                result["compatible"] = False
+                result["error_message"] = (
+                    f"Migration type mismatch at position {i+1}: "
+                    f"Flyway type '{flyway_type}' vs Dblift type '{Dblift_type}'.  ."
+                )
+                break
+            # Check script name (both Flyway and Dblift now use 'script')
+            if flyway_migration.get("script") != Dblift_migration.get("script"):
+                result["compatible"] = False
+                result["error_message"] = (
+                    f"Migration script name mismatch at position {i+1}: "
+                    f"Flyway script '{flyway_migration.get('script')}' vs "
+                    f"Dblift script '{Dblift_migration.get('script')}'. ."
+                )
+                break
+
+            flyway_checksum = normalize_migration_checksum(flyway_migration.get("checksum"))
+            dblift_checksum = normalize_migration_checksum(Dblift_migration.get("checksum"))
+            if flyway_checksum != dblift_checksum:
+                result["compatible"] = False
+                result["error_message"] = (
+                    f"Migration checksum mismatch at position {i+1}: "
+                    f"Flyway checksum '{flyway_migration.get('checksum')}' vs "
+                    f"Dblift checksum '{Dblift_migration.get('checksum')}'. ."
+                )
+                break
+
+            # Skip checking success as Flyway might use 1/0 while Dblift uses true/false
+    except Exception as error:
         result["compatible"] = False
-        result["error_message"] = (
-            f"Flyway has {len(flyway_migrations)} migrations but Dblift has "
-            f"{len(Dblift_migrations)} migrations. ."
-        )
-        return result
-
-    # Compare each migration (excluding checksums)
-    for i, flyway_migration in enumerate(flyway_migrations):
-        Dblift_migration = Dblift_migrations[i]
-
-        # Check version
-        if flyway_migration.get("version") != Dblift_migration.get("version"):
-            result["compatible"] = False
-            result["error_message"] = (
-                f"Migration version mismatch at position {i+1}: "
-                f"Flyway version '{flyway_migration.get('version')}' vs "
-                f"Dblift version '{Dblift_migration.get('version')}'. ."
-            )
-            break
-
-        # Check type
-        flyway_type = flyway_migration.get("type", "").upper()
-        Dblift_type = Dblift_migration.get("type", "").upper()
-
-        if flyway_type not in FLYWAY_VALID_TYPES:
-            result["compatible"] = False
-            result["error_message"] = (
-                f"Unsupported migration type at position {i+1}: " f"Flyway type '{flyway_type}'.  ."
-            )
-            break
-        if Dblift_type not in DBLIFT_VALID_TYPES:
-            result["compatible"] = False
-            result["error_message"] = (
-                f"Migration type mismatch at position {i+1}: "
-                f"Flyway type '{flyway_type}' vs Dblift type '{Dblift_type}'.  ."
-            )
-            break
-        # Check script name (both Flyway and Dblift now use 'script')
-        if flyway_migration.get("script") != Dblift_migration.get("script"):
-            result["compatible"] = False
-            result["error_message"] = (
-                f"Migration script name mismatch at position {i+1}: "
-                f"Flyway script '{flyway_migration.get('script')}' vs "
-                f"Dblift script '{Dblift_migration.get('script')}'. ."
-            )
-            break
-
-        flyway_checksum = normalize_migration_checksum(flyway_migration.get("checksum"))
-        dblift_checksum = normalize_migration_checksum(Dblift_migration.get("checksum"))
-        if flyway_checksum != dblift_checksum:
-            result["compatible"] = False
-            result["error_message"] = (
-                f"Migration checksum mismatch at position {i+1}: "
-                f"Flyway checksum '{flyway_migration.get('checksum')}' vs "
-                f"Dblift checksum '{Dblift_migration.get('checksum')}'. ."
-            )
-            break
-
-        # Skip checking success as Flyway might use 1/0 while Dblift uses true/false
+        result["error_message"] = f"Error checking Flyway compatibility: {error}"
 
     return result
 

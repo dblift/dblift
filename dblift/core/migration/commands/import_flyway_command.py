@@ -70,6 +70,7 @@ class ImportFlywayCommand(BaseCommand):
             # table is created as a side effect.
             if not dry_run:
                 self.history_manager.create_schema_and_history_table(create_schema=False)
+                self.state_manager.new_read_snapshot()
 
             # Log command execution with connection info (after connection is established)
             self._log_command_header_update("import-flyway", dry_run=dry_run)
@@ -139,6 +140,7 @@ class ImportFlywayCommand(BaseCommand):
                 commit = getattr(self.provider, "commit_transaction", None)
                 if callable(commit):
                     commit()
+                self.state_manager.new_read_snapshot()
 
             action = "would be imported" if dry_run else "imported"
             noun = "entry" if imported_count == 1 else "entries"
