@@ -147,6 +147,7 @@ class MigrationState:
     executed_scripts: List[str] = field(default_factory=list, repr=False)
     repeatable_checksums: Dict[str, str] = field(default_factory=dict, repr=False)
     resolved_objects: Optional[List[Any]] = field(default=None, repr=False)
+    grouped_objects: Optional[Dict[Any, List[Any]]] = field(default=None, repr=False)
 
     @property
     def has_failures(self) -> bool:
@@ -214,5 +215,10 @@ class MigrationState:
             repeatable_checksums=dict(self.repeatable_checksums),
             resolved_objects=(
                 list(self.resolved_objects) if self.resolved_objects is not None else None
+            ),
+            grouped_objects=(
+                {key: list(migrations) for key, migrations in self.grouped_objects.items()}
+                if self.grouped_objects is not None
+                else None
             ),
         )

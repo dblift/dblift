@@ -4,7 +4,7 @@ import os
 import re
 from functools import cmp_to_key
 from pathlib import Path
-from typing import Any, Dict, Iterable, Iterator, List, Optional, Set, Tuple
+from typing import Any, Dict, Iterable, Iterator, List, NamedTuple, Optional, Set, Tuple
 
 from dblift.core.logger import Log
 from dblift.core.migration._type_match import is_migration_type
@@ -23,6 +23,14 @@ from dblift.core.migration.migration import (
 )
 from dblift.core.migration.version_utils import compare_versions as _compare_versions_shared
 from dblift.core.migration.version_utils import is_migration_success
+
+
+class _DiscoveredScript(NamedTuple):
+    """File and filename metadata retained only for the current catalog load."""
+
+    path: Path
+    resolved_path: Path
+    filename_metadata: Tuple[MigrationType, Optional[str], str, List[str]]
 
 
 def _successful_non_delete_records(migrations: Iterable[Migration]) -> Iterator[Migration]:
@@ -444,9 +452,7 @@ class MigrationScriptManager:
         recursive: bool = True,
         additional_dirs: Optional[List[Path]] = None,
         dir_recursive_map: Optional[Dict[Path, bool]] = None,
-        _filename_metadata: Optional[
-            Dict[str, Tuple[MigrationType, Optional[str], str, List[str]]]
-        ] = None,
+        _discovery_metadata: Optional[Dict[str, _DiscoveredScript]] = None,
     ) -> List[str]:
         """Return a list of all migration script filenames in the directory and its subdirectories.
 
@@ -532,7 +538,7 @@ class MigrationScriptManager:
                 all_files = dir_path.glob("*")
 
             # Filter to only supported migration file formats
-            # Exclude symlinks early: file symlinks pass is_file() but are rejected later by not is_symlink()
+            # File symlinks pass is_file(), so explicitly exclude them here.
             search_method = (
                 f
                 for f in all_files
@@ -542,56 +548,53 @@ class MigrationScriptManager:
             )
 
             for script_path in search_method:
-                # Only include regular files, not symlinks or non-regular files
-                if script_path.is_file() and not script_path.is_symlink():
-                    # Path traversal guard: ensure resolved path is within the configured dir
-                    try:
-                        resolved_script_path = script_path.resolve()
-                        resolved_script_path.relative_to(resolved_dir_path)
-                    except OSError as e:
-                        self.logger.warning(
-                            f"Security: skipping '{script_path}' — path inaccessible or "
-                            f"invalid: {e}"
-                        )
-                        continue
-                    except ValueError:
-                        self.logger.warning(
-                            f"Security: skipping '{script_path}' — resolved path "
-                            f"'{resolved_script_path}' is outside configured migrations "
-                            f"directory '{dir_path}'"
-                        )
-                        continue
-                    filename_metadata = self.parse_filename(script_path.name)
-                    if filename_metadata[0] in (
-                        MigrationType.SQL,
-                        MigrationType.REPEATABLE,
-                        MigrationType.UNDO_SQL,
-                        MigrationType.CALLBACK,
-                    ):
-                        # Store the script with its source directory information
-                        # For additional directories, prefix with the directory name to track the source
-                        # Compare resolved paths to handle different path representations
-                        try:
-                            is_additional_dir = resolved_dir_path != resolved_migrations_dir
-                        except (OSError, RuntimeError):
-                            is_additional_dir = dir_path != migrations_dir
+                # Path traversal guard: ensure resolved path is within the configured dir
+                try:
+                    resolved_script_path = script_path.resolve()
+                    resolved_script_path.relative_to(resolved_dir_path)
+                except OSError as e:
+                    self.logger.warning(
+                        f"Security: skipping '{script_path}' — path inaccessible or "
+                        f"invalid: {e}"
+                    )
+                    continue
+                except ValueError:
+                    self.logger.warning(
+                        f"Security: skipping '{script_path}' — resolved path "
+                        f"'{resolved_script_path}' is outside configured migrations "
+                        f"directory '{dir_path}'"
+                    )
+                    continue
+                filename_metadata = self.parse_filename(script_path.name)
+                if filename_metadata[0] in (
+                    MigrationType.SQL,
+                    MigrationType.REPEATABLE,
+                    MigrationType.UNDO_SQL,
+                    MigrationType.CALLBACK,
+                ):
+                    # Store the script with its source directory information
+                    # For additional directories, prefix with the directory name to track the source
+                    # Compare resolved paths to handle different path representations
+                    is_additional_dir = resolved_dir_path != resolved_migrations_dir
 
-                        if is_additional_dir:
-                            # Store as "dir_name/relative_path" (which may include
-                            # subdirectory components) to track which directory it
-                            # came from while preserving its location within that
-                            # directory.
-                            rel_path = script_path.relative_to(dir_path)
-                            script_reference = f"{dir_path}/{rel_path.as_posix()}"
-                        else:
-                            # For the primary directory, use the relative path as-is
-                            rel_path = script_path.relative_to(dir_path)
-                            script_reference = str(rel_path)
-                        scripts.append(script_reference)
-                        if _filename_metadata is not None:
-                            _filename_metadata[script_reference] = filename_metadata
+                    if is_additional_dir:
+                        # Store as "dir_name/relative_path" (which may include
+                        # subdirectory components) to track which directory it
+                        # came from while preserving its location within that
+                        # directory.
+                        rel_path = script_path.relative_to(dir_path)
+                        script_reference = f"{dir_path}/{rel_path.as_posix()}"
                     else:
-                        self._report_callback_naming_violation(script_path.name)
+                        # For the primary directory, use the relative path as-is
+                        rel_path = script_path.relative_to(dir_path)
+                        script_reference = str(rel_path)
+                    scripts.append(script_reference)
+                    if _discovery_metadata is not None:
+                        _discovery_metadata[script_reference] = _DiscoveredScript(
+                            script_path, resolved_script_path, filename_metadata
+                        )
+                else:
+                    self._report_callback_naming_violation(script_path.name)
 
         return scripts
 
@@ -657,14 +660,14 @@ class MigrationScriptManager:
             MigrationType.CALLBACK: [],
         }
 
-        # Get all scripts and retain their parsed metadata for this load only.
-        filename_metadata: Dict[str, Tuple[MigrationType, Optional[str], str, List[str]]] = {}
+        # Retain guarded filesystem and parsed filename metadata for this load only.
+        discovery_metadata: Dict[str, _DiscoveredScript] = {}
         script_paths = self.get_all_scripts(
             scripts_directory,
             recursive=recursive,
             additional_dirs=additional_dirs,
             dir_recursive_map=dir_recursive_map,
-            _filename_metadata=filename_metadata,
+            _discovery_metadata=discovery_metadata,
         )
 
         # First pass: collect all scripts
@@ -699,9 +702,15 @@ class MigrationScriptManager:
                 # Primary directory - use as-is
                 script_path = scripts_directory / rel_script_path
 
-            # Resolve the path to detect duplicates even if paths are represented differently
+            discovered = discovery_metadata.get(rel_script_path)
+            # Keep legacy reference routing when a primary subdirectory name also
+            # prefixes an additional directory. Only reuse the path we guarded.
             try:
-                resolved_path = script_path.resolve()
+                if discovered is not None and script_path == discovered.path:
+                    script_path = discovered.path
+                    resolved_path = discovered.resolved_path
+                else:
+                    resolved_path = script_path.resolve()
                 if resolved_path in seen_files:
                     # Skip this file as we've already processed it
                     self.logger.debug(
@@ -718,7 +727,7 @@ class MigrationScriptManager:
 
             try:
                 script_name = script_path.name
-                parsed_metadata = filename_metadata.get(rel_script_path)
+                parsed_metadata = discovered.filename_metadata if discovered is not None else None
                 if parsed_metadata is None:
                     parsed_metadata = self.parse_filename(script_name)
                 migration_type = parsed_metadata[0]

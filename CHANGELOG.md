@@ -15,10 +15,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
-## [4.5.0] - 2026-09-13
+## [4.5.0] - 2026-09-14
 
 ### Added
 
+- Opt-in SQLite benchmarks cover fresh migrations of 10 and 100 scripts with
+  and without callbacks, plus no-op migration, validation and info against
+  populated history. Each measured round uses its own database and verifies
+  the command results and database contents.
 - `dblift mcp --offline` refuses every tool and resource that would open a
   database connection, without connecting: the tool stays listed and the call
   returns an error naming the flag. The server starts even where no database
@@ -37,23 +41,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   a document the package ships, or one derived from your configuration, served
   under its own media type. `--resources` fences them and `--offline` refuses
   them exactly as it does the built-in ones.
-- Opt-in SQLite benchmarks cover fresh migrations of 10 and 100 scripts with
-  and without callbacks, plus no-op migration, validation and info against
-  populated history. Each measured round uses its own database and verifies
-  the command results and database contents.
-
 ### Changed
 
-- **A column or constraint in a model file now carries its own `dialect`.** The
-  first rewrite by this version adds `dialect`, `is_primary_key`, `is_unique`
-  and `constraints` to every column, and `dialect`, `on_delete`, `on_update`,
-  `is_enabled`, `is_validated`, `is_deferrable`, `initially_deferred` and
-  `comment` to every constraint. Once a child carries its own `dialect`, that
-  value is read in preference to the table's, so editing the table-level
-  `dialect` by hand no longer retargets the columns and constraints below it:
-  edit theirs as well, or drop their `dialect` keys to let the table's apply
-  again. A file written by an earlier version carries no such key and is
-  unaffected until it is rewritten.
+- Build repeatable basename indexes on demand so legacy checksum lookups and
+  pending checks avoid scanning history for every script, without adding scans
+  to versioned-only catalogs.
+- Reuse guarded filesystem metadata within script loading and the StateManager
+  catalog during repair pre-write checks. Header/footer version calculation
+  avoids full display analysis; post-write and subsequent-command reads remain
+  fresh.
 - Reduce repeated script discovery, file reads and history queries in `migrate`,
   `info` and `validate`. Callback catalogs are reused within each command, while
   subsequent commands observe changed files and history is refreshed after lock
@@ -65,9 +61,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and remove redundant sorting. Share the common validation checks and MySQL
   quoted-string readers while preserving filtering, callback order and dialect
   behavior.
+- **A column or constraint in a model file now carries its own `dialect`.** The
+  first rewrite by this version adds `dialect`, `is_primary_key`, `is_unique`
+  and `constraints` to every column, and `dialect`, `on_delete`, `on_update`,
+  `is_enabled`, `is_validated`, `is_deferrable`, `initially_deferred` and
+  `comment` to every constraint. Once a child carries its own `dialect`, that
+  value is read in preference to the table's, so editing the table-level
+  `dialect` by hand no longer retargets the columns and constraints below it:
+  edit theirs as well, or drop their `dialect` keys to let the table's apply
+  again. A file written by an earlier version carries no such key and is
+  unaffected until it is rewritten.
 
 ### Fixed
 
+- `MigrationValidator.validate_resolved_migrations()` now checks that script
+  formats are supported by the selected provider, matching directory-based
+  validation.
 - **Serialized table models keep every constraint field.** A constraint written
   to a model file lost its `ON DELETE` / `ON UPDATE` actions, its enabled and
   validated state, its deferrability and its comment, because only eight of its
@@ -121,11 +130,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   reached a model file. Nothing sets or reads either one today, so the only
   difference in a rewritten file is the two keys, written as `null`, on each
   parameter.
-- `MigrationValidator.validate_resolved_migrations()` now checks that script
-  formats are supported by the selected provider, matching directory-based
-  validation.
 
 ### Removed
+
+- Retired internal SQL-syntax validation module and the unused
+  `MigrationValidator._validate_sql_syntax` and `_replace_placeholders` helpers,
+  including their unused analyzer allocation. Supported migration validation
+  and SQL execution entry points remain intact.
+- Unused `MigrationDataService._is_version_reapplied`, `_get_undo_rank` and
+  its unused state-service allocation.
 
 ## [4.4.0] - 2026-09-12
 

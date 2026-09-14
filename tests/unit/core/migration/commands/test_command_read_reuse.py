@@ -19,6 +19,7 @@ from dblift.core.migration.commands.info_command import InfoCommand
 from dblift.core.migration.commands.migrate_command import MigrateCommand
 from dblift.core.migration.commands.repair_command import RepairCommand
 from dblift.core.migration.commands.validate_command import ValidateCommand
+from dblift.core.migration.state.migration_data_service import MigrationDataService
 from dblift.core.migration.state.migration_state import MigrationState
 
 pytestmark = [pytest.mark.unit, pytest.mark.sqlite]
@@ -144,6 +145,52 @@ def test_empty_history_snapshot_is_used_by_state_and_strict_validation(database_
     assert state.applied == []
     assert validation.success, validation.error_message
     assert counts == {"history": 0, "files": {"V1__app.sql": 1}, "scans": 1}
+
+
+@pytest.mark.parametrize("operation", ["info", "migrate"])
+def test_populated_commands_analyse_display_history_only_for_state(database_client, operation):
+    client, _, migrations, _ = database_client
+    script = migrations / "V1__app.sql"
+    script.write_text("CREATE TABLE app (id INTEGER PRIMARY KEY);")
+    assert client.migrate().success
+    manager = client.executor.state_manager
+    with (
+        observe_reads(client, migrations) as counts,
+        patch.object(
+            MigrationDataService,
+            "_sort_applied_migrations",
+            autospec=True,
+            side_effect=MigrationDataService._sort_applied_migrations,
+        ) as sort_history,
+        patch.object(manager, "_analyse_history", wraps=manager._analyse_history) as analyse,
+        patch.object(
+            BaseCommand,
+            "_format_command_header",
+            autospec=True,
+            side_effect=BaseCommand._format_command_header,
+        ) as header,
+        patch.object(
+            BaseCommand,
+            "_format_command_footer",
+            autospec=True,
+            side_effect=BaseCommand._format_command_footer,
+        ) as footer,
+    ):
+        result = getattr(client, operation)()
+
+    assert result.success, result.error_message
+    assert header.call_args.kwargs["schema_version"] == "1"
+    assert footer.call_args.kwargs["schema_version"] == "1"
+    if operation == "info":
+        assert [(entry.script, entry.status) for entry in result.migrations] == [
+            (script.name, "SUCCESS")
+        ]
+    else:
+        assert result.migrations == []
+        assert result.current_schema_version == "1"
+    assert counts == {"history": 2, "files": {script.name: 1}, "scans": 1}
+    assert sort_history.call_count == 1
+    assert analyse.call_count == 1
 
 
 def test_resolved_catalog_copy_preserves_order_and_state_json(database_client):

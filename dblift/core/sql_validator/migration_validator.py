@@ -18,7 +18,6 @@ from dblift.core.migration.scripting.migration_script_manager import (  # noqa: 
     MigrationScriptManager,
     _last_successful_non_delete_record,
 )
-from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
 from dblift.core.migration.state.migration_state import MigrationReadSnapshot
 from dblift.core.migration.version_utils import is_migration_failure
 
@@ -53,11 +52,11 @@ class ValidationResult:
         """Record that a check actually ran against *script_name*.
 
         Collection is wider than checking: undo scripts are gathered with the
-        rest, then exempted from drift detection, skipped by the syntax
-        validator and skipped again by the duplicate-version check — so they
-        receive no verification at all. Reporting them as validated would claim
-        a check that never ran. Recording it at the point of the check is what
-        keeps the reported set honest if a validator's scope later changes.
+        rest, then exempted from drift detection and skipped by the
+        duplicate-version check — so they receive no verification at all.
+        Reporting them as validated would claim a check that never ran.
+        Recording it at the point of the check is what keeps the reported set
+        honest if a validator's scope later changes.
         """
         if script_name and script_name not in self._checked_script_names:
             self._checked_script_names.add(script_name)
@@ -119,14 +118,8 @@ class MigrationValidator:
         self.log = log if log is not None else NullLog()
         self.placeholders = placeholders or {}
 
-        # Initialize the SQL analyzer with ANTLR support and database type from provider config
         dblift_config = getattr(self.history_manager.provider, "config", None)
-        if dblift_config:
-            dialect = dblift_config.database.type
-            self.sql_analyzer = SqlAnalyzer(dialect=dialect, logger=self.log)
-        else:
-            dialect = ""
-            self.sql_analyzer = SqlAnalyzer(dialect=dialect, logger=self.log)
+        dialect = dblift_config.database.type if dblift_config else ""
 
         from dblift.db.provider_registry import ProviderRegistry
 
@@ -134,25 +127,6 @@ class MigrationValidator:
 
         # Cache for Flyway compatibility check results
         self._flyway_compatibility_cache: Optional[Dict[str, object]] = None
-
-    def _replace_placeholders(self, sql_text: str) -> str:
-        """Replace placeholders in SQL text with their values.
-
-        This method uses the PlaceholderService to handle replacements.
-
-        Args:
-            sql_text: The SQL text containing placeholders
-
-        Returns:
-            SQL text with placeholders replaced by actual values
-        """
-        from dblift.core.migration.placeholders.placeholder_service import PlaceholderService
-
-        # Create a placeholder service instance with our placeholders
-        placeholder_service = PlaceholderService(self.placeholders, self.log)
-
-        # Use the service to replace placeholders
-        return str(placeholder_service.replace_placeholders(sql_text))
 
     def validate_flyway_compatibility(self) -> Dict[str, object]:
         """Delegate to
@@ -813,16 +787,6 @@ class MigrationValidator:
         )
 
         _impl(self, scripts, applied_migrations, result, command)
-
-    def _validate_sql_syntax(
-        self, scripts: List[Migration], result: ValidationResult, issues: List[str]
-    ) -> None:
-        """Delegate to
-        :func:`dblift.core.sql_validator._sql_syntax_validator.validate_sql_syntax`.
-        """
-        from dblift.core.sql_validator._sql_syntax_validator import validate_sql_syntax as _impl
-
-        _impl(self, scripts, result, issues)
 
     def _validate_strict_mode_rules(
         self,
