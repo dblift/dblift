@@ -116,4 +116,6 @@ self._quirks = ProviderRegistry.get_quirks(dialect)
 - [x] Personally review the combined branch diff, all manager boundaries and all task corrections. Resolve findings through their implementers before publication.
 - [x] Run complete unit suite with CI extras/constraints on Python 3.12, then pytest-dblift package tests; run complete quality workflow on Python 3.11, all existing benchmarks and focused operation-count probes.
 - [x] Compare baseline/final counts and local timings on identical workloads; report scope and avoid timing guarantees. Verify git identity, branch prefix, clean state and no forbidden publication text.
-- [ ] Push fix/oss-core-read-efficiency and create a PR to develop with concise scope, validation and compatibility notes. Wait for CI and correct any failures. Do not merge.
+- [x] Publish fix/oss-core-read-efficiency as [PR #303](https://github.com/dblift/dblift/pull/303) to develop with scope, validation and compatibility notes.
+
+Remote CI is tracked in the PR checks. Follow those checks to completion and correct any failures; leave the PR unmerged.

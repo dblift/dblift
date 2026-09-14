@@ -73,4 +73,4 @@ Identical real SQLite workload with 500 applied migrations, baseline 8f8e2a3 ver
 
 Each timing is the median of seven warm local samples, measured separately from instrumentation and other test runs. These are observations on this machine, not general speed guarantees. Operation-count probes also asserted successful results and unchanged history-read counts. The complete branch changes seven core files with 167 inserted and 332 deleted lines: 165 fewer core source lines.
 
-Local unit/quality/package/benchmark verification is complete. Publication and remote CI are the remaining steps; no merge is authorized.
+Local unit/quality/package/benchmark verification is complete. Published as [PR #303](https://github.com/dblift/dblift/pull/303) from fix/oss-core-read-efficiency to develop. Remote CI results are recorded in the PR checks. The PR remains open; no merge is authorized.
