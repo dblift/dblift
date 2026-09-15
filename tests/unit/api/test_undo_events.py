@@ -23,6 +23,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from dblift.api.events import EventType
+from dblift.config import DbliftConfig
 
 
 def _make_client(undo_result):
@@ -36,6 +37,7 @@ def _make_client(undo_result):
     executor.undo.return_value = undo_result
 
     client = DBLiftClient.__new__(DBLiftClient)
+    client.config = DbliftConfig.from_dict({"database": {"type": "sqlite", "path": ":memory:"}})
     client.provider = provider
     client.executor = executor
     client.events = MagicMock()
@@ -100,6 +102,7 @@ class TestUndoEvents:
         executor.undo.side_effect = RuntimeError("DB gone")
 
         client = DBLiftClient.__new__(DBLiftClient)
+        client.config = DbliftConfig.from_dict({"database": {"type": "sqlite", "path": ":memory:"}})
         client.provider = provider
         client.executor = executor
         client.events = MagicMock()

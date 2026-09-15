@@ -257,6 +257,28 @@ class DBLiftClient:
 
         return _default_splitter_dialect().lower()
 
+    def _resolve_script_options(
+        self,
+        recursive: Optional[bool],
+        additional_dirs: Optional[List[Path]],
+        dir_recursive_map: Optional[Dict[Path, bool]],
+    ) -> tuple[bool, List[Path], Optional[Dict[Path, bool]]]:
+        """Use configured directory policies unless the call overrides them.
+
+        An explicit per-directory map wins over the global recursive flag.
+        Neither the caller's map nor the client's config is mutated.
+        """
+        directories = self.config.migrations.get_directory_configs()
+        if additional_dirs is None:
+            additional_dirs = [Path(directory.path) for directory in directories]
+        if recursive is None:
+            recursive = self.config.migrations.recursive
+            if dir_recursive_map is None:
+                dir_recursive_map = {
+                    Path(directory.path): directory.recursive for directory in directories
+                }
+        return recursive, additional_dirs, dir_recursive_map
+
     @_with_client_emitter
     def migrate(
         self,
@@ -270,7 +292,7 @@ class DBLiftClient:
         show_sql: bool = False,
         show_query_results: bool = False,
         placeholders: Optional[Dict[str, Any]] = None,
-        recursive: bool = True,
+        recursive: Optional[bool] = None,
         additional_dirs: Optional[List[Path]] = None,
         **kwargs: Any,
     ) -> MigrateResult:
@@ -287,7 +309,7 @@ class DBLiftClient:
             show_sql: Include migration SQL statements in outputs and reports
             show_query_results: Include rows returned by SELECT statements in outputs and reports
             placeholders: Placeholder values for migration scripts
-            recursive: Search scripts directory recursively
+            recursive: Override recursive search for all directories; None uses config
             additional_dirs: Additional script directories
             **kwargs: Additional options
 
@@ -311,6 +333,9 @@ class DBLiftClient:
             # method by ``@_with_client_emitter`` — core-layer ``emit_event``
             # calls (e.g. ``migration.script.*``) land here instead of the
             # process-wide default emitter shared by every client instance.
+            recursive, additional_dirs, dir_recursive_map = self._resolve_script_options(
+                recursive, additional_dirs, kwargs.pop("dir_recursive_map", None)
+            )
             result = self.executor.migrate(
                 scripts_dir=self._get_scripts_dir(),
                 target_version=target_version,
@@ -324,6 +349,7 @@ class DBLiftClient:
                 show_query_results=show_query_results,
                 placeholders=placeholders,
                 recursive=recursive,
+                dir_recursive_map=dir_recursive_map,
                 additional_dirs=additional_dirs,
                 **kwargs,
             )
@@ -372,7 +398,7 @@ class DBLiftClient:
         exclude_tags: Optional[str] = None,
         versions: Optional[str] = None,
         exclude_versions: Optional[str] = None,
-        recursive: bool = True,
+        recursive: Optional[bool] = None,
         additional_dirs: Optional[List[Path]] = None,
         display_human: bool = False,
         **kwargs: Any,
@@ -385,7 +411,7 @@ class DBLiftClient:
             exclude_tags: Comma-separated tags to exclude (e.g., "tag1,tag2")
             versions: Comma-separated versions to include (e.g., "1.0.0,1.1.0")
             exclude_versions: Comma-separated versions to exclude (e.g., "1.0.0,1.1.0")
-            recursive: Search scripts directory recursively
+            recursive: Override recursive search for all directories; None uses config
             additional_dirs: Additional script directories
             display_human: When True, also prints a human-readable migration
                 table to stdout. Defaults to False so programmatic API callers
@@ -406,6 +432,9 @@ class DBLiftClient:
         )
 
         try:
+            recursive, additional_dirs, dir_recursive_map = self._resolve_script_options(
+                recursive, additional_dirs, kwargs.pop("dir_recursive_map", None)
+            )
             result = self.executor.info(
                 scripts_dir=self._get_scripts_dir(),
                 target_version=target_version,
@@ -414,6 +443,7 @@ class DBLiftClient:
                 versions=versions,
                 exclude_versions=exclude_versions,
                 recursive=recursive,
+                dir_recursive_map=dir_recursive_map,
                 additional_dirs=additional_dirs,
                 display_human=display_human,
                 **kwargs,
@@ -434,7 +464,7 @@ class DBLiftClient:
         exclude_tags: Optional[str] = None,
         versions: Optional[str] = None,
         exclude_versions: Optional[str] = None,
-        recursive: bool = True,
+        recursive: Optional[bool] = None,
         additional_dirs: Optional[List[Path]] = None,
         **kwargs: Any,
     ) -> ValidateResult:
@@ -446,7 +476,7 @@ class DBLiftClient:
             exclude_tags: Comma-separated tags to exclude (e.g., "tag1,tag2")
             versions: Comma-separated versions to include (e.g., "1.0.0,1.1.0")
             exclude_versions: Comma-separated versions to exclude (e.g., "1.0.0,1.1.0")
-            recursive: Search scripts directory recursively
+            recursive: Override recursive search for all directories; None uses config
             additional_dirs: Additional script directories
             **kwargs: Additional options
 
@@ -457,6 +487,9 @@ class DBLiftClient:
         self.events.emit(EventType.VALIDATION_STARTED, {"dialect": getattr(self, "dialect", None)})
 
         try:
+            recursive, additional_dirs, dir_recursive_map = self._resolve_script_options(
+                recursive, additional_dirs, kwargs.pop("dir_recursive_map", None)
+            )
             result = self.executor.validate(
                 scripts_dir=self._get_scripts_dir(),
                 target_version=target_version,
@@ -465,6 +498,7 @@ class DBLiftClient:
                 versions=versions,
                 exclude_versions=exclude_versions,
                 recursive=recursive,
+                dir_recursive_map=dir_recursive_map,
                 additional_dirs=additional_dirs,
                 **kwargs,
             )
@@ -494,7 +528,7 @@ class DBLiftClient:
         show_sql: bool = False,
         show_query_results: bool = False,
         placeholders: Optional[Dict[str, Any]] = None,
-        recursive: bool = True,
+        recursive: Optional[bool] = None,
         additional_dirs: Optional[List[Path]] = None,
         **kwargs: Any,
     ) -> "UndoResult":
@@ -510,7 +544,7 @@ class DBLiftClient:
             show_sql: Include undo SQL statements in outputs and reports
             show_query_results: Include rows returned by SELECT statements in outputs and reports
             placeholders: Placeholder values for migration scripts
-            recursive: Search scripts directory recursively
+            recursive: Override recursive search for all directories; None uses config
             additional_dirs: Additional script directories
             **kwargs: Additional options
 
@@ -530,6 +564,9 @@ class DBLiftClient:
 
         try:
             # ``self.events`` is bound by ``@_with_client_emitter``.
+            recursive, additional_dirs, dir_recursive_map = self._resolve_script_options(
+                recursive, additional_dirs, kwargs.pop("dir_recursive_map", None)
+            )
             result = self.executor.undo(
                 scripts_dir=self._get_scripts_dir(),
                 target_version=target_version,
@@ -542,6 +579,7 @@ class DBLiftClient:
                 show_query_results=show_query_results,
                 placeholders=placeholders,
                 recursive=recursive,
+                dir_recursive_map=dir_recursive_map,
                 additional_dirs=additional_dirs,
                 **kwargs,
             )
@@ -664,7 +702,7 @@ class DBLiftClient:
     def clean(
         self,
         dry_run: bool = False,
-        recursive: bool = True,
+        recursive: Optional[bool] = None,
         additional_dirs: Optional[List[Path]] = None,
         clean_enabled: bool = False,
         show_query_results: bool = False,
@@ -674,7 +712,7 @@ class DBLiftClient:
 
         Args:
             dry_run: If True, don't actually clean the database
-            recursive: Search scripts directory recursively
+            recursive: Override recursive search for all directories; None uses config
             additional_dirs: Additional script directories
             clean_enabled: If True, allow destructive clean even when config disables it
             show_query_results: Include rows returned by SELECT statements in outputs and reports
@@ -693,10 +731,14 @@ class DBLiftClient:
         )
 
         try:
+            recursive, additional_dirs, dir_recursive_map = self._resolve_script_options(
+                recursive, additional_dirs, kwargs.pop("dir_recursive_map", None)
+            )
             result = self.executor.clean(
                 scripts_dir=self._get_scripts_dir(),
                 dry_run=dry_run,
                 recursive=recursive,
+                dir_recursive_map=dir_recursive_map,
                 additional_dirs=additional_dirs,
                 clean_enabled=clean_enabled,
                 show_query_results=show_query_results,
@@ -795,7 +837,7 @@ class DBLiftClient:
     def repair(
         self,
         dry_run: bool = False,
-        recursive: bool = True,
+        recursive: Optional[bool] = None,
         additional_dirs: Optional[List[Path]] = None,
         dir_recursive_map: Optional[Dict[Path, bool]] = None,
         **kwargs: Any,
@@ -804,7 +846,7 @@ class DBLiftClient:
 
         Args:
             dry_run: If True, don't actually repair
-            recursive: Search scripts directory recursively
+            recursive: Override recursive search for all directories; None uses config
             additional_dirs: Additional script directories
             dir_recursive_map: Map of directories to recursive settings
             **kwargs: Additional options
@@ -822,6 +864,9 @@ class DBLiftClient:
         )
 
         try:
+            recursive, additional_dirs, dir_recursive_map = self._resolve_script_options(
+                recursive, additional_dirs, dir_recursive_map
+            )
             result = self.executor.repair(
                 scripts_dir=self._get_scripts_dir(),
                 dry_run=dry_run,

@@ -59,9 +59,15 @@ result = client.migrate(
     dry_run=False,            # Preview without applying
     show_sql=False,           # Include migration SQL in outputs/reports
     tags="core,init",         # Filter by tags
-    recursive=True            # Search subdirectories
+    recursive=None            # Use configured per-directory recursion (default)
 )
 ```
+
+For `migrate`, `info`, `validate`, `undo`, `clean`, and `repair`, omitted
+directory options use the client's configured migration directories. Set
+`recursive=True` or `False` to override recursion for all directories. An explicit
+`dir_recursive_map` replaces the configured per-directory map and takes precedence
+over `recursive` for its entries. Call overrides do not change subsequent calls.
 
 ### undo()
 

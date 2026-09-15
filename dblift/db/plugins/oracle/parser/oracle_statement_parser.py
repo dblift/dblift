@@ -254,6 +254,11 @@ class OracleStatementParser(BaseStatementParser):
 
         # Handle control flow keywords
         if keyword in ("IF", "CASE"):
+            # IF [NOT] EXISTS in a DDL header is not a procedural block.
+            # Procedural IF can only occur inside an active PL/SQL body;
+            # CASE expressions, however, also occur in standalone SQL.
+            if keyword == "IF" and self.context.block_depth == 0:
+                return
             # Only increase if not preceded by END
             if not self._preceded_by_end():
                 self.context.increase_block_depth(keyword)
