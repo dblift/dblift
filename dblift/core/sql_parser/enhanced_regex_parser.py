@@ -95,7 +95,11 @@ class EnhancedRegexParser(RegexParser):
         if not sql_content or not sql_content.strip():
             return objects
 
-        sql = sql_content.strip()
+        # Comments must not be matched as if they were code (e.g. a
+        # commented-out "ALTER TABLE ..." should not surface as an object).
+        sql = self._remove_comments_enhanced(sql_content.strip())
+        if not sql:
+            return objects
         schema = default_schema or self.config.get_default_schema()
 
         # Enhanced object extraction with better error handling
