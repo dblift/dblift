@@ -204,3 +204,27 @@ class TestCommentStrippingIsQuoteAware:
 
         assert len(objects) == 1
         assert objects[0].name == "a#b"
+
+    def test_nested_block_comment_between_verb_and_identifier(self):
+        sql = 'ALTER TABLE /* outer /* inner */ x */ "s"."orders" ADD COLUMN c INT;'
+        objects = self.postgres.extract_objects(sql)
+
+        assert len(objects) == 1
+        assert objects[0].name == "orders"
+        assert objects[0].schema == "s"
+
+    def test_nested_block_comment_spanning_up_to_the_identifier(self):
+        sql = 'ALTER TABLE ONLY /* a /* b */ c */ "s"."orders" ADD COLUMN x INT;'
+        objects = self.postgres.extract_objects(sql)
+
+        assert len(objects) == 1
+        assert objects[0].name == "orders"
+        assert objects[0].schema == "s"
+
+    def test_unterminated_nested_block_comment_consumes_to_end(self):
+        # No closing "*/" at all: everything after the opening "/*" is
+        # comment, so there is no real statement left to find an object in.
+        sql = 'ALTER TABLE /* outer /* inner never closes "s"."orders" ADD COLUMN c INT;'
+        objects = self.postgres.extract_objects(sql)
+
+        assert objects == []

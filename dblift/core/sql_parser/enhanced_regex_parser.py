@@ -398,16 +398,27 @@ class EnhancedRegexParser(RegexParser):
         otherwise a quoted identifier such as ``"a--b"`` or a table body
         containing ``--`` loses everything after the marker. Doubled quote
         characters (``''``, ``""``, `` `` ``, ``]]``) are the escape form for
-        a literal quote inside the span and do not end it.
+        a literal quote inside the span and do not end it. Block comments
+        nest (``/* outer /* inner */ outer */``), matching
+        ``PostgreSqlRegexParser._remove_comments``.
         """
         line_prefixes, has_block_comments = self._comment_markers()
+
+        # Cheap early exit: with no comment marker anywhere in the text,
+        # quote tracking cannot change the outcome (it only exists to
+        # protect a marker inside a quoted span), so the full scan is
+        # unnecessary — most statements in a migration have no comment.
+        markers = list(line_prefixes) + (["/*"] if has_block_comments else [])
+        if not any(marker in sql for marker in markers):
+            return sql.strip()
+
         result: List[str] = []
 
         in_single = False
         in_double = False
         in_backtick = False
         in_bracket = False
-        in_block_comment = False
+        block_comment_depth = 0
         in_line_comment = False
         dollar_tag: Optional[str] = None
         supports_dollar_quoting = getattr(self.config, "supports_dollar_quoting", False)
@@ -424,9 +435,12 @@ class EnhancedRegexParser(RegexParser):
                 i += 1
                 continue
 
-            if in_block_comment:
-                if char == "*" and sql[i + 1 : i + 2] == "/":
-                    in_block_comment = False
+            if block_comment_depth > 0:
+                if char == "/" and sql[i + 1 : i + 2] == "*":
+                    block_comment_depth += 1
+                    i += 2
+                elif char == "*" and sql[i + 1 : i + 2] == "/":
+                    block_comment_depth -= 1
                     i += 2
                 else:
                     i += 1
@@ -501,7 +515,7 @@ class EnhancedRegexParser(RegexParser):
 
             if not in_quote:
                 if has_block_comments and char == "/" and sql[i + 1 : i + 2] == "*":
-                    in_block_comment = True
+                    block_comment_depth = 1
                     i += 2
                     continue
                 matched_prefix = next((p for p in line_prefixes if sql.startswith(p, i)), None)

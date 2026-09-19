@@ -23,10 +23,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- PostgreSQL object extraction no longer mistakes a leading or inline comment
-  for the statement it precedes, and `ALTER TABLE ONLY` is no longer reported
-  as touching a table named `only`. Table identifiers may also be quoted with
-  backticks or brackets, not just double quotes.
+- PostgreSQL object extraction no longer mistakes a leading, inline, or
+  nested comment for the statement it precedes, and `ALTER TABLE ONLY` is no
+  longer reported as touching a table named `only`. Table identifiers may
+  also be quoted with backticks or brackets, not just double quotes, and a
+  quoted identifier containing a comment marker (for example a table named
+  `"a--b"`) is no longer dropped from the result.
 - CLI and API commands preserve per-directory recursion settings, including
   recursive secondary directories after a non-recursive primary directory.
   API commands use configured directories and recursion by default; explicit
