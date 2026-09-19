@@ -228,3 +228,53 @@ class TestCommentStrippingIsQuoteAware:
         objects = self.postgres.extract_objects(sql)
 
         assert objects == []
+
+
+@pytest.mark.unit
+class TestStripCommentsPreservingQuotesEscapes:
+    """Direct tests of ``_strip_comments_preserving_quotes``'s doubled-quote
+    escape and bracket-quote branches. A comment marker must be present in
+    each case, otherwise the early exit skips the scan (and these branches)
+    entirely without needing to look at the quoting at all."""
+
+    def setup_method(self):
+        self.postgres = PostgreSqlRegexParser()
+        self.mysql = MySqlRegexParser()
+
+    def test_doubled_double_quote_escape(self):
+        sql = 'ALTER TABLE "a""b" ADD COLUMN x INT; -- trailing'
+        stripped = self.postgres._strip_comments_preserving_quotes(sql)
+
+        assert stripped == 'ALTER TABLE "a""b" ADD COLUMN x INT;'
+
+    def test_doubled_single_quote_escape(self):
+        sql = "SELECT 'it''s fine' AS note; -- trailing"
+        stripped = self.postgres._strip_comments_preserving_quotes(sql)
+
+        assert stripped == "SELECT 'it''s fine' AS note;"
+
+    def test_doubled_backtick_escape(self):
+        sql = "ALTER TABLE `a``b` ADD COLUMN x INT; -- trailing"
+        stripped = self.mysql._strip_comments_preserving_quotes(sql)
+
+        assert stripped == "ALTER TABLE `a``b` ADD COLUMN x INT;"
+
+    def test_bracket_quoted_span(self):
+        sql = "DROP TABLE IF EXISTS [x].[orders]; -- trailing comment"
+        stripped = self.postgres._strip_comments_preserving_quotes(sql)
+
+        assert stripped == "DROP TABLE IF EXISTS [x].[orders];"
+
+    def test_doubled_bracket_escape(self):
+        sql = "ALTER TABLE [a]]b] ADD COLUMN x INT; -- trailing"
+        stripped = self.postgres._strip_comments_preserving_quotes(sql)
+
+        assert stripped == "ALTER TABLE [a]]b] ADD COLUMN x INT;"
+
+    def test_lone_dollar_sign_is_not_a_dollar_quote_tag(self):
+        # "$" alone (not "$$" or "$tag$") must not start dollar-quote
+        # tracking; it is ordinary text, e.g. a price symbol.
+        sql = "SELECT price $ 2 AS x; -- trailing"
+        stripped = self.postgres._strip_comments_preserving_quotes(sql)
+
+        assert stripped == "SELECT price $ 2 AS x;"
