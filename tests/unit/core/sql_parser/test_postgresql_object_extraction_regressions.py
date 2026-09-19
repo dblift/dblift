@@ -10,6 +10,10 @@ import pytest
 
 from dblift.core.sql_model.base import SqlObjectType
 from dblift.core.sql_parser.parser_factory import SqlParserFactory
+from dblift.db.plugins.mysql.parser.mysql_regex_parser import MySqlRegexParser
+from dblift.db.plugins.postgresql.parser.postgresql_regex_parser import (
+    PostgreSqlRegexParser,
+)
 
 
 @pytest.mark.unit
@@ -138,3 +142,65 @@ class TestQuotingVariants:
 
         names = {o.name.lower() for o in objects}
         assert names == {"a", "b"}
+
+
+@pytest.mark.unit
+class TestCommentStrippingIsQuoteAware:
+    """The comment strip in ``extract_objects`` must not treat a comment
+    marker inside a quoted span as a real comment. Exercised directly
+    against the regex parsers (not ``SqlParserFactory``'s hybrid parser),
+    because the hybrid parser lets sqlglot parse these statements and
+    merges its correct result back in, masking a broken regex fallback."""
+
+    def setup_method(self):
+        self.postgres = PostgreSqlRegexParser()
+        self.mysql = MySqlRegexParser()
+
+    def test_quoted_identifier_containing_double_dash(self):
+        sql = 'ALTER TABLE "a--b" ADD COLUMN x INT;'
+        objects = self.postgres.extract_objects(sql)
+
+        assert len(objects) == 1
+        assert objects[0].name == "a--b"
+
+    def test_quoted_identifier_containing_block_comment_start(self):
+        # A trailing real block comment is required to prove this case: a
+        # naive strip's non-greedy "/\*.*?\*/" finds no closing "*/" at all
+        # without it and leaves the string untouched by accident, rather
+        # than because it is quote-aware.
+        sql = 'ALTER TABLE "a/*b" ADD COLUMN x INT; /* trailing */'
+        objects = self.postgres.extract_objects(sql)
+
+        assert len(objects) == 1
+        assert objects[0].name == "a/*b"
+
+    def test_double_dash_inside_single_quoted_string_before_the_identifier(self):
+        sql = 'SELECT \'pre--fix\' AS note; DROP TABLE IF EXISTS "s"."orders";'
+        objects = self.postgres.extract_objects(sql)
+
+        assert len(objects) == 1
+        assert objects[0].name == "orders"
+        assert objects[0].schema == "s"
+
+    def test_dollar_quoted_body_containing_double_dash(self):
+        # Kept on a single line (no newline after "--"): a naive line-comment
+        # strip stops only at a newline, so without one it would consume
+        # everything to the end of the string once it (wrongly) starts a
+        # comment inside the dollar-quoted body, hiding the ALTER TABLE
+        # that follows.
+        sql = (
+            "CREATE FUNCTION foo() RETURNS INT AS $$ BEGIN -- note $$ LANGUAGE plpgsql; "
+            'ALTER TABLE "s"."orders" ADD COLUMN "x" INT; END; $$;'
+        )
+        objects = self.postgres.extract_objects(sql)
+
+        names = {(o.name, o.schema) for o in objects}
+        assert ("orders", "s") in names
+        assert ("foo", None) in names
+
+    def test_mysql_hash_comment_marker_inside_backtick_quoted_identifier(self):
+        sql = "ALTER TABLE `a#b` ADD COLUMN x INT;"
+        objects = self.mysql.extract_objects(sql)
+
+        assert len(objects) == 1
+        assert objects[0].name == "a#b"
