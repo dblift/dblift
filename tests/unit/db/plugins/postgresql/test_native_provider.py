@@ -236,6 +236,52 @@ def test_set_current_schema_does_not_repeat_public_schema(monkeypatch):
     assert executed == ['SET search_path TO "public"']
 
 
+def test_set_current_schema_skips_reissue_for_same_schema(monkeypatch):
+    """A second call for the same schema does not re-issue ``SET search_path``.
+
+    Otherwise dblift resets the search path before every migration
+    statement, silently overwriting a ``SET search_path`` the migration
+    itself runs (the ``pg_dump`` idiom) as soon as the next statement fires.
+    """
+    executed = []
+    monkeypatch.setattr(
+        SqlAlchemyProvider,
+        "execute_statement",
+        lambda self, sql, schema=None, params=None: executed.append(sql),
+    )
+    provider = _Provider()
+
+    PostgreSqlProvider.set_current_schema(provider, "tenant_a")
+    PostgreSqlProvider.set_current_schema(provider, "tenant_a")
+
+    assert executed == ['SET search_path TO "tenant_a", "public"']
+
+
+def test_set_current_schema_reapplies_after_begin_transaction(monkeypatch):
+    """A new transaction (new migration) reapplies the schema once.
+
+    This is what keeps one migration's session state from leaking into the
+    next: :meth:`begin_transaction` clears the cache the skip above relies on.
+    """
+    executed = []
+    monkeypatch.setattr(
+        SqlAlchemyProvider,
+        "execute_statement",
+        lambda self, sql, schema=None, params=None: executed.append(sql),
+    )
+    monkeypatch.setattr(SqlAlchemyProvider, "begin_transaction", lambda self: None)
+    provider = _Provider()
+
+    PostgreSqlProvider.set_current_schema(provider, "tenant_a")
+    PostgreSqlProvider.begin_transaction(provider)
+    PostgreSqlProvider.set_current_schema(provider, "tenant_a")
+
+    assert executed == [
+        'SET search_path TO "tenant_a", "public"',
+        'SET search_path TO "tenant_a", "public"',
+    ]
+
+
 def test_release_uses_same_deterministic_advisory_key():
     provider = _Provider()
 

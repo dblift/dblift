@@ -135,6 +135,51 @@ def test_set_current_schema_executes_use_statement(monkeypatch):
     assert captured["sql"] == "USE `mydb`"
 
 
+def test_set_current_schema_skips_reissue_for_same_database(monkeypatch):
+    """A second call for the same database does not re-issue ``USE``.
+
+    Otherwise dblift resets the database before every migration statement,
+    silently overwriting a ``USE`` the migration itself runs as soon as the
+    next statement fires.
+    """
+    executed = []
+    monkeypatch.setattr(
+        sqlalchemy_provider_module.SqlAlchemyProvider,
+        "execute_statement",
+        lambda self, sql, schema=None, params=None: executed.append(sql),
+    )
+    provider = _Provider()
+
+    MySqlProvider.set_current_schema(provider, "mydb")
+    MySqlProvider.set_current_schema(provider, "mydb")
+
+    assert executed == ["USE `mydb`"]
+
+
+def test_set_current_schema_reapplies_after_begin_transaction(monkeypatch):
+    """A new transaction (new migration) reapplies the database once.
+
+    This is what keeps one migration's session state from leaking into the
+    next: :meth:`begin_transaction` clears the cache the skip above relies on.
+    """
+    executed = []
+    monkeypatch.setattr(
+        sqlalchemy_provider_module.SqlAlchemyProvider,
+        "execute_statement",
+        lambda self, sql, schema=None, params=None: executed.append(sql),
+    )
+    monkeypatch.setattr(
+        sqlalchemy_provider_module.SqlAlchemyProvider, "begin_transaction", lambda self: None
+    )
+    provider = _Provider()
+
+    MySqlProvider.set_current_schema(provider, "mydb")
+    MySqlProvider.begin_transaction(provider)
+    MySqlProvider.set_current_schema(provider, "mydb")
+
+    assert executed == ["USE `mydb`", "USE `mydb`"]
+
+
 def test_get_schema_qualified_name():
     provider = _Provider()
     assert provider.get_schema_qualified_name("mydb", "orders") == "`mydb`.`orders`"
