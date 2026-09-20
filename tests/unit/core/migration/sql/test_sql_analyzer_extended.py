@@ -17,6 +17,7 @@ import unittest
 from unittest.mock import MagicMock, patch
 
 from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
+from dblift.core.sql_model.dialect import get_sqlglot_dialect
 
 
 class TestSqlAnalyzerDialectRequired(unittest.TestCase):
@@ -111,6 +112,33 @@ class TestGetStatementTypeStringBranches(unittest.TestCase):
             "DELETE FROM src WHERE id IN (SELECT id FROM cte)"
         )
         self.assertEqual(self.analyzer.get_statement_type(sql), "DML")
+
+    def test_with_cte_feeding_delete_is_dml_via_dialect_mapping(self):
+        # The dblift dialect name ("sqlserver") differs from sqlglot's own
+        # ("tsql"); this dialect's classification must still come out DML.
+        analyzer = SqlAnalyzer(dialect="sqlserver")
+        analyzer._db_specific_parser = None
+        sql = "WITH c AS (SELECT 1) DELETE FROM t WHERE id IN (SELECT 1 FROM c)"
+        self.assertEqual(analyzer.get_statement_type(sql), "DML")
+
+    def test_with_classification_resolves_dialect_via_get_sqlglot_dialect(self):
+        # cte_outer_statement_type's own keyword-scan fallback can now reach
+        # the right answer even with an unmapped/raw dialect string (see
+        # dblift/db/test_dml_analysis.py), so the assertion above alone no
+        # longer proves this call site resolves the dialect correctly — it
+        # would pass just the same if the mapping call were dropped. Pin the
+        # resolution itself: get_sqlglot_dialect must be called with the raw
+        # dblift dialect name, not skipped.
+        analyzer = SqlAnalyzer(dialect="sqlserver")
+        analyzer._db_specific_parser = None
+        sql = "WITH c AS (SELECT 1) DELETE FROM t WHERE id IN (SELECT 1 FROM c)"
+        with patch(
+            "dblift.core.migration.sql.sql_analyzer.get_sqlglot_dialect",
+            wraps=get_sqlglot_dialect,
+        ) as mock_get_dialect:
+            result = analyzer.get_statement_type(sql)
+        mock_get_dialect.assert_called_once_with("sqlserver")
+        self.assertEqual(result, "DML")
 
     def test_show_is_query(self):
         self.assertEqual(self.analyzer.get_statement_type("SHOW TABLES"), "QUERY")

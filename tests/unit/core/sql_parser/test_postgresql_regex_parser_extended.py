@@ -16,8 +16,10 @@ Covers:
 """
 
 import unittest
+from unittest.mock import patch
 
 from dblift.core.sql_model.base import SqlStatementType
+from dblift.core.sql_model.dialect import get_sqlglot_dialect
 from dblift.db.plugins.postgresql.parser.postgresql_regex_parser import PostgreSqlRegexParser
 
 
@@ -464,6 +466,21 @@ class TestIdentifyStatementType(unittest.TestCase):
             "INSERT INTO app_logs(msg) SELECT 'removed ' || id FROM deleted"
         )
         self.assertEqual(self.parser._identify_statement_type(sql), SqlStatementType.DML)
+
+    def test_cte_classification_resolves_dialect_via_get_sqlglot_dialect(self):
+        # Pin the dialect resolution itself (not just its outcome — see the
+        # equivalent test in test_sql_analyzer_extended.py for why the
+        # outcome alone no longer proves this): the call site must resolve
+        # "postgresql" through get_sqlglot_dialect rather than hardcoding a
+        # literal sqlglot dialect string.
+        sql = "WITH x AS (SELECT 1) DELETE FROM t WHERE id IN (SELECT 1 FROM x)"
+        with patch(
+            "dblift.db.plugins.postgresql.parser.postgresql_regex_parser.get_sqlglot_dialect",
+            wraps=get_sqlglot_dialect,
+        ) as mock_get_dialect:
+            result = self.parser._identify_statement_type(sql)
+        mock_get_dialect.assert_called_once_with("postgresql")
+        self.assertEqual(result, SqlStatementType.DML)
 
 
 class TestParseSql(unittest.TestCase):

@@ -13,6 +13,7 @@ from dblift.core.sql_model.base import (
     SqlStatement,
     SqlStatementType,
 )
+from dblift.core.sql_model.dialect import get_sqlglot_dialect
 from dblift.core.sql_parser.enhanced_regex_parser import EnhancedRegexParser
 from dblift.core.sql_parser.parser_context import ParserContext
 from dblift.db.dml_analysis import cte_outer_statement_type
@@ -464,7 +465,8 @@ class PostgreSqlRegexParser(EnhancedRegexParser):
             # DELETE, which doesn't return rows even though the statement starts
             # with WITH — ask sqlglot for the outer statement in that case.
             if _LEADING_WITH_RE.match(sql):
-                if cte_outer_statement_type(sql, sqlglot_dialect="postgres") == "DML":
+                sqlglot_dialect = get_sqlglot_dialect(self.dialect_name)
+                if cte_outer_statement_type(sql, sqlglot_dialect=sqlglot_dialect) == "DML":
                     return SqlStatementType.DML
             return SqlStatementType.QUERY
 

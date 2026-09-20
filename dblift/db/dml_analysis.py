@@ -311,18 +311,34 @@ def is_full_table_dml(
     return _find_top_level_keyword(text, "WHERE", quote_pairs) < 0
 
 
+#: Outer-statement keywords a CTE list can feed, split by whether the
+#: statement modifies data. Used only by the keyword-scan fallback below.
+_CTE_OUTER_DML_KEYWORDS: Tuple[str, ...] = ("INSERT", "UPDATE", "DELETE", "MERGE")
+_CTE_OUTER_QUERY_KEYWORDS: Tuple[str, ...] = ("SELECT", "VALUES", "TABLE")
+
+
 def cte_outer_statement_type(
     statement: str,
     *,
     sqlglot_dialect: Optional[str] = None,
+    quote_pairs: Dict[str, str] = DEFAULT_QUOTE_PAIRS,
 ) -> Optional[str]:
     """Outer statement kind of a ``WITH ...`` statement: ``"QUERY"`` or ``"DML"``.
 
     A CTE list can feed a ``SELECT`` (a query) or an ``INSERT``/``UPDATE``/
     ``DELETE``/``MERGE`` (a modifying statement, even when a CTE inside it
     uses ``RETURNING``) — the leading ``WITH`` keyword alone cannot tell
-    those apart. Returns ``None`` when the statement cannot be parsed, so the
-    caller keeps its own default.
+    those apart. Tries ``sqlglot`` first; when a trailing clause the dialect
+    grammar doesn't model gets in the way (DB2's ``OPTIMIZE FOR``/``WITH
+    UR``, ...), falls back to a deterministic scan instead of guessing: a
+    CTE's own body always sits inside ``(...)``, so the first keyword found
+    outside every paren is the outer statement's real verb, no full parse
+    needed. Returns ``None`` only when neither path finds an answer (empty
+    text, or no recognisable keyword at all) — the caller keeps its own
+    default then. Doesn't know whether the outer statement itself returns
+    rows via a clause of its own (``RETURNING``/``OUTPUT`` on the outer verb,
+    as opposed to inside a CTE) — the sqlglot path above has that same
+    limitation, so this isn't a new gap.
     """
     text = strip_leading_sql_comments(statement).lstrip()
     if not text:
@@ -330,12 +346,21 @@ def cte_outer_statement_type(
     try:
         ast = sqlglot.parse_one(text, read=sqlglot_dialect)
     except Exception:
+        ast = None
+    if ast is not None:
+        if isinstance(ast, (exp.Insert, exp.Update, exp.Delete, exp.Merge)):
+            return "DML"
+        if isinstance(ast, (exp.Select, exp.Union)):
+            return "QUERY"
+    positions = {
+        keyword: _find_top_level_keyword(text, keyword, quote_pairs)
+        for keyword in (*_CTE_OUTER_DML_KEYWORDS, *_CTE_OUTER_QUERY_KEYWORDS)
+    }
+    found = {keyword: pos for keyword, pos in positions.items() if pos >= 0}
+    if not found:
         return None
-    if isinstance(ast, (exp.Insert, exp.Update, exp.Delete, exp.Merge)):
-        return "DML"
-    if isinstance(ast, (exp.Select, exp.Union)):
-        return "QUERY"
-    return None
+    first_keyword = min(found, key=lambda keyword: found[keyword])
+    return "DML" if first_keyword in _CTE_OUTER_DML_KEYWORDS else "QUERY"
 
 
 def extract_dml_table_name(statement: str) -> str:
