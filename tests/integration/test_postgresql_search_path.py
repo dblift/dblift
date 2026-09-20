@@ -21,7 +21,11 @@ from dblift.api import DBLiftClient
 from dblift.config import DbliftConfig
 from dblift.db.plugins.postgresql.config import PostgreSqlConfig
 from dblift.db.provider_registry import ProviderRegistry
-from tests.integration.helpers.migration_helper import create_versioned_migration
+from tests.integration.helpers.migration_helper import (
+    create_repeatable_migration,
+    create_undo_migration,
+    create_versioned_migration,
+)
 
 pytestmark = [pytest.mark.integration, pytest.mark.postgresql]
 
@@ -354,6 +358,137 @@ def test_autocommit_required_callback_does_not_inherit_previous_search_path(
         assert [r["schemaname"] for r in index_schema] == [SCHEMA]
     finally:
         provider.execute_statement(f'DROP SCHEMA IF EXISTS "{leak_schema}" CASCADE')
+        provider.close()
+
+
+def test_repeatable_migration_does_not_inherit_previous_search_path(pg_provider, tmp_path) -> None:
+    """A repeatable migration also starts from the configured schema.
+
+    Demonstrates the fix for the path a versioned-migration-only test does
+    not exercise: ``MigrateCommand`` calls ``execution_engine.execute_migration``
+    for repeatables exactly the same way it does for versioned migrations,
+    but that is an assertion worth its own real run rather than an assumption.
+    """
+    leak_schema = f"sp_leak_{uuid.uuid4().hex[:8]}"
+    migrations_dir = tmp_path / "migrations"
+    migrations_dir.mkdir()
+    create_versioned_migration(
+        migrations_dir,
+        "1.0.0",
+        "leak_search_path",
+        f'CREATE SCHEMA "{leak_schema}"; SET search_path = "{leak_schema}", pg_catalog;',
+    )
+    create_repeatable_migration(
+        migrations_dir,
+        "unqualified_table",
+        "CREATE TABLE repeatable_probe (id int);",
+    )
+
+    config = _postgres_config()
+    config.migrations.directory = str(migrations_dir)
+    provider = ProviderRegistry.create_provider(config)
+    provider.create_connection()
+    try:
+        client = DBLiftClient(provider=provider, migrations_dir=migrations_dir, config=config)
+
+        result = client.migrate()
+
+        assert result.success, result.error_message
+        table_schema = provider.execute_query(
+            "SELECT table_schema FROM information_schema.tables WHERE table_name = 'repeatable_probe'"
+        )
+        assert [r["table_schema"] for r in table_schema] == [SCHEMA]
+    finally:
+        provider.execute_statement(f'DROP SCHEMA IF EXISTS "{leak_schema}" CASCADE')
+        provider.execute_statement("DROP TABLE IF EXISTS repeatable_probe")
+        provider.close()
+
+
+def test_undo_migration_does_not_inherit_previous_search_path(pg_provider, tmp_path) -> None:
+    """``dblift undo`` also starts from the configured schema.
+
+    ``UndoCommand`` calls ``execution_engine.execute_migration`` for the undo
+    script itself, the same entry point versioned migrations use — real run,
+    not an assumption from reading the call site.
+    """
+    migrations_dir = tmp_path / "migrations"
+    migrations_dir.mkdir()
+    create_versioned_migration(
+        migrations_dir,
+        "1.0.0",
+        "leak_search_path",
+        'CREATE TABLE undo_probe (id int); SET search_path = "sp_undo_leak", pg_catalog;',
+    )
+    create_undo_migration(
+        migrations_dir,
+        "1.0.0",
+        "drop_table",
+        "DROP TABLE undo_probe;",
+    )
+
+    config = _postgres_config()
+    config.migrations.directory = str(migrations_dir)
+    provider = ProviderRegistry.create_provider(config)
+    provider.create_connection()
+    try:
+        provider.execute_statement('CREATE SCHEMA IF NOT EXISTS "sp_undo_leak"')
+        client = DBLiftClient(provider=provider, migrations_dir=migrations_dir, config=config)
+
+        migrate_result = client.migrate()
+        assert migrate_result.success, migrate_result.error_message
+
+        undo_result = client.undo(target_version="0.0.0")
+
+        assert undo_result.success, undo_result.error_message
+        table_exists = provider.execute_query(
+            f"SELECT table_name FROM information_schema.tables "
+            f"WHERE table_schema = '{SCHEMA}' AND table_name = 'undo_probe'"
+        )
+        assert table_exists == []
+    finally:
+        provider.execute_statement('DROP SCHEMA IF EXISTS "sp_undo_leak" CASCADE')
+        provider.execute_statement("DROP TABLE IF EXISTS undo_probe")
+        provider.close()
+
+
+def test_clean_callback_does_not_inherit_previous_search_path(pg_provider, tmp_path) -> None:
+    """``dblift clean``'s ``afterClean`` callback also starts from the configured schema.
+
+    ``CleanCommand`` runs its callbacks through the same
+    ``execution_engine.execute_callback`` as every other command — real run,
+    not an assumption from reading the call site.
+    """
+    leak_schema = f"sp_leak_{uuid.uuid4().hex[:8]}"
+    migrations_dir = tmp_path / "migrations"
+    migrations_dir.mkdir()
+    create_versioned_migration(
+        migrations_dir,
+        "1.0.0",
+        "leak_search_path",
+        f'CREATE SCHEMA "{leak_schema}"; SET search_path = "{leak_schema}", pg_catalog;',
+    )
+    (migrations_dir / "afterClean__probe.sql").write_text("CREATE TABLE clean_probe (id int);")
+
+    config = _postgres_config()
+    config.migrations.directory = str(migrations_dir)
+    provider = ProviderRegistry.create_provider(config)
+    provider.create_connection()
+    try:
+        client = DBLiftClient(provider=provider, migrations_dir=migrations_dir, config=config)
+
+        migrate_result = client.migrate()
+        assert migrate_result.success, migrate_result.error_message
+
+        clean_result = client.clean(clean_enabled=True)
+
+        assert clean_result.success, clean_result.error_message
+        table_schema = provider.execute_query(
+            "SELECT table_schema FROM information_schema.tables WHERE table_name = 'clean_probe'"
+        )
+        assert [r["table_schema"] for r in table_schema] == [SCHEMA]
+    finally:
+        provider.execute_statement(f'DROP SCHEMA IF EXISTS "{leak_schema}" CASCADE')
+        provider.execute_statement("DROP TABLE IF EXISTS clean_probe")
         provider.close()
 
 
