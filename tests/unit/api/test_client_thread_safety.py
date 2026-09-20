@@ -39,6 +39,9 @@ from dblift.api.client import _with_client_emitter
 from dblift.api.events import EventType
 from dblift.core.migration.executor.migration_executor import MigrationExecutor
 
+# A RecursionError is a RuntimeError too; only this text proves the guard refused the call.
+REFUSED = "already inside an operation"
+
 
 class _ConcurrencyProbe:
     """Tracks how many threads are simultaneously inside a patched method."""
@@ -311,6 +314,7 @@ class TestClientThreadSafety:
         outer = client.migrate()
 
         assert "error" in nested_error, "listener's nested migrate() did not raise"
+        assert REFUSED in str(nested_error["error"])
         assert "migrate" in str(nested_error["error"])
         # The outer call's result is now accurate: it -- not some nested
         # call the caller never issued -- is what actually ran.
@@ -342,6 +346,7 @@ class TestClientThreadSafety:
         # there is no second (or recursive) invocation of the listener.
         assert call_count["n"] == 1
         assert "error" in nested_error
+        assert REFUSED in str(nested_error["error"])
         assert outer.success
         client.close()
 
@@ -416,6 +421,7 @@ class TestClientThreadSafety:
         outer = client.migrate()
 
         assert "error" in nested_error, "listener's client.close() did not raise"
+        assert REFUSED in str(nested_error["error"])
         assert "close" in str(nested_error["error"])
         # The connection was never actually torn down mid-operation, so the
         # outer call's own result is accurate.
@@ -555,6 +561,7 @@ class TestSubclassSuperChainingVsReentrancy:
         outer = client.migrate()
 
         assert "error" in nested_error, "listener's nested migrate() did not raise"
+        assert REFUSED in str(nested_error["error"])
         assert outer.success
         client.close()
 
@@ -583,6 +590,7 @@ class TestSubclassSuperChainingVsReentrancy:
         outer = client.migrate()
 
         assert "error" in nested_error, "listener's nested migrate() did not raise"
+        assert REFUSED in str(nested_error["error"])
         assert outer.success
         client.close()
 
@@ -600,6 +608,7 @@ class TestSubclassSuperChainingVsReentrancy:
         outer = client.migrate()
 
         assert "error" in nested_error, "listener's nested undo() did not raise"
+        assert REFUSED in str(nested_error["error"])
         assert outer.success
         client.close()
 
@@ -634,24 +643,22 @@ class TestSubclassSuperChainingVsReentrancy:
         assert result.success, getattr(result, "error_message", None)
         client.close()
 
-    def test_listener_calling_generate_undo_script_during_migrate_is_allowed(self, tmp_path):
-        """generate_undo_script only reads a migration file and writes an
-        undo SQL file -- no provider/database access -- so it is safe for a
-        listener to call during another operation, like info()/validate().
-        """
+    def test_listener_calling_generate_undo_script_during_migrate_is_refused(self, tmp_path):
+        """It emits MIGRATION_* events itself, so nesting it would re-trigger the listener."""
         client = _client_with_undo_pair(DBLiftClient, tmp_path)
-        generated = {}
+        nested_error = {}
 
         def on_started(event):
-            generated["result"] = client.generate_undo_script(
-                client.config.migrations.directory + "/V1__init.sql",
-                overwrite=True,
-            )
+            try:
+                client.generate_undo_script(
+                    client.config.migrations.directory + "/V1__init.sql", overwrite=True
+                )
+            except RuntimeError as e:
+                nested_error["error"] = e
 
         client.events.on(EventType.MIGRATION_STARTED, on_started)
         outer = client.migrate()
 
-        assert "result" in generated
-        assert generated["result"].success, generated["result"].error_message
+        assert REFUSED in str(nested_error["error"])
         assert outer.success
         client.close()

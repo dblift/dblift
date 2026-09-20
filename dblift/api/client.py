@@ -697,7 +697,8 @@ class DBLiftClient:
             )
             raise
 
-    @_with_client_emitter(mutating=False)
+    # Mutating on purpose: it emits MIGRATION_* events, so a listener nesting it would re-trigger itself.
+    @_with_client_emitter
     def generate_undo_script(
         self,
         migration_path: Union[str, Path],
@@ -735,7 +736,8 @@ class DBLiftClient:
             overwrite=overwrite,
         )
 
-    @_with_client_emitter(mutating=False)
+    # Mutating on purpose: it emits MIGRATION_* events, so a listener nesting it would re-trigger itself.
+    @_with_client_emitter
     def generate_undo_scripts(
         self,
         migration_paths: Optional[List[Union[str, Path]]] = None,
