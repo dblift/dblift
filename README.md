@@ -163,7 +163,9 @@ Everything lives at **[docs.dblift.com](https://docs.dblift.com/)**.
 ## Project
 
 - **Released on PyPI** with trusted publishing — see the [changelog](CHANGELOG.md) and [releases](https://github.com/dblift/dblift/releases).
-- **Found a bug or missing something?** [Open an issue](https://github.com/dblift/dblift/issues). Reports with a failing migration file attached get fixed fastest.
+- **Questions, ideas, "would this work for us?"** Ask in [Discussions](https://github.com/dblift/dblift/discussions).
+- **Found a bug?** [Open an issue](https://github.com/dblift/dblift/issues). Reports with a failing migration file attached get fixed fastest.
+- **Want to contribute?** See [CONTRIBUTING.md](CONTRIBUTING.md).
 - **Security:** see [SECURITY.md](SECURITY.md).
 - **License:** [Apache 2.0](LICENSE).
 

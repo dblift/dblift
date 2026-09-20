@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `CONTRIBUTING.md`: how to report a bug, set up a development environment, run the
+  tests and open a pull request. Questions and ideas now have a home in GitHub Discussions.
+
 ### Changed
 
 - README rewritten as a short project overview: a 60-second SQLite quickstart, who
