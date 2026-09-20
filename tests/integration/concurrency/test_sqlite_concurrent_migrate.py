@@ -403,12 +403,21 @@ class TestSqliteConcurrentMigrate:
             )
             for label, log_file in zip(labels, log_files)
         ]
+        # A hard, short join timeout: a regression here hangs for the full
+        # 60s lock-wait budget, and this must fail fast in CI instead.
+        JOIN_TIMEOUT = 20
         wall_start = time.time()
         for p in procs:
             p.start()
         for p in procs:
-            p.join(timeout=60)
-            assert not p.is_alive(), "migrate() process did not finish in time"
+            p.join(timeout=JOIN_TIMEOUT)
+        stragglers = [p.name for p in procs if p.is_alive()]
+        if stragglers:
+            for p in procs:
+                if p.is_alive():
+                    p.terminate()
+                p.join(timeout=5)
+            pytest.fail(f"migrate() did not finish within {JOIN_TIMEOUT}s for: {stragglers}")
         wall_elapsed = time.time() - wall_start
 
         results = [result_queue.get(timeout=1) for _ in procs]
@@ -422,6 +431,68 @@ class TestSqliteConcurrentMigrate:
         for log_file in log_files:
             contents = Path(log_file).read_text() if Path(log_file).exists() else ""
             assert "database is locked" not in contents.lower(), (log_file, contents)
+
+    def test_caller_pending_work_on_shared_connection_survives_migrate(self, tmp_path):
+        """`from_sqlalchemy(connection=...)` runs migrate() on the caller's
+        own live, uncommitted transaction. Lock acquisition must not roll
+        back work the caller has not committed yet -- single process, no
+        contention -- or blindly rolling back at loop entry (to clear a
+        *different* connection's leftover transaction) would also discard
+        whatever the caller was doing on this one.
+        """
+        from sqlalchemy import create_engine, text
+
+        from dblift.api import DBLiftClient
+
+        migrations_dir = tmp_path / "migrations"
+        _write_migrations(migrations_dir, count=3)
+        db_path = tmp_path / "test.db"
+
+        engine = create_engine(f"sqlite:///{db_path}")
+        with engine.begin() as setup_conn:
+            setup_conn.execute(text("CREATE TABLE mine (id INTEGER PRIMARY KEY)"))
+
+        start = time.time()
+        with engine.begin() as conn:
+            conn.execute(text("INSERT INTO mine (id) VALUES (1)"))
+            client = DBLiftClient.from_sqlalchemy(
+                connection=conn, migrations_dir=str(migrations_dir), log_level="WARN"
+            )
+            result = client.migrate()
+            client.close()
+        elapsed = time.time() - start
+
+        assert result.success, result.error_message
+        assert elapsed < 20, elapsed
+        with engine.connect() as check_conn:
+            count = check_conn.execute(text("SELECT COUNT(*) FROM mine")).scalar()
+        assert count == 1, "caller's own pending insert was discarded"
+        engine.dispose()
+
+    def test_migrate_does_not_lower_a_wider_caller_busy_timeout(self, tmp_path):
+        """A caller's own busy_timeout already wider than migrate()'s 60s
+        budget is left alone -- restoring must put back what was actually
+        there, not shrink it to the driver's short default."""
+        from dblift.api.client import DBLiftClient
+        from dblift.config import DbliftConfig
+
+        migrations_dir = tmp_path / "migrations"
+        _write_migrations(migrations_dir, count=1)
+        db_path = tmp_path / "test.db"
+
+        config = DbliftConfig.from_dict(
+            {"database": {"type": "sqlite", "path": str(db_path), "schema": "main"}}
+        )
+        client = DBLiftClient.from_config(config, migrations_dir=migrations_dir)
+        try:
+            connection = client.provider._get_connection()
+            connection.execute("PRAGMA busy_timeout = 90000")  # wider than the 60s budget
+            result = client.migrate()
+            assert result.success
+            timeout = connection.execute("PRAGMA busy_timeout").fetchone()[0]
+            assert timeout == 90000
+        finally:
+            client.close()
 
     def test_default_journal_mode_is_rollback_not_wal(self, tmp_path):
         """SQLite provider does not expose a journal_mode/WAL setting; every
