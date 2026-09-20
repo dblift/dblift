@@ -13,7 +13,7 @@ if TYPE_CHECKING:
     from dblift.core.migration.journals.migration_journal import MigrationJournal
     from dblift.core.migration.placeholders.placeholder_service import PlaceholderService
 
-from dblift.core.constants import SECONDS_TO_MILLISECONDS
+from dblift.core.constants import DEFAULT_MIGRATION_LOCK_TIMEOUT_SECONDS, SECONDS_TO_MILLISECONDS
 from dblift.core.logger import Log
 from dblift.core.logger.results import MigrateResult, MigrationInfo, MigrationSqlInfo
 from dblift.core.migration._type_match import migration_type_name
@@ -734,6 +734,15 @@ class MigrateCommand(BaseCommand):
 
         read_snapshot = self.state_manager.new_read_snapshot()
 
+        # SQLite only: widen busy_timeout for this command; the provider
+        # returns what undoes it (None when nothing was changed).
+        widen_busy_timeout = getattr(self.provider, "widen_busy_timeout", None)
+        restore_busy_timeout = (
+            widen_busy_timeout(DEFAULT_MIGRATION_LOCK_TIMEOUT_SECONDS)
+            if callable(widen_busy_timeout)
+            else None
+        )
+
         try:
             # Initialize and validate migrations
             validation_success, use_recursive, use_additional_dirs = (
@@ -976,3 +985,6 @@ class MigrateCommand(BaseCommand):
             result.set_error(f"Migration operation failed: {e}")
             self._log_command_completion("migrate", result)
             return result
+        finally:
+            if callable(restore_busy_timeout):
+                restore_busy_timeout()

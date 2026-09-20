@@ -9,8 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `CONTRIBUTING.md`: how to report a bug, set up a development environment, run the
+  tests and open a pull request. Questions and ideas now have a home in GitHub Discussions.
+
 ### Changed
 
+- README rewritten as a short project overview: a 60-second SQLite quickstart, who
+  DBLift is for, what the open-source package includes, a comparison table and links
+  to docs.dblift.com, which is now the reference for everything the old README
+  documented inline. The README's SQLite environment-variable example
+  (`DBLIFT_DB_PATH`) never worked and is gone; use `DBLIFT_DB_URL="sqlite:///app.db"`.
 - Migration filename classification and resource loading now use the same
   ScriptManager grammar across discovery, history, callbacks, and undo
   generation. Migration execution and undo generation split SQL through the
@@ -35,6 +43,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   making its result inaccurate. The ordinary `with DBLiftClient(...) as
   client:` pattern is unaffected. The client's threading contract is
   documented in the API reference.
+- Two callers running `migrate()` against the same SQLite database through
+  the Python API at (almost) the same time could both fail, or take up to a
+  minute to resolve. One caller now applies the migrations while the other
+  waits, then finds them already applied and skips. `dblift migrate` (CLI)
+  may still wait up to 60 seconds before reporting a genuinely locked
+  database, instead of failing after about 5.
 - PostgreSQL object extraction no longer mistakes a leading, inline, or
   nested comment for the statement it precedes, and `ALTER TABLE ONLY` is no
   longer reported as touching a table named `only`. Table identifiers may
@@ -50,6 +64,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Malformed versionless scripts such as `V__.sql` and `V__.py` are excluded from
   migration and reported with a naming warning, preventing execution and
   null-version history entries.
+- `pytest-dblift` no longer fails every test run with `ImportError: No module
+  named 'api'` when installed alongside a current `dblift`. Upgrade to
+  `pytest-dblift` 0.1.1; it now requires `dblift` 4.0 or later.
 - Providers now declare explicit transaction support accurately; migration commands
   and callbacks skip transaction calls for providers without that capability.
 - SQL callbacks now honor autocommit requirements and reject incompatible mixed
