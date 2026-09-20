@@ -50,7 +50,7 @@ class MySqlRegexParser(EnhancedRegexParser):
             tokens = tokenizer.tokenize()
 
             context = ParserContext()
-            parser = MySQLStatementParser(tokens, context)
+            parser = MySQLStatementParser(tokens, context, source=sql_content)
 
             statements = parser.split_statements()
             logger.debug(f"MySQL: Tokenization split into {len(statements)} statements")

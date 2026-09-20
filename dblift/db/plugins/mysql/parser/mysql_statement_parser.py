@@ -21,27 +21,55 @@ class MySQLStatementParser(BaseStatementParser):
     - Stored procedures, functions, events, triggers
     """
 
-    def __init__(self, tokens: List[Token], context: Optional[ParserContext] = None):
+    def __init__(
+        self,
+        tokens: List[Token],
+        context: Optional[ParserContext] = None,
+        source: Optional[str] = None,
+    ):
         """Initialize MySQL statement parser.
 
         Args:
             tokens: List of tokens to parse
             context: Parser context
+            source: Original SQL text the tokens came from (see
+                ``BaseStatementParser.__init__``)
         """
-        super().__init__(tokens, context)
+        super().__init__(tokens, context, source)
         self.in_stored_program = False
 
-    def _statement_sql_from_tokens(self, tokens: List[Token]) -> str:
-        """Reconstruct SQL for execution: drop trailing statement terminator.
+    def _statement_sql_from_tokens(
+        self, tokens: List[Token], boundary_pos: Optional[int] = None
+    ) -> str:
+        """Reconstruct SQL for execution: drop trailing statement terminator(s).
 
         Custom MySQL terminators (``$$``, ``//``, etc.) are for mysql-cli/IDEs;
         the driver ``execute`` expects the statement body without them. A trailing ``;``
-        is also omitted; single-statement batches do not require it.
+        is also omitted; single-statement batches do not require it. ``boundary_pos``
+        is the source offset a ``DELIMITER`` statement starts at, for the case where
+        the accumulated tokens carry no trailing terminator of their own.
+
+        Leading plain comments (``TokenType.COMMENT``) are skipped when locating
+        where the statement starts, same as ``BaseStatementParser._render_statement``:
+        they precede the statement rather than being it. A comment directive
+        (``TokenType.COMMENT_DIRECTIVE``, real text unlike a plain comment) is kept,
+        including as a statement's sole content.
         """
-        trimmed = list(tokens)
-        while trimmed and trimmed[-1].type == TokenType.DELIMITER:
-            trimmed.pop()
-        return self._tokens_to_string(trimmed)
+        end_idx = len(tokens)
+        while end_idx > 0 and tokens[end_idx - 1].type == TokenType.DELIMITER:
+            end_idx -= 1
+
+        kept = tokens[:end_idx]
+        first_content = next((t for t in kept if t.type != TokenType.COMMENT), None)
+        if first_content is None:
+            return ""
+
+        if self.source is None:
+            return self._tokens_to_string(kept)
+
+        if boundary_pos is None:
+            boundary_pos = tokens[end_idx].pos if end_idx < len(tokens) else len(self.source)
+        return self.source[first_content.pos : boundary_pos].rstrip()
 
     def split_statements(self) -> List[str]:
         """Override to handle NEW_DELIMITER tokens.
@@ -68,7 +96,9 @@ class MySQLStatementParser(BaseStatementParser):
                 # If we have accumulated tokens, emit them as a statement
                 # (This handles "DELIMITER ;" acting as a statement boundary)
                 if current_statement_tokens:
-                    stmt_text = self._statement_sql_from_tokens(current_statement_tokens)
+                    stmt_text = self._statement_sql_from_tokens(
+                        current_statement_tokens, boundary_pos=token.pos
+                    )
                     if stmt_text.strip():
                         statements.append(stmt_text)
                     current_statement_tokens = []

@@ -63,7 +63,7 @@ class PostgreSqlRegexParser(EnhancedRegexParser):
             tokens = tokenizer.tokenize()
 
             context = ParserContext()
-            parser = PostgreSQLStatementParser(tokens, context)
+            parser = PostgreSQLStatementParser(tokens, context, source=sql_content)
 
             statements = parser.split_statements()
             logger.debug(f"PostgreSQL: Tokenization split into {len(statements)} statements")

@@ -118,6 +118,20 @@ class TestIsCommentOnlyStatement(unittest.TestCase):
             ExecutionEngine._is_comment_only_statement("/* intro */ CREATE TABLE t (id INT)")
         )
 
+    def test_mysql_versioned_comment_directive_is_not_comment_only(self):
+        """``/*!...*/`` is code MySQL/MariaDB execute, not a comment to skip —
+        mysqldump wraps FK-check toggles in it."""
+        self.assertFalse(
+            ExecutionEngine._is_comment_only_statement("/*!40014 SET FOREIGN_KEY_CHECKS=0 */")
+        )
+
+    def test_mariadb_comment_directive_is_not_comment_only(self):
+        self.assertFalse(
+            ExecutionEngine._is_comment_only_statement(
+                "/*M!100001 SET STATEMENT sql_log_bin=0 FOR SET GLOBAL x=1 */"
+            )
+        )
+
 
 class TestExecutableSqlStatements(unittest.TestCase):
     def test_filters_non_executable_statements_after_parsing(self):
