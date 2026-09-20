@@ -310,11 +310,8 @@ class SQLiteProvider(NativeProvider, TransactionalProvider):
     def set_busy_timeout(self, seconds: float) -> None:
         """Raise (or restore) this connection's SQLite busy_timeout.
 
-        Commands with no lock contention (info, validate, ...) never call
-        this and keep the driver's short default. `migrate` raises it for
-        its own duration and restores the default afterward, so a later
-        command reusing this same connection isn't left waiting minutes on
-        an ordinary, uncontended failure.
+        Only ``migrate`` widens it, for its own duration; every other
+        command keeps the driver's short default.
         """
         connection = self._get_connection()
         connection.execute(f"PRAGMA busy_timeout = {int(seconds * 1000)}")
