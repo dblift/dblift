@@ -27,7 +27,7 @@ import os
 import sqlite3
 import time
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 import pytest
 
@@ -102,6 +102,64 @@ def _run_migrate(
             client.close()
         except Exception:
             pass
+
+
+def _run_migrate_via_sqlalchemy(
+    migrations_dir: str,
+    db_path: str,
+    result_queue: "mp.Queue[Dict[str, Any]]",
+    label: str,
+    barrier: Any,
+    log_file: Optional[str] = None,
+) -> None:
+    """Worker body: `DBLiftClient.from_sqlalchemy(create_engine(...))`, the
+    integration point for callers embedding dblift in a running Python
+    process (FastAPI lifespan, pytest fixtures, ...) instead of the CLI.
+
+    Unlike `_run_migrate` (`DBLiftClient.from_config`, which opens its own
+    ``sqlite3`` connection with ``isolation_level=None`` -- autocommit), this
+    runs on the DBAPI connection SQLAlchemy's pysqlite dialect owns, which
+    uses Python's sqlite3 legacy mode: an implicit ``BEGIN`` before DML.
+    """
+    from sqlalchemy import create_engine
+
+    from dblift.api import DBLiftClient
+
+    engine = create_engine(f"sqlite:///{db_path}")
+    client = DBLiftClient.from_sqlalchemy(
+        engine, migrations_dir=migrations_dir, log_level="WARN", log_file=log_file
+    )
+    barrier.wait()
+    start = time.time()
+    try:
+        result = client.migrate()
+        result_queue.put(
+            {
+                "label": label,
+                "pid": os.getpid(),
+                "success": result.success,
+                "error": result.error_message,
+                "applied": len(result.migrations),
+                "elapsed": time.time() - start,
+            }
+        )
+    except Exception as e:  # pragma: no cover - captured as a result, not raised
+        result_queue.put(
+            {
+                "label": label,
+                "pid": os.getpid(),
+                "success": False,
+                "error": f"{type(e).__name__}: {e}",
+                "applied": 0,
+                "elapsed": time.time() - start,
+            }
+        )
+    finally:
+        try:
+            client.close()
+        except Exception:
+            pass
+        engine.dispose()
 
 
 def _hold_write_lock(
@@ -315,6 +373,55 @@ class TestSqliteConcurrentMigrate:
         assert result["acquired"] is False
         assert result["elapsed"] >= 2.0
         assert _history_rows(db_path) in (None, 0)
+
+    @pytest.mark.parametrize("n", [2, 4])
+    def test_concurrent_migrate_via_sqlalchemy_engine(self, tmp_path, n):
+        """Real regression for the `from_sqlalchemy` path: N real OS
+        processes each build their own SQLAlchemy engine over one fresh
+        SQLite file and call `migrate()` through it, exactly as
+        `DBLiftClient.from_sqlalchemy(create_engine(...))` documents.
+
+        Every process must succeed, every migration must be applied exactly
+        once, and this must complete in well under the 60s lock-wait budget
+        (a single process applies the same 30 migrations in ~0.2s) -- unlike
+        the `from_config`/CLI path (`_run_migrate`), which is not affected by
+        this bug because it opens its own autocommit connection.
+        """
+        migrations_dir = tmp_path / "migrations"
+        _write_migrations(migrations_dir, count=30)
+        db_path = tmp_path / "test.db"
+
+        ctx = mp.get_context("spawn")
+        barrier = ctx.Barrier(n)
+        result_queue: "mp.Queue[Dict[str, Any]]" = ctx.Queue()
+        labels = [f"P{i}" for i in range(n)]
+        log_files = [str(tmp_path / f"{label}.log") for label in labels]
+        procs = [
+            ctx.Process(
+                target=_run_migrate_via_sqlalchemy,
+                args=(str(migrations_dir), str(db_path), result_queue, label, barrier, log_file),
+            )
+            for label, log_file in zip(labels, log_files)
+        ]
+        wall_start = time.time()
+        for p in procs:
+            p.start()
+        for p in procs:
+            p.join(timeout=60)
+            assert not p.is_alive(), "migrate() process did not finish in time"
+        wall_elapsed = time.time() - wall_start
+
+        results = [result_queue.get(timeout=1) for _ in procs]
+        assert all(r["success"] for r in results), results
+        assert sum(r["applied"] for r in results) == 30, results
+        assert _history_rows(db_path) == 30
+        assert wall_elapsed < 20, (wall_elapsed, results)
+
+        # The waiter losing the lock race is routine, not an error: it must
+        # not surface "database is locked" anywhere in any process's log.
+        for log_file in log_files:
+            contents = Path(log_file).read_text() if Path(log_file).exists() else ""
+            assert "database is locked" not in contents.lower(), (log_file, contents)
 
     def test_default_journal_mode_is_rollback_not_wal(self, tmp_path):
         """SQLite provider does not expose a journal_mode/WAL setting; every
