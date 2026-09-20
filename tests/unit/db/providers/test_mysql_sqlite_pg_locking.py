@@ -153,7 +153,8 @@ class TestSQLiteLockWaiterTransaction(unittest.TestCase):
         self.assertEqual(caller.execute("SELECT count(*) FROM mine").fetchone()[0], 1)
 
     def test_busy_database_does_not_leave_a_transaction_open(self):
-        self.holder.execute("BEGIN EXCLUSIVE")
+        # IMMEDIATE, not EXCLUSIVE: the waiter can still begin, then fails on the write.
+        self.holder.execute("BEGIN IMMEDIATE")
         self.addCleanup(self.holder.execute, "ROLLBACK")
         waiter = sqlite3.connect(self.path, timeout=0)
         self.addCleanup(waiter.close)
