@@ -6,7 +6,7 @@ parser patterns with the universal regex framework for comprehensive SQL parsing
 
 import logging
 import re
-from typing import Dict, List, Optional, Pattern
+from typing import Dict, List, Optional, Pattern, Tuple
 
 from dblift.core.sql_model.base import (
     ParseResult,
@@ -95,7 +95,13 @@ class EnhancedRegexParser(RegexParser):
         if not sql_content or not sql_content.strip():
             return objects
 
-        sql = sql_content.strip()
+        # Comments must not be matched as if they were code (e.g. a
+        # commented-out "ALTER TABLE ..." should not surface as an object).
+        # Quote-aware: a comment marker inside a quoted identifier or string
+        # (e.g. a table literally named "a--b") must survive the strip.
+        sql = self._strip_comments_preserving_quotes(sql_content.strip())
+        if not sql:
+            return objects
         schema = default_schema or self.config.get_default_schema()
 
         # Enhanced object extraction with better error handling
@@ -363,6 +369,165 @@ class EnhancedRegexParser(RegexParser):
         for comment_pattern in self.config.comment_patterns:
             sql = comment_pattern.sub("", sql)
         return sql.strip()
+
+    def _comment_markers(self) -> Tuple[List[str], bool]:
+        """Line-comment prefixes and whether block comments are supported.
+
+        Derived from ``config.comment_patterns`` (each dialect already
+        declares these) rather than hard-coded per dialect, so a dialect
+        that adds a marker is picked up automatically.
+        """
+        line_prefixes = []
+        has_block = False
+        for pattern in self.config.comment_patterns:
+            raw = pattern.pattern
+            if raw.startswith("--"):
+                line_prefixes.append("--")
+            elif raw.startswith("#"):
+                line_prefixes.append("#")
+            elif raw.startswith(r"/\*"):
+                has_block = True
+        return line_prefixes, has_block
+
+    def _strip_comments_preserving_quotes(self, sql: str) -> str:
+        """Remove comments without touching text inside a quoted span.
+
+        A comment marker inside a single-quoted string, a double-quoted /
+        backtick / bracket-quoted identifier, or (when the dialect supports
+        it) a dollar-quoted body is not a comment and must be left alone —
+        otherwise a quoted identifier such as ``"a--b"`` or a table body
+        containing ``--`` loses everything after the marker. Doubled quote
+        characters (``''``, ``""``, `` `` ``, ``]]``) are the escape form for
+        a literal quote inside the span and do not end it. Block comments
+        nest (``/* outer /* inner */ outer */``), matching
+        ``PostgreSqlRegexParser._remove_comments``.
+        """
+        line_prefixes, has_block_comments = self._comment_markers()
+
+        # Cheap early exit: with no comment marker anywhere in the text,
+        # quote tracking cannot change the outcome (it only exists to
+        # protect a marker inside a quoted span), so the full scan is
+        # unnecessary — most statements in a migration have no comment.
+        markers = list(line_prefixes) + (["/*"] if has_block_comments else [])
+        if not any(marker in sql for marker in markers):
+            return sql.strip()
+
+        result: List[str] = []
+
+        in_single = False
+        in_double = False
+        in_backtick = False
+        in_bracket = False
+        block_comment_depth = 0
+        in_line_comment = False
+        dollar_tag: Optional[str] = None
+        supports_dollar_quoting = getattr(self.config, "supports_dollar_quoting", False)
+
+        i = 0
+        length = len(sql)
+        while i < length:
+            char = sql[i]
+
+            if in_line_comment:
+                if char in ("\n", "\r"):
+                    in_line_comment = False
+                    result.append(char)
+                i += 1
+                continue
+
+            if block_comment_depth > 0:
+                if char == "/" and sql[i + 1 : i + 2] == "*":
+                    block_comment_depth += 1
+                    i += 2
+                elif char == "*" and sql[i + 1 : i + 2] == "/":
+                    block_comment_depth -= 1
+                    i += 2
+                else:
+                    i += 1
+                continue
+
+            if dollar_tag is not None:
+                if sql.startswith(dollar_tag, i):
+                    result.append(dollar_tag)
+                    i += len(dollar_tag)
+                    dollar_tag = None
+                else:
+                    result.append(char)
+                    i += 1
+                continue
+
+            in_quote = in_single or in_double or in_backtick or in_bracket
+
+            if not in_quote and supports_dollar_quoting and char == "$":
+                dollar_match = re.match(r"\$([a-zA-Z_][a-zA-Z0-9_]*)?\$", sql[i:])
+                if dollar_match:
+                    tag = dollar_match.group(0)
+                    dollar_tag = tag
+                    result.append(tag)
+                    i += len(tag)
+                    continue
+
+            if not in_double and not in_backtick and not in_bracket and char == "'":
+                result.append(char)
+                i += 1
+                if in_single and sql[i : i + 1] == "'":
+                    result.append("'")
+                    i += 1
+                else:
+                    in_single = not in_single
+                continue
+
+            if not in_single and not in_backtick and not in_bracket and char == '"':
+                result.append(char)
+                i += 1
+                if in_double and sql[i : i + 1] == '"':
+                    result.append('"')
+                    i += 1
+                else:
+                    in_double = not in_double
+                continue
+
+            if not in_single and not in_double and not in_bracket and char == "`":
+                result.append(char)
+                i += 1
+                if in_backtick and sql[i : i + 1] == "`":
+                    result.append("`")
+                    i += 1
+                else:
+                    in_backtick = not in_backtick
+                continue
+
+            if not in_single and not in_double and not in_backtick:
+                if not in_bracket and char == "[":
+                    in_bracket = True
+                    result.append(char)
+                    i += 1
+                    continue
+                if in_bracket and char == "]":
+                    result.append(char)
+                    i += 1
+                    if sql[i : i + 1] == "]":
+                        result.append("]")
+                        i += 1
+                    else:
+                        in_bracket = False
+                    continue
+
+            if not in_quote:
+                if has_block_comments and char == "/" and sql[i + 1 : i + 2] == "*":
+                    block_comment_depth = 1
+                    i += 2
+                    continue
+                matched_prefix = next((p for p in line_prefixes if sql.startswith(p, i)), None)
+                if matched_prefix:
+                    in_line_comment = True
+                    i += len(matched_prefix)
+                    continue
+
+            result.append(char)
+            i += 1
+
+        return "".join(result).strip()
 
     def _is_block_statement_enhanced(self, sql: str) -> bool:
         """Enhanced block statement detection using Oracle-proven patterns."""
