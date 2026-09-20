@@ -142,9 +142,6 @@ class Db2Quirks(BaseQuirks):
     native_driver_display = "ibm_db_sa"
     # validate-sql offline placeholder.
     lint_placeholder_url = "db2://localhost:50000/DBLIFT_VALIDATE_SQL"
-    # DB2 blocks subsequent queries until uncommitted transactions are
-    # resolved; read-only introspection rolls back to free the connection.
-    requires_rollback_after_introspection = True
     # DB2 TIMESTAMP / TIME accept only fractional-seconds precision,
     # not the generic ``(width, scale)`` pair.
     time_type_supports_only_fractional_precision = True

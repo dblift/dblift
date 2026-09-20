@@ -1698,14 +1698,6 @@ class BaseQuirks:
     #: DB2 ``COMPRESS YES/NO`` table clause.
     table_supports_compress: bool = False
 
-    #: Dialect leaves implicit transactions open after read-only
-    #: introspection (DB2 blocks subsequent queries until uncommitted
-    #: transactions are resolved; MySQL InnoDB consistent-snapshot mode
-    #: locks the snapshot until commit/rollback). The snapshot service
-    #: rolls back after introspection for these dialects to free the
-    #: connection.
-    requires_rollback_after_introspection: bool = False
-
     def build_snapshot_table_ddl(
         self,
         qualified_table: str,
