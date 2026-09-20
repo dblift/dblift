@@ -25,7 +25,6 @@ the lock (``EventEmitter._dispatch`` calls each listener directly from
 deadlock on a lock its own thread already holds.
 """
 
-import tempfile
 import threading
 import time
 from pathlib import Path
@@ -75,7 +74,6 @@ def _client_with_migration(tmp_path: Path, sql: str = None) -> DBLiftClient:
     return DBLiftClient.from_sqlalchemy(engine, migrations_dir=migrations)
 
 
-@pytest.mark.integration
 class TestClientThreadSafety:
     def test_two_threads_migrate_on_one_client_are_serialized(self, tmp_path):
         """Two threads calling migrate() on one client never run
