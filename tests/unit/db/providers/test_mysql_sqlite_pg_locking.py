@@ -1,5 +1,6 @@
 """Tests for MySQL, SQLite, and PostgreSQL locking managers."""
 
+import sqlite3
 import unittest
 from unittest.mock import MagicMock
 
@@ -61,6 +62,44 @@ class TestSQLiteLockingManagerAcquireRelease(unittest.TestCase):
         qe.execute_statement.return_value = None
         result = mgr.release_migration_lock(MagicMock(), "main")
         self.assertIsInstance(result, bool)
+
+
+class TestSQLiteLockingManagerLostRaceLogging(unittest.TestCase):
+    """Losing the lock row race is the expected outcome for a waiter, not a
+    failure -- it must not be logged like one.
+
+    ``query_executor.execute_statement`` logs the SQL text and bound
+    parameters at ERROR level on *any* exception (it has no way to know a
+    given statement's failure is routine). The lock-row INSERT must
+    therefore not go through it -- it needs to execute directly on the
+    connection so a lost race can be handled quietly instead.
+    """
+
+    def test_lost_race_insert_bypasses_the_logging_query_executor(self):
+        from dblift.db.plugins.sqlite.sqlite.locking_manager import SQLiteLockingManager
+
+        qe = MagicMock()
+        mgr = SQLiteLockingManager(qe, MagicMock())
+        conn = MagicMock()
+        conn.execute.side_effect = sqlite3.IntegrityError(
+            "UNIQUE constraint failed: dblift_migration_lock.lock_name"
+        )
+
+        # wait_timeout_seconds=1 with a losing attempt every time: one real
+        # `time.sleep(1)` inside the loop, then the elapsed-time check ends
+        # it. Short enough to keep the test fast without mocking away the
+        # loop's own timing (which would need a fake clock to stay correct).
+        result = mgr.acquire_migration_lock(conn, "main", wait_timeout_seconds=1)
+
+        self.assertFalse(result)
+        insert_calls = [
+            call for call in qe.execute_statement.call_args_list if "INSERT INTO" in call.args[1]
+        ]
+        self.assertEqual(
+            insert_calls,
+            [],
+            "lock-row INSERT must not go through query_executor.execute_statement",
+        )
 
 
 class TestPostgreSQLAdvisoryLockKey(unittest.TestCase):

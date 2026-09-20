@@ -101,9 +101,11 @@ class SQLiteLockingManager(BaseLockingManager):
                     process_id = str(os.getpid())
                     user = os.environ.get("USER", os.environ.get("USERNAME", "dblift"))
 
-                    self.query_executor.execute_statement(
-                        connection, insert_sql, params=[lock_name, user, process_id]
-                    )
+                    # Execute directly on the connection, not via query_executor:
+                    # losing this race is the expected outcome for a waiter, and
+                    # query_executor logs every exception at ERROR level with the
+                    # full SQL/params, which would fire on every routine poll.
+                    connection.execute(insert_sql, [lock_name, user, process_id])
 
                     # Commit the lock immediately
                     connection.commit()

@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Optional
 
 from dblift.config import DbliftConfig
+from dblift.core.constants import DEFAULT_MIGRATION_LOCK_TIMEOUT_SECONDS
 from dblift.core.logger import Log, NullLog
 from dblift.db.plugins.sqlite.config import sqlite_path_from_url
 
@@ -91,6 +92,11 @@ class SQLiteConnectionManager:
                 detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES,
                 isolation_level=None,  # Autocommit Python mode; transactions controlled via explicit BEGIN/COMMIT SQL
                 check_same_thread=False,  # Allow multi-threaded access
+                # Without this, sqlite3.connect() defaults to a 5s busy_timeout,
+                # which is shorter than dblift's own lock-wait budget. SQLite's
+                # internal busy-handler is a more reliable defense against
+                # concurrent-writer contention than that implicit default.
+                timeout=DEFAULT_MIGRATION_LOCK_TIMEOUT_SECONDS,
             )
 
             # Enable row factory for easier result handling
