@@ -316,6 +316,12 @@ class SQLiteProvider(NativeProvider, TransactionalProvider):
         connection = self._get_connection()
         connection.execute(f"PRAGMA busy_timeout = {int(seconds * 1000)}")
 
+    def get_busy_timeout_seconds(self) -> float:
+        """Return this connection's current SQLite busy_timeout, in seconds."""
+        connection = self._get_connection()
+        (ms,) = connection.execute("PRAGMA busy_timeout").fetchone()
+        return ms / 1000
+
     def clean_schema(self, schema: str) -> CleanExecutionSummary:
         """Clean all objects from the database.
 

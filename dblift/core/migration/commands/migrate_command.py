@@ -734,16 +734,17 @@ class MigrateCommand(BaseCommand):
 
         read_snapshot = self.state_manager.new_read_snapshot()
 
-        # Providers whose migration lock is a caller-side polling loop
-        # (currently only SQLite -- see SQLiteProvider.set_busy_timeout)
-        # need a wider busy_timeout for this whole command, not just around
-        # lock acquisition: the history-table bootstrap that runs before it
-        # is on the same connection and just as exposed to transient
-        # contention. Other providers don't implement this method, so this
-        # is a no-op for them and their connections are unaffected.
+        # SQLite's migration lock is a caller-side polling loop; widen its
+        # busy_timeout for this command's duration, never lowering a
+        # caller's own wider setting, and restore it exactly afterward.
         set_busy_timeout = getattr(self.provider, "set_busy_timeout", None)
-        default_busy_timeout = getattr(self.provider, "DEFAULT_BUSY_TIMEOUT_SECONDS", None)
-        if callable(set_busy_timeout):
+        get_busy_timeout = getattr(self.provider, "get_busy_timeout_seconds", None)
+        original_busy_timeout = get_busy_timeout() if callable(get_busy_timeout) else None
+        widened_busy_timeout = callable(set_busy_timeout) and (
+            original_busy_timeout is None
+            or original_busy_timeout < DEFAULT_MIGRATION_LOCK_TIMEOUT_SECONDS
+        )
+        if widened_busy_timeout:
             set_busy_timeout(DEFAULT_MIGRATION_LOCK_TIMEOUT_SECONDS)
 
         try:
@@ -989,8 +990,6 @@ class MigrateCommand(BaseCommand):
             self._log_command_completion("migrate", result)
             return result
         finally:
-            # Restore the short default so a later command reusing this same
-            # connection (e.g. through DBLiftClient) isn't left waiting on
-            # an ordinary, uncontended failure.
-            if callable(set_busy_timeout) and default_busy_timeout is not None:
-                set_busy_timeout(default_busy_timeout)
+            # Restore exactly what was there before, not a hardcoded default.
+            if widened_busy_timeout:
+                set_busy_timeout(original_busy_timeout)
