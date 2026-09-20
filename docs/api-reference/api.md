@@ -172,33 +172,26 @@ Common event types — see [Events reference](events.md) for the complete enum:
 
 ## Thread Safety
 
-A `DBLiftClient` holds one provider/connection for its lifetime. Calls from
-multiple threads on the *same* client instance are serialized: only one
-operation (`migrate`, `info`, `validate`, ...) runs at a time, and the rest
-block until it finishes. Each thread still gets its own correct result, but
-there is no concurrency speedup from sharing one client across threads —
-including read-only operations, which share the connection too. For
-concurrency, give each thread (or worker) its own client instance, each
-with its own provider/connection.
+A `DBLiftClient` holds one provider/connection for its lifetime, so calls
+from multiple threads on the same client instance are serialized: one
+operation runs at a time, and the rest block until it finishes. For
+concurrency, give each thread its own client instance instead.
 
 An event listener runs synchronously, on the thread running the operation.
-From it, a **read-only** call on the same client (`info`, `validate`) is
-safe. A **mutating** call (`migrate`, `undo`, `clean`, ...) — and `close()`,
-which would tear down the connection out from under the operation still
-using it — is refused with `RuntimeError` instead of running underneath the
-operation already in progress: otherwise the outer call would report a
-stale result (for example `migrate()` claiming nothing was pending right
-after a nested call actually applied something, or continuing to run —
-silently reconnected — after a nested `close()`). From a *different*
-thread, any operation and `close()`/the context manager block on the same
-lock rather than being refused. The ordinary `with` block is unaffected:
-by the time `__exit__` runs, the operation inside it has already finished.
+From it, a read-only call (`info`, `validate`) on the same client is safe.
+A mutating call (`migrate`, `undo`, `clean`, ...) or `close()` is refused
+with `RuntimeError` instead of running underneath the operation already in
+progress and making its result stale. A subclass that overrides an
+operation and calls `super()` is unaffected — that's not treated as
+re-entry. From a different thread, any operation and `close()` block on
+the same lock instead of being refused; the ordinary `with` block is fine,
+since `__exit__` only runs once the operation inside it has finished.
 
-`AsyncDBLiftClient` routes every call through its own `asyncio.Lock` and a
-dedicated single-worker thread, so the event loop itself is never blocked —
-except if code holds a reference to the *wrapped* sync client and calls it
-directly from the loop thread, which blocks the loop like any other
-synchronous call would.
+`AsyncDBLiftClient` serializes every call through its own lock and a
+dedicated worker thread, so the event loop is never blocked. Blocking that
+same worker thread on a coroutine of the *same* async client (e.g. from a
+listener via `asyncio.run_coroutine_threadsafe(...).result()`) deadlocks,
+since only one of its operations runs at a time.
 
 ## Result Objects
 

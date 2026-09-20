@@ -32,17 +32,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - `DBLiftClient` operations (`migrate`, `info`, `validate`, ...) called from
-  multiple threads on the same client instance no longer race on the
-  client's shared connection. They now serialize, so each thread gets a
-  correct result instead of interleaved statements and inconsistent
-  migration state. An event listener may still call a read-only operation
-  (`info`, `validate`) on the same client; calling a mutating one
-  (`migrate`, `undo`, ...) or `close()` from a listener now raises a clear
-  error instead of running underneath the operation already in progress
-  (or, for `close()`, tearing down the connection it's still using) and
-  making its result inaccurate. The ordinary `with DBLiftClient(...) as
-  client:` pattern is unaffected. The client's threading contract is
-  documented in the API reference.
+  multiple threads on the same client instance are now serialized, so each
+  thread waits its turn instead of sharing the connection concurrently. From
+  an event listener, a read-only call (`info`, `validate`) on the same
+  client is still fine; a mutating call or `close()` now raises a clear
+  error instead of running underneath the operation already in progress.
+  The client's threading contract is documented in the API reference.
 - Two callers running `migrate()` against the same SQLite database through
   the Python API at (almost) the same time could both fail, or take up to a
   minute to resolve. One caller now applies the migrations while the other
