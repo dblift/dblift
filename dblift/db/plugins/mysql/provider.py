@@ -24,8 +24,10 @@ class MySqlProvider(SqlAlchemyProvider):
     #: Database this connection was last ``USE``'d into. Lets
     #: :meth:`set_current_schema` skip re-issuing ``USE`` on every statement
     #: of a migration, so a ``USE`` the migration itself runs is not
-    #: immediately overwritten. Cleared by :meth:`begin_transaction` so each
-    #: new migration still starts from the configured database. Class-level
+    #: immediately overwritten. Cleared by :meth:`reset_schema_cache` —
+    #: called by ``ExecutionEngine`` at the start of every migration/callback,
+    #: and also by :meth:`begin_transaction` as a second, redundant guard —
+    #: so each new one still starts from the configured database. Class-level
     #: default so tests constructing via ``object.__new__`` still see ``None``.
     _current_database_set: Optional[str] = None
 
@@ -34,14 +36,19 @@ class MySqlProvider(SqlAlchemyProvider):
         super().__init__(config, log)
         self._current_database_set = None
 
-    def begin_transaction(self) -> None:
-        """Begin a transaction, forcing the next statement to reapply the database.
+    def reset_schema_cache(self) -> None:
+        """Forget the database this connection was last ``USE``'d into.
 
-        Each migration/callback gets its own transaction (see
-        ``ExecutionEngine._prepare_transaction``), so this is the boundary
-        between one migration's session state and the next.
+        ``ExecutionEngine`` calls this at the start of every migration and
+        callback — the unit boundary — regardless of whether it runs
+        transactionally or via autocommit; :meth:`begin_transaction` fires on
+        only one of those paths, so it is not a substitute for this call.
         """
         self._current_database_set = None
+
+    def begin_transaction(self) -> None:
+        """Begin a transaction, forcing the next statement to reapply the database."""
+        self.reset_schema_cache()
         super().begin_transaction()
 
     def execute_statement(

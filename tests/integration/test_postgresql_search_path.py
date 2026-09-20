@@ -259,6 +259,145 @@ def test_second_migration_does_not_inherit_previous_search_path(pg_provider, tmp
         provider.close()
 
 
+def test_autocommit_required_migration_does_not_inherit_previous_search_path(
+    pg_provider, tmp_path
+) -> None:
+    """An autocommit-only migration must not inherit a prior transactional leak.
+
+    ``CREATE INDEX CONCURRENTLY`` cannot run inside a transaction block, so
+    dblift routes the whole migration through ``execute_autocommit_statement``
+    without ever calling ``begin_transaction``. If schema-cache invalidation
+    relied on ``begin_transaction`` alone, this migration would run with a
+    cache that still (wrongly) believed the configured schema was already
+    active, so it would skip reapplying it — leaving the live session on the
+    previous migration's leftover ``search_path`` and failing to resolve the
+    unqualified table.
+    """
+    leak_schema = f"sp_leak_{uuid.uuid4().hex[:8]}"
+    migrations_dir = tmp_path / "migrations"
+    migrations_dir.mkdir()
+    create_versioned_migration(
+        migrations_dir,
+        "1.0.0",
+        "leak_search_path",
+        f"""
+        CREATE SCHEMA "{leak_schema}";
+        CREATE TABLE "{SCHEMA}".lands_where (id int);
+        SET search_path = "{leak_schema}", pg_catalog;
+        """,
+    )
+    create_versioned_migration(
+        migrations_dir,
+        "2.0.0",
+        "concurrent_index",
+        "CREATE INDEX CONCURRENTLY idx_lands_where_id ON lands_where(id);",
+    )
+
+    config = _postgres_config()
+    config.migrations.directory = str(migrations_dir)
+    provider = ProviderRegistry.create_provider(config)
+    provider.create_connection()
+    try:
+        client = DBLiftClient(provider=provider, migrations_dir=migrations_dir, config=config)
+
+        result = client.migrate()
+
+        assert result.success, result.error_message
+        index_schema = provider.execute_query(
+            "SELECT schemaname FROM pg_indexes WHERE indexname = 'idx_lands_where_id'"
+        )
+        assert [r["schemaname"] for r in index_schema] == [SCHEMA]
+    finally:
+        provider.execute_statement(f'DROP SCHEMA IF EXISTS "{leak_schema}" CASCADE')
+        provider.close()
+
+
+def test_autocommit_required_callback_does_not_inherit_previous_search_path(
+    pg_provider, tmp_path
+) -> None:
+    """Same leak, through an autocommit-only ``afterMigrate`` callback.
+
+    Callbacks that need autocommit skip ``begin_transaction`` the same way an
+    autocommit-only migration does (see the sibling migration-level test), so
+    they need the same cache invalidation at their own entry point.
+    """
+    leak_schema = f"sp_leak_{uuid.uuid4().hex[:8]}"
+    migrations_dir = tmp_path / "migrations"
+    migrations_dir.mkdir()
+    create_versioned_migration(
+        migrations_dir,
+        "1.0.0",
+        "leak_search_path",
+        f"""
+        CREATE SCHEMA "{leak_schema}";
+        CREATE TABLE "{SCHEMA}".cb_target (id int);
+        SET search_path = "{leak_schema}", pg_catalog;
+        """,
+    )
+    (migrations_dir / "afterMigrate__concurrent_index.sql").write_text(
+        "CREATE INDEX CONCURRENTLY idx_cb_target_id ON cb_target(id);"
+    )
+
+    config = _postgres_config()
+    config.migrations.directory = str(migrations_dir)
+    provider = ProviderRegistry.create_provider(config)
+    provider.create_connection()
+    try:
+        client = DBLiftClient(provider=provider, migrations_dir=migrations_dir, config=config)
+
+        result = client.migrate()
+
+        assert result.success, result.error_message
+        index_schema = provider.execute_query(
+            "SELECT schemaname FROM pg_indexes WHERE indexname = 'idx_cb_target_id'"
+        )
+        assert [r["schemaname"] for r in index_schema] == [SCHEMA]
+    finally:
+        provider.execute_statement(f'DROP SCHEMA IF EXISTS "{leak_schema}" CASCADE')
+        provider.close()
+
+
+def test_mixed_transactional_and_autocommit_migration_is_rejected_cleanly(
+    pg_provider, tmp_path
+) -> None:
+    """A migration mixing transactional and autocommit-only statements is
+    refused outright (pre-existing ``TransactionPolicy`` behaviour, unrelated
+    to this fix) — the anchor to check before trusting any mutation of this
+    path: ``TransactionPolicy.decide`` rejects it before ``_execute_statements``
+    runs a single statement, so neither the table nor the index exist
+    afterwards, and the provider's schema cache cannot have been touched.
+    """
+    migrations_dir = tmp_path / "migrations"
+    migrations_dir.mkdir()
+    create_versioned_migration(
+        migrations_dir,
+        "1.0.0",
+        "mixed_statements",
+        "CREATE TABLE mixed_probe (id int); "
+        "CREATE INDEX CONCURRENTLY idx_mixed_probe_id ON mixed_probe(id);",
+    )
+
+    config = _postgres_config()
+    config.migrations.directory = str(migrations_dir)
+    provider = ProviderRegistry.create_provider(config)
+    provider.create_connection()
+    try:
+        client = DBLiftClient(provider=provider, migrations_dir=migrations_dir, config=config)
+
+        result = client.migrate()
+
+        assert not result.success
+        assert "mixes transactional and autocommit-only" in (result.error_message or "")
+
+        table_exists = provider.execute_query(
+            "SELECT table_name FROM information_schema.tables WHERE table_name = 'mixed_probe'"
+        )
+        assert table_exists == []
+    finally:
+        provider.execute_statement("DROP TABLE IF EXISTS mixed_probe")
+        provider.close()
+
+
 def test_history_table_resolves_in_target_schema_not_public(pg_provider, tmp_path) -> None:
     """dblift's own history table is schema-qualified, so ``public`` cannot win.
 
