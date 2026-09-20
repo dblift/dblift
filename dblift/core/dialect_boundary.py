@@ -149,10 +149,6 @@ class DdlQuirks(Protocol):
     native_driver_display: str
     requires_credentials: bool
     url_optional_when_file_path_given: bool
-    clean_schema_auto_commits: bool
-    requires_explicit_commit_after_ddl: bool
-    supports_session_autocommit: bool
-    retry_drop_create_on_error: bool
 
 
 @runtime_checkable

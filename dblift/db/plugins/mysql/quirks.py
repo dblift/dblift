@@ -103,9 +103,6 @@ class MysqlQuirks(BaseQuirks):
     # validate-sql offline placeholder. Inherited by MariaDB, whose config
     # class is MySQL's own (config_dialect="mysql") and builds mysql:// URLs.
     lint_placeholder_url = "mysql://localhost/dblift_validate_sql"
-    # Wave C hooks (story 26-9): migration engine transaction semantics.
-    clean_schema_auto_commits = True
-    supports_session_autocommit = False
     # MySQL read-only introspection can leave InnoDB transactions open;
     # roll back afterward to free the connection promptly.
     requires_rollback_after_introspection = True

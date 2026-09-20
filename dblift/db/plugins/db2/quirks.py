@@ -142,17 +142,9 @@ class Db2Quirks(BaseQuirks):
     native_driver_display = "ibm_db_sa"
     # validate-sql offline placeholder.
     lint_placeholder_url = "db2://localhost:50000/DBLIFT_VALIDATE_SQL"
-    # Wave C hooks (story 26-9): migration engine transaction semantics.
-    clean_schema_auto_commits = True
-    requires_explicit_commit_after_ddl = True
-    supports_session_autocommit = False
-    retry_drop_create_on_error = True
     # DB2 blocks subsequent queries until uncommitted transactions are
     # resolved; read-only introspection rolls back to free the connection.
     requires_rollback_after_introspection = True
-    # PR-C2: DB2 SYSCAT stores unquoted identifiers upper-cased — unquoted
-    # table names are upper-cased before DROP.
-    unquoted_identifiers_uppercase_in_dictionary = True
     # DB2 TIMESTAMP / TIME accept only fractional-seconds precision,
     # not the generic ``(width, scale)`` pair.
     time_type_supports_only_fractional_precision = True
@@ -204,51 +196,6 @@ class Db2Quirks(BaseQuirks):
     ) -> str:
         """DB2 does not support DBLift snapshot table creation."""
         raise NotImplementedError("DB2 does not support DBLift snapshot table creation")
-
-    def render_round_trip_drop_table_sql(self, target: str) -> str:
-        """Older DB2 versions reject ``DROP TABLE IF EXISTS`` — use plain DROP."""
-        return f"DROP TABLE {target}"
-
-    def build_retry_drop_strategies(
-        self,
-        query_executor: Any,
-        connection: Any,
-        schema_clean: str,
-        table_clean: str,
-    ) -> "list[str]":
-        """Look up the actual TABSCHEMA/TABNAME in SYSCAT.TABLES and try it first."""
-        import logging
-
-        log = logging.getLogger(__name__)
-
-        strategies: "list[str]" = [f'"{schema_clean}"."{table_clean}"']
-        try:
-            find_table_sql = """
-            SELECT tabschema, tabname
-            FROM syscat.tables
-            WHERE (UPPER(tabschema) = UPPER(?) OR tabschema = ?)
-              AND (UPPER(tabname) = UPPER(?) OR tabname = ?)
-              AND type = 'T'
-            """
-            schema_param = schema_clean.replace('"', "")
-            table_param = table_clean.replace('"', "")
-            log.debug(f"DB2: Querying SYSCAT.TABLES for schema={schema_param}, table={table_param}")
-            table_info = query_executor.execute_query(
-                connection, find_table_sql, [schema_param, schema_param, table_param, table_param]
-            )
-            if table_info and len(table_info) > 0:
-                actual_schema = table_info[0].get("TABSCHEMA") or table_info[0].get("tabschema")
-                actual_table = table_info[0].get("TABNAME") or table_info[0].get("tabname")
-                strategies.insert(0, f'"{actual_schema}"."{actual_table}"')
-                log.debug(f"DB2: Found table in SYSCAT.TABLES: {actual_schema}.{actual_table}")
-            else:
-                log.debug(
-                    "DB2: Table not found in SYSCAT.TABLES for "
-                    f"schema={schema_param}, table={table_param}"
-                )
-        except Exception as find_err:
-            log.warning(f"DB2: Could not query SYSCAT.TABLES: {find_err}")
-        return strategies
 
     # Column ALTER hooks (Epic 27 column_converter refactor). DB2 uses the
     # same ``ALTER COLUMN`` form as PostgreSQL/SQL Server, but the
