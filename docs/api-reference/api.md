@@ -170,6 +170,21 @@ Common event types — see [Events reference](events.md) for the complete enum:
 - `VALIDATION_STARTED` / `VALIDATION_COMPLETED` / `VALIDATION_FAILED`
 - `SNAPSHOT_STARTED` / `SNAPSHOT_COMPLETED` / `SNAPSHOT_FAILED`
 
+## Thread Safety
+
+A `DBLiftClient` holds one provider/connection for its lifetime. Calls from
+multiple threads on the *same* client instance are serialized: only one
+operation (`migrate`, `info`, `validate`, ...) runs at a time, and the rest
+block until it finishes. Each thread still gets its own correct result, but
+there is no concurrency speedup from sharing one client across threads. For
+that, give each thread (or worker) its own client instance, each with its
+own provider/connection.
+
+An event listener registered on `client.events` runs synchronously, on the
+thread running the operation, and may call another operation on the same
+client (for example `client.info()` from inside a `MIGRATION_STARTED`
+handler) without deadlocking. It still blocks other threads as above.
+
 ## Result Objects
 
 All methods return result objects with a shared base structure plus

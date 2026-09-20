@@ -23,6 +23,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `DBLiftClient` operations (`migrate`, `info`, `validate`, ...) called from
+  multiple threads on the same client instance no longer race on the
+  client's shared connection. They now serialize, so each thread gets a
+  correct result instead of interleaved statements and inconsistent
+  migration state. The client's threading contract is documented in the
+  API reference.
 - PostgreSQL object extraction no longer mistakes a leading, inline, or
   nested comment for the statement it precedes, and `ALTER TABLE ONLY` is no
   longer reported as touching a table named `only`. Table identifiers may

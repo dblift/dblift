@@ -1,5 +1,7 @@
 """Main client for programmatic access to DBLift."""
 
+import contextlib
+import threading
 from functools import wraps
 from pathlib import Path
 from types import TracebackType
@@ -91,7 +93,7 @@ def _make_premium_stub_method(api_method_name: str) -> Callable[..., Any]:
 
 
 def _with_client_emitter(method: _F) -> _F:
-    """Bind ``self.events`` as the active emitter for the duration of *method*.
+    """Bind ``self.events`` as the active emitter and serialize *method*.
 
     Cursor-bot finding (api/client.py:141): the class docstring claimed
     "every public operation wraps its body in ``use_client_emitter``",
@@ -101,16 +103,43 @@ def _with_client_emitter(method: _F) -> _F:
     default emitter, breaking the per-client isolation guarantee.
     Decorating every public operation restores that invariant once and
     keeps it enforced by location instead of by convention.
+
+    Also acquires ``self._operation_lock`` for the duration of the call.
+    A ``DBLiftClient`` holds one provider/connection for its lifetime;
+    two threads calling operations on the same client raced on that
+    connection (interleaved statements, one side left with a failed
+    history row). Every real operation goes through this one decorator,
+    so serializing here — instead of per-method — closes that gap for
+    all of them at once, including a migrate/info mix on the same
+    client. The lock is released (``finally``, via the context manager)
+    even if *method* raises, so a failed operation never wedges the
+    client for later callers.
+
+    ``self._operation_lock`` is an ``RLock``, not a plain ``Lock``: the
+    events this same method emits (``self.events.emit(...)``) invoke
+    listener callbacks synchronously, on this thread, while the lock is
+    held (``EventEmitter._dispatch`` calls each listener directly). A
+    listener is ordinary user code and may legally call another operation
+    on the same client (e.g. ``client.info()`` from a ``MIGRATION_STARTED``
+    handler) — with a non-reentrant lock that call would block forever on
+    a lock this same thread already holds. ``RLock`` still serializes
+    *other* threads normally; it only lets the thread already holding the
+    lock re-enter.
     """
 
     @wraps(method)
     def wrapper(self: "DBLiftClient", *args: Any, **kwargs: Any) -> Any:
-        # ``getattr`` instead of ``self.events`` so tests that bypass
-        # ``__init__`` (e.g. ``DBLiftClient.__new__`` followed by direct
-        # method calls) keep working — ``use_client_emitter(None)`` is a
-        # documented no-op.
+        # ``getattr`` instead of ``self.events``/``self._operation_lock``
+        # so tests that bypass ``__init__`` (e.g. ``DBLiftClient.__new__``
+        # followed by direct method calls) keep working —
+        # ``use_client_emitter(None)`` is a documented no-op, and no lock
+        # is acquired when the attribute isn't there.
         emitter = getattr(self, "events", None)
-        with use_client_emitter(emitter):
+        lock = getattr(self, "_operation_lock", None)
+        with contextlib.ExitStack() as stack:
+            if lock is not None:
+                stack.enter_context(lock)
+            stack.enter_context(use_client_emitter(emitter))
             return method(self, *args, **kwargs)
 
     return cast(_F, wrapper)
@@ -132,6 +161,23 @@ class DBLiftClient:
         >>> # Apply migrations
         >>> result = client.migrate()
         >>> print(f"Applied {len(result.migrations_applied)} migrations")
+
+    Thread safety:
+        A client holds one provider/connection for its lifetime, so calls
+        from multiple threads on the *same* client instance are serialized:
+        only one operation (``migrate``, ``info``, ``validate``, ...) runs
+        at a time, and the rest block until it finishes. Each thread still
+        gets its own correct result — nothing is dropped or overwritten —
+        but there is no concurrent speedup from sharing one client across
+        threads. For that, give each thread (or worker) its own client
+        instance, each with its own provider/connection.
+
+        An event listener registered on ``client.events`` runs synchronously,
+        on the thread running the operation, and may call another operation
+        on the same client (e.g. ``client.info()`` from inside a
+        ``MIGRATION_STARTED`` handler) without deadlocking — the lock is
+        reentrant for the thread already holding it. It still blocks other
+        threads as above.
     """
 
     def __init__(
@@ -186,6 +232,17 @@ class DBLiftClient:
 
         # Normalize dialect once at boundary; methods use self.dialect directly
         self.dialect = self._get_dialect_for_sql_generation()
+
+        # Serializes every public operation on this client (see
+        # ``@_with_client_emitter``, which acquires it). The client holds
+        # one provider/connection for its lifetime; without this, two
+        # threads calling e.g. migrate() on the same client interleave
+        # statements on that one connection instead of either running to
+        # completion or failing with a clear error. RLock, not a plain
+        # Lock: an event listener runs synchronously while an operation
+        # holds this lock and may legally call another operation on the
+        # same client from the same thread (see ``_with_client_emitter``).
+        self._operation_lock = threading.RLock()
 
         # Event system for IDE/tooling. Each client owns a per-instance emitter
         # so listeners registered on one client never see events raised by a
