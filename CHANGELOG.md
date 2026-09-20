@@ -29,10 +29,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   correct result instead of interleaved statements and inconsistent
   migration state. An event listener may still call a read-only operation
   (`info`, `validate`) on the same client; calling a mutating one
-  (`migrate`, `undo`, ...) from a listener now raises a clear error instead
-  of running underneath the operation already in progress and making its
-  result inaccurate. `close()` and the context manager are covered too.
-  The client's threading contract is documented in the API reference.
+  (`migrate`, `undo`, ...) or `close()` from a listener now raises a clear
+  error instead of running underneath the operation already in progress
+  (or, for `close()`, tearing down the connection it's still using) and
+  making its result inaccurate. The ordinary `with DBLiftClient(...) as
+  client:` pattern is unaffected. The client's threading contract is
+  documented in the API reference.
 - PostgreSQL object extraction no longer mistakes a leading, inline, or
   nested comment for the statement it precedes, and `ALTER TABLE ONLY` is no
   longer reported as touching a table named `only`. Table identifiers may

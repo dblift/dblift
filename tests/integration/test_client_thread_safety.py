@@ -389,6 +389,59 @@ class TestClientThreadSafety:
         )
         assert not errors, f"unexpected exceptions: {errors}"
 
+    def test_event_listener_calling_close_during_migrate_is_refused(self, tmp_path):
+        """A listener must not be able to tear down the connection mid-operation.
+
+        Before the reentrancy guard on close()/__exit__: the RLock's
+        same-thread reentrancy let a listener's client.close() through, the
+        provider silently auto-reconnected underneath on the next call, and
+        the *outer* migrate() kept running and reported success=True as if
+        nothing had happened -- exactly the "outer operation's view goes
+        stale" failure this whole guard exists to prevent, arriving through
+        close() instead of a second migrate(). On a session-scoped
+        database-level lock (PostgreSQL advisory lock, MySQL GET_LOCK) this
+        would silently drop that lock mid-run.
+        """
+        client = _client_with_migration(tmp_path)
+        nested_error = {}
+
+        def on_started(event):
+            try:
+                client.close()
+            except RuntimeError as e:
+                nested_error["error"] = e
+
+        client.events.on(EventType.MIGRATION_STARTED, on_started)
+
+        outer = client.migrate()
+
+        assert "error" in nested_error, "listener's client.close() did not raise"
+        assert "close" in str(nested_error["error"])
+        # The connection was never actually torn down mid-operation, so the
+        # outer call's own result is accurate.
+        assert outer.success
+        assert outer.migrations_applied == ["1"]
+        client.close()
+
+    def test_ordinary_with_block_still_closes_cleanly(self, tmp_path):
+        """No regression: the normal context-manager pattern is unaffected.
+
+        By the time __exit__ runs at the end of the `with` block, the
+        migrate() call inside it has already returned and this thread's
+        depth is back to 0 -- the reentrancy guard does not fire.
+        """
+        migrations_dir = tmp_path / "migrations"
+        migrations_dir.mkdir()
+        (migrations_dir / "V1__init.sql").write_text(
+            "CREATE TABLE app_users (id INTEGER PRIMARY KEY, name TEXT NOT NULL);"
+        )
+        engine = create_engine(f"sqlite:///{tmp_path / 'app.db'}")
+
+        with DBLiftClient.from_sqlalchemy(engine, migrations_dir=migrations_dir) as client:
+            result = client.migrate()
+            assert result.success
+        # __exit__ ran without raising; the provider connection is closed.
+
     def test_single_threaded_migrate_still_works(self, tmp_path):
         """No regression: a single-threaded caller sees ordinary behavior."""
         client = _client_with_migration(tmp_path)

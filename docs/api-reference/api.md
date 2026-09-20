@@ -183,13 +183,16 @@ with its own provider/connection.
 
 An event listener runs synchronously, on the thread running the operation.
 From it, a **read-only** call on the same client (`info`, `validate`) is
-safe. A **mutating** call (`migrate`, `undo`, `clean`, ...) is refused with
-`RuntimeError` instead of running underneath the operation already in
-progress — otherwise the outer call would report stale results (for
-example `migrate()` claiming nothing was pending right after a nested call
-actually applied something). `close()` and the context manager take the
-same lock as every operation, so they cannot run concurrently with one
-either.
+safe. A **mutating** call (`migrate`, `undo`, `clean`, ...) — and `close()`,
+which would tear down the connection out from under the operation still
+using it — is refused with `RuntimeError` instead of running underneath the
+operation already in progress: otherwise the outer call would report a
+stale result (for example `migrate()` claiming nothing was pending right
+after a nested call actually applied something, or continuing to run —
+silently reconnected — after a nested `close()`). From a *different*
+thread, any operation and `close()`/the context manager block on the same
+lock rather than being refused. The ordinary `with` block is unaffected:
+by the time `__exit__` runs, the operation inside it has already finished.
 
 `AsyncDBLiftClient` routes every call through its own `asyncio.Lock` and a
 dedicated single-worker thread, so the event loop itself is never blocked —

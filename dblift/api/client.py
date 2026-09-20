@@ -128,16 +128,8 @@ def _with_client_emitter(
                     return inner(self, *args, **kwargs)
 
             depth = getattr(thread_state, "depth", 0)
-            if mutating and depth > 0:
-                raise RuntimeError(
-                    f"DBLiftClient.{inner.__name__}() was called while this "
-                    "thread is already inside an operation on the same "
-                    "client (for example, from an event listener). A "
-                    "mutating call cannot be nested inside another: the "
-                    "outer operation's view of what is pending/applied "
-                    "would go stale. Read-only calls (info, validate) may "
-                    "be nested safely."
-                )
+            if mutating:
+                _raise_if_reentrant(thread_state, inner.__name__)
             with lock:
                 thread_state.depth = depth + 1
                 try:
@@ -151,6 +143,25 @@ def _with_client_emitter(
     if method is not None:
         return decorator(method)
     return decorator
+
+
+def _raise_if_reentrant(thread_state: Any, name: str) -> None:
+    """Refuse a mutating call reentered on the thread that already holds
+    ``self._operation_lock`` for another operation.
+
+    Shared by ``_with_client_emitter`` and ``DBLiftClient.__exit__``/
+    ``close`` (which run outside that decorator but must refuse the same
+    way — see ``__exit__``'s docstring for why ``close`` needs this too).
+    """
+    if getattr(thread_state, "depth", 0) > 0:
+        raise RuntimeError(
+            f"DBLiftClient.{name}() was called while this thread is already "
+            "inside an operation on the same client (for example, from an "
+            "event listener). A mutating call cannot be nested inside "
+            "another: the outer operation's view of what is pending/applied "
+            "would go stale. Read-only calls (info, validate) may be nested "
+            "safely."
+        )
 
 
 class DBLiftClient:
@@ -184,14 +195,19 @@ class DBLiftClient:
         An event listener runs synchronously, on the thread running the
         operation. From it, a **read-only** call on the same client
         (``info``, ``validate``) is safe and will not deadlock. A
-        **mutating** call (``migrate``, ``undo``, ``clean``, ...) is
-        refused with ``RuntimeError`` instead of being allowed to run: it
-        would execute underneath the operation already in progress, and
-        that outer operation would then report stale results (for example
-        ``migrate()`` claiming nothing was pending right after a nested
-        call actually applied something). ``close()``/the context manager
-        take the same lock as every operation, so they cannot run
-        concurrently with one either.
+        **mutating** call (``migrate``, ``undo``, ``clean``, ...) — and
+        ``close()``, which would tear down the connection out from under
+        the operation still using it — is refused with ``RuntimeError``
+        instead of being allowed to run: it would otherwise execute
+        underneath the operation already in progress and leave that outer
+        operation reporting a stale result (for example ``migrate()``
+        claiming nothing was pending right after a nested call actually
+        applied something, or continuing to run — silently reconnected —
+        after a nested ``close()``). From a *different* thread, any
+        operation and ``close()``/the context manager block on the same
+        lock rather than being refused; the ordinary ``with`` block is
+        unaffected, since by the time ``__exit__`` runs the operation
+        inside it has already finished.
     """
 
     def __init__(
@@ -1192,14 +1208,10 @@ class DBLiftClient:
             ...     result = client.migrate()
             ...     # Connection automatically closed on exit
 
-        Takes ``self._operation_lock`` like every other operation: it
-        touches ``self.provider`` directly, and without the lock a
-        concurrent ``migrate()``/``info()``/etc. on another thread could
-        race it on the shared connection. Not routed through
-        ``@_with_client_emitter`` — it runs no SQL operation and emits no
-        client events, only construction/teardown (see
-        ``EXPECTED_DECORATED_OPERATIONS`` in
-        ``tests/unit/api/test_public_api_surface.py``).
+        Takes ``self._operation_lock`` so a concurrent operation on another
+        thread can't race it on the shared connection. Ensuring a
+        connection is harmless to nest (unlike ``__exit__``), so unlike
+        ``close`` it does not refuse a reentrant call.
         """
         lock = getattr(self, "_operation_lock", None)
         if lock is None:
@@ -1237,13 +1249,20 @@ class DBLiftClient:
             exc_val: Exception value if an exception occurred, None otherwise
             exc_tb: Exception traceback if an exception occurred, None otherwise
 
-        Takes ``self._operation_lock`` (see ``__enter__``). Safe to do so:
-        the lock is an ``RLock``, so a thread that reaches ``__exit__``
-        while it already holds the lock (nested inside its own operation)
-        re-enters rather than deadlocking; a *different* thread with an
-        operation in flight simply blocks here until that operation's own
-        (bounded) hold of the lock ends, then closes — no cycle either way.
+        Refuses a reentrant call the same way a mutating operation does
+        (see ``_raise_if_reentrant``): tearing down the connection mid-
+        operation would let that operation keep running against a
+        silently-reconnected one and report a stale result — the ordinary
+        ``with`` block never hits this, since by the time it reaches here
+        the operation inside it has already finished and this thread's
+        depth is back to 0. ``close()`` calls this method directly, so it
+        is covered too. Otherwise takes ``self._operation_lock``: an
+        ``RLock``, so a different thread with an operation in flight is
+        blocked here until that (bounded) hold ends, then this closes.
         """
+        thread_state = getattr(self, "_thread_state", None)
+        if thread_state is not None:
+            _raise_if_reentrant(thread_state, "close")
         lock = getattr(self, "_operation_lock", None)
         if lock is None:
             return self._exit_unlocked(exc_type, exc_val, exc_tb)
