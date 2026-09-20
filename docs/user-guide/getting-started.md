@@ -141,7 +141,7 @@ with DBLiftClient.from_sqlalchemy(engine, migrations_dir="migrations") as client
     client.migrate()
 ```
 
-For FastAPI, Django, and Flask integration guides, see the [README integrations section](../../README.md#integrations).
+For integration guides, see [FastAPI](fastapi.md), [Django](django.md), and [Flask](flask.md).
 
 ## Working with an existing database
 

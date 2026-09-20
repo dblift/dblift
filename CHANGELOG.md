@@ -9,8 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `CONTRIBUTING.md`: how to report a bug, set up a development environment, run the
+  tests and open a pull request. Questions and ideas now have a home in GitHub Discussions.
+
 ### Changed
 
+- README rewritten as a short project overview: a 60-second SQLite quickstart, who
+  DBLift is for, what the open-source package includes, a comparison table and links
+  to docs.dblift.com, which is now the reference for everything the old README
+  documented inline. The README's SQLite environment-variable example
+  (`DBLIFT_DB_PATH`) never worked and is gone; use `DBLIFT_DB_URL="sqlite:///app.db"`.
 - Migration filename classification and resource loading now use the same
   ScriptManager grammar across discovery, history, callbacks, and undo
   generation. Migration execution and undo generation split SQL through the
