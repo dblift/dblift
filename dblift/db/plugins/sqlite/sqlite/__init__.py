@@ -9,13 +9,14 @@ This module contains SQLite-specific database operations split into focused comp
 - history_manager.py: Migration history table management
 """
 
-from .connection_manager import SQLiteConnectionManager
+from .connection_manager import DEFAULT_BUSY_TIMEOUT_SECONDS, SQLiteConnectionManager
 from .history_manager import SQLiteHistoryManager
 from .locking_manager import SQLiteLockingManager
 from .query_executor import SQLiteQueryExecutor
 from .schema_operations import SQLiteSchemaOperations
 
 __all__ = [
+    "DEFAULT_BUSY_TIMEOUT_SECONDS",
     "SQLiteConnectionManager",
     "SQLiteLockingManager",
     "SQLiteQueryExecutor",
