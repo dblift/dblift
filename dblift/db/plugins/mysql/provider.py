@@ -21,9 +21,28 @@ class MySqlProvider(SqlAlchemyProvider):
     canonical_dialect_key = "mysql"
     MIGRATION_LOCK_TABLE = "dblift_migration_lock"
 
+    #: Database this connection was last ``USE``'d into. Lets
+    #: :meth:`set_current_schema` skip re-issuing ``USE`` on every statement
+    #: of a migration, so a ``USE`` the migration itself runs is not
+    #: immediately overwritten. Cleared by :meth:`begin_transaction` so each
+    #: new migration still starts from the configured database. Class-level
+    #: default so tests constructing via ``object.__new__`` still see ``None``.
+    _current_database_set: Optional[str] = None
+
     def __init__(self, config: DbliftConfig, log: Optional[Log] = None) -> None:
         """Initialize the native MySQL provider."""
         super().__init__(config, log)
+        self._current_database_set = None
+
+    def begin_transaction(self) -> None:
+        """Begin a transaction, forcing the next statement to reapply the database.
+
+        Each migration/callback gets its own transaction (see
+        ``ExecutionEngine._prepare_transaction``), so this is the boundary
+        between one migration's session state and the next.
+        """
+        self._current_database_set = None
+        super().begin_transaction()
 
     def execute_statement(
         self, sql: str, schema: Optional[str] = None, params: Optional[List[Any]] = None
@@ -70,8 +89,16 @@ class MySqlProvider(SqlAlchemyProvider):
         return False
 
     def set_current_schema(self, schema: str) -> None:
-        """Set the current database for this connection."""
+        """Set the current database for this connection.
+
+        A no-op once this connection already has *schema* selected, so a
+        ``USE`` the migration itself runs later is not immediately reset back
+        — see ``_current_database_set``.
+        """
+        if self._current_database_set == schema:
+            return
         super().execute_statement(f"USE {_quote_identifier(schema)}")
+        self._current_database_set = schema
 
     def get_schema_qualified_name(self, schema: str, object_name: str) -> str:
         """Return a quoted database-qualified object name."""

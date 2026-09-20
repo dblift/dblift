@@ -164,6 +164,101 @@ def test_target_schema_function_shadows_same_named_public_function(pg_provider) 
         pg_provider.execute_statement(f"DROP FUNCTION IF EXISTS public.{probe}()")
 
 
+def test_migration_set_search_path_persists_for_rest_of_migration(pg_provider, tmp_path) -> None:
+    """A migration's own ``SET search_path`` must survive to later statements.
+
+    ``pg_dump`` (pre-10.3) and every hand-maintained file derived from one
+    emits ``SET search_path = <schema>, pg_catalog;`` before unqualified DDL.
+    dblift re-applied its own configured schema before every statement,
+    silently overriding this and landing unqualified objects in the
+    configured schema instead of the one the migration asked for.
+    """
+    scratch_schema = f"sp_scratch_{uuid.uuid4().hex[:8]}"
+    migrations_dir = tmp_path / "migrations"
+    migrations_dir.mkdir()
+    create_versioned_migration(
+        migrations_dir,
+        "1.0.0",
+        "search_path_probe",
+        f"""
+        CREATE SCHEMA "{scratch_schema}";
+        CREATE TABLE "{SCHEMA}".probe (step text, val text);
+        SET search_path = "{scratch_schema}", pg_catalog;
+        INSERT INTO "{SCHEMA}".probe VALUES ('after SET', current_setting('search_path'));
+        CREATE TABLE lands_where (id int);
+        SET statement_timeout = '7s';
+        INSERT INTO "{SCHEMA}".probe VALUES ('statement_timeout', current_setting('statement_timeout'));
+        """,
+    )
+
+    config = _postgres_config()
+    config.migrations.directory = str(migrations_dir)
+    provider = ProviderRegistry.create_provider(config)
+    provider.create_connection()
+    try:
+        client = DBLiftClient(provider=provider, migrations_dir=migrations_dir, config=config)
+
+        result = client.migrate()
+
+        assert result.success, result.error_message
+
+        rows = provider.execute_query(f'SELECT step, val FROM "{SCHEMA}".probe ORDER BY step')
+        values = {row["step"]: row["val"] for row in rows}
+        assert values["after SET"] == f"{scratch_schema}, pg_catalog"
+        assert values["statement_timeout"] == "7s"
+
+        lands_where_schema = provider.execute_query(
+            "SELECT table_schema FROM information_schema.tables WHERE table_name = 'lands_where'"
+        )
+        assert [r["table_schema"] for r in lands_where_schema] == [scratch_schema]
+    finally:
+        provider.execute_statement(f'DROP SCHEMA IF EXISTS "{scratch_schema}" CASCADE')
+        provider.close()
+
+
+def test_second_migration_does_not_inherit_previous_search_path(pg_provider, tmp_path) -> None:
+    """One migration's ``SET search_path`` must not leak into the next migration.
+
+    Session state a migration sets is scoped to that migration; the next
+    migration must start from dblift's configured schema again.
+    """
+    scratch_schema = f"sp_scratch_{uuid.uuid4().hex[:8]}"
+    migrations_dir = tmp_path / "migrations"
+    migrations_dir.mkdir()
+    create_versioned_migration(
+        migrations_dir,
+        "1.0.0",
+        "change_search_path",
+        f'CREATE SCHEMA "{scratch_schema}"; SET search_path = "{scratch_schema}", pg_catalog;',
+    )
+    create_versioned_migration(
+        migrations_dir,
+        "2.0.0",
+        "unqualified_table",
+        "CREATE TABLE v2_lands_where (id int);",
+    )
+
+    config = _postgres_config()
+    config.migrations.directory = str(migrations_dir)
+    provider = ProviderRegistry.create_provider(config)
+    provider.create_connection()
+    try:
+        client = DBLiftClient(provider=provider, migrations_dir=migrations_dir, config=config)
+
+        result = client.migrate()
+
+        assert result.success, result.error_message
+
+        table_schema = provider.execute_query(
+            "SELECT table_schema FROM information_schema.tables WHERE table_name = 'v2_lands_where'"
+        )
+        assert [r["table_schema"] for r in table_schema] == [SCHEMA]
+    finally:
+        provider.execute_statement(f'DROP SCHEMA IF EXISTS "{scratch_schema}" CASCADE')
+        provider.execute_statement("DROP TABLE IF EXISTS v2_lands_where")
+        provider.close()
+
+
 def test_history_table_resolves_in_target_schema_not_public(pg_provider, tmp_path) -> None:
     """dblift's own history table is schema-qualified, so ``public`` cannot win.
 

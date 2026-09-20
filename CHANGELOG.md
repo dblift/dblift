@@ -13,6 +13,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- PostgreSQL and MySQL: a `SET search_path` / `USE` a migration issued itself no longer
+  gets silently reset before the migration's next statement. Session state a migration
+  sets now persists for the rest of that migration and is restored to the configured
+  schema at the start of the next one.
 - PostgreSQL, MySQL/MariaDB, SQL Server and Oracle migrations now send each
   statement to the server exactly as written, instead of a reassembly from
   parsed tokens. The reassembly could merge two adjacent string literals
