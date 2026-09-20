@@ -25,6 +25,7 @@ the lock (``EventEmitter._dispatch`` calls each listener directly from
 deadlock on a lock its own thread already holds.
 """
 
+import sqlite3
 import threading
 import time
 from pathlib import Path
@@ -34,6 +35,7 @@ import pytest
 from sqlalchemy import create_engine
 
 from dblift.api import DBLiftClient
+from dblift.api.client import _with_client_emitter
 from dblift.api.events import EventType
 from dblift.core.migration.executor.migration_executor import MigrationExecutor
 
@@ -446,4 +448,210 @@ class TestClientThreadSafety:
         result = client.migrate()
         assert result.success
         assert result.migrations_applied
+        client.close()
+
+
+def _client_with_undo_pair(client_cls: type, tmp_path: Path) -> DBLiftClient:
+    """A client (of ``client_cls``) with a migration and a matching undo script."""
+    migrations = tmp_path / "migrations"
+    migrations.mkdir()
+    (migrations / "V1__init.sql").write_text(
+        "CREATE TABLE app_users (id INTEGER PRIMARY KEY, name TEXT NOT NULL);"
+    )
+    (migrations / "U1__init.sql").write_text("DROP TABLE app_users;")
+    engine = create_engine(f"sqlite:///{tmp_path / 'app.db'}")
+    return client_cls.from_sqlalchemy(engine, migrations_dir=migrations)
+
+
+def _table_exists(tmp_path: Path, table: str) -> bool:
+    connection = sqlite3.connect(tmp_path / "app.db")
+    try:
+        row = connection.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name=?", (table,)
+        ).fetchone()
+        return row is not None
+    finally:
+        connection.close()
+
+
+class _UndoChainSub(DBLiftClient):
+    """Overrides ``undo``, decorated the ordinary documented way, calling super()."""
+
+    @_with_client_emitter
+    def undo(self, *args, **kwargs):
+        return super().undo(*args, **kwargs)
+
+
+class _UndoChainSub2(_UndoChainSub):
+    """Two levels of the same override pattern (Sub2 -> Sub -> Base)."""
+
+    @_with_client_emitter
+    def undo(self, *args, **kwargs):
+        return super().undo(*args, **kwargs)
+
+
+class _MigrateChainSub(DBLiftClient):
+    """Same override pattern, but for ``migrate``."""
+
+    @_with_client_emitter
+    def migrate(self, *args, **kwargs):
+        return super().migrate(*args, **kwargs)
+
+
+class TestSubclassSuperChainingVsReentrancy:
+    """A subclass overriding a decorated operation and calling ``super()`` is
+    the ordinary extension pattern (see ``@_with_client_emitter``'s
+    documented bare-decorator usage) and must keep working, while a listener
+    re-entering the *same* client method must still be refused.
+    """
+
+    def test_subclass_override_calling_super_undo_succeeds_and_really_undoes(self, tmp_path):
+        client = _client_with_undo_pair(_UndoChainSub, tmp_path)
+        client.migrate()
+        assert _table_exists(tmp_path, "app_users")
+
+        result = client.undo()
+
+        assert result.success, getattr(result, "error_message", None)
+        assert not _table_exists(tmp_path, "app_users")
+        client.close()
+
+    def test_two_level_subclass_chain_undo_succeeds(self, tmp_path):
+        client = _client_with_undo_pair(_UndoChainSub2, tmp_path)
+        client.migrate()
+
+        result = client.undo()
+
+        assert result.success, getattr(result, "error_message", None)
+        assert not _table_exists(tmp_path, "app_users")
+        client.close()
+
+    def test_subclass_override_calling_super_migrate_succeeds(self, tmp_path):
+        migrations = tmp_path / "migrations"
+        migrations.mkdir()
+        (migrations / "V1__init.sql").write_text(
+            "CREATE TABLE app_users (id INTEGER PRIMARY KEY, name TEXT NOT NULL);"
+        )
+        engine = create_engine(f"sqlite:///{tmp_path / 'app.db'}")
+        client = _MigrateChainSub.from_sqlalchemy(engine, migrations_dir=migrations)
+
+        result = client.migrate()
+
+        assert result.success
+        assert result.migrations_applied == ["1"]
+        client.close()
+
+    def test_listener_calling_migrate_from_migrate_is_still_refused_on_plain_client(self, tmp_path):
+        client = _client_with_migration(tmp_path)
+        nested_error = {}
+
+        def on_started(event):
+            try:
+                client.migrate()
+            except RuntimeError as e:
+                nested_error["error"] = e
+
+        client.events.on(EventType.MIGRATION_STARTED, on_started)
+        outer = client.migrate()
+
+        assert "error" in nested_error, "listener's nested migrate() did not raise"
+        assert outer.success
+        client.close()
+
+    def test_listener_calling_migrate_from_migrate_is_still_refused_on_subclass(self, tmp_path):
+        """The subclass override pattern must not accidentally open the door
+        for a listener to re-enter the same (most-derived) method: it
+        resolves to the wrapper already on the stack, unlike ``super()``,
+        which reaches a different wrapped function.
+        """
+        migrations = tmp_path / "migrations"
+        migrations.mkdir()
+        (migrations / "V1__init.sql").write_text(
+            "CREATE TABLE app_users (id INTEGER PRIMARY KEY, name TEXT NOT NULL);"
+        )
+        engine = create_engine(f"sqlite:///{tmp_path / 'app.db'}")
+        client = _MigrateChainSub.from_sqlalchemy(engine, migrations_dir=migrations)
+        nested_error = {}
+
+        def on_started(event):
+            try:
+                client.migrate()
+            except RuntimeError as e:
+                nested_error["error"] = e
+
+        client.events.on(EventType.MIGRATION_STARTED, on_started)
+        outer = client.migrate()
+
+        assert "error" in nested_error, "listener's nested migrate() did not raise"
+        assert outer.success
+        client.close()
+
+    def test_listener_calling_a_different_mutating_op_is_refused(self, tmp_path):
+        client = _client_with_undo_pair(DBLiftClient, tmp_path)
+        nested_error = {}
+
+        def on_started(event):
+            try:
+                client.undo()
+            except RuntimeError as e:
+                nested_error["error"] = e
+
+        client.events.on(EventType.MIGRATION_STARTED, on_started)
+        outer = client.migrate()
+
+        assert "error" in nested_error, "listener's nested undo() did not raise"
+        assert outer.success
+        client.close()
+
+    def test_listener_calling_info_is_still_allowed(self, tmp_path):
+        client = _client_with_migration(tmp_path)
+        info_result = {}
+
+        def on_started(event):
+            info_result["value"] = client.info()
+
+        client.events.on(EventType.MIGRATION_STARTED, on_started)
+        outer = client.migrate()
+
+        assert "value" in info_result
+        assert outer.success
+        client.close()
+
+    def test_thread_state_is_clean_after_an_exception_inside_a_chained_operation(self, tmp_path):
+        """After an exception propagates out of a super()-chained call, the
+        thread's reentrancy stack must be back to empty -- not left holding
+        stale entries that would wrongly refuse the next call.
+        """
+        client = _client_with_undo_pair(_UndoChainSub, tmp_path)
+        client.migrate()
+
+        with patch.object(MigrationExecutor, "undo", side_effect=RuntimeError("boom mid-undo")):
+            with pytest.raises(RuntimeError, match="boom mid-undo"):
+                client.undo()
+
+        # A fresh call must work normally -- no leftover stack entries.
+        result = client.undo()
+        assert result.success, getattr(result, "error_message", None)
+        client.close()
+
+    def test_listener_calling_generate_undo_script_during_migrate_is_allowed(self, tmp_path):
+        """generate_undo_script only reads a migration file and writes an
+        undo SQL file -- no provider/database access -- so it is safe for a
+        listener to call during another operation, like info()/validate().
+        """
+        client = _client_with_undo_pair(DBLiftClient, tmp_path)
+        generated = {}
+
+        def on_started(event):
+            generated["result"] = client.generate_undo_script(
+                client.config.migrations.directory + "/V1__init.sql",
+                overwrite=True,
+            )
+
+        client.events.on(EventType.MIGRATION_STARTED, on_started)
+        outer = client.migrate()
+
+        assert "result" in generated
+        assert generated["result"].success, generated["result"].error_message
+        assert outer.success
         client.close()
