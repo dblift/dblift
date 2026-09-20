@@ -250,6 +250,47 @@ def test_cte_outer_statement_type_db2_trailing_clause_sqlglot_cannot_parse():
     assert cte_outer_statement_type(with_ur, sqlglot_dialect=None) == "DML"
 
 
+def test_cte_outer_statement_type_skips_dollar_quoted_region():
+    # BLOCKER regression: the keyword scan used ``)`` to track paren depth
+    # without knowing about PostgreSQL dollar-quoting. A ``)`` or a keyword
+    # sitting inside a ``$$...$$``/``$tag$...$tag$`` literal must not be
+    # read as real code — a stray ``)`` inside the quoted text zeroed the
+    # depth counter early, and the ``SELECT`` still textually inside the
+    # quotes was then read as the outer verb: a *confident wrong* "QUERY"
+    # for a statement that genuinely executes as DML.
+    untagged = (
+        "WITH x AS (DELETE FROM t WHERE note = $$ premature ) SELECT trap $$ RETURNING id) "
+        "INSERT INTO app_logs(msg) SELECT 'x' FROM x"
+    )
+    tagged = (
+        "WITH x AS (DELETE FROM t WHERE note = $tag$ premature ) SELECT trap $tag$ RETURNING id) "
+        "INSERT INTO app_logs(msg) SELECT 'x' FROM x"
+    )
+    assert cte_outer_statement_type(untagged, sqlglot_dialect=None) == "DML"
+    assert cte_outer_statement_type(tagged, sqlglot_dialect=None) == "DML"
+
+
+def test_cte_outer_statement_type_none_for_unterminated_dollar_quote():
+    # An unclosed dollar-quote swallows the rest of the text (same
+    # unterminated-comment convention as _skip_comment): there is no way to
+    # tell what the outer statement is, so this must surrender to None
+    # rather than guess from whatever partial text remains.
+    sql = "WITH x AS (DELETE FROM t WHERE note = $$ never closes"
+    assert cte_outer_statement_type(sql, sqlglot_dialect=None) is None
+
+
+def test_cte_outer_statement_type_keyword_scan_handles_comments_and_bare_dollar():
+    # A comment between the CTE and the outer verb, and a "$" that is not a
+    # dollar-quote tag (a positional parameter placeholder, e.g. $1) must
+    # not confuse the scan either.
+    sql = (
+        "WITH cte AS (SELECT id FROM src) -- find rows\n"
+        "DELETE FROM src /* filter */ WHERE id IN (SELECT id FROM cte) "
+        "AND note = $1 OPTIMIZE FOR 1 ROW"
+    )
+    assert cte_outer_statement_type(sql, sqlglot_dialect=None) == "DML"
+
+
 def test_cte_outer_statement_type_tsql_output_clause_is_dml_by_keyword_scan():
     # T-SQL's OUTPUT clause (SQL Server's RETURNING equivalent) isn't in
     # sqlglot's tsql grammar here, so this now goes through the keyword scan,

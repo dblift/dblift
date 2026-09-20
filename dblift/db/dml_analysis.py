@@ -316,6 +316,58 @@ def is_full_table_dml(
 _CTE_OUTER_DML_KEYWORDS: Tuple[str, ...] = ("INSERT", "UPDATE", "DELETE", "MERGE")
 _CTE_OUTER_QUERY_KEYWORDS: Tuple[str, ...] = ("SELECT", "VALUES", "TABLE")
 
+#: PostgreSQL dollar-quote opening tag: ``$$`` or ``$tag$``. Its delimiters
+#: are a variable-length matched pair, not a single character, so it can't
+#: be expressed through ``quote_pairs`` (char -> char) the way ``'``/``"``/
+#: backtick/``[...]`` are.
+_DOLLAR_QUOTE_OPEN_RE = re.compile(r"\$([A-Za-z_][A-Za-z0-9_]*)?\$")
+
+
+def _skip_dollar_quote(text: str, i: int) -> int:
+    """Index just past a dollar-quoted region starting at ``i``, or -1 when none."""
+    match = _DOLLAR_QUOTE_OPEN_RE.match(text, i)
+    if not match:
+        return -1
+    tag = match.group(0)
+    end = text.find(tag, match.end())
+    return len(text) if end == -1 else end + len(tag)
+
+
+def _find_cte_outer_keyword(text: str, keyword: str, quote_pairs: Dict[str, str]) -> int:
+    """Like ``_find_top_level_keyword``, plus dollar-quote awareness.
+
+    Kept separate from ``_find_top_level_keyword`` rather than teaching that
+    function about dollar quotes, so every other caller of the shared
+    scanner (``is_full_table_dml``, ...) keeps its current behaviour.
+    """
+    depth = 0
+    quote = ""
+    i = 0
+    while i < len(text):
+        if quote:
+            i, quote = _skip_quote(text, i, quote)
+            continue
+        comment_end = _skip_comment(text, i)
+        if comment_end >= 0:
+            i = comment_end
+            continue
+        if text[i] == "$":
+            dollar_end = _skip_dollar_quote(text, i)
+            if dollar_end >= 0:
+                i = dollar_end
+                continue
+        ch = text[i]
+        if ch in quote_pairs:
+            quote = quote_pairs[ch]
+        elif ch == "(":
+            depth += 1
+        elif ch == ")":
+            depth = max(0, depth - 1)
+        elif depth == 0 and _matches_keyword_at(text, i, keyword):
+            return i
+        i += 1
+    return -1
+
 
 def cte_outer_statement_type(
     statement: str,
@@ -333,12 +385,18 @@ def cte_outer_statement_type(
     UR``, ...), falls back to a deterministic scan instead of guessing: a
     CTE's own body always sits inside ``(...)``, so the first keyword found
     outside every paren is the outer statement's real verb, no full parse
-    needed. Returns ``None`` only when neither path finds an answer (empty
-    text, or no recognisable keyword at all) — the caller keeps its own
-    default then. Doesn't know whether the outer statement itself returns
-    rows via a clause of its own (``RETURNING``/``OUTPUT`` on the outer verb,
-    as opposed to inside a CTE) — the sqlglot path above has that same
-    limitation, so this isn't a new gap.
+    needed — including when that body is dollar-quoted (``$$...$$`` /
+    ``$tag$...$tag$``), which ``sqlglot_dialect=None`` doesn't model either
+    and whose parentheses would otherwise be counted as real ones. Returns
+    ``None`` when neither path finds an answer: empty text, no recognisable
+    keyword at all, or a paren/dollar-quote that never closes (the scan
+    cannot tell what follows it) — the caller keeps its own default then.
+    Guessing wrong is worse than surrendering, so an ambiguous scan returns
+    ``None`` rather than a confident wrong keyword. Doesn't know whether the
+    outer statement itself returns rows via a clause of its own
+    (``RETURNING``/``OUTPUT`` on the outer verb, as opposed to inside a CTE)
+    — the sqlglot path above has that same limitation, so this isn't a new
+    gap.
     """
     text = strip_leading_sql_comments(statement).lstrip()
     if not text:
@@ -353,7 +411,7 @@ def cte_outer_statement_type(
         if isinstance(ast, (exp.Select, exp.Union)):
             return "QUERY"
     positions = {
-        keyword: _find_top_level_keyword(text, keyword, quote_pairs)
+        keyword: _find_cte_outer_keyword(text, keyword, quote_pairs)
         for keyword in (*_CTE_OUTER_DML_KEYWORDS, *_CTE_OUTER_QUERY_KEYWORDS)
     }
     found = {keyword: pos for keyword, pos in positions.items() if pos >= 0}
