@@ -13,14 +13,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- PostgreSQL and MySQL/MariaDB migrations now send each statement to the
-  server exactly as written, instead of a reassembly from parsed tokens.
-  The reassembly could merge two adjacent string literals into one (turning
-  `'a ' 'b'` into `a 'b` instead of `a b`), add spaces inside a
-  `DEFINER=`user`@`host`` clause that the server then rejects, and drop a
-  MySQL/MariaDB version-comment directive (`/*!...*/`, `/*M!...*/`) instead
-  of running it — the last of these silently skipped foreign-key-check
-  toggles that a dump file depends on to load tables in a working order.
+- PostgreSQL, MySQL/MariaDB, SQL Server and Oracle migrations now send each
+  statement to the server exactly as written, instead of a reassembly from
+  parsed tokens. The reassembly could merge two adjacent string literals
+  into one (turning `'a ' 'b'` into `a 'b` instead of `a b`), add spaces
+  inside a `DEFINER=`user`@`host`` clause that the server then rejects, and
+  drop a MySQL/MariaDB version-comment directive (`/*!...*/`, `/*M!...*/`)
+  instead of running it — the last of these silently skipped
+  foreign-key-check toggles that a dump file depends on to load tables in
+  a working order.
 
 ### Removed
 

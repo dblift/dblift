@@ -426,10 +426,14 @@ class TestOracleParserEdgeCases:
 
         statements = parser.split_statements(sql)
 
-        # Should extract 3 CREATE TABLE statements
+        # Should extract 3 CREATE TABLE statements. A statement is returned
+        # verbatim from source, so a comment sitting between CREATE and TABLE
+        # (statement 2) stays in place rather than being dropped — check the
+        # two keywords independently instead of assuming they're adjacent.
         assert len(statements) == 3
         for stmt in statements:
-            assert "CREATE TABLE" in stmt.upper()
+            assert "CREATE" in stmt.upper()
+            assert "TABLE" in stmt.upper()
 
     def test_empty_statements_filtered(self):
         """Test that empty statements and whitespace are filtered out."""

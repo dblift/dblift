@@ -2,14 +2,19 @@
 
 ``StatementSplitter`` used to reassemble each statement by joining token
 text with heuristic spacing rules instead of slicing the original source.
-That silently corrupted or re-spaced SQL that round-trips fine through
-``psql``/``mysql`` — two adjacent string literals losing the whitespace
-between them (turning a valid concatenation into one literal with a stray
-quote), and ``DEFINER=`root`@`%``` gaining spaces around ``@`` that make
-MySQL/MariaDB reject the statement outright.
+That silently corrupted or re-spaced SQL that round-trips fine through a
+native client — two adjacent string literals losing the whitespace between
+them (turning a valid concatenation into one literal with a stray quote),
+and ``DEFINER=`root`@`%``` gaining spaces around ``@`` that make
+MySQL/MariaDB reject the statement outright. The same reassembly path is
+shared by PostgreSQL, MySQL/MariaDB, SQL Server and Oracle, so all four
+dialects are covered here — each with its own quirks (SQL Server's ``GO``
+batch separator, Oracle's ``/`` PL/SQL terminator and SQL*Plus directives).
+DB2, SQLite and DuckDB split statements with plain regex, never construct
+a token-joining statement parser, and are unaffected by this class of bug.
 
 Every statement here is checked for exact terminator-only difference from
-the source: strip a trailing ``;``/``GO`` if present, nothing else.
+the source: strip a trailing ``;``/``GO``/``/`` if present, nothing else.
 """
 
 from __future__ import annotations
@@ -126,3 +131,106 @@ class TestMySqlVerbatim:
     def test_comment_only_segment_still_dropped(self):
         assert StatementSplitter("mysql").split_statements("-- just a comment\n") == []
         assert StatementSplitter("mysql").split_statements("/* block comment */") == []
+
+
+@pytest.mark.unit
+class TestSqlServerVerbatim:
+    def test_adjacent_string_literals_keep_original_whitespace(self):
+        sql = "INSERT INTO t VALUES ('a '\n'b');\n"
+
+        stmts = StatementSplitter("sqlserver").split_statements(sql)
+
+        assert stmts == ["INSERT INTO t VALUES ('a '\n'b');"]
+
+    def test_interior_comment_preserved(self):
+        sql = "CREATE TABLE t (/* not nullable */ id INT NOT NULL);\n"
+
+        stmts = StatementSplitter("sqlserver").split_statements(sql)
+
+        assert stmts == ["CREATE TABLE t (/* not nullable */ id INT NOT NULL);"]
+
+    def test_bracketed_identifier_with_space_and_percent_preserved(self):
+        sql = "SELECT 1 FROM [my table % thing];\n"
+
+        stmts = StatementSplitter("sqlserver").split_statements(sql)
+
+        assert stmts == ["SELECT 1 FROM [my table % thing];"]
+
+    def test_go_batch_separator_dropped_from_statement_with_content(self):
+        """``GO`` is a batch separator for SSMS, not executable SQL — it must
+        not appear in the statement it terminates, even though the statement's
+        own ``;`` is kept."""
+        sql = "SELECT 1\nGO\n"
+
+        stmts = StatementSplitter("sqlserver").split_statements(sql)
+
+        assert stmts == ["SELECT 1"]
+
+    def test_repeated_go_produces_no_spurious_statement(self):
+        """Two consecutive ``GO`` batch separators (e.g. a trailing blank
+        batch) must not surface an empty statement between them."""
+        sql = "CREATE TABLE t (id INT);\nGO\nGO\nSELECT 1;\n"
+
+        stmts = StatementSplitter("sqlserver").split_statements(sql)
+
+        assert stmts == ["CREATE TABLE t (id INT);", "SELECT 1;"]
+
+    def test_comment_only_segment_still_dropped(self):
+        assert StatementSplitter("sqlserver").split_statements("-- just a comment\n") == []
+        assert StatementSplitter("sqlserver").split_statements("/* block comment */") == []
+
+
+@pytest.mark.unit
+class TestOracleVerbatim:
+    def test_adjacent_string_literals_keep_original_whitespace(self):
+        sql = "INSERT INTO t VALUES ('a '\n'b');\n"
+
+        stmts = StatementSplitter("oracle").split_statements(sql)
+
+        assert stmts == ["INSERT INTO t VALUES ('a '\n'b');"]
+
+    def test_interior_comment_preserved(self):
+        sql = "CREATE TABLE t (/* not nullable */ id NUMBER);\n"
+
+        stmts = StatementSplitter("oracle").split_statements(sql)
+
+        assert stmts == ["CREATE TABLE t (/* not nullable */ id NUMBER);"]
+
+    def test_optimizer_hint_preserved(self):
+        """``/*+ ... */`` is a hint, not an ordinary comment — dropping it
+        silently changes the execution plan the statement asked for."""
+        sql = "SELECT /*+ INDEX(t idx) */ * FROM t;\n"
+
+        stmts = StatementSplitter("oracle").split_statements(sql)
+
+        assert stmts == ["SELECT /*+ INDEX(t idx) */ * FROM t;"]
+
+    def test_quoted_identifier_with_space_and_percent_preserved(self):
+        sql = 'SELECT 1 FROM "my table % thing";\n'
+
+        stmts = StatementSplitter("oracle").split_statements(sql)
+
+        assert stmts == ['SELECT 1 FROM "my table % thing";']
+
+    def test_plsql_block_slash_terminator_stripped_body_verbatim(self):
+        """The trailing ``/`` (SQL*Plus PL/SQL execute marker) is stripped,
+        same as before; nothing inside the block is re-spaced."""
+        sql = "CREATE OR REPLACE PROCEDURE p AS BEGIN NULL; END;\n/\n"
+
+        stmts = StatementSplitter("oracle").split_statements(sql)
+
+        assert stmts == ["CREATE OR REPLACE PROCEDURE p AS BEGIN NULL; END;"]
+
+    def test_sqlplus_directive_still_filtered(self):
+        """SQL*Plus client directives (e.g. SPOOL) are not valid Oracle SQL
+        and are still dropped entirely — only the SQL statement remains,
+        with its original spacing intact."""
+        sql = "SPOOL /tmp/dblift_test.log;\nCREATE TABLE t (id NUMBER);\n"
+
+        stmts = StatementSplitter("oracle").split_statements(sql)
+
+        assert stmts == ["CREATE TABLE t (id NUMBER);"]
+
+    def test_comment_only_segment_still_dropped(self):
+        assert StatementSplitter("oracle").split_statements("-- just a comment\n") == []
+        assert StatementSplitter("oracle").split_statements("/* block comment */") == []

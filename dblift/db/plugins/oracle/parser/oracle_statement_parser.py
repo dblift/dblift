@@ -28,14 +28,21 @@ class OracleStatementParser(BaseStatementParser):
     # Maximum number of keywords to look back when checking for FOR/WHILE
     _MAX_KEYWORD_LOOKBACK = 15
 
-    def __init__(self, tokens: List[Token], context: Optional[ParserContext] = None):
+    def __init__(
+        self,
+        tokens: List[Token],
+        context: Optional[ParserContext] = None,
+        source: Optional[str] = None,
+    ):
         """Initialize Oracle statement parser.
 
         Args:
             tokens: List of tokens to parse
             context: Parser context
+            source: Original SQL text the tokens came from (see
+                ``BaseStatementParser.__init__``)
         """
-        super().__init__(tokens, context)
+        super().__init__(tokens, context, source)
         self.in_plsql_block = False
         self.package_name: Optional[str] = None
         self.in_package = False  # Tracks package bodies, specs, and compound triggers
@@ -71,15 +78,7 @@ class OracleStatementParser(BaseStatementParser):
 
             # Check if this marks end of statement
             if self._is_statement_end(token):
-                stmt_text = self._tokens_to_string(current_statement_tokens)
-                stmt_stripped = stmt_text.strip()
-
-                # Strip leading/trailing slash (SQL*Plus delimiter, not valid Oracle SQL)
-                # This handles cases where / is tokenized as SYMBOL instead of DELIMITER
-                if stmt_stripped.startswith("/"):
-                    stmt_stripped = stmt_stripped[1:].strip()
-                if stmt_stripped.endswith("/"):
-                    stmt_stripped = stmt_stripped[:-1].strip()
+                stmt_stripped = self._statement_text(current_statement_tokens)
 
                 # Filter out standalone slashes, semicolons, and SQL*Plus commands
                 # SQL*Plus commands are not valid Oracle SQL for native execution
@@ -103,14 +102,7 @@ class OracleStatementParser(BaseStatementParser):
 
         # Handle any remaining tokens
         if current_statement_tokens:
-            stmt_text = self._tokens_to_string(current_statement_tokens)
-            stmt_stripped = stmt_text.strip()
-
-            # Strip leading/trailing slash (SQL*Plus delimiter, not valid Oracle SQL)
-            if stmt_stripped.startswith("/"):
-                stmt_stripped = stmt_stripped[1:].strip()
-            if stmt_stripped.endswith("/"):
-                stmt_stripped = stmt_stripped[:-1].strip()
+            stmt_stripped = self._statement_text(current_statement_tokens, is_tail=True)
 
             # Filter out SQL*Plus commands
             if stmt_stripped and stmt_stripped not in ("/", ";"):
@@ -118,6 +110,37 @@ class OracleStatementParser(BaseStatementParser):
                     statements.append(stmt_stripped)
 
         return statements
+
+    def _statement_text(self, tokens: List[Token], is_tail: bool = False) -> str:
+        """Render one statement, verbatim from source when source is known.
+
+        Mirrors ``BaseStatementParser._render_statement``: a leading plain
+        comment is skipped when locating the start (a lone comment renders
+        empty, matching the historical token-join behaviour of dropping
+        comment text), and everything else between that point and the end
+        of the accumulated tokens is copied unchanged. Oracle keeps its
+        terminator (``;``) in the returned text and, separately, still
+        strips a stray leading/trailing ``/`` afterwards — untouched by
+        this method, since ``/`` is sometimes tokenized as SYMBOL rather
+        than DELIMITER and needs the same string-level handling either way.
+        """
+        first_content = next((t for t in tokens if t.type != TokenType.COMMENT), None)
+        if first_content is None:
+            return ""
+        if self.source is None:
+            stmt_text = self._tokens_to_string(tokens)
+        else:
+            end = len(self.source) if is_tail else tokens[-1].pos + len(tokens[-1].text)
+            stmt_text = self.source[first_content.pos : end].rstrip()
+
+        stmt_stripped = stmt_text.strip()
+        # Strip leading/trailing slash (SQL*Plus delimiter, not valid Oracle SQL)
+        # This handles cases where / is tokenized as SYMBOL instead of DELIMITER
+        if stmt_stripped.startswith("/"):
+            stmt_stripped = stmt_stripped[1:].strip()
+        if stmt_stripped.endswith("/"):
+            stmt_stripped = stmt_stripped[:-1].strip()
+        return stmt_stripped
 
     def _is_statement_end(self, token: Token) -> bool:
         """Check if token marks statement end in Oracle.
