@@ -27,8 +27,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   multiple threads on the same client instance no longer race on the
   client's shared connection. They now serialize, so each thread gets a
   correct result instead of interleaved statements and inconsistent
-  migration state. The client's threading contract is documented in the
-  API reference.
+  migration state. An event listener may still call a read-only operation
+  (`info`, `validate`) on the same client; calling a mutating one
+  (`migrate`, `undo`, ...) from a listener now raises a clear error instead
+  of running underneath the operation already in progress and making its
+  result inaccurate. `close()` and the context manager are covered too.
+  The client's threading contract is documented in the API reference.
 - PostgreSQL object extraction no longer mistakes a leading, inline, or
   nested comment for the statement it precedes, and `ALTER TABLE ONLY` is no
   longer reported as touching a table named `only`. Table identifiers may

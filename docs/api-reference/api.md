@@ -176,14 +176,26 @@ A `DBLiftClient` holds one provider/connection for its lifetime. Calls from
 multiple threads on the *same* client instance are serialized: only one
 operation (`migrate`, `info`, `validate`, ...) runs at a time, and the rest
 block until it finishes. Each thread still gets its own correct result, but
-there is no concurrency speedup from sharing one client across threads. For
-that, give each thread (or worker) its own client instance, each with its
-own provider/connection.
+there is no concurrency speedup from sharing one client across threads —
+including read-only operations, which share the connection too. For
+concurrency, give each thread (or worker) its own client instance, each
+with its own provider/connection.
 
-An event listener registered on `client.events` runs synchronously, on the
-thread running the operation, and may call another operation on the same
-client (for example `client.info()` from inside a `MIGRATION_STARTED`
-handler) without deadlocking. It still blocks other threads as above.
+An event listener runs synchronously, on the thread running the operation.
+From it, a **read-only** call on the same client (`info`, `validate`) is
+safe. A **mutating** call (`migrate`, `undo`, `clean`, ...) is refused with
+`RuntimeError` instead of running underneath the operation already in
+progress — otherwise the outer call would report stale results (for
+example `migrate()` claiming nothing was pending right after a nested call
+actually applied something). `close()` and the context manager take the
+same lock as every operation, so they cannot run concurrently with one
+either.
+
+`AsyncDBLiftClient` routes every call through its own `asyncio.Lock` and a
+dedicated single-worker thread, so the event loop itself is never blocked —
+except if code holds a reference to the *wrapped* sync client and calls it
+directly from the loop thread, which blocks the loop like any other
+synchronous call would.
 
 ## Result Objects
 

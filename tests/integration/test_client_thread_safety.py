@@ -280,6 +280,115 @@ class TestClientThreadSafety:
         assert result["migrate"].success
         client.close()
 
+    def test_event_listener_calling_migrate_from_migrate_does_not_misreport(self, tmp_path):
+        """A listener must not silently run a second migration underneath
+        the first and leave the outer call lying about what happened.
+
+        Before the reentrancy guard: the nested migrate() actually applies
+        the migration, then the *outer* migrate() finds nothing pending and
+        returns success=True, migrations_applied=[] -- a false report of
+        having done nothing while a real migration happened underneath it.
+
+        ``EventEmitter._dispatch`` catches and swallows exceptions raised by
+        listeners (pre-existing, unrelated to this fix -- a listener must
+        not be able to crash the operation it's observing), so the *outer*
+        migrate() call does not itself raise. The fix is that the nested
+        call is refused with a clear error *before it touches the
+        database*, so nothing runs underneath the outer call, and the
+        outer call's own (accurate) result is what the caller sees.
+        """
+        client = _client_with_migration(tmp_path)
+        nested_error = {}
+
+        def on_started(event):
+            try:
+                client.migrate()
+            except RuntimeError as e:
+                nested_error["error"] = e
+
+        client.events.on(EventType.MIGRATION_STARTED, on_started)
+
+        outer = client.migrate()
+
+        assert "error" in nested_error, "listener's nested migrate() did not raise"
+        assert "migrate" in str(nested_error["error"])
+        # The outer call's result is now accurate: it -- not some nested
+        # call the caller never issued -- is what actually ran.
+        assert outer.success
+        assert outer.migrations_applied == ["1"]
+        client.close()
+
+    def test_event_listener_recursively_calling_migrate_does_not_recurse(self, tmp_path):
+        """An unconditional listener->migrate() loop must fail on the first
+        reentrant attempt, not recurse until RecursionError.
+        """
+        client = _client_with_migration(tmp_path)
+        call_count = {"n": 0}
+        nested_error = {}
+
+        def on_started(event):
+            call_count["n"] += 1
+            try:
+                client.migrate()  # always re-enters; must be refused immediately
+            except RuntimeError as e:
+                nested_error["error"] = e
+
+        client.events.on(EventType.MIGRATION_STARTED, on_started)
+
+        outer = client.migrate()
+
+        # The listener fires exactly once: the refused nested call raises
+        # before it ever reaches migrate()'s own MIGRATION_STARTED emit, so
+        # there is no second (or recursive) invocation of the listener.
+        assert call_count["n"] == 1
+        assert "error" in nested_error
+        assert outer.success
+        client.close()
+
+    def test_close_does_not_overlap_an_in_flight_migrate(self, tmp_path):
+        """close()/__exit__ touch self.provider directly and previously
+        bypassed the operation lock entirely -- a concurrent close() could
+        run while migrate() was still using the connection. They now take
+        the same lock.
+        """
+        client = _client_with_migration(tmp_path)
+        probe = _ConcurrencyProbe(hold_seconds=0.2)
+        errors = []
+
+        def run_migrate():
+            try:
+                client.migrate()
+            except Exception as e:  # noqa: BLE001
+                errors.append(e)
+
+        with (
+            patch.object(DBLiftClient, "_exit_unlocked", probe.wrap(DBLiftClient._exit_unlocked)),
+            patch.object(MigrationExecutor, "migrate", probe.wrap(MigrationExecutor.migrate)),
+        ):
+            barrier = threading.Barrier(2)
+
+            def sync_migrate():
+                barrier.wait(timeout=5)
+                run_migrate()
+
+            def sync_close():
+                barrier.wait(timeout=5)
+                client.close()
+
+            t1 = threading.Thread(target=sync_migrate)
+            t2 = threading.Thread(target=sync_close)
+            t1.start()
+            t2.start()
+            t1.join(timeout=30)
+            t2.join(timeout=30)
+
+        assert probe.call_count == 2
+        assert probe.max_concurrent == 1, (
+            "close() ran concurrently with an in-flight migrate() on the "
+            "shared connection instead of serializing"
+        )
+        assert not errors, f"unexpected exceptions: {errors}"
+
     def test_single_threaded_migrate_still_works(self, tmp_path):
         """No regression: a single-threaded caller sees ordinary behavior."""
         client = _client_with_migration(tmp_path)
