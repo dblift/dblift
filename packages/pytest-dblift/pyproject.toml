@@ -4,14 +4,14 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pytest-dblift"
-version = "0.1.0"
+version = "0.1.1"
 description = "pytest plugin for DBLift migrations"
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "Apache-2.0" }
 authors = [{ name = "DBLift" }]
 dependencies = [
-    "dblift>=3.9",
+    "dblift>=4.0",
     "pytest>=7.3",
     "sqlalchemy>=2.0",
 ]

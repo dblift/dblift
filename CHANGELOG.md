@@ -38,6 +38,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Malformed versionless scripts such as `V__.sql` and `V__.py` are excluded from
   migration and reported with a naming warning, preventing execution and
   null-version history entries.
+- `pytest-dblift` no longer fails every test run with `ImportError: No module
+  named 'api'` when installed alongside a current `dblift`. Upgrade to
+  `pytest-dblift` 0.1.1; it now requires `dblift` 4.0 or later.
 - Providers now declare explicit transaction support accurately; migration commands
   and callbacks skip transaction calls for providers without that capability.
 - SQL callbacks now honor autocommit requirements and reject incompatible mixed
