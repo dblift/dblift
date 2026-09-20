@@ -103,6 +103,15 @@ class TestGetStatementTypeStringBranches(unittest.TestCase):
             self.analyzer.get_statement_type("WITH cte AS (SELECT 1) SELECT * FROM cte"), "QUERY"
         )
 
+    def test_with_cte_feeding_update_is_dml(self):
+        # MySQL/MariaDB allow a CTE ahead of UPDATE/DELETE; the leading WITH
+        # keyword alone can't tell that apart from a CTE feeding a SELECT.
+        sql = (
+            "WITH cte AS (SELECT id FROM src WHERE id = 1) "
+            "DELETE FROM src WHERE id IN (SELECT id FROM cte)"
+        )
+        self.assertEqual(self.analyzer.get_statement_type(sql), "DML")
+
     def test_show_is_query(self):
         self.assertEqual(self.analyzer.get_statement_type("SHOW TABLES"), "QUERY")
 

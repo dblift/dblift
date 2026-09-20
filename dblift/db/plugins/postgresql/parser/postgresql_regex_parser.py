@@ -15,6 +15,7 @@ from dblift.core.sql_model.base import (
 )
 from dblift.core.sql_parser.enhanced_regex_parser import EnhancedRegexParser
 from dblift.core.sql_parser.parser_context import ParserContext
+from dblift.db.dml_analysis import cte_outer_statement_type
 from dblift.db.plugins.postgresql.parser.parser_config import PostgreSqlConfig
 from dblift.db.plugins.postgresql.parser.postgresql_statement_parser import (
     PostgreSQLStatementParser,
@@ -22,6 +23,10 @@ from dblift.db.plugins.postgresql.parser.postgresql_statement_parser import (
 from dblift.db.plugins.postgresql.parser.postgresql_tokenizer import PostgreSQLTokenizer
 
 logger = logging.getLogger(__name__)
+
+# A CTE list can feed a SELECT or a modifying statement (INSERT/UPDATE/DELETE) —
+# the leading WITH keyword alone doesn't say which.
+_LEADING_WITH_RE = re.compile(r"^\s*WITH\s+", re.IGNORECASE)
 
 
 class PostgreSqlRegexParser(EnhancedRegexParser):
@@ -455,6 +460,12 @@ class PostgreSqlRegexParser(EnhancedRegexParser):
 
         # Check query statements
         if self.postgresql_config.is_query_statement(sql):
+            # A data-modifying CTE (RETURNING) can feed an outer INSERT/UPDATE/
+            # DELETE, which doesn't return rows even though the statement starts
+            # with WITH — ask sqlglot for the outer statement in that case.
+            if _LEADING_WITH_RE.match(sql):
+                if cte_outer_statement_type(sql, sqlglot_dialect="postgres") == "DML":
+                    return SqlStatementType.DML
             return SqlStatementType.QUERY
 
         # Check transaction control

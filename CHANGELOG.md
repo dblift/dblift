@@ -13,6 +13,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- A migration statement starting with `WITH` is now classified by its outer
+  verb instead of always being treated as a query. A data-modifying CTE
+  (using `RETURNING`) that feeds an outer `INSERT`/`UPDATE`/`DELETE` no longer
+  fails with "This result object does not return rows"; a CTE that feeds a
+  `SELECT` still returns its rows as before.
+
 ### Removed
 
 ## [4.6.0] - 2026-09-20

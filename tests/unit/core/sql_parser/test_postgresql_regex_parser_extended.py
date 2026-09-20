@@ -431,6 +431,40 @@ class TestIdentifyStatementType(unittest.TestCase):
         sql = "CREATE FUNCTION f() RETURNS INT AS $$ BEGIN RETURN 1; END; $$ LANGUAGE plpgsql;"
         self.assertEqual(self.parser._identify_statement_type(sql), SqlStatementType.DDL)
 
+    def test_data_modifying_cte_feeding_insert_is_dml(self):
+        # A CTE that DELETEs (with RETURNING) feeding an outer INSERT doesn't
+        # return rows — classifying it as QUERY makes the executor fetch rows
+        # from a result that has none.
+        sql = (
+            "WITH deleted AS (DELETE FROM src WHERE id = 1 RETURNING id) "
+            "INSERT INTO app_logs(msg) SELECT 'removed ' || id FROM deleted"
+        )
+        self.assertEqual(self.parser._identify_statement_type(sql), SqlStatementType.DML)
+
+    def test_data_modifying_cte_update_feeding_insert_is_dml(self):
+        sql = (
+            "WITH x AS (UPDATE src SET id = id RETURNING id) "
+            "INSERT INTO app_logs(msg) SELECT 'x' FROM x"
+        )
+        self.assertEqual(self.parser._identify_statement_type(sql), SqlStatementType.DML)
+
+    def test_data_modifying_cte_feeding_select_stays_query(self):
+        # Here the CTE modifies data but the outer statement is a SELECT, so
+        # it does return rows — must not regress to DML.
+        sql = "WITH x AS (INSERT INTO src VALUES (99) RETURNING id) SELECT * FROM x"
+        self.assertEqual(self.parser._identify_statement_type(sql), SqlStatementType.QUERY)
+
+    def test_plain_select_cte_stays_query(self):
+        sql = "WITH x AS (SELECT 1) SELECT * FROM x"
+        self.assertEqual(self.parser._identify_statement_type(sql), SqlStatementType.QUERY)
+
+    def test_returning_in_comment_inside_cte_does_not_affect_classification(self):
+        sql = (
+            "WITH deleted AS (DELETE FROM src WHERE id = 1 /* RETURNING trap */ RETURNING id) "
+            "INSERT INTO app_logs(msg) SELECT 'removed ' || id FROM deleted"
+        )
+        self.assertEqual(self.parser._identify_statement_type(sql), SqlStatementType.DML)
+
 
 class TestParseSql(unittest.TestCase):
     def setUp(self):

@@ -3,6 +3,7 @@
 from dblift.db.base_quirks import BaseQuirks
 from dblift.db.dml_analysis import (
     analyze_dml,
+    cte_outer_statement_type,
     dml_where_predicate,
     extract_dml_table_name,
     insert_value_rows,
@@ -167,6 +168,25 @@ def test_is_full_table_dml_treats_quoted_where_identifier_as_column_not_clause()
     assert is_full_table_dml(
         "UPDATE users SET active = (SELECT 1 FROM audit WHERE audit.user_id = users.id);"
     )
+
+
+def test_cte_outer_statement_type_flags_data_modifying_cte_feeding_insert():
+    # RETURNING on the CTE's own DELETE doesn't mean the outer INSERT returns
+    # rows — the outer verb decides that.
+    sql = (
+        "WITH deleted AS (DELETE FROM src WHERE id = 1 RETURNING id) "
+        "INSERT INTO app_logs(msg) SELECT 'removed ' || id FROM deleted"
+    )
+    assert cte_outer_statement_type(sql, sqlglot_dialect="postgres") == "DML"
+
+
+def test_cte_outer_statement_type_keeps_select_as_query():
+    sql = "WITH x AS (INSERT INTO src VALUES (99) RETURNING id) SELECT * FROM x"
+    assert cte_outer_statement_type(sql, sqlglot_dialect="postgres") == "QUERY"
+
+
+def test_cte_outer_statement_type_none_for_unparseable_sql():
+    assert cte_outer_statement_type("WITH x AS ( NOT VALID SQL", sqlglot_dialect="postgres") is None
 
 
 def test_base_quirks_exposes_is_full_table_dml():

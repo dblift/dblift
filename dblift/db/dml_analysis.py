@@ -311,6 +311,33 @@ def is_full_table_dml(
     return _find_top_level_keyword(text, "WHERE", quote_pairs) < 0
 
 
+def cte_outer_statement_type(
+    statement: str,
+    *,
+    sqlglot_dialect: Optional[str] = None,
+) -> Optional[str]:
+    """Outer statement kind of a ``WITH ...`` statement: ``"QUERY"`` or ``"DML"``.
+
+    A CTE list can feed a ``SELECT`` (a query) or an ``INSERT``/``UPDATE``/
+    ``DELETE``/``MERGE`` (a modifying statement, even when a CTE inside it
+    uses ``RETURNING``) — the leading ``WITH`` keyword alone cannot tell
+    those apart. Returns ``None`` when the statement cannot be parsed, so the
+    caller keeps its own default.
+    """
+    text = strip_leading_sql_comments(statement).lstrip()
+    if not text:
+        return None
+    try:
+        ast = sqlglot.parse_one(text, read=sqlglot_dialect)
+    except Exception:
+        return None
+    if isinstance(ast, (exp.Insert, exp.Update, exp.Delete, exp.Merge)):
+        return "DML"
+    if isinstance(ast, (exp.Select, exp.Union)):
+        return "QUERY"
+    return None
+
+
 def extract_dml_table_name(statement: str) -> str:
     """Best-effort table extraction when the dialect parser cannot provide one."""
     # The table is followed by whitespace, ``;``, ``(`` (INSERT column list) or
