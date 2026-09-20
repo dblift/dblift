@@ -734,18 +734,14 @@ class MigrateCommand(BaseCommand):
 
         read_snapshot = self.state_manager.new_read_snapshot()
 
-        # SQLite's migration lock is a caller-side polling loop; widen its
-        # busy_timeout for this command's duration, never lowering a
-        # caller's own wider setting, and restore it exactly afterward.
-        set_busy_timeout = getattr(self.provider, "set_busy_timeout", None)
-        get_busy_timeout = getattr(self.provider, "get_busy_timeout_seconds", None)
-        original_busy_timeout = get_busy_timeout() if callable(get_busy_timeout) else None
-        widened_busy_timeout = callable(set_busy_timeout) and (
-            original_busy_timeout is None
-            or original_busy_timeout < DEFAULT_MIGRATION_LOCK_TIMEOUT_SECONDS
+        # SQLite only: widen busy_timeout for this command; the provider
+        # returns what undoes it (None when nothing was changed).
+        widen_busy_timeout = getattr(self.provider, "widen_busy_timeout", None)
+        restore_busy_timeout = (
+            widen_busy_timeout(DEFAULT_MIGRATION_LOCK_TIMEOUT_SECONDS)
+            if callable(widen_busy_timeout)
+            else None
         )
-        if widened_busy_timeout:
-            set_busy_timeout(DEFAULT_MIGRATION_LOCK_TIMEOUT_SECONDS)
 
         try:
             # Initialize and validate migrations
@@ -990,6 +986,5 @@ class MigrateCommand(BaseCommand):
             self._log_command_completion("migrate", result)
             return result
         finally:
-            # Restore exactly what was there before, not a hardcoded default.
-            if widened_busy_timeout:
-                set_busy_timeout(original_busy_timeout)
+            if callable(restore_busy_timeout):
+                restore_busy_timeout()

@@ -5,7 +5,7 @@ This provider uses Python's native sqlite3 module.
 """
 
 import sqlite3
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 from dblift.config import DbliftConfig
 from dblift.core.logger import Log
@@ -316,11 +316,14 @@ class SQLiteProvider(NativeProvider, TransactionalProvider):
         connection = self._get_connection()
         connection.execute(f"PRAGMA busy_timeout = {int(seconds * 1000)}")
 
-    def get_busy_timeout_seconds(self) -> float:
-        """Return this connection's current SQLite busy_timeout, in seconds."""
+    def widen_busy_timeout(self, seconds: float) -> Optional[Callable[[], None]]:
+        """Raise busy_timeout to at least *seconds*; return the undo, or None if already wider."""
         connection = self._get_connection()
-        (ms,) = connection.execute("PRAGMA busy_timeout").fetchone()
-        return ms / 1000
+        previous_ms = int(connection.execute("PRAGMA busy_timeout").fetchone()[0])
+        if previous_ms >= seconds * 1000:
+            return None
+        self.set_busy_timeout(seconds)
+        return lambda: self.set_busy_timeout(previous_ms / 1000)
 
     def clean_schema(self, schema: str) -> CleanExecutionSummary:
         """Clean all objects from the database.
