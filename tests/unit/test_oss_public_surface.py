@@ -196,10 +196,18 @@ def test_readme_uses_existing_local_assets():
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
     # PyPI renders the same README, so repo assets are referenced by absolute raw URL.
     raw_prefix = "https://raw.githubusercontent.com/dblift/dblift/main/"
+    badge_hosts = ("https://img.shields.io/", "https://github.com/dblift/", "https://codecov.io/")
+    sources = re.findall(r'<img src="([^"]+)"', readme)
+
+    unknown = [
+        src
+        for src in sources
+        if src.startswith("https://") and not src.startswith((raw_prefix, *badge_hosts))
+    ]
+    assert unknown == []
+
     asset_paths = [
-        src.removeprefix(raw_prefix)
-        for src in re.findall(r'<img src="([^"]+)"', readme)
-        if src.startswith(raw_prefix) or not src.startswith("https://")
+        src.removeprefix(raw_prefix) for src in sources if not src.startswith(badge_hosts)
     ]
 
     assert asset_paths

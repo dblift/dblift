@@ -39,7 +39,7 @@ echo "DROP TABLE users;" > migrations/U1__create_users.sql
 
 export DBLIFT_DB_URL="sqlite:///app.db"
 
-dblift migrate --dry-run --show-sql   # prints the SQL, touches nothing
+dblift migrate --dry-run --show-sql   # prints the SQL, applies nothing
 dblift migrate                        # applies V1
 dblift info                           # what ran, when, by whom, and whether it can be undone
 dblift undo                           # runs U1, rolls the last migration back
@@ -74,7 +74,7 @@ Everything below ships in the open-source package.
 | **Checksums** | `dblift validate` fails when an applied file was edited, a recorded file is missing, or two files claim the same version. |
 | **Baseline** | Adopt a database that already exists: declare "this one is at version N" and carry on from there. |
 | **Repeatable migrations** | `R__views.sql` re-runs when its content changes — a home for views, functions, grants and seed data. |
-| **Locking** | A lock table serialises concurrent runs; a second runner waits, then skips what the first one applied. |
+| **Locking** | A lock table serialises concurrent runs; a second runner waits, then skips what the first one applied. On SQLite, migrate from one process at a time. |
 | **Python migrations** | `V4__backfill.py` when a change needs logic. [Python migrations →](https://docs.dblift.com/python-migrations/) |
 | **A Python API** | Sync and async clients, events and callbacks — run migrations from your app or your tests, not only from a shell. |
 | **Transactions** | A migration that fails part-way is rolled back where the engine supports transactional DDL. |
@@ -95,7 +95,7 @@ with DBLiftClient.from_sqlalchemy(engine, migrations_dir="migrations") as client
     client.migrate()
 ```
 
-`AsyncDBLiftClient` does the same without blocking an event loop. [API →](https://docs.dblift.com/api/) · [Async client →](https://docs.dblift.com/async-client/)
+`AsyncDBLiftClient` (`from dblift.api.async_client import AsyncDBLiftClient`) does the same without blocking an event loop. [API →](https://docs.dblift.com/api/) · [Async client →](https://docs.dblift.com/async-client/)
 
 Give your tests a migrated database:
 
@@ -129,7 +129,7 @@ Alembic is the right choice when your schema is driven by SQLAlchemy models and 
 
 ## Databases
 
-20 engines, each behind its own install extra, e.g. `pip install "dblift[postgresql]"`.
+20 engines. SQLite works with a bare `pip install dblift`; every other engine has its own install extra, e.g. `pip install "dblift[postgresql]"`.
 
 PostgreSQL · MySQL · MariaDB · SQL Server · Oracle · DB2 · SQLite · DuckDB · CockroachDB · Redshift · Snowflake · Neon · Supabase · Aurora PostgreSQL · AlloyDB · YugabyteDB · TimescaleDB · Citus · Azure Cosmos DB · MongoDB
 
