@@ -13,7 +13,7 @@ if TYPE_CHECKING:
     from dblift.core.migration.journals.migration_journal import MigrationJournal
     from dblift.core.migration.placeholders.placeholder_service import PlaceholderService
 
-from dblift.core.constants import SECONDS_TO_MILLISECONDS
+from dblift.core.constants import DEFAULT_MIGRATION_LOCK_TIMEOUT_SECONDS, SECONDS_TO_MILLISECONDS
 from dblift.core.logger import Log
 from dblift.core.logger.results import MigrateResult, MigrationInfo, MigrationSqlInfo
 from dblift.core.migration._type_match import migration_type_name
@@ -734,6 +734,18 @@ class MigrateCommand(BaseCommand):
 
         read_snapshot = self.state_manager.new_read_snapshot()
 
+        # Providers whose migration lock is a caller-side polling loop
+        # (currently only SQLite -- see SQLiteProvider.set_busy_timeout)
+        # need a wider busy_timeout for this whole command, not just around
+        # lock acquisition: the history-table bootstrap that runs before it
+        # is on the same connection and just as exposed to transient
+        # contention. Other providers don't implement this method, so this
+        # is a no-op for them and their connections are unaffected.
+        set_busy_timeout = getattr(self.provider, "set_busy_timeout", None)
+        default_busy_timeout = getattr(self.provider, "DEFAULT_BUSY_TIMEOUT_SECONDS", None)
+        if callable(set_busy_timeout):
+            set_busy_timeout(DEFAULT_MIGRATION_LOCK_TIMEOUT_SECONDS)
+
         try:
             # Initialize and validate migrations
             validation_success, use_recursive, use_additional_dirs = (
@@ -976,3 +988,9 @@ class MigrateCommand(BaseCommand):
             result.set_error(f"Migration operation failed: {e}")
             self._log_command_completion("migrate", result)
             return result
+        finally:
+            # Restore the short default so a later command reusing this same
+            # connection (e.g. through DBLiftClient) isn't left waiting on
+            # an ordinary, uncontended failure.
+            if callable(set_busy_timeout) and default_busy_timeout is not None:
+                set_busy_timeout(default_busy_timeout)

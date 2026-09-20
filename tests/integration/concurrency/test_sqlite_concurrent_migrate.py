@@ -335,3 +335,71 @@ class TestSqliteConcurrentMigrate:
             assert mode.lower() == "delete"
         finally:
             provider.close()
+
+    def test_migrate_widens_busy_timeout_then_restores_it(self, tmp_path):
+        """`migrate()` raises this connection's busy_timeout for its own
+        duration (covering the history-table bootstrap and the lock path
+        both), then restores the driver's short default afterward -- a
+        later command reusing this same connection must not inherit the
+        wait."""
+        from dblift.api.client import DBLiftClient
+        from dblift.config import DbliftConfig
+        from dblift.core.constants import DEFAULT_MIGRATION_LOCK_TIMEOUT_SECONDS
+        from dblift.db.plugins.sqlite.sqlite import DEFAULT_BUSY_TIMEOUT_SECONDS
+
+        migrations_dir = tmp_path / "migrations"
+        _write_migrations(migrations_dir, count=1)
+        db_path = tmp_path / "test.db"
+
+        config = DbliftConfig.from_dict(
+            {"database": {"type": "sqlite", "path": str(db_path), "schema": "main"}}
+        )
+        client = DBLiftClient.from_config(config, migrations_dir=migrations_dir)
+        try:
+            seen_during_call: Dict[float, int] = {}
+            original_set = client.provider.set_busy_timeout
+
+            def spy(seconds: float) -> None:
+                original_set(seconds)
+                connection = client.provider._get_connection()
+                seen_during_call[seconds] = connection.execute("PRAGMA busy_timeout").fetchone()[0]
+
+            client.provider.set_busy_timeout = spy
+            result = client.migrate()
+            assert result.success
+
+            # Raised to the migration lock budget during the call...
+            assert seen_during_call[DEFAULT_MIGRATION_LOCK_TIMEOUT_SECONDS] == int(
+                DEFAULT_MIGRATION_LOCK_TIMEOUT_SECONDS * 1000
+            )
+            # ...and restored to the driver's short default afterward.
+            connection = client.provider._get_connection()
+            final_timeout = connection.execute("PRAGMA busy_timeout").fetchone()[0]
+            assert final_timeout == int(DEFAULT_BUSY_TIMEOUT_SECONDS * 1000)
+        finally:
+            client.close()
+
+    def test_ordinary_command_does_not_widen_busy_timeout(self, tmp_path):
+        """A command with no lock contention (`info`) never touches this
+        connection's busy_timeout -- it stays at the driver's short default
+        for the whole call, so a genuinely locked file still fails fast
+        rather than hanging for a minute."""
+        from dblift.api.client import DBLiftClient
+        from dblift.config import DbliftConfig
+        from dblift.db.plugins.sqlite.sqlite import DEFAULT_BUSY_TIMEOUT_SECONDS
+
+        migrations_dir = tmp_path / "migrations"
+        _write_migrations(migrations_dir, count=1)
+        db_path = tmp_path / "test.db"
+
+        config = DbliftConfig.from_dict(
+            {"database": {"type": "sqlite", "path": str(db_path), "schema": "main"}}
+        )
+        client = DBLiftClient.from_config(config, migrations_dir=migrations_dir)
+        try:
+            client.info()
+            connection = client.provider._get_connection()
+            timeout = connection.execute("PRAGMA busy_timeout").fetchone()[0]
+            assert timeout == int(DEFAULT_BUSY_TIMEOUT_SECONDS * 1000)
+        finally:
+            client.close()

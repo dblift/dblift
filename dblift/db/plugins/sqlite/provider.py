@@ -12,6 +12,7 @@ from dblift.core.logger import Log
 from dblift.core.migration.clean_summary import CleanExecutionSummary
 from dblift.db.base_provider import NativeProvider
 from dblift.db.plugins.sqlite.sqlite import (
+    DEFAULT_BUSY_TIMEOUT_SECONDS,
     SQLiteConnectionManager,
     SQLiteHistoryManager,
     SQLiteLockingManager,
@@ -25,6 +26,10 @@ class SQLiteProvider(NativeProvider, TransactionalProvider):
     """SQLite provider implementation using Python's native sqlite3 module."""
 
     canonical_dialect_key = "sqlite"
+
+    # Exposed so callers that raise busy_timeout (see set_busy_timeout) know
+    # what value restores the driver's own default.
+    DEFAULT_BUSY_TIMEOUT_SECONDS = DEFAULT_BUSY_TIMEOUT_SECONDS
 
     # BUG-04: schema_snapshot_service filters internal tables by looking up
     # ``provider.MIGRATION_LOCK_TABLE`` via ``getattr(..., "")``. Without this
@@ -301,6 +306,18 @@ class SQLiteProvider(NativeProvider, TransactionalProvider):
         """
         connection = self._get_connection()
         return self.locking_manager.release_migration_lock(connection, schema)
+
+    def set_busy_timeout(self, seconds: float) -> None:
+        """Raise (or restore) this connection's SQLite busy_timeout.
+
+        Commands with no lock contention (info, validate, ...) never call
+        this and keep the driver's short default. `migrate` raises it for
+        its own duration and restores the default afterward, so a later
+        command reusing this same connection isn't left waiting minutes on
+        an ordinary, uncontended failure.
+        """
+        connection = self._get_connection()
+        connection.execute(f"PRAGMA busy_timeout = {int(seconds * 1000)}")
 
     def clean_schema(self, schema: str) -> CleanExecutionSummary:
         """Clean all objects from the database.

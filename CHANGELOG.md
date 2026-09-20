@@ -27,6 +27,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (almost) the same time no longer both fail with nothing applied. One
   process now applies the migrations while the other waits and finds them
   already applied, matching the behavior of the other supported databases.
+  `dblift migrate` against SQLite may now wait up to 60 seconds before
+  reporting a genuinely locked database, instead of failing after about 5;
+  other commands (`info`, `validate`, ...) are unaffected and still fail
+  within a few seconds.
 - PostgreSQL object extraction no longer mistakes a leading, inline, or
   nested comment for the statement it precedes, and `ALTER TABLE ONLY` is no
   longer reported as touching a table named `only`. Table identifiers may
