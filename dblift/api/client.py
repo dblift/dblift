@@ -11,6 +11,7 @@ from typing import (
     List,
     Optional,
     Self,
+    Tuple,
     TypeVar,
     Union,
     cast,
@@ -93,13 +94,13 @@ def _make_premium_stub_method(api_method_name: str) -> Callable[..., Any]:
 
 
 @overload
-def _with_client_emitter(method: _F) -> _F:
-    pass
+def _with_client_emitter(method: _F) -> _F: ...  # noqa: E704
 
 
 @overload
-def _with_client_emitter(method: None = None, *, mutating: bool = True) -> Callable[[_F], _F]:
-    pass
+def _with_client_emitter(  # noqa: E704
+    method: None = None, *, mutating: bool = True
+) -> Callable[[_F], _F]: ...
 
 
 def _with_client_emitter(
@@ -110,8 +111,11 @@ def _with_client_emitter(
     *mutating* call (the default; ``info``/``validate`` pass
     ``mutating=False``) reentered on the same thread — it would otherwise
     run silently underneath the outer call and make its result stale.
-    ``self._thread_state.depth`` (thread-local) tracks nesting instead of
-    inspecting the call stack.
+    ``self._thread_state.stack`` (thread-local) tracks the active
+    ``(name, wrapper)`` entries on this thread, instead of inspecting the
+    call stack, so a subclass override calling ``super().<name>()`` (a
+    *different* wrapper for the *same* operation) is distinguished from a
+    listener re-entering the same, already-active wrapper.
     """
 
     def decorator(inner: _F) -> _F:
@@ -127,16 +131,16 @@ def _with_client_emitter(
                 with use_client_emitter(emitter):
                     return inner(self, *args, **kwargs)
 
-            depth = getattr(thread_state, "depth", 0)
+            stack = getattr(thread_state, "stack", [])
             if mutating:
-                _raise_if_reentrant(thread_state, inner.__name__)
+                _raise_if_reentrant(stack, inner.__name__, wrapper)
             with lock:
-                thread_state.depth = depth + 1
+                thread_state.stack = stack + [(inner.__name__, wrapper)]
                 try:
                     with use_client_emitter(emitter):
                         return inner(self, *args, **kwargs)
                 finally:
-                    thread_state.depth = depth
+                    thread_state.stack = stack
 
         return cast(_F, wrapper)
 
@@ -145,23 +149,41 @@ def _with_client_emitter(
     return decorator
 
 
-def _raise_if_reentrant(thread_state: Any, name: str) -> None:
-    """Refuse a mutating call reentered on the thread that already holds
-    ``self._operation_lock`` for another operation.
+def _raise_if_reentrant(
+    stack: List[Tuple[str, Callable[..., Any]]],
+    name: str,
+    wrapper: Optional[Callable[..., Any]] = None,
+) -> None:
+    """Refuse a call reentered on the thread that already holds
+    ``self._operation_lock`` for another operation on this client.
 
-    Shared by ``_with_client_emitter`` and ``DBLiftClient.__exit__``/
-    ``close`` (which run outside that decorator but must refuse the same
-    way — see ``__exit__``'s docstring for why ``close`` needs this too).
+    With ``wrapper`` (a mutating operation checking itself): reentry is
+    allowed when every active entry is the *same* operation name and this
+    call's wrapper isn't already on the stack — that's a subclass's
+    decorated override calling ``super().<name>()``, not re-entry, because
+    ``super()`` reaches a different wrapped function. A listener calling
+    the same method resolves to the same (most-derived) wrapper, which
+    *is* already on the stack, so it is still refused.
+
+    Without ``wrapper`` (``close``/``__exit__``): any active entry refuses
+    — tearing down the connection mid-operation is never safe, regardless
+    of which operation is in progress.
     """
-    if getattr(thread_state, "depth", 0) > 0:
-        raise RuntimeError(
-            f"DBLiftClient.{name}() was called while this thread is already "
-            "inside an operation on the same client (for example, from an "
-            "event listener). A mutating call cannot be nested inside "
-            "another: the outer operation's view of what is pending/applied "
-            "would go stale. Read-only calls (info, validate) may be nested "
-            "safely."
-        )
+    if not stack:
+        return
+    if wrapper is not None:
+        same_operation = all(entry_name == name for entry_name, _ in stack)
+        reentered = any(entry_wrapper is wrapper for _, entry_wrapper in stack)
+        if same_operation and not reentered:
+            return
+    raise RuntimeError(
+        f"DBLiftClient.{name}() was called while this thread is already "
+        "inside an operation on the same client (for example, from an "
+        "event listener). A mutating call cannot be nested inside "
+        "another: the outer operation's view of what is pending/applied "
+        "would go stale. Read-only calls (info, validate) may be nested "
+        "safely, and a decorated override may still call super()."
+    )
 
 
 class DBLiftClient:
@@ -182,32 +204,10 @@ class DBLiftClient:
         >>> print(f"Applied {len(result.migrations_applied)} migrations")
 
     Thread safety:
-        A client holds one provider/connection for its lifetime, so calls
-        from multiple threads on the *same* client instance are serialized:
-        only one operation (``migrate``, ``info``, ``validate``, ...) runs
-        at a time, and the rest block until it finishes. Each thread still
-        gets its own correct result — nothing is dropped or overwritten —
-        but there is no concurrent speedup from sharing one client across
-        threads (including read-only operations, which share the
-        connection too). For that, give each thread (or worker) its own
-        client instance, each with its own provider/connection.
-
-        An event listener runs synchronously, on the thread running the
-        operation. From it, a **read-only** call on the same client
-        (``info``, ``validate``) is safe and will not deadlock. A
-        **mutating** call (``migrate``, ``undo``, ``clean``, ...) — and
-        ``close()``, which would tear down the connection out from under
-        the operation still using it — is refused with ``RuntimeError``
-        instead of being allowed to run: it would otherwise execute
-        underneath the operation already in progress and leave that outer
-        operation reporting a stale result (for example ``migrate()``
-        claiming nothing was pending right after a nested call actually
-        applied something, or continuing to run — silently reconnected —
-        after a nested ``close()``). From a *different* thread, any
-        operation and ``close()``/the context manager block on the same
-        lock rather than being refused; the ordinary ``with`` block is
-        unaffected, since by the time ``__exit__`` runs the operation
-        inside it has already finished.
+        Calls on one client from multiple threads are serialized; a listener
+        may nest a read-only call but not a mutating one or ``close()``. See
+        the "Thread Safety" section of the API reference for the full
+        contract.
     """
 
     def __init__(
@@ -263,23 +263,13 @@ class DBLiftClient:
         # Normalize dialect once at boundary; methods use self.dialect directly
         self.dialect = self._get_dialect_for_sql_generation()
 
-        # Serializes every public operation on this client (see
-        # ``@_with_client_emitter``, which acquires it). The client holds
-        # one provider/connection for its lifetime; without this, two
-        # threads calling e.g. migrate() on the same client interleave
-        # statements on that one connection instead of either running to
-        # completion or failing with a clear error. RLock, not a plain
-        # Lock: an event listener runs synchronously while an operation
-        # holds this lock and may legally call a read-only operation on
-        # the same client from the same thread (see ``_with_client_emitter``).
+        # Serializes public operations on this client (see
+        # ``@_with_client_emitter``). RLock so a listener may nest a
+        # read-only call on the same thread.
         self._operation_lock = threading.RLock()
 
-        # Thread-local nesting depth used by ``@_with_client_emitter`` to
-        # refuse a *mutating* operation reentered on the same thread (e.g.
-        # a listener calling migrate() from within migrate()) instead of
-        # silently running it underneath the outer call. threading.local,
-        # not a plain counter, because ownership is per-OS-thread, same as
-        # the RLock above.
+        # Per-thread reentrancy stack used by ``@_with_client_emitter``
+        # (see there for what it tracks and why).
         self._thread_state = threading.local()
 
         # Event system for IDE/tooling. Each client owns a per-instance emitter
@@ -707,7 +697,7 @@ class DBLiftClient:
             )
             raise
 
-    @_with_client_emitter
+    @_with_client_emitter(mutating=False)
     def generate_undo_script(
         self,
         migration_path: Union[str, Path],
@@ -745,7 +735,7 @@ class DBLiftClient:
             overwrite=overwrite,
         )
 
-    @_with_client_emitter
+    @_with_client_emitter(mutating=False)
     def generate_undo_scripts(
         self,
         migration_paths: Optional[List[Union[str, Path]]] = None,
@@ -1208,10 +1198,8 @@ class DBLiftClient:
             ...     result = client.migrate()
             ...     # Connection automatically closed on exit
 
-        Takes ``self._operation_lock`` so a concurrent operation on another
-        thread can't race it on the shared connection. Ensuring a
-        connection is harmless to nest (unlike ``__exit__``), so unlike
-        ``close`` it does not refuse a reentrant call.
+        Takes ``self._operation_lock``, like every operation. Harmless to
+        nest, unlike ``__exit__``, so it does not refuse a reentrant call.
         """
         lock = getattr(self, "_operation_lock", None)
         if lock is None:
@@ -1249,20 +1237,14 @@ class DBLiftClient:
             exc_val: Exception value if an exception occurred, None otherwise
             exc_tb: Exception traceback if an exception occurred, None otherwise
 
-        Refuses a reentrant call the same way a mutating operation does
-        (see ``_raise_if_reentrant``): tearing down the connection mid-
-        operation would let that operation keep running against a
-        silently-reconnected one and report a stale result — the ordinary
-        ``with`` block never hits this, since by the time it reaches here
-        the operation inside it has already finished and this thread's
-        depth is back to 0. ``close()`` calls this method directly, so it
-        is covered too. Otherwise takes ``self._operation_lock``: an
-        ``RLock``, so a different thread with an operation in flight is
-        blocked here until that (bounded) hold ends, then this closes.
+        Refuses a reentrant call on this thread (``close()`` calls this
+        method directly, so it's covered too); otherwise takes
+        ``self._operation_lock``, blocking until another thread's
+        operation finishes.
         """
         thread_state = getattr(self, "_thread_state", None)
         if thread_state is not None:
-            _raise_if_reentrant(thread_state, "close")
+            _raise_if_reentrant(getattr(thread_state, "stack", []), "close")
         lock = getattr(self, "_operation_lock", None)
         if lock is None:
             return self._exit_unlocked(exc_type, exc_val, exc_tb)
