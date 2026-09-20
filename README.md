@@ -74,7 +74,7 @@ Everything below ships in the open-source package.
 | **Checksums** | `dblift validate` fails when an applied file was edited, a recorded file is missing, or two files claim the same version. |
 | **Baseline** | Adopt a database that already exists: declare "this one is at version N" and carry on from there. |
 | **Repeatable migrations** | `R__views.sql` re-runs when its content changes — a home for views, functions, grants and seed data. |
-| **Locking** | A lock table serialises concurrent runs; a second runner waits, then skips what the first one applied. On SQLite, migrate from one process at a time. |
+| **Locking** | A lock table serialises concurrent runs; a second runner waits, then skips what the first one applied. |
 | **Python migrations** | `V4__backfill.py` when a change needs logic. [Python migrations →](https://docs.dblift.com/python-migrations/) |
 | **A Python API** | Sync and async clients, events and callbacks — run migrations from your app or your tests, not only from a shell. |
 | **Transactions** | A migration that fails part-way is rolled back where the engine supports transactional DDL. |
