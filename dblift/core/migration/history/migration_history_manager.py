@@ -1,19 +1,117 @@
 """Migration history manager — persists applied migrations and validates checksums against the DB."""
 
 import logging
-from typing import TYPE_CHECKING, Any, List, Optional, Union
+from dataclasses import dataclass
+from types import MappingProxyType
+from typing import Any, Dict, List, Mapping, Optional, Union, cast
 
 from dblift.core.logger import Log
 from dblift.core.migration.migration import AppliedMigration, Migration, MigrationType
+from dblift.core.migration.scripting.migration_script_manager import MigrationScriptManager
+from dblift.db.provider_interfaces import TransactionalProvider
 
-if TYPE_CHECKING:
-    from .migration_script_manager import MigrationScriptManager
+
+@dataclass(frozen=True)
+class FlywayCompatibilitySnapshot:
+    """Immutable table data collected by HistoryManager."""
+
+    flyway_exists: bool = False
+    dblift_exists: bool = False
+    flyway_migrations: tuple[Mapping[str, Any], ...] = ()
+    dblift_migrations: tuple[Mapping[str, Any], ...] = ()
+    collection_error: str = ""
 
 
 class MigrationHistoryManager:
     """Manages migration history in the database."""
 
     script_manager: Optional["MigrationScriptManager"] = None
+
+    def read_history_rows(
+        self, schema: str, table: str, *, flyway_source: bool = False
+    ) -> List[Dict[str, Any]]:
+        """Collect import rows using the provider's authoritative identifier policy."""
+        if not flyway_source or not self.provider.quirks.flyway_source_table_case_sensitive:
+            return cast(List[Dict[str, Any]], self.provider.get_applied_migrations(schema, table))
+        qualified_table = self.provider.get_schema_qualified_name(schema, table)
+        rows = self.provider.execute_query(f"""
+            SELECT script, installed_rank, version, description,
+                   type, checksum, installed_by, installed_on, execution_time, success
+            FROM {qualified_table} ORDER BY installed_rank
+        """)
+        return [self._normalize_flyway_row(row) for row in rows]
+
+    @staticmethod
+    def _normalize_flyway_row(row: Dict[str, Any]) -> Dict[str, Any]:
+        fields = (
+            "script",
+            "installed_rank",
+            "version",
+            "description",
+            "type",
+            "checksum",
+            "installed_by",
+            "installed_on",
+            "execution_time",
+            "success",
+        )
+
+        def get_value(name: str) -> Any:
+            return row.get(name, row.get(name.upper(), row.get(name.lower())))
+
+        return {field: get_value(field) for field in fields}
+
+    def history_source_exists(self, schema: str, table: str) -> bool:
+        """Report whether an import source exists when the provider supports probing."""
+        return not hasattr(self.provider, "table_exists") or self.provider.table_exists(
+            schema, table
+        )
+
+    def resolve_flyway_source_table(self, table: str) -> str:
+        """Normalize only Flyway's default name for case-sensitive providers."""
+        if (
+            table == "flyway_schema_history"
+            and self.provider.quirks.flyway_source_table_case_sensitive
+        ):
+            return str(self.provider.get_normalized_object_name(table))
+        return table
+
+    def ensure_history_table(self) -> None:
+        """Initialize history when absent, preserving the public validator adapter."""
+        if not self.has_history_table:
+            self.create_schema_and_history_table()
+
+    def collect_flyway_compatibility_snapshot(self) -> FlywayCompatibilitySnapshot:
+        """Read provider tables without deciding whether their histories agree."""
+        flyway_exists = False
+        dblift_exists = False
+        flyway_rows: tuple[Mapping[str, Any], ...] = ()
+        dblift_rows: tuple[Mapping[str, Any], ...] = ()
+        error = ""
+        try:
+            flyway_exists = self.provider.table_exists(self.schema, "flyway_schema_history")
+            if flyway_exists:
+                dblift_exists = self.provider.table_exists(
+                    self.schema, self.normalized_history_table
+                )
+            if flyway_exists and dblift_exists:
+                flyway_query = f'''SELECT "version", "description", "type", "script",
+                    "installed_by", "installed_rank", "checksum", "success"
+                    FROM {self.schema}.flyway_schema_history ORDER BY "installed_rank"'''
+                flyway_rows = tuple(
+                    MappingProxyType(dict(row)) for row in self.provider.execute_query(flyway_query)
+                )
+                dblift_query = f"""SELECT version, description, type, script,
+                    installed_by, installed_rank, checksum, success
+                    FROM {self.schema}.{self.history_table} ORDER BY installed_rank"""
+                dblift_rows = tuple(
+                    MappingProxyType(dict(row)) for row in self.provider.execute_query(dblift_query)
+                )
+        except Exception as exc:
+            error = str(exc)
+        return FlywayCompatibilitySnapshot(
+            flyway_exists, dblift_exists, flyway_rows, dblift_rows, error
+        )
 
     def __init__(
         self,
@@ -79,8 +177,13 @@ class MigrationHistoryManager:
 
     def get_applied_migrations(self) -> List[Migration]:
         """Get list of applied migrations from history table as Migration objects."""
+        if self.script_manager is None:
+            self.script_manager = MigrationScriptManager(cast(Log, self.logger))
         return [
-            applied.to_migration(logger=self.logger)
+            applied.to_migration(
+                logger=self.logger,
+                _filename_metadata=self.script_manager.parse_filename(applied.script_name),
+            )
             for applied in self.get_applied_migration_records()
         ]
 
@@ -183,7 +286,7 @@ class MigrationHistoryManager:
                 # Clear any aborted-transaction state on the provider's connection
                 # so the retry can issue statements again. Swallow failures — the
                 # retry itself will surface any real issue.
-                if hasattr(self.provider, "rollback_transaction"):
+                if isinstance(self.provider, TransactionalProvider):
                     try:
                         self.provider.rollback_transaction()
                     except Exception:

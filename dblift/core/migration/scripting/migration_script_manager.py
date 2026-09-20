@@ -1,7 +1,6 @@
 """Migration script manager — discovers, parses, and orders migration scripts on disk."""
 
 import os
-import re
 from functools import cmp_to_key
 from pathlib import Path
 from typing import Any, Dict, Iterable, Iterator, List, NamedTuple, Optional, Set, Tuple
@@ -10,16 +9,19 @@ from dblift.core.logger import Log
 from dblift.core.migration._type_match import is_migration_type
 from dblift.core.migration.encoding import MigrationEncodingError, read_migration_text
 from dblift.core.migration.migration import (
-    _CALLBACK_PREFIXES,
     Migration,
     MigrationResource,
     MigrationType,
     ResolvedMigration,
-    _callback_event_prefix,
-    _callback_prefix_missing_separator,
     calculate_migration_script_checksum,
     normalize_migration_checksum,
-    strip_migration_tags,
+)
+from dblift.core.migration.scripting.filename_parser import (
+    _CALLBACK_PREFIXES,
+    _callback_prefix_missing_separator,
+    _looks_like_migration,
+    _matches_callback_event,
+    parse_migration_filename,
 )
 from dblift.core.migration.version_utils import compare_versions as _compare_versions_shared
 from dblift.core.migration.version_utils import is_migration_success
@@ -82,74 +84,6 @@ def _current_script_checksum(
     return None
 
 
-# A version must start with a digit. Later segments may mix letters and
-# digits (``V3.2A``, ``V1.2.3RC1``) — dblift is deliberately looser than
-# Flyway there, which stores versions as integers and rejects any
-# non-numeric token. The leading digit is what makes the grammar decidable:
-# without it ``VA__create.sql`` (version "A") and ``Users__seed.sql``
-# (version "sers") are the same shape, and there is no rule that keeps the
-# second from being loaded as a migration. ``Migration._determine_type``
-# applies the same rule — keep the two in step.
-_VERSION_BODY = r"\d[A-Za-z0-9]*(?:[._][A-Za-z0-9]+)*"
-
-
-def _versioned_pattern(prefix: str, extension_escaped: str) -> str:
-    """Build the ``<prefix>{version}__{description}<ext>`` filename pattern."""
-    return rf"^{prefix}({_VERSION_BODY})__(.+){extension_escaped}$"
-
-
-def _normalize_version(version_str: str) -> str:
-    """Return the version with ``_`` separators rendered as ``.``.
-
-    ``V1_2_3`` and ``V1.2.3`` name the same version, so they must not produce
-    two different history rows.
-
-    Applied to all-digit versions only, matching long-standing behaviour. A
-    version carrying letters is returned verbatim: rewriting ``1_2A`` to
-    ``1.2A`` would not match the ``1_2A`` already written to existing history
-    rows, and the raw-string set lookups against ``undone_versions`` in
-    ``MigrationStateManager`` compare versions as text, not through the
-    comparator.
-    """
-    if version_str.replace(".", "").replace("_", "").isdigit():
-        return version_str.replace("_", ".")
-    return version_str
-
-
-# A near-miss is a file that visibly reached for the convention and missed:
-# a prefix letter followed by a version-ish character (``V2.1_create.sql``,
-# ``R_repeat.sql``), or a prefix plus a one-letter version and the separator
-# (``VA__create.sql``). Both halves are deliberately tight, because this fires
-# on every single run:
-#
-#   * the prefix letter alone is far too weak — ``backup_old.sql``,
-#     ``routines.sql`` and ``users.sql`` all start with one;
-#   * allowing any run of letters before ``__`` is also too weak, because
-#     ordinary words then qualify: ``util__helpers.py``,
-#     ``report__daily.sql``, ``views__all.sql``. Capping it at a single
-#     letter keeps ``VA``/``UB``-style attempts and lets words through.
-#
-# Baseline (``B``) is deliberately absent: a well-formed ``B1__x.sql`` is
-# excluded by design, not by malformation, so warning about it would be wrong.
-_NEAR_MISS_RE = re.compile(r"^[VUR](?:[0-9_]|[A-Za-z]?[0-9.]*__)", re.IGNORECASE)
-
-
-def _looks_like_migration(script_name: str) -> bool:
-    """True if *script_name* looks like a failed attempt at the convention."""
-    return _NEAR_MISS_RE.match(script_name) is not None
-
-
-def _matches_callback_event(base_name: str, event_prefix: str) -> bool:
-    """Return True if ``base_name`` is a callback file for ``event_prefix``.
-
-    Delegates the boundary rule to :func:`_callback_event_prefix`, so a file
-    resolves to exactly one event and never also to a shorter prefix of it.
-    Both arguments are compared case-insensitively.
-    """
-    matched = _callback_event_prefix(base_name)
-    return matched is not None and matched.lower() == event_prefix.lower()
-
-
 class MigrationScriptManager:
     """Resolves on-disk migration scripts, computes checksums, and orders them by version."""
 
@@ -195,79 +129,74 @@ class MigrationScriptManager:
         Returns:
             Tuple of (MigrationType, version, description, tags)
         """
-        # Extract tags if present - they can be in any valid filename.
-        # Shared with the callback event helpers so classification and event
-        # matching normalize a name identically; see strip_migration_tags.
-        filename_without_tags, tags = strip_migration_tags(filename)
+        metadata = parse_migration_filename(filename)
+        return metadata.migration_type, metadata.version, metadata.description, list(metadata.tags)
 
-        # MULTI-FORMAT SUPPORT: Get the file extension to support multiple formats
-        from pathlib import Path
+    def load_migration_script(
+        self,
+        script_path: Path,
+        *,
+        filename_metadata: Optional[Tuple[MigrationType, Optional[str], str, List[str]]] = None,
+        require_versioned: bool = False,
+    ) -> Migration:
+        """Read a resource and construct a migration from its resolved metadata.
 
+        ``require_versioned`` preserves undo input validation before reading: a
+        missing path raises FileNotFoundError, then invalid filenames raise ValueError.
+        Normal discovery retains the encoding reader's errors for vanished files.
+        """
+        from dblift.core.migration.formats import MigrationFormat
+
+        if require_versioned and not script_path.exists():
+            raise FileNotFoundError(f"Migration file not found: {script_path}")
+
+        metadata = (
+            filename_metadata
+            if filename_metadata is not None
+            else self.parse_filename(script_path.name)
+        )
+        if require_versioned and (metadata[0] != MigrationType.SQL or not metadata[1]):
+            raise ValueError(
+                f"File is not a versioned migration: {script_path.name}. "
+                "Expected a versioned migration filename (V*__description.<ext>)."
+            )
+        content = read_migration_text(
+            script_path,
+            configured_encoding=self.script_encoding,
+            detect_encoding=self.detect_encoding,
+        )
+        migration = Migration(
+            script_name=script_path.name,
+            content=content,
+            logger=self.logger,
+            script_encoding=self.script_encoding,
+            detect_encoding=self.detect_encoding,
+            _filename_metadata=metadata,
+        )
+        migration.path = script_path
+        if migration.type == MigrationType.SQL and migration.format not in (
+            MigrationFormat.SQL,
+            MigrationFormat.UNKNOWN,
+        ):
+            migration.type = MigrationType.PYTHON
+        return migration
+
+    def find_undo_candidates(self, scripts_directory: Path, recursive: bool = True) -> List[Path]:
+        """Discover the undo API's loose V* candidates in filesystem order."""
         from dblift.core.migration.formats import MigrationFormatDetector
 
-        file_path = Path(filename_without_tags)
-        file_extension = file_path.suffix.lower()
-
-        # Check if this is a valid migration file extension
-        if not MigrationFormatDetector.is_migration_file(file_path):
-            # Not a recognized migration format - return UNKNOWN
-            description = filename_without_tags
-            return MigrationType.UNKNOWN, None, description, tags
-
-        # Escape the extension for use in regex patterns
-        extension_escaped = re.escape(file_extension)
-
-        # Check for callback scripts first (before the generic baseline catch-all).
-        # Case-insensitive, and the "__" separator is mandatory: a name without it
-        # is not a callback and falls through to the UNKNOWN catch-all below.
-        if _callback_event_prefix(filename_without_tags) is not None:
-            description = filename_without_tags.replace(file_extension, "")
-            return MigrationType.CALLBACK, None, description, tags
-
-        # Versioned migration: V{version}__{description}[tag1,tag2].<extension>
-        versioned_match = re.match(
-            _versioned_pattern("V", extension_escaped), filename_without_tags
-        )
-        if versioned_match:
-            return (
-                MigrationType.SQL,
-                _normalize_version(versioned_match.group(1)),
-                versioned_match.group(2),
-                tags,
-            )
-
-        # Undo migration: U{version}__{description}[tag1,tag2].<extension>
-        undo_match = re.match(_versioned_pattern("U", extension_escaped), filename_without_tags)
-        if undo_match:
-            return (
-                MigrationType.UNDO_SQL,
-                _normalize_version(undo_match.group(1)),
-                undo_match.group(2),
-                tags,
-            )
-
-        # Repeatable migration: R__{description}[tag1,tag2].<extension>
-        repeatable_pattern = rf"^R__(.+){extension_escaped}$"
-        repeatable_match = re.match(repeatable_pattern, filename_without_tags)
-        if repeatable_match:
-            return MigrationType.REPEATABLE, None, repeatable_match.group(1), tags
-
-        # Handle malformed versioned migration: V__.<extension> (no version, no description)
-        malformed_versioned = f"V__{file_extension}"
-        if filename_without_tags == malformed_versioned or filename_without_tags == "V__.sql":
-            return MigrationType.SQL, None, "", tags
-
-        # Any other file is unrecognized/invalid (baselines don't exist as script files)
-        # For malformed script names, return the filename for debugging/logging purposes
-        description = filename_without_tags.replace(file_extension, "").replace(".sql", "")
-        return MigrationType.UNKNOWN, None, description, tags
+        pattern = "**/V*" if recursive else "V*"
+        return [
+            path
+            for path in scripts_directory.glob(pattern)
+            if path.is_file() and MigrationFormatDetector.is_migration_file(path)
+        ]
 
     def is_versioned_script_name(self, filename: str) -> bool:
         """True if *filename* is a Flyway versioned migration (V*__), any registered extension.
 
-        Uses :meth:`parse_filename` (canonical), not :meth:`Migration._determine_type`,
-        so non-.sql extensions match consistently. The two agree on the version
-        grammar itself — both require a leading digit.
+        Uses the canonical parser for every registered extension. Versions must
+        start with a digit.
         """
         migration_type, version, _, _ = self.parse_filename(filename)
         return migration_type == MigrationType.SQL and bool(version)
@@ -275,6 +204,11 @@ class MigrationScriptManager:
     def compare_versions(self, version1: Optional[str], version2: Optional[str]) -> int:
         """Compare two version strings (e.g. '1.0.0' vs '1.0.1', '1_2_3' vs '1_2_4', '3.2A' vs '3.2B'). Handles None as empty string."""
         return _compare_versions_shared(version1, version2)
+
+    @staticmethod
+    def migration_directory_exists(path: Path) -> bool:
+        """Report filesystem status for migration input collection."""
+        return path.exists()
 
     def get_migration_scripts(
         self,
@@ -738,12 +672,8 @@ class MigrationScriptManager:
                     excluded_files.append(rel_script_path)
                     continue
                 # Create Migration object with the logger and encoding
-                migration = Migration(
-                    script_path,
-                    logger=self.logger,
-                    script_encoding=self.script_encoding,
-                    detect_encoding=self.detect_encoding,
-                    _filename_metadata=parsed_metadata,
+                migration = self.load_migration_script(
+                    script_path, filename_metadata=parsed_metadata
                 )
                 if migration_type == MigrationType.CALLBACK:
                     callbacks.append(migration)

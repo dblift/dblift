@@ -9,6 +9,17 @@ from typing import Any, Dict, List, Pattern, Set
 
 from dblift.core.sql_parser.dialects.base_config import DialectConfig
 
+# Identifier alternation used by the drop_table / alter_table patterns
+# below ONLY (not the other ~47 object patterns in this file, which still
+# use the double-quote-or-bare alternation inline). PostgreSQL itself only
+# quotes with double quotes, but this regex fallback only runs when sqlglot
+# could not parse the statement (e.g. a migration snippet quoted MySQL- or
+# SQL-Server-style), so these two patterns stay lenient about which quote
+# character was used rather than losing the object entirely. Whether the
+# same leniency is worth extending to the rest of the object patterns is a
+# separate, broader change — see the PR description.
+_QUOTED_OR_BARE_IDENTIFIER = r'"([^"]+)"|`([^`]+)`|\[([^\]]+)\]|([a-zA-Z_][a-zA-Z0-9_$]*)'
+
 
 class PostgreSqlConfig(DialectConfig):
     """PostgreSQL dialect configuration with comprehensive pattern support."""
@@ -626,11 +637,13 @@ class PostgreSqlConfig(DialectConfig):
             ),
             # ALTER patterns
             # Grammar-based: ALTER statements support IF EXISTS (not IF NOT EXISTS)
+            # and, for TABLE, an optional ONLY keyword that confines the
+            # statement to the named table (it is not itself an object).
             # Support $ in identifiers and quoted identifiers
             "alter_table": re.compile(
-                r"ALTER\s+TABLE\s+(?:IF\s+EXISTS\s+)?"
-                r'(?:(?:"([^"]+)"|([a-zA-Z_][a-zA-Z0-9_$]*))\.)?'
-                r'(?:"([^"]+)"|([a-zA-Z_][a-zA-Z0-9_$]*))',
+                r"ALTER\s+TABLE\s+(?:IF\s+EXISTS\s+)?(?:ONLY\s+)?"
+                rf"(?:(?:{_QUOTED_OR_BARE_IDENTIFIER})\.)?"
+                rf"(?:{_QUOTED_OR_BARE_IDENTIFIER})",
                 re.IGNORECASE,
             ),
             "alter_view": re.compile(
@@ -699,8 +712,8 @@ class PostgreSqlConfig(DialectConfig):
             # DROP patterns - Grammar-based: Support IF EXISTS, $ in identifiers
             "drop_table": re.compile(
                 r"DROP\s+TABLE\s+(?:IF\s+EXISTS\s+)?"
-                r'(?:(?:"([^"]+)"|([a-zA-Z_][a-zA-Z0-9_$]*))\.)?'
-                r'(?:"([^"]+)"|([a-zA-Z_][a-zA-Z0-9_$]*))',
+                rf"(?:(?:{_QUOTED_OR_BARE_IDENTIFIER})\.)?"
+                rf"(?:{_QUOTED_OR_BARE_IDENTIFIER})",
                 re.IGNORECASE,
             ),
             # Grammar-based: Support $ in identifiers and quoted identifiers for DROP statements

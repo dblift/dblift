@@ -136,7 +136,7 @@ class ValidateCommand(BaseCommand):
             if result.callbacks:
                 read_snapshot = self.state_manager.new_read_snapshot()
 
-            validation_result = self.validator.validate_migrations(
+            validation_snapshot = self.state_manager.build_validation_snapshot(
                 scripts_dir,
                 "validate",
                 recursive=recursive,
@@ -147,7 +147,11 @@ class ValidateCommand(BaseCommand):
                 versions=versions,
                 exclude_versions=exclude_versions,
                 read_snapshot=read_snapshot,
+                strict_mode=bool(getattr(self.config, "strict_mode", False)),
+                dir_recursive_map=dir_recursive_map,
             )
+
+            validation_result = self.validator.validate_snapshot(validation_snapshot, "validate")
 
             self._execute_callbacks(
                 scripts_dir,

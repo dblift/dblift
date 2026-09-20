@@ -37,7 +37,7 @@ def _command_with(validation_result: ValidationResult) -> ValidateCommand:
     cmd.config.database.schema = "main"
     cmd.log = MagicMock()
     cmd.validator = MagicMock()
-    cmd.validator.validate_migrations.return_value = validation_result
+    cmd.validator.validate_snapshot.return_value = validation_result
     cmd.history_manager = MagicMock()
     cmd.state_manager = MigrationStateManager(
         cmd.log, cmd.history_manager, MagicMock(), MagicMock()

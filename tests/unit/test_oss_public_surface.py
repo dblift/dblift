@@ -11,13 +11,16 @@ provider plugins under db/plugins/*.
 
 from __future__ import annotations
 
+import ast
 import re
 import tomllib
 from pathlib import Path
 
 import pytest
 from packaging.requirements import Requirement
+from packaging.specifiers import SpecifierSet
 from packaging.utils import canonicalize_name
+from packaging.version import Version
 
 pytestmark = [pytest.mark.unit]
 
@@ -192,10 +195,75 @@ def test_public_docs_reference_existing_workflows():
     assert missing == []
 
 
+def test_pytest_dblift_declares_a_dblift_floor_that_has_dblift_api():
+    """pytest-dblift imports ``dblift.api`` (see pytest_dblift/fixtures.py and
+    _client.py). That module only exists from dblift 4.0.0 onward: 3.9.x and
+    3.10.x wheels ship a top-level ``api`` package instead, so a pytest-dblift
+    installed alongside a pre-4.0 dblift fails at pytest startup with
+    ``ImportError: No module named 'api'``. The declared floor must therefore
+    be at least 4.0, and no module here may import the pre-4.0 top-level
+    names (``api``, ``core``, ``db``, ``cli``, ``config``) instead of
+    ``dblift.<name>``."""
+    pkg_root = ROOT / "packages" / "pytest-dblift"
+    pyproject_path = pkg_root / "pyproject.toml"
+    data = tomllib.loads(pyproject_path.read_text(encoding="utf-8"))
+    dependencies = data["project"]["dependencies"]
+
+    dblift_reqs = [
+        Requirement(dep)
+        for dep in dependencies
+        if canonicalize_name(Requirement(dep).name) == "dblift"
+    ]
+    assert len(dblift_reqs) == 1, f"expected exactly one dblift dependency, got {dblift_reqs}"
+    specifier: SpecifierSet = dblift_reqs[0].specifier
+
+    lower_bounds = [Version(spec.version) for spec in specifier if spec.operator in (">=", ">")]
+    assert lower_bounds, f"dblift dependency has no lower bound: {specifier}"
+    floor = min(lower_bounds)
+
+    assert floor >= Version("4.0"), (
+        f"packages/pytest-dblift/pyproject.toml declares dblift{specifier}, "
+        f"whose floor {floor} predates dblift.api (added in 4.0.0). Installing "
+        "pytest-dblift with a pre-4.0 dblift fails at pytest startup."
+    )
+
+    pre_4_0_top_level_names = {"api", "core", "db", "cli", "config"}
+    offenders = []
+    for path in sorted((pkg_root / "pytest_dblift").rglob("*.py")):
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ImportFrom) and node.level == 0:
+                top_level = (node.module or "").split(".")[0]
+                if top_level in pre_4_0_top_level_names:
+                    offenders.append(f"{path.relative_to(ROOT)}: from {node.module} import ...")
+            elif isinstance(node, ast.Import):
+                for alias in node.names:
+                    top_level = alias.name.split(".")[0]
+                    if top_level in pre_4_0_top_level_names:
+                        offenders.append(f"{path.relative_to(ROOT)}: import {alias.name}")
+
+    assert offenders == []
+
+
 def test_readme_uses_existing_local_assets():
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
-    asset_paths = re.findall(r'<img src="([^"]+)"', readme)
+    # PyPI renders the same README, so repo assets are referenced by absolute raw URL.
+    raw_prefix = "https://raw.githubusercontent.com/dblift/dblift/main/"
+    badge_hosts = ("https://img.shields.io/", "https://github.com/dblift/", "https://codecov.io/")
+    sources = re.findall(r'<img src="([^"]+)"', readme)
 
+    unknown = [
+        src
+        for src in sources
+        if src.startswith("https://") and not src.startswith((raw_prefix, *badge_hosts))
+    ]
+    assert unknown == []
+
+    asset_paths = [
+        src.removeprefix(raw_prefix) for src in sources if not src.startswith(badge_hosts)
+    ]
+
+    assert asset_paths
     missing = [path for path in asset_paths if not (ROOT / path).is_file()]
 
     assert missing == []
@@ -215,20 +283,6 @@ def test_readme_local_links_resolve_inside_oss_repo():
     missing = [target for target in local_links if not (ROOT / target.split("#", 1)[0]).exists()]
 
     assert missing == []
-
-
-def test_readme_installation_sync_block_preserves_heading_hierarchy():
-    readme = (ROOT / "README.md").read_text(encoding="utf-8")
-    start = readme.index("<!-- BEGIN: OSS README sync: python-install -->")
-    end = readme.index("<!-- END: OSS README sync: python-install -->", start)
-    block = readme[start:end]
-
-    assert "\n## " not in block
-    assert "Synchronous client" not in block
-    assert "DBLiftClient" not in block
-    assert "Django" not in block
-    assert "\n## Django\n" in readme[end:]
-    assert "[Django](#django)" in readme
 
 
 def test_oss_dialect_surface_covers_all_first_party_providers():

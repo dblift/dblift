@@ -7,12 +7,13 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
 
 from dblift.config import DbliftConfig
+from dblift.db.provider_interfaces import TransactionalProvider
 
 if TYPE_CHECKING:
     from dblift.core.migration.journals.migration_journal import MigrationJournal
     from dblift.core.migration.placeholders.placeholder_service import PlaceholderService
 
-from dblift.core.constants import SECONDS_TO_MILLISECONDS
+from dblift.core.constants import DEFAULT_MIGRATION_LOCK_TIMEOUT_SECONDS, SECONDS_TO_MILLISECONDS
 from dblift.core.logger import Log
 from dblift.core.logger.results import MigrateResult, MigrationInfo, MigrationSqlInfo
 from dblift.core.migration._type_match import migration_type_name
@@ -733,6 +734,15 @@ class MigrateCommand(BaseCommand):
 
         read_snapshot = self.state_manager.new_read_snapshot()
 
+        # SQLite only: widen busy_timeout for this command; the provider
+        # returns what undoes it (None when nothing was changed).
+        widen_busy_timeout = getattr(self.provider, "widen_busy_timeout", None)
+        restore_busy_timeout = (
+            widen_busy_timeout(DEFAULT_MIGRATION_LOCK_TIMEOUT_SECONDS)
+            if callable(widen_busy_timeout)
+            else None
+        )
+
         try:
             # Initialize and validate migrations
             validation_success, use_recursive, use_additional_dirs = (
@@ -787,24 +797,26 @@ class MigrateCommand(BaseCommand):
             if getattr(self, "validator", None) is None:
                 validation_success, validation_errors, validation_time = True, None, 0.0
             else:
+                validation_snapshot = self.state_manager.build_validation_snapshot(
+                    scripts_dir,
+                    "migrate",
+                    recursive=use_recursive,
+                    additional_dirs=use_additional_dirs or [],
+                    dir_recursive_map=dir_recursive_map,
+                    target_version=target_version,
+                    tags=tags,
+                    exclude_tags=exclude_tags,
+                    versions=versions,
+                    exclude_versions=exclude_versions,
+                    strict_mode=strict_mode,
+                    resolved_migrations=migration_state.resolved_objects,
+                    applied_migrations=migration_state.all_applied_objects,
+                    read_snapshot=read_snapshot,
+                )
                 validation_success, validation_errors, validation_time = (
                     self.migration_helpers.validate_migrations_for_migrate(
                         self.validator,
-                        scripts_dir,
-                        use_recursive,
-                        use_additional_dirs or [],
-                        target_version=target_version,
-                        tags=tags,
-                        exclude_tags=exclude_tags,
-                        versions=versions,
-                        exclude_versions=exclude_versions,
-                        # Validator discovery historically ignores per-directory recursion.
-                        # Keep that scope when the state catalog was resolved with a map.
-                        resolved_migrations=(
-                            migration_state.resolved_objects if not dir_recursive_map else None
-                        ),
-                        preloaded_records=migration_state.all_applied_objects,
-                        read_snapshot=read_snapshot,
+                        validation_snapshot,
                     )
                 )
             if not validation_success:
@@ -832,7 +844,8 @@ class MigrateCommand(BaseCommand):
                     self._log_command_completion("migrate", result)
                     return result
                 try:
-                    self.provider.commit_transaction()
+                    if isinstance(self.provider, TransactionalProvider):
+                        self.provider.commit_transaction()
                 except Exception as commit_error:
                     self.log.error(
                         f"Failed to commit mark-as-executed history records: {commit_error}"
@@ -972,3 +985,6 @@ class MigrateCommand(BaseCommand):
             result.set_error(f"Migration operation failed: {e}")
             self._log_command_completion("migrate", result)
             return result
+        finally:
+            if callable(restore_busy_timeout):
+                restore_busy_timeout()

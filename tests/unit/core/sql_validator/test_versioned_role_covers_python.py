@@ -19,7 +19,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from dblift.core.migration.migration import AppliedMigration, Migration
-from dblift.core.sql_validator._migration_filter import handle_baseline_filtering
+from dblift.core.migration.state.migration_selector import prune_baseline_migrations
 from dblift.core.sql_validator._strict_mode_validator import validate_strict_mode_rules
 from dblift.core.sql_validator.migration_validator import MigrationValidator, ValidationResult
 
@@ -71,7 +71,7 @@ def test_baseline_filtering_drops_pre_baseline_versioned_script(tmp_path: Path, 
     old = _script(tmp_path, f"V1__old{extension}")
     new = _script(tmp_path, f"V3__new{extension}")
 
-    kept = [s.script_name for s in handle_baseline_filtering(_validator(), [baseline, old, new])]
+    kept = [s.script_name for s in prune_baseline_migrations([baseline, old, new])]
 
     assert old.script_name not in kept
     assert new.script_name in kept

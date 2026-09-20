@@ -15,6 +15,7 @@ from dblift.core.migration.scripting.migration_script_manager import MigrationSc
 from dblift.core.migration.scripting.undo_script_generator._extractors import _UndoExtractorsMixin
 from dblift.core.migration.scripting.undo_script_generator._models import UndoStatement
 from dblift.core.migration.scripting.undo_script_generator._reversers import _UndoReversersMixin
+from dblift.core.migration.sql.migration_sql_parser import parse_migration_sql
 from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
 from dblift.core.sql_parser.parser_factory import SqlParserFactory
 
@@ -64,19 +65,8 @@ class UndoScriptGenerator(_UndoReversersMixin, _UndoExtractorsMixin):
             ValueError: If migration_path is not a versioned migration
             FileExistsError: If undo script exists and overwrite=False
         """
-        # Validate migration file
-        if not migration_path.exists():
-            raise FileNotFoundError(f"Migration file not found: {migration_path}")
-
         script_manager = MigrationScriptManager(self.logger or DbliftLogger())
-        if not script_manager.is_versioned_script_name(migration_path.name):
-            raise ValueError(
-                f"File is not a versioned migration: {migration_path.name}. "
-                "Expected a versioned migration filename (V*__description.<ext>)."
-            )
-
-        # Parse migration to get version and description
-        migration = Migration(script_path=migration_path, logger=self.logger)
+        migration = script_manager.load_migration_script(migration_path, require_versioned=True)
         if migration.format != MigrationFormat.SQL:
             raise ValueError(
                 f"Cannot auto-generate undo for {migration_path.name}: only SQL versioned "
@@ -193,7 +183,9 @@ class UndoScriptGenerator(_UndoReversersMixin, _UndoExtractorsMixin):
 
         if not parse_result.success or not parse_result.statements:
             # Fallback to simple statement splitting
-            statements = migration.parse_sql_statements(dialect=self.dialect)
+            statements = parse_migration_sql(
+                self.sql_analyzer, migration.content, self.logger or DbliftLogger()
+            )
             undo_statements = []
             for statement in reversed(statements):
                 undo_stmt = self._reverse_statement(statement)

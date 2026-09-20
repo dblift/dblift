@@ -19,6 +19,7 @@ from dblift.config import DbliftConfig
 from dblift.core.logger import Log
 from dblift.db.base_provider import NativeProvider
 from dblift.db.native_connection_manager import NativeConnectionManager
+from dblift.db.provider_interfaces import TransactionalProvider
 
 
 class _SqlAlchemyQueryExecutor:
@@ -92,7 +93,7 @@ class _SqlAlchemyQueryExecutor:
         return q.quote_open, q.quote_close, q.quote_close * 2
 
 
-class SqlAlchemyProvider(NativeProvider):
+class SqlAlchemyProvider(NativeProvider, TransactionalProvider):
     """Abstract SQLAlchemy-backed data-access base.
 
     Owns connection lifecycle (via NativeConnectionManager), statement

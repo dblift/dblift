@@ -29,6 +29,7 @@ from unittest.mock import MagicMock, call, patch
 from dblift.core.logger.results import BaselineResult, ValidateResult
 from dblift.core.migration.commands.baseline_command import BaselineCommand
 from dblift.core.migration.commands.validate_command import ValidateCommand
+from dblift.db.provider_interfaces import TransactionalProvider
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -47,6 +48,7 @@ def _make_baseline_cmd(
     )
     _log = log or MagicMock()
     _provider = provider or MagicMock()
+    _provider.__class__ = TransactionalProvider
     _hm = history_manager or MagicMock()
     _stm = MagicMock()
     _stm.get_applied_migration_records.side_effect = _hm.get_applied_migration_records
@@ -358,7 +360,7 @@ class TestValidateCommandHappyPath(unittest.TestCase):
         validation_result.success = success
         validation_result.error_message = error_message
         validation_result.issues = issues or []
-        validator.validate_migrations.return_value = validation_result
+        validator.validate_snapshot.return_value = validation_result
         return validator
 
     def test_success_returns_true(self):
@@ -402,9 +404,10 @@ class TestValidateCommandHappyPath(unittest.TestCase):
             with patch.object(cmd, "_log_command_completion"):
                 cmd.execute(scripts_dir)
 
-        validator.validate_migrations.assert_called_once()
-        call_args = validator.validate_migrations.call_args
-        self.assertEqual(call_args[0][0], scripts_dir)
+        validator.validate_snapshot.assert_called_once()
+        call_args = validator.validate_snapshot.call_args
+        self.assertIs(call_args[0][0], cmd.state_manager.build_validation_snapshot.return_value)
+        self.assertEqual(cmd.state_manager.build_validation_snapshot.call_args.args[0], scripts_dir)
 
     def test_filters_passed_to_validator(self):
         validator = self._make_validator(success=True)
@@ -419,7 +422,7 @@ class TestValidateCommandHappyPath(unittest.TestCase):
                     exclude_tags="wip",
                 )
 
-        call_kwargs = validator.validate_migrations.call_args.kwargs
+        call_kwargs = cmd.state_manager.build_validation_snapshot.call_args.kwargs
         self.assertEqual(call_kwargs.get("target_version"), "3.0")
         self.assertEqual(call_kwargs.get("tags"), "feature")
         self.assertEqual(call_kwargs.get("exclude_tags"), "wip")
@@ -432,7 +435,7 @@ class TestValidateCommandFailurePaths(unittest.TestCase):
         validation_result.success = success
         validation_result.error_message = error_message
         validation_result.issues = issues or []
-        validator.validate_migrations.return_value = validation_result
+        validator.validate_snapshot.return_value = validation_result
         return validator
 
     def test_validation_failure_returns_false(self):
@@ -499,7 +502,7 @@ class TestValidateCommandConnectionError(unittest.TestCase):
         validation_result.success = True
         validation_result.error_message = ""
         validation_result.issues = []
-        validator.validate_migrations.return_value = validation_result
+        validator.validate_snapshot.return_value = validation_result
 
         cmd = _make_validate_cmd(log=log, history_manager=hm, validator=validator)
 
@@ -509,7 +512,7 @@ class TestValidateCommandConnectionError(unittest.TestCase):
 
         self.assertFalse(result.success)
         self.assertIn("no DB", result.error_message)
-        validator.validate_migrations.assert_not_called()
+        validator.validate_snapshot.assert_not_called()
 
     def test_history_table_bootstrap_failure_logs_clean_error_message(self):
         """The bootstrap failure should be logged as a clean, single-line
@@ -550,13 +553,13 @@ class TestValidateCommandConnectionError(unittest.TestCase):
 
         self.assertFalse(result.success)
         self.assertIn("no DB", result.error_message)
-        validator.validate_migrations.assert_not_called()
+        validator.validate_snapshot.assert_not_called()
 
 
 class TestValidateCommandUnexpectedException(unittest.TestCase):
     def test_validator_exception_caught_returns_error(self):
         validator = MagicMock()
-        validator.validate_migrations.side_effect = RuntimeError("internal validator crash")
+        validator.validate_snapshot.side_effect = RuntimeError("internal validator crash")
 
         cmd = _make_validate_cmd(validator=validator)
 
@@ -569,7 +572,7 @@ class TestValidateCommandUnexpectedException(unittest.TestCase):
 
     def test_validate_result_target_schema_always_set(self):
         validator = MagicMock()
-        validator.validate_migrations.side_effect = RuntimeError("crash")
+        validator.validate_snapshot.side_effect = RuntimeError("crash")
 
         cmd = _make_validate_cmd(validator=validator)
 
@@ -587,7 +590,7 @@ class TestValidateCommandWithFilters(unittest.TestCase):
         validation_result.success = True
         validation_result.error_message = ""
         validation_result.issues = []
-        validator.validate_migrations.return_value = validation_result
+        validator.validate_snapshot.return_value = validation_result
 
         cmd = _make_validate_cmd(validator=validator)
         extra_dirs = [Path("/extra1"), Path("/extra2")]
@@ -600,7 +603,7 @@ class TestValidateCommandWithFilters(unittest.TestCase):
                     additional_dirs=extra_dirs,
                 )
 
-        call_kwargs = validator.validate_migrations.call_args.kwargs
+        call_kwargs = cmd.state_manager.build_validation_snapshot.call_args.kwargs
         self.assertFalse(call_kwargs.get("recursive", True))
         self.assertEqual(call_kwargs.get("additional_dirs"), extra_dirs)
 
@@ -610,7 +613,7 @@ class TestValidateCommandWithFilters(unittest.TestCase):
         validation_result.success = True
         validation_result.error_message = ""
         validation_result.issues = []
-        validator.validate_migrations.return_value = validation_result
+        validator.validate_snapshot.return_value = validation_result
 
         cmd = _make_validate_cmd(validator=validator)
 
@@ -622,7 +625,7 @@ class TestValidateCommandWithFilters(unittest.TestCase):
                     exclude_versions="3.0",
                 )
 
-        call_kwargs = validator.validate_migrations.call_args.kwargs
+        call_kwargs = cmd.state_manager.build_validation_snapshot.call_args.kwargs
         self.assertEqual(call_kwargs.get("versions"), "1.0,2.0")
         self.assertEqual(call_kwargs.get("exclude_versions"), "3.0")
 

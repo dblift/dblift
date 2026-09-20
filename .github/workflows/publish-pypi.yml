@@ -68,6 +68,27 @@ jobs:
       - name: Build pytest-dblift distributions
         run: python -m build packages/pytest-dblift
 
+      - name: Smoke-test the built pytest-dblift wheel against the built dblift wheel
+        # The editable installs in the `test` job never exercise the actual
+        # wheel metadata, so a bad floor (like pytest-dblift 0.1.0's
+        # `dblift>=3.9`, which let pip pair it with a dblift wheel missing
+        # `dblift.api`) reaches PyPI undetected. Install both built wheels
+        # into a clean venv and run pytest for real.
+        run: |
+          python -m venv /tmp/pytest-dblift-smoke-venv
+          /tmp/pytest-dblift-smoke-venv/bin/python -m pip install --upgrade pip
+          /tmp/pytest-dblift-smoke-venv/bin/python -m pip install dist/*.whl packages/pytest-dblift/dist/*.whl
+          mkdir -p /tmp/pytest-dblift-smoke/migrations
+          cat > /tmp/pytest-dblift-smoke/migrations/V1__init.sql <<'EOF'
+          create table t (id integer primary key);
+          EOF
+          cat > /tmp/pytest-dblift-smoke/test_smoke.py <<'EOF'
+          def test_dblift_migrates(dblift_migrated_db):
+              assert dblift_migrated_db.info().pending_migrations == []
+          EOF
+          cd /tmp/pytest-dblift-smoke
+          /tmp/pytest-dblift-smoke-venv/bin/python -m pytest test_smoke.py
+
       - name: Check whether pytest-dblift version is on PyPI
         id: pytest_dblift_pypi
         run: |

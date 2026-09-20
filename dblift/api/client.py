@@ -1,5 +1,6 @@
 """Main client for programmatic access to DBLift."""
 
+import threading
 from functools import wraps
 from pathlib import Path
 from types import TracebackType
@@ -10,9 +11,11 @@ from typing import (
     List,
     Optional,
     Self,
+    Tuple,
     TypeVar,
     Union,
     cast,
+    overload,
 )
 
 from dblift.api._client_factory import (
@@ -90,30 +93,97 @@ def _make_premium_stub_method(api_method_name: str) -> Callable[..., Any]:
     return _stub
 
 
-def _with_client_emitter(method: _F) -> _F:
-    """Bind ``self.events`` as the active emitter for the duration of *method*.
+@overload
+def _with_client_emitter(method: _F) -> _F: ...  # noqa: E704
 
-    Cursor-bot finding (api/client.py:141): the class docstring claimed
-    "every public operation wraps its body in ``use_client_emitter``",
-    but only ``migrate`` and ``undo`` actually did. Any core-layer
-    ``emit_event`` raised from ``clean`` / ``info`` / ``validate`` /
-    ``repair`` / ``baseline`` / ``import_flyway`` would land on the process-wide
-    default emitter, breaking the per-client isolation guarantee.
-    Decorating every public operation restores that invariant once and
-    keeps it enforced by location instead of by convention.
+
+@overload
+def _with_client_emitter(  # noqa: E704
+    method: None = None, *, mutating: bool = True
+) -> Callable[[_F], _F]: ...
+
+
+def _with_client_emitter(
+    method: Optional[_F] = None, *, mutating: bool = True
+) -> Union[_F, Callable[[_F], _F]]:
+    """Bind ``self.events``, serialize *method* via ``self._operation_lock``
+    (an ``RLock``, so a listener may nest a *read-only* call), and refuse a
+    *mutating* call (the default; ``info``/``validate`` pass
+    ``mutating=False``) reentered on the same thread — it would otherwise
+    run silently underneath the outer call and make its result stale.
+    ``self._thread_state.stack`` (thread-local) tracks the active
+    ``(name, wrapper)`` entries on this thread, instead of inspecting the
+    call stack, so a subclass override calling ``super().<name>()`` (a
+    *different* wrapper for the *same* operation) is distinguished from a
+    listener re-entering the same, already-active wrapper.
     """
 
-    @wraps(method)
-    def wrapper(self: "DBLiftClient", *args: Any, **kwargs: Any) -> Any:
-        # ``getattr`` instead of ``self.events`` so tests that bypass
-        # ``__init__`` (e.g. ``DBLiftClient.__new__`` followed by direct
-        # method calls) keep working — ``use_client_emitter(None)`` is a
-        # documented no-op.
-        emitter = getattr(self, "events", None)
-        with use_client_emitter(emitter):
-            return method(self, *args, **kwargs)
+    def decorator(inner: _F) -> _F:
+        @wraps(inner)
+        def wrapper(self: "DBLiftClient", *args: Any, **kwargs: Any) -> Any:
+            # ``getattr`` so tests that bypass ``__init__`` (e.g.
+            # ``DBLiftClient.__new__``) keep working: no lock/tracking is
+            # applied when the attributes aren't there.
+            emitter = getattr(self, "events", None)
+            lock = getattr(self, "_operation_lock", None)
+            thread_state = getattr(self, "_thread_state", None)
+            if lock is None or thread_state is None:
+                with use_client_emitter(emitter):
+                    return inner(self, *args, **kwargs)
 
-    return cast(_F, wrapper)
+            stack = getattr(thread_state, "stack", [])
+            if mutating:
+                _raise_if_reentrant(stack, inner.__name__, wrapper)
+            with lock:
+                thread_state.stack = stack + [(inner.__name__, wrapper)]
+                try:
+                    with use_client_emitter(emitter):
+                        return inner(self, *args, **kwargs)
+                finally:
+                    thread_state.stack = stack
+
+        return cast(_F, wrapper)
+
+    if method is not None:
+        return decorator(method)
+    return decorator
+
+
+def _raise_if_reentrant(
+    stack: List[Tuple[str, Callable[..., Any]]],
+    name: str,
+    wrapper: Optional[Callable[..., Any]] = None,
+) -> None:
+    """Refuse a call reentered on the thread that already holds
+    ``self._operation_lock`` for another operation on this client.
+
+    With ``wrapper`` (a mutating operation checking itself): reentry is
+    allowed when every active entry is the *same* operation name and this
+    call's wrapper isn't already on the stack — that's a subclass's
+    decorated override calling ``super().<name>()``, not re-entry, because
+    ``super()`` reaches a different wrapped function. A listener calling
+    the same method resolves to the same (most-derived) wrapper, which
+    *is* already on the stack, so it is still refused.
+
+    Without ``wrapper`` (``close``/``__exit__``): any active entry refuses
+    — tearing down the connection mid-operation is never safe, regardless
+    of which operation is in progress.
+    """
+    if not stack:
+        return
+    if wrapper is not None:
+        same_operation = all(entry_name == name for entry_name, _ in stack)
+        reentered = any(entry_wrapper is wrapper for _, entry_wrapper in stack)
+        if same_operation and not reentered:
+            return
+    raise RuntimeError(
+        f"DBLiftClient.{name}() was called while this thread is already "
+        "inside an operation on the same client (for example, from an "
+        "event listener). A mutating call cannot be nested inside "
+        "another: the outer operation's view of what is pending/applied "
+        "would go stale. Read-only calls (info, validate) may be nested "
+        "safely, and a decorated override may still call super()."
+    )
 
 
 class DBLiftClient:
@@ -132,6 +202,12 @@ class DBLiftClient:
         >>> # Apply migrations
         >>> result = client.migrate()
         >>> print(f"Applied {len(result.migrations_applied)} migrations")
+
+    Thread safety:
+        Calls on one client from multiple threads are serialized; a listener
+        may nest a read-only call but not a mutating one or ``close()``. See
+        the "Thread Safety" section of the API reference for the full
+        contract.
     """
 
     def __init__(
@@ -186,6 +262,15 @@ class DBLiftClient:
 
         # Normalize dialect once at boundary; methods use self.dialect directly
         self.dialect = self._get_dialect_for_sql_generation()
+
+        # Serializes public operations on this client (see
+        # ``@_with_client_emitter``). RLock so a listener may nest a
+        # read-only call on the same thread.
+        self._operation_lock = threading.RLock()
+
+        # Per-thread reentrancy stack used by ``@_with_client_emitter``
+        # (see there for what it tracks and why).
+        self._thread_state = threading.local()
 
         # Event system for IDE/tooling. Each client owns a per-instance emitter
         # so listeners registered on one client never see events raised by a
@@ -257,6 +342,28 @@ class DBLiftClient:
 
         return _default_splitter_dialect().lower()
 
+    def _resolve_script_options(
+        self,
+        recursive: Optional[bool],
+        additional_dirs: Optional[List[Path]],
+        dir_recursive_map: Optional[Dict[Path, bool]],
+    ) -> tuple[bool, List[Path], Optional[Dict[Path, bool]]]:
+        """Use configured directory policies unless the call overrides them.
+
+        An explicit per-directory map wins over the global recursive flag.
+        Neither the caller's map nor the client's config is mutated.
+        """
+        directories = self.config.migrations.get_directory_configs()
+        if additional_dirs is None:
+            additional_dirs = [Path(directory.path) for directory in directories]
+        if recursive is None:
+            recursive = self.config.migrations.recursive
+            if dir_recursive_map is None:
+                dir_recursive_map = {
+                    Path(directory.path): directory.recursive for directory in directories
+                }
+        return recursive, additional_dirs, dir_recursive_map
+
     @_with_client_emitter
     def migrate(
         self,
@@ -270,7 +377,7 @@ class DBLiftClient:
         show_sql: bool = False,
         show_query_results: bool = False,
         placeholders: Optional[Dict[str, Any]] = None,
-        recursive: bool = True,
+        recursive: Optional[bool] = None,
         additional_dirs: Optional[List[Path]] = None,
         **kwargs: Any,
     ) -> MigrateResult:
@@ -287,7 +394,7 @@ class DBLiftClient:
             show_sql: Include migration SQL statements in outputs and reports
             show_query_results: Include rows returned by SELECT statements in outputs and reports
             placeholders: Placeholder values for migration scripts
-            recursive: Search scripts directory recursively
+            recursive: Override recursive search for all directories; None uses config
             additional_dirs: Additional script directories
             **kwargs: Additional options
 
@@ -311,6 +418,9 @@ class DBLiftClient:
             # method by ``@_with_client_emitter`` — core-layer ``emit_event``
             # calls (e.g. ``migration.script.*``) land here instead of the
             # process-wide default emitter shared by every client instance.
+            recursive, additional_dirs, dir_recursive_map = self._resolve_script_options(
+                recursive, additional_dirs, kwargs.pop("dir_recursive_map", None)
+            )
             result = self.executor.migrate(
                 scripts_dir=self._get_scripts_dir(),
                 target_version=target_version,
@@ -324,6 +434,7 @@ class DBLiftClient:
                 show_query_results=show_query_results,
                 placeholders=placeholders,
                 recursive=recursive,
+                dir_recursive_map=dir_recursive_map,
                 additional_dirs=additional_dirs,
                 **kwargs,
             )
@@ -364,7 +475,7 @@ class DBLiftClient:
             )
             raise
 
-    @_with_client_emitter
+    @_with_client_emitter(mutating=False)
     def info(
         self,
         target_version: Optional[str] = None,
@@ -372,7 +483,7 @@ class DBLiftClient:
         exclude_tags: Optional[str] = None,
         versions: Optional[str] = None,
         exclude_versions: Optional[str] = None,
-        recursive: bool = True,
+        recursive: Optional[bool] = None,
         additional_dirs: Optional[List[Path]] = None,
         display_human: bool = False,
         **kwargs: Any,
@@ -385,7 +496,7 @@ class DBLiftClient:
             exclude_tags: Comma-separated tags to exclude (e.g., "tag1,tag2")
             versions: Comma-separated versions to include (e.g., "1.0.0,1.1.0")
             exclude_versions: Comma-separated versions to exclude (e.g., "1.0.0,1.1.0")
-            recursive: Search scripts directory recursively
+            recursive: Override recursive search for all directories; None uses config
             additional_dirs: Additional script directories
             display_human: When True, also prints a human-readable migration
                 table to stdout. Defaults to False so programmatic API callers
@@ -406,6 +517,9 @@ class DBLiftClient:
         )
 
         try:
+            recursive, additional_dirs, dir_recursive_map = self._resolve_script_options(
+                recursive, additional_dirs, kwargs.pop("dir_recursive_map", None)
+            )
             result = self.executor.info(
                 scripts_dir=self._get_scripts_dir(),
                 target_version=target_version,
@@ -414,6 +528,7 @@ class DBLiftClient:
                 versions=versions,
                 exclude_versions=exclude_versions,
                 recursive=recursive,
+                dir_recursive_map=dir_recursive_map,
                 additional_dirs=additional_dirs,
                 display_human=display_human,
                 **kwargs,
@@ -426,7 +541,7 @@ class DBLiftClient:
             self.events.emit(EventType.INFO_FAILED, {"error": str(e)})
             raise
 
-    @_with_client_emitter
+    @_with_client_emitter(mutating=False)
     def validate(
         self,
         target_version: Optional[str] = None,
@@ -434,7 +549,7 @@ class DBLiftClient:
         exclude_tags: Optional[str] = None,
         versions: Optional[str] = None,
         exclude_versions: Optional[str] = None,
-        recursive: bool = True,
+        recursive: Optional[bool] = None,
         additional_dirs: Optional[List[Path]] = None,
         **kwargs: Any,
     ) -> ValidateResult:
@@ -446,7 +561,7 @@ class DBLiftClient:
             exclude_tags: Comma-separated tags to exclude (e.g., "tag1,tag2")
             versions: Comma-separated versions to include (e.g., "1.0.0,1.1.0")
             exclude_versions: Comma-separated versions to exclude (e.g., "1.0.0,1.1.0")
-            recursive: Search scripts directory recursively
+            recursive: Override recursive search for all directories; None uses config
             additional_dirs: Additional script directories
             **kwargs: Additional options
 
@@ -457,6 +572,9 @@ class DBLiftClient:
         self.events.emit(EventType.VALIDATION_STARTED, {"dialect": getattr(self, "dialect", None)})
 
         try:
+            recursive, additional_dirs, dir_recursive_map = self._resolve_script_options(
+                recursive, additional_dirs, kwargs.pop("dir_recursive_map", None)
+            )
             result = self.executor.validate(
                 scripts_dir=self._get_scripts_dir(),
                 target_version=target_version,
@@ -465,6 +583,7 @@ class DBLiftClient:
                 versions=versions,
                 exclude_versions=exclude_versions,
                 recursive=recursive,
+                dir_recursive_map=dir_recursive_map,
                 additional_dirs=additional_dirs,
                 **kwargs,
             )
@@ -494,7 +613,7 @@ class DBLiftClient:
         show_sql: bool = False,
         show_query_results: bool = False,
         placeholders: Optional[Dict[str, Any]] = None,
-        recursive: bool = True,
+        recursive: Optional[bool] = None,
         additional_dirs: Optional[List[Path]] = None,
         **kwargs: Any,
     ) -> "UndoResult":
@@ -510,7 +629,7 @@ class DBLiftClient:
             show_sql: Include undo SQL statements in outputs and reports
             show_query_results: Include rows returned by SELECT statements in outputs and reports
             placeholders: Placeholder values for migration scripts
-            recursive: Search scripts directory recursively
+            recursive: Override recursive search for all directories; None uses config
             additional_dirs: Additional script directories
             **kwargs: Additional options
 
@@ -530,6 +649,9 @@ class DBLiftClient:
 
         try:
             # ``self.events`` is bound by ``@_with_client_emitter``.
+            recursive, additional_dirs, dir_recursive_map = self._resolve_script_options(
+                recursive, additional_dirs, kwargs.pop("dir_recursive_map", None)
+            )
             result = self.executor.undo(
                 scripts_dir=self._get_scripts_dir(),
                 target_version=target_version,
@@ -542,6 +664,7 @@ class DBLiftClient:
                 show_query_results=show_query_results,
                 placeholders=placeholders,
                 recursive=recursive,
+                dir_recursive_map=dir_recursive_map,
                 additional_dirs=additional_dirs,
                 **kwargs,
             )
@@ -574,6 +697,8 @@ class DBLiftClient:
             )
             raise
 
+    # Mutating on purpose: it emits MIGRATION_* events, so a listener
+    # nesting it would re-trigger itself.
     @_with_client_emitter
     def generate_undo_script(
         self,
@@ -612,6 +737,8 @@ class DBLiftClient:
             overwrite=overwrite,
         )
 
+    # Mutating on purpose: it emits MIGRATION_* events, so a listener
+    # nesting it would re-trigger itself.
     @_with_client_emitter
     def generate_undo_scripts(
         self,
@@ -664,7 +791,7 @@ class DBLiftClient:
     def clean(
         self,
         dry_run: bool = False,
-        recursive: bool = True,
+        recursive: Optional[bool] = None,
         additional_dirs: Optional[List[Path]] = None,
         clean_enabled: bool = False,
         show_query_results: bool = False,
@@ -674,7 +801,7 @@ class DBLiftClient:
 
         Args:
             dry_run: If True, don't actually clean the database
-            recursive: Search scripts directory recursively
+            recursive: Override recursive search for all directories; None uses config
             additional_dirs: Additional script directories
             clean_enabled: If True, allow destructive clean even when config disables it
             show_query_results: Include rows returned by SELECT statements in outputs and reports
@@ -693,10 +820,14 @@ class DBLiftClient:
         )
 
         try:
+            recursive, additional_dirs, dir_recursive_map = self._resolve_script_options(
+                recursive, additional_dirs, kwargs.pop("dir_recursive_map", None)
+            )
             result = self.executor.clean(
                 scripts_dir=self._get_scripts_dir(),
                 dry_run=dry_run,
                 recursive=recursive,
+                dir_recursive_map=dir_recursive_map,
                 additional_dirs=additional_dirs,
                 clean_enabled=clean_enabled,
                 show_query_results=show_query_results,
@@ -795,7 +926,7 @@ class DBLiftClient:
     def repair(
         self,
         dry_run: bool = False,
-        recursive: bool = True,
+        recursive: Optional[bool] = None,
         additional_dirs: Optional[List[Path]] = None,
         dir_recursive_map: Optional[Dict[Path, bool]] = None,
         **kwargs: Any,
@@ -804,7 +935,7 @@ class DBLiftClient:
 
         Args:
             dry_run: If True, don't actually repair
-            recursive: Search scripts directory recursively
+            recursive: Override recursive search for all directories; None uses config
             additional_dirs: Additional script directories
             dir_recursive_map: Map of directories to recursive settings
             **kwargs: Additional options
@@ -822,6 +953,9 @@ class DBLiftClient:
         )
 
         try:
+            recursive, additional_dirs, dir_recursive_map = self._resolve_script_options(
+                recursive, additional_dirs, dir_recursive_map
+            )
             result = self.executor.repair(
                 scripts_dir=self._get_scripts_dir(),
                 dry_run=dry_run,
@@ -1067,7 +1201,17 @@ class DBLiftClient:
             >>> with DBLiftClient.from_config_file("dblift.yaml") as client:
             ...     result = client.migrate()
             ...     # Connection automatically closed on exit
+
+        Takes ``self._operation_lock``, like every operation. Harmless to
+        nest, unlike ``__exit__``, so it does not refuse a reentrant call.
         """
+        lock = getattr(self, "_operation_lock", None)
+        if lock is None:
+            return self._enter_unlocked()
+        with lock:
+            return self._enter_unlocked()
+
+    def _enter_unlocked(self) -> "DBLiftClient":
         # Ensure provider has a connection (avoid creating when already connected)
         if isinstance(self.provider, ConnectionProvider):
             try:
@@ -1096,7 +1240,27 @@ class DBLiftClient:
             exc_type: Exception type if an exception occurred, None otherwise
             exc_val: Exception value if an exception occurred, None otherwise
             exc_tb: Exception traceback if an exception occurred, None otherwise
+
+        Refuses a reentrant call on this thread (``close()`` calls this
+        method directly, so it's covered too); otherwise takes
+        ``self._operation_lock``, blocking until another thread's
+        operation finishes.
         """
+        thread_state = getattr(self, "_thread_state", None)
+        if thread_state is not None:
+            _raise_if_reentrant(getattr(thread_state, "stack", []), "close")
+        lock = getattr(self, "_operation_lock", None)
+        if lock is None:
+            return self._exit_unlocked(exc_type, exc_val, exc_tb)
+        with lock:
+            return self._exit_unlocked(exc_type, exc_val, exc_tb)
+
+    def _exit_unlocked(
+        self,
+        exc_type: Optional[type[BaseException]],
+        exc_val: Optional[BaseException],
+        exc_tb: Optional[TracebackType],
+    ) -> None:
         if exc_type is not None:
             # Exception occurred, rollback any pending transaction
             self.logger.warning(f"Exception in DBLiftClient context: {exc_val}")

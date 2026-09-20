@@ -27,7 +27,6 @@ def _make_sql_migration(content: str) -> Migration:
     m.format = MigrationFormat.SQL
     m.content = content
     m.script_name = "V1__test.sql"
-    m.parse_sql_statements.return_value = ["SELECT 1 FROM DUAL"]
     return m
 
 
@@ -60,11 +59,8 @@ class TestSqlplusContextExtraction:
 
         engine._parse_sql_statements(migration, result)
 
-        # content_override passed to parse_sql_statements must have substitution applied
-        call_kwargs = migration.parse_sql_statements.call_args
-        content_arg = call_kwargs.kwargs.get("content_override") or (
-            call_kwargs.args[1] if len(call_kwargs.args) > 1 else None
-        )
+        # The analyzer receives script text after SQLPlus substitution.
+        content_arg = engine.sql_analyzer.split_statements.call_args.args[0]
         assert content_arg is not None
         assert "&owner" not in content_arg
         assert "APP_SCHEMA" in content_arg

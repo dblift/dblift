@@ -20,7 +20,10 @@ from dblift.core.exceptions import CallbackExecutionError, TransactionAbortedErr
 from dblift.core.logger import Log, NullLog
 from dblift.core.logger.console import render_records_table, rows_to_columns_and_values
 from dblift.core.logger.results import CallbackExecution, MigrationInfo, OperationResult
-from dblift.core.migration.executor.transaction_policy import TransactionPolicy
+from dblift.core.migration.executor.transaction_policy import (
+    TransactionPolicy,
+    TransactionPolicyDecision,
+)
 from dblift.core.migration.executors import MigrationExecutorFactory
 from dblift.core.migration.formats import MigrationFormat
 from dblift.core.migration.history.migration_history_manager import MigrationHistoryManager
@@ -29,6 +32,11 @@ from dblift.core.migration.placeholders.placeholder_service import PlaceholderSe
 from dblift.core.migration.sql.execution_statement import (
     ExecutionStatement,
     classify_execution_statement,
+)
+from dblift.core.migration.sql.migration_sql_parser import (
+    fallback_migration_sql,
+    parse_migration_sql,
+    resolve_migration_sql_dialect,
 )
 from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
 from dblift.core.migration.sql.sql_execution_service import SqlExecutionService
@@ -157,8 +165,7 @@ class ExecutionEngine:
         if statements is None:
             return
 
-        execution_statements = self._classify_execution_statements(statements)
-        policy = self.transaction_policy.decide(execution_statements, self.provider)
+        policy = self._plan_sql_execution(statements)
         if policy.unsupported_mixed_mode:
             result.set_error(
                 f"Migration {migration.script_name} mixes transactional and autocommit-only statements: {policy.reason}"
@@ -206,7 +213,7 @@ class ExecutionEngine:
             # transaction open. The re-raise on the last line preserves the original
             # type for upstream classification — broad catch here, typed handling
             # happens at the call site.
-            if transaction_started:
+            if transaction_started and isinstance(self.provider, TransactionalProvider):
                 try:
                     self.provider.rollback_transaction()
                     self.log.debug(
@@ -219,6 +226,10 @@ class ExecutionEngine:
                         f"Could not rollback transaction after unexpected error: {rollback_e}"
                     )
             raise
+
+    def _plan_sql_execution(self, statements: List[str]) -> TransactionPolicyDecision:
+        execution_statements = self._classify_execution_statements(statements)
+        return self.transaction_policy.decide(execution_statements, self.provider)
 
     def _classify_execution_statements(self, statements: List[str]) -> List[ExecutionStatement]:
         """Attach transaction metadata to executable SQL statements."""
@@ -309,70 +320,88 @@ class ExecutionEngine:
             List of SQL statements, or None if parsing fails (result.set_error called).
         """
         try:
-            dialect_key: Optional[str] = None
-            if self.config is not None:
-                db = getattr(self.config, "database", None)
-                raw_type = getattr(db, "type", None) if db is not None else None
-                if raw_type is not None:
-                    # Prefer .value (works for real DatabaseType enums and mock stubs alike).
-                    # Fall back to str() for plain-string config values.
-                    _raw_val = getattr(raw_type, "value", None)
-                    if _raw_val is not None:
-                        dialect_key = str(_raw_val).strip().lower()
-                    else:
-                        dialect_key = str(raw_type).strip().lower()  # lint: allow-enum-str
-                    # Only normalize SQL Server aliases (preserves original behaviour
-                    # where other aliases like "postgres" pass through unchanged).
-                    # The SQL-Server-family check is a quirks capability
-                    # (``is_sqlserver_family``) set by the SQL Server plugin, so
-                    # this branch carries no hardcoded dialect-name literal. Only
-                    # SQL Server aliases (``mssql``/``tsql``/``sql_server``) are
-                    # canonicalised; other aliases such as ``postgres`` pass
-                    # through unchanged.
-                    if ProviderRegistry.get_quirks(dialect_key).is_sqlserver_family:
-                        dialect_key = ProviderRegistry.canonical_dialect_name(dialect_key)
-            if not dialect_key:
-                dialect_key = self.sql_analyzer.dialect
-
-            # Substitute placeholders in content BEFORE parsing so the tokeniser never
-            # sees raw ${...} fragments, which it would split from adjacent characters.
-            content_override: Optional[str] = None
-            if placeholder_service:
-                content_override = placeholder_service.replace_placeholders(migration.content)
-
-            # Dialects with script-level preprocessing (Oracle SQL*Plus today) get their
-            # context extracted + variable substitution + directive termination applied
-            # via quirks hooks. Must run after placeholder substitution so ${...}
-            # fragments are already resolved.
-            self._current_sqlplus_ctx = None
-            quirks = ProviderRegistry.get_quirks(dialect_key)
-            if quirks.supports_sqlplus_preprocessing:
-                base = content_override if content_override is not None else migration.content
-                ctx = quirks.extract_script_context(base)
-                self._current_sqlplus_ctx = ctx
-                for msg in getattr(ctx, "prompts", []) or []:
-                    self.log.info(f"[PROMPT] {msg}")
-                # Append ';' to directive lines (SET, DEFINE, PROMPT, WHENEVER SQLERROR …)
-                # so the tokeniser does not merge them with the next DDL/DML. Without this,
-                # ``SET SERVEROUTPUT ON\nCREATE TABLE ...`` becomes a single statement that
-                # the driver rejects (or that ``is_script_directive`` filters wholesale, dropping
-                # the user's CREATE TABLE).
-                terminated = quirks.terminate_script_directives(base)
-                substituted = quirks.apply_script_substitution(terminated, ctx)
-                if substituted != base:
-                    content_override = substituted
-
-            return migration.parse_sql_statements(
-                dialect=dialect_key, content_override=content_override
-            )
-        except Exception as e:
-            self.log.error(
-                f"Failed to parse SQL for {migration.script_name}: {to_python_string(e)}"
-            )
-            result.set_error(
-                f"Failed to parse SQL for {migration.script_name}: {to_python_string(e)}"
-            )
+            return self._prepare_sql_statements(migration, placeholder_service=placeholder_service)
+        except Exception as exc:
+            message = f"Failed to parse SQL for {migration.script_name}: {to_python_string(exc)}"
+            self.log.error(message)
+            result.set_error(message)
             return None
+
+    def _prepare_sql_statements(
+        self,
+        migration: Migration,
+        placeholder_service: Optional[PlaceholderService] = None,
+    ) -> List[str]:
+        """Prepare execution SQL without converting parsing exceptions into result errors."""
+        dialect_key: Optional[str] = None
+        if self.config is not None:
+            db = getattr(self.config, "database", None)
+            raw_type = getattr(db, "type", None) if db is not None else None
+            if raw_type is not None:
+                # Prefer .value (works for real DatabaseType enums and mock stubs alike).
+                # Fall back to str() for plain-string config values.
+                _raw_val = getattr(raw_type, "value", None)
+                if _raw_val is not None:
+                    dialect_key = str(_raw_val).strip().lower()
+                else:
+                    dialect_key = str(raw_type).strip().lower()  # lint: allow-enum-str
+                # Only normalize SQL Server aliases (preserves original behaviour
+                # where other aliases like "postgres" pass through unchanged).
+                # The SQL-Server-family check is a quirks capability
+                # (``is_sqlserver_family``) set by the SQL Server plugin, so
+                # this branch carries no hardcoded dialect-name literal. Only
+                # SQL Server aliases (``mssql``/``tsql``/``sql_server``) are
+                # canonicalised; other aliases such as ``postgres`` pass
+                # through unchanged.
+                if ProviderRegistry.get_quirks(dialect_key).is_sqlserver_family:
+                    dialect_key = ProviderRegistry.canonical_dialect_name(dialect_key)
+        if not dialect_key:
+            dialect_key = self.sql_analyzer.dialect
+
+        # Substitute placeholders in content BEFORE parsing so the tokeniser never
+        # sees raw ${...} fragments, which it would split from adjacent characters.
+        content_override: Optional[str] = None
+        if placeholder_service:
+            content_override = placeholder_service.replace_placeholders(migration.content)
+
+        # Dialects with script-level preprocessing (Oracle SQL*Plus today) get their
+        # context extracted + variable substitution + directive termination applied
+        # via quirks hooks. Must run after placeholder substitution so ${...}
+        # fragments are already resolved.
+        self._current_sqlplus_ctx = None
+        quirks = ProviderRegistry.get_quirks(dialect_key)
+        if quirks.supports_sqlplus_preprocessing:
+            base = content_override if content_override is not None else migration.content
+            ctx = quirks.extract_script_context(base)
+            self._current_sqlplus_ctx = ctx
+            for msg in getattr(ctx, "prompts", []) or []:
+                self.log.info(f"[PROMPT] {msg}")
+            # Append ';' to directive lines (SET, DEFINE, PROMPT, WHENEVER SQLERROR …)
+            # so the tokeniser does not merge them with the next DDL/DML. Without this,
+            # ``SET SERVEROUTPUT ON\nCREATE TABLE ...`` becomes a single statement that
+            # the driver rejects (or that ``is_script_directive`` filters wholesale, dropping
+            # the user's CREATE TABLE).
+            terminated = quirks.terminate_script_directives(base)
+            substituted = quirks.apply_script_substitution(terminated, ctx)
+            if substituted != base:
+                content_override = substituted
+
+        content = content_override if content_override is not None else migration.content
+        if not content:
+            return []
+        if dialect_key:
+            migration.dialect = dialect_key
+        else:
+            dialect_key = resolve_migration_sql_dialect(
+                migration.dialect, migration.config, self.log
+            )
+        analyzer = self.sql_analyzer
+        if analyzer.dialect != dialect_key:
+            try:
+                analyzer = SqlAnalyzer(dialect=dialect_key, logger=self.log)
+            except Exception as exc:
+                return fallback_migration_sql(content, self.log, exc)
+        return parse_migration_sql(analyzer, content, self.log)
 
     def _prepare_transaction(self, migration: Migration) -> bool:
         """Prepare transaction state: rollback any active transaction, then begin new one.
@@ -380,6 +409,8 @@ class ExecutionEngine:
         Returns:
             True if begin_transaction succeeded, False otherwise.
         """
+        if not isinstance(self.provider, TransactionalProvider):
+            return False
         try:
             # Check connection state before beginning
             if (
@@ -557,15 +588,9 @@ class ExecutionEngine:
             stmt_start_time = time.time()
             try:
                 # Pre-check transaction state (PostgreSQL anti-aborted-transaction).
-                # Skip when supports_transactions() is False (e.g. Cosmos DB): the provider
-                # still exposes ``connection`` and TransactionalProvider, but there is no SQL
-                # session and execute_query("SELECT 1") would run against a default container
-                # that may not exist yet.
+                # Only transactional providers own a SQL transaction to probe.
                 try:
-                    run_precheck = (
-                        isinstance(self.provider, TransactionalProvider)
-                        and self.provider.supports_transactions()
-                    )
+                    run_precheck = isinstance(self.provider, TransactionalProvider)
                     if run_precheck:
                         if hasattr(self.provider, "connection") and self.provider.connection:
                             conn = self.provider.connection
@@ -724,8 +749,11 @@ class ExecutionEngine:
 
         # Rollback transaction for failed migration FIRST
         try:
-            self.provider.rollback_transaction()
-            self.log.debug(f"Rolled back transaction for failed migration {migration.script_name}")
+            if isinstance(self.provider, TransactionalProvider):
+                self.provider.rollback_transaction()
+                self.log.debug(
+                    f"Rolled back transaction for failed migration {migration.script_name}"
+                )
         except Exception as rollback_e:
             self.log.warning(
                 f"Could not rollback transaction for {migration.script_name}: {rollback_e}"
@@ -750,16 +778,18 @@ class ExecutionEngine:
         # Use a separate transaction to persist the failure record
         if self.history_manager:
             try:
-                self.provider.begin_transaction()
+                if isinstance(self.provider, TransactionalProvider):
+                    self.provider.begin_transaction()
                 self.log.debug(
                     f"Recording failed migration {migration.script_name} in history table"
                 )
                 self.history_manager.record_migration(
                     migration, success=False, execution_time=total_ms
                 )
-                self.provider.commit_transaction()
+                if isinstance(self.provider, TransactionalProvider):
+                    self.provider.commit_transaction()
                 result.failed_history_persisted = True
-                self.log.debug(f"Committed failed migration record for {migration.script_name}")
+                self.log.debug(f"Recorded failed migration in history for {migration.script_name}")
             except Exception as history_e:
                 result.failed_history_persisted = False
                 if hasattr(result, "add_warning"):
@@ -770,7 +800,8 @@ class ExecutionEngine:
                     f"Could not record failed migration {migration.script_name} in history: {history_e}"
                 )
                 try:
-                    self.provider.rollback_transaction()
+                    if isinstance(self.provider, TransactionalProvider):
+                        self.provider.rollback_transaction()
                 except Exception as rollback_history_e:
                     self.log.debug(
                         f"Could not rollback history record transaction for {migration.script_name}: {rollback_history_e}"
@@ -790,13 +821,13 @@ class ExecutionEngine:
             self.history_manager.record_migration(
                 migration, success=True, execution_time=execution_time
             )
-            if transaction_started:
+            if transaction_started and isinstance(self.provider, TransactionalProvider):
                 self.provider.commit_transaction()
         except Exception as history_error:
             self.log.error(
                 f"Failed to record migration history for {migration.script_name}: {history_error}"
             )
-            if transaction_started:
+            if transaction_started and isinstance(self.provider, TransactionalProvider):
                 try:
                     self.provider.rollback_transaction()
                 except Exception as rollback_e:
@@ -822,7 +853,8 @@ class ExecutionEngine:
                 f"Failed to record migration history for {migration.script_name}: {history_error}"
             )
             try:
-                self.provider.rollback_transaction()
+                if isinstance(self.provider, TransactionalProvider):
+                    self.provider.rollback_transaction()
                 self.log.debug(
                     f"Rolled back transaction due to history recording failure for {migration.script_name}"
                 )
@@ -844,6 +876,8 @@ class ExecutionEngine:
             Post-commit verification failures (CREATE TABLE SELECT check) are non-critical
             and are caught internally — they do not raise.
         """
+        if not isinstance(self.provider, TransactionalProvider):
+            return
         try:
             self.provider.commit_transaction()
 
@@ -1089,26 +1123,9 @@ class ExecutionEngine:
         # than surfacing as a parser or driver error further down.
         self.executor_factory.ensure_format_supported(callback, MigrationFormat.SQL)
 
-        # Pass our dialect to the migration to ensure proper SQL parsing
-        dialect = self.sql_analyzer.dialect
-
-        # Make sure the callback knows about our logger to avoid issues
-        # where it might try to create its own DbliftLogger
-        callback.dialect = dialect
-
-        # Substitute placeholders in the content BEFORE parsing, exactly as the
-        # migration path does in `_parse_sql_statements`. Tokenisers that do not
-        # recognise `$` otherwise split `${...}` from adjacent characters and
-        # produce un-executable SQL (`${schema}.t` -> `{schema }.t`). The result is
-        # passed as content_override so it is not cached on the callback.
-        content_override: Optional[str] = None
-        if self.placeholder_service:
-            content_override = self.placeholder_service.replace_placeholders(callback.content)
-
-        # Parse SQL statements, ensuring we use our logger
         try:
-            sql_statements = callback.parse_sql_statements(
-                dialect=dialect, content_override=content_override
+            sql_statements = self._prepare_sql_statements(
+                callback, placeholder_service=self.placeholder_service
             )
         except Exception as e:
             self.log.error(
@@ -1116,25 +1133,47 @@ class ExecutionEngine:
             )
             raise
 
-        # Begin transaction for callback execution
-        transaction_started = False
-        try:
-            self.provider.begin_transaction()
-            transaction_started = True
-            self.log.debug(f"Started transaction for callback {callback.script_name}")
-        except Exception as e:
-            self.log.warning(
-                f"Could not begin transaction for callback {callback.script_name}: {e}"
+        policy = self._plan_sql_execution(sql_statements)
+        if policy.unsupported_mixed_mode:
+            raise CallbackExecutionError(
+                f"Callback {callback.script_name} mixes transactional and "
+                f"autocommit-only statements: {policy.reason}"
             )
-            # Continue without explicit transaction management
+
+        transaction_started = False
+        if policy.transactional and isinstance(self.provider, TransactionalProvider):
+            try:
+                self.provider.begin_transaction()
+                transaction_started = True
+                self.log.debug(f"Started transaction for callback {callback.script_name}")
+            except Exception as e:
+                self.log.warning(
+                    f"Could not begin transaction for callback {callback.script_name}: {e}"
+                )
+                # Continue without explicit transaction management
 
         schema = getattr(getattr(self.config, "database", None), "schema", None)
         if isinstance(schema, str) and schema:
             self.provider.set_current_schema(schema)
 
+        dialect = self._probe_dialect_key() or getattr(self.sql_analyzer, "dialect", "") or ""
+        quirks = ProviderRegistry.get_quirks(dialect)
+
         # Execute SQL statements in the callback
         try:
             for statement in sql_statements:
+                stripped = statement.strip()
+                if (
+                    not stripped
+                    or quirks.is_batch_separator(stripped)
+                    or self._is_comment_only_statement(stripped)
+                ):
+                    continue
+                if (
+                    self._current_sqlplus_ctx is not None
+                    and quirks.parse_error_policy_directive(stripped) is not None
+                ):
+                    continue
                 if record is not None:
                     record.statements.append(statement)
                 # Placeholders were already substituted on the full content above,
@@ -1161,7 +1200,7 @@ class ExecutionEngine:
                 try:
                     if self.sql_execution_service:
                         is_query, result_data = self.sql_execution_service.execute_statement(
-                            statement
+                            statement, autocommit=policy.autocommit_required
                         )
                         if is_query:
                             if not isinstance(result_data, list):
@@ -1246,7 +1285,12 @@ class ExecutionEngine:
                                     )
                     else:
                         # This is DDL or DML - execute as regular SQL
-                        rows_affected = self.provider.execute_statement(statement)
+                        if policy.autocommit_required and isinstance(
+                            self.provider, TransactionalProvider
+                        ):
+                            rows_affected = self.provider.execute_autocommit_statement(statement)
+                        else:
+                            rows_affected = self.provider.execute_statement(statement)
                         if _is_ddl_statement_for_success_log(statement):
                             self.log.info("Statement executed successfully")
                         elif rows_affected is not None and rows_affected >= 0:
@@ -1261,21 +1305,22 @@ class ExecutionEngine:
                     self.log.error(f"Failed statement: {statement}")
                     raise
 
-            # Commit transaction for successful callback execution
-            try:
-                self.provider.commit_transaction()
-                self.log.debug(f"Committed transaction for callback {callback.script_name}")
-            except Exception as e:
-                self.log.warning(
-                    f"Could not commit transaction for callback {callback.script_name}: {e}"
-                )
-                # Continue - the transaction might already be committed
+            if transaction_started and isinstance(self.provider, TransactionalProvider):
+                # Commit transaction for successful callback execution
+                try:
+                    self.provider.commit_transaction()
+                    self.log.debug(f"Committed transaction for callback {callback.script_name}")
+                except Exception as e:
+                    self.log.warning(
+                        f"Could not commit transaction for callback {callback.script_name}: {e}"
+                    )
+                    # Continue - the transaction might already be committed
 
         except Exception:
             # Rollback safety net for callback execution. Same rationale as the
             # migration-execution path above: ANY uncaught error here must rollback
             # before re-raise, narrowing would let unexpected types skip rollback.
-            if transaction_started:
+            if transaction_started and isinstance(self.provider, TransactionalProvider):
                 try:
                     self.provider.rollback_transaction()
                     self.log.debug(

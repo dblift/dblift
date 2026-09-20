@@ -12,6 +12,7 @@ from dblift.core.sql_model.dialect import (
     dialect_supports_transactions,
 )
 from dblift.db.base_provider import BaseProvider, NativeProvider
+from dblift.db.provider_interfaces import TransactionalProvider
 from dblift.db.provider_registry import ProviderRegistry
 
 
@@ -45,7 +46,9 @@ def test_transaction_capabilities_match_dialect_matrix(plugins):
     for plugin in plugins:
         provider = plugin.provider_class.__new__(plugin.provider_class)
         dialect = plugin.name
-        assert provider.supports_transactions() is dialect_supports_transactions(dialect), dialect
+        assert isinstance(provider, TransactionalProvider) is dialect_supports_transactions(
+            dialect
+        ), dialect
         assert provider.supports_transactional_ddl() is dialect_supports_transactional_ddl(
             dialect
         ), dialect

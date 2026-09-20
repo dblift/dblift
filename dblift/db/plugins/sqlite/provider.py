@@ -5,26 +5,31 @@ This provider uses Python's native sqlite3 module.
 """
 
 import sqlite3
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 from dblift.config import DbliftConfig
 from dblift.core.logger import Log
 from dblift.core.migration.clean_summary import CleanExecutionSummary
 from dblift.db.base_provider import NativeProvider
 from dblift.db.plugins.sqlite.sqlite import (
+    DEFAULT_BUSY_TIMEOUT_SECONDS,
     SQLiteConnectionManager,
     SQLiteHistoryManager,
     SQLiteLockingManager,
     SQLiteQueryExecutor,
     SQLiteSchemaOperations,
 )
-from dblift.db.provider_interfaces import DroppableObject
+from dblift.db.provider_interfaces import DroppableObject, TransactionalProvider
 
 
-class SQLiteProvider(NativeProvider):
+class SQLiteProvider(NativeProvider, TransactionalProvider):
     """SQLite provider implementation using Python's native sqlite3 module."""
 
     canonical_dialect_key = "sqlite"
+
+    # Exposed so callers that raise busy_timeout (see set_busy_timeout) know
+    # what value restores the driver's own default.
+    DEFAULT_BUSY_TIMEOUT_SECONDS = DEFAULT_BUSY_TIMEOUT_SECONDS
 
     # BUG-04: schema_snapshot_service filters internal tables by looking up
     # ``provider.MIGRATION_LOCK_TABLE`` via ``getattr(..., "")``. Without this
@@ -301,6 +306,24 @@ class SQLiteProvider(NativeProvider):
         """
         connection = self._get_connection()
         return self.locking_manager.release_migration_lock(connection, schema)
+
+    def set_busy_timeout(self, seconds: float) -> None:
+        """Raise (or restore) this connection's SQLite busy_timeout.
+
+        Only ``migrate`` widens it, for its own duration; every other
+        command keeps the driver's short default.
+        """
+        connection = self._get_connection()
+        connection.execute(f"PRAGMA busy_timeout = {int(seconds * 1000)}")
+
+    def widen_busy_timeout(self, seconds: float) -> Optional[Callable[[], None]]:
+        """Raise busy_timeout to at least *seconds*; return the undo, or None if already wider."""
+        connection = self._get_connection()
+        previous_ms = int(connection.execute("PRAGMA busy_timeout").fetchone()[0])
+        if previous_ms >= seconds * 1000:
+            return None
+        self.set_busy_timeout(seconds)
+        return lambda: self.set_busy_timeout(previous_ms / 1000)
 
     def clean_schema(self, schema: str) -> CleanExecutionSummary:
         """Clean all objects from the database.

@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from dblift.core.logger.results import CleanResult
+from dblift.db.provider_interfaces import TransactionalProvider
 
 from ._script_events import emit_script_event as _emit_script_event
 from .base_command import BaseCommand
@@ -167,7 +168,7 @@ class CleanCommand(BaseCommand):
 
             # Commit only when DDL was actually issued — committing on an autoCommit
             # connection that issued no DML raises PSQLException on PostgreSQL.
-            if executed_statements:
+            if executed_statements and isinstance(self.provider, TransactionalProvider):
                 try:
                     self.provider.commit_transaction()
                     self.log.debug("Committed clean operation changes")

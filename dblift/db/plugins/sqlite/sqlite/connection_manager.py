@@ -14,6 +14,10 @@ from dblift.config import DbliftConfig
 from dblift.core.logger import Log, NullLog
 from dblift.db.plugins.sqlite.config import sqlite_path_from_url
 
+#: sqlite3.connect()'s own implicit default, made explicit so a caller that
+#: raises it (see SQLiteProvider.set_busy_timeout) knows what to restore.
+DEFAULT_BUSY_TIMEOUT_SECONDS = 5.0
+
 
 class SQLiteConnectionManager:
     """Manages SQLite connections using Python's native sqlite3 module."""
@@ -91,6 +95,7 @@ class SQLiteConnectionManager:
                 detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES,
                 isolation_level=None,  # Autocommit Python mode; transactions controlled via explicit BEGIN/COMMIT SQL
                 check_same_thread=False,  # Allow multi-threaded access
+                timeout=DEFAULT_BUSY_TIMEOUT_SECONDS,
             )
 
             # Enable row factory for easier result handling

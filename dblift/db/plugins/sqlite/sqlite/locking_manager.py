@@ -87,6 +87,9 @@ class SQLiteLockingManager(BaseLockingManager):
             start_time = time.time()
 
             while time.time() - start_time < wait_timeout_seconds:
+                # Only roll back a transaction we open below; one already open
+                # here belongs to the caller (from_sqlalchemy(connection=...)).
+                opened_here = not connection.in_transaction
                 try:
                     # First, clean up any stale locks from crashed processes
                     self._cleanup_stale_locks(connection, lock_name)
@@ -101,9 +104,11 @@ class SQLiteLockingManager(BaseLockingManager):
                     process_id = str(os.getpid())
                     user = os.environ.get("USER", os.environ.get("USERNAME", "dblift"))
 
-                    self.query_executor.execute_statement(
-                        connection, insert_sql, params=[lock_name, user, process_id]
-                    )
+                    # Execute directly on the connection, not via query_executor:
+                    # losing this race is the expected outcome for a waiter, and
+                    # query_executor logs every exception at ERROR level with the
+                    # full SQL/params, which would fire on every routine poll.
+                    connection.execute(insert_sql, [lock_name, user, process_id])
 
                     # Commit the lock immediately
                     connection.commit()
@@ -112,7 +117,10 @@ class SQLiteLockingManager(BaseLockingManager):
                     return True
 
                 except sqlite3.IntegrityError:
-                    # Lock is held by another process, wait and retry
+                    # Drop our own transaction before sleeping, or it holds
+                    # SQLite's write lock and blocks the lock holder.
+                    if opened_here:
+                        connection.rollback()
                     elapsed = int(time.time() - start_time)
                     self.log.debug(
                         f"Lock held by another process, waiting... (elapsed: {elapsed}s)"
@@ -121,6 +129,8 @@ class SQLiteLockingManager(BaseLockingManager):
                     continue
 
                 except Exception as e:
+                    if opened_here:
+                        connection.rollback()
                     error_str = str(e).lower()
                     if "unique" in error_str or "constraint" in error_str:
                         # Lock is held by another process

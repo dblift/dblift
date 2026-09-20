@@ -12,6 +12,7 @@ from dblift.core.migration.commands.migrate_command import MigrateCommand
 from dblift.core.migration.migration import MigrationType
 from dblift.core.migration.state.migration_display_state import MigrationDisplayState
 from dblift.core.migration.state.migration_state import MigrationEntry, MigrationState
+from dblift.db.provider_interfaces import TransactionalProvider
 
 
 def _command_with_pending_migration(monkeypatch, provider: MagicMock) -> MigrateCommand:
@@ -58,6 +59,7 @@ def _command_with_pending_migration(monkeypatch, provider: MagicMock) -> Migrate
 @pytest.mark.unit
 def test_mark_as_executed_commits_history_records(monkeypatch):
     provider = MagicMock()
+    provider.__class__ = TransactionalProvider
     command = _command_with_pending_migration(monkeypatch, provider)
 
     result = command.execute(Path("migrations"), mark_as_executed=True)
@@ -71,6 +73,7 @@ def test_mark_as_executed_commits_history_records(monkeypatch):
 @pytest.mark.unit
 def test_mark_as_executed_commit_failure_fails_result(monkeypatch):
     provider = MagicMock()
+    provider.__class__ = TransactionalProvider
     provider.commit_transaction.side_effect = Exception("commit failed")
     command = _command_with_pending_migration(monkeypatch, provider)
 
@@ -85,6 +88,7 @@ def test_mark_as_executed_commit_failure_fails_result(monkeypatch):
 @pytest.mark.unit
 def test_dry_run_lists_pending_placeholder_migration_without_execution_parse(monkeypatch):
     provider = MagicMock()
+    provider.__class__ = TransactionalProvider
     command = _command_with_pending_migration(monkeypatch, provider)
 
     result = command.execute(Path("migrations"), dry_run=True)

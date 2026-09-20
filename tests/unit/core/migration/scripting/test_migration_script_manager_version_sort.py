@@ -106,14 +106,12 @@ class TestMigrationVersionSort:
 
         assert repeatables == ["R__alpha.sql", "R__Middle.sql", "R__zeta.sql"]
 
-    def test_sort_tolerates_none_version_from_malformed_file(self):
-        """M3: Malformed V__.sql produces version=None; sort must not raise and None sorts first."""
-        self._create_scripts(["V__.sql", "V2__b.sql", "V1__a.sql"])
+    def test_sort_excludes_malformed_versionless_files(self):
+        """Malformed versionless files cannot enter the sorted executable catalog."""
+        self._create_scripts(["V__.sql", "V__.py", "V2__b.sql", "V1__a.sql"])
         result = self.mgr.load_migration_scripts(self.temp_dir)
         versions = [m.version for m in result[MigrationType.SQL]]
-        # None version sorts before numeric versions (None → "" < "1")
-        assert versions[0] is None
-        assert versions[1:] == ["1", "2"]
+        assert versions == ["1", "2"]
 
 
 class TestParseFilenameAlphabeticVersion:

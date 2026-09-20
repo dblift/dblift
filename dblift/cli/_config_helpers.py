@@ -596,11 +596,9 @@ def _resolve_scripts_directories(
                     if not add_dir.is_absolute():
                         add_dir = config_base_dir / add_dir
                     additional_scripts_dirs.append(add_dir)
-                    if not dir_config.recursive:
-                        dir_recursive_map[add_dir] = False
+                    dir_recursive_map[add_dir] = dir_config.recursive
 
-            if not dir_configs[0].recursive:
-                dir_recursive_map[scripts_dir] = False
+            dir_recursive_map[scripts_dir] = dir_configs[0].recursive
 
             recursive = dir_configs[0].recursive
         else:

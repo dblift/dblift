@@ -81,19 +81,19 @@ class TestClientDialectCaching:
     def test_generate_undo_scripts_parses_each_migration_once(self, tmp_path, monkeypatch):
         from dblift.api._client_operations import generate_undo_scripts_operation
         from dblift.api.events import EventEmitter
-        from dblift.core.migration import migration as migration_module
+        from dblift.core.migration.scripting.migration_script_manager import MigrationScriptManager
 
         migration_file = tmp_path / "V1__create_users.sql"
         migration_file.write_text("CREATE TABLE users (id int);\n", encoding="utf-8")
 
-        original_migration = migration_module.Migration
-        migration_calls = []
+        original_parse = MigrationScriptManager.parse_filename
+        parse_calls = []
 
-        def counting_migration(*args, **kwargs):
-            migration_calls.append(args[0] if args else kwargs.get("script_path"))
-            return original_migration(*args, **kwargs)
+        def counting_parse(manager, filename):
+            parse_calls.append(filename)
+            return original_parse(manager, filename)
 
-        monkeypatch.setattr(migration_module, "Migration", counting_migration)
+        monkeypatch.setattr(MigrationScriptManager, "parse_filename", counting_parse)
 
         client = MagicMock()
         client.logger = MagicMock()
@@ -108,7 +108,7 @@ class TestClientDialectCaching:
 
         assert len(results) == 1
         assert results[0].success is True
-        assert migration_calls == [migration_file]
+        assert parse_calls == [migration_file.name]
 
     def test_generate_undo_scripts_generic_exception_emits_failed_event(self, tmp_path):
         from dblift.api import _client_operations as operations

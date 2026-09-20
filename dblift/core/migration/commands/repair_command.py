@@ -517,7 +517,7 @@ class RepairCommand(BaseCommand):
         # Perform repairs
         transaction_started = False
         repairs_executed = 0
-        if hasattr(self.provider, "begin_transaction"):
+        if isinstance(self.provider, TransactionalProvider):
             try:
                 self.provider.begin_transaction()
                 transaction_started = True
@@ -600,10 +600,14 @@ class RepairCommand(BaseCommand):
                         # Store original type in description: [DELETE:ORIGINAL_TYPE] description
                         enriched_description = f"[DELETE:{original_type_name}] {delete_reason}"
 
-                        delete_migration = Migration.create_delete_migration(
+                        delete_migration = Migration(
                             script_name=script_name,
+                            content=f"-- Delete operation: {enriched_description}",
                             version=version,
-                            reason=enriched_description,
+                            description=enriched_description,
+                            type=MigrationType.DELETE,
+                            tags=[],
+                            _filename_metadata=self.script_manager.parse_filename(script_name),
                         )
 
                         self.log.debug(
@@ -641,7 +645,7 @@ class RepairCommand(BaseCommand):
             except Exception as e:
                 self.log.error(f"Failed to repair {repair['script']}: {e}")
                 result.set_error(f"Repair failed: {e}")
-                if hasattr(self.provider, "rollback_transaction") and transaction_started:
+                if isinstance(self.provider, TransactionalProvider) and transaction_started:
                     try:
                         self.provider.rollback_transaction()
                         self.log.debug("Rolled back repair transaction due to failure")
@@ -649,14 +653,14 @@ class RepairCommand(BaseCommand):
                         self.log.warning(f"Failed to rollback repair transaction: {rollback_err}")
                 return repairs_executed, True
 
-        if repairs_executed and hasattr(self.provider, "commit_transaction"):
+        if repairs_executed and isinstance(self.provider, TransactionalProvider):
             try:
                 self.provider.commit_transaction()
                 self.log.debug("Committed repair transaction")
             except Exception as commit_err:
                 self.log.error(f"Failed to commit repair transaction: {commit_err}")
                 result.set_error(f"Repair operation failed: {commit_err}")
-                if hasattr(self.provider, "rollback_transaction") and transaction_started:
+                if isinstance(self.provider, TransactionalProvider) and transaction_started:
                     try:
                         self.provider.rollback_transaction()
                         self.log.debug("Rolled back repair transaction after commit failure")

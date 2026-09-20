@@ -17,8 +17,8 @@ import pytest
 
 from dblift.core.migration.migration import Migration
 from dblift.core.migration.state.migration_data_service import MigrationDataService
+from dblift.core.migration.state.migration_selector import prune_baseline_migrations
 from dblift.core.migration.version_utils import compare_versions
-from dblift.core.sql_validator._migration_filter import handle_baseline_filtering
 from dblift.core.sql_validator.migration_validator import MigrationValidator
 
 
@@ -64,9 +64,7 @@ class TestBaselineFilteringUsesSharedComparator:
         old = _script(tmp_path, f"V{old_version}__old.sql")
         new = _script(tmp_path, f"V{new_version}__new.sql")
 
-        kept = [
-            s.script_name for s in handle_baseline_filtering(_validator(), [baseline, old, new])
-        ]
+        kept = [s.script_name for s in prune_baseline_migrations([baseline, old, new])]
 
         assert old.script_name not in kept
         assert new.script_name in kept
@@ -81,7 +79,7 @@ class TestBaselineFilteringUsesSharedComparator:
         baseline = Migration.create_baseline_migration("-- baseline", "", "based")
         old = _script(tmp_path, "V1__old.sql")
 
-        kept = [s.script_name for s in handle_baseline_filtering(_validator(), [baseline, old])]
+        kept = [s.script_name for s in prune_baseline_migrations([baseline, old])]
 
         assert old.script_name in kept
 

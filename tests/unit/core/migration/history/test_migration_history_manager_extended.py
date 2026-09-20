@@ -16,11 +16,13 @@ from dblift.core.migration.history.migration_history_manager import (
 )
 from dblift.core.migration.migration import AppliedMigration, Migration, MigrationType
 from dblift.db.base_quirks import BaseQuirks
+from dblift.db.provider_interfaces import TransactionalProvider
 
 
 def _make_manager(schema="public", table="dblift_schema_history", installed_by="test_user"):
     """Build a MigrationHistoryManager with a mocked provider."""
     provider = MagicMock()
+    provider.__class__ = TransactionalProvider
     provider.get_normalized_object_name.side_effect = lambda name: name.lower()
     provider.table_exists.return_value = True
     # Race detection (create_schema_and_history_table) delegates to
@@ -51,16 +53,18 @@ def _make_migration(migration_type=MigrationType.SQL, name="V1__test.sql"):
 class TestGetAppliedMigrations(unittest.TestCase):
     def test_returns_migration_list_from_records(self):
         mgr = _make_manager()
-        applied1 = MagicMock(spec=AppliedMigration)
-        applied1.to_migration.return_value = MagicMock(spec=Migration)
-        applied2 = MagicMock(spec=AppliedMigration)
-        applied2.to_migration.return_value = MagicMock(spec=Migration)
+        applied1 = AppliedMigration.from_history_row({"script": "V1__first.sql", "type": "SQL"})
+        applied2 = AppliedMigration.from_history_row({"script": "V2__second.sql", "type": "SQL"})
 
         with patch.object(mgr, "get_applied_migration_records", return_value=[applied1, applied2]):
             result = mgr.get_applied_migrations()
 
         self.assertEqual(len(result), 2)
-        applied1.to_migration.assert_called_once_with(logger=mgr.logger)
+        self.assertEqual(
+            [migration.script_name for migration in result], ["V1__first.sql", "V2__second.sql"]
+        )
+        self.assertIs(result[0].applied_migration, applied1)
+        self.assertIs(result[1].applied_migration, applied2)
 
     def test_returns_empty_list_when_no_records(self):
         mgr = _make_manager()

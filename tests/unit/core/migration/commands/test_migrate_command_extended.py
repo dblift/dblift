@@ -26,6 +26,7 @@ from dblift.core.migration.commands.migrate_command import MigrateCommand
 from dblift.core.migration.migration import MigrationType
 from dblift.core.migration.state.migration_display_state import MigrationDisplayState
 from dblift.core.migration.state.migration_state import MigrationEntry, MigrationState
+from dblift.db.provider_interfaces import TransactionalProvider
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -651,6 +652,7 @@ class TestUpdateFinalState(unittest.TestCase):
 class TestMigrateCommandExecute(unittest.TestCase):
     def _make_execute_cmd(self, pending=None, lock_acquired=True):
         provider = MagicMock()
+        provider.__class__ = TransactionalProvider
         provider.acquire_migration_lock.return_value = lock_acquired
         provider.release_migration_lock.return_value = None
         provider.commit_transaction.return_value = None

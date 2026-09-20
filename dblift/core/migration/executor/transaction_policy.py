@@ -29,9 +29,7 @@ class TransactionPolicy:
     ) -> TransactionPolicyDecision:
         """Return the transaction/autocommit decision for ``statements`` on the given ``provider``."""
         execution_statements: Tuple[ExecutionStatement, ...] = tuple(statements)
-        provider_supports_transactions = (
-            not isinstance(provider, TransactionalProvider) or provider.supports_transactions()
-        )
+        provider_supports_transactions = isinstance(provider, TransactionalProvider)
         if not provider_supports_transactions:
             return TransactionPolicyDecision(
                 transactional=False,

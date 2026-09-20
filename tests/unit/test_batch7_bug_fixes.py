@@ -248,6 +248,27 @@ class TestBug06ImportFlywayDryRunPreview(unittest.TestCase):
         cmd.provider.table_exists.return_value = True
         cmd.provider.get_applied_migrations.side_effect = [rows, []]
         cmd.history_manager = MagicMock()
+        from dblift.core.migration.history.migration_history_manager import MigrationHistoryManager
+        from dblift.core.migration.state.migration_state_manager import MigrationStateManager
+        from dblift.db.base_quirks import BaseQuirks
+
+        cmd.provider.quirks = BaseQuirks()
+        cmd.history_manager.provider = cmd.provider
+        history = cmd.history_manager
+        history.read_history_rows = (
+            lambda *args, **kwargs: MigrationHistoryManager.read_history_rows(
+                history, *args, **kwargs
+            )
+        )
+        history.resolve_flyway_source_table = (
+            lambda table: MigrationHistoryManager.resolve_flyway_source_table(history, table)
+        )
+        history.history_source_exists = (
+            lambda schema, table: MigrationHistoryManager.history_source_exists(
+                history, schema, table
+            )
+        )
+        cmd.state_manager = MigrationStateManager(cmd.log, history, MagicMock(), MagicMock())
         cmd._populate_database_info = MagicMock()
         cmd._log_command_header_update = MagicMock()
         cmd._log_command_completion = MagicMock()

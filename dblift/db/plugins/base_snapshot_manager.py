@@ -7,6 +7,7 @@ from typing import Any
 from dblift.db.constants import CHECKSUM_VARCHAR_SIZE, SNAPSHOT_ID_VARCHAR_SIZE
 from dblift.db.exceptions import DB_OPERATION_EXCEPTIONS
 from dblift.db.object_naming import get_normalized_object_name
+from dblift.db.provider_interfaces import TransactionalProvider
 from dblift.db.provider_registry import ProviderRegistry
 
 
@@ -100,31 +101,31 @@ class BaseSnapshotManager:
         try:
             provider.execute_statement(create_table_sql, schema=schema)
 
-            if hasattr(provider, "connection") and provider.connection:
+            if (
+                isinstance(provider, TransactionalProvider)
+                and hasattr(provider, "connection")
+                and provider.connection
+            ):
                 try:
                     if not provider.connection.getAutoCommit():
                         provider.connection.commit()
                         self._log.debug("Committed snapshot table creation")
                 except DB_OPERATION_EXCEPTIONS as commit_e:
-                    if hasattr(provider, "commit_transaction"):
-                        try:
-                            provider.commit_transaction()
-                            self._log.debug(
-                                "Committed snapshot table creation via commit_transaction"
-                            )
-                        except DB_OPERATION_EXCEPTIONS as fallback_e:
-                            self._log.debug(
-                                f"Could not commit snapshot table creation "
-                                f"[type={type(commit_e).__name__}, "
-                                f"fallback_type={type(fallback_e).__name__}]: {commit_e}"
-                            )
-                    else:
+                    try:
+                        provider.commit_transaction()
+                        self._log.debug("Committed snapshot table creation via commit_transaction")
+                    except DB_OPERATION_EXCEPTIONS as fallback_e:
                         self._log.debug(
                             f"Could not commit snapshot table creation "
-                            f"[type={type(commit_e).__name__}]: {commit_e}"
+                            f"[type={type(commit_e).__name__}, "
+                            f"fallback_type={type(fallback_e).__name__}]: {commit_e}"
                         )
         except DB_OPERATION_EXCEPTIONS as e:
-            if hasattr(provider, "connection") and provider.connection:
+            if (
+                isinstance(provider, TransactionalProvider)
+                and hasattr(provider, "connection")
+                and provider.connection
+            ):
                 try:
                     if not provider.connection.getAutoCommit():
                         provider.connection.rollback()

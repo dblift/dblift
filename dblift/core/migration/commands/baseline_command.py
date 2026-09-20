@@ -8,6 +8,7 @@ if TYPE_CHECKING:
     pass
 from dblift.core.logger.results import BaselineResult
 from dblift.core.migration.migration import Migration, MigrationType
+from dblift.db.provider_interfaces import TransactionalProvider
 
 from .base_command import BaseCommand
 
@@ -60,22 +61,25 @@ class BaselineCommand(BaseCommand):
             # CRITICAL: Start a transaction before recording baseline
             # This ensures all operations (history recording, commit) use the same connection
             transaction_started = False
-            try:
-                self.provider.begin_transaction()
-                transaction_started = True
-                self.log.debug("Started transaction for baseline recording")
-            except Exception as e:
-                self.log.warning(f"Could not begin transaction for baseline: {e}")
-                # Continue - some databases might use autoCommit mode
+            if isinstance(self.provider, TransactionalProvider):
+                try:
+                    self.provider.begin_transaction()
+                    transaction_started = True
+                    self.log.debug("Started transaction for baseline recording")
+                except Exception as e:
+                    self.log.warning(f"Could not begin transaction for baseline: {e}")
+                    # Continue - some databases might use autoCommit mode
 
             # Create baseline migration record without script_path since baseline doesn't have a file
+            script_name = f"B{baseline_version}__{baseline_description}.sql"
             baseline_migration = Migration(
-                script_name=f"B{baseline_version}__{baseline_description}.sql",
+                script_name=script_name,
                 content=f"-- Baseline migration for version {baseline_version}",
                 version=baseline_version,
                 description=baseline_description,
                 type=MigrationType.BASELINE,
                 logger=self.log,
+                _filename_metadata=self.script_manager.parse_filename(script_name),
             )
 
             # Record the baseline
@@ -85,7 +89,7 @@ class BaselineCommand(BaseCommand):
 
             # CRITICAL: Commit the baseline record when autoCommit is disabled
             # Without this, the baseline record will be rolled back when connection closes
-            if transaction_started:
+            if transaction_started and isinstance(self.provider, TransactionalProvider):
                 try:
                     self.provider.commit_transaction()
                     self.log.debug("Committed baseline transaction")

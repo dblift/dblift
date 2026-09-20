@@ -35,7 +35,7 @@ from __future__ import annotations
 
 from typing import Any, Union
 
-from dblift.core.migration.migration import VERSIONED_SCRIPT_TYPES, MigrationType
+from dblift.core.migration.migration_types import VERSIONED_SCRIPT_TYPES, MigrationType
 
 # Public symbols.
 __all__ = [

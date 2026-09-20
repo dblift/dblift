@@ -1,8 +1,7 @@
 """Migration-validator entry point — verifies migration scripts against applied history."""
 
-import logging
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
+from typing import Any, Dict, List, Optional, Sequence, Union
 
 from dblift.core.constants import TEST_PLACEHOLDER_TIME_MS
 from dblift.core.exceptions import UnsupportedMigrationFormatError
@@ -14,12 +13,24 @@ from dblift.core.migration.migration import (
     Migration,
     MigrationType,
 )
+from dblift.core.migration.rules.migration_rules import MigrationRules
 from dblift.core.migration.scripting.migration_script_manager import (  # noqa: F401
     MigrationScriptManager,
     _last_successful_non_delete_record,
 )
-from dblift.core.migration.state.migration_state import MigrationReadSnapshot
-from dblift.core.migration.version_utils import is_migration_failure
+from dblift.core.migration.state.migration_selector import (
+    normalize_filter,
+    passes_filters,
+    prune_baseline_migrations,
+    select_migrations,
+)
+from dblift.core.migration.state.migration_state import (
+    MigrationReadSnapshot,
+    MigrationValidationSnapshot,
+)
+from dblift.core.migration.state.migration_state_manager import MigrationStateManager
+from dblift.core.migration.version_utils import compare_versions, is_migration_failure
+from dblift.db.base_quirks import BaseQuirks
 
 
 class ValidationResult:
@@ -104,6 +115,9 @@ class MigrationValidator:
         history_manager: MigrationHistoryManager,
         log: Log,
         placeholders: Optional[Dict[str, Any]] = None,
+        *,
+        state_manager: Optional[MigrationStateManager] = None,
+        quirks: Optional[BaseQuirks] = None,
     ):
         """Initialize the validator.
 
@@ -113,163 +127,35 @@ class MigrationValidator:
             log: Logger instance
             placeholders: Optional placeholders for SQL replacement
         """
-        self.script_manager = script_manager
-        self.history_manager = history_manager
         self.log = log if log is not None else NullLog()
         self.placeholders = placeholders or {}
-
-        dblift_config = getattr(self.history_manager.provider, "config", None)
-        dialect = dblift_config.database.type if dblift_config else ""
-
-        from dblift.db.provider_registry import ProviderRegistry
-
-        self._quirks = ProviderRegistry.get_quirks(dialect)
-
-        # Cache for Flyway compatibility check results
-        self._flyway_compatibility_cache: Optional[Dict[str, object]] = None
+        self.state_manager = state_manager or MigrationStateManager(
+            self.log, history_manager, script_manager, MigrationRules(self.log)
+        )
+        self._quirks = quirks if quirks is not None else self.state_manager.get_validation_quirks()
+        self._history_schema = getattr(history_manager, "schema", "")
+        self._history_table = getattr(history_manager, "history_table", "")
 
     def validate_flyway_compatibility(self) -> Dict[str, object]:
-        """Delegate to
-        :func:`dblift.core.sql_validator._flyway_compatibility.validate_flyway_compatibility`.
-        """
-        from dblift.core.sql_validator._flyway_compatibility import (
-            validate_flyway_compatibility as _impl,
-        )
+        """Compare the current StateManager read phase's Flyway inputs."""
+        from dblift.core.sql_validator._flyway_compatibility import validate_flyway_compatibility
 
-        return _impl(self)
+        return validate_flyway_compatibility(self.state_manager.get_flyway_compatibility_snapshot())
 
     def check_flyway_history_table(self) -> ValidationResult:
-        """Delegate to
-        :func:`dblift.core.sql_validator._flyway_compatibility.check_flyway_history_table`.
-        """
-        from dblift.core.sql_validator._flyway_compatibility import (
-            check_flyway_history_table as _impl,
-        )
+        """Apply Flyway import checks to manager-owned inputs."""
+        from dblift.core.sql_validator._flyway_compatibility import check_flyway_history_table
 
-        return _impl(self)
+        return check_flyway_history_table(self.state_manager.get_flyway_compatibility_snapshot())
 
     def _check_table_compatibility(self, issues: List[str]) -> None:
-        """Delegate to
-        :func:`dblift.core.sql_validator._flyway_compatibility.check_table_compatibility`.
-        """
-        from dblift.core.sql_validator._flyway_compatibility import (
-            check_table_compatibility as _impl,
-        )
+        """Preserve the 4.x history initialization entry point."""
+        self.state_manager.ensure_history_table()
 
-        _impl(self, issues)
-
-    # ------------------------------------------------------------------
-    # Filtering / scoping — delegated to ``_migration_filter`` (SRP).
-    # ------------------------------------------------------------------
-
-    def _load_and_filter_migrations(
-        self,
-        scripts_dir: Path,
-        recursive: bool,
-        additional_dirs: List[Path],
-        issues: List[str],
-        *,
-        resolved_migrations: Optional[List[Migration]] = None,
-        read_snapshot: Optional[MigrationReadSnapshot] = None,
-    ) -> List[Migration]:
-        """Delegate to
-        :func:`dblift.core.sql_validator._migration_filter.load_and_filter_migrations`.
-        """
-        from dblift.core.sql_validator._migration_filter import load_and_filter_migrations as _impl
-
-        return _impl(
-            self,
-            scripts_dir,
-            recursive,
-            additional_dirs,
-            issues,
-            resolved_migrations=resolved_migrations,
-            read_snapshot=read_snapshot,
-        )
-
-    def _handle_baseline_filtering(self, valid_scripts: List[Migration]) -> List[Migration]:
-        """Delegate to
-        :func:`dblift.core.sql_validator._migration_filter.handle_baseline_filtering`.
-        """
-        from dblift.core.sql_validator._migration_filter import handle_baseline_filtering as _impl
-
-        return _impl(self, valid_scripts)
-
-    @staticmethod
-    def _normalize_filter(value: Optional[Sequence[str]]) -> Optional[List[str]]:
-        """Delegate to :func:`dblift.core.sql_validator._migration_filter.normalize_filter`."""
-        from dblift.core.sql_validator._migration_filter import normalize_filter as _impl
-
-        return _impl(value)
-
-    def _passes_filters(
-        self,
-        migration: Migration,
-        target_version: Optional[str],
-        tags: Optional[List[str]],
-        exclude_tags: Optional[List[str]],
-        versions: Optional[List[str]],
-        exclude_versions: Optional[List[str]],
-    ) -> bool:
-        """Delegate to :func:`dblift.core.sql_validator._migration_filter.passes_filters`."""
-        from dblift.core.sql_validator._migration_filter import passes_filters as _impl
-
-        return _impl(
-            self, migration, target_version, tags, exclude_tags, versions, exclude_versions
-        )
-
-    def _apply_filters(
-        self,
-        migrations: List[Migration],
-        target_version: Optional[str] = None,
-        tags: Optional[Sequence[str]] = None,
-        exclude_tags: Optional[Sequence[str]] = None,
-        versions: Optional[Sequence[str]] = None,
-        exclude_versions: Optional[Sequence[str]] = None,
-    ) -> List[Migration]:
-        """Delegate to :func:`dblift.core.sql_validator._migration_filter.apply_filters`."""
-        from dblift.core.sql_validator._migration_filter import apply_filters as _impl
-
-        return _impl(
-            self, migrations, target_version, tags, exclude_tags, versions, exclude_versions
-        )
-
-    def _scope_applied_migrations_for_validation(
-        self,
-        applied_migrations: List[Migration],
-        target_version: Optional[str] = None,
-        versions: Optional[Sequence[str]] = None,
-        exclude_versions: Optional[Sequence[str]] = None,
-    ) -> List[Migration]:
-        """Delegate to
-        :func:`dblift.core.sql_validator._migration_filter.scope_applied_migrations_for_validation`.
-        """
-        from dblift.core.sql_validator._migration_filter import (
-            scope_applied_migrations_for_validation as _impl,
-        )
-
-        return _impl(self, applied_migrations, target_version, versions, exclude_versions)
-
-    def _validate_no_scripts_case(
-        self,
-        valid_scripts: List[Migration],
-        issues: List[str],
-        *,
-        preloaded_records: Optional[List[Migration]] = None,
-        read_snapshot: Optional[MigrationReadSnapshot] = None,
-    ) -> Tuple[bool, bool]:
-        """Delegate to
-        :func:`dblift.core.sql_validator._migration_filter.validate_no_scripts_case`.
-        """
-        from dblift.core.sql_validator._migration_filter import validate_no_scripts_case as _impl
-
-        return _impl(
-            self,
-            valid_scripts,
-            issues,
-            preloaded_records=preloaded_records,
-            read_snapshot=read_snapshot,
-        )
+    _normalize_filter = staticmethod(normalize_filter)
+    _passes_filters = staticmethod(passes_filters)
+    _apply_filters = staticmethod(select_migrations)
+    _handle_baseline_filtering = staticmethod(prune_baseline_migrations)
 
     def _validate_format_supported(
         self, scripts: List[Migration], result: ValidationResult, issues: List[str]
@@ -312,6 +198,7 @@ class MigrationValidator:
         issues: List[str],
         history_table_exists: bool,
         command: str,
+        strict_mode: bool,
     ) -> ValidationResult:
         """Run the common checks over already prepared catalog and history inputs."""
         self._check_repeatable_migrations(
@@ -341,8 +228,6 @@ class MigrationValidator:
         validation_result.migrations = valid_scripts
 
         if history_table_exists:
-            config = getattr(self.history_manager.provider, "config", None)
-            strict_mode = bool(getattr(config, "strict_mode", False))
             if strict_mode and command in ("migrate", "validate"):
                 self.log.info("Strict mode is enabled. Validating with strict migration rules.")
                 if not self._validate_strict_mode_rules(
@@ -377,88 +262,71 @@ class MigrationValidator:
         validation_result.issues = issues
         return validation_result
 
+    def validate_snapshot(
+        self, snapshot: MigrationValidationSnapshot, command: str = "migrate"
+    ) -> ValidationResult:
+        """Validate immutable inputs without collecting scripts or history."""
+        result = ValidationResult()
+        issues: List[str] = []
+        if snapshot.catalog_read_error is not None:
+            result.success = False
+            result.error_message = f"Validation failed: {snapshot.catalog_read_error}"
+            return result
+        if not snapshot.scripts_directory_exists:
+            result.success = False
+            result.error_message = (
+                f"Migration scripts directory not found: {snapshot.scripts_directory}"
+            )
+            return result
+        try:
+            scripts = list(snapshot.selected_migrations)
+            if not self._validate_format_supported(scripts, result, issues):
+                result.execution_time = TEST_PLACEHOLDER_TIME_MS
+                result.issues = issues
+                return result
+            if not scripts:
+                if snapshot.strict_mode and snapshot.history_read_error:
+                    result.success = False
+                    result.error_message = f"Validation failed: {snapshot.history_read_error}"
+                    return result
+                result.success = not (snapshot.strict_mode and snapshot.all_applied_migrations)
+                result.execution_time = TEST_PLACEHOLDER_TIME_MS
+                return result
+            return self._validate_prepared_migrations(
+                valid_scripts=scripts,
+                all_valid_scripts=list(snapshot.resolved_migrations),
+                applied_migrations=list(snapshot.scoped_applied_migrations),
+                repeatable_history=list(snapshot.all_applied_migrations),
+                validation_result=result,
+                issues=issues,
+                history_table_exists=snapshot.history_table_exists,
+                command=command,
+                strict_mode=snapshot.strict_mode,
+            )
+        except Exception as error:
+            result.success = False
+            result.error_message = f"Validation failed: {error}"
+            result.issues = issues
+            return result
+
     def validate_resolved_migrations(
         self, migrations: List[Migration], command: str = "migrate"
     ) -> ValidationResult:
-        """Validate an already resolved migration list.
-
-        This mirrors Flyway's resolve-then-validate flow for migrate pre-flight:
-        callers pass the same migrations they intend to execute, so validation
-        cannot inspect out-of-scope files.
-        """
-        validation_result = ValidationResult()
-        validation_result.success = True
-        validation_result.error_message = ""
-        validation_result.migrations = []
-        validation_result.execution_time = 0
-        issues: List[str] = []
-
+        """Adapt the public 4.x resolved-list entry point through StateManager."""
         try:
-            valid_scripts = [
-                script
-                for script in migrations
-                if script.type
-                in (
-                    MigrationType.SQL,
-                    MigrationType.REPEATABLE,
-                    MigrationType.CALLBACK,
-                    MigrationType.BASELINE,
-                    MigrationType.UNDO_SQL,
-                    MigrationType.PYTHON,
-                )
-            ]
-
-            self.log.debug(
-                f"[DEBUG] resolved valid_scripts: {[s.script_name for s in valid_scripts]}"
+            return self.validate_snapshot(
+                self.state_manager.build_validation_snapshot(
+                    None,
+                    command,
+                    resolved_migrations=migrations,
+                ),
+                command,
             )
-
-            if not self._validate_format_supported(valid_scripts, validation_result, issues):
-                validation_result.execution_time = TEST_PLACEHOLDER_TIME_MS
-                validation_result.issues = issues
-                return validation_result
-
-            should_return_early, validation_success = self._validate_no_scripts_case(
-                valid_scripts, issues
-            )
-            if should_return_early:
-                validation_result.success = validation_success
-                if not validation_success and issues:
-                    validation_result.error_message = issues[0]
-                validation_result.execution_time = TEST_PLACEHOLDER_TIME_MS
-                validation_result.issues = issues
-                return validation_result
-
-            history_table_exists = self.history_manager.has_history_table
-            applied_migrations = []
-            if history_table_exists:
-                try:
-                    applied_migrations = self.history_manager.get_applied_migrations()
-                except Exception as e:
-                    self.log.error(f"Error getting applied migrations: {e}")
-                    applied_migrations = []
-
-            return self._validate_prepared_migrations(
-                valid_scripts=valid_scripts,
-                all_valid_scripts=valid_scripts,
-                applied_migrations=applied_migrations,
-                repeatable_history=applied_migrations,
-                validation_result=validation_result,
-                issues=issues,
-                history_table_exists=history_table_exists,
-                command=command,
-            )
-
-        except Exception as e:
-            error_msg = f"Validation failed: {str(e)}"
-            try:
-                self.log.error(error_msg)
-            except Exception as log_e:
-                logging.getLogger(__name__).error(f"{error_msg} (log unavailable: {log_e})")
-
-            validation_result.success = False
-            validation_result.error_message = error_msg
-            validation_result.issues = issues
-            return validation_result
+        except Exception as error:
+            result = ValidationResult()
+            result.success = False
+            result.error_message = f"Validation failed: {error}"
+            return result
 
     def validate_migrations(
         self,
@@ -476,165 +344,30 @@ class MigrationValidator:
         preloaded_records: Optional[List[Migration]] = None,
         read_snapshot: Optional[MigrationReadSnapshot] = None,
     ) -> ValidationResult:
-        """Validate migrations against the database.
-
-        This checks for duplicate version numbers, missing migrations, and modified scripts.
-
-        Args:
-            scripts_dir: Directory containing migration scripts
-            command: The command being executed (migrate, undo, etc.)
-            recursive: Whether to scan subdirectories for migration scripts
-            additional_dirs: Additional directories to scan for migration scripts
-            target_version: Optional target version filter
-            tags: Optional tags to include
-            exclude_tags: Optional tags to exclude
-            versions: Optional versions to include
-            exclude_versions: Optional versions to exclude
-            resolved_migrations: Full resolved catalog before baseline and command filters
-            preloaded_records: History snapshot from the same read phase; None fetches history
-            read_snapshot: Manager-owned lazy inputs, read only where validation requires them
-
-        Returns:
-            ValidationResult: Result of the validation
-        """
-        validation_result = ValidationResult()
-        self.log.debug(
-            f"[DEBUG] validate_migrations: initial state: success={validation_result.success}, error='{validation_result.error_message}', issues={[]} "
-        )
-        validation_result.success = True
-        validation_result.error_message = ""
-        validation_result.migrations = []
-        validation_result.execution_time = 0
-        issues: List[str] = []  # Shared issues list for the entire function
-
-        if not scripts_dir.exists():
-            validation_result.success = False
-            self.log.debug(
-                f"[DEBUG] validate_migrations: setting success=False because scripts_dir does not exist. issues={issues}"
-            )
-            validation_result.error_message = (
-                f"Migration scripts directory not found: {scripts_dir}"
-            )
-            self.log.debug(
-                f"[DEBUG] RETURN (not exists): success={validation_result.success}, error='{validation_result.error_message}'"
-            )
-            validation_result.issues = issues
-            return validation_result
-
+        """Adapt the public 4.x directory entry point through StateManager."""
         try:
-
-            # Load and filter migration scripts
-            if resolved_migrations is None and read_snapshot is None:
-                valid_scripts = self._load_and_filter_migrations(
-                    scripts_dir, recursive, additional_dirs or [], issues
-                )
-            else:
-                valid_scripts = self._load_and_filter_migrations(
+            return self.validate_snapshot(
+                self.state_manager.build_validation_snapshot(
                     scripts_dir,
+                    command,
                     recursive,
-                    additional_dirs or [],
-                    issues,
+                    additional_dirs,
+                    target_version,
+                    tags,
+                    exclude_tags,
+                    versions,
+                    exclude_versions,
                     resolved_migrations=resolved_migrations,
+                    applied_migrations=preloaded_records,
                     read_snapshot=read_snapshot,
-                )
-
-            # Handle baseline filtering
-            valid_scripts = self._handle_baseline_filtering(valid_scripts)
-
-            # Full set of on-disk scripts before tag/version scoping, used to tell a
-            # genuinely missing migration apart from one merely out of the current
-            # --tags/--versions filter scope.
-            all_valid_scripts = valid_scripts
-
-            valid_scripts = self._apply_filters(
-                valid_scripts,
-                target_version=target_version,
-                tags=tags,
-                exclude_tags=exclude_tags,
-                versions=versions,
-                exclude_versions=exclude_versions,
+                ),
+                command,
             )
-
-            self.log.debug(f"[DEBUG] valid_scripts: {[s.script_name for s in valid_scripts]}")
-
-            # A .sql migration on a dialect with no SQL DDL (e.g. Cosmos DB) must be
-            # rejected here too, not only when it actually executes — otherwise
-            # `migrate --dry-run`, `--validate-only`, and `validate` all report
-            # success for a migration that real `migrate` would refuse to run.
-            if not self._validate_format_supported(valid_scripts, validation_result, issues):
-                validation_result.execution_time = TEST_PLACEHOLDER_TIME_MS
-                validation_result.issues = issues
-                return validation_result
-
-            # Validate no scripts case
-            if preloaded_records is None and read_snapshot is None:
-                should_return_early, validation_success = self._validate_no_scripts_case(
-                    valid_scripts, issues
-                )
-            else:
-                should_return_early, validation_success = self._validate_no_scripts_case(
-                    valid_scripts,
-                    issues,
-                    preloaded_records=preloaded_records,
-                    read_snapshot=read_snapshot,
-                )
-            if should_return_early:
-                validation_result.success = validation_success
-                if not validation_success and issues:
-                    validation_result.error_message = issues[0]
-                validation_result.execution_time = TEST_PLACEHOLDER_TIME_MS
-                validation_result.issues = issues
-                return validation_result
-
-            # Check if history table exists
-            history_table_exists = self.history_manager.has_history_table
-            applied_migrations = []
-            if history_table_exists:
-                try:
-                    if preloaded_records is not None:
-                        applied_migrations = preloaded_records
-                    elif read_snapshot is not None:
-                        applied_migrations = read_snapshot.get_applied_migrations()
-                    else:
-                        applied_migrations = self.history_manager.get_applied_migrations()
-                except Exception as e:
-                    self.log.error(f"Error getting applied migrations: {e}")
-                    applied_migrations = []
-            scoped_applied_migrations = self._scope_applied_migrations_for_validation(
-                applied_migrations,
-                target_version=target_version,
-                versions=versions,
-                exclude_versions=exclude_versions,
-            )
-
-            return self._validate_prepared_migrations(
-                valid_scripts=valid_scripts,
-                all_valid_scripts=all_valid_scripts,
-                applied_migrations=scoped_applied_migrations,
-                repeatable_history=applied_migrations,
-                validation_result=validation_result,
-                issues=issues,
-                history_table_exists=history_table_exists,
-                command=command,
-            )
-
-        except Exception as e:
-            # Try to use a standard log if DbliftLogger instantiation failed
-            error_msg = f"Validation failed: {str(e)}"
-            try:
-                # Log using self.log which should be available
-                self.log.error(error_msg)
-            except Exception as log_e:
-                # Fallback to standard logging if self.log is unavailable
-                logging.getLogger(__name__).error(f"{error_msg} (log unavailable: {log_e})")
-
-            validation_result.success = False
-            validation_result.error_message = error_msg
-            self.log.debug(
-                f"[DEBUG] RETURN (exception): success={validation_result.success}, error='{validation_result.error_message}'"
-            )
-            validation_result.issues = issues
-            return validation_result
+        except Exception as error:
+            result = ValidationResult()
+            result.success = False
+            result.error_message = f"Validation failed: {error}"
+            return result
 
     def _validate_duplicate_versions(
         self, scripts: List[Migration], result: ValidationResult, issues: List[str]
@@ -839,10 +572,7 @@ class MigrationValidator:
             for m in executed_migrations
             if getattr(m, "success", False)
             and getattr(m, "version", None)
-            and self.script_manager.compare_versions(
-                str(getattr(m, "version", "")), str(migration.version)
-            )
-            > 0
+            and compare_versions(str(getattr(m, "version", "")), str(migration.version)) > 0
         ]
 
         # If any higher version migration has a lower installed_rank, this migration is out of order
@@ -882,7 +612,7 @@ class MigrationValidator:
             error_message = f"Found {len(reappeared_scripts)} previously deleted migration script(s) that have reappeared: {script_list}"
             repair_message = (
                 "To resolve this issue, manually remove the DELETE entries from the history table:\n"
-                f"DELETE FROM {self.history_manager.schema}.{self.history_manager.history_table} WHERE type = 'DELETE' AND script_name IN ({', '.join([repr(s['script']) for s in reappeared_scripts])});"
+                f"DELETE FROM {self._history_schema}.{self._history_table} WHERE type = 'DELETE' AND script_name IN ({', '.join([repr(s['script']) for s in reappeared_scripts])});"
             )
             issues.append(error_message)
             issues.append(repair_message)

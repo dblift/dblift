@@ -16,21 +16,19 @@ def _validator(
     supports_sql: bool = True,
     history_table_exists=None,
 ) -> MigrationValidator:
-    validator = MigrationValidator.__new__(MigrationValidator)
-    validator.script_manager = MigrationScriptManager(NullLog())
-    validator.history_manager = SimpleNamespace(
+    script_manager = MigrationScriptManager(NullLog())
+    history_manager = SimpleNamespace(
         has_history_table=(bool(history) if history_table_exists is None else history_table_exists),
         provider=SimpleNamespace(config=SimpleNamespace(strict_mode=strict)),
         get_applied_migrations=MagicMock(return_value=list(history)),
         schema="public",
         history_table="dblift_schema_history",
     )
-    validator.log = MagicMock()
-    validator._quirks = SimpleNamespace(
+    quirks = SimpleNamespace(
         dialect_name="test-document-store",
         supports_sql_migrations=supports_sql,
     )
-    return validator
+    return MigrationValidator(script_manager, history_manager, MagicMock(), quirks=quirks)
 
 
 def _script(tmp_path, name, *, content="SELECT 1;\n", directory=None, tags=()):
@@ -231,7 +229,7 @@ def test_empty_preloaded_history_does_not_trigger_a_fresh_read(tmp_path):
     assert result.success is True
     assert result.issues == []
     assert [migration.script_name for migration in result.migrations] == ["V1__create.sql"]
-    validator.history_manager.get_applied_migrations.assert_not_called()
+    validator.state_manager.history_manager.get_applied_migrations.assert_not_called()
 
 
 def test_tag_filtered_script_in_full_catalog_is_not_reported_missing(tmp_path):
@@ -319,3 +317,24 @@ def test_strict_tag_scope_keeps_existing_missing_file_result(tmp_path):
         "Strict mode validation failed. Found 1 applied migration(s) without "
         "corresponding script files: V2__excluded.sql (version: 2). ."
     ]
+
+
+def test_legacy_constructor_uses_provider_owned_quirks(tmp_path):
+    script = _script(tmp_path, "V1__create.sql")
+    validator = _validator(supports_sql=False)
+    history = validator.state_manager.history_manager
+    history.provider.quirks = validator._quirks
+    legacy = MigrationValidator(validator.state_manager.script_manager, history, NullLog(), {})
+    result = legacy.validate_resolved_migrations([script])
+    assert not result.success
+    assert result.error_message.startswith("DBLIFT-NOSQL-001:")
+
+
+def test_strict_empty_catalog_history_failure_remains_a_validation_failure(tmp_path):
+    validator = _validator(strict=True, history_table_exists=True)
+    validator.state_manager.history_manager.get_applied_migrations.side_effect = RuntimeError(
+        "history unavailable"
+    )
+    result = validator.validate_migrations(tmp_path, resolved_migrations=[])
+    assert not result.success
+    assert result.error_message == "Validation failed: history unavailable"

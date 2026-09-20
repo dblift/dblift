@@ -59,9 +59,15 @@ result = client.migrate(
     dry_run=False,            # Preview without applying
     show_sql=False,           # Include migration SQL in outputs/reports
     tags="core,init",         # Filter by tags
-    recursive=True            # Search subdirectories
+    recursive=None            # Use configured per-directory recursion (default)
 )
 ```
+
+For `migrate`, `info`, `validate`, `undo`, `clean`, and `repair`, omitted
+directory options use the client's configured migration directories. Set
+`recursive=True` or `False` to override recursion for all directories. An explicit
+`dir_recursive_map` replaces the configured per-directory map and takes precedence
+over `recursive` for its entries. Call overrides do not change subsequent calls.
 
 ### undo()
 
@@ -163,6 +169,29 @@ Common event types — see [Events reference](events.md) for the complete enum:
 - `INFO_STARTED` / `INFO_COMPLETED`
 - `VALIDATION_STARTED` / `VALIDATION_COMPLETED` / `VALIDATION_FAILED`
 - `SNAPSHOT_STARTED` / `SNAPSHOT_COMPLETED` / `SNAPSHOT_FAILED`
+
+## Thread Safety
+
+A `DBLiftClient` holds one provider/connection for its lifetime, so calls
+from multiple threads on the same client instance are serialized: one
+operation runs at a time, and the rest block until it finishes. For
+concurrency, give each thread its own client instance instead.
+
+An event listener runs synchronously, on the thread running the operation.
+From it, a read-only call (`info`, `validate`) on the same client is safe.
+A mutating call (`migrate`, `undo`, `clean`, ...) or `close()` is refused
+with `RuntimeError` instead of running underneath the operation already in
+progress and making its result stale. A subclass that overrides an
+operation and calls `super()` is unaffected — that's not treated as
+re-entry. From a different thread, any operation and `close()` block on
+the same lock instead of being refused; the ordinary `with` block is fine,
+since `__exit__` only runs once the operation inside it has finished.
+
+`AsyncDBLiftClient` serializes every call through its own lock and a
+dedicated worker thread, so the event loop is never blocked. Blocking that
+same worker thread on a coroutine of the *same* async client (e.g. from a
+listener via `asyncio.run_coroutine_threadsafe(...).result()`) deadlocks,
+since only one of its operations runs at a time.
 
 ## Result Objects
 

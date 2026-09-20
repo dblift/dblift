@@ -19,9 +19,11 @@ import pytest
 
 from dblift.core.migration.history.migration_history_manager import MigrationHistoryManager
 from dblift.db.base_quirks import BaseQuirks
+from dblift.db.provider_interfaces import TransactionalProvider
 
 
 def _make_manager(provider: MagicMock) -> MigrationHistoryManager:
+    provider.__class__ = TransactionalProvider
     # Race detection is delegated to provider.quirks.is_schema_history_race_error.
     # Give the mock provider a real (default) BaseQuirks unless a test has
     # already wired a dialect-specific one, so the retry loop exercises real
