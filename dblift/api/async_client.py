@@ -5,6 +5,10 @@ blocked and the wrapped synchronous client keeps thread affinity. This is not
 native async DB I/O: the call occupies that worker thread. A per-instance
 ``asyncio.Lock`` serializes operations because the underlying sync client holds
 a single shared connection and is not safe for concurrent use.
+
+Calling the *wrapped* sync client's own methods directly from the event loop
+thread (instead of going through this async facade) still blocks the loop,
+the same as any other synchronous call would.
 """
 
 from __future__ import annotations
