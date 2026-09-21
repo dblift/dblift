@@ -70,7 +70,7 @@ Migration filenames follow the pattern `V<version>__<description>.sql`. The vers
 dblift validate
 ```
 
-`validate` checks that your migration files are internally consistent and match the recorded history — it does not parse the SQL, so it cannot catch a script `migrate` will refuse to run. Run it before applying.
+`validate` checks that your migration files are internally consistent and, once you've applied migrations, that they match the recorded history — it does not parse the SQL, so it cannot catch a script `migrate` will refuse to run. Run it before applying.
 
 ```bash
 dblift info

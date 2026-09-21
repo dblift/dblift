@@ -642,6 +642,46 @@ class TestValidateMigrations(unittest.TestCase):
             result = v.validate_migrations(Path(tmpdir))
         self.assertTrue(result.success)
 
+    def test_fresh_project_message_does_not_claim_history_checked(self):
+        """No history table yet: only the on-disk checks ran (there is no
+        applied history to compare against), so ``validate``'s printed
+        success message must not claim history was checked — a project's
+        very first ``validate`` is exactly where that claim would be false.
+        """
+        import tempfile
+
+        from dblift.core.migration.commands.validate_command import ValidateCommand
+        from dblift.core.migration.state.migration_state_manager import MigrationStateManager
+
+        v, sm, hm, _ = _make_validator()
+        hm.has_history_table = False
+        with tempfile.TemporaryDirectory() as tmpdir:
+            sm.get_migration_scripts.return_value = [self._sql_script()]
+            validation_result = v.validate_migrations(Path(tmpdir))
+        self.assertTrue(validation_result.success)
+
+        log = MagicMock()
+        cmd = ValidateCommand.__new__(ValidateCommand)
+        cmd.config = MagicMock()
+        cmd.config.database.schema = "main"
+        cmd.log = log
+        cmd.validator = MagicMock()
+        cmd.validator.validate_snapshot.return_value = validation_result
+        cmd.history_manager = MagicMock()
+        cmd.state_manager = MigrationStateManager(
+            log, cmd.history_manager, MagicMock(), MagicMock()
+        )
+        cmd._populate_database_info = MagicMock()
+        cmd._log_command_header_update = MagicMock()
+        cmd._log_command_completion = MagicMock()
+        cmd._execute_callbacks = MagicMock()
+
+        cmd.execute(Path("/tmp/migrations"))
+
+        info_calls = " ".join(str(c) for c in log.info.call_args_list).lower()
+        self.assertIn("passed", info_calls)
+        self.assertNotIn("histor", info_calls)
+
     def test_duplicate_versions_fail(self):
         import tempfile
 

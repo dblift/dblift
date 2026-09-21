@@ -169,10 +169,7 @@ class ValidateCommand(BaseCommand):
             # execution_time is calculated automatically by the base class
 
             if validation_result.success:
-                self.log.info(
-                    "Migration validation passed "
-                    "(checked against applied history; migration SQL not parsed)"
-                )
+                self.log.info("Migration validation passed (SQL not parsed)")
             else:
                 # Log all validation issues
                 if hasattr(validation_result, "issues") and validation_result.issues:
