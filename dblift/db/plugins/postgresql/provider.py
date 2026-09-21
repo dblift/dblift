@@ -34,7 +34,9 @@ class PostgreSqlProvider(SqlAlchemyProvider):
     #: :meth:`set_current_schema` skip re-issuing ``SET search_path`` on every
     #: statement of a migration, so a ``SET search_path`` the migration itself
     #: runs (the ``pg_dump`` idiom) is not immediately overwritten. Cleared by
-    #: :meth:`begin_transaction` so each new migration still starts from the
+    #: :meth:`reset_schema_cache` — called by ``ExecutionEngine`` at the start
+    #: of every migration/callback, and also by :meth:`begin_transaction` as a
+    #: second, redundant guard — so each new one still starts from the
     #: configured schema. Class-level default so tests constructing via
     #: ``object.__new__`` still see ``None``.
     _schema_applied_for: Optional[str] = None
@@ -44,14 +46,19 @@ class PostgreSqlProvider(SqlAlchemyProvider):
         super().__init__(config, log)
         self._schema_applied_for = None
 
-    def begin_transaction(self) -> None:
-        """Begin a transaction, forcing the next statement to reapply the schema.
+    def reset_schema_cache(self) -> None:
+        """Forget the schema this connection's search_path was last set to.
 
-        Each migration/callback gets its own transaction (see
-        ``ExecutionEngine._prepare_transaction``), so this is the boundary
-        between one migration's session state and the next.
+        ``ExecutionEngine`` calls this at the start of every migration and
+        callback — the unit boundary — regardless of whether it runs
+        transactionally or via autocommit; :meth:`begin_transaction` fires on
+        only one of those paths, so it is not a substitute for this call.
         """
         self._schema_applied_for = None
+
+    def begin_transaction(self) -> None:
+        """Begin a transaction, forcing the next statement to reapply the schema."""
+        self.reset_schema_cache()
         super().begin_transaction()
 
     def drop_object(self, obj: DroppableObject) -> None:
