@@ -84,10 +84,14 @@ class OracleProvider(SqlAlchemyProvider):
     #: CURRENT_SCHEMA`` on every statement of a migration, so a
     #: ``CURRENT_SCHEMA`` change the migration itself runs is not immediately
     #: overwritten. Cleared by :meth:`reset_schema_cache` — called by
-    #: ``ExecutionEngine`` at the start of every migration/callback, and also
-    #: by :meth:`begin_transaction` as a second, redundant guard — so each new
-    #: one still starts from the configured schema. Class-level default so
-    #: tests constructing via ``object.__new__`` still see ``None``.
+    #: ``ExecutionEngine`` at the start of every migration/callback — and
+    #: again by :meth:`begin_transaction`. For a transactional migration,
+    #: ``begin_transaction`` runs *after* ``ExecutionEngine`` already applied
+    #: the configured schema, so it re-clears the cache and the migration's
+    #: first statement reissues ``ALTER SESSION SET CURRENT_SCHEMA`` a second
+    #: time — one duplicate statement per transactional migration, not a
+    #: no-op safety net. Class-level default so tests constructing via
+    #: ``object.__new__`` still see ``None``.
     _schema_applied_for: Optional[str] = None
 
     def __init__(self, config: DbliftConfig, log: Optional[Log] = None) -> None:
