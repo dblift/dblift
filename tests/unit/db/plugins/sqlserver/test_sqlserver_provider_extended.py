@@ -176,6 +176,7 @@ def test_set_current_schema_detects_interference_even_when_target_schema_is_unch
     provider = object.__new__(SqlServerProvider)
     provider.log = MagicMock()
     provider._current_schema_set = "sales"  # as if set earlier on this connection
+    provider._schema_applied_for = "sales"  # the write for it was already issued
 
     def fake_execute_query(sql, params=None):
         if "sys.database_principals" in sql:

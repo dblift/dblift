@@ -29,34 +29,44 @@ class SqlServerProvider(SqlAlchemyProvider):
     canonical_dialect_key = "sqlserver"
     MIGRATION_LOCK_TABLE = "dblift_migration_lock"
 
-    #: Schema this connection's login was last aligned to via ``set_current_schema``.
-    #: SQL Server's DEFAULT_SCHEMA is catalog-level state on the *login*
-    #: (``sys.database_principals``), not connection-scoped like every other
-    #: dialect's search-path mechanism — this cache avoids re-issuing ``ALTER
-    #: USER`` (a shared-state write) on every statement, limiting the window
-    #: for a concurrent process sharing the same login to interfere. Cleared
-    #: by :meth:`reset_schema_cache` — called by ``ExecutionEngine`` at the
-    #: start of every migration/callback — so each new one still starts from
-    #: the configured schema. Class-level default so tests constructing via
-    #: ``object.__new__`` still see ``None``.
+    #: The schema this connection's login is believed to actually carry right
+    #: now — the baseline :meth:`set_current_schema` compares the catalog's
+    #: live ``DEFAULT_SCHEMA`` against to detect a concurrent process (or an
+    #: earlier migration's own statement) changing it from under dblift.
+    #: Deliberately NOT cleared by :meth:`reset_schema_cache`: it must survive
+    #: the migration boundary, or a change made during the previous migration
+    #: goes undetected on the very call that would report it. Class-level
+    #: default so tests constructing via ``object.__new__`` still see ``None``.
     _current_schema_set: Optional[str] = None
+
+    #: Whether the ``ALTER USER`` write for ``_current_schema_set`` has
+    #: already been issued on this connection. Separate from
+    #: ``_current_schema_set`` because this one *is* cleared by
+    #: :meth:`reset_schema_cache` at every migration boundary, so each new
+    #: migration/callback still reissues the write — the detection baseline
+    #: above must not move for that same reissue to be noticed as a change.
+    #: Class-level default so tests constructing via ``object.__new__`` still
+    #: see ``None``.
+    _schema_applied_for: Optional[str] = None
 
     def __init__(self, config: DbliftConfig, log: Optional[Log] = None) -> None:
         """Initialize the native SQL Server provider."""
         super().__init__(config, log)
         self._current_schema_set = None
+        self._schema_applied_for = None
 
     def reset_schema_cache(self) -> None:
-        """Forget the schema this connection's login was last aligned to.
+        """Forget that this connection has already written the current schema.
 
         ``ExecutionEngine`` calls this at the start of every migration and
         callback — the unit boundary — regardless of whether it runs
-        transactionally or via autocommit, so a schema change made by one
-        migration (its own ``ALTER USER`` statement, or another process
-        sharing the login) does not suppress the next migration's own
-        reapplication of the configured schema.
+        transactionally or via autocommit, so the next migration's own
+        ``ALTER USER`` is reissued rather than skipped as a cache hit.
+        ``_current_schema_set``, the baseline used to detect a schema change
+        made by someone else, is untouched: it must survive this boundary or
+        that detection goes blind on the very call that would report it.
         """
-        self._current_schema_set = None
+        self._schema_applied_for = None
 
     # ------------------------------------------------------------------
     # SchemaProvider
@@ -176,16 +186,17 @@ class SqlServerProvider(SqlAlchemyProvider):
                     f"placement is not reliable; use a dedicated login per schema."
                 )
 
-            if self._current_schema_set == schema:
-                # Already the value this connection wants — skip the
-                # redundant catalog WRITE. The read+comparison above still
-                # ran, so interference is still detected on every call.
+            if self._schema_applied_for == schema:
+                # Already written on this connection since the last reset —
+                # skip the redundant catalog WRITE. The read+comparison above
+                # still ran, so interference is still detected on every call.
                 return
 
             super().execute_statement(
                 f"ALTER USER {_q(current_user)} WITH DEFAULT_SCHEMA = {_q(schema)}"
             )
             self._current_schema_set = schema
+            self._schema_applied_for = schema
         except Exception as e:
             self.log.warning(
                 f"SQL Server: could not set the connecting user's default schema to "
