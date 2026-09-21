@@ -474,6 +474,135 @@ class TestExecuteMigrationMainFlow(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
+# Schema statement is issued once per transactional unit (not duplicated by
+# begin_transaction's own cache clear)
+# ---------------------------------------------------------------------------
+
+
+class TestSchemaStatementIssuedOnce(unittest.TestCase):
+    """A transactional migration/callback issues its schema statement once.
+
+    ``_apply_configured_schema()`` runs right before the transaction starts.
+    A provider whose ``begin_transaction()`` also clears the schema cache
+    (with nothing executing in between) leaves the cache empty for the first
+    real statement, which reapplies the schema a second time. These tests
+    drive the real ``PostgreSqlProvider`` cache/``begin_transaction()`` logic
+    — only the SQLAlchemy connection layer is faked — so they exercise the
+    actual duplication, not a simulation of it.
+    """
+
+    def _build_engine(self, schema="app"):
+        from dblift.db.plugins.postgresql.provider import PostgreSqlProvider
+
+        class _CountingProvider(PostgreSqlProvider):
+            def __init__(self):
+                self.issued: list = []
+                self._tx = None
+                self._connection = None
+
+        provider = _CountingProvider()
+        sql_analyzer = MagicMock()
+        sql_analyzer.dialect = "postgresql"
+        config = MagicMock()
+        config.database.type.value = "postgresql"
+        config.database.schema = schema
+        engine = ExecutionEngine(
+            provider=provider,
+            sql_analyzer=sql_analyzer,
+            log=MagicMock(),
+            config=config,
+            history_manager=None,
+        )
+        policy = MagicMock(
+            transactional=True, autocommit_required=False, unsupported_mixed_mode=False
+        )
+        engine.transaction_policy = MagicMock()
+        engine.transaction_policy.decide.return_value = policy
+        return engine, provider
+
+    def test_transactional_migration_issues_schema_statement_once(self):
+        """Drives one real DDL statement through the engine's actual
+        statement loop and ``SqlExecutionService``, the same
+        ``execute_statement(statement, schema=self.schema)`` call a real
+        migration's first statement makes — not a hand-triggered
+        ``set_current_schema()`` standing in for it.
+        """
+        from dblift.core.migration.sql.sql_execution_service import SqlExecutionService
+        from dblift.db.sqlalchemy_provider import SqlAlchemyProvider
+
+        engine, provider = self._build_engine()
+        engine.sql_analyzer.get_statement_type.return_value = "DDL"
+        engine.sql_execution_service = SqlExecutionService(
+            provider=provider, sql_analyzer=engine.sql_analyzer, schema="app"
+        )
+        migration = _make_sql_migration()
+        result = MagicMock()
+
+        with patch.object(
+            SqlAlchemyProvider,
+            "execute_statement",
+            lambda self, sql, schema=None, params=None: provider.issued.append(sql) or 0,
+        ):
+            with patch.object(
+                SqlAlchemyProvider,
+                "execute_query",
+                lambda self, sql, params=None: [{"exists": True}],
+            ):
+                with patch.object(SqlAlchemyProvider, "begin_transaction", lambda self: None):
+                    with patch.object(
+                        engine,
+                        "_parse_sql_statements",
+                        return_value=["CREATE TABLE probe (id INT)"],
+                    ):
+                        with patch.object(
+                            engine, "_classify_execution_statements", return_value=[]
+                        ):
+                            engine.execute_migration(migration, result)
+
+        schema_statements = [s for s in provider.issued if "search_path" in s]
+        self.assertEqual(len(schema_statements), 1, schema_statements)
+
+    def test_transactional_callback_issues_schema_statement_once(self):
+        """Same as above for a callback's real first statement."""
+        from dblift.core.migration.sql.sql_execution_service import SqlExecutionService
+        from dblift.db.sqlalchemy_provider import SqlAlchemyProvider
+
+        engine, provider = self._build_engine()
+        engine.sql_analyzer.get_statement_type.return_value = "DDL"
+        engine.sql_execution_service = SqlExecutionService(
+            provider=provider, sql_analyzer=engine.sql_analyzer, schema="app"
+        )
+        callback = MagicMock(spec=Migration)
+        callback.format = MigrationFormat.SQL
+        callback.script_name = "afterEach__log.sql"
+        callback.content = ""
+
+        with patch.object(
+            SqlAlchemyProvider,
+            "execute_statement",
+            lambda self, sql, schema=None, params=None: provider.issued.append(sql) or 0,
+        ):
+            with patch.object(
+                SqlAlchemyProvider,
+                "execute_query",
+                lambda self, sql, params=None: [{"exists": True}],
+            ):
+                with patch.object(SqlAlchemyProvider, "begin_transaction", lambda self: None):
+                    with patch.object(
+                        engine,
+                        "_prepare_sql_statements",
+                        return_value=["CREATE TABLE callback_log (id INT)"],
+                    ):
+                        with patch.object(
+                            engine, "_classify_execution_statements", return_value=[]
+                        ):
+                            engine.execute_callback(callback)
+
+        schema_statements = [s for s in provider.issued if "search_path" in s]
+        self.assertEqual(len(schema_statements), 1, schema_statements)
+
+
+# ---------------------------------------------------------------------------
 # _prepare_transaction
 # ---------------------------------------------------------------------------
 
@@ -580,6 +709,147 @@ class TestPrepareTransaction(unittest.TestCase):
 
         self.assertTrue(result)
         engine.provider.connection  # accessed attribute was None
+
+    def test_dangling_transaction_rollback_invalidates_schema_cache(self):
+        """A transaction already open here is anomalous: normally nothing is,
+        because ``_apply_configured_schema()``'s own statement, issued
+        moments earlier with no transaction open, already committed itself
+        and is safe from any later rollback. When a transaction WAS already
+        open, rolling it back may have undone that statement instead —
+        PostgreSQL documents a plain ``SET``'s effect as undone by
+        ``ROLLBACK`` — so the schema cache can no longer be trusted and must
+        be invalidated rather than left believing the schema is still
+        applied.
+        """
+        from dblift.db.plugins.postgresql.provider import PostgreSqlProvider
+        from dblift.db.sqlalchemy_provider import SqlAlchemyProvider
+
+        class _FakeConnection:
+            closed = False
+
+            def in_transaction(self):
+                return True
+
+            def rollback(self):
+                pass
+
+        class _Provider(PostgreSqlProvider):
+            def __init__(self):
+                self._tx = MagicMock()  # already open before _prepare_transaction runs
+                self._connection = _FakeConnection()
+                self._schema_applied_for = "app"  # _apply_configured_schema() already ran
+
+        provider = _Provider()
+        engine = ExecutionEngine(
+            provider=provider, sql_analyzer=MagicMock(), log=MagicMock(), config=None
+        )
+        migration = _make_sql_migration()
+
+        with patch.object(SqlAlchemyProvider, "begin_transaction", lambda self: None):
+            result = engine._prepare_transaction(migration)
+
+        self.assertTrue(result)
+        self.assertIsNone(provider._schema_applied_for)
+
+    def test_no_dangling_transaction_leaves_schema_cache_intact(self):
+        """The routine defensive rollback — nothing open, nothing to undo —
+        must not clear the cache. Otherwise the single-apply fix regresses:
+        every ordinary transactional migration would issue its schema
+        statement twice again.
+        """
+        from dblift.db.plugins.postgresql.provider import PostgreSqlProvider
+        from dblift.db.sqlalchemy_provider import SqlAlchemyProvider
+
+        class _FakeConnection:
+            closed = False
+
+            def in_transaction(self):
+                return False
+
+            def rollback(self):
+                pass
+
+        class _Provider(PostgreSqlProvider):
+            def __init__(self):
+                self._tx = None
+                self._connection = _FakeConnection()
+                self._schema_applied_for = "app"
+
+        provider = _Provider()
+        engine = ExecutionEngine(
+            provider=provider, sql_analyzer=MagicMock(), log=MagicMock(), config=None
+        )
+        migration = _make_sql_migration()
+
+        with patch.object(SqlAlchemyProvider, "begin_transaction", lambda self: None):
+            result = engine._prepare_transaction(migration)
+
+        self.assertTrue(result)
+        self.assertEqual(provider._schema_applied_for, "app")
+
+    def test_bool_attribute_connection_still_rolls_back(self):
+        """``sqlite3.Connection.in_transaction`` is a bool *property*, not a
+        method. Duck-typing it as ``connection.in_transaction()`` raises
+        ``TypeError: 'bool' object is not callable`` — and since that check
+        used to sit outside the ``try`` guarding ``rollback_transaction()``,
+        the exception was swallowed by the outer handler and the rollback
+        never ran at all. The open-transaction check now reads the
+        provider's own ``_tx`` instead of the connection, so a connection
+        shaped like this must not change whether rollback fires.
+        """
+        engine = _make_engine()
+        migration = _make_sql_migration()
+        engine.provider.connection.getAutoCommit.return_value = False
+        engine.provider.connection.in_transaction = True  # bool attribute, not callable
+        engine.provider._tx = object()  # an open transaction
+        engine.provider.begin_transaction.return_value = None
+
+        result = engine._prepare_transaction(migration)
+
+        self.assertTrue(result)
+        engine.provider.rollback_transaction.assert_called_once()
+        debug_calls = [str(c) for c in engine.log.debug.call_args_list]
+        self.assertFalse(
+            any("Could not check connection state" in c for c in debug_calls),
+            "the bool-attribute read should not raise and be swallowed",
+        )
+
+    def test_bool_attribute_connection_open_transaction_invalidates_cache(self):
+        """Same bool-attribute connection shape, with the provider's own
+        ``_tx`` showing a transaction actually was open: the rollback that
+        follows may have undone a schema-setting statement, so the cache
+        must still be invalidated.
+        """
+        engine = _make_engine()
+        migration = _make_sql_migration()
+        engine.provider.connection.getAutoCommit.return_value = False
+        engine.provider.connection.in_transaction = True  # bool attribute, not callable
+        engine.provider._tx = object()
+        engine.provider.begin_transaction.return_value = None
+
+        result = engine._prepare_transaction(migration)
+
+        self.assertTrue(result)
+        engine.provider.rollback_transaction.assert_called_once()
+        engine.provider.reset_schema_cache.assert_called_once()
+
+    def test_bool_attribute_connection_no_open_transaction_skips_cache_reset(self):
+        """Same bool-attribute connection shape, no transaction actually
+        open: the routine defensive rollback has nothing to undo, so the
+        cache must be left alone.
+        """
+        engine = _make_engine()
+        migration = _make_sql_migration()
+        engine.provider.connection.getAutoCommit.return_value = False
+        engine.provider.connection.in_transaction = False  # bool attribute, not callable
+        engine.provider._tx = None
+        engine.provider.begin_transaction.return_value = None
+
+        result = engine._prepare_transaction(migration)
+
+        self.assertTrue(result)
+        engine.provider.rollback_transaction.assert_called_once()
+        engine.provider.reset_schema_cache.assert_not_called()
 
 
 # ---------------------------------------------------------------------------

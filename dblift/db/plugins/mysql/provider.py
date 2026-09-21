@@ -26,9 +26,9 @@ class MySqlProvider(SqlAlchemyProvider):
     #: of a migration, so a ``USE`` the migration itself runs is not
     #: immediately overwritten. Cleared by :meth:`reset_schema_cache` —
     #: called by ``ExecutionEngine`` at the start of every migration/callback,
-    #: and also by :meth:`begin_transaction` as a second, redundant guard —
-    #: so each new one still starts from the configured database. Class-level
-    #: default so tests constructing via ``object.__new__`` still see ``None``.
+    #: before either one starts a transaction — so each new one still starts
+    #: from the configured database. Class-level default so tests
+    #: constructing via ``object.__new__`` still see ``None``.
     _current_database_set: Optional[str] = None
 
     def __init__(self, config: DbliftConfig, log: Optional[Log] = None) -> None:
@@ -41,15 +41,10 @@ class MySqlProvider(SqlAlchemyProvider):
 
         ``ExecutionEngine`` calls this at the start of every migration and
         callback — the unit boundary — regardless of whether it runs
-        transactionally or via autocommit; :meth:`begin_transaction` fires on
-        only one of those paths, so it is not a substitute for this call.
+        transactionally or via autocommit, so it is the sole invalidation
+        point rather than something :meth:`begin_transaction` also needs to do.
         """
         self._current_database_set = None
-
-    def begin_transaction(self) -> None:
-        """Begin a transaction, forcing the next statement to reapply the database."""
-        self.reset_schema_cache()
-        super().begin_transaction()
 
     def execute_statement(
         self, sql: str, schema: Optional[str] = None, params: Optional[List[Any]] = None

@@ -49,12 +49,8 @@ class SnowflakeProvider(SqlAlchemyProvider):
     #: statement of a migration, so a ``USE SCHEMA`` the migration itself
     #: runs is not immediately overwritten. Cleared by
     #: :meth:`reset_schema_cache` — called by ``ExecutionEngine`` at the
-    #: start of every migration/callback — and again by
-    #: :meth:`begin_transaction`. For a transactional migration,
-    #: ``begin_transaction`` runs *after* ``ExecutionEngine`` already applied
-    #: the configured schema, so it re-clears the cache and the migration's
-    #: first statement reissues ``USE SCHEMA`` a second time — one duplicate
-    #: statement per transactional migration, not a no-op safety net.
+    #: start of every migration/callback, before either one starts a
+    #: transaction — so each one still starts from the configured schema.
     #: Class-level default so tests constructing via ``object.__new__``
     #: still see ``None``.
     _schema_applied_for: Optional[str] = None
@@ -75,11 +71,6 @@ class SnowflakeProvider(SqlAlchemyProvider):
         configured schema.
         """
         self._schema_applied_for = None
-
-    def begin_transaction(self) -> None:
-        """Begin a transaction, forcing the next statement to reapply the schema."""
-        self.reset_schema_cache()
-        super().begin_transaction()
 
     def execute_statement(
         self,

@@ -85,6 +85,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   could not be exercised against a live engine here (no reachable Db2
   instance, no local Snowflake engine), so the fix for those two is
   unverified at the engine level.
+- A transactional migration or callback no longer sends its configured-schema
+  statement (`SET search_path`, `USE`, `ALTER SESSION SET CURRENT_SCHEMA`,
+  `SET SCHEMA`, `USE SCHEMA`) twice. PostgreSQL, MySQL, Oracle, Db2 and
+  Snowflake now apply it once per migration/callback instead of once before
+  the transaction starts and again right after.
 
 ### Removed
 

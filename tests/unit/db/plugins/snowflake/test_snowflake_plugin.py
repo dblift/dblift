@@ -467,11 +467,14 @@ def test_snowflake_set_current_schema_skips_reissue_for_same_schema(monkeypatch)
     assert base_calls == ['USE SCHEMA "APP"']
 
 
-def test_snowflake_set_current_schema_reapplies_after_begin_transaction(monkeypatch) -> None:
-    """A new transaction (new migration) reapplies the schema once.
+def test_snowflake_begin_transaction_alone_does_not_clear_the_schema_cache(monkeypatch) -> None:
+    """``begin_transaction`` no longer clears the cache on its own.
 
-    This is what keeps one migration's session state from leaking into the
-    next: ``begin_transaction`` clears the cache the skip above relies on.
+    Invalidation is owned by ``ExecutionEngine.reset_schema_cache()``, called
+    once at the start of every migration/callback before the transaction
+    begins. A provider-level clear here as well would leave nothing between
+    the two clears, so the migration's first statement reapplied the schema
+    a second time — a duplicate ``USE SCHEMA`` per migration.
     """
     base_calls: list[str] = []
     monkeypatch.setattr(
@@ -486,7 +489,7 @@ def test_snowflake_set_current_schema_reapplies_after_begin_transaction(monkeypa
     SnowflakeProvider.begin_transaction(provider)
     provider.set_current_schema("app")
 
-    assert base_calls == ['USE SCHEMA "APP"', 'USE SCHEMA "APP"']
+    assert base_calls == ['USE SCHEMA "APP"']
 
 
 def test_snowflake_table_exists_and_version_queries() -> None:
