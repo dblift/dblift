@@ -40,6 +40,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   dollar-quoted value (PostgreSQL's `$$ ... $$` / `$tag$ ... $tag$`) as a real
   clause. A statement like `UPDATE t SET body = $$ ... WHERE ... $$` is now
   correctly identified as touching the whole table.
+- A migration whose first statement is a plain `SELECT` (or any other
+  row-returning statement) now reads from the configured schema. It
+  previously ran against whatever schema the connection happened to be on —
+  including one left over from an earlier migration's own `SET search_path`
+  (PostgreSQL) or `USE` (MySQL/MariaDB) — silently returning rows from the
+  wrong schema.
 
 ### Removed
 

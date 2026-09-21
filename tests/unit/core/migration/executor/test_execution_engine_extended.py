@@ -365,6 +365,41 @@ class TestExecuteMigrationMainFlow(unittest.TestCase):
 
         mock_rec.assert_not_called()
 
+    def test_sql_migration_applies_configured_schema_before_row_returning_first_statement(self):
+        """A migration whose first statement is a row-returning read must still
+        resolve against the configured schema.
+
+        ``SqlExecutionService.execute_statement()`` sends QUERY-classified
+        statements straight to ``provider.execute_query()``, which never goes
+        through the schema-applying ``execute_statement()``/``set_current_schema()``
+        path — so the read used to run against whatever schema the connection
+        happened to carry. Mirrors ``test_sql_callback_sets_configured_schema_before_statements``.
+        """
+        from dblift.core.migration.sql.sql_execution_service import SqlExecutionService
+
+        engine, policy = self._make_engine_with_policy(transactional=True)
+        engine.config.database.schema = "app"
+        engine.sql_analyzer.get_statement_type.return_value = "QUERY"
+        engine.provider.execute_query.return_value = []
+        engine.sql_execution_service = SqlExecutionService(
+            provider=engine.provider, sql_analyzer=engine.sql_analyzer, schema="app"
+        )
+        migration = _make_sql_migration()
+        result = MagicMock()
+        result.show_query_results = False
+
+        with patch.object(engine, "_parse_sql_statements", return_value=["SELECT 1"]):
+            with patch.object(engine, "_classify_execution_statements", return_value=[]):
+                with patch.object(engine, "_prepare_transaction", return_value=True):
+                    engine.execute_migration(migration, result)
+
+        engine.provider.set_current_schema.assert_called_once_with("app")
+        calls = engine.provider.method_calls
+        self.assertLess(
+            calls.index(unittest.mock.call.set_current_schema("app")),
+            calls.index(unittest.mock.call.execute_query("SELECT 1", params=None)),
+        )
+
 
 # ---------------------------------------------------------------------------
 # _prepare_transaction

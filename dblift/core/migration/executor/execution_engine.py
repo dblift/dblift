@@ -193,6 +193,15 @@ class ExecutionEngine:
                 "earlier statements applied."
             )
 
+        # Apply the configured schema once, before the first statement, so a
+        # row-returning statement (routed to provider.execute_query(), which
+        # never applies a schema) is not left depending on whatever the
+        # connection happens to carry. Mirrors execute_callback(); a no-op if
+        # the migration's own statements later change it (see set_current_schema).
+        schema = getattr(getattr(self.config, "database", None), "schema", None)
+        if isinstance(schema, str) and schema:
+            self.provider.set_current_schema(schema)
+
         try:
             success = self._execute_statements(
                 statements, migration, result, start_time, autocommit=policy.autocommit_required
