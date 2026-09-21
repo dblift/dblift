@@ -89,6 +89,56 @@ class TestUndoStatementEmitterGenerateDrop(unittest.TestCase):
         self.assertIn('"public"', sql)
         self.assertIn('"users"', sql)
 
+    # -- INDEX: dropping an index needs the table, not the schema (#368) --
+
+    _CREATE_INDEX_SQL = "CREATE INDEX idx_users_email ON users(email);"
+
+    def test_sqlserver_index_drop_names_the_table(self):
+        # SQL Server rejects DROP INDEX schema.name for an index; it requires
+        # DROP INDEX name ON table.
+        emitter = self._make_emitter("sqlserver")
+        sql = emitter._generate_drop_statement(
+            "INDEX", "idx_users_email", None, self._CREATE_INDEX_SQL
+        )
+        self.assertEqual(sql, "DROP INDEX IF EXISTS [idx_users_email] ON [users];")
+
+    def test_mysql_index_drop_names_the_table_no_if_exists(self):
+        emitter = self._make_emitter("mysql")
+        sql = emitter._generate_drop_statement(
+            "INDEX", "idx_users_email", None, self._CREATE_INDEX_SQL
+        )
+        self.assertEqual(sql, "DROP INDEX `idx_users_email` ON `users`;")
+
+    def test_postgresql_index_drop_is_schema_qualified_not_table(self):
+        emitter = self._make_emitter("postgresql")
+        sql = emitter._generate_drop_statement(
+            "INDEX", "idx_users_email", None, self._CREATE_INDEX_SQL
+        )
+        self.assertEqual(sql, 'DROP INDEX IF EXISTS "idx_users_email";')
+
+    def test_sqlite_index_drop_is_schema_qualified_not_table(self):
+        emitter = self._make_emitter("sqlite")
+        sql = emitter._generate_drop_statement(
+            "INDEX", "idx_users_email", None, self._CREATE_INDEX_SQL
+        )
+        self.assertEqual(sql, 'DROP INDEX IF EXISTS "idx_users_email";')
+
+    def test_oracle_index_drop_standalone_with_if_exists(self):
+        # Oracle's standalone DROP INDEX supports IF EXISTS natively since
+        # 19.28 / 23ai, unlike DROP TABLE (no IF EXISTS at all).
+        emitter = self._make_emitter("oracle")
+        sql = emitter._generate_drop_statement(
+            "INDEX", "idx_users_email", None, self._CREATE_INDEX_SQL
+        )
+        self.assertEqual(sql, 'DROP INDEX IF EXISTS "idx_users_email";')
+
+    def test_db2_index_drop_no_if_exists(self):
+        emitter = self._make_emitter("db2")
+        sql = emitter._generate_drop_statement(
+            "INDEX", "idx_users_email", None, self._CREATE_INDEX_SQL
+        )
+        self.assertEqual(sql, 'DROP INDEX "idx_users_email";')
+
     def test_view_no_cascade(self):
         emitter = self._make_emitter("postgresql")
         sql = emitter._generate_drop_statement("VIEW", "my_view", None)
@@ -314,14 +364,11 @@ class TestUndoStatementEmitterExtractTableFromCreateIndex(unittest.TestCase):
         self.assertEqual(result, "users")
 
     def test_unique_index(self):
-        # UNIQUE keyword is not handled by the regex in _extract_table_name_from_create_index;
-        # it returns None in that case (known limitation — DROP INDEX only uses _extract_table_name_from_index).
         emitter = self._make_emitter()
         result = emitter._extract_table_name_from_create_index(
             "CREATE UNIQUE INDEX idx_u ON orders(id);"
         )
-        # The method does NOT support UNIQUE INDEX (returns None) — assert accordingly
-        self.assertIsNone(result)
+        self.assertEqual(result, "orders")
 
     def test_no_on_clause(self):
         emitter = self._make_emitter()

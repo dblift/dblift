@@ -17,6 +17,7 @@ from dblift.core.migration.scripting.undo_script_generator._helpers import (
     resolve_sqlglot_read_dialect,
 )
 from dblift.core.sql_model.dialect import quote_identifier
+from dblift.core.sql_model.index import Index
 from dblift.db.provider_registry import ProviderRegistry
 
 
@@ -234,17 +235,39 @@ class _UndoExtractorsMixin:
                 return None
         return None
 
-    def _generate_drop_statement(self, obj_type: str, obj_name: str, schema: Optional[str]) -> str:
+    def _generate_drop_statement(
+        self,
+        obj_type: str,
+        obj_name: str,
+        schema: Optional[str],
+        create_sql: Optional[str] = None,
+    ) -> str:
         """Generate DROP statement for an object.
 
         Args:
             obj_type: Object type (TABLE, INDEX, VIEW, etc.)
             obj_name: Object name
             schema: Optional schema name
+            create_sql: The original CREATE statement, used for INDEX to find
+                the table it was created on (an index isn't schema-qualified
+                the way a table is, so some dialects require naming the table
+                instead: e.g. SQL Server's ``DROP INDEX name ON table``)
 
         Returns:
             DROP statement SQL
         """
+        if obj_type == "INDEX" and create_sql:
+            table_name = self._extract_table_name_from_create_index(create_sql)
+            if table_name:
+                index = Index(
+                    name=obj_name,
+                    table_name=table_name,
+                    columns=[],
+                    schema=schema,
+                    dialect=self.dialect,
+                )
+                return f"{index.drop_statement};"
+
         # Format object name
         if schema:
             formatted_name = f"{self._quote_identifier(schema)}.{self._quote_identifier(obj_name)}"
@@ -403,11 +426,11 @@ class _UndoExtractorsMixin:
         Returns:
             Table name or None
         """
-        # Pattern: CREATE INDEX [IF NOT EXISTS] "index_name" ON ["schema"]."table_name"(...)
+        # Pattern: CREATE [UNIQUE] INDEX [IF NOT EXISTS] "index_name" ON ["schema"]."table_name"(...)
         # Handle quoted and unquoted identifiers
         patterns = [
-            r'CREATE\s+INDEX\s+(?:IF\s+NOT\s+EXISTS\s+)?(?:[^"\s]+|"[^"]+")\s+ON\s+(?:"([^"]+)"\.)?"([^"]+)"',  # Quoted with ON
-            r"CREATE\s+INDEX\s+(?:IF\s+NOT\s+EXISTS\s+)?(?:\w+\.)?(\w+)\s+ON\s+(?:(\w+)\.)?(\w+)",  # Unquoted with ON
+            r'CREATE\s+(?:UNIQUE\s+)?INDEX\s+(?:IF\s+NOT\s+EXISTS\s+)?(?:[^"\s]+|"[^"]+")\s+ON\s+(?:"([^"]+)"\.)?"([^"]+)"',  # Quoted with ON
+            r"CREATE\s+(?:UNIQUE\s+)?INDEX\s+(?:IF\s+NOT\s+EXISTS\s+)?(?:\w+\.)?(\w+)\s+ON\s+(?:(\w+)\.)?(\w+)",  # Unquoted with ON
         ]
 
         for pattern in patterns:

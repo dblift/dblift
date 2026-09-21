@@ -120,6 +120,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   silent on this ordinary boundary correction and still fires when a login
   shared with another connection is changed mid-migration, which is what it
   is meant to catch. Verified against a live SQL Server instance.
+- Auto-generated undo scripts now drop an index the way each engine expects.
+  SQL Server and MySQL name the table (`DROP INDEX name ON table`); the
+  drop is built from the table in the original `CREATE INDEX` statement, so
+  a migration that adds an index now produces an undo script SQL Server and
+  MySQL will actually run, instead of a schema-qualified `DROP INDEX
+  schema.name` SQL Server rejects. PostgreSQL, SQLite, Oracle and Db2 are
+  unaffected — verified against a live PostgreSQL instance; the others by
+  their documented syntax.
 
 ### Removed
 

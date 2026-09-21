@@ -173,7 +173,7 @@ class _UndoReversersMixin:
 
         # Generate DROP statement based on object type
         if obj_type in ("TABLE", "INDEX", "VIEW", "SEQUENCE", "TRIGGER", "PROCEDURE", "FUNCTION"):
-            drop_sql = self._generate_drop_statement(obj_type, obj_name, schema)
+            drop_sql = self._generate_drop_statement(obj_type, obj_name, schema, sql)
             return UndoStatement(
                 sql=drop_sql,
                 original_statement=sql,
@@ -221,7 +221,7 @@ class _UndoReversersMixin:
 
         # Generate DROP statement based on object type
         if obj_type in ("TABLE", "INDEX", "VIEW", "SEQUENCE", "TRIGGER", "PROCEDURE", "FUNCTION"):
-            drop_sql = self._generate_drop_statement(obj_type, obj_name, schema)
+            drop_sql = self._generate_drop_statement(obj_type, obj_name, schema, sql)
             return UndoStatement(
                 sql=drop_sql,
                 original_statement=sql,
