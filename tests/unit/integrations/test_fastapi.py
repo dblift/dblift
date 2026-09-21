@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from contextlib import asynccontextmanager
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -118,6 +119,18 @@ def test_health_payload_reports_pending_when_behind(tmp_path: Path) -> None:
         assert len(payload["pending_migrations"]) == 1
     finally:
         client.close()
+
+
+def test_health_payload_rejects_failed_info_result() -> None:
+    from dblift.core.exceptions import DbliftError
+    from dblift.integrations.fastapi import health_payload
+
+    client = SimpleNamespace(
+        info=lambda: SimpleNamespace(success=False, error_message="history denied")
+    )
+
+    with pytest.raises(DbliftError, match="history denied"):
+        health_payload(client)
 
 
 def test_migration_guard_noop_on_current_or_ignore(tmp_path: Path) -> None:

@@ -441,10 +441,7 @@ def test_nonempty_recursion_map_preserves_validator_discovery_scope(database_cli
     assert counts == {"history": 4, "files": {"V1__app.sql": 2}, "scans": 2}
 
 
-@pytest.mark.parametrize("state_fails", [False, True])
-def test_info_duplicate_warning_reuses_catalog_or_falls_back_after_state_failure(
-    database_client, state_fails
-):
+def test_info_duplicate_warning_reuses_state_catalog(database_client):
     client, _, migrations, _ = database_client
     (migrations / "V1__app.sql").write_text("SELECT 1;")
     (migrations / "V1__duplicate.sql").write_text("SELECT 2;")
@@ -455,14 +452,13 @@ def test_info_duplicate_warning_reuses_catalog_or_falls_back_after_state_failure
         patch.object(
             state_manager,
             "build_state",
-            side_effect=RuntimeError("cannot build state") if state_fails else None,
             wraps=state_manager.build_state,
         ),
     ):
         result = client.info()
 
     assert result.success, result.error_message
-    assert len(result.migrations) == (0 if state_fails else 2)
+    assert len(result.migrations) == 2
     assert any("Duplicate version 1" in call.args[0] for call in warnings.call_args_list)
     assert counts == {
         "history": 2,
@@ -560,7 +556,7 @@ def test_commands_consume_history_through_state_manager(database_client, command
     assert counts["history"] == (4 if command_type is MigrateCommand else 2)
 
 
-def test_info_catalog_fallback_consumes_state_manager_data(database_client):
+def test_info_state_failure_does_not_use_fallback_catalog(database_client):
     client, _, migrations, _ = database_client
     (migrations / "V1__first.sql").write_text("SELECT 1;")
     (migrations / "V1__duplicate.sql").write_text("SELECT 2;")
@@ -579,10 +575,11 @@ def test_info_catalog_fallback_consumes_state_manager_data(database_client):
     ):
         result = command.execute(migrations, display_human=False)
 
-    assert result.success, result.error_message
-    assert any("Duplicate version 1" in call.args[0] for call in warnings.call_args_list)
+    assert not result.success
+    assert result.error_message == "Info operation failed: state unavailable"
+    assert not any("Duplicate version 1" in call.args[0] for call in warnings.call_args_list)
     command.script_manager.get_migration_scripts.assert_not_called()
-    assert counts["scans"] == 1
+    assert counts["scans"] == 0
 
 
 @pytest.mark.parametrize(

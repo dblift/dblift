@@ -9,7 +9,6 @@ if TYPE_CHECKING:
     pass
 from dblift.core.logger.results import InfoResult, MigrationInfo, is_failed_migration_status
 from dblift.core.migration.migration import VERSIONED_SCRIPT_TYPES, MigrationType
-from dblift.core.migration.state.migration_state import MigrationState
 from dblift.core.utils.url_masking import mask_database_url
 from dblift.db.provider_capabilities import get_provider_display_url, get_provider_driver_display
 
@@ -79,19 +78,14 @@ class InfoCommand(BaseCommand):
 
         def _body() -> None:
             # Use MigrationStateManager to get centralized migration state
-            try:
-                migration_state = self.state_manager.build_state(
-                    scripts_dir,
-                    recursive=recursive,
-                    additional_dirs=additional_dirs,
-                    dir_recursive_map=dir_recursive_map,
-                    target_version=target_version,
-                    read_snapshot=read_snapshot,
-                )
-            except Exception as e:
-                # If build_state fails, create empty state
-                self.log.debug(f"Could not build migration state: {e}")
-                migration_state = MigrationState()
+            migration_state = self.state_manager.build_state(
+                scripts_dir,
+                recursive=recursive,
+                additional_dirs=additional_dirs,
+                dir_recursive_map=dir_recursive_map,
+                target_version=target_version,
+                read_snapshot=read_snapshot,
+            )
 
             # Warn if duplicate version numbers exist across filesystem scripts.
             # Synthetic history rows, such as baseline command markers, are not
