@@ -10,6 +10,7 @@ class TestIntrospectorFactoryRegister(unittest.TestCase):
 
         # Clear map to isolate tests
         self._orig = dict(IntrospectorFactory._DIALECT_MAP)
+        self._defaults_registered = IntrospectorFactory._DEFAULTS_REGISTERED
         IntrospectorFactory._DIALECT_MAP.clear()
 
     def tearDown(self):
@@ -17,6 +18,7 @@ class TestIntrospectorFactoryRegister(unittest.TestCase):
 
         IntrospectorFactory._DIALECT_MAP.clear()
         IntrospectorFactory._DIALECT_MAP.update(self._orig)
+        IntrospectorFactory._DEFAULTS_REGISTERED = self._defaults_registered
 
     def test_register_stores_lowercase(self):
         from dblift.core.introspection.introspector_factory import IntrospectorFactory
@@ -51,12 +53,14 @@ class TestIntrospectorFactoryCreate(unittest.TestCase):
         from dblift.core.introspection.introspector_factory import IntrospectorFactory
 
         self._orig = dict(IntrospectorFactory._DIALECT_MAP)
+        self._defaults_registered = IntrospectorFactory._DEFAULTS_REGISTERED
 
     def tearDown(self):
         from dblift.core.introspection.introspector_factory import IntrospectorFactory
 
         IntrospectorFactory._DIALECT_MAP.clear()
         IntrospectorFactory._DIALECT_MAP.update(self._orig)
+        IntrospectorFactory._DEFAULTS_REGISTERED = self._defaults_registered
 
     def _make_provider(self, dialect):
         p = MagicMock()
@@ -122,6 +126,7 @@ class TestIntrospectorFactoryCreate(unittest.TestCase):
 
         # Clear map to trigger _register_defaults
         IntrospectorFactory._DIALECT_MAP.clear()
+        IntrospectorFactory._DEFAULTS_REGISTERED = False
         provider = self._make_provider("postgresql")
         result = IntrospectorFactory.create(provider)
         # After P3 relocation, OSS quirks return no introspector_class; PRO

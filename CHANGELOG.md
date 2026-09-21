@@ -13,6 +13,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Undo planning now computes migration rank state once, keeping rollback
   selection linear as migration history grows.
+- Introspection extensions are now discovered once per process instead of
+  rescanning installed package metadata for every introspector instance.
 
 ### Fixed
 
