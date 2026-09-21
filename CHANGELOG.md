@@ -15,6 +15,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   selection linear as migration history grows.
 - Introspection extensions are now discovered once per process instead of
   rescanning installed package metadata for every introspector instance.
+- Full-schema introspection now uses bulk index retrieval when the database
+  supports it, avoiding one catalog query per table.
 
 ### Fixed
 

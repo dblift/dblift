@@ -20,6 +20,8 @@ from __future__ import annotations
 
 from typing import Any, Callable, Dict, List
 
+from dblift.core.introspection._bulk_indexes import group_bulk_indexes
+
 
 def introspect_schema(si: Any, schema: str, **kwargs: Any) -> Dict[str, Any]:
     """Introspect a schema end-to-end and return a structured snapshot dict.
@@ -161,6 +163,7 @@ def introspect_schema(si: Any, schema: str, **kwargs: Any) -> Dict[str, Any]:
         tables = si.get_tables(schema, include_views=False)
         result["tables"] = tables
         result["table_count"] = len(tables)
+        bulk_indexes = group_bulk_indexes(si, schema, tables)
 
         # Enhance each table with vendor-specific metadata
         for table in tables:
@@ -246,8 +249,12 @@ def introspect_schema(si: Any, schema: str, **kwargs: Any) -> Dict[str, Any]:
             )
 
             # Get indexes
-            indexes = _collect(
-                "indexes", lambda: si.get_indexes(schema, table.name), [], table=table.name
+            indexes = (
+                bulk_indexes[table.name]
+                if bulk_indexes is not None
+                else _collect(
+                    "indexes", lambda: si.get_indexes(schema, table.name), [], table=table.name
+                )
             )
             result["indexes"][table.name] = indexes
             total_idx: int = result["total_indexes"]

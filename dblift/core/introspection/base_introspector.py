@@ -15,6 +15,7 @@ from typing import Any, Dict, List, Optional, Type, TypeVar
 
 _T = TypeVar("_T")
 
+from dblift.core.introspection._bulk_indexes import group_bulk_indexes
 from dblift.core.introspection._utils import (
     get_row_value,
     parse_json_array,
@@ -466,6 +467,7 @@ class BaseIntrospector:
             tables = self.get_tables(schema, include_views=False)
             result["tables"] = tables
             result["table_count"] = len(tables)
+            bulk_indexes = group_bulk_indexes(self, schema, tables)
 
             # Get indexes for each table
             for table in tables:
@@ -473,7 +475,11 @@ class BaseIntrospector:
                 result["total_columns"] = total_cols + len(table.columns)
 
                 # Get indexes
-                indexes = self.get_indexes(schema, table.name)
+                indexes = (
+                    bulk_indexes[table.name]
+                    if bulk_indexes is not None
+                    else self.get_indexes(schema, table.name)
+                )
                 result["indexes"][table.name] = indexes
                 total_idx: int = result["total_indexes"]
                 result["total_indexes"] = total_idx + len(indexes)
