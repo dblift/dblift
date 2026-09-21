@@ -68,7 +68,7 @@ class SqlServerRegexParser(EnhancedRegexParser):
             tokens = tokenizer.tokenize()
 
             context = ParserContext()
-            parser = SQLServerStatementParser(tokens, context)
+            parser = SQLServerStatementParser(tokens, context, source=sql_content)
 
             statements = parser.split_statements()
             logger.debug(f"SQL Server: Tokenization split into {len(statements)} statements")

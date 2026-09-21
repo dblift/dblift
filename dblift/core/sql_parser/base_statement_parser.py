@@ -22,16 +22,29 @@ class BaseStatementParser:
     - _is_statement_end: Custom logic for statement boundaries
     """
 
-    def __init__(self, tokens: List[Token], context: Optional[ParserContext] = None):
+    def __init__(
+        self,
+        tokens: List[Token],
+        context: Optional[ParserContext] = None,
+        source: Optional[str] = None,
+    ):
         """Initialize the statement parser.
 
         Args:
             tokens: List of tokens to parse
             context: Parser context (created if not provided)
+            source: The exact text the tokens were produced from. When given,
+                a statement is returned as a verbatim slice of this text
+                (see ``_render_statement``) instead of a reconstruction from
+                token text, so whitespace, embedded comments and spacing the
+                joiner cannot model reach the database unchanged. ``None``
+                keeps the token-joining behaviour, e.g. for tests that build
+                a token list by hand with no real source positions.
         """
         self.tokens = tokens
         self.context = context or ParserContext()
         self.current_idx = 0
+        self.source = source
 
     def split_statements(self) -> List[str]:
         """Split tokens into statements based on delimiters and block depth.
@@ -60,6 +73,7 @@ class BaseStatementParser:
                 # SQL Server "GO" is a batch separator for tools (SSMS); it is not executable
                 # via the native driver and must not be emitted as its own statement.
                 stmt_tokens = current_statement_tokens
+                dropped_terminator_pos: Optional[int] = None
                 if (
                     token.type == TokenType.DELIMITER
                     and token.text.upper() == "GO"
@@ -67,19 +81,52 @@ class BaseStatementParser:
                     and stmt_tokens[-1].type == TokenType.DELIMITER
                     and stmt_tokens[-1].text.upper() == "GO"
                 ):
+                    dropped_terminator_pos = stmt_tokens[-1].pos
                     stmt_tokens = stmt_tokens[:-1]
-                stmt_text = self._tokens_to_string(stmt_tokens)
+                stmt_text = self._render_statement(stmt_tokens, token, dropped_terminator_pos)
                 if stmt_text.strip():
                     statements.append(stmt_text)
                 current_statement_tokens = []
 
         # Handle any remaining tokens
         if current_statement_tokens:
-            stmt_text = self._tokens_to_string(current_statement_tokens)
+            stmt_text = self._render_statement(current_statement_tokens, None, None)
             if stmt_text.strip():
                 statements.append(stmt_text)
 
         return statements
+
+    def _render_statement(
+        self,
+        kept_tokens: List[Token],
+        terminator: Optional[Token],
+        dropped_terminator_pos: Optional[int],
+    ) -> str:
+        """Render one statement, verbatim from source when source is known.
+
+        Leading plain comments (``TokenType.COMMENT``) are skipped when
+        locating where the statement starts — like surrounding whitespace,
+        they precede the statement rather than being it, and callers
+        classify a statement by its real leading keyword. A segment that is
+        only comments (no other token, not even the dropped terminator)
+        stays dropped, matching historical behaviour. A MySQL/MariaDB
+        comment directive (``TokenType.COMMENT_DIRECTIVE`` carries real
+        text, unlike a plain comment) is not a plain comment and is kept,
+        including as a statement's sole content.
+        """
+        first_content = next((t for t in kept_tokens if t.type != TokenType.COMMENT), None)
+        if first_content is None:
+            return ""
+        if self.source is None:
+            return self._tokens_to_string(kept_tokens)
+        start = first_content.pos
+        if dropped_terminator_pos is not None:
+            end = dropped_terminator_pos
+        elif terminator is not None:
+            end = terminator.pos + len(terminator.text)
+        else:
+            end = len(self.source)
+        return self.source[start:end].rstrip()
 
     def _is_statement_end(self, token: Token) -> bool:
         """Check if token marks the end of a statement.

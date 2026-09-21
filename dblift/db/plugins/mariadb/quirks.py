@@ -60,11 +60,6 @@ class MariadbQuirks(MysqlQuirks):
         ),
     }
 
-    # MariaDB historically did not need post-introspection rollback in dblift;
-    # the legacy gate was ``dialect in ("db2", "mysql")``.
-    # Override the parent ``True`` to preserve that behavior.
-    requires_rollback_after_introspection: bool = False
-
     # MariaDB accepts UPDATE t ... WHERE id IN (SELECT id FROM t ...);
     # MySQL error 1093 does not apply. Do not inherit MysqlQuirks' True.
     update_subquery_requires_derived_table: bool = False

@@ -31,12 +31,6 @@ class TestQuirksPropertiesPerDialect:
         quirks = ProviderRegistry.get_quirks("sqlserver")
         assert quirks.native_driver_display == "pymssql"
 
-    def test_db2_quirks_session_autocommit(self):
-        from dblift.db.provider_registry import ProviderRegistry
-
-        quirks = ProviderRegistry.get_quirks("db2")
-        assert quirks.supports_session_autocommit is False
-
     def test_oracle_quirks_native_driver_display(self):
         from dblift.db.provider_registry import ProviderRegistry
 

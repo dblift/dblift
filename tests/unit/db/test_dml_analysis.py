@@ -3,6 +3,7 @@
 from dblift.db.base_quirks import BaseQuirks
 from dblift.db.dml_analysis import (
     analyze_dml,
+    cte_outer_statement_type,
     dml_where_predicate,
     extract_dml_table_name,
     insert_value_rows,
@@ -167,6 +168,152 @@ def test_is_full_table_dml_treats_quoted_where_identifier_as_column_not_clause()
     assert is_full_table_dml(
         "UPDATE users SET active = (SELECT 1 FROM audit WHERE audit.user_id = users.id);"
     )
+
+
+def test_cte_outer_statement_type_flags_data_modifying_cte_feeding_insert():
+    # RETURNING on the CTE's own DELETE doesn't mean the outer INSERT returns
+    # rows — the outer verb decides that.
+    sql = (
+        "WITH deleted AS (DELETE FROM src WHERE id = 1 RETURNING id) "
+        "INSERT INTO app_logs(msg) SELECT 'removed ' || id FROM deleted"
+    )
+    assert cte_outer_statement_type(sql, sqlglot_dialect="postgres") == "DML"
+
+
+def test_cte_outer_statement_type_keeps_select_as_query():
+    sql = "WITH x AS (INSERT INTO src VALUES (99) RETURNING id) SELECT * FROM x"
+    assert cte_outer_statement_type(sql, sqlglot_dialect="postgres") == "QUERY"
+
+
+def test_cte_outer_statement_type_none_for_truncated_sql():
+    # Neither sqlglot nor the keyword scan can find an outer verb: the CTE's
+    # own paren never closes, so the scan never returns to depth 0.
+    assert cte_outer_statement_type("WITH x AS ( NOT VALID SQL", sqlglot_dialect="postgres") is None
+
+
+def test_cte_outer_statement_type_none_for_comment_only_statement():
+    # Comments strip down to nothing before sqlglot or the keyword scan ever
+    # sees the text.
+    assert cte_outer_statement_type("-- just a comment\n", sqlglot_dialect="postgres") is None
+    assert cte_outer_statement_type("   \n  ", sqlglot_dialect="postgres") is None
+
+
+def test_cte_outer_statement_type_none_when_neither_dml_nor_query():
+    # sqlglot parses this fine, but into a statement type this function
+    # doesn't model (DROP), and there is no SELECT/INSERT/UPDATE/DELETE/
+    # MERGE/VALUES/TABLE keyword for the scan to fall back on either — the
+    # one remaining path back to None, where the caller keeps its own
+    # default. Practically unreachable from a real WITH-prefixed migration
+    # statement (there is always an outer verb); kept for the "give up
+    # cleanly" branch itself, not because this input is realistic.
+    assert cte_outer_statement_type("DROP INDEX idx", sqlglot_dialect="postgres") is None
+
+
+def test_cte_outer_statement_type_deterministic_for_unmapped_sqlglot_dialect():
+    # A raw dblift dialect name that isn't a valid sqlglot dialect (e.g. a
+    # call site that forgot to route through get_sqlglot_dialect) makes
+    # sqlglot raise rather than parse — caught, not propagated — but the
+    # keyword-scan fallback still finds the right answer regardless, because
+    # it never looks at the dialect at all. A wrong dialect string can no
+    # longer silently reinstate the old "WITH always means QUERY" bug.
+    sql = "WITH c AS (SELECT 1) DELETE FROM t WHERE id IN (SELECT 1 FROM c)"
+    assert cte_outer_statement_type(sql, sqlglot_dialect="sqlserver") == "DML"
+    assert cte_outer_statement_type(sql, sqlglot_dialect="db2") == "DML"
+
+
+def test_cte_outer_statement_type_db2_none_dialect_parses_as_generic_sql():
+    # get_sqlglot_dialect("db2") is None (no dedicated sqlglot dialect), and
+    # sqlglot parses None as generic SQL rather than raising.
+    sql = (
+        "WITH c AS (SELECT 1 FROM sysibm.sysdummy1) "
+        "MERGE INTO t USING c ON t.id = c.id WHEN MATCHED THEN UPDATE SET v = 1"
+    )
+    assert cte_outer_statement_type(sql, sqlglot_dialect=None) == "DML"
+
+
+def test_cte_outer_statement_type_db2_trailing_clause_sqlglot_cannot_parse():
+    # BLOCKER regression: DB2 lets a CTE feed INSERT/UPDATE/DELETE/MERGE, the
+    # same as the reported defect, but two ordinary DB2 idioms (OPTIMIZE FOR,
+    # the WITH UR isolation-level clause) aren't in sqlglot's db2 grammar, so
+    # parsing the whole statement fails. Returning to the caller's old QUERY
+    # default here would silently reinstate the exact bug this PR fixes — the
+    # keyword scan must find the real answer instead.
+    optimize_for = (
+        "WITH cte AS (SELECT id FROM src) DELETE FROM src "
+        "WHERE id IN (SELECT id FROM cte) OPTIMIZE FOR 1 ROW"
+    )
+    with_ur = (
+        "WITH cte AS (SELECT id FROM src) DELETE FROM src "
+        "WHERE id IN (SELECT id FROM cte) WITH UR"
+    )
+    assert cte_outer_statement_type(optimize_for, sqlglot_dialect=None) == "DML"
+    assert cte_outer_statement_type(with_ur, sqlglot_dialect=None) == "DML"
+
+
+def test_cte_outer_statement_type_skips_dollar_quoted_region():
+    # BLOCKER regression: the keyword scan used ``)`` to track paren depth
+    # without knowing about PostgreSQL dollar-quoting. A ``)`` or a keyword
+    # sitting inside a ``$$...$$``/``$tag$...$tag$`` literal must not be
+    # read as real code — a stray ``)`` inside the quoted text zeroed the
+    # depth counter early, and the ``SELECT`` still textually inside the
+    # quotes was then read as the outer verb: a *confident wrong* "QUERY"
+    # for a statement that genuinely executes as DML.
+    untagged = (
+        "WITH x AS (DELETE FROM t WHERE note = $$ premature ) SELECT trap $$ RETURNING id) "
+        "INSERT INTO app_logs(msg) SELECT 'x' FROM x"
+    )
+    tagged = (
+        "WITH x AS (DELETE FROM t WHERE note = $tag$ premature ) SELECT trap $tag$ RETURNING id) "
+        "INSERT INTO app_logs(msg) SELECT 'x' FROM x"
+    )
+    assert cte_outer_statement_type(untagged, sqlglot_dialect=None) == "DML"
+    assert cte_outer_statement_type(tagged, sqlglot_dialect=None) == "DML"
+
+
+def test_cte_outer_statement_type_none_for_unterminated_dollar_quote():
+    # An unclosed dollar-quote swallows the rest of the text (same
+    # unterminated-comment convention as _skip_comment): there is no way to
+    # tell what the outer statement is, so this must surrender to None
+    # rather than guess from whatever partial text remains.
+    sql = "WITH x AS (DELETE FROM t WHERE note = $$ never closes"
+    assert cte_outer_statement_type(sql, sqlglot_dialect=None) is None
+
+
+def test_cte_outer_statement_type_keyword_scan_handles_comments_and_bare_dollar():
+    # A comment between the CTE and the outer verb, and a "$" that is not a
+    # dollar-quote tag (a positional parameter placeholder, e.g. $1) must
+    # not confuse the scan either.
+    sql = (
+        "WITH cte AS (SELECT id FROM src) -- find rows\n"
+        "DELETE FROM src /* filter */ WHERE id IN (SELECT id FROM cte) "
+        "AND note = $1 OPTIMIZE FOR 1 ROW"
+    )
+    assert cte_outer_statement_type(sql, sqlglot_dialect=None) == "DML"
+
+
+def test_cte_outer_statement_type_tsql_output_clause_is_dml_by_keyword_scan():
+    # T-SQL's OUTPUT clause (SQL Server's RETURNING equivalent) isn't in
+    # sqlglot's tsql grammar here, so this now goes through the keyword scan,
+    # which finds DELETE and returns DML — even though OUTPUT means this
+    # particular DELETE does return rows. The scan reads the outer VERB only;
+    # it doesn't look for a RETURNING/OUTPUT clause on the outer statement.
+    # That is not a new gap: the sqlglot path above has the identical
+    # limitation for SQL it *can* parse (see the postgres case below), so a
+    # WITH-fed DELETE with its own RETURNING/OUTPUT was already
+    # misclassified before this fallback existed. Out of scope for this
+    # defect, which is about a CTE that does NOT return rows; the OUTPUT/
+    # RETURNING-on-the-outer-statement gap is a separate, pre-existing one.
+    sql = "WITH c AS (SELECT 1 AS id) DELETE FROM t OUTPUT deleted.id FROM t JOIN c ON t.id = c.id"
+    assert cte_outer_statement_type(sql, sqlglot_dialect="tsql") == "DML"
+
+
+def test_cte_outer_statement_type_ignores_outer_returning_even_when_sqlglot_parses():
+    # Same limitation as the tsql/OUTPUT case above, but via the sqlglot
+    # path (this parses fine) rather than the keyword-scan fallback — proof
+    # the fallback isn't introducing a new class of gap, just extending an
+    # existing, accepted one to unparseable input too.
+    sql = "WITH x AS (SELECT 1) DELETE FROM t WHERE id IN (SELECT 1 FROM x) RETURNING id"
+    assert cte_outer_statement_type(sql, sqlglot_dialect="postgres") == "DML"
 
 
 def test_base_quirks_exposes_is_full_table_dml():

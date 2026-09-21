@@ -128,12 +128,17 @@ class ExecutionEngine:
 
     @staticmethod
     def _is_comment_only_statement(sql: str) -> bool:
-        """True if *sql* has no executable tokens after removing block and line comments."""
+        """True if *sql* has no executable tokens after removing block and line comments.
+
+        MySQL/MariaDB executable comment directives (``/*!...*/``, ``/*M!...*/``) are not
+        comments the server skips — it runs their contents — so they are excluded from the
+        strip and never count as "comment only".
+        """
 
         body = sql.strip()
         if not body:
             return True
-        body = re.sub(r"/\*.*?\*/", "", body, flags=re.DOTALL)
+        body = re.sub(r"/\*(?!!|M!).*?\*/", "", body, flags=re.DOTALL)
         body = re.sub(r"--.*?$", "", body, flags=re.MULTILINE)
         return not body.strip()
 
@@ -147,6 +152,7 @@ class ExecutionEngine:
         from dblift.core.seams.runtime_checks import run_checks
 
         run_checks("migration.pre_execution")
+        self._reset_provider_schema_cache()
         start_time = time.time()
         migration.logger = self.log
 
@@ -402,6 +408,25 @@ class ExecutionEngine:
             except Exception as exc:
                 return fallback_migration_sql(content, self.log, exc)
         return parse_migration_sql(analyzer, content, self.log)
+
+    def _reset_provider_schema_cache(self) -> None:
+        """Forget any per-connection schema the provider has cached as already applied.
+
+        Called at the start of every migration and every callback — the unit
+        boundaries this engine controls — regardless of whether that unit
+        runs transactionally or via autocommit. ``begin_transaction`` alone
+        is not enough: ``policy.autocommit_required`` migrations (PostgreSQL
+        ``CREATE INDEX CONCURRENTLY``, ``VACUUM``, ...) and callbacks that
+        skip the transactional branch never call it, which would otherwise
+        leave a provider's cache (e.g. ``PostgreSqlProvider._schema_applied_for``)
+        pointing at a schema the previous migration's own session-state
+        statement had already moved the connection away from. Providers that
+        track no such cache (most dialects) simply have no
+        ``reset_schema_cache`` method.
+        """
+        reset_schema_cache = getattr(self.provider, "reset_schema_cache", None)
+        if callable(reset_schema_cache):
+            reset_schema_cache()
 
     def _prepare_transaction(self, migration: Migration) -> bool:
         """Prepare transaction state: rollback any active transaction, then begin new one.
@@ -1105,6 +1130,8 @@ class ExecutionEngine:
                 (when ``result.show_query_results`` is enabled)
             record: Optional callback record to fill with statements and result sets
         """
+        self._reset_provider_schema_cache()
+
         # Route non-SQL callbacks to the executor factory (mirrors execute_migration routing — B5 fix)
         if callback.format != MigrationFormat.SQL:
             exec_result = self.executor_factory.execute(callback)

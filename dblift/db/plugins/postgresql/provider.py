@@ -30,9 +30,36 @@ class PostgreSqlProvider(SqlAlchemyProvider):
     #: so it turns this off.
     clean_drop_uses_savepoint: bool = True
 
+    #: Schema this connection's ``search_path`` was last set to. Lets
+    #: :meth:`set_current_schema` skip re-issuing ``SET search_path`` on every
+    #: statement of a migration, so a ``SET search_path`` the migration itself
+    #: runs (the ``pg_dump`` idiom) is not immediately overwritten. Cleared by
+    #: :meth:`reset_schema_cache` — called by ``ExecutionEngine`` at the start
+    #: of every migration/callback, and also by :meth:`begin_transaction` as a
+    #: second, redundant guard — so each new one still starts from the
+    #: configured schema. Class-level default so tests constructing via
+    #: ``object.__new__`` still see ``None``.
+    _schema_applied_for: Optional[str] = None
+
     def __init__(self, config: DbliftConfig, log: Optional[Log] = None) -> None:
         """Initialize the native PostgreSQL provider."""
         super().__init__(config, log)
+        self._schema_applied_for = None
+
+    def reset_schema_cache(self) -> None:
+        """Forget the schema this connection's search_path was last set to.
+
+        ``ExecutionEngine`` calls this at the start of every migration and
+        callback — the unit boundary — regardless of whether it runs
+        transactionally or via autocommit; :meth:`begin_transaction` fires on
+        only one of those paths, so it is not a substitute for this call.
+        """
+        self._schema_applied_for = None
+
+    def begin_transaction(self) -> None:
+        """Begin a transaction, forcing the next statement to reapply the schema."""
+        self.reset_schema_cache()
+        super().begin_transaction()
 
     def drop_object(self, obj: DroppableObject) -> None:
         """Drop one object without letting a failure abort the whole clean.
@@ -124,10 +151,16 @@ class PostgreSqlProvider(SqlAlchemyProvider):
 
         ``public`` follows the target schema so extension functions installed
         there stay callable unqualified — see
-        :mod:`dblift.db.plugins.postgresql.search_path`.
+        :mod:`dblift.db.plugins.postgresql.search_path`. A no-op once this
+        connection already has *schema* applied, so a ``SET search_path`` the
+        migration itself runs later is not immediately reset back — see
+        ``_schema_applied_for``.
         """
+        if self._schema_applied_for == schema:
+            return
         path = ", ".join(_quote_identifier(name) for name in search_path_schemas(schema))
         super().execute_statement(f"SET search_path TO {path}")
+        self._schema_applied_for = schema
 
     def get_schema_qualified_name(self, schema: str, object_name: str) -> str:
         """Return a quoted schema-qualified object name."""

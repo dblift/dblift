@@ -111,7 +111,12 @@ class MySQLTokenizer(BaseTokenizer):
 
         # Check for comment directive /*!version ... */
         if self.peek(3) == "/*!":
-            return self._handle_comment_directive()
+            return self._handle_comment_directive(prefix_len=3)
+
+        # MariaDB comment directive /*M!version ... */ (MDEV convention: an
+        # uppercase "M" right after the version marker's position)
+        if self.peek(4) == "/*M!":
+            return self._handle_comment_directive(prefix_len=4)
 
         # Check for # comment
         if self.peek() == "#":
@@ -130,11 +135,12 @@ class MySQLTokenizer(BaseTokenizer):
         # Regular comments
         return super()._handle_comment()
 
-    def _handle_comment_directive(self) -> Token:
-        """Handle MySQL comment directives: /*!50001 ... */.
+    def _handle_comment_directive(self, prefix_len: int = 3) -> Token:
+        """Handle MySQL/MariaDB comment directives: /*!50001 ... */ or /*M!100001 ... */.
 
         Comment directives are conditional code that executes
-        if MySQL version >= specified version.
+        if MySQL/MariaDB version >= specified version. ``prefix_len`` is 3 for
+        the MySQL marker (``/*!``) and 4 for the MariaDB one (``/*M!``).
 
         Returns:
             Comment directive token
@@ -145,7 +151,7 @@ class MySQLTokenizer(BaseTokenizer):
 
         # Accumulate the full directive text
         directive_text = ""
-        directive_text += self.read(3)  # /*!
+        directive_text += self.read(prefix_len)  # /*! or /*M!
 
         # Check for version number (5 digits)
         if self.peek().isdigit():

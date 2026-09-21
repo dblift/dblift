@@ -62,8 +62,7 @@ class OracleQuirks(BaseQuirks):
     ``CREATE OR REPLACE`` for procedures / functions / synonyms,
     ``CASCADE CONSTRAINTS`` on DROP TABLE, tablespace and storage
     clauses, deferrable constraints, ``OBJECT`` types, ``SYS*PLUS``
-    pre-processing, and DDL-needs-explicit-commit semantics with
-    ``commit_with_autocommit_raises`` (ORA-17273).
+    pre-processing, and Oracle-specific DDL rendering.
     """
 
     # Capability matrix (was ``_CAPABILITIES["oracle"]``).
@@ -211,91 +210,6 @@ class OracleQuirks(BaseQuirks):
     # validate-sql offline placeholder — a service_name is required, so a
     # bare host/port URL is not enough (see build_sqlalchemy_url).
     lint_placeholder_url = "oracle://localhost:1521/?service_name=XEPDB1"
-    # Wave C hooks (story 26-9): migration engine transaction semantics.
-    requires_explicit_commit_after_ddl = True
-    supports_session_autocommit = False
-    retry_drop_create_on_error = True
-    # PR-C1: Oracle native driver raised ORA-17273 on commit() when autoCommit is True.
-    commit_with_autocommit_raises = True
-    # Oracle DDL (CREATE USER) needs autoCommit=False to persist reliably.
-    ddl_requires_autocommit_off = True
-    # PR-C2: Oracle CREATE USER cannot be silently retried — schema
-    # creation errors are fatal.
-    strict_schema_creation_errors = True
-    # Oracle stores unquoted identifiers upper-cased in USER_TABLES /
-    # ALL_TABLES, so a DROP statement must upper-case the table name
-    # when it wasn't already quoted in the source.
-    unquoted_identifiers_uppercase_in_dictionary = True
-
-    def render_round_trip_drop_table_sql(self, target: str) -> str:
-        """Native ``DROP TABLE IF EXISTS ... CASCADE CONSTRAINTS`` (23ai+/19.28+)
-        so the drop survives FK references without erroring if absent."""
-        return f"DROP TABLE IF EXISTS {target} CASCADE CONSTRAINTS"
-
-    def replace_round_trip_schema_in_sql(
-        self, sql: str, source_schema: str, target_schema: str
-    ) -> str:
-        """Oracle: wrap the target name in double quotes when rewriting
-        bare unquoted ``<source>`` occurrences. Oracle stores unquoted
-        identifiers upper-cased in the data dictionary; double-quoting
-        the target preserves the test schema's case so cleanup matches."""
-        # Quoted form: "source" → "target" (matches REFERENCES / FROM /
-        # JOIN forms too, ``"`` is a non-word char so the regex stays
-        # the same).
-        quoted_pattern = re.escape(f'"{source_schema}"')
-        sql = re.sub(quoted_pattern, f'"{target_schema}"', sql, flags=re.IGNORECASE)
-
-        # Unquoted form → double-quoted target.
-        unquoted_pattern = re.escape(source_schema)
-        sql = re.sub(
-            rf"\b{unquoted_pattern}\.",
-            f'"{target_schema}".',
-            sql,
-            flags=re.IGNORECASE,
-        )
-        sql = re.sub(
-            rf"\b{unquoted_pattern}\b",
-            f'"{target_schema}"',
-            sql,
-            flags=re.IGNORECASE,
-        )
-        return sql
-
-    def build_retry_drop_strategies(
-        self,
-        query_executor: Any,
-        connection: Any,
-        schema_clean: str,
-        table_clean: str,
-    ) -> "list[str]":
-        """Look up the real owner/table_name in ALL_TABLES and try it first."""
-        import logging
-
-        log = logging.getLogger(__name__)
-
-        strategies: "list[str]" = [
-            f'"{schema_clean}"."{table_clean}"',
-            f"{schema_clean}.{table_clean}",
-        ]
-        try:
-            schema_exact = schema_clean.replace('"', "")
-            table_exact = table_clean.replace('"', "")
-            find_table_sql = f"""
-            SELECT owner, table_name
-            FROM all_tables
-            WHERE (owner = '{schema_exact}' OR owner = '{schema_exact.upper()}')
-              AND (table_name = '{table_exact}' OR table_name = '{table_exact.upper()}')
-              AND table_name NOT LIKE 'BIN$%'
-            """
-            table_info = query_executor.execute_query(connection, find_table_sql, [])
-            if table_info and len(table_info) > 0:
-                actual_owner = table_info[0].get("OWNER") or table_info[0].get("owner")
-                actual_table = table_info[0].get("TABLE_NAME") or table_info[0].get("table_name")
-                strategies.insert(0, f'"{actual_owner}"."{actual_table}"')
-                log.debug(f"Oracle: Found table in data dictionary: {actual_owner}.{actual_table}")
-        except Exception as find_err:
-            log.debug(f"Oracle: Could not query data dictionary: {find_err}")
-        return strategies
 
     def __init__(self, dialect_name: str = "oracle") -> None:
         """Initialize Oracle quirks with the dialect name."""

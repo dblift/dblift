@@ -122,7 +122,7 @@ class OracleParser(RegexBasedParser):
             tokens = tokenizer.tokenize()
 
             context = ParserContext()
-            parser = OracleStatementParser(tokens, context)
+            parser = OracleStatementParser(tokens, context, source=sql_content)
 
             statements = parser.split_statements()
             logger.debug(f"Oracle: Tokenization split into {len(statements)} statements")
