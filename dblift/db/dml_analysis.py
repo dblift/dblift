@@ -333,42 +333,6 @@ def _skip_dollar_quote(text: str, i: int) -> int:
     return len(text) if end == -1 else end + len(tag)
 
 
-def _find_cte_outer_keyword(text: str, keyword: str, quote_pairs: Dict[str, str]) -> int:
-    """Like ``_find_top_level_keyword``, plus dollar-quote awareness.
-
-    Kept separate from ``_find_top_level_keyword`` rather than teaching that
-    function about dollar quotes, so every other caller of the shared
-    scanner (``is_full_table_dml``, ...) keeps its current behaviour.
-    """
-    depth = 0
-    quote = ""
-    i = 0
-    while i < len(text):
-        if quote:
-            i, quote = _skip_quote(text, i, quote)
-            continue
-        comment_end = _skip_comment(text, i)
-        if comment_end >= 0:
-            i = comment_end
-            continue
-        if text[i] == "$":
-            dollar_end = _skip_dollar_quote(text, i)
-            if dollar_end >= 0:
-                i = dollar_end
-                continue
-        ch = text[i]
-        if ch in quote_pairs:
-            quote = quote_pairs[ch]
-        elif ch == "(":
-            depth += 1
-        elif ch == ")":
-            depth = max(0, depth - 1)
-        elif depth == 0 and _matches_keyword_at(text, i, keyword):
-            return i
-        i += 1
-    return -1
-
-
 def cte_outer_statement_type(
     statement: str,
     *,
@@ -411,7 +375,7 @@ def cte_outer_statement_type(
         if isinstance(ast, (exp.Select, exp.Union)):
             return "QUERY"
     positions = {
-        keyword: _find_cte_outer_keyword(text, keyword, quote_pairs)
+        keyword: _find_top_level_keyword(text, keyword, quote_pairs)
         for keyword in (*_CTE_OUTER_DML_KEYWORDS, *_CTE_OUTER_QUERY_KEYWORDS)
     }
     found = {keyword: pos for keyword, pos in positions.items() if pos >= 0}
@@ -563,9 +527,15 @@ def _updated_column_names(
     quote_pairs: Dict[str, str],
     upsert_set_markers: Sequence[str],
 ) -> List[str]:
+    # dollar_quote_aware=False throughout: this is the regex fallback for a
+    # statement sqlglot couldn't parse, including a `DO $$ BEGIN UPDATE ...
+    # END $$;` procedural block, where the columns to find are the nested
+    # UPDATE's own SET clause, textually *inside* the dollar-quoted body.
     columns: List[str] = []
     for marker in upsert_set_markers:
-        marker_pos = _find_top_level_keyword(statement, marker, quote_pairs)
+        marker_pos = _find_top_level_keyword(
+            statement, marker, quote_pairs, dollar_quote_aware=False
+        )
         if marker_pos >= 0:
             assignment_start = marker_pos + len(marker)
             columns.extend(
@@ -574,10 +544,14 @@ def _updated_column_names(
 
     search_start = 0
     while True:
-        update_pos = _find_top_level_keyword(statement, "UPDATE", quote_pairs, start=search_start)
+        update_pos = _find_top_level_keyword(
+            statement, "UPDATE", quote_pairs, start=search_start, dollar_quote_aware=False
+        )
         if update_pos < 0:
             break
-        set_pos = _find_top_level_keyword(statement, "SET", quote_pairs, start=update_pos + 6)
+        set_pos = _find_top_level_keyword(
+            statement, "SET", quote_pairs, start=update_pos + 6, dollar_quote_aware=False
+        )
         if set_pos < 0:
             search_start = update_pos + 6
             continue
@@ -604,8 +578,13 @@ def _updated_column_names_from_clause(
 
 
 def _find_update_assignment_end(statement: str, quote_pairs: Dict[str, str], start: int) -> int:
+    # dollar_quote_aware=False: same DO $$ ... $$ reason as _updated_column_names
+    # above — this finds where a SET clause nested inside a dollar-quoted
+    # procedural block ends, so it must not skip over that body.
     positions = [
-        _find_top_level_keyword(statement, keyword, quote_pairs, start=start)
+        _find_top_level_keyword(
+            statement, keyword, quote_pairs, start=start, dollar_quote_aware=False
+        )
         for keyword in ("FROM", "WHERE", "RETURNING", "OUTPUT", "ORDER", "LIMIT")
     ]
     positions.append(_find_top_level_when_outside_case(statement, quote_pairs, start=start))
@@ -676,8 +655,21 @@ def _find_top_level_when_outside_case(
 
 
 def _find_top_level_keyword(
-    statement: str, keyword: str, quote_pairs: Dict[str, str], start: int = 0
+    statement: str,
+    keyword: str,
+    quote_pairs: Dict[str, str],
+    start: int = 0,
+    dollar_quote_aware: bool = True,
 ) -> int:
+    """Index of ``keyword`` outside quotes/comments/parens, or -1.
+
+    ``dollar_quote_aware`` defaults on: a dollar-quoted value's contents are
+    ordinary data to most callers. The regex-fallback scan in
+    ``_updated_column_names``/``_find_update_assignment_end`` is the one
+    exception — it deliberately reaches *inside* a ``DO $$ ... $$``
+    procedural block to find the ``UPDATE``/``SET`` it wraps — and passes
+    ``dollar_quote_aware=False`` explicitly there.
+    """
     depth = 0
     quote = ""
     i = start
@@ -689,6 +681,11 @@ def _find_top_level_keyword(
         if comment_end >= 0:
             i = comment_end
             continue
+        if dollar_quote_aware and statement[i] == "$":
+            dollar_end = _skip_dollar_quote(statement, i)
+            if dollar_end >= 0:
+                i = dollar_end
+                continue
         ch = statement[i]
         if ch in quote_pairs:
             quote = quote_pairs[ch]
