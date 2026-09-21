@@ -34,13 +34,28 @@ class SqlServerProvider(SqlAlchemyProvider):
     #: (``sys.database_principals``), not connection-scoped like every other
     #: dialect's search-path mechanism — this cache avoids re-issuing ``ALTER
     #: USER`` (a shared-state write) on every statement, limiting the window
-    #: for a concurrent process sharing the same login to interfere. Class-level
-    #: default so tests constructing via ``object.__new__`` still see ``None``.
+    #: for a concurrent process sharing the same login to interfere. Cleared
+    #: by :meth:`reset_schema_cache` — called by ``ExecutionEngine`` at the
+    #: start of every migration/callback — so each new one still starts from
+    #: the configured schema. Class-level default so tests constructing via
+    #: ``object.__new__`` still see ``None``.
     _current_schema_set: Optional[str] = None
 
     def __init__(self, config: DbliftConfig, log: Optional[Log] = None) -> None:
         """Initialize the native SQL Server provider."""
         super().__init__(config, log)
+        self._current_schema_set = None
+
+    def reset_schema_cache(self) -> None:
+        """Forget the schema this connection's login was last aligned to.
+
+        ``ExecutionEngine`` calls this at the start of every migration and
+        callback — the unit boundary — regardless of whether it runs
+        transactionally or via autocommit, so a schema change made by one
+        migration (its own ``ALTER USER`` statement, or another process
+        sharing the login) does not suppress the next migration's own
+        reapplication of the configured schema.
+        """
         self._current_schema_set = None
 
     # ------------------------------------------------------------------

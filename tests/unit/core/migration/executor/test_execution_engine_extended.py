@@ -603,6 +603,77 @@ class TestSchemaStatementIssuedOnce(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
+# SQL Server's schema cache must clear at the same migration boundary as the
+# other providers, or a schema change survives into the next migration.
+# ---------------------------------------------------------------------------
+
+
+class TestSqlServerSchemaCacheResetsAtMigrationBoundary(unittest.TestCase):
+    """Each migration must reassert the configured schema on SQL Server too.
+
+    The other five providers clear their schema cache at the start of every
+    migration (``ExecutionEngine._reset_provider_schema_cache()``), so
+    ``_apply_configured_schema()`` reissues its schema statement every time —
+    restoring the configured schema even if the previous migration's own SQL
+    moved it elsewhere. ``SqlServerProvider`` caches the same way but has no
+    ``reset_schema_cache()`` for the engine to find, so its cache survives
+    the boundary and the second migration's ``ALTER USER`` is skipped.
+    """
+
+    def _build_engine(self, schema="app"):
+        from dblift.db.plugins.sqlserver.provider import SqlServerProvider
+
+        class _CountingProvider(SqlServerProvider):
+            def __init__(self):
+                self.issued: list = []
+                self._tx = None
+                self._connection = None
+
+            def execute_query(self, sql, params=None):
+                return [{"db_user": "dbo", "default_schema": self._current_schema_set}]
+
+        provider = _CountingProvider()
+        sql_analyzer = MagicMock()
+        sql_analyzer.dialect = "sqlserver"
+        config = MagicMock()
+        config.database.type.value = "sqlserver"
+        config.database.schema = schema
+        engine = ExecutionEngine(
+            provider=provider,
+            sql_analyzer=sql_analyzer,
+            log=MagicMock(),
+            config=config,
+            history_manager=None,
+        )
+        policy = MagicMock(
+            transactional=True, autocommit_required=False, unsupported_mixed_mode=False
+        )
+        engine.transaction_policy = MagicMock()
+        engine.transaction_policy.decide.return_value = policy
+        return engine, provider
+
+    def test_second_migration_reapplies_configured_schema(self):
+        from dblift.db.sqlalchemy_provider import SqlAlchemyProvider
+
+        engine, provider = self._build_engine()
+
+        with patch.object(
+            SqlAlchemyProvider,
+            "execute_statement",
+            lambda self, sql, schema=None, params=None: provider.issued.append(sql) or 0,
+        ):
+            with patch.object(SqlAlchemyProvider, "begin_transaction", lambda self: None):
+                with patch.object(engine, "_parse_sql_statements", return_value=["SELECT 1"]):
+                    with patch.object(engine, "_classify_execution_statements", return_value=[]):
+                        with patch.object(engine, "_execute_statements", return_value=True):
+                            engine.execute_migration(_make_sql_migration(), MagicMock())
+                            engine.execute_migration(_make_sql_migration(), MagicMock())
+
+        alter_statements = [s for s in provider.issued if "DEFAULT_SCHEMA" in s]
+        self.assertEqual(len(alter_statements), 2, alter_statements)
+
+
+# ---------------------------------------------------------------------------
 # _prepare_transaction
 # ---------------------------------------------------------------------------
 
