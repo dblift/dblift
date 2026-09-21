@@ -16,15 +16,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- PostgreSQL, SQL Server and DuckDB migrations: a block comment that nests
-  another block comment (`/* outer /* inner */ still outer */`) now stays
-  a comment end to end instead of being treated as closed at the first
-  `*/`. Previously, anything between that first `*/` and the real end of
-  the comment — including a statement like `DROP TABLE`, separated by a
-  `;` — was split out and executed, even though the file reads as a single
-  commented-out block. MySQL/MariaDB, Oracle and SQLite are unaffected:
-  those engines do not support nested block comments, so the first `*/`
-  correctly ends the comment there.
+- Migrations against engines that nest block comments — PostgreSQL, SQL
+  Server, DuckDB, and the PostgreSQL-engine deployments Citus, TimescaleDB,
+  Neon, Supabase, AlloyDB and Aurora PostgreSQL — now read a comment that
+  nests another comment (`/* outer /* inner */ still outer */`) as one
+  comment end to end, instead of treating it as closed at the first `*/`.
+  Previously, anything between that first `*/` and the real end of the
+  comment — including a statement like `DROP TABLE`, separated by a `;` —
+  was split out and executed, even though the file reads as a single
+  commented-out block. CockroachDB and YugabyteDB now nest the same way,
+  confirmed by running the case directly against each engine. MySQL/MariaDB,
+  Oracle and SQLite are unaffected: those engines do not support nested
+  block comments, so the first `*/` correctly ends the comment there.
+  Redshift also keeps that non-nesting behavior as an explicit, unverified
+  default: no local engine and no documentation addressing comment nesting
+  in top-level SQL was found for it.
 - `info`, `undo`, and the FastAPI migration health helpers now fail when
   migration state cannot be read. State-read errors are no longer reported as
   an empty history, a successful no-op undo, or a current schema.

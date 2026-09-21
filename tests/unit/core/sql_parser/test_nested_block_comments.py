@@ -5,6 +5,19 @@ PostgreSQL, SQL Server and DuckDB document/exhibit nested block comments, so a
 SQLite document that block comments do NOT nest (the first ``*/`` always
 closes), so those dialects must keep splitting at the first ``*/`` — the
 regression tests below pin that down. See CHANGELOG.md for citations.
+
+Citus, TimescaleDB, Neon, Supabase, AlloyDB and Aurora PostgreSQL are
+PostgreSQL itself (an extension or a hosted deployment), so PostgreSQL's
+nesting is the same fact for them, not an inference. CockroachDB and
+YugabyteDB are separate implementations of the wire protocol, not
+PostgreSQL, so their nesting was checked directly against each engine
+rather than inferred — both nest the same way PostgreSQL does. Redshift is
+also a separate implementation, but has no local engine to check and no
+documentation addressing comment nesting in top-level SQL (its PL/pgSQL
+page says block comments don't nest inside a procedure's ``$$ ... $$``
+body, a different lexical context from the top-level SQL
+``split_statements`` scans, so it isn't evidence here) — it is kept
+non-nesting as the unverified, safer-by-default reading.
 """
 
 import unittest
@@ -21,6 +34,7 @@ from dblift.db.plugins.sqlite.parser.sqlite_regex_parser import SQLiteRegexParse
 from dblift.db.plugins.sqlserver.parser.sqlserver_regex_parser import (
     SqlServerRegexParser,
 )
+from dblift.db.provider_registry import ProviderRegistry
 
 ISSUE_EXAMPLE = "/* outer /* inner */ DROP TABLE victim; still outer */\nSELECT 1;"
 
@@ -29,6 +43,19 @@ THREE_DEEP = "/* L1 /* L2 /* L3 */ DROP TABLE victim; still L3 */ still L2 */\n"
 # The inner "/*" never gets its own "*/": nesting-aware, the lone "*/" closes
 # only the inner level, so the outer comment stays open to end of file.
 UNTERMINATED_INNER = "/* outer /* inner */\nSELECT 1;"
+
+# Three opens (L1, L2, L3), only two closes: the first closes L3, the second
+# closes L2, and L1's own "*/" never arrives — nesting-aware, everything from
+# there to end of file (including "SELECT 1;") stays inside the comment.
+THREE_DEEP_UNTERMINATED_MIDDLE = "/* L1 /* L2 /* L3 */ DROP TABLE victim; still L3 */\n" "SELECT 1;"
+
+
+def _regex_parser_for(dialect: str):
+    """Instantiate the dialect's registered regex parser via ProviderRegistry,
+    exactly as the runtime resolves it — not by importing a parser class
+    directly, so these tests catch a wrong quirks-level wiring too.
+    """
+    return ProviderRegistry.get_quirks(dialect).parser_class("regex")()
 
 
 class TestPostgresNestedBlockComments(unittest.TestCase):
@@ -51,6 +78,10 @@ class TestPostgresNestedBlockComments(unittest.TestCase):
 
     def test_unterminated_inner_comment_swallows_rest_of_file(self):
         stmts = self.parser.split_statements(UNTERMINATED_INNER)
+        self.assertEqual(stmts, [])
+
+    def test_three_deep_with_unterminated_middle_swallows_rest_of_file(self):
+        stmts = self.parser.split_statements(THREE_DEEP_UNTERMINATED_MIDDLE)
         self.assertEqual(stmts, [])
 
     def test_slash_star_inside_string_literal_is_not_a_comment(self):
@@ -108,6 +139,10 @@ class TestSqlServerNestedBlockComments(unittest.TestCase):
         stmts = self.parser.split_statements(UNTERMINATED_INNER)
         self.assertEqual(stmts, [])
 
+    def test_three_deep_with_unterminated_middle_swallows_rest_of_file(self):
+        stmts = self.parser.split_statements(THREE_DEEP_UNTERMINATED_MIDDLE)
+        self.assertEqual(stmts, [])
+
 
 class TestDuckDBNestedBlockComments(unittest.TestCase):
     """DuckDB's parser is PostgreSQL-compatible and nests block comments.
@@ -133,6 +168,10 @@ class TestDuckDBNestedBlockComments(unittest.TestCase):
     def test_unterminated_inner_comment_swallows_rest_of_file(self):
         stmts = self.parser.split_statements(UNTERMINATED_INNER)
         self.assertEqual(stmts, [UNTERMINATED_INNER])
+
+    def test_three_deep_with_unterminated_middle_swallows_rest_of_file(self):
+        stmts = self.parser.split_statements(THREE_DEEP_UNTERMINATED_MIDDLE)
+        self.assertEqual(stmts, [THREE_DEEP_UNTERMINATED_MIDDLE])
 
 
 class TestNonNestingDialectsUnchanged(unittest.TestCase):
@@ -163,6 +202,81 @@ class TestDb2Unchanged(unittest.TestCase):
 
     def test_stops_at_first_close(self):
         stmts = DB2RegexParser().split_statements(ISSUE_EXAMPLE)
+        self.assertTrue(any("DROP TABLE victim" in s for s in stmts))
+
+
+class TestPostgresWireCompatibleEnginesThatRunRealPostgres(unittest.TestCase):
+    """Citus and TimescaleDB are PostgreSQL extensions; Neon, Supabase,
+    AlloyDB and Aurora PostgreSQL are hosted deployments of the PostgreSQL
+    engine itself (see ``_pg_compatible.py``'s module docstring). Nested
+    block comments there are the same documented PostgreSQL fact, not an
+    inference — so these keep the nesting reader with no separate citation.
+    """
+
+    def _assert_nests(self, dialect: str):
+        stmts = _regex_parser_for(dialect).split_statements(ISSUE_EXAMPLE)
+        self.assertEqual(stmts, ["SELECT 1;"], f"{dialect} should nest like PostgreSQL")
+
+    def test_citus_nests(self):
+        self._assert_nests("citus")
+
+    def test_timescaledb_nests(self):
+        self._assert_nests("timescaledb")
+
+    def test_neon_nests(self):
+        self._assert_nests("neon")
+
+    def test_supabase_nests(self):
+        self._assert_nests("supabase")
+
+    def test_alloydb_nests(self):
+        self._assert_nests("alloydb")
+
+    def test_aurora_postgresql_nests(self):
+        self._assert_nests("aurora-postgresql")
+
+
+class TestCockroachdbYugabytedbNestBlockComments(unittest.TestCase):
+    """CockroachDB and YugabyteDB speak the PostgreSQL wire protocol but are
+    each their own implementation, not a PostgreSQL fork — wire
+    compatibility is not grammar compatibility, so this was verified
+    against each engine directly rather than inferred from either vendor's
+    docs (neither addresses comment nesting) or from PostgreSQL's.
+
+    Checked against a local single-node container of each engine
+    (``cockroachdb/cockroach:latest-v23.2`` and
+    ``yugabytedb/yugabyte:latest``): after ``CREATE TABLE victim (id INT)``,
+    running ``/* outer /* inner */ DROP TABLE victim; still outer */ SELECT
+    1;`` returned a single ``SELECT 1`` row with no error on both engines,
+    and ``victim`` still existed afterwards — the whole span was read as one
+    comment, so both nest block comments the same way PostgreSQL does.
+    """
+
+    def _assert_nests(self, dialect: str):
+        stmts = _regex_parser_for(dialect).split_statements(ISSUE_EXAMPLE)
+        self.assertEqual(stmts, ["SELECT 1;"], f"{dialect} should nest like PostgreSQL")
+
+    def test_cockroachdb_nests(self):
+        self._assert_nests("cockroachdb")
+
+    def test_yugabytedb_nests(self):
+        self._assert_nests("yugabytedb")
+
+
+class TestRedshiftDoesNotNestBlockComments(unittest.TestCase):
+    """Kept non-nesting, unverified: no local Redshift engine, and no
+    documentation found that addresses comment nesting in top-level SQL.
+    The AWS "Structure of PL/pgSQL" page states block comments don't nest,
+    but that sentence describes comments inside a PL/pgSQL procedure body's
+    ``$$ ... $$`` — a different lexical context from the top-level SQL
+    ``split_statements`` scans (``ISSUE_EXAMPLE`` below is plain SQL, never
+    inside ``$$ ... $$``) — so it is not evidence for this scanner. Redshift
+    keeps the pre-#333, non-nesting reader (first ``*/`` closes) as the
+    safer default rather than an inherited, unverified claim.
+    """
+
+    def test_redshift_does_not_nest(self):
+        stmts = _regex_parser_for("redshift").split_statements(ISSUE_EXAMPLE)
         self.assertTrue(any("DROP TABLE victim" in s for s in stmts))
 
 

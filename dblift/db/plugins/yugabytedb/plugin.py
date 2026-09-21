@@ -30,3 +30,13 @@ PLUGIN: PluginInfo = make_pg_compatible_plugin(
         "supports_concurrent_index": False,
     },
 )
+
+# Block comment nesting: YugabyteDB is a ground-up reimplementation, not a
+# PostgreSQL fork, so wire compatibility alone isn't evidence for its comment
+# grammar. Run directly against a single-node YugabyteDB container: after
+# CREATE TABLE victim (id INT), `/* outer /* inner */ DROP TABLE victim;
+# still outer */ SELECT 1;` returned one `SELECT 1` row with no error and
+# left `victim` in place -- the whole span read as one comment. Block
+# comments nest here the same way they do in PostgreSQL, so this keeps
+# inheriting PostgresqlQuirks.parser_class unchanged (no quirks_overrides
+# entry for it).
