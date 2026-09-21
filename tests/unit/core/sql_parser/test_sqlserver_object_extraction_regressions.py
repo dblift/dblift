@@ -184,18 +184,14 @@ class TestThreePartNames:
         assert objects[0].schema == "dbo"
 
     def test_three_part_name_brackets_on_some_parts_not_others(self):
-        objects = self.parser.extract_objects(
-            "CREATE TABLE [mydb].dbo.[my table] (id int);"
-        )
+        objects = self.parser.extract_objects("CREATE TABLE [mydb].dbo.[my table] (id int);")
 
         assert len(objects) == 1
         assert objects[0].name == "my table"
         assert objects[0].schema == "dbo"
 
     def test_three_part_name_all_bracketed(self):
-        objects = self.parser.extract_objects(
-            "CREATE TABLE [mydb].[dbo].[mytable] (id int);"
-        )
+        objects = self.parser.extract_objects("CREATE TABLE [mydb].[dbo].[mytable] (id int);")
 
         assert len(objects) == 1
         assert objects[0].name == "mytable"
