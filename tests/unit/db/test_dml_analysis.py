@@ -134,7 +134,11 @@ def test_analyze_dml_routes_by_sqlglot_dialect():
 
 def test_analyze_dml_falls_back_to_regex_for_unparseable_sql():
     # A procedural block sqlglot parses as an opaque Command falls back to the
-    # regex scanner, which still finds the restore-key assignment.
+    # regex scanner, which still finds the restore-key assignment. Pins the
+    # scanner staying dollar-quote-blind here: the UPDATE/SET it must find
+    # are themselves textually inside the dollar-quoted DO $$ ... $$ body, so
+    # skipping over that body (as is_full_table_dml correctly does) would
+    # make this fail to find them.
     dialect = "postgres"
     procedural = "DO $$ BEGIN UPDATE users SET id = 1; END $$;"
     assert updates_restore_key(procedural, _DEFAULT_KEYS, sqlglot_dialect=dialect)
