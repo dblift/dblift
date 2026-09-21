@@ -155,6 +155,17 @@ class TestPostgresCopyFromStdin:
             "SELECT 1;",
         ]
 
+    def test_crlf_line_endings_through_the_data_block(self):
+        sql = "COPY t (id, name) FROM stdin;\r\n1\talice\r\n2\tbob\r\n\\.\r\nSELECT 1;\r\n"
+
+        stmts = StatementSplitter("postgresql").split_statements(sql)
+
+        assert stmts == [
+            "COPY t (id, name) FROM stdin;",
+            "1\talice\r\n2\tbob\r\n\\.",
+            "SELECT 1;",
+        ]
+
 
 @pytest.mark.unit
 class TestMySqlVerbatim:

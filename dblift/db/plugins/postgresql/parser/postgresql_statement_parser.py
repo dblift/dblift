@@ -109,15 +109,7 @@ class PostgreSQLStatementParser(BaseStatementParser):
                         self.in_atomic_block = False
 
     def _is_statement_end(self, token: Token) -> bool:
-        """A COPY data block ends its own statement — there is no ``;`` after
-        its ``\\.`` terminator for the base check to find.
-
-        Args:
-            token: Token to check
-
-        Returns:
-            True if token marks statement boundary
-        """
+        """A COPY data block ends its own statement — no ``;`` follows its ``\\.`` line."""
         if token.type == TokenType.COPY_DATA:
             return True
         return super()._is_statement_end(token)
