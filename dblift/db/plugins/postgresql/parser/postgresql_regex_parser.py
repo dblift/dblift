@@ -21,7 +21,10 @@ from dblift.db.plugins.postgresql.parser.parser_config import PostgreSqlConfig
 from dblift.db.plugins.postgresql.parser.postgresql_statement_parser import (
     PostgreSQLStatementParser,
 )
-from dblift.db.plugins.postgresql.parser.postgresql_tokenizer import PostgreSQLTokenizer
+from dblift.db.plugins.postgresql.parser.postgresql_tokenizer import (
+    NonNestingPostgreSQLTokenizer,
+    PostgreSQLTokenizer,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +37,11 @@ class PostgreSqlRegexParser(EnhancedRegexParser):
     """PostgreSQL regex-based parser with comprehensive PostgreSQL support."""
 
     dialect_name = "postgresql"  # lint: allow-dialect-string: dialect dispatch
+
+    #: Tokenizer class used by :meth:`split_statements`. Subclasses for
+    #: wire-compatible engines that don't share PostgreSQL's nested-comment
+    #: documentation swap this for :class:`NonNestingPostgreSQLTokenizer`.
+    tokenizer_class: type = PostgreSQLTokenizer
 
     def __init__(self) -> None:
         """Initialize PostgreSQL regex parser."""
@@ -65,7 +73,7 @@ class PostgreSqlRegexParser(EnhancedRegexParser):
 
         try:
             # Use tokenization-based splitting
-            tokenizer = PostgreSQLTokenizer(sql_content, strict_unknown_chars=strict_tokenizer)
+            tokenizer = self.tokenizer_class(sql_content, strict_unknown_chars=strict_tokenizer)
             tokens = tokenizer.tokenize()
 
             context = ParserContext()
@@ -684,3 +692,11 @@ class PostgreSqlRegexParser(EnhancedRegexParser):
                 return True
 
         return False
+
+
+class NonNestingPostgreSqlRegexParser(PostgreSqlRegexParser):
+    """PostgreSQL-syntax parser for wire-compatible engines whose own
+    documentation does not address nested block comments (Redshift,
+    CockroachDB, YugabyteDB — see CHANGELOG.md)."""
+
+    tokenizer_class = NonNestingPostgreSQLTokenizer

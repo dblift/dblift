@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Optional
+
 from dblift.db.plugins.postgresql.quirks import PostgresqlQuirks
 
 
@@ -27,6 +29,22 @@ class CockroachdbQuirks(PostgresqlQuirks):
 
     def __init__(self, dialect_name: str = "cockroachdb") -> None:
         super().__init__(dialect_name=dialect_name)
+
+    def parser_class(self, parser_type: str) -> Optional[type]:
+        """CockroachDB's own SQL reference doesn't address whether block
+        comments nest, and it is a ground-up reimplementation, not a
+        PostgreSQL fork, so PostgreSQL's documented nesting isn't evidence
+        for this engine. Keep the non-nesting reader (first ``*/`` closes)
+        until a CockroachDB source addresses this directly; everything else
+        about PostgreSQL parsing still applies.
+        """
+        if parser_type == "regex":
+            from dblift.db.plugins.postgresql.parser.postgresql_regex_parser import (
+                NonNestingPostgreSqlRegexParser,
+            )
+
+            return NonNestingPostgreSqlRegexParser
+        return super().parser_class(parser_type)
 
 
 __all__ = ["CockroachdbQuirks"]

@@ -326,3 +326,14 @@ class PostgreSQLTokenizer(BaseTokenizer):
             check_pos -= 1
 
         return True
+
+
+class NonNestingPostgreSQLTokenizer(PostgreSQLTokenizer):
+    """PostgreSQL-syntax tokenizer for wire-compatible engines whose own
+    documentation does not address nested block comments (Redshift,
+    CockroachDB, YugabyteDB — see CHANGELOG.md). Reuses everything else
+    PostgreSQL does; only the nesting claim is withheld rather than inherited
+    unverified.
+    """
+
+    NESTED_BLOCK_COMMENTS = False
