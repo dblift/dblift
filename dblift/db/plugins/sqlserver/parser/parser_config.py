@@ -309,9 +309,12 @@ class SqlServerConfig(DialectConfig):
         - Synonym patterns
         - SCHEMA operation patterns
         """
-        # T-SQL identifier pattern: bracket-quoted or unquoted
-        # Supports schema.object format
-        id_pattern = r"(?:\[?([^\]]+)\]?\.)?(?:\[?([^\]]+)\]?)"
+        # T-SQL identifier: bracket-quoted, double-quoted, or unquoted.
+        # The unquoted alternative stops at whitespace/punctuation so it
+        # cannot run past the identifier into the rest of the statement.
+        id_token = r'(?:\[[^\]]+\]|"[^"]+"|[^\s.,;()\[\]"]+)'
+        captured_id = f"({id_token})"
+        id_pattern = rf"(?:{captured_id}\.)?{captured_id}"
 
         return {
             # Tables
@@ -350,7 +353,7 @@ class SqlServerConfig(DialectConfig):
                 r"CREATE\s+(?:UNIQUE\s+)?(?:CLUSTERED\s+|NONCLUSTERED\s+)?"
                 r"(?:PRIMARY\s+)?(?:XML\s+)?(?:SPATIAL\s+)?"
                 r"(?:COLUMNSTORE\s+)?(?:NONCLUSTERED\s+COLUMNSTORE\s+)?"
-                r"INDEX\s+(?:\[?([^\]]+)\]?)\s+ON\s+" + id_pattern,
+                r"INDEX\s+" + captured_id + r"\s+ON\s+" + id_pattern,
                 re.IGNORECASE,
             ),
             # Grammar-based: FULLTEXT INDEX
@@ -360,12 +363,12 @@ class SqlServerConfig(DialectConfig):
             ),
             # Grammar-based: XML INDEX
             "xml_index_create": re.compile(
-                r"CREATE\s+(?:PRIMARY\s+)?XML\s+INDEX\s+(?:\[?([^\]]+)\]?)\s+ON\s+" + id_pattern,
+                r"CREATE\s+(?:PRIMARY\s+)?XML\s+INDEX\s+" + captured_id + r"\s+ON\s+" + id_pattern,
                 re.IGNORECASE,
             ),
             # Grammar-based: DROP INDEX supports IF EXISTS
             "index_drop": re.compile(
-                r"DROP\s+INDEX\s+(?:IF\s+EXISTS\s+)?(?:\[?([^\]]+)\]?)\s+ON\s+" + id_pattern,
+                r"DROP\s+INDEX\s+(?:IF\s+EXISTS\s+)?" + captured_id + r"\s+ON\s+" + id_pattern,
                 re.IGNORECASE,
             ),
             # Procedures/Functions
@@ -422,15 +425,15 @@ class SqlServerConfig(DialectConfig):
             # SCHEMA
             # Grammar-based: SCHEMA operations
             "schema_create": re.compile(
-                r"CREATE\s+SCHEMA\s+(?:\[?([^\]]+)\]?)",
+                r"CREATE\s+SCHEMA\s+" + captured_id,
                 re.IGNORECASE,
             ),
             "schema_alter": re.compile(
-                r"ALTER\s+SCHEMA\s+(?:\[?([^\]]+)\]?)",
+                r"ALTER\s+SCHEMA\s+" + captured_id,
                 re.IGNORECASE,
             ),
             "schema_drop": re.compile(
-                r"DROP\s+SCHEMA\s+(?:IF\s+EXISTS\s+)?(?:\[?([^\]]+)\]?)",
+                r"DROP\s+SCHEMA\s+(?:IF\s+EXISTS\s+)?" + captured_id,
                 re.IGNORECASE,
             ),
             # TYPE (user-defined types)

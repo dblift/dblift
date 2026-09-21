@@ -1,0 +1,171 @@
+"""Regression tests for SQL Server object-name extraction.
+
+The T-SQL identifier pattern used by ``SqlServerConfig.object_patterns``
+captured an unquoted name with ``[^\\]]+`` — "anything but a closing
+bracket" — which has no closing bracket to stop at for an unquoted
+identifier, so the match ran to the end of the statement (the column
+list, the trailing parenthesis, the semicolon). On the default
+``HybridParser`` this garbled name did not replace the correct one sqlglot
+produced; it survived alongside it, because the merge dedups by
+``(name.lower(), object_type)`` and the two names no longer matched.
+
+These tests assert the complete extracted-object list (exact names and
+count) rather than membership, so a garbled name cannot pass by
+coincidentally containing the real one.
+"""
+
+import pytest
+
+from dblift.core.sql_model.base import SqlObjectType
+from dblift.core.sql_parser.parser_factory import SqlParserFactory
+
+
+@pytest.mark.unit
+class TestRegexParserObjectNames:
+    """Every ``object_patterns`` entry shares the same identifier pattern;
+    each object family is checked once to prove the fix is not table-only."""
+
+    def setup_method(self):
+        self.parser = SqlParserFactory("sqlserver", parser_type="regex").get_parser()
+
+    def test_create_table_with_space_before_paren(self):
+        objects = self.parser.extract_objects("CREATE TABLE real_one (id int);")
+
+        assert len(objects) == 1
+        assert objects[0].name == "real_one"
+        assert objects[0].schema == "dbo"
+        assert objects[0].object_type == SqlObjectType.TABLE
+
+    def test_create_table_no_space_before_paren(self):
+        objects = self.parser.extract_objects("CREATE TABLE real_one(id int);")
+
+        assert len(objects) == 1
+        assert objects[0].name == "real_one"
+
+    def test_create_table_no_trailing_semicolon(self):
+        objects = self.parser.extract_objects("CREATE TABLE real_one (id int)")
+
+        assert len(objects) == 1
+        assert objects[0].name == "real_one"
+
+    def test_create_table_schema_qualified(self):
+        objects = self.parser.extract_objects("CREATE TABLE sales.real_one (id int);")
+
+        assert len(objects) == 1
+        assert objects[0].name == "real_one"
+        assert objects[0].schema == "sales"
+
+    def test_create_table_bracketed_name_containing_a_space(self):
+        objects = self.parser.extract_objects("CREATE TABLE [dbo].[my table] (id int);")
+
+        assert len(objects) == 1
+        assert objects[0].name == "my table"
+        assert objects[0].schema == "dbo"
+
+    def test_create_table_double_quoted_identifier(self):
+        objects = self.parser.extract_objects('CREATE TABLE "real_one" (id int);')
+
+        assert len(objects) == 1
+        assert objects[0].name == "real_one"
+
+    def test_drop_table(self):
+        objects = self.parser.extract_objects("DROP TABLE real_one;")
+
+        assert len(objects) == 1
+        assert objects[0].name == "real_one"
+        assert objects[0].object_type == SqlObjectType.TABLE
+
+    def test_alter_table(self):
+        objects = self.parser.extract_objects("ALTER TABLE real_one ADD col int;")
+
+        assert len(objects) == 1
+        assert objects[0].name == "real_one"
+
+    def test_create_view(self):
+        objects = self.parser.extract_objects("CREATE VIEW real_view AS SELECT 1;")
+
+        assert len(objects) == 1
+        assert objects[0].name == "real_view"
+        assert objects[0].object_type == SqlObjectType.VIEW
+
+    def test_create_index_target_table_name(self):
+        # The index's own name ("idx1") lands in a separate group; this
+        # asserts only that the ON-target capture no longer runs past the
+        # identifier — the pre-existing group-to-field mapping is unchanged.
+        objects = self.parser.extract_objects("CREATE INDEX idx1 ON real_one (id);")
+
+        assert len(objects) == 1
+        assert objects[0].name == "real_one"
+
+    def test_create_procedure(self):
+        objects = self.parser.extract_objects("CREATE PROCEDURE real_proc AS SELECT 1;")
+
+        assert len(objects) == 1
+        assert objects[0].name == "real_proc"
+        assert objects[0].object_type == SqlObjectType.PROCEDURE
+
+    def test_create_function(self):
+        sql = "CREATE FUNCTION real_func() RETURNS int AS BEGIN RETURN 1; END;"
+        objects = self.parser.extract_objects(sql)
+
+        assert len(objects) == 1
+        assert objects[0].name == "real_func"
+        assert objects[0].object_type == SqlObjectType.FUNCTION
+
+    def test_create_trigger(self):
+        sql = "CREATE TRIGGER real_trig ON real_one AFTER INSERT AS BEGIN SELECT 1; END;"
+        objects = self.parser.extract_objects(sql)
+
+        assert len(objects) == 1
+        assert objects[0].name == "real_trig"
+        assert objects[0].object_type == SqlObjectType.TRIGGER
+
+    def test_create_synonym(self):
+        objects = self.parser.extract_objects("CREATE SYNONYM real_syn FOR dbo.real_one;")
+
+        assert len(objects) == 1
+        assert objects[0].name == "real_syn"
+
+    def test_create_schema(self):
+        objects = self.parser.extract_objects("CREATE SCHEMA real_schema;")
+
+        assert len(objects) == 1
+        assert objects[0].name == "real_schema"
+
+    def test_create_type(self):
+        objects = self.parser.extract_objects("CREATE TYPE real_type FROM int;")
+
+        assert len(objects) == 1
+        assert objects[0].name == "real_type"
+
+    def test_create_sequence(self):
+        objects = self.parser.extract_objects("CREATE SEQUENCE real_seq START WITH 1;")
+
+        assert len(objects) == 1
+        assert objects[0].name == "real_seq"
+        assert objects[0].object_type == SqlObjectType.SEQUENCE
+
+
+@pytest.mark.unit
+class TestHybridParserNoDuplicateOnFixedName:
+    """The default (hybrid) parser combines the regex and sqlglot results,
+    keyed by name. Once the regex name matches sqlglot's, the dict key
+    collides and sqlglot's entry alone survives — no separate merge change
+    is needed."""
+
+    def setup_method(self):
+        self.parser = SqlParserFactory("sqlserver")
+
+    def test_create_table_reported_case(self):
+        # The exact statement from the report.
+        objects = self.parser.extract_objects("CREATE TABLE real_one (id int);")
+
+        assert len(objects) == 1
+        assert objects[0].name == "real_one"
+        assert objects[0].object_type == SqlObjectType.TABLE
+
+    def test_create_view_also_deduplicates(self):
+        objects = self.parser.extract_objects("CREATE VIEW real_view AS SELECT 1;")
+
+        assert len(objects) == 1
+        assert objects[0].name == "real_view"
