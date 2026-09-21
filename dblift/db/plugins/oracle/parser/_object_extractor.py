@@ -1,7 +1,8 @@
 """Oracle SQL object extraction (Phase-Oracle-04 — ADR-0012).
 
-Extracts tables, views, sequences, procedures/functions, and indexes
-from Oracle SQL via regex, applying Oracle's case rules:
+Extracts tables, views, sequences, procedures/functions, indexes and
+triggers from Oracle SQL via regex — CREATE for all but triggers, ALTER
+for tables only, DROP for all of them — applying Oracle's case rules:
 
   * unquoted identifier  → upper-cased (Oracle folds unquoted names).
   * quoted identifier    → preserved verbatim.
@@ -31,7 +32,7 @@ from __future__ import annotations
 import re
 from typing import Callable, List, Optional, Tuple
 
-from dblift.core.sql_model.base import SqlObject
+from dblift.core.sql_model.base import SqlObject, SqlObjectType
 from dblift.core.sql_model.index import Index
 from dblift.core.sql_model.procedure import Procedure
 from dblift.core.sql_model.sequence import Sequence
@@ -59,21 +60,33 @@ _TABLE_RE = re.compile(
     re.IGNORECASE,
 )
 _VIEW_RE = re.compile(
-    # `CREATE [OR REPLACE] [[NO]FORCE] [EDITIONABLE|NONEDITIONABLE] VIEW`.
-    rf"CREATE\s+(?:OR\s+REPLACE\s+)?(?:(?:NO)?FORCE\s+)?"
-    rf"(?:(?:NON)?EDITIONABLE\s+)?VIEW\s+{_QUALIFIED_NAME}",
+    # `CREATE [OR REPLACE] [[NO]FORCE] [EDITIONABLE|NONEDITIONABLE] VIEW`,
+    # or `DROP VIEW` (DROP carries none of the CREATE-only modifiers).
+    rf"(?:CREATE\s+(?:OR\s+REPLACE\s+)?(?:(?:NO)?FORCE\s+)?"
+    rf"(?:(?:NON)?EDITIONABLE\s+)?VIEW|DROP\s+VIEW)\s+{_QUALIFIED_NAME}",
     re.IGNORECASE,
 )
 _SEQUENCE_RE = re.compile(
-    rf"CREATE\s+SEQUENCE\s+{_QUALIFIED_NAME}",
+    rf"(?:CREATE|DROP)\s+SEQUENCE\s+{_QUALIFIED_NAME}",
     re.IGNORECASE,
 )
 _PROCEDURE_RE = re.compile(
-    rf"CREATE\s+(?:OR\s+REPLACE\s+)?PROCEDURE\s+{_QUALIFIED_NAME}",
+    rf"(?:CREATE\s+(?:OR\s+REPLACE\s+)?PROCEDURE|DROP\s+PROCEDURE)\s+{_QUALIFIED_NAME}",
     re.IGNORECASE,
 )
 _FUNCTION_RE = re.compile(
-    rf"CREATE\s+(?:OR\s+REPLACE\s+)?FUNCTION\s+{_QUALIFIED_NAME}",
+    rf"(?:CREATE\s+(?:OR\s+REPLACE\s+)?FUNCTION|DROP\s+FUNCTION)\s+{_QUALIFIED_NAME}",
+    re.IGNORECASE,
+)
+# DROP INDEX / DROP TRIGGER carry no `ON <table>` clause in Oracle (unlike
+# CREATE INDEX), so there is no table to attach — a bare SqlObject, not the
+# table-aware Index/Trigger subclass.
+_DROP_INDEX_RE = re.compile(
+    rf"DROP\s+INDEX\s+{_QUALIFIED_NAME}",
+    re.IGNORECASE,
+)
+_DROP_TRIGGER_RE = re.compile(
+    rf"DROP\s+TRIGGER\s+{_QUALIFIED_NAME}",
     re.IGNORECASE,
 )
 
@@ -86,6 +99,16 @@ def _build_function(**kwargs: object) -> SqlObject:
     ``object_type == SqlObjectType.FUNCTION``).
     """
     return Procedure(**kwargs, is_function=True)  # type: ignore[arg-type]
+
+
+def _build_dropped_index(**kwargs: object) -> SqlObject:
+    """``DROP INDEX`` has no ``ON <table>`` clause to attach; bare object."""
+    return SqlObject(object_type=SqlObjectType.INDEX, **kwargs)  # type: ignore[arg-type]
+
+
+def _build_dropped_trigger(**kwargs: object) -> SqlObject:
+    """``DROP TRIGGER`` has no ``ON <table>`` clause to attach; bare object."""
+    return SqlObject(object_type=SqlObjectType.TRIGGER, **kwargs)  # type: ignore[arg-type]
 
 
 def _resolve_schema(
@@ -135,6 +158,8 @@ _SIMPLE_PATTERNS: Tuple[Tuple[re.Pattern[str], _Builder], ...] = (
     (_SEQUENCE_RE, Sequence),
     (_PROCEDURE_RE, Procedure),
     (_FUNCTION_RE, _build_function),
+    (_DROP_INDEX_RE, _build_dropped_index),
+    (_DROP_TRIGGER_RE, _build_dropped_trigger),
 )
 
 

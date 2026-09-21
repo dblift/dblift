@@ -365,6 +365,25 @@ class TestOracleParser:
         objects = parser.extract_objects("CREATE SEQUENCE my_seq;")
         assert [o.name for o in objects] == ["MY_SEQ"]
 
+    def test_extract_objects_covers_drop_for_every_type_the_stub_handled(self):
+        """The generic stub this method used to fall through to handled
+        DROP for every object type; the Oracle-specific extractor it now
+        routes to must not have narrowed that to DROP TABLE only.
+        """
+        parser = OracleParser()
+
+        cases = {
+            "DROP SEQUENCE real_seq;": "REAL_SEQ",
+            "DROP VIEW v1;": "V1",
+            "DROP PROCEDURE p1;": "P1",
+            "DROP FUNCTION f1;": "F1",
+            "DROP TRIGGER t1;": "T1",
+            "DROP INDEX idx1;": "IDX1",
+        }
+        for sql, expected_name in cases.items():
+            objects = parser.extract_objects(sql)
+            assert [o.name for o in objects] == [expected_name], sql
+
     def test_plsql_block_extraction(self):
         """Test PL/SQL block extraction with simpler example."""
         # Use simpler PL/SQL for testing
