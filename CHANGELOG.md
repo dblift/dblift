@@ -45,6 +45,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Redshift), a statement that splitting correctly ran as live code could be
   reported as part of the comment and left out of the objects a migration
   is recorded as touching.
+- SQLite and DuckDB object extraction now skips comments, block and line,
+  before matching, and reports every object in the input instead of only
+  the first. Previously a commented-out `CREATE`/`ALTER`/`DROP` statement
+  could be reported as an object the migration touches while the real
+  statement after it was missed entirely.
 - The full-table UPDATE/DELETE guard no longer misreads a `WHERE` inside a
   dollar-quoted value (PostgreSQL's `$$ ... $$` / `$tag$ ... $tag$`) as a real
   clause. A statement like `UPDATE t SET body = $$ ... WHERE ... $$` is now
