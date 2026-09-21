@@ -44,12 +44,38 @@ class SnowflakeProvider(SqlAlchemyProvider):
     _migration_lock_connection: Connection | None = None
     _migration_lock_transaction: Transaction | None = None
 
+    #: Schema this session was last ``USE SCHEMA``'d into. Lets
+    #: :meth:`set_current_schema` skip re-issuing ``USE SCHEMA`` on every
+    #: statement of a migration, so a ``USE SCHEMA`` the migration itself
+    #: runs is not immediately overwritten. Cleared by
+    #: :meth:`reset_schema_cache` — called by ``ExecutionEngine`` at the
+    #: start of every migration/callback, and also by
+    #: :meth:`begin_transaction` as a second, redundant guard — so each new
+    #: one still starts from the configured schema. Class-level default so
+    #: tests constructing via ``object.__new__`` still see ``None``.
+    _schema_applied_for: Optional[str] = None
+
     def __init__(
         self,
         config: DbliftConfig,
         log: Optional[Log] = None,
     ) -> None:
         super().__init__(config, log)
+        self._schema_applied_for = None
+
+    def reset_schema_cache(self) -> None:
+        """Forget the schema this session was last ``USE SCHEMA``'d into.
+
+        ``ExecutionEngine`` calls this at the start of every migration and
+        callback — the unit boundary — so each one still starts from the
+        configured schema.
+        """
+        self._schema_applied_for = None
+
+    def begin_transaction(self) -> None:
+        """Begin a transaction, forcing the next statement to reapply the schema."""
+        self.reset_schema_cache()
+        super().begin_transaction()
 
     def execute_statement(
         self,
@@ -98,8 +124,17 @@ class SnowflakeProvider(SqlAlchemyProvider):
         return False
 
     def set_current_schema(self, schema: str) -> None:
-        """Set the current Snowflake schema for this session."""
+        """Set the current Snowflake schema for this session.
+
+        A no-op once this session already has *schema* selected, so a
+        ``USE SCHEMA`` the migration itself runs later is not immediately
+        reset back — see ``_schema_applied_for``. Unverified: there is no
+        local Snowflake engine to confirm this against.
+        """
+        if self._schema_applied_for == schema:
+            return
         super().execute_statement(f"USE SCHEMA {_quote_identifier(schema)}")
+        self._schema_applied_for = schema
 
     def get_schema_qualified_name(self, schema: str, object_name: str) -> str:
         """Return a quoted schema-qualified object name."""

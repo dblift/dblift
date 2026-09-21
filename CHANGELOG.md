@@ -49,6 +49,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   connection happened to be on — including one left over from an earlier
   migration's own `SET search_path` (PostgreSQL) or `USE` (MySQL/MariaDB) —
   silently returning rows from the wrong schema.
+- Oracle, Db2 and Snowflake: an `ALTER SESSION SET CURRENT_SCHEMA` / `SET
+  SCHEMA` / `USE SCHEMA` a migration issued itself no longer gets silently
+  reset before the migration's next statement, matching the PostgreSQL/MySQL
+  fix in 4.6.1. Session state a migration sets now persists for the rest of
+  that migration and is restored to the configured schema at the start of
+  the next one. Verified against a live Oracle instance; Db2 and Snowflake
+  could not be exercised against a live engine here (no reachable Db2
+  instance, no local Snowflake engine), so the fix for those two is
+  unverified at the engine level.
 
 ### Removed
 
