@@ -16,6 +16,9 @@ from dblift.core.sql_model.base import (
     SqlStatementType,
 )
 from dblift.core.sql_parser.base_tokenizer import BaseTokenizer
+from dblift.core.sql_parser.common.comment_stripping import (
+    strip_comments_preserving_quotes,
+)
 from dblift.core.sql_parser.unified_regex_parser import DialectConfig, RegexParser
 
 logger = logging.getLogger(__name__)
@@ -413,135 +416,13 @@ class EnhancedRegexParser(RegexParser):
         matching statement splitting for the same dialect.
         """
         line_prefixes, has_block_comments = self._comment_markers()
-
-        # Cheap early exit: with no comment marker anywhere in the text,
-        # quote tracking cannot change the outcome (it only exists to
-        # protect a marker inside a quoted span), so the full scan is
-        # unnecessary — most statements in a migration have no comment.
-        markers = list(line_prefixes) + (["/*"] if has_block_comments else [])
-        if not any(marker in sql for marker in markers):
-            return sql.strip()
-
-        result: List[str] = []
-
-        in_single = False
-        in_double = False
-        in_backtick = False
-        in_bracket = False
-        block_comment_depth = 0
-        in_line_comment = False
-        dollar_tag: Optional[str] = None
-        supports_dollar_quoting = getattr(self.config, "supports_dollar_quoting", False)
-
-        i = 0
-        length = len(sql)
-        while i < length:
-            char = sql[i]
-
-            if in_line_comment:
-                if char in ("\n", "\r"):
-                    in_line_comment = False
-                    result.append(char)
-                i += 1
-                continue
-
-            if block_comment_depth > 0:
-                if (
-                    self.tokenizer_class.NESTED_BLOCK_COMMENTS
-                    and char == "/"
-                    and sql[i + 1 : i + 2] == "*"
-                ):
-                    block_comment_depth += 1
-                    i += 2
-                elif char == "*" and sql[i + 1 : i + 2] == "/":
-                    block_comment_depth -= 1
-                    i += 2
-                else:
-                    i += 1
-                continue
-
-            if dollar_tag is not None:
-                if sql.startswith(dollar_tag, i):
-                    result.append(dollar_tag)
-                    i += len(dollar_tag)
-                    dollar_tag = None
-                else:
-                    result.append(char)
-                    i += 1
-                continue
-
-            in_quote = in_single or in_double or in_backtick or in_bracket
-
-            if not in_quote and supports_dollar_quoting and char == "$":
-                dollar_match = re.match(r"\$([a-zA-Z_][a-zA-Z0-9_]*)?\$", sql[i:])
-                if dollar_match:
-                    tag = dollar_match.group(0)
-                    dollar_tag = tag
-                    result.append(tag)
-                    i += len(tag)
-                    continue
-
-            if not in_double and not in_backtick and not in_bracket and char == "'":
-                result.append(char)
-                i += 1
-                if in_single and sql[i : i + 1] == "'":
-                    result.append("'")
-                    i += 1
-                else:
-                    in_single = not in_single
-                continue
-
-            if not in_single and not in_backtick and not in_bracket and char == '"':
-                result.append(char)
-                i += 1
-                if in_double and sql[i : i + 1] == '"':
-                    result.append('"')
-                    i += 1
-                else:
-                    in_double = not in_double
-                continue
-
-            if not in_single and not in_double and not in_bracket and char == "`":
-                result.append(char)
-                i += 1
-                if in_backtick and sql[i : i + 1] == "`":
-                    result.append("`")
-                    i += 1
-                else:
-                    in_backtick = not in_backtick
-                continue
-
-            if not in_single and not in_double and not in_backtick:
-                if not in_bracket and char == "[":
-                    in_bracket = True
-                    result.append(char)
-                    i += 1
-                    continue
-                if in_bracket and char == "]":
-                    result.append(char)
-                    i += 1
-                    if sql[i : i + 1] == "]":
-                        result.append("]")
-                        i += 1
-                    else:
-                        in_bracket = False
-                    continue
-
-            if not in_quote:
-                if has_block_comments and char == "/" and sql[i + 1 : i + 2] == "*":
-                    block_comment_depth = 1
-                    i += 2
-                    continue
-                matched_prefix = next((p for p in line_prefixes if sql.startswith(p, i)), None)
-                if matched_prefix:
-                    in_line_comment = True
-                    i += len(matched_prefix)
-                    continue
-
-            result.append(char)
-            i += 1
-
-        return "".join(result).strip()
+        return strip_comments_preserving_quotes(
+            sql,
+            line_prefixes=line_prefixes,
+            has_block_comments=has_block_comments,
+            nested_block_comments=self.tokenizer_class.NESTED_BLOCK_COMMENTS,
+            supports_dollar_quoting=getattr(self.config, "supports_dollar_quoting", False),
+        )
 
     def _is_block_statement_enhanced(self, sql: str) -> bool:
         """Enhanced block statement detection using Oracle-proven patterns."""

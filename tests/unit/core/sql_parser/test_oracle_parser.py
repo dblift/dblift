@@ -350,6 +350,21 @@ class TestOracleParser:
         assert len(objects) >= 1
         assert objects[0].name == "TEST"
 
+    def test_extract_objects_uses_the_oracle_extractor_not_the_generic_stub(self):
+        """``extract_objects`` is what ``HybridParser`` and
+        ``parser_type="regex"`` call; it must use the same Oracle-specific
+        extraction as ``get_affected_objects`` rather than the dialect-agnostic
+        base-class stub, which knows nothing about CREATE SEQUENCE and loses
+        the object behind a leading comment.
+        """
+        parser = OracleParser()
+
+        objects = parser.extract_objects("/* c */ CREATE TABLE real_one (id int);")
+        assert [o.name for o in objects] == ["REAL_ONE"]
+
+        objects = parser.extract_objects("CREATE SEQUENCE my_seq;")
+        assert [o.name for o in objects] == ["MY_SEQ"]
+
     def test_plsql_block_extraction(self):
         """Test PL/SQL block extraction with simpler example."""
         # Use simpler PL/SQL for testing

@@ -37,6 +37,9 @@ from dblift.core.sql_model.procedure import Procedure
 from dblift.core.sql_model.sequence import Sequence
 from dblift.core.sql_model.table import Table
 from dblift.core.sql_model.view import View
+from dblift.core.sql_parser.common.comment_stripping import (
+    strip_comments_preserving_quotes,
+)
 
 __all__ = ["extract_objects"]
 
@@ -146,6 +149,18 @@ def extract_objects(sql: str, default_schema: Optional[str] = None) -> List[SqlO
         returned with the case they would have inside Oracle.
     """
     objects: List[SqlObject] = []
+
+    # A commented-out CREATE must not surface as an object, and a real one
+    # must not be lost behind a leading comment (matches Oracle's own
+    # statement splitter, which does not nest block comments).
+    sql = strip_comments_preserving_quotes(
+        sql,
+        line_prefixes=["--"],
+        has_block_comments=True,
+        nested_block_comments=False,
+    )
+    if not sql:
+        return objects
 
     for pattern, cls in _SIMPLE_PATTERNS:
         for match in pattern.finditer(sql):

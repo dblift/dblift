@@ -50,6 +50,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the first. Previously a commented-out `CREATE`/`ALTER`/`DROP` statement
   could be reported as an object the migration touches while the real
   statement after it was missed entirely.
+- Oracle object extraction now skips comments, block and line, before
+  matching. Previously a leading or in-between comment could hide the object
+  a live statement creates, and a commented-out statement could be reported
+  as one of the objects a migration touches.
 - The full-table UPDATE/DELETE guard no longer misreads a `WHERE` inside a
   dollar-quoted value (PostgreSQL's `$$ ... $$` / `$tag$ ... $tag$`) as a real
   clause. A statement like `UPDATE t SET body = $$ ... WHERE ... $$` is now

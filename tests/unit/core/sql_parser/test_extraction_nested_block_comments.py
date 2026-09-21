@@ -24,6 +24,7 @@ from dblift.db.plugins.db2.parser.db2_regex_parser import DB2RegexParser
 from dblift.db.plugins.duckdb.parser.duckdb_regex_parser import DuckDBRegexParser
 from dblift.db.plugins.duckdb.parser.duckdb_tokenizer import DuckDBTokenizer
 from dblift.db.plugins.mysql.parser.mysql_regex_parser import MySqlRegexParser
+from dblift.db.plugins.oracle.parser.oracle_parser import OracleParser
 from dblift.db.plugins.postgresql.parser.postgresql_regex_parser import (
     PostgreSqlRegexParser,
 )
@@ -85,10 +86,8 @@ def _assert_extracts_exactly_victim_or_nothing(
     exactly no objects at all. A malformed or extra object — not just a
     missing "victim" — fails this.
     """
-    # get_affected_objects(), not extract_objects(): it's the public
-    # interface method for "what does this statement touch", and Oracle's
-    # accurate extraction only lives behind that name (extract_objects()
-    # falls through to a generic base-class stub for OracleParser).
+    # get_affected_objects(): the public interface method for "what does
+    # this statement touch", used uniformly across dialects.
     objects = _regex_parser_for(dialect).get_affected_objects(NESTED_COMMENT_SQL)
     if expect_live:
         testcase.assertEqual(
@@ -206,6 +205,24 @@ class TestSQLiteExtractionDoesNotNestBlockComments(unittest.TestCase):
         self.assertEqual(objects[0].name.lower(), "victim")
 
 
+class TestOracleExtractionDoesNotNestBlockComments(unittest.TestCase):
+    """Oracle documents block comments do not nest, same as MySQL and
+    SQLite: the first ``*/`` always closes, so the commented-out statement
+    must not be reported and the real one after it must. Oracle upper-cases
+    unquoted identifiers, hence "REAL_ONE" / "VICTIM".
+    """
+
+    def test_issue_example(self):
+        objects = OracleParser().extract_objects(ISSUE_REPRODUCTION_SQL)
+        self.assertEqual(len(objects), 1, objects)
+        self.assertEqual(objects[0].name, "REAL_ONE")
+
+    def test_nested_comment_leaves_live_statement_visible(self):
+        objects = OracleParser().extract_objects(NESTED_COMMENT_SQL)
+        self.assertEqual(len(objects), 1, objects)
+        self.assertEqual(objects[0].name, "VICTIM")
+
+
 class TestDuckDBExtractionNestsBlockComments(unittest.TestCase):
     """DuckDB documents nested block comments (PostgreSQL-compatible), same
     as SQL Server: a fully nested comment hides everything inside it, so
@@ -271,6 +288,11 @@ class TestLineCommentsAlsoHideTheCommentedStatement(unittest.TestCase):
         self.assertEqual(len(objects), 1, objects)
         self.assertEqual(objects[0].name, "real_one")
 
+    def test_oracle(self):
+        objects = OracleParser().extract_objects(LINE_COMMENT_REPRODUCTION_SQL)
+        self.assertEqual(len(objects), 1, objects)
+        self.assertEqual(objects[0].name, "REAL_ONE")
+
 
 class TestExtractionReturnsEveryLiveObjectNotJustTheFirst(unittest.TestCase):
     """The issue's own reproduction returns one object where the input has
@@ -290,6 +312,10 @@ class TestExtractionReturnsEveryLiveObjectNotJustTheFirst(unittest.TestCase):
     def test_duckdb(self):
         objects = DuckDBRegexParser().extract_objects(self.SQL)
         self.assertEqual([o.name for o in objects], ["first_one", "second_one"])
+
+    def test_oracle(self):
+        objects = OracleParser().extract_objects(self.SQL)
+        self.assertEqual([o.name for o in objects], ["FIRST_ONE", "SECOND_ONE"])
 
 
 class TestUnterminatedInnerCommentAgreesWithSplitting(unittest.TestCase):
@@ -314,6 +340,11 @@ class TestUnterminatedInnerCommentAgreesWithSplitting(unittest.TestCase):
         objects = SQLiteRegexParser().extract_objects(self.UNTERMINATED_INNER)
         self.assertEqual(len(objects), 1, objects)
         self.assertEqual(objects[0].name.lower(), "victim")
+
+    def test_oracle_closes_at_first_marker_exposes_statement(self):
+        objects = OracleParser().extract_objects(self.UNTERMINATED_INNER)
+        self.assertEqual(len(objects), 1, objects)
+        self.assertEqual(objects[0].name, "VICTIM")
 
     def test_duckdb_stays_open_hides_everything(self):
         objects = DuckDBRegexParser().extract_objects(self.UNTERMINATED_INNER)
@@ -350,6 +381,18 @@ class TestQuotedCommentMarkersSurviveDialectAwareStripping(unittest.TestCase):
         self.assertEqual(len(objects), 1, objects)
         self.assertEqual(objects[0].name.lower(), "t")
 
+    def test_slash_star_inside_string_on_oracle(self):
+        sql = "CREATE TABLE t (note VARCHAR2(10) DEFAULT '/*'); SELECT 1 FROM DUAL;"
+        objects = OracleParser().extract_objects(sql)
+        self.assertEqual(len(objects), 1, objects)
+        self.assertEqual(objects[0].name, "T")
+
+    def test_star_slash_inside_string_on_oracle(self):
+        sql = "CREATE TABLE t (note VARCHAR2(10) DEFAULT '*/'); SELECT 1 FROM DUAL;"
+        objects = OracleParser().extract_objects(sql)
+        self.assertEqual(len(objects), 1, objects)
+        self.assertEqual(objects[0].name, "T")
+
 
 class TestCommentContainingSemicolon(unittest.TestCase):
     """A ``;`` inside a block comment must not be mistaken for a statement
@@ -373,6 +416,12 @@ class TestCommentContainingSemicolon(unittest.TestCase):
         objects = DuckDBRegexParser().extract_objects(sql)
         self.assertEqual(len(objects), 1, objects)
         self.assertEqual(objects[0].name.lower(), "t")
+
+    def test_oracle_semicolon_inside_comment_is_not_a_boundary(self):
+        sql = "/* has a ; inside */ CREATE TABLE t (id int);"
+        objects = OracleParser().extract_objects(sql)
+        self.assertEqual(len(objects), 1, objects)
+        self.assertEqual(objects[0].name, "T")
 
 
 if __name__ == "__main__":

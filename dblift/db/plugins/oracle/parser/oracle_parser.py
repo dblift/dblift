@@ -160,11 +160,19 @@ class OracleParser(RegexBasedParser):
                 "warnings": [f"Validation failed: {str(e)}"],
             }
 
+    def extract_objects(self, sql: str, default_schema: Optional[str] = None) -> List[SqlObject]:
+        """Extract objects from SQL using Oracle-specific regex patterns.
+
+        Overrides the generic ``RegexBasedParser`` fallback, which knows
+        nothing of Oracle syntax (sequences, quoted-identifier case rules).
+        """
+        return extract_objects(sql, default_schema)
+
     def get_affected_objects(
         self, sql: str, default_schema: Optional[str] = None
     ) -> List[SqlObject]:
         """Extract objects from SQL using regex-based approach."""
-        return extract_objects(sql, default_schema)
+        return self.extract_objects(sql, default_schema)
 
     def _identify_statement_type(self, sql: str) -> SqlStatementType:
         """Identify statement type using enhanced Oracle-specific patterns."""

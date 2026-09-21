@@ -247,6 +247,60 @@ class TestDefaultSchemaPropagation:
 
 
 @pytest.mark.unit
+class TestCommentHandling:
+    """A comment before or between statements must not hide a live object,
+    and a commented-out statement must not surface as one."""
+
+    def test_leading_block_comment_does_not_hide_the_table(self):
+        sql = "/* c */ CREATE TABLE real_one (id int)"
+        assert [o.name for o in extract_objects(sql)] == ["REAL_ONE"]
+
+    def test_leading_line_comment_does_not_hide_the_table(self):
+        sql = "-- c\nCREATE TABLE real_one (id int)"
+        assert [o.name for o in extract_objects(sql)] == ["REAL_ONE"]
+
+    def test_commented_out_statement_is_not_extracted(self):
+        sql = "/* CREATE TABLE commented_out (id int); */ CREATE TABLE real_one (id int);"
+        assert [o.name for o in extract_objects(sql)] == ["REAL_ONE"]
+
+    def test_line_commented_out_statement_is_not_extracted(self):
+        sql = "-- CREATE TABLE commented_out (id int);\nCREATE TABLE real_one (id int);"
+        assert [o.name for o in extract_objects(sql)] == ["REAL_ONE"]
+
+    def test_comment_between_two_statements(self):
+        sql = "CREATE TABLE first_one (id int); /* c */ CREATE TABLE second_one (id int);"
+        assert [o.name for o in extract_objects(sql)] == ["FIRST_ONE", "SECOND_ONE"]
+
+    def test_block_comment_marker_inside_string_literal_survives(self):
+        sql = "CREATE TABLE t (note VARCHAR2(10) DEFAULT '/* not a comment */')"
+        assert [o.name for o in extract_objects(sql)] == ["T"]
+
+    def test_line_comment_marker_inside_string_literal_survives(self):
+        sql = "CREATE TABLE t (note VARCHAR2(10) DEFAULT '-- not a comment')"
+        assert [o.name for o in extract_objects(sql)] == ["T"]
+
+    def test_unterminated_block_comment_hides_everything_after_it(self):
+        # No closing `*/`: matches Oracle's own splitter, which treats the
+        # rest of the input as part of the comment (see split_statements).
+        sql = "/* unterminated CREATE TABLE ghost (id int);"
+        assert extract_objects(sql) == []
+
+    def test_package_stays_unextracted_behind_a_leading_comment(self):
+        # Packages are not in this extractor's surface at all (no pattern
+        # for them); a leading comment must not change that.
+        sql = "/* c */ CREATE OR REPLACE PACKAGE pkg1 IS END pkg1;"
+        assert extract_objects(sql) == []
+
+    def test_synonym_stays_unextracted_behind_a_leading_comment(self):
+        sql = "/* c */ CREATE SYNONYM syn1 FOR real_one;"
+        assert extract_objects(sql) == []
+
+    def test_materialized_view_stays_unextracted_behind_a_leading_comment(self):
+        sql = "/* c */ CREATE MATERIALIZED VIEW mv1 AS SELECT 1 FROM DUAL;"
+        assert extract_objects(sql) == []
+
+
+@pytest.mark.unit
 class TestEdgeCases:
     def test_empty_input(self):
         assert extract_objects("") == []
