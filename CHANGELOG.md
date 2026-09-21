@@ -13,6 +13,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- PostgreSQL, SQL Server and DuckDB migrations: a block comment that nests
+  another block comment (`/* outer /* inner */ still outer */`) now stays
+  a comment end to end instead of being treated as closed at the first
+  `*/`. Previously, anything between that first `*/` and the real end of
+  the comment — including a statement like `DROP TABLE`, separated by a
+  `;` — was split out and executed, even though the file reads as a single
+  commented-out block. MySQL/MariaDB, Oracle and SQLite are unaffected:
+  those engines do not support nested block comments, so the first `*/`
+  correctly ends the comment there.
 - `info`, `undo`, and the FastAPI migration health helpers now fail when
   migration state cannot be read. State-read errors are no longer reported as
   an empty history, a successful no-op undo, or a current schema.

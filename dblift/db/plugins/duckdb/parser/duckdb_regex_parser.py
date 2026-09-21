@@ -30,7 +30,7 @@ class DuckDBRegexParser(EnhancedRegexParser):
         current: List[str] = []
         in_string = False
         in_ident = False  # inside a "double-quoted" identifier
-        in_block_comment = False
+        block_comment_depth = 0  # DuckDB nests block comments (PostgreSQL-compatible)
         in_line_comment = False
 
         i = 0
@@ -44,19 +44,26 @@ class DuckDBRegexParser(EnhancedRegexParser):
                 not in_string
                 and not in_ident
                 and not in_line_comment
+                and block_comment_depth == 0
                 and char == "/"
                 and nxt == "*"
             ):
-                in_block_comment = True
+                block_comment_depth = 1
                 current.append(char)
                 current.append(nxt)
                 i += 2
                 continue
-            if in_block_comment:
+            if block_comment_depth > 0:
+                if char == "/" and nxt == "*":
+                    block_comment_depth += 1
+                    current.append(char)
+                    current.append(nxt)
+                    i += 2
+                    continue
                 current.append(char)
                 if char == "*" and nxt == "/":
                     current.append(nxt)
-                    in_block_comment = False
+                    block_comment_depth -= 1
                     i += 2
                     continue
                 i += 1

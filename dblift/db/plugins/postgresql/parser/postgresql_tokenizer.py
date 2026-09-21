@@ -21,6 +21,9 @@ class PostgreSQLTokenizer(BaseTokenizer):
 
     dialect_name = "postgresql"  # lint: allow-dialect-string: dialect dispatch
 
+    # PostgreSQL documents nested block comments explicitly.
+    NESTED_BLOCK_COMMENTS = True
+
     def __init__(self, sql: str, strict_unknown_chars: bool = False):
         """Initialize PostgreSQL tokenizer.
 
