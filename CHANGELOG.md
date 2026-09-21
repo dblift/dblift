@@ -101,6 +101,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `SET SCHEMA`, `USE SCHEMA`) twice. PostgreSQL, MySQL, Oracle, Db2 and
   Snowflake now apply it once per migration/callback instead of once before
   the transaction starts and again right after.
+- SQL Server: an `ALTER USER ... WITH DEFAULT_SCHEMA` a migration issued
+  itself no longer survives into the next migration. The configured schema
+  is now restored at the start of each migration and callback, matching the
+  other five engines. Previously the connection stayed on the wrong schema
+  while dblift logged a warning blaming a concurrent process for a schema
+  change one of its own earlier migrations had made; that warning is now
+  silent on this ordinary boundary correction and still fires when a login
+  shared with another connection is changed mid-migration, which is what it
+  is meant to catch. Verified against a live SQL Server instance.
 
 ### Removed
 
