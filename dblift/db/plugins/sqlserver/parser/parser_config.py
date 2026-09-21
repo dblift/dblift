@@ -387,19 +387,9 @@ class SqlServerConfig(DialectConfig):
                 + index_target,
                 re.IGNORECASE,
             ),
-            # Grammar-based: DROP INDEX supports IF EXISTS, and both the current
-            # "DROP INDEX name ON table" syntax and the older
-            # "DROP INDEX table.name" syntax.
+            # Grammar-based: DROP INDEX supports IF EXISTS
             "index_drop": re.compile(
-                r"DROP\s+INDEX\s+(?:IF\s+EXISTS\s+)?"
-                r"(?:"
-                + captured_id
-                + r"\s+ON\s+"
-                + index_target
-                + r"|"
-                + rf"{id_token}(?:\.{id_token})?\."
-                + captured_id
-                + r")",
+                r"DROP\s+INDEX\s+(?:IF\s+EXISTS\s+)?" + captured_id + r"\s+ON\s+" + index_target,
                 re.IGNORECASE,
             ),
             # Procedures/Functions

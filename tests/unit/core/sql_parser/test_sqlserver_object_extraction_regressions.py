@@ -247,14 +247,6 @@ class TestIndexObjectSchema:
         assert objects[0].schema == "dbo"
         assert objects[0].object_type == SqlObjectType.INDEX
 
-    def test_drop_index_dotted_syntax(self):
-        # The older "DROP INDEX table.index_name" syntax.
-        objects = self.parser.extract_objects("DROP INDEX real_one.idx1;")
-
-        assert len(objects) == 1
-        assert objects[0].name == "idx1"
-        assert objects[0].schema == "dbo"
-
     def test_create_xml_index(self):
         objects = self.parser.extract_objects("CREATE XML INDEX idx1 ON real_one (xml_col);")
 
@@ -294,6 +286,87 @@ class TestXmlIndexNoDuplicateMatch:
         )
 
         assert len(objects) == 1
+
+
+@pytest.mark.unit
+class TestIndexObjectSchemaDefaultParser:
+    """Same assertions as ``TestIndexObjectSchema``, run through the default
+    (hybrid) parser rather than the regex parser in isolation. The hybrid
+    parser lets sqlglot's result override the regex one on a ``(name, type)``
+    collision, so a fix verified only on the regex parser can still be wrong
+    for every caller that uses the default — as the dotted "table.name"
+    ``DROP INDEX`` syntax was: sqlglot's own handling of it reports the
+    table as the schema, and the merge kept that over the regex result.
+    That syntax is intentionally not covered here or supported by
+    "index_drop" — fixing sqlglot's generic (non-SQL-Server-specific) parsing
+    is a separate change."""
+
+    def setup_method(self):
+        self.parser = SqlParserFactory("sqlserver").get_parser()
+
+    def test_create_index(self):
+        objects = self.parser.extract_objects(
+            "CREATE INDEX idx1 ON real_one (id);", default_schema="dbo"
+        )
+
+        assert len(objects) == 1
+        assert objects[0].name == "idx1"
+        assert objects[0].schema == "dbo"
+        assert objects[0].object_type == SqlObjectType.INDEX
+
+    def test_create_unique_index(self):
+        objects = self.parser.extract_objects(
+            "CREATE UNIQUE INDEX idx1 ON real_one (id);", default_schema="dbo"
+        )
+
+        assert len(objects) == 1
+        assert objects[0].name == "idx1"
+        assert objects[0].schema == "dbo"
+
+    def test_create_index_on_schema_qualified_table(self):
+        objects = self.parser.extract_objects(
+            "CREATE INDEX idx1 ON sales.real_one (id);", default_schema="dbo"
+        )
+
+        assert len(objects) == 1
+        assert objects[0].name == "idx1"
+        assert objects[0].schema == "dbo"
+
+    def test_create_index_bracketed_name(self):
+        objects = self.parser.extract_objects(
+            "CREATE INDEX [idx 1] ON [real_one] (id);", default_schema="dbo"
+        )
+
+        assert len(objects) == 1
+        assert objects[0].name == "idx 1"
+        assert objects[0].schema == "dbo"
+
+    def test_drop_index_on_syntax(self):
+        objects = self.parser.extract_objects("DROP INDEX idx1 ON real_one;", default_schema="dbo")
+
+        assert len(objects) == 1
+        assert objects[0].name == "idx1"
+        assert objects[0].schema == "dbo"
+        assert objects[0].object_type == SqlObjectType.INDEX
+
+    def test_create_xml_index(self):
+        objects = self.parser.extract_objects(
+            "CREATE XML INDEX idx1 ON real_one (xml_col);", default_schema="dbo"
+        )
+
+        assert len(objects) == 1
+        assert objects[0].name == "idx1"
+        assert objects[0].schema == "dbo"
+        assert objects[0].object_type == SqlObjectType.INDEX
+
+    def test_create_primary_xml_index(self):
+        objects = self.parser.extract_objects(
+            "CREATE PRIMARY XML INDEX idx1 ON real_one (xml_col);", default_schema="dbo"
+        )
+
+        assert len(objects) == 1
+        assert objects[0].name == "idx1"
+        assert objects[0].schema == "dbo"
 
 
 @pytest.mark.unit
