@@ -20,6 +20,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- SQL Server object extraction (`CREATE`/`ALTER`/`DROP TABLE`, `VIEW`,
+  `INDEX`, `PROCEDURE`, `FUNCTION`, `TRIGGER`, `SYNONYM`, `SCHEMA`, `TYPE`,
+  and `SEQUENCE`) now stops at the identifier instead of capturing the rest
+  of the statement. Previously an unquoted name like `real_one (id int);`
+  was reported as `real_one (id int);` — the column list and trailing
+  punctuation included — and the same table could appear twice, once
+  garbled and once correct.
 - Migrations against engines that nest block comments — PostgreSQL, SQL
   Server, DuckDB, and the PostgreSQL-engine deployments Citus, TimescaleDB,
   Neon, Supabase, AlloyDB and Aurora PostgreSQL — now read a comment that
