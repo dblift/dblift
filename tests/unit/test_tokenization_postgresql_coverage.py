@@ -157,8 +157,11 @@ SELECT 1;"""
         assert meta_tokens[0].text == "\\restrict tok"
 
     def test_meta_command_not_recognized_inside_copy_data(self):
-        """The in_copy_data gate: a data row starting with '\\N' must not
-        become a META_COMMAND token."""
+        """A data row starting with '\\N' must not become a META_COMMAND
+        token. This holds regardless of the ``in_copy_data`` gate: a COPY
+        data block is consumed whole by ``handle_copy_data`` before the
+        top-level dispatch loop runs again, so the meta-command check never
+        sees a line from inside it either way."""
         sql = "1\t\\N\n\\.\n"
         tokenizer = PostgreSQLTokenizer(sql)
         tokenizer.in_copy_data = True
@@ -167,3 +170,18 @@ SELECT 1;"""
 
         assert token.type == TokenType.COPY_DATA
         assert "\\N" in token.text
+
+    def test_meta_command_gate_protects_the_copy_header_window(self):
+        """Unlike the data block above, the ``in_copy_data`` gate *is* load-
+        bearing here: ``in_copy_data`` is already True for the header tokens
+        between ``COPY ... FROM STDIN`` being recognized and its terminating
+        ``;`` (a multi-line column list, say), and a stray ``\\`` there must
+        still fall to the unclaimed-character path, not become a
+        META_COMMAND — removing the gate reddens this test."""
+        sql = "COPY t (\n    id\n)\n\\restrict tok\nFROM stdin;\n1\n\\.\n"
+        tokenizer = PostgreSQLTokenizer(sql)
+
+        with pytest.warns(UserWarning, match="unclaimed character"):
+            tokens = tokenizer.tokenize()
+
+        assert not any(t.type == TokenType.META_COMMAND for t in tokens)

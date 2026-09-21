@@ -6,6 +6,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from dblift.core.exceptions import UnsupportedMetaCommandError
 from dblift.core.logger import NullLog
 from dblift.core.logger.results import MigrateResult
 from dblift.core.migration.executor.execution_engine import ExecutionEngine
@@ -38,6 +39,20 @@ def test_helper_split_failure_logs_and_uses_semicolon_fallback():
     log.warning.assert_called_once_with(
         "Error using SqlAnalyzer: bad parser. Falling back to simple semicolon-based parser."
     )
+
+
+def test_helper_unsupported_meta_command_is_not_swallowed_by_the_fallback():
+    """A deliberate refusal (e.g. an unsupported psql meta-command) is not an
+    ordinary splitting failure: it must reach the caller, not be hidden
+    behind the semicolon fallback the way ``ValueError`` above is."""
+    helper = importlib.import_module("dblift.core.migration.sql.migration_sql_parser")
+    analyzer, log = MagicMock(), MagicMock()
+    analyzer.split_statements.side_effect = UnsupportedMetaCommandError(
+        "Unsupported psql meta-command '\\i'; dblift does not run it"
+    )
+    with pytest.raises(UnsupportedMetaCommandError):
+        helper.parse_migration_sql(analyzer, "\\i other.sql\nSELECT 1;\n", log)
+    log.warning.assert_not_called()
 
 
 @pytest.mark.parametrize("operation", ["migration", "callback", "preview"])

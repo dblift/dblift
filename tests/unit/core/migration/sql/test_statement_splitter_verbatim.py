@@ -233,6 +233,17 @@ class TestPostgresMetaCommand:
 
         assert stmts == ["COPY t (id) FROM stdin;", "1\n\\.", "SELECT 1;"]
 
+    def test_unsupported_meta_command_is_refused_by_default(self):
+        """The refusal must reach the caller under the *default* (non-strict)
+        call the real migrate path uses — ``PostgreSqlRegexParser`` and
+        ``StatementSplitter`` both fall back to a permissive splitter on a
+        generic parsing failure, and a deliberate refusal is not one; it
+        must not be caught by that same fallback clause."""
+        sql = "\\i other.sql\nSELECT 1;\n"
+
+        with pytest.raises(UnsupportedMetaCommandError, match=r"\\i"):
+            StatementSplitter("postgresql").split_statements(sql)
+
     def test_unsupported_meta_command_is_refused_under_strict_tokenizer(self):
         """A meta-command with real effects (not just session scoping) is
         named and refused rather than silently skipped or silently glued
@@ -242,10 +253,21 @@ class TestPostgresMetaCommand:
         with pytest.raises(UnsupportedMetaCommandError, match=r"\\i"):
             StatementSplitter("postgresql").split_statements(sql, strict_tokenizer=True)
 
+    def test_unsupported_meta_command_is_refused_through_sql_analyzer(self):
+        """Same refusal, exercised through ``SqlAnalyzer`` — the entry point
+        the migration execution engine actually calls — not only at the
+        tokenizer or the dialect-specific regex parser directly."""
+        from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
+
+        sql = "\\i other.sql\nSELECT 1;\n"
+
+        with pytest.raises(UnsupportedMetaCommandError, match=r"\\i"):
+            SqlAnalyzer(dialect="postgresql").split_statements(sql)
+
     @pytest.mark.parametrize(
         "dialect",
         [
-            "aurora-postgresql",
+            "alloydb",
             "citus",
             "cockroachdb",
             "neon",
