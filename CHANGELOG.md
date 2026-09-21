@@ -25,8 +25,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   confirmed by running the case directly against each engine. MySQL/MariaDB,
   Oracle and SQLite are unaffected: those engines do not support nested
   block comments, so the first `*/` correctly ends the comment there.
-  Redshift also keeps that non-nesting behavior: its own documentation
-  states block comments don't nest.
+  Redshift also keeps that non-nesting behavior as an explicit, unverified
+  default: no local engine and no documentation addressing comment nesting
+  in top-level SQL was found for it.
 - `info`, `undo`, and the FastAPI migration health helpers now fail when
   migration state cannot be read. State-read errors are no longer reported as
   an empty history, a successful no-op undo, or a current schema.

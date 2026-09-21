@@ -329,11 +329,11 @@ class PostgreSQLTokenizer(BaseTokenizer):
 
 
 class NonNestingPostgreSQLTokenizer(PostgreSQLTokenizer):
-    """PostgreSQL-syntax tokenizer for wire-compatible engines whose own
-    documentation does not address nested block comments (Redshift,
-    CockroachDB, YugabyteDB — see CHANGELOG.md). Reuses everything else
-    PostgreSQL does; only the nesting claim is withheld rather than inherited
-    unverified.
+    """PostgreSQL-syntax tokenizer for a wire-compatible engine kept
+    non-nesting by default because nesting isn't established for it
+    (Redshift — see ``RedshiftQuirks.parser_class`` and CHANGELOG.md).
+    Reuses everything else PostgreSQL does; only the nesting claim is
+    withheld.
     """
 
     NESTED_BLOCK_COMMENTS = False

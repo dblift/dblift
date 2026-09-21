@@ -8,11 +8,16 @@ regression tests below pin that down. See CHANGELOG.md for citations.
 
 Citus, TimescaleDB, Neon, Supabase, AlloyDB and Aurora PostgreSQL are
 PostgreSQL itself (an extension or a hosted deployment), so PostgreSQL's
-nesting is the same fact for them, not an inference. Redshift, CockroachDB
-and YugabyteDB are each their own implementation of the wire protocol, not
-PostgreSQL, and no vendor documentation addressing comment nesting was found
-for any of the three — they keep the non-nesting reader rather than
-inheriting PostgreSQL's behavior without evidence.
+nesting is the same fact for them, not an inference. CockroachDB and
+YugabyteDB are separate implementations of the wire protocol, not
+PostgreSQL, so their nesting was checked directly against each engine
+rather than inferred — both nest the same way PostgreSQL does. Redshift is
+also a separate implementation, but has no local engine to check and no
+documentation addressing comment nesting in top-level SQL (its PL/pgSQL
+page says block comments don't nest inside a procedure's ``$$ ... $$``
+body, a different lexical context from the top-level SQL
+``split_statements`` scans, so it isn't evidence here) — it is kept
+non-nesting as the unverified, safer-by-default reading.
 """
 
 import unittest
@@ -231,31 +236,48 @@ class TestPostgresWireCompatibleEnginesThatRunRealPostgres(unittest.TestCase):
         self._assert_nests("aurora-postgresql")
 
 
-class TestPostgresWireCompatibleEnginesThatAreSeparateImplementations(unittest.TestCase):
-    """Redshift, CockroachDB and YugabyteDB speak the PostgreSQL wire
-    protocol but are each their own implementation, not PostgreSQL itself.
-    No vendor documentation addressing nested block comments was found for
-    any of the three (see CHANGELOG.md and each dialect's ``quirks.py`` /
-    ``plugin.py``), so — per this repo's rule against asserting engine
-    behavior without evidence — they keep the pre-fix, non-nesting reader
-    instead of inheriting PostgreSQL's documented nesting blind.
+class TestCockroachdbYugabytedbNestBlockComments(unittest.TestCase):
+    """CockroachDB and YugabyteDB speak the PostgreSQL wire protocol but are
+    each their own implementation, not a PostgreSQL fork — wire
+    compatibility is not grammar compatibility, so this was verified
+    against each engine directly rather than inferred from either vendor's
+    docs (neither addresses comment nesting) or from PostgreSQL's.
+
+    Checked against a local single-node container of each engine
+    (``cockroachdb/cockroach:latest-v23.2`` and
+    ``yugabytedb/yugabyte:latest``): after ``CREATE TABLE victim (id INT)``,
+    running ``/* outer /* inner */ DROP TABLE victim; still outer */ SELECT
+    1;`` returned a single ``SELECT 1`` row with no error on both engines,
+    and ``victim`` still existed afterwards — the whole span was read as one
+    comment, so both nest block comments the same way PostgreSQL does.
     """
 
-    def _assert_does_not_nest(self, dialect: str):
+    def _assert_nests(self, dialect: str):
         stmts = _regex_parser_for(dialect).split_statements(ISSUE_EXAMPLE)
-        self.assertTrue(
-            any("DROP TABLE victim" in s for s in stmts),
-            f"{dialect} should still split at the first */",
-        )
+        self.assertEqual(stmts, ["SELECT 1;"], f"{dialect} should nest like PostgreSQL")
+
+    def test_cockroachdb_nests(self):
+        self._assert_nests("cockroachdb")
+
+    def test_yugabytedb_nests(self):
+        self._assert_nests("yugabytedb")
+
+
+class TestRedshiftDoesNotNestBlockComments(unittest.TestCase):
+    """Kept non-nesting, unverified: no local Redshift engine, and no
+    documentation found that addresses comment nesting in top-level SQL.
+    The AWS "Structure of PL/pgSQL" page states block comments don't nest,
+    but that sentence describes comments inside a PL/pgSQL procedure body's
+    ``$$ ... $$`` — a different lexical context from the top-level SQL
+    ``split_statements`` scans (``ISSUE_EXAMPLE`` below is plain SQL, never
+    inside ``$$ ... $$``) — so it is not evidence for this scanner. Redshift
+    keeps the pre-#333, non-nesting reader (first ``*/`` closes) as the
+    safer default rather than an inherited, unverified claim.
+    """
 
     def test_redshift_does_not_nest(self):
-        self._assert_does_not_nest("redshift")
-
-    def test_cockroachdb_does_not_nest(self):
-        self._assert_does_not_nest("cockroachdb")
-
-    def test_yugabytedb_does_not_nest(self):
-        self._assert_does_not_nest("yugabytedb")
+        stmts = _regex_parser_for("redshift").split_statements(ISSUE_EXAMPLE)
+        self.assertTrue(any("DROP TABLE victim" in s for s in stmts))
 
 
 class TestBaseTokenizerNestingFlag(unittest.TestCase):

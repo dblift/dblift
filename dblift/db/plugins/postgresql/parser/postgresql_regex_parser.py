@@ -695,8 +695,8 @@ class PostgreSqlRegexParser(EnhancedRegexParser):
 
 
 class NonNestingPostgreSqlRegexParser(PostgreSqlRegexParser):
-    """PostgreSQL-syntax parser for wire-compatible engines whose own
-    documentation does not address nested block comments (Redshift,
-    CockroachDB, YugabyteDB — see CHANGELOG.md)."""
+    """PostgreSQL-syntax parser for a wire-compatible engine kept non-nesting
+    by default because nesting isn't established for it (Redshift — see
+    ``RedshiftQuirks.parser_class`` and CHANGELOG.md)."""
 
     tokenizer_class = NonNestingPostgreSQLTokenizer

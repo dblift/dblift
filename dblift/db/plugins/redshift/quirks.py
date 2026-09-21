@@ -59,12 +59,15 @@ class RedshiftQuirks(PostgresqlQuirks):
         super().__init__(dialect_name=dialect_name)
 
     def parser_class(self, parser_type: str) -> Optional[type]:
-        """Redshift's own SQL reference doesn't say whether block comments
-        nest, and its docs elsewhere note the engine still reports itself as
-        PostgreSQL 8.0.x — old enough that inheriting current PostgreSQL's
-        nesting claim isn't safe to assume. Keep the non-nesting reader
-        (first ``*/`` closes) until a Redshift source addresses this
-        directly; everything else about PostgreSQL parsing still applies.
+        """Kept non-nesting, unverified: no local Redshift engine, and no
+        documentation found that addresses comment nesting in top-level SQL
+        (the AWS "Structure of PL/pgSQL" page says block comments don't nest,
+        but that sentence describes comments inside a PL/pgSQL procedure
+        body's ``$$ ... $$``, not the outer SQL scanner ``split_statements``
+        tokenizes — it is not evidence for this). Keep the pre-#333 reader
+        (first ``*/`` closes) as the safer default rather than inherit
+        PostgreSQL's nesting unverified; everything else about PostgreSQL
+        parsing still applies.
         """
         if parser_type == "regex":
             from dblift.db.plugins.postgresql.parser.postgresql_regex_parser import (

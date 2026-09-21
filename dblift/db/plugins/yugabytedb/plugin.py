@@ -9,29 +9,8 @@ select this engine via ``type: yugabytedb``.
 
 from __future__ import annotations
 
-from typing import Optional
-
 from dblift.db.plugins._pg_compatible import make_pg_compatible_plugin
-from dblift.db.plugins.postgresql.quirks import PostgresqlQuirks
 from dblift.db.provider_registry import PluginInfo
-
-
-def _yugabytedb_parser_class(self: PostgresqlQuirks, parser_type: str) -> Optional[type]:
-    """YugabyteDB's own docs don't address whether block comments nest, and
-    it is a ground-up reimplementation, not a PostgreSQL fork, so
-    PostgreSQL's documented nesting isn't evidence for this engine. Keep
-    the non-nesting reader (first ``*/`` closes) until a YugabyteDB source
-    addresses this directly; everything else about PostgreSQL parsing
-    still applies.
-    """
-    if parser_type == "regex":
-        from dblift.db.plugins.postgresql.parser.postgresql_regex_parser import (
-            NonNestingPostgreSqlRegexParser,
-        )
-
-        return NonNestingPostgreSqlRegexParser
-    return PostgresqlQuirks.parser_class(self, parser_type)
-
 
 PLUGIN: PluginInfo = make_pg_compatible_plugin(
     "yugabytedb",
@@ -49,6 +28,15 @@ PLUGIN: PluginInfo = make_pg_compatible_plugin(
         # requesting what YugabyteDB already gives you, as though the
         # plain form were the blocking one.
         "supports_concurrent_index": False,
-        "parser_class": _yugabytedb_parser_class,
     },
 )
+
+# Block comment nesting: YugabyteDB is a ground-up reimplementation, not a
+# PostgreSQL fork, so wire compatibility alone isn't evidence for its comment
+# grammar. Run directly against a single-node YugabyteDB container: after
+# CREATE TABLE victim (id INT), `/* outer /* inner */ DROP TABLE victim;
+# still outer */ SELECT 1;` returned one `SELECT 1` row with no error and
+# left `victim` in place -- the whole span read as one comment. Block
+# comments nest here the same way they do in PostgreSQL, so this keeps
+# inheriting PostgresqlQuirks.parser_class unchanged (no quirks_overrides
+# entry for it).
