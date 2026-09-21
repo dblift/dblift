@@ -6,7 +6,7 @@ parser patterns with the universal regex framework for comprehensive SQL parsing
 
 import logging
 import re
-from typing import Dict, List, Optional, Pattern, Tuple
+from typing import Dict, List, Optional, Pattern, Tuple, Type
 
 from dblift.core.sql_model.base import (
     ParseResult,
@@ -15,6 +15,7 @@ from dblift.core.sql_model.base import (
     SqlStatement,
     SqlStatementType,
 )
+from dblift.core.sql_parser.base_tokenizer import BaseTokenizer
 from dblift.core.sql_parser.unified_regex_parser import DialectConfig, RegexParser
 
 logger = logging.getLogger(__name__)
@@ -34,6 +35,13 @@ class EnhancedRegexParser(RegexParser):
     - Block-aware statement splitting
     - Intelligent object extraction
     """
+
+    #: Tokenizer class whose ``NESTED_BLOCK_COMMENTS`` flag this dialect's
+    #: extraction reads to decide whether ``/* ... */`` nests. Subclasses
+    #: that already resolve a tokenizer for :meth:`split_statements` (e.g.
+    #: ``PostgreSqlRegexParser.tokenizer_class``) reuse the same class here
+    #: so the two paths cannot disagree about the same dialect.
+    tokenizer_class: Type[BaseTokenizer] = BaseTokenizer
 
     def __init__(self, dialect_config: DialectConfig):
         """Initialize enhanced parser with dialect-specific configuration.
@@ -399,8 +407,10 @@ class EnhancedRegexParser(RegexParser):
         containing ``--`` loses everything after the marker. Doubled quote
         characters (``''``, ``""``, `` `` ``, ``]]``) are the escape form for
         a literal quote inside the span and do not end it. Block comments
-        nest (``/* outer /* inner */ outer */``), matching
-        ``PostgreSqlRegexParser._remove_comments``.
+        nest (``/* outer /* inner */ outer */``) only where
+        ``self.tokenizer_class.NESTED_BLOCK_COMMENTS`` says this dialect's
+        engine actually nests them; otherwise the first ``*/`` closes,
+        matching statement splitting for the same dialect.
         """
         line_prefixes, has_block_comments = self._comment_markers()
 
@@ -436,7 +446,11 @@ class EnhancedRegexParser(RegexParser):
                 continue
 
             if block_comment_depth > 0:
-                if char == "/" and sql[i + 1 : i + 2] == "*":
+                if (
+                    self.tokenizer_class.NESTED_BLOCK_COMMENTS
+                    and char == "/"
+                    and sql[i + 1 : i + 2] == "*"
+                ):
                     block_comment_depth += 1
                     i += 2
                 elif char == "*" and sql[i + 1 : i + 2] == "/":
