@@ -139,6 +139,15 @@ class TestSqlServerSchemaOperations(unittest.TestCase):
         result = ops.get_schemas(conn)
         self.assertEqual([], result)
 
+    def test_set_current_schema_raises_not_implemented(self):
+        """Real schema handling lives on SqlServerProvider, not here; a
+        silent no-op would hide a future accidental call to this method.
+        """
+        ops, qe, log = self._make_ops()
+        conn, _, _ = _make_connection()
+        with self.assertRaises(NotImplementedError):
+            ops.set_current_schema(conn, "dbo")
+
     def test_get_columns_query_returns_tuple(self):
         ops, qe, log = self._make_ops()
         sql, params = ops.get_columns_query("dbo", "orders")

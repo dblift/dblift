@@ -431,12 +431,17 @@ class SqlServerSchemaOperations(BaseSchemaOperations):
             return "Unknown SQL Server Version"
 
     def set_current_schema(self, connection: Any, schema: str) -> None:
-        """No-op: satisfies the abstract base class, not part of any call path.
+        """Not implemented: SQL Server's schema handling lives on the provider.
 
         ``SqlServerProvider.set_current_schema`` aligns the connecting
-        user's DEFAULT_SCHEMA directly and never delegates to this object,
-        so there is no per-connection state for this method to keep here.
+        user's DEFAULT_SCHEMA directly and does not delegate to this
+        object. Raising here (instead of a silent no-op) makes it obvious
+        if something is ever wired to call this method.
         """
+        raise NotImplementedError(
+            "SqlServerSchemaOperations.set_current_schema is not used; "
+            "SqlServerProvider.set_current_schema is the real implementation"
+        )
 
     def get_columns_query(self, schema: str, table: str) -> tuple[str, List[str]]:
         """Get a SQL Server-specific query to retrieve column information from a table.
