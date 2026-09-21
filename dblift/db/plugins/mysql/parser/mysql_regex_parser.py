@@ -6,9 +6,10 @@ features including DELIMITER statements, backtick identifiers, and stored proced
 
 import logging
 import re
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Type
 
 from dblift.core.sql_model.base import ParseResult, SqlStatement, SqlStatementType
+from dblift.core.sql_parser.base_tokenizer import BaseTokenizer
 from dblift.core.sql_parser.enhanced_regex_parser import EnhancedRegexParser
 from dblift.core.sql_parser.parser_context import ParserContext
 from dblift.db.plugins.mysql.parser.mysql_statement_parser import MySQLStatementParser
@@ -22,6 +23,11 @@ class MySqlRegexParser(EnhancedRegexParser):
     """MySQL-specific regex parser with enhanced MySQL feature support."""
 
     dialect_name = "mysql"  # lint: allow-dialect-string: dialect dispatch
+
+    #: Same tokenizer :meth:`split_statements` uses below, so extraction's
+    #: comment stripper reads MySQL's non-nesting block-comment rule from
+    #: the one place it is declared instead of assuming its own.
+    tokenizer_class: Type[BaseTokenizer] = MySQLTokenizer
 
     def __init__(self) -> None:
         """Initialize MySQL regex parser."""

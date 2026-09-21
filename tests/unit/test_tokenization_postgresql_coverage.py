@@ -41,8 +41,8 @@ class TestPostgreSQLTokenizerCoverage:
         # Manually call handle_copy_data
         token = tokenizer.handle_copy_data()
 
-        # Should return a STRING token
-        assert token.type == TokenType.STRING
+        # Should return a COPY_DATA token
+        assert token.type == TokenType.COPY_DATA
         assert tokenizer.in_copy_data is False
 
     def test_copy_from_stdin_with_backslash_dot(self):

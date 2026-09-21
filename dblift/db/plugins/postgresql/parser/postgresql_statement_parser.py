@@ -108,6 +108,12 @@ class PostgreSQLStatementParser(BaseStatementParser):
                     if initiator == "ATOMIC":
                         self.in_atomic_block = False
 
+    def _is_statement_end(self, token: Token) -> bool:
+        """A COPY data block ends its own statement — no ``;`` follows its ``\\.`` line."""
+        if token.type == TokenType.COPY_DATA:
+            return True
+        return super()._is_statement_end(token)
+
     def can_execute_in_transaction(self) -> bool:
         """Check if current statement can execute in a transaction.
 

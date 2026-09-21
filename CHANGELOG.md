@@ -38,6 +38,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `info`, `undo`, and the FastAPI migration health helpers now fail when
   migration state cannot be read. State-read errors are no longer reported as
   an empty history, a successful no-op undo, or a current schema.
+- Object extraction now follows the same nested-block-comment rule as
+  statement splitting, per dialect. Previously extraction always treated
+  `/* outer /* inner */ still outer */` as one comment regardless of
+  dialect, so on an engine that does not nest (MySQL/MariaDB, Db2,
+  Redshift), a statement that splitting correctly ran as live code could be
+  reported as part of the comment and left out of the objects a migration
+  is recorded as touching.
 - The full-table UPDATE/DELETE guard no longer misreads a `WHERE` inside a
   dollar-quoted value (PostgreSQL's `$$ ... $$` / `$tag$ ... $tag$`) as a real
   clause. A statement like `UPDATE t SET body = $$ ... WHERE ... $$` is now
@@ -49,6 +56,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   connection happened to be on — including one left over from an earlier
   migration's own `SET search_path` (PostgreSQL) or `USE` (MySQL/MariaDB) —
   silently returning rows from the wrong schema.
+- A PostgreSQL `COPY ... FROM stdin` data block — what `pg_dump` writes for
+  table contents by default — is now recognized as ending at its own `\.`
+  line, instead of merging with the statement that follows it. Statement
+  counts, checksums and any statement after the data block are now correct;
+  this does not make a `COPY ... FROM stdin` block itself executable, which
+  is still not supported. Applies to every PostgreSQL-wire engine dblift
+  supports: Citus, TimescaleDB, CockroachDB, YugabyteDB, Neon, Supabase,
+  AlloyDB and Redshift.
 - Oracle, Db2 and Snowflake: an `ALTER SESSION SET CURRENT_SCHEMA` / `SET
   SCHEMA` / `USE SCHEMA` a migration issued itself no longer gets silently
   reset before the migration's next statement, matching the PostgreSQL/MySQL
