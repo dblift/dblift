@@ -13,6 +13,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- The full-table UPDATE/DELETE guard no longer misreads a `WHERE` inside a
+  dollar-quoted value (PostgreSQL's `$$ ... $$` / `$tag$ ... $tag$`) as a real
+  clause. A statement like `UPDATE t SET body = $$ ... WHERE ... $$` is now
+  correctly identified as touching the whole table.
+
 ### Removed
 
 ## [4.6.1] - 2026-09-20

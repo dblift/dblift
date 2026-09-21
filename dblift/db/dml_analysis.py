@@ -308,7 +308,7 @@ def is_full_table_dml(
             return False
     elif not re.match(r"^(UPDATE|DELETE)\b", text, flags=re.IGNORECASE):
         return False
-    return _find_top_level_keyword(text, "WHERE", quote_pairs) < 0
+    return _find_top_level_keyword(text, "WHERE", quote_pairs, dollar_quote_aware=True) < 0
 
 
 #: Outer-statement keywords a CTE list can feed, split by whether the
@@ -331,42 +331,6 @@ def _skip_dollar_quote(text: str, i: int) -> int:
     tag = match.group(0)
     end = text.find(tag, match.end())
     return len(text) if end == -1 else end + len(tag)
-
-
-def _find_cte_outer_keyword(text: str, keyword: str, quote_pairs: Dict[str, str]) -> int:
-    """Like ``_find_top_level_keyword``, plus dollar-quote awareness.
-
-    Kept separate from ``_find_top_level_keyword`` rather than teaching that
-    function about dollar quotes, so every other caller of the shared
-    scanner (``is_full_table_dml``, ...) keeps its current behaviour.
-    """
-    depth = 0
-    quote = ""
-    i = 0
-    while i < len(text):
-        if quote:
-            i, quote = _skip_quote(text, i, quote)
-            continue
-        comment_end = _skip_comment(text, i)
-        if comment_end >= 0:
-            i = comment_end
-            continue
-        if text[i] == "$":
-            dollar_end = _skip_dollar_quote(text, i)
-            if dollar_end >= 0:
-                i = dollar_end
-                continue
-        ch = text[i]
-        if ch in quote_pairs:
-            quote = quote_pairs[ch]
-        elif ch == "(":
-            depth += 1
-        elif ch == ")":
-            depth = max(0, depth - 1)
-        elif depth == 0 and _matches_keyword_at(text, i, keyword):
-            return i
-        i += 1
-    return -1
 
 
 def cte_outer_statement_type(
@@ -411,7 +375,7 @@ def cte_outer_statement_type(
         if isinstance(ast, (exp.Select, exp.Union)):
             return "QUERY"
     positions = {
-        keyword: _find_cte_outer_keyword(text, keyword, quote_pairs)
+        keyword: _find_top_level_keyword(text, keyword, quote_pairs, dollar_quote_aware=True)
         for keyword in (*_CTE_OUTER_DML_KEYWORDS, *_CTE_OUTER_QUERY_KEYWORDS)
     }
     found = {keyword: pos for keyword, pos in positions.items() if pos >= 0}
@@ -676,8 +640,21 @@ def _find_top_level_when_outside_case(
 
 
 def _find_top_level_keyword(
-    statement: str, keyword: str, quote_pairs: Dict[str, str], start: int = 0
+    statement: str,
+    keyword: str,
+    quote_pairs: Dict[str, str],
+    start: int = 0,
+    dollar_quote_aware: bool = False,
 ) -> int:
+    """Index of ``keyword`` outside quotes/comments/parens, or -1.
+
+    ``dollar_quote_aware`` is off by default: the regex-fallback scan
+    (``_updated_column_names`` and friends) deliberately reaches *inside* a
+    ``DO $$ ... $$`` procedural block to find the ``UPDATE``/``SET`` it
+    wraps, so those callers must keep treating ``$`` as an ordinary
+    character. Callers reading dollar-quoted text as a plain string value
+    (``is_full_table_dml``, ``cte_outer_statement_type``) opt in instead.
+    """
     depth = 0
     quote = ""
     i = start
@@ -689,6 +666,11 @@ def _find_top_level_keyword(
         if comment_end >= 0:
             i = comment_end
             continue
+        if dollar_quote_aware and statement[i] == "$":
+            dollar_end = _skip_dollar_quote(statement, i)
+            if dollar_end >= 0:
+                i = dollar_end
+                continue
         ch = statement[i]
         if ch in quote_pairs:
             quote = quote_pairs[ch]

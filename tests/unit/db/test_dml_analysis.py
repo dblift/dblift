@@ -170,6 +170,39 @@ def test_is_full_table_dml_treats_quoted_where_identifier_as_column_not_clause()
     )
 
 
+def test_is_full_table_dml_ignores_where_inside_dollar_quoted_value():
+    # A WHERE textually inside a dollar-quoted value is data, not a clause,
+    # regardless of whether the quote is tagged.
+    assert is_full_table_dml(
+        "UPDATE t SET body = $$ this text mentions WHERE and it is not a clause $$"
+    )
+    assert is_full_table_dml(
+        "UPDATE t SET body = $tag$ this text mentions WHERE and it is not a clause $tag$"
+    )
+    assert is_full_table_dml(
+        "UPDATE t SET body = $_$ this text mentions WHERE and it is not a clause $_$"
+    )
+
+
+def test_is_full_table_dml_still_finds_a_real_where_after_a_dollar_quoted_value():
+    assert not is_full_table_dml("UPDATE t SET body = $$ text $$ WHERE id = 1")
+    # A "$1"-style placeholder is not a dollar-quote tag and must not be
+    # swallowed looking for a matching close.
+    assert not is_full_table_dml("UPDATE t SET a = $1 WHERE b = $2")
+    # A bare "$" inside an ordinary string literal is not a dollar quote either.
+    assert not is_full_table_dml("UPDATE t SET price_note = 'costs $5' WHERE id = 1")
+
+
+def test_is_full_table_dml_ignores_where_inside_ordinary_string_literal():
+    assert is_full_table_dml("UPDATE t SET note = 'the WHERE clause explained'")
+
+
+def test_is_full_table_dml_unterminated_dollar_quote_finds_no_where():
+    # Same unterminated-comment convention as `_skip_comment`: an unclosed
+    # dollar quote swallows to end of text, so a WHERE inside it is not found.
+    assert is_full_table_dml("UPDATE t SET body = $$ never closes, mentions WHERE")
+
+
 def test_cte_outer_statement_type_flags_data_modifying_cte_feeding_insert():
     # RETURNING on the CTE's own DELETE doesn't mean the outer INSERT returns
     # rows — the outer verb decides that.
