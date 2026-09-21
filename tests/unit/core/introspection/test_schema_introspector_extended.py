@@ -15,6 +15,7 @@ from dblift.core.introspection.result import IntrospectionResult
 from dblift.core.introspection.schema_introspector import SchemaIntrospector
 from dblift.core.logger import NullLog
 from dblift.core.sql_model.base import SqlColumn
+from dblift.core.sql_model.index import Index
 from dblift.core.sql_model.table import Table
 from dblift.db.plugins.db2.quirks import Db2Quirks
 from dblift.db.plugins.mysql.quirks import MysqlQuirks
@@ -785,6 +786,34 @@ class TestIntrospectSchemaBasic(unittest.TestCase):
         self.assertEqual(result["table_count"], 1)
         self.assertEqual(result["total_columns"], 2)
         self.assertEqual(result["total_indexes"], 0)
+
+    def test_uses_bulk_indexes_when_available(self):
+        si, _ = _make_si(has_connection=True)
+        tables = [Table(name="users"), Table(name="orders")]
+        index = Index("ix_orders", "orders", ["id"], schema="public")
+        si.get_tables = MagicMock(return_value=tables)
+        si.get_all_indexes = MagicMock(return_value=[index])
+        si.get_indexes = MagicMock()
+
+        result = si.introspect_schema_basic("public")
+
+        self.assertEqual(result["indexes"], {"users": [], "orders": [index]})
+        self.assertEqual(result["total_indexes"], 1)
+        si.get_all_indexes.assert_called_once_with("public")
+        si.get_indexes.assert_not_called()
+
+    def test_bulk_failure_falls_back_to_per_table_indexes(self):
+        si, _ = _make_si(has_connection=True)
+        tables = [Table(name="users"), Table(name="orders")]
+        si.get_tables = MagicMock(return_value=tables)
+        si.get_all_indexes = MagicMock(side_effect=RuntimeError("bulk unavailable"))
+        si.get_indexes = MagicMock(side_effect=[["ix_users"], ["ix_orders"]])
+
+        result = si.introspect_schema_basic("public")
+
+        self.assertEqual(result["indexes"], {"users": ["ix_users"], "orders": ["ix_orders"]})
+        self.assertEqual(result["total_indexes"], 2)
+        self.assertEqual(si.get_indexes.call_count, 2)
 
     def test_raises_on_exception(self):
         si, _ = _make_si(has_connection=True)
