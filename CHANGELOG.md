@@ -13,6 +13,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+### Removed
+
+## [4.6.1] - 2026-09-20
+
+### Added
+
+### Changed
+
+### Fixed
+
 - PostgreSQL and MySQL: a `SET search_path` / `USE` a migration issued itself no longer
   gets silently reset before the migration's next statement. Session state a migration
   sets now persists for the rest of that migration and is restored to the configured
@@ -33,6 +43,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `SELECT` still returns its rows as before.
 
 ### Removed
+
+- Round-trip validation hooks are no longer part of the core: `BaseQuirks`
+  drops `render_round_trip_drop_table_sql`, `replace_round_trip_schema_in_sql`
+  and `build_retry_drop_strategies`, and the quirks extension seam
+  (`dblift.core.seams.quirks`) goes with them. Round-trip validation is not a
+  core concern and its only callers live in packages installed alongside
+  dblift, which now own these hooks. A package that registered a quirks
+  extension through that seam must move it; nothing in `dblift.api` changes.
 
 ## [4.6.0] - 2026-09-20
 
