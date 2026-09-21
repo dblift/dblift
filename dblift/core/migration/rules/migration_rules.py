@@ -1,7 +1,10 @@
 """Migration rules — ordering/validation helpers shared across migration logic."""
 
 from functools import cmp_to_key
-from typing import Any, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, List, Mapping, Optional, Tuple
+
+if TYPE_CHECKING:
+    from dblift.core.migration.state.rank_wins import VersionRankState
 
 from dblift.core.logger import Log
 from dblift.core.migration._type_match import is_versioned
@@ -36,7 +39,11 @@ class MigrationRules:
         return is_migration_success(success_value)
 
     def should_undo_version(
-        self, version: str, applied_migrations: List[Migration]
+        self,
+        version: str,
+        applied_migrations: List[Migration],
+        *,
+        version_ranks: Optional[Mapping[str, "VersionRankState"]] = None,
     ) -> Tuple[bool, str]:
         """Determine if a version should be undone.
 
@@ -46,6 +53,7 @@ class MigrationRules:
         Args:
             version: The version to check
             applied_migrations: List of applied migrations
+            version_ranks: Precomputed rank state, when available
 
         Returns:
             Tuple[bool, str]: (can_undo, message)
@@ -54,15 +62,21 @@ class MigrationRules:
         """
         if not applied_migrations:
             return True, ""
+        if version_ranks is None:
+            from dblift.core.migration.state.rank_wins import latest_successful_ranks
 
-        if not self._is_currently_undone(version, applied_migrations):
+            version_ranks = latest_successful_ranks(applied_migrations)
+
+        if not self._is_currently_undone(version, applied_migrations, version_ranks=version_ranks):
             return True, ""
 
         self.logger.warning(
             f"Version {version} has already been undone - cannot undo multiple times without reapplying"
         )
 
-        next_version_to_undo = self._next_version_to_undo(version, applied_migrations)
+        next_version_to_undo = self._next_version_to_undo(
+            version, applied_migrations, version_ranks=version_ranks
+        )
         if next_version_to_undo:
             return (
                 False,
@@ -73,7 +87,13 @@ class MigrationRules:
             f"Version {version} has already been undone and no other versions are available to undo.",
         )
 
-    def _is_currently_undone(self, version: Any, applied_migrations: List[Migration]) -> bool:
+    def _is_currently_undone(
+        self,
+        version: Any,
+        applied_migrations: List[Migration],
+        *,
+        version_ranks: Optional[Mapping[str, "VersionRankState"]] = None,
+    ) -> bool:
         """Return True if `version` has an undo that no later re-apply supersedes.
 
         A version undone and then migrated again is applied, so it is undoable
@@ -87,11 +107,17 @@ class MigrationRules:
         # loads MigrationStateManager, which imports MigrationRules.
         from dblift.core.migration.state.rank_wins import latest_successful_ranks
 
-        state = latest_successful_ranks(applied_migrations).get(str(version))
+        if version_ranks is None:
+            version_ranks = latest_successful_ranks(applied_migrations)
+        state = version_ranks.get(str(version))
         return bool(state and state.currently_undone)
 
     def _next_version_to_undo(
-        self, version: Any, applied_migrations: List[Migration]
+        self,
+        version: Any,
+        applied_migrations: List[Migration],
+        *,
+        version_ranks: Optional[Mapping[str, "VersionRankState"]] = None,
     ) -> Optional[Any]:
         """Return the highest still-applied version other than `version`, or None.
 
@@ -118,7 +144,9 @@ class MigrationRules:
         )
 
         for candidate in candidates:
-            if self._is_currently_undone(candidate, applied_migrations):
+            if self._is_currently_undone(
+                candidate, applied_migrations, version_ranks=version_ranks
+            ):
                 continue
             self.logger.info(f"Found next version to undo: {candidate}")
             return candidate

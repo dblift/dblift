@@ -11,6 +11,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Undo planning now computes migration rank state once, keeping rollback
+  selection linear as migration history grows.
+
 ### Fixed
 
 - PostgreSQL, SQL Server and DuckDB migrations: a block comment that nests
