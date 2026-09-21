@@ -1,6 +1,7 @@
 """Async FastAPI guard helpers."""
 
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from sqlalchemy import create_engine
@@ -40,3 +41,13 @@ async def test_guard_passes_when_current(tmp_path):
     assert payload["current"] is True
     assert payload["pending_count"] == 0
     await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_health_payload_rejects_failed_info_result():
+    class FailedClient:
+        async def info(self):
+            return SimpleNamespace(success=False, error_message="history denied")
+
+    with pytest.raises(DbliftError, match="history denied"):
+        await health_payload_async(FailedClient())
