@@ -324,6 +324,13 @@ class SqlServerConfig(DialectConfig):
             rf"|{captured_id}\.{captured_id}"
             rf"|{captured_id})"
         )
+        # Where an index is created or dropped from (the table it belongs
+        # to, optionally schema-qualified) is matched but never captured.
+        # An index is not itself schema-qualified in T-SQL, so its
+        # SqlObject reports the default/current schema rather than the
+        # table's — capturing the table reference here would feed it into
+        # the (schema, name) grouping below and misreport the index name.
+        index_target = rf"{id_token}(?:\.{id_token}){{0,2}}"
 
         return {
             # Tables
@@ -357,12 +364,14 @@ class SqlServerConfig(DialectConfig):
                 re.IGNORECASE,
             ),
             # Indexes
-            # Grammar-based: Supports CLUSTERED/NONCLUSTERED, UNIQUE, XML, FULLTEXT, COLUMNSTORE
+            # Grammar-based: Supports CLUSTERED/NONCLUSTERED, UNIQUE, SPATIAL, COLUMNSTORE.
+            # XML indexes are excluded here (they match "xml_index_create" below only) —
+            # matching both would extract the same CREATE XML INDEX statement twice.
             "index_create": re.compile(
                 r"CREATE\s+(?:UNIQUE\s+)?(?:CLUSTERED\s+|NONCLUSTERED\s+)?"
-                r"(?:PRIMARY\s+)?(?:XML\s+)?(?:SPATIAL\s+)?"
+                r"(?:SPATIAL\s+)?"
                 r"(?:COLUMNSTORE\s+)?(?:NONCLUSTERED\s+COLUMNSTORE\s+)?"
-                r"INDEX\s+" + captured_id + r"\s+ON\s+" + id_pattern,
+                r"INDEX\s+" + captured_id + r"\s+ON\s+" + index_target,
                 re.IGNORECASE,
             ),
             # Grammar-based: FULLTEXT INDEX
@@ -372,12 +381,25 @@ class SqlServerConfig(DialectConfig):
             ),
             # Grammar-based: XML INDEX
             "xml_index_create": re.compile(
-                r"CREATE\s+(?:PRIMARY\s+)?XML\s+INDEX\s+" + captured_id + r"\s+ON\s+" + id_pattern,
+                r"CREATE\s+(?:PRIMARY\s+)?XML\s+INDEX\s+"
+                + captured_id
+                + r"\s+ON\s+"
+                + index_target,
                 re.IGNORECASE,
             ),
-            # Grammar-based: DROP INDEX supports IF EXISTS
+            # Grammar-based: DROP INDEX supports IF EXISTS, and both the current
+            # "DROP INDEX name ON table" syntax and the older
+            # "DROP INDEX table.name" syntax.
             "index_drop": re.compile(
-                r"DROP\s+INDEX\s+(?:IF\s+EXISTS\s+)?" + captured_id + r"\s+ON\s+" + id_pattern,
+                r"DROP\s+INDEX\s+(?:IF\s+EXISTS\s+)?"
+                r"(?:"
+                + captured_id
+                + r"\s+ON\s+"
+                + index_target
+                + r"|"
+                + rf"{id_token}(?:\.{id_token})?\."
+                + captured_id
+                + r")",
                 re.IGNORECASE,
             ),
             # Procedures/Functions
