@@ -11,7 +11,6 @@ if TYPE_CHECKING:
     from dblift.config import DbliftConfig
     from dblift.core.logger import Log
 
-from dblift.core.seams.quirks import compose_quirks_class
 from dblift.db.base_provider import BaseProvider
 from dblift.db.base_quirks import BaseQuirks
 
@@ -526,10 +525,6 @@ class ProviderRegistry:
         ``provider.quirks.<hook>`` always gets a real object —
         never ``None`` — so call sites stay branch-free.
 
-        Extensions registered through ``dblift.core.seams.quirks`` are composed
-        ahead of that class; with none registered — the ordinary case —
-        the class is instantiated unchanged.
-
         Instances are cached per dialect string so that hot paths
         (e.g. ``SqlGenerator.generate_ddl`` calls ``_quirks_for``
         ~5x per object) reuse a single instance instead of
@@ -539,24 +534,20 @@ class ProviderRegistry:
         cached = cls._quirks_cache.get(normalized)
         if cached is not None:
             return cached
-        composed = compose_quirks_class(normalized, cls.quirks_base_class(normalized))
         # Pass the caller's normalized db_type so aliases
         # (e.g. ``"postgres"`` for the postgresql plugin) preserve
         # the invariant
         # ``provider.config.database.type == provider.quirks.dialect_name``.
-        instance: BaseQuirks = composed(dialect_name=normalized)
+        instance = cls.quirks_base_class(normalized)(dialect_name=normalized)
         cls._quirks_cache[normalized] = instance
         return instance
 
     @classmethod
     def quirks_base_class(cls, db_type: str) -> Type[BaseQuirks]:
-        """Return the quirks class *db_type* resolves to before composition.
+        """Return the quirks class *db_type* resolves to.
 
         The plugin's declared ``quirks_class``, or :class:`BaseQuirks` for
-        plugins that declare none and for unregistered dialects. Split out of
-        :meth:`get_quirks` so ``dblift.core.seams.quirks`` can validate its registered
-        extensions against the real base class without instantiating anything
-        and without a second copy of this lookup.
+        plugins that declare none and for unregistered dialects.
         """
         if not cls._discovered:
             cls.discover_plugins()
@@ -567,12 +558,7 @@ class ProviderRegistry:
 
     @classmethod
     def clear_quirks_cache(cls) -> None:
-        """Discard the memoised quirks instances.
-
-        Called by ``dblift.core.seams.quirks`` when an extension registers: a dialect
-        resolved before that point would otherwise keep serving its
-        un-extended instance for the life of the process.
-        """
+        """Discard the memoised quirks instances."""
         cls._quirks_cache.clear()
 
     @classmethod
@@ -639,13 +625,8 @@ class ProviderRegistry:
         quirks) does not become a second owner of an inherited capability, so
         the MySQL/MariaDB family resolves to the single canonical owner.
 
-        Read from :meth:`quirks_base_class`, never from the composed class
-        :meth:`get_quirks` instantiates: composition builds its subclass with
-        an empty class body, so ``vars()`` of it declares nothing and every
-        dialect carrying a registered extension would stop owning its
-        capability. Owning one is a statement the core makes about the engine
-        and an installed extension can never make it — the seam rejects an
-        extension that so much as re-answers an existing hook.
+        Read from :meth:`quirks_base_class` so ownership is determined from
+        the plugin class rather than an instance.
         """
         winners = []
         for plugin in cls.list_plugins():

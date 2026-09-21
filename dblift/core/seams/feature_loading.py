@@ -28,8 +28,6 @@ from collections.abc import Callable
 from importlib.metadata import PackageNotFoundError, entry_points, version
 from typing import Protocol
 
-from dblift.core.seams.quirks import validate_quirks_extensions
-
 _log = logging.getLogger(__name__)
 
 FEATURE_ENTRY_POINT_GROUP = "dblift.features"
@@ -99,12 +97,6 @@ def load_feature_extensions() -> None:
             register()
         except Exception as exc:  # a bad plugin must not break startup
             _log.warning("dblift.features '%s' failed to load: %s", entry_point.name, exc)
-    # Deliberately OUTSIDE the try/except above, and deliberately before the
-    # latch below so a retry is just as loud. A quirks-extension collision is
-    # not a flaky plugin: it is an installed package answering a hook the core
-    # already answers, and swallowing it means running with exactly the
-    # divergence that seam exists to prevent. See core/seams/quirks.py.
-    validate_quirks_extensions()
     # Latch when something was actually found, OR when nothing was found but
     # no tier package is installed at all -- an empty result is only the
     # documented race (a paid package's dblift.features entry point not yet

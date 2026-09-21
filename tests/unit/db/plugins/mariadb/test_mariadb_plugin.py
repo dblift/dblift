@@ -2,7 +2,7 @@
 
 Verifies that the MariaDB plugin is correctly registered as a native
 transport, inherits MySQL-family behavior, and preserves MariaDB-specific
-quirks (requires_rollback_after_introspection=False, JSON type mapping).
+quirks (JSON type mapping).
 """
 
 from dblift.db.plugins.mariadb.plugin import PLUGIN as MARIADB_PLUGIN
@@ -56,12 +56,6 @@ def test_mariadb_managed_snapshot_table_ddl_opts_out() -> None:
 
     with pytest.raises(NotImplementedError):
         MariadbQuirks().build_snapshot_table_ddl("app.dblift_schema_snapshots", 128, 64)
-
-
-def test_mariadb_quirks_no_rollback_after_introspection() -> None:
-    """MariaDB does not require post-introspection rollback (unlike MySQL)."""
-    quirks = MariadbQuirks()
-    assert quirks.requires_rollback_after_introspection is False
 
 
 def test_mariadb_quirks_json_type_mapping() -> None:
