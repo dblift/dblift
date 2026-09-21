@@ -400,6 +400,78 @@ class TestExecuteMigrationMainFlow(unittest.TestCase):
             calls.index(unittest.mock.call.execute_query("SELECT 1", params=None)),
         )
 
+    def test_python_migration_applies_configured_schema_before_running(self):
+        """A Python migration must see the configured schema too.
+
+        The schema-apply used to sit only in the SQL branch of
+        ``execute_migration()``, after the ``migration.format != MigrationFormat.SQL``
+        early return — so a Python migration's own ``context.execute("SELECT ...")``
+        (routed straight to ``provider.execute_query()`` by ``python_executor.py``)
+        never saw it, the same bypass as the SQL QUERY case. It must now run
+        before the format branch, so it is reached by both.
+        """
+        engine = _make_engine()
+        engine.config.database.schema = "app"
+        migration = _make_python_migration()
+        result = MagicMock()
+
+        call_order: list = []
+        engine.provider.set_current_schema.side_effect = lambda schema: call_order.append(
+            ("set_current_schema", schema)
+        )
+        exec_result = MagicMock(success=True, execution_time_ms=5)
+        engine.executor_factory = MagicMock()
+        engine.executor_factory.execute.side_effect = lambda m: (
+            call_order.append(("execute_factory",)),
+            exec_result,
+        )[1]
+
+        engine.execute_migration(migration, result)
+
+        self.assertEqual(call_order, [("set_current_schema", "app"), ("execute_factory",)])
+
+    def test_schema_apply_reaches_configured_schema_even_with_stale_cache(self):
+        """Regression guard: ``_reset_provider_schema_cache()`` must run before
+        ``_apply_configured_schema()``, not after.
+
+        Pinned by an OBSERVABLE effect rather than a call-order assertion on a
+        mock, because a call-order assertion cannot detect a mutation that
+        keeps both calls but swaps them. The fake mirrors the cache-guarded
+        ``set_current_schema()`` PostgreSQL/MySQL implement: a provider whose
+        cache already (wrongly) believes the configured schema is applied —
+        the steady state after a previous migration's own proactive apply —
+        must still end up on the configured schema, because the reset clears
+        that belief first. Swapping the two calls turns the apply into a
+        no-op and the physical schema stays wherever a previous migration's
+        own ``SET``/``USE`` left it — the exact regression this guards.
+        """
+        engine, policy = self._make_engine_with_policy(transactional=True)
+        engine.config.database.schema = "app"
+
+        state = {"physical": "leaked", "applied_for": "app"}  # cache stale-believes "app"
+
+        def fake_reset() -> None:
+            state["applied_for"] = None
+
+        def fake_set_current_schema(schema: str) -> None:
+            if state["applied_for"] == schema:
+                return
+            state["physical"] = schema
+            state["applied_for"] = schema
+
+        engine.provider.reset_schema_cache.side_effect = fake_reset
+        engine.provider.set_current_schema.side_effect = fake_set_current_schema
+
+        migration = _make_sql_migration()
+        result = MagicMock()
+
+        with patch.object(engine, "_parse_sql_statements", return_value=["SELECT 1"]):
+            with patch.object(engine, "_classify_execution_statements", return_value=[]):
+                with patch.object(engine, "_prepare_transaction", return_value=True):
+                    engine.execute_migration(migration, result)
+
+        self.assertEqual(state["physical"], "app")
+
 
 # ---------------------------------------------------------------------------
 # _prepare_transaction
