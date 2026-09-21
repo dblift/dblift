@@ -5,6 +5,20 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 
+class _CountedRankRow:
+    def __init__(self, version, mtype, rank, rank_reads):
+        self.version = version
+        self.type = mtype
+        self.success = True
+        self._rank = rank
+        self._rank_reads = rank_reads
+
+    @property
+    def installed_rank(self):
+        self._rank_reads[0] += 1
+        return self._rank
+
+
 class TestMigrationRulesIsSuccess(unittest.TestCase):
     def _make_rules(self):
         from dblift.core.migration.rules.migration_rules import MigrationRules
@@ -102,6 +116,23 @@ class TestMigrationRulesShouldUndoVersion(unittest.TestCase):
         m = self._make_migration("2.0", "SQL", rank=1)
         can, msg = rules.should_undo_version("1.0", [m])
         self.assertTrue(can)
+
+    def test_rank_state_computed_once_when_suggesting_next_version(self):
+        rank_reads = [0]
+        rows = [_CountedRankRow("0", "SQL", 1, rank_reads)]
+        for version in range(1, 101):
+            rows.extend(
+                (
+                    _CountedRankRow(version, "SQL", version * 2, rank_reads),
+                    _CountedRankRow(version, "UNDO_SQL", version * 2 + 1, rank_reads),
+                )
+            )
+
+        can, msg = self._make_rules().should_undo_version("100", rows)
+
+        self.assertFalse(can)
+        self.assertIn("version 0", msg)
+        self.assertEqual(rank_reads[0], len(rows))
 
 
 class TestShouldUndoVersionWithEnumTypes(unittest.TestCase):

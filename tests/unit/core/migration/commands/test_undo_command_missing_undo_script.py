@@ -97,7 +97,7 @@ class TestUndoCommandMissingUndoScript:
 
         error_msg = "No undo script found for V3__test.sql"
 
-        def rules(version, applied):
+        def rules(version, applied, *, version_ranks):
             if version == "3":
                 return (False, error_msg)
             return (True, None)
@@ -114,7 +114,7 @@ class TestUndoCommandMissingUndoScript:
         v2 = _make_migration(2)
         v1 = _make_migration(1)
 
-        def rules(version, applied):
+        def rules(version, applied, *, version_ranks):
             if version == "3":
                 return (False, "No undo script for V3")
             return (True, None)
@@ -131,7 +131,7 @@ class TestUndoCommandMissingUndoScript:
         """(False, None) from rules means 'no message' — must NOT trigger fail-fast."""
         v3 = _make_migration(3)
 
-        def rules(version, applied):
+        def rules(version, applied, *, version_ranks):
             return (False, None)  # no message means unknown / skip-silently
 
         cmd, _ = _make_command([v3], rules_side_effect=rules)

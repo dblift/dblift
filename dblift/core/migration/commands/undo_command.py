@@ -14,6 +14,7 @@ from dblift.core.logger.results import MigrationInfo, MigrationSqlInfo, UndoResu
 from dblift.core.migration.formats.migration_format import MigrationFormat
 from dblift.core.migration.migration import MigrationType
 from dblift.core.migration.state.migration_display_state import MigrationDisplayState
+from dblift.core.migration.state.rank_wins import latest_successful_ranks
 from dblift.core.migration.version_utils import compare_versions, is_migration_success
 
 from ._script_events import emit_script_event as _emit_script_event
@@ -195,6 +196,7 @@ class UndoCommand(BaseCommand):
                 candidates = list(candidates)
             except (TypeError, AttributeError):
                 candidates = success_applied
+            version_ranks = latest_successful_ranks(applied_migrations)
 
             # Find migrations to undo using migration rules (based on state)
             migrations_to_undo = []
@@ -213,7 +215,11 @@ class UndoCommand(BaseCommand):
                     # undone instead of routing through should_undo_version(),
                     # whose "please specify version X" message is meant for the
                     # explicit --target-version path below, not this scan.
-                    if self.migration_rules._is_currently_undone(version, applied_migrations):
+                    if self.migration_rules._is_currently_undone(
+                        version,
+                        applied_migrations,
+                        version_ranks=version_ranks,
+                    ):
                         continue
                     migrations_to_undo.append(migration)
                     if not tag_filter_active:
@@ -229,7 +235,9 @@ class UndoCommand(BaseCommand):
                         continue
                     version = str(migration.version)
                     can_undo, message = self.migration_rules.should_undo_version(
-                        version, applied_migrations
+                        version,
+                        applied_migrations,
+                        version_ranks=version_ranks,
                     )
                     if can_undo:
                         migrations_to_undo.append(migration)
