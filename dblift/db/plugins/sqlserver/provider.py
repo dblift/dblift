@@ -149,19 +149,18 @@ class SqlServerProvider(SqlAlchemyProvider):
         call every later call (i.e. every subsequent statement) asks for
         the *same* schema again — that steady state is exactly when a
         concurrent process sharing this login is most likely to have
-        clobbered it. So the login's current DEFAULT_SCHEMA is read and
-        compared against what this connection set it to last on *every*
-        call, regardless of whether the requested schema changed; a
-        mismatch means another process changed it, which is logged loudly
-        since unqualified DDL placement is no longer reliable. Only the
-        ``ALTER USER`` WRITE itself is skipped once this connection has
-        already set the requested schema — reads don't race the way writes
-        do, so this still avoids redundant writes to the shared catalog row
-        without blinding the check to interference between them. Detecting
-        the interference does not undo it: this connection's own DDL may
-        still land against whatever schema the catalog currently holds
-        until something asks for a schema change again. A dedicated SQL
-        Server login per ``--db-schema`` avoids the whole scenario.
+        clobbered it. So on a cache hit (the requested schema already
+        written on this connection), the login's current DEFAULT_SCHEMA is
+        read and compared against what was set last; a mismatch there means
+        another process changed it, since nothing on this connection asked
+        for anything different, and that is logged loudly. On a cache miss
+        — including at a migration boundary, where ``reset_schema_cache()``
+        clears the write cache so this call's own ``ALTER USER`` is about to
+        run — a stale catalog value is expected, not interference: it is
+        what an earlier migration's own schema-changing statement left
+        behind, and the write below is what restores it, so no warning is
+        logged for that case. A dedicated SQL Server login per
+        ``--db-schema`` avoids concurrent interference entirely.
         """
         try:
             rows = self.execute_query(
@@ -173,25 +172,34 @@ class SqlServerProvider(SqlAlchemyProvider):
                 raise RuntimeError("could not determine the connecting database user")
 
             catalog_schema = rows[0].get("default_schema") if rows else None
-            if (
-                self._current_schema_set is not None
-                and catalog_schema is not None
-                and catalog_schema != self._current_schema_set
-            ):
-                self.log.warning(
-                    f"SQL Server login '{current_user}' DEFAULT_SCHEMA is '{catalog_schema}' "
-                    f"but dblift set it to '{self._current_schema_set}' earlier on this "
-                    f"connection — another process changed it. If this login is shared across "
-                    f"concurrent dblift runs with different --db-schema values, unqualified DDL "
-                    f"placement is not reliable; use a dedicated login per schema."
-                )
 
             if self._schema_applied_for == schema:
-                # Already written on this connection since the last reset —
-                # skip the redundant catalog WRITE. The read+comparison above
-                # still ran, so interference is still detected on every call.
+                # Cache hit: nothing on this connection asked for a change
+                # since the last write, so the catalog has no legitimate
+                # reason to differ from it. A mismatch here is the mid-migration
+                # interference case this check exists for.
+                if (
+                    self._current_schema_set is not None
+                    and catalog_schema is not None
+                    and catalog_schema != self._current_schema_set
+                ):
+                    self.log.warning(
+                        f"SQL Server login '{current_user}' DEFAULT_SCHEMA is "
+                        f"'{catalog_schema}' but dblift set it to "
+                        f"'{self._current_schema_set}' earlier on this connection — "
+                        f"another process changed it. If this login is shared across "
+                        f"concurrent dblift runs with different --db-schema values, "
+                        f"unqualified DDL placement is not reliable; use a dedicated "
+                        f"login per schema."
+                    )
+                # Already the value this connection wants — skip the
+                # redundant catalog WRITE.
                 return
 
+            # Cache miss: about to (re)write, most commonly a migration
+            # boundary reapplying the configured schema. A catalog value
+            # that differs from the baseline here is the previous
+            # migration's own doing, not interference, so no warning.
             super().execute_statement(
                 f"ALTER USER {_q(current_user)} WITH DEFAULT_SCHEMA = {_q(schema)}"
             )

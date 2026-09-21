@@ -246,18 +246,26 @@ def test_execute_statement_alters_default_schema_once_across_multiple_statements
     ]
 
 
-def test_set_current_schema_warns_on_external_interference(monkeypatch):
-    """A concurrent process sharing this SQL Server login changing
-    DEFAULT_SCHEMA between our own writes must be surfaced loudly, not
-    silently trusted — see issue #806 review follow-up.
+def test_set_current_schema_does_not_warn_on_cache_miss(monkeypatch):
+    """A stale catalog value is not reported when a write is about to fix it.
+
+    A cache miss (the write-skip cache does not match the requested schema —
+    most commonly a migration boundary, where ``reset_schema_cache()`` just
+    cleared it) means dblift is about to reissue ``ALTER USER`` regardless.
+    A catalog value that disagrees with the last-known baseline at that
+    point is what an earlier migration's own statement left behind, not
+    interference, so no warning is logged for it — only a genuine
+    mid-migration mismatch (a cache *hit* — see
+    ``test_set_current_schema_detects_interference_even_when_target_schema_is_unchanged``)
+    does that.
     """
     provider = object.__new__(SqlServerProvider)
     provider.log = MagicMock()
     provider._current_schema_set = "schema_a"  # as if set earlier on this connection
+    provider._schema_applied_for = "schema_a"  # ... and already written
 
     def fake_execute_query(sql, params=None):
         if "sys.database_principals" in sql:
-            # someone else changed it
             return [{"db_user": "dblift_test", "default_schema": "schema_hijacked"}]
         return []
 
@@ -269,14 +277,12 @@ def test_set_current_schema_warns_on_external_interference(monkeypatch):
         lambda self, sql, schema=None, params=None: executed.append(sql),
     )
 
-    provider.set_current_schema("schema_b")
+    provider.set_current_schema("schema_b")  # a different schema -- a cache miss
 
-    provider.log.warning.assert_called_once()
-    warning_msg = provider.log.warning.call_args[0][0]
-    assert "schema_hijacked" in warning_msg
-    assert "schema_a" in warning_msg
+    provider.log.warning.assert_not_called()
     assert executed == ["ALTER USER [dblift_test] WITH DEFAULT_SCHEMA = [schema_b]"]
     assert provider._current_schema_set == "schema_b"
+    assert provider._schema_applied_for == "schema_b"
 
 
 def test_get_database_version_with_rows():

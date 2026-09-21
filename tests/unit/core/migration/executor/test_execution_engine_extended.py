@@ -673,12 +673,16 @@ class TestSqlServerSchemaCacheResetsAtMigrationBoundary(unittest.TestCase):
         alter_statements = [s for s in provider.issued if "DEFAULT_SCHEMA" in s]
         self.assertEqual(len(alter_statements), 2, alter_statements)
 
-    def test_migration_boundary_still_reports_a_concurrent_schema_change(self):
-        """The write-skip cache clears at a migration boundary so the schema
-        gets reasserted either way — but the *detection* baseline
-        (``_current_schema_set``) must not clear with it, or a genuine
-        interference between migrations goes unreported on the one call
-        that would surface it.
+    def test_migration_boundary_restores_schema_without_warning(self):
+        """A schema change from the *previous* migration's own statement is
+        not interference — it is exactly what this boundary call restores.
+
+        The write-skip cache clears at a migration boundary, so a stale
+        catalog value here is expected, and correcting it is silent. Warning
+        here would be a false positive on ordinary, supported use (a
+        migration changing its own current schema and the next one
+        restoring the configured schema), which is what this whole line of
+        work exists to support.
         """
         from dblift.db.sqlalchemy_provider import SqlAlchemyProvider
 
@@ -698,16 +702,12 @@ class TestSqlServerSchemaCacheResetsAtMigrationBoundary(unittest.TestCase):
                     with patch.object(engine, "_classify_execution_statements", return_value=[]):
                         with patch.object(engine, "_execute_statements", return_value=True):
                             engine.execute_migration(_make_sql_migration(), MagicMock())
-                            # Something changes DEFAULT_SCHEMA between migrations —
-                            # another connection sharing this login, or the first
-                            # migration's own statement.
+                            # Migration 1's own statement moves DEFAULT_SCHEMA
+                            # away from the configured schema.
                             catalog_schema["value"] = "elsewhere"
                             engine.execute_migration(_make_sql_migration(), MagicMock())
 
-        provider.log.warning.assert_called_once()
-        warning_msg = provider.log.warning.call_args[0][0]
-        self.assertIn("elsewhere", warning_msg)
-        self.assertIn("app", warning_msg)
+        provider.log.warning.assert_not_called()
         alter_statements = [s for s in provider.issued if "DEFAULT_SCHEMA" in s]
         self.assertEqual(len(alter_statements), 2, alter_statements)
 

@@ -95,8 +95,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   is now restored at the start of each migration and callback, matching the
   other five engines. Previously the connection stayed on the wrong schema
   while dblift logged a warning blaming a concurrent process for a schema
-  change one of its own earlier migrations had made. Verified against a
-  live SQL Server instance.
+  change one of its own earlier migrations had made; that warning is now
+  silent on this ordinary boundary correction and still fires when a login
+  shared with another connection is changed mid-migration, which is what it
+  is meant to catch. Verified against a live SQL Server instance.
 
 ### Removed
 
