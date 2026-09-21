@@ -153,14 +153,16 @@ class SqlServerProvider(SqlAlchemyProvider):
         written on this connection), the login's current DEFAULT_SCHEMA is
         read and compared against what was set last; a mismatch there means
         another process changed it, since nothing on this connection asked
-        for anything different, and that is logged loudly. On a cache miss
-        — including at a migration boundary, where ``reset_schema_cache()``
-        clears the write cache so this call's own ``ALTER USER`` is about to
-        run — a stale catalog value is expected, not interference: it is
-        what an earlier migration's own schema-changing statement left
-        behind, and the write below is what restores it, so no warning is
-        logged for that case. A dedicated SQL Server login per
-        ``--db-schema`` avoids concurrent interference entirely.
+        for anything different, and that is logged loudly. A cache miss —
+        most commonly a migration boundary reapplying the configured schema
+        — corrects DEFAULT_SCHEMA silently instead. The check only detects
+        interference while re-requesting a schema this connection already
+        set: on a cache miss it cannot tell a migration's own
+        schema-changing statement from a second connection that happens to
+        interfere at the same moment, since dblift did not set either value
+        and its record disagrees with the catalog identically either way
+        (issue #362). A dedicated SQL Server login per ``--db-schema``
+        avoids concurrent interference entirely.
         """
         try:
             rows = self.execute_query(
