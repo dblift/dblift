@@ -526,7 +526,7 @@ def create_parser(
     )
     validate_parser = subparsers.add_parser(
         "validate",
-        help="Validate migration scripts",
+        help="Validate migration scripts against applied history (SQL is not parsed)",
         parents=[_history, _strict, _filter, db_parent],
     )
     undo_parser = subparsers.add_parser(

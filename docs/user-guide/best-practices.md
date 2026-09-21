@@ -102,10 +102,9 @@ Always validate migrations before applying:
 dblift validate
 ```
 
-This catches:
-- Syntax errors
-- Migration conflicts
-- Versioning issues
+This catches migration conflicts and versioning issues against the applied
+history. It does not parse the SQL, so it will not catch syntax errors —
+those surface when `migrate` runs the script.
 
 ## 10. Organize by Feature or Module
 

@@ -20,6 +20,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `validate`'s success message and `--help` text now say what was checked
+  (versions, checksums and ordering against the applied history) and that
+  the migration SQL itself was not parsed. Previously "Migration validation
+  passed" read as "these migrations will run", so a file `migrate` refused
+  to parse could pass `validate` first.
 - SQL Server object extraction (`CREATE`/`ALTER`/`DROP TABLE`, `VIEW`,
   `INDEX`, `PROCEDURE`, `FUNCTION`, `TRIGGER`, `SYNONYM`, `SCHEMA`, `TYPE`,
   and `SEQUENCE`) now stops at the identifier instead of capturing the rest
