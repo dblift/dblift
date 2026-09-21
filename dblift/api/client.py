@@ -534,7 +534,13 @@ class DBLiftClient:
                 **kwargs,
             )
 
-            self.events.emit(EventType.INFO_COMPLETED, {"result": result})
+            if result.success:
+                self.events.emit(EventType.INFO_COMPLETED, {"result": result})
+            else:
+                self.events.emit(
+                    EventType.INFO_FAILED,
+                    {"error": result.error_message},
+                )
 
             return result
         except Exception as e:

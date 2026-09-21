@@ -13,6 +13,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `info`, `undo`, and the FastAPI migration health helpers now fail when
+  migration state cannot be read. State-read errors are no longer reported as
+  an empty history, a successful no-op undo, or a current schema.
 - The full-table UPDATE/DELETE guard no longer misreads a `WHERE` inside a
   dollar-quoted value (PostgreSQL's `$$ ... $$` / `$tag$ ... $tag$`) as a real
   clause. A statement like `UPDATE t SET body = $$ ... WHERE ... $$` is now

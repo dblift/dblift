@@ -148,42 +148,32 @@ class UndoCommand(BaseCommand):
 
             # Catalog is unfiltered; undo selects applied Success then tags/versions.
             # target_version is rollback-to (undo versions > target), not an omit filter.
-            migration_state = None
-            try:
-                migration_state = self.state_manager.build_state(
-                    scripts_dir,
-                    recursive=use_recursive,
-                    additional_dirs=use_additional_dirs,
-                    dir_recursive_map=dir_recursive_map,
-                    target_version=target_version,
-                )
+            migration_state = self.state_manager.build_state(
+                scripts_dir,
+                recursive=use_recursive,
+                additional_dirs=use_additional_dirs,
+                dir_recursive_map=dir_recursive_map,
+                target_version=target_version,
+            )
 
+            applied_migrations = self._coerced_applied_list(
+                getattr(migration_state, "all_applied_objects", None)
+            )
+            if not applied_migrations:
                 applied_migrations = self._coerced_applied_list(
-                    getattr(migration_state, "all_applied_objects", None)
+                    getattr(migration_state, "applied_objects", None)
                 )
-                if not applied_migrations:
-                    applied_migrations = self._coerced_applied_list(
-                        getattr(migration_state, "applied_objects", None)
-                    )
-            except Exception as e:
-                # If build_state fails (e.g., due to mocked dependencies in tests), use empty list
-                self.log.debug(f"Could not build migration state: {e}")
-                applied_migrations = []
 
             # Store current schema version in result for HTML reports
             current_version = None
             current_source = applied_migrations
-            if migration_state is not None:
-                applied_objects = self._coerced_applied_list(
-                    getattr(migration_state, "applied_objects", None)
-                )
-                if applied_objects:
-                    current_source = applied_objects
+            applied_objects = self._coerced_applied_list(
+                getattr(migration_state, "applied_objects", None)
+            )
+            if applied_objects:
+                current_source = applied_objects
             if current_source:
-                try:
-                    current_version = self.state_manager.get_current_version(current_source)
-                except Exception as e:
-                    self.log.debug(f"Could not get current version: {e}")
+                current_version = self.state_manager.get_current_version(current_source)
             if current_version:
                 result.current_schema_version = current_version
 

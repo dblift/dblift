@@ -253,17 +253,67 @@ class TestInfoCommandMigrationData(unittest.TestCase):
 class TestInfoCommandBuildStateFailure(unittest.TestCase):
     """Test InfoCommand.execute when build_state raises."""
 
-    def test_falls_back_to_empty_state_on_build_state_failure(self):
-        cmd, log = _make_info_command(state_manager_raises=True)
+    def test_returns_failure_on_build_state_error(self):
+        cmd, _ = _make_info_command(state_manager_raises=True)
+        del cmd._run_command_lifecycle
+        cmd._log_command_header_update = MagicMock()
+        cmd._log_command_completion = MagicMock()
+
         result = cmd.execute(Path("/tmp"))
-        # Command must complete without raising
-        self.assertIsNotNone(result)
-        log.debug.assert_called()
+
+        self.assertFalse(result.success)
+        self.assertEqual(result.error_message, "Info operation failed: build failed")
+        self.assertEqual(result.migrations, [])
 
     def test_target_schema_set_even_on_failure(self):
         cmd, _ = _make_info_command(state_manager_raises=True)
+        del cmd._run_command_lifecycle
+        cmd._log_command_header_update = MagicMock()
+        cmd._log_command_completion = MagicMock()
+
         result = cmd.execute(Path("/tmp"))
+
         self.assertEqual(result.target_schema, "public")
+
+
+class TestUndoCommandBuildStateFailure(unittest.TestCase):
+    """State-read failures must not become a successful no-op undo."""
+
+    def test_returns_failure_instead_of_no_migrations(self):
+        cmd = _make_undo_command([])
+        cmd.state_manager.build_state.side_effect = PermissionError("history denied")
+        cmd._run_preflight = MagicMock()
+        cmd._log_command_header_update = MagicMock()
+        cmd._log_current_schema_version = MagicMock()
+        cmd._log_command_completion = MagicMock()
+
+        result = cmd.execute(Path("/tmp"))
+
+        self.assertFalse(result.success)
+        self.assertEqual(result.error_message, "Undo operation failed: history denied")
+        self.assertFalse(
+            any(
+                call.args and call.args[0] == "No migrations to undo"
+                for call in cmd.log.info.call_args_list
+            )
+        )
+
+    def test_returns_failure_when_current_version_cannot_be_derived(self):
+        from dblift.core.migration.migration import MigrationType
+
+        migration = _make_migration("1", MigrationType.SQL)
+        cmd = _make_undo_command([migration])
+        cmd.state_manager.build_state.return_value.all_applied_objects = [migration]
+        cmd.state_manager.get_current_version.side_effect = RuntimeError("version unavailable")
+        cmd._run_preflight = MagicMock()
+        cmd._log_command_header_update = MagicMock()
+        cmd._log_current_schema_version = MagicMock()
+        cmd._log_command_completion = MagicMock()
+
+        result = cmd.execute(Path("/tmp"))
+
+        self.assertFalse(result.success)
+        self.assertEqual(result.error_message, "Undo operation failed: version unavailable")
 
 
 class TestInfoCommandScriptScanFailure(unittest.TestCase):
