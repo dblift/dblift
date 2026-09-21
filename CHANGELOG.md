@@ -13,6 +13,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- PostgreSQL, SQL Server and DuckDB migrations: a block comment that nests
+  another block comment (`/* outer /* inner */ still outer */`) now stays
+  a comment end to end instead of being treated as closed at the first
+  `*/`. Previously, anything between that first `*/` and the real end of
+  the comment — including a statement like `DROP TABLE`, separated by a
+  `;` — was split out and executed, even though the file reads as a single
+  commented-out block. MySQL/MariaDB, Oracle and SQLite are unaffected:
+  those engines do not support nested block comments, so the first `*/`
+  correctly ends the comment there.
+
 ### Removed
 
 ## [4.6.1] - 2026-09-20
