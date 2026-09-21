@@ -12,6 +12,11 @@ produced; it survived alongside it, because the merge dedups by
 These tests assert the complete extracted-object list (exact names and
 count) rather than membership, so a garbled name cannot pass by
 coincidentally containing the real one.
+
+``id_pattern`` also only modeled two dot-separated parts, so a three-part
+``database.schema.object`` reference (legal for ``CREATE``/``ALTER``/``DROP
+TABLE``) matched a two-part prefix of itself and dropped the real object
+name; see ``TestThreePartNames``.
 """
 
 import pytest
@@ -144,6 +149,57 @@ class TestRegexParserObjectNames:
         assert len(objects) == 1
         assert objects[0].name == "real_seq"
         assert objects[0].object_type == SqlObjectType.SEQUENCE
+
+
+@pytest.mark.unit
+class TestThreePartNames:
+    """``database.schema.object`` is a legitimate T-SQL reference for
+    ``CREATE``/``ALTER``/``DROP TABLE``. ``id_pattern`` originally modeled
+    only two dot-separated parts, so a three-part name matched a two-part
+    prefix of itself: the database part landed in ``schema`` and the real
+    schema landed in ``name``, dropping the actual object name entirely."""
+
+    def setup_method(self):
+        self.parser = SqlParserFactory("sqlserver", parser_type="regex").get_parser()
+
+    def test_create_table_three_part_name(self):
+        objects = self.parser.extract_objects("CREATE TABLE mydb.dbo.mytable (id int);")
+
+        assert len(objects) == 1
+        assert objects[0].name == "mytable"
+        assert objects[0].schema == "dbo"
+
+    def test_alter_table_three_part_name(self):
+        objects = self.parser.extract_objects("ALTER TABLE mydb.dbo.mytable ADD col int;")
+
+        assert len(objects) == 1
+        assert objects[0].name == "mytable"
+        assert objects[0].schema == "dbo"
+
+    def test_drop_table_three_part_name(self):
+        objects = self.parser.extract_objects("DROP TABLE mydb.dbo.mytable;")
+
+        assert len(objects) == 1
+        assert objects[0].name == "mytable"
+        assert objects[0].schema == "dbo"
+
+    def test_three_part_name_brackets_on_some_parts_not_others(self):
+        objects = self.parser.extract_objects(
+            "CREATE TABLE [mydb].dbo.[my table] (id int);"
+        )
+
+        assert len(objects) == 1
+        assert objects[0].name == "my table"
+        assert objects[0].schema == "dbo"
+
+    def test_three_part_name_all_bracketed(self):
+        objects = self.parser.extract_objects(
+            "CREATE TABLE [mydb].[dbo].[mytable] (id int);"
+        )
+
+        assert len(objects) == 1
+        assert objects[0].name == "mytable"
+        assert objects[0].schema == "dbo"
 
 
 @pytest.mark.unit

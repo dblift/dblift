@@ -314,7 +314,16 @@ class SqlServerConfig(DialectConfig):
         # cannot run past the identifier into the rest of the statement.
         id_token = r'(?:\[[^\]]+\]|"[^"]+"|[^\s.,;()\[\]"]+)'
         captured_id = f"({id_token})"
-        id_pattern = rf"(?:{captured_id}\.)?{captured_id}"
+        # A reference has one to three dot-separated parts:
+        # database.schema.name. The three-part alternative is tried first
+        # so it wins over the two-part one; its leading database part is
+        # matched but not captured, so the two capture groups downstream
+        # always mean (schema, name) no matter how many parts were written.
+        id_pattern = (
+            rf"(?:{id_token}\.{captured_id}\.{captured_id}"
+            rf"|{captured_id}\.{captured_id}"
+            rf"|{captured_id})"
+        )
 
         return {
             # Tables
