@@ -153,6 +153,7 @@ class ExecutionEngine:
 
         run_checks("migration.pre_execution")
         self._reset_provider_schema_cache()
+        self._apply_configured_schema()
         start_time = time.time()
         migration.logger = self.log
 
@@ -427,6 +428,23 @@ class ExecutionEngine:
         reset_schema_cache = getattr(self.provider, "reset_schema_cache", None)
         if callable(reset_schema_cache):
             reset_schema_cache()
+
+    def _apply_configured_schema(self) -> None:
+        """Apply the configured schema once, before any statement of this unit runs.
+
+        Shared by ``execute_migration()`` and ``execute_callback()``, called
+        right after ``_reset_provider_schema_cache()`` and before either one
+        branches on migration format — so a row-returning first statement
+        (routed to ``provider.execute_query()``, which never applies a
+        schema) is not left depending on whatever the connection happens to
+        carry, whether the unit is SQL or a Python script calling
+        ``context.execute()``. On providers whose ``set_current_schema`` is
+        cache-guarded (PostgreSQL, MySQL) this is a no-op once a later
+        statement in the same unit changes it itself.
+        """
+        schema = getattr(getattr(self.config, "database", None), "schema", None)
+        if isinstance(schema, str) and schema:
+            self.provider.set_current_schema(schema)
 
     def _prepare_transaction(self, migration: Migration) -> bool:
         """Prepare transaction state: rollback any active transaction, then begin new one.
@@ -1131,6 +1149,7 @@ class ExecutionEngine:
             record: Optional callback record to fill with statements and result sets
         """
         self._reset_provider_schema_cache()
+        self._apply_configured_schema()
 
         # Route non-SQL callbacks to the executor factory (mirrors execute_migration routing — B5 fix)
         if callback.format != MigrationFormat.SQL:
@@ -1178,10 +1197,6 @@ class ExecutionEngine:
                     f"Could not begin transaction for callback {callback.script_name}: {e}"
                 )
                 # Continue without explicit transaction management
-
-        schema = getattr(getattr(self.config, "database", None), "schema", None)
-        if isinstance(schema, str) and schema:
-            self.provider.set_current_schema(schema)
 
         dialect = self._probe_dialect_key() or getattr(self.sql_analyzer, "dialect", "") or ""
         quirks = ProviderRegistry.get_quirks(dialect)
