@@ -18,9 +18,11 @@ malformed or extra object as well as a missing one.
 """
 
 import unittest
+from unittest import mock
 
 from dblift.db.plugins.db2.parser.db2_regex_parser import DB2RegexParser
 from dblift.db.plugins.duckdb.parser.duckdb_regex_parser import DuckDBRegexParser
+from dblift.db.plugins.duckdb.parser.duckdb_tokenizer import DuckDBTokenizer
 from dblift.db.plugins.mysql.parser.mysql_regex_parser import MySqlRegexParser
 from dblift.db.plugins.postgresql.parser.postgresql_regex_parser import (
     PostgreSqlRegexParser,
@@ -218,6 +220,39 @@ class TestDuckDBExtractionNestsBlockComments(unittest.TestCase):
     def test_nested_comment_hides_the_statement(self):
         objects = DuckDBRegexParser().extract_objects(NESTED_COMMENT_SQL)
         self.assertEqual(objects, [])
+
+
+class TestDuckDBSplittingAndExtractionShareOneNestingFlag(unittest.TestCase):
+    """``DuckDBRegexParser.split_statements`` and the inherited
+    ``extract_objects`` both read ``DuckDBTokenizer.NESTED_BLOCK_COMMENTS``
+    instead of each hardcoding their own answer. Pin the lockstep itself,
+    not just today's value: flipping the flag must move both paths
+    together, and restoring it must bring both back — two hand-maintained
+    facts that merely happen to agree is exactly how the original
+    SQLite/DuckDB mismatch went unnoticed for so long.
+    """
+
+    def test_flipping_the_flag_moves_both_paths_together_then_restores(self):
+        parser = DuckDBRegexParser()
+
+        # Baseline: nesting on (DuckDB's real rule) — one statement, no
+        # object, because the whole thing is one comment.
+        self.assertEqual(parser.split_statements(NESTED_COMMENT_SQL), [NESTED_COMMENT_SQL])
+        self.assertEqual(parser.extract_objects(NESTED_COMMENT_SQL), [])
+
+        with mock.patch.object(DuckDBTokenizer, "NESTED_BLOCK_COMMENTS", False):
+            # Flipped: the inner "/*" no longer nests, so the first "*/"
+            # closes the whole comment — two statements, one live object.
+            stmts = parser.split_statements(NESTED_COMMENT_SQL)
+            self.assertEqual(len(stmts), 2, stmts)
+
+            objects = parser.extract_objects(NESTED_COMMENT_SQL)
+            self.assertEqual(len(objects), 1, objects)
+            self.assertEqual(objects[0].name.lower(), "victim")
+
+        # Restored: both paths return to the nesting answer, not just one.
+        self.assertEqual(parser.split_statements(NESTED_COMMENT_SQL), [NESTED_COMMENT_SQL])
+        self.assertEqual(parser.extract_objects(NESTED_COMMENT_SQL), [])
 
 
 class TestLineCommentsAlsoHideTheCommentedStatement(unittest.TestCase):
