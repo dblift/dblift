@@ -53,7 +53,7 @@ def validate_argv(
     versions: "str | list[str] | None" = None,
     exclude_versions: "str | list[str] | None" = None,
 ) -> List[str]:
-    """Validate migration scripts against the history (checksums, ordering, missing files)."""
+    """Validate scripts for consistency and, once applied, against history (SQL not parsed)."""
     return _filter_argv(locals())
 
 

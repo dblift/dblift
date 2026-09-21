@@ -146,15 +146,11 @@ The repair command will:
 
 **Problem**: Migrations fail with SQL syntax errors.
 
-**Solution**: 
-1. Validate pending migrations before applying:
-```bash
-dblift validate
-```
-
-2. Check your SQL against the database dialect documentation
-3. Test SQL directly in your database client first
-4. Ensure you're using the correct SQL dialect for your database
+**Solution**: `validate` does not parse migration SQL, so it will not catch
+these ahead of time.
+1. Check your SQL against the database dialect documentation
+2. Test SQL directly in your database client first
+3. Ensure you're using the correct SQL dialect for your database
 
 ## SQL Server: Full-text Catalog and Index Fail in Transactional Migration
 
