@@ -17,6 +17,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   gets silently reset before the migration's next statement. Session state a migration
   sets now persists for the rest of that migration and is restored to the configured
   schema at the start of the next one.
+- A migration statement starting with `WITH` is now classified by its outer
+  verb instead of always being treated as a query. A data-modifying CTE
+  (using `RETURNING`) that feeds an outer `INSERT`/`UPDATE`/`DELETE` no longer
+  fails with "This result object does not return rows"; a CTE that feeds a
+  `SELECT` still returns its rows as before.
 
 ### Removed
 
