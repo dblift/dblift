@@ -7,9 +7,11 @@ from typing import Any, Dict, List, Optional, Tuple
 from dblift.core.logger import Log
 from dblift.core.migration.sql.statement_splitter import StatementSplitter
 from dblift.core.sql_model._base_sql_object import SqlObjectType
+from dblift.core.sql_model.dialect import get_sqlglot_dialect
 
 # Import parser system components
 from dblift.core.sql_parser.parser_factory import SqlParserFactory
+from dblift.db.dml_analysis import cte_outer_statement_type
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -368,6 +370,10 @@ class SqlAnalyzer:
         if sql_clean.startswith("\ufeff"):
             sql_clean = sql_clean.lstrip("\ufeff").lstrip()
 
+        # Keep the pre-comment-strip text for sqlglot (below); the comment
+        # removal here is a crude regex meant only for keyword detection.
+        original_sql = sql_clean
+
         # Remove SQL comments to get the actual first keyword
         # Remove block comments /* ... */
         sql_clean = re.sub(r"/\*.*?\*/", "", sql_clean, flags=re.DOTALL)
@@ -399,7 +405,16 @@ class SqlAnalyzer:
             return "DML"
 
         # QUERY patterns
-        query_keywords = ["SELECT", "WITH", "SHOW", "DESCRIBE", "DESC", "EXPLAIN"]
+        if sql_upper.startswith("WITH"):
+            # A data-modifying CTE (RETURNING) can feed an outer INSERT/UPDATE/
+            # DELETE, which doesn't return rows even though the statement
+            # starts with WITH.
+            outer_type = cte_outer_statement_type(
+                original_sql, sqlglot_dialect=get_sqlglot_dialect(self.dialect)
+            )
+            return "DML" if outer_type == "DML" else "QUERY"
+
+        query_keywords = ["SELECT", "SHOW", "DESCRIBE", "DESC", "EXPLAIN"]
         if any(sql_upper.startswith(query) for query in query_keywords):
             return "QUERY"
 

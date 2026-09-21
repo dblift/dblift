@@ -258,6 +258,82 @@ class TestExecuteMigrationMainFlow(unittest.TestCase):
 
         engine.provider.rollback_transaction.assert_called()
 
+    def test_transactional_migration_resets_provider_schema_cache(self):
+        """Every migration resets the provider's schema cache, transactional or not.
+
+        Regression guard for the gap where invalidation lived only in
+        ``begin_transaction`` (called on this path) and was silently absent
+        on the autocommit-required path below — the defect was "this code
+        path never clears the cache", which needs no database to catch.
+        """
+        engine, policy = self._make_engine_with_policy(transactional=True)
+        migration = _make_sql_migration()
+        result = MagicMock()
+
+        with patch.object(engine, "_parse_sql_statements", return_value=["SELECT 1"]):
+            with patch.object(engine, "_classify_execution_statements", return_value=[]):
+                with patch.object(engine, "_prepare_transaction", return_value=True):
+                    with patch.object(engine, "_execute_statements", return_value=True):
+                        engine.execute_migration(migration, result)
+
+        engine.provider.reset_schema_cache.assert_called_once()
+
+    def test_autocommit_required_migration_resets_provider_schema_cache(self):
+        """The autocommit-required path must reset the cache too.
+
+        This is the exact path ``begin_transaction`` never runs on
+        (PostgreSQL ``CREATE INDEX CONCURRENTLY``, ``VACUUM``, ...), which is
+        what let a stale cache survive into the next migration.
+        """
+        engine, policy = self._make_engine_with_policy(
+            transactional=False, autocommit_required=True
+        )
+        migration = _make_sql_migration()
+        result = MagicMock()
+
+        with patch.object(engine, "_parse_sql_statements", return_value=["SELECT 1"]):
+            with patch.object(engine, "_classify_execution_statements", return_value=[]):
+                with patch.object(engine, "_execute_statements", return_value=True):
+                    with patch.object(engine, "_record_autocommit_migration_history"):
+                        engine.execute_migration(migration, result)
+
+        engine.provider.reset_schema_cache.assert_called_once()
+        engine.provider.begin_transaction.assert_not_called()
+
+    def test_mixed_mode_migration_still_resets_provider_schema_cache(self):
+        """Even a rejected (mixed-mode) migration resets the cache first.
+
+        Harmless — the migration runs no statement either way — but keeps
+        the reset unconditional rather than contingent on the policy
+        decision, so a future policy branch cannot reintroduce the gap.
+        """
+        engine, policy = self._make_engine_with_policy(transactional=False, mixed=True)
+        migration = _make_sql_migration()
+        result = MagicMock()
+
+        with patch.object(engine, "_parse_sql_statements", return_value=["SELECT 1"]):
+            with patch.object(engine, "_classify_execution_statements", return_value=[]):
+                engine.execute_migration(migration, result)
+
+        engine.provider.reset_schema_cache.assert_called_once()
+
+    def test_python_format_migration_resets_provider_schema_cache(self):
+        """Non-SQL migrations reset the cache too, before routing to the factory.
+
+        A Python migration can still call
+        ``context.provider.execute_statement(schema=...)`` itself, so the
+        reset sits ahead of the format check rather than inside the SQL-only
+        branch.
+        """
+        engine = _make_engine()
+        migration = _make_python_migration()
+        result = MagicMock()
+
+        with patch.object(engine, "_execute_via_factory"):
+            engine.execute_migration(migration, result)
+
+        engine.provider.reset_schema_cache.assert_called_once()
+
     def test_exception_rollback_failure_logs_warning(self):
         engine, policy = self._make_engine_with_policy(transactional=True)
         engine.provider.rollback_transaction.side_effect = Exception("rollback failed")
@@ -866,6 +942,40 @@ class TestExecuteCallback(unittest.TestCase):
 
         engine.log.warning.assert_called()
         engine.provider.execute_statement.assert_called_once()
+
+    def test_sql_callback_resets_provider_schema_cache(self):
+        """Every callback resets the provider's schema cache too.
+
+        Regression guard: an autocommit-only callback (the sibling case to
+        an autocommit-required migration) never calls ``begin_transaction``,
+        so this reset must not live inside that branch. No database needed
+        — the defect is "this entry point never clears the cache".
+        """
+        engine = _make_engine()
+        engine.sql_analyzer.get_statement_type.return_value = "DML"
+        engine.provider.execute_statement.return_value = 0
+        cb = self._make_callback()
+
+        engine.execute_callback(cb)
+
+        engine.provider.reset_schema_cache.assert_called_once()
+
+    def test_python_callback_resets_provider_schema_cache(self):
+        """Non-SQL callbacks reset the cache too, before routing to the factory."""
+        engine = _make_engine()
+        cb = MagicMock(spec=Migration)
+        cb.format = MigrationFormat.PYTHON
+        cb.script_name = "afterEach__log.py"
+
+        exec_result = MagicMock()
+        exec_result.success = True
+        exec_result.error = None
+        engine.executor_factory = MagicMock()
+        engine.executor_factory.execute.return_value = exec_result
+
+        engine.execute_callback(cb)
+
+        engine.provider.reset_schema_cache.assert_called_once()
 
     def test_python_callback_success(self):
         engine = _make_engine()
