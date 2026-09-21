@@ -787,6 +787,70 @@ class TestPrepareTransaction(unittest.TestCase):
         self.assertTrue(result)
         self.assertEqual(provider._schema_applied_for, "app")
 
+    def test_bool_attribute_connection_still_rolls_back(self):
+        """``sqlite3.Connection.in_transaction`` is a bool *property*, not a
+        method. Duck-typing it as ``connection.in_transaction()`` raises
+        ``TypeError: 'bool' object is not callable`` — and since that check
+        used to sit outside the ``try`` guarding ``rollback_transaction()``,
+        the exception was swallowed by the outer handler and the rollback
+        never ran at all. The open-transaction check now reads the
+        provider's own ``_tx`` instead of the connection, so a connection
+        shaped like this must not change whether rollback fires.
+        """
+        engine = _make_engine()
+        migration = _make_sql_migration()
+        engine.provider.connection.getAutoCommit.return_value = False
+        engine.provider.connection.in_transaction = True  # bool attribute, not callable
+        engine.provider._tx = object()  # an open transaction
+        engine.provider.begin_transaction.return_value = None
+
+        result = engine._prepare_transaction(migration)
+
+        self.assertTrue(result)
+        engine.provider.rollback_transaction.assert_called_once()
+        debug_calls = [str(c) for c in engine.log.debug.call_args_list]
+        self.assertFalse(
+            any("Could not check connection state" in c for c in debug_calls),
+            "the bool-attribute read should not raise and be swallowed",
+        )
+
+    def test_bool_attribute_connection_open_transaction_invalidates_cache(self):
+        """Same bool-attribute connection shape, with the provider's own
+        ``_tx`` showing a transaction actually was open: the rollback that
+        follows may have undone a schema-setting statement, so the cache
+        must still be invalidated.
+        """
+        engine = _make_engine()
+        migration = _make_sql_migration()
+        engine.provider.connection.getAutoCommit.return_value = False
+        engine.provider.connection.in_transaction = True  # bool attribute, not callable
+        engine.provider._tx = object()
+        engine.provider.begin_transaction.return_value = None
+
+        result = engine._prepare_transaction(migration)
+
+        self.assertTrue(result)
+        engine.provider.rollback_transaction.assert_called_once()
+        engine.provider.reset_schema_cache.assert_called_once()
+
+    def test_bool_attribute_connection_no_open_transaction_skips_cache_reset(self):
+        """Same bool-attribute connection shape, no transaction actually
+        open: the routine defensive rollback has nothing to undo, so the
+        cache must be left alone.
+        """
+        engine = _make_engine()
+        migration = _make_sql_migration()
+        engine.provider.connection.getAutoCommit.return_value = False
+        engine.provider.connection.in_transaction = False  # bool attribute, not callable
+        engine.provider._tx = None
+        engine.provider.begin_transaction.return_value = None
+
+        result = engine._prepare_transaction(migration)
+
+        self.assertTrue(result)
+        engine.provider.rollback_transaction.assert_called_once()
+        engine.provider.reset_schema_cache.assert_not_called()
+
 
 # ---------------------------------------------------------------------------
 # _probe_dialect_key

@@ -474,20 +474,27 @@ class ExecutionEngine:
 
                     # Rollback any existing transaction to ensure clean state
                     if not auto_commit_state:
-                        # A transaction already open here is anomalous — the
-                        # normal case is nothing to roll back, because
-                        # _apply_configured_schema()'s own statement, issued
-                        # moments earlier with no transaction open, already
-                        # committed itself. When one *is* open, some engines
-                        # (PostgreSQL: a plain SET's effect is undone by
-                        # ROLLBACK, documented behaviour) may have just had
-                        # that statement rolled back, so the schema cache's
-                        # belief that it is applied can no longer be trusted.
-                        connection = self.provider.connection
-                        had_open_transaction = bool(
-                            hasattr(connection, "in_transaction") and connection.in_transaction()
-                        )
                         try:
+                            # A transaction already open here is anomalous —
+                            # the normal case is nothing to roll back,
+                            # because _apply_configured_schema()'s own
+                            # statement, issued moments earlier with no
+                            # transaction open, already committed itself.
+                            # When one *is* open, some engines (PostgreSQL: a
+                            # plain SET's effect is undone by ROLLBACK,
+                            # documented behaviour) may have just had that
+                            # statement rolled back, so the schema cache's
+                            # belief that it is applied can no longer be
+                            # trusted. Read this off the provider's own
+                            # `_tx` — the same flag execute_statement()'s
+                            # auto-commit check uses — rather than the
+                            # connection: duck-typing a connection attribute
+                            # here is not uniform across drivers (SQLite's
+                            # `in_transaction` is a bool property, not a
+                            # method), and this must stay inside the try that
+                            # guards the rollback so a bad read never
+                            # suppresses the rollback itself.
+                            had_open_transaction = getattr(self.provider, "_tx", None) is not None
                             self.provider.rollback_transaction()
                             if had_open_transaction:
                                 self._reset_provider_schema_cache()
