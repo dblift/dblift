@@ -79,10 +79,40 @@ class OracleProvider(SqlAlchemyProvider):
     # whose owning table/view was already removed (e.g. by CASCADE CONSTRAINTS).
     _ORA_TRIGGER_DOES_NOT_EXIST = 4080
 
+    #: Schema this session's CURRENT_SCHEMA was last set to. Lets
+    #: :meth:`set_current_schema` skip re-issuing ``ALTER SESSION SET
+    #: CURRENT_SCHEMA`` on every statement of a migration, so a
+    #: ``CURRENT_SCHEMA`` change the migration itself runs is not immediately
+    #: overwritten. Cleared by :meth:`reset_schema_cache` — called by
+    #: ``ExecutionEngine`` at the start of every migration/callback — and
+    #: again by :meth:`begin_transaction`. For a transactional migration,
+    #: ``begin_transaction`` runs *after* ``ExecutionEngine`` already applied
+    #: the configured schema, so it re-clears the cache and the migration's
+    #: first statement reissues ``ALTER SESSION SET CURRENT_SCHEMA`` a second
+    #: time — one duplicate statement per transactional migration, not a
+    #: no-op safety net. Class-level default so tests constructing via
+    #: ``object.__new__`` still see ``None``.
+    _schema_applied_for: Optional[str] = None
+
     def __init__(self, config: DbliftConfig, log: Optional[Log] = None) -> None:
         """Initialize the native Oracle provider."""
         super().__init__(config, log)
         self._lock_handles: Dict[str, Optional[Any]] = {}
+        self._schema_applied_for = None
+
+    def reset_schema_cache(self) -> None:
+        """Forget the schema this session's CURRENT_SCHEMA was last set to.
+
+        ``ExecutionEngine`` calls this at the start of every migration and
+        callback — the unit boundary — so each one still starts from the
+        configured schema.
+        """
+        self._schema_applied_for = None
+
+    def begin_transaction(self) -> None:
+        """Begin a transaction, forcing the next statement to reapply the schema."""
+        self.reset_schema_cache()
+        super().begin_transaction()
 
     @staticmethod
     def get_lock_name(schema: str) -> str:
@@ -211,10 +241,18 @@ class OracleProvider(SqlAlchemyProvider):
         )
 
     def set_current_schema(self, schema: str) -> None:
-        """Set Oracle CURRENT_SCHEMA for the session."""
+        """Set Oracle CURRENT_SCHEMA for the session.
+
+        A no-op once this session already has *schema* applied, so an
+        ``ALTER SESSION SET CURRENT_SCHEMA`` the migration itself runs later
+        is not immediately reset back — see ``_schema_applied_for``.
+        """
+        if self._schema_applied_for == schema:
+            return
         self.execute_statement(
             f"ALTER SESSION SET CURRENT_SCHEMA = {_q(_clean_identifier(schema))}"
         )
+        self._schema_applied_for = schema
 
     def table_exists(self, schema: str, table_name: str) -> bool:
         """Return whether a table exists in the given Oracle schema."""

@@ -13,6 +13,7 @@ from dblift.db.plugins.oracle.provider import (
     _oracle_name,
     _schema_object,
 )
+from dblift.db.sqlalchemy_provider import SqlAlchemyProvider
 
 
 def _raise(exc):
@@ -139,6 +140,39 @@ class TestSetCurrentSchema:
 
         sql = p.statements[-1][0]
         assert sql == 'ALTER SESSION SET CURRENT_SCHEMA = "myschema"'
+
+    def test_skips_reissue_for_same_schema(self):
+        """A second call for the same schema does not re-issue ALTER SESSION.
+
+        Otherwise dblift resets CURRENT_SCHEMA before every migration
+        statement, silently overwriting an ``ALTER SESSION SET
+        CURRENT_SCHEMA`` the migration itself runs as soon as the next
+        statement fires.
+        """
+        p = _Provider()
+
+        p.set_current_schema("myschema")
+        p.set_current_schema("myschema")
+
+        alter_session_statements = [s for s in p.statements if "ALTER SESSION" in s[0]]
+        assert len(alter_session_statements) == 1
+
+    def test_reapplies_after_begin_transaction(self, monkeypatch):
+        """A new transaction (new migration) reapplies the schema once.
+
+        This is what keeps one migration's session state from leaking into
+        the next: ``begin_transaction`` clears the cache the skip above
+        relies on.
+        """
+        monkeypatch.setattr(SqlAlchemyProvider, "begin_transaction", lambda self: None)
+        p = _Provider()
+
+        p.set_current_schema("myschema")
+        OracleProvider.begin_transaction(p)
+        p.set_current_schema("myschema")
+
+        alter_session_statements = [s for s in p.statements if "ALTER SESSION" in s[0]]
+        assert len(alter_session_statements) == 2
 
 
 class TestTableExists:

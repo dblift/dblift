@@ -7,6 +7,7 @@ from unittest.mock import MagicMock
 from dblift.config import DbliftConfig
 from dblift.core.migration.clean_summary import CleanExecutionSummary
 from dblift.db.plugins.db2.provider import DB2_LOCK_STALE_SECONDS, Db2Provider
+from dblift.db.sqlalchemy_provider import SqlAlchemyProvider
 
 
 class DummyDb2Provider(Db2Provider):
@@ -75,6 +76,47 @@ def test_create_schema_if_not_exists_creates_missing_schema() -> None:
         ["APP"],
     ) in provider.calls
     assert ("statement", 'CREATE SCHEMA "APP"', None, None) in provider.calls
+
+
+def test_set_current_schema_executes_set_schema_statement() -> None:
+    provider = DummyDb2Provider()
+
+    provider.set_current_schema("APP")
+
+    assert ("statement", 'SET SCHEMA "APP"', None, None) in provider.calls
+
+
+def test_set_current_schema_skips_reissue_for_same_schema() -> None:
+    """A second call for the same schema does not re-issue ``SET SCHEMA``.
+
+    Otherwise dblift resets the current schema before every migration
+    statement, silently overwriting a ``SET SCHEMA`` the migration itself
+    runs as soon as the next statement fires.
+    """
+    provider = DummyDb2Provider()
+
+    provider.set_current_schema("APP")
+    provider.set_current_schema("APP")
+
+    set_schema_calls = [c for c in provider.calls if c[0] == "statement" and "SET SCHEMA" in c[1]]
+    assert len(set_schema_calls) == 1
+
+
+def test_set_current_schema_reapplies_after_begin_transaction(monkeypatch) -> None:
+    """A new transaction (new migration) reapplies the schema once.
+
+    This is what keeps one migration's session state from leaking into the
+    next: ``begin_transaction`` clears the cache the skip above relies on.
+    """
+    monkeypatch.setattr(SqlAlchemyProvider, "begin_transaction", lambda self: None)
+    provider = DummyDb2Provider()
+
+    provider.set_current_schema("APP")
+    Db2Provider.begin_transaction(provider)
+    provider.set_current_schema("APP")
+
+    set_schema_calls = [c for c in provider.calls if c[0] == "statement" and "SET SCHEMA" in c[1]]
+    assert len(set_schema_calls) == 2
 
 
 def test_table_exists_queries_syscat_tables() -> None:

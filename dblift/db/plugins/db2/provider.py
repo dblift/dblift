@@ -101,6 +101,21 @@ class Db2Provider(SqlAlchemyProvider):
     provider_transport = "native"
     MIGRATION_LOCK_TABLE = "DBLIFT_MIGRATION_LOCK"
 
+    #: Schema this connection was last ``SET SCHEMA``'d to. Lets
+    #: :meth:`set_current_schema` skip re-issuing ``SET SCHEMA`` on every
+    #: statement of a migration, so a ``SET SCHEMA`` the migration itself
+    #: runs is not immediately overwritten. Cleared by
+    #: :meth:`reset_schema_cache` — called by ``ExecutionEngine`` at the
+    #: start of every migration/callback — and again by
+    #: :meth:`begin_transaction`. For a transactional migration,
+    #: ``begin_transaction`` runs *after* ``ExecutionEngine`` already applied
+    #: the configured schema, so it re-clears the cache and the migration's
+    #: first statement reissues ``SET SCHEMA`` a second time — one duplicate
+    #: statement per transactional migration, not a no-op safety net.
+    #: Class-level default so tests constructing via ``object.__new__``
+    #: still see ``None``.
+    _schema_applied_for: Optional[str] = None
+
     def __init__(self, config: DbliftConfig, log: Optional[Log] = None) -> None:
         """Initialize the native DB2 provider."""
         # ibm_db_sa's log_entry_exit decorator calls logger.exception() on every
@@ -114,6 +129,21 @@ class Db2Provider(SqlAlchemyProvider):
         configure_ibmdbsa_logging(False)
         super().__init__(config, log)
         self.schema_operations = _Db2NativeSchemaOperations(self)
+        self._schema_applied_for = None
+
+    def reset_schema_cache(self) -> None:
+        """Forget the schema this connection was last ``SET SCHEMA``'d to.
+
+        ``ExecutionEngine`` calls this at the start of every migration and
+        callback — the unit boundary — so each one still starts from the
+        configured schema.
+        """
+        self._schema_applied_for = None
+
+    def begin_transaction(self) -> None:
+        """Begin a transaction, forcing the next statement to reapply the schema."""
+        self.reset_schema_cache()
+        super().begin_transaction()
 
     def execute_statement(
         self, sql: str, schema: Optional[str] = None, params: Optional[List[Any]] = None
@@ -139,8 +169,17 @@ class Db2Provider(SqlAlchemyProvider):
         self.execute_statement(f"CREATE SCHEMA {_q(clean_schema)}")
 
     def set_current_schema(self, schema: str) -> None:
-        """Set the DB2 current schema for this connection."""
+        """Set the DB2 current schema for this connection.
+
+        A no-op once this connection already has *schema* selected, so a
+        ``SET SCHEMA`` the migration itself runs later is not immediately
+        reset back — see ``_schema_applied_for``. Unverified: no Db2 instance
+        was reachable here to confirm this against a live engine.
+        """
+        if self._schema_applied_for == schema:
+            return
         self.execute_statement(f"SET SCHEMA {_q(_clean_identifier(schema))}")
+        self._schema_applied_for = schema
 
     def table_exists(self, schema: str, table_name: str) -> bool:
         """Return whether a table exists in the given DB2 schema."""
