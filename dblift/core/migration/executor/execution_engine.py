@@ -474,8 +474,23 @@ class ExecutionEngine:
 
                     # Rollback any existing transaction to ensure clean state
                     if not auto_commit_state:
+                        # A transaction already open here is anomalous — the
+                        # normal case is nothing to roll back, because
+                        # _apply_configured_schema()'s own statement, issued
+                        # moments earlier with no transaction open, already
+                        # committed itself. When one *is* open, some engines
+                        # (PostgreSQL: a plain SET's effect is undone by
+                        # ROLLBACK, documented behaviour) may have just had
+                        # that statement rolled back, so the schema cache's
+                        # belief that it is applied can no longer be trusted.
+                        connection = self.provider.connection
+                        had_open_transaction = bool(
+                            hasattr(connection, "in_transaction") and connection.in_transaction()
+                        )
                         try:
                             self.provider.rollback_transaction()
+                            if had_open_transaction:
+                                self._reset_provider_schema_cache()
                         except Exception as rollback_e:
                             self.log.debug(
                                 f"Could not rollback pre-migration transaction (may be no active transaction): {rollback_e}"
