@@ -474,6 +474,102 @@ class TestExecuteMigrationMainFlow(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
+# Schema statement is issued once per transactional unit (not duplicated by
+# begin_transaction's own cache clear)
+# ---------------------------------------------------------------------------
+
+
+class TestSchemaStatementIssuedOnce(unittest.TestCase):
+    """A transactional migration/callback issues its schema statement once.
+
+    ``_apply_configured_schema()`` runs right before the transaction starts.
+    A provider whose ``begin_transaction()`` also clears the schema cache
+    (with nothing executing in between) leaves the cache empty for the first
+    real statement, which reapplies the schema a second time. These tests
+    drive the real ``PostgreSqlProvider`` cache/``begin_transaction()`` logic
+    — only the SQLAlchemy connection layer is faked — so they exercise the
+    actual duplication, not a simulation of it.
+    """
+
+    def _build_engine(self, schema="app"):
+        from dblift.db.plugins.postgresql.provider import PostgreSqlProvider
+
+        class _CountingProvider(PostgreSqlProvider):
+            def __init__(self):
+                self.issued: list = []
+                self._tx = None
+                self._connection = None
+
+        provider = _CountingProvider()
+        sql_analyzer = MagicMock()
+        sql_analyzer.dialect = "postgresql"
+        config = MagicMock()
+        config.database.type.value = "postgresql"
+        config.database.schema = schema
+        engine = ExecutionEngine(
+            provider=provider,
+            sql_analyzer=sql_analyzer,
+            log=MagicMock(),
+            config=config,
+            history_manager=None,
+        )
+        policy = MagicMock(
+            transactional=True, autocommit_required=False, unsupported_mixed_mode=False
+        )
+        engine.transaction_policy = MagicMock()
+        engine.transaction_policy.decide.return_value = policy
+        return engine, provider
+
+    def test_transactional_migration_issues_schema_statement_once(self):
+        from dblift.db.sqlalchemy_provider import SqlAlchemyProvider
+
+        engine, provider = self._build_engine()
+        migration = _make_sql_migration()
+        result = MagicMock()
+
+        with patch.object(
+            SqlAlchemyProvider,
+            "execute_statement",
+            lambda self, sql, schema=None, params=None: provider.issued.append(sql),
+        ):
+            with patch.object(SqlAlchemyProvider, "begin_transaction", lambda self: None):
+                with patch.object(engine, "_parse_sql_statements", return_value=["SELECT 1"]):
+                    with patch.object(engine, "_classify_execution_statements", return_value=[]):
+                        with patch.object(engine, "_execute_statements", return_value=True):
+                            engine.execute_migration(migration, result)
+                            # The migration's first real statement applies the
+                            # configured schema the same way execute_statement() does.
+                            provider.set_current_schema("app")
+
+        schema_statements = [s for s in provider.issued if "search_path" in s]
+        self.assertEqual(len(schema_statements), 1, schema_statements)
+
+    def test_transactional_callback_issues_schema_statement_once(self):
+        from dblift.db.sqlalchemy_provider import SqlAlchemyProvider
+
+        engine, provider = self._build_engine()
+        callback = MagicMock(spec=Migration)
+        callback.format = MigrationFormat.SQL
+        callback.script_name = "afterEach__log.sql"
+        callback.content = ""
+
+        with patch.object(
+            SqlAlchemyProvider,
+            "execute_statement",
+            lambda self, sql, schema=None, params=None: provider.issued.append(sql),
+        ):
+            with patch.object(SqlAlchemyProvider, "begin_transaction", lambda self: None):
+                with patch.object(engine, "_prepare_sql_statements", return_value=[]):
+                    engine.execute_callback(callback)
+                    # The callback's first real statement applies the
+                    # configured schema the same way execute_statement() does.
+                    provider.set_current_schema("app")
+
+        schema_statements = [s for s in provider.issued if "search_path" in s]
+        self.assertEqual(len(schema_statements), 1, schema_statements)
+
+
+# ---------------------------------------------------------------------------
 # _prepare_transaction
 # ---------------------------------------------------------------------------
 

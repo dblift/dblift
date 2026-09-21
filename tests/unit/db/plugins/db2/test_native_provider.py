@@ -102,11 +102,14 @@ def test_set_current_schema_skips_reissue_for_same_schema() -> None:
     assert len(set_schema_calls) == 1
 
 
-def test_set_current_schema_reapplies_after_begin_transaction(monkeypatch) -> None:
-    """A new transaction (new migration) reapplies the schema once.
+def test_begin_transaction_alone_does_not_clear_the_schema_cache(monkeypatch) -> None:
+    """``begin_transaction`` no longer clears the cache on its own.
 
-    This is what keeps one migration's session state from leaking into the
-    next: ``begin_transaction`` clears the cache the skip above relies on.
+    Invalidation is owned by ``ExecutionEngine.reset_schema_cache()``, called
+    once at the start of every migration/callback before the transaction
+    begins. A provider-level clear here as well would leave nothing between
+    the two clears, so the migration's first statement reapplied the schema
+    a second time — a duplicate ``SET SCHEMA`` per migration.
     """
     monkeypatch.setattr(SqlAlchemyProvider, "begin_transaction", lambda self: None)
     provider = DummyDb2Provider()
@@ -116,7 +119,7 @@ def test_set_current_schema_reapplies_after_begin_transaction(monkeypatch) -> No
     provider.set_current_schema("APP")
 
     set_schema_calls = [c for c in provider.calls if c[0] == "statement" and "SET SCHEMA" in c[1]]
-    assert len(set_schema_calls) == 2
+    assert len(set_schema_calls) == 1
 
 
 def test_table_exists_queries_syscat_tables() -> None:

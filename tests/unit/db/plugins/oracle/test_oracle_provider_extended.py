@@ -157,12 +157,15 @@ class TestSetCurrentSchema:
         alter_session_statements = [s for s in p.statements if "ALTER SESSION" in s[0]]
         assert len(alter_session_statements) == 1
 
-    def test_reapplies_after_begin_transaction(self, monkeypatch):
-        """A new transaction (new migration) reapplies the schema once.
+    def test_begin_transaction_alone_does_not_clear_the_schema_cache(self, monkeypatch):
+        """``begin_transaction`` no longer clears the cache on its own.
 
-        This is what keeps one migration's session state from leaking into
-        the next: ``begin_transaction`` clears the cache the skip above
-        relies on.
+        Invalidation is owned by ``ExecutionEngine.reset_schema_cache()``,
+        called once at the start of every migration/callback before the
+        transaction begins. A provider-level clear here as well would leave
+        nothing between the two clears, so the migration's first statement
+        reapplied the schema a second time — a duplicate ``ALTER SESSION SET
+        CURRENT_SCHEMA`` per migration.
         """
         monkeypatch.setattr(SqlAlchemyProvider, "begin_transaction", lambda self: None)
         p = _Provider()
@@ -172,7 +175,7 @@ class TestSetCurrentSchema:
         p.set_current_schema("myschema")
 
         alter_session_statements = [s for s in p.statements if "ALTER SESSION" in s[0]]
-        assert len(alter_session_statements) == 2
+        assert len(alter_session_statements) == 1
 
 
 class TestTableExists:
