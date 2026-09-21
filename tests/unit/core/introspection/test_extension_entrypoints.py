@@ -34,6 +34,7 @@ def test_introspector_factory_loads_registered_introspection_extensions(monkeypa
         ),
     )
     monkeypatch.setattr(introspection_seam, "_introspection_attached", False)
+    monkeypatch.setattr(introspection_seam, "_pending_entry_points", None)
     monkeypatch.setattr(IntrospectorFactory, "_DIALECT_MAP", {})
     monkeypatch.setattr(IntrospectorFactory, "_DEFAULTS_REGISTERED", False)
 
@@ -85,6 +86,7 @@ def test_vendor_queries_factory_loads_registered_introspection_extensions(monkey
         ),
     )
     monkeypatch.setattr(introspection_seam, "_introspection_attached", False)
+    monkeypatch.setattr(introspection_seam, "_pending_entry_points", None)
     monkeypatch.setattr(vendor_queries_factory, "_VENDOR_QUERIES_REGISTRY", {})
     monkeypatch.setattr(vendor_queries_factory, "_DEFAULTS_REGISTERED", False)
 
@@ -115,6 +117,7 @@ def test_repeated_introspector_creation_scans_extensions_once(monkeypatch):
     monkeypatch.setattr(vendor_queries_factory, "_VENDOR_QUERIES_REGISTRY", {})
     monkeypatch.setattr(vendor_queries_factory, "_DEFAULTS_REGISTERED", False)
     monkeypatch.setattr(introspection_seam, "_introspection_attached", False, raising=False)
+    monkeypatch.setattr(introspection_seam, "_pending_entry_points", None, raising=False)
     monkeypatch.setattr(ProviderRegistry, "list_plugins", classmethod(lambda cls: []))
 
     provider = MagicMock()
