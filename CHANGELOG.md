@@ -64,6 +64,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   is still not supported. Applies to every PostgreSQL-wire engine dblift
   supports: Citus, TimescaleDB, CockroachDB, YugabyteDB, Neon, Supabase,
   AlloyDB and Redshift.
+- A `pg_dump` new enough to wrap its output in `\restrict tok` / `\unrestrict
+  tok` (its own session guard) no longer fails migrating that dump on the
+  first statement. Those two lines are recognized and skipped; any other
+  line starting with `\` is refused by name instead of being silently run or
+  silently dropped, since dblift does not know what it does. Applies to
+  every PostgreSQL-wire engine dblift supports: Citus, TimescaleDB,
+  CockroachDB, YugabyteDB, Neon, Supabase, AlloyDB and Redshift.
 - Oracle, Db2 and Snowflake: an `ALTER SESSION SET CURRENT_SCHEMA` / `SET
   SCHEMA` / `USE SCHEMA` a migration issued itself no longer gets silently
   reset before the migration's next statement, matching the PostgreSQL/MySQL

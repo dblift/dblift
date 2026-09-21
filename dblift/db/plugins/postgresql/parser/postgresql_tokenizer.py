@@ -56,6 +56,13 @@ class PostgreSQLTokenizer(BaseTokenizer):
 
         char = self.peek()
 
+        # psql client meta-command (e.g. \restrict, \i): a line whose first
+        # non-whitespace character is '\' at the top level. Gated on
+        # in_copy_data, not reused for anything else, because a COPY data
+        # row may legitimately start with \N (SQL NULL) and must stay data.
+        if char == "\\" and not self.in_copy_data and self._is_at_line_start():
+            return self._handle_meta_command()
+
         # Flyway / DBLift placeholders ${name} or ${name:default} — not PostgreSQL
         # dollar-quoting ($$…$$ / $tag$…$tag$). Treat as a single token so statement
         # splitting and reconstruction preserve the exact spelling (including before '.').
@@ -326,6 +333,34 @@ class PostgreSQLTokenizer(BaseTokenizer):
         return Token(
             TokenType.COPY_DATA,
             data_text,
+            start_pos,
+            start_line,
+            start_col,
+            self.parens_depth,
+        )
+
+    def _handle_meta_command(self) -> Token:
+        r"""Read a psql meta-command line, ending at end of line.
+
+        PostgreSQL's own parser never sees this line — it is a client
+        directive, not SQL — so it is its own unit rather than glued onto
+        whatever statement follows. What dblift does with it is decided by
+        the statement parser, not the tokenizer.
+
+        Returns:
+            META_COMMAND token containing the line, backslash included
+        """
+        start_pos = self.pos
+        start_line = self.line
+        start_col = self.col
+
+        text = ""
+        while self.pos < len(self.sql) and self.peek() not in ("\n", "\r"):
+            text += self.read()
+
+        return Token(
+            TokenType.META_COMMAND,
+            text,
             start_pos,
             start_line,
             start_col,

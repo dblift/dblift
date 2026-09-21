@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import pytest
 
+from dblift.core.exceptions import UnsupportedMetaCommandError
 from dblift.core.migration.sql.statement_splitter import StatementSplitter
 
 
@@ -165,6 +166,103 @@ class TestPostgresCopyFromStdin:
             "1\talice\r\n2\tbob\r\n\\.",
             "SELECT 1;",
         ]
+
+
+@pytest.mark.unit
+class TestPostgresMetaCommand:
+    """``pg_dump`` wraps its output in ``\\restrict tok`` / ``\\unrestrict tok``
+    (new enough versions). Those lines are psql client directives, not SQL —
+    they must not glue onto the statement that follows, and executing
+    nothing for them is harmless since they only scope the dump's own
+    session."""
+
+    def test_restrict_unrestrict_pair_skipped(self):
+        sql = "\\restrict tok\n" "CREATE TABLE t (id int);\n" "SELECT 1;\n" "\\unrestrict tok\n"
+
+        stmts = StatementSplitter("postgresql").split_statements(sql)
+
+        assert stmts == ["CREATE TABLE t (id int);", "SELECT 1;"]
+
+    def test_meta_command_at_end_of_file_with_no_trailing_newline(self):
+        sql = "SELECT 1;\n\\unrestrict tok"
+
+        stmts = StatementSplitter("postgresql").split_statements(sql)
+
+        assert stmts == ["SELECT 1;"]
+
+    def test_backslash_inside_string_literal_is_not_a_meta_command(self):
+        """A string literal can contain a line starting with '\\' — it stays
+        data, the same way a COPY row can start with '\\N'."""
+        sql = "SELECT 'line one\n\\restrict fake\nline three' AS note;\nSELECT 1;\n"
+
+        stmts = StatementSplitter("postgresql").split_statements(sql)
+
+        assert stmts == [
+            "SELECT 'line one\n\\restrict fake\nline three' AS note;",
+            "SELECT 1;",
+        ]
+
+    def test_backslash_mid_line_is_not_a_meta_command(self):
+        """Only a '\\' as the first non-whitespace character on a line is a
+        meta-command; the unclaimed-character path handles this one
+        unchanged, same as before this fix."""
+        sql = "SELECT 1 \\restrict fake;\nSELECT 2;\n"
+
+        with pytest.warns(UserWarning, match="unclaimed character"):
+            stmts = StatementSplitter("postgresql").split_statements(sql)
+
+        assert stmts == ["SELECT 1 \\restrict fake;", "SELECT 2;"]
+
+    def test_copy_null_marker_stays_data(self):
+        """'\\N' — SQL NULL in COPY's data format — must not be mistaken for
+        a meta-command even though it starts a data line with '\\'."""
+        sql = "COPY t (id, name) FROM stdin;\n1\t\\N\n2\tbob\n\\.\nSELECT 1;\n"
+
+        stmts = StatementSplitter("postgresql").split_statements(sql)
+
+        assert stmts == [
+            "COPY t (id, name) FROM stdin;",
+            "1\t\\N\n2\tbob\n\\.",
+            "SELECT 1;",
+        ]
+
+    def test_meta_command_immediately_after_copy_block(self):
+        sql = "COPY t (id) FROM stdin;\n1\n\\.\n\\unrestrict tok\nSELECT 1;\n"
+
+        stmts = StatementSplitter("postgresql").split_statements(sql)
+
+        assert stmts == ["COPY t (id) FROM stdin;", "1\n\\.", "SELECT 1;"]
+
+    def test_unsupported_meta_command_is_refused_under_strict_tokenizer(self):
+        """A meta-command with real effects (not just session scoping) is
+        named and refused rather than silently skipped or silently glued
+        onto the next statement."""
+        sql = "\\i other.sql\nSELECT 1;\n"
+
+        with pytest.raises(UnsupportedMetaCommandError, match=r"\\i"):
+            StatementSplitter("postgresql").split_statements(sql, strict_tokenizer=True)
+
+    @pytest.mark.parametrize(
+        "dialect",
+        [
+            "aurora-postgresql",
+            "citus",
+            "cockroachdb",
+            "neon",
+            "redshift",
+            "supabase",
+            "timescaledb",
+            "yugabytedb",
+        ],
+    )
+    def test_restrict_pair_skipped_across_postgresql_wire_dialects(self, dialect):
+        """All PostgreSQL-wire dialects share this tokenizer (see CHANGELOG's
+        COPY-block entry for the same list)."""
+        sql = "\\restrict tok\nCREATE TABLE t (id int);\n\\unrestrict tok\n"
+
+        stmts = StatementSplitter(dialect).split_statements(sql)
+
+        assert stmts == ["CREATE TABLE t (id int);"]
 
 
 @pytest.mark.unit

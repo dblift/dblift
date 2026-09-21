@@ -143,3 +143,27 @@ SELECT 1;"""
         # Should set in_copy_data flag
         # (This is tested indirectly through tokenization)
         assert len(tokens) > 0
+
+    def test_restrict_meta_command_is_its_own_token(self):
+        """A ``\\restrict`` line at the top level tokenizes as one
+        META_COMMAND token ending at end of line, not as unclaimed
+        characters glued onto the next statement."""
+        sql = "\\restrict tok\nSELECT 1;"
+        tokenizer = PostgreSQLTokenizer(sql)
+        tokens = tokenizer.tokenize()
+
+        meta_tokens = [t for t in tokens if t.type == TokenType.META_COMMAND]
+        assert len(meta_tokens) == 1
+        assert meta_tokens[0].text == "\\restrict tok"
+
+    def test_meta_command_not_recognized_inside_copy_data(self):
+        """The in_copy_data gate: a data row starting with '\\N' must not
+        become a META_COMMAND token."""
+        sql = "1\t\\N\n\\.\n"
+        tokenizer = PostgreSQLTokenizer(sql)
+        tokenizer.in_copy_data = True
+
+        token = tokenizer.handle_copy_data()
+
+        assert token.type == TokenType.COPY_DATA
+        assert "\\N" in token.text
