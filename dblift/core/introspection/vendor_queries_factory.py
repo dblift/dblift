@@ -13,14 +13,9 @@ plugins can still override entries at runtime via
 :func:`register_vendor_queries` (OCP-05).
 """
 
-import logging
-from importlib.metadata import entry_points
 from typing import Optional, Type
 
 from .vendor_queries_base import VendorMetadataQueries
-
-_log = logging.getLogger(__name__)
-INTROSPECTION_ENTRY_POINT_GROUP = "dblift.introspection"
 
 # Plugin-discovered registry — populated lazily on first use from
 # ``ProviderRegistry.list_plugins()``. Runtime ``register_vendor_queries``
@@ -39,13 +34,6 @@ def _register_defaults() -> None:
     """
     global _DEFAULTS_REGISTERED
     from dblift.db.provider_registry import ProviderRegistry
-
-    for ep in entry_points(group=INTROSPECTION_ENTRY_POINT_GROUP):
-        try:
-            register = ep.load()
-            register()
-        except Exception as exc:
-            _log.warning("dblift.introspection '%s' failed to register: %s", ep.name, exc)
 
     for plugin_info in ProviderRegistry.list_plugins():
         quirks = ProviderRegistry.get_quirks(plugin_info.name)
