@@ -92,6 +92,71 @@ class TestPostgresVerbatim:
 
 
 @pytest.mark.unit
+class TestPostgresCopyFromStdin:
+    """``COPY ... FROM stdin`` data ends at its own ``\\.`` line — it does
+    not glue onto whatever statement follows, which is what ``pg_dump``
+    emits for table contents by default."""
+
+    def test_data_block_ends_before_the_next_statement(self):
+        sql = "COPY t (id, name) FROM stdin;\n1\talice\n2\tbob\n\\.\nSELECT 1;\n"
+
+        stmts = StatementSplitter("postgresql").split_statements(sql)
+
+        assert stmts == [
+            "COPY t (id, name) FROM stdin;",
+            "1\talice\n2\tbob\n\\.",
+            "SELECT 1;",
+        ]
+
+    def test_data_block_at_end_of_file_with_no_trailing_statement(self):
+        sql = "COPY t (id, name) FROM stdin;\n1\talice\n\\.\n"
+
+        stmts = StatementSplitter("postgresql").split_statements(sql)
+
+        assert stmts == [
+            "COPY t (id, name) FROM stdin;",
+            "1\talice\n\\.",
+        ]
+
+    def test_backslash_dot_mid_line_is_not_a_terminator(self):
+        """``\\.`` only ends the block at the start of a line; the same two
+        characters inside a data value are ordinary data."""
+        sql = "COPY t (id, note) FROM stdin;\n1\tO'Brien said \\. wasn't done\n\\.\nSELECT 1;\n"
+
+        stmts = StatementSplitter("postgresql").split_statements(sql)
+
+        assert stmts == [
+            "COPY t (id, note) FROM stdin;",
+            "1\tO'Brien said \\. wasn't done\n\\.",
+            "SELECT 1;",
+        ]
+
+    def test_data_line_resembling_sql_is_kept_as_data(self):
+        """A data value that reads like SQL, semicolons included, is not
+        re-parsed — the whole line is opaque data until the ``\\.`` line."""
+        sql = "COPY t (id, cmd) FROM stdin;\n1\tSELECT 1; DROP TABLE t;\n\\.\nSELECT 2;\n"
+
+        stmts = StatementSplitter("postgresql").split_statements(sql)
+
+        assert stmts == [
+            "COPY t (id, cmd) FROM stdin;",
+            "1\tSELECT 1; DROP TABLE t;\n\\.",
+            "SELECT 2;",
+        ]
+
+    def test_empty_data_block(self):
+        sql = "COPY t (id) FROM stdin;\n\\.\nSELECT 1;\n"
+
+        stmts = StatementSplitter("postgresql").split_statements(sql)
+
+        assert stmts == [
+            "COPY t (id) FROM stdin;",
+            "\\.",
+            "SELECT 1;",
+        ]
+
+
+@pytest.mark.unit
 class TestMySqlVerbatim:
     def test_definer_clause_not_respaced(self):
         sql = "CREATE DEFINER=`root`@`%` VIEW v AS SELECT id FROM parent;\n"
