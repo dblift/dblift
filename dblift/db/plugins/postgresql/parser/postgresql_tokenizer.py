@@ -33,6 +33,9 @@ class PostgreSQLTokenizer(BaseTokenizer):
         """
         super().__init__(sql, strict_unknown_chars=strict_unknown_chars)
         self.in_copy_data = False
+        # Set once the ';' ending a "COPY ... FROM STDIN" header has been read;
+        # the very next token is then the data block, not ordinary SQL.
+        self._copy_data_pending = False
 
     def _next_token(self) -> Optional[Token]:
         """Get the next token from the input.
@@ -42,6 +45,10 @@ class PostgreSQLTokenizer(BaseTokenizer):
         Returns:
             Next token or None if no more tokens
         """
+        if self._copy_data_pending:
+            self._copy_data_pending = False
+            return self.handle_copy_data()
+
         self._skip_whitespace()
 
         if self.pos >= len(self.sql):
@@ -219,6 +226,17 @@ class PostgreSQLTokenizer(BaseTokenizer):
 
         return token
 
+    def _handle_delimiter(self) -> Token:
+        """Handle ``;``, arming the copy-data read once a COPY header ends.
+
+        Returns:
+            Delimiter token
+        """
+        token = super()._handle_delimiter()
+        if self.in_copy_data:
+            self._copy_data_pending = True
+        return token
+
     def _is_copy_from_stdin(self) -> bool:
         """Check if we're in a COPY FROM STDIN statement.
 
@@ -266,13 +284,21 @@ class PostgreSQLTokenizer(BaseTokenizer):
             self.col = saved_col
 
     def handle_copy_data(self) -> Token:
-        r"""Handle COPY FROM STDIN data block.
+        r"""Handle a COPY FROM STDIN data block, ending at \. on its own line.
 
-        Data ends with \. on its own line.
+        The newline that ends the header's ``;`` is formatting, not data, and
+        is dropped before the token starts — otherwise a row whose first
+        column is empty (a leading tab) would lose that tab to whitespace
+        skipping.
 
         Returns:
-            String token containing COPY data
+            COPY_DATA token containing the data block, terminator included
         """
+        if self.peek() == "\r":
+            self.read()
+        if self.peek() == "\n":
+            self.read()
+
         start_pos = self.pos
         start_line = self.line
         start_col = self.col
@@ -298,7 +324,7 @@ class PostgreSQLTokenizer(BaseTokenizer):
 
         self.in_copy_data = False
         return Token(
-            TokenType.STRING,
+            TokenType.COPY_DATA,
             data_text,
             start_pos,
             start_line,

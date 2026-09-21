@@ -49,6 +49,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   connection happened to be on — including one left over from an earlier
   migration's own `SET search_path` (PostgreSQL) or `USE` (MySQL/MariaDB) —
   silently returning rows from the wrong schema.
+- A PostgreSQL `COPY ... FROM stdin` data block — what `pg_dump` writes for
+  table contents by default — is now recognized as ending at its own `\.`
+  line, instead of merging with the statement that follows it. Statement
+  counts, checksums and any statement after the data block are now correct;
+  this does not make a `COPY ... FROM stdin` block itself executable, which
+  is still not supported. Applies to every PostgreSQL-wire engine dblift
+  supports: Citus, TimescaleDB, CockroachDB, YugabyteDB, Neon, Supabase,
+  AlloyDB and Redshift.
 
 ### Removed
 

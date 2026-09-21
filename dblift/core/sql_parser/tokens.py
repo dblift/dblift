@@ -19,6 +19,7 @@ class TokenType(Enum):
     IDENTIFIER = "IDENTIFIER"
     NEW_DELIMITER = "NEW_DELIMITER"  # MySQL DELIMITER statement
     COMMENT_DIRECTIVE = "COMMENT_DIRECTIVE"  # MySQL /*!50001 ... */
+    COPY_DATA = "COPY_DATA"  # PostgreSQL COPY ... FROM stdin data block
     EOF = "EOF"
 
 
