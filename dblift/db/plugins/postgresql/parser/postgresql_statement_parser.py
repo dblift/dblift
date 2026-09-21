@@ -41,14 +41,21 @@ class PostgreSQLStatementParser(BaseStatementParser):
         "ADD VALUE",  # Version dependent
     ]
 
-    def __init__(self, tokens: List[Token], context: Optional[ParserContext] = None):
+    def __init__(
+        self,
+        tokens: List[Token],
+        context: Optional[ParserContext] = None,
+        source: Optional[str] = None,
+    ):
         """Initialize PostgreSQL statement parser.
 
         Args:
             tokens: List of tokens to parse
             context: Parser context
+            source: Original SQL text the tokens came from (see
+                ``BaseStatementParser.__init__``)
         """
-        super().__init__(tokens, context)
+        super().__init__(tokens, context, source)
         self.in_atomic_block = False
 
     def _adjust_block_depth(self, token: Token) -> None:

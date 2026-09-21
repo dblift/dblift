@@ -207,7 +207,9 @@ class TestOracleParserConformance:
             "SPOOL /tmp/dblift_test.log;\nCREATE TABLE t (id NUMBER);"
         )
 
-        assert statements == ["CREATE TABLE t(id NUMBER);"]
+        # The statement is now returned verbatim from source, so the space
+        # before "(" in the original file is preserved rather than dropped.
+        assert statements == ["CREATE TABLE t (id NUMBER);"]
 
 
 @pytest.mark.unit
