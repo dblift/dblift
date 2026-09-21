@@ -81,6 +81,9 @@ BUSINESS_*.md
 # Internal code review reports (working documents, not production artifacts)
 CODE_REVIEW_REPORT.md
 
+# Internal planning artifacts belong in the private repository.
+/docs/superpowers/
+
 # MkDocs build output
 site/
 

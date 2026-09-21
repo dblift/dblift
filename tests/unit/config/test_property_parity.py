@@ -4,12 +4,10 @@ If a NON-xfail case here fails, a property was added to
 config/property_registry.py but not wired into one of: the CLI parser,
 from_env_dict, or from_dict/merge.
 
-_PENDING_CLI / _PENDING_ENV list properties whose surface is not wired YET
-(cleared incrementally by Phases 2-5 of
-docs/superpowers/plans/2026-07-01-config-surface-parity.md). They are marked
-strict-xfail: when a later phase wires the surface the case starts passing,
-strict-xfail turns that into a failure, and the name MUST be deleted from the
-pending set. That is the signal the migration progressed.
+_PENDING_CLI / _PENDING_ENV list properties whose surface is not wired YET.
+They are marked strict-xfail: when a later change wires the surface the case
+starts passing, strict-xfail turns that into a failure, and the name MUST be
+deleted from the pending set. That is the signal the migration progressed.
 """
 
 import argparse
