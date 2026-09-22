@@ -31,6 +31,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Object extraction now reconciles the regex and sqlglot parsers per
+  statement and per object type, instead of deduplicating by name across
+  a whole batch. Previously, when the two parsers read different names
+  for the same object (for example, one truncated at an escaped quoting
+  character the other decoded correctly), both names were kept as
+  separate objects; and when they agreed on a name, whichever schema
+  sqlglot had resolved silently replaced the regex parser's, even when
+  sqlglot had none and the regex parser did. Extraction also now proceeds
+  statement by statement, so one statement sqlglot cannot read no longer
+  suppresses its contribution to every other statement in the same batch.
 - Object extraction's regex fallback path now reports a quoted name
   un-escaped — brackets, double quotes, or backticks removed, and a
   doubled delimiter inside the name (SQL Server `]`, ANSI `"`, MySQL
