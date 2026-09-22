@@ -1,0 +1,9 @@
+{
+  "_comment": "Caps on structural-debt signals under dblift/, consumed by scripts/check_debt_ratchet.py. Counts may stay flat or shrink, never grow. Freed headroom must not be reused: lower the cap in the same pull request that lowers the count.",
+  "_policy": "Initial measurement on develop fdfe3be (2026-09-21); tightened on develop 1f2a12e after unreachable code was removed. Comment-only lines are never counted. function_level_imports: package imports below module level. any_annotations: non-import lines using Any in a type. dynamic_attribute_access: lines calling getattr/hasattr. broad_excepts: 'except Exception' handlers. large_files: modules over 800 lines.",
+  "function_level_imports": 465,
+  "any_annotations": 1367,
+  "dynamic_attribute_access": 1198,
+  "broad_excepts": 492,
+  "large_files": 21
+}
