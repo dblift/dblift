@@ -222,15 +222,21 @@ class TestIsSystemGeneratedSequence:
         assert p.is_system_generated_sequence("MYSCHEMA", "ISEQ$$_12345") is True
         assert p.queries == []
 
-    def test_hibernate_prefix_is_system_generated(self):
+    def test_hibernate_prefix_is_not_system_generated(self):
+        """HIBERNATE_SEQUENCE is an ordinary standalone user sequence — Oracle
+        never auto-drops it the way it auto-drops an identity column's
+        backing sequence, so it must fall through to the catalog check
+        rather than being pattern-matched away (verified live against
+        gvenzl/oracle-free: nothing drops a standalone HIBERNATE_SEQUENCE,
+        and skipping it here left it behind after clean)."""
         p = _Provider()
-        assert p.is_system_generated_sequence("MYSCHEMA", "HIBERNATE_SEQUENCE") is True
-        assert p.queries == []
+        p.query_results["ALL_TAB_IDENTITY_COLS"] = [{"cnt": 0}]
+        assert p.is_system_generated_sequence("MYSCHEMA", "HIBERNATE_SEQUENCE") is False
 
-    def test_jpa_prefix_is_system_generated(self):
+    def test_jpa_prefix_is_not_system_generated(self):
         p = _Provider()
-        assert p.is_system_generated_sequence("MYSCHEMA", "JPA_SEQ") is True
-        assert p.queries == []
+        p.query_results["ALL_TAB_IDENTITY_COLS"] = [{"cnt": 0}]
+        assert p.is_system_generated_sequence("MYSCHEMA", "JPA_FOO_SEQ") is False
 
     def test_user_seq_prefix_not_flagged_as_system(self):
         """SEQ_/SQ_ are the most common *user* sequence naming conventions
@@ -851,9 +857,12 @@ class TestCleanSchema:
         summary = p.clean_schema("MYSCHEMA")
 
         assert any(s.startswith("DROP TABLE") and "T1" in s for s in summary.statements)
+        # warning, not debug: a silent fallback to alphabetical order would
+        # leave a later ORA-14656 with nothing linking it back to this query
+        # having failed.
         assert any(
             "reference-partitioned table relationships" in str(c)
-            for c in p.log.debug.call_args_list
+            for c in p.log.warning.call_args_list
         )
 
 

@@ -24,9 +24,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   child tables before their partitioning parent. `CASCADE CONSTRAINTS` alone
   does not release a reference-partitioning dependency, so a schema with
   such tables could fail to clean.
-- Oracle `clean` no longer attempts to explicitly drop `HIBERNATE_`- or
-  `JPA_`-prefixed sequences, matching how it already skips 12c+
-  identity-column sequences that Oracle removes automatically.
 - `validate` now says it does not parse migration SQL, and its `--help`
   spells out what it checks instead (consistency on disk, plus checksums
   and ordering against applied history once there is any). Previously

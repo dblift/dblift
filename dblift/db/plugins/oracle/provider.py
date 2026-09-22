@@ -257,15 +257,16 @@ class OracleProvider(SqlAlchemyProvider):
         )
         return bool(rows and int(_row_value(rows[0], "cnt", default=0)) > 0)
 
-    # Common Oracle/ORM naming conventions for sequences ``clean`` must not
-    # explicitly DROP: 12c+ identity-column backing sequences are removed
-    # automatically when their owning table is dropped, so an explicit
-    # DROP SEQUENCE after that raises "sequence does not exist"; Hibernate/JPA
-    # follow the same generated-sequence convention. ``SEQ_``/``SQ_`` are
-    # deliberately excluded — those are the most common *user* sequence
-    # naming conventions, and matching them here would silently leave user
+    # 12c+ identity-column backing sequences are dropped automatically when
+    # their owning table is dropped (verified live: DROP TABLE ... PURGE
+    # takes ISEQ$$_NNNNN with it), so an explicit DROP SEQUENCE afterwards
+    # raises ORA-02289. ``HIBERNATE_``/``JPA_``/``SEQ_``/``SQ_`` are
+    # deliberately excluded — those are ordinary user sequence naming
+    # conventions with no auto-drop mechanism of their own (verified live:
+    # a standalone HIBERNATE_SEQUENCE/JPA_FOO_SEQ is never dropped by
+    # anything else), so matching them here would silently leave user
     # sequences behind on every clean.
-    _SYSTEM_SEQUENCE_PREFIXES = ("ISEQ$$_", "HIBERNATE_", "JPA_")
+    _SYSTEM_SEQUENCE_PREFIXES = ("ISEQ$$_",)
 
     def is_system_generated_sequence(self, schema: str, sequence_name: str) -> bool:
         """Return True for Oracle sequences ``clean`` must not explicitly drop."""
@@ -729,7 +730,14 @@ class OracleProvider(SqlAlchemyProvider):
                 [clean_schema],
             )
         except Exception as e:
-            self.log.debug(f"Could not query Oracle reference-partitioned table relationships: {e}")
+            # warning, not debug: a failure here silently falls back to
+            # alphabetical table-drop order, and a genuinely
+            # reference-partitioned schema then fails DROP TABLE with
+            # ORA-14656 — reported in summary.errors with nothing there to
+            # link it back to this query having failed.
+            self.log.warning(
+                f"Could not query Oracle reference-partitioned table relationships: {e}"
+            )
             ref_partition_rows = []
         # Reference-partitioned child tables must be dropped before their
         # partitioning parent — CASCADE CONSTRAINTS handles ordinary FK
