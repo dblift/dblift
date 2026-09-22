@@ -592,37 +592,18 @@ class PostgreSqlSchemaOperations(BaseSchemaOperations):
             return "Unknown PostgreSQL Version"
 
     def set_current_schema(self, connection: Any, schema: str) -> None:
-        """Set the current schema for the session.
+        """Not implemented: PostgreSQL's schema handling lives on the provider.
 
-        Args:
-            connection: Active database connection (provided by Provider)
-            schema: Schema name to set as current
+        ``PostgreSqlProvider.set_current_schema`` sets the session's
+        ``search_path`` directly (with its own ``_schema_applied_for``-based
+        skip cache) and does not delegate to this object. Raising here
+        (instead of a silent no-op) makes it obvious if something is ever
+        wired to call this method.
         """
-        self.log.debug(f"Setting current schema to: {schema}")
-
-        try:
-            # SET search_path MUST be executed via createStatement().execute(),
-            # not via a prepared update statement.  The PostgreSQL driver
-            # driver uses server-side prepared-statement caching for
-            # prepareStatement calls; SET commands sent through that path are
-            # parsed but may not propagate the session change reliably.
-            # createStatement uses the simple-query protocol (same as psql),
-            # which guarantees the session-level SET takes effect immediately —
-            # analogous to Oracle's ALTER SESSION SET CURRENT_SCHEMA.
-            quoted_schema = self.query_executor.get_quoted_schema_name(schema)
-            set_schema_sql = f"SET search_path TO {quoted_schema}, public"
-            stmt = connection.createStatement()
-            try:
-                stmt.execute(set_schema_sql)
-            finally:
-                stmt.close()
-
-            self.log.debug(f"Successfully set current schema to: {schema}")
-
-        except Exception as e:
-            error_msg = f"Error setting current schema to {schema}: {str(e)}"
-            self.log.error(error_msg)
-            raise
+        raise NotImplementedError(
+            "PostgreSqlSchemaOperations.set_current_schema is not used; "
+            "PostgreSqlProvider.set_current_schema is the real implementation"
+        )
 
     def get_columns_query(self, schema: str, table: str) -> Tuple[str, List[Any]]:
         """Get a PostgreSQL-specific query to retrieve column information from a table.

@@ -20,6 +20,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Oracle `clean` (and its `--dry-run` preview) now drops reference-partitioned
+  child tables before their partitioning parent. `CASCADE CONSTRAINTS` alone
+  does not release a reference-partitioning dependency, so a schema with
+  such tables could fail to clean.
 - `validate` now says it does not parse migration SQL, and its `--help`
   spells out what it checks instead (consistency on disk, plus checksums
   and ordering against applied history once there is any). Previously
