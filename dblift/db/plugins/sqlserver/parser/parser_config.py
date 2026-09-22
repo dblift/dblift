@@ -8,6 +8,10 @@ import re
 from typing import Dict, List, Pattern, Set
 
 from dblift.core.sql_parser.dialects.base_config import DialectConfig
+from dblift.core.sql_parser.dialects.identifier_tokens import (
+    BRACKET_IDENTIFIER,
+    DOUBLE_QUOTED_IDENTIFIER,
+)
 
 
 class SqlServerConfig(DialectConfig):
@@ -316,7 +320,7 @@ class SqlServerConfig(DialectConfig):
         # part of the identifier rather than stopping there.
         # The unquoted alternative stops at whitespace/punctuation so it
         # cannot run past the identifier into the rest of the statement.
-        id_token = r'(?:\[(?:[^\]]|\]\])+\]|"(?:[^"]|"")+"|[^\s.,;()\[\]"]+)'
+        id_token = rf'(?:{BRACKET_IDENTIFIER}|{DOUBLE_QUOTED_IDENTIFIER}|[^\s.,;()\[\]"]+)'
         captured_id = f"({id_token})"
         # A reference has one to three dot-separated parts:
         # database.schema.name. The three-part alternative is tried first

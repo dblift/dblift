@@ -31,6 +31,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Object extraction's regex fallback path now reports a quoted name
+  un-escaped — brackets, double quotes, or backticks removed, and a
+  doubled delimiter inside the name (SQL Server `]`, ANSI `"`, MySQL
+  `` ` ``) collapsed back to one — instead of leaving the quoting in
+  place. Previously a bracket-quoted `CREATE INDEX` reaching this path
+  (used when the primary parser cannot read the statement) kept its
+  brackets in the reported name, so the generated `DROP INDEX` quoted it
+  a second time (`[[idx]]]`) and would not run; the same doubled-delimiter
+  reading #375 added for SQL Server object extraction was also missing
+  here, so a name like `[real]]one]` was truncated to `real` instead of
+  read as `real]one`.
 - Oracle `clean` (and its `--dry-run` preview) now drops reference-partitioned
   child tables before their partitioning parent. `CASCADE CONSTRAINTS` alone
   does not release a reference-partitioning dependency, so a schema with

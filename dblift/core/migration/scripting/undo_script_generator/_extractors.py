@@ -19,28 +19,19 @@ from dblift.core.migration.scripting.undo_script_generator._helpers import (
 from dblift.core.migration.sql.sql_analyzer import _IDENTIFIER, _QUALIFIED_NAME
 from dblift.core.sql_model.dialect import quote_identifier
 from dblift.core.sql_model.index import Index
+from dblift.core.sql_parser.dialects.identifier_tokens import (
+    strip_identifier_quotes as _strip_identifier_quotes,
+)
 from dblift.db.provider_registry import ProviderRegistry
 
 # Reused rather than redefined: _IDENTIFIER/_QUALIFIED_NAME are the same
 # bracket/double-quote/backtick/bare token the rest of the undo generator's
 # regex-fallback analysis (sql_analyzer.py) already uses to recognize an
-# object reference of one or more dot-separated parts. A second, independent
+# object reference of one or more dot-separated parts, and
+# _strip_identifier_quotes is the matching unescaper both share
+# (dblift.core.sql_parser.dialects.identifier_tokens). A second, independent
 # copy of this is how an identifier-parsing fix lands in one and not the
 # other.
-
-
-def _strip_identifier_quotes(token: str) -> str:
-    """Remove one layer of bracket/quote delimiters matched by ``_IDENTIFIER``.
-
-    The three delimiter styles here (``[]``, ``""``, `` `` ``) are
-    ``_IDENTIFIER``'s own alternatives, hardcoded rather than derived from
-    it: a quoting style added there would need a matching branch added here.
-    """
-    if len(token) >= 2 and token[0] == "[" and token[-1] == "]":
-        return token[1:-1]
-    if len(token) >= 2 and token[0] == token[-1] and token[0] in ('"', "`"):
-        return token[1:-1]
-    return token
 
 
 class _UndoExtractorsMixin:
@@ -489,15 +480,15 @@ class _UndoExtractorsMixin:
 
         # T-SQL/ANSI escape a delimiter inside a quoted identifier by
         # doubling it (``[foo]]bar]`` is the single identifier ``foo]bar``;
-        # ``"foo""bar"`` is ``foo"bar``). _QUALIFIED_NAME doesn't understand
-        # that doubling, so it stops at the first occurrence and matches
-        # only ``[foo]``/``"foo"``, leaving the rest of the real identifier
-        # sitting right after the match. That leftover character is exactly
-        # the same delimiter the match just closed with, which is not
-        # otherwise a valid way for a CREATE INDEX statement to continue
-        # (real SQL follows the ON target with whitespace or ``(``) -- so
-        # seeing it here means the captured name is probably truncated:
-        # refuse rather than trust a table name that might be wrong.
+        # ``"foo""bar"`` is ``foo"bar``). _IDENTIFIER/_QUALIFIED_NAME now read
+        # a doubled pair as part of the token (#375/#380), so this no longer
+        # truncates on that case. The check below stays as a general safety
+        # net: if the character right after a match is still the same
+        # delimiter the match just closed with -- not otherwise a valid way
+        # for a CREATE INDEX statement to continue (real SQL follows the ON
+        # target with whitespace or ``(``) -- something about the identifier
+        # wasn't understood, so the captured name is refused rather than
+        # trusted.
         # Same three delimiter styles as _IDENTIFIER and _strip_identifier_quotes.
         _CLOSING = {"[": "]", '"': '"', "`": "`"}
 

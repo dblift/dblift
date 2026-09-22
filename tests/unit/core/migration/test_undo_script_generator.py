@@ -181,11 +181,13 @@ class TestUndoStatementEmitterGenerateDrop(unittest.TestCase):
         )
         self.assertEqual(sql, "DROP INDEX IF EXISTS [idx_u] ON [sales].[orders];")
 
-    def test_sqlserver_doubled_closing_bracket_refuses_rather_than_truncate(self):
-        # SHOULD-FIX: [dbo].[foo]]bar] is the single identifier foo]bar,
-        # escaped by doubling the closing bracket. The extractor doesn't
-        # understand that doubling and would otherwise silently match only
-        # [foo] -- a confidently wrong table is worse than refusing.
+    def test_sqlserver_doubled_closing_bracket_is_resolved_not_refused(self):
+        # #380: [dbo].[foo]]bar] is the single identifier foo]bar, escaped
+        # by doubling the closing bracket. _IDENTIFIER/_QUALIFIED_NAME
+        # (sql_analyzer.py, shared with parser_config.py's id_token since
+        # #375) now read the doubled pair as part of the token instead of
+        # stopping at the first occurrence, so the table resolves correctly
+        # instead of the extractor refusing to guess.
         emitter = self._make_emitter("sqlserver")
         sql = emitter._generate_drop_statement(
             "INDEX",
@@ -193,7 +195,7 @@ class TestUndoStatementEmitterGenerateDrop(unittest.TestCase):
             None,
             "CREATE INDEX idx_x ON [dbo].[foo]]bar]([email]);",
         )
-        self.assertIsNone(sql)
+        self.assertEqual(sql, "DROP INDEX IF EXISTS [idx_x] ON [dbo].[foo]]bar];")
 
     def test_sqlserver_unresolvable_table_refuses_rather_than_guess(self):
         # SQL Server's DROP INDEX requires the table. When the original
