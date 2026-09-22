@@ -137,6 +137,33 @@ class TestUndoScriptEndToEnd(unittest.TestCase):
         self.assertEqual(undo_sql, "DROP INDEX IF EXISTS [idx_x] ON [dbo].[foo]]bar];")
 
 
+class TestLongIdentifierIsNotSilentlyTruncated(unittest.TestCase):
+    """A length cap on the repeated group was tried (and reverted) as a
+    mitigation for the O(n^2) cost of an unterminated delimiter. It failed
+    exactly the way an atomic/possessive quantifier does: past the cap, the
+    second identifier of a two-part ON-target stopped matching at all rather
+    than matching short, so the trailing ``(?:\\.\\s*_IDENTIFIER)*`` never
+    extended, the schema was silently reported as the table, and the real
+    (long) table name vanished -- with no leftover delimiter character for
+    the truncation guard to catch, since the unconsumed character was ``.``,
+    not a closing bracket/quote. This pins the correct behaviour: a bracketed
+    identifier far longer than any bounding quantifier tried (SQLite and
+    DuckDB accept and round-trip identifiers at least this long) must still
+    resolve to the real table, not silently collapse to its schema."""
+
+    def test_two_hundred_char_identifier_resolves_correctly(self):
+        long_table = "x" * 300
+        sql = f"CREATE INDEX [idx_test] ON [dbo].[{long_table}](col);"
+        gen = UndoScriptGenerator(dialect="sqlserver")
+        self.assertEqual(gen._extract_table_ref_from_create_index(sql), ("dbo", long_table))
+
+    def test_thousand_char_identifier_still_resolves_correctly(self):
+        long_table = "y" * 1000
+        sql = f"CREATE INDEX [idx_test] ON [dbo].[{long_table}](col);"
+        gen = UndoScriptGenerator(dialect="sqlserver")
+        self.assertEqual(gen._extract_table_ref_from_create_index(sql), ("dbo", long_table))
+
+
 class TestSharedDelimitersDoNotDrift(unittest.TestCase):
     """The test #380 exists to get: sql_analyzer.py and parser_config.py
     must use the exact same escape-aware bracket/double-quote delimiter
