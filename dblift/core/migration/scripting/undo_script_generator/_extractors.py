@@ -16,21 +16,22 @@ from sqlglot import exp, parse_one
 from dblift.core.migration.scripting.undo_script_generator._helpers import (
     resolve_sqlglot_read_dialect,
 )
-from dblift.core.migration.sql.sql_analyzer import (
-    _IDENTIFIER,
-    _QUALIFIED_NAME,
-    _strip_identifier_quotes,
-)
+from dblift.core.migration.sql.sql_analyzer import _IDENTIFIER, _QUALIFIED_NAME
 from dblift.core.sql_model.dialect import quote_identifier
 from dblift.core.sql_model.index import Index
+from dblift.core.sql_parser.dialects.identifier_tokens import (
+    strip_identifier_quotes as _strip_identifier_quotes,
+)
 from dblift.db.provider_registry import ProviderRegistry
 
-# Reused rather than redefined: _IDENTIFIER/_QUALIFIED_NAME/_strip_identifier_quotes
-# are the same bracket/double-quote/backtick/bare token (and its matching
-# unescaper) the rest of the undo generator's regex-fallback analysis
-# (sql_analyzer.py) already uses to recognize an object reference of one or
-# more dot-separated parts. A second, independent copy of this is how an
-# identifier-parsing fix lands in one and not the other.
+# Reused rather than redefined: _IDENTIFIER/_QUALIFIED_NAME are the same
+# bracket/double-quote/backtick/bare token the rest of the undo generator's
+# regex-fallback analysis (sql_analyzer.py) already uses to recognize an
+# object reference of one or more dot-separated parts, and
+# _strip_identifier_quotes is the matching unescaper both share
+# (dblift.core.sql_parser.dialects.identifier_tokens). A second, independent
+# copy of this is how an identifier-parsing fix lands in one and not the
+# other.
 
 
 class _UndoExtractorsMixin:

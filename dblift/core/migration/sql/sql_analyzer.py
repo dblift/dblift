@@ -10,6 +10,14 @@ from dblift.core.sql_model._base_sql_object import SqlObjectType
 from dblift.core.sql_model.dialect import get_sqlglot_dialect
 
 # Import parser system components
+from dblift.core.sql_parser.dialects.identifier_tokens import (
+    BACKTICK_IDENTIFIER,
+    BRACKET_IDENTIFIER,
+    DOUBLE_QUOTED_IDENTIFIER,
+)
+from dblift.core.sql_parser.dialects.identifier_tokens import (
+    strip_identifier_quotes as _strip_identifier_quotes,
+)
 from dblift.core.sql_parser.parser_factory import SqlParserFactory
 from dblift.db.dml_analysis import cte_outer_statement_type
 
@@ -59,36 +67,15 @@ _OBJECT_KEYWORDS = "|".join(t.name.replace("_", r"\s+") for t in _RECOGNISED_OBJ
 DEFAULT_SCHEMA_PLACEHOLDER = "default_schema"
 
 # A SQL identifier: quoted ("x", [x], `x`) or bare, optionally schema-qualified.
-# A closing delimiter inside a quoted identifier is escaped by doubling it
-# (``[real]]one]`` is ``real]one``; ``"real""one"`` is ``real"one``), so each
-# quoted alternative below reads a doubled pair as part of the identifier
-# rather than stopping there. These three fragments are shared with
+# The three quoted alternatives come from dblift.core.sql_parser.dialects.
+# identifier_tokens -- the shared definition of "what a quoted SQL identifier
+# looks like" (escape-aware: a closing delimiter inside one is escaped by
+# doubling it, e.g. ``[real]]one]`` is ``real]one``) also used by
 # ``SqlServerConfig.object_patterns``'s ``id_token``
-# (dblift/db/plugins/sqlserver/parser/parser_config.py) -- one definition of
-# "what a quoted SQL identifier looks like", not two that can drift apart
-# (#375, #380).
-_DOUBLE_QUOTED_IDENTIFIER = r'"(?:[^"]|"")+"'
-_BRACKET_IDENTIFIER = r"\[(?:[^\]]|\]\])+\]"
-_BACKTICK_IDENTIFIER = r"`(?:[^`]|``)+`"
-_IDENTIFIER = (
-    rf"(?:{_DOUBLE_QUOTED_IDENTIFIER}|{_BRACKET_IDENTIFIER}|{_BACKTICK_IDENTIFIER}|[\w$#]+)"
-)
+# (dblift/db/plugins/sqlserver/parser/parser_config.py), so this is one
+# definition, not two that can drift apart (#375, #380).
+_IDENTIFIER = rf"(?:{DOUBLE_QUOTED_IDENTIFIER}|{BRACKET_IDENTIFIER}|{BACKTICK_IDENTIFIER}|[\w$#]+)"
 _QUALIFIED_NAME = rf"{_IDENTIFIER}(?:\s*\.\s*{_IDENTIFIER})*"
-
-# The closing delimiter for each quoting style _IDENTIFIER recognises.
-_CLOSING_DELIMITER = {"[": "]", '"': '"', "`": "`"}
-
-
-def _strip_identifier_quotes(token: str) -> str:
-    """Undo one layer of quoting from an ``_IDENTIFIER`` match, collapsing
-    a doubled closing delimiter back to one. A bare (unquoted) token is
-    returned unchanged."""
-    if len(token) < 2:
-        return token
-    closing = _CLOSING_DELIMITER.get(token[0])
-    if closing is None or token[-1] != closing:
-        return token
-    return token[1:-1].replace(closing * 2, closing)
 
 
 # Words that stand between the object type and its name and must never be

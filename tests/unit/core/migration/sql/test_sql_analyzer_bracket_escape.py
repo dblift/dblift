@@ -144,27 +144,36 @@ class TestSharedDelimitersDoNotDrift(unittest.TestCase):
     touches one and not the other, this fails -- it is the cross-check, not
     a same-file duplicate of either module's own tests."""
 
-    def test_parser_config_id_token_is_built_from_the_shared_delimiters(self):
+    def test_sql_analyzer_and_parser_config_share_the_same_delimiter_source(self):
+        # The strongest form of the guard: both sql_analyzer.py and
+        # parser_config.py must build their patterns from the exact same
+        # constants in dblift.core.sql_parser.dialects.identifier_tokens --
+        # not two textually-identical copies that happen to agree today.
         from dblift.core.migration.sql import sql_analyzer
+        from dblift.core.sql_parser.dialects import identifier_tokens
         from dblift.db.plugins.sqlserver.parser import parser_config
+
+        self.assertIn(identifier_tokens.BRACKET_IDENTIFIER, sql_analyzer._IDENTIFIER)
+        self.assertIn(identifier_tokens.DOUBLE_QUOTED_IDENTIFIER, sql_analyzer._IDENTIFIER)
 
         config = parser_config.SqlServerConfig()
         # object_patterns() is a fresh computation each call (it's a
         # @property), so both fragments below are read from the same call
         # that actually builds the live patterns, not a stale copy.
-        patterns = config.object_patterns
-        drop_table_pattern = patterns["table_drop"].pattern
+        drop_table_pattern = config.object_patterns["table_drop"].pattern
 
-        self.assertIn(sql_analyzer._BRACKET_IDENTIFIER, drop_table_pattern)
-        self.assertIn(sql_analyzer._DOUBLE_QUOTED_IDENTIFIER, drop_table_pattern)
+        self.assertIn(identifier_tokens.BRACKET_IDENTIFIER, drop_table_pattern)
+        self.assertIn(identifier_tokens.DOUBLE_QUOTED_IDENTIFIER, drop_table_pattern)
 
     def test_both_modules_unescape_a_doubled_bracket_identically(self):
-        from dblift.core.migration.sql.sql_analyzer import _strip_identifier_quotes
+        from dblift.core.sql_parser.dialects.identifier_tokens import (
+            strip_identifier_quotes,
+        )
         from dblift.db.plugins.sqlserver.parser.parser_config import SqlServerConfig
 
         config = SqlServerConfig()
         token = "[real]]one]"
         self.assertEqual(
-            _strip_identifier_quotes(token),
+            strip_identifier_quotes(token),
             config.normalize_identifier(token),
         )
