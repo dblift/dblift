@@ -122,12 +122,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   is meant to catch. Verified against a live SQL Server instance.
 - Auto-generated undo scripts now drop an index the way each engine expects.
   SQL Server and MySQL name the table (`DROP INDEX name ON table`); the
-  drop is built from the table in the original `CREATE INDEX` statement, so
-  a migration that adds an index now produces an undo script SQL Server and
-  MySQL will actually run, instead of a schema-qualified `DROP INDEX
-  schema.name` SQL Server rejects. PostgreSQL, SQLite, Oracle and Db2 are
-  unaffected — verified against a live PostgreSQL instance; the others by
-  their documented syntax.
+  drop is built from the table in the original `CREATE INDEX` statement,
+  including SQL Server's own bracket-quoted and `CLUSTERED`/`NONCLUSTERED`/
+  `FULLTEXT`/`PRIMARY XML INDEX` forms, so a migration that adds an index
+  now produces an undo script SQL Server and MySQL will actually run,
+  instead of a schema-qualified `DROP INDEX schema.name` SQL Server rejects.
+  When the table can't be determined at all, the undo script now says so and
+  asks for manual review instead of guessing. PostgreSQL, SQLite, Oracle and
+  Db2 are unaffected — verified against a live PostgreSQL instance; the
+  others by their documented syntax (SQL Server's own statement was not
+  verified against a live instance — none was reachable).
 
 ### Removed
 

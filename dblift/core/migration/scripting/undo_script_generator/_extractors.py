@@ -20,6 +20,20 @@ from dblift.core.sql_model.dialect import quote_identifier
 from dblift.core.sql_model.index import Index
 from dblift.db.provider_registry import ProviderRegistry
 
+# A single SQL identifier in any of the quoting styles the supported dialects
+# use: bracket (SQL Server), double-quote (PostgreSQL/Oracle/SQLite/Db2),
+# backtick (MySQL/MariaDB), or bare.
+_IDENTIFIER = r'(?:\[[^\]]+\]|"[^"]+"|`[^`]+`|\w+)'
+
+
+def _strip_identifier_quotes(token: str) -> str:
+    """Remove one layer of bracket/quote delimiters matched by ``_IDENTIFIER``."""
+    if len(token) >= 2 and token[0] == "[" and token[-1] == "]":
+        return token[1:-1]
+    if len(token) >= 2 and token[0] == token[-1] and token[0] in ('"', "`"):
+        return token[1:-1]
+    return token
+
 
 class _UndoExtractorsMixin:
     """Mixin providing all extraction, utility, and helper methods for undo generation."""
@@ -241,7 +255,7 @@ class _UndoExtractorsMixin:
         obj_name: str,
         schema: Optional[str],
         create_sql: Optional[str] = None,
-    ) -> str:
+    ) -> Optional[str]:
         """Generate DROP statement for an object.
 
         Args:
@@ -254,19 +268,24 @@ class _UndoExtractorsMixin:
                 instead: e.g. SQL Server's ``DROP INDEX name ON table``)
 
         Returns:
-            DROP statement SQL
+            DROP statement SQL, or ``None`` when an INDEX drop needs the
+            table (SQL Server, MySQL) and it could not be found in
+            *create_sql* — emitting a schema-qualified guess would be
+            invalid there, so the caller must ask for manual review instead.
         """
-        if obj_type == "INDEX" and create_sql:
-            table_name = self._extract_table_name_from_create_index(create_sql)
-            if table_name:
+        if obj_type == "INDEX":
+            quirks = ProviderRegistry.get_quirks(self.dialect)
+            table_name = self._extract_table_name_from_create_index(create_sql or "")
+            if table_name or not quirks.index_drop_includes_table:
                 index = Index(
                     name=obj_name,
-                    table_name=table_name,
+                    table_name=table_name or "",
                     columns=[],
                     schema=schema,
                     dialect=self.dialect,
                 )
                 return f"{index.drop_statement};"
+            return None
 
         # Format object name
         if schema:
@@ -420,24 +439,40 @@ class _UndoExtractorsMixin:
     def _extract_table_name_from_create_index(self, sql: str) -> Optional[str]:
         """Extract table name from CREATE INDEX statement.
 
+        Covers the plain form (``CREATE INDEX idx ON table(col)``, any
+        dialect's quoting), PostgreSQL/SQLite's ``IF NOT EXISTS``, and SQL
+        Server's ``UNIQUE``/``CLUSTERED``/``NONCLUSTERED``/``PRIMARY XML``
+        modifiers plus its own bracket-quoted, schema-qualified ``ON``
+        target. ``ON`` may be on its own line — ``\\s+`` already spans
+        newlines. ``CREATE FULLTEXT INDEX`` has no index name of its own,
+        so ``ON`` follows ``INDEX`` directly; matched separately.
+
         Args:
-            sql: CREATE INDEX statement (e.g., CREATE INDEX idx_name ON table_name(column))
+            sql: CREATE INDEX statement
 
         Returns:
             Table name or None
         """
-        # Pattern: CREATE [UNIQUE] INDEX [IF NOT EXISTS] "index_name" ON ["schema"]."table_name"(...)
-        # Handle quoted and unquoted identifiers
         patterns = [
-            r'CREATE\s+(?:UNIQUE\s+)?INDEX\s+(?:IF\s+NOT\s+EXISTS\s+)?(?:[^"\s]+|"[^"]+")\s+ON\s+(?:"([^"]+)"\.)?"([^"]+)"',  # Quoted with ON
-            r"CREATE\s+(?:UNIQUE\s+)?INDEX\s+(?:IF\s+NOT\s+EXISTS\s+)?(?:\w+\.)?(\w+)\s+ON\s+(?:(\w+)\.)?(\w+)",  # Unquoted with ON
+            # CREATE FULLTEXT INDEX ON table(...) -- no user-supplied index name.
+            r"CREATE\s+FULLTEXT\s+INDEX\s+ON\s+(?:" + _IDENTIFIER + r"\.)?(" + _IDENTIFIER + r")",
+            # CREATE [UNIQUE] [CLUSTERED|NONCLUSTERED] [PRIMARY] [XML|BITMAP|SPATIAL|COLUMNSTORE]
+            # INDEX [IF NOT EXISTS] index_name ON [schema.]table_name
+            r"CREATE\s+(?:UNIQUE\s+)?(?:CLUSTERED\s+|NONCLUSTERED\s+)?"
+            r"(?:PRIMARY\s+)?(?:XML\s+|BITMAP\s+|SPATIAL\s+|COLUMNSTORE\s+)?"
+            r"INDEX\s+(?:IF\s+NOT\s+EXISTS\s+)?"
+            + _IDENTIFIER
+            + r"\s+ON\s+(?:"
+            + _IDENTIFIER
+            + r"\.)?("
+            + _IDENTIFIER
+            + r")",
         ]
 
         for pattern in patterns:
             match = re.search(pattern, sql, re.IGNORECASE)
             if match:
-                # Return table name (last group)
-                return match.group(match.lastindex) if match.lastindex else None
+                return _strip_identifier_quotes(match.group(1))
 
         return None
 
