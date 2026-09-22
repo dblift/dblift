@@ -538,8 +538,13 @@ class SqlServerConfig(DialectConfig):
             identifier = identifier[1:-1].replace("]]", "]")
             is_quoted = True
 
-        # Remove double quotes if present, then undo the "" -> " escape
-        if identifier.startswith('"') and identifier.endswith('"'):
+        # Remove double quotes if present, then undo the "" -> " escape.
+        # elif, not if: once the bracket branch above has fired, this
+        # identifier was bracket-quoted, not double-quoted — content that
+        # happens to start and end with '"' after the brackets are
+        # stripped (e.g. ["a""b"]) must not also go through this branch,
+        # since a quote has no escaping meaning inside brackets.
+        elif identifier.startswith('"') and identifier.endswith('"'):
             identifier = identifier[1:-1].replace('""', '"')
             is_quoted = True
 

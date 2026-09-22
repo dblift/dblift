@@ -462,6 +462,18 @@ class TestBracketDoublingRegexParser:
         assert objects[0].schema == "dbo"
         assert objects[0].name == "mytable"
 
+    def test_bracket_content_with_quotes_is_not_unescaped(self):
+        # A double quote is not special inside brackets — only a doubled
+        # ``]`` is an escape there — so ``["a""b"]``'s name is the literal
+        # bracket content ``"a""b"``, unchanged. normalize_identifier must
+        # not also apply the double-quote branch to content that merely
+        # happens to start and end with ``"`` after the brackets are
+        # stripped.
+        objects = self.parser.extract_objects('CREATE TABLE ["a""b"] (id int);')
+
+        assert len(objects) == 1
+        assert objects[0].name == '"a""b"'
+
 
 @pytest.mark.unit
 class TestDoubleQuoteDoublingRegexParser:
