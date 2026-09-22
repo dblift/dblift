@@ -984,6 +984,30 @@ class TestUndoReversersMixin(unittest.TestCase):
         self.assertIn("idx_mystery", result.sql)
         self.assertTrue(result.requires_manual_review)
 
+    def test_routing_create_fulltext_index_has_no_name_of_its_own_sqlserver(self):
+        # CREATE FULLTEXT INDEX ON table(...) has no index-name slot -- SQL
+        # Server allows only one fulltext index per table. The parser
+        # reports the table's own name as the index name (there is nothing
+        # else to report), which used to produce
+        # "DROP INDEX IF EXISTS [ft_test] ON [rel470_ss].[ft_test];" -- a
+        # statement that matches nothing and silently does nothing. This
+        # must refuse and ask for manual review instead of guessing.
+        from dblift.core.sql_model.base import SqlObjectType
+
+        gen = self._make_generator("sqlserver")
+        stmt = self._make_stmt(
+            "CREATE FULLTEXT INDEX ON [rel470_ss].[ft_test] ([body]) KEY INDEX [ui];"
+        )
+        sql_obj = MagicMock()
+        sql_obj.name = "ft_test"  # wrongly equals the table -- no name of its own
+        sql_obj.schema = "rel470_ss"
+        sql_obj.object_type = SqlObjectType.INDEX
+        stmt.affected_objects = [sql_obj]
+        result = gen._reverse_statement_from_parsed(stmt)
+        self.assertTrue(result.sql.startswith("-- WARNING"))
+        self.assertFalse(result.sql.startswith("DROP INDEX"))
+        self.assertTrue(result.requires_manual_review)
+
     def test_routing_dml_generic_type_create_fallback(self):
         from dblift.core.sql_model.base import SqlStatementType
 
@@ -1107,6 +1131,22 @@ class TestUndoScriptGeneratorIntegration(unittest.TestCase):
             self.assertTrue(undo_path.name.startswith("U1__"))
             content = undo_path.read_text()
             self.assertIn("DROP TABLE", content)
+
+    # generate_undo_script — CREATE FULLTEXT INDEX, end to end through the
+    # real (non-mocked) hybrid parser this generator actually uses.
+    def test_generate_undo_script_fulltext_index_refuses_not_noop_drop(self):
+        gen = self._make_generator("sqlserver")
+        with TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "V1__create_fulltext_index.sql"
+            path.write_text(
+                "CREATE TABLE [rel470_ss].[ft_test] "
+                "([id] INT PRIMARY KEY, [body] NVARCHAR(MAX));\n"
+                "CREATE FULLTEXT INDEX ON [rel470_ss].[ft_test] ([body]) KEY INDEX [ui];"
+            )
+            undo_path = gen.generate_undo_script(path, overwrite=True)
+            content = undo_path.read_text()
+            self.assertNotIn("DROP INDEX IF EXISTS", content)
+            self.assertIn("-- WARNING", content)
 
     # generate_undo_script — file already exists, overwrite=False
     def test_generate_undo_script_exists_no_overwrite_raises(self):

@@ -80,8 +80,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the table cannot be determined, the script says so and asks for manual
   review instead of naming the wrong one. PostgreSQL, SQLite, Oracle and Db2
   are unaffected. A `CREATE FULLTEXT INDEX`, which names no index of its own,
-  is still not reversed correctly: the generated `DROP INDEX` matches nothing
-  and silently does nothing, so undo a fulltext index by hand.
+  is not reversed: the undo script now refuses it and asks for manual review,
+  instead of emitting a `DROP INDEX` that matched nothing and silently did
+  nothing.
 
 - **Oracle `clean` drops reference-partitioned children before their parent.**
   `CASCADE CONSTRAINTS` does not release a reference-partitioning dependency,
