@@ -297,9 +297,9 @@ class TestIndexObjectSchemaDefaultParser:
     for every caller that uses the default — as the dotted "table.name"
     ``DROP INDEX`` syntax was: sqlglot's own handling of it reports the
     table as the schema, and the merge kept that over the regex result.
-    That syntax is intentionally not covered here or supported by
-    "index_drop" — fixing sqlglot's generic (non-SQL-Server-specific) parsing
-    is a separate change."""
+    The dotted "table.name" ``DROP INDEX`` syntax itself is covered
+    separately, against both parser types, by
+    ``TestDropIndexLegacyTableDotName`` below — see #367."""
 
     def setup_method(self):
         self.parser = SqlParserFactory("sqlserver").get_parser()
@@ -367,6 +367,84 @@ class TestIndexObjectSchemaDefaultParser:
         assert len(objects) == 1
         assert objects[0].name == "idx1"
         assert objects[0].schema == "dbo"
+
+
+@pytest.mark.unit
+class TestDropIndexLegacyTableDotName:
+    """The deprecated but still-valid T-SQL
+    ``DROP INDEX [owner.]table.index_name`` spelling. sqlglot has no
+    SQL-Server-specific handling for ``DROP INDEX`` and parses the dotted
+    qualifier the same generic way it would parse ``[catalog.]schema.table``
+    for ``DROP TABLE`` — as the object's schema (and catalog, for the
+    three-part form). An index is never itself schema-qualified in T-SQL
+    (see ``TestIndexObjectSchema`` above); the qualifier immediately before
+    the index name is the table it belongs to, not its schema. But an
+    owner prefix ahead of the table — the three-part
+    ``owner.table.index_name`` form — *is* real schema data: sqlglot parses
+    it into ``Table.catalog``, and that must survive, not fall back to the
+    default schema.
+
+    ``index_drop`` (``parser_config.py``) does not match either spelling at
+    all — support for the two-part form was added and then deliberately
+    withdrawn (see that file's history) because it only worked through the
+    regex-only parser while the default (hybrid) parser stayed wrong, which
+    is the same trap #367 is about. So the regex-only parser correctly
+    extracts nothing here, and the fix instead corrects the sqlglot-derived
+    answer that the default parser actually uses.
+
+    Every case below uses a ``default_schema`` that differs from any schema
+    embedded in the SQL. A test whose ``default_schema`` equals the
+    expected answer cannot tell a correct read of an explicit qualifier
+    apart from a fallback silently discarding it — the three-part case here
+    exists because that gap let exactly that regression through in review.
+
+    Parametrize over both parser types for any test like this one — with
+    the expected result for *each* spelled out, not assumed identical — so
+    a fix verified only on ``parser_type="regex"`` can't mask a still-wrong
+    default parser again.
+    """
+
+    @pytest.mark.parametrize(
+        "parser_type, expected",
+        [
+            pytest.param(
+                "hybrid", [("idx1", "unrelated_default", SqlObjectType.INDEX)], id="hybrid"
+            ),
+            pytest.param("regex", [], id="regex-does-not-match-this-spelling"),
+        ],
+    )
+    def test_drop_index_table_dot_name(self, parser_type, expected):
+        # Two-part form: "real_one" is the table, not a schema — there is no
+        # embedded schema to read, so the correct answer is always whatever
+        # default_schema was passed in.
+        parser = SqlParserFactory("sqlserver", parser_type=parser_type).get_parser()
+
+        objects = parser.extract_objects(
+            "DROP INDEX real_one.idx1;", default_schema="unrelated_default"
+        )
+
+        actual = [(obj.name, obj.schema, obj.object_type) for obj in objects]
+        assert actual == expected
+
+    @pytest.mark.parametrize(
+        "parser_type, expected",
+        [
+            pytest.param("hybrid", [("idx1", "dbo", SqlObjectType.INDEX)], id="hybrid"),
+            pytest.param("regex", [], id="regex-does-not-match-this-spelling"),
+        ],
+    )
+    def test_drop_index_owner_table_dot_name(self, parser_type, expected):
+        # "dbo" here is the table's *owner* (an explicit schema), not the
+        # table's name — the default_schema below is deliberately a
+        # different value so a fallback can't masquerade as a correct read.
+        parser = SqlParserFactory("sqlserver", parser_type=parser_type).get_parser()
+
+        objects = parser.extract_objects(
+            "DROP INDEX dbo.real_one.idx1;", default_schema="unrelated_default"
+        )
+
+        actual = [(obj.name, obj.schema, obj.object_type) for obj in objects]
+        assert actual == expected
 
 
 @pytest.mark.unit

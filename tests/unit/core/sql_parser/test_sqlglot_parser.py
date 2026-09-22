@@ -431,6 +431,41 @@ class TestSqlGlotParser:
         # INSERT should affect the target table
         assert len(result.statements[0].affected_objects) >= 1
 
+    def test_affected_objects_drop_index_legacy_table_dot_name(self):
+        """SQL Server's deprecated ``DROP INDEX table.index_name`` spelling
+        must not leak into affected_objects either: ``_extract_affected_objects``
+        has its own call into ``_correct_sqlserver_drop_index_schema`` (#367),
+        separate from the one ``extract_objects`` uses, and covering one does
+        not exercise the other — this is that path's own default_schema,
+        distinct from any schema embedded in the SQL."""
+        parser = SqlGlotParser(dialect="sqlserver")
+        sql = "DROP INDEX real_one.idx1;"
+
+        result = parser.parse_sql(sql, default_schema="unrelated_default")
+
+        assert result.success
+        affected = result.statements[0].affected_objects
+        assert len(affected) == 1
+        assert affected[0].name == "idx1"
+        assert affected[0].schema == "unrelated_default"
+        assert affected[0].object_type == SqlObjectType.INDEX
+
+    def test_affected_objects_drop_index_legacy_owner_table_dot_name(self):
+        """Same path, three-part ``owner.table.index_name`` form: the owner
+        sqlglot parses into ``Table.catalog`` must survive here too, not
+        just through ``extract_objects``."""
+        parser = SqlGlotParser(dialect="sqlserver")
+        sql = "DROP INDEX dbo.real_one.idx1;"
+
+        result = parser.parse_sql(sql, default_schema="unrelated_default")
+
+        assert result.success
+        affected = result.statements[0].affected_objects
+        assert len(affected) == 1
+        assert affected[0].name == "idx1"
+        assert affected[0].schema == "dbo"
+        assert affected[0].object_type == SqlObjectType.INDEX
+
     # ==================== Quoted Identifiers Tests ====================
 
     def test_parse_quoted_identifiers_postgresql(self):
