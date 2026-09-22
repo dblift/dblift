@@ -488,6 +488,73 @@ class TestHybridParser:
 
 
 @pytest.mark.unit
+class TestMergeObjectsDedupKeyPinsCurrentBehavior:
+    """Pin ``_merge_objects``'s current, documented-wrong outcomes (#377).
+
+    ``_merge_objects`` dedups by ``(name.lower(), object_type)`` and prefers
+    sqlglot on a collision. dblift/dblift#377 establishes that this single
+    rule produces two opposite wrong outcomes and leaves open how the merge
+    should change (whether "sqlglot wins" should stay the default, whether
+    the key should include schema, ...) as a maintainer design decision.
+
+    These tests do not assert correct behavior — they pin what the code
+    does *today* so a later change to the dedup key is a deliberate,
+    visible diff here rather than a silent behavior change.
+    """
+
+    def test_collision_on_matching_name_drops_the_regex_resolved_schema(self):
+        """Same name shape: sqlglot's default-schema-less answer overwrites
+        the regex answer, discarding the schema regex had resolved.
+
+        SQL Server's own convention resolves an unqualified table to the
+        ``dbo`` schema; the regex parser applies that, sqlglot does not
+        (sqlglot only uses schema explicitly passed as ``default_schema``,
+        which this call does not pass). Both parsers report the same name
+        ``plainname`` (no bracket-escaping involved, so #375's fix to
+        bracket-escape truncation is not in play), so the key collides and
+        sqlglot wins.
+        """
+        parser = HybridParser("sqlserver")
+        sql = "CREATE TABLE [plainname] (id int);"
+
+        regex_objects = parser.regex_parser.extract_objects(sql, None)
+        assert regex_objects[0].name.lower() == "plainname"
+        assert regex_objects[0].schema == "dbo"  # regex resolved SQL Server's default schema
+
+        merged = parser.extract_objects(sql, None)
+        assert len(merged) == 1
+        assert merged[0].name.lower() == "plainname"
+        assert merged[0].schema is None  # pinned: the resolved schema is lost on collision
+
+    def test_non_colliding_names_produce_a_phantom_duplicate(self):
+        """Different names shape: when the two parsers disagree on the
+        *name* for the same statement, the key does not collide and both
+        objects survive — the dedup that is supposed to prevent duplicates
+        does not fire precisely when one parser got the name wrong.
+
+        MySQL backtick-doubling (``a``` `` -> literal backtick) is not
+        unescaped by the regex parser, which truncates at the first
+        backtick; sqlglot decodes it correctly. This is the same shape as
+        the SQL Server ``]]``-escape example in #377 (fixed for SQL Server
+        specifically by #375), reproduced here on a dialect and escape
+        style #375 did not touch, showing the underlying merge mechanism —
+        not just that one instance — is what #377 is about.
+        """
+        parser = HybridParser("mysql")
+        sql = "CREATE TABLE `real``one` (id int);"
+
+        regex_objects = parser.regex_parser.extract_objects(sql, None)
+        sqlglot_objects = parser.sqlglot_parser.extract_objects(sql, None)
+        assert regex_objects[0].name == "real"  # truncated at the first backtick
+        assert sqlglot_objects[0].name == "real`one"  # correctly unescaped
+
+        merged = parser.extract_objects(sql, None)
+        # pinned: both the truncated and the correct name survive, side by side
+        assert {obj.name for obj in merged} == {"real", "real`one"}
+        assert len(merged) == 2
+
+
+@pytest.mark.unit
 class TestCollectObjectsDispatch:
     """Tests for _collect_objects dispatch dict pattern (story 14-9)."""
 

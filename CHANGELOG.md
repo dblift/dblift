@@ -155,6 +155,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   unaffected — verified against a live PostgreSQL instance; the others by
   their documented syntax (SQL Server's own statement was not verified
   against a live instance — none was reachable).
+- Object extraction now logs a warning when sqlglot cannot parse a statement
+  at all — for example SQL Server's `DROP INDEX a.idx1, b.idx2;`, valid
+  T-SQL that sqlglot's `tsql` grammar rejects. Previously this was logged
+  at debug level, so a statement extraction quietly reduced to "no objects
+  here" (as this one does — dblift has no other source of an object list
+  for the comma-separated `DROP INDEX` form) left nothing in the logs a
+  user would see by default.
 
 ### Removed
 

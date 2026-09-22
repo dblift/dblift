@@ -231,8 +231,11 @@ class SqlGlotParser(SqlParserInterface):
                 )
 
         except ParseError as e:
-            # SqlGlot has limited support for dialect-specific syntax (e.g. Oracle PARTITION BY REFERENCE)
-            logger.debug(f"SqlGlot parse failed for object extraction (use regex fallback): {e}")
+            # SqlGlot has limited support for dialect-specific syntax (e.g. Oracle PARTITION BY
+            # REFERENCE). Logged at WARNING, not DEBUG: this exception is swallowed here and the
+            # caller (HybridParser) never sees it, so this is the only place the degradation to
+            # "no objects here" is visible at all (dblift/dblift#379).
+            logger.warning(f"SqlGlot parse failed for object extraction (use regex fallback): {e}")
         except Exception as e:
             logger.error(f"Error extracting objects: {str(e)}")
 

@@ -378,6 +378,24 @@ class TestSqlGlotParser:
 
         assert len(objects) == 0
 
+    def test_extract_objects_logs_visibly_when_sqlglot_cannot_parse(self, caplog):
+        """A ``ParseError`` swallowed by ``extract_objects`` must be visible.
+
+        sqlglot cannot parse the comma-separated ``DROP INDEX a.idx1,
+        b.idx2;`` form under ``tsql`` (dblift/dblift#379). Before this test,
+        the failure was logged at DEBUG, a level no default application
+        configuration surfaces, so the degradation to "no objects here" left
+        no trace an operator would see. It must log at WARNING or above.
+        """
+        parser = SqlGlotParser(dialect="sqlserver")
+        sql = "DROP INDEX a.idx1, b.idx2;"
+
+        with caplog.at_level("WARNING", logger="dblift.core.sql_parser.sqlglot_parser"):
+            objects = parser.extract_objects(sql)
+
+        assert objects == []
+        assert any(record.levelname == "WARNING" for record in caplog.records)
+
     # ==================== Affected Objects Tests ====================
 
     def test_affected_objects_create_table(self):
