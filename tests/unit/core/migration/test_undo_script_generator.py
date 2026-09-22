@@ -1008,6 +1008,28 @@ class TestUndoReversersMixin(unittest.TestCase):
         self.assertFalse(result.sql.startswith("DROP INDEX"))
         self.assertTrue(result.requires_manual_review)
 
+    def test_routing_create_index_mentioning_fulltext_only_in_a_comment(self):
+        # A correctly-named CREATE INDEX whose trailing comment happens to
+        # mention "CREATE FULLTEXT INDEX ON" must not be mistaken for the
+        # unnamed form above -- the comment is not SQL. Matching against
+        # stmt.sql_text without stripping comments first would refuse this
+        # one too, turning a working DROP INDEX into a needless manual-review
+        # stub.
+        from dblift.core.sql_model.base import SqlObjectType
+
+        gen = self._make_generator("sqlserver")
+        stmt = self._make_stmt(
+            "CREATE INDEX ix1 ON t1(c1) " "/* replaces CREATE FULLTEXT INDEX ON t1 approach */;"
+        )
+        sql_obj = MagicMock()
+        sql_obj.name = "ix1"
+        sql_obj.schema = None
+        sql_obj.object_type = SqlObjectType.INDEX
+        stmt.affected_objects = [sql_obj]
+        result = gen._reverse_statement_from_parsed(stmt)
+        self.assertEqual(result.sql, "DROP INDEX IF EXISTS [ix1] ON [t1];")
+        self.assertFalse(result.requires_manual_review)
+
     def test_routing_dml_generic_type_create_fallback(self):
         from dblift.core.sql_model.base import SqlStatementType
 
