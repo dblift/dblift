@@ -15,6 +15,7 @@ from sqlglot import exp, parse_one
 from dblift.core.migration.scripting.undo_script_generator._models import UndoStatement
 from dblift.core.migration.sql.sql_analyzer import DEFAULT_SCHEMA_PLACEHOLDER
 from dblift.core.sql_model.base import SqlStatementType
+from dblift.core.sql_parser.common.comment_stripping import strip_comments_preserving_quotes
 
 
 def _split_extracted_object_name(obj_name: str, schema: Optional[str]) -> Tuple[str, Optional[str]]:
@@ -47,6 +48,52 @@ def _cannot_determine_index_table(obj_name: str, sql: str) -> UndoStatement:
         original_statement=sql,
         operation_type="CREATE",
         warning=f"Could not determine the table for index '{obj_name}'",
+        requires_manual_review=True,
+    )
+
+
+# SQL Server's ``CREATE FULLTEXT INDEX ON table (...)`` names no index of its
+# own -- it allows only one fulltext index per table, so there is no name
+# slot between INDEX and ON. The parser reports the table's own name as the
+# index name (there is nothing else to report), which would otherwise
+# produce a DROP INDEX that names the table and matches nothing.
+_UNNAMED_FULLTEXT_INDEX = re.compile(r"CREATE\s+FULLTEXT\s+INDEX\s+ON\b", re.IGNORECASE)
+
+
+def _is_unnamed_fulltext_index(sql: str) -> bool:
+    """True for SQL Server's ``CREATE FULLTEXT INDEX ON table (...)``.
+
+    Comments must be stripped first, the same way object extraction does
+    (``EnhancedRegexParser._strip_comments_preserving_quotes``) -- otherwise
+    a comment that merely mentions the phrase, e.g. a correctly-named
+    ``CREATE INDEX ix1 ON t1(c1) /* replaces CREATE FULLTEXT INDEX ON t1
+    approach */``, would be refused too, turning a working DROP INDEX into
+    a needless manual-review stub. T-SQL's own comment markers (``--`` line
+    comments, nesting ``/* */`` block comments) are used directly since
+    this check only ever runs against SQL Server text.
+    """
+    stripped = strip_comments_preserving_quotes(
+        sql,
+        line_prefixes=["--"],
+        has_block_comments=True,
+        nested_block_comments=True,
+    )
+    return bool(_UNNAMED_FULLTEXT_INDEX.search(stripped))
+
+
+def _cannot_reverse_fulltext_index(sql: str) -> UndoStatement:
+    """Build the undo entry for a ``CREATE FULLTEXT INDEX``.
+
+    It names no index of its own, so there is nothing a DROP INDEX could
+    correctly target. Refuse instead of emitting one that names the table
+    and silently does nothing.
+    """
+    return UndoStatement(
+        sql="-- WARNING: CREATE FULLTEXT INDEX names no index of its own; "
+        "cannot generate a DROP INDEX for it",
+        original_statement=sql,
+        operation_type="CREATE",
+        warning="CREATE FULLTEXT INDEX names no index of its own; cannot be reversed automatically",
         requires_manual_review=True,
     )
 
@@ -191,6 +238,8 @@ class _UndoReversersMixin:
 
         # Generate DROP statement based on object type
         if obj_type in ("TABLE", "INDEX", "VIEW", "SEQUENCE", "TRIGGER", "PROCEDURE", "FUNCTION"):
+            if obj_type == "INDEX" and _is_unnamed_fulltext_index(sql):
+                return _cannot_reverse_fulltext_index(sql)
             drop_sql = self._generate_drop_statement(obj_type, obj_name, schema, sql)
             if drop_sql is None:
                 return _cannot_determine_index_table(obj_name, sql)
