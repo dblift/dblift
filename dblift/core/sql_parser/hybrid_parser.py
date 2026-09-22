@@ -310,14 +310,7 @@ class HybridParser(_SqlglotBuildersMixin, SqlParserInterface):
         Returns:
             List of extracted SQL objects
         """
-        # Resolve the default schema once so regex and sqlglot receive the
-        # same value (dblift/dblift#377): left to their own defaults, they
-        # can disagree on an unqualified name's schema, and that divergence
-        # either gets silently dropped or silently kept depending on which
-        # side later "wins" in the merge.
-        effective_schema = default_schema
-        if effective_schema is None:
-            effective_schema = self._quirks.derive_schema_name(None)
+        effective_schema = self._resolve_default_schema(default_schema)
 
         objects: List[SqlObject] = []
         for stmt_text in self.split_statements(sql_content):
@@ -325,6 +318,18 @@ class HybridParser(_SqlglotBuildersMixin, SqlParserInterface):
                 continue
             objects.extend(self._extract_objects_for_statement(stmt_text, effective_schema))
         return objects
+
+    def _resolve_default_schema(self, default_schema: Optional[str]) -> Optional[str]:
+        """Resolve the default schema once, via the quirks, so every caller
+        of ``_merge_objects`` hands regex and sqlglot the same value
+        (dblift/dblift#377): left to their own defaults, they can disagree
+        on an unqualified name's schema, and that divergence either gets
+        silently dropped or silently kept depending on which side later
+        "wins" in the merge.
+        """
+        if default_schema is not None:
+            return default_schema
+        return self._quirks.derive_schema_name(None)
 
     def _extract_objects_for_statement(
         self, stmt_text: str, default_schema: Optional[str]
@@ -334,16 +339,14 @@ class HybridParser(_SqlglotBuildersMixin, SqlParserInterface):
 
         # Skip sqlglot for syntax it doesn't support at all (e.g. Oracle PARTITION BY
         # REFERENCE, or a schema-qualified SQL Server/MySQL `DROP INDEX ... ON` —
-        # see each quirks class for why) so it never raises, or silently answers
-        # wrong (dblift/dblift#384), on those shapes. Evaluated per statement
-        # (``stmt_text``, not the original possibly-multi-statement content) now
-        # that extraction itself is per statement.
+        # see each quirks class for why) so it never raises on those shapes.
+        # Evaluated per statement (``stmt_text``, not the original
+        # possibly-multi-statement content) now that extraction itself is.
         use_sqlglot = (
             self.sqlglot_parser is not None
             and not self._contains_procedural_keywords(stmt_text)
             and not self._contains_oracle_sqlglot_unsupported(stmt_text)
             and not self._contains_sqlglot_unsupported_shape(stmt_text)
-            and not self._is_sqlglot_opaque_valid_ddl(stmt_text)
         )
         if use_sqlglot and self.sqlglot_parser is not None:
             try:
@@ -484,8 +487,14 @@ class HybridParser(_SqlglotBuildersMixin, SqlParserInterface):
             return stmt
 
         try:
-            # Parse with sqlglot for enhanced object extraction
-            sqlglot_result = self.sqlglot_parser.parse_sql(stmt.sql_text, default_schema)
+            # Parse with sqlglot for enhanced object extraction. Resolved the
+            # same way as extract_objects's own sqlglot call (dblift/dblift#377):
+            # otherwise this, the other caller of _merge_objects, would hand
+            # sqlglot a raw, possibly-None default_schema while extract_objects
+            # hands it the quirks-resolved one, and the two callers of the same
+            # merge function could disagree on identical input.
+            effective_schema = self._resolve_default_schema(default_schema)
+            sqlglot_result = self.sqlglot_parser.parse_sql(stmt.sql_text, effective_schema)
 
             if sqlglot_result.success and sqlglot_result.statements:
                 sqlglot_stmt = sqlglot_result.statements[0]

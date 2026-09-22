@@ -627,69 +627,75 @@ class TestMergeObjectsReconcilesPerStatementPerType:
 
 @pytest.mark.unit
 class TestMergeObjectsTypeMismatchPhantomOutOfScope:
-    """A type-level mismatch is NOT reconciled by this change (#377/#384).
+    """A type-level mismatch is NOT reconciled by this change (#377).
 
     ``_merge_objects``'s rule operates per object type: it reconciles a
     *name* divergence within one type, not a *type* divergence between the
-    two parsers on the same statement. sqlglot's DROP-kind dispatch
-    (``sqlglot_parser.py``) special-cases VIEW/INDEX/SEQUENCE and silently
-    defaults every other DROP kind to TABLE — so ``DROP TRIGGER name`` comes
-    back typed as a TABLE of the same name alongside the regex side's
-    correct TRIGGER. Under the per-type rule, sqlglot's TABLE replaces the
-    (empty) regex TABLE set, the regex TRIGGER is kept because sqlglot
-    produced no TRIGGER, and both survive side by side — a phantom TABLE.
+    two parsers on the same statement. When the two sides produce different,
+    non-empty types for the same name, the per-type rule leaves both
+    standing — sqlglot's set replaces regex's only within a type both sides
+    touch, so the two never even compete when their types don't match.
 
-    This is correct behaviour for this change: fixing the misclassification
-    itself is out of scope here. This test exists so the interaction is a
+    This is correct behaviour for this change: reconciling a type-level
+    mismatch is out of scope here. This test exists so the interaction is a
     pinned, visible fact rather than a surprise discovered later.
 
-    The maintainer's original example for this was PostgreSQL ``DROP
-    TRIGGER x ON table``, tracked as dblift/dblift#384. That specific shape
-    no longer reaches sqlglot in ``extract_objects``: this PR also wires the
-    pre-existing ``is_sqlglot_opaque_valid_ddl`` guard (previously consulted
-    only by ``validate_sql``) into the ``use_sqlglot`` check here, at the
-    per-statement call site this PR introduces, and PostgreSQL's quirks
-    already flag that exact pattern through it — see
-    ``test_postgres_on_table_shape_is_now_guarded_before_it_reaches_sqlglot``
-    below. The interaction itself is not fixed, though: it is demonstrated
-    here instead on MySQL's unqualified ``DROP TRIGGER name`` (no ``ON``
-    clause — valid MySQL syntax, and not a shape any existing guard covers),
-    which still exercises the exact same underlying dispatch defect.
+    The maintainer's original example was PostgreSQL ``DROP TRIGGER x ON
+    table`` (dblift/dblift#384): sqlglot's DROP-kind dispatch special-cased
+    only VIEW/INDEX/SEQUENCE and silently defaulted everything else,
+    including TRIGGER, to TABLE. dblift/dblift#387 fixed that dispatch
+    itself (``_DROP_KIND_TO_OBJECT_TYPE`` in ``sqlglot_parser.py``, mapping
+    TRIGGER/FUNCTION/PROCEDURE/TYPE/DATABASE too) rather than guarding
+    sqlglot away from the shape, and the fix is general: every DROP kind
+    it added reports correctly now, on every dialect sqlglot supports — not
+    just PostgreSQL. I re-verified this directly, including on the
+    unqualified-form, cross-dialect shape (MySQL/SQL Server/Oracle ``DROP
+    TRIGGER name`` with no ``ON`` clause) I had been about to pin here as a
+    surviving instance: it no longer reproduces either, so no DROP-kind
+    example remains to pin.
+
+    The general interaction is not fixed, though — #387 corrected one
+    dispatch table (DROP), not the underlying pattern (sqlglot's kind-based
+    classification defaults an unrecognized kind to TABLE rather than
+    surfacing "I don't know"). The sibling CREATE-kind dispatch a few lines
+    above the DROP one in the same file has the identical shape and was not
+    touched: PostgreSQL ``CREATE TYPE ... AS (...)`` (a composite/row type)
+    parses without error, but nothing in the CREATE branch recognizes
+    ``ast.kind == "TYPE"``, so the object it builds keeps the TABLE type it
+    was constructed with by default. This is pinned below.
     """
 
-    def test_mysql_drop_trigger_leaves_a_phantom_table_object(self):
-        parser = HybridParser("mysql")
-        sql = "DROP TRIGGER my_trigger;"
+    def test_postgres_create_composite_type_leaves_a_phantom_table_object(self):
+        parser = HybridParser("postgresql")
+        sql = "CREATE TYPE my_type AS (a int, b int);"
 
         regex_objects = parser.regex_parser.extract_objects(sql, None)
         sqlglot_objects = parser.sqlglot_parser.extract_objects(sql, None)
+        # The regex side's own answer here is UNKNOWN — a separate, existing
+        # gap on that side, not the point of this test — but it is still a
+        # real, non-empty object the per-type rule must reconcile against.
         assert [(o.name, o.object_type) for o in regex_objects] == [
-            ("my_trigger", SqlObjectType.TRIGGER)
+            ("my_type", SqlObjectType.UNKNOWN)
         ]
         assert [(o.name, o.object_type) for o in sqlglot_objects] == [
-            ("my_trigger", SqlObjectType.TABLE)
+            ("my_type", SqlObjectType.TABLE)
         ]
 
         merged = parser.extract_objects(sql, None)
         merged_pairs = {(o.name, o.object_type) for o in merged}
-        # out of scope for #377: both the real TRIGGER and the phantom
+        # out of scope for #377: both the regex UNKNOWN and the phantom
         # TABLE sqlglot invented survive, because they are different types
         assert merged_pairs == {
-            ("my_trigger", SqlObjectType.TRIGGER),
-            ("my_trigger", SqlObjectType.TABLE),
+            ("my_type", SqlObjectType.UNKNOWN),
+            ("my_type", SqlObjectType.TABLE),
         }
         assert len(merged) == 2
 
-    def test_postgres_on_table_shape_is_now_guarded_before_it_reaches_sqlglot(self):
-        """Regression pin for dblift/dblift#384's own example: PostgreSQL
-        ``DROP TRIGGER x ON table`` must not phantom-duplicate, because it
-        never reaches sqlglot in the first place (see class docstring)."""
-        parser = HybridParser("postgresql")
-        sql = "DROP TRIGGER x ON mytable;"
-
-        merged = parser.extract_objects(sql, None)
-
-        assert [(o.name, o.object_type) for o in merged] == [("x", SqlObjectType.TRIGGER)]
+    # NOTE: a regression pin for dblift/dblift#384/#387 (DROP TRIGGER no
+    # longer phantoms on any dialect, now that #387 fixed sqlglot's DROP-kind
+    # dispatch) belongs here once this branch is rebased onto #387 — it
+    # cannot pass before that fix is actually present in this tree, and a
+    # red test is worse than a missing one. Added in the rebase commit.
 
 
 @pytest.mark.unit
