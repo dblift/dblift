@@ -76,10 +76,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Auto-generated undo scripts drop indexes the way each engine expects.**
   SQL Server and MySQL name the table (`DROP INDEX name ON table`), taking
   the table's own schema from the `CREATE INDEX`; bracket-quoted, three-part
-  and `CLUSTERED`/`NONCLUSTERED`/`FULLTEXT`/`PRIMARY XML` forms are all
-  recognised. When the table cannot be determined, the script says so and
-  asks for manual review instead of naming the wrong one. PostgreSQL, SQLite,
-  Oracle and Db2 are unaffected.
+  and `CLUSTERED`/`NONCLUSTERED`/`PRIMARY XML` forms are all recognised. When
+  the table cannot be determined, the script says so and asks for manual
+  review instead of naming the wrong one. PostgreSQL, SQLite, Oracle and Db2
+  are unaffected. A `CREATE FULLTEXT INDEX`, which names no index of its own,
+  is still not reversed correctly: the generated `DROP INDEX` matches nothing
+  and silently does nothing, so undo a fulltext index by hand.
 
 - **Oracle `clean` drops reference-partitioned children before their parent.**
   `CASCADE CONSTRAINTS` does not release a reference-partitioning dependency,
