@@ -197,7 +197,8 @@ right then looks identical to the earlier migration's own change, and the interf
 unreported. The schema itself is still corrected in both cases; what's missing is only the signal.
 And even when the warning does fire, it's a detection signal, not a repair: DDL that already ran
 while the schema was wrong stays wrong, and this connection's own unqualified DDL can keep landing
-in whatever schema the other connection left behind until `--db-schema` changes again.
+in whatever schema the other connection left behind until the next migration or callback boundary,
+where the reissued `ALTER USER` corrects it — not until `--db-schema` itself changes.
 
 **Fix**: Use a dedicated SQL Server login per `--db-schema` you run migrations against — never share
 one login across multiple concurrently-running dblift configurations with different schemas. This
