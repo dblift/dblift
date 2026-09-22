@@ -2,6 +2,7 @@
   "exit_code :: info_ok=0",
   "exit_code :: migrate_ok=0",
   "exit_code :: unknown_command=2",
+  "exit_code :: validate_checksum_mismatch=1",
   "history_column :: checksum|TEXT",
   "history_column :: description|TEXT",
   "history_column :: execution_time|INTEGER",

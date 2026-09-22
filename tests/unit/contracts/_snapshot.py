@@ -12,15 +12,28 @@ import os
 from pathlib import Path
 from typing import Iterable
 
+import pytest
+
 SNAPSHOT_DIR = Path(__file__).parent / "snapshots"
 
 
 def assert_matches_snapshot(name: str, facts: Iterable[str]) -> None:
     current = sorted(set(facts))
     path = SNAPSHOT_DIR / f"{name}.json"
-    if os.environ.get("DBLIFT_UPDATE_CONTRACTS") == "1":
+    update = os.environ.get("DBLIFT_UPDATE_CONTRACTS") == "1"
+    if update and os.environ.get("CI"):
+        pytest.fail(
+            "DBLIFT_UPDATE_CONTRACTS=1 must not be set under CI: snapshots are "
+            "regenerated locally and committed"
+        )
+    if update:
         path.write_text(json.dumps(current, indent=2) + "\n", encoding="utf-8")
         return
+    if not path.exists():
+        pytest.fail(
+            f"no snapshot at {path}; record it with DBLIFT_UPDATE_CONTRACTS=1 pytest "
+            "tests/unit/contracts"
+        )
     recorded = json.loads(path.read_text(encoding="utf-8"))
     removed = sorted(set(recorded) - set(current))
     added = sorted(set(current) - set(recorded))

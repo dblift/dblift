@@ -12,6 +12,15 @@ from ._snapshot import assert_matches_snapshot
 pytestmark = [pytest.mark.unit]
 
 
+def _default(action: argparse.Action) -> str:
+    default = action.default
+    if default is argparse.SUPPRESS:
+        return "suppress"
+    if isinstance(default, (str, int, float, bool, type(None))):
+        return repr(default)
+    return "<object>"
+
+
 def _facts(parser: argparse.ArgumentParser, path: str = "<root>") -> Iterator[str]:
     for action in parser._actions:
         if isinstance(action, argparse._SubParsersAction):
@@ -19,11 +28,16 @@ def _facts(parser: argparse.ArgumentParser, path: str = "<root>") -> Iterator[st
                 child = name if path == "<root>" else f"{path} {name}"
                 yield f"{child} :: <command>"
                 yield from _facts(sub, child)
-        elif action.option_strings:
+            continue
+        choices = sorted(map(str, action.choices)) if action.choices else None
+        shape = f"{type(action).__name__}|nargs={action.nargs}|choices={choices}|default={_default(action)}"
+        if action.option_strings:
             for option in action.option_strings:
                 yield f"{path} :: {option}"
+                yield f"{path} :: {option} :: {shape}"
         else:
             yield f"{path} :: <positional> {action.dest}"
+            yield f"{path} :: <positional> {action.dest} :: {shape}"
 
 
 def test_cli_surface_matches_snapshot(monkeypatch: pytest.MonkeyPatch) -> None:
