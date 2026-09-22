@@ -30,7 +30,12 @@ from dblift.db.provider_registry import ProviderRegistry
 
 
 def _strip_identifier_quotes(token: str) -> str:
-    """Remove one layer of bracket/quote delimiters matched by ``_IDENTIFIER``."""
+    """Remove one layer of bracket/quote delimiters matched by ``_IDENTIFIER``.
+
+    The three delimiter styles here (``[]``, ``""``, `` `` ``) are
+    ``_IDENTIFIER``'s own alternatives, hardcoded rather than derived from
+    it: a quoting style added there would need a matching branch added here.
+    """
     if len(token) >= 2 and token[0] == "[" and token[-1] == "]":
         return token[1:-1]
     if len(token) >= 2 and token[0] == token[-1] and token[0] in ('"', "`"):
@@ -493,6 +498,7 @@ class _UndoExtractorsMixin:
         # (real SQL follows the ON target with whitespace or ``(``) -- so
         # seeing it here means the captured name is probably truncated:
         # refuse rather than trust a table name that might be wrong.
+        # Same three delimiter styles as _IDENTIFIER and _strip_identifier_quotes.
         _CLOSING = {"[": "]", '"': '"', "`": "`"}
 
         for pattern in patterns:
