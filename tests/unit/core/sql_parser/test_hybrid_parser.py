@@ -488,31 +488,34 @@ class TestHybridParser:
 
 
 @pytest.mark.unit
-class TestMergeObjectsDedupKeyPinsCurrentBehavior:
-    """Pin ``_merge_objects``'s current, documented-wrong outcomes (#377).
+class TestMergeObjectsReconcilesPerStatementPerType:
+    """``_merge_objects`` reconciles per statement, per object type (#377).
 
-    ``_merge_objects`` dedups by ``(name.lower(), object_type)`` and prefers
-    sqlglot on a collision. dblift/dblift#377 establishes that this single
-    rule produces two opposite wrong outcomes and leaves open how the merge
-    should change (whether "sqlglot wins" should stay the default, whether
-    the key should include schema, ...) as a maintainer design decision.
+    Previously ``_merge_objects`` deduped by ``(name.lower(), object_type)``
+    across a whole (possibly multi-statement) batch and preferred sqlglot on
+    a collision. That single rule produced two opposite wrong outcomes: a
+    name collision silently dropped the regex-resolved schema, and a name
+    mismatch let a phantom object survive alongside the correct one.
 
-    These tests do not assert correct behavior — they pin what the code
-    does *today* so a later change to the dedup key is a deliberate,
-    visible diff here rather than a silent behavior change.
+    The fixed rule, per statement and per object type T: if sqlglot
+    produced >=1 object of type T, its objects of type T replace the regex
+    objects of type T entirely (a differing regex name is dropped, not
+    added, and the divergence is logged at DEBUG); if sqlglot produced
+    nothing of type T, the regex objects for T are kept. On a name
+    collision, the surviving schema is ``sqlglot.schema or regex.schema``.
     """
 
-    def test_collision_on_matching_name_drops_the_regex_resolved_schema(self):
-        """Same name shape: sqlglot's default-schema-less answer overwrites
-        the regex answer, discarding the schema regex had resolved.
+    def test_collision_on_matching_name_keeps_the_regex_resolved_schema(self):
+        """Same name shape: sqlglot's answer replaces the regex answer for
+        the TABLE type, and the schema regex had resolved is retained.
 
         SQL Server's own convention resolves an unqualified table to the
-        ``dbo`` schema; the regex parser applies that, sqlglot does not
-        (sqlglot only uses schema explicitly passed as ``default_schema``,
-        which this call does not pass). Both parsers report the same name
-        ``plainname`` (no bracket-escaping involved, so #375's fix to
-        bracket-escape truncation is not in play), so the key collides and
-        sqlglot wins.
+        ``dbo`` schema; the regex parser applies that internally, and
+        sqlglot has no default of its own to apply unless it is handed one.
+        Both parsers report the same name ``plainname`` (no bracket-escaping
+        involved, so #375's fix to bracket-escape truncation is not in
+        play), so this is the collision case: exactly one object survives,
+        and it must not have lost its schema.
         """
         parser = HybridParser("sqlserver")
         sql = "CREATE TABLE [plainname] (id int);"
@@ -524,13 +527,14 @@ class TestMergeObjectsDedupKeyPinsCurrentBehavior:
         merged = parser.extract_objects(sql, None)
         assert len(merged) == 1
         assert merged[0].name.lower() == "plainname"
-        assert merged[0].schema is None  # pinned: the resolved schema is lost on collision
+        assert merged[0].schema == "dbo"  # fixed: the resolved schema is no longer lost
 
-    def test_non_colliding_names_produce_a_phantom_duplicate(self):
+    def test_non_colliding_names_drop_the_regex_name_not_add_it(self, caplog):
         """Different names shape: when the two parsers disagree on the
-        *name* for the same statement, the key does not collide and both
-        objects survive — the dedup that is supposed to prevent duplicates
-        does not fire precisely when one parser got the name wrong.
+        *name* for the same statement and sqlglot produced a TABLE, its
+        TABLE objects replace the regex TABLE objects entirely — the
+        regex-truncated name is dropped rather than surviving beside the
+        correct one, and the divergence is logged at DEBUG.
 
         MySQL backtick-doubling (``a``` `` -> literal backtick) is not
         unescaped by the regex parser, which truncates at the first
@@ -548,10 +552,114 @@ class TestMergeObjectsDedupKeyPinsCurrentBehavior:
         assert regex_objects[0].name == "real"  # truncated at the first backtick
         assert sqlglot_objects[0].name == "real`one"  # correctly unescaped
 
+        with caplog.at_level("DEBUG", logger="dblift.core.sql_parser.hybrid_parser"):
+            merged = parser.extract_objects(sql, None)
+
+        # fixed: only sqlglot's correctly-decoded name survives
+        assert {obj.name for obj in merged} == {"real`one"}
+        assert len(merged) == 1
+        assert any("real" in r.message and "real`one" in r.message for r in caplog.records), [
+            r.message for r in caplog.records
+        ]
+
+    def test_sqlglot_silent_for_a_type_keeps_the_regex_objects_of_that_type(self):
+        """sqlglot does not model every index shape (e.g. MySQL FULLTEXT
+        indexes fall back to sqlglot's generic 'Command' parsing, yielding
+        no INDEX object at all). When sqlglot produces nothing of type
+        INDEX for the statement, the regex-extracted INDEX must be kept
+        rather than discarded.
+        """
+        parser = HybridParser("mysql")
+        sql = "CREATE FULLTEXT INDEX idx1 ON mytable (col1);"
+
+        regex_objects = parser.regex_parser.extract_objects(sql, None)
+        sqlglot_objects = parser.sqlglot_parser.extract_objects(sql, None)
+        assert regex_objects[0].name == "idx1"
+        assert regex_objects[0].object_type == SqlObjectType.INDEX
+        assert sqlglot_objects == []
+
         merged = parser.extract_objects(sql, None)
-        # pinned: both the truncated and the correct name survive, side by side
-        assert {obj.name for obj in merged} == {"real", "real`one"}
-        assert len(merged) == 2
+        assert len(merged) == 1
+        assert merged[0].name == "idx1"
+        assert merged[0].object_type == SqlObjectType.INDEX
+
+    def test_collision_schema_fill_falls_back_to_regex_when_sqlglot_has_none(self):
+        """Direct unit test of the collision schema-fill rule:
+        ``schema = sqlglot.schema or regex.schema``.
+
+        Exercised directly on ``_merge_objects`` (not through
+        ``extract_objects``) because ``extract_objects``'s own
+        default-schema resolution already makes sqlglot's and regex's
+        *default* schema agree end-to-end for the common no-default-passed
+        case, so that path alone never reaches this fallback. This pins
+        the fallback itself, for a collision that still disagrees on
+        schema after that resolution (e.g. one side reads an explicit
+        qualifier the other does not).
+        """
+        parser = HybridParser("postgresql")
+        regex_objects = [
+            SqlObject("foo", SqlObjectType.TABLE, schema="myschema", dialect="postgresql")
+        ]
+        sqlglot_objects = [SqlObject("foo", SqlObjectType.TABLE, schema=None, dialect="postgresql")]
+
+        merged = parser._merge_objects(regex_objects, sqlglot_objects)
+
+        assert len(merged) == 1
+        assert merged[0].name == "foo"
+        assert merged[0].schema == "myschema"  # filled from regex since sqlglot's was empty
+
+    def test_collision_schema_fill_prefers_sqlglot_when_both_present(self):
+        """``schema = sqlglot.schema or regex.schema``: sqlglot's schema
+        wins when both sides have one."""
+        parser = HybridParser("postgresql")
+        regex_objects = [
+            SqlObject("foo", SqlObjectType.TABLE, schema="regexschema", dialect="postgresql")
+        ]
+        sqlglot_objects = [
+            SqlObject("foo", SqlObjectType.TABLE, schema="sqlglotschema", dialect="postgresql")
+        ]
+
+        merged = parser._merge_objects(regex_objects, sqlglot_objects)
+
+        assert len(merged) == 1
+        assert merged[0].schema == "sqlglotschema"
+
+
+@pytest.mark.unit
+class TestMergeObjectsTypeMismatchPhantomOutOfScope:
+    """A type-level mismatch is NOT reconciled by this change (#377).
+
+    ``_merge_objects``'s rule operates per object type: it reconciles a
+    *name* divergence within one type, not a *type* divergence between the
+    two parsers on the same statement. When the two sides produce different,
+    non-empty types for the same name, the per-type rule leaves both
+    standing — sqlglot's set replaces regex's only within a type both sides
+    touch, so the two never even compete when their types don't match.
+
+    This is correct behaviour for this change: reconciling a type-level
+    mismatch is out of scope here. This test exists so the interaction is a
+    pinned, visible fact rather than a surprise discovered later.
+
+    The maintainer's original example was PostgreSQL ``DROP TRIGGER x ON
+    table`` (dblift/dblift#384): sqlglot's DROP-kind dispatch special-cased
+    only VIEW/INDEX/SEQUENCE and silently defaulted everything else,
+    including TRIGGER, to TABLE. dblift/dblift#387 fixed that dispatch
+    itself (``_DROP_KIND_TO_OBJECT_TYPE`` in ``sqlglot_parser.py``, mapping
+    TRIGGER/FUNCTION/PROCEDURE/TYPE/DATABASE too) rather than guarding
+    sqlglot away from the shape, and the fix is general: every DROP kind
+    it added reports correctly now, on every dialect sqlglot supports — not
+    just PostgreSQL. I re-verified this directly, including on the
+    unqualified-form, cross-dialect shape (MySQL/SQL Server/Oracle ``DROP
+    TRIGGER name`` with no ``ON`` clause) I had been about to pin here as a
+    surviving instance: it no longer reproduces either, so no DROP-kind
+    example remains to pin.
+    """
+
+    # NOTE: a regression pin for dblift/dblift#384/#387 (DROP TRIGGER no
+    # longer phantoms on any dialect, now that #387 fixed sqlglot's DROP-kind
+    # dispatch) belongs here once this branch is rebased onto #387 — it
+    # cannot pass before that fix is actually present in this tree, and a
+    # red test is worse than a missing one. Added in the rebase commit.
 
 
 @pytest.mark.unit
