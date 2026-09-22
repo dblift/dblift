@@ -206,6 +206,13 @@ class SqlGlotParser(SqlParserInterface):
         - Extracting schema-qualified names
         - Understanding SQL context (CREATE vs SELECT)
 
+        ``sqlglot.parse()`` parses the whole of ``sql_content`` as one batch
+        and is all-or-nothing: one statement it cannot read raises before any
+        object is extracted, discarding every valid statement alongside it
+        rather than just the one that failed. Callers that want partial
+        results from a multi-statement string must split it themselves and
+        call this once per statement.
+
         Args:
             sql_content: SQL content to extract objects from
             default_schema: Default schema name
@@ -233,8 +240,14 @@ class SqlGlotParser(SqlParserInterface):
         except ParseError as e:
             # SqlGlot has limited support for dialect-specific syntax (e.g. Oracle PARTITION BY
             # REFERENCE). Logged at WARNING, not DEBUG: this exception is swallowed here and the
-            # caller (HybridParser) never sees it, so this is the only place the degradation to
-            # "no objects here" is visible at all (dblift/dblift#379).
+            # caller (HybridParser) never sees it, so within this method's own return value, this
+            # is the only place its degradation to "no objects here" becomes visible. The same
+            # underlying ParseError is separately swallowed at DEBUG when sqlglot is invoked via
+            # other call paths on the same SQL — e.g. SqlGlotParser.parse_sql's own
+            # ``except ParseError``, and the per-statement-type builders in
+            # ``_sqlglot_builders.py`` (``_build_table_model_from_sqlglot``,
+            # ``_build_index_from_sqlglot``, ``_build_view_from_sqlglot``) — those are unaffected
+            # by this change (dblift/dblift#379).
             logger.warning(f"SqlGlot parse failed for object extraction (use regex fallback): {e}")
         except Exception as e:
             logger.error(f"Error extracting objects: {str(e)}")

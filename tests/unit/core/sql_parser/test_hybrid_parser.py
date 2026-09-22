@@ -555,6 +555,61 @@ class TestMergeObjectsDedupKeyPinsCurrentBehavior:
 
 
 @pytest.mark.unit
+class TestExtractObjectsQuietOnRoutineDropIndexOnQualifiedTable:
+    """`DROP INDEX idx ON schema.table` must not warn (dblift/dblift#379 SHOULD-FIX).
+
+    This is not an edge case: it is the *only* legal way to drop an index in
+    SQL Server and MySQL, and schema-qualifying the table is routine. sqlglot's
+    grammar happens to reject the schema-qualified form specifically (the
+    unqualified form and the legacy dot-qualified form both parse fine), but
+    the regex parser already extracts this shape correctly — that's the
+    accidental fallback #379 established. Letting the WARNING added for the
+    genuine failure (the comma-separated `DROP INDEX a.x, b.y` form, which no
+    parser can read) also fire here would make it noise on every ordinary
+    `DROP INDEX`, exactly the alert-fatigue problem #356 removed.
+    """
+
+    def test_sqlserver_schema_qualified_drop_index_on_does_not_warn(self, caplog):
+        parser = HybridParser("sqlserver")
+        sql = "DROP INDEX idx1 ON dbo.mytable;"
+
+        with caplog.at_level("WARNING"):
+            objects = parser.extract_objects(sql)
+
+        assert not caplog.records, [r.message for r in caplog.records]
+        assert len(objects) == 1
+        assert objects[0].name == "idx1"
+        assert objects[0].schema == "dbo"
+
+    def test_mysql_schema_qualified_drop_index_on_does_not_warn(self, caplog):
+        parser = HybridParser("mysql")
+        sql = "DROP INDEX idx1 ON myschema.mytable;"
+
+        with caplog.at_level("WARNING"):
+            objects = parser.extract_objects(sql, default_schema="myschema")
+
+        assert not caplog.records, [r.message for r in caplog.records]
+        assert len(objects) == 1
+        assert objects[0].name == "idx1"
+        assert objects[0].schema == "myschema"
+
+    def test_comma_separated_drop_index_still_warns(self, caplog):
+        """The genuine #379 failure — a shape neither parser can read — must
+        keep warning. This is the regression guard against 'fixing' the
+        noise by reverting the log level instead of narrowing the trigger."""
+        parser = HybridParser("sqlserver")
+        sql = "DROP INDEX a.idx1, b.idx2;"
+
+        with caplog.at_level("WARNING"):
+            objects = parser.extract_objects(sql)
+
+        assert any(
+            "SqlGlot parse failed for object extraction" in r.message for r in caplog.records
+        )
+        assert objects == []
+
+
+@pytest.mark.unit
 class TestCollectObjectsDispatch:
     """Tests for _collect_objects dispatch dict pattern (story 14-9)."""
 

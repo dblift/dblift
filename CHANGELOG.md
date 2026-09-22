@@ -156,12 +156,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   their documented syntax (SQL Server's own statement was not verified
   against a live instance — none was reachable).
 - Object extraction now logs a warning when sqlglot cannot parse a statement
-  at all — for example SQL Server's `DROP INDEX a.idx1, b.idx2;`, valid
-  T-SQL that sqlglot's `tsql` grammar rejects. Previously this was logged
-  at debug level, so a statement extraction quietly reduced to "no objects
-  here" (as this one does — dblift has no other source of an object list
-  for the comma-separated `DROP INDEX` form) left nothing in the logs a
-  user would see by default.
+  at all and no other source of an object list exists — for example SQL
+  Server's `DROP INDEX a.idx1, b.idx2;`, valid T-SQL that sqlglot's `tsql`
+  grammar rejects and the regex parser also cannot read. Previously this
+  was logged at debug level, so extraction quietly reducing to "no objects
+  here" left nothing in the logs a user would see by default. The ordinary,
+  schema-qualified `DROP INDEX index ON schema.table` — the everyday way to
+  drop an index in SQL Server and MySQL, and also rejected by sqlglot's
+  grammar — does not log a warning: the regex parser already extracts it
+  correctly, so this is not treated as a failure.
 
 ### Removed
 

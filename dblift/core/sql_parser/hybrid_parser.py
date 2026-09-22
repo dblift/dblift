@@ -296,6 +296,16 @@ class HybridParser(_SqlglotBuildersMixin, SqlParserInterface):
     ) -> List[SqlObject]:
         """Extract database objects using hybrid approach.
 
+        ``sql_content`` is expected to be a *single* statement. sqlglot's
+        contribution is all-or-nothing across a batch: internally this calls
+        ``sqlglot.parse()`` once on the whole string, and one statement it
+        cannot read (e.g. a ``ParseError``) withdraws sqlglot's enhancement
+        from every other, valid statement alongside it, silently falling
+        back to regex-only for the whole batch rather than per statement.
+        No production caller currently passes multi-statement content here
+        directly, but ``HybridParser.parse_sql``'s own no-objects-collected
+        fallback does — see the call site below.
+
         Args:
             sql_content: SQL content to extract objects from
             default_schema: Default schema name
@@ -307,11 +317,14 @@ class HybridParser(_SqlglotBuildersMixin, SqlParserInterface):
         regex_objects = self.regex_parser.extract_objects(sql_content, default_schema)
 
         # If sqlglot available and content is pure SQL, enhance with sqlglot
-        # Skip sqlglot for Oracle-specific syntax it doesn't support (e.g. PARTITION BY REFERENCE)
+        # Skip sqlglot for syntax it doesn't support at all (e.g. Oracle PARTITION BY
+        # REFERENCE, or a schema-qualified SQL Server/MySQL `DROP INDEX ... ON` —
+        # see each quirks class for why) so it never raises on those shapes.
         use_sqlglot = (
             self.sqlglot_parser is not None
             and not self._contains_procedural_keywords(sql_content)
             and not self._contains_oracle_sqlglot_unsupported(sql_content)
+            and not self._contains_sqlglot_unsupported_shape(sql_content)
         )
         if use_sqlglot and self.sqlglot_parser is not None:
             try:
@@ -510,6 +523,29 @@ class HybridParser(_SqlglotBuildersMixin, SqlParserInterface):
             return False
         upper_sql = sql_text.upper()
         return any(pattern in upper_sql for pattern in patterns)
+
+    def _contains_sqlglot_unsupported_shape(self, sql_text: str) -> bool:
+        """Check if SQL matches a dialect-declared shape sqlglot cannot parse.
+
+        Sibling of ``_contains_oracle_sqlglot_unsupported``: same purpose
+        (skip sqlglot before it raises), but for an unsupported shape a
+        fixed literal phrase can't express because it spans a variable
+        identifier — e.g. SQL Server/MySQL ``DROP INDEX ... ON
+        schema.table``, where an arbitrary index name sits between the two
+        fixed keywords. See ``sqlglot_unsupported_sql_regex_patterns`` on
+        each quirks class for the concrete patterns.
+
+        Args:
+            sql_text: SQL text to check
+
+        Returns:
+            True if sql_text matches a declared unsupported-shape regex
+        """
+        patterns = self._quirks.sqlglot_unsupported_sql_regex_patterns
+        if not patterns:
+            return False
+        upper_sql = sql_text.upper()
+        return any(re.search(pattern, upper_sql) for pattern in patterns)
 
     def _merge_objects(
         self, regex_objects: List[SqlObject], sqlglot_objects: List[SqlObject]
