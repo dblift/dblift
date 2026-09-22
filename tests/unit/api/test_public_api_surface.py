@@ -24,15 +24,61 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 
-def test_api_package_has_py_typed_marker():
-    """PEP 561: downstream type checkers look for ``api/py.typed``.
+def test_package_has_py_typed_marker():
+    marker = Path(__file__).resolve().parents[3] / "dblift" / "py.typed"
+    assert marker.is_file(), "dblift/py.typed marker missing. See PEP 561 + docs/semver-policy.md."
 
-    If this file vanishes (or the packaging config stops shipping it),
-    downstream IDEs and mypy runs on consumer projects silently lose
-    dblift's type information. Pin the marker's existence.
-    """
-    marker = Path(__file__).resolve().parents[3] / "dblift" / "api" / "py.typed"
-    assert marker.is_file(), "api/py.typed marker missing. See PEP 561 + docs/semver-policy.md."
+
+class TestExtensionSqlModelSurface:
+    EXPECTED_EXPORTS = {
+        "DatabaseLink",
+        "Event",
+        "Extension",
+        "ForeignDataWrapper",
+        "ForeignServer",
+        "Index",
+        "LinkedServer",
+        "Module",
+        "Package",
+        "Parameter",
+        "ParseResult",
+        "Partition",
+        "Procedure",
+        "Sequence",
+        "SqlColumn",
+        "SqlConstraint",
+        "SqlObject",
+        "SqlObjectType",
+        "SqlStatementType",
+        "Synonym",
+        "Table",
+        "Trigger",
+        "UserDefinedType",
+        "View",
+        "get_constraint_type_name",
+        "get_object_type_name",
+        "quote_identifier",
+        "quote_qualified",
+    }
+
+    def test_extension_package_exposes_only_named_categories(self):
+        import dblift.extensions as extensions
+        from dblift.extensions import sql_model
+
+        assert extensions.__all__ == ["sql_model"]
+        assert extensions.sql_model is sql_model
+
+    def test_sql_model_exports_are_explicit(self):
+        from dblift.extensions import sql_model
+
+        assert set(sql_model.__all__) == self.EXPECTED_EXPORTS
+
+    @pytest.mark.parametrize("symbol_name", sorted(EXPECTED_EXPORTS))
+    def test_sql_model_reexports_the_existing_objects(self, symbol_name):
+        import dblift.core.sql_model as internal_model
+        import dblift.extensions.sql_model as extension_model
+
+        assert getattr(extension_model, symbol_name) is getattr(internal_model, symbol_name)
 
 
 class TestApiPackageSurface:
