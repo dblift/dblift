@@ -7,6 +7,10 @@ extracted from TSqlParser.g4 and TSqlLexer.g4 grammar files from grammars-v4 rep
 import re
 from typing import Dict, List, Pattern, Set
 
+from dblift.core.migration.sql.sql_analyzer import (
+    _BRACKET_IDENTIFIER,
+    _DOUBLE_QUOTED_IDENTIFIER,
+)
 from dblift.core.sql_parser.dialects.base_config import DialectConfig
 
 
@@ -316,7 +320,7 @@ class SqlServerConfig(DialectConfig):
         # part of the identifier rather than stopping there.
         # The unquoted alternative stops at whitespace/punctuation so it
         # cannot run past the identifier into the rest of the statement.
-        id_token = r'(?:\[(?:[^\]]|\]\])+\]|"(?:[^"]|"")+"|[^\s.,;()\[\]"]+)'
+        id_token = rf'(?:{_BRACKET_IDENTIFIER}|{_DOUBLE_QUOTED_IDENTIFIER}|[^\s.,;()\[\]"]+)'
         captured_id = f"({id_token})"
         # A reference has one to three dot-separated parts:
         # database.schema.name. The three-part alternative is tried first

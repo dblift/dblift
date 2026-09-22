@@ -59,8 +59,38 @@ _OBJECT_KEYWORDS = "|".join(t.name.replace("_", r"\s+") for t in _RECOGNISED_OBJ
 DEFAULT_SCHEMA_PLACEHOLDER = "default_schema"
 
 # A SQL identifier: quoted ("x", [x], `x`) or bare, optionally schema-qualified.
-_IDENTIFIER = r'(?:"[^"]+"|\[[^\]]+\]|`[^`]+`|[\w$#]+)'
+# A closing delimiter inside a quoted identifier is escaped by doubling it
+# (``[real]]one]`` is ``real]one``; ``"real""one"`` is ``real"one``), so each
+# quoted alternative below reads a doubled pair as part of the identifier
+# rather than stopping there. These three fragments are shared with
+# ``SqlServerConfig.object_patterns``'s ``id_token``
+# (dblift/db/plugins/sqlserver/parser/parser_config.py) -- one definition of
+# "what a quoted SQL identifier looks like", not two that can drift apart
+# (#375, #380).
+_DOUBLE_QUOTED_IDENTIFIER = r'"(?:[^"]|"")+"'
+_BRACKET_IDENTIFIER = r"\[(?:[^\]]|\]\])+\]"
+_BACKTICK_IDENTIFIER = r"`(?:[^`]|``)+`"
+_IDENTIFIER = (
+    rf"(?:{_DOUBLE_QUOTED_IDENTIFIER}|{_BRACKET_IDENTIFIER}|{_BACKTICK_IDENTIFIER}|[\w$#]+)"
+)
 _QUALIFIED_NAME = rf"{_IDENTIFIER}(?:\s*\.\s*{_IDENTIFIER})*"
+
+# The closing delimiter for each quoting style _IDENTIFIER recognises.
+_CLOSING_DELIMITER = {"[": "]", '"': '"', "`": "`"}
+
+
+def _strip_identifier_quotes(token: str) -> str:
+    """Undo one layer of quoting from an ``_IDENTIFIER`` match, collapsing
+    a doubled closing delimiter back to one. A bare (unquoted) token is
+    returned unchanged."""
+    if len(token) < 2:
+        return token
+    closing = _CLOSING_DELIMITER.get(token[0])
+    if closing is None or token[-1] != closing:
+        return token
+    return token[1:-1].replace(closing * 2, closing)
+
+
 # Words that stand between the object type and its name and must never be
 # captured as the name -- the real name follows them:
 # ``DROP TABLE IF EXISTS users``, ``ALTER TABLE ONLY users ADD COLUMN c``
@@ -267,7 +297,7 @@ def _qualified_object_name(raw: str, drop_last_part: bool = False) -> str:
     the CREATE TABLE branch has always used. ``drop_last_part`` reports the
     parent of a column reference, so ``users.email`` becomes ``users``.
     """
-    parts = re.findall(_IDENTIFIER, raw)
+    parts = [_strip_identifier_quotes(p) for p in re.findall(_IDENTIFIER, raw)]
     if drop_last_part and len(parts) > 1:
         parts = parts[:-1]
     if len(parts) >= 2:
@@ -769,7 +799,14 @@ class SqlAnalyzer:
             objects.append(
                 {
                     "object_type": SqlObjectType.INDEX.name,
-                    "object_name": create_index.group(1),
+                    # An index's own name isn't schema-qualified in this
+                    # module's convention (unlike ``on_object`` below), so it
+                    # is stripped/unescaped without going through
+                    # ``_qualified_object_name``'s ``default_schema.`` fallback.
+                    "object_name": ".".join(
+                        _strip_identifier_quotes(p)
+                        for p in re.findall(_IDENTIFIER, create_index.group(1))
+                    ),
                     "on_object": _qualified_object_name(create_index.group(2)),
                 }
             )
