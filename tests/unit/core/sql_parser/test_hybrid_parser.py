@@ -488,6 +488,577 @@ class TestHybridParser:
 
 
 @pytest.mark.unit
+class TestMergeObjectsReconcilesPerStatementPerType:
+    """``_merge_objects`` reconciles per statement, per object type (#377).
+
+    Previously ``_merge_objects`` deduped by ``(name.lower(), object_type)``
+    across a whole (possibly multi-statement) batch and preferred sqlglot on
+    a collision. That single rule produced two opposite wrong outcomes: a
+    name collision silently dropped the regex-resolved schema, and a name
+    mismatch let a phantom object survive alongside the correct one.
+
+    The fixed rule, per statement and per object type T: if sqlglot
+    produced >=1 object of type T, its objects of type T replace the regex
+    objects of type T entirely (a differing regex name is dropped, not
+    added, and the divergence is logged at DEBUG); if sqlglot produced
+    nothing of type T, the regex objects for T are kept. On a name
+    collision, the surviving schema is ``sqlglot.schema or regex.schema``.
+    """
+
+    def test_collision_on_matching_name_keeps_the_regex_resolved_schema(self):
+        """Same name shape: sqlglot's answer replaces the regex answer for
+        the TABLE type, and the schema regex had resolved is retained.
+
+        SQL Server's own convention resolves an unqualified table to the
+        ``dbo`` schema; the regex parser applies that internally, and
+        sqlglot has no default of its own to apply unless it is handed one.
+        Both parsers report the same name ``plainname`` (no bracket-escaping
+        involved, so #375's fix to bracket-escape truncation is not in
+        play), so this is the collision case: exactly one object survives,
+        and it must not have lost its schema.
+        """
+        parser = HybridParser("sqlserver")
+        sql = "CREATE TABLE [plainname] (id int);"
+
+        regex_objects = parser.regex_parser.extract_objects(sql, None)
+        assert regex_objects[0].name.lower() == "plainname"
+        assert regex_objects[0].schema == "dbo"  # regex resolved SQL Server's default schema
+
+        merged = parser.extract_objects(sql, None)
+        assert len(merged) == 1
+        assert merged[0].name.lower() == "plainname"
+        assert merged[0].schema == "dbo"  # fixed: the resolved schema is no longer lost
+
+    def test_non_colliding_names_drop_the_regex_name_not_add_it(self, caplog):
+        """Different names shape: when the two parsers disagree on the
+        *name* for the same statement and sqlglot produced a TABLE, its
+        TABLE objects replace the regex TABLE objects entirely — the
+        regex-truncated name is dropped rather than surviving beside the
+        correct one, and the divergence is logged at DEBUG.
+
+        MySQL backtick-doubling (``a``` `` -> literal backtick) is not
+        unescaped by the regex parser, which truncates at the first
+        backtick; sqlglot decodes it correctly. This is the same shape as
+        the SQL Server ``]]``-escape example in #377 (fixed for SQL Server
+        specifically by #375), reproduced here on a dialect and escape
+        style #375 did not touch, showing the underlying merge mechanism —
+        not just that one instance — is what #377 is about.
+        """
+        parser = HybridParser("mysql")
+        sql = "CREATE TABLE `real``one` (id int);"
+
+        regex_objects = parser.regex_parser.extract_objects(sql, None)
+        sqlglot_objects = parser.sqlglot_parser.extract_objects(sql, None)
+        assert regex_objects[0].name == "real"  # truncated at the first backtick
+        assert sqlglot_objects[0].name == "real`one"  # correctly unescaped
+
+        with caplog.at_level("DEBUG", logger="dblift.core.sql_parser.hybrid_parser"):
+            merged = parser.extract_objects(sql, None)
+
+        # fixed: only sqlglot's correctly-decoded name survives
+        assert {obj.name for obj in merged} == {"real`one"}
+        assert len(merged) == 1
+        assert any("real" in r.message and "real`one" in r.message for r in caplog.records), [
+            r.message for r in caplog.records
+        ]
+
+    def test_sqlglot_silent_for_a_type_keeps_the_regex_objects_of_that_type(self):
+        """sqlglot does not model every index shape (e.g. MySQL FULLTEXT
+        indexes fall back to sqlglot's generic 'Command' parsing, yielding
+        no INDEX object at all). When sqlglot produces nothing of type
+        INDEX for the statement, the regex-extracted INDEX must be kept
+        rather than discarded.
+        """
+        parser = HybridParser("mysql")
+        sql = "CREATE FULLTEXT INDEX idx1 ON mytable (col1);"
+
+        regex_objects = parser.regex_parser.extract_objects(sql, None)
+        sqlglot_objects = parser.sqlglot_parser.extract_objects(sql, None)
+        assert regex_objects[0].name == "idx1"
+        assert regex_objects[0].object_type == SqlObjectType.INDEX
+        assert sqlglot_objects == []
+
+        merged = parser.extract_objects(sql, None)
+        assert len(merged) == 1
+        assert merged[0].name == "idx1"
+        assert merged[0].object_type == SqlObjectType.INDEX
+
+    def test_collision_schema_fill_falls_back_to_regex_when_sqlglot_has_none(self):
+        """Direct unit test of the collision schema-fill rule:
+        ``schema = sqlglot.schema or regex.schema``.
+
+        Exercised directly on ``_merge_objects`` (not through
+        ``extract_objects``) because ``extract_objects``'s own
+        default-schema resolution already makes sqlglot's and regex's
+        *default* schema agree end-to-end for the common no-default-passed
+        case, so that path alone never reaches this fallback. This pins
+        the fallback itself, for a collision that still disagrees on
+        schema after that resolution (e.g. one side reads an explicit
+        qualifier the other does not).
+        """
+        parser = HybridParser("postgresql")
+        regex_objects = [
+            SqlObject("foo", SqlObjectType.TABLE, schema="myschema", dialect="postgresql")
+        ]
+        sqlglot_objects = [SqlObject("foo", SqlObjectType.TABLE, schema=None, dialect="postgresql")]
+
+        merged = parser._merge_objects(regex_objects, sqlglot_objects)
+
+        assert len(merged) == 1
+        assert merged[0].name == "foo"
+        assert merged[0].schema == "myschema"  # filled from regex since sqlglot's was empty
+
+    def test_collision_schema_fill_prefers_sqlglot_when_both_present(self):
+        """``schema = sqlglot.schema or regex.schema``: sqlglot's schema
+        wins when both sides have one."""
+        parser = HybridParser("postgresql")
+        regex_objects = [
+            SqlObject("foo", SqlObjectType.TABLE, schema="regexschema", dialect="postgresql")
+        ]
+        sqlglot_objects = [
+            SqlObject("foo", SqlObjectType.TABLE, schema="sqlglotschema", dialect="postgresql")
+        ]
+
+        merged = parser._merge_objects(regex_objects, sqlglot_objects)
+
+        assert len(merged) == 1
+        assert merged[0].schema == "sqlglotschema"
+
+
+@pytest.mark.unit
+class TestMergeObjectsTypeMismatchPhantomOutOfScope:
+    """A type-level mismatch is NOT reconciled by this change (#377).
+
+    ``_merge_objects``'s rule operates per object type: it reconciles a
+    *name* divergence within one type, not a *type* divergence between the
+    two parsers on the same statement. When the two sides produce different,
+    non-empty types for the same name, the per-type rule leaves both
+    standing — sqlglot's set replaces regex's only within a type both sides
+    touch, so the two never even compete when their types don't match.
+
+    This is correct behaviour for this change: reconciling a type-level
+    mismatch is out of scope here. This test exists so the interaction is a
+    pinned, visible fact rather than a surprise discovered later.
+
+    The maintainer's original example was PostgreSQL ``DROP TRIGGER x ON
+    table`` (dblift/dblift#384): sqlglot's DROP-kind dispatch special-cased
+    only VIEW/INDEX/SEQUENCE and silently defaulted everything else,
+    including TRIGGER, to TABLE. dblift/dblift#387 fixed that dispatch
+    itself (``_DROP_KIND_TO_OBJECT_TYPE`` in ``sqlglot_parser.py``, mapping
+    TRIGGER/FUNCTION/PROCEDURE/TYPE/DATABASE too) rather than guarding
+    sqlglot away from the shape, and the fix is general: every DROP kind
+    it added reports correctly now, on every dialect sqlglot supports — not
+    just PostgreSQL. I re-verified this directly, including on the
+    unqualified-form, cross-dialect shape (MySQL/SQL Server/Oracle ``DROP
+    TRIGGER name`` with no ``ON`` clause) I had been about to pin here as a
+    surviving instance: it no longer reproduces either, so no DROP-kind
+    example remains to pin.
+    """
+
+    @pytest.mark.parametrize(
+        "dialect,sql",
+        [
+            ("postgresql", "DROP TRIGGER my_trigger ON my_table;"),
+            ("oracle", "DROP TRIGGER my_trigger;"),
+            ("mysql", "DROP TRIGGER my_trigger;"),
+            ("sqlserver", "DROP TRIGGER my_trigger;"),
+        ],
+    )
+    def test_drop_trigger_reports_trigger_not_a_phantom_table(self, dialect, sql):
+        """Regression pin for dblift/dblift#384, fixed by #387: on every
+        dialect #387's ``_DROP_KIND_TO_OBJECT_TYPE`` covers, ``DROP TRIGGER``
+        must produce exactly one correctly-typed TRIGGER object through the
+        production path (``HybridParser.extract_objects``) — not a TRIGGER
+        alongside a phantom TABLE sqlglot's DROP-kind dispatch used to
+        invent by defaulting every kind it didn't special-case to TABLE."""
+        parser = HybridParser(dialect)
+
+        merged = parser.extract_objects(sql, None)
+
+        assert len(merged) == 1
+        assert merged[0].object_type == SqlObjectType.TRIGGER
+
+
+@pytest.mark.unit
+class TestSqlGlotDropKindDispatchMapsKnownKinds:
+    """sqlglot's DROP-kind dispatch must report the correct SqlObjectType for
+    every DROP kind sqlglot's grammar recognizes, not just VIEW/INDEX/
+    SEQUENCE (dblift/dblift#384).
+
+    sqlglot itself never raises or misparses ``DROP TRIGGER``, ``DROP
+    FUNCTION``, ``DROP PROCEDURE``, ``DROP TYPE`` or ``DROP DATABASE`` — its
+    AST already carries the right answer in ``ast.kind``. The bug was
+    entirely in this repository's translation from ``ast.kind`` to
+    ``SqlObjectType`` in ``SqlGlotParser``: everything other than VIEW,
+    INDEX and SEQUENCE fell through a bare ``else: TABLE``, so any of these
+    statements came back mistyped as a table — on every dialect sqlglot
+    supports (PostgreSQL, Oracle, MySQL, SQL Server), not a PostgreSQL-only
+    defect, and not limited to ``DROP TRIGGER``.
+
+    This corrects the dispatch itself (``_DROP_KIND_TO_OBJECT_TYPE`` in
+    ``sqlglot_parser.py``) rather than adding a guard that skips sqlglot for
+    the affected shapes: a guard only stops sqlglot from being asked at all,
+    discarding whatever it would have gotten right (e.g. a quoted
+    identifier's case, which sqlglot preserves and the regex parser does
+    not always); fixing the mapping keeps that contribution and fixes every
+    dialect hitting the same fallthrough at once.
+    """
+
+    @pytest.mark.parametrize(
+        "dialect,sql,expected_type",
+        [
+            ("postgresql", "DROP TRIGGER my_trigger ON my_table;", SqlObjectType.TRIGGER),
+            ("postgresql", 'DROP TRIGGER "my trigger" ON my_table;', SqlObjectType.TRIGGER),
+            ("postgresql", "DROP FUNCTION my_func(int);", SqlObjectType.FUNCTION),
+            ("postgresql", "DROP PROCEDURE my_proc(int);", SqlObjectType.PROCEDURE),
+            ("postgresql", "DROP TYPE my_type;", SqlObjectType.TYPE),
+            ("postgresql", "DROP DATABASE my_db;", SqlObjectType.DATABASE),
+            ("oracle", "DROP TRIGGER my_trigger;", SqlObjectType.TRIGGER),
+            ("oracle", "DROP FUNCTION my_func;", SqlObjectType.FUNCTION),
+            ("oracle", "DROP PROCEDURE my_proc;", SqlObjectType.PROCEDURE),
+            ("mysql", "DROP TRIGGER my_trigger;", SqlObjectType.TRIGGER),
+            ("mysql", "DROP FUNCTION my_func;", SqlObjectType.FUNCTION),
+            ("mysql", "DROP PROCEDURE my_proc;", SqlObjectType.PROCEDURE),
+            ("sqlserver", "DROP TRIGGER my_trigger;", SqlObjectType.TRIGGER),
+            ("sqlserver", "DROP FUNCTION my_func;", SqlObjectType.FUNCTION),
+            ("sqlserver", "DROP PROCEDURE my_proc;", SqlObjectType.PROCEDURE),
+        ],
+    )
+    def test_sqlglot_parser_reports_the_correct_type(self, dialect, sql, expected_type):
+        from dblift.core.sql_parser.sqlglot_parser import SqlGlotParser
+
+        parser = SqlGlotParser(dialect)
+        objects = parser.extract_objects(sql, "public")
+
+        assert len(objects) == 1
+        assert objects[0].object_type == expected_type
+
+    @pytest.mark.parametrize(
+        "sql,expected_type",
+        [
+            ("DROP VIEW my_view;", SqlObjectType.VIEW),
+            ("DROP SEQUENCE my_seq;", SqlObjectType.SEQUENCE),
+            ("DROP TABLE my_table;", SqlObjectType.TABLE),
+        ],
+    )
+    def test_previously_handled_kinds_are_unaffected(self, sql, expected_type):
+        """VIEW, SEQUENCE and the TABLE default were already correct before
+        this fix; rewriting the dispatch as a dict lookup must not change
+        them (INDEX has its own test below, since it carries a side effect)."""
+        from dblift.core.sql_parser.sqlglot_parser import SqlGlotParser
+
+        parser = SqlGlotParser("postgresql")
+        objects = parser.extract_objects(sql, "public")
+
+        assert len(objects) == 1
+        assert objects[0].object_type == expected_type
+
+    def test_drop_index_schema_correction_still_applies(self):
+        """The DROP INDEX branch's SQL Server schema-correction side effect
+        (``_correct_sqlserver_drop_index_schema``) must still run — INDEX is
+        now identified by comparing the *resolved* object_type against the
+        dict lookup's result rather than ``ast.kind`` directly, so this is
+        the case most likely to regress silently if that comparison were
+        wrong."""
+        from dblift.core.sql_parser.sqlglot_parser import SqlGlotParser
+
+        parser = SqlGlotParser("sqlserver")
+        objects = parser.extract_objects("DROP INDEX idx1 ON mytable;", "dbo")
+
+        assert len(objects) == 1
+        assert objects[0].object_type == SqlObjectType.INDEX
+        assert objects[0].name == "idx1"
+        assert objects[0].schema == "dbo"
+
+    def test_kind_sqlglot_does_not_recognize_falls_through_untouched(self):
+        """A DROP kind sqlglot's grammar does not support for a dialect (here,
+        PostgreSQL ``DROP EXTENSION``) never reaches ``exp.Drop`` at all — it
+        parses as an opaque ``Command`` — so the dispatch map contributes
+        nothing and the regex parser's answer is what survives. This pins
+        that sqlglot contributes no (wrong) object here, rather than
+        asserting on sqlglot's raw output directly, since ``Command`` has no
+        stable object-shaped contract to assert against."""
+        from dblift.core.sql_parser.sqlglot_parser import SqlGlotParser
+
+        parser = SqlGlotParser("postgresql")
+        objects = parser.extract_objects("DROP EXTENSION my_ext;", "public")
+
+        assert objects == []
+
+
+@pytest.mark.unit
+class TestExtractObjectsPostgresDropTriggerReportsTrigger:
+    """PostgreSQL ``DROP TRIGGER name ON table`` must report a TRIGGER, not a
+    TABLE, through the full production path (dblift/dblift#384). The root
+    cause and its fix are covered by
+    ``TestSqlGlotDropKindDispatchMapsKnownKinds`` above; these tests confirm
+    it end to end through ``HybridParser.extract_objects``, across the
+    shapes the statement can take.
+    """
+
+    def test_regex_parser_already_gets_it_right(self):
+        """The regex side has always reported this correctly — establishing
+        that a correct answer exists independent of sqlglot."""
+        parser = HybridParser("postgresql")
+        objects = parser.regex_parser.extract_objects(
+            "DROP TRIGGER my_trigger ON my_table;", "public"
+        )
+
+        assert len(objects) == 1
+        assert objects[0].name == "my_trigger"
+        assert objects[0].object_type == SqlObjectType.TRIGGER
+
+    def test_hybrid_extract_objects_reports_trigger_not_table(self):
+        """The production path, unqualified form: must not produce a phantom
+        TABLE alongside (or instead of) the correct TRIGGER."""
+        parser = HybridParser("postgresql")
+        objects = parser.extract_objects("DROP TRIGGER my_trigger ON my_table;", "public")
+
+        assert len(objects) == 1
+        assert objects[0].name == "my_trigger"
+        assert objects[0].object_type == SqlObjectType.TRIGGER
+
+    def test_hybrid_extract_objects_quoted_trigger_name_reports_trigger(self):
+        """Quoting the trigger name (without schema-qualifying the table)
+        does not make sqlglot raise — it mis-parsed this exactly like the
+        unqualified form before this fix, via the same dispatch fallthrough."""
+        parser = HybridParser("postgresql")
+        objects = parser.extract_objects('DROP TRIGGER "my trigger" ON my_table;', "public")
+
+        assert len(objects) == 1
+        assert objects[0].name == "my trigger"
+        assert objects[0].object_type == SqlObjectType.TRIGGER
+
+    def test_hybrid_extract_objects_schema_qualified_table_reports_trigger(self):
+        """Schema-qualified ON target: sqlglot raises here (this is the one
+        shape that actually does reject, not merely mis-parse), and this
+        shape already self-healed before this fix — the internal
+        try/except in ``SqlGlotParser.extract_objects`` swallows the raise,
+        so the merge falls back to the regex parser's correct answer
+        regardless of the dispatch fix. This is a regression guard for an
+        already-correct shape, not a test of the fix itself."""
+        parser = HybridParser("postgresql")
+        objects = parser.extract_objects(
+            "DROP TRIGGER IF EXISTS my_trigger ON myschema.my_table;", "public"
+        )
+
+        assert len(objects) == 1
+        assert objects[0].name == "my_trigger"
+        assert objects[0].object_type == SqlObjectType.TRIGGER
+
+    def test_batch_with_drop_trigger_does_not_disable_sqlglot_for_later_statements(self):
+        """A per-statement guard keyed on a dialect-wide regex (an earlier
+        revision of this fix used one) can disable sqlglot for every
+        statement in a multi-statement ``extract_objects`` call once it
+        matches the first, not just the one it was meant to skip (the same
+        class of bug #383 fixed for the sibling regex predicates with
+        ``[^;]+``). This fix removes that risk instead of bounding it: the
+        dispatch fix means a DROP TRIGGER statement no longer needs sqlglot
+        skipped for it at all, so a later statement's case-sensitive quoted
+        identifiers survive rather than being folded by the regex fallback."""
+        parser = HybridParser("postgresql")
+        batch = 'DROP TRIGGER my_trigger ON my_table;\nCREATE VIEW "Sales"."MyView" AS SELECT 1;'
+
+        objects = parser.extract_objects(batch, "public")
+
+        # No phantom TABLE for the trigger — the actual anchor for this fix.
+        # (Without it, regex's correct TRIGGER and sqlglot's wrong TABLE
+        # would both survive non-colliding keys, and the assertions below
+        # would pass anyway, silently failing to catch a regression here.)
+        assert not any(o.object_type == SqlObjectType.TABLE for o in objects)
+        by_type = {o.object_type: o for o in objects}
+        assert by_type[SqlObjectType.TRIGGER].name == "my_trigger"
+        # Case preserved: proves sqlglot ran on the second statement too,
+        # rather than the whole batch falling back to the regex parser
+        # (which would fold this to "myview" / "sales").
+        assert by_type[SqlObjectType.VIEW].name == "MyView"
+        assert by_type[SqlObjectType.VIEW].schema == "Sales"
+
+
+@pytest.mark.unit
+class TestExtractObjectsCrossDialectDropFunctionProcedure:
+    """The same DROP-kind dispatch defect that mistyped PostgreSQL's DROP
+    TRIGGER also mistyped DROP FUNCTION and DROP PROCEDURE, on every dialect
+    sqlglot supports — confirming the fix in
+    ``TestSqlGlotDropKindDispatchMapsKnownKinds`` closes the phantom TABLE
+    at the production entry point too, not just at the SqlGlotParser layer,
+    and that it does so beyond PostgreSQL."""
+
+    @pytest.mark.parametrize(
+        "dialect,sql,expected_type",
+        [
+            ("postgresql", "DROP FUNCTION my_func(int);", SqlObjectType.FUNCTION),
+            ("postgresql", "DROP PROCEDURE my_proc(int);", SqlObjectType.PROCEDURE),
+            ("mysql", "DROP FUNCTION my_func;", SqlObjectType.FUNCTION),
+            ("mysql", "DROP PROCEDURE my_proc;", SqlObjectType.PROCEDURE),
+            ("sqlserver", "DROP FUNCTION my_func;", SqlObjectType.FUNCTION),
+            ("sqlserver", "DROP PROCEDURE my_proc;", SqlObjectType.PROCEDURE),
+        ],
+    )
+    def test_no_phantom_table_alongside_the_correct_object(self, dialect, sql, expected_type):
+        parser = HybridParser(dialect)
+        objects = parser.extract_objects(sql, "public")
+
+        assert len(objects) == 1
+        assert objects[0].object_type == expected_type
+        assert not any(o.object_type == SqlObjectType.TABLE for o in objects)
+
+    def test_oracle_no_phantom_table_but_merge_now_prefers_sqlglots_unfolded_case(self):
+        """Oracle is deliberately separate from the parametrized cases above.
+
+        The phantom TABLE is gone here too, but this exposes a pre-existing,
+        out-of-scope interaction with ``_merge_objects`` (#377, not touched
+        by this fix): the regex parser correctly upper-folds an unquoted
+        Oracle identifier ('MY_FUNC' / schema 'PUBLIC', matching Oracle's
+        real catalog behaviour), while sqlglot's answer does not fold it. Before
+        this fix, sqlglot's wrongly-typed TABLE answer never collided with
+        the regex parser's correctly-typed, correctly-folded FUNCTION answer
+        under `_merge_objects`'s ``(name, object_type)`` key, so both
+        survived and a caller filtering by the correct type got the right,
+        folded name. Now that sqlglot reports FUNCTION too, the key
+        collides, and per #377's existing, already-shipped rule ("prefer
+        sqlglot on a collision") sqlglot's unfolded name wins.
+
+        This is not a new class of problem: DROP TABLE/VIEW/SEQUENCE/INDEX
+        on Oracle already lose their folded casing this same way today,
+        unconditionally, on unmodified `develop` — this test only shows the
+        same pre-existing rule now also applies to DROP FUNCTION/PROCEDURE/
+        TRIGGER/TYPE/DATABASE, which is the direct, foreseeable consequence
+        of correcting their type rather than a regression this fix
+        introduces on its own."""
+        parser = HybridParser("oracle")
+        objects = parser.extract_objects("DROP FUNCTION my_func;", "public")
+
+        assert len(objects) == 1
+        assert objects[0].object_type == SqlObjectType.FUNCTION
+        # pinned: sqlglot's unfolded casing wins on collision, per #377
+        assert objects[0].name == "my_func"
+        assert objects[0].schema == "public"
+
+
+@pytest.mark.unit
+class TestExtractObjectsQuietOnRoutineDropIndexOnQualifiedTable:
+    """`DROP INDEX idx ON schema.table` must not warn (dblift/dblift#379 SHOULD-FIX).
+
+    This is not an edge case: it is the *only* legal way to drop an index in
+    SQL Server and MySQL, and schema-qualifying the table is routine. sqlglot's
+    grammar happens to reject the schema-qualified form specifically (the
+    unqualified form and the legacy dot-qualified form both parse fine), but
+    the regex parser already extracts this shape correctly — that's the
+    accidental fallback #379 established. Letting the WARNING added for the
+    genuine failure (the comma-separated `DROP INDEX a.x, b.y` form, which no
+    parser can read) also fire here would make it noise on every ordinary
+    `DROP INDEX`, exactly the alert-fatigue problem #356 removed.
+    """
+
+    def test_sqlserver_schema_qualified_drop_index_on_does_not_warn(self, caplog):
+        parser = HybridParser("sqlserver")
+        sql = "DROP INDEX idx1 ON dbo.mytable;"
+
+        with caplog.at_level("WARNING"):
+            objects = parser.extract_objects(sql)
+
+        assert not caplog.records, [r.message for r in caplog.records]
+        assert len(objects) == 1
+        assert objects[0].name == "idx1"
+        assert objects[0].schema == "dbo"
+
+    def test_mysql_schema_qualified_drop_index_on_does_not_warn(self, caplog):
+        parser = HybridParser("mysql")
+        sql = "DROP INDEX idx1 ON myschema.mytable;"
+
+        with caplog.at_level("WARNING"):
+            objects = parser.extract_objects(sql, default_schema="myschema")
+
+        assert not caplog.records, [r.message for r in caplog.records]
+        assert len(objects) == 1
+        assert objects[0].name == "idx1"
+        assert objects[0].schema == "myschema"
+
+    def test_comma_separated_drop_index_still_warns(self, caplog):
+        """The genuine #379 failure — a shape neither parser can read — must
+        keep warning. This is the regression guard against 'fixing' the
+        noise by reverting the log level instead of narrowing the trigger."""
+        parser = HybridParser("sqlserver")
+        sql = "DROP INDEX a.idx1, b.idx2;"
+
+        with caplog.at_level("WARNING"):
+            objects = parser.extract_objects(sql)
+
+        assert any(
+            "SqlGlot parse failed for object extraction" in r.message for r in caplog.records
+        )
+        assert objects == []
+
+    def test_guard_does_not_leak_across_statements_in_a_batch(self, caplog):
+        """The unsupported-shape guard must be scoped to the statement it
+        actually describes, not to the whole (possibly multi-statement)
+        ``sql_content`` blob it is handed.
+
+        A harmless, unqualified ``DROP INDEX idx1 ON mytable;`` earlier in
+        the same string must not suppress sqlglot for the *rest* of the
+        batch. Before this test, the guard's regex could span past the
+        statement's own terminating ``;`` and match an unrelated ``... ON
+        a.x`` later in the string (e.g. inside a ``JOIN ... ON`` clause),
+        flipping ``use_sqlglot`` to False for the entire blob and silently
+        downgrading a valid, unrelated statement's extraction to
+        regex-only — the exact all-or-nothing batch hazard
+        ``extract_objects``'s own docstring warns about, now reachable
+        through this guard instead of through sqlglot itself.
+        """
+        parser = HybridParser("mysql")
+        sql = (
+            "DROP INDEX idx1 ON mytable; "
+            "CREATE TABLE `real``one` (id int); "
+            "SELECT * FROM a JOIN b ON a.x = b.y;"
+        )
+
+        objects = parser.extract_objects(sql, default_schema="myschema")
+
+        names = {obj.name for obj in objects}
+        # sqlglot must still run on this batch and contribute its correctly
+        # decoded name; if the guard leaked, only the regex-truncated
+        # ``real`` would be present.
+        assert "real`one" in names, names
+
+
+@pytest.mark.unit
+class TestParseSqlQuietOnOracleListPartitionedTable:
+    """Oracle ``PARTITION BY LIST`` must not warn (dblift/dblift#379 follow-up).
+
+    This is textbook Oracle list partitioning, no rarer than ``PARTITION BY
+    RANGE`` — which Oracle's quirks already declare in
+    ``sqlglot_unsupported_sql_patterns``; ``PARTITION BY LIST`` was simply
+    missing from that list. Without it, every real list-partitioned Oracle
+    ``CREATE TABLE`` would warn via the extract_objects fallback in
+    ``HybridParser.parse_sql`` — the same alert-fatigue problem this PR
+    exists to remove, just on a third dialect/shape.
+    """
+
+    def test_list_partitioned_table_does_not_warn(self, caplog):
+        sql = """
+        CREATE TABLE employees (
+            emp_id NUMBER,
+            region VARCHAR2(50)
+        )
+        PARTITION BY LIST (region) (
+            PARTITION p_west VALUES ('CA', 'WA', 'OR'),
+            PARTITION p_east VALUES ('NY', 'MA', 'CT')
+        );
+        """
+        parser = HybridParser("oracle")
+
+        with caplog.at_level("WARNING"):
+            result = parser.parse_sql(sql, default_schema="test_schema")
+
+        assert not caplog.records, [r.message for r in caplog.records]
+        assert result.success
+        table = result.tables[0]
+        assert table.partition_method == "LIST"
+        assert table.partition_columns == ["REGION"]
+
+
+@pytest.mark.unit
 class TestCollectObjectsDispatch:
     """Tests for _collect_objects dispatch dict pattern (story 14-9)."""
 

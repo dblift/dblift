@@ -446,6 +446,52 @@ def test_snowflake_schema_helpers_quote_identifiers(monkeypatch) -> None:
     assert provider.supports_transactional_ddl() is False
 
 
+def test_snowflake_set_current_schema_skips_reissue_for_same_schema(monkeypatch) -> None:
+    """A second call for the same schema does not re-issue ``USE SCHEMA``.
+
+    Otherwise dblift resets the current schema before every migration
+    statement, silently overwriting a ``USE SCHEMA`` the migration itself
+    runs as soon as the next statement fires.
+    """
+    base_calls: list[str] = []
+    monkeypatch.setattr(
+        SqlAlchemyProvider,
+        "execute_statement",
+        lambda self, sql, schema=None, params=None: base_calls.append(sql),
+    )
+    provider = SnowflakeProvider.__new__(SnowflakeProvider)
+
+    provider.set_current_schema("app")
+    provider.set_current_schema("app")
+
+    assert base_calls == ['USE SCHEMA "APP"']
+
+
+def test_snowflake_begin_transaction_alone_does_not_clear_the_schema_cache(monkeypatch) -> None:
+    """``begin_transaction`` no longer clears the cache on its own.
+
+    Invalidation is owned by ``ExecutionEngine.reset_schema_cache()``, called
+    once at the start of every migration/callback before the transaction
+    begins. A provider-level clear here as well would leave nothing between
+    the two clears, so the migration's first statement reapplied the schema
+    a second time — a duplicate ``USE SCHEMA`` per migration.
+    """
+    base_calls: list[str] = []
+    monkeypatch.setattr(
+        SqlAlchemyProvider,
+        "execute_statement",
+        lambda self, sql, schema=None, params=None: base_calls.append(sql),
+    )
+    monkeypatch.setattr(SqlAlchemyProvider, "begin_transaction", lambda self: None)
+    provider = SnowflakeProvider.__new__(SnowflakeProvider)
+
+    provider.set_current_schema("app")
+    SnowflakeProvider.begin_transaction(provider)
+    provider.set_current_schema("app")
+
+    assert base_calls == ['USE SCHEMA "APP"']
+
+
 def test_snowflake_table_exists_and_version_queries() -> None:
     table_rows = [{"present": 1}]
 

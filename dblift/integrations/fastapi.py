@@ -30,6 +30,10 @@ def _pending_ids_from_info(info: Any) -> list[str]:
     The strings are the migration "ids" (primarily script names, with version
     info when useful) so callers can log or surface them in health responses.
     """
+    if not getattr(info, "success", True):
+        detail = getattr(info, "error_message", None) or "migration state is unavailable"
+        raise DbliftError(f"Could not determine migration state: {detail}")
+
     # Use the documented property that already filters status == PENDING
     pending = getattr(info, "pending_migrations", []) or []
     ids: list[str] = []

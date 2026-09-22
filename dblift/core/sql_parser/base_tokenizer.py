@@ -117,6 +117,11 @@ class BaseTokenizer:
     #: (``"mysql"``, ``"oracle"``, ...) so warnings/errors are searchable.
     dialect_name: str = "sql"
 
+    #: Whether ``/* */`` block comments nest for this dialect. Default False
+    #: (the first ``*/`` closes, e.g. MySQL/MariaDB, Oracle, SQLite).
+    #: Dialects that document nesting (PostgreSQL, SQL Server) set this True.
+    NESTED_BLOCK_COMMENTS: bool = False
+
     def __init__(self, sql: str, strict_unknown_chars: bool = False):
         """Initialize the tokenizer.
 
@@ -362,12 +367,22 @@ class BaseTokenizer:
                 self.parens_depth,
             )
         elif peek2 == "/*":
-            # Multi-line comment
+            # Multi-line comment. Depth starts at 1 for the comment just
+            # opened; when nesting is off for this dialect, an inner "/*"
+            # is never counted, so the first "*/" still closes it.
             self.read(2)
+            depth = 1
             while self.pos < len(self.sql):
+                if self.NESTED_BLOCK_COMMENTS and self.peek(2) == "/*":
+                    self.read(2)
+                    depth += 1
+                    continue
                 if self.peek(2) == "*/":
                     self.read(2)
-                    break
+                    depth -= 1
+                    if depth == 0:
+                        break
+                    continue
                 self.read()
             return Token(
                 TokenType.COMMENT,

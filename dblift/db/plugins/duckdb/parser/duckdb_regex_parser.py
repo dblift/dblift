@@ -5,15 +5,21 @@ so statement splitting only needs to respect string literals and comments
 around the ``;`` separator.
 """
 
-from typing import Dict, List, Optional
+from typing import List, Optional, Type
 
-from dblift.core.sql_model.base import SqlObject, SqlObjectType
+from dblift.core.sql_parser.base_tokenizer import BaseTokenizer
 from dblift.core.sql_parser.enhanced_regex_parser import EnhancedRegexParser
+from dblift.db.plugins.duckdb.parser.duckdb_tokenizer import DuckDBTokenizer
 from dblift.db.plugins.duckdb.parser.parser_config import DuckDBParserConfig
 
 
 class DuckDBRegexParser(EnhancedRegexParser):
     """DuckDB-specific regex-based SQL parser."""
+
+    #: DuckDB's block-comment nesting rule, read by both ``split_statements``
+    #: below and the inherited ``extract_objects``'s comment stripper, so
+    #: the two cannot disagree about whether ``/* ... */`` nests.
+    tokenizer_class: Type[BaseTokenizer] = DuckDBTokenizer
 
     def __init__(self, config: Optional[DuckDBParserConfig] = None):
         """Initialize the DuckDB regex parser."""
@@ -30,7 +36,8 @@ class DuckDBRegexParser(EnhancedRegexParser):
         current: List[str] = []
         in_string = False
         in_ident = False  # inside a "double-quoted" identifier
-        in_block_comment = False
+        block_comment_depth = 0
+        nested_block_comments = self.tokenizer_class.NESTED_BLOCK_COMMENTS
         in_line_comment = False
 
         i = 0
@@ -44,19 +51,26 @@ class DuckDBRegexParser(EnhancedRegexParser):
                 not in_string
                 and not in_ident
                 and not in_line_comment
+                and block_comment_depth == 0
                 and char == "/"
                 and nxt == "*"
             ):
-                in_block_comment = True
+                block_comment_depth = 1
                 current.append(char)
                 current.append(nxt)
                 i += 2
                 continue
-            if in_block_comment:
+            if block_comment_depth > 0:
+                if nested_block_comments and char == "/" and nxt == "*":
+                    block_comment_depth += 1
+                    current.append(char)
+                    current.append(nxt)
+                    i += 2
+                    continue
                 current.append(char)
                 if char == "*" and nxt == "/":
                     current.append(nxt)
-                    in_block_comment = False
+                    block_comment_depth -= 1
                     i += 2
                     continue
                 i += 1
@@ -123,42 +137,3 @@ class DuckDBRegexParser(EnhancedRegexParser):
         if final:
             statements.append(final)
         return statements
-
-    def extract_objects(
-        self, sql_content: str, default_schema: Optional[str] = None
-    ) -> List[SqlObject]:
-        """Extract database objects from a statement via config object patterns."""
-        if not sql_content:
-            return []
-        objects: List[SqlObject] = []
-        statement = sql_content.strip()
-        for pattern_name, pattern in self.config.object_patterns.items():
-            match = pattern.search(statement)
-            if not match:
-                continue
-            non_none = [g for g in match.groups() if g is not None]
-            if not non_none:
-                continue
-            name = non_none[-1].strip('"')
-            schema = non_none[-2].strip('"') if len(non_none) >= 2 else None
-            objects.append(
-                SqlObject(
-                    name=name,
-                    object_type=self._object_type(pattern_name),
-                    schema=schema or default_schema,
-                )
-            )
-            break
-        return objects
-
-    @staticmethod
-    def _object_type(pattern_name: str) -> SqlObjectType:
-        mapping: Dict[str, SqlObjectType] = {
-            "create_table": SqlObjectType.TABLE,
-            "create_view": SqlObjectType.VIEW,
-            "create_index": SqlObjectType.INDEX,
-            "create_sequence": SqlObjectType.SEQUENCE,
-            "alter_table": SqlObjectType.TABLE,
-            "drop_table": SqlObjectType.TABLE,
-        }
-        return mapping.get(pattern_name, SqlObjectType.UNKNOWN)

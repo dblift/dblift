@@ -378,6 +378,24 @@ class TestSqlGlotParser:
 
         assert len(objects) == 0
 
+    def test_extract_objects_logs_visibly_when_sqlglot_cannot_parse(self, caplog):
+        """A ``ParseError`` swallowed by ``extract_objects`` must be visible.
+
+        sqlglot cannot parse the comma-separated ``DROP INDEX a.idx1,
+        b.idx2;`` form under ``tsql`` (dblift/dblift#379). Before this test,
+        the failure was logged at DEBUG, a level no default application
+        configuration surfaces, so the degradation to "no objects here" left
+        no trace an operator would see. It must log at WARNING or above.
+        """
+        parser = SqlGlotParser(dialect="sqlserver")
+        sql = "DROP INDEX a.idx1, b.idx2;"
+
+        with caplog.at_level("WARNING", logger="dblift.core.sql_parser.sqlglot_parser"):
+            objects = parser.extract_objects(sql)
+
+        assert objects == []
+        assert any(record.levelname == "WARNING" for record in caplog.records)
+
     # ==================== Affected Objects Tests ====================
 
     def test_affected_objects_create_table(self):
@@ -430,6 +448,41 @@ class TestSqlGlotParser:
         assert result.success
         # INSERT should affect the target table
         assert len(result.statements[0].affected_objects) >= 1
+
+    def test_affected_objects_drop_index_legacy_table_dot_name(self):
+        """SQL Server's deprecated ``DROP INDEX table.index_name`` spelling
+        must not leak into affected_objects either: ``_extract_affected_objects``
+        has its own call into ``_correct_sqlserver_drop_index_schema`` (#367),
+        separate from the one ``extract_objects`` uses, and covering one does
+        not exercise the other — this is that path's own default_schema,
+        distinct from any schema embedded in the SQL."""
+        parser = SqlGlotParser(dialect="sqlserver")
+        sql = "DROP INDEX real_one.idx1;"
+
+        result = parser.parse_sql(sql, default_schema="unrelated_default")
+
+        assert result.success
+        affected = result.statements[0].affected_objects
+        assert len(affected) == 1
+        assert affected[0].name == "idx1"
+        assert affected[0].schema == "unrelated_default"
+        assert affected[0].object_type == SqlObjectType.INDEX
+
+    def test_affected_objects_drop_index_legacy_owner_table_dot_name(self):
+        """Same path, three-part ``owner.table.index_name`` form: the owner
+        sqlglot parses into ``Table.catalog`` must survive here too, not
+        just through ``extract_objects``."""
+        parser = SqlGlotParser(dialect="sqlserver")
+        sql = "DROP INDEX dbo.real_one.idx1;"
+
+        result = parser.parse_sql(sql, default_schema="unrelated_default")
+
+        assert result.success
+        affected = result.statements[0].affected_objects
+        assert len(affected) == 1
+        assert affected[0].name == "idx1"
+        assert affected[0].schema == "dbo"
+        assert affected[0].object_type == SqlObjectType.INDEX
 
     # ==================== Quoted Identifiers Tests ====================
 

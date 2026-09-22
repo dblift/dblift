@@ -55,6 +55,9 @@ jobs:
       - name: Line-length (ratchet)
         run: python scripts/check_line_length.py
 
+      - name: Structural debt (ratchet)
+        run: python scripts/check_debt_ratchet.py
+
       - name: Check public OSS surface and the MCP stdio round trip
         run: |
           python -m pytest tests/unit/test_oss_public_surface.py \

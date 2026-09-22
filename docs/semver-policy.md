@@ -141,9 +141,35 @@ release time:
 4. Tag is created with `git tag -s vX.Y.Z -m "vX.Y.Z"`.
 5. `pip-audit` must pass on the pinned deps before tag.
 
-Automated SemVer checks against the public surface are a future
-enhancement; today the policy is enforced by human review at release
-time.
+The public surface is checked automatically on every pull request:
+
+- `tests/unit/contracts/` records the CLI surface, the parameters of every
+  public `DBLiftClient` callable, and the SQLite runtime contract (history
+  table columns, `info --format json` keys, exit codes). A fact that
+  disappears fails the build as BREAKING. A fact that appears fails until the
+  snapshot is regenerated with `DBLIFT_UPDATE_CONTRACTS=1` next to a
+  CHANGELOG entry.
+- `.github/workflows/upgrade-path.yml` migrates a database with the previous
+  published release and with 4.0.0, continues with the tree under test, and
+  checks that the published release can still read the result.
+
+Everything else in section 1 — configuration keys and environment
+variables, packaging metadata, migration-file conventions, and the
+*values* behind the recorded JSON keys — is still protected by review at
+release time, not by a snapshot.
+
+A deliberate removal at a MAJOR release is recorded the same way as an
+addition: regenerate with `DBLIFT_UPDATE_CONTRACTS=1` in the commit that
+removes the surface, next to the CHANGELOG entry that announces it.
+
+### 5.1 Release cadence
+
+- At most one patch release every two weeks and one minor release per month.
+  Security fixes are the only exception.
+- No new major version is planned. A change that would require one waits, or
+  ships behind a deprecation (section 3).
+- Fixes accumulate on `develop`; the `Unreleased` section of the CHANGELOG is
+  where they wait.
 
 ## 6. Historical breaking changes
 

@@ -296,6 +296,13 @@ class HybridParser(_SqlglotBuildersMixin, SqlParserInterface):
     ) -> List[SqlObject]:
         """Extract database objects using hybrid approach.
 
+        Splits ``sql_content`` into statements first (reusing the regex
+        parser's own splitter) and reconciles regex vs. sqlglot per
+        statement — see ``_merge_objects``. This also means a sqlglot
+        ``ParseError`` on one statement no longer withdraws sqlglot's
+        contribution from every other, valid statement in the batch: each
+        statement is parsed, and merged, independently.
+
         Args:
             sql_content: SQL content to extract objects from
             default_schema: Default schema name
@@ -303,20 +310,47 @@ class HybridParser(_SqlglotBuildersMixin, SqlParserInterface):
         Returns:
             List of extracted SQL objects
         """
-        # Get objects from regex parser
-        regex_objects = self.regex_parser.extract_objects(sql_content, default_schema)
+        effective_schema = self._resolve_default_schema(default_schema)
 
-        # If sqlglot available and content is pure SQL, enhance with sqlglot
-        # Skip sqlglot for Oracle-specific syntax it doesn't support (e.g. PARTITION BY REFERENCE)
+        objects: List[SqlObject] = []
+        for stmt_text in self.split_statements(sql_content):
+            if not stmt_text or not stmt_text.strip():
+                continue
+            objects.extend(self._extract_objects_for_statement(stmt_text, effective_schema))
+        return objects
+
+    def _resolve_default_schema(self, default_schema: Optional[str]) -> Optional[str]:
+        """Resolve the default schema once, via the quirks, so every caller
+        of ``_merge_objects`` hands regex and sqlglot the same value
+        (dblift/dblift#377): left to their own defaults, they can disagree
+        on an unqualified name's schema, and that divergence either gets
+        silently dropped or silently kept depending on which side later
+        "wins" in the merge.
+        """
+        if default_schema is not None:
+            return default_schema
+        return self._quirks.derive_schema_name(None)
+
+    def _extract_objects_for_statement(
+        self, stmt_text: str, default_schema: Optional[str]
+    ) -> List[SqlObject]:
+        """Extract and reconcile objects for a single SQL statement."""
+        regex_objects = self.regex_parser.extract_objects(stmt_text, default_schema)
+
+        # Skip sqlglot for syntax it doesn't support at all (e.g. Oracle PARTITION BY
+        # REFERENCE, or a schema-qualified SQL Server/MySQL `DROP INDEX ... ON` —
+        # see each quirks class for why) so it never raises on those shapes.
+        # Evaluated per statement (``stmt_text``, not the original
+        # possibly-multi-statement content) now that extraction itself is.
         use_sqlglot = (
             self.sqlglot_parser is not None
-            and not self._contains_procedural_keywords(sql_content)
-            and not self._contains_oracle_sqlglot_unsupported(sql_content)
+            and not self._contains_procedural_keywords(stmt_text)
+            and not self._contains_oracle_sqlglot_unsupported(stmt_text)
+            and not self._contains_sqlglot_unsupported_shape(stmt_text)
         )
         if use_sqlglot and self.sqlglot_parser is not None:
             try:
-                sqlglot_objects = self.sqlglot_parser.extract_objects(sql_content, default_schema)
-                # Merge objects, preferring sqlglot for duplicates (more accurate)
+                sqlglot_objects = self.sqlglot_parser.extract_objects(stmt_text, default_schema)
                 return self._merge_objects(regex_objects, sqlglot_objects)
             except Exception as e:
                 logger.debug(f"SqlGlot object extraction failed, using regex only: {e}")
@@ -453,8 +487,14 @@ class HybridParser(_SqlglotBuildersMixin, SqlParserInterface):
             return stmt
 
         try:
-            # Parse with sqlglot for enhanced object extraction
-            sqlglot_result = self.sqlglot_parser.parse_sql(stmt.sql_text, default_schema)
+            # Parse with sqlglot for enhanced object extraction. Resolved the
+            # same way as extract_objects's own sqlglot call (dblift/dblift#377):
+            # otherwise this, the other caller of _merge_objects, would hand
+            # sqlglot a raw, possibly-None default_schema while extract_objects
+            # hands it the quirks-resolved one, and the two callers of the same
+            # merge function could disagree on identical input.
+            effective_schema = self._resolve_default_schema(default_schema)
+            sqlglot_result = self.sqlglot_parser.parse_sql(stmt.sql_text, effective_schema)
 
             if sqlglot_result.success and sqlglot_result.statements:
                 sqlglot_stmt = sqlglot_result.statements[0]
@@ -511,33 +551,90 @@ class HybridParser(_SqlglotBuildersMixin, SqlParserInterface):
         upper_sql = sql_text.upper()
         return any(pattern in upper_sql for pattern in patterns)
 
+    def _contains_sqlglot_unsupported_shape(self, sql_text: str) -> bool:
+        """Check if SQL matches a dialect-declared shape sqlglot cannot parse.
+
+        Sibling of ``_contains_oracle_sqlglot_unsupported``: same purpose
+        (skip sqlglot before it raises), but for an unsupported shape a
+        fixed literal phrase can't express because it spans a variable
+        identifier — e.g. SQL Server/MySQL ``DROP INDEX ... ON
+        schema.table``, where an arbitrary index name sits between the two
+        fixed keywords. See ``sqlglot_unsupported_sql_regex_patterns`` on
+        each quirks class for the concrete patterns.
+
+        Args:
+            sql_text: SQL text to check
+
+        Returns:
+            True if sql_text matches a declared unsupported-shape regex
+        """
+        patterns = self._quirks.sqlglot_unsupported_sql_regex_patterns
+        if not patterns:
+            return False
+        upper_sql = sql_text.upper()
+        return any(re.search(pattern, upper_sql) for pattern in patterns)
+
     def _merge_objects(
         self, regex_objects: List[SqlObject], sqlglot_objects: List[SqlObject]
     ) -> List[SqlObject]:
-        """Merge object lists, preferring sqlglot for duplicates.
+        """Reconcile one statement's regex and sqlglot objects, per object type.
+
+        Per dblift/dblift#377: for each object type T, if sqlglot produced at
+        least one object of type T, its objects of type T *replace* the
+        regex objects of type T entirely — a differing regex name is
+        dropped, not added (logged at DEBUG so the divergence stays
+        visible). If sqlglot produced nothing of type T, the regex objects
+        for T are kept, since sqlglot does not model every shape (some
+        index forms among them). On a name collision within a type, the
+        surviving schema is ``sqlglot.schema or regex.schema``.
+
+        This does not reconcile a *type*-level mismatch between the two
+        parsers on the same statement (see dblift/dblift#384): each side's
+        objects are grouped, and merged, by their own type.
 
         Args:
-            regex_objects: Objects from regex parser
-            sqlglot_objects: Objects from sqlglot parser
+            regex_objects: Objects from regex parser for this statement
+            sqlglot_objects: Objects from sqlglot parser for this statement
 
         Returns:
-            Merged list of unique objects
+            Reconciled list of objects for this statement
         """
-        # Create a dict to track unique objects by name
-        merged = {}
-
-        # Add regex objects first (skip objects with name "unknown" - parsing fallback)
+        regex_by_type: Dict[SqlObjectType, List[SqlObject]] = {}
         for obj in regex_objects:
-            if obj.name.lower() != "unknown":
-                key = (obj.name.lower(), obj.object_type.value)
-                merged[key] = obj
+            if obj.name.lower() == "unknown":
+                continue
+            regex_by_type.setdefault(obj.object_type, []).append(obj)
 
-        # Override with sqlglot objects (more accurate)
+        sqlglot_by_type: Dict[SqlObjectType, List[SqlObject]] = {}
         for obj in sqlglot_objects:
-            key = (obj.name.lower(), obj.object_type.value)
-            merged[key] = obj
+            sqlglot_by_type.setdefault(obj.object_type, []).append(obj)
 
-        return list(merged.values())
+        merged: List[SqlObject] = []
+        for object_type, regex_group in regex_by_type.items():
+            sqlglot_group = sqlglot_by_type.get(object_type)
+            if not sqlglot_group:
+                merged.extend(regex_group)
+                continue
+
+            regex_by_name = {obj.name.lower(): obj for obj in regex_group}
+            sqlglot_names = {obj.name.lower() for obj in sqlglot_group}
+            for dropped_name in sorted(set(regex_by_name) - sqlglot_names):
+                logger.debug(
+                    f"Dropping regex {object_type.value} {dropped_name!r} in favor of "
+                    f"sqlglot's {object_type.value} name(s) {sorted(sqlglot_names)} "
+                    "for the same statement"
+                )
+            for obj in sqlglot_group:
+                regex_match = regex_by_name.get(obj.name.lower())
+                if regex_match is not None and not obj.schema:
+                    obj.schema = regex_match.schema
+                merged.append(obj)
+
+        for object_type, sqlglot_group in sqlglot_by_type.items():
+            if object_type not in regex_by_type:
+                merged.extend(sqlglot_group)
+
+        return merged
 
     @staticmethod
     def _object_exists(collection: Optional[List[Any]], candidate: SqlObject) -> bool:

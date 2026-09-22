@@ -12,6 +12,7 @@ import pytest
 from dblift.core.introspection._schema_orchestrator import introspect_schema
 from dblift.core.sql_model._base_sql_column import SqlColumn
 from dblift.core.sql_model.base import ConstraintType, SqlConstraint
+from dblift.core.sql_model.index import Index
 from dblift.core.sql_model.table import Table
 
 
@@ -39,6 +40,7 @@ def _make_si(**overrides):
     si.get_synonyms.return_value = []
     si.get_user_defined_types.return_value = []
     si.get_extensions.return_value = []
+    si.get_all_indexes.return_value = None
     si.get_indexes.return_value = []
     si.get_table_partitions.return_value = []
     si.get_check_constraints.return_value = []
@@ -118,6 +120,43 @@ class TestIntrospectSchemaHappyPath:
         assert table.export_partitions == ["part1"]
         assert result["partitions"]["t1"] == ["part1"]
         assert result["total_partitions"] == 1
+
+
+class TestBulkIndexIntrospection:
+    def test_groups_bulk_indexes_without_per_table_queries(self):
+        si = _make_si()
+        si.get_tables.return_value = [_make_table("t1"), _make_table("t2")]
+        index = Index("ix_t2", "t2", ["id"], schema="public")
+        si.get_all_indexes.return_value = [index]
+
+        result = introspect_schema(si, "public")
+
+        assert result["indexes"] == {"t1": [], "t2": [index]}
+        assert result["total_indexes"] == 1
+        si.get_all_indexes.assert_called_once_with("public")
+        si.get_indexes.assert_not_called()
+
+    def test_empty_bulk_result_does_not_fall_back(self):
+        si = _make_si()
+        si.get_tables.return_value = [_make_table("t1"), _make_table("t2")]
+        si.get_all_indexes.return_value = []
+
+        result = introspect_schema(si, "public")
+
+        assert result["indexes"] == {"t1": [], "t2": []}
+        si.get_indexes.assert_not_called()
+
+    def test_bulk_failure_falls_back_to_per_table_queries(self):
+        si = _make_si()
+        si.get_tables.return_value = [_make_table("t1"), _make_table("t2")]
+        si.get_all_indexes.side_effect = RuntimeError("bulk unavailable")
+        si.get_indexes.side_effect = [["ix_t1"], ["ix_t2"]]
+
+        result = introspect_schema(si, "public")
+
+        assert result["indexes"] == {"t1": ["ix_t1"], "t2": ["ix_t2"]}
+        assert result["failures"] == []
+        assert si.get_indexes.call_count == 2
 
 
 class TestIntrospectSchemaNoVendorQueries:

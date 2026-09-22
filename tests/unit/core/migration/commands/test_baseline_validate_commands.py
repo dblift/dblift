@@ -395,6 +395,25 @@ class TestValidateCommandHappyPath(unittest.TestCase):
         info_calls = " ".join(str(c) for c in log.info.call_args_list)
         self.assertIn("passed", info_calls.lower())
 
+    def test_success_message_states_sql_is_not_parsed(self):
+        """The pass message must say the SQL itself was not checked.
+
+        Otherwise it reads as "these migrations will run", which validate
+        does not establish — it compares applied history to resolved
+        scripts and never parses the SQL.
+        """
+        log = MagicMock()
+        validator = self._make_validator(success=True)
+        cmd = _make_validate_cmd(log=log, validator=validator)
+
+        with patch.object(cmd, "_populate_database_info"):
+            with patch.object(cmd, "_log_command_completion"):
+                cmd.execute(Path("/migrations"))
+
+        info_calls = " ".join(str(c) for c in log.info.call_args_list).lower()
+        self.assertIn("sql", info_calls)
+        self.assertIn("not parsed", info_calls)
+
     def test_calls_validator_with_scripts_dir(self):
         validator = self._make_validator(success=True)
         cmd = _make_validate_cmd(validator=validator)

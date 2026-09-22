@@ -20,6 +20,9 @@ class SQLServerTokenizer(BaseTokenizer):
 
     dialect_name = "sqlserver"  # lint: allow-dialect-string: dialect dispatch
 
+    # T-SQL documents nested block comments explicitly.
+    NESTED_BLOCK_COMMENTS = True
+
     #: ``[``/``]`` delimit identifiers and ``@`` introduces parameters and
     #: system functions; all three are claimed by ``_is_keyword_start`` /
     #: ``_handle_keyword``, which run after the symbol check, so they must not

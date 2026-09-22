@@ -41,6 +41,20 @@ class SqlserverQuirks(BaseQuirks):
     data_history_text_type = "VARCHAR(MAX)"
     data_change_set_blob_type = "VARCHAR(MAX)"
     data_timestamp_column_ddl = "DATETIME2 DEFAULT GETDATE()"
+    # sqlglot's tsql grammar rejects DROP INDEX's modern form
+    # ("DROP INDEX index ON table") when the table is schema-qualified —
+    # the ordinary, everyday spelling, not an edge case. It parses the
+    # unqualified form and the legacy dot-qualified form ("DROP INDEX
+    # table.index") fine; only the combination of ON *and* a qualified
+    # table fails. The regex parser already extracts this shape
+    # correctly (index name + schema), so skip sqlglot for it entirely
+    # instead of letting it raise on every routine DROP INDEX (#379).
+    # The gap between INDEX and ON excludes ";" so the match cannot cross
+    # into a *different* statement in a multi-statement ``extract_objects``
+    # call and false-positive on an unrelated "... ON x.y" elsewhere in the
+    # batch (e.g. a JOIN clause) — this must describe the one DROP INDEX
+    # statement, not the whole blob it may be embedded in.
+    sqlglot_unsupported_sql_regex_patterns = (r"DROP\s+INDEX\s+[^;]+\bON\s+[^\s;,()]*\.",)
 
     def is_data_history_table_already_exists_error(self, error_message: str) -> bool:
         """SQL Server raises "There is already an object named ..." (Msg 2714)."""
@@ -86,30 +100,30 @@ class SqlserverQuirks(BaseQuirks):
 
     drop_supports_if_exists = True  # SQL Server 2016+ supports DROP ... IF EXISTS
     unquoted_identifier_case = "case_insensitive"
-    # Procedure / function DDL (story 26-5).
+    # Procedure / function DDL.
     proc_body_wrap_style = "begin_end"
     proc_param_inout_keyword = "OUTPUT"
-    # Index DDL (story 26-5).
+    # Index DDL.
     index_qualifies_with_schema = False
     index_with_options_style = "uppercase"
     index_drop_includes_table = True
     index_drop_table_form_supports_if_exists = True
-    # Trigger DDL (story 26-5).
+    # Trigger DDL.
     trigger_supports_for_each_row = False  # SQL Server has no FOR EACH ROW
-    # Sequence DDL (story 26-5).
+    # Sequence DDL.
     seq_nocycle_keyword = "NO CYCLE"
-    # UDT / Table DDL (story 26-5).
+    # UDT / Table DDL.
     udt_distinct_uses_from_syntax = True
     table_uses_filegroup_syntax = True
     supports_online_index = True
     metadata_catalog_mode = "catalog+schema"
-    # Table DDL (story 26-5).
+    # Table DDL.
     table_temporary_style = "hash_prefix"
     table_supports_constraint_nocheck = True
     # T-SQL's referential-action grammar is ON DELETE/UPDATE { NO ACTION |
     # CASCADE | SET NULL | SET DEFAULT } -- RESTRICT is not a keyword here.
     table_fk_supports_restrict = False
-    # Wave A hooks (story 26-6).
+    # Wave A hooks.
     table_supports_memory_optimized = True
     table_supports_system_versioned = True
 

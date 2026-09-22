@@ -21,6 +21,9 @@ class PostgreSQLTokenizer(BaseTokenizer):
 
     dialect_name = "postgresql"  # lint: allow-dialect-string: dialect dispatch
 
+    # PostgreSQL documents nested block comments explicitly.
+    NESTED_BLOCK_COMMENTS = True
+
     def __init__(self, sql: str, strict_unknown_chars: bool = False):
         """Initialize PostgreSQL tokenizer.
 
@@ -30,6 +33,9 @@ class PostgreSQLTokenizer(BaseTokenizer):
         """
         super().__init__(sql, strict_unknown_chars=strict_unknown_chars)
         self.in_copy_data = False
+        # Set once the ';' ending a "COPY ... FROM STDIN" header has been read;
+        # the very next token is then the data block, not ordinary SQL.
+        self._copy_data_pending = False
 
     def _next_token(self) -> Optional[Token]:
         """Get the next token from the input.
@@ -39,12 +45,23 @@ class PostgreSQLTokenizer(BaseTokenizer):
         Returns:
             Next token or None if no more tokens
         """
+        if self._copy_data_pending:
+            self._copy_data_pending = False
+            return self.handle_copy_data()
+
         self._skip_whitespace()
 
         if self.pos >= len(self.sql):
             return Token(TokenType.EOF, "", self.pos, self.line, self.col, self.parens_depth)
 
         char = self.peek()
+
+        # psql client meta-command (e.g. \restrict, \i): a line whose first
+        # non-whitespace character is '\' at the top level. Gated on
+        # in_copy_data, not reused for anything else, because a COPY data
+        # row may legitimately start with \N (SQL NULL) and must stay data.
+        if char == "\\" and not self.in_copy_data and self._is_at_line_start():
+            return self._handle_meta_command()
 
         # Flyway / DBLift placeholders ${name} or ${name:default} — not PostgreSQL
         # dollar-quoting ($$…$$ / $tag$…$tag$). Treat as a single token so statement
@@ -216,6 +233,17 @@ class PostgreSQLTokenizer(BaseTokenizer):
 
         return token
 
+    def _handle_delimiter(self) -> Token:
+        """Handle ``;``, arming the copy-data read once a COPY header ends.
+
+        Returns:
+            Delimiter token
+        """
+        token = super()._handle_delimiter()
+        if self.in_copy_data:
+            self._copy_data_pending = True
+        return token
+
     def _is_copy_from_stdin(self) -> bool:
         """Check if we're in a COPY FROM STDIN statement.
 
@@ -263,13 +291,21 @@ class PostgreSQLTokenizer(BaseTokenizer):
             self.col = saved_col
 
     def handle_copy_data(self) -> Token:
-        r"""Handle COPY FROM STDIN data block.
+        r"""Handle a COPY FROM STDIN data block, ending at \. on its own line.
 
-        Data ends with \. on its own line.
+        The newline that ends the header's ``;`` is formatting, not data, and
+        is dropped before the token starts — otherwise a row whose first
+        column is empty (a leading tab) would lose that tab to whitespace
+        skipping.
 
         Returns:
-            String token containing COPY data
+            COPY_DATA token containing the data block, terminator included
         """
+        if self.peek() == "\r":
+            self.read()
+        if self.peek() == "\n":
+            self.read()
+
         start_pos = self.pos
         start_line = self.line
         start_col = self.col
@@ -295,8 +331,36 @@ class PostgreSQLTokenizer(BaseTokenizer):
 
         self.in_copy_data = False
         return Token(
-            TokenType.STRING,
+            TokenType.COPY_DATA,
             data_text,
+            start_pos,
+            start_line,
+            start_col,
+            self.parens_depth,
+        )
+
+    def _handle_meta_command(self) -> Token:
+        r"""Read a psql meta-command line, ending at end of line.
+
+        PostgreSQL's own parser never sees this line — it is a client
+        directive, not SQL — so it is its own unit rather than glued onto
+        whatever statement follows. What dblift does with it is decided by
+        the statement parser, not the tokenizer.
+
+        Returns:
+            META_COMMAND token containing the line, backslash included
+        """
+        start_pos = self.pos
+        start_line = self.line
+        start_col = self.col
+
+        text = ""
+        while self.pos < len(self.sql) and self.peek() not in ("\n", "\r"):
+            text += self.read()
+
+        return Token(
+            TokenType.META_COMMAND,
+            text,
             start_pos,
             start_line,
             start_col,
@@ -323,3 +387,14 @@ class PostgreSQLTokenizer(BaseTokenizer):
             check_pos -= 1
 
         return True
+
+
+class NonNestingPostgreSQLTokenizer(PostgreSQLTokenizer):
+    """PostgreSQL-syntax tokenizer for a wire-compatible engine kept
+    non-nesting by default because nesting isn't established for it
+    (Redshift — see ``RedshiftQuirks.parser_class`` and CHANGELOG.md).
+    Reuses everything else PostgreSQL does; only the nesting claim is
+    withheld.
+    """
+
+    NESTED_BLOCK_COMMENTS = False

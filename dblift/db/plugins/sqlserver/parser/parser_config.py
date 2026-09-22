@@ -8,6 +8,10 @@ import re
 from typing import Dict, List, Pattern, Set
 
 from dblift.core.sql_parser.dialects.base_config import DialectConfig
+from dblift.core.sql_parser.dialects.identifier_tokens import (
+    BRACKET_IDENTIFIER,
+    DOUBLE_QUOTED_IDENTIFIER,
+)
 
 
 class SqlServerConfig(DialectConfig):
@@ -309,9 +313,32 @@ class SqlServerConfig(DialectConfig):
         - Synonym patterns
         - SCHEMA operation patterns
         """
-        # T-SQL identifier pattern: bracket-quoted or unquoted
-        # Supports schema.object format
-        id_pattern = r"(?:\[?([^\]]+)\]?\.)?(?:\[?([^\]]+)\]?)"
+        # T-SQL identifier: bracket-quoted, double-quoted, or unquoted.
+        # A closing bracket/quote inside a quoted identifier is escaped by
+        # doubling it (``[real]]one]`` is ``real]one``; ``"real""one"`` is
+        # ``real"one``), so each quoted alternative reads a doubled pair as
+        # part of the identifier rather than stopping there.
+        # The unquoted alternative stops at whitespace/punctuation so it
+        # cannot run past the identifier into the rest of the statement.
+        id_token = rf'(?:{BRACKET_IDENTIFIER}|{DOUBLE_QUOTED_IDENTIFIER}|[^\s.,;()\[\]"]+)'
+        captured_id = f"({id_token})"
+        # A reference has one to three dot-separated parts:
+        # database.schema.name. The three-part alternative is tried first
+        # so it wins over the two-part one; its leading database part is
+        # matched but not captured, so the two capture groups downstream
+        # always mean (schema, name) no matter how many parts were written.
+        id_pattern = (
+            rf"(?:{id_token}\.{captured_id}\.{captured_id}"
+            rf"|{captured_id}\.{captured_id}"
+            rf"|{captured_id})"
+        )
+        # Where an index is created or dropped from (the table it belongs
+        # to, optionally schema-qualified) is matched but never captured.
+        # An index is not itself schema-qualified in T-SQL, so its
+        # SqlObject reports the default/current schema rather than the
+        # table's — capturing the table reference here would feed it into
+        # the (schema, name) grouping below and misreport the index name.
+        index_target = rf"{id_token}(?:\.{id_token}){{0,2}}"
 
         return {
             # Tables
@@ -345,12 +372,14 @@ class SqlServerConfig(DialectConfig):
                 re.IGNORECASE,
             ),
             # Indexes
-            # Grammar-based: Supports CLUSTERED/NONCLUSTERED, UNIQUE, XML, FULLTEXT, COLUMNSTORE
+            # Grammar-based: Supports CLUSTERED/NONCLUSTERED, UNIQUE, SPATIAL, COLUMNSTORE.
+            # XML indexes are excluded here (they match "xml_index_create" below only) —
+            # matching both would extract the same CREATE XML INDEX statement twice.
             "index_create": re.compile(
                 r"CREATE\s+(?:UNIQUE\s+)?(?:CLUSTERED\s+|NONCLUSTERED\s+)?"
-                r"(?:PRIMARY\s+)?(?:XML\s+)?(?:SPATIAL\s+)?"
+                r"(?:SPATIAL\s+)?"
                 r"(?:COLUMNSTORE\s+)?(?:NONCLUSTERED\s+COLUMNSTORE\s+)?"
-                r"INDEX\s+(?:\[?([^\]]+)\]?)\s+ON\s+" + id_pattern,
+                r"INDEX\s+" + captured_id + r"\s+ON\s+" + index_target,
                 re.IGNORECASE,
             ),
             # Grammar-based: FULLTEXT INDEX
@@ -360,12 +389,15 @@ class SqlServerConfig(DialectConfig):
             ),
             # Grammar-based: XML INDEX
             "xml_index_create": re.compile(
-                r"CREATE\s+(?:PRIMARY\s+)?XML\s+INDEX\s+(?:\[?([^\]]+)\]?)\s+ON\s+" + id_pattern,
+                r"CREATE\s+(?:PRIMARY\s+)?XML\s+INDEX\s+"
+                + captured_id
+                + r"\s+ON\s+"
+                + index_target,
                 re.IGNORECASE,
             ),
             # Grammar-based: DROP INDEX supports IF EXISTS
             "index_drop": re.compile(
-                r"DROP\s+INDEX\s+(?:IF\s+EXISTS\s+)?(?:\[?([^\]]+)\]?)\s+ON\s+" + id_pattern,
+                r"DROP\s+INDEX\s+(?:IF\s+EXISTS\s+)?" + captured_id + r"\s+ON\s+" + index_target,
                 re.IGNORECASE,
             ),
             # Procedures/Functions
@@ -422,15 +454,15 @@ class SqlServerConfig(DialectConfig):
             # SCHEMA
             # Grammar-based: SCHEMA operations
             "schema_create": re.compile(
-                r"CREATE\s+SCHEMA\s+(?:\[?([^\]]+)\]?)",
+                r"CREATE\s+SCHEMA\s+" + captured_id,
                 re.IGNORECASE,
             ),
             "schema_alter": re.compile(
-                r"ALTER\s+SCHEMA\s+(?:\[?([^\]]+)\]?)",
+                r"ALTER\s+SCHEMA\s+" + captured_id,
                 re.IGNORECASE,
             ),
             "schema_drop": re.compile(
-                r"DROP\s+SCHEMA\s+(?:IF\s+EXISTS\s+)?(?:\[?([^\]]+)\]?)",
+                r"DROP\s+SCHEMA\s+(?:IF\s+EXISTS\s+)?" + captured_id,
                 re.IGNORECASE,
             ),
             # TYPE (user-defined types)
@@ -505,14 +537,19 @@ class SqlServerConfig(DialectConfig):
         if not identifier:
             return identifier
 
-        # Remove brackets if present
+        # Remove brackets if present, then undo the ]] -> ] escape
         if identifier.startswith("[") and identifier.endswith("]"):
-            identifier = identifier[1:-1]
+            identifier = identifier[1:-1].replace("]]", "]")
             is_quoted = True
 
-        # Remove double quotes if present
-        if identifier.startswith('"') and identifier.endswith('"'):
-            identifier = identifier[1:-1]
+        # Remove double quotes if present, then undo the "" -> " escape.
+        # elif, not if: once the bracket branch above has fired, this
+        # identifier was bracket-quoted, not double-quoted — content that
+        # happens to start and end with '"' after the brackets are
+        # stripped (e.g. ["a""b"]) must not also go through this branch,
+        # since a quote has no escaping meaning inside brackets.
+        elif identifier.startswith('"') and identifier.endswith('"'):
+            identifier = identifier[1:-1].replace('""', '"')
             is_quoted = True
 
         if is_quoted:

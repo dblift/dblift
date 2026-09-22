@@ -1,6 +1,6 @@
 """Parser setup functions for the dblift CLI.
 
-Extracted from cli/main.py (story 20-16) to reduce file size.
+Extracted from cli/main.py to reduce file size.
 Contains the 7 argparse configuration functions.
 """
 
@@ -526,7 +526,8 @@ def create_parser(
     )
     validate_parser = subparsers.add_parser(
         "validate",
-        help="Validate migration scripts",
+        help="Validate migration scripts for consistency and, once applied, "
+        "against history (SQL is not parsed)",
         parents=[_history, _strict, _filter, db_parent],
     )
     undo_parser = subparsers.add_parser(

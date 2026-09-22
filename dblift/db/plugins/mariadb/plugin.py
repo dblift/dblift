@@ -1,4 +1,4 @@
-"""Entry-point declaration for the MariaDB plugin (Epic 26 story 26-13)."""
+"""Entry-point declaration for the MariaDB plugin."""
 
 from __future__ import annotations
 

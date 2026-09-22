@@ -333,8 +333,17 @@ class DB2Config(DialectConfig):
                 r"\b(?:CREATE|DROP|ALTER)\s+(?:OR\s+REPLACE\s+)?VIEW\s+(?:IF\s+(?:NOT\s+)?EXISTS\s+)?(?:(?:\"([^\"]+)\")|([a-zA-Z0-9_$#@]+))(?:\.(?:(?:\"([^\"]+)\")|([a-zA-Z0-9_$#@]+)))?",
                 re.IGNORECASE,
             ),
+            # A Db2 index is independently schema-qualified
+            # ([indexschema.]indexname), unlike its ON-target table -
+            # SYSCAT.INDEXES has its own INDSCHEMA, separate from the
+            # table's TABSCHEMA. So the index's own name gets the same
+            # optional schema.name capture every other pattern here has,
+            # while the ON-target is matched but never captured.
             "index": re.compile(
-                r"\b(?:CREATE|DROP|ALTER)\s+(?:UNIQUE\s+)?INDEX\s+(?:IF\s+(?:NOT\s+)?EXISTS\s+)?(?:(?:\"([^\"]+)\")|([a-zA-Z0-9_$#@]+))(?:\s+ON\s+(?:(?:\"([^\"]+)\")|([a-zA-Z0-9_$#@]+))(?:\.(?:(?:\"([^\"]+)\")|([a-zA-Z0-9_$#@]+)))?)?",
+                r"\b(?:CREATE|DROP|ALTER)\s+(?:UNIQUE\s+)?INDEX\s+(?:IF\s+(?:NOT\s+)?EXISTS\s+)?"
+                r"(?:(?:\"([^\"]+)\")|([a-zA-Z0-9_$#@]+))"
+                r"(?:\.(?:(?:\"([^\"]+)\")|([a-zA-Z0-9_$#@]+)))?"
+                r"(?:\s+ON\s+(?:\"[^\"]+\"|[a-zA-Z0-9_$#@]+)(?:\.(?:\"[^\"]+\"|[a-zA-Z0-9_$#@]+))?)?",
                 re.IGNORECASE,
             ),
             "sequence": re.compile(

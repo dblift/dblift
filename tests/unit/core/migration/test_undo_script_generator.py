@@ -89,6 +89,141 @@ class TestUndoStatementEmitterGenerateDrop(unittest.TestCase):
         self.assertIn('"public"', sql)
         self.assertIn('"users"', sql)
 
+    # -- INDEX: dropping an index needs the table, not the schema (#368) --
+
+    _CREATE_INDEX_SQL = "CREATE INDEX idx_users_email ON users(email);"
+
+    def test_sqlserver_index_drop_names_the_table(self):
+        # SQL Server rejects DROP INDEX schema.name for an index; it requires
+        # DROP INDEX name ON table.
+        emitter = self._make_emitter("sqlserver")
+        sql = emitter._generate_drop_statement(
+            "INDEX", "idx_users_email", None, self._CREATE_INDEX_SQL
+        )
+        self.assertEqual(sql, "DROP INDEX IF EXISTS [idx_users_email] ON [users];")
+
+    def test_mysql_index_drop_names_the_table_no_if_exists(self):
+        emitter = self._make_emitter("mysql")
+        sql = emitter._generate_drop_statement(
+            "INDEX", "idx_users_email", None, self._CREATE_INDEX_SQL
+        )
+        self.assertEqual(sql, "DROP INDEX `idx_users_email` ON `users`;")
+
+    def test_postgresql_index_drop_is_schema_qualified_not_table(self):
+        emitter = self._make_emitter("postgresql")
+        sql = emitter._generate_drop_statement(
+            "INDEX", "idx_users_email", None, self._CREATE_INDEX_SQL
+        )
+        self.assertEqual(sql, 'DROP INDEX IF EXISTS "idx_users_email";')
+
+    def test_sqlite_index_drop_is_schema_qualified_not_table(self):
+        emitter = self._make_emitter("sqlite")
+        sql = emitter._generate_drop_statement(
+            "INDEX", "idx_users_email", None, self._CREATE_INDEX_SQL
+        )
+        self.assertEqual(sql, 'DROP INDEX IF EXISTS "idx_users_email";')
+
+    def test_oracle_index_drop_standalone_with_if_exists(self):
+        # Oracle's standalone DROP INDEX supports IF EXISTS natively since
+        # 19.28 / 23ai, unlike DROP TABLE (no IF EXISTS at all).
+        emitter = self._make_emitter("oracle")
+        sql = emitter._generate_drop_statement(
+            "INDEX", "idx_users_email", None, self._CREATE_INDEX_SQL
+        )
+        self.assertEqual(sql, 'DROP INDEX IF EXISTS "idx_users_email";')
+
+    def test_db2_index_drop_no_if_exists(self):
+        emitter = self._make_emitter("db2")
+        sql = emitter._generate_drop_statement(
+            "INDEX", "idx_users_email", None, self._CREATE_INDEX_SQL
+        )
+        self.assertEqual(sql, 'DROP INDEX "idx_users_email";')
+
+    def test_sqlserver_bracket_quoted_index_names_the_table(self):
+        # Regression: SQL Server's own idiomatic bracket-quoted form used to
+        # fall through to the old, invalid schema-qualified fallback because
+        # _extract_table_name_from_create_index didn't recognize brackets.
+        # The table's own schema ("dbo" here) comes from the ON clause
+        # itself, not from the index's schema argument (None, below).
+        emitter = self._make_emitter("sqlserver")
+        sql = emitter._generate_drop_statement(
+            "INDEX",
+            "idx_users_email",
+            None,
+            "CREATE INDEX [idx_users_email] ON [dbo].[users]([email]);",
+        )
+        self.assertEqual(sql, "DROP INDEX IF EXISTS [idx_users_email] ON [dbo].[users];")
+
+    def test_sqlserver_three_part_name_uses_schema_and_table_not_database(self):
+        # BLOCKER repro: a naive "one optional leading part" capture ate the
+        # database part, captured the schema as if it were the table, and
+        # left ".users" unconsumed -- re.search doesn't require matching to
+        # end of string, so that wrong match still succeeded.
+        emitter = self._make_emitter("sqlserver")
+        sql = emitter._generate_drop_statement(
+            "INDEX",
+            "idx_users_email",
+            None,
+            "CREATE INDEX idx_users_email ON mydb.dbo.users(email);",
+        )
+        self.assertEqual(sql, "DROP INDEX IF EXISTS [idx_users_email] ON [dbo].[users];")
+
+    def test_sqlserver_schema_qualified_table_uses_that_schema(self):
+        # The table's schema in the ON clause must win over whatever schema
+        # the index itself was reported under -- an index doesn't have its
+        # own schema independent of its table in T-SQL.
+        emitter = self._make_emitter("sqlserver")
+        sql = emitter._generate_drop_statement(
+            "INDEX",
+            "idx_u",
+            "dbo",  # index's own (default) schema -- must NOT win
+            "CREATE INDEX idx_u ON sales.orders(id);",
+        )
+        self.assertEqual(sql, "DROP INDEX IF EXISTS [idx_u] ON [sales].[orders];")
+
+    def test_sqlserver_doubled_closing_bracket_is_resolved_not_refused(self):
+        # #380: [dbo].[foo]]bar] is the single identifier foo]bar, escaped
+        # by doubling the closing bracket. _IDENTIFIER/_QUALIFIED_NAME
+        # (sql_analyzer.py, shared with parser_config.py's id_token since
+        # #375) now read the doubled pair as part of the token instead of
+        # stopping at the first occurrence, so the table resolves correctly
+        # instead of the extractor refusing to guess.
+        emitter = self._make_emitter("sqlserver")
+        sql = emitter._generate_drop_statement(
+            "INDEX",
+            "idx_x",
+            None,
+            "CREATE INDEX idx_x ON [dbo].[foo]]bar]([email]);",
+        )
+        self.assertEqual(sql, "DROP INDEX IF EXISTS [idx_x] ON [dbo].[foo]]bar];")
+
+    def test_sqlserver_unresolvable_table_refuses_rather_than_guess(self):
+        # SQL Server's DROP INDEX requires the table. When the original
+        # CREATE INDEX statement doesn't yield one, emitting the old
+        # schema-qualified form would be a statement known to be invalid.
+        # Refuse (None) instead of guessing.
+        emitter = self._make_emitter("sqlserver")
+        sql = emitter._generate_drop_statement(
+            "INDEX", "idx_mystery", None, "CREATE INDEX idx_mystery;"
+        )
+        self.assertIsNone(sql)
+
+    def test_mysql_unresolvable_table_refuses_rather_than_guess(self):
+        emitter = self._make_emitter("mysql")
+        sql = emitter._generate_drop_statement(
+            "INDEX", "idx_mystery", None, "CREATE INDEX idx_mystery;"
+        )
+        self.assertIsNone(sql)
+
+    def test_postgresql_unresolvable_table_still_drops_standalone(self):
+        # PostgreSQL's DROP INDEX never needs the table, so a table that
+        # can't be found from the original statement isn't fatal here.
+        emitter = self._make_emitter("postgresql")
+        sql = emitter._generate_drop_statement(
+            "INDEX", "idx_mystery", "public", "CREATE INDEX idx_mystery;"
+        )
+        self.assertEqual(sql, 'DROP INDEX IF EXISTS "public"."idx_mystery";')
+
     def test_view_no_cascade(self):
         emitter = self._make_emitter("postgresql")
         sql = emitter._generate_drop_statement("VIEW", "my_view", None)
@@ -314,19 +449,81 @@ class TestUndoStatementEmitterExtractTableFromCreateIndex(unittest.TestCase):
         self.assertEqual(result, "users")
 
     def test_unique_index(self):
-        # UNIQUE keyword is not handled by the regex in _extract_table_name_from_create_index;
-        # it returns None in that case (known limitation — DROP INDEX only uses _extract_table_name_from_index).
         emitter = self._make_emitter()
         result = emitter._extract_table_name_from_create_index(
             "CREATE UNIQUE INDEX idx_u ON orders(id);"
         )
-        # The method does NOT support UNIQUE INDEX (returns None) — assert accordingly
-        self.assertIsNone(result)
+        self.assertEqual(result, "orders")
 
     def test_no_on_clause(self):
         emitter = self._make_emitter()
         result = emitter._extract_table_name_from_create_index("DROP INDEX idx_x;")
         self.assertIsNone(result)
+
+    # -- SQL Server's own idiomatic forms (#368 follow-up) --
+
+    def test_bracket_quoted_index_and_table(self):
+        emitter = self._make_emitter()
+        result = emitter._extract_table_name_from_create_index(
+            "CREATE INDEX [idx_users_email] ON [dbo].[users]([email]);"
+        )
+        self.assertEqual(result, "users")
+
+    def test_bracket_quoted_table_no_schema(self):
+        emitter = self._make_emitter()
+        result = emitter._extract_table_name_from_create_index(
+            "CREATE INDEX [idx_users_email] ON [users]([email]);"
+        )
+        self.assertEqual(result, "users")
+
+    def test_clustered_index(self):
+        emitter = self._make_emitter()
+        result = emitter._extract_table_name_from_create_index(
+            "CREATE CLUSTERED INDEX idx_users_email ON users(email);"
+        )
+        self.assertEqual(result, "users")
+
+    def test_unique_nonclustered_bracket_index(self):
+        emitter = self._make_emitter()
+        result = emitter._extract_table_name_from_create_index(
+            "CREATE UNIQUE NONCLUSTERED INDEX [idx_u] ON [sales].[orders] ([id]);"
+        )
+        self.assertEqual(result, "orders")
+
+    def test_fulltext_index_has_no_name_of_its_own(self):
+        emitter = self._make_emitter()
+        result = emitter._extract_table_name_from_create_index(
+            "CREATE FULLTEXT INDEX ON dbo.users(email);"
+        )
+        self.assertEqual(result, "users")
+
+    def test_primary_xml_index(self):
+        emitter = self._make_emitter()
+        result = emitter._extract_table_name_from_create_index(
+            "CREATE PRIMARY XML INDEX idx_xml ON docs(xml_col);"
+        )
+        self.assertEqual(result, "docs")
+
+    def test_xml_index_without_primary(self):
+        emitter = self._make_emitter()
+        result = emitter._extract_table_name_from_create_index(
+            "CREATE XML INDEX idx_xml ON docs(xml_col);"
+        )
+        self.assertEqual(result, "docs")
+
+    def test_on_clause_on_its_own_line(self):
+        emitter = self._make_emitter()
+        result = emitter._extract_table_name_from_create_index(
+            "CREATE INDEX idx_users_email\nON dbo.users(email);"
+        )
+        self.assertEqual(result, "users")
+
+    def test_if_not_exists(self):
+        emitter = self._make_emitter()
+        result = emitter._extract_table_name_from_create_index(
+            "CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);"
+        )
+        self.assertEqual(result, "users")
 
 
 class TestUndoStatementEmitterExtractTableFromIndex(unittest.TestCase):
@@ -751,6 +948,88 @@ class TestUndoReversersMixin(unittest.TestCase):
         result = gen._reverse_statement_from_parsed(stmt)
         self.assertIn("IS NULL", result.sql)
 
+    def test_routing_create_index_names_the_table_sqlserver(self):
+        # Wiring check for the _reverse_create_from_parsed call site (#368
+        # follow-up): reverting its 4th argument to _generate_drop_statement
+        # must break this, proving the call site actually passes the SQL.
+        from dblift.core.sql_model.base import SqlObjectType
+
+        gen = self._make_generator("sqlserver")
+        stmt = self._make_stmt("CREATE INDEX idx_users_email ON users(email);")
+        sql_obj = MagicMock()
+        sql_obj.name = "idx_users_email"
+        sql_obj.schema = "dbo"
+        sql_obj.object_type = SqlObjectType.INDEX
+        stmt.affected_objects = [sql_obj]
+        result = gen._reverse_statement_from_parsed(stmt)
+        self.assertEqual(result.sql, "DROP INDEX IF EXISTS [idx_users_email] ON [dbo].[users];")
+        self.assertFalse(result.requires_manual_review)
+
+    def test_reverse_statement_create_index_names_the_table_sqlserver(self):
+        # Wiring check for the _reverse_create call site (regex/analyzer
+        # fallback, used when the structured parser doesn't run): same
+        # proof as above, through _reverse_statement -> _reverse_create.
+        gen = self._make_generator("sqlserver")
+        result = gen._reverse_statement("CREATE INDEX idx_users_email ON users(email);")
+        self.assertEqual(result.sql, "DROP INDEX IF EXISTS [idx_users_email] ON [users];")
+        self.assertFalse(result.requires_manual_review)
+
+    def test_reverse_statement_create_index_unresolvable_table_flags_review(self):
+        # The deliberate refusal outcome (#368 follow-up): SQL Server needs
+        # the table and none can be found here, so this must come back as a
+        # flagged warning, not a guessed, invalid DROP INDEX.
+        gen = self._make_generator("sqlserver")
+        result = gen._reverse_statement("CREATE INDEX idx_mystery;")
+        self.assertTrue(result.sql.startswith("-- WARNING"))
+        self.assertIn("idx_mystery", result.sql)
+        self.assertTrue(result.requires_manual_review)
+
+    def test_routing_create_fulltext_index_has_no_name_of_its_own_sqlserver(self):
+        # CREATE FULLTEXT INDEX ON table(...) has no index-name slot -- SQL
+        # Server allows only one fulltext index per table. The parser
+        # reports the table's own name as the index name (there is nothing
+        # else to report), which used to produce
+        # "DROP INDEX IF EXISTS [ft_test] ON [rel470_ss].[ft_test];" -- a
+        # statement that matches nothing and silently does nothing. This
+        # must refuse and ask for manual review instead of guessing.
+        from dblift.core.sql_model.base import SqlObjectType
+
+        gen = self._make_generator("sqlserver")
+        stmt = self._make_stmt(
+            "CREATE FULLTEXT INDEX ON [rel470_ss].[ft_test] ([body]) KEY INDEX [ui];"
+        )
+        sql_obj = MagicMock()
+        sql_obj.name = "ft_test"  # wrongly equals the table -- no name of its own
+        sql_obj.schema = "rel470_ss"
+        sql_obj.object_type = SqlObjectType.INDEX
+        stmt.affected_objects = [sql_obj]
+        result = gen._reverse_statement_from_parsed(stmt)
+        self.assertTrue(result.sql.startswith("-- WARNING"))
+        self.assertFalse(result.sql.startswith("DROP INDEX"))
+        self.assertTrue(result.requires_manual_review)
+
+    def test_routing_create_index_mentioning_fulltext_only_in_a_comment(self):
+        # A correctly-named CREATE INDEX whose trailing comment happens to
+        # mention "CREATE FULLTEXT INDEX ON" must not be mistaken for the
+        # unnamed form above -- the comment is not SQL. Matching against
+        # stmt.sql_text without stripping comments first would refuse this
+        # one too, turning a working DROP INDEX into a needless manual-review
+        # stub.
+        from dblift.core.sql_model.base import SqlObjectType
+
+        gen = self._make_generator("sqlserver")
+        stmt = self._make_stmt(
+            "CREATE INDEX ix1 ON t1(c1) " "/* replaces CREATE FULLTEXT INDEX ON t1 approach */;"
+        )
+        sql_obj = MagicMock()
+        sql_obj.name = "ix1"
+        sql_obj.schema = None
+        sql_obj.object_type = SqlObjectType.INDEX
+        stmt.affected_objects = [sql_obj]
+        result = gen._reverse_statement_from_parsed(stmt)
+        self.assertEqual(result.sql, "DROP INDEX IF EXISTS [ix1] ON [t1];")
+        self.assertFalse(result.requires_manual_review)
+
     def test_routing_dml_generic_type_create_fallback(self):
         from dblift.core.sql_model.base import SqlStatementType
 
@@ -874,6 +1153,22 @@ class TestUndoScriptGeneratorIntegration(unittest.TestCase):
             self.assertTrue(undo_path.name.startswith("U1__"))
             content = undo_path.read_text()
             self.assertIn("DROP TABLE", content)
+
+    # generate_undo_script — CREATE FULLTEXT INDEX, end to end through the
+    # real (non-mocked) hybrid parser this generator actually uses.
+    def test_generate_undo_script_fulltext_index_refuses_not_noop_drop(self):
+        gen = self._make_generator("sqlserver")
+        with TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "V1__create_fulltext_index.sql"
+            path.write_text(
+                "CREATE TABLE [rel470_ss].[ft_test] "
+                "([id] INT PRIMARY KEY, [body] NVARCHAR(MAX));\n"
+                "CREATE FULLTEXT INDEX ON [rel470_ss].[ft_test] ([body]) KEY INDEX [ui];"
+            )
+            undo_path = gen.generate_undo_script(path, overwrite=True)
+            content = undo_path.read_text()
+            self.assertNotIn("DROP INDEX IF EXISTS", content)
+            self.assertIn("-- WARNING", content)
 
     # generate_undo_script — file already exists, overwrite=False
     def test_generate_undo_script_exists_no_overwrite_raises(self):

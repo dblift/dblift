@@ -298,7 +298,7 @@ def _ensure_sqlglot_dialect_map() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Canonical quoting rules per dialect (story 21-14). Driven directly by
+# Canonical quoting rules per dialect. Driven directly by
 # ``Quirks.quote_open`` / ``Quirks.quote_close`` — ``quote_identifier``
 # reads them from ``ProviderRegistry.get_quirks`` per call, so adding a
 # new dialect = override the attributes in its plugin Quirks, no edit to
@@ -309,7 +309,7 @@ def _ensure_sqlglot_dialect_map() -> None:
 def quote_identifier(dialect: Optional[str], identifier: str) -> str:
     """Quote a SQL identifier using the canonical rules for *dialect*.
 
-    This is the single source of truth for identifier quoting (story 21-14).
+    This is the single source of truth for identifier quoting.
     Callers that previously maintained their own ``_quote_identifier``
     if/elif chains now delegate here.
 
@@ -363,8 +363,7 @@ def quote_qualified(
     # at definition. The decision is dialect-owned via the
     # ``quote_qualified_folds_to_uppercase`` quirk (Oracle ONLY).
     # DB2 shares Oracle's identifier-folding quirks but deliberately
-    # leaves this flag False to preserve historical behaviour
-    # (story 26-5).
+    # leaves this flag False to preserve historical behaviour.
     from dblift.db.provider_registry import ProviderRegistry
 
     key = (dialect or "").lower().strip()

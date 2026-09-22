@@ -1,6 +1,6 @@
 """Partition metadata handling for the hybrid SQL parser.
 
-Extracted from hybrid_parser.py (story 20-16) to reduce file size.
+Extracted from hybrid_parser.py to reduce file size.
 Contains functions for parsing and normalizing partition metadata from CREATE TABLE statements.
 """
 

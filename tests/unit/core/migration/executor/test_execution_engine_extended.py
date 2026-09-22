@@ -365,6 +365,352 @@ class TestExecuteMigrationMainFlow(unittest.TestCase):
 
         mock_rec.assert_not_called()
 
+    def test_sql_migration_applies_configured_schema_before_row_returning_first_statement(self):
+        """A migration whose first statement is a row-returning read must still
+        resolve against the configured schema.
+
+        ``SqlExecutionService.execute_statement()`` sends QUERY-classified
+        statements straight to ``provider.execute_query()``, which never goes
+        through the schema-applying ``execute_statement()``/``set_current_schema()``
+        path — so the read used to run against whatever schema the connection
+        happened to carry. Mirrors ``test_sql_callback_sets_configured_schema_before_statements``.
+        """
+        from dblift.core.migration.sql.sql_execution_service import SqlExecutionService
+
+        engine, policy = self._make_engine_with_policy(transactional=True)
+        engine.config.database.schema = "app"
+        engine.sql_analyzer.get_statement_type.return_value = "QUERY"
+        engine.provider.execute_query.return_value = []
+        engine.sql_execution_service = SqlExecutionService(
+            provider=engine.provider, sql_analyzer=engine.sql_analyzer, schema="app"
+        )
+        migration = _make_sql_migration()
+        result = MagicMock()
+        result.show_query_results = False
+
+        with patch.object(engine, "_parse_sql_statements", return_value=["SELECT 1"]):
+            with patch.object(engine, "_classify_execution_statements", return_value=[]):
+                with patch.object(engine, "_prepare_transaction", return_value=True):
+                    engine.execute_migration(migration, result)
+
+        engine.provider.set_current_schema.assert_called_once_with("app")
+        calls = engine.provider.method_calls
+        self.assertLess(
+            calls.index(unittest.mock.call.set_current_schema("app")),
+            calls.index(unittest.mock.call.execute_query("SELECT 1", params=None)),
+        )
+
+    def test_python_migration_applies_configured_schema_before_running(self):
+        """A Python migration must see the configured schema too.
+
+        The schema-apply used to sit only in the SQL branch of
+        ``execute_migration()``, after the ``migration.format != MigrationFormat.SQL``
+        early return — so a Python migration's own ``context.execute("SELECT ...")``
+        (routed straight to ``provider.execute_query()`` by ``python_executor.py``)
+        never saw it, the same bypass as the SQL QUERY case. It must now run
+        before the format branch, so it is reached by both.
+        """
+        engine = _make_engine()
+        engine.config.database.schema = "app"
+        migration = _make_python_migration()
+        result = MagicMock()
+
+        call_order: list = []
+        engine.provider.set_current_schema.side_effect = lambda schema: call_order.append(
+            ("set_current_schema", schema)
+        )
+        exec_result = MagicMock(success=True, execution_time_ms=5)
+        engine.executor_factory = MagicMock()
+        engine.executor_factory.execute.side_effect = lambda m: (
+            call_order.append(("execute_factory",)),
+            exec_result,
+        )[1]
+
+        engine.execute_migration(migration, result)
+
+        self.assertEqual(call_order, [("set_current_schema", "app"), ("execute_factory",)])
+
+    def test_schema_apply_reaches_configured_schema_even_with_stale_cache(self):
+        """Regression guard: ``_reset_provider_schema_cache()`` must run before
+        ``_apply_configured_schema()``, not after.
+
+        Pinned by an OBSERVABLE effect rather than a call-order assertion on a
+        mock, because a call-order assertion cannot detect a mutation that
+        keeps both calls but swaps them. The fake mirrors the cache-guarded
+        ``set_current_schema()`` PostgreSQL/MySQL implement: a provider whose
+        cache already (wrongly) believes the configured schema is applied —
+        the steady state after a previous migration's own proactive apply —
+        must still end up on the configured schema, because the reset clears
+        that belief first. Swapping the two calls turns the apply into a
+        no-op and the physical schema stays wherever a previous migration's
+        own ``SET``/``USE`` left it — the exact regression this guards.
+        """
+        engine, policy = self._make_engine_with_policy(transactional=True)
+        engine.config.database.schema = "app"
+
+        state = {"physical": "leaked", "applied_for": "app"}  # cache stale-believes "app"
+
+        def fake_reset() -> None:
+            state["applied_for"] = None
+
+        def fake_set_current_schema(schema: str) -> None:
+            if state["applied_for"] == schema:
+                return
+            state["physical"] = schema
+            state["applied_for"] = schema
+
+        engine.provider.reset_schema_cache.side_effect = fake_reset
+        engine.provider.set_current_schema.side_effect = fake_set_current_schema
+
+        migration = _make_sql_migration()
+        result = MagicMock()
+
+        with patch.object(engine, "_parse_sql_statements", return_value=["SELECT 1"]):
+            with patch.object(engine, "_classify_execution_statements", return_value=[]):
+                with patch.object(engine, "_prepare_transaction", return_value=True):
+                    engine.execute_migration(migration, result)
+
+        self.assertEqual(state["physical"], "app")
+
+
+# ---------------------------------------------------------------------------
+# Schema statement is issued once per transactional unit (not duplicated by
+# begin_transaction's own cache clear)
+# ---------------------------------------------------------------------------
+
+
+class TestSchemaStatementIssuedOnce(unittest.TestCase):
+    """A transactional migration/callback issues its schema statement once.
+
+    ``_apply_configured_schema()`` runs right before the transaction starts.
+    A provider whose ``begin_transaction()`` also clears the schema cache
+    (with nothing executing in between) leaves the cache empty for the first
+    real statement, which reapplies the schema a second time. These tests
+    drive the real ``PostgreSqlProvider`` cache/``begin_transaction()`` logic
+    — only the SQLAlchemy connection layer is faked — so they exercise the
+    actual duplication, not a simulation of it.
+    """
+
+    def _build_engine(self, schema="app"):
+        from dblift.db.plugins.postgresql.provider import PostgreSqlProvider
+
+        class _CountingProvider(PostgreSqlProvider):
+            def __init__(self):
+                self.issued: list = []
+                self._tx = None
+                self._connection = None
+
+        provider = _CountingProvider()
+        sql_analyzer = MagicMock()
+        sql_analyzer.dialect = "postgresql"
+        config = MagicMock()
+        config.database.type.value = "postgresql"
+        config.database.schema = schema
+        engine = ExecutionEngine(
+            provider=provider,
+            sql_analyzer=sql_analyzer,
+            log=MagicMock(),
+            config=config,
+            history_manager=None,
+        )
+        policy = MagicMock(
+            transactional=True, autocommit_required=False, unsupported_mixed_mode=False
+        )
+        engine.transaction_policy = MagicMock()
+        engine.transaction_policy.decide.return_value = policy
+        return engine, provider
+
+    def test_transactional_migration_issues_schema_statement_once(self):
+        """Drives one real DDL statement through the engine's actual
+        statement loop and ``SqlExecutionService``, the same
+        ``execute_statement(statement, schema=self.schema)`` call a real
+        migration's first statement makes — not a hand-triggered
+        ``set_current_schema()`` standing in for it.
+        """
+        from dblift.core.migration.sql.sql_execution_service import SqlExecutionService
+        from dblift.db.sqlalchemy_provider import SqlAlchemyProvider
+
+        engine, provider = self._build_engine()
+        engine.sql_analyzer.get_statement_type.return_value = "DDL"
+        engine.sql_execution_service = SqlExecutionService(
+            provider=provider, sql_analyzer=engine.sql_analyzer, schema="app"
+        )
+        migration = _make_sql_migration()
+        result = MagicMock()
+
+        with patch.object(
+            SqlAlchemyProvider,
+            "execute_statement",
+            lambda self, sql, schema=None, params=None: provider.issued.append(sql) or 0,
+        ):
+            with patch.object(
+                SqlAlchemyProvider,
+                "execute_query",
+                lambda self, sql, params=None: [{"exists": True}],
+            ):
+                with patch.object(SqlAlchemyProvider, "begin_transaction", lambda self: None):
+                    with patch.object(
+                        engine,
+                        "_parse_sql_statements",
+                        return_value=["CREATE TABLE probe (id INT)"],
+                    ):
+                        with patch.object(
+                            engine, "_classify_execution_statements", return_value=[]
+                        ):
+                            engine.execute_migration(migration, result)
+
+        schema_statements = [s for s in provider.issued if "search_path" in s]
+        self.assertEqual(len(schema_statements), 1, schema_statements)
+
+    def test_transactional_callback_issues_schema_statement_once(self):
+        """Same as above for a callback's real first statement."""
+        from dblift.core.migration.sql.sql_execution_service import SqlExecutionService
+        from dblift.db.sqlalchemy_provider import SqlAlchemyProvider
+
+        engine, provider = self._build_engine()
+        engine.sql_analyzer.get_statement_type.return_value = "DDL"
+        engine.sql_execution_service = SqlExecutionService(
+            provider=provider, sql_analyzer=engine.sql_analyzer, schema="app"
+        )
+        callback = MagicMock(spec=Migration)
+        callback.format = MigrationFormat.SQL
+        callback.script_name = "afterEach__log.sql"
+        callback.content = ""
+
+        with patch.object(
+            SqlAlchemyProvider,
+            "execute_statement",
+            lambda self, sql, schema=None, params=None: provider.issued.append(sql) or 0,
+        ):
+            with patch.object(
+                SqlAlchemyProvider,
+                "execute_query",
+                lambda self, sql, params=None: [{"exists": True}],
+            ):
+                with patch.object(SqlAlchemyProvider, "begin_transaction", lambda self: None):
+                    with patch.object(
+                        engine,
+                        "_prepare_sql_statements",
+                        return_value=["CREATE TABLE callback_log (id INT)"],
+                    ):
+                        with patch.object(
+                            engine, "_classify_execution_statements", return_value=[]
+                        ):
+                            engine.execute_callback(callback)
+
+        schema_statements = [s for s in provider.issued if "search_path" in s]
+        self.assertEqual(len(schema_statements), 1, schema_statements)
+
+
+# ---------------------------------------------------------------------------
+# SQL Server's schema cache must clear at the same migration boundary as the
+# other providers, or a schema change survives into the next migration.
+# ---------------------------------------------------------------------------
+
+
+class TestSqlServerSchemaCacheResetsAtMigrationBoundary(unittest.TestCase):
+    """Each migration must reassert the configured schema on SQL Server too.
+
+    The other five providers clear their schema cache at the start of every
+    migration (``ExecutionEngine._reset_provider_schema_cache()``), so
+    ``_apply_configured_schema()`` reissues its schema statement every time —
+    restoring the configured schema even if the previous migration's own SQL
+    moved it elsewhere. ``SqlServerProvider`` caches the same way but has no
+    ``reset_schema_cache()`` for the engine to find, so its cache survives
+    the boundary and the second migration's ``ALTER USER`` is skipped.
+    """
+
+    def _build_engine(self, schema="app"):
+        from dblift.db.plugins.sqlserver.provider import SqlServerProvider
+
+        class _CountingProvider(SqlServerProvider):
+            def __init__(self):
+                self.issued: list = []
+                self.log = MagicMock()
+                self._tx = None
+                self._connection = None
+
+            def execute_query(self, sql, params=None):
+                return [{"db_user": "dbo", "default_schema": self._current_schema_set}]
+
+        provider = _CountingProvider()
+        sql_analyzer = MagicMock()
+        sql_analyzer.dialect = "sqlserver"
+        config = MagicMock()
+        config.database.type.value = "sqlserver"
+        config.database.schema = schema
+        engine = ExecutionEngine(
+            provider=provider,
+            sql_analyzer=sql_analyzer,
+            log=MagicMock(),
+            config=config,
+            history_manager=None,
+        )
+        policy = MagicMock(
+            transactional=True, autocommit_required=False, unsupported_mixed_mode=False
+        )
+        engine.transaction_policy = MagicMock()
+        engine.transaction_policy.decide.return_value = policy
+        return engine, provider
+
+    def test_second_migration_reapplies_configured_schema(self):
+        from dblift.db.sqlalchemy_provider import SqlAlchemyProvider
+
+        engine, provider = self._build_engine()
+
+        with patch.object(
+            SqlAlchemyProvider,
+            "execute_statement",
+            lambda self, sql, schema=None, params=None: provider.issued.append(sql) or 0,
+        ):
+            with patch.object(SqlAlchemyProvider, "begin_transaction", lambda self: None):
+                with patch.object(engine, "_parse_sql_statements", return_value=["SELECT 1"]):
+                    with patch.object(engine, "_classify_execution_statements", return_value=[]):
+                        with patch.object(engine, "_execute_statements", return_value=True):
+                            engine.execute_migration(_make_sql_migration(), MagicMock())
+                            engine.execute_migration(_make_sql_migration(), MagicMock())
+
+        alter_statements = [s for s in provider.issued if "DEFAULT_SCHEMA" in s]
+        self.assertEqual(len(alter_statements), 2, alter_statements)
+
+    def test_migration_boundary_restores_schema_without_warning(self):
+        """A schema change from the *previous* migration's own statement is
+        not interference — it is exactly what this boundary call restores.
+
+        The write-skip cache clears at a migration boundary, so a stale
+        catalog value here is expected, and correcting it is silent. Warning
+        here would be a false positive on ordinary, supported use (a
+        migration changing its own current schema and the next one
+        restoring the configured schema), which is what this whole line of
+        work exists to support.
+        """
+        from dblift.db.sqlalchemy_provider import SqlAlchemyProvider
+
+        engine, provider = self._build_engine()
+        catalog_schema = {"value": None}
+        provider.execute_query = lambda sql, params=None: [
+            {"db_user": "dbo", "default_schema": catalog_schema["value"]}
+        ]
+
+        with patch.object(
+            SqlAlchemyProvider,
+            "execute_statement",
+            lambda self, sql, schema=None, params=None: provider.issued.append(sql) or 0,
+        ):
+            with patch.object(SqlAlchemyProvider, "begin_transaction", lambda self: None):
+                with patch.object(engine, "_parse_sql_statements", return_value=["SELECT 1"]):
+                    with patch.object(engine, "_classify_execution_statements", return_value=[]):
+                        with patch.object(engine, "_execute_statements", return_value=True):
+                            engine.execute_migration(_make_sql_migration(), MagicMock())
+                            # Migration 1's own statement moves DEFAULT_SCHEMA
+                            # away from the configured schema.
+                            catalog_schema["value"] = "elsewhere"
+                            engine.execute_migration(_make_sql_migration(), MagicMock())
+
+        provider.log.warning.assert_not_called()
+        alter_statements = [s for s in provider.issued if "DEFAULT_SCHEMA" in s]
+        self.assertEqual(len(alter_statements), 2, alter_statements)
+
 
 # ---------------------------------------------------------------------------
 # _prepare_transaction
@@ -473,6 +819,225 @@ class TestPrepareTransaction(unittest.TestCase):
 
         self.assertTrue(result)
         engine.provider.connection  # accessed attribute was None
+
+    def test_dangling_transaction_rollback_invalidates_schema_cache(self):
+        """A transaction already open here is anomalous: normally nothing is,
+        because ``_apply_configured_schema()``'s own statement, issued
+        moments earlier with no transaction open, already committed itself
+        and is safe from any later rollback. When a transaction WAS already
+        open, rolling it back may have undone that statement instead —
+        PostgreSQL documents a plain ``SET``'s effect as undone by
+        ``ROLLBACK`` — so the schema cache can no longer be trusted and must
+        be invalidated rather than left believing the schema is still
+        applied.
+        """
+        from dblift.db.plugins.postgresql.provider import PostgreSqlProvider
+        from dblift.db.sqlalchemy_provider import SqlAlchemyProvider
+
+        class _FakeConnection:
+            closed = False
+
+            def in_transaction(self):
+                return True
+
+            def rollback(self):
+                pass
+
+        class _Provider(PostgreSqlProvider):
+            def __init__(self):
+                self._tx = MagicMock()  # already open before _prepare_transaction runs
+                self._connection = _FakeConnection()
+                self._schema_applied_for = "app"  # _apply_configured_schema() already ran
+
+        provider = _Provider()
+        engine = ExecutionEngine(
+            provider=provider, sql_analyzer=MagicMock(), log=MagicMock(), config=None
+        )
+        migration = _make_sql_migration()
+
+        with patch.object(SqlAlchemyProvider, "begin_transaction", lambda self: None):
+            result = engine._prepare_transaction(migration)
+
+        self.assertTrue(result)
+        self.assertIsNone(provider._schema_applied_for)
+
+    def test_no_dangling_transaction_leaves_schema_cache_intact(self):
+        """The routine defensive rollback — nothing open, nothing to undo —
+        must not clear the cache. Otherwise the single-apply fix regresses:
+        every ordinary transactional migration would issue its schema
+        statement twice again.
+        """
+        from dblift.db.plugins.postgresql.provider import PostgreSqlProvider
+        from dblift.db.sqlalchemy_provider import SqlAlchemyProvider
+
+        class _FakeConnection:
+            closed = False
+
+            def in_transaction(self):
+                return False
+
+            def rollback(self):
+                pass
+
+        class _Provider(PostgreSqlProvider):
+            def __init__(self):
+                self._tx = None
+                self._connection = _FakeConnection()
+                self._schema_applied_for = "app"
+
+        provider = _Provider()
+        engine = ExecutionEngine(
+            provider=provider, sql_analyzer=MagicMock(), log=MagicMock(), config=None
+        )
+        migration = _make_sql_migration()
+
+        with patch.object(SqlAlchemyProvider, "begin_transaction", lambda self: None):
+            result = engine._prepare_transaction(migration)
+
+        self.assertTrue(result)
+        self.assertEqual(provider._schema_applied_for, "app")
+
+    def test_dangling_transaction_rollback_invalidates_sqlserver_schema_cache(self):
+        """SQL Server equivalent of the PostgreSQL case above.
+
+        ``ALTER USER ... WITH DEFAULT_SCHEMA`` is transactional DDL in SQL
+        Server too — confirmed against a live instance: a ``ROLLBACK`` issued
+        after it reverts the catalog row — so the same stale-transaction
+        invalidation must apply. The detection baseline
+        (``_current_schema_set``) is a separate field and must survive this
+        invalidation; only the write-skip cache (``_schema_applied_for``) is
+        cleared.
+        """
+        from dblift.db.plugins.sqlserver.provider import SqlServerProvider
+        from dblift.db.sqlalchemy_provider import SqlAlchemyProvider
+
+        class _FakeConnection:
+            closed = False
+
+            def in_transaction(self):
+                return True
+
+            def rollback(self):
+                pass
+
+        class _Provider(SqlServerProvider):
+            def __init__(self):
+                self._tx = MagicMock()  # already open before _prepare_transaction runs
+                self._connection = _FakeConnection()
+                self._current_schema_set = "app"
+                self._schema_applied_for = "app"  # _apply_configured_schema() already ran
+
+        provider = _Provider()
+        engine = ExecutionEngine(
+            provider=provider, sql_analyzer=MagicMock(), log=MagicMock(), config=None
+        )
+        migration = _make_sql_migration()
+
+        with patch.object(SqlAlchemyProvider, "begin_transaction", lambda self: None):
+            result = engine._prepare_transaction(migration)
+
+        self.assertTrue(result)
+        self.assertIsNone(provider._schema_applied_for)
+        self.assertEqual(provider._current_schema_set, "app")
+
+    def test_no_dangling_transaction_leaves_sqlserver_schema_cache_intact(self):
+        """The routine defensive rollback on SQL Server — nothing open,
+        nothing to undo — must not clear the cache either.
+        """
+        from dblift.db.plugins.sqlserver.provider import SqlServerProvider
+        from dblift.db.sqlalchemy_provider import SqlAlchemyProvider
+
+        class _FakeConnection:
+            closed = False
+
+            def in_transaction(self):
+                return False
+
+            def rollback(self):
+                pass
+
+        class _Provider(SqlServerProvider):
+            def __init__(self):
+                self._tx = None
+                self._connection = _FakeConnection()
+                self._current_schema_set = "app"
+                self._schema_applied_for = "app"
+
+        provider = _Provider()
+        engine = ExecutionEngine(
+            provider=provider, sql_analyzer=MagicMock(), log=MagicMock(), config=None
+        )
+        migration = _make_sql_migration()
+
+        with patch.object(SqlAlchemyProvider, "begin_transaction", lambda self: None):
+            result = engine._prepare_transaction(migration)
+
+        self.assertTrue(result)
+        self.assertEqual(provider._schema_applied_for, "app")
+
+    def test_bool_attribute_connection_still_rolls_back(self):
+        """``sqlite3.Connection.in_transaction`` is a bool *property*, not a
+        method. Duck-typing it as ``connection.in_transaction()`` raises
+        ``TypeError: 'bool' object is not callable`` — and since that check
+        used to sit outside the ``try`` guarding ``rollback_transaction()``,
+        the exception was swallowed by the outer handler and the rollback
+        never ran at all. The open-transaction check now reads the
+        provider's own ``_tx`` instead of the connection, so a connection
+        shaped like this must not change whether rollback fires.
+        """
+        engine = _make_engine()
+        migration = _make_sql_migration()
+        engine.provider.connection.getAutoCommit.return_value = False
+        engine.provider.connection.in_transaction = True  # bool attribute, not callable
+        engine.provider._tx = object()  # an open transaction
+        engine.provider.begin_transaction.return_value = None
+
+        result = engine._prepare_transaction(migration)
+
+        self.assertTrue(result)
+        engine.provider.rollback_transaction.assert_called_once()
+        debug_calls = [str(c) for c in engine.log.debug.call_args_list]
+        self.assertFalse(
+            any("Could not check connection state" in c for c in debug_calls),
+            "the bool-attribute read should not raise and be swallowed",
+        )
+
+    def test_bool_attribute_connection_open_transaction_invalidates_cache(self):
+        """Same bool-attribute connection shape, with the provider's own
+        ``_tx`` showing a transaction actually was open: the rollback that
+        follows may have undone a schema-setting statement, so the cache
+        must still be invalidated.
+        """
+        engine = _make_engine()
+        migration = _make_sql_migration()
+        engine.provider.connection.getAutoCommit.return_value = False
+        engine.provider.connection.in_transaction = True  # bool attribute, not callable
+        engine.provider._tx = object()
+        engine.provider.begin_transaction.return_value = None
+
+        result = engine._prepare_transaction(migration)
+
+        self.assertTrue(result)
+        engine.provider.rollback_transaction.assert_called_once()
+        engine.provider.reset_schema_cache.assert_called_once()
+
+    def test_bool_attribute_connection_no_open_transaction_skips_cache_reset(self):
+        """Same bool-attribute connection shape, no transaction actually
+        open: the routine defensive rollback has nothing to undo, so the
+        cache must be left alone.
+        """
+        engine = _make_engine()
+        migration = _make_sql_migration()
+        engine.provider.connection.getAutoCommit.return_value = False
+        engine.provider.connection.in_transaction = False  # bool attribute, not callable
+        engine.provider._tx = None
+        engine.provider.begin_transaction.return_value = None
+
+        result = engine._prepare_transaction(migration)
+
+        self.assertTrue(result)
+        engine.provider.rollback_transaction.assert_called_once()
+        engine.provider.reset_schema_cache.assert_not_called()
 
 
 # ---------------------------------------------------------------------------

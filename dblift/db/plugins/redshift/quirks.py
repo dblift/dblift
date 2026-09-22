@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Optional
+
 from dblift.db.plugins.postgresql.quirks import PostgresqlQuirks
 
 
@@ -55,6 +57,25 @@ class RedshiftQuirks(PostgresqlQuirks):
 
     def __init__(self, dialect_name: str = "redshift") -> None:
         super().__init__(dialect_name=dialect_name)
+
+    def parser_class(self, parser_type: str) -> Optional[type]:
+        """Kept non-nesting, unverified: no local Redshift engine, and no
+        documentation found that addresses comment nesting in top-level SQL
+        (the AWS "Structure of PL/pgSQL" page says block comments don't nest,
+        but that sentence describes comments inside a PL/pgSQL procedure
+        body's ``$$ ... $$``, not the outer SQL scanner ``split_statements``
+        tokenizes — it is not evidence for this). Keep the pre-#333 reader
+        (first ``*/`` closes) as the safer default rather than inherit
+        PostgreSQL's nesting unverified; everything else about PostgreSQL
+        parsing still applies.
+        """
+        if parser_type == "regex":
+            from dblift.db.plugins.postgresql.parser.postgresql_regex_parser import (
+                NonNestingPostgreSqlRegexParser,
+            )
+
+            return NonNestingPostgreSqlRegexParser
+        return super().parser_class(parser_type)
 
     def build_snapshot_table_ddl(
         self,

@@ -5,14 +5,9 @@ This module provides a factory for instantiating the appropriate
 BaseIntrospector implementation based on the database dialect.
 """
 
-import logging
-from importlib.metadata import entry_points
 from typing import Any, Optional
 
 from dblift.core.introspection.base_introspector import BaseIntrospector
-
-_log = logging.getLogger(__name__)
-INTROSPECTION_ENTRY_POINT_GROUP = "dblift.introspection"
 
 
 class IntrospectorFactory:
@@ -30,18 +25,12 @@ class IntrospectorFactory:
     # Mapping of dialect names to introspector classes
     # Will be populated as we implement each database-specific introspector
     _DIALECT_MAP: dict[str, type[BaseIntrospector]] = {}
+    _DEFAULTS_REGISTERED = False
 
     @classmethod
     def _register_defaults(cls) -> None:
         """Register introspectors for all discovered plugins via quirks system."""
         from dblift.db.provider_registry import ProviderRegistry
-
-        for ep in entry_points(group=INTROSPECTION_ENTRY_POINT_GROUP):
-            try:
-                register = ep.load()
-                register()
-            except Exception as exc:
-                _log.warning("dblift.introspection '%s' failed to register: %s", ep.name, exc)
 
         for plugin_info in ProviderRegistry.list_plugins():
             quirks = ProviderRegistry.get_quirks(plugin_info.name)
@@ -49,7 +38,8 @@ class IntrospectorFactory:
             if introspector_cls is None:
                 continue
             for dialect in plugin_info.dialects:
-                cls.register(dialect, introspector_cls)
+                cls._DIALECT_MAP.setdefault(dialect.lower(), introspector_cls)
+        cls._DEFAULTS_REGISTERED = True
 
     @classmethod
     def create(
@@ -71,7 +61,7 @@ class IntrospectorFactory:
             to the original SchemaIntrospector.
         """
         # Register default implementations on first call
-        if not cls._DIALECT_MAP:
+        if not cls._DEFAULTS_REGISTERED:
             cls._register_defaults()
 
         from dblift.core.seams.introspection import attach_registered_introspection

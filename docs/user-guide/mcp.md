@@ -37,10 +37,11 @@ it was opened, so calls within the same second still land in one file.
 | resource `dblift://history` | `info --format json` | the `migrations` array |
 | resource `dblift://pending` | `migrate --dry-run --format json` | pending migrations as a JSON array, the same rows `migrate_dry_run` returns |
 
-`validate` checks the migration history against the scripts on disk —
-checksums, script order, missing files — it does not parse or check the SQL
-inside them; a script with invalid SQL passes both `validate` and
-`migrate_dry_run`.
+`validate` checks the scripts on disk for consistency (duplicate versions,
+unsupported formats) and, once migrations have been applied, compares them
+against the recorded history too — checksums, script order, missing files.
+It does not parse or check the SQL inside them; a script with invalid SQL
+passes both `validate` and `migrate_dry_run`.
 
 ## Restricting a session
 

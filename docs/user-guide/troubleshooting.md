@@ -146,15 +146,11 @@ The repair command will:
 
 **Problem**: Migrations fail with SQL syntax errors.
 
-**Solution**: 
-1. Validate pending migrations before applying:
-```bash
-dblift validate
-```
-
-2. Check your SQL against the database dialect documentation
-3. Test SQL directly in your database client first
-4. Ensure you're using the correct SQL dialect for your database
+**Solution**: `validate` does not parse migration SQL, so it will not catch
+these ahead of time.
+1. Check your SQL against the database dialect documentation
+2. Test SQL directly in your database client first
+3. Ensure you're using the correct SQL dialect for your database
 
 ## SQL Server: Full-text Catalog and Index Fail in Transactional Migration
 
@@ -189,15 +185,27 @@ against `--db-schema` by setting the connecting login's `DEFAULT_SCHEMA`
 `SET search_path`, MySQL's `USE`, or Oracle's `ALTER SESSION SET CURRENT_SCHEMA`, this setting is
 catalog-level state on the *login* (`sys.database_principals`), not scoped to the connection — it is
 shared with, and overwritable by, any other connection authenticating as that same login, and it
-outlives the connection that set it. dblift checks the login's actual `DEFAULT_SCHEMA` against what
-it last set on every statement (not only when `--db-schema` changes) and logs the warning above the
-moment another connection has changed it — but the warning is a detection signal, not a repair: DDL
-that already ran while the schema was wrong stays wrong, and this connection's own unqualified DDL
-can keep landing in whatever schema the other connection left behind until `--db-schema` changes
-again.
+outlives the connection that set it.
+
+dblift only compares against the catalog when it is about to skip the write — re-requesting the
+same schema this connection already set, which is the steady state, since `--db-schema` is one
+fixed value for a process run. On that path it reads the login's actual `DEFAULT_SCHEMA` back and
+logs the warning above if it disagrees. The first request after a cache miss — most often a
+migration boundary reapplying the configured schema — rewrites `DEFAULT_SCHEMA` silently instead,
+with no comparison: dblift didn't set the previous value either way, so a third party changing it
+right then looks identical to the earlier migration's own change, and the interference goes
+unreported. The schema itself is still corrected in both cases; what's missing is only the signal.
+And even when the warning does fire, it's a detection signal, not a repair: DDL that already ran
+while the schema was wrong stays wrong, and this connection's own unqualified DDL can keep landing
+in whatever schema the other connection left behind until the next migration or callback boundary,
+where the reissued `ALTER USER` corrects it — not until `--db-schema` itself changes.
 
 **Fix**: Use a dedicated SQL Server login per `--db-schema` you run migrations against — never share
-one login across multiple concurrently-running dblift configurations with different schemas.
+one login across multiple concurrently-running dblift configurations with different schemas. This
+isn't a workaround for the detection gap above; it's the only real mitigation. `DEFAULT_SCHEMA` is
+scoped to the login, not the connection, so no amount of detection on one connection stops a second
+connection authenticated as the same login from overwriting it — a shared login is the cause, not a
+variant of it.
 
 ## Slow Migration Execution
 

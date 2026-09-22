@@ -10,6 +10,14 @@ from dblift.core.sql_model._base_sql_object import SqlObjectType
 from dblift.core.sql_model.dialect import get_sqlglot_dialect
 
 # Import parser system components
+from dblift.core.sql_parser.dialects.identifier_tokens import (
+    BACKTICK_IDENTIFIER,
+    BRACKET_IDENTIFIER,
+    DOUBLE_QUOTED_IDENTIFIER,
+)
+from dblift.core.sql_parser.dialects.identifier_tokens import (
+    strip_identifier_quotes as _strip_identifier_quotes,
+)
 from dblift.core.sql_parser.parser_factory import SqlParserFactory
 from dblift.db.dml_analysis import cte_outer_statement_type
 
@@ -59,8 +67,17 @@ _OBJECT_KEYWORDS = "|".join(t.name.replace("_", r"\s+") for t in _RECOGNISED_OBJ
 DEFAULT_SCHEMA_PLACEHOLDER = "default_schema"
 
 # A SQL identifier: quoted ("x", [x], `x`) or bare, optionally schema-qualified.
-_IDENTIFIER = r'(?:"[^"]+"|\[[^\]]+\]|`[^`]+`|[\w$#]+)'
+# The three quoted alternatives come from dblift.core.sql_parser.dialects.
+# identifier_tokens -- the shared definition of "what a quoted SQL identifier
+# looks like" (escape-aware: a closing delimiter inside one is escaped by
+# doubling it, e.g. ``[real]]one]`` is ``real]one``) also used by
+# ``SqlServerConfig.object_patterns``'s ``id_token``
+# (dblift/db/plugins/sqlserver/parser/parser_config.py), so this is one
+# definition, not two that can drift apart (#375, #380).
+_IDENTIFIER = rf"(?:{DOUBLE_QUOTED_IDENTIFIER}|{BRACKET_IDENTIFIER}|{BACKTICK_IDENTIFIER}|[\w$#]+)"
 _QUALIFIED_NAME = rf"{_IDENTIFIER}(?:\s*\.\s*{_IDENTIFIER})*"
+
+
 # Words that stand between the object type and its name and must never be
 # captured as the name -- the real name follows them:
 # ``DROP TABLE IF EXISTS users``, ``ALTER TABLE ONLY users ADD COLUMN c``
@@ -267,7 +284,7 @@ def _qualified_object_name(raw: str, drop_last_part: bool = False) -> str:
     the CREATE TABLE branch has always used. ``drop_last_part`` reports the
     parent of a column reference, so ``users.email`` becomes ``users``.
     """
-    parts = re.findall(_IDENTIFIER, raw)
+    parts = [_strip_identifier_quotes(p) for p in re.findall(_IDENTIFIER, raw)]
     if drop_last_part and len(parts) > 1:
         parts = parts[:-1]
     if len(parts) >= 2:
@@ -769,7 +786,14 @@ class SqlAnalyzer:
             objects.append(
                 {
                     "object_type": SqlObjectType.INDEX.name,
-                    "object_name": create_index.group(1),
+                    # An index's own name isn't schema-qualified in this
+                    # module's convention (unlike ``on_object`` below), so it
+                    # is stripped/unescaped without going through
+                    # ``_qualified_object_name``'s ``default_schema.`` fallback.
+                    "object_name": ".".join(
+                        _strip_identifier_quotes(p)
+                        for p in re.findall(_IDENTIFIER, create_index.group(1))
+                    ),
                     "on_object": _qualified_object_name(create_index.group(2)),
                 }
             )

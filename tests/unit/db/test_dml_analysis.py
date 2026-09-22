@@ -134,7 +134,11 @@ def test_analyze_dml_routes_by_sqlglot_dialect():
 
 def test_analyze_dml_falls_back_to_regex_for_unparseable_sql():
     # A procedural block sqlglot parses as an opaque Command falls back to the
-    # regex scanner, which still finds the restore-key assignment.
+    # regex scanner, which still finds the restore-key assignment. Pins the
+    # scanner staying dollar-quote-blind here: the UPDATE/SET it must find
+    # are themselves textually inside the dollar-quoted DO $$ ... $$ body, so
+    # skipping over that body (as is_full_table_dml correctly does) would
+    # make this fail to find them.
     dialect = "postgres"
     procedural = "DO $$ BEGIN UPDATE users SET id = 1; END $$;"
     assert updates_restore_key(procedural, _DEFAULT_KEYS, sqlglot_dialect=dialect)
@@ -168,6 +172,39 @@ def test_is_full_table_dml_treats_quoted_where_identifier_as_column_not_clause()
     assert is_full_table_dml(
         "UPDATE users SET active = (SELECT 1 FROM audit WHERE audit.user_id = users.id);"
     )
+
+
+def test_is_full_table_dml_ignores_where_inside_dollar_quoted_value():
+    # A WHERE textually inside a dollar-quoted value is data, not a clause,
+    # regardless of whether the quote is tagged.
+    assert is_full_table_dml(
+        "UPDATE t SET body = $$ this text mentions WHERE and it is not a clause $$"
+    )
+    assert is_full_table_dml(
+        "UPDATE t SET body = $tag$ this text mentions WHERE and it is not a clause $tag$"
+    )
+    assert is_full_table_dml(
+        "UPDATE t SET body = $_$ this text mentions WHERE and it is not a clause $_$"
+    )
+
+
+def test_is_full_table_dml_still_finds_a_real_where_after_a_dollar_quoted_value():
+    assert not is_full_table_dml("UPDATE t SET body = $$ text $$ WHERE id = 1")
+    # A "$1"-style placeholder is not a dollar-quote tag and must not be
+    # swallowed looking for a matching close.
+    assert not is_full_table_dml("UPDATE t SET a = $1 WHERE b = $2")
+    # A bare "$" inside an ordinary string literal is not a dollar quote either.
+    assert not is_full_table_dml("UPDATE t SET price_note = 'costs $5' WHERE id = 1")
+
+
+def test_is_full_table_dml_ignores_where_inside_ordinary_string_literal():
+    assert is_full_table_dml("UPDATE t SET note = 'the WHERE clause explained'")
+
+
+def test_is_full_table_dml_unterminated_dollar_quote_finds_no_where():
+    # Same unterminated-comment convention as `_skip_comment`: an unclosed
+    # dollar quote swallows to end of text, so a WHERE inside it is not found.
+    assert is_full_table_dml("UPDATE t SET body = $$ never closes, mentions WHERE")
 
 
 def test_cte_outer_statement_type_flags_data_modifying_cte_feeding_insert():

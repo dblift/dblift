@@ -25,6 +25,10 @@ class ParserNotAvailableError(ParserError):
     """Raised when a parser cannot be loaded for a dialect."""
 
 
+class UnsupportedMetaCommandError(ParserError):
+    """Raised for a client meta-command line with no safe no-op interpretation."""
+
+
 # --- Execution exceptions ---
 
 

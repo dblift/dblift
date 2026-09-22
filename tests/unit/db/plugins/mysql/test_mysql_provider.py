@@ -156,11 +156,14 @@ def test_set_current_schema_skips_reissue_for_same_database(monkeypatch):
     assert executed == ["USE `mydb`"]
 
 
-def test_set_current_schema_reapplies_after_begin_transaction(monkeypatch):
-    """A new transaction (new migration) reapplies the database once.
+def test_begin_transaction_alone_does_not_clear_the_schema_cache(monkeypatch):
+    """``begin_transaction`` no longer clears the cache on its own.
 
-    This is what keeps one migration's session state from leaking into the
-    next: :meth:`begin_transaction` clears the cache the skip above relies on.
+    Invalidation is owned by ``ExecutionEngine.reset_schema_cache()``, called
+    once at the start of every migration/callback before the transaction
+    begins. A provider-level clear here as well would leave nothing between
+    the two clears, so the migration's first statement reapplied the database
+    a second time — a duplicate ``USE`` per migration.
     """
     executed = []
     monkeypatch.setattr(
@@ -177,7 +180,7 @@ def test_set_current_schema_reapplies_after_begin_transaction(monkeypatch):
     MySqlProvider.begin_transaction(provider)
     MySqlProvider.set_current_schema(provider, "mydb")
 
-    assert executed == ["USE `mydb`", "USE `mydb`"]
+    assert executed == ["USE `mydb`"]
 
 
 def test_get_schema_qualified_name():

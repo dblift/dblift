@@ -263,6 +263,151 @@ def test_second_migration_does_not_inherit_previous_search_path(pg_provider, tmp
         provider.close()
 
 
+def test_second_migration_unqualified_read_does_not_leak_previous_search_path(
+    pg_provider, tmp_path
+) -> None:
+    """A row-returning statement must resolve in the configured schema too.
+
+    Unlike an unqualified DDL statement, a ``SELECT`` is routed to
+    ``provider.execute_query()``, which never applies the configured schema.
+    A previous migration's own ``SET search_path`` must not leak into it.
+    """
+    scratch_schema = f"sp_scratch_{uuid.uuid4().hex[:8]}"
+    migrations_dir = tmp_path / "migrations"
+    migrations_dir.mkdir()
+    create_versioned_migration(
+        migrations_dir,
+        "1.0.0",
+        "change_search_path",
+        f"""
+        CREATE SCHEMA "{scratch_schema}";
+        CREATE TABLE "{scratch_schema}".probe (v text);
+        INSERT INTO "{scratch_schema}".probe VALUES ('from leaked schema');
+        CREATE TABLE "{SCHEMA}".probe (v text);
+        INSERT INTO "{SCHEMA}".probe VALUES ('from configured schema');
+        SET search_path = "{scratch_schema}", pg_catalog;
+        """,
+    )
+    create_versioned_migration(
+        migrations_dir,
+        "2.0.0",
+        "unqualified_read",
+        "SELECT v FROM probe;",
+    )
+
+    config = _postgres_config()
+    config.migrations.directory = str(migrations_dir)
+    provider = ProviderRegistry.create_provider(config)
+    provider.create_connection()
+    try:
+        client = DBLiftClient(provider=provider, migrations_dir=migrations_dir, config=config)
+
+        result = client.migrate(show_query_results=True)
+
+        assert result.success, result.error_message
+        assert result.query_results
+        rows = result.query_results[-1].results[0]["rows"]
+        assert rows == [["from configured schema"]]
+    finally:
+        provider.execute_statement(f'DROP SCHEMA IF EXISTS "{scratch_schema}" CASCADE')
+        provider.close()
+
+
+def test_python_migration_unqualified_read_does_not_leak_previous_search_path(
+    pg_provider, tmp_path
+) -> None:
+    """A Python migration's own unqualified read must resolve in the
+    configured schema too, not a previous migration's leaked ``search_path``.
+
+    ``context.execute()`` (a SELECT) is routed to ``provider.execute_query()``
+    the same as the SQL path — the schema-apply that fixes the SQL case must
+    run before ``execute_migration()`` branches on migration format, not only
+    inside the SQL branch, or a Python migration never sees it.
+    """
+    scratch_schema = f"sp_scratch_{uuid.uuid4().hex[:8]}"
+    migrations_dir = tmp_path / "migrations"
+    migrations_dir.mkdir()
+    create_versioned_migration(
+        migrations_dir,
+        "1.0.0",
+        "change_search_path",
+        f"""
+        CREATE SCHEMA "{scratch_schema}";
+        CREATE TABLE "{scratch_schema}".probe (v text);
+        INSERT INTO "{scratch_schema}".probe VALUES ('from leaked schema');
+        CREATE TABLE "{SCHEMA}".probe (v text);
+        INSERT INTO "{SCHEMA}".probe VALUES ('from configured schema');
+        CREATE TABLE "{SCHEMA}".marker (v text);
+        SET search_path = "{scratch_schema}", pg_catalog;
+        """,
+    )
+    (migrations_dir / "V2_0_0__python_read.py").write_text(
+        "def migrate(context):\n"
+        '    rows = context.execute("SELECT v FROM probe")\n'
+        '    context.execute("INSERT INTO marker (v) VALUES (?)", [rows[0]["v"]])\n'
+    )
+
+    config = _postgres_config()
+    config.migrations.directory = str(migrations_dir)
+    provider = ProviderRegistry.create_provider(config)
+    provider.create_connection()
+    try:
+        client = DBLiftClient(provider=provider, migrations_dir=migrations_dir, config=config)
+
+        result = client.migrate()
+
+        assert result.success, result.error_message
+        rows = provider.execute_query(f'SELECT v FROM "{SCHEMA}".marker')
+        assert rows == [{"v": "from configured schema"}]
+    finally:
+        provider.execute_statement(f'DROP SCHEMA IF EXISTS "{scratch_schema}" CASCADE')
+        provider.close()
+
+
+def test_migration_own_search_path_then_unqualified_read_sees_migration_schema(
+    pg_provider, tmp_path
+) -> None:
+    """A migration's own ``SET search_path`` must still win for its own read.
+
+    Guard against regressing ``test_migration_set_search_path_persists_for_rest_of_migration``:
+    applying the configured schema once, up front, must not make the engine
+    re-apply it before a later statement in the same migration and override
+    the migration's own choice.
+    """
+    scratch_schema = f"sp_scratch_{uuid.uuid4().hex[:8]}"
+    migrations_dir = tmp_path / "migrations"
+    migrations_dir.mkdir()
+    create_versioned_migration(
+        migrations_dir,
+        "1.0.0",
+        "self_set_then_read",
+        f"""
+        CREATE SCHEMA "{scratch_schema}";
+        CREATE TABLE "{scratch_schema}".probe (v text);
+        INSERT INTO "{scratch_schema}".probe VALUES ('from migration schema');
+        SET search_path = "{scratch_schema}", pg_catalog;
+        SELECT v FROM probe;
+        """,
+    )
+
+    config = _postgres_config()
+    config.migrations.directory = str(migrations_dir)
+    provider = ProviderRegistry.create_provider(config)
+    provider.create_connection()
+    try:
+        client = DBLiftClient(provider=provider, migrations_dir=migrations_dir, config=config)
+
+        result = client.migrate(show_query_results=True)
+
+        assert result.success, result.error_message
+        assert result.query_results
+        rows = result.query_results[-1].results[0]["rows"]
+        assert rows == [["from migration schema"]]
+    finally:
+        provider.execute_statement(f'DROP SCHEMA IF EXISTS "{scratch_schema}" CASCADE')
+        provider.close()
+
+
 def test_autocommit_required_migration_does_not_inherit_previous_search_path(
     pg_provider, tmp_path
 ) -> None:

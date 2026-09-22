@@ -15,6 +15,89 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
+## [4.7.0] - 2026-09-22
+
+### Added
+
+### Changed
+
+- Undo planning now computes migration rank state once, keeping rollback
+  selection linear as migration history grows.
+- Introspection extensions are now discovered once per process instead of
+  rescanning installed package metadata for every introspector instance.
+- Full-schema introspection now uses bulk index retrieval when the database
+  supports it, avoiding one catalog query per table.
+- **Dependencies:** `tabulate`, `python-dateutil`, `typing-extensions`,
+  `packaging` and `click` are no longer installed with `dblift`; nothing in the
+  package imported them. The Flask integration still gets `click` through
+  Flask itself. If your own code imported one of these without declaring it,
+  add it to your requirements.
+
+### Fixed
+
+- **Statements now reach the server exactly as written.** A nested block
+  comment (`/* outer /* inner */ still outer */`) is read as one comment on
+  the engines that nest — PostgreSQL, SQL Server, DuckDB, CockroachDB,
+  YugabyteDB and the PostgreSQL-engine deployments — instead of being closed
+  at the first `*/`, which could split out and execute a `DROP TABLE` sitting
+  inside a commented-out block. A `pg_dump` `COPY ... FROM stdin` block ends
+  at its own `\.` line; `\restrict` / `\unrestrict` are recognised and any
+  other backslash line is refused by name rather than silently run. The
+  full-table UPDATE/DELETE guard no longer reads a `WHERE` inside a
+  dollar-quoted value as a real clause.
+
+- **The configured schema is now applied once per migration, and survives
+  within it.** A migration's own `SET search_path`, `USE`, `ALTER SESSION SET
+  CURRENT_SCHEMA`, `SET SCHEMA` or `USE SCHEMA` persists to the end of that
+  migration and is restored at the start of the next, on PostgreSQL, MySQL,
+  Oracle, Db2, Snowflake and SQL Server. A migration or callback beginning
+  with a `SELECT` reads from the configured schema rather than whatever the
+  connection was left on. Transactional runs no longer send the schema
+  statement twice. Verified against live Oracle and SQL Server; Db2 and
+  Snowflake are unverified at the engine level.
+
+- **Object extraction reports the right objects.** Quoted identifiers are
+  read whole, including a doubled `]`, `"` or `` ` `` inside the name, and
+  reported unquoted. SQL Server names stop at the identifier instead of
+  swallowing the rest of the statement. Indexes report their own name on SQL
+  Server, MySQL and Db2 — with the index's own schema on Db2, where one
+  exists — instead of swapping name and schema. `DROP TRIGGER`, `FUNCTION`,
+  `PROCEDURE`, `TYPE` and `DATABASE` report their actual type instead of
+  `TABLE`. Comments are skipped per dialect, so a commented-out statement is
+  no longer reported as an object a migration touches. Where the two parsers
+  disagree, extraction reconciles them per statement and per type, so one
+  unreadable statement no longer costs every other statement in the file.
+  When neither parser can read a statement at all, extraction now logs a
+  warning rather than leaving it at debug level, where a silent reduction to
+  "no objects here" went unseen; routine DDL that one of the two parsers
+  reads correctly — a schema-qualified `DROP INDEX index ON schema.table`,
+  an Oracle `PARTITION BY LIST` table — does not warn.
+
+- **Auto-generated undo scripts drop indexes the way each engine expects.**
+  SQL Server and MySQL name the table (`DROP INDEX name ON table`), taking
+  the table's own schema from the `CREATE INDEX`; bracket-quoted, three-part
+  and `CLUSTERED`/`NONCLUSTERED`/`PRIMARY XML` forms are all recognised. When
+  the table cannot be determined, the script says so and asks for manual
+  review instead of naming the wrong one. PostgreSQL, SQLite, Oracle and Db2
+  are unaffected. A `CREATE FULLTEXT INDEX`, which names no index of its own,
+  is not reversed: the undo script now refuses it and asks for manual review,
+  instead of emitting a `DROP INDEX` that matched nothing and silently did
+  nothing.
+
+- **Oracle `clean` drops reference-partitioned children before their parent.**
+  `CASCADE CONSTRAINTS` does not release a reference-partitioning dependency,
+  so a schema using them could fail to clean.
+
+- **`info`, `undo` and the FastAPI health helpers now fail when migration
+  state cannot be read**, instead of reporting an empty history, a successful
+  no-op undo, or a current schema.
+
+- **`validate` now says what it checks.** It does not parse migration SQL, so
+  a file `migrate` would refuse could pass validation first; the help text
+  spells out what it does check.
+
+### Removed
+
 ## [4.6.1] - 2026-09-20
 
 ### Added

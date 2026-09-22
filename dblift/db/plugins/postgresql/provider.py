@@ -35,10 +35,10 @@ class PostgreSqlProvider(SqlAlchemyProvider):
     #: statement of a migration, so a ``SET search_path`` the migration itself
     #: runs (the ``pg_dump`` idiom) is not immediately overwritten. Cleared by
     #: :meth:`reset_schema_cache` — called by ``ExecutionEngine`` at the start
-    #: of every migration/callback, and also by :meth:`begin_transaction` as a
-    #: second, redundant guard — so each new one still starts from the
-    #: configured schema. Class-level default so tests constructing via
-    #: ``object.__new__`` still see ``None``.
+    #: of every migration/callback, before either one starts a transaction —
+    #: so each new one still starts from the configured schema. Class-level
+    #: default so tests constructing via ``object.__new__`` still see
+    #: ``None``.
     _schema_applied_for: Optional[str] = None
 
     def __init__(self, config: DbliftConfig, log: Optional[Log] = None) -> None:
@@ -51,15 +51,10 @@ class PostgreSqlProvider(SqlAlchemyProvider):
 
         ``ExecutionEngine`` calls this at the start of every migration and
         callback — the unit boundary — regardless of whether it runs
-        transactionally or via autocommit; :meth:`begin_transaction` fires on
-        only one of those paths, so it is not a substitute for this call.
+        transactionally or via autocommit, so it is the sole invalidation
+        point rather than something :meth:`begin_transaction` also needs to do.
         """
         self._schema_applied_for = None
-
-    def begin_transaction(self) -> None:
-        """Begin a transaction, forcing the next statement to reapply the schema."""
-        self.reset_schema_cache()
-        super().begin_transaction()
 
     def drop_object(self, obj: DroppableObject) -> None:
         """Drop one object without letting a failure abort the whole clean.

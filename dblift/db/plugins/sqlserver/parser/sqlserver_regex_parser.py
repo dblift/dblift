@@ -6,11 +6,12 @@ statement splitting with fallback to regex.
 
 import logging
 import re
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Type
 
 from dblift.core.sql_model.base import (
     ParseResult,
 )
+from dblift.core.sql_parser.base_tokenizer import BaseTokenizer
 from dblift.core.sql_parser.enhanced_regex_parser import EnhancedRegexParser
 from dblift.core.sql_parser.parser_context import ParserContext
 from dblift.db.plugins.sqlserver.parser.parser_config import SqlServerConfig
@@ -31,6 +32,11 @@ class SqlServerRegexParser(EnhancedRegexParser):
     - GO batch separator handling
     - DDL block-aware statement detection
     """
+
+    #: Same tokenizer :meth:`split_statements` uses below, so extraction's
+    #: comment stripper reads T-SQL's nested block-comment rule from the
+    #: one place it is declared instead of assuming its own.
+    tokenizer_class: Type[BaseTokenizer] = SQLServerTokenizer
 
     def __init__(self) -> None:
         """Initialize SQL Server regex parser."""

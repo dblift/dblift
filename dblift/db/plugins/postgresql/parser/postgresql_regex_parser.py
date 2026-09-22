@@ -8,6 +8,7 @@ import logging
 import re
 from typing import Any, Dict, List, Optional
 
+from dblift.core.exceptions import UnsupportedMetaCommandError
 from dblift.core.sql_model.base import (
     ParseResult,
     SqlStatement,
@@ -21,7 +22,10 @@ from dblift.db.plugins.postgresql.parser.parser_config import PostgreSqlConfig
 from dblift.db.plugins.postgresql.parser.postgresql_statement_parser import (
     PostgreSQLStatementParser,
 )
-from dblift.db.plugins.postgresql.parser.postgresql_tokenizer import PostgreSQLTokenizer
+from dblift.db.plugins.postgresql.parser.postgresql_tokenizer import (
+    NonNestingPostgreSQLTokenizer,
+    PostgreSQLTokenizer,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +38,11 @@ class PostgreSqlRegexParser(EnhancedRegexParser):
     """PostgreSQL regex-based parser with comprehensive PostgreSQL support."""
 
     dialect_name = "postgresql"  # lint: allow-dialect-string: dialect dispatch
+
+    #: Tokenizer class used by :meth:`split_statements`. Subclasses for
+    #: wire-compatible engines that don't share PostgreSQL's nested-comment
+    #: documentation swap this for :class:`NonNestingPostgreSQLTokenizer`.
+    tokenizer_class: type = PostgreSQLTokenizer
 
     def __init__(self) -> None:
         """Initialize PostgreSQL regex parser."""
@@ -65,7 +74,7 @@ class PostgreSqlRegexParser(EnhancedRegexParser):
 
         try:
             # Use tokenization-based splitting
-            tokenizer = PostgreSQLTokenizer(sql_content, strict_unknown_chars=strict_tokenizer)
+            tokenizer = self.tokenizer_class(sql_content, strict_unknown_chars=strict_tokenizer)
             tokens = tokenizer.tokenize()
 
             context = ParserContext()
@@ -75,6 +84,12 @@ class PostgreSqlRegexParser(EnhancedRegexParser):
             logger.debug(f"PostgreSQL: Tokenization split into {len(statements)} statements")
             return statements
 
+        except UnsupportedMetaCommandError:
+            # A deliberate refusal, not a tokenization failure. Falling back
+            # to the regex splitter here would silently glue the
+            # meta-command's line onto the next statement -- the exact
+            # defect this refusal exists to name instead of hiding.
+            raise
         except Exception as e:
             if strict_tokenizer:
                 raise
@@ -684,3 +699,11 @@ class PostgreSqlRegexParser(EnhancedRegexParser):
                 return True
 
         return False
+
+
+class NonNestingPostgreSqlRegexParser(PostgreSqlRegexParser):
+    """PostgreSQL-syntax parser for a wire-compatible engine kept non-nesting
+    by default because nesting isn't established for it (Redshift — see
+    ``RedshiftQuirks.parser_class`` and CHANGELOG.md)."""
+
+    tokenizer_class = NonNestingPostgreSQLTokenizer

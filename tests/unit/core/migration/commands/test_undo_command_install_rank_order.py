@@ -18,6 +18,7 @@ import pytest
 
 from dblift.core.migration.commands.undo_command import UndoCommand
 from dblift.core.migration.migration import MigrationType
+from dblift.core.migration.rules.migration_rules import MigrationRules
 from dblift.core.migration.state.migration_state_manager import MigrationStateManager
 
 
@@ -81,6 +82,49 @@ def _make_command(applied_migrations):
     cmd.placeholder_service = MagicMock()
     cmd.migration_helpers.setup_migration_parameters.return_value = (True, None)
     return cmd
+
+
+class _CountedMigration:
+    def __init__(self, version, mtype, rank, rank_reads):
+        self.version = version
+        self.type = mtype
+        self.success = True
+        self.script_name = f"V{version}__test.sql"
+        self.description = "test"
+        self._rank = rank
+        self._rank_reads = rank_reads
+
+    @property
+    def installed_rank(self):
+        self._rank_reads[0] += 1
+        return self._rank
+
+
+@pytest.mark.unit
+def test_undo_planning_reads_each_history_rank_once():
+    rank_reads = [0]
+    rows = [_CountedMigration("0", MigrationType.SQL, 1, rank_reads)]
+    for version in range(1, 101):
+        rows.extend(
+            (
+                _CountedMigration(version, MigrationType.SQL, version * 2, rank_reads),
+                _CountedMigration(
+                    version,
+                    MigrationType.UNDO_SQL,
+                    version * 2 + 1,
+                    rank_reads,
+                ),
+            )
+        )
+
+    cmd = _make_command(rows)
+    cmd.migration_rules = MigrationRules(MagicMock())
+    cmd._find_undo_script = MagicMock(return_value=MagicMock())
+
+    result = cmd.execute(scripts_dir=MagicMock(), dry_run=True)
+
+    assert result.success
+    assert rank_reads[0] == len(rows)
 
 
 @pytest.mark.unit

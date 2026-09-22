@@ -28,6 +28,27 @@ from dblift.core.sql_parser.parser_interface import SqlParserInterface
 # Setup logger
 logger = logging.getLogger(__name__)
 
+# sqlglot ``Drop.kind`` values this repository can map to a concrete
+# ``SqlObjectType`` without guessing (dblift/dblift#384). A kind sqlglot's
+# grammar does not recognize for the statement's dialect (e.g. Oracle
+# PACKAGE/SYNONYM, MySQL EVENT, PostgreSQL DOMAIN/EXTENSION) never reaches
+# this map: sqlglot parses it as an opaque ``Command`` instead of
+# ``exp.Drop``, so it falls through to the non-DDL branch below and
+# contributes nothing — there is no wrong answer to correct. ``TABLE`` is
+# deliberately absent: it is also the fallback below for any kind this map
+# does not cover, which keeps a real gap in sqlglot's own coverage from
+# silently reading as "verified correct" here.
+_DROP_KIND_TO_OBJECT_TYPE: Dict[str, SqlObjectType] = {
+    "VIEW": SqlObjectType.VIEW,
+    "INDEX": SqlObjectType.INDEX,
+    "SEQUENCE": SqlObjectType.SEQUENCE,
+    "TRIGGER": SqlObjectType.TRIGGER,
+    "FUNCTION": SqlObjectType.FUNCTION,
+    "PROCEDURE": SqlObjectType.PROCEDURE,
+    "TYPE": SqlObjectType.TYPE,
+    "DATABASE": SqlObjectType.DATABASE,
+}
+
 
 class SqlGlotParser(SqlParserInterface):
     """SQL parser implementation using sqlglot for AST-based parsing.
@@ -206,6 +227,13 @@ class SqlGlotParser(SqlParserInterface):
         - Extracting schema-qualified names
         - Understanding SQL context (CREATE vs SELECT)
 
+        ``sqlglot.parse()`` parses the whole of ``sql_content`` as one batch
+        and is all-or-nothing: one statement it cannot read raises before any
+        object is extracted, discarding every valid statement alongside it
+        rather than just the one that failed. Callers that want partial
+        results from a multi-statement string must split it themselves and
+        call this once per statement.
+
         Args:
             sql_content: SQL content to extract objects from
             default_schema: Default schema name
@@ -231,8 +259,17 @@ class SqlGlotParser(SqlParserInterface):
                 )
 
         except ParseError as e:
-            # SqlGlot has limited support for dialect-specific syntax (e.g. Oracle PARTITION BY REFERENCE)
-            logger.debug(f"SqlGlot parse failed for object extraction (use regex fallback): {e}")
+            # SqlGlot has limited support for dialect-specific syntax (e.g. Oracle PARTITION BY
+            # REFERENCE). Logged at WARNING, not DEBUG: this exception is swallowed here and the
+            # caller (HybridParser) never sees it, so within this method's own return value, this
+            # is the only place its degradation to "no objects here" becomes visible. The same
+            # underlying ParseError is separately swallowed at DEBUG when sqlglot is invoked via
+            # other call paths on the same SQL — e.g. SqlGlotParser.parse_sql's own
+            # ``except ParseError``, and the per-statement-type builders in
+            # ``_sqlglot_builders.py`` (``_build_table_model_from_sqlglot``,
+            # ``_build_index_from_sqlglot``, ``_build_view_from_sqlglot``) — those are unaffected
+            # by this change (dblift/dblift#379).
+            logger.warning(f"SqlGlot parse failed for object extraction (use regex fallback): {e}")
         except Exception as e:
             logger.error(f"Error extracting objects: {str(e)}")
 
@@ -405,15 +442,17 @@ class SqlGlotParser(SqlParserInterface):
                             elif ast.kind == "TABLE":
                                 obj.object_type = SqlObjectType.TABLE
                         elif isinstance(ast, exp.Drop):
-                            # For DROP, infer type from kind or default to TABLE
-                            if ast.kind == "VIEW":
-                                obj.object_type = SqlObjectType.VIEW
-                            elif ast.kind == "INDEX":
-                                obj.object_type = SqlObjectType.INDEX
-                            elif ast.kind == "SEQUENCE":
-                                obj.object_type = SqlObjectType.SEQUENCE
-                            else:
-                                obj.object_type = SqlObjectType.TABLE
+                            # For DROP, map sqlglot's kind to the matching
+                            # SqlObjectType; a kind this repository has no
+                            # mapping for (including "TABLE" itself) defaults
+                            # to TABLE. See _DROP_KIND_TO_OBJECT_TYPE.
+                            obj.object_type = _DROP_KIND_TO_OBJECT_TYPE.get(
+                                ast.kind or "", SqlObjectType.TABLE
+                            )
+                            if obj.object_type == SqlObjectType.INDEX:
+                                self._correct_sqlserver_drop_index_schema(
+                                    obj, target, default_schema
+                                )
                         # For ALTER, keep the object type as TABLE (most common)
 
                         if obj not in objects:
@@ -464,6 +503,29 @@ class SqlGlotParser(SqlParserInterface):
             return [ast.this]
         return [t for t in (ast.args.get("tables") or []) if isinstance(t, exp.Table)]
 
+    def _correct_sqlserver_drop_index_schema(
+        self, obj: SqlObject, target: exp.Table, default_schema: Optional[str]
+    ) -> None:
+        """Undo sqlglot's generic ``schema.table`` reading for ``DROP INDEX``.
+
+        SQL Server's deprecated ``DROP INDEX [owner.]table.index_name``
+        spelling dot-qualifies the index by its owning *table* (and
+        optionally that table's owner/schema) — an index is never itself
+        schema-qualified in T-SQL (see the sibling CREATE INDEX handling
+        above, which always reports the default/current schema for the
+        same reason). sqlglot has no SQL-Server-specific handling for this
+        legacy spelling: it parses it the same generic way it would
+        ``[catalog.]schema.table`` for DROP TABLE, so ``_table_to_sqlobject``
+        reads the table name into ``obj.schema`` and drops any owner
+        qualifier on the floor. Two-part ``table.index_name`` has no owner,
+        so fall back to the default schema; three-part
+        ``owner.table.index_name`` puts the owner sqlglot parsed in
+        ``target.catalog``, which is the real schema and must not be
+        discarded.
+        """
+        if self.dialect == "sqlserver":  # lint: allow-dialect-string: T-SQL legacy DROP INDEX quirk
+            obj.schema = target.catalog or default_schema
+
     def _extract_affected_objects(
         self, ast: exp.Expression, default_schema: Optional[str]
     ) -> List[SqlObject]:
@@ -498,6 +560,8 @@ class SqlGlotParser(SqlParserInterface):
                         obj.object_type = SqlObjectType.VIEW
                     elif ast.kind == "INDEX":
                         obj.object_type = SqlObjectType.INDEX
+                        if isinstance(ast, exp.Drop):
+                            self._correct_sqlserver_drop_index_schema(obj, target, default_schema)
                     elif ast.kind == "SEQUENCE":
                         obj.object_type = SqlObjectType.SEQUENCE
                     elif ast.kind == "TABLE":

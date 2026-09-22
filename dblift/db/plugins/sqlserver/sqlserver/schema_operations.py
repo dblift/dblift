@@ -33,10 +33,6 @@ class SqlServerSchemaOperations(BaseSchemaOperations):
         """
         self.query_executor = query_executor
         self.log = log if log is not None else NullLog()
-        # Schema last applied via set_current_schema — see that method's
-        # docstring for why this cache exists (DEFAULT_SCHEMA is catalog-level
-        # state on the login, not connection-scoped).
-        self._current_schema_set: Optional[str] = None
 
     def create_schema_if_not_exists(self, connection: Any, schema: str) -> None:
         """Create schema if it doesn't exist in SQL Server.
@@ -435,77 +431,17 @@ class SqlServerSchemaOperations(BaseSchemaOperations):
             return "Unknown SQL Server Version"
 
     def set_current_schema(self, connection: Any, schema: str) -> None:
-        """Align the connecting user's default schema so unqualified DDL lands here.
+        """Not implemented: SQL Server's schema handling lives on the provider.
 
-        SQL Server has no session-scoped search path; unqualified object
-        names resolve against the connecting database user's
-        DEFAULT_SCHEMA. ``ALTER USER ... WITH DEFAULT_SCHEMA`` takes effect
-        immediately within the current session (no reconnect required).
-
-        Unlike every other dialect's mechanism, DEFAULT_SCHEMA is
-        catalog-level state on the login (``sys.database_principals``), not
-        connection-scoped, so it is visible to and overwritable by any other
-        connection authenticating as the same login. The schema this
-        connection is asked for does not change between calls in normal
-        usage (``--db-schema`` is fixed for the whole process run), so the
-        login's current DEFAULT_SCHEMA is read and compared against what
-        was set here last on *every* call, regardless of whether the
-        requested schema changed — a mismatch means another process sharing
-        this login changed it, which is logged loudly since unqualified DDL
-        placement is no longer reliable. Only the ``ALTER USER`` WRITE
-        itself is skipped once this connection has already set the
-        requested schema — reads don't race the way writes do, so this
-        still avoids redundant writes to the shared catalog row without
-        blinding the check to interference between them. Detecting the
-        interference does not undo it: DDL run right after may still land
-        against whatever schema the catalog currently holds. A dedicated
-        SQL Server login per ``--db-schema`` avoids the whole scenario.
-
-        Args:
-            schema: Schema name to make the connecting user's default
+        ``SqlServerProvider.set_current_schema`` aligns the connecting
+        user's DEFAULT_SCHEMA directly and does not delegate to this
+        object. Raising here (instead of a silent no-op) makes it obvious
+        if something is ever wired to call this method.
         """
-        try:
-            rows = self.query_executor.execute_query(
-                connection,
-                "SELECT USER_NAME() AS db_user, DEFAULT_SCHEMA_NAME AS default_schema "
-                "FROM sys.database_principals WHERE name = USER_NAME()",
-            )
-            current_user = rows[0].get("db_user") if rows else None
-            if not current_user:
-                raise RuntimeError("could not determine the connecting database user")
-
-            catalog_schema = rows[0].get("default_schema") if rows else None
-            if (
-                self._current_schema_set is not None
-                and catalog_schema is not None
-                and catalog_schema != self._current_schema_set
-            ):
-                self.log.warning(
-                    f"SQL Server login '{current_user}' DEFAULT_SCHEMA is '{catalog_schema}' "
-                    f"but dblift set it to '{self._current_schema_set}' earlier on this "
-                    f"connection — another process changed it. If this login is shared across "
-                    f"concurrent dblift runs with different --db-schema values, unqualified DDL "
-                    f"placement is not reliable; use a dedicated login per schema."
-                )
-
-            if self._current_schema_set == schema:
-                # Already the value this connection wants — skip the
-                # redundant catalog WRITE. The read+comparison above still
-                # ran, so interference is still detected on every call.
-                return
-
-            quoted_user = self.query_executor.get_quoted_schema_name(current_user)
-            quoted_schema = self.query_executor.get_quoted_schema_name(schema)
-            self.query_executor.execute_statement(
-                connection, f"ALTER USER {quoted_user} WITH DEFAULT_SCHEMA = {quoted_schema}"
-            )
-            self._current_schema_set = schema
-        except Exception as e:
-            self.log.warning(
-                f"SQL Server: could not set the connecting user's default schema to "
-                f"'{schema}'; unqualified object names may resolve against a "
-                f"different schema than --db-schema ({e})"
-            )
+        raise NotImplementedError(
+            "SqlServerSchemaOperations.set_current_schema is not used; "
+            "SqlServerProvider.set_current_schema is the real implementation"
+        )
 
     def get_columns_query(self, schema: str, table: str) -> tuple[str, List[str]]:
         """Get a SQL Server-specific query to retrieve column information from a table.

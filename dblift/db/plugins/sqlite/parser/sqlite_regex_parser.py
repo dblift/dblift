@@ -14,7 +14,7 @@ SQLite has simpler SQL syntax compared to enterprise databases:
 import re
 from typing import Dict, List, Optional
 
-from dblift.core.sql_model.base import SqlObject, SqlObjectType
+from dblift.core.sql_model.base import SqlObjectType
 from dblift.core.sql_parser.enhanced_regex_parser import EnhancedRegexParser
 from dblift.db.plugins.sqlite.parser.parser_config import SQLiteConfig
 
@@ -173,54 +173,6 @@ class SQLiteRegexParser(EnhancedRegexParser):
             statements.append(final_stmt)
 
         return statements
-
-    def extract_objects(
-        self, sql_content: str, default_schema: Optional[str] = None
-    ) -> List[SqlObject]:
-        """Extract database objects from a statement.
-
-        Args:
-            sql_content: SQL statement to analyze
-            default_schema: Default schema name (optional)
-
-        Returns:
-            List of SqlObject instances
-        """
-        if not sql_content:
-            return []
-
-        objects: List[SqlObject] = []
-        statement = sql_content.strip()
-
-        # Try each object pattern
-        for pattern_name, pattern in self.config.object_patterns.items():
-            match = pattern.search(statement)
-            if match:
-                groups = match.groups()
-
-                # Extract schema and name from groups
-                # Patterns typically have: (quoted_schema, unquoted_schema, bracket_schema, quoted_name, unquoted_name, bracket_name)
-                schema = None
-                name = None
-
-                # Filter out None values and find the actual values
-                non_none = [g for g in groups if g is not None]
-                if len(non_none) >= 1:
-                    name = non_none[-1]  # Last non-None is the object name
-                if len(non_none) >= 2:
-                    schema = non_none[-2]  # Second to last is schema (if present)
-
-                if name:
-                    obj_type = self._get_object_type_from_pattern(pattern_name)
-                    obj = SqlObject(
-                        name=name,
-                        object_type=obj_type,
-                        schema=schema or default_schema,
-                    )
-                    objects.append(obj)
-                    break
-
-        return objects
 
     def _get_object_type_from_pattern(self, pattern_name: str) -> SqlObjectType:
         """Convert pattern name to SqlObjectType."""

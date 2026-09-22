@@ -103,6 +103,7 @@ class OracleQuirks(BaseQuirks):
     sqlglot_unsupported_sql_patterns = (
         "PARTITION BY REFERENCE",
         "PARTITION BY RANGE",
+        "PARTITION BY LIST",
         "INTERVAL (",
     )
     connection_probe_sql = "SELECT 1 FROM DUAL"
@@ -112,7 +113,7 @@ class OracleQuirks(BaseQuirks):
     boolean_false_literal = "0"
     unquoted_identifier_case = "uppercase"
     # quote_qualified upper-cases idents to match Oracle's catalogue folding.
-    # DB2 shares the folding quirks but must NOT inherit this (story 26-5).
+    # DB2 shares the folding quirks but must NOT inherit this.
     quote_qualified_folds_to_uppercase = True
     connection_identifier_attrs = ("url", "service_name", "sid", "database")
     missing_connection_identifier_hint = (
@@ -126,17 +127,17 @@ class OracleQuirks(BaseQuirks):
             return str(username).upper()
         return None
 
-    # Procedure / function DDL (story 26-5).
+    # Procedure / function DDL.
     proc_supports_create_or_replace = True
     proc_function_returns_keyword = "RETURN"  # Oracle: ``RETURN`` (no S)
     proc_body_wrap_style = "plain"
     proc_drop_supports_if_exists = True
-    # Index DDL (story 26-5).
+    # Index DDL.
     index_drop_standalone_supports_if_exists = True  # native since 23ai / 19.28
     index_supports_bitmap = True
     index_supports_local_partitioned = True
     index_supports_tablespace = True
-    # Trigger DDL (story 26-5).
+    # Trigger DDL.
     trigger_terminator = "\n/"
     # Engine-internal materialized-view support objects to skip during
     # table introspection. Non-empty also signals TableExtractor to
@@ -172,19 +173,19 @@ class OracleQuirks(BaseQuirks):
             text = f"{trimmed};"
         return text
 
-    # Sequence DDL (story 26-5).
+    # Sequence DDL.
     seq_default_nocache_when_unset = True
     seq_cache_one_means_nocache = True
     seq_drop_supports_if_exists = True
-    # Synonym DDL (story 26-5).
+    # Synonym DDL.
     synonym_supports_create_or_replace = True
-    # View DDL (story 26-5).
+    # View DDL.
     view_drop_supports_if_exists = True
-    # UDT DDL (story 26-5). Oracle ``CREATE TYPE foo AS OBJECT`` uses
+    # UDT DDL. Oracle ``CREATE TYPE foo AS OBJECT`` uses
     # semicolons in the body; SQL Server uses different syntax.
     udt_object_body_uses_semicolons = True
     udt_composite_object_modifier = " OBJECT"
-    # Table DDL (story 26-5).
+    # Table DDL.
     table_drop_style = "if_exists_cascade_constraints"
     table_create_supports_if_not_exists = True
     table_temporary_style = "global_temporary"
@@ -198,7 +199,7 @@ class OracleQuirks(BaseQuirks):
     table_tablespace_style = "quoted"
     table_supports_storage_params = True
     supports_sqlplus_preprocessing = True
-    # Wave A hooks (story 26-6).
+    # Wave A hooks.
     view_supports_force_noforce = True
     proc_uses_definition_field = True
     index_comment_template = "COMMENT ON INDEX {schema_prefix}{idx_name} IS '{escaped_comment}';"

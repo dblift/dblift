@@ -1,4 +1,4 @@
-"""MariaDB database provider plugin (Epic 26 story 26-13)."""
+"""MariaDB database provider plugin."""
 
 from typing import List
 

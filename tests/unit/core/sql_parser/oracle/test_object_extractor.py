@@ -162,6 +162,62 @@ class TestCreateIndex:
 
 
 @pytest.mark.unit
+class TestDropStatements:
+    """DROP must be extracted for every object type this module knows how
+    to CREATE, plus TRIGGER (no CREATE TRIGGER support, but DROP TRIGGER is
+    unambiguous on its own). DROP TABLE is covered by
+    ``TestCreateTable.test_alter_and_drop_also_extracted``.
+    """
+
+    def test_drop_view(self):
+        [obj] = extract_objects("DROP VIEW v1")
+        assert isinstance(obj, View)
+        assert obj.name == "V1"
+
+    def test_drop_sequence(self):
+        [obj] = extract_objects("DROP SEQUENCE real_seq")
+        assert isinstance(obj, Sequence)
+        assert obj.name == "REAL_SEQ"
+
+    def test_drop_procedure(self):
+        [obj] = extract_objects("DROP PROCEDURE p1")
+        assert isinstance(obj, Procedure)
+        assert obj.name == "P1"
+        assert obj.is_function is False
+
+    def test_drop_function(self):
+        [obj] = extract_objects("DROP FUNCTION f1")
+        assert isinstance(obj, Procedure)
+        assert obj.name == "F1"
+        assert obj.is_function is True
+        assert obj.object_type.value == "FUNCTION"
+
+    def test_drop_index(self):
+        [obj] = extract_objects("DROP INDEX idx1")
+        assert obj.name == "IDX1"
+        assert obj.object_type.value == "INDEX"
+
+    def test_drop_trigger(self):
+        [obj] = extract_objects("DROP TRIGGER trg1")
+        assert obj.name == "TRG1"
+        assert obj.object_type.value == "TRIGGER"
+
+    def test_drop_quoted_name_preserved(self):
+        [obj] = extract_objects('DROP VIEW "MyView"')
+        assert obj.name == "MyView"
+
+    def test_drop_schema_qualified(self):
+        [obj] = extract_objects("DROP SEQUENCE sch.seq1")
+        assert obj.schema == "SCH"
+        assert obj.name == "SEQ1"
+
+    def test_drop_leading_comment_does_not_hide_the_object(self):
+        # The routing bug this module exists to fix also affected DROP.
+        [obj] = extract_objects("/* c */ DROP SEQUENCE real_seq;")
+        assert obj.name == "REAL_SEQ"
+
+
+@pytest.mark.unit
 class TestTemporaryTables:
     """Oracle temporary-table variants (ADR-0012 follow-up fix)."""
 
@@ -244,6 +300,60 @@ class TestDefaultSchemaPropagation:
         [obj] = extract_objects("CREATE INDEX idx ON my_sch.t (id)", default_schema="scott")
         assert obj.schema == "SCOTT"
         assert obj.table_schema == "MY_SCH"
+
+
+@pytest.mark.unit
+class TestCommentHandling:
+    """A comment before or between statements must not hide a live object,
+    and a commented-out statement must not surface as one."""
+
+    def test_leading_block_comment_does_not_hide_the_table(self):
+        sql = "/* c */ CREATE TABLE real_one (id int)"
+        assert [o.name for o in extract_objects(sql)] == ["REAL_ONE"]
+
+    def test_leading_line_comment_does_not_hide_the_table(self):
+        sql = "-- c\nCREATE TABLE real_one (id int)"
+        assert [o.name for o in extract_objects(sql)] == ["REAL_ONE"]
+
+    def test_commented_out_statement_is_not_extracted(self):
+        sql = "/* CREATE TABLE commented_out (id int); */ CREATE TABLE real_one (id int);"
+        assert [o.name for o in extract_objects(sql)] == ["REAL_ONE"]
+
+    def test_line_commented_out_statement_is_not_extracted(self):
+        sql = "-- CREATE TABLE commented_out (id int);\nCREATE TABLE real_one (id int);"
+        assert [o.name for o in extract_objects(sql)] == ["REAL_ONE"]
+
+    def test_comment_between_two_statements(self):
+        sql = "CREATE TABLE first_one (id int); /* c */ CREATE TABLE second_one (id int);"
+        assert [o.name for o in extract_objects(sql)] == ["FIRST_ONE", "SECOND_ONE"]
+
+    def test_block_comment_marker_inside_string_literal_survives(self):
+        sql = "CREATE TABLE t (note VARCHAR2(10) DEFAULT '/* not a comment */')"
+        assert [o.name for o in extract_objects(sql)] == ["T"]
+
+    def test_line_comment_marker_inside_string_literal_survives(self):
+        sql = "CREATE TABLE t (note VARCHAR2(10) DEFAULT '-- not a comment')"
+        assert [o.name for o in extract_objects(sql)] == ["T"]
+
+    def test_unterminated_block_comment_hides_everything_after_it(self):
+        # No closing `*/`: matches Oracle's own splitter, which treats the
+        # rest of the input as part of the comment (see split_statements).
+        sql = "/* unterminated CREATE TABLE ghost (id int);"
+        assert extract_objects(sql) == []
+
+    def test_package_stays_unextracted_behind_a_leading_comment(self):
+        # Packages are not in this extractor's surface at all (no pattern
+        # for them); a leading comment must not change that.
+        sql = "/* c */ CREATE OR REPLACE PACKAGE pkg1 IS END pkg1;"
+        assert extract_objects(sql) == []
+
+    def test_synonym_stays_unextracted_behind_a_leading_comment(self):
+        sql = "/* c */ CREATE SYNONYM syn1 FOR real_one;"
+        assert extract_objects(sql) == []
+
+    def test_materialized_view_stays_unextracted_behind_a_leading_comment(self):
+        sql = "/* c */ CREATE MATERIALIZED VIEW mv1 AS SELECT 1 FROM DUAL;"
+        assert extract_objects(sql) == []
 
 
 @pytest.mark.unit

@@ -1,4 +1,4 @@
-"""Entry-point declaration for the DB2 plugin (Epic 26 story 26-12)."""
+"""Entry-point declaration for the DB2 plugin."""
 
 from __future__ import annotations
 

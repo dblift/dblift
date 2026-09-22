@@ -6,6 +6,7 @@ BEGIN ATOMIC handling and transaction detection.
 
 from typing import List, Optional
 
+from dblift.core.exceptions import UnsupportedMetaCommandError
 from dblift.core.sql_parser.base_statement_parser import BaseStatementParser
 from dblift.core.sql_parser.parser_context import ParserContext
 from dblift.core.sql_parser.tokens import Token, TokenType
@@ -19,6 +20,12 @@ class PostgreSQLStatementParser(BaseStatementParser):
     - CASE expressions within ATOMIC blocks
     - Transaction compatibility detection
     """
+
+    #: psql meta-commands ``pg_dump`` itself emits that only scope the dump's
+    #: own session (see CHANGELOG). Safe to execute as nothing. Any other
+    #: backslash line has a real effect, so it is refused by name instead of
+    #: silently skipped.
+    SAFE_META_COMMANDS = frozenset({"\\restrict", "\\unrestrict"})
 
     # Statements that cannot run in transactions
     NO_TRANSACTION_PATTERNS = [
@@ -107,6 +114,60 @@ class PostgreSQLStatementParser(BaseStatementParser):
                     # Check if we're exiting ATOMIC block
                     if initiator == "ATOMIC":
                         self.in_atomic_block = False
+
+    def _is_statement_end(self, token: Token) -> bool:
+        """A COPY data block ends its own statement — no ``;`` follows its ``\\.`` line."""
+        if token.type == TokenType.COPY_DATA:
+            return True
+        return super()._is_statement_end(token)
+
+    def split_statements(self) -> List[str]:
+        """Override to keep META_COMMAND lines out of statement text.
+
+        A psql meta-command is not SQL and never joins the statement around
+        it, so it is pulled out here rather than in ``_is_statement_end``
+        (which only marks a boundary, it can't drop the token from output).
+
+        Returns:
+            List of SQL statement strings
+        """
+        statements: List[str] = []
+        current_statement_tokens: List[Token] = []
+
+        for idx, token in enumerate(self.tokens):
+            self.current_idx = idx
+
+            if token.type == TokenType.EOF:
+                continue
+
+            if token.type == TokenType.META_COMMAND:
+                if current_statement_tokens:
+                    stmt_text = self._render_statement(current_statement_tokens, None, token.pos)
+                    if stmt_text.strip():
+                        statements.append(stmt_text)
+                    current_statement_tokens = []
+                command = token.text.split(None, 1)[0]
+                if command not in self.SAFE_META_COMMANDS:
+                    raise UnsupportedMetaCommandError(
+                        f"Unsupported psql meta-command {command!r}; dblift does not run it"
+                    )
+                continue
+
+            self._adjust_context(token)
+            current_statement_tokens.append(token)
+
+            if self._is_statement_end(token):
+                stmt_text = self._render_statement(current_statement_tokens, token, None)
+                if stmt_text.strip():
+                    statements.append(stmt_text)
+                current_statement_tokens = []
+
+        if current_statement_tokens:
+            stmt_text = self._render_statement(current_statement_tokens, None, None)
+            if stmt_text.strip():
+                statements.append(stmt_text)
+
+        return statements
 
     def can_execute_in_transaction(self) -> bool:
         """Check if current statement can execute in a transaction.

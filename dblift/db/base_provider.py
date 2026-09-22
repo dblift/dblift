@@ -79,7 +79,7 @@ class BaseProvider(
 
     @property
     def quirks(self) -> BaseQuirks:
-        """Behaviour-overlay for this provider's dialect (Epic 26).
+        """Behaviour-overlay for this provider's dialect.
 
         Framework code calls ``provider.quirks.<hook>(...)`` instead of
         branching on ``self.config.database.type``. The instance is

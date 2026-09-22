@@ -153,6 +153,7 @@ class ExecutionEngine:
 
         run_checks("migration.pre_execution")
         self._reset_provider_schema_cache()
+        self._apply_configured_schema()
         start_time = time.time()
         migration.logger = self.log
 
@@ -428,6 +429,23 @@ class ExecutionEngine:
         if callable(reset_schema_cache):
             reset_schema_cache()
 
+    def _apply_configured_schema(self) -> None:
+        """Apply the configured schema once, before any statement of this unit runs.
+
+        Shared by ``execute_migration()`` and ``execute_callback()``, called
+        right after ``_reset_provider_schema_cache()`` and before either one
+        branches on migration format — so a row-returning first statement
+        (routed to ``provider.execute_query()``, which never applies a
+        schema) is not left depending on whatever the connection happens to
+        carry, whether the unit is SQL or a Python script calling
+        ``context.execute()``. On providers whose ``set_current_schema`` is
+        cache-guarded (PostgreSQL, MySQL) this is a no-op once a later
+        statement in the same unit changes it itself.
+        """
+        schema = getattr(getattr(self.config, "database", None), "schema", None)
+        if isinstance(schema, str) and schema:
+            self.provider.set_current_schema(schema)
+
     def _prepare_transaction(self, migration: Migration) -> bool:
         """Prepare transaction state: rollback any active transaction, then begin new one.
 
@@ -457,7 +475,29 @@ class ExecutionEngine:
                     # Rollback any existing transaction to ensure clean state
                     if not auto_commit_state:
                         try:
+                            # A transaction already open here is anomalous —
+                            # the normal case is nothing to roll back,
+                            # because _apply_configured_schema()'s own
+                            # statement, issued moments earlier with no
+                            # transaction open, already committed itself.
+                            # When one *is* open, some engines (PostgreSQL: a
+                            # plain SET's effect is undone by ROLLBACK,
+                            # documented behaviour) may have just had that
+                            # statement rolled back, so the schema cache's
+                            # belief that it is applied can no longer be
+                            # trusted. Read this off the provider's own
+                            # `_tx` — the same flag execute_statement()'s
+                            # auto-commit check uses — rather than the
+                            # connection: duck-typing a connection attribute
+                            # here is not uniform across drivers (SQLite's
+                            # `in_transaction` is a bool property, not a
+                            # method), and this must stay inside the try that
+                            # guards the rollback so a bad read never
+                            # suppresses the rollback itself.
+                            had_open_transaction = getattr(self.provider, "_tx", None) is not None
                             self.provider.rollback_transaction()
+                            if had_open_transaction:
+                                self._reset_provider_schema_cache()
                         except Exception as rollback_e:
                             self.log.debug(
                                 f"Could not rollback pre-migration transaction (may be no active transaction): {rollback_e}"
@@ -1131,6 +1171,7 @@ class ExecutionEngine:
             record: Optional callback record to fill with statements and result sets
         """
         self._reset_provider_schema_cache()
+        self._apply_configured_schema()
 
         # Route non-SQL callbacks to the executor factory (mirrors execute_migration routing — B5 fix)
         if callback.format != MigrationFormat.SQL:
@@ -1178,10 +1219,6 @@ class ExecutionEngine:
                     f"Could not begin transaction for callback {callback.script_name}: {e}"
                 )
                 # Continue without explicit transaction management
-
-        schema = getattr(getattr(self.config, "database", None), "schema", None)
-        if isinstance(schema, str) and schema:
-            self.provider.set_current_schema(schema)
 
         dialect = self._probe_dialect_key() or getattr(self.sql_analyzer, "dialect", "") or ""
         quirks = ProviderRegistry.get_quirks(dialect)
