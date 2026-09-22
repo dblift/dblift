@@ -23,6 +23,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and an upgrade from the previous release and from 4.0.0 is replayed with
   published wheels. No behaviour change.
 - Release cadence is documented in `docs/semver-policy.md` section 5.1.
+- **Dependencies:** `tabulate`, `python-dateutil`, `typing-extensions`,
+  `packaging` and `click` are no longer installed with `dblift`; nothing in the
+  package imported them. The Flask integration still gets `click` through
+  Flask itself. If your own code imported one of these without declaring it,
+  add it to your requirements.
 
 ### Fixed
 
