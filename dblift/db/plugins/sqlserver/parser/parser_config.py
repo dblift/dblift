@@ -310,9 +310,13 @@ class SqlServerConfig(DialectConfig):
         - SCHEMA operation patterns
         """
         # T-SQL identifier: bracket-quoted, double-quoted, or unquoted.
+        # A closing bracket/quote inside a quoted identifier is escaped by
+        # doubling it (``[real]]one]`` is ``real]one``; ``"real""one"`` is
+        # ``real"one``), so each quoted alternative reads a doubled pair as
+        # part of the identifier rather than stopping there.
         # The unquoted alternative stops at whitespace/punctuation so it
         # cannot run past the identifier into the rest of the statement.
-        id_token = r'(?:\[[^\]]+\]|"[^"]+"|[^\s.,;()\[\]"]+)'
+        id_token = r'(?:\[(?:[^\]]|\]\])+\]|"(?:[^"]|"")+"|[^\s.,;()\[\]"]+)'
         captured_id = f"({id_token})"
         # A reference has one to three dot-separated parts:
         # database.schema.name. The three-part alternative is tried first
@@ -529,14 +533,19 @@ class SqlServerConfig(DialectConfig):
         if not identifier:
             return identifier
 
-        # Remove brackets if present
+        # Remove brackets if present, then undo the ]] -> ] escape
         if identifier.startswith("[") and identifier.endswith("]"):
-            identifier = identifier[1:-1]
+            identifier = identifier[1:-1].replace("]]", "]")
             is_quoted = True
 
-        # Remove double quotes if present
-        if identifier.startswith('"') and identifier.endswith('"'):
-            identifier = identifier[1:-1]
+        # Remove double quotes if present, then undo the "" -> " escape.
+        # elif, not if: once the bracket branch above has fired, this
+        # identifier was bracket-quoted, not double-quoted — content that
+        # happens to start and end with '"' after the brackets are
+        # stripped (e.g. ["a""b"]) must not also go through this branch,
+        # since a quote has no escaping meaning inside brackets.
+        elif identifier.startswith('"') and identifier.endswith('"'):
+            identifier = identifier[1:-1].replace('""', '"')
             is_quoted = True
 
         if is_quoted:
