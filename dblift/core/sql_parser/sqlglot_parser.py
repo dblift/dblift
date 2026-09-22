@@ -410,7 +410,9 @@ class SqlGlotParser(SqlParserInterface):
                                 obj.object_type = SqlObjectType.VIEW
                             elif ast.kind == "INDEX":
                                 obj.object_type = SqlObjectType.INDEX
-                                self._correct_sqlserver_drop_index_schema(obj, default_schema)
+                                self._correct_sqlserver_drop_index_schema(
+                                    obj, target, default_schema
+                                )
                             elif ast.kind == "SEQUENCE":
                                 obj.object_type = SqlObjectType.SEQUENCE
                             else:
@@ -466,22 +468,27 @@ class SqlGlotParser(SqlParserInterface):
         return [t for t in (ast.args.get("tables") or []) if isinstance(t, exp.Table)]
 
     def _correct_sqlserver_drop_index_schema(
-        self, obj: SqlObject, default_schema: Optional[str]
+        self, obj: SqlObject, target: exp.Table, default_schema: Optional[str]
     ) -> None:
         """Undo sqlglot's generic ``schema.table`` reading for ``DROP INDEX``.
 
-        SQL Server's deprecated ``DROP INDEX table.index_name`` spelling
-        dot-qualifies the index by its owning *table*, not a schema — an
-        index is never itself schema-qualified in T-SQL (see the sibling
-        CREATE INDEX handling above, which always reports the
-        default/current schema for the same reason). sqlglot has no
-        SQL-Server-specific handling for this legacy spelling: it parses
-        the qualifier the same generic way it would ``schema.table`` for
-        DROP TABLE, so ``_table_to_sqlobject`` reads the table name into
-        ``obj.schema``. Correct it back to the default schema.
+        SQL Server's deprecated ``DROP INDEX [owner.]table.index_name``
+        spelling dot-qualifies the index by its owning *table* (and
+        optionally that table's owner/schema) — an index is never itself
+        schema-qualified in T-SQL (see the sibling CREATE INDEX handling
+        above, which always reports the default/current schema for the
+        same reason). sqlglot has no SQL-Server-specific handling for this
+        legacy spelling: it parses it the same generic way it would
+        ``[catalog.]schema.table`` for DROP TABLE, so ``_table_to_sqlobject``
+        reads the table name into ``obj.schema`` and drops any owner
+        qualifier on the floor. Two-part ``table.index_name`` has no owner,
+        so fall back to the default schema; three-part
+        ``owner.table.index_name`` puts the owner sqlglot parsed in
+        ``target.catalog``, which is the real schema and must not be
+        discarded.
         """
         if self.dialect == "sqlserver":  # lint: allow-dialect-string: T-SQL legacy DROP INDEX quirk
-            obj.schema = default_schema
+            obj.schema = target.catalog or default_schema
 
     def _extract_affected_objects(
         self, ast: exp.Expression, default_schema: Optional[str]
@@ -518,7 +525,7 @@ class SqlGlotParser(SqlParserInterface):
                     elif ast.kind == "INDEX":
                         obj.object_type = SqlObjectType.INDEX
                         if isinstance(ast, exp.Drop):
-                            self._correct_sqlserver_drop_index_schema(obj, default_schema)
+                            self._correct_sqlserver_drop_index_schema(obj, target, default_schema)
                     elif ast.kind == "SEQUENCE":
                         obj.object_type = SqlObjectType.SEQUENCE
                     elif ast.kind == "TABLE":

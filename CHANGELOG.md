@@ -37,9 +37,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   rather than guessed from the table. Previously the index name was
   reported as the schema and the table name was reported as the object,
   and a `CREATE XML INDEX` could be extracted twice.
-- SQL Server's deprecated `DROP INDEX table.index_name` spelling now
-  reports the index's default schema instead of the table name. Previously
-  `DROP INDEX real_one.idx1` extracted `real_one` as the schema.
+- SQL Server's deprecated `DROP INDEX [owner.]table.index_name` spelling
+  now reports the correct schema instead of the table name. Previously
+  `DROP INDEX real_one.idx1` extracted `real_one` as the schema, and an
+  explicit owner in the three-part form (`DROP INDEX dbo.real_one.idx1`)
+  was discarded in favor of the default schema.
 - Migrations against engines that nest block comments — PostgreSQL, SQL
   Server, DuckDB, and the PostgreSQL-engine deployments Citus, TimescaleDB,
   Neon, Supabase, AlloyDB and Aurora PostgreSQL — now read a comment that
