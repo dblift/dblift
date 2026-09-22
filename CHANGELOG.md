@@ -32,11 +32,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   was reported as `real_one (id int);` — the column list and trailing
   punctuation included — and the same table could appear twice, once
   garbled and once correct.
+- SQL Server object extraction now reads a `]` or `"` doubled inside a
+  bracketed or double-quoted identifier as the escape T-SQL defines for it,
+  instead of stopping at the first one. Previously `[real]]one]` and
+  `"real""one"` were both extracted as `real`, silently dropping the rest
+  of the name.
 - SQL Server `CREATE`/`DROP INDEX`, including `XML` indexes, now report
   the index's own name as the object name, with its schema defaulted
   rather than guessed from the table. Previously the index name was
   reported as the schema and the table name was reported as the object,
   and a `CREATE XML INDEX` could be extracted twice.
+- MySQL `CREATE`/`DROP INDEX` now report the index's own name, with its
+  schema defaulted rather than guessed from the `ON`-target table. Db2
+  `CREATE`/`DROP INDEX` now report the index's own name and, when given,
+  its own schema — a Db2 index carries a schema independent of its
+  table's. Previously both reported the table name as the index and the
+  index name as the schema.
 - Migrations against engines that nest block comments — PostgreSQL, SQL
   Server, DuckDB, and the PostgreSQL-engine deployments Citus, TimescaleDB,
   Neon, Supabase, AlloyDB and Aurora PostgreSQL — now read a comment that
