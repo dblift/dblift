@@ -166,6 +166,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   unaffected — verified against a live PostgreSQL instance; the others by
   their documented syntax (SQL Server's own statement was not verified
   against a live instance — none was reachable).
+- Object extraction now logs a warning when sqlglot cannot parse a statement
+  at all and no other source of an object list exists — for example SQL
+  Server's `DROP INDEX a.idx1, b.idx2;`, valid T-SQL that sqlglot's `tsql`
+  grammar rejects and the regex parser also cannot read. Previously this
+  was logged at debug level, so extraction quietly reducing to "no objects
+  here" left nothing in the logs a user would see by default. Ordinary DDL
+  that a different part of dblift already reads correctly does not log a
+  warning, so this doesn't become noise on routine migrations: a
+  schema-qualified `DROP INDEX index ON schema.table` — the everyday way to
+  drop an index in SQL Server and MySQL, also rejected by sqlglot's grammar
+  — and an Oracle `PARTITION BY LIST` table, alongside the `RANGE` and
+  `REFERENCE` forms already excluded, are both extracted by the regex
+  parser and treated as successes, not failures.
 
 ### Removed
 

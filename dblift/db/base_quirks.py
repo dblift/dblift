@@ -176,6 +176,14 @@ class BaseQuirks:
     #: uppercased SQL text, ``HybridParser`` falls back to regex-only.
     #: Plugins override to declare dialect-specific incompatibilities.
     sqlglot_unsupported_sql_patterns: "tuple[str, ...]" = ()
+    #: Same purpose as ``sqlglot_unsupported_sql_patterns``, but each entry
+    #: is a regex matched against the upper-cased SQL text instead of a
+    #: fixed literal phrase — for an unsupported *shape* that spans a
+    #: variable identifier a literal substring can't express (e.g. "DROP
+    #: INDEX ... ON <schema>.<table>", where an arbitrary index name sits
+    #: between the two fixed keywords). When *any* pattern matches,
+    #: ``HybridParser`` falls back to regex-only, the same as above.
+    sqlglot_unsupported_sql_regex_patterns: "tuple[str, ...]" = ()
 
     # ------------------------------------------------------------------
     # DML undo-safety scanning (data corrections). The scanning mechanics

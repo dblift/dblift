@@ -103,6 +103,7 @@ class OracleQuirks(BaseQuirks):
     sqlglot_unsupported_sql_patterns = (
         "PARTITION BY REFERENCE",
         "PARTITION BY RANGE",
+        "PARTITION BY LIST",
         "INTERVAL (",
     )
     connection_probe_sql = "SELECT 1 FROM DUAL"

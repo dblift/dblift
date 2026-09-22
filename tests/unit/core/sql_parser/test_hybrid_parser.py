@@ -488,6 +488,195 @@ class TestHybridParser:
 
 
 @pytest.mark.unit
+class TestMergeObjectsDedupKeyPinsCurrentBehavior:
+    """Pin ``_merge_objects``'s current, documented-wrong outcomes (#377).
+
+    ``_merge_objects`` dedups by ``(name.lower(), object_type)`` and prefers
+    sqlglot on a collision. dblift/dblift#377 establishes that this single
+    rule produces two opposite wrong outcomes and leaves open how the merge
+    should change (whether "sqlglot wins" should stay the default, whether
+    the key should include schema, ...) as a maintainer design decision.
+
+    These tests do not assert correct behavior — they pin what the code
+    does *today* so a later change to the dedup key is a deliberate,
+    visible diff here rather than a silent behavior change.
+    """
+
+    def test_collision_on_matching_name_drops_the_regex_resolved_schema(self):
+        """Same name shape: sqlglot's default-schema-less answer overwrites
+        the regex answer, discarding the schema regex had resolved.
+
+        SQL Server's own convention resolves an unqualified table to the
+        ``dbo`` schema; the regex parser applies that, sqlglot does not
+        (sqlglot only uses schema explicitly passed as ``default_schema``,
+        which this call does not pass). Both parsers report the same name
+        ``plainname`` (no bracket-escaping involved, so #375's fix to
+        bracket-escape truncation is not in play), so the key collides and
+        sqlglot wins.
+        """
+        parser = HybridParser("sqlserver")
+        sql = "CREATE TABLE [plainname] (id int);"
+
+        regex_objects = parser.regex_parser.extract_objects(sql, None)
+        assert regex_objects[0].name.lower() == "plainname"
+        assert regex_objects[0].schema == "dbo"  # regex resolved SQL Server's default schema
+
+        merged = parser.extract_objects(sql, None)
+        assert len(merged) == 1
+        assert merged[0].name.lower() == "plainname"
+        assert merged[0].schema is None  # pinned: the resolved schema is lost on collision
+
+    def test_non_colliding_names_produce_a_phantom_duplicate(self):
+        """Different names shape: when the two parsers disagree on the
+        *name* for the same statement, the key does not collide and both
+        objects survive — the dedup that is supposed to prevent duplicates
+        does not fire precisely when one parser got the name wrong.
+
+        MySQL backtick-doubling (``a``` `` -> literal backtick) is not
+        unescaped by the regex parser, which truncates at the first
+        backtick; sqlglot decodes it correctly. This is the same shape as
+        the SQL Server ``]]``-escape example in #377 (fixed for SQL Server
+        specifically by #375), reproduced here on a dialect and escape
+        style #375 did not touch, showing the underlying merge mechanism —
+        not just that one instance — is what #377 is about.
+        """
+        parser = HybridParser("mysql")
+        sql = "CREATE TABLE `real``one` (id int);"
+
+        regex_objects = parser.regex_parser.extract_objects(sql, None)
+        sqlglot_objects = parser.sqlglot_parser.extract_objects(sql, None)
+        assert regex_objects[0].name == "real"  # truncated at the first backtick
+        assert sqlglot_objects[0].name == "real`one"  # correctly unescaped
+
+        merged = parser.extract_objects(sql, None)
+        # pinned: both the truncated and the correct name survive, side by side
+        assert {obj.name for obj in merged} == {"real", "real`one"}
+        assert len(merged) == 2
+
+
+@pytest.mark.unit
+class TestExtractObjectsQuietOnRoutineDropIndexOnQualifiedTable:
+    """`DROP INDEX idx ON schema.table` must not warn (dblift/dblift#379 SHOULD-FIX).
+
+    This is not an edge case: it is the *only* legal way to drop an index in
+    SQL Server and MySQL, and schema-qualifying the table is routine. sqlglot's
+    grammar happens to reject the schema-qualified form specifically (the
+    unqualified form and the legacy dot-qualified form both parse fine), but
+    the regex parser already extracts this shape correctly — that's the
+    accidental fallback #379 established. Letting the WARNING added for the
+    genuine failure (the comma-separated `DROP INDEX a.x, b.y` form, which no
+    parser can read) also fire here would make it noise on every ordinary
+    `DROP INDEX`, exactly the alert-fatigue problem #356 removed.
+    """
+
+    def test_sqlserver_schema_qualified_drop_index_on_does_not_warn(self, caplog):
+        parser = HybridParser("sqlserver")
+        sql = "DROP INDEX idx1 ON dbo.mytable;"
+
+        with caplog.at_level("WARNING"):
+            objects = parser.extract_objects(sql)
+
+        assert not caplog.records, [r.message for r in caplog.records]
+        assert len(objects) == 1
+        assert objects[0].name == "idx1"
+        assert objects[0].schema == "dbo"
+
+    def test_mysql_schema_qualified_drop_index_on_does_not_warn(self, caplog):
+        parser = HybridParser("mysql")
+        sql = "DROP INDEX idx1 ON myschema.mytable;"
+
+        with caplog.at_level("WARNING"):
+            objects = parser.extract_objects(sql, default_schema="myschema")
+
+        assert not caplog.records, [r.message for r in caplog.records]
+        assert len(objects) == 1
+        assert objects[0].name == "idx1"
+        assert objects[0].schema == "myschema"
+
+    def test_comma_separated_drop_index_still_warns(self, caplog):
+        """The genuine #379 failure — a shape neither parser can read — must
+        keep warning. This is the regression guard against 'fixing' the
+        noise by reverting the log level instead of narrowing the trigger."""
+        parser = HybridParser("sqlserver")
+        sql = "DROP INDEX a.idx1, b.idx2;"
+
+        with caplog.at_level("WARNING"):
+            objects = parser.extract_objects(sql)
+
+        assert any(
+            "SqlGlot parse failed for object extraction" in r.message for r in caplog.records
+        )
+        assert objects == []
+
+    def test_guard_does_not_leak_across_statements_in_a_batch(self, caplog):
+        """The unsupported-shape guard must be scoped to the statement it
+        actually describes, not to the whole (possibly multi-statement)
+        ``sql_content`` blob it is handed.
+
+        A harmless, unqualified ``DROP INDEX idx1 ON mytable;`` earlier in
+        the same string must not suppress sqlglot for the *rest* of the
+        batch. Before this test, the guard's regex could span past the
+        statement's own terminating ``;`` and match an unrelated ``... ON
+        a.x`` later in the string (e.g. inside a ``JOIN ... ON`` clause),
+        flipping ``use_sqlglot`` to False for the entire blob and silently
+        downgrading a valid, unrelated statement's extraction to
+        regex-only — the exact all-or-nothing batch hazard
+        ``extract_objects``'s own docstring warns about, now reachable
+        through this guard instead of through sqlglot itself.
+        """
+        parser = HybridParser("mysql")
+        sql = (
+            "DROP INDEX idx1 ON mytable; "
+            "CREATE TABLE `real``one` (id int); "
+            "SELECT * FROM a JOIN b ON a.x = b.y;"
+        )
+
+        objects = parser.extract_objects(sql, default_schema="myschema")
+
+        names = {obj.name for obj in objects}
+        # sqlglot must still run on this batch and contribute its correctly
+        # decoded name; if the guard leaked, only the regex-truncated
+        # ``real`` would be present.
+        assert "real`one" in names, names
+
+
+@pytest.mark.unit
+class TestParseSqlQuietOnOracleListPartitionedTable:
+    """Oracle ``PARTITION BY LIST`` must not warn (dblift/dblift#379 follow-up).
+
+    This is textbook Oracle list partitioning, no rarer than ``PARTITION BY
+    RANGE`` — which Oracle's quirks already declare in
+    ``sqlglot_unsupported_sql_patterns``; ``PARTITION BY LIST`` was simply
+    missing from that list. Without it, every real list-partitioned Oracle
+    ``CREATE TABLE`` would warn via the extract_objects fallback in
+    ``HybridParser.parse_sql`` — the same alert-fatigue problem this PR
+    exists to remove, just on a third dialect/shape.
+    """
+
+    def test_list_partitioned_table_does_not_warn(self, caplog):
+        sql = """
+        CREATE TABLE employees (
+            emp_id NUMBER,
+            region VARCHAR2(50)
+        )
+        PARTITION BY LIST (region) (
+            PARTITION p_west VALUES ('CA', 'WA', 'OR'),
+            PARTITION p_east VALUES ('NY', 'MA', 'CT')
+        );
+        """
+        parser = HybridParser("oracle")
+
+        with caplog.at_level("WARNING"):
+            result = parser.parse_sql(sql, default_schema="test_schema")
+
+        assert not caplog.records, [r.message for r in caplog.records]
+        assert result.success
+        table = result.tables[0]
+        assert table.partition_method == "LIST"
+        assert table.partition_columns == ["REGION"]
+
+
+@pytest.mark.unit
 class TestCollectObjectsDispatch:
     """Tests for _collect_objects dispatch dict pattern (story 14-9)."""
 
