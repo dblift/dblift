@@ -85,27 +85,27 @@ class PostgresqlQuirks(BaseQuirks):
     drop_supports_if_exists = True
     drop_table_default_cascade = True
     supports_concurrent_index = True
-    # Procedure / function DDL (story 26-5).
+    # Procedure / function DDL.
     proc_supports_create_or_replace = True
     proc_supports_language_clause = True
     proc_body_wrap_style = "dollar_quotes"
-    # Index DDL (story 26-5).
+    # Index DDL.
     index_qualifies_with_schema = False
     index_supports_using_clause = True
     index_no_sort_types = frozenset({"GIN", "GIST", "BRIN", "HASH", "SPGIST"})
     index_with_options_style = "lowercase"
-    # Sequence DDL (story 26-5).
+    # Sequence DDL.
     seq_supports_temp = True
-    # View DDL (story 26-5).
+    # View DDL.
     view_supports_security_with_clause = True
     # View comparison (story 26-6 Wave A).
     view_supports_unlogged_and_security = True
     serial_types_alias_integer = True
-    # Table DDL (story 26-5).
+    # Table DDL.
     table_supports_inline_collate = True
     table_supports_deferrable_constraints = True
     table_supports_inherits = True
-    # Wave A hooks (story 26-6).
+    # Wave A hooks.
     supports_constraint_triggers = True
     seq_uses_nextval_syntax = True
     computed_column_introspection_incomplete = True

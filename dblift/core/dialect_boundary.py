@@ -27,12 +27,12 @@ Layout
 
 Sub-protocols (filled by Epic 26 stories as needed):
 
-* ``DdlQuirks`` (story 26-3) — DDL/SQL rendering hooks.
-* ``ParserQuirks`` (story 26-4) — parser/tokenizer factory hooks.
-* ``ModelQuirks`` (story 26-5) — domain-model rendering hooks.
-* ``ComparatorQuirks`` (story 26-6) — schema-diff comparator hooks.
-* ``ValidatorQuirks`` (story 26-7) — lint/perf rule hooks.
-* ``TypeMapQuirks`` (story 26-8) — type normalisation hooks.
+* ``DdlQuirks`` — DDL/SQL rendering hooks.
+* ``ParserQuirks`` — parser/tokenizer factory hooks.
+* ``ModelQuirks`` — domain-model rendering hooks.
+* ``ComparatorQuirks`` — schema-diff comparator hooks.
+* ``ValidatorQuirks`` — lint/perf rule hooks.
+* ``TypeMapQuirks`` — type normalisation hooks.
 
 Each sub-protocol starts empty in story 26-2 (this commit) and grows
 as the corresponding story moves logic out of the framework. The shape

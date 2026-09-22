@@ -121,20 +121,20 @@ class Db2Quirks(BaseQuirks):
     connection_identifier_attrs = ("url", "host", "database")
     missing_connection_identifier_hint = "DB2 connection requires url or host/database fields"
     native_url_schema_params = ("currentSchema", "schema")
-    # Procedure / function DDL (story 26-5).
+    # Procedure / function DDL.
     proc_param_supports_default = False  # DB2 rejects ``= default``
-    # Synonym DDL (story 26-5). DB2 calls them ALIAS.
+    # Synonym DDL. DB2 calls them ALIAS.
     synonym_keyword = "ALIAS"
     # Sequence comparison: DB2 uses INT64 max as implicit "no max".
     seq_implicit_max_value = 9223372036854775807
-    # Table DDL (story 26-5).
+    # Table DDL.
     table_check_via_alter = True
     table_self_ref_fk_via_alter = True
     table_temporary_style = "global_temporary"
     table_not_null_implicit_on_identity_pk = True
     table_inline_unique_single_col = True
     table_tablespace_style = "skip"
-    # Wave A hooks (story 26-6).
+    # Wave A hooks.
     table_supports_compress = True
     default_index_type = "REGULAR"
     index_drop_standalone_supports_if_exists = False  # DB2 has no DROP INDEX IF EXISTS

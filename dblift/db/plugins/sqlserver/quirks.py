@@ -100,30 +100,30 @@ class SqlserverQuirks(BaseQuirks):
 
     drop_supports_if_exists = True  # SQL Server 2016+ supports DROP ... IF EXISTS
     unquoted_identifier_case = "case_insensitive"
-    # Procedure / function DDL (story 26-5).
+    # Procedure / function DDL.
     proc_body_wrap_style = "begin_end"
     proc_param_inout_keyword = "OUTPUT"
-    # Index DDL (story 26-5).
+    # Index DDL.
     index_qualifies_with_schema = False
     index_with_options_style = "uppercase"
     index_drop_includes_table = True
     index_drop_table_form_supports_if_exists = True
-    # Trigger DDL (story 26-5).
+    # Trigger DDL.
     trigger_supports_for_each_row = False  # SQL Server has no FOR EACH ROW
-    # Sequence DDL (story 26-5).
+    # Sequence DDL.
     seq_nocycle_keyword = "NO CYCLE"
-    # UDT / Table DDL (story 26-5).
+    # UDT / Table DDL.
     udt_distinct_uses_from_syntax = True
     table_uses_filegroup_syntax = True
     supports_online_index = True
     metadata_catalog_mode = "catalog+schema"
-    # Table DDL (story 26-5).
+    # Table DDL.
     table_temporary_style = "hash_prefix"
     table_supports_constraint_nocheck = True
     # T-SQL's referential-action grammar is ON DELETE/UPDATE { NO ACTION |
     # CASCADE | SET NULL | SET DEFAULT } -- RESTRICT is not a keyword here.
     table_fk_supports_restrict = False
-    # Wave A hooks (story 26-6).
+    # Wave A hooks.
     table_supports_memory_optimized = True
     table_supports_system_versioned = True
 

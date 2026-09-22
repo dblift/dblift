@@ -77,9 +77,9 @@ class MysqlQuirks(BaseQuirks):
     provider_compat_snapshot_skips_existence_check = True
     tinyint1_is_boolean = True
     metadata_catalog_mode = "catalog"
-    # Procedure / function DDL (story 26-5).
+    # Procedure / function DDL.
     proc_body_wrap_style = "mysql_characteristics"
-    # Index DDL (story 26-5).
+    # Index DDL.
     index_qualifies_with_schema = False
     index_supports_online_offline = True
     index_supports_mysql_typed_keywords = True
@@ -97,16 +97,16 @@ class MysqlQuirks(BaseQuirks):
     # batch (e.g. a JOIN clause) — this must describe the one DROP INDEX
     # statement, not the whole blob it may be embedded in.
     sqlglot_unsupported_sql_regex_patterns = (r"DROP\s+INDEX\s+[^;]+\bON\s+[^\s;,()]*\.",)
-    # Trigger DDL (story 26-5).
+    # Trigger DDL.
     trigger_supports_definer_clause = True
-    # Event scheduler timestamp-quoting (story 26-5).
+    # Event scheduler timestamp-quoting.
     event_supports_mysql_schedule = True
-    # Table DDL (story 26-5).
+    # Table DDL.
     table_drop_style = "if_exists"
     table_supports_inline_collate = True
     table_check_strip_utf8mb4 = True
     table_uses_storage_engine_clause = True
-    # Wave A hooks (story 26-6).
+    # Wave A hooks.
     view_supports_algorithm = True
     proc_skip_empty_comparison = True
     table_column_default_has_on_update = True

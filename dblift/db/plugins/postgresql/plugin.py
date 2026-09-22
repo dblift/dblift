@@ -1,4 +1,4 @@
-"""Entry-point declaration for the PostgreSQL plugin (Epic 26 story 26-12).
+"""Entry-point declaration for the PostgreSQL plugin.
 
 The :class:`PluginInfo` constant exported by this module is registered
 through the ``dblift.providers`` entry-point group in ``pyproject.toml``.
