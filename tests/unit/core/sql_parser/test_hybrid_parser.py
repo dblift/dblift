@@ -655,11 +655,28 @@ class TestMergeObjectsTypeMismatchPhantomOutOfScope:
     example remains to pin.
     """
 
-    # NOTE: a regression pin for dblift/dblift#384/#387 (DROP TRIGGER no
-    # longer phantoms on any dialect, now that #387 fixed sqlglot's DROP-kind
-    # dispatch) belongs here once this branch is rebased onto #387 — it
-    # cannot pass before that fix is actually present in this tree, and a
-    # red test is worse than a missing one. Added in the rebase commit.
+    @pytest.mark.parametrize(
+        "dialect,sql",
+        [
+            ("postgresql", "DROP TRIGGER my_trigger ON my_table;"),
+            ("oracle", "DROP TRIGGER my_trigger;"),
+            ("mysql", "DROP TRIGGER my_trigger;"),
+            ("sqlserver", "DROP TRIGGER my_trigger;"),
+        ],
+    )
+    def test_drop_trigger_reports_trigger_not_a_phantom_table(self, dialect, sql):
+        """Regression pin for dblift/dblift#384, fixed by #387: on every
+        dialect #387's ``_DROP_KIND_TO_OBJECT_TYPE`` covers, ``DROP TRIGGER``
+        must produce exactly one correctly-typed TRIGGER object through the
+        production path (``HybridParser.extract_objects``) — not a TRIGGER
+        alongside a phantom TABLE sqlglot's DROP-kind dispatch used to
+        invent by defaulting every kind it didn't special-case to TABLE."""
+        parser = HybridParser(dialect)
+
+        merged = parser.extract_objects(sql, None)
+
+        assert len(merged) == 1
+        assert merged[0].object_type == SqlObjectType.TRIGGER
 
 
 @pytest.mark.unit
