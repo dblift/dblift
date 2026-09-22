@@ -67,3 +67,20 @@ Engine differences live in each engine's plugin under `dblift/db/plugins/`. A st
 ## Licence
 
 DBLift is [Apache 2.0](LICENSE). By contributing you agree that your contribution is licensed under the same terms.
+
+## Changing the public surface
+
+`tests/unit/contracts/` fails when the CLI, the `DBLiftClient` parameters, the
+SQLite history table, the `info --format json` keys or the exit codes change.
+
+- **You added something** (a flag, a parameter with a default, a JSON key):
+  add a line to the `Unreleased` section of `CHANGELOG.md`, then run
+  `DBLIFT_UPDATE_CONTRACTS=1 python -m pytest tests/unit/contracts` and commit
+  the updated snapshot with your change.
+- **The failure says BREAKING:** something users rely on disappeared. Restore
+  it. If it really has to go, deprecate it first as described in
+  `docs/semver-policy.md` section 3.
+
+`scripts/check_debt_ratchet.py` fails when a structural-debt count grows. Fix
+the new occurrence rather than raising the cap; when your change lowers a
+count, lower the cap in `.debt-ratchet.json` in the same pull request.

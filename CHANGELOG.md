@@ -17,6 +17,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   rescanning installed package metadata for every introspector instance.
 - Full-schema introspection now uses bulk index retrieval when the database
   supports it, avoiding one catalog query per table.
+- The public surface is now checked on every pull request: CLI commands and
+  flags, `DBLiftClient` parameters, SQLite history table columns,
+  `info --format json` keys and exit codes are recorded in contract snapshots,
+  and an upgrade from the previous release and from 4.0.0 is replayed with
+  published wheels. No behaviour change.
+- Release cadence is documented in `docs/semver-policy.md` section 5.1.
 
 ### Fixed
 
