@@ -23,12 +23,13 @@ def _load_script():
     return module
 
 
-SAMPLE = """from typing import Any
+SAMPLE = """from typing import Any, Mapping
 
 
-def f(x: Any) -> Any:
+def f(x: Any, options: Mapping[str, Any]) -> Any:
     from dblift.core import thing
 
+    # getattr(x, "described") in a comment is not a call
     try:
         return getattr(x, "y")
     except Exception:

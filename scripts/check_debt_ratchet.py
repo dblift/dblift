@@ -30,7 +30,9 @@ LARGE_FILE_LINES = 800
 _LINE_PATTERNS: Dict[str, "re.Pattern[str]"] = {
     # An import of this package below module level usually hides an import cycle.
     "function_level_imports": re.compile(r"^\s{4,}(from dblift[.\s]|import dblift[.\s])"),
-    "any_annotations": re.compile(r": Any\b|-> Any\b|Dict\[str, Any\]"),
+    # ``Any`` in any annotation shape (``x: Any``, ``Mapping[str, Any]``, ``Optional[Any]``);
+    # the ``from typing import Any`` line itself is not an annotation.
+    "any_annotations": re.compile(r"^(?!\s*(?:from|import)\s).*\bAny\b"),
     "dynamic_attribute_access": re.compile(r"\b(hasattr|getattr)\("),
     "broad_excepts": re.compile(r"^\s*except Exception\b"),
 }
@@ -45,6 +47,8 @@ def measure(root: Path) -> Dict[str, int]:
         if len(lines) > LARGE_FILE_LINES:
             counts["large_files"] += 1
         for line in lines:
+            if line.lstrip().startswith("#"):
+                continue  # a comment describing getattr() is not a call
             for name, pattern in _LINE_PATTERNS.items():
                 if pattern.search(line):
                     counts[name] += 1
