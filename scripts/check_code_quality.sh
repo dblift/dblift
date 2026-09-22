@@ -113,6 +113,7 @@ echo -e "\n===== Line-length ratchet (flake8 E501) ====="
 # in isolation and fails only on NET growth. When a refactor lowers a
 # count, the script prints the new cap to commit in the same PR.
 "$PYTHON_BIN" scripts/check_line_length.py || { echo "❌ Line-length ratchet exceeded."; exit_code=1; }
+"$PYTHON_BIN" scripts/check_debt_ratchet.py || { echo "❌ Structural-debt ratchet exceeded."; exit_code=1; }
 
 
 if [ $exit_code -eq 0 ]; then
