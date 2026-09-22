@@ -30,9 +30,10 @@ LARGE_FILE_LINES = 800
 _LINE_PATTERNS: Dict[str, "re.Pattern[str]"] = {
     # An import of this package below module level usually hides an import cycle.
     "function_level_imports": re.compile(r"^\s{4,}(from dblift[.\s]|import dblift[.\s])"),
-    # ``Any`` in any annotation shape (``x: Any``, ``Mapping[str, Any]``, ``Optional[Any]``);
-    # the ``from typing import Any`` line itself is not an annotation.
-    "any_annotations": re.compile(r"^(?!\s*(?:from|import)\s).*\bAny\b"),
+    # ``Any`` used as a type: preceded by ``:``, ``[``, ``,`` or ``->`` (``x: Any``,
+    # ``Mapping[str, Any]``, ``Callable[[Any], bool]``). Prose that starts a sentence with
+    # "Any", and a bare ``Any,`` continuation line of a wrapped import, do not count.
+    "any_annotations": re.compile(r"^(?!\s*(?:from|import)\s).*(?:[:\[,]\s*|->\s*)Any\b"),
     "dynamic_attribute_access": re.compile(r"\b(hasattr|getattr)\("),
     "broad_excepts": re.compile(r"^\s*except Exception\b"),
 }
@@ -40,25 +41,32 @@ _LINE_PATTERNS: Dict[str, "re.Pattern[str]"] = {
 
 def measure(root: Path) -> Dict[str, int]:
     """Return the current count of every debt signal under *root*."""
-    counts = {name: 0 for name in _LINE_PATTERNS}
-    counts["large_files"] = 0
+    return {name: len(hits) for name, hits in locate(root).items()}
+
+
+def locate(root: Path) -> Dict[str, List[str]]:
+    """Return every offending ``path:line: text`` under *root*, keyed by signal."""
+    hits: Dict[str, List[str]] = {name: [] for name in _LINE_PATTERNS}
+    hits["large_files"] = []
     for path in sorted(root.rglob("*.py")):
         lines = path.read_text(encoding="utf-8").splitlines()
         if len(lines) > LARGE_FILE_LINES:
-            counts["large_files"] += 1
-        for line in lines:
+            hits["large_files"].append(f"{path}: {len(lines)} lines")
+        for number, line in enumerate(lines, start=1):
             if line.lstrip().startswith("#"):
                 continue  # a comment describing getattr() is not a call
             for name, pattern in _LINE_PATTERNS.items():
                 if pattern.search(line):
-                    counts[name] += 1
-    return counts
+                    hits[name].append(f"{path}:{number}: {line.strip()}")
+    return hits
 
 
 def _load_ratchet(path: str) -> Dict[str, int]:
     """Read caps from a JSON object. Underscore-prefixed keys are comments."""
     with open(path, encoding="utf-8") as fh:
         data = json.load(fh)
+    if not isinstance(data, dict):
+        raise ValueError(f"{path}: expected a top-level JSON object, got {type(data).__name__}")
     caps: Dict[str, int] = {}
     for key, value in data.items():
         if key.startswith("_"):
@@ -78,22 +86,33 @@ def main(argv: Optional[List[str]] = None) -> int:
     args = parser.parse_args(argv)
 
     caps = _load_ratchet(args.ratchet)
-    counts = measure(Path(args.root))
+    hits = locate(Path(args.root))
+    counts = {name: len(lines) for name, lines in hits.items()}
 
     failing: List[str] = []
+    failing_signals: List[str] = []
     loose: List[str] = []
     for name, current in counts.items():
         cap = caps.get(name)
         if cap is None:
             failing.append(f"  {name}: {current}, no cap declared in {args.ratchet}")
+            failing_signals.append(name)
         elif current > cap:
             failing.append(f"  {name}: {current}, cap is {cap}. Net +{current - cap}.")
+            failing_signals.append(name)
         elif current < cap:
             loose.append(f"  {name}: {current}, cap is {cap} - lower the cap by {cap - current}.")
 
     if failing:
         print("FAIL: structural-debt ratchet exceeded:")
         print("\n".join(failing))
+        first = failing_signals[0]
+        print(f"\nOffending lines for '{first}':")
+        print("\n".join(f"  {line}" for line in hits[first]))
+        print(
+            "\nRemove the new occurrence rather than raising the cap; when your change lowers a "
+            "count, lower the cap in the same pull request."
+        )
         return 1
     summary = ", ".join(f"{name}={counts[name]}/{caps[name]}" for name in counts)
     print(f"OK: structural-debt ratchet respected ({summary})")

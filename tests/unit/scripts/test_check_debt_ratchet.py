@@ -69,3 +69,19 @@ def test_main_passes_at_cap_and_fails_above(tmp_path: Path, capsys: pytest.Captu
     ratchet.write_text(json.dumps(caps), encoding="utf-8")
     assert script.main(["--root", str(root), "--ratchet", str(ratchet)]) == 1
     assert "broad_excepts: 1, cap is 0. Net +1." in capsys.readouterr().out
+
+
+def test_main_prints_offending_lines_of_the_first_failing_signal(
+    tmp_path: Path, capsys: pytest.CaptureFixture
+) -> None:
+    script = _load_script()
+    root = _write_tree(tmp_path)
+    caps = dict(script.measure(root))
+    caps["dynamic_attribute_access"] = 0
+    ratchet = tmp_path / "ratchet.json"
+    ratchet.write_text(json.dumps(caps), encoding="utf-8")
+
+    assert script.main(["--root", str(root), "--ratchet", str(ratchet)]) == 1
+    out = capsys.readouterr().out
+    assert "Offending lines for 'dynamic_attribute_access':" in out
+    assert 'sample.py:9: return getattr(x, "y")' in out

@@ -94,7 +94,9 @@ def _load_ratchet(path: str) -> Dict[str, int]:
     Keep in sync with ``scripts/check_api_docstrings.py::_load_ratchet`` —
     these two are duplicated on purpose (project convention is one
     standalone script per lint rule, with no shared scripts/ package).
-    A third ratchet would justify extracting into ``scripts/_ratchet_utils.py``.
+    Three copies (``check_debt_ratchet.py`` is the third) are the accepted
+    cost of keeping each ratchet a standalone script; revisit if the
+    loaders diverge.
     """
     with open(path, encoding="utf-8") as fh:
         data = json.load(fh)
