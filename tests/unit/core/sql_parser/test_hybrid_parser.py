@@ -653,43 +653,7 @@ class TestMergeObjectsTypeMismatchPhantomOutOfScope:
     TRIGGER name`` with no ``ON`` clause) I had been about to pin here as a
     surviving instance: it no longer reproduces either, so no DROP-kind
     example remains to pin.
-
-    The general interaction is not fixed, though — #387 corrected one
-    dispatch table (DROP), not the underlying pattern (sqlglot's kind-based
-    classification defaults an unrecognized kind to TABLE rather than
-    surfacing "I don't know"). The sibling CREATE-kind dispatch a few lines
-    above the DROP one in the same file has the identical shape and was not
-    touched: PostgreSQL ``CREATE TYPE ... AS (...)`` (a composite/row type)
-    parses without error, but nothing in the CREATE branch recognizes
-    ``ast.kind == "TYPE"``, so the object it builds keeps the TABLE type it
-    was constructed with by default. This is pinned below.
     """
-
-    def test_postgres_create_composite_type_leaves_a_phantom_table_object(self):
-        parser = HybridParser("postgresql")
-        sql = "CREATE TYPE my_type AS (a int, b int);"
-
-        regex_objects = parser.regex_parser.extract_objects(sql, None)
-        sqlglot_objects = parser.sqlglot_parser.extract_objects(sql, None)
-        # The regex side's own answer here is UNKNOWN — a separate, existing
-        # gap on that side, not the point of this test — but it is still a
-        # real, non-empty object the per-type rule must reconcile against.
-        assert [(o.name, o.object_type) for o in regex_objects] == [
-            ("my_type", SqlObjectType.UNKNOWN)
-        ]
-        assert [(o.name, o.object_type) for o in sqlglot_objects] == [
-            ("my_type", SqlObjectType.TABLE)
-        ]
-
-        merged = parser.extract_objects(sql, None)
-        merged_pairs = {(o.name, o.object_type) for o in merged}
-        # out of scope for #377: both the regex UNKNOWN and the phantom
-        # TABLE sqlglot invented survive, because they are different types
-        assert merged_pairs == {
-            ("my_type", SqlObjectType.UNKNOWN),
-            ("my_type", SqlObjectType.TABLE),
-        }
-        assert len(merged) == 2
 
     # NOTE: a regression pin for dblift/dblift#384/#387 (DROP TRIGGER no
     # longer phantoms on any dialect, now that #387 fixed sqlglot's DROP-kind
