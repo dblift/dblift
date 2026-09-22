@@ -11,18 +11,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+### Fixed
+
+### Removed
+
+## [4.7.0] - 2026-09-22
+
+### Added
+
+### Changed
+
 - Undo planning now computes migration rank state once, keeping rollback
   selection linear as migration history grows.
 - Introspection extensions are now discovered once per process instead of
   rescanning installed package metadata for every introspector instance.
 - Full-schema introspection now uses bulk index retrieval when the database
   supports it, avoiding one catalog query per table.
-- The public surface is now checked on every pull request: CLI commands and
-  flags, `DBLiftClient` parameters, SQLite history table columns,
-  `info --format json` keys and exit codes are recorded in contract snapshots,
-  and an upgrade from the previous release and from 4.0.0 is replayed with
-  published wheels. No behaviour change.
-- Release cadence is documented in `docs/semver-policy.md` section 5.1.
 - **Dependencies:** `tabulate`, `python-dateutil`, `typing-extensions`,
   `packaging` and `click` are no longer installed with `dblift`; nothing in the
   package imported them. The Flask integration still gets `click` through
@@ -31,183 +35,63 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- Object extraction now reconciles the regex and sqlglot parsers per
-  statement and per object type, instead of deduplicating by name across
-  a whole batch. Previously, when the two parsers read different names
-  for the same object (for example, one truncated at an escaped quoting
-  character the other decoded correctly), both names were kept as
-  separate objects; and when they agreed on a name, whichever schema
-  sqlglot had resolved silently replaced the regex parser's, even when
-  sqlglot had none and the regex parser did. Extraction also now proceeds
-  statement by statement, so one statement sqlglot cannot read no longer
-  suppresses its contribution to every other statement in the same batch.
-- `DROP TRIGGER`, `DROP FUNCTION`, `DROP PROCEDURE`, `DROP TYPE` and `DROP
-  DATABASE` object extraction now reports the correct object type instead of
-  `TABLE`, on every dialect that uses sqlglot for extraction (PostgreSQL,
-  Oracle, MySQL, SQL Server). sqlglot parses these statements without
-  raising, but object extraction only recognized `VIEW`, `INDEX` and
-  `SEQUENCE` by name and silently defaulted everything else to `TABLE`;
-  nothing logged the misclassification, so the wrong object type reached
-  downstream consumers silently.
-- Object extraction's regex fallback path now reports a quoted name
-  un-escaped — brackets, double quotes, or backticks removed, and a
-  doubled delimiter inside the name (SQL Server `]`, ANSI `"`, MySQL
-  `` ` ``) collapsed back to one — instead of leaving the quoting in
-  place. Previously a bracket-quoted `CREATE INDEX` reaching this path
-  (used when the primary parser cannot read the statement) kept its
-  brackets in the reported name, so the generated `DROP INDEX` quoted it
-  a second time (`[[idx]]]`) and would not run; the same doubled-delimiter
-  reading #375 added for SQL Server object extraction was also missing
-  here, so a name like `[real]]one]` was truncated to `real` instead of
-  read as `real]one`.
-- Oracle `clean` (and its `--dry-run` preview) now drops reference-partitioned
-  child tables before their partitioning parent. `CASCADE CONSTRAINTS` alone
-  does not release a reference-partitioning dependency, so a schema with
-  such tables could fail to clean.
-- `validate` now says it does not parse migration SQL, and its `--help`
-  spells out what it checks instead (consistency on disk, plus checksums
-  and ordering against applied history once there is any). Previously
-  "Migration validation passed" read as "these migrations will run", so a
-  file `migrate` refused to parse could pass `validate` first.
-- SQL Server object extraction (`CREATE`/`ALTER`/`DROP TABLE`, `VIEW`,
-  `INDEX`, `PROCEDURE`, `FUNCTION`, `TRIGGER`, `SYNONYM`, `SCHEMA`, `TYPE`,
-  and `SEQUENCE`) now stops at the identifier instead of capturing the rest
-  of the statement. Previously an unquoted name like `real_one (id int);`
-  was reported as `real_one (id int);` — the column list and trailing
-  punctuation included — and the same table could appear twice, once
-  garbled and once correct.
-- SQL Server object extraction now reads a `]` or `"` doubled inside a
-  bracketed or double-quoted identifier as the escape T-SQL defines for it,
-  instead of stopping at the first one. Previously `[real]]one]` and
-  `"real""one"` were both extracted as `real`, silently dropping the rest
-  of the name.
-- SQL Server `CREATE`/`DROP INDEX`, including `XML` indexes, now report
-  the index's own name as the object name, with its schema defaulted
-  rather than guessed from the table. Previously the index name was
-  reported as the schema and the table name was reported as the object,
-  and a `CREATE XML INDEX` could be extracted twice.
-- SQL Server's deprecated `DROP INDEX [owner.]table.index_name` spelling
-  now reports the correct schema instead of the table name. Previously
-  `DROP INDEX real_one.idx1` extracted `real_one` as the schema, and an
-  explicit owner in the three-part form (`DROP INDEX dbo.real_one.idx1`)
-  was discarded in favor of the default schema.
-- MySQL `CREATE`/`DROP INDEX` now report the index's own name, with its
-  schema defaulted rather than guessed from the `ON`-target table. Db2
-  `CREATE`/`DROP INDEX` now report the index's own name and, when given,
-  its own schema — a Db2 index carries a schema independent of its
-  table's. Previously both reported the table name as the index and the
-  index name as the schema.
-- Migrations against engines that nest block comments — PostgreSQL, SQL
-  Server, DuckDB, and the PostgreSQL-engine deployments Citus, TimescaleDB,
-  Neon, Supabase, AlloyDB and Aurora PostgreSQL — now read a comment that
-  nests another comment (`/* outer /* inner */ still outer */`) as one
-  comment end to end, instead of treating it as closed at the first `*/`.
-  Previously, anything between that first `*/` and the real end of the
-  comment — including a statement like `DROP TABLE`, separated by a `;` —
-  was split out and executed, even though the file reads as a single
-  commented-out block. CockroachDB and YugabyteDB now nest the same way,
-  confirmed by running the case directly against each engine. MySQL/MariaDB,
-  Oracle and SQLite are unaffected: those engines do not support nested
-  block comments, so the first `*/` correctly ends the comment there.
-  Redshift also keeps that non-nesting behavior as an explicit, unverified
-  default: no local engine and no documentation addressing comment nesting
-  in top-level SQL was found for it.
-- `info`, `undo`, and the FastAPI migration health helpers now fail when
-  migration state cannot be read. State-read errors are no longer reported as
-  an empty history, a successful no-op undo, or a current schema.
-- Object extraction now follows the same nested-block-comment rule as
-  statement splitting, per dialect. Previously extraction always treated
-  `/* outer /* inner */ still outer */` as one comment regardless of
-  dialect, so on an engine that does not nest (MySQL/MariaDB, Db2,
-  Redshift), a statement that splitting correctly ran as live code could be
-  reported as part of the comment and left out of the objects a migration
-  is recorded as touching.
-- SQLite and DuckDB object extraction now skips comments, block and line,
-  before matching, and reports every object in the input instead of only
-  the first. Previously a commented-out `CREATE`/`ALTER`/`DROP` statement
-  could be reported as an object the migration touches while the real
-  statement after it was missed entirely.
-- Oracle object extraction now skips comments, block and line, before
-  matching. Previously a leading or in-between comment could hide the object
-  a live statement creates, and a commented-out statement could be reported
-  as one of the objects a migration touches.
-- The full-table UPDATE/DELETE guard no longer misreads a `WHERE` inside a
-  dollar-quoted value (PostgreSQL's `$$ ... $$` / `$tag$ ... $tag$`) as a real
-  clause. A statement like `UPDATE t SET body = $$ ... WHERE ... $$` is now
-  correctly identified as touching the whole table.
-- A migration or callback whose first statement is a plain `SELECT` (or any
-  other row-returning statement) now reads from the configured schema. This
-  covers both SQL scripts and Python migrations/callbacks calling
-  `context.execute(...)`. It previously ran against whatever schema the
-  connection happened to be on — including one left over from an earlier
-  migration's own `SET search_path` (PostgreSQL) or `USE` (MySQL/MariaDB) —
-  silently returning rows from the wrong schema.
-- A PostgreSQL `COPY ... FROM stdin` data block — what `pg_dump` writes for
-  table contents by default — is now recognized as ending at its own `\.`
-  line, instead of merging with the statement that follows it. Statement
-  counts, checksums and any statement after the data block are now correct;
-  this does not make a `COPY ... FROM stdin` block itself executable, which
-  is still not supported. Applies to every PostgreSQL-wire engine dblift
-  supports: Citus, TimescaleDB, CockroachDB, YugabyteDB, Neon, Supabase,
-  AlloyDB and Redshift.
-- A `pg_dump` new enough to wrap its output in `\restrict tok` / `\unrestrict
-  tok` (its own session guard) no longer fails migrating that dump on the
-  first statement. Those two lines are recognized and skipped; any other
-  line starting with `\` is refused by name instead of being silently run or
-  silently dropped, since dblift does not know what it does. Applies to
-  every PostgreSQL-wire engine dblift supports: Citus, TimescaleDB,
-  CockroachDB, YugabyteDB, Neon, Supabase, AlloyDB and Redshift.
-- Oracle, Db2 and Snowflake: an `ALTER SESSION SET CURRENT_SCHEMA` / `SET
-  SCHEMA` / `USE SCHEMA` a migration issued itself no longer gets silently
-  reset before the migration's next statement, matching the PostgreSQL/MySQL
-  fix in 4.6.1. Session state a migration sets now persists for the rest of
-  that migration and is restored to the configured schema at the start of
-  the next one. Verified against a live Oracle instance; Db2 and Snowflake
-  could not be exercised against a live engine here (no reachable Db2
-  instance, no local Snowflake engine), so the fix for those two is
-  unverified at the engine level.
-- A transactional migration or callback no longer sends its configured-schema
-  statement (`SET search_path`, `USE`, `ALTER SESSION SET CURRENT_SCHEMA`,
-  `SET SCHEMA`, `USE SCHEMA`) twice. PostgreSQL, MySQL, Oracle, Db2 and
-  Snowflake now apply it once per migration/callback instead of once before
-  the transaction starts and again right after.
-- SQL Server: an `ALTER USER ... WITH DEFAULT_SCHEMA` a migration issued
-  itself no longer survives into the next migration. The configured schema
-  is now restored at the start of each migration and callback, matching the
-  other five engines. Previously the connection stayed on the wrong schema
-  while dblift logged a warning blaming a concurrent process for a schema
-  change one of its own earlier migrations had made; that warning is now
-  silent on this ordinary boundary correction and still fires when a login
-  shared with another connection is changed mid-migration, which is what it
-  is meant to catch. Verified against a live SQL Server instance.
-- Auto-generated undo scripts now drop an index the way each engine expects.
-  SQL Server and MySQL name the table (`DROP INDEX name ON table`), using
-  that table's own schema from the original `CREATE INDEX` statement rather
-  than the index's; SQL Server's own bracket-quoted, three-part
-  `database.schema.table`, and `CLUSTERED`/`NONCLUSTERED`/`FULLTEXT`/
-  `PRIMARY XML INDEX` forms are all recognized. A migration that adds an
-  index now produces an undo script SQL Server and MySQL will actually run,
-  instead of a schema-qualified `DROP INDEX schema.name` SQL Server rejects.
-  When the table can't be determined at all — including a name whose
-  escaped closing quote or bracket this doesn't understand — the undo
-  script now says so and asks for manual review instead of guessing or
-  naming the wrong table. PostgreSQL, SQLite, Oracle and Db2 are
-  unaffected — verified against a live PostgreSQL instance; the others by
-  their documented syntax (SQL Server's own statement was not verified
-  against a live instance — none was reachable).
-- Object extraction now logs a warning when sqlglot cannot parse a statement
-  at all and no other source of an object list exists — for example SQL
-  Server's `DROP INDEX a.idx1, b.idx2;`, valid T-SQL that sqlglot's `tsql`
-  grammar rejects and the regex parser also cannot read. Previously this
-  was logged at debug level, so extraction quietly reducing to "no objects
-  here" left nothing in the logs a user would see by default. Ordinary DDL
-  that a different part of dblift already reads correctly does not log a
-  warning, so this doesn't become noise on routine migrations: a
-  schema-qualified `DROP INDEX index ON schema.table` — the everyday way to
-  drop an index in SQL Server and MySQL, also rejected by sqlglot's grammar
-  — and an Oracle `PARTITION BY LIST` table, alongside the `RANGE` and
-  `REFERENCE` forms already excluded, are both extracted by the regex
-  parser and treated as successes, not failures.
+- **Statements now reach the server exactly as written.** A nested block
+  comment (`/* outer /* inner */ still outer */`) is read as one comment on
+  the engines that nest — PostgreSQL, SQL Server, DuckDB, CockroachDB,
+  YugabyteDB and the PostgreSQL-engine deployments — instead of being closed
+  at the first `*/`, which could split out and execute a `DROP TABLE` sitting
+  inside a commented-out block. A `pg_dump` `COPY ... FROM stdin` block ends
+  at its own `\.` line; `\restrict` / `\unrestrict` are recognised and any
+  other backslash line is refused by name rather than silently run. The
+  full-table UPDATE/DELETE guard no longer reads a `WHERE` inside a
+  dollar-quoted value as a real clause.
+
+- **The configured schema is now applied once per migration, and survives
+  within it.** A migration's own `SET search_path`, `USE`, `ALTER SESSION SET
+  CURRENT_SCHEMA`, `SET SCHEMA` or `USE SCHEMA` persists to the end of that
+  migration and is restored at the start of the next, on PostgreSQL, MySQL,
+  Oracle, Db2, Snowflake and SQL Server. A migration or callback beginning
+  with a `SELECT` reads from the configured schema rather than whatever the
+  connection was left on. Transactional runs no longer send the schema
+  statement twice. Verified against live Oracle and SQL Server; Db2 and
+  Snowflake are unverified at the engine level.
+
+- **Object extraction reports the right objects.** Quoted identifiers are
+  read whole, including a doubled `]`, `"` or `` ` `` inside the name, and
+  reported unquoted. SQL Server names stop at the identifier instead of
+  swallowing the rest of the statement. Indexes report their own name on SQL
+  Server, MySQL and Db2 — with the index's own schema on Db2, where one
+  exists — instead of swapping name and schema. `DROP TRIGGER`, `FUNCTION`,
+  `PROCEDURE`, `TYPE` and `DATABASE` report their actual type instead of
+  `TABLE`. Comments are skipped per dialect, so a commented-out statement is
+  no longer reported as an object a migration touches. Where the two parsers
+  disagree, extraction reconciles them per statement and per type, so one
+  unreadable statement no longer costs every other statement in the file.
+  When neither parser can read a statement at all, extraction now logs a
+  warning rather than leaving it at debug level, where a silent reduction to
+  "no objects here" went unseen; routine DDL that one of the two parsers
+  reads correctly — a schema-qualified `DROP INDEX index ON schema.table`,
+  an Oracle `PARTITION BY LIST` table — does not warn.
+
+- **Auto-generated undo scripts drop indexes the way each engine expects.**
+  SQL Server and MySQL name the table (`DROP INDEX name ON table`), taking
+  the table's own schema from the `CREATE INDEX`; bracket-quoted, three-part
+  and `CLUSTERED`/`NONCLUSTERED`/`FULLTEXT`/`PRIMARY XML` forms are all
+  recognised. When the table cannot be determined, the script says so and
+  asks for manual review instead of naming the wrong one. PostgreSQL, SQLite,
+  Oracle and Db2 are unaffected.
+
+- **Oracle `clean` drops reference-partitioned children before their parent.**
+  `CASCADE CONSTRAINTS` does not release a reference-partitioning dependency,
+  so a schema using them could fail to clean.
+
+- **`info`, `undo` and the FastAPI health helpers now fail when migration
+  state cannot be read**, instead of reporting an empty history, a successful
+  no-op undo, or a current schema.
+
+- **`validate` now says what it checks.** It does not parse migration SQL, so
+  a file `migrate` would refuse could pass validation first; the help text
+  spells out what it does check.
 
 ### Removed
 
