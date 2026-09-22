@@ -49,7 +49,12 @@ class SqlserverQuirks(BaseQuirks):
     # table fails. The regex parser already extracts this shape
     # correctly (index name + schema), so skip sqlglot for it entirely
     # instead of letting it raise on every routine DROP INDEX (#379).
-    sqlglot_unsupported_sql_regex_patterns = (r"DROP\s+INDEX\s+.+\bON\s+[^\s;,()]*\.",)
+    # The gap between INDEX and ON excludes ";" so the match cannot cross
+    # into a *different* statement in a multi-statement ``extract_objects``
+    # call and false-positive on an unrelated "... ON x.y" elsewhere in the
+    # batch (e.g. a JOIN clause) — this must describe the one DROP INDEX
+    # statement, not the whole blob it may be embedded in.
+    sqlglot_unsupported_sql_regex_patterns = (r"DROP\s+INDEX\s+[^;]+\bON\s+[^\s;,()]*\.",)
 
     def is_data_history_table_already_exists_error(self, error_message: str) -> bool:
         """SQL Server raises "There is already an object named ..." (Msg 2714)."""

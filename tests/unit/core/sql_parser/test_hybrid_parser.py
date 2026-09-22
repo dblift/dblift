@@ -608,6 +608,73 @@ class TestExtractObjectsQuietOnRoutineDropIndexOnQualifiedTable:
         )
         assert objects == []
 
+    def test_guard_does_not_leak_across_statements_in_a_batch(self, caplog):
+        """The unsupported-shape guard must be scoped to the statement it
+        actually describes, not to the whole (possibly multi-statement)
+        ``sql_content`` blob it is handed.
+
+        A harmless, unqualified ``DROP INDEX idx1 ON mytable;`` earlier in
+        the same string must not suppress sqlglot for the *rest* of the
+        batch. Before this test, the guard's regex could span past the
+        statement's own terminating ``;`` and match an unrelated ``... ON
+        a.x`` later in the string (e.g. inside a ``JOIN ... ON`` clause),
+        flipping ``use_sqlglot`` to False for the entire blob and silently
+        downgrading a valid, unrelated statement's extraction to
+        regex-only — the exact all-or-nothing batch hazard
+        ``extract_objects``'s own docstring warns about, now reachable
+        through this guard instead of through sqlglot itself.
+        """
+        parser = HybridParser("mysql")
+        sql = (
+            "DROP INDEX idx1 ON mytable; "
+            "CREATE TABLE `real``one` (id int); "
+            "SELECT * FROM a JOIN b ON a.x = b.y;"
+        )
+
+        objects = parser.extract_objects(sql, default_schema="myschema")
+
+        names = {obj.name for obj in objects}
+        # sqlglot must still run on this batch and contribute its correctly
+        # decoded name; if the guard leaked, only the regex-truncated
+        # ``real`` would be present.
+        assert "real`one" in names, names
+
+
+@pytest.mark.unit
+class TestParseSqlQuietOnOracleListPartitionedTable:
+    """Oracle ``PARTITION BY LIST`` must not warn (dblift/dblift#379 follow-up).
+
+    This is textbook Oracle list partitioning, no rarer than ``PARTITION BY
+    RANGE`` — which Oracle's quirks already declare in
+    ``sqlglot_unsupported_sql_patterns``; ``PARTITION BY LIST`` was simply
+    missing from that list. Without it, every real list-partitioned Oracle
+    ``CREATE TABLE`` would warn via the extract_objects fallback in
+    ``HybridParser.parse_sql`` — the same alert-fatigue problem this PR
+    exists to remove, just on a third dialect/shape.
+    """
+
+    def test_list_partitioned_table_does_not_warn(self, caplog):
+        sql = """
+        CREATE TABLE employees (
+            emp_id NUMBER,
+            region VARCHAR2(50)
+        )
+        PARTITION BY LIST (region) (
+            PARTITION p_west VALUES ('CA', 'WA', 'OR'),
+            PARTITION p_east VALUES ('NY', 'MA', 'CT')
+        );
+        """
+        parser = HybridParser("oracle")
+
+        with caplog.at_level("WARNING"):
+            result = parser.parse_sql(sql, default_schema="test_schema")
+
+        assert not caplog.records, [r.message for r in caplog.records]
+        assert result.success
+        table = result.tables[0]
+        assert table.partition_method == "LIST"
+        assert table.partition_columns == ["REGION"]
+
 
 @pytest.mark.unit
 class TestCollectObjectsDispatch:
