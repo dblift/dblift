@@ -31,6 +31,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- PostgreSQL `DROP TRIGGER name ON table` object extraction now reports a
+  `TRIGGER`, not a `TABLE`. sqlglot parses this statement without raising,
+  but reads the trigger's own name into a generic table-shaped node; nothing
+  logged the misclassification, so the wrong object type reached downstream
+  consumers silently. The dialect already declared this statement as one
+  sqlglot cannot be trusted on, but only SQL validation consulted that
+  declaration — object extraction now does too.
 - Object extraction's regex fallback path now reports a quoted name
   un-escaped — brackets, double quotes, or backticks removed, and a
   doubled delimiter inside the name (SQL Server `]`, ANSI `"`, MySQL

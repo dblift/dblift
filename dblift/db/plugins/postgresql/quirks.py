@@ -611,7 +611,8 @@ class PostgresqlQuirks(BaseQuirks):
         return (sql, [schema, table, col])
 
     def is_sqlglot_opaque_valid_ddl(self, sql_content: str) -> bool:
-        """PG ``DROP TRIGGER name ON table`` — valid DDL that sqlglot rejects."""
+        """PG ``DROP TRIGGER name ON table`` — sqlglot mis-parses (unqualified)
+        or rejects (schema-qualified/quoted) this valid DDL."""
         return _DROP_TRIGGER_ON_RE.search(sql_content) is not None
 
     # Story 26-3: PostgreSQL DROP EXTENSION uses extension namespace.

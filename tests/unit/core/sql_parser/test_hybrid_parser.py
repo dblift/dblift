@@ -555,6 +555,92 @@ class TestMergeObjectsDedupKeyPinsCurrentBehavior:
 
 
 @pytest.mark.unit
+class TestExtractObjectsPostgresDropTriggerReportsTrigger:
+    """PostgreSQL ``DROP TRIGGER name ON table`` must report a TRIGGER, not a
+    TABLE (dblift/dblift#384).
+
+    sqlglot parses the unqualified form of this statement without raising —
+    its AST reports ``kind="TRIGGER"`` — but sqlglot_parser's DROP-kind
+    dispatch only special-cases VIEW/INDEX/SEQUENCE and silently defaults
+    every other kind to TABLE, so the trigger's own name comes back typed as
+    a table. Nothing raises and nothing logs, so this reached production
+    unnoticed.
+
+    ``postgresql/quirks.py``'s ``is_sqlglot_opaque_valid_ddl`` already flags
+    this exact statement shape ("valid DDL that sqlglot rejects"), but only
+    ``validate_sql`` ever consults it — ``extract_objects`` does not, so the
+    existing guard cannot prevent this: it is wired to the wrong call site,
+    not (only) built on the wrong assumption about *how* sqlglot fails.
+    """
+
+    def test_sqlglot_parser_still_mistypes_it_as_table_in_isolation(self):
+        """Pin ``SqlGlotParser``'s own, still-wrong answer one layer below the
+        hybrid merge, so the root-cause misclassification stays documented
+        and visible rather than silently fixed by coincidence.
+
+        The chosen fix (below ``HybridParser.extract_objects`` now skips
+        sqlglot for this shape via the existing ``is_sqlglot_opaque_valid_ddl``
+        guard) never lets this statement reach ``SqlGlotParser`` in
+        production — ``SqlGlotParser`` is only ever instantiated by
+        ``HybridParser`` (no other production caller exists) — so this
+        object-level bug in the DROP-kind dispatch (``ast.kind == "TRIGGER"``
+        falls through to the ``else: TABLE`` branch) is dormant, not gone.
+        This pin exists so a future change that removes or narrows the guard
+        does not silently reintroduce the defect without a test noticing.
+        """
+        from dblift.core.sql_parser.sqlglot_parser import SqlGlotParser
+
+        parser = SqlGlotParser("postgresql")
+        objects = parser.extract_objects("DROP TRIGGER my_trigger ON my_table;", "public")
+
+        assert len(objects) == 1
+        assert objects[0].name == "my_trigger"
+        assert objects[0].object_type == SqlObjectType.TABLE  # pinned: still wrong at this layer
+
+    def test_regex_parser_already_gets_it_right(self):
+        """The regex side has always reported this correctly — establishing
+        that a correct answer exists and is available to fall back to."""
+        parser = HybridParser("postgresql")
+        objects = parser.regex_parser.extract_objects(
+            "DROP TRIGGER my_trigger ON my_table;", "public"
+        )
+
+        assert len(objects) == 1
+        assert objects[0].name == "my_trigger"
+        assert objects[0].object_type == SqlObjectType.TRIGGER
+
+    def test_hybrid_extract_objects_reports_trigger_not_table(self):
+        """The production path: HybridParser.extract_objects must not let
+        sqlglot's wrong TABLE answer survive alongside (or instead of) the
+        regex parser's correct TRIGGER answer."""
+        parser = HybridParser("postgresql")
+        objects = parser.extract_objects("DROP TRIGGER my_trigger ON my_table;", "public")
+
+        assert len(objects) == 1
+        assert objects[0].name == "my_trigger"
+        assert objects[0].object_type == SqlObjectType.TRIGGER
+
+    def test_hybrid_extract_objects_schema_qualified_table_reports_trigger(self):
+        """Schema-qualified ON target: sqlglot raises here rather than
+        answering wrongly, and this shape already self-healed before this
+        fix (the internal try/except in ``SqlGlotParser.extract_objects``
+        swallows the raise, so the merge falls back to the regex parser's
+        correct answer regardless of the new guard). This test passes
+        identically with or without the fix; it is a regression guard for
+        this already-correct shape, not a test of the new guard itself —
+        that is ``test_hybrid_extract_objects_reports_trigger_not_table``
+        above, which exercises the unqualified form the guard exists for."""
+        parser = HybridParser("postgresql")
+        objects = parser.extract_objects(
+            "DROP TRIGGER IF EXISTS my_trigger ON myschema.my_table;", "public"
+        )
+
+        assert len(objects) == 1
+        assert objects[0].name == "my_trigger"
+        assert objects[0].object_type == SqlObjectType.TRIGGER
+
+
+@pytest.mark.unit
 class TestExtractObjectsQuietOnRoutineDropIndexOnQualifiedTable:
     """`DROP INDEX idx ON schema.table` must not warn (dblift/dblift#379 SHOULD-FIX).
 
