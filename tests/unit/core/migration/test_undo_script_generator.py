@@ -143,6 +143,8 @@ class TestUndoStatementEmitterGenerateDrop(unittest.TestCase):
         # Regression: SQL Server's own idiomatic bracket-quoted form used to
         # fall through to the old, invalid schema-qualified fallback because
         # _extract_table_name_from_create_index didn't recognize brackets.
+        # The table's own schema ("dbo" here) comes from the ON clause
+        # itself, not from the index's schema argument (None, below).
         emitter = self._make_emitter("sqlserver")
         sql = emitter._generate_drop_statement(
             "INDEX",
@@ -150,7 +152,48 @@ class TestUndoStatementEmitterGenerateDrop(unittest.TestCase):
             None,
             "CREATE INDEX [idx_users_email] ON [dbo].[users]([email]);",
         )
-        self.assertEqual(sql, "DROP INDEX IF EXISTS [idx_users_email] ON [users];")
+        self.assertEqual(sql, "DROP INDEX IF EXISTS [idx_users_email] ON [dbo].[users];")
+
+    def test_sqlserver_three_part_name_uses_schema_and_table_not_database(self):
+        # BLOCKER repro: a naive "one optional leading part" capture ate the
+        # database part, captured the schema as if it were the table, and
+        # left ".users" unconsumed -- re.search doesn't require matching to
+        # end of string, so that wrong match still succeeded.
+        emitter = self._make_emitter("sqlserver")
+        sql = emitter._generate_drop_statement(
+            "INDEX",
+            "idx_users_email",
+            None,
+            "CREATE INDEX idx_users_email ON mydb.dbo.users(email);",
+        )
+        self.assertEqual(sql, "DROP INDEX IF EXISTS [idx_users_email] ON [dbo].[users];")
+
+    def test_sqlserver_schema_qualified_table_uses_that_schema(self):
+        # The table's schema in the ON clause must win over whatever schema
+        # the index itself was reported under -- an index doesn't have its
+        # own schema independent of its table in T-SQL.
+        emitter = self._make_emitter("sqlserver")
+        sql = emitter._generate_drop_statement(
+            "INDEX",
+            "idx_u",
+            "dbo",  # index's own (default) schema -- must NOT win
+            "CREATE INDEX idx_u ON sales.orders(id);",
+        )
+        self.assertEqual(sql, "DROP INDEX IF EXISTS [idx_u] ON [sales].[orders];")
+
+    def test_sqlserver_doubled_closing_bracket_refuses_rather_than_truncate(self):
+        # SHOULD-FIX: [dbo].[foo]]bar] is the single identifier foo]bar,
+        # escaped by doubling the closing bracket. The extractor doesn't
+        # understand that doubling and would otherwise silently match only
+        # [foo] -- a confidently wrong table is worse than refusing.
+        emitter = self._make_emitter("sqlserver")
+        sql = emitter._generate_drop_statement(
+            "INDEX",
+            "idx_x",
+            None,
+            "CREATE INDEX idx_x ON [dbo].[foo]]bar]([email]);",
+        )
+        self.assertIsNone(sql)
 
     def test_sqlserver_unresolvable_table_refuses_rather_than_guess(self):
         # SQL Server's DROP INDEX requires the table. When the original

@@ -16,14 +16,17 @@ from sqlglot import exp, parse_one
 from dblift.core.migration.scripting.undo_script_generator._helpers import (
     resolve_sqlglot_read_dialect,
 )
+from dblift.core.migration.sql.sql_analyzer import _IDENTIFIER, _QUALIFIED_NAME
 from dblift.core.sql_model.dialect import quote_identifier
 from dblift.core.sql_model.index import Index
 from dblift.db.provider_registry import ProviderRegistry
 
-# A single SQL identifier in any of the quoting styles the supported dialects
-# use: bracket (SQL Server), double-quote (PostgreSQL/Oracle/SQLite/Db2),
-# backtick (MySQL/MariaDB), or bare.
-_IDENTIFIER = r'(?:\[[^\]]+\]|"[^"]+"|`[^`]+`|\w+)'
+# Reused rather than redefined: _IDENTIFIER/_QUALIFIED_NAME are the same
+# bracket/double-quote/backtick/bare token the rest of the undo generator's
+# regex-fallback analysis (sql_analyzer.py) already uses to recognize an
+# object reference of one or more dot-separated parts. A second, independent
+# copy of this is how an identifier-parsing fix lands in one and not the
+# other.
 
 
 def _strip_identifier_quotes(token: str) -> str:
@@ -275,13 +278,15 @@ class _UndoExtractorsMixin:
         """
         if obj_type == "INDEX":
             quirks = ProviderRegistry.get_quirks(self.dialect)
-            table_name = self._extract_table_name_from_create_index(create_sql or "")
+            table_ref = self._extract_table_ref_from_create_index(create_sql or "")
+            table_schema, table_name = table_ref if table_ref else (None, None)
             if table_name or not quirks.index_drop_includes_table:
                 index = Index(
                     name=obj_name,
                     table_name=table_name or "",
                     columns=[],
                     schema=schema,
+                    table_schema=table_schema,
                     dialect=self.dialect,
                 )
                 return f"{index.drop_statement};"
@@ -436,16 +441,78 @@ class _UndoExtractorsMixin:
                 return match.group(2)  # Return table name (group 2)
         return None
 
-    def _extract_table_name_from_create_index(self, sql: str) -> Optional[str]:
-        """Extract table name from CREATE INDEX statement.
+    def _extract_table_ref_from_create_index(self, sql: str) -> Optional[Tuple[Optional[str], str]]:
+        """Extract the ``(schema, table)`` an index is created ON.
 
         Covers the plain form (``CREATE INDEX idx ON table(col)``, any
         dialect's quoting), PostgreSQL/SQLite's ``IF NOT EXISTS``, and SQL
         Server's ``UNIQUE``/``CLUSTERED``/``NONCLUSTERED``/``PRIMARY XML``
-        modifiers plus its own bracket-quoted, schema-qualified ``ON``
-        target. ``ON`` may be on its own line — ``\\s+`` already spans
-        newlines. ``CREATE FULLTEXT INDEX`` has no index name of its own,
-        so ``ON`` follows ``INDEX`` directly; matched separately.
+        modifiers plus its own bracket-quoted ``ON`` target -- which SQL
+        Server allows as ``database.schema.table``, not just
+        ``schema.table``. The whole dot-separated reference is captured as
+        one chunk and split in Python, keeping only its last two parts (the
+        database part, where a dialect even allows one, is never a valid
+        DROP INDEX qualifier); a regex that instead captures "one optional
+        leading part, then the rest" stops after that one part, silently
+        mistaking the schema for the table on a three-part reference. ``ON``
+        may be on its own line -- ``\\s+`` already spans newlines. ``CREATE
+        FULLTEXT INDEX`` has no index name of its own, so ``ON`` follows
+        ``INDEX`` directly; matched separately.
+
+        Args:
+            sql: CREATE INDEX statement
+
+        Returns:
+            ``(schema, table)`` -- schema is ``None`` when the ``ON`` target
+            named none -- or ``None`` if no ``ON`` target was found, or the
+            match looks truncated by an escaped delimiter it doesn't
+            understand (see the doubled-delimiter note below).
+        """
+        patterns = [
+            # CREATE FULLTEXT INDEX ON table(...) -- no user-supplied index name.
+            r"CREATE\s+FULLTEXT\s+INDEX\s+ON\s+(" + _QUALIFIED_NAME + r")",
+            # CREATE [UNIQUE] [CLUSTERED|NONCLUSTERED] [PRIMARY] [XML|BITMAP|SPATIAL|COLUMNSTORE]
+            # INDEX [IF NOT EXISTS] index_name ON database.schema.table (or any shorter form)
+            r"CREATE\s+(?:UNIQUE\s+)?(?:CLUSTERED\s+|NONCLUSTERED\s+)?"
+            r"(?:PRIMARY\s+)?(?:XML\s+|BITMAP\s+|SPATIAL\s+|COLUMNSTORE\s+)?"
+            r"INDEX\s+(?:IF\s+NOT\s+EXISTS\s+)?"
+            + _IDENTIFIER
+            + r"\s+ON\s+("
+            + _QUALIFIED_NAME
+            + r")",
+        ]
+
+        # T-SQL/ANSI escape a delimiter inside a quoted identifier by
+        # doubling it (``[foo]]bar]`` is the single identifier ``foo]bar``;
+        # ``"foo""bar"`` is ``foo"bar``). _QUALIFIED_NAME doesn't understand
+        # that doubling, so it stops at the first occurrence and matches
+        # only ``[foo]``/``"foo"``, leaving the rest of the real identifier
+        # sitting right after the match. That leftover character is exactly
+        # the same delimiter the match just closed with, which is not
+        # otherwise a valid way for a CREATE INDEX statement to continue
+        # (real SQL follows the ON target with whitespace or ``(``) -- so
+        # seeing it here means the captured name is probably truncated:
+        # refuse rather than trust a table name that might be wrong.
+        _CLOSING = {"[": "]", '"': '"', "`": "`"}
+
+        for pattern in patterns:
+            match = re.search(pattern, sql, re.IGNORECASE)
+            if match:
+                raw_parts = re.findall(_IDENTIFIER, match.group(1))
+                if not raw_parts:
+                    return None
+                closing = _CLOSING.get(raw_parts[-1][:1])
+                if closing and sql[match.end() : match.end() + 1] == closing:
+                    return None
+                parts = [_strip_identifier_quotes(p) for p in raw_parts]
+                table = parts[-1]
+                schema = parts[-2] if len(parts) >= 2 else None
+                return schema, table
+
+        return None
+
+    def _extract_table_name_from_create_index(self, sql: str) -> Optional[str]:
+        """Extract just the table name from a CREATE INDEX statement.
 
         Args:
             sql: CREATE INDEX statement
@@ -453,28 +520,8 @@ class _UndoExtractorsMixin:
         Returns:
             Table name or None
         """
-        patterns = [
-            # CREATE FULLTEXT INDEX ON table(...) -- no user-supplied index name.
-            r"CREATE\s+FULLTEXT\s+INDEX\s+ON\s+(?:" + _IDENTIFIER + r"\.)?(" + _IDENTIFIER + r")",
-            # CREATE [UNIQUE] [CLUSTERED|NONCLUSTERED] [PRIMARY] [XML|BITMAP|SPATIAL|COLUMNSTORE]
-            # INDEX [IF NOT EXISTS] index_name ON [schema.]table_name
-            r"CREATE\s+(?:UNIQUE\s+)?(?:CLUSTERED\s+|NONCLUSTERED\s+)?"
-            r"(?:PRIMARY\s+)?(?:XML\s+|BITMAP\s+|SPATIAL\s+|COLUMNSTORE\s+)?"
-            r"INDEX\s+(?:IF\s+NOT\s+EXISTS\s+)?"
-            + _IDENTIFIER
-            + r"\s+ON\s+(?:"
-            + _IDENTIFIER
-            + r"\.)?("
-            + _IDENTIFIER
-            + r")",
-        ]
-
-        for pattern in patterns:
-            match = re.search(pattern, sql, re.IGNORECASE)
-            if match:
-                return _strip_identifier_quotes(match.group(1))
-
-        return None
+        table_ref = self._extract_table_ref_from_create_index(sql)
+        return table_ref[1] if table_ref else None
 
     def _extract_table_name_from_index(self, sql: str) -> Optional[str]:
         """Extract table name from DROP INDEX statement.
