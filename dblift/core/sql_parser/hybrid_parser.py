@@ -319,14 +319,12 @@ class HybridParser(_SqlglotBuildersMixin, SqlParserInterface):
         # If sqlglot available and content is pure SQL, enhance with sqlglot
         # Skip sqlglot for syntax it doesn't support at all (e.g. Oracle PARTITION BY
         # REFERENCE, or a schema-qualified SQL Server/MySQL `DROP INDEX ... ON` —
-        # see each quirks class for why) so it never raises, or silently answers
-        # wrong, on those shapes.
+        # see each quirks class for why) so it never raises on those shapes.
         use_sqlglot = (
             self.sqlglot_parser is not None
             and not self._contains_procedural_keywords(sql_content)
             and not self._contains_oracle_sqlglot_unsupported(sql_content)
             and not self._contains_sqlglot_unsupported_shape(sql_content)
-            and not self._is_sqlglot_opaque_valid_ddl(sql_content)
         )
         if use_sqlglot and self.sqlglot_parser is not None:
             try:

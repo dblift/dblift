@@ -234,13 +234,12 @@ class BaseQuirks:
         )
 
     def is_sqlglot_opaque_valid_ddl(self, sql_content: str) -> bool:
-        """Return True if *sql_content* is valid DDL that sqlglot cannot be
-        trusted on — it may raise, or it may parse without error and answer
-        wrongly. Consulted both where SQL is validated (skip a false-positive
-        syntax error) and where objects are extracted (skip a silently wrong
-        object). Plugins override for dialect-specific patterns (e.g.
-        PostgreSQL ``DROP TRIGGER … ON table``, which sqlglot answers wrongly
-        rather than rejects)."""
+        """Return True if *sql_content* is valid DDL that sqlglot cannot parse
+        without raising, so a caller validating SQL can skip a
+        false-positive syntax error. Plugins override for dialect-specific
+        patterns (e.g. PostgreSQL ``DROP TRIGGER … ON table``, which sqlglot
+        rejects only when the table is schema-qualified — see the override
+        for exactly which forms that covers)."""
         return False
 
     def preprocess_sql_for_sqlglot(self, sql_content: str) -> str:
