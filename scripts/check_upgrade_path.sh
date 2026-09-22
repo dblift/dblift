@@ -9,6 +9,11 @@
 # NEW_DBLIFT may point at the dblift executable under test (default: dblift on PATH).
 set -euo pipefail
 
+if [ $# -ne 1 ]; then
+  echo "usage: $0 '<pip requirement for the old version>'   e.g. $0 'dblift<4.6.1'" >&2
+  exit 2
+fi
+
 OLD_REQUIREMENT="$1"
 NEW_DBLIFT="${NEW_DBLIFT:-dblift}"
 PYTHON="${PYTHON:-python3}"

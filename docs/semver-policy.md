@@ -153,6 +153,15 @@ The public surface is checked automatically on every pull request:
   published release and with 4.0.0, continues with the tree under test, and
   checks that the published release can still read the result.
 
+Everything else in section 1 — configuration keys and environment
+variables, packaging metadata, migration-file conventions, and the
+*values* behind the recorded JSON keys — is still protected by review at
+release time, not by a snapshot.
+
+A deliberate removal at a MAJOR release is recorded the same way as an
+addition: regenerate with `DBLIFT_UPDATE_CONTRACTS=1` in the commit that
+removes the surface, next to the CHANGELOG entry that announces it.
+
 ### 5.1 Release cadence
 
 - At most one patch release every two weeks and one minor release per month.

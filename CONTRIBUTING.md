@@ -80,6 +80,9 @@ SQLite history table, the `info --format json` keys or the exit codes change.
 - **The failure says BREAKING:** something users rely on disappeared. Restore
   it. If it really has to go, deprecate it first as described in
   `docs/semver-policy.md` section 3.
+- **The removal is intended and this is a MAJOR release:** regenerate the
+  snapshot in the same commit, next to the CHANGELOG entry that announces
+  the removal.
 
 `scripts/check_debt_ratchet.py` fails when a structural-debt count grows. Fix
 the new occurrence rather than raising the cap; when your change lowers a
