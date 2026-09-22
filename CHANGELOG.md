@@ -31,6 +31,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `DROP TRIGGER`, `DROP FUNCTION`, `DROP PROCEDURE`, `DROP TYPE` and `DROP
+  DATABASE` object extraction now reports the correct object type instead of
+  `TABLE`, on every dialect that uses sqlglot for extraction (PostgreSQL,
+  Oracle, MySQL, SQL Server). sqlglot parses these statements without
+  raising, but object extraction only recognized `VIEW`, `INDEX` and
+  `SEQUENCE` by name and silently defaulted everything else to `TABLE`;
+  nothing logged the misclassification, so the wrong object type reached
+  downstream consumers silently.
 - Object extraction's regex fallback path now reports a quoted name
   un-escaped — brackets, double quotes, or backticks removed, and a
   doubled delimiter inside the name (SQL Server `]`, ANSI `"`, MySQL

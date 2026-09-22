@@ -28,6 +28,27 @@ from dblift.core.sql_parser.parser_interface import SqlParserInterface
 # Setup logger
 logger = logging.getLogger(__name__)
 
+# sqlglot ``Drop.kind`` values this repository can map to a concrete
+# ``SqlObjectType`` without guessing (dblift/dblift#384). A kind sqlglot's
+# grammar does not recognize for the statement's dialect (e.g. Oracle
+# PACKAGE/SYNONYM, MySQL EVENT, PostgreSQL DOMAIN/EXTENSION) never reaches
+# this map: sqlglot parses it as an opaque ``Command`` instead of
+# ``exp.Drop``, so it falls through to the non-DDL branch below and
+# contributes nothing — there is no wrong answer to correct. ``TABLE`` is
+# deliberately absent: it is also the fallback below for any kind this map
+# does not cover, which keeps a real gap in sqlglot's own coverage from
+# silently reading as "verified correct" here.
+_DROP_KIND_TO_OBJECT_TYPE: Dict[str, SqlObjectType] = {
+    "VIEW": SqlObjectType.VIEW,
+    "INDEX": SqlObjectType.INDEX,
+    "SEQUENCE": SqlObjectType.SEQUENCE,
+    "TRIGGER": SqlObjectType.TRIGGER,
+    "FUNCTION": SqlObjectType.FUNCTION,
+    "PROCEDURE": SqlObjectType.PROCEDURE,
+    "TYPE": SqlObjectType.TYPE,
+    "DATABASE": SqlObjectType.DATABASE,
+}
+
 
 class SqlGlotParser(SqlParserInterface):
     """SQL parser implementation using sqlglot for AST-based parsing.
@@ -421,18 +442,17 @@ class SqlGlotParser(SqlParserInterface):
                             elif ast.kind == "TABLE":
                                 obj.object_type = SqlObjectType.TABLE
                         elif isinstance(ast, exp.Drop):
-                            # For DROP, infer type from kind or default to TABLE
-                            if ast.kind == "VIEW":
-                                obj.object_type = SqlObjectType.VIEW
-                            elif ast.kind == "INDEX":
-                                obj.object_type = SqlObjectType.INDEX
+                            # For DROP, map sqlglot's kind to the matching
+                            # SqlObjectType; a kind this repository has no
+                            # mapping for (including "TABLE" itself) defaults
+                            # to TABLE. See _DROP_KIND_TO_OBJECT_TYPE.
+                            obj.object_type = _DROP_KIND_TO_OBJECT_TYPE.get(
+                                ast.kind or "", SqlObjectType.TABLE
+                            )
+                            if obj.object_type == SqlObjectType.INDEX:
                                 self._correct_sqlserver_drop_index_schema(
                                     obj, target, default_schema
                                 )
-                            elif ast.kind == "SEQUENCE":
-                                obj.object_type = SqlObjectType.SEQUENCE
-                            else:
-                                obj.object_type = SqlObjectType.TABLE
                         # For ALTER, keep the object type as TABLE (most common)
 
                         if obj not in objects:
