@@ -30,6 +30,7 @@ def f(x: Any, options: Mapping[str, Any]) -> Any:
     from dblift.core import thing
 
     # getattr(x, "described") in a comment is not a call
+    # Story 1-2: rationale kept, identifier is the debt
     try:
         return getattr(x, "y")
     except Exception:
@@ -52,6 +53,7 @@ def test_measure_counts_each_signal(tmp_path: Path) -> None:
         "any_annotations": 1,
         "dynamic_attribute_access": 2,
         "broad_excepts": 1,
+        "process_references": 1,
         "large_files": 1,
     }
 
@@ -84,4 +86,4 @@ def test_main_prints_offending_lines_of_the_first_failing_signal(
     assert script.main(["--root", str(root), "--ratchet", str(ratchet)]) == 1
     out = capsys.readouterr().out
     assert "Offending lines for 'dynamic_attribute_access':" in out
-    assert 'sample.py:9: return getattr(x, "y")' in out
+    assert 'sample.py:10: return getattr(x, "y")' in out

@@ -1,6 +1,6 @@
 """Parser setup functions for the dblift CLI.
 
-Extracted from cli/main.py (story 20-16) to reduce file size.
+Extracted from cli/main.py to reduce file size.
 Contains the 7 argparse configuration functions.
 """
 

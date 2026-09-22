@@ -352,7 +352,7 @@ class BaseQuirks:
         return default_str
 
     # ------------------------------------------------------------------
-    # Column ALTER generation hooks (Epic 27).
+    # Column ALTER generation hooks.
     # Drive the per-change ALTER rendering in the diff converters
     # (``core/sql_generator/diff_converters``).
     # Each hook receives the pre-formatted identifiers so the plugin
@@ -423,8 +423,7 @@ class BaseQuirks:
     #: TABLE time, so explicitly-quoted lower-case idents would target a
     #: non-existent object; upper-casing here matches the catalogue.
     #: Oracle ONLY — DB2 shares Oracle's identifier-folding quirks but is
-    #: deliberately left untouched here to preserve historical behaviour
-    #: (story 26-5).
+    #: deliberately left untouched here to preserve historical behaviour.
     quote_qualified_folds_to_uppercase: bool = False
     #: Single-row SELECT statement used as a transaction-liveness
     #: probe (e.g. connection pre-flight). DB2 rejects bare ``SELECT 1``;
@@ -675,7 +674,7 @@ class BaseQuirks:
     lint_placeholder_url: Optional[str] = None
 
     # ------------------------------------------------------------------
-    # Procedure / function DDL hooks (story 26-5).
+    # Procedure / function DDL hooks.
     # Drive ``Procedure._generate_basic_create_statement`` /
     # ``Parameter.__str__`` / ``Procedure.drop_statement``. Each plugin
     # overrides the deltas; defaults match the most common ANSI shape.
@@ -705,7 +704,7 @@ class BaseQuirks:
     proc_param_supports_default: bool = True
 
     # ------------------------------------------------------------------
-    # Index DDL hooks (story 26-5).
+    # Index DDL hooks.
     # Drive ``Index._generate_basic_create_statement`` /
     # ``Index.drop_statement``.
     # ------------------------------------------------------------------
@@ -760,7 +759,7 @@ class BaseQuirks:
     flyway_source_table_case_sensitive: bool = False
 
     # ------------------------------------------------------------------
-    # Trigger DDL hooks (story 26-5).
+    # Trigger DDL hooks.
     # Drive ``Trigger._generate_basic_create_statement`` and
     # ``Trigger._format_body``.
     # ------------------------------------------------------------------
@@ -804,7 +803,7 @@ class BaseQuirks:
         return f"GENERATED ALWAYS AS ({col.computed_expression})", None
 
     # ------------------------------------------------------------------
-    # Sequence DDL hooks (story 26-5).
+    # Sequence DDL hooks.
     # Drive ``Sequence._generate_basic_create_statement`` and
     # ``Sequence.drop_statement``.
     # ------------------------------------------------------------------
@@ -825,7 +824,7 @@ class BaseQuirks:
     seq_implicit_max_value: Optional[int] = None
 
     # ------------------------------------------------------------------
-    # Synonym DDL hooks (story 26-5).
+    # Synonym DDL hooks.
     # Drive ``Synonym._generate_basic_create_statement`` and
     # ``Synonym.drop_statement``.
     # ------------------------------------------------------------------
@@ -837,7 +836,7 @@ class BaseQuirks:
     synonym_supports_create_or_replace: bool = False
 
     # ------------------------------------------------------------------
-    # View DDL hooks (story 26-5).
+    # View DDL hooks.
     # ------------------------------------------------------------------
 
     #: ``CREATE VIEW ... WITH (security_definer=true)`` clause
@@ -847,7 +846,7 @@ class BaseQuirks:
     view_drop_supports_if_exists: bool = True
 
     # ------------------------------------------------------------------
-    # Misc DDL flags (story 26-5).
+    # Misc DDL flags.
     # ------------------------------------------------------------------
 
     #: Event scheduler supports MySQL-style ``STARTS '...'`` /
@@ -870,7 +869,7 @@ class BaseQuirks:
     supports_sqlplus_preprocessing: bool = False
 
     # ------------------------------------------------------------------
-    # Table DDL generation hooks (story 26-5).
+    # Table DDL generation hooks.
     # Drive ``BasicTableDdlGenerator`` dispatch.
     # ------------------------------------------------------------------
 
@@ -1059,7 +1058,7 @@ class BaseQuirks:
         return {}
 
     # ------------------------------------------------------------------
-    # DdlQuirks (story 26-3)
+    # DdlQuirks
     # ------------------------------------------------------------------
 
     def ddl_generator_class(self) -> Optional[Type["BaseSqlGenerator"]]:

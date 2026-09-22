@@ -636,7 +636,7 @@ class Table(SqlObject):
         if column_differences:
             differences["column_differences"] = column_differences
 
-        # BACKLOG P3 (story 10-26): Ajouter comparaison des contraintes dans Table.compare_to()
+        # BACKLOG P3: Ajouter comparaison des contraintes dans Table.compare_to()
         # Raison: Complexité de normalisation des noms de contraintes cross-dialecte (auto-générés vs explicites)
         # Impact: Le diff de schéma ne détecte pas les ajouts/suppressions de PK, FK, UNIQUE, CHECK
         # Approche: Comparer self.pk vs other.pk, self.foreign_keys vs other.foreign_keys, etc.

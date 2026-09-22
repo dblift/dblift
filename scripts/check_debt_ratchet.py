@@ -1,6 +1,6 @@
 """Structural-debt ratchet.
 
-Counts five debt signals across ``dblift/`` and compares each with the cap in
+Counts six debt signals across ``dblift/`` and compares each with the cap in
 ``.debt-ratchet.json``. A count may stay flat or shrink, never grow. Mirrors
 ``scripts/check_line_length.py``: exit 0 at or below every cap (with a nudge
 to tighten loose caps), exit 1 when any cap is exceeded.
@@ -36,7 +36,13 @@ _LINE_PATTERNS: Dict[str, "re.Pattern[str]"] = {
     "any_annotations": re.compile(r"^(?!\s*(?:from|import)\s).*(?:[:\[,]\s*|->\s*)Any\b"),
     "dynamic_attribute_access": re.compile(r"\b(hasattr|getattr)\("),
     "broad_excepts": re.compile(r"^\s*except Exception\b"),
+    # Internal tracking identifiers mean nothing to a reader of the public tree.
+    "process_references": re.compile(r"\b(?:Epic|epic|Story|story)\s+\d"),
 }
+
+# Signals for which a comment-only line counts: a comment that names a tracking
+# identifier is precisely the debt, whereas a comment describing getattr() is not a call.
+_COUNT_IN_COMMENTS = frozenset({"process_references"})
 
 
 def measure(root: Path) -> Dict[str, int]:
@@ -53,9 +59,10 @@ def locate(root: Path) -> Dict[str, List[str]]:
         if len(lines) > LARGE_FILE_LINES:
             hits["large_files"].append(f"{path}: {len(lines)} lines")
         for number, line in enumerate(lines, start=1):
-            if line.lstrip().startswith("#"):
-                continue  # a comment describing getattr() is not a call
+            is_comment = line.lstrip().startswith("#")
             for name, pattern in _LINE_PATTERNS.items():
+                if is_comment and name not in _COUNT_IN_COMMENTS:
+                    continue  # a comment describing getattr() is not a call
                 if pattern.search(line):
                     hits[name].append(f"{path}:{number}: {line.strip()}")
     return hits

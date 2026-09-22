@@ -1,6 +1,6 @@
 """Factory functions for creating DBLiftClient instances.
 
-Extracted from api/client.py (story 20-16) to reduce file size.
+Extracted from api/client.py to reduce file size.
 Contains the logic behind the from_config, from_config_file, and from_sqlalchemy classmethods.
 """
 

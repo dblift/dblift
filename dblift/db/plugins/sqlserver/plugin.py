@@ -1,4 +1,4 @@
-"""Entry-point declaration for the SQL Server plugin (Epic 26 story 26-12)."""
+"""Entry-point declaration for the SQL Server plugin."""
 
 from __future__ import annotations
 

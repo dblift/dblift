@@ -407,7 +407,7 @@ class ProviderRegistry:
     def _discover_quirks_class(
         cls, plugin_dir: Path, plugin_name: str
     ) -> Optional[Type[BaseQuirks]]:
-        """Locate the plugin's ``Quirks`` subclass if present (Epic 26).
+        """Locate the plugin's ``Quirks`` subclass if present.
 
         Returns ``None`` when the plugin has not yet declared a
         ``quirks.py``; the registry then serves a vanilla
@@ -517,7 +517,7 @@ class ProviderRegistry:
 
     @classmethod
     def get_quirks(cls, db_type: str) -> BaseQuirks:
-        """Return the :class:`DialectQuirks` instance for a database type (Epic 26).
+        """Return the :class:`DialectQuirks` instance for a database type.
 
         Plugins without a declared ``quirks_class`` get a vanilla
         :class:`BaseQuirks` keyed by ``db_type``; plugins with one

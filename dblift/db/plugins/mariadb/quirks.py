@@ -1,4 +1,4 @@
-"""MariaDB :class:`DialectQuirks` (Epic 26 story 26-13).
+"""MariaDB :class:`DialectQuirks`.
 
 Inherits from :class:`MysqlQuirks` — same drop-statement variants,
 delimiter wrapping, and definition-preservation rules. MariaDB-specific
