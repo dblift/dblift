@@ -85,45 +85,13 @@ class TestPostgreSqlSchemaOperations(unittest.TestCase):
 
     # --- set_current_schema ---
 
-    def test_set_current_schema_uses_search_path(self):
-        # Now uses createStatement().execute() directly — not execute_statement()
+    def test_set_current_schema_raises_not_implemented(self):
+        """Real schema handling lives on PostgreSqlProvider, not here; a
+        silent no-op would hide a future accidental call to this method.
+        """
         ops, qe, log = self._make_ops()
-        conn, stmt, _ = _make_connection()
-        conn.createStatement.return_value = stmt
-        ops.set_current_schema(conn, "myschema")
-        sql = stmt.execute.call_args[0][0]
-        self.assertIn("search_path", sql.lower())
-
-    def test_set_current_schema_includes_public(self):
-        ops, qe, log = self._make_ops()
-        conn, stmt, _ = _make_connection()
-        conn.createStatement.return_value = stmt
-        ops.set_current_schema(conn, "myschema")
-        sql = stmt.execute.call_args[0][0]
-        self.assertIn("public", sql.lower())
-
-    def test_set_current_schema_uses_create_statement_not_prepare(self):
-        """SET search_path must use createStatement (simple query protocol), not prepareStatement."""
-        ops, qe, log = self._make_ops()
-        conn, stmt, _ = _make_connection()
-        conn.createStatement.return_value = stmt
-        ops.set_current_schema(conn, "myschema")
-        conn.createStatement.assert_called()
-        conn.prepareStatement.assert_not_called()
-
-    def test_set_current_schema_closes_statement(self):
-        ops, qe, log = self._make_ops()
-        conn, stmt, _ = _make_connection()
-        conn.createStatement.return_value = stmt
-        ops.set_current_schema(conn, "myschema")
-        stmt.close.assert_called()
-
-    def test_set_current_schema_raises_on_error(self):
-        ops, qe, log = self._make_ops()
-        conn, stmt, _ = _make_connection()
-        stmt.execute.side_effect = RuntimeError("SQL error")
-        conn.createStatement.return_value = stmt
-        with self.assertRaises(RuntimeError):
+        conn, _, _ = _make_connection()
+        with self.assertRaises(NotImplementedError):
             ops.set_current_schema(conn, "myschema")
 
     # --- get_database_version ---

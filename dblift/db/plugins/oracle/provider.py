@@ -257,8 +257,22 @@ class OracleProvider(SqlAlchemyProvider):
         )
         return bool(rows and int(_row_value(rows[0], "cnt", default=0)) > 0)
 
+    # Common Oracle/ORM naming conventions for sequences ``clean`` must not
+    # explicitly DROP: 12c+ identity-column backing sequences are removed
+    # automatically when their owning table is dropped, so an explicit
+    # DROP SEQUENCE after that raises "sequence does not exist"; Hibernate/JPA
+    # follow the same generated-sequence convention. ``SEQ_``/``SQ_`` are
+    # deliberately excluded — those are the most common *user* sequence
+    # naming conventions, and matching them here would silently leave user
+    # sequences behind on every clean.
+    _SYSTEM_SEQUENCE_PREFIXES = ("ISEQ$$_", "HIBERNATE_", "JPA_")
+
     def is_system_generated_sequence(self, schema: str, sequence_name: str) -> bool:
-        """Return True for Oracle identity-column generated sequences."""
+        """Return True for Oracle sequences ``clean`` must not explicitly drop."""
+        if not sequence_name:
+            return False
+        if sequence_name.upper().startswith(self._SYSTEM_SEQUENCE_PREFIXES):
+            return True
         rows = self.execute_query(
             """
             SELECT COUNT(*) AS cnt
@@ -696,12 +710,48 @@ class OracleProvider(SqlAlchemyProvider):
             ),
         ]
 
+        try:
+            ref_partition_rows = self.execute_query(
+                """
+                SELECT DISTINCT c.TABLE_NAME AS child_table
+                FROM ALL_CONSTRAINTS c
+                JOIN ALL_CONSTRAINTS p
+                    ON c.R_OWNER = p.OWNER
+                    AND c.R_CONSTRAINT_NAME = p.CONSTRAINT_NAME
+                JOIN ALL_PART_TABLES cpt
+                    ON c.OWNER = cpt.OWNER
+                    AND c.TABLE_NAME = cpt.TABLE_NAME
+                WHERE c.OWNER = ?
+                    AND c.CONSTRAINT_TYPE = 'R'
+                    AND p.CONSTRAINT_TYPE = 'P'
+                    AND cpt.REF_PTN_CONSTRAINT_NAME IS NOT NULL
+                """,
+                [clean_schema],
+            )
+        except Exception as e:
+            self.log.debug(f"Could not query Oracle reference-partitioned table relationships: {e}")
+            ref_partition_rows = []
+        # Reference-partitioned child tables must be dropped before their
+        # partitioning parent — CASCADE CONSTRAINTS handles ordinary FK
+        # dependencies but not this physical partitioning dependency.
+        ref_partitioned_children = {
+            str(_row_value(row, "child_table"))
+            for row in ref_partition_rows
+            if _row_value(row, "child_table")
+        }
+
         for object_type, drop_prefix, query, suffix in object_queries:
             try:
                 rows = self.execute_query(query, [clean_schema])
             except Exception as e:
                 self.log.debug(f"Could not query Oracle {object_type}s: {e}")
                 continue
+            if object_type == "table" and ref_partitioned_children:
+                rows = sorted(
+                    rows,
+                    key=lambda row: str(_row_value(row, "object_name"))
+                    not in ref_partitioned_children,
+                )
             for row in rows:
                 name = _row_value(row, "object_name")
                 if not name:
