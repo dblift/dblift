@@ -214,6 +214,44 @@ class TestIsSystemGeneratedSequence:
         p.query_results["ALL_TAB_IDENTITY_COLS"] = [{"cnt": 0}]
         assert p.is_system_generated_sequence("MYSCHEMA", "seq1") is False
 
+    def test_none_name_is_not_system_generated(self):
+        assert _Provider().is_system_generated_sequence("MYSCHEMA", None) is False
+
+    def test_iseq_prefix_short_circuits_without_catalog_lookup(self):
+        p = _Provider()
+        assert p.is_system_generated_sequence("MYSCHEMA", "ISEQ$$_12345") is True
+        assert p.queries == []
+
+    def test_hibernate_prefix_is_not_system_generated(self):
+        """HIBERNATE_SEQUENCE is an ordinary standalone user sequence — Oracle
+        never auto-drops it the way it auto-drops an identity column's
+        backing sequence, so it must fall through to the catalog check
+        rather than being pattern-matched away (verified live against
+        gvenzl/oracle-free: nothing drops a standalone HIBERNATE_SEQUENCE,
+        and skipping it here left it behind after clean)."""
+        p = _Provider()
+        p.query_results["ALL_TAB_IDENTITY_COLS"] = [{"cnt": 0}]
+        assert p.is_system_generated_sequence("MYSCHEMA", "HIBERNATE_SEQUENCE") is False
+
+    def test_jpa_prefix_is_not_system_generated(self):
+        p = _Provider()
+        p.query_results["ALL_TAB_IDENTITY_COLS"] = [{"cnt": 0}]
+        assert p.is_system_generated_sequence("MYSCHEMA", "JPA_FOO_SEQ") is False
+
+    def test_user_seq_prefix_not_flagged_as_system(self):
+        """SEQ_/SQ_ are the most common *user* sequence naming conventions
+        (SEQ_ORDERS, SQ_INVOICE_ID) and must fall through to the
+        authoritative catalog check rather than being pattern-matched away.
+        """
+        p = _Provider()
+        p.query_results["ALL_TAB_IDENTITY_COLS"] = [{"cnt": 0}]
+        assert p.is_system_generated_sequence("MYSCHEMA", "SEQ_ORDERS") is False
+
+    def test_identity_catalog_lookup_trusted_even_for_user_looking_name(self):
+        p = _Provider()
+        p.query_results["ALL_TAB_IDENTITY_COLS"] = [{"cnt": 1}]
+        assert p.is_system_generated_sequence("MYSCHEMA", "SOME_USER_NAME") is True
+
 
 class TestGetDatabaseVersion:
     def test_with_rows(self):
@@ -772,6 +810,60 @@ class TestCleanSchema:
         assert summary.errors == []
         assert any(obj.object_type == "trigger" and obj.name == "TRG1" for obj in summary.objects)
         assert any("DROP TRIGGER" in s for s in summary.statements)
+
+    def test_drops_reference_partitioned_children_before_parents(self):
+        """A reference-partitioned child table's partitioning dependency on
+        its parent is physical, not just a FK constraint — CASCADE
+        CONSTRAINTS alone does not release it, so the child must be dropped
+        first or the parent's DROP TABLE fails.
+
+        Uses a dedicated ``execute_query`` (rather than the substring-keyed
+        ``query_results`` map) because the table listing query's own
+        ``NOT EXISTS (... ALL_MVIEWS ...)`` clause would otherwise collide
+        with the materialized-view query's mock.
+        """
+        p = _Provider()
+
+        def execute_query(sql, params=None):
+            p.queries.append((sql, params))
+            if "ALL_PART_TABLES" in sql:
+                return [{"child_table": "CHILD"}]
+            if "ALL_TABLES t" in sql:
+                return [{"object_name": "PARENT"}, {"object_name": "CHILD"}]
+            return []
+
+        p.execute_query = execute_query
+
+        p.clean_schema("MYSCHEMA")
+
+        table_drops = [s[0] for s in p.statements if s[0].startswith("DROP TABLE")]
+        child_index = next(i for i, s in enumerate(table_drops) if "CHILD" in s)
+        parent_index = next(i for i, s in enumerate(table_drops) if "PARENT" in s)
+        assert child_index < parent_index, table_drops
+
+    def test_reference_partition_query_failure_falls_back_to_unordered_drop(self):
+        p = _Provider()
+
+        def execute_query(sql, params=None):
+            p.queries.append((sql, params))
+            if "ALL_PART_TABLES" in sql:
+                raise Exception("query failed")
+            if "ALL_TABLES t" in sql:
+                return [{"object_name": "T1"}]
+            return []
+
+        p.execute_query = execute_query
+
+        summary = p.clean_schema("MYSCHEMA")
+
+        assert any(s.startswith("DROP TABLE") and "T1" in s for s in summary.statements)
+        # warning, not debug: a silent fallback to alphabetical order would
+        # leave a later ORA-14656 with nothing linking it back to this query
+        # having failed.
+        assert any(
+            "reference-partitioned table relationships" in str(c)
+            for c in p.log.warning.call_args_list
+        )
 
 
 class TestDropObject:

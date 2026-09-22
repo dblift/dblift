@@ -480,3 +480,156 @@ class TestHybridParserNoDuplicateOnFixedName:
         assert len(objects) == 1
         assert objects[0].name == "idx1"
         assert objects[0].object_type == SqlObjectType.INDEX
+
+
+@pytest.mark.unit
+class TestBracketDoublingRegexParser:
+    """A ``]`` inside a bracketed T-SQL identifier is escaped by doubling it
+    (``[real]]one]`` is the single identifier ``real]one``); a ``"`` inside a
+    double-quoted identifier is escaped the same way (``"real""one"`` is
+    ``real"one``). ``id_token`` stopped at the first unescaped-looking
+    ``]``/``"``, so the doubled character split the identifier and truncated
+    it to everything before the first occurrence."""
+
+    def setup_method(self):
+        self.parser = SqlParserFactory("sqlserver", parser_type="regex").get_parser()
+
+    def test_plain_bracketed_name_unaffected(self):
+        objects = self.parser.extract_objects("CREATE TABLE [normal] (id int);")
+
+        assert len(objects) == 1
+        assert objects[0].name == "normal"
+
+    def test_reported_case(self):
+        # The exact statement from the issue report.
+        objects = self.parser.extract_objects("CREATE TABLE [real]]one] (id int);")
+
+        assert len(objects) == 1
+        assert objects[0].name == "real]one"
+
+    def test_trailing_doubled_bracket(self):
+        objects = self.parser.extract_objects("CREATE TABLE [name]]] (id int);")
+
+        assert len(objects) == 1
+        assert objects[0].name == "name]"
+
+    def test_doubled_bracket_at_start(self):
+        objects = self.parser.extract_objects("CREATE TABLE []]abc] (id int);")
+
+        assert len(objects) == 1
+        assert objects[0].name == "]abc"
+
+    def test_two_doubled_brackets_in_one_identifier(self):
+        objects = self.parser.extract_objects("CREATE TABLE [a]]b]]c] (id int);")
+
+        assert len(objects) == 1
+        assert objects[0].name == "a]b]c"
+
+    def test_doubled_bracket_identifier_followed_by_another(self):
+        objects = self.parser.extract_objects("CREATE TABLE [a]]b].[c]]d] (id int);")
+
+        assert len(objects) == 1
+        assert objects[0].schema == "a]b"
+        assert objects[0].name == "c]d"
+
+    def test_three_part_name_still_works(self):
+        # #351's three-part db.schema.object support must survive this fix.
+        objects = self.parser.extract_objects("CREATE TABLE [mydb].[dbo].[mytable] (id int);")
+
+        assert len(objects) == 1
+        assert objects[0].schema == "dbo"
+        assert objects[0].name == "mytable"
+
+    def test_bracket_content_with_quotes_is_not_unescaped(self):
+        # A double quote is not special inside brackets — only a doubled
+        # ``]`` is an escape there — so ``["a""b"]``'s name is the literal
+        # bracket content ``"a""b"``, unchanged. normalize_identifier must
+        # not also apply the double-quote branch to content that merely
+        # happens to start and end with ``"`` after the brackets are
+        # stripped.
+        objects = self.parser.extract_objects('CREATE TABLE ["a""b"] (id int);')
+
+        assert len(objects) == 1
+        assert objects[0].name == '"a""b"'
+
+
+@pytest.mark.unit
+class TestDoubleQuoteDoublingRegexParser:
+    """Same doubling rule, double-quoted spelling (``QUOTED_IDENTIFIER ON``)."""
+
+    def setup_method(self):
+        self.parser = SqlParserFactory("sqlserver", parser_type="regex").get_parser()
+
+    def test_plain_double_quoted_name_unaffected(self):
+        objects = self.parser.extract_objects('CREATE TABLE "normal" (id int);')
+
+        assert len(objects) == 1
+        assert objects[0].name == "normal"
+
+    def test_reported_case_double_quoted(self):
+        objects = self.parser.extract_objects('CREATE TABLE "real""one" (id int);')
+
+        assert len(objects) == 1
+        assert objects[0].name == 'real"one'
+
+    def test_trailing_doubled_quote(self):
+        objects = self.parser.extract_objects('CREATE TABLE "name""" (id int);')
+
+        assert len(objects) == 1
+        assert objects[0].name == 'name"'
+
+    def test_doubled_quote_at_start(self):
+        objects = self.parser.extract_objects('CREATE TABLE """abc" (id int);')
+
+        assert len(objects) == 1
+        assert objects[0].name == '"abc'
+
+    def test_two_doubled_quotes_in_one_identifier(self):
+        objects = self.parser.extract_objects('CREATE TABLE "a""b""c" (id int);')
+
+        assert len(objects) == 1
+        assert objects[0].name == 'a"b"c'
+
+    def test_doubled_quote_identifier_followed_by_another(self):
+        objects = self.parser.extract_objects('CREATE TABLE "a""b"."c""d" (id int);')
+
+        assert len(objects) == 1
+        assert objects[0].schema == 'a"b'
+        assert objects[0].name == 'c"d'
+
+
+@pytest.mark.unit
+class TestBracketAndQuoteDoublingHybridParser:
+    """Same cases through the default (hybrid) parser. sqlglot already reads
+    the doubled escape correctly on this path, so before the regex fix the
+    merge produced two objects for one statement: the regex parser's
+    truncated name survived alongside sqlglot's correct one, because they no
+    longer collided on ``(name.lower(), object_type)``. After the fix both
+    parsers agree, so the merge collapses back to a single object."""
+
+    def setup_method(self):
+        self.parser = SqlParserFactory("sqlserver").get_parser()
+
+    def test_reported_case(self):
+        objects = self.parser.extract_objects(
+            "CREATE TABLE [real]]one] (id int);", default_schema="dbo"
+        )
+
+        assert len(objects) == 1
+        assert objects[0].name == "real]one"
+
+    def test_reported_case_double_quoted(self):
+        objects = self.parser.extract_objects(
+            'CREATE TABLE "real""one" (id int);', default_schema="dbo"
+        )
+
+        assert len(objects) == 1
+        assert objects[0].name == 'real"one'
+
+    def test_trailing_doubled_bracket(self):
+        objects = self.parser.extract_objects(
+            "CREATE TABLE [name]]] (id int);", default_schema="dbo"
+        )
+
+        assert len(objects) == 1
+        assert objects[0].name == "name]"

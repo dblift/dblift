@@ -266,13 +266,16 @@ class MySqlConfig(DialectConfig):
             ),
             # Grammar-based: CREATE intimeAction? indexCategory? INDEX uid ... ON tableName
             # Supports ONLINE/OFFLINE, UNIQUE/FULLTEXT/SPATIAL
+            # Unlike a table, a MySQL index name is never itself schema-
+            # qualified - the ON-target is matched but never captured, so
+            # the object reports its own name with the default schema.
             "index": re.compile(
                 r"\b(?:CREATE|DROP)\s+(?:ONLINE|OFFLINE\s+)?"
                 r"(?:UNIQUE\s+|FULLTEXT\s+|SPATIAL\s+)?"
                 r"INDEX\s+(?:IF\s+(?:NOT\s+)?EXISTS\s+)?"
                 r"(?:(?:`([^`]+)`)|([a-zA-Z_][a-zA-Z0-9_]*))"
-                r"(?:\s+ON\s+(?:(?:`([^`]+)`)|([a-zA-Z_][a-zA-Z0-9_]*))"
-                r"(?:\.(?:`([^`]+)`)|([a-zA-Z_][a-zA-Z0-9_]*))?)?",
+                r"(?:\s+ON\s+(?:`[^`]+`|[a-zA-Z_][a-zA-Z0-9_]*)"
+                r"(?:\.(?:`[^`]+`)|[a-zA-Z_][a-zA-Z0-9_]*)?)?",
                 re.IGNORECASE,
             ),
             "database": re.compile(

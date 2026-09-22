@@ -33,6 +33,24 @@ def _split_extracted_object_name(obj_name: str, schema: Optional[str]) -> Tuple[
     return bare_name, schema or prefix
 
 
+def _cannot_determine_index_table(obj_name: str, sql: str) -> UndoStatement:
+    """Build the undo entry for an INDEX drop whose table could not be found.
+
+    Some dialects (SQL Server, MySQL) reject a schema-qualified ``DROP
+    INDEX`` — they require naming the table. Guessing one would risk
+    emitting SQL the server rejects, or worse, one it accepts against the
+    wrong table, so this refuses instead and flags the line for review.
+    """
+    return UndoStatement(
+        sql=f"-- WARNING: Could not determine the table for index '{obj_name}'; "
+        f"DROP INDEX requires it on this dialect",
+        original_statement=sql,
+        operation_type="CREATE",
+        warning=f"Could not determine the table for index '{obj_name}'",
+        requires_manual_review=True,
+    )
+
+
 class _UndoReversersMixin:
     """Mixin providing all _reverse_* methods for reversing SQL statements."""
 
@@ -173,7 +191,9 @@ class _UndoReversersMixin:
 
         # Generate DROP statement based on object type
         if obj_type in ("TABLE", "INDEX", "VIEW", "SEQUENCE", "TRIGGER", "PROCEDURE", "FUNCTION"):
-            drop_sql = self._generate_drop_statement(obj_type, obj_name, schema)
+            drop_sql = self._generate_drop_statement(obj_type, obj_name, schema, sql)
+            if drop_sql is None:
+                return _cannot_determine_index_table(obj_name, sql)
             return UndoStatement(
                 sql=drop_sql,
                 original_statement=sql,
@@ -221,7 +241,9 @@ class _UndoReversersMixin:
 
         # Generate DROP statement based on object type
         if obj_type in ("TABLE", "INDEX", "VIEW", "SEQUENCE", "TRIGGER", "PROCEDURE", "FUNCTION"):
-            drop_sql = self._generate_drop_statement(obj_type, obj_name, schema)
+            drop_sql = self._generate_drop_statement(obj_type, obj_name, schema, sql)
+            if drop_sql is None:
+                return _cannot_determine_index_table(obj_name, sql)
             return UndoStatement(
                 sql=drop_sql,
                 original_statement=sql,

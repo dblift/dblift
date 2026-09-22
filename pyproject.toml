@@ -813,7 +813,6 @@ module = [
     "dblift.db.plugins.oracle.quirks",
     "dblift.db.plugins.oracle.oracle",
     "dblift.db.plugins.oracle.oracle.dbms_output",
-    "dblift.db.plugins.oracle.oracle.schema_operations",
     "dblift.db.plugins.oracle.parser",
     "dblift.db.plugins.oracle.parser.oracle_parser",
     "dblift.db.plugins.oracle.parser.oracle_statement_parser",

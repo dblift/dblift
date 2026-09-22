@@ -20,6 +20,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Oracle `clean` (and its `--dry-run` preview) now drops reference-partitioned
+  child tables before their partitioning parent. `CASCADE CONSTRAINTS` alone
+  does not release a reference-partitioning dependency, so a schema with
+  such tables could fail to clean.
 - `validate` now says it does not parse migration SQL, and its `--help`
   spells out what it checks instead (consistency on disk, plus checksums
   and ordering against applied history once there is any). Previously
@@ -32,6 +36,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   was reported as `real_one (id int);` — the column list and trailing
   punctuation included — and the same table could appear twice, once
   garbled and once correct.
+- SQL Server object extraction now reads a `]` or `"` doubled inside a
+  bracketed or double-quoted identifier as the escape T-SQL defines for it,
+  instead of stopping at the first one. Previously `[real]]one]` and
+  `"real""one"` were both extracted as `real`, silently dropping the rest
+  of the name.
 - SQL Server `CREATE`/`DROP INDEX`, including `XML` indexes, now report
   the index's own name as the object name, with its schema defaulted
   rather than guessed from the table. Previously the index name was
@@ -42,6 +51,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `DROP INDEX real_one.idx1` extracted `real_one` as the schema, and an
   explicit owner in the three-part form (`DROP INDEX dbo.real_one.idx1`)
   was discarded in favor of the default schema.
+- MySQL `CREATE`/`DROP INDEX` now report the index's own name, with its
+  schema defaulted rather than guessed from the `ON`-target table. Db2
+  `CREATE`/`DROP INDEX` now report the index's own name and, when given,
+  its own schema — a Db2 index carries a schema independent of its
+  table's. Previously both reported the table name as the index and the
+  index name as the schema.
 - Migrations against engines that nest block comments — PostgreSQL, SQL
   Server, DuckDB, and the PostgreSQL-engine deployments Citus, TimescaleDB,
   Neon, Supabase, AlloyDB and Aurora PostgreSQL — now read a comment that
@@ -125,6 +140,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   silent on this ordinary boundary correction and still fires when a login
   shared with another connection is changed mid-migration, which is what it
   is meant to catch. Verified against a live SQL Server instance.
+- Auto-generated undo scripts now drop an index the way each engine expects.
+  SQL Server and MySQL name the table (`DROP INDEX name ON table`), using
+  that table's own schema from the original `CREATE INDEX` statement rather
+  than the index's; SQL Server's own bracket-quoted, three-part
+  `database.schema.table`, and `CLUSTERED`/`NONCLUSTERED`/`FULLTEXT`/
+  `PRIMARY XML INDEX` forms are all recognized. A migration that adds an
+  index now produces an undo script SQL Server and MySQL will actually run,
+  instead of a schema-qualified `DROP INDEX schema.name` SQL Server rejects.
+  When the table can't be determined at all — including a name whose
+  escaped closing quote or bracket this doesn't understand — the undo
+  script now says so and asks for manual review instead of guessing or
+  naming the wrong table. PostgreSQL, SQLite, Oracle and Db2 are
+  unaffected — verified against a live PostgreSQL instance; the others by
+  their documented syntax (SQL Server's own statement was not verified
+  against a live instance — none was reachable).
 
 ### Removed
 
