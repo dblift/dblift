@@ -1,5 +1,5 @@
 """Stable interfaces for third-party DBLift extensions."""
 
-from dblift.extensions import sql_model
+from dblift.extensions import providers, sql_model
 
-__all__ = ["sql_model"]
+__all__ = ["providers", "sql_model"]
