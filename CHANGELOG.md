@@ -9,8 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+### Changed
+
+### Fixed
+
+### Removed
+
+## [4.8.0] - 2026-09-22
+
+### Added
+
 - Added `dblift.extensions.sql_model`, a stable import path for schema-model
-  types used by third-party plugins.
+  types and helpers used by third-party plugins.
 
 ### Changed
 
