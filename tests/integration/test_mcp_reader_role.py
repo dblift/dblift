@@ -189,16 +189,22 @@ def test_reader_role_on_schema_with_no_history_table_fails_closed(tmp_path):
 
         validate, info = anyio.run(_session, reader_yaml, scenario)
 
+        # `validate` catches the history-table failure itself
+        # (`ValidateCommand.execute`'s own try/except) and reports it as a
+        # result, so it is a verdict to the runner, not a crash.
         assert validate.is_error is False
         assert validate.structured_content["success"] is False
         assert "permission denied" in validate.structured_content["error"]
 
-        # `info` routes the same PostgreSQL denial through
+        # `info` raises the same denial from preflight instead of catching
+        # it, so the runner never gets a result object and it surfaces as an
+        # MCP error result. It also routes through
         # dblift.db.error.format_connection_error, which folds an
         # AUTHORIZATION-category error into a generic "invalid credentials"
-        # message — so only the success field is asserted here.
-        assert info.is_error is False
-        assert info.structured_content["success"] is False
+        # message — the real "permission denied" `validate` shows above is
+        # not visible here.
+        assert info.is_error is True
+        assert "invalid credentials" in info.content[0].text
 
         assert admin.table_exists(schema, "dblift_schema_history") is False
     finally:

@@ -118,4 +118,10 @@ read-only — each tool declares its own read-only hint, and a client should
 trust that per-tool hint over this paragraph.
 
 Tool errors carry the same message the CLI prints (a missing configuration, a
-command the installed edition does not cover, …) and never stop the server.
+command the installed edition does not cover, …) and never stop the server. A
+command that fails before producing a result — a refused connection, a
+history table that could not be created, an exception inside the command —
+is returned as an MCP error result carrying the CLI's message, and
+`dblift://history` / `dblift://pending` report that failure instead of
+returning an empty list. A command that ran to a result, even a failed one
+such as validation issues, is still a normal result with `success: false`.
