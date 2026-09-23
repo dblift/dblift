@@ -49,11 +49,48 @@ from dblift.core.logger import (
     RepairResult,
     ValidateResult,
 )
+from dblift.extensions.sql_model import (
+    ConstraintType,
+    DatabaseLink,
+    Event,
+    Extension,
+    ForeignDataWrapper,
+    ForeignServer,
+    Index,
+    LinkedServer,
+    Module,
+    Package,
+    Parameter,
+    ParseResult,
+    Partition,
+    Procedure,
+    Sequence,
+    ServerInfo,
+    SqlColumn,
+    SqlConstraint,
+    SqlObject,
+    SqlObjectType,
+    SqlStatementType,
+    Synonym,
+    Table,
+    TableCanonicalizer,
+    TableOptions,
+    Trigger,
+    UserDefinedType,
+    View,
+    dialect_requires_schema,
+    get_constraint_type_name,
+    get_object_type_name,
+    get_sqlglot_dialect,
+    quote_identifier,
+    quote_qualified,
+    supports_feature,
+)
 ```
 
-These names are enumerated in each module's `__all__`, and the `api`
-package ships a PEP 561 `py.typed` marker so downstream type checkers
-pick up annotations.
+These names are enumerated in each module's `__all__`, and the top-level
+package ships a PEP 561 `py.typed` marker so downstream type checkers pick up
+annotations across every public subpackage.
 
 ### 1.2 What is NOT public
 

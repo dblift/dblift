@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "dblift"
-version = "4.7.0"
+version = "4.8.0"
 description = "Flyway-style raw-SQL migrations for Python teams. No JVM, and you see the exact SQL before it runs."
 keywords = ["flyway", "migrations", "python", "sql", "postgresql", "mysql"]
 readme = "README.md"
@@ -188,9 +188,9 @@ include = ["dblift*"]
 exclude = ["tests*", "demo*", "scripts*", "docs*", "example*", "logo*", "site*"]
 
 [tool.setuptools.package-data]
-# PEP 561: ship ``dblift/api/py.typed`` so downstream type checkers pick up
-# the public API's type annotations. See docs/semver-policy.md.
-"dblift.api" = ["py.typed"]
+# PEP 561: ship the marker at the top-level package so every public subpackage
+# is typed. See docs/semver-policy.md.
+"dblift" = ["py.typed"]
 "dblift.core.logger" = ["templates/*.html"]
 
 [tool.black]

@@ -18,21 +18,94 @@ Dropping one of the three steps fails CI, not human review.
 
 from __future__ import annotations
 
+import importlib
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
 
+ADDITIONAL_SQL_MODEL_EXPORT_SOURCES = {
+    "ConstraintType": "dblift.core.sql_model.base",
+    "ServerInfo": "dblift.core.sql_model.server_info",
+    "TableCanonicalizer": "dblift.core.sql_model.table_canonicalizer",
+    "TableOptions": "dblift.core.sql_model.table_options",
+    "dialect_requires_schema": "dblift.core.sql_model.dialect",
+    "get_sqlglot_dialect": "dblift.core.sql_model.dialect",
+    "supports_feature": "dblift.core.sql_model.feature_gates",
+}
 
-def test_api_package_has_py_typed_marker():
-    """PEP 561: downstream type checkers look for ``api/py.typed``.
 
-    If this file vanishes (or the packaging config stops shipping it),
-    downstream IDEs and mypy runs on consumer projects silently lose
-    dblift's type information. Pin the marker's existence.
-    """
-    marker = Path(__file__).resolve().parents[3] / "dblift" / "api" / "py.typed"
-    assert marker.is_file(), "api/py.typed marker missing. See PEP 561 + docs/semver-policy.md."
+def test_package_has_py_typed_marker():
+    marker = Path(__file__).resolve().parents[3] / "dblift" / "py.typed"
+    assert marker.is_file(), "dblift/py.typed marker missing. See PEP 561 + docs/semver-policy.md."
+
+
+class TestExtensionSqlModelSurface:
+    EXPECTED_EXPORTS = {
+        "ConstraintType",
+        "DatabaseLink",
+        "Event",
+        "Extension",
+        "ForeignDataWrapper",
+        "ForeignServer",
+        "Index",
+        "LinkedServer",
+        "Module",
+        "Package",
+        "Parameter",
+        "ParseResult",
+        "Partition",
+        "Procedure",
+        "Sequence",
+        "ServerInfo",
+        "SqlColumn",
+        "SqlConstraint",
+        "SqlObject",
+        "SqlObjectType",
+        "SqlStatementType",
+        "Synonym",
+        "Table",
+        "TableCanonicalizer",
+        "TableOptions",
+        "Trigger",
+        "UserDefinedType",
+        "View",
+        "dialect_requires_schema",
+        "get_constraint_type_name",
+        "get_object_type_name",
+        "get_sqlglot_dialect",
+        "quote_identifier",
+        "quote_qualified",
+        "supports_feature",
+    }
+
+    def test_extension_package_exposes_only_named_categories(self):
+        import dblift.extensions as extensions
+        from dblift.extensions import sql_model
+
+        assert extensions.__all__ == ["sql_model"]
+        assert extensions.sql_model is sql_model
+
+    def test_sql_model_exports_are_explicit(self):
+        from dblift.extensions import sql_model
+
+        assert set(sql_model.__all__) == self.EXPECTED_EXPORTS
+
+    @pytest.mark.parametrize("symbol_name", sorted(EXPECTED_EXPORTS))
+    def test_sql_model_reexports_the_existing_objects(self, symbol_name):
+        from dblift.extensions import sql_model
+
+        source_name = ADDITIONAL_SQL_MODEL_EXPORT_SOURCES.get(symbol_name, "dblift.core.sql_model")
+        source_module = importlib.import_module(source_name)
+
+        assert getattr(sql_model, symbol_name) is getattr(source_module, symbol_name)
+
+    def test_schema_requirement_query_keeps_existing_results(self):
+        from dblift.extensions.sql_model import dialect_requires_schema
+
+        assert dialect_requires_schema("sqlite") is False
+        assert dialect_requires_schema("postgresql") is True
+        assert dialect_requires_schema("unknown") is True
 
 
 class TestApiPackageSurface:
