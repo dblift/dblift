@@ -50,7 +50,7 @@ The layout deliberately mirrors `db/plugins/postgresql/` (and siblings) so the s
 2. **plugin.py** — the registration point. It must export a module-level `PLUGIN` that is an instance of `PluginInfo`. The structure is identical to first-party:
 
    ```python
-   from dblift.db.provider_registry import PluginInfo
+   from dblift.extensions.providers import PluginInfo
    from dblift.db.plugins.myprovider.provider import MyproviderProvider
    from dblift.db.plugins.myprovider.quirks import MyproviderQuirks
    from dblift.db.plugins.myprovider.sqlalchemy_url import build_sqlalchemy_url
@@ -103,10 +103,11 @@ The layout deliberately mirrors `db/plugins/postgresql/` (and siblings) so the s
 cd dblift-myprovider
 pip install -e .
 python -c '
-from dblift.db.provider_registry import ProviderRegistry
+from dblift.extensions.providers import ProviderRegistry
 ProviderRegistry.discover_plugins()
-print("myprovider" in ProviderRegistry._plugins)
-print(ProviderRegistry._plugins["myprovider"])
+plugin = ProviderRegistry.get_plugin_info("myprovider")
+assert plugin is not None
+print(plugin)
 '
 ```
 
@@ -135,7 +136,7 @@ print(ProviderRegistry._plugins["myprovider"])
 - When you are ready for first-party inclusion, the same files can be moved into the main tree under `db/plugins/<name>/` + one line added to the main `pyproject.toml` (the cookiecutter deliberately produces the identical shape).
 - See also:
   - [Plugin entry points](plugin-entry-points.md)
-  - `db/provider_registry.py` (the PluginInfo dataclass and discovery code)
+  - `dblift.extensions.providers` (the stable `PluginInfo` and registry import path)
   - Existing first-party plugins (especially `postgresql` for a full native SQLAlchemy example and `sqlite` for the simplest URL builder).
 
 If your provider only needs the stock ANSI behaviour, the generated stubs + a correct `build_sqlalchemy_url` may be sufficient to get `migrate` / `info` / Python migrations working immediately.
