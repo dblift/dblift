@@ -8,7 +8,7 @@ Plugin code should import schema-model types from the stable extension surface,
 not from `dblift.core` implementation modules:
 
 ```python
-from dblift.extensions.sql_model import Index, Table, View
+from dblift.extensions.sql_model import ConstraintType, Index, Table, View
 ```
 
 The complete supported surface is listed in `dblift.extensions.sql_model.__all__`

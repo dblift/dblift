@@ -30,8 +30,15 @@ from dblift.core.sql_model import (
     quote_identifier,
     quote_qualified,
 )
+from dblift.core.sql_model.base import ConstraintType
+from dblift.core.sql_model.dialect import dialect_requires_schema, get_sqlglot_dialect
+from dblift.core.sql_model.feature_gates import supports_feature
+from dblift.core.sql_model.server_info import ServerInfo
+from dblift.core.sql_model.table_canonicalizer import TableCanonicalizer
+from dblift.core.sql_model.table_options import TableOptions
 
 __all__ = [
+    "ConstraintType",
     "DatabaseLink",
     "Event",
     "Extension",
@@ -46,6 +53,7 @@ __all__ = [
     "Partition",
     "Procedure",
     "Sequence",
+    "ServerInfo",
     "SqlColumn",
     "SqlConstraint",
     "SqlObject",
@@ -53,11 +61,16 @@ __all__ = [
     "SqlStatementType",
     "Synonym",
     "Table",
+    "TableCanonicalizer",
+    "TableOptions",
     "Trigger",
     "UserDefinedType",
     "View",
+    "dialect_requires_schema",
     "get_constraint_type_name",
     "get_object_type_name",
+    "get_sqlglot_dialect",
     "quote_identifier",
     "quote_qualified",
+    "supports_feature",
 ]
