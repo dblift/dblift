@@ -18,10 +18,21 @@ Dropping one of the three steps fails CI, not human review.
 
 from __future__ import annotations
 
+import importlib
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
+
+ADDITIONAL_SQL_MODEL_EXPORT_SOURCES = {
+    "ConstraintType": "dblift.core.sql_model.base",
+    "ServerInfo": "dblift.core.sql_model.server_info",
+    "TableCanonicalizer": "dblift.core.sql_model.table_canonicalizer",
+    "TableOptions": "dblift.core.sql_model.table_options",
+    "dialect_requires_schema": "dblift.core.sql_model.dialect",
+    "get_sqlglot_dialect": "dblift.core.sql_model.dialect",
+    "supports_feature": "dblift.core.sql_model.feature_gates",
+}
 
 
 def test_package_has_py_typed_marker():
@@ -31,6 +42,7 @@ def test_package_has_py_typed_marker():
 
 class TestExtensionSqlModelSurface:
     EXPECTED_EXPORTS = {
+        "ConstraintType",
         "DatabaseLink",
         "Event",
         "Extension",
@@ -45,6 +57,7 @@ class TestExtensionSqlModelSurface:
         "Partition",
         "Procedure",
         "Sequence",
+        "ServerInfo",
         "SqlColumn",
         "SqlConstraint",
         "SqlObject",
@@ -52,13 +65,18 @@ class TestExtensionSqlModelSurface:
         "SqlStatementType",
         "Synonym",
         "Table",
+        "TableCanonicalizer",
+        "TableOptions",
         "Trigger",
         "UserDefinedType",
         "View",
+        "dialect_requires_schema",
         "get_constraint_type_name",
         "get_object_type_name",
+        "get_sqlglot_dialect",
         "quote_identifier",
         "quote_qualified",
+        "supports_feature",
     }
 
     def test_extension_package_exposes_only_named_categories(self):
@@ -75,10 +93,19 @@ class TestExtensionSqlModelSurface:
 
     @pytest.mark.parametrize("symbol_name", sorted(EXPECTED_EXPORTS))
     def test_sql_model_reexports_the_existing_objects(self, symbol_name):
-        import dblift.core.sql_model as internal_model
-        import dblift.extensions.sql_model as extension_model
+        from dblift.extensions import sql_model
 
-        assert getattr(extension_model, symbol_name) is getattr(internal_model, symbol_name)
+        source_name = ADDITIONAL_SQL_MODEL_EXPORT_SOURCES.get(symbol_name, "dblift.core.sql_model")
+        source_module = importlib.import_module(source_name)
+
+        assert getattr(sql_model, symbol_name) is getattr(source_module, symbol_name)
+
+    def test_schema_requirement_query_keeps_existing_results(self):
+        from dblift.extensions.sql_model import dialect_requires_schema
+
+        assert dialect_requires_schema("sqlite") is False
+        assert dialect_requires_schema("postgresql") is True
+        assert dialect_requires_schema("unknown") is True
 
 
 class TestApiPackageSurface:

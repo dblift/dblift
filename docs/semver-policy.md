@@ -50,6 +50,7 @@ from dblift.core.logger import (
     ValidateResult,
 )
 from dblift.extensions.sql_model import (
+    ConstraintType,
     DatabaseLink,
     Event,
     Extension,
@@ -64,6 +65,7 @@ from dblift.extensions.sql_model import (
     Partition,
     Procedure,
     Sequence,
+    ServerInfo,
     SqlColumn,
     SqlConstraint,
     SqlObject,
@@ -71,13 +73,18 @@ from dblift.extensions.sql_model import (
     SqlStatementType,
     Synonym,
     Table,
+    TableCanonicalizer,
+    TableOptions,
     Trigger,
     UserDefinedType,
     View,
+    dialect_requires_schema,
     get_constraint_type_name,
     get_object_type_name,
+    get_sqlglot_dialect,
     quote_identifier,
     quote_qualified,
+    supports_feature,
 )
 ```
 
