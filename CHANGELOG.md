@@ -13,6 +13,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `dblift mcp` now returns a tool call whose command failed before producing
+  a result (a refused connection, a history table that could not be
+  created, an exception inside the command) as an MCP error result carrying
+  the CLI's message, instead of a normal result with `success: false` that
+  an agent could read as success. The `dblift://history` and
+  `dblift://pending` resources report such a failure instead of returning an
+  empty list. A command that ran to a result — even a failed one, such as
+  validation issues — is still a normal result.
+
 ### Removed
 
 ## [4.8.0] - 2026-09-22

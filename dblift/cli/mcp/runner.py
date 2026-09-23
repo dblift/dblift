@@ -120,6 +120,20 @@ class CommandInvocationError(Exception):
         self.exit_code = exit_code
 
 
+def _is_run_json_guarded_exception_payload(payload: object) -> bool:
+    """Whether *payload* is ``run_json_guarded``'s ``(False, None)`` shape.
+
+    That branch is the only one writing a payload without a result object
+    behind it: ``{"success": False, "error": "<Type>: <msg>"}``. Every
+    verdict — including a failed validation — comes from ``(result.success,
+    result)`` instead, so pairing this with a ``None`` result is what tells
+    the two apart.
+    """
+    return (
+        isinstance(payload, dict) and payload.get("success") is False and bool(payload.get("error"))
+    )
+
+
 class _TeeStream(io.TextIOBase):
     """A write target that both records text and mirrors it to another stream.
 
@@ -294,4 +308,10 @@ def _run_command_locked(
         ) from exc
     if not isinstance(payload, dict):
         return {"success": True, "result": payload}
+    if _result is None and _is_run_json_guarded_exception_payload(payload):
+        # No verdict was produced at all — the command crashed or swallowed
+        # its own failure before building a result object — so the CLI's
+        # message belongs in the raised error, not in a normal payload a
+        # caller could read as a completed run.
+        raise CommandInvocationError(payload["error"], 1)
     return payload
