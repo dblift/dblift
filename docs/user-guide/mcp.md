@@ -43,7 +43,74 @@ against the recorded history too — checksums, script order, missing files.
 It does not parse or check the SQL inside them; a script with invalid SQL
 passes both `validate` and `migrate_dry_run`.
 
+## What protects the database
+
+None of the built-in tools can apply, undo or clean a migration (see *Not
+exposed* below). That is not what protects a database from an agent, though.
+The agent has a shell next to this server, and both run with the same
+`dblift.yaml`, environment variables and secrets. What protects the database is
+the role the server connects with and the environment it is pointed at. The
+flags in the next section only shape what an agent sees and asks this server
+for: `--read-only` and `--mode review` trust each tool's own `read_only`
+declaration, `--offline` trusts its `connects` declaration, `--tools` and
+`--resources` are exact-name allowlists, and all of them live in a file the
+agent can edit.
+
+**Give the agent a role that can only read.** Once the schema-history table
+exists, `info`, `validate` and `migrate_dry_run` need `USAGE` on the schema and
+`SELECT` on its tables, nothing else; the integration suite pins this on
+PostgreSQL. On a database that has no history table yet, the reader has no
+`CREATE`, so `info` and `validate` fail instead of creating it, and
+`migrate_dry_run` neither fails nor creates it: a dry run skips the table
+entirely and reports every script as pending. Create the table with the role
+that applies migrations first (`dblift migrate` or `dblift baseline`), then
+hand the reader to the agent. On PostgreSQL:
+
+```sql
+CREATE ROLE dblift_reader LOGIN PASSWORD '...';
+GRANT USAGE ON SCHEMA public TO dblift_reader;
+GRANT SELECT ON ALL TABLES IN SCHEMA public TO dblift_reader;
+```
+
+**Point the server at its own environment and pin it.** Declare the reader's
+credentials as an environment of their own and name it in `.mcp.json`, so the
+agent never runs under the block your deploy pipeline uses. An environment is
+deep-merged over the root sections (see [Configuration](configuration.md#environments)), so
+only the credential differs:
+
+```yaml
+database:
+  type: postgresql
+  host: localhost
+  database: app
+  username: dblift_app
+  password: "${DBLIFT_APP_PASSWORD}"
+
+environments:
+  agent:
+    database:
+      username: dblift_reader
+      password: "${DBLIFT_READER_PASSWORD}"
+```
+
+```json
+{ "mcpServers": { "dblift": { "command": "dblift", "args": ["--env", "agent", "mcp"] } } }
+```
+
+`--env` placed before `mcp` applies to every tool call, and no tool argument
+can change it.
+
+**Keep production out of the agent's process entirely.** The credential that
+can `CREATE`, `DROP` or `TRUNCATE` belongs to the pipeline that runs
+`dblift migrate`, not to a developer's shell with a coding agent in it. A
+production connection string in that shell's environment is reachable by the
+agent whatever this server withholds. A rule in a prompt is a request; a
+secret that is not there is a lock.
+
 ## Restricting a session
+
+These flags narrow what an agent can ask this server for. They are not what
+protects the database; the section above is.
 
 `dblift mcp --read-only` skips every tool whose registrar declared it
 `read_only=False`. It trusts declarations: it catches an honest add-on's
