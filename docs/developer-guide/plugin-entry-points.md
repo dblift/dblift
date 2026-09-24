@@ -14,9 +14,9 @@ from dblift.extensions.sql_generation import GenerationOptions, SqlStatement
 from dblift.extensions.sql_model import ConstraintType, Index, Table, View
 ```
 
-`sql_generation.SqlStatement` describes generated migration SQL. The separate
-`sql_model.SqlStatement` describes parsed SQL and remains part of the schema
-model surface; the two classes are not interchangeable.
+`sql_generation.SqlStatement` describes generated migration SQL. Parsed
+statements returned in `sql_model.ParseResult.statements` use a separate
+model; the two classes are not interchangeable.
 
 The complete supported surfaces are listed in each extension module's
 `__all__` and covered by the semantic-versioning policy.
