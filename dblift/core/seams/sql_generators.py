@@ -1,4 +1,4 @@
-"""Neutral seam for higher-tier SQL generator registration."""
+"""Registry of SQL generator registrars contributed by add-on packages."""
 
 from __future__ import annotations
 
@@ -13,7 +13,7 @@ _bootstrapped = False
 
 
 def register_sql_generator_registrar(registrar: Callable[[], None]) -> None:
-    """Register a higher-tier SQL generator registrar exactly once."""
+    """Register a SQL generator registrar exactly once."""
     if registrar not in _registrars:
         _registrars.append(registrar)
 
@@ -26,7 +26,7 @@ def attach_registered_sql_generators() -> None:
         # Latch only if load_feature_extensions() actually populated
         # _registrars -- same latch bug as AlterGeneratorFactory._ensure_populated
         # and feature_loading.load_feature_extensions: an empty result can be
-        # the documented race (a paid package's entry point not yet visible),
+        # the documented race (an add-on package's entry point not yet visible),
         # so it must not be latched permanently and must retry on a later call.
         _bootstrapped = bool(_registrars)
 

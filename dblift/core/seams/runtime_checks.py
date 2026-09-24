@@ -1,8 +1,8 @@
-"""Registry of runtime checks contributed by higher tiers.
+"""Registry of runtime checks contributed by add-on packages.
 
 OSS core calls :func:`run_checks` at defined points; with nothing
-registered these are no-ops. Installed higher tiers register their
-license verification here at package import, via the ``dblift.features``
+registered these are no-ops. Installed add-on packages register their
+checks here at package import, via the ``dblift.features``
 entry-point loader. Check callables raise to abort the operation.
 """
 
