@@ -11,6 +11,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Added `dblift.extensions.providers`, a stable import path for provider plugin
   metadata, registry access, and transport typing.
+- Added `dblift.extensions.sql_generation`, a stable import path for generated
+  SQL statements and generation options used by extensions.
 
 ### Changed
 
