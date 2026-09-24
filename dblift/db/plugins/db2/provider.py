@@ -7,6 +7,7 @@ from typing import Any, Dict, List, Optional, cast
 
 from dblift.config import DbliftConfig
 from dblift.core.constants import DEFAULT_HISTORY_TABLE
+from dblift.core.constants import MIGRATION_LOCK_TABLE as _MIGRATION_LOCK_TABLE
 from dblift.core.logger import Log
 from dblift.core.migration.clean_summary import CleanExecutionSummary
 from dblift.db.object_naming import get_normalized_object_name
@@ -102,7 +103,7 @@ class Db2Provider(SqlAlchemyProvider):
 
     canonical_dialect_key = "db2"
     provider_transport = "native"
-    MIGRATION_LOCK_TABLE = "DBLIFT_MIGRATION_LOCK"
+    MIGRATION_LOCK_TABLE = _MIGRATION_LOCK_TABLE.upper()
 
     #: Schema this connection was last ``SET SCHEMA``'d to. Lets
     #: :meth:`set_current_schema` skip re-issuing ``SET SCHEMA`` on every

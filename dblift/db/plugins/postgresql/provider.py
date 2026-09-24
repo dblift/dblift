@@ -5,6 +5,7 @@ from typing import Any, Dict, List, Optional
 
 from dblift.config import DbliftConfig
 from dblift.core.constants import DEFAULT_HISTORY_TABLE
+from dblift.core.constants import MIGRATION_LOCK_TABLE as _MIGRATION_LOCK_TABLE
 from dblift.core.logger import Log
 from dblift.core.migration.clean_summary import CleanExecutionSummary
 from dblift.db.plugins.base_history_manager import UNDO_HISTORY_TYPE, installed_on_to_bind
@@ -24,7 +25,7 @@ class PostgreSqlProvider(SqlAlchemyProvider):
     """PostgreSQL provider implementation using native SQLAlchemy connections."""
 
     canonical_dialect_key = "postgresql"
-    MIGRATION_LOCK_TABLE = "dblift_migration_lock"
+    MIGRATION_LOCK_TABLE = _MIGRATION_LOCK_TABLE
 
     #: Wrap every ``clean`` drop in a savepoint — see :meth:`drop_object`.
     #: Redshift inherits this provider but has no ``SAVEPOINT`` statement,

@@ -5,6 +5,7 @@ from typing import Any, Dict, List, Optional
 
 from dblift.config import DbliftConfig
 from dblift.core.constants import DEFAULT_HISTORY_TABLE
+from dblift.core.constants import MIGRATION_LOCK_TABLE as _MIGRATION_LOCK_TABLE
 from dblift.core.logger import Log
 from dblift.core.migration.clean_summary import CleanExecutionSummary
 from dblift.core.migration.sql.execution_statement import classify_execution_statement
@@ -28,7 +29,7 @@ class SqlServerProvider(SqlAlchemyProvider):
     """SQL Server provider implementation using native SQLAlchemy/pymssql."""
 
     canonical_dialect_key = "sqlserver"
-    MIGRATION_LOCK_TABLE = "dblift_migration_lock"
+    MIGRATION_LOCK_TABLE = _MIGRATION_LOCK_TABLE
 
     #: The schema this connection's login is believed to actually carry right
     #: now — the baseline :meth:`set_current_schema` compares the catalog's
@@ -252,7 +253,7 @@ class SqlServerProvider(SqlAlchemyProvider):
 
     def acquire_migration_lock(self, schema: str, wait_timeout_seconds: int = 60) -> bool:
         """Acquire a session-scoped SQL Server application lock."""
-        lock_name = f"dblift_migration_lock_{schema}"
+        lock_name = f"{_MIGRATION_LOCK_TABLE}_{schema}"
         rows = self.execute_query(
             """
             DECLARE @result INT;
@@ -271,7 +272,7 @@ class SqlServerProvider(SqlAlchemyProvider):
 
     def release_migration_lock(self, schema: str) -> bool:
         """Release the session-scoped SQL Server application lock."""
-        lock_name = f"dblift_migration_lock_{schema}"
+        lock_name = f"{_MIGRATION_LOCK_TABLE}_{schema}"
         rows = self.execute_query(
             """
             DECLARE @result INT;

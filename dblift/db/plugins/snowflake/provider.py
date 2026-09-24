@@ -8,6 +8,7 @@ from sqlalchemy.engine import Connection, Transaction
 
 from dblift.config import DbliftConfig
 from dblift.core.constants import DEFAULT_HISTORY_TABLE
+from dblift.core.constants import MIGRATION_LOCK_TABLE as _MIGRATION_LOCK_TABLE
 from dblift.core.logger import Log
 from dblift.core.migration.clean_summary import CleanExecutionSummary
 from dblift.db.plugins.base_history_manager import UNDO_HISTORY_TYPE
@@ -41,7 +42,7 @@ class SnowflakeProvider(SqlAlchemyProvider):
     """Snowflake provider using the Snowflake SQLAlchemy dialect."""
 
     canonical_dialect_key = "snowflake"
-    MIGRATION_LOCK_TABLE = "DBLIFT_MIGRATION_LOCK"
+    MIGRATION_LOCK_TABLE = _MIGRATION_LOCK_TABLE.upper()
     _migration_lock_connection: Connection | None = None
     _migration_lock_transaction: Transaction | None = None
 

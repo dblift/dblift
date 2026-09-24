@@ -11,6 +11,7 @@ import sqlite3
 import time
 from typing import Any, Optional
 
+from dblift.core.constants import MIGRATION_LOCK_TABLE
 from dblift.core.logger import Log, NullLog
 from dblift.db.plugins.base_locking_manager import BaseLockingManager
 
@@ -19,7 +20,7 @@ class SQLiteLockingManager(BaseLockingManager):
     """Manages SQLite migration locking operations."""
 
     # SQLite is case-insensitive; we use lowercase by convention
-    DEFAULT_LOCK_TABLE = "dblift_migration_lock"
+    DEFAULT_LOCK_TABLE = MIGRATION_LOCK_TABLE
 
     def __init__(self, query_executor: Any, log: Optional[Log] = None) -> None:
         """Initialize the locking manager.
@@ -43,8 +44,8 @@ class SQLiteLockingManager(BaseLockingManager):
         self.log.debug("Creating migration lock table if not exists")
 
         try:
-            create_table_sql = """
-            CREATE TABLE IF NOT EXISTS "dblift_migration_lock" (
+            create_table_sql = f"""
+            CREATE TABLE IF NOT EXISTS "{MIGRATION_LOCK_TABLE}" (
                 lock_name TEXT NOT NULL PRIMARY KEY,
                 acquired_at TEXT DEFAULT (datetime('now')) NOT NULL,
                 acquired_by TEXT NOT NULL,
@@ -83,7 +84,7 @@ class SQLiteLockingManager(BaseLockingManager):
             # Ensure lock table exists
             self.create_migration_lock_table_if_not_exists(connection, schema)
 
-            lock_name = f"dblift_migration_lock_{schema}"
+            lock_name = f"{MIGRATION_LOCK_TABLE}_{schema}"
             start_time = time.time()
 
             while time.time() - start_time < wait_timeout_seconds:
@@ -95,8 +96,8 @@ class SQLiteLockingManager(BaseLockingManager):
                     self._cleanup_stale_locks(connection, lock_name)
 
                     # Try to insert lock record (will fail if lock already exists)
-                    insert_sql = """
-                    INSERT INTO "dblift_migration_lock"
+                    insert_sql = f"""
+                    INSERT INTO "{MIGRATION_LOCK_TABLE}"
                     (lock_name, acquired_at, acquired_by, process_id, lock_mode)
                     VALUES (?, datetime('now'), ?, ?, 1)
                     """
@@ -168,8 +169,8 @@ class SQLiteLockingManager(BaseLockingManager):
         try:
             # Consider locks older than 24 hours as stale
             # This is a conservative timeout to avoid accidentally cleaning up valid locks
-            delete_sql = """
-            DELETE FROM "dblift_migration_lock"
+            delete_sql = f"""
+            DELETE FROM "{MIGRATION_LOCK_TABLE}"
             WHERE lock_name = ?
             AND datetime(acquired_at) < datetime('now', '-24 hours')
             """
@@ -197,12 +198,12 @@ class SQLiteLockingManager(BaseLockingManager):
         self.log.debug(f"Attempting to release migration lock for schema: {schema}")
 
         try:
-            lock_name = f"dblift_migration_lock_{schema}"
+            lock_name = f"{MIGRATION_LOCK_TABLE}_{schema}"
             process_id = str(os.getpid())
 
             # Only delete lock if we own it (same process_id)
-            delete_sql = """
-            DELETE FROM "dblift_migration_lock"
+            delete_sql = f"""
+            DELETE FROM "{MIGRATION_LOCK_TABLE}"
             WHERE lock_name = ? AND process_id = ?
             """
 

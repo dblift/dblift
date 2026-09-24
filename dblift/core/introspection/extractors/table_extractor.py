@@ -318,7 +318,11 @@ class TableExtractor(BaseExtractor):
         if self._dblift_internal_names is not None:
             return self._dblift_internal_names
 
-        from dblift.core.constants import DBLIFT_SCHEMA_SNAPSHOTS_TABLE, DEFAULT_HISTORY_TABLE
+        from dblift.core.constants import (
+            DBLIFT_SCHEMA_SNAPSHOTS_TABLE,
+            DEFAULT_HISTORY_TABLE,
+            MIGRATION_LOCK_TABLE,
+        )
         from dblift.db.object_naming import get_normalized_object_name
 
         db = getattr(getattr(self.provider, "config", None), "database", None)
@@ -326,7 +330,7 @@ class TableExtractor(BaseExtractor):
         snapshot_raw = getattr(db, "snapshot_table", None)
         history = history_raw if isinstance(history_raw, str) else DEFAULT_HISTORY_TABLE
         snapshot = snapshot_raw if isinstance(snapshot_raw, str) else DBLIFT_SCHEMA_SNAPSHOTS_TABLE
-        lock = getattr(self.provider, "MIGRATION_LOCK_TABLE", "dblift_migration_lock")
+        lock = getattr(self.provider, "MIGRATION_LOCK_TABLE", MIGRATION_LOCK_TABLE)
         flyway_legacy = "schema_version"
 
         dialect = self.dialect or ""
