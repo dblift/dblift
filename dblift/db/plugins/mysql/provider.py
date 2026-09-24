@@ -6,6 +6,10 @@ from dblift.config import DbliftConfig
 from dblift.core.constants import DEFAULT_HISTORY_TABLE
 from dblift.core.constants import MIGRATION_LOCK_TABLE as _MIGRATION_LOCK_TABLE
 from dblift.core.logger import Log
+
+# MySQL's named lock predates the lock table and keeps its historical stem
+# (``dblift_migration_<schema>``), derived here so a renamed product renames it too.
+_LOCK_NAME_STEM = _MIGRATION_LOCK_TABLE.removesuffix("_lock")
 from dblift.core.migration.clean_summary import CleanExecutionSummary
 from dblift.db.plugins.base_history_manager import UNDO_HISTORY_TYPE, installed_on_to_bind
 from dblift.db.plugins.mysql.mysql.schema_operations import MySqlSchemaOperations
@@ -165,7 +169,7 @@ class MySqlProvider(SqlAlchemyProvider):
         """Acquire the MySQL named migration lock."""
         rows = self.execute_query(
             "SELECT GET_LOCK(?, ?) AS lock_result",
-            [f"dblift_migration_{schema}", wait_timeout_seconds],
+            [f"{_LOCK_NAME_STEM}_{schema}", wait_timeout_seconds],
         )
         return bool(rows and rows[0].get("lock_result") == 1)
 
@@ -173,7 +177,7 @@ class MySqlProvider(SqlAlchemyProvider):
         """Release the MySQL named migration lock."""
         rows = self.execute_query(
             "SELECT RELEASE_LOCK(?) AS lock_result",
-            [f"dblift_migration_{schema}"],
+            [f"{_LOCK_NAME_STEM}_{schema}"],
         )
         return bool(rows and rows[0].get("lock_result") == 1)
 

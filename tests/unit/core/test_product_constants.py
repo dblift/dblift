@@ -2,8 +2,12 @@
 
 from __future__ import annotations
 
+import ast
+import io
 import re
+import tokenize
 from pathlib import Path
+from typing import Collection, Iterator
 
 import pytest
 
@@ -16,26 +20,46 @@ CONSTANTS = PACKAGE / "core" / "constants.py"
 
 # Literals that stay by design: a public integration contract and a
 # dialect-specific derived name that cannot be computed from the constant.
-ALLOWED_ENV_PREFIX_SITES = {
-    PACKAGE / "integrations" / "django" / "_client.py",
-    PACKAGE / "db" / "plugins" / "oracle" / "provider.py",
-}
+ALLOWED_ENV_PREFIX_SITES = frozenset(
+    {
+        PACKAGE / "integrations" / "django" / "_client.py",
+        PACKAGE / "db" / "plugins" / "oracle" / "provider.py",
+    }
+)
 
 
-def _code_lines(path: Path):
-    """Yield (line_number, text) for lines that are not comments or docstrings."""
-    in_docstring = False
-    for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
-        stripped = line.strip()
-        if stripped.count('"""') == 1:
-            in_docstring = not in_docstring
+def _docstring_lines(tree: ast.AST) -> set[int]:
+    """Line numbers covered by module, class and function docstrings."""
+    lines: set[int] = set()
+    for node in ast.walk(tree):
+        if not isinstance(node, (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)):
             continue
-        if in_docstring or stripped.startswith("#"):
+        body = node.body
+        if body and isinstance(body[0], ast.Expr) and isinstance(body[0].value, ast.Constant):
+            if isinstance(body[0].value.value, str):
+                first = body[0]
+                lines.update(range(first.lineno, (first.end_lineno or first.lineno) + 1))
+    return lines
+
+
+# A trailing comment on a code line (e.g. `x = 1  # see "dblift_schema_history"`) is still
+# counted as code below: the COMMENT filter only drops lines that are wholly a comment.
+def _code_lines(path: Path) -> Iterator[tuple[int, str]]:
+    """Yield (line_number, text) with comments and docstrings removed."""
+    source = path.read_text(encoding="utf-8")
+    skip = _docstring_lines(ast.parse(source))
+    comment_lines = {
+        tok.start[0]
+        for tok in tokenize.generate_tokens(io.StringIO(source).readline)
+        if tok.type == tokenize.COMMENT and tok.line.lstrip().startswith("#")
+    }
+    for number, line in enumerate(source.splitlines(), start=1):
+        if number in skip or number in comment_lines:
             continue
         yield number, line
 
 
-def _offenders(pattern: str, allowed: set[Path] = frozenset()) -> list[str]:
+def _offenders(pattern: str, allowed: Collection[Path] = ()) -> list[str]:
     regex = re.compile(pattern)
     hits = []
     for path in sorted(PACKAGE.rglob("*.py")):
@@ -54,12 +78,12 @@ def test_values_are_the_historical_defaults() -> None:
 
 
 def test_history_table_literal_appears_only_in_constants() -> None:
-    assert _offenders(r'"dblift_schema_history"|"DBLIFT_SCHEMA_HISTORY"') == []
+    assert _offenders(r'["\']dblift_schema_history["\']|["\']DBLIFT_SCHEMA_HISTORY["\']') == []
 
 
 def test_lock_table_literal_appears_only_in_constants() -> None:
-    assert _offenders(r'"dblift_migration_lock|"DBLIFT_MIGRATION_LOCK"') == []
+    assert _offenders(r'["\']dblift_migration_lock|["\']DBLIFT_MIGRATION_LOCK["\']') == []
 
 
 def test_env_prefix_literal_appears_only_in_constants() -> None:
-    assert _offenders(r'"DBLIFT_', ALLOWED_ENV_PREFIX_SITES) == []
+    assert _offenders(r'["\']DBLIFT_', ALLOWED_ENV_PREFIX_SITES) == []
