@@ -34,6 +34,29 @@ ADDITIONAL_SQL_MODEL_EXPORT_SOURCES = {
     "supports_feature": "dblift.core.sql_model.feature_gates",
 }
 
+LOGGER_EXPORT_SOURCES = {
+    "ConsoleLog": "dblift.core.logger.log",
+    "DbliftLogger": "dblift.core.logger",
+    "FileLog": "dblift.core.logger.log",
+    "HtmlFormatter": "dblift.core.logger.formatters.htmlformatter",
+    "JsonFormatter": "dblift.core.logger.formatters.jsonformatter",
+    "Log": "dblift.core.logger._base",
+    "LogFormat": "dblift.core.logger._levels",
+    "LogLevel": "dblift.core.logger._levels",
+    "MultiLog": "dblift.core.logger._multi",
+    "NullLog": "dblift.core.logger._null",
+    "OperationResult": "dblift.core.logger.results",
+    "OutputFormatter": "dblift.core.logger.formatters.formatter",
+    "TextFormatter": "dblift.core.logger._formatters",
+    "UndoResult": "dblift.core.logger.results",
+    "console_status": "dblift.core.logger.console",
+    "get_stdout_console": "dblift.core.logger.console",
+    "render_panel_to_str": "dblift.core.logger.console",
+    "render_records_table": "dblift.core.logger.console",
+    "render_tree_to_str": "dblift.core.logger.console",
+    "state_text": "dblift.core.logger.console",
+}
+
 
 def test_package_has_py_typed_marker():
     marker = Path(__file__).resolve().parents[3] / "dblift" / "py.typed"
@@ -104,12 +127,141 @@ class TestExtensionSqlModelSurface:
 class TestExtensionPackageSurface:
     def test_extension_package_exposes_only_named_categories(self):
         import dblift.extensions as extensions
-        from dblift.extensions import providers, sql_generation, sql_model
+        from dblift.extensions import logging, providers, sql_generation, sql_model
 
-        assert extensions.__all__ == ["providers", "sql_generation", "sql_model"]
+        assert extensions.__all__ == [
+            "logging",
+            "providers",
+            "sql_generation",
+            "sql_model",
+        ]
+        assert extensions.logging is logging
         assert extensions.providers is providers
         assert extensions.sql_generation is sql_generation
         assert extensions.sql_model is sql_model
+
+
+class TestExtensionLoggingSurface:
+    EXPECTED_EXPORTS = [
+        "ConsoleLog",
+        "DbliftLogger",
+        "FileLog",
+        "HtmlFormatter",
+        "JsonFormatter",
+        "Log",
+        "LogFormat",
+        "LogLevel",
+        "MultiLog",
+        "NullLog",
+        "OperationResult",
+        "OutputFormatter",
+        "TextFormatter",
+        "UndoResult",
+        "console_status",
+        "get_stdout_console",
+        "render_panel_to_str",
+        "render_records_table",
+        "render_tree_to_str",
+        "state_text",
+    ]
+
+    def test_logging_exports_are_exact(self):
+        from dblift.extensions import logging
+
+        assert logging.__all__ == self.EXPECTED_EXPORTS
+
+    @pytest.mark.parametrize("symbol_name", EXPECTED_EXPORTS)
+    def test_logging_reexports_existing_objects(self, symbol_name):
+        from dblift.extensions import logging
+
+        source_module = importlib.import_module(LOGGER_EXPORT_SOURCES[symbol_name])
+
+        assert getattr(logging, symbol_name) is getattr(source_module, symbol_name)
+
+    def test_log_identity_is_shared_across_existing_paths(self):
+        from dblift.core.logger import Log as RootLog
+        from dblift.core.logger._base import Log as DefinedLog
+        from dblift.core.logger.log import Log as LegacyLog
+        from dblift.extensions.logging import Log as ExtensionLog
+
+        assert ExtensionLog is RootLog is DefinedLog is LegacyLog
+
+    def test_null_log_stays_silent(self, capsys):
+        from dblift.extensions.logging import NullLog
+
+        log = NullLog()
+        log.info("hidden")
+        log.error("hidden")
+
+        captured = capsys.readouterr()
+        assert captured.out == ""
+        assert captured.err == ""
+
+    def test_operation_result_retains_data_and_completion_state(self):
+        from dblift.extensions.logging import OperationResult
+
+        result = OperationResult(data={"rows": 3})
+        assert result.end_time is None
+        assert result.execution_time() == 0
+
+        result.complete()
+
+        assert result.data == {"rows": 3}
+        assert result.end_time is not None
+        assert result.execution_time() >= 0
+
+    def test_render_helpers_keep_plain_text_output(self):
+        from rich.panel import Panel
+        from rich.tree import Tree
+
+        from dblift.extensions.logging import (
+            render_panel_to_str,
+            render_records_table,
+            render_tree_to_str,
+            state_text,
+        )
+
+        panel = render_panel_to_str(Panel("ready"))
+        tree = Tree("root")
+        tree.add("leaf")
+        rendered_tree = render_tree_to_str(tree)
+        table = render_records_table(
+            [("State", "left")],
+            [[state_text("PENDING")]],
+        )
+
+        assert "ready" in panel
+        assert "root" in rendered_tree
+        assert "leaf" in rendered_tree
+        assert "State" in table
+        assert "PENDING" in table
+
+    def test_import_does_not_create_runtime_outputs(self, tmp_path):
+        import os
+        import subprocess
+        import sys
+
+        source_root = Path(__file__).resolve().parents[3]
+        environment = os.environ.copy()
+        environment["PYTHONPATH"] = os.pathsep.join(
+            value for value in (str(source_root), environment.get("PYTHONPATH", "")) if value
+        )
+
+        completed = subprocess.run(
+            [
+                sys.executable,
+                "-c",
+                "from dblift.extensions import logging; assert logging.__all__",
+            ],
+            cwd=tmp_path,
+            env=environment,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
+        assert completed.returncode == 0, completed.stderr
+        assert list(tmp_path.iterdir()) == []
 
 
 class TestExtensionSqlGenerationSurface:
