@@ -1,23 +1,21 @@
-"""Dialect boundary contract — Epic 26.
+"""Dialect boundary contract.
 
 This module is the **single declaration** of every behaviour a database
 plugin can override. Adding a hook = ADR + edit this file. Calling a
 hook = ``provider.quirks.<hook>()`` from framework code.
 
-Background
-----------
+Why a boundary
+--------------
 
-Before Epic 26, dialect-specific behaviour leaked into ``api/``,
-``cli/``, ``config/`` and ``core/`` as ~830 hardcoded string-literal
-branches (``if dialect.lower() == "oracle": ...``). This made adding a
-new database backend a 100-file editing task and produced compound-
-predicate bugs (PR 160 Bugbot).
-
-The fix is a single behaviour-overlay protocol — :class:`DialectQuirks`
-— implemented per dialect in ``db/plugins/<X>/quirks.py``. The
-framework asks ``provider.quirks`` for the answer; it never names a
-dialect. ADR 0007 covered the data side (capabilities matrix); this
-module covers the behaviour side.
+Dialect-specific behaviour must not appear in ``api/``, ``cli/``,
+``config/`` or ``core/`` as string-literal branches
+(``if dialect.lower() == "oracle": ...``): every such branch is one more
+file to edit when a backend is added and one more place for a compound
+predicate to go wrong. Instead, one behaviour-overlay protocol —
+:class:`DialectQuirks` — is implemented per dialect in
+``db/plugins/<X>/quirks.py``. The framework asks ``provider.quirks`` for
+the answer; it never names a dialect. ADR 0007 covers the data side
+(capabilities matrix); this module covers the behaviour side.
 
 Layout
 ------
@@ -25,7 +23,7 @@ Layout
 ``DialectQuirks``
     Top-level Protocol. Composes the per-concern sub-protocols below.
 
-Sub-protocols (filled by Epic 26 stories as needed):
+Sub-protocols:
 
 * ``DdlQuirks`` — DDL/SQL rendering hooks.
 * ``ParserQuirks`` — parser/tokenizer factory hooks.
@@ -33,10 +31,6 @@ Sub-protocols (filled by Epic 26 stories as needed):
 * ``ComparatorQuirks`` — schema-diff comparator hooks.
 * ``ValidatorQuirks`` — lint/perf rule hooks.
 * ``TypeMapQuirks`` — type normalisation hooks.
-
-Each sub-protocol starts empty in story 26-2 (this commit) and grows
-as the corresponding story moves logic out of the framework. The shape
-freezes when story 26-14 closes the epic and the lint baseline hits 0.
 
 Resolution
 ----------
@@ -48,9 +42,8 @@ on first access.
 
 A plugin that has nothing to override may omit ``quirks_class`` from
 its ``PluginInfo``; the registry returns a :class:`dblift.db.base_quirks.BaseQuirks`
-instance whose hooks all raise ``NotImplementedError``. As stories
-land, ``BaseQuirks`` gains safe defaults and per-plugin classes
-override only the deltas.
+instance, whose hooks carry safe defaults. Per-plugin classes override
+only the deltas.
 """
 
 from __future__ import annotations
@@ -65,11 +58,11 @@ if TYPE_CHECKING:
 
 @runtime_checkable
 class DdlQuirks(Protocol):
-    """DDL / SQL-rendering hooks. Populated by story 26-3.
+    """DDL / SQL-rendering hooks.
 
-    First hooks (story 26-3 first slice): the DDL generator class and
-    the ALTER generator class for this dialect. Returning ``None``
-    means the framework falls back to the dialect-agnostic
+    First hooks: the DDL generator class and the ALTER generator class
+    for this dialect. Returning ``None`` means the framework falls back
+    to the dialect-agnostic
     :class:`dblift.core.sql_generator.sql_generator.SqlGenerator`.
     """
 
@@ -153,12 +146,12 @@ class DdlQuirks(Protocol):
 
 @runtime_checkable
 class ParserQuirks(Protocol):
-    """Parser / tokenizer factory hooks. Populated by story 26-4."""
+    """Parser / tokenizer factory hooks."""
 
 
 @runtime_checkable
 class ModelQuirks(Protocol):
-    """Domain-model rendering hooks. Populated by story 26-5.
+    """Domain-model rendering hooks.
 
     First hook: how a dialect wraps a trigger body when rendering to
     SQL. Oracle requires ``BEGIN`` / ``END`` blocks; other dialects
@@ -189,7 +182,7 @@ class ModelQuirks(Protocol):
 
 @runtime_checkable
 class ComparatorQuirks(Protocol):
-    """Schema-diff comparator hooks. Populated by story 26-6."""
+    """Schema-diff comparator hooks."""
 
     view_supports_algorithm: bool
     view_supports_force_noforce: bool
@@ -212,7 +205,7 @@ class ComparatorQuirks(Protocol):
 
 @runtime_checkable
 class ValidatorQuirks(Protocol):
-    """Lint / perf rule hooks. Populated by story 26-7."""
+    """Lint / perf rule hooks."""
 
     def existence_check_sql(self, table_name: str) -> str:
         """Return SQL that checks whether *table_name* has any rows."""
@@ -230,7 +223,7 @@ class ValidatorQuirks(Protocol):
 
 @runtime_checkable
 class TypeMapQuirks(Protocol):
-    """Type-normalisation hooks. Populated by story 26-8."""
+    """Type-normalisation hooks."""
 
     def type_equivalents(self) -> "dict[str, str]":
         """Return dialect alias→canonical type mapping."""

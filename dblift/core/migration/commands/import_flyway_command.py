@@ -115,7 +115,7 @@ class ImportFlywayCommand(BaseCommand):
             # leaves the target table untouched rather than half-populated.
             mapped_rows = [self._row_with_mapped_type(row) for row in rows_to_import]
 
-            # BUG-06: emit a user-visible preview in dry-run mode so callers
+            # Emit a user-visible preview in dry-run mode so callers
             # see the list of rows that would be written to dblift_schema_history
             # (previously only log.debug, invisible unless debug logging on).
             if dry_run:

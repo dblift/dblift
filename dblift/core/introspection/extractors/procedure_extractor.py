@@ -726,7 +726,7 @@ class ProcedureExtractor(BaseExtractor):
                         def_sql, def_params = self.vendor_queries.get_function_definition_query(
                             schema, function_name
                         )
-                        # BUG-01: if the vendor has no definition query (base
+                        # If the vendor has no definition query (base
                         # returns (None, [])), keep the function — don't drop
                         # it entirely. Missing-definition is a capture warning,
                         # not a reason to skip the object from export.

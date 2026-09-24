@@ -168,7 +168,7 @@ def _build_args_namespace(
         args, unknown_args, has_validation_error = parse_with_selective_errors(parser)
         if has_validation_error:
             # argparse convention: exit 2 on usage/validation errors so scripts can detect
-            # them with `$?` (BUG-05).
+            # them with `$?`.
             sys.exit(2)
 
         if args is None:
@@ -605,7 +605,7 @@ def _resolve_scripts_directories(
             scripts_dir = config_base_dir / "migrations"
             recursive = getattr(config.migrations, "recursive", True)
 
-    # Batch-5 BUG-02: CLI --recursive / --no-recursive wins over config and
+    # CLI --recursive / --no-recursive wins over config and
     # default. ``recursive_flag`` is ``None`` when neither is passed, so the
     # branches above remain authoritative unless the user explicitly asked.
     cli_recursive = getattr(args, "recursive_flag", None)

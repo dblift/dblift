@@ -872,7 +872,7 @@ class MigrateCommand(BaseCommand):
                     lock_acquired = True
                     self.log.info("Migration lock acquired successfully")
 
-                    # BUG-01: re-read history after lock acquisition. Another
+                    # Re-read history after lock acquisition. Another
                     # process may have applied versioned migrations while we
                     # were waiting; running them again would fail and write
                     # duplicate failure rows into the history table.

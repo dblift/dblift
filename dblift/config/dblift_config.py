@@ -101,7 +101,7 @@ def unrecognized_top_level_keys(data: Dict[str, Any]) -> List[str]:
 def _validate_sql_lint_filler(dialect: str) -> Dict[str, Any]:
     """Minimal ``database:`` block for validate-sql (lint-only) when no real DB is configured.
 
-    Story 26-11: dialect normalisation + placeholder URL come from the
+    Dialect normalisation + placeholder URL come from the
     plugin registry / quirks. The earlier hardcoded
     ``_VALIDATE_SQL_DIALECT_TO_DB``, ``_VALIDATE_SQL_PLACEHOLDER_URL``,
     and ``_VALIDATE_SQL_DB_TO_DIALECT`` dicts are gone; adding a new

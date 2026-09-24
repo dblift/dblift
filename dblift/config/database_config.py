@@ -12,16 +12,15 @@ DEFAULT_CONNECTION_TIMEOUT_SECONDS = 30
 
 
 def _detect_dialect_from_url(url: str) -> str:
-    """Resolve dialect from the URL scheme only (B10-BUG-22).
+    """Resolve dialect from the URL scheme only.
 
     Returns the dialect's canonical name (resolved through the plugin
     registry — aliases like ``postgres`` / ``sqlite3`` map to their
     canonical primary names) or ``""`` when the scheme is unknown.
 
-    Story 26-11: dropped the hardcoded ``_SCHEME_TO_DIALECT`` dict in
-    favour of ``ProviderRegistry.canonical_dialect_name``. Adding a
-    new dialect = drop a plugin folder; the URL-scheme lookup
-    follows automatically.
+    Resolution uses ``ProviderRegistry.canonical_dialect_name`` instead of
+    a hardcoded ``_SCHEME_TO_DIALECT`` dict. Adding a new dialect = drop a
+    plugin folder; the URL-scheme lookup follows automatically.
     """
     if not url:
         return ""
@@ -582,7 +581,7 @@ class DatabaseConfig:
 # ---------------------------------------------------------------------------
 # Per-dialect config subclasses now live in their plugin packages
 # (``db/plugins/<dialect>/config.py``) and register via plugin discovery
-# (story 26-11 / ADR-26 D). Each plugin declares ``config_class=XxxConfig`` on
+# (ADR-26 D). Each plugin declares ``config_class=XxxConfig`` on
 # its ``PluginInfo`` and ``_resolve_config_class`` (above) picks it up through
 # the plugin registry — adding a dialect no longer requires editing ``config/``.
 #

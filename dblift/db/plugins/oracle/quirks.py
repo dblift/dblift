@@ -1,4 +1,4 @@
-"""Oracle :class:`DialectQuirks` — Epic 26."""
+"""Oracle :class:`DialectQuirks`."""
 
 from __future__ import annotations
 
@@ -329,7 +329,7 @@ class OracleQuirks(BaseQuirks):
             return OracleParser
         return None
 
-    # Story 26-3: Oracle DROP variants — native IF EXISTS (23ai+/19.28+, no
+    # Oracle DROP variants — native IF EXISTS (23ai+/19.28+, no
     # version gate) for every object type, CASCADE CONSTRAINTS for tables.
     # TRIGGER/INDEX handled explicitly so they don't fall through the
     # generic quirks-driven fallback (which would emit a shape keyed on
@@ -456,7 +456,7 @@ class OracleQuirks(BaseQuirks):
             return "SYSTIMESTAMP"
         return text
 
-    # Story 27-2: Oracle identity — GENERATED AS IDENTITY with optional
+    # Oracle identity — GENERATED AS IDENTITY with optional
     # seed/increment from column metadata.
     def render_identity_clause(self, col: object) -> "Optional[str]":
         """Oracle identity: ``GENERATED AS IDENTITY`` with optional ``START WITH/INCREMENT BY``.
@@ -472,7 +472,7 @@ class OracleQuirks(BaseQuirks):
             return f"GENERATED AS IDENTITY (START WITH {seed_str} INCREMENT BY {inc_str})"
         return "GENERATED AS IDENTITY"
 
-    # Story 27-4: Oracle FK reference query uses schema twice.
+    # Oracle FK reference query uses schema twice.
     def fk_reference_bind_params(self, schema: str, table: str, column: str) -> "list[str]":
         """Oracle's FK lookup query references the schema twice (``r_owner`` and ``owner``)."""
         return [schema, schema, table, column]

@@ -1,14 +1,9 @@
-"""Default :class:`DialectQuirks` implementation — Epic 26 story 26-2.
+"""Default :class:`DialectQuirks` implementation.
 
 Concrete plugins extend :class:`BaseQuirks` and override only the
 hooks whose behaviour differs from the default. Hooks live in the
 sub-protocols declared in ``core/dialect_boundary.py``; this class
 provides their default bodies.
-
-In story 26-2 the protocol surface is empty (see ``core/dialect_boundary.py``);
-``BaseQuirks`` therefore has no hook bodies yet. As stories 26-3..26-8
-move dialect logic into quirks, this class gains safe defaults and
-per-plugin classes override the deltas.
 """
 
 from __future__ import annotations
@@ -125,8 +120,7 @@ class BaseQuirks:
 
     Subclasses (one per ``db/plugins/<X>/quirks.py``) inherit and
     override the hooks they need. The dialect identifier is mandatory;
-    everything else is optional and gains a default as Epic 26 stories
-    land.
+    everything else is optional and gains a safe default.
     """
 
     dialect_name: str = ""
@@ -145,7 +139,7 @@ class BaseQuirks:
     feature_gates: ClassVar[Dict[str, FeatureGate]] = {}
 
     # ------------------------------------------------------------------
-    # Capability matrix (Epic 26 followup — capabilities-onto-quirks).
+    # Capability matrix.
     # Defaults are conservative: an unknown / placeholder dialect must
     # NOT claim to support transactions or transactional DDL, so
     # callers that fall through to ``BaseQuirks()`` degrade to the
@@ -928,7 +922,7 @@ class BaseQuirks:
     #: ROW_FORMAT / table COLLATE / AUTO_INCREMENT / CREATE_OPTIONS table
     #: options). Identifies the canonical plugin that owns the ``mysql``
     #: ``dialect_options`` namespace so framework code resolves it from the
-    #: registry instead of a hardcoded dialect literal (ADR-26 E story 26-5).
+    #: registry instead of a hardcoded dialect literal (ADR-26 E).
     table_uses_storage_engine_clause: bool = False
     #: PostgreSQL ``INHERITS (parent1, parent2)`` clause.
     table_supports_inherits: bool = False
@@ -1078,8 +1072,8 @@ class BaseQuirks:
         (parser modules pull in heavy deps like ``sqlglot``, so we
         avoid importing them at quirks-class load time).
 
-        Story 26-9 / 26-4 first slice: replaces the three static
-        ``PARSER_MAP`` / ``REGEX_PARSER_MAP`` / ``SQLGLOT_PARSER_MAP``
+        Parser classes are owned by the plugin via this hook, not via
+        static ``PARSER_MAP`` / ``REGEX_PARSER_MAP`` / ``SQLGLOT_PARSER_MAP``
         dicts in ``core/sql_parser/parser_factory.py``.
         """
         return None
@@ -1456,7 +1450,7 @@ class BaseQuirks:
 
           * MySQL skips when ``routine.definition`` is already set,
             otherwise issues ``SHOW CREATE PROCEDURE`` / ``SHOW CREATE
-            FUNCTION`` (BUG-01: ``information_schema.ROUTINES`` exposes
+            FUNCTION`` (``information_schema.ROUTINES`` exposes
             only the body, not the full CREATE statement) and refreshes
             ``routine.body`` from the ``BEGIN`` offset.
           * Oracle always issues ``DBMS_METADATA.GET_DDL`` — its
@@ -1609,7 +1603,7 @@ class BaseQuirks:
         return False
 
     # ------------------------------------------------------------------
-    # View comparison hooks (story 26-6 Wave A).
+    # View comparison hooks.
     # ------------------------------------------------------------------
 
     #: MySQL/MariaDB ``ALGORITHM = MERGE | TEMPTABLE | UNDEFINED`` on views.
@@ -1624,14 +1618,14 @@ class BaseQuirks:
     view_supports_unlogged_and_security: bool = False
 
     # ------------------------------------------------------------------
-    # Trigger comparison hooks (story 26-6 Wave A).
+    # Trigger comparison hooks.
     # ------------------------------------------------------------------
 
     #: PostgreSQL ``CREATE CONSTRAINT TRIGGER`` (deferred row trigger).
     supports_constraint_triggers: bool = False
 
     # ------------------------------------------------------------------
-    # Index comment hooks (story 26-6 Wave A).
+    # Index comment hooks.
     # ------------------------------------------------------------------
 
     #: SQL template for ``COMMENT ON INDEX``. Empty = dialect does not
@@ -1640,7 +1634,7 @@ class BaseQuirks:
     index_comment_template: str = ""
 
     # ------------------------------------------------------------------
-    # Type normalisation hooks (story 26-8 Wave A).
+    # Type normalisation hooks.
     # ------------------------------------------------------------------
 
     def type_equivalents(self) -> "dict[str, str]":
@@ -1667,7 +1661,7 @@ class BaseQuirks:
         return {}
 
     # ------------------------------------------------------------------
-    # Procedure/function comparison hooks (story 26-6 Wave A).
+    # Procedure/function comparison hooks.
     # ------------------------------------------------------------------
 
     #: Oracle stores full procedure DDL in the ``definition`` field rather
@@ -1681,7 +1675,7 @@ class BaseQuirks:
     proc_skip_empty_comparison: bool = False
 
     # ------------------------------------------------------------------
-    # Table comparison hooks (story 26-6 Wave A).
+    # Table comparison hooks.
     # ------------------------------------------------------------------
 
     #: Column DEFAULT values may contain ``ON UPDATE CURRENT_TIMESTAMP``
@@ -1758,7 +1752,7 @@ class BaseQuirks:
 
     #: English-locale substrings indicating a concurrent process won the
     #: race to create the migration-history schema/table (see
-    #: ``MigrationHistoryManager.create_schema_and_history_table``, BUG-07).
+    #: ``MigrationHistoryManager.create_schema_and_history_table``).
     #: Covers PostgreSQL's aborted-transaction cascade and the generic
     #: "already exists" wording MySQL and PostgreSQL both use. Dialects with
     #: a bare ``CREATE TABLE`` (no ``IF NOT EXISTS``) whose driver message
@@ -1971,7 +1965,7 @@ class BaseQuirks:
         return (None, [])
 
     # ------------------------------------------------------------------
-    # Provider display / credential hooks (story 26-10 Wave B).
+    # Provider display / credential hooks.
     # ------------------------------------------------------------------
 
     #: Default driver display string for ``--info`` output when live

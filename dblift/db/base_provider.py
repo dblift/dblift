@@ -47,7 +47,7 @@ class BaseProvider(
     #: (e.g. ``OracleProvider.canonical_dialect_key = "oracle"``). This
     #: is the **single source of truth** the framework consults when it
     #: needs the dialect name — no string matching, no URL sniffing in
-    #: framework code (Epic 26 dialect isolation).
+    #: framework code.
     #:
     #: Defaults to an empty string so generic providers / test fakes that
     #: don't override it fall through to the legacy detection cascade in
@@ -70,7 +70,7 @@ class BaseProvider(
             raise ValueError("config must have a database attribute")
         if not hasattr(config.database, "type") or not config.database.type:
             raise ValueError("config.database must have a type attribute")
-        # Epic 26: cache for the dialect-quirks overlay. Lazy because
+        # Cache for the dialect-quirks overlay. Lazy because
         # ProviderRegistry imports BaseProvider — resolving on
         # construction would force a circular import at module load.
         self._quirks: Optional[BaseQuirks] = None

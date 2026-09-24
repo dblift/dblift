@@ -61,7 +61,7 @@ log = None
 # Includes:
 #  - tool-level flags (--version, log/db config),
 #  - flags shared with subparsers that must be classified as global so they
-#    are not swallowed by the next positional (BUG-01, B10-BUG-22, …),
+#    are not swallowed by the next positional,
 #  - console-output toggles introduced by the Rich rollout (top-level only).
 _GLOBAL_ONLY_ARGS: List[str] = [
     "--version",
@@ -76,14 +76,14 @@ _GLOBAL_ONLY_ARGS: List[str] = [
     # --config/--scripts/--dry-run are defined on the top-level parser AND on most
     # subparsers. Classifying them as global lets `dblift --config F db check-connection`
     # work: without this, --config ends up in subcommand_args and the `db` parser
-    # consumes its value as the `db_command` positional (BUG-01).
+    # consumes its value as the `db_command` positional.
     "--config",
     # --env selects the active environments: block; like --config it is
     # configuration selection, root-only, and takes a value.
     "--env",
     "--scripts",
     "--dry-run",
-    # B8-BUG-01: --recursive / --no-recursive live on the top-level parser
+    # --recursive / --no-recursive live on the top-level parser
     # (mutually exclusive group in _parser_setup.py). Without marking them
     # global, they leak into subcommand_args and the subparser rejects them
     # as "unrecognized arguments".
@@ -150,7 +150,7 @@ def _root_only_boolean_flags(parser: argparse.ArgumentParser) -> Set[str]:
 
 
 # Tool-level flag aliases for subcommands that take their own version-like
-# argument. Used by the B10-BUG-04 footgun guard in phase 1 to redirect
+# argument. Used by the footgun guard in phase 1 to redirect
 # `dblift baseline --version 1.0.0` to the correct flag instead of
 # short-circuiting through the global tool-version print.
 _SUBCOMMAND_VERSION_ALIASES = {
@@ -399,7 +399,7 @@ def _parse_argv_and_load_config(argv: List[str]) -> _CliContext:
         argv, available_commands, global_only_args, global_boolean_flags
     )
 
-    # B10-BUG-04: Flyway users type ``dblift baseline --version 1.0.0``
+    # Flyway users type ``dblift baseline --version 1.0.0``
     # expecting to set the baseline version. Our ``--version`` flag is
     # global and short-circuits everything with the tool-version print —
     # the positional after it is silently dropped. Worse, for ``migrate``
@@ -698,7 +698,7 @@ def _dispatch_command(ctx: _CliContext, command_output: CommandOutput) -> int:
                     cmd_args, cmd_unknown, has_error = parse_with_selective_errors(cmd_parser)
                     if has_error:
                         # argparse exits 2 on usage errors; preserve that for multi-command
-                        # mode too (BUG-05).
+                        # mode too.
                         sys.exit(2)
                     if cmd_args is None:
                         cmd_args = ctx.args

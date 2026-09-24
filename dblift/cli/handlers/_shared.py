@@ -76,7 +76,7 @@ class ConfigOnlyClient:
 
 
 def _set_command_completed(log: Any, result: Any, command_type: str) -> None:
-    """Helper to report command completion to the logger (eliminates SMELL-04 duplication)."""
+    """Helper to report command completion to the logger (eliminates duplication)."""
     if result is None:
         return
     execution_time = result.execution_time() if hasattr(result, "execution_time") else 0

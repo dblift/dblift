@@ -1,4 +1,4 @@
-"""PostgreSQL :class:`DialectQuirks` — Epic 26."""
+"""PostgreSQL :class:`DialectQuirks`."""
 
 from __future__ import annotations
 
@@ -78,7 +78,7 @@ class PostgresqlQuirks(BaseQuirks):
     is_default_sqlglot_read_fallback = True
     # PostgreSQL is the ANSI/generic reference dialect dblift renders with when
     # a model has no dialect of its own. The SqlGeneratorFactory resolves a
-    # falsy dialect to this plugin (ADR-26 E, story 26-5).
+    # falsy dialect to this plugin (ADR-26 E).
     is_ansi_reference_dialect = True
     pygments_lexer = "postgresql"
     default_schema_name = "public"
@@ -98,7 +98,7 @@ class PostgresqlQuirks(BaseQuirks):
     seq_supports_temp = True
     # View DDL.
     view_supports_security_with_clause = True
-    # View comparison (story 26-6 Wave A).
+    # View comparison.
     view_supports_unlogged_and_security = True
     serial_types_alias_integer = True
     # Table DDL.
@@ -282,8 +282,8 @@ class PostgresqlQuirks(BaseQuirks):
         """PostgreSQL UNIQUE constraints come from ``pg_constraint``
         (``contype='u'``). Generic index catalog rows would conflate
         standalone partial unique indexes (``CREATE UNIQUE INDEX ...
-        WHERE ...``) with real named UNIQUE constraints — see
-        BUG-01 / BUG-03 — collapsing the WHERE predicate on round-trip.
+        WHERE ...``) with real named UNIQUE constraints, collapsing the
+        WHERE predicate on round-trip.
 
         Falls back to the generic vendor path if the catalog query fails (rare; preserves
         the existing error semantics)."""
@@ -617,7 +617,7 @@ class PostgresqlQuirks(BaseQuirks):
         raise; it parses those forms without error."""
         return _DROP_TRIGGER_ON_RE.search(sql_content) is not None
 
-    # Story 26-3: PostgreSQL DROP EXTENSION uses extension namespace.
+    # PostgreSQL DROP EXTENSION uses extension namespace.
     def render_drop_for_object(
         self,
         obj_type: str,
@@ -633,7 +633,7 @@ class PostgresqlQuirks(BaseQuirks):
             return f"DROP EXTENSION IF EXISTS {obj_name}"
         return None
 
-    # Story 27-1: type normalization — strip precision from fixed-width float
+    # Type normalization — strip precision from fixed-width float
     # types and reorder TIMESTAMP {WITH|WITHOUT} TIME ZONE(n) → TIMESTAMP(n)
     # {WITH|WITHOUT} TIME ZONE so downstream comparators see a canonical form.
     def normalize_column_data_type(self, col: object, data_type: str) -> str:
@@ -690,7 +690,7 @@ class PostgresqlQuirks(BaseQuirks):
             return f"nextval('{match.group(1)}'::regclass)"
         return default_str
 
-    # Column ALTER hooks (Epic 27 column_converter refactor).
+    # Column ALTER hooks.
     def render_column_nullable_change(
         self, col_diff: object, formatted_table: str, formatted_column: str, dialect: str
     ) -> "Optional[object]":
@@ -783,7 +783,7 @@ class PostgresqlQuirks(BaseQuirks):
             dialect=dialect,
         )
 
-    # Story 27-2: identity clause — PostgreSQL serial types encode the
+    # Identity clause — PostgreSQL serial types encode the
     # auto-increment in the type name; GENERATED … AS IDENTITY for plain
     # integer types.
     _PG_SERIAL_TYPES = frozenset(

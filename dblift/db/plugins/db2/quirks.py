@@ -1,4 +1,4 @@
-"""DB2 :class:`DialectQuirks` — Epic 26."""
+"""DB2 :class:`DialectQuirks`."""
 
 from __future__ import annotations
 
@@ -194,7 +194,7 @@ class Db2Quirks(BaseQuirks):
         """DB2 does not support DBLift snapshot table creation."""
         raise NotImplementedError("DB2 does not support DBLift snapshot table creation")
 
-    # Column ALTER hooks (Epic 27 column_converter refactor). DB2 uses the
+    # Column ALTER hooks. DB2 uses the
     # same ``ALTER COLUMN`` form as PostgreSQL/SQL Server, but the
     # type-change clause needs the ``SET DATA TYPE`` keyword and a plain
     # ``SET NOT NULL`` (not the bare ``NOT NULL`` SQL Server accepts).
@@ -287,7 +287,7 @@ class Db2Quirks(BaseQuirks):
             return DB2RegexParser
         return None
 
-    # Story 27-1: collapse TIMESTAMP(n) → TIMESTAMP (DB2 ignores fractional-
+    # Collapse TIMESTAMP(n) → TIMESTAMP (DB2 ignores fractional-
     # seconds precision in the DDL round-trip).
     def normalize_column_data_type(self, col: object, data_type: str) -> str:
         """Collapse ``TIMESTAMP(n)`` → ``TIMESTAMP`` — Db2 ignores fractional precision."""
@@ -295,7 +295,7 @@ class Db2Quirks(BaseQuirks):
             return "TIMESTAMP"
         return data_type
 
-    # Story 27-2: DB2 identity — GENERATED ALWAYS AS IDENTITY.
+    # DB2 identity — GENERATED ALWAYS AS IDENTITY.
     def render_identity_clause(self, col: object) -> "Optional[str]":
         """Db2 identity columns use ``GENERATED ALWAYS AS IDENTITY`` (no seed/increment)."""
         return "GENERATED ALWAYS AS IDENTITY"
@@ -324,7 +324,7 @@ class Db2Quirks(BaseQuirks):
         # DB2 storage parameters share the Oracle ``dialect_options`` namespace
         # (both render PCTFREE/PCTUSED/INITIAL/NEXT). Resolve that canonical
         # namespace from the registry via the storage-params capability so this
-        # plugin names no foreign dialect (ADR-26 E story 26-5).
+        # plugin names no foreign dialect (ADR-26 E).
         from dblift.db.provider_registry import ProviderRegistry
 
         storage_ns = ProviderRegistry.canonical_dialect_name_for_capability(

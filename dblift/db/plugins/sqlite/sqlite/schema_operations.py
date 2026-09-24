@@ -41,7 +41,7 @@ class SQLiteSchemaOperations:
     def _fts5_shadow_table_names(self, connection: sqlite3.Connection) -> set[str]:
         """Return the set of FTS5 shadow (internal) table names.
 
-        BUG-05: ``CREATE VIRTUAL TABLE foo USING fts5(...)`` produces five
+        ``CREATE VIRTUAL TABLE foo USING fts5(...)`` produces five
         internal tables (``foo_data``, ``foo_idx``, ``foo_content``,
         ``foo_docsize``, ``foo_config``) that SQLite exposes via
         ``sqlite_master`` as regular tables. Treating them as user tables

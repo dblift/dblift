@@ -37,7 +37,7 @@ class PostgreSqlSchemaOperations(BaseSchemaOperations):
         try:
             # OBS-03: pre-check existence so a typo in --db-schema yields a
             # warning instead of silent fresh-history creation.
-            # BUG-01: read-only commands (info/validate/diff/check-connection)
+            # Read-only commands (info/validate/diff/check-connection)
             # must not require CREATE privilege on the database. When the
             # schema already exists, skip the DDL entirely — PostgreSQL parses
             # and ACL-checks ``CREATE SCHEMA IF NOT EXISTS`` even though it is
@@ -338,7 +338,7 @@ class PostgreSqlSchemaOperations(BaseSchemaOperations):
     def get_clean_preview(self, connection: Any, schema: str) -> CleanExecutionSummary:
         """Return the objects a PG clean would drop, without executing the DROPs.
 
-        BUG-03: ``clean --dry-run`` previously fell back to
+        ``clean --dry-run`` previously fell back to
         ``SchemaIntrospector.get_tables()`` which hides dblift-internal tables.
         Implementing this hook here makes dry-run mirror ``clean_schema``
         exactly — no introspector fallback, no hidden objects.

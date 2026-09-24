@@ -294,7 +294,7 @@ class DBLiftClient:
     def _guard_scripts_dir_kwarg(self, kwargs: Dict[str, Any]) -> None:
         """Raise a clear error if a caller passes ``scripts_dir`` via kwargs.
 
-        BUG-01: Public API methods bind ``scripts_dir`` from client config and
+        Public API methods bind ``scripts_dir`` from client config and
         forward ``**kwargs`` to the executor. A caller-supplied ``scripts_dir``
         collides with the bound keyword, raising a confusing
         ``TypeError: ... got multiple values for keyword argument 'scripts_dir'``.
@@ -1109,7 +1109,7 @@ class DBLiftClient:
                 ``config.migrations.directories``.
             **kwargs: Forwarded to the client constructor.
 
-        BUG-07: ``migrations_dir`` used to be undocumented — it was honored
+        ``migrations_dir`` used to be undocumented — it was honored
         only because the factory popped it from ``kwargs``. Making it an
         explicit parameter keeps Python tooling (type checkers, IDEs,
         ``help()``) honest and prevents users from silently falling back to

@@ -1,4 +1,4 @@
-"""SQL Server :class:`DialectQuirks` — Epic 26."""
+"""SQL Server :class:`DialectQuirks`."""
 
 from __future__ import annotations
 
@@ -251,7 +251,7 @@ class SqlserverQuirks(BaseQuirks):
         result = _PK_CLUSTERED_RE.sub(r"\1", sql_content)
         return _UNIQUE_CLUSTERED_RE.sub(r"\1", result)
 
-    # Story 26-3: SQL Server DROP INDEX needs an ON-clause.
+    # SQL Server DROP INDEX needs an ON-clause.
     def render_drop_for_object(
         self,
         obj_type: str,
@@ -317,7 +317,7 @@ class SqlserverQuirks(BaseQuirks):
             dialect=dialect,
         )
 
-    # Story 27-1: strip IDENTITY suffix from type string; collapse DATETIME(n).
+    # Strip IDENTITY suffix from type string; collapse DATETIME(n).
     def normalize_column_data_type(self, col: object, data_type: str) -> str:
         """Strip trailing ``IDENTITY`` on identity cols; collapse ``DATETIME(n)`` → ``DATETIME``."""
         import re
@@ -329,14 +329,14 @@ class SqlserverQuirks(BaseQuirks):
             result = "datetime"
         return result
 
-    # Story 27-2: SQL Server identity — IDENTITY(seed, increment).
+    # SQL Server identity — IDENTITY(seed, increment).
     def render_identity_clause(self, col: object) -> "Optional[str]":
         """SQL Server identity columns use ``IDENTITY(seed, increment)`` (defaults: 1, 1)."""
         seed = getattr(col, "identity_seed", 1) or 1
         increment = getattr(col, "identity_increment", 1) or 1
         return f"IDENTITY({seed},{increment})"
 
-    # Story 27-5: SQL Server wraps defaults in parentheses — unwrap when safe.
+    # SQL Server wraps defaults in parentheses — unwrap when safe.
     def unwrap_default_value(self, default_str: str, column: object) -> str:
         """Strip outer ``(`` … ``)`` from a DEFAULT when the inner expression is a literal.
 
