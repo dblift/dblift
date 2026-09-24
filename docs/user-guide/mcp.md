@@ -18,6 +18,15 @@ Claude Code — `.mcp.json` at the project root:
 Root flags go before `mcp` and apply to every tool call:
 `"args": ["--config", "config/dblift.yaml", "--env", "dev", "mcp"]`.
 
+At start, the server prints on stderr the environment it resolved and the
+database it will use, never a secret — check that line before letting an
+agent call anything, especially if you meant to pin it to a read-only
+environment. A missing or unreadable configuration file, an unknown
+environment, an invalid database field (a bad port, a missing username) or a
+secret that cannot be resolved never stops the start — the line says so and
+the server starts anyway; every tool call still loads the configuration
+itself and reports its own error.
+
 Each tool call logs under `--log-dir`, exactly as one CLI invocation does.
 With the default text log format, the server writes one log file per
 session: the first call's file is reused and appended to for every later
@@ -92,8 +101,9 @@ from a missing tool. **All three built-in tools and both built-in resources
 read the schema-history table**, so on an install with no add-on packages an
 offline server refuses everything; the flag is for installs whose add-on
 tools run from the project's files. The server starts even with no
-`dblift.yaml` and no database configured — nothing is loaded until a tool is
-called. Start-up prints, on stderr, which registrations will refuse.
+`dblift.yaml` and no database configured — the configuration is read at
+start only to print the resolved target; no connection is opened until a
+tool is called. Start-up prints, on stderr, which registrations will refuse.
 
 The flags compose: `--read-only --tools my_addon_tool` admits the name an
 add-on contributed and still skips the tool if it declares

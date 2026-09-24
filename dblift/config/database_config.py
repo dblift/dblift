@@ -505,6 +505,33 @@ class BaseDatabaseConfig(UrlBuilderMixin, ABC):
         """
         return mask_credentials(self.to_dict())
 
+    def describe_target(self) -> str:
+        """One-line, secret-free summary of this database target."""
+        info = self.to_safe_dict()
+        url = info.get("url")
+        if url:
+            return str(url)
+        path = info.get("path")
+        if path:
+            return f"{self.type} {path}"
+
+        identity = info.get("host") or info.get("account") or info.get("account_endpoint")
+        name = info.get("database") or info.get("database_name")
+        if not identity and not name:
+            return f"{self.type} (no host, account or path configured)"
+
+        target = identity.rstrip("/") if identity else ""
+        port = info.get("port")
+        if identity and port:
+            target += f":{port}"
+        if name:
+            target = f"{target}/{name}" if target else name
+
+        username = info.get("username")
+        if username and identity:
+            return f"{self.type} {username}@{target}"
+        return f"{self.type} {target}"
+
     def __repr__(self) -> str:
         """Return a safe string representation that doesn't expose credentials."""
         safe_dict = self.to_safe_dict()

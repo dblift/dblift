@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `dblift mcp` now prints the environment and database it resolved on stderr
+  at start — never a secret — so an operator can confirm a read-only pin
+  took before letting an agent call anything. A configuration that fails to
+  load is reported the same way and the server still starts.
+
 ### Changed
 
 ### Fixed

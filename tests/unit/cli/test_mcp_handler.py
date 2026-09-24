@@ -6,6 +6,7 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
+import yaml
 
 from dblift.cli._command_handlers import _AVAILABLE_COMMANDS, _COMMAND_HANDLERS
 from dblift.cli._parser_setup import create_parser
@@ -24,7 +25,9 @@ def test_mcp_is_a_registered_zero_config_command():
 @pytest.mark.unit
 def test_handle_mcp_builds_server_with_global_argv_and_serves():
     server = _quiet_server()
-    ctx = CliCommandContext(args=SimpleNamespace(global_arguments=["--config", "x.yaml"]))
+    ctx = CliCommandContext(
+        args=SimpleNamespace(config=None, env=None, global_arguments=["--config", "x.yaml"])
+    )
 
     with patch("dblift.cli.mcp.server.build_server", return_value=server) as build:
         assert _handle_mcp(ctx) == (True, None)
@@ -156,7 +159,9 @@ def test_zero_config_dispatch_keeps_tools_value_out_of_the_command_list(monkeypa
 def test_handle_mcp_passes_the_restrictions_to_build_server():
     server = _quiet_server()
     ctx = CliCommandContext(
-        args=SimpleNamespace(global_arguments=[], read_only=True, tools=" info, validate,,")
+        args=SimpleNamespace(
+            config=None, env=None, global_arguments=[], read_only=True, tools=" info, validate,,"
+        )
     )
 
     with patch("dblift.cli.mcp.server.build_server", return_value=server) as build:
@@ -181,7 +186,9 @@ def test_handle_mcp_reports_each_skipped_tool_on_stderr_and_still_serves(capsys)
         ("export_schema", "declares read_only=False and this server was started with --read-only"),
         ("validate", "not in the allowed tool list"),
     ]
-    ctx = CliCommandContext(args=SimpleNamespace(global_arguments=[], read_only=True, tools=None))
+    ctx = CliCommandContext(
+        args=SimpleNamespace(config=None, env=None, global_arguments=[], read_only=True, tools=None)
+    )
 
     with patch("dblift.cli.mcp.server.build_server", return_value=server):
         assert _handle_mcp(ctx) == (True, None)
@@ -253,7 +260,9 @@ def test_offline_is_a_known_subcommand_boolean_flag():
 def test_handle_mcp_passes_offline_to_build_server():
     server = _quiet_server()
     ctx = CliCommandContext(
-        args=SimpleNamespace(global_arguments=[], read_only=False, tools=None, offline=True)
+        args=SimpleNamespace(
+            config=None, env=None, global_arguments=[], read_only=False, tools=None, offline=True
+        )
     )
 
     with patch("dblift.cli.mcp.server.build_server", return_value=server) as build:
@@ -273,7 +282,9 @@ def test_handle_mcp_names_the_connection_bound_registrations_on_stderr(capsys):
     server.connection_bound_tools.return_value = ["info", "validate"]
     server.connection_bound_resources.return_value = ["dblift://history"]
     ctx = CliCommandContext(
-        args=SimpleNamespace(global_arguments=[], read_only=False, tools=None, offline=True)
+        args=SimpleNamespace(
+            config=None, env=None, global_arguments=[], read_only=False, tools=None, offline=True
+        )
     )
 
     with patch("dblift.cli.mcp.server.build_server", return_value=server):
@@ -294,7 +305,9 @@ def test_the_offline_note_omits_a_group_that_is_empty(capsys):
     server.connection_bound_tools.return_value = ["info"]
     server.connection_bound_resources.return_value = []
     ctx = CliCommandContext(
-        args=SimpleNamespace(global_arguments=[], read_only=False, tools=None, offline=True)
+        args=SimpleNamespace(
+            config=None, env=None, global_arguments=[], read_only=False, tools=None, offline=True
+        )
     )
 
     with patch("dblift.cli.mcp.server.build_server", return_value=server):
@@ -310,7 +323,9 @@ def test_a_connected_server_says_nothing_about_offline(capsys):
     server = _quiet_server()
     server.connection_bound_tools.return_value = ["info"]
     ctx = CliCommandContext(
-        args=SimpleNamespace(global_arguments=[], read_only=False, tools=None, offline=False)
+        args=SimpleNamespace(
+            config=None, env=None, global_arguments=[], read_only=False, tools=None, offline=False
+        )
     )
 
     with patch("dblift.cli.mcp.server.build_server", return_value=server):
@@ -335,7 +350,12 @@ def test_handle_mcp_passes_the_resource_allowlist_to_build_server():
     server = _quiet_server()
     ctx = CliCommandContext(
         args=SimpleNamespace(
-            global_arguments=[], read_only=False, tools=None, resources=" history, pending,,"
+            config=None,
+            env=None,
+            global_arguments=[],
+            read_only=False,
+            tools=None,
+            resources=" history, pending,,",
         )
     )
 
@@ -411,7 +431,14 @@ def test_handle_mcp_reports_each_skipped_resource_on_stderr(capsys):
     server = _quiet_server()
     server.skipped_resources.return_value = [("pending", "not in the allowed resource list")]
     ctx = CliCommandContext(
-        args=SimpleNamespace(global_arguments=[], read_only=False, tools=None, resources="history")
+        args=SimpleNamespace(
+            config=None,
+            env=None,
+            global_arguments=[],
+            read_only=False,
+            tools=None,
+            resources="history",
+        )
     )
 
     with patch("dblift.cli.mcp.server.build_server", return_value=server):
@@ -463,7 +490,9 @@ def test_mcp_parser_accepts_mode_review():
 def test_handle_mcp_passes_the_mode_to_build_server():
     server = _quiet_server()
     ctx = CliCommandContext(
-        args=SimpleNamespace(global_arguments=[], read_only=False, tools=None, mode="review")
+        args=SimpleNamespace(
+            config=None, env=None, global_arguments=[], read_only=False, tools=None, mode="review"
+        )
     )
 
     with patch("dblift.cli.mcp.server.build_server", return_value=server) as build:
@@ -501,3 +530,156 @@ def test_mode_takes_a_value_and_stays_out_of_the_boolean_flag_list(monkeypatch):
 
     assert exc_info.value.code == 0
     assert seen == {"mode": "review"}
+
+
+# --- v4: announce the resolved environment and database at start -------------
+
+
+def _announce_args(**overrides):
+    """The 8 fields the zero-config `mcp` namespace always carries."""
+    base = dict(
+        config=None,
+        env=None,
+        global_arguments=[],
+        read_only=False,
+        offline=False,
+        mode="author",
+        tools=None,
+        resources=None,
+    )
+    base.update(overrides)
+    return SimpleNamespace(**base)
+
+
+def _write_postgres_config(tmp_path):
+    """Root `dblift_app` creds; the `agent` environment reads as `dblift_reader`."""
+    config_path = tmp_path / "dblift.yaml"
+    config_path.write_text(
+        yaml.safe_dump(
+            {
+                "database": {
+                    "type": "postgresql",
+                    "host": "localhost",
+                    "port": 5432,
+                    "database": "testdb",
+                    "username": "dblift_app",
+                    "password": "pw1",
+                },
+                "environments": {
+                    "agent": {"database": {"username": "dblift_reader", "password": "pw2"}}
+                },
+            }
+        )
+    )
+    return config_path
+
+
+@pytest.mark.unit
+def test_handle_mcp_announces_the_environment_and_reader_identity(tmp_path, capsys):
+    config_path = _write_postgres_config(tmp_path)
+    server = _quiet_server()
+    ctx = CliCommandContext(args=_announce_args(config=str(config_path), env="agent"))
+
+    with patch("dblift.cli.mcp.server.build_server", return_value=server):
+        assert _handle_mcp(ctx) == (True, None)
+
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    announce_lines = [line for line in captured.err.splitlines() if line.startswith("dblift mcp:")]
+    assert len(announce_lines) == 1
+    assert "agent" in announce_lines[0]
+    assert "dblift_reader" in announce_lines[0]
+    assert "pw1" not in captured.err
+    assert "pw2" not in captured.err
+
+
+@pytest.mark.unit
+def test_handle_mcp_announces_the_environment_selected_via_dblift_env(
+    tmp_path, monkeypatch, capsys
+):
+    config_path = _write_postgres_config(tmp_path)
+    monkeypatch.setenv("DBLIFT_ENV", "agent")
+    server = _quiet_server()
+    ctx = CliCommandContext(args=_announce_args(config=str(config_path)))
+
+    with patch("dblift.cli.mcp.server.build_server", return_value=server):
+        assert _handle_mcp(ctx) == (True, None)
+
+    err = capsys.readouterr().err
+    assert "environment agent" in err
+    assert "dblift_reader" in err
+
+
+@pytest.mark.unit
+def test_handle_mcp_announces_no_environment_selected(tmp_path, capsys):
+    config_path = _write_postgres_config(tmp_path)
+    server = _quiet_server()
+    ctx = CliCommandContext(args=_announce_args(config=str(config_path)))
+
+    with patch("dblift.cli.mcp.server.build_server", return_value=server):
+        assert _handle_mcp(ctx) == (True, None)
+
+    err = capsys.readouterr().err
+    assert "environment none" in err
+    assert "dblift_app" in err
+
+
+@pytest.mark.unit
+def test_handle_mcp_reports_an_unloadable_configuration_and_still_serves(
+    monkeypatch, tmp_path, capsys
+):
+    monkeypatch.chdir(tmp_path)
+    server = _quiet_server()
+    ctx = CliCommandContext(args=_announce_args())
+
+    with patch("dblift.cli.mcp.server.build_server", return_value=server):
+        assert _handle_mcp(ctx) == (True, None)
+
+    err = capsys.readouterr().err
+    assert "configuration not loaded at start" in err
+    server.run_stdio.assert_called_once_with()
+
+
+@pytest.mark.unit
+def test_handle_mcp_reports_an_unknown_environment_and_still_serves(tmp_path, capsys):
+    config_path = _write_postgres_config(tmp_path)
+    server = _quiet_server()
+    ctx = CliCommandContext(args=_announce_args(config=str(config_path), env="bogus"))
+
+    with patch("dblift.cli.mcp.server.build_server", return_value=server):
+        assert _handle_mcp(ctx) == (True, None)
+
+    err = capsys.readouterr().err
+    assert "configuration not loaded at start" in err
+    assert "bogus" in err
+    server.run_stdio.assert_called_once_with()
+
+
+@pytest.mark.unit
+def test_handle_mcp_announces_a_masked_database_url(tmp_path, capsys):
+    config_path = tmp_path / "dblift.yaml"
+    config_path.write_text(yaml.safe_dump({"database": {"url": "postgresql://u:secret@h/db"}}))
+    server = _quiet_server()
+    ctx = CliCommandContext(args=_announce_args(config=str(config_path)))
+
+    with patch("dblift.cli.mcp.server.build_server", return_value=server):
+        assert _handle_mcp(ctx) == (True, None)
+
+    err = capsys.readouterr().err
+    assert "dblift mcp: environment none; database postgresql://u:***@h/db" in err
+    assert "secret" not in err
+
+
+@pytest.mark.unit
+def test_handle_mcp_announces_a_sqlite_path(tmp_path, capsys):
+    db_path = tmp_path / "t.sqlite"
+    config_path = tmp_path / "dblift.yaml"
+    config_path.write_text(yaml.safe_dump({"database": {"type": "sqlite", "path": str(db_path)}}))
+    server = _quiet_server()
+    ctx = CliCommandContext(args=_announce_args(config=str(config_path)))
+
+    with patch("dblift.cli.mcp.server.build_server", return_value=server):
+        assert _handle_mcp(ctx) == (True, None)
+
+    err = capsys.readouterr().err
+    assert f"dblift mcp: environment none; database sqlite {db_path}" in err
