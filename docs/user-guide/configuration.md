@@ -394,9 +394,11 @@ If your organisation uses a secrets backend not bundled with dblift
 a custom provider at startup without forking dblift:
 
 ```python
-from dblift.config.secrets import AbstractSecretsProvider, register_provider
-from dblift.config.secrets._secrets_config import SecretsConfig
-from typing import Optional
+from dblift.config.secrets import (
+    AbstractSecretsProvider,
+    SecretsConfig,
+    register_provider,
+)
 
 class CyberArkProvider(AbstractSecretsProvider):
     scheme = "cyberark"
