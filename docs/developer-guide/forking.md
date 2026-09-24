@@ -10,13 +10,15 @@ one of them moves, so the lists stay current.
 
 | Package | What it holds | Depends on |
 | --- | --- | --- |
-| `dblift/config/` | Configuration model, YAML/env/CLI merging, the property registry that derives `--flags` and `DBLIFT_*` variables. | `core.constants` |
+| `dblift/config/` | Configuration model, YAML/env/CLI merging, the property registry that derives `--flags` and `DBLIFT_*` variables. | `core.constants`, `core.utils`; `db.provider_registry` lazily, for dialect lookup |
 | `dblift/core/` | The engine: migration commands and executors, history and locking, the SQL model, parsers, generators, introspection, validators, logging. Dialect-neutral; it asks the provider's `quirks` for anything dialect-specific. | `config`, `db` |
-| `dblift/db/` | Provider contract and registry, plus one plugin per engine under `db/plugins/<engine>/` (provider, quirks, parser, introspection, history and lock managers). | `core.constants`, `core.sql_model` |
+| `dblift/db/` | Provider contract and registry, plus one plugin per engine under `db/plugins/<engine>/` (provider, quirks, parser, introspection, history and lock managers). | `config`, `core` (constants, sql_model, sql_parser, logger, sql_generator, utils, migration) |
 | `dblift/api/` | `DBLiftClient` and the async client: the programmatic surface, events and callbacks. | `core`, `config`, `db` |
-| `dblift/cli/` | argparse setup, command dispatch, the MCP server. The only package that may import everything else. | all of the above |
+| `dblift/cli/` | argparse setup, command dispatch, the MCP server. The only package that may import everything else. | all of the above except `db` (see the layer rules below) |
 | `dblift/extensions/` | Stable import paths for third-party plugin code (`logging`, `providers`, `sql_generation`, `sql_model`). Re-exports only. | `core`, `db` |
-| `dblift/integrations/` | Thin helpers for Django, Flask, FastAPI, SQLAlchemy and OpenTelemetry. | `api` |
+| `dblift/integrations/` | Thin helpers for Django, Flask, FastAPI, SQLAlchemy and OpenTelemetry. | `api`, `core.exceptions` |
+
+`core` and `db` import each other; for a fork they are one unit.
 
 Two layer rules are enforced by `.importlinter` (run through
 `scripts/check_code_quality.sh`):
@@ -112,13 +114,15 @@ At the time of writing that is:
 | `dblift/cli/main.py` | Drop the `load_feature_extensions()` call at startup, the `get_license_info(args)` value on the command context, `_propagate_license_banner`, the `PREMIUM_STUB_COMMANDS` branch, and use `DBLiftClient` where `resolve_client_class()` is called; `load_terminal_commands()` becomes an empty dict. |
 | `dblift/cli/_command_handlers.py` | Drop the `load_command_handlers()` / `load_terminal_commands()` merges, the `PREMIUM_STUB_COMMANDS` loop, `license_tier=resolve_tier(args)` (pass `None`) and the `except CapabilityDeniedError` branch. |
 | `dblift/cli/_parser_setup.py` | Drop `_register_premium_stub_parsers` and the `load_command_extensions(parser)` call. |
-| `dblift/cli/mcp/runner.py`, `dblift/cli/mcp/server.py` | Same three items: `resolve_tier`, `CapabilityDeniedError`, `load_feature_extensions()`; the `load_mcp_tool_registrars()` loop goes. |
-| `dblift/api/client.py` | Drop `load_feature_extensions()` and `attach_registered_listeners(...)` in `__init__`, the `_PREMIUM_COMMANDS_BY_API_METHOD` stub methods, and make `_resolve_client_class` return `cls`. |
+| `dblift/cli/mcp/runner.py` | Drop `license_tier=resolve_tier(...)` (pass `None`) and the `except CapabilityDeniedError` branch. |
+| `dblift/cli/mcp/server.py` | Drop `load_feature_extensions()` and the `load_mcp_tool_registrars()` loop. |
+| `dblift/api/client.py` | Drop `load_feature_extensions()` and `attach_registered_listeners(...)` in `__init__`, the `_PREMIUM_COMMANDS_BY_API_METHOD` stub methods, and make `_resolve_factory_client_cls` return `cls`; then remove the now-unused imports of `premium_manifest` and `CapabilityDeniedError`. |
 | `dblift/core/migration/executor/execution_engine.py`, `dblift/core/migration/commands/migrate_command.py` | Drop the `run_checks(...)` call and its import. |
 | `dblift/core/sql_generator/generator_factory.py`, `dblift/core/sql_generator/alter/alter_generator_factory.py` | Drop `load_feature_extensions()` / `attach_registered_sql_generators()`. |
 | `dblift/core/introspection/introspector_factory.py`, `dblift/core/introspection/vendor_queries_factory.py` | Drop `attach_registered_introspection()`. |
 | `dblift/core/logger/_formatters.py` | The `license_info` attribute and the banner block are inert without a provider; delete them or leave them. |
 | `dblift/cli/handlers/_shared.py` | `CliCommandContext.license_tier` can stay as an unused field or go. |
+| `dblift/cli/_constants.py` | A comment mentions `cli/premium_manifest.py`; reword or leave. |
 
 Run `python -m pytest tests/unit -q` afterwards and delete or fix the tests
 that named removed symbols (`grep -rln 'seams\|premium\|license_tier' tests`).
@@ -130,10 +134,16 @@ assert properties of the open-source packaging and can go with the hooks.
 Each engine is self-contained under `dblift/db/plugins/<engine>/` and
 registered in `pyproject.toml` under `dblift.providers` with a matching
 extra. To drop an engine, delete its directory, its entry-point line, its
-extra (and its line in the `all` extra), and its tests under
-`tests/unit/db/plugins/<engine>/` and `tests/integration/`. The
-PostgreSQL-compatible plugins (`neon`, `supabase`, `aurora_postgresql`,
-`alloydb`, `yugabytedb`, `timescaledb`, `citus`, `cockroachdb`) reuse the
-PostgreSQL provider and are a few lines each. See
+extra (and its line in the `all` extra), and its tests: a directory
+`tests/unit/db/plugins/<engine>/` where one exists, otherwise the engine's
+entries in the parametrised tables of
+`tests/unit/db/plugins/test_pg_compatible_plugins.py` and
+`tests/unit/db/plugins/test_pg_compatible_locking.py`, plus anything under
+`tests/integration/`. Seven PostgreSQL-compatible plugins (`neon`,
+`supabase`, `aurora_postgresql`, `alloydb`, `yugabytedb`, `timescaledb`,
+`citus`) are built by `make_pg_compatible_plugin` in
+`dblift/db/plugins/_pg_compatible.py` and are two files each; `cockroachdb`
+subclasses the PostgreSQL provider with its own locking and dialect
+registration. See
 [Creating a provider](creating-a-provider.md) for the plugin contract and
 [Plugin entry points](plugin-entry-points.md) for the packaging.
