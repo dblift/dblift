@@ -31,6 +31,8 @@ Sub-protocols:
 * ``ComparatorQuirks`` — schema-diff comparator hooks.
 * ``ValidatorQuirks`` — lint/perf rule hooks.
 * ``TypeMapQuirks`` — type normalisation hooks.
+* ``ErrorQuirks`` — error-classification hooks.
+* ``ConnectionQuirks`` — connection / engine-pool hooks.
 
 Resolution
 ----------

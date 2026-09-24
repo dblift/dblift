@@ -1,22 +1,16 @@
 """Dialect quoting and capability helpers for database dialect identifiers.
 
-Identifier-quoting dispatch is centralized here.
+Identifier-quoting dispatch is centralized here: the module-level
+``quote_identifier`` / ``quote_qualified`` functions hold the canonical
+quoting rules, so callers use them instead of branching on dialect name.
 
-Before (2 files, 9 if/elif branches):
-  base_converter.py      _quote_identifier()  — 5 branches
-  undo_script_generator.py _quote_identifier() — 4 branches
+This module also holds the ``DialectGroup`` frozensets and
+``SQLGLOT_DIALECT_MAP``, so callers can import them instead of repeating
+inline string comparisons.
 
-After (0 branches in those files, 1 quirks-delegated function below):
-  Each `_quote_identifier` becomes a one-liner:
-    return quote_identifier(self.dialect, identifier)
-
-DialectGroup constants and SQLGLOT_DIALECT_MAP live here
-  so that all clusters (Phase 1–5) can import frozensets instead of repeating
-  inline string comparisons.
-
-The quoting statics live as the module-level ``quote_identifier`` /
-  ``quote_qualified`` functions; canonical-name resolution lives in
-  ``ProviderRegistry.canonical_dialect_name``.
+Canonical-name resolution lives in ``ProviderRegistry.canonical_dialect_name``;
+per-dialect behaviour is dispatched through each plugin's Quirks class rather
+than hardcoded here.
 """
 
 from typing import TYPE_CHECKING, Any, Callable, Dict, FrozenSet, Optional
@@ -251,15 +245,10 @@ def get_sqlglot_dialect(dialect: Optional[str]) -> Optional[str]:
 
 
 # ---------------------------------------------------------------------------
-# Centralized sqlglot dialect mapping (single source of truth)
+# Centralized sqlglot dialect mapping (single source of truth).
 #
-# Previously duplicated in:
-#   core/sql_generator/formatter.py      — _SQLGLOT_DIALECT_MAP  (private)
-#   core/logger/formatters/diff_utils.py — SQLGLOT_DIALECT_MAP   (public)
-#
-# Both importers now use this definition.  The map is deliberately kept as a
-# plain Dict (not a property) so it can be constructed at import time with
-# zero overhead.
+# Kept as a plain Dict (not a property) so it can be constructed at import
+# time with zero overhead.
 # ---------------------------------------------------------------------------
 
 #: Maps dblift dialect names (and common aliases) to sqlglot dialect
