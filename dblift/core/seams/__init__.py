@@ -2,8 +2,9 @@
 
 Every seam is a small registry or an entry-point lookup. With nothing
 registered each one is a no-op and the tool behaves as a plain
-open-source install. Add-on packages register through the entry-point
-groups declared empty in ``pyproject.toml`` (``[project.entry-points."dblift.*"]``).
+open-source install. Add-on packages register through ``dblift.*``
+entry-point groups. Most are declared empty in ``pyproject.toml``;
+``dblift.client`` is read by ``client_factory`` without a declaration.
 
 Seam map — module, entry-point group, and where the core calls it:
 
@@ -24,8 +25,9 @@ Seam map — module, entry-point group, and where the core calls it:
 
 ``capabilities``
     ``CapabilityDeniedError``, the neutral base exception that
-    ``cli/_command_handlers.py``, ``cli/mcp/runner.py`` and ``api/client.py``
-    catch when an invocation is not entitled to a command.
+    ``cli/_command_handlers.py`` and ``cli/mcp/runner.py`` catch when an
+    invocation is not entitled to a command, and that the stub methods in
+    ``api/client.py`` raise.
 
 ``tier_resolver``
     Single-slot registry; ``resolve_tier(args)`` returns an opaque value the
@@ -64,6 +66,7 @@ Related hooks outside this package: ``cli/extensions.py`` (groups
 ``cli/mcp/registry.py`` (group ``dblift.mcp_tools``) and
 ``core/premium_manifest.py`` (the catalogue behind the command stubs that
 ``cli/_parser_setup.py`` and ``api/client.py`` create when no add-on
-registered the command). ``docs/developer-guide/forking.md`` explains how
-to remove all of them.
+registered the command). ``pyproject.toml`` also declares ``dblift.differ``,
+which nothing in this tree reads. ``docs/developer-guide/forking.md``
+explains how to remove all of them.
 """

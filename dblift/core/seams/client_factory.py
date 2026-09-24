@@ -8,8 +8,8 @@ client exposing their methods. Without a registration the built-in
 ``api.DBLiftClient`` is used — behaviour is unchanged for a plain install.
 
 At most one registration is honored (the first the interpreter yields);
-loading failures are logged and fall back to the OSS client, so a broken
-plugin can never take the CLI down.
+loading failures are logged and fall back to the built-in client, so a
+broken plugin can never take the CLI down.
 """
 
 from __future__ import annotations

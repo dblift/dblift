@@ -12,11 +12,11 @@ one of them moves, so the lists stay current.
 | --- | --- | --- |
 | `dblift/config/` | Configuration model, YAML/env/CLI merging, the property registry that derives `--flags` and `DBLIFT_*` variables. | `core.constants`, `core.utils`; `db.provider_registry` lazily, for dialect lookup |
 | `dblift/core/` | The engine: migration commands and executors, history and locking, the SQL model, parsers, generators, introspection, validators, logging. Dialect-neutral; it asks the provider's `quirks` for anything dialect-specific. | `config`, `db` |
-| `dblift/db/` | Provider contract and registry, plus one plugin per engine under `db/plugins/<engine>/` (provider, quirks, parser, introspection, history and lock managers). | `config`, `core` (constants, sql_model, sql_parser, logger, sql_generator, utils, migration) |
+| `dblift/db/` | Provider contract and registry, plus one plugin per engine under `db/plugins/<engine>/` (provider, quirks, parser, introspection, history and lock managers). | `config`, `core` (constants, sql_model, sql_parser, logger, sql_generator, utils, migration, among others) |
 | `dblift/api/` | `DBLiftClient` and the async client: the programmatic surface, events and callbacks. | `core`, `config`, `db` |
 | `dblift/cli/` | argparse setup, command dispatch, the MCP server. The only package that may import everything else. | all of the above except `db` (see the layer rules below) |
 | `dblift/extensions/` | Stable import paths for third-party plugin code (`logging`, `providers`, `sql_generation`, `sql_model`). Re-exports only. | `core`, `db` |
-| `dblift/integrations/` | Thin helpers for Django, Flask, FastAPI, SQLAlchemy and OpenTelemetry. | `api`, `core.exceptions` |
+| `dblift/integrations/` | Thin helpers for Django, Flask, FastAPI and OpenTelemetry. | `api`, `core.exceptions` |
 
 `core` and `db` import each other; for a fork they are one unit.
 
@@ -65,6 +65,12 @@ contract of its own:
   the Django settings the integration reads (`DBLIFT_DATABASE_URL`,
   `DBLIFT_MIGRATIONS_DIR`, `DBLIFT_DATABASE_ALIAS`) are literal in
   `dblift/integrations/django/_client.py` on purpose.
+- **Entry-point group names.** The `dblift.*` group names are string
+  literals in code as well as in `pyproject.toml`: `dblift/db/provider_registry.py`
+  (`dblift.providers`), `dblift/cli/extensions.py`, `dblift/cli/mcp/registry.py`,
+  `dblift/config/secrets/_registry.py` and the modules under `dblift/core/seams/`.
+  Rename both sides together; no test ties them, and a mismatch shows up
+  later as an unknown dialect.
 - **Oracle's lock handle.** `dblift/db/plugins/oracle/provider.py` builds
   `DBLIFT_MIG_LOCK_<schema>` with a fixed prefix because Oracle caps the name
   at 30 characters; it cannot be derived from `MIGRATION_LOCK_TABLE`.
@@ -129,6 +135,10 @@ that named removed symbols (`grep -rln 'seams\|premium\|license_tier' tests`).
 `tests/unit/test_oss_public_surface.py` and `tests/smoke/test_oss_standalone.py`
 assert properties of the open-source packaging and can go with the hooks.
 
+The CLI contract snapshot under `tests/unit/contracts/snapshots/` records
+the stub commands, so `tests/unit/contracts/test_cli_contract.py` fails
+once they are gone; regenerate it with the command in section 2.
+
 ## 4. Keeping only some engines
 
 Each engine is self-contained under `dblift/db/plugins/<engine>/` and
@@ -139,7 +149,12 @@ extra (and its line in the `all` extra), and its tests: a directory
 entries in the parametrised tables of
 `tests/unit/db/plugins/test_pg_compatible_plugins.py` and
 `tests/unit/db/plugins/test_pg_compatible_locking.py`, plus anything under
-`tests/integration/`. Seven PostgreSQL-compatible plugins (`neon`,
+`tests/integration/`. Then `grep -rln '<engine>' tests/` and prune what
+remains: several registration and capability tables name every shipped
+engine. The PostgreSQL-compatible dialect names also appear in
+`_POSTGRESQL_FAMILY` in `dblift/db/plugins/postgresql/config.py`.
+
+Seven PostgreSQL-compatible plugins (`neon`,
 `supabase`, `aurora_postgresql`, `alloydb`, `yugabytedb`, `timescaledb`,
 `citus`) are built by `make_pg_compatible_plugin` in
 `dblift/db/plugins/_pg_compatible.py` and are two files each; `cockroachdb`
