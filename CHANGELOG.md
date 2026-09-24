@@ -17,6 +17,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   load is reported the same way and the server still starts.
 - Added `dblift.extensions.sql_generation`, a stable import path for generated
   SQL statements and generation options used by extensions.
+- Added `dblift.extensions.logging`, a stable import path for logging sinks,
+  formatters, operation results, and console rendering used by extensions.
 
 ### Changed
 

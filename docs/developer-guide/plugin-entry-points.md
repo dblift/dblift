@@ -4,11 +4,11 @@ DBLift uses setuptools entry points for provider and extension discovery.
 
 ## Stable Python Imports
 
-Plugin code should import provider contracts, SQL-generation contracts, and
-schema-model types from the stable extension surfaces, not from implementation
-modules:
+Plugin code should import logging, provider, SQL-generation, and schema-model
+contracts from the stable extension surfaces, not from implementation modules:
 
 ```python
+from dblift.extensions.logging import Log, LogLevel, OperationResult, OutputFormatter
 from dblift.extensions.providers import PluginInfo, ProviderRegistry, ProviderTransport
 from dblift.extensions.sql_generation import GenerationOptions, SqlStatement
 from dblift.extensions.sql_model import ConstraintType, Index, Table, View
