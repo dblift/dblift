@@ -9,6 +9,7 @@
   <a href="https://pypi.org/project/dblift/"><img src="https://img.shields.io/pypi/dm/dblift" alt="Downloads"></a>
   <img src="https://img.shields.io/pypi/pyversions/dblift" alt="Python versions">
   <img src="https://img.shields.io/badge/license-Apache--2.0-blue" alt="Apache 2.0">
+  <a href="https://djangopackages.org/packages/p/dblift/"><img src="https://img.shields.io/badge/PyPI-dblift-tags-8c3c26.svg" alt="Latest on Django Packages"></a>
   <a href="https://github.com/dblift/dblift/actions/workflows/unit-tests.yml"><img src="https://github.com/dblift/dblift/actions/workflows/unit-tests.yml/badge.svg" alt="Unit tests"></a>
   <a href="https://codecov.io/gh/dblift/dblift"><img src="https://codecov.io/gh/dblift/dblift/graph/badge.svg" alt="Coverage"></a>
 </p>
