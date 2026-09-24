@@ -49,6 +49,28 @@ from dblift.core.logger import (
     RepairResult,
     ValidateResult,
 )
+from dblift.extensions.logging import (
+    ConsoleLog,
+    DbliftLogger,
+    FileLog,
+    HtmlFormatter,
+    JsonFormatter,
+    Log,
+    LogFormat,
+    LogLevel,
+    MultiLog,
+    NullLog,
+    OperationResult,
+    OutputFormatter,
+    TextFormatter,
+    UndoResult,
+    console_status,
+    get_stdout_console,
+    render_panel_to_str,
+    render_records_table,
+    render_tree_to_str,
+    state_text,
+)
 from dblift.extensions.providers import (
     PluginInfo,
     ProviderRegistry,
