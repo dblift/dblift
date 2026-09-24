@@ -15,6 +15,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   at start — never a secret — so an operator can confirm a read-only pin
   took before letting an agent call anything. A configuration that fails to
   load is reported the same way and the server still starts.
+- Added `dblift.extensions.sql_generation`, a stable import path for generated
+  SQL statements and generation options used by extensions.
 
 ### Changed
 

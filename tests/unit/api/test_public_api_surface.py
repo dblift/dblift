@@ -104,11 +104,71 @@ class TestExtensionSqlModelSurface:
 class TestExtensionPackageSurface:
     def test_extension_package_exposes_only_named_categories(self):
         import dblift.extensions as extensions
-        from dblift.extensions import providers, sql_model
+        from dblift.extensions import providers, sql_generation, sql_model
 
-        assert extensions.__all__ == ["providers", "sql_model"]
+        assert extensions.__all__ == ["providers", "sql_generation", "sql_model"]
         assert extensions.providers is providers
+        assert extensions.sql_generation is sql_generation
         assert extensions.sql_model is sql_model
+
+
+class TestExtensionSqlGenerationSurface:
+    EXPECTED_EXPORTS = {"GenerationOptions", "SqlStatement"}
+
+    def test_sql_generation_exports_are_explicit(self):
+        from dblift.extensions import sql_generation
+
+        assert set(sql_generation.__all__) == self.EXPECTED_EXPORTS
+
+    @pytest.mark.parametrize("symbol_name", sorted(EXPECTED_EXPORTS))
+    def test_sql_generation_reexports_existing_objects(self, symbol_name):
+        from dblift.core.state import sql_statement
+        from dblift.extensions import sql_generation
+
+        assert getattr(sql_generation, symbol_name) is getattr(sql_statement, symbol_name)
+
+    def test_generation_statement_keeps_values_and_dependency_default(self):
+        from dblift.extensions.sql_generation import SqlStatement
+
+        statement = SqlStatement(
+            sql="ALTER TABLE users ADD COLUMN email TEXT",
+            statement_type="ALTER",
+            object_type="COLUMN",
+            object_name="users.email",
+            dialect="postgresql",
+            pre_check="SELECT 1",
+            error_if_check_fails=True,
+            error_message="pre-check failed",
+            impact={"level": "lock"},
+        )
+
+        assert statement.sql == "ALTER TABLE users ADD COLUMN email TEXT"
+        assert statement.statement_type == "ALTER"
+        assert statement.object_type == "COLUMN"
+        assert statement.object_name == "users.email"
+        assert statement.dialect == "postgresql"
+        assert statement.pre_check == "SELECT 1"
+        assert statement.error_if_check_fails is True
+        assert statement.error_message == "pre-check failed"
+        assert statement.depends_on == []
+        assert statement.impact == {"level": "lock"}
+
+    def test_generation_options_keep_defaults_and_require_keyword_dialect(self):
+        from dblift.extensions.sql_generation import GenerationOptions
+
+        options = GenerationOptions(dialect="postgresql")
+
+        assert options.dialect == "postgresql"
+        assert options.include_comments is True
+        assert options.dry_run is False
+        assert options.validate_before_execute is True
+        assert options.combine_statements is True
+
+        with pytest.raises(TypeError):
+            GenerationOptions()
+
+        with pytest.raises(TypeError):
+            GenerationOptions("postgresql")
 
 
 class TestExtensionProvidersSurface:

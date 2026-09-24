@@ -54,6 +54,7 @@ from dblift.extensions.providers import (
     ProviderRegistry,
     ProviderTransport,
 )
+from dblift.extensions.sql_generation import GenerationOptions, SqlStatement
 from dblift.extensions.sql_model import (
     ConstraintType,
     DatabaseLink,
