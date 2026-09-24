@@ -5,6 +5,7 @@ from __future__ import annotations
 import datetime
 from typing import Any, Dict, List, Optional
 
+from dblift.core.constants import DEFAULT_HISTORY_TABLE
 from dblift.core.logger import Log
 from dblift.db.plugins.nosql_base import DocumentHistoryManager
 
@@ -42,7 +43,7 @@ class MongoDbHistoryManager(DocumentHistoryManager):
         connection: Any,
         schema: str,
         create_schema: bool = False,
-        table_name: str = "dblift_schema_history",
+        table_name: str = DEFAULT_HISTORY_TABLE,
     ) -> None:
         """Create the history collection when missing.
 

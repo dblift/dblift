@@ -17,6 +17,7 @@ from abc import abstractmethod
 from typing import Any, Optional
 
 from dblift.config import DbliftConfig
+from dblift.core.constants import DEFAULT_HISTORY_TABLE
 from dblift.core.logger import Log, NullLog
 from dblift.db.base_quirks import BaseQuirks
 from dblift.db.provider_interfaces import (
@@ -133,7 +134,7 @@ class BaseProvider(
         self,
         schema: str,
         create_schema: bool = False,
-        table_name: str = "dblift_schema_history",
+        table_name: str = DEFAULT_HISTORY_TABLE,
     ) -> None:
         """Create the migration history table if it doesn't exist.
 
@@ -147,7 +148,7 @@ class BaseProvider(
         self,
         schema: str,
         create_schema: bool = False,
-        table_name: str = "dblift_schema_history",
+        table_name: str = DEFAULT_HISTORY_TABLE,
     ) -> None:
         """Create the migration history table if it doesn't exist.
 
@@ -308,7 +309,7 @@ class BaseProvider(
         # itself and own no ``history_manager`` component (only SQLite and
         # CosmosDB do), so the parameterised DELETE lives here for them —
         # the same statement ``repair`` used to build inline.
-        resolved = self.get_normalized_object_name(table_name or "dblift_schema_history")
+        resolved = self.get_normalized_object_name(table_name or DEFAULT_HISTORY_TABLE)
         qualified_table = self.get_schema_qualified_name(schema, resolved)
         false_literal = self.quirks.boolean_false_literal
         affected = self.execute_statement(

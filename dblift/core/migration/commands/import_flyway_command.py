@@ -3,6 +3,7 @@
 from pathlib import Path
 from typing import Any, Dict, List
 
+from dblift.core.constants import DEFAULT_HISTORY_TABLE
 from dblift.core.logger.results import OperationResult
 from dblift.core.migration.commands.base_command import BaseCommand
 from dblift.core.migration.migration import MigrationType
@@ -53,7 +54,7 @@ class ImportFlywayCommand(BaseCommand):
         target_table = (
             configured_target.strip()
             if isinstance(configured_target, str) and configured_target.strip()
-            else "dblift_schema_history"
+            else DEFAULT_HISTORY_TABLE
         )
 
         # Ensure the provider has a live connection before reading connection

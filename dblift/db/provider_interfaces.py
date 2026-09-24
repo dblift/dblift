@@ -10,6 +10,8 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, cast
 
+from dblift.core.constants import DEFAULT_HISTORY_TABLE
+
 
 @dataclass(frozen=True)
 class DroppableObject:
@@ -293,7 +295,7 @@ class MigrationProvider(ABC):
 
     @abstractmethod
     def get_applied_migrations(
-        self, schema: str, table_name: str = "dblift_schema_history"
+        self, schema: str, table_name: str = DEFAULT_HISTORY_TABLE
     ) -> List[Dict[str, Any]]:
         """Get list of applied migrations from history table.
 
@@ -308,7 +310,7 @@ class MigrationProvider(ABC):
 
     @abstractmethod
     def record_migration(
-        self, schema: str, migration_info: Dict[str, Any], table_name: str = "dblift_schema_history"
+        self, schema: str, migration_info: Dict[str, Any], table_name: str = DEFAULT_HISTORY_TABLE
     ) -> None:
         """Record a migration in the history table.
 
@@ -334,7 +336,7 @@ class MigrationProvider(ABC):
 
     @abstractmethod
     def create_history_table_if_not_exists(
-        self, schema: str, create_schema: bool = False, table_name: str = "dblift_schema_history"
+        self, schema: str, create_schema: bool = False, table_name: str = DEFAULT_HISTORY_TABLE
     ) -> None:
         """Create the migration history table if it doesn't exist.
 

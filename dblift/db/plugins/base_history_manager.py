@@ -5,6 +5,7 @@ import os
 from abc import ABC, abstractmethod
 from typing import Any, Dict, List, Optional
 
+from dblift.core.constants import DEFAULT_HISTORY_TABLE
 from dblift.core.logger import Log, NullLog
 from dblift.core.migration.migration import MigrationType
 
@@ -92,7 +93,7 @@ class BaseHistoryManager(ABC):
         connection: Any,
         schema: str,
         create_schema: bool = False,
-        table_name: str = "dblift_schema_history",
+        table_name: str = DEFAULT_HISTORY_TABLE,
     ) -> None:
         """Create the migration history table if it doesn't exist.
 
@@ -170,7 +171,7 @@ class BaseHistoryManager(ABC):
         Returns:
             Default history table name
         """
-        return "dblift_schema_history"
+        return DEFAULT_HISTORY_TABLE
 
     def _check_baseline_safety(self, connection: Any, schema: str, table_name: str) -> None:
         """Refuse to baseline a schema whose history table already has rows.

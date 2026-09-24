@@ -3,6 +3,22 @@ Constants used throughout the dblift application.
 This file consolidates magic numbers and commonly used values.
 """
 
+# --- Product identity -------------------------------------------------------
+# The strings below are what a database or an environment sees of this tool.
+# A fork that ships under another name changes them here and nowhere else;
+# `tests/unit/core/test_product_constants.py` fails if a copy reappears in
+# the package. Values are the historical defaults and must not change in
+# a minor release: existing databases carry tables with these names.
+
+#: Default name of the schema-history table (``--table`` / ``history_table``).
+DEFAULT_HISTORY_TABLE = "dblift_schema_history"
+
+#: Name of the migration lock table (and the stem of advisory-lock names).
+MIGRATION_LOCK_TABLE = "dblift_migration_lock"
+
+#: Prefix of every environment variable the tool reads (``DBLIFT_DB_URL``, ...).
+ENV_PREFIX = "DBLIFT_"
+
 # Database default ports
 ORACLE_DEFAULT_PORT = 1521
 

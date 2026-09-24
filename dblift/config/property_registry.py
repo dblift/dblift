@@ -13,6 +13,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Callable, List, Optional
 
+from dblift.core.constants import DEFAULT_HISTORY_TABLE
+
 
 def env_name(name: str) -> str:
     """Derive the env var: ``database.username`` -> ``DBLIFT_DB_USERNAME``."""
@@ -61,7 +63,7 @@ PROPERTY_REGISTRY: List[PropertySpec] = [
     PropertySpec(
         "history_table",
         "str",
-        "dblift_schema_history",
+        DEFAULT_HISTORY_TABLE,
         cli_aliases=("--table",),
         help="dblift schema-history table name",
     ),

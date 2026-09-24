@@ -11,6 +11,7 @@ from importlib import import_module
 from typing import Any, Dict, List, Optional, Tuple
 
 from dblift.cli.db_utils import setup_db_utils_parser
+from dblift.core.constants import DEFAULT_HISTORY_TABLE
 
 
 def _native_dialect_choices() -> List[str]:
@@ -101,7 +102,7 @@ def _make_history_table_parent() -> argparse.ArgumentParser:
     p.add_argument(
         "--table",
         dest="table_name",
-        help="Custom schema history table name (default: dblift_schema_history)",
+        help=f"Custom schema history table name (default: {DEFAULT_HISTORY_TABLE})",
     )
     return p
 

@@ -3,6 +3,7 @@
 from typing import Any, Dict, List, Optional
 
 from dblift.config import DbliftConfig
+from dblift.core.constants import DEFAULT_HISTORY_TABLE
 from dblift.core.logger import Log
 from dblift.core.migration.clean_summary import CleanExecutionSummary
 from dblift.db.plugins.base_history_manager import UNDO_HISTORY_TYPE, installed_on_to_bind
@@ -179,7 +180,7 @@ class MySqlProvider(SqlAlchemyProvider):
         self,
         schema: str,
         create_schema: bool = False,
-        table_name: str = "dblift_schema_history",
+        table_name: str = DEFAULT_HISTORY_TABLE,
     ) -> None:
         """Create the migration history table if it is missing."""
         if create_schema:
@@ -221,7 +222,7 @@ class MySqlProvider(SqlAlchemyProvider):
             """
 
     def get_applied_migrations(
-        self, schema: str, table_name: str = "dblift_schema_history"
+        self, schema: str, table_name: str = DEFAULT_HISTORY_TABLE
     ) -> List[Dict[str, Any]]:
         """Return applied migration rows from the history table."""
         if not self.table_exists(schema, table_name):
@@ -239,7 +240,7 @@ class MySqlProvider(SqlAlchemyProvider):
         return rows
 
     def record_migration(
-        self, schema: str, migration_info: Dict[str, Any], table_name: str = "dblift_schema_history"
+        self, schema: str, migration_info: Dict[str, Any], table_name: str = DEFAULT_HISTORY_TABLE
     ) -> None:
         """Insert a migration record into the history table."""
         self.create_migration_history_table_if_not_exists(schema, table_name=table_name)
@@ -286,7 +287,7 @@ class MySqlProvider(SqlAlchemyProvider):
                 "checksum": 0,
                 "success": True,
             },
-            table_name or "dblift_schema_history",
+            table_name or DEFAULT_HISTORY_TABLE,
         )
         return True
 
@@ -295,7 +296,7 @@ class MySqlProvider(SqlAlchemyProvider):
         schema: str,
         script_name: str,
         checksum: Any,
-        table_name: str = "dblift_schema_history",
+        table_name: str = DEFAULT_HISTORY_TABLE,
         success_value: Optional[Any] = None,
     ) -> bool:
         """Update checksum and success state for an existing migration row."""
