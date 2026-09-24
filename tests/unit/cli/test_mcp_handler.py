@@ -683,3 +683,23 @@ def test_handle_mcp_announces_a_sqlite_path(tmp_path, capsys):
 
     err = capsys.readouterr().err
     assert f"dblift mcp: environment none; database sqlite {db_path}" in err
+
+
+@pytest.mark.unit
+def test_handle_mcp_discovers_a_dblift_yaml_in_the_current_directory(monkeypatch, tmp_path, capsys):
+    """The common real setup: a `.mcp.json` with just `["mcp"]`, no `--config`
+    — the announce line must still resolve the project's `dblift.yaml` from
+    the current directory, the way `_discover_default_config` does."""
+    db_path = tmp_path / "t.sqlite"
+    config_path = tmp_path / "dblift.yaml"
+    config_path.write_text(yaml.safe_dump({"database": {"type": "sqlite", "path": str(db_path)}}))
+    monkeypatch.chdir(tmp_path)
+    server = _quiet_server()
+    ctx = CliCommandContext(args=_announce_args())
+
+    with patch("dblift.cli.mcp.server.build_server", return_value=server):
+        assert _handle_mcp(ctx) == (True, None)
+
+    err = capsys.readouterr().err
+    assert f"dblift mcp: environment none; database sqlite {db_path}" in err
+    server.run_stdio.assert_called_once_with()
