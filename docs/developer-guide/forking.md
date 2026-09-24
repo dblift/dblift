@@ -109,7 +109,7 @@ At the time of writing that is:
 
 | File | What to change |
 | --- | --- |
-| `dblift/cli/main.py` | Drop the `load_feature_extensions()` call at startup, the `get_license_info(args)` value on the command context, `_propagate_license_banner`, the `render_upsell` branch for stub commands, and use `DBLiftClient` where `resolve_client_class()` is called; `load_terminal_commands()` becomes an empty dict. |
+| `dblift/cli/main.py` | Drop the `load_feature_extensions()` call at startup, the `get_license_info(args)` value on the command context, `_propagate_license_banner`, the `PREMIUM_STUB_COMMANDS` branch, and use `DBLiftClient` where `resolve_client_class()` is called; `load_terminal_commands()` becomes an empty dict. |
 | `dblift/cli/_command_handlers.py` | Drop the `load_command_handlers()` / `load_terminal_commands()` merges, the `PREMIUM_STUB_COMMANDS` loop, `license_tier=resolve_tier(args)` (pass `None`) and the `except CapabilityDeniedError` branch. |
 | `dblift/cli/_parser_setup.py` | Drop `_register_premium_stub_parsers` and the `load_command_extensions(parser)` call. |
 | `dblift/cli/mcp/runner.py`, `dblift/cli/mcp/server.py` | Same three items: `resolve_tier`, `CapabilityDeniedError`, `load_feature_extensions()`; the `load_mcp_tool_registrars()` loop goes. |
