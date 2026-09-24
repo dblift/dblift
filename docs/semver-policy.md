@@ -14,6 +14,14 @@ Importing from the following locations constitutes a stable contract:
 ```python
 from dblift.api import DBLiftClient, EventEmitter, EventType
 from dblift.config import DbliftConfig, DatabaseConfig, load_config
+from dblift.config.secrets import (
+    resolve_secret_refs,
+    clear_cache,
+    SecretsResolutionError,
+    SecretsConfig,
+    AbstractSecretsProvider,
+    register_provider,
+)
 from dblift.core.migration import (
     AppliedMigration,
     Migration,

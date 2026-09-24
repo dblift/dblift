@@ -41,8 +41,11 @@ def register_provider(scheme: str, cls: Type) -> None:
 
     Example::
 
-        from dblift.config.secrets import AbstractSecretsProvider, register_provider
-        from dblift.config.secrets._secrets_config import SecretsConfig
+        from dblift.config.secrets import (
+            AbstractSecretsProvider,
+            SecretsConfig,
+            register_provider,
+        )
 
         class CyberArkProvider(AbstractSecretsProvider):
             scheme = "cyberark"

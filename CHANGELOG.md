@@ -22,6 +22,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- The documented `dblift.config.secrets` extension imports are now explicitly
+  included in the public compatibility contract.
 - The sample configuration files (`dblift-postgresql.yaml.template`,
   `dblift-sqlserver.yaml.template`, `dblift-cosmosdb.yaml.template`) moved
   from the repository root to `docs/examples/config/`.
