@@ -576,20 +576,30 @@ class PostgresqlQuirks(BaseQuirks):
     def fk_reference_query(
         self, schema: str, table: str, col: str
     ) -> "Tuple[Optional[str], list[Any]]":
-        """Return the PostgreSQL ``information_schema`` query for FKs targeting ``col``."""
+        """Return the PostgreSQL ``pg_constraint`` query for FKs targeting ``col``.
+
+        ``information_schema`` is visible only to a table's owner or a grantee
+        holding a privilege other than ``SELECT``; ``pg_catalog.pg_constraint``
+        is visible to any role that can see the table, so a read-only role
+        still finds the referencing key.
+        """
         sql = """
             SELECT
-                tc.constraint_name,
-                tc.table_schema || '.' || tc.table_name as table_name
-            FROM information_schema.table_constraints tc
-            JOIN information_schema.key_column_usage kcu
-                ON tc.constraint_name = kcu.constraint_name
-            JOIN information_schema.constraint_column_usage ccu
-                ON ccu.constraint_name = tc.constraint_name
-            WHERE tc.constraint_type = 'FOREIGN KEY'
-                AND ccu.table_schema = $1
-                AND ccu.table_name = $2
-                AND ccu.column_name = $3
+                con.conname AS constraint_name,
+                nsp.nspname || '.' || rel.relname AS table_name
+            FROM pg_catalog.pg_constraint con
+            JOIN pg_catalog.pg_class ref ON ref.oid = con.confrelid
+            JOIN pg_catalog.pg_namespace refn ON refn.oid = ref.relnamespace
+            JOIN pg_catalog.pg_attribute refatt
+                ON refatt.attrelid = con.confrelid
+                AND refatt.attnum = ANY(con.confkey)
+            JOIN pg_catalog.pg_class rel ON rel.oid = con.conrelid
+            JOIN pg_catalog.pg_namespace nsp ON nsp.oid = rel.relnamespace
+            WHERE con.contype = 'f'
+                AND refn.nspname = ?
+                AND ref.relname = ?
+                AND refatt.attname = ?
+                AND NOT refatt.attisdropped
         """
         return (sql, self.fk_reference_bind_params(schema, table, col))
 
@@ -604,9 +614,9 @@ class PostgresqlQuirks(BaseQuirks):
             JOIN pg_class t ON t.oid = ix.indrelid
             JOIN pg_namespace n ON n.oid = t.relnamespace
             JOIN pg_attribute a ON a.attrelid = t.oid AND a.attnum = ANY(ix.indkey)
-            WHERE n.nspname = $1
-                AND t.relname = $2
-                AND a.attname = $3
+            WHERE n.nspname = ?
+                AND t.relname = ?
+                AND a.attname = ?
         """
         return (sql, [schema, table, col])
 
