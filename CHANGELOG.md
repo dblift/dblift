@@ -42,6 +42,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   dblift's schema-history table, for instance — is no longer reported as
   `Connection failed: invalid credentials`; the engine's own permission
   error is shown, as it already was for MySQL and Db2.
+- On PostgreSQL, the queries the drop-column safety check runs to find
+  referencing foreign keys and covering indexes used a placeholder style the
+  driver does not bind, so they could not execute at all. The foreign-key
+  lookup now also reads the system catalog instead of `information_schema`,
+  so a read-only role sees the referencing keys too.
 
 ### Removed
 
