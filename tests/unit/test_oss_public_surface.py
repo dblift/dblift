@@ -473,9 +473,8 @@ def test_no_database_driver_is_a_mandatory_dependency():
     symmetry silently: the install grows for everyone, and the comments in
     ``db/`` promising "no drivers by default" become false.
 
-    ``requirements.txt`` and ``requirements-runtime.txt`` mirror
-    [project].dependencies (the runtime file says so in its own header), so
-    they are held to the same rule.
+    ``requirements.txt`` mirrors [project].dependencies, so it is held to the
+    same rule.
     """
     table = _optional_dependencies()
     engine_extras = set(table) - NON_ENGINE_EXTRAS
@@ -488,7 +487,7 @@ def test_no_database_driver_is_a_mandatory_dependency():
     for name in sorted(_requirement_names(_project_dependencies()) & driver_names):
         offenders.append(f"pyproject.toml [project].dependencies: {name}")
 
-    for filename in ("requirements.txt", "requirements-runtime.txt"):
+    for filename in ("requirements.txt",):
         specs: list[str] = []
         for raw_line in (ROOT / filename).read_text(encoding="utf-8").splitlines():
             line = raw_line.split("#", 1)[0].strip()

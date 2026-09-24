@@ -49,6 +49,11 @@ from dblift.core.logger import (
     RepairResult,
     ValidateResult,
 )
+from dblift.extensions.providers import (
+    PluginInfo,
+    ProviderRegistry,
+    ProviderTransport,
+)
 from dblift.extensions.sql_model import (
     ConstraintType,
     DatabaseLink,

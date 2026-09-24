@@ -79,13 +79,6 @@ class TestExtensionSqlModelSurface:
         "supports_feature",
     }
 
-    def test_extension_package_exposes_only_named_categories(self):
-        import dblift.extensions as extensions
-        from dblift.extensions import sql_model
-
-        assert extensions.__all__ == ["sql_model"]
-        assert extensions.sql_model is sql_model
-
     def test_sql_model_exports_are_explicit(self):
         from dblift.extensions import sql_model
 
@@ -106,6 +99,36 @@ class TestExtensionSqlModelSurface:
         assert dialect_requires_schema("sqlite") is False
         assert dialect_requires_schema("postgresql") is True
         assert dialect_requires_schema("unknown") is True
+
+
+class TestExtensionPackageSurface:
+    def test_extension_package_exposes_only_named_categories(self):
+        import dblift.extensions as extensions
+        from dblift.extensions import providers, sql_model
+
+        assert extensions.__all__ == ["providers", "sql_model"]
+        assert extensions.providers is providers
+        assert extensions.sql_model is sql_model
+
+
+class TestExtensionProvidersSurface:
+    EXPECTED_EXPORTS = {
+        "PluginInfo",
+        "ProviderRegistry",
+        "ProviderTransport",
+    }
+
+    def test_provider_exports_are_explicit(self):
+        from dblift.extensions import providers
+
+        assert set(providers.__all__) == self.EXPECTED_EXPORTS
+
+    @pytest.mark.parametrize("symbol_name", sorted(EXPECTED_EXPORTS))
+    def test_provider_surface_reexports_existing_objects(self, symbol_name):
+        from dblift.db import provider_registry
+        from dblift.extensions import providers
+
+        assert getattr(providers, symbol_name) is getattr(provider_registry, symbol_name)
 
 
 class TestApiPackageSurface:
