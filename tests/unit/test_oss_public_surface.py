@@ -96,6 +96,8 @@ def test_oss_cli_does_not_expose_license_key_surface():
     # ``license_info`` (never ``license_key``).
     license_info_ok = {
         "dblift/core/seams/license_info.py",
+        # The seams package docstring maps every seam, including license_info.
+        "dblift/core/seams/__init__.py",
         "dblift/cli/main.py",
         "dblift/core/logger/_formatters.py",
         # Tests for the banner seam/consumer legitimately name license_info.
