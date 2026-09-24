@@ -26,11 +26,10 @@ ENV PYTHONUNBUFFERED=1 \
 COPY --from=python-builder /root/.local /root/.local
 ENV PATH=/root/.local/bin:$PATH
 
-RUN mkdir -p /workspace
 WORKDIR /workspace
 
 # Verify installation
 RUN dblift --version
 
-ENTRYPOINT ["/usr/bin/tini", "--", "dblift"]
+ENTRYPOINT ["/usr/bin/tini", "--", "python", "-m", "dblift.cli.main"]
 CMD ["--help"]
