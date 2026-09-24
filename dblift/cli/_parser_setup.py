@@ -444,7 +444,7 @@ def create_parser(
             "migrations.recursive=false in YAML or pass --no-recursive to opt out."
         ),
     )
-    # Batch-5 BUG-02: allow CLI override of recursive scan for --scripts. A
+    # Allow CLI override of recursive scan for --scripts. A
     # ``None`` default means "defer to config"; explicit ``--recursive`` /
     # ``--no-recursive`` win over the config value and the hard-coded default.
     recursive_group = parser.add_mutually_exclusive_group()

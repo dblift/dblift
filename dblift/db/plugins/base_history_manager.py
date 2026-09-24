@@ -241,7 +241,7 @@ class BaseHistoryManager(ABC):
             connection: Active database connection (provided by Provider).
             schema: Schema name.
             script_name: Script name to repair.
-            checksum: New checksum value (int for Epic 17 CRC32, str for legacy).
+            checksum: New checksum value (int for CRC32, str for legacy).
             success_value: ``None`` to set ``success = NULL`` (traditional
                 "needs reapplication" marker); otherwise the explicit value.
             table_name: Custom history table name.
@@ -595,7 +595,7 @@ class BaseHistoryManager(ABC):
                 "description": f"Undo migration {version}",
                 "type": UNDO_HISTORY_TYPE,
                 "script": undo_script_name,
-                # Batch-6 BUG-02: ``checksum`` is INT; typed NULL on an INT
+                # ``checksum`` is INT; typed NULL on an INT
                 # column breaks PostgreSQL. ``0`` is the existing sentinel for
                 # "no checksum".
                 "checksum": 0,

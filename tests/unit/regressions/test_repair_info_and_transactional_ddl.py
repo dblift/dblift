@@ -2,20 +2,20 @@
 
 These tests guard against re-introduction of the following bugs:
 
-- BUG-REPAIR-02: repair command used SET success=NULL (violates NOT NULL constraint)
+- repair command used SET success=NULL (violates NOT NULL constraint)
   → Fixed: now uses DELETE FROM ... WHERE success = FALSE
-- BUG-CHECK-CONN-01: get_database_url missing on PostgreSQL/MySQL providers
+- get_database_url missing on PostgreSQL/MySQL providers
   → Fixed: added delegation to connection_manager.get_database_url()
-- BUG-VALIDATE-SQL-01: validate-sql must work without DB (config-only client)
+- validate-sql must work without DB (config-only client)
   → Fixed: ValidateSqlConfigClient when command is standalone validate-sql; full client otherwise
-- BUG-UNDO-01: generate_undo_script error handling
+- generate_undo_script error handling
   → Fixed: ValueError/FileExistsError return result with success=False; FileNotFoundError
     emits failure then re-raises for exception-based callers / batch flows
-- API-01: InfoCommand current_schema_version never populated
+- InfoCommand current_schema_version never populated
   → Fixed: populated from applied_migrations via state_manager.get_current_version
-- API-02: InfoCommand status normalized to "APPLIED" instead of "SUCCESS"
+- InfoCommand status normalized to "APPLIED" instead of "SUCCESS"
   → Fixed: "APPLIED" maps to "SUCCESS"; "BASELINE" stays distinct as "BASELINE"
-- PARSER-01: SQLite CASE...END inside triggers confused BEGIN/END detection
+- SQLite CASE...END inside triggers confused BEGIN/END detection
   → Fixed: added case_depth tracking in SQLiteRegexParser
 """
 
@@ -28,13 +28,13 @@ pytestmark = [pytest.mark.unit]
 
 
 # ════════════════════════════════════════════════════════════
-# BUG-REPAIR-02: repair must DELETE failed entries, not SET NULL
+# repair must DELETE failed entries, not SET NULL
 # ════════════════════════════════════════════════════════════
 class TestRepairDeletesFailedMigrations:
     """Regression: repair must DELETE failed migration entries, not UPDATE to NULL."""
 
     def test_repair_removes_the_row_rather_than_nulling_it(self):
-        """BUG-REPAIR-02: a failed migration is deleted from history, never UPDATEd to NULL.
+        """A failed migration is deleted from history, never UPDATEd to NULL.
 
         The statement itself now lives in the history manager (relational
         backends emit DELETE, document stores call their SDK), so the
@@ -49,16 +49,16 @@ class TestRepairDeletesFailedMigrations:
         source = inspect.getsource(RepairCommand)
         assert (
             "SET success = NULL" not in source
-        ), "BUG-REPAIR-02 regression: repair must not SET success = NULL on failed migrations"
+        ), "regression: repair must not SET success = NULL on failed migrations"
         assert (
             "delete_failed_migration_entry" in source
-        ), "BUG-REPAIR-02 regression: repair must delete the failed history row"
+        ), "regression: repair must delete the failed history row"
         assert "DELETE FROM" in inspect.getsource(
             BaseHistoryManager.delete_failed_migration_entry
-        ), "BUG-REPAIR-02 regression: the relational delete must be a DELETE"
+        ), "regression: the relational delete must be a DELETE"
 
     def test_repair_failed_migration_calls_delete(self):
-        """BUG-REPAIR-02: repair execute() must issue DELETE for failed migrations."""
+        """repair execute() must issue DELETE for failed migrations."""
         from dblift.core.logger.results import RepairResult
         from dblift.core.migration.commands.repair_command import RepairCommand
         from dblift.core.migration.migration import MigrationType
@@ -125,13 +125,13 @@ class TestRepairDeletesFailedMigrations:
 
 
 # ════════════════════════════════════════════════════════════
-# BUG-CHECK-CONN-01: db check-connection must tolerate providers without display URLs
+# db check-connection must tolerate providers without display URLs
 # ════════════════════════════════════════════════════════════
 class TestProviderGetDatabaseUrl:
     """Regression: check-connection must support native providers."""
 
     def test_db_utils_check_connection_fallback(self):
-        """BUG-CHECK-CONN-01: db_utils should not crash if get_database_url is missing."""
+        """db_utils should not crash if get_database_url is missing."""
         import inspect
 
         import dblift.cli.db_utils as db_utils
@@ -141,7 +141,7 @@ class TestProviderGetDatabaseUrl:
 
 
 # ════════════════════════════════════════════════════════════
-# BUG-VALIDATE-SQL-01: validate-sql must use config-only client (no DB connect)
+# validate-sql must use config-only client (no DB connect)
 # ════════════════════════════════════════════════════════════
 class TestValidateSqlClientInit:
     """Regression: standalone validate-sql uses ValidateSqlConfigClient, not full DBLiftClient."""
@@ -179,7 +179,7 @@ class TestValidateSqlClientInit:
     @patch("dblift.api.client.MigrationExecutor")
     @patch("dblift.api._client_factory.DbliftLogger")
     def test_non_versioned_returns_result(self, mock_logger_class, mock_executor_class, tmp_path):
-        """BUG-UNDO-01: ValueError for non-versioned files must return result, not raise."""
+        """ValueError for non-versioned files must return result, not raise."""
         from dblift.api.client import DBLiftClient
 
         mock_logger_class.return_value = Mock()
@@ -206,7 +206,7 @@ class TestValidateSqlClientInit:
     def test_file_exists_returns_result(
         self, mock_gen_class, mock_logger_class, mock_executor_class, tmp_path
     ):
-        """BUG-UNDO-01: FileExistsError (overwrite=False) must return result, not raise."""
+        """FileExistsError (overwrite=False) must return result, not raise."""
         from dblift.api.client import DBLiftClient
 
         mock_logger_class.return_value = Mock()
@@ -236,13 +236,13 @@ class TestValidateSqlClientInit:
 
 
 # ════════════════════════════════════════════════════════════
-# API-01 + API-02: InfoCommand version and status normalization
+# InfoCommand version and status normalization
 # ════════════════════════════════════════════════════════════
 class TestInfoCommandRegressions:
     """Regression: InfoCommand must populate current_schema_version and normalize status."""
 
     def test_current_schema_version_populated(self):
-        """API-01: InfoCommand must populate current_schema_version from applied migrations."""
+        """InfoCommand must populate current_schema_version from applied migrations."""
         import inspect
 
         from dblift.core.migration.commands.info_command import InfoCommand
@@ -251,27 +251,27 @@ class TestInfoCommandRegressions:
         # Must resolve current version from state manager and set result.current_schema_version
         assert (
             "get_current_version" in source
-        ), "API-01: InfoCommand.execute must call state_manager.get_current_version"
+        ), "InfoCommand.execute must call state_manager.get_current_version"
         assert (
             "result.current_schema_version" in source
-        ), "API-01: InfoCommand.execute must set result.current_schema_version"
+        ), "InfoCommand.execute must set result.current_schema_version"
 
     def test_status_applied_maps_to_success(self):
-        """API-02: Status 'APPLIED' must be normalized to 'SUCCESS'."""
+        """Status 'APPLIED' must be normalized to 'SUCCESS'."""
         from dblift.core.migration.commands.info_command import normalize_migration_info_status
 
         assert normalize_migration_info_status("APPLIED") == "SUCCESS"
         assert normalize_migration_info_status("Applied") == "SUCCESS"
 
     def test_status_baseline_maps_to_baseline(self):
-        """API-02: Status 'BASELINE' / 'Baseline' must remain distinct (not SUCCESS)."""
+        """Status 'BASELINE' / 'Baseline' must remain distinct (not SUCCESS)."""
         from dblift.core.migration.commands.info_command import normalize_migration_info_status
 
         assert normalize_migration_info_status("BASELINE") == "BASELINE"
         assert normalize_migration_info_status("Baseline") == "BASELINE"
 
     def test_status_normalization_logic(self):
-        """API-02: normalization matches normalize_migration_info_status (used by InfoCommand)."""
+        """normalization matches normalize_migration_info_status (used by InfoCommand)."""
         from dblift.core.migration.commands.info_command import normalize_migration_info_status
 
         status_map = {
@@ -289,24 +289,24 @@ class TestInfoCommandRegressions:
             ]
         }
 
-        assert status_map["APPLIED"] == "SUCCESS", "API-02: APPLIED must map to SUCCESS"
-        assert status_map["Applied"] == "SUCCESS", "API-02: Applied must map to SUCCESS"
+        assert status_map["APPLIED"] == "SUCCESS", "APPLIED must map to SUCCESS"
+        assert status_map["Applied"] == "SUCCESS", "Applied must map to SUCCESS"
         assert status_map["SUCCESS"] == "SUCCESS"
-        assert status_map["BASELINE"] == "BASELINE", "API-02: BASELINE must map to BASELINE"
-        assert status_map["Baseline"] == "BASELINE", "API-02: Baseline must map to BASELINE"
+        assert status_map["BASELINE"] == "BASELINE", "BASELINE must map to BASELINE"
+        assert status_map["Baseline"] == "BASELINE", "Baseline must map to BASELINE"
         assert status_map["FAILED"] == "FAILED"
         assert status_map["PENDING"] == "PENDING"
         assert status_map["UNDONE"] == "UNDONE"
 
 
 # ════════════════════════════════════════════════════════════
-# PARSER-01: SQLite CASE...END must not confuse trigger detection
+# SQLite CASE...END must not confuse trigger detection
 # ════════════════════════════════════════════════════════════
 class TestSqliteCaseEndInTrigger:
     """Regression: CASE...END inside triggers must not close the trigger BEGIN block."""
 
     def test_trigger_with_case_expression(self):
-        """PARSER-01: Trigger containing CASE...END must be parsed as single statement."""
+        """Trigger containing CASE...END must be parsed as single statement."""
         from dblift.db.plugins.sqlite.parser.sqlite_regex_parser import SQLiteRegexParser
 
         parser = SQLiteRegexParser()
@@ -327,16 +327,14 @@ class TestSqliteCaseEndInTrigger:
         """
 
         statements = parser.split_statements(sql)
-        assert (
-            len(statements) == 2
-        ), f"PARSER-01: Expected 2 statements, got {len(statements)}: {statements}"
+        assert len(statements) == 2, f"Expected 2 statements, got {len(statements)}: {statements}"
         assert "CREATE TRIGGER" in statements[0]
         assert "CASE" in statements[0]
         assert "END" in statements[0]
         assert "CREATE TABLE" in statements[1]
 
     def test_trigger_with_nested_case(self):
-        """PARSER-01: Trigger with nested CASE expressions."""
+        """Trigger with nested CASE expressions."""
         from dblift.db.plugins.sqlite.parser.sqlite_regex_parser import SQLiteRegexParser
 
         parser = SQLiteRegexParser()
@@ -361,14 +359,12 @@ class TestSqliteCaseEndInTrigger:
         """
 
         statements = parser.split_statements(sql)
-        assert (
-            len(statements) == 2
-        ), f"PARSER-01: Nested CASE failed, got {len(statements)} statements"
+        assert len(statements) == 2, f"Nested CASE failed, got {len(statements)} statements"
         assert "CREATE TRIGGER" in statements[0]
         assert "SELECT" in statements[1]
 
     def test_trigger_with_multiple_case_expressions(self):
-        """PARSER-01: Trigger with multiple CASE expressions in same statement."""
+        """Trigger with multiple CASE expressions in same statement."""
         from dblift.db.plugins.sqlite.parser.sqlite_regex_parser import SQLiteRegexParser
 
         parser = SQLiteRegexParser()
@@ -387,9 +383,7 @@ class TestSqliteCaseEndInTrigger:
         """
 
         statements = parser.split_statements(sql)
-        assert (
-            len(statements) == 2
-        ), f"PARSER-01: Multiple CASE failed, got {len(statements)} statements"
+        assert len(statements) == 2, f"Multiple CASE failed, got {len(statements)} statements"
         assert "CREATE TRIGGER" in statements[0]
         assert "INSERT INTO log" in statements[1]
 
@@ -422,13 +416,13 @@ class TestDb2NativeTransport:
 
 
 # ════════════════════════════════════════════════════════════
-# BUG-CONFIG-MERGE: ConfigBuilder must not pollute non-sqlserver configs
+# ConfigBuilder must not pollute non-sqlserver configs
 # ════════════════════════════════════════════════════════════
 class TestConfigBuilderMerge:
     """Regression: ConfigBuilder.build() must not leak sqlserver defaults into file-based configs."""
 
     def test_file_config_with_database_replaces_default(self):
-        """BUG-CONFIG-MERGE: File config with database section must not inherit sqlserver defaults."""
+        """File config with database section must not inherit sqlserver defaults."""
         import os
         import tempfile
 
@@ -448,18 +442,18 @@ class TestConfigBuilderMerge:
         try:
             config = ConfigBuilder.build(file_path=tmp_path, env_overrides=False)
             # The database type should be postgresql, not sqlserver
-            assert (
-                config.database.type == "postgresql"
-            ), "BUG-CONFIG-MERGE: expected postgresql, got " + str(config.database.type)
+            assert config.database.type == "postgresql", "expected postgresql, got " + str(
+                config.database.type
+            )
             # The schema should NOT be "dbo" (sqlserver default)
             assert (
                 config.database.schema != "dbo" or config.database.type != "sqlserver"
-            ), "BUG-CONFIG-MERGE: sqlserver schema 'dbo' leaked into postgresql config"
+            ), "sqlserver schema 'dbo' leaked into postgresql config"
         finally:
             os.unlink(tmp_path)
 
     def test_file_merge_applies_extra_yaml_sections(self):
-        """BUG-CONFIG-MERGE: Raw YAML merge must apply fields beyond database/migrations."""
+        """Raw YAML merge must apply fields beyond database/migrations."""
         import os
         import tempfile
 

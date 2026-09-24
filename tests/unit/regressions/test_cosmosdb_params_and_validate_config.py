@@ -1,7 +1,5 @@
-"""Regression tests for the Batch 9 bug fixes (B9-BUG-01 / NOTE-01 / NOTE-02).
-
-Grouped by bug number so an intentional behavioral change to any one fix is
-easy to locate. Mirrors the conventions of ``test_batch8_bug_fixes.py``.
+"""Regression tests: CosmosDB param substitution, MigrationContext subscript
+rejection, validate-config credential warning.
 """
 
 from __future__ import annotations
@@ -14,9 +12,9 @@ from unittest.mock import MagicMock, patch
 
 
 # ---------------------------------------------------------------------------
-# B9-BUG-01: CosmosDB ``_execute_delete`` must substitute ``?`` placeholders
+# CosmosDB ``_execute_delete`` must substitute ``?`` placeholders
 # ---------------------------------------------------------------------------
-class TestBug01CosmosDbParamSubstitution(unittest.TestCase):
+class TestCosmosDbParamSubstitution(unittest.TestCase):
     """CosmosDB SQL has no ``?`` placeholders, so positional params must be
     inlined as quoted/typed literals before a query is sent. Repair no
     longer composes SQL for Cosmos at all (the history manager deletes via
@@ -71,9 +69,9 @@ class TestBug01CosmosDbParamSubstitution(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
-# B9-NOTE-01: MigrationContext must reject dict-style access with a pointer
+# MigrationContext must reject dict-style access with a pointer
 # ---------------------------------------------------------------------------
-class TestNote01MigrationContextNotSubscriptable(unittest.TestCase):
+class TestMigrationContextNotSubscriptable(unittest.TestCase):
     def test_dict_style_access_raises_actionable_typeerror(self) -> None:
         from dblift.core.migration.executors.python_executor import MigrationContext
 
@@ -101,9 +99,9 @@ class TestNote01MigrationContextNotSubscriptable(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
-# B9-NOTE-02: validate-config warns when database credentials are missing
+# validate-config warns when database credentials are missing
 # ---------------------------------------------------------------------------
-class TestNote02ValidateConfigCredentialWarning(unittest.TestCase):
+class TestValidateConfigCredentialWarning(unittest.TestCase):
     def _run_validate(self, db_type, username, password):
         from dblift.cli import db_utils
 

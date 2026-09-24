@@ -1,6 +1,6 @@
 """Dialect-specific options for ``View``, regrouped into immutable dataclasses.
 
-Mirrors the design of ``dblift.core.sql_model.table_options`` (SIMP-48):
+Mirrors the design of ``dblift.core.sql_model.table_options``:
 the legacy ``View.__init__`` exposes 20 keyword arguments. Most are
 optional dialect-specific properties (PostgreSQL ``unlogged`` /
 ``security_definer``, MySQL ``algorithm`` / ``definer``, Oracle

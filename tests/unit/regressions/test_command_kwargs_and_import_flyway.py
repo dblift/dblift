@@ -1,9 +1,9 @@
-"""Regression tests for the Batch 7 bug fixes (B7-BUG-01..B7-BUG-06).
+"""Regression tests: scripts_dir kwarg guard, MIGRATION_APPLIED alias, FTS5 shadow
+filtering, import-flyway dry-run preview.
 
-Grouped by bug number so an intentional behavioral change to any one fix is
-easy to locate. Tests avoid real network/DB dependencies by mocking out the
-provider and executor layers where practical, and source-matching for the
-docker-compose healthcheck change.
+Tests avoid real network/DB dependencies by mocking out the provider and
+executor layers where practical, and source-matching for the docker-compose
+healthcheck change.
 """
 
 from __future__ import annotations
@@ -14,9 +14,9 @@ from unittest.mock import MagicMock
 
 
 # ---------------------------------------------------------------------------
-# B7-BUG-01: scripts_dir kwarg collision must raise a pointed TypeError
+# scripts_dir kwarg collision must raise a pointed TypeError
 # ---------------------------------------------------------------------------
-class TestBug01ScriptsDirKwargGuard(unittest.TestCase):
+class TestScriptsDirKwargGuard(unittest.TestCase):
     """Passing ``scripts_dir`` via kwargs to any public API method must raise
     a ``TypeError`` that directs the caller to ``migrations_dir`` — not the
     confusing default ``got multiple values for keyword argument`` message.
@@ -76,9 +76,9 @@ class TestBug01ScriptsDirKwargGuard(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
-# B7-BUG-02: EventType.MIGRATION_APPLIED must exist as alias
+# EventType.MIGRATION_APPLIED must exist as alias
 # ---------------------------------------------------------------------------
-class TestBug02MigrationAppliedAlias(unittest.TestCase):
+class TestMigrationAppliedAlias(unittest.TestCase):
     def test_migration_applied_exists(self) -> None:
         from dblift.api.events import EventType
 
@@ -130,9 +130,9 @@ class TestBug02MigrationAppliedAlias(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
-# B7-BUG-03: CosmosDB docker-compose healthcheck must use HTTP
+# CosmosDB docker-compose healthcheck must use HTTP
 # ---------------------------------------------------------------------------
-class TestBug03CosmosDbHealthcheckHttp(unittest.TestCase):
+class TestCosmosDbHealthcheckHttp(unittest.TestCase):
     def test_healthcheck_uses_http_scheme(self) -> None:
         compose = Path("tests/integration/docker-compose.yml").read_text()
         # The old HTTPS probe must be gone.
@@ -142,14 +142,14 @@ class TestBug03CosmosDbHealthcheckHttp(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
-# B7-BUG-04: export-schema accepts ``database-stored`` alias
+# export-schema accepts ``database-stored`` alias
 # ---------------------------------------------------------------------------
 
 
 # ---------------------------------------------------------------------------
-# B7-BUG-05: SQLite introspector must filter FTS5 shadow tables
+# SQLite introspector must filter FTS5 shadow tables
 # ---------------------------------------------------------------------------
-class TestBug05SQLiteFts5ShadowFilter(unittest.TestCase):
+class TestSQLiteFts5ShadowFilter(unittest.TestCase):
     def _make_ops(self, rows_by_query):
         """Build an ops instance whose query_executor returns canned rows.
 
@@ -234,9 +234,9 @@ class TestBug05SQLiteFts5ShadowFilter(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
-# B7-BUG-06: import-flyway --dry-run must emit a user-visible preview
+# import-flyway --dry-run must emit a user-visible preview
 # ---------------------------------------------------------------------------
-class TestBug06ImportFlywayDryRunPreview(unittest.TestCase):
+class TestImportFlywayDryRunPreview(unittest.TestCase):
     def _make_command(self, rows):
         from dblift.core.migration.commands.import_flyway_command import ImportFlywayCommand
 

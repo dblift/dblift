@@ -1,4 +1,4 @@
-"""Story 23-11: Tests for is_migration_success/is_migration_failure utilities (SMELL-10)."""
+"""Tests for is_migration_success/is_migration_failure utilities."""
 
 import pytest
 

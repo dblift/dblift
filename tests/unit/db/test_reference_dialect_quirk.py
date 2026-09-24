@@ -1,4 +1,4 @@
-"""Reference-dialect render default — ADR-26 E (story 26-5).
+"""Reference-dialect render default.
 
 The no-dialect rendering default used to live as a ``self.dialect or
 "postgresql"`` literal in the 7 multi-dialect ``create_statement`` sites in

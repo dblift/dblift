@@ -31,7 +31,7 @@ class SQLiteProvider(NativeProvider, TransactionalProvider):
     # what value restores the driver's own default.
     DEFAULT_BUSY_TIMEOUT_SECONDS = DEFAULT_BUSY_TIMEOUT_SECONDS
 
-    # BUG-04: schema_snapshot_service filters internal tables by looking up
+    # schema_snapshot_service filters internal tables by looking up
     # ``provider.MIGRATION_LOCK_TABLE`` via ``getattr(..., "")``. Without this
     # attribute, the filter reduced to the empty string and the lock table
     # appeared in snapshots as if it were a user table. SQLite inherits from

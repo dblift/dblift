@@ -324,7 +324,7 @@ class EventEmitter:
             if not (pattern == event_str and cb == callback)
         ]
 
-    # Batch-6 BUG-05: ``subscribe``/``unsubscribe`` are the naming conventions
+    # ``subscribe``/``unsubscribe`` are the naming conventions
     # used by RxJS, blinker and many Node.js EventEmitter wrappers. Provide
     # them as aliases for ``on``/``off`` so API consumers coming from those
     # ecosystems don't hit an ``AttributeError`` on their first call.
@@ -541,7 +541,7 @@ def get_default_emitter() -> EventEmitter:
     return _default_emitter
 
 
-# BUG-06 (batch 6 follow-up): per-client event isolation. ``DBLiftClient``
+# Per-client event isolation. ``DBLiftClient``
 # owns its own ``EventEmitter`` and binds it to this context variable for the
 # duration of each public operation. ``emit_event`` (called from the core
 # layer) reads the bound emitter so script-level events land on the emitter

@@ -1,4 +1,4 @@
-"""Story 26-11: database URL behaviour uses plugin-owned quirks."""
+"""Database URL behaviour uses plugin-owned quirks."""
 
 import inspect
 
@@ -11,7 +11,7 @@ pytestmark = [pytest.mark.unit]
 
 
 class TestBuildDatabaseUrlNoHardcodedDialect:
-    """AC#1: BaseDatabaseConfig.build_database_url has no hardcoded dialect checks."""
+    """BaseDatabaseConfig.build_database_url has no hardcoded dialect checks."""
 
     def test_no_sqlserver_string_in_base_build_database_url(self):
         src = inspect.getsource(BaseDatabaseConfig.build_database_url)
@@ -23,7 +23,7 @@ class TestBuildDatabaseUrlNoHardcodedDialect:
 
 
 class TestQuirksPropertiesPerDialect:
-    """AC#2: quirks properties expose native-driver behaviour per dialect."""
+    """Quirks properties expose native-driver behaviour per dialect."""
 
     def test_sqlserver_quirks_native_driver_display(self):
         from dblift.db.provider_registry import ProviderRegistry

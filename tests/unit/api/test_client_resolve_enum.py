@@ -1,4 +1,4 @@
-"""Tests for SIMP-75: _resolve_enum_value extraction (story 24-4).
+"""Tests for _resolve_enum_value.
 
 Verifies the helper correctly resolves None, enum, and string values
 to the appropriate enum instance.

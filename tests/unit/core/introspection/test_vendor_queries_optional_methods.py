@@ -1,4 +1,4 @@
-"""Story 20-18 — formalisation ABC VendorMetadataQueries : 13 nouvelles méthodes optionnelles."""
+"""VendorMetadataQueries: the optional query methods have safe defaults and are not abstract."""
 
 import inspect
 from unittest.mock import MagicMock
@@ -27,7 +27,7 @@ class ConcreteVendorQueries(VendorMetadataQueries):
         return ("SELECT 1", [])
 
 
-# --- AC#7.1 — 13 tests paramétriques pour les nouvelles méthodes ---
+# --- 13 tests paramétriques pour les nouvelles méthodes ---
 
 _NEW_METHODS_WITH_ARGS = [
     ("get_unique_constraints_query", ("s", "t")),
@@ -48,7 +48,7 @@ _NEW_METHODS_WITH_ARGS = [
 
 @pytest.mark.unit
 class TestVendorQueriesNewMethods:
-    """AC#7.1 — Chaque nouvelle méthode retourne (None, []) par défaut."""
+    """Chaque nouvelle méthode retourne (None, []) par défaut."""
 
     @pytest.mark.parametrize(
         "method_name,args", _NEW_METHODS_WITH_ARGS, ids=[m for m, _ in _NEW_METHODS_WITH_ARGS]
@@ -61,7 +61,7 @@ class TestVendorQueriesNewMethods:
 
 @pytest.mark.unit
 class TestVendorQueriesIsCompleteABC:
-    """AC#7.2 — Les nouvelles méthodes sont optionnelles (pas abstraites)."""
+    """Les nouvelles méthodes sont optionnelles (pas abstraites)."""
 
     def test_abstract_method_count_unchanged(self):
         """Le nombre de méthodes abstraites ne doit pas avoir augmenté."""

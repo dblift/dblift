@@ -1,8 +1,7 @@
-"""Regression tests for the Batch 5 bug fixes (B5-BUG-01..B5-BUG-07).
+"""Regression tests: CLI flag overrides, connection-error classification, schema_name fallback.
 
 Each test keeps its scope local to the surface being changed and avoids
-network/database dependencies. They are grouped by bug number so that an
-intentional behavioral change to any one fix is easy to locate.
+network/database dependencies.
 """
 
 from __future__ import annotations
@@ -14,14 +13,14 @@ from typing import Any
 from unittest.mock import MagicMock, patch
 
 # ---------------------------------------------------------------------------
-# B5-BUG-01: PG matview composite row-type must not surface as CREATE TYPE
+# PG matview composite row-type must not surface as CREATE TYPE
 # ---------------------------------------------------------------------------
 
 
 # ---------------------------------------------------------------------------
-# B5-BUG-02: --recursive / --no-recursive CLI override
+# --recursive / --no-recursive CLI override
 # ---------------------------------------------------------------------------
-class TestBug02RecursiveOverride(unittest.TestCase):
+class TestRecursiveOverride(unittest.TestCase):
     def _make_parser(self) -> argparse.ArgumentParser:
         from dblift.cli._parser_setup import create_parser
 
@@ -82,13 +81,10 @@ class TestBug02RecursiveOverride(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
-# B5-BUG-03 (updated for python-native restore): from_sqlalchemy now requires
-# engine= or connection= and raises ConfigurationError (not NotImplemented)
-# for missing engine. The original "BUG-03" was that the stub raised TypeError
-# for some call shapes before the NotImpl message; we keep the test class to
-# guard the new error surface.
+# from_sqlalchemy requires engine= or connection= and raises ConfigurationError
+# (not NotImplemented) for a missing engine.
 # ---------------------------------------------------------------------------
-class TestBug03FromSqlalchemyRaisesConfigurationError(unittest.TestCase):
+class TestFromSqlalchemyRaisesConfigurationError(unittest.TestCase):
     def test_from_sqlalchemy_no_args_raises_configuration(self) -> None:
         from dblift.api.client import DBLiftClient
         from dblift.config.errors import ConfigurationError
@@ -112,9 +108,9 @@ class TestBug03FromSqlalchemyRaisesConfigurationError(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
-# B5-BUG-04: clean --dry-run must delegate complete enumeration to provider
+# clean --dry-run must delegate complete enumeration to provider
 # ---------------------------------------------------------------------------
-class TestBug04CleanDryRunCoversAllObjectTypes(unittest.TestCase):
+class TestCleanDryRunCoversAllObjectTypes(unittest.TestCase):
     def test_clean_command_uses_provider_droppable_object_contract(self) -> None:
         import dblift.core.migration.commands.clean_command as mod
 
@@ -125,14 +121,14 @@ class TestBug04CleanDryRunCoversAllObjectTypes(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
-# B5-BUG-05: SQL Server indexed view must emit CREATE VIEW, not MATERIALIZED
+# SQL Server indexed view must emit CREATE VIEW, not MATERIALIZED
 # ---------------------------------------------------------------------------
 
 
 # ---------------------------------------------------------------------------
-# B5-BUG-06: schema_name must mirror target_schema when not explicitly set
+# schema_name must mirror target_schema when not explicitly set
 # ---------------------------------------------------------------------------
-class TestBug06SchemaNameMirrorsTargetSchema(unittest.TestCase):
+class TestSchemaNameMirrorsTargetSchema(unittest.TestCase):
     def test_info_result_schema_name_falls_back_to_target_schema(self) -> None:
         from dblift.core.logger.results import InfoResult
 
@@ -168,9 +164,9 @@ class TestBug06SchemaNameMirrorsTargetSchema(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
-# B5-BUG-07: connection error classifier must use SQLState, not locale text
+# connection error classifier must use SQLState, not locale text
 # ---------------------------------------------------------------------------
-class TestBug07ConnectionErrorUsesSqlState(unittest.TestCase):
+class TestConnectionErrorUsesSqlState(unittest.TestCase):
     def _make_jdbc_error(self, sqlstate: str, message: str) -> Exception:
         exc: Any = Exception(message)
         exc.getSQLState = MagicMock(return_value=sqlstate)  # type: ignore[attr-defined]

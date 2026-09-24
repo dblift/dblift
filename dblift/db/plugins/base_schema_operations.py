@@ -208,7 +208,7 @@ class BaseSchemaOperations(ABC):
     ) -> None:
         """Preview-only sibling of ``_drop_objects_by_type``.
 
-        BUG-03: ``get_clean_preview`` needs the exact same enumeration the
+        ``get_clean_preview`` needs the exact same enumeration the
         real clean does — same query, same DROP SQL — but must not execute
         the DROP. Records each candidate via ``summary.record_drop`` instead.
 

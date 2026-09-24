@@ -161,7 +161,7 @@ class MigrationHistoryManager:
         ANSI double-quotes later (a quoted lowercase identifier is
         *literally* lowercase to Oracle).
 
-        ADR-0015 (BUG-03): every call site that qualifies the history-
+        ADR-0015: every call site that qualifies the history-
         table identifier via ``provider.get_schema_qualified_name`` or
         ``provider.table_exists`` must pass the normalized form so the
         quoted literal matches what the database actually stored.
@@ -243,7 +243,7 @@ class MigrationHistoryManager:
         EXISTS`` is not atomic under concurrent sessions and the losing
         transaction is left in an aborted state until rolled back, which
         cascades "transaction is aborted" errors onto every subsequent
-        statement. BUG-07.
+        statement.
 
         Race detection is delegated to ``provider.quirks.is_schema_history_race_error``
         instead of a single hard-coded marker list: dialects whose bare

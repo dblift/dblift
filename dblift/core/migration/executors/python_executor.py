@@ -19,7 +19,7 @@ from .base_executor import BaseMigrationExecutor, MigrationExecutionResult
 if TYPE_CHECKING:
     from dblift.core.migration.placeholders.placeholder_service import PlaceholderService
 
-# B10-BUG-09: prefixes that return a result set on every supported
+# Prefixes that return a result set on every supported
 # dialect. Keep this list narrow — ``CALL`` / ``EXEC`` / ``EXECUTE`` may
 # or may not return rows depending on the routine, and there is no safe
 # static way to tell, so they stay on the DML path where drivers that
@@ -150,7 +150,7 @@ class MigrationContext:
         dialect-specific placeholder syntax such as ``%s`` should not be
         written directly in ``sql``.
 
-        B10-BUG-09: ``provider.execute_statement`` routes through the provider
+        ``provider.execute_statement`` routes through the provider
         ``Statement.executeUpdate()``, which PostgreSQL and DB2 drivers
         reject for result-set-returning SQL ("A result was returned when
         none was expected"). Migration scripts often read data before
@@ -188,7 +188,7 @@ class MigrationContext:
     def close(self) -> None:
         """DBAPI-compat no-op so ``cursor().close()`` in migration scripts works.
 
-        Batch-6 BUG-01: the ``cursor()`` shim returns ``self`` so callers can
+        The ``cursor()`` shim returns ``self`` so callers can
         use the classic DBAPI pattern ``cur = conn.cursor(); cur.execute(...);
         cur.close()``. Before this shim the final ``close()`` raised
         ``AttributeError`` because MigrationContext only implemented
@@ -222,7 +222,7 @@ class MigrationContext:
         return getattr(cm, "client", None) if cm else None
 
     def __getitem__(self, key: Any) -> Any:
-        """Reject dict-style access with an actionable error (B9-NOTE-01).
+        """Reject dict-style access with an actionable error.
 
         Earlier CosmosDB Python migration samples passed a raw ``dict`` to
         ``migrate(client_config)`` with keys like ``account_endpoint`` and

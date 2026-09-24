@@ -1,4 +1,4 @@
-"""Story 23-7: Structural tests verifying removal of try:pass dead code artifacts (DEAD-NEW-04/05)."""
+"""Structural tests verifying removal of try:pass dead code artifacts."""
 
 import inspect
 
@@ -8,7 +8,7 @@ pytestmark = [pytest.mark.unit]
 
 
 def test_log_py_jinja_available_no_try_except():
-    """DEAD-NEW-04: log.py JINJA_AVAILABLE no longer wrapped in dead try/except."""
+    """log.py JINJA_AVAILABLE no longer wrapped in dead try/except."""
     import dblift.core.logger.log as mod
 
     src = inspect.getsource(mod)
@@ -25,14 +25,14 @@ def test_log_py_jinja_available_no_try_except():
 
 
 def test_log_py_jinja_available_is_true():
-    """DEAD-NEW-04: JINJA_AVAILABLE is True at runtime."""
+    """JINJA_AVAILABLE is True at runtime."""
     from dblift.core.logger.log import JINJA_AVAILABLE
 
     assert JINJA_AVAILABLE is True
 
 
 def test_repair_command_execute_no_pass_in_try():
-    """DEAD-NEW-04: repair_command execute() MISSING_SCRIPT try block no longer starts with bare pass."""
+    """repair_command execute() MISSING_SCRIPT try block no longer starts with bare pass."""
     from dblift.core.migration.commands.repair_command import RepairCommand
 
     src = inspect.getsource(RepairCommand.execute)
@@ -47,10 +47,10 @@ def test_repair_command_execute_no_pass_in_try():
 
 
 def test_get_index_syntax_removed():
-    """DEAD-NEW-05: get_index_syntax nested function removed (Epic 26 — logic moved to quirks).
+    """get_index_syntax nested function removed (logic moved to quirks).
 
     The ``_generate_basic_create_statement`` method has been relocated to the
-    dialect generators (P4 refactor), so we verify the dead helper is absent
+    dialect generators, so we verify the dead helper is absent
     from the generator instead.
     """
     import dblift.core.sql_model.index as index_module

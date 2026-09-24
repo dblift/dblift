@@ -1,8 +1,7 @@
-"""Regression tests for the Batch 4 bug fixes (BUG-01..BUG-10).
+"""Regression tests: logging levels, Cosmos DB config validation, repair skipping baselines.
 
 Each test keeps its scope local to the surface being changed and avoids
-network/database dependencies. They are grouped by bug number so that an
-intentional behavioral change to any one fix is easy to locate.
+network/database dependencies.
 """
 
 from __future__ import annotations
@@ -17,31 +16,31 @@ from unittest.mock import MagicMock, patch
 
 
 # ---------------------------------------------------------------------------
-# BUG-01 / BUG-03: PG partial unique indexes must not vanish from snapshots
+# PG partial unique indexes must not vanish from snapshots
 # ---------------------------------------------------------------------------
-class TestBug01And03PostgresPartialUniqueIndexes(unittest.TestCase):
+class TestPostgresPartialUniqueIndexes(unittest.TestCase):
     def test_postgres_uses_pg_constraint_query_not_getindexinfo(self) -> None:
         """``get_unique_constraints`` must hit pg_constraint for postgresql,
         otherwise standalone partial unique indexes collapse into named UNIQUE
-        constraints with the WHERE predicate stripped (BUG-01 & BUG-03)."""
+        constraints with the WHERE predicate stripped."""
         from dblift.core.introspection.extractors.constraint_extractor import ConstraintExtractor
 
         self.assertTrue(
             hasattr(ConstraintExtractor, "_get_unique_constraints_postgresql"),
             "PG-specific unique-constraint path must exist so getIndexInfo is "
-            "not used for postgresql (BUG-01).",
+            "not used for postgresql.",
         )
 
 
 # ---------------------------------------------------------------------------
-# BUG-02: PG DOMAIN must ship base type + CHECK through introspection
+# PG DOMAIN must ship base type + CHECK through introspection
 # ---------------------------------------------------------------------------
 
 
 # ---------------------------------------------------------------------------
-# BUG-05: strict mode must raise on out-of-order migrations, non-strict warn
+# Strict mode must raise on out-of-order migrations, non-strict warn
 # ---------------------------------------------------------------------------
-class TestBug05StrictOutOfOrder(unittest.TestCase):
+class TestStrictOutOfOrder(unittest.TestCase):
     def test_migrate_command_has_strict_out_of_order_messages(self) -> None:
         import dblift.core.migration.commands.migrate_command as mod
 
@@ -52,9 +51,9 @@ class TestBug05StrictOutOfOrder(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
-# BUG-06: --log-level must be applied to the file handler too
+# --log-level must be applied to the file handler too
 # ---------------------------------------------------------------------------
-class TestBug06LogLevelAppliedEverywhere(unittest.TestCase):
+class TestLogLevelAppliedEverywhere(unittest.TestCase):
     def _make_event(self, level_name: str):
         from dblift.core.logger.log import LogEvent, LogLevel
 
@@ -107,9 +106,9 @@ class TestBug06LogLevelAppliedEverywhere(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
-# BUG-07: validate-config must accept CosmosDB's account_endpoint
+# validate-config must accept CosmosDB's account_endpoint
 # ---------------------------------------------------------------------------
-class TestBug07ValidateConfigAcceptsCosmosEndpoint(unittest.TestCase):
+class TestValidateConfigAcceptsCosmosEndpoint(unittest.TestCase):
     def _make_config(self, **db_kwargs: Any) -> Any:
         cfg = MagicMock()
         cfg.database = MagicMock()
@@ -148,14 +147,14 @@ class TestBug07ValidateConfigAcceptsCosmosEndpoint(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
-# BUG-08: SQL Server indexed view exported once with its clustered index
+# SQL Server indexed view exported once with its clustered index
 # ---------------------------------------------------------------------------
 
 
 # ---------------------------------------------------------------------------
-# BUG-09: migration.script.* events actually fire
+# migration.script.* events actually fire
 # ---------------------------------------------------------------------------
-class TestBug09ScriptEventsEmitted(unittest.TestCase):
+class TestScriptEventsEmitted(unittest.TestCase):
     def test_default_emitter_is_shared(self) -> None:
         from dblift.api.events import EventEmitter, get_default_emitter
 
@@ -183,9 +182,9 @@ class TestBug09ScriptEventsEmitted(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
-# BUG-10: repair must not flag baseline rows as MISSING_SCRIPT
+# repair must not flag baseline rows as MISSING_SCRIPT
 # ---------------------------------------------------------------------------
-class TestBug10RepairSkipsBaseline(unittest.TestCase):
+class TestRepairSkipsBaseline(unittest.TestCase):
     def _make_applied(self, script_name: str, type_name: str) -> Any:
         obj = MagicMock()
         obj.script_name = script_name

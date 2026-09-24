@@ -301,7 +301,7 @@ class TableExtractor(BaseExtractor):
     def _get_dblift_internal_names(self) -> Set[str]:
         """Build the set of dblift-internal table names to hide from introspection.
 
-        BUG-03B: names are config-overridable (``history_table`` /
+        Names are config-overridable (``history_table`` /
         ``snapshot_table`` in ``DatabaseConfig``, ENV ``DBLIFT_HISTORY_TABLE`` /
         ``DBLIFT_SNAPSHOT_TABLE``). Hardcoded literals broke the filter when
         the user overrode the names. Default values come from the canonical

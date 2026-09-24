@@ -1,7 +1,7 @@
-"""Characterization tests for quote_qualified (story 26-5).
+"""Characterization tests for quote_qualified.
 
-quote_qualified had ZERO coverage before this story. These tests pin the
-exact pre-refactor behaviour so the Oracle-branch → quirks-capability
+quote_qualified had ZERO coverage before these tests were added. These tests
+pin the exact pre-refactor behaviour so the Oracle-branch → quirks-capability
 migration (``quote_qualified_folds_to_uppercase``) and the quoting →
 quirks delegation stay byte-identical.
 
@@ -32,8 +32,8 @@ class TestQuoteQualifiedUppercaseFolding:
         assert quote_qualified("oracle", "", "mytable") == '"MYTABLE"'
 
     def test_db2_does_not_uppercase_despite_folding_quirks(self):
-        # Whole point of story 26-5: DB2 shares Oracle's identifier-folding
-        # quirks but quote_qualified must leave its idents unchanged.
+        # DB2 shares Oracle's identifier-folding quirks but quote_qualified
+        # must leave its idents unchanged.
         assert quote_qualified("db2", "myschema", "mytable") == '"myschema"."mytable"'
 
     def test_db2_identifier_only_unchanged(self):

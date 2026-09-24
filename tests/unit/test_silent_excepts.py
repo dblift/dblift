@@ -1,12 +1,8 @@
-"""Story 23-6: Batch fix remaining except Exception: pass blocks."""
+"""Silent ``except Exception: pass`` blocks stay out of the modules that once had them."""
 
 import re
-import subprocess
-from pathlib import Path
 
 import pytest
-
-_REPO_ROOT = str(Path(__file__).resolve().parents[3])
 
 pytestmark = [pytest.mark.unit]
 
@@ -94,75 +90,3 @@ class TestRemainingIntentionalExcepts:
                     pytest.fail(
                         f"Line {i + 1} has bare except without comment, followed by {next_lines}"
                     )
-
-
-class TestGlobalSilentExceptCount:
-    """Verify the total count of silent except blocks across production code is reduced."""
-
-    def test_total_silent_excepts_significantly_reduced(self):
-        """Total except Exception: pass should be near zero (only intentional ones remain)."""
-        result = subprocess.run(
-            [
-                "grep",
-                "-r",
-                "--include=*.py",
-                "-c",
-                "except Exception: pass",
-                "core/",
-                "db/",
-                "cli/",
-                "api/",
-                "config/",
-            ],
-            capture_output=True,
-            text=True,
-            cwd=_REPO_ROOT,
-            timeout=30,
-        )
-        # Count total inline matches across all files
-        total = 0
-        for line in result.stdout.splitlines():
-            if ":" in line:
-                count = line.split(":")[-1].strip()
-                try:
-                    total += int(count)
-                except ValueError:
-                    pass
-        assert (
-            total <= 5
-        ), f"Still {total} inline 'except Exception: pass' remaining (expected <= 5)"
-
-    def test_total_bare_except_exception_colon_reduced(self):
-        """Count of bare 'except Exception:\\n    pass' blocks should be very low."""
-        result = subprocess.run(
-            [
-                "grep",
-                "-r",
-                "--include=*.py",
-                "-l",
-                "except Exception:",
-                "core/",
-                "db/",
-                "cli/",
-                "api/",
-                "config/",
-            ],
-            capture_output=True,
-            text=True,
-            cwd=_REPO_ROOT,
-            timeout=30,
-        )
-        files = [f for f in result.stdout.splitlines() if f and "__pycache__" not in f]
-        silent_total = 0
-        for filepath in files:
-            try:
-                with open(f"{_REPO_ROOT}/{filepath}", "r") as fh:
-                    source = fh.read()
-                count = len(re.findall(r"except Exception:\s*\n\s*pass\b", source))
-                silent_total += count
-            except Exception:
-                pass
-        # Allow up to 35 intentional ones (JDBC close/BLOB fallbacks/sqlglot fallbacks)
-        assert (
-            silent_total <= 35
-        ), f"Found {silent_total} bare 'except Exception: pass' blocks (expected <= 35)"

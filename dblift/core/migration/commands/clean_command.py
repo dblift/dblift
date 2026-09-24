@@ -38,7 +38,7 @@ class CleanCommand(BaseCommand):
         result = CleanResult()
         clean_enabled = kwargs.pop("clean_enabled", False) is True
         result.show_query_results = kwargs.pop("show_query_results", False) is True
-        # BUG-10: CosmosDB has no SQL schema, so ``config.database.schema`` is
+        # CosmosDB has no SQL schema, so ``config.database.schema`` is
         # empty and the summary line rendered as "Cleaned N object(s) from
         # schema '':". Fall back to the database-scope name when schema is
         # unset so the label is meaningful across dialects. For SQL dialects

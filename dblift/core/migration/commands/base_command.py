@@ -445,7 +445,7 @@ class BaseCommand:
                     f"Command {command_name} completed with status {status} in {time_str}"
                 )
 
-        # BUG-11: resolve the schema version *after* the operation has run
+        # Resolve the schema version *after* the operation has run
         # so the footer reflects the post-state (undo rolling back V3 now
         # shows "Schema Version: 3" in the footer, not the pre-op "4" that
         # the header emitted at command start). Resolution can fail for
@@ -564,12 +564,12 @@ class BaseCommand:
             success: Whether the command succeeded
             execution_time: Formatted execution time string
             error_message: Optional ``result.error_message`` to surface on
-                the failure path. BUG-01 (ADR-0013): the pre-ADR footer
+                the failure path. ADR-0013: the pre-ADR footer
                 always dropped this, leaving the operator with
                 ``"Command X failed"`` and zero signal even when the
                 command layer had captured a precise explanation.
             schema_version: Optional post-operation schema version.
-                BUG-11: the header-only Schema Version was a snapshot
+                The header-only Schema Version was a snapshot
                 taken *before* the command ran, so after an undo /
                 migrate / baseline / clean it showed the stale value.
                 Rendering the post-state version in the footer gives
