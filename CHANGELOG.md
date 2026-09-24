@@ -34,6 +34,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `dblift://pending` resources report such a failure instead of returning an
   empty list. A command that ran to a result — even a failed one, such as
   validation issues — is still a normal result.
+- A database role that can connect but lacks a privilege — creating
+  dblift's schema-history table, for instance — is no longer reported as
+  `Connection failed: invalid credentials`; the engine's own permission
+  error is shown, as it already was for MySQL and Db2.
 
 ### Removed
 

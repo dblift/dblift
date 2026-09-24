@@ -284,6 +284,56 @@ class TestFormatConnectionError:
         assert "Permission denied" in result
         assert "/tmp/ro/sub" in result
 
+    def test_postgresql_authorization_error_keeps_the_engine_message(self):
+        """A role that can connect but lacks a privilege (e.g. creating
+        dblift's schema-history table) is AUTHORIZATION, not AUTHENTICATION —
+        the engine's own permission-denied text must survive, not be
+        replaced with the generic credentials wording."""
+        err = Exception(
+            "(psycopg.errors.InsufficientPrivilege) permission denied for schema mcp_reader_1"
+        )
+        result = format_connection_error(err, "postgresql")
+        assert "permission denied for schema mcp_reader_1" in result
+        assert "invalid credentials" not in result
+
+    def test_sqlserver_authorization_error_keeps_the_engine_message(self):
+        """Same AUTHORIZATION-vs-AUTHENTICATION distinction as PostgreSQL
+        above, for SQL Server's own permission-denied wording."""
+        err = Exception("CREATE TABLE permission denied in database 'db'. (262)")
+        result = format_connection_error(err, "sqlserver")
+        assert "permission denied in database 'db'" in result
+        assert "invalid credentials" not in result
+
+    def test_oracle_authorization_error_keeps_the_engine_message(self):
+        """Same distinction for Oracle's ORA-01031 (insufficient
+        privileges). ``test_oracle_ora01031_authorization`` above only pins
+        this message's classifier category; this pins the formatted
+        message."""
+        err = Exception("ORA-01031: insufficient privileges")
+        result = format_connection_error(err, "oracle")
+        assert "ORA-01031" in result
+        assert "invalid credentials" not in result
+
+    def test_authentication_still_returns_invalid_credentials_across_dialects(self):
+        """AUTHENTICATION is unaffected by the AUTHORIZATION fix above: each
+        dialect's own credential-failure wording must still be replaced with
+        the generic message. Pinned here for all five dialects in one
+        place."""
+        cases = [
+            ("postgresql", 'FATAL: password authentication failed for user "postgres"'),
+            ("mysql", "1045 Access denied for user 'root'@'localhost'"),
+            ("oracle", "ORA-01017: invalid username/password; logon denied"),
+            ("sqlserver", "Login failed for user 'sa'. (18456)"),
+            (
+                "db2",
+                'SQL30082N  Security processing failed with reason "24" '
+                '("USERID/PASSWORD COMBINATION IS NOT VALID"). SQLSTATE=08001',
+            ),
+        ]
+        for db_type, message in cases:
+            result = format_connection_error(Exception(message), db_type)
+            assert result == "Connection failed: invalid credentials", db_type
+
 
 # ---------------------------------------------------------------------------
 # _is_auth_error
@@ -313,6 +363,18 @@ class TestIsAuthError:
         err = PermissionError(13, "Permission denied", "/tmp/ro/sub")
         result = _is_auth_error(err, str(err).lower(), "sqlite")
         assert result is False
+
+    def test_returns_false_for_authorization_category(self):
+        """AUTHORIZATION and AUTHENTICATION are distinct categories: a role
+        that connects successfully but lacks a privilege must not be treated
+        as an auth failure. Assert the classifier's own category first so
+        this test cannot pass merely because the message classifies as
+        something else, like UNKNOWN."""
+        message = "(psycopg.errors.InsufficientPrivilege) permission denied for schema mcp_reader_1"
+        err = Exception(message)
+        category = DatabaseErrorClassifier("postgresql").categorize_error(err)
+        assert category == ErrorCategory.AUTHORIZATION
+        assert _is_auth_error(err, message.lower(), "postgresql") is False
 
 
 # ---------------------------------------------------------------------------
