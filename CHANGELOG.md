@@ -14,6 +14,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- The sample configuration files (`dblift-postgresql.yaml.template`,
+  `dblift-sqlserver.yaml.template`, `dblift-cosmosdb.yaml.template`) moved
+  from the repository root to `docs/examples/config/`.
+
 ### Fixed
 
 - `dblift mcp` now returns a tool call whose command failed before producing
