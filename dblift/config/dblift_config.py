@@ -11,7 +11,7 @@ import yaml
 from dblift.config.database_config import BaseDatabaseConfig
 from dblift.config.errors import ConfigurationError
 from dblift.config.secrets import SecretsConfig, resolve_secret_refs
-from dblift.core.constants import DEFAULT_HISTORY_TABLE
+from dblift.core.constants import DEFAULT_HISTORY_TABLE, ENV_PREFIX
 
 ENV_PLACEHOLDER_PATTERN = re.compile(r"\$\{([^}:]+)(?::-(.*?))?\}")
 
@@ -43,7 +43,10 @@ _ENVIRONMENT_SECTION_KEYS: Tuple[str, ...] = ("environments", "resolve")
 #: Environment variable naming the active environment (overridable via
 #: ``resolve.env_var``). Deliberately NOT a registry property: like
 #: ``--config``, it selects configuration rather than being configuration.
-DEFAULT_ENV_SELECTOR_VAR = "DBLIFT_ENV"
+DEFAULT_ENV_SELECTOR_VAR = f"{ENV_PREFIX}ENV"
+
+#: Prefix for the ``DBLIFT_DB_*`` environment-variable overrides consumed below.
+_DB_ENV_PREFIX = f"{ENV_PREFIX}DB_"
 
 # Every top-level key ``DbliftConfig.from_dict`` (and its supporting helpers)
 # actually reads. File loading is permissive by construction — an unrecognized
@@ -944,9 +947,9 @@ class DbliftConfig:
         )
 
         for var_name, var_value in env.items():
-            if not var_name.startswith("DBLIFT_DB_") or not var_value:
+            if not var_name.startswith(_DB_ENV_PREFIX) or not var_value:
                 continue
-            suffix = var_name[len("DBLIFT_DB_") :]
+            suffix = var_name[len(_DB_ENV_PREFIX) :]
             if suffix not in _ALLOWED:
                 if diagnostics is not None:
                     diagnostics.ignored_db_vars.append(var_name)

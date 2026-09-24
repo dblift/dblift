@@ -18,6 +18,8 @@ from rich.text import Text
 from rich.theme import Theme
 from rich.tree import Tree
 
+from dblift.core.constants import ENV_PREFIX
+
 DBLIFT_THEME = Theme(
     {
         "log.debug": "dim",
@@ -97,7 +99,7 @@ def is_progress_disabled() -> bool:
 
     if _progress_disabled_override is True:
         return True
-    if os.environ.get("DBLIFT_NO_PROGRESS"):
+    if os.environ.get(f"{ENV_PREFIX}NO_PROGRESS"):
         return True
     isatty = getattr(sys.stderr, "isatty", lambda: False)
     try:

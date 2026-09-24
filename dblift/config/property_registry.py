@@ -13,14 +13,14 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Callable, List, Optional
 
-from dblift.core.constants import DEFAULT_HISTORY_TABLE
+from dblift.core.constants import DEFAULT_HISTORY_TABLE, ENV_PREFIX
 
 
 def env_name(name: str) -> str:
     """Derive the env var: ``database.username`` -> ``DBLIFT_DB_USERNAME``."""
     if name.startswith("database."):
         name = "db_" + name[len("database.") :]
-    return "DBLIFT_" + name.replace(".", "_").upper()
+    return ENV_PREFIX + name.replace(".", "_").upper()
 
 
 def cli_flag(name: str) -> str:
