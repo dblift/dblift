@@ -1,4 +1,4 @@
-"""Tests for DIP-01: BaseCommand provider type hint → BaseProvider (story 24-5).
+"""Tests for BaseCommand provider type hint → BaseProvider.
 
 Verifies that base_command.py and all child commands use BaseProvider
 instead of JdbcProvider in their type hints and imports.

@@ -1,7 +1,7 @@
-"""Tests for story 21-3 — assert → RuntimeError/ValueError replacements.
+"""Tests for assert → RuntimeError/ValueError replacements.
 
-Verifies that the four assert sites replaced in NEW-BUG-44 now raise RuntimeError
-(never AssertionError) so python -O cannot silently disable the guards.
+Verifies that four assert sites now raise RuntimeError (never AssertionError)
+so python -O cannot silently disable the guards.
 
 Files covered:
   - core/sql_parser/hybrid_parser.py      (sqlglot_parser guard x3)
@@ -23,12 +23,12 @@ _ROOT = Path(__file__).resolve().parent.parent.parent
 
 
 # ---------------------------------------------------------------------------
-# AC#4 — Structural: zero bare assert in the four source files
+# Structural: zero bare assert in the four source files
 # ---------------------------------------------------------------------------
 
 
 class TestNoRemainingAsserts:
-    """AC#4 — Zero bare assert in the 4 target source files."""
+    """Zero bare assert in the 4 target source files."""
 
     def _assert_no_bare_assert(self, rel_path: str) -> None:
         src_path = _ROOT / rel_path
@@ -51,7 +51,7 @@ class TestNoRemainingAsserts:
 
 
 # ---------------------------------------------------------------------------
-# AC#3 — Behavioural: invalid state raises RuntimeError (not AssertionError)
+# Behavioural: invalid state raises RuntimeError (not AssertionError)
 # ---------------------------------------------------------------------------
 
 

@@ -1,4 +1,4 @@
-"""Story 23-10: Tests for shared compare_versions utility (DEDUP-31)."""
+"""Tests for shared compare_versions utility."""
 
 import pytest
 

@@ -1,8 +1,6 @@
-"""Regression tests for the Batch 6 bug fixes (B6-BUG-01..B6-BUG-05).
+"""Regression tests: MigrationContext lifecycle, legacy JDBC URL handling, event emitter isolation.
 
-Grouped by bug number so an intentional behavioral change to any one fix is
-easy to locate. Tests avoid real network/DB dependencies by mocking out the
-provider layer.
+Tests avoid real network/DB dependencies by mocking out the provider layer.
 """
 
 from __future__ import annotations
@@ -16,9 +14,9 @@ from unittest.mock import MagicMock, patch
 
 
 # ---------------------------------------------------------------------------
-# B6-BUG-01: MigrationContext.close() DBAPI shim must exist
+# MigrationContext.close() DBAPI shim must exist
 # ---------------------------------------------------------------------------
-class TestBug01MigrationContextClose(unittest.TestCase):
+class TestMigrationContextClose(unittest.TestCase):
     def test_close_is_callable_and_returns_none(self) -> None:
         from dblift.core.migration.executors.python_executor import MigrationContext
 
@@ -40,9 +38,9 @@ class TestBug01MigrationContextClose(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
-# B6-BUG-02: UNDO_SQL history record must not carry checksum=None (PG INT col)
+# UNDO_SQL history record must not carry checksum=None (PG INT col)
 # ---------------------------------------------------------------------------
-class TestBug02UndoChecksumZeroSentinel(unittest.TestCase):
+class TestUndoChecksumZeroSentinel(unittest.TestCase):
     """Every ``record_undo`` site must emit ``checksum: 0`` — not ``None``
     — so the INT-typed column in the history table doesn't trip native drivers.
     """
@@ -90,9 +88,9 @@ class TestBug02UndoChecksumZeroSentinel(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
-# B6-BUG-03: legacy URLs must fail, not infer a default dialect
+# legacy URLs must fail, not infer a default dialect
 # ---------------------------------------------------------------------------
-class TestBug03UnknownJdbcUrlClearsType(unittest.TestCase):
+class TestUnknownJdbcUrlClearsType(unittest.TestCase):
     def _make_args(self, db_url: str) -> argparse.Namespace:
         return argparse.Namespace(
             config=None,
@@ -139,7 +137,7 @@ class TestBug03UnknownJdbcUrlClearsType(unittest.TestCase):
         self.assertEqual(config.database.type, "postgresql")
 
     def test_validate_rejects_empty_type(self) -> None:
-        """The BUG-03 fix is only useful if downstream validation fails."""
+        """The jdbc-url-clears-type fix is only useful if downstream validation fails."""
         from dblift.db.provider_registry import ProviderRegistry
 
         cfg = MagicMock()
@@ -152,9 +150,9 @@ class TestBug03UnknownJdbcUrlClearsType(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
-# B6-BUG-04: validate-config must refuse to validate the stock defaults
+# validate-config must refuse to validate the stock defaults
 # ---------------------------------------------------------------------------
-class TestBug04ValidateConfigRequiresExplicitInput(unittest.TestCase):
+class TestValidateConfigRequiresExplicitInput(unittest.TestCase):
     def _make_args(self, **kwargs) -> argparse.Namespace:
         defaults = dict(
             config=None,
@@ -217,9 +215,9 @@ class TestBug04ValidateConfigRequiresExplicitInput(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
-# B6-BUG-05: EventEmitter must expose subscribe/unsubscribe aliases
+# EventEmitter must expose subscribe/unsubscribe aliases
 # ---------------------------------------------------------------------------
-class TestBug05EventEmitterSubscribeAlias(unittest.TestCase):
+class TestEventEmitterSubscribeAlias(unittest.TestCase):
     def test_subscribe_alias_registers_and_fires(self) -> None:
         from dblift.api.events import EventEmitter, EventType
 
@@ -254,9 +252,9 @@ class TestBug05EventEmitterSubscribeAlias(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
-# B6-BUG-06: DBLiftClient.events must be per-instance, not a shared singleton
+# DBLiftClient.events must be per-instance, not a shared singleton
 # ---------------------------------------------------------------------------
-class TestBug06PerClientEventIsolation(unittest.TestCase):
+class TestPerClientEventIsolation(unittest.TestCase):
     """Two DBLiftClient instances must not share an ``EventEmitter``.
 
     The regression was that ``__init__`` aliased ``self.events`` to
@@ -338,12 +336,12 @@ class TestBug06PerClientEventIsolation(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
-# B6-BUG-06b: undo() must bind the client emitter before executor work
+# undo() must bind the client emitter before executor work
 # ---------------------------------------------------------------------------
-class TestBug06bUndoBindsClientEmitter(unittest.TestCase):
+class TestUndoBindsClientEmitter(unittest.TestCase):
     """Undo's executor call must route core-layer events to the per-client
     emitter — otherwise ``migration.script.*`` events emitted during rollback
-    leak to the process-wide singleton, partially reversing the BUG-06 fix.
+    leak to the process-wide singleton, partially reversing per-client isolation.
     """
 
     def _method_decorator_names(self, method_name: str) -> list[str]:

@@ -1,4 +1,4 @@
-"""Story 26-9: Verify dialect branches in engine + undo generators route through quirks."""
+"""Verify dialect branches in engine + undo generators route through quirks."""
 
 import pytest
 
@@ -8,7 +8,7 @@ pytestmark = [pytest.mark.unit]
 
 
 class TestSelectSupportsLimit:
-    """AC#1: select_supports_limit quirks property drives post-commit verification."""
+    """select_supports_limit quirks property drives post-commit verification."""
 
     @pytest.mark.parametrize(
         "dialect, expected",
@@ -37,7 +37,7 @@ class TestSelectSupportsLimit:
 
 
 class TestUndoDropIfExistsRoutedThroughQuirks:
-    """AC#2: Undo _generate_drop_statement IF EXISTS routes through quirks."""
+    """Undo _generate_drop_statement IF EXISTS routes through quirks."""
 
     @pytest.mark.parametrize(
         "dialect, expect_if_exists",
@@ -86,7 +86,7 @@ class TestUndoDropIfExistsRoutedThroughQuirks:
 
 
 class TestNoHardcodedDialectStringsInDropGeneration:
-    """AC#3: No hardcoded dialect string checks remain in undo drop generation."""
+    """No hardcoded dialect string checks remain in undo drop generation."""
 
     def test_extractors_no_hardcoded_dialect_check(self):
         import inspect

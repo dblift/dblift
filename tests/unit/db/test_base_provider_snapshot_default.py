@@ -1,8 +1,8 @@
-"""Tests for story 21-5: BaseProvider snapshot table default.
+"""Tests for BaseProvider snapshot table default.
 
-AC#1 — create_snapshot_table_if_not_exists is concrete on BaseProvider
-AC#2 — close() and is_connected() have clear docstrings (already validated by code review)
-AC#3 — Providers that strip snapshot hooks can still be concrete
+- create_snapshot_table_if_not_exists is concrete on BaseProvider
+- close() and is_connected() have clear docstrings
+- Providers that strip snapshot hooks can still be concrete
 """
 
 from unittest.mock import MagicMock
@@ -40,26 +40,26 @@ def _make_concrete_provider_class(*, include_create_snapshot=True):
     return cls
 
 
-# AC#1.1 — create_snapshot_table_if_not_exists is not in __abstractmethods__
+# create_snapshot_table_if_not_exists is not in __abstractmethods__
 def test_create_snapshot_table_has_concrete_default():
     assert "create_snapshot_table_if_not_exists" not in BaseProvider.__abstractmethods__
 
 
-# AC#1.2 — Subclass without a provider-owned snapshot hook is concrete
+# Subclass without a provider-owned snapshot hook is concrete
 def test_subclass_without_create_snapshot_can_be_instantiated():
     Provider = _make_concrete_provider_class(include_create_snapshot=False)
     provider = Provider(config=_make_config())
     assert provider is not None
 
 
-# AC#1.2 variant — Complete subclass can be instantiated
+# Complete subclass can be instantiated
 def test_complete_subclass_can_be_instantiated():
     CompleteProvider = _make_concrete_provider_class()
     provider = CompleteProvider(config=_make_config())
     assert provider is not None
 
 
-# AC#1.3 — Default implementation delegates to the shared snapshot manager
+# Default implementation delegates to the shared snapshot manager
 def test_create_snapshot_default_delegates_to_base_snapshot_manager(monkeypatch):
     calls = []
 
@@ -82,7 +82,7 @@ def test_create_snapshot_default_delegates_to_base_snapshot_manager(monkeypatch)
     assert calls == [("init", provider), ("create", "app", "custom_snapshots")]
 
 
-# AC#2 — close() has a meaningful docstring documenting override expectations
+# close() has a meaningful docstring documenting override expectations
 def test_close_has_override_docstring():
     doc = BaseProvider.close.__doc__
     assert doc is not None
@@ -91,7 +91,7 @@ def test_close_has_override_docstring():
     assert "override" in doc.lower() or "should" in doc.lower()
 
 
-# AC#2 — is_connected() has a meaningful docstring documenting override expectations
+# is_connected() has a meaningful docstring documenting override expectations
 def test_is_connected_has_override_docstring():
     doc = BaseProvider.is_connected.__doc__
     assert doc is not None
@@ -100,7 +100,7 @@ def test_is_connected_has_override_docstring():
     assert "override" in doc.lower() or "acceptable" in doc.lower()
 
 
-# AC#3 — Providers that removed provider-owned snapshot hooks remain concrete
+# Providers that removed provider-owned snapshot hooks remain concrete
 @pytest.mark.parametrize(
     "provider_module,class_name",
     [

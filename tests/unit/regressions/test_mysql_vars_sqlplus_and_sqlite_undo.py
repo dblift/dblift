@@ -1,7 +1,5 @@
-"""Regression tests for the Batch 11 bug fixes (B11-BUG-01..06).
-
-Grouped by bug number so an intentional behavioral change to any one fix is
-easy to locate. Mirrors ``test_batch10_bug_fixes.py``.
+"""Regression tests: MySQL @-variable tokenization, SQL*Plus directive
+termination, SQLite record_undo delegation.
 """
 
 from __future__ import annotations
@@ -10,7 +8,7 @@ import unittest
 from unittest.mock import MagicMock, patch
 
 
-class TestBug01MySqlAtUserVariableTokenization(unittest.TestCase):
+class TestMySqlAtUserVariableTokenization(unittest.TestCase):
     """``BaseTokenizer._next_token`` falls through to the unknown-character
     branch on ``@`` and silently drops it. The remainder (``stmt_count``)
     was emitted as a bare identifier, so ``SET @stmt_count = 0`` became
@@ -58,7 +56,7 @@ class TestBug01MySqlAtUserVariableTokenization(unittest.TestCase):
         self.assertTrue(any("@stmt_count" in s for s in stmts))
 
 
-class TestBug02SqlplusDirectiveTermination(unittest.TestCase):
+class TestSqlplusDirectiveTermination(unittest.TestCase):
     """SQL*Plus directives (``SET``, ``DEFINE``, ``PROMPT``,
     ``WHENEVER SQLERROR``) are line-terminated, not ``;``-terminated. The
     Oracle tokeniser ends a statement only on ``;`` or ``/``, so a directive
@@ -152,7 +150,7 @@ class TestBug02SqlplusDirectiveTermination(unittest.TestCase):
         self.assertTrue(any("CREATE TABLE" in s for s in stmts))
 
 
-class TestBug06SqliteRecordUndo(unittest.TestCase):
+class TestSqliteRecordUndo(unittest.TestCase):
     """``SQLiteProvider`` previously declared ``record_migration`` but no
     ``record_undo``. Callers that invoke ``provider.record_undo(...)`` crashed
     with ``AttributeError`` on SQLite while Oracle/SQL Server shipped the same

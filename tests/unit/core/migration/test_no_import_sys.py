@@ -1,4 +1,4 @@
-"""Structural tests: verify import sys absent from 9 files (story 20-4)."""
+"""Structural tests: verify import sys absent from 9 files."""
 
 import inspect
 from pathlib import Path
@@ -23,7 +23,7 @@ pytestmark = [pytest.mark.unit]
 
 @pytest.mark.parametrize("rel_path", _FILES_UNDER_TEST)
 def test_no_import_sys(rel_path: str) -> None:
-    """import sys must be absent from all 8 files cleaned up in story 20-4."""
+    """import sys must be absent from all 8 files cleaned up in this pass."""
     source = (_ROOT / rel_path).read_text(encoding="utf-8")
     import_sys_lines = [line for line in source.splitlines() if line.strip() == "import sys"]
-    assert import_sys_lines == [], f"{rel_path} still contains 'import sys' (story 20-4 regression)"
+    assert import_sys_lines == [], f"{rel_path} still contains 'import sys' (regression)"

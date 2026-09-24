@@ -13,11 +13,11 @@ class TestBaseDatabaseConfigBuildConnectionString:
     """Subclasses stay instantiable; native string without url requires override."""
 
     def test_build_connection_string_is_abstract(self):
-        """build_connection_string is an @abstractmethod in the base (LSP-02)."""
+        """build_connection_string is an @abstractmethod in the base."""
         assert "build_connection_string" in BaseDatabaseConfig.__abstractmethods__
 
     def test_subclass_without_override_cannot_be_instantiated(self):
-        """A subclass that does not override build_connection_string cannot be instantiated (LSP-02)."""
+        """A subclass that does not override build_connection_string cannot be instantiated."""
 
         @dataclass
         class MinimalConfig(BaseDatabaseConfig):

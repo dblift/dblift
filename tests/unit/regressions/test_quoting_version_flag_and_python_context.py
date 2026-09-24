@@ -1,7 +1,6 @@
-"""Regression tests for the Batch 10 bug fixes (B10-BUG-01..24).
-
-Grouped by bug number so an intentional behavioral change to any one fix is
-easy to locate. Mirrors the conventions of ``test_batch9_bug_fixes.py``.
+"""Regression tests: dialect-aware identifier quoting, --version flag hints on
+subcommands, Python MigrationContext query routing, URL-prefix dialect
+detection, CosmosDB clean.
 """
 
 from __future__ import annotations
@@ -15,9 +14,9 @@ from unittest.mock import MagicMock, patch
 
 
 # ---------------------------------------------------------------------------
-# B10-BUG-01: post-commit verification must quote identifiers per dialect
+# post-commit verification must quote identifiers per dialect
 # ---------------------------------------------------------------------------
-class TestBug01PostCommitQuoting(unittest.TestCase):
+class TestPostCommitQuoting(unittest.TestCase):
     """The hardcoded ``"schema"."table"`` form used ANSI double-quotes even
     on MySQL (backticks) and SQL Server (brackets), so the verification
     query crashed on those engines. On Oracle it quoted the name, bypassing
@@ -115,9 +114,9 @@ class TestIssue911QuoteIdentifierEscaping(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
-# B10-BUG-04: ``--version`` on subcommands must hint the real flag
+# ``--version`` on subcommands must hint the real flag
 # ---------------------------------------------------------------------------
-class TestBug04BaselineVersionAlias(unittest.TestCase):
+class TestBaselineVersionAlias(unittest.TestCase):
     """Flyway users type ``dblift baseline --version 1.0.0`` and the global
     ``--version`` flag short-circuits with a tool-version print + exit 0,
     masking the mistake. The fix prints a hint to stderr and exits non-zero
@@ -164,9 +163,9 @@ class TestBug04BaselineVersionAlias(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
-# B10-BUG-09: Python MigrationContext must route SELECTs via execute_query
+# Python MigrationContext must route SELECTs via execute_query
 # ---------------------------------------------------------------------------
-class TestBug09PythonContextExecuteRouting(unittest.TestCase):
+class TestPythonContextExecuteRouting(unittest.TestCase):
     """SELECT/WITH/VALUES route to query execution instead of statement execution."""
 
     def _ctx(self, provider):
@@ -231,7 +230,7 @@ class TestBug09PythonContextExecuteRouting(unittest.TestCase):
         self.assertFalse(_is_query_statement("EXEC sp_who"))
 
 
-class TestBug22UrlPrefixDialect(unittest.TestCase):
+class TestUrlPrefixDialect(unittest.TestCase):
     """Substring matching misclassified URLs like
     ``postgresql://sqlserver-vm/db`` as SQL Server. Prefix matching
     confines the dialect to the actual scheme."""
@@ -259,14 +258,14 @@ class TestBug22UrlPrefixDialect(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
-# B10-BUG-23: SQLite partial-index WHERE predicate must round-trip
+# SQLite partial-index WHERE predicate must round-trip
 # ---------------------------------------------------------------------------
 
 
 # ---------------------------------------------------------------------------
-# B10-BUG-24: CosmosDB clean drops internal containers instead of clearing rows
+# CosmosDB clean drops internal containers instead of clearing rows
 # ---------------------------------------------------------------------------
-class TestBug24CosmosCleanInternalContainers(unittest.TestCase):
+class TestCosmosCleanInternalContainers(unittest.TestCase):
     """Clean should remove every Cosmos container, including history."""
 
     def _make_ops(self):

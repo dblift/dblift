@@ -1,10 +1,10 @@
-"""Tests for the dialect quoting module functions (story 20-17 / 26-5).
+"""Tests for the dialect quoting module functions.
 
-Story 26-5 removed the ``DialectEnum`` canonical-name vocabulary (the 7
-member literals were referenced only by tests). The surviving public
-surface is the two module-level quoting functions; canonical-name
-resolution now lives on ``ProviderRegistry.canonical_dialect_name``.
-These tests pin the importability and resolution semantics.
+The ``DialectEnum`` canonical-name vocabulary (the 7 member literals were
+referenced only by tests) was removed. The surviving public surface is the
+two module-level quoting functions; canonical-name resolution now lives on
+``ProviderRegistry.canonical_dialect_name``. These tests pin the
+importability and resolution semantics.
 """
 
 import pytest

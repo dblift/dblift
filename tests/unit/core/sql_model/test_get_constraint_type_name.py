@@ -1,4 +1,4 @@
-"""Tests for get_constraint_type_name utility function (story 21-11, DEDUP-30)."""
+"""Tests for get_constraint_type_name utility function."""
 
 import pytest
 
@@ -22,7 +22,7 @@ class _ConstraintWithString:
 
 
 class TestGetConstraintTypeName:
-    """AC#2 — identical behaviour for enum, str and fallback inputs."""
+    """Identical behaviour for enum, str and fallback inputs."""
 
     def test_enum_primary_key_returns_value(self) -> None:
         constraint = _ConstraintWithEnum(ConstraintType.PRIMARY_KEY)
@@ -63,7 +63,7 @@ class TestGetConstraintTypeName:
 
 
 class TestGetConstraintTypeNameExported:
-    """AC#1 — function is reachable from core.sql_model package."""
+    """Function is reachable from core.sql_model package."""
 
     def test_importable_from_package(self) -> None:
         from dblift.core.sql_model import get_constraint_type_name as fn  # noqa: F401

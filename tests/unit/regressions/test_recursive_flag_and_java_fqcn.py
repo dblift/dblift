@@ -1,7 +1,5 @@
-"""Regression tests for the Batch 8 bug fixes (B8-BUG-01..B8-BUG-05).
-
-Grouped by bug number so an intentional behavioral change to any one fix is
-easy to locate. Mirrors the conventions of ``test_batch7_bug_fixes.py``.
+"""Regression tests: --recursive/--no-recursive global-arg classification, Java
+exception FQCN stripping in log messages.
 """
 
 from __future__ import annotations
@@ -12,9 +10,9 @@ from unittest.mock import MagicMock, patch
 
 
 # ---------------------------------------------------------------------------
-# B8-BUG-01: --recursive / --no-recursive must be classified as GLOBAL args
+# --recursive / --no-recursive must be classified as GLOBAL args
 # ---------------------------------------------------------------------------
-class TestBug01RecursiveIsGlobal(unittest.TestCase):
+class TestRecursiveIsGlobal(unittest.TestCase):
     """Both ``--recursive`` and ``--no-recursive`` live on the top-level
     parser's mutually-exclusive group. They must be extracted as global
     arguments, otherwise argparse on the subparser rejects them as
@@ -68,18 +66,18 @@ class TestBug01RecursiveIsGlobal(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
-# B8-BUG-02: SQLite export-schema must ignore --db-schema and use "main"
+# SQLite export-schema must ignore --db-schema and use "main"
 # ---------------------------------------------------------------------------
 
 # ---------------------------------------------------------------------------
-# B8-BUG-03: DBLiftClient reuses provider across snapshot / export_schema
+# DBLiftClient reuses provider across snapshot / export_schema
 # ---------------------------------------------------------------------------
 
 
 # ---------------------------------------------------------------------------
-# B8-BUG-04: error_with_exception must strip FQCNs beyond com.*
+# error_with_exception must strip FQCNs beyond com.*
 # ---------------------------------------------------------------------------
-class TestBug04JavaFqcnStrip(unittest.TestCase):
+class TestJavaFqcnStrip(unittest.TestCase):
     def _capture(self, exc):
         from dblift.core.logger.log import AbstractLog
 
@@ -122,7 +120,7 @@ class TestBug04JavaFqcnStrip(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
-# B8-BUG-05: --min-confidence gating
+# --min-confidence gating
 # ---------------------------------------------------------------------------
 
 if __name__ == "__main__":
