@@ -8,6 +8,8 @@ import sqlite3
 from typing import Any, Callable, Dict, List, Optional
 
 from dblift.config import DbliftConfig
+from dblift.core.constants import DEFAULT_HISTORY_TABLE
+from dblift.core.constants import MIGRATION_LOCK_TABLE as _MIGRATION_LOCK_TABLE
 from dblift.core.logger import Log
 from dblift.core.migration.clean_summary import CleanExecutionSummary
 from dblift.db.base_provider import NativeProvider
@@ -37,7 +39,7 @@ class SQLiteProvider(NativeProvider, TransactionalProvider):
     # appeared in snapshots as if it were a user table. SQLite inherits from
     # ``BaseProvider``, so we declare it here explicitly, matching the hardcoded name used by
     # ``SQLiteLockingManager``.
-    MIGRATION_LOCK_TABLE = "dblift_migration_lock"
+    MIGRATION_LOCK_TABLE = _MIGRATION_LOCK_TABLE
 
     def __init__(self, config: DbliftConfig, log: Optional[Log] = None) -> None:
         """Initialize SQLite provider with modular components.
@@ -430,7 +432,7 @@ class SQLiteProvider(NativeProvider, TransactionalProvider):
         schema: str,
         script_name: str,
         checksum: Any,
-        table_name: str = "dblift_schema_history",
+        table_name: str = DEFAULT_HISTORY_TABLE,
         success_value: Optional[Any] = None,
     ) -> bool:
         """Update checksum and success state for an existing migration row.
@@ -473,7 +475,7 @@ class SQLiteProvider(NativeProvider, TransactionalProvider):
         self,
         schema: str,
         create_schema: bool = False,
-        table_name: str = "dblift_schema_history",
+        table_name: str = DEFAULT_HISTORY_TABLE,
     ) -> None:
         """Create migration history table if it doesn't exist.
 

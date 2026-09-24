@@ -9,9 +9,11 @@ DBLift runs take different locks for one schema and migrate in parallel.
 
 import hashlib
 
+from dblift.core.constants import MIGRATION_LOCK_TABLE
+
 
 def _get_advisory_lock_key(schema: str) -> int:
     """Return a deterministic PostgreSQL advisory lock key for a DBLift schema."""
-    lock_name = f"dblift_migration_lock:{schema}"
+    lock_name = f"{MIGRATION_LOCK_TABLE}:{schema}"
     digest = hashlib.sha256(lock_name.encode("utf-8")).digest()
     return int.from_bytes(digest[:8], byteorder="big", signed=True)

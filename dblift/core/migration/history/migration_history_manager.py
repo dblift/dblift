@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from types import MappingProxyType
 from typing import Any, Dict, List, Mapping, Optional, Union, cast
 
+from dblift.core.constants import DEFAULT_HISTORY_TABLE
 from dblift.core.logger import Log
 from dblift.core.migration.migration import AppliedMigration, Migration, MigrationType
 from dblift.core.migration.scripting.migration_script_manager import MigrationScriptManager
@@ -141,7 +142,7 @@ class MigrationHistoryManager:
         # - PostgreSQL: Use lowercase quoted identifiers
         # - MySQL: Use lowercase backticked identifiers
         # - SQL Server: Case-insensitive, use lowercase by convention
-        base_table_name = table_name or "dblift_schema_history"
+        base_table_name = table_name or DEFAULT_HISTORY_TABLE
         self.history_table = base_table_name
 
         if self.logger:

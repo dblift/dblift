@@ -11,6 +11,11 @@ import yaml
 from dblift.config.database_config import BaseDatabaseConfig
 from dblift.config.errors import ConfigurationError
 from dblift.config.secrets import SecretsConfig, resolve_secret_refs
+from dblift.core.constants import (
+    DBLIFT_SCHEMA_SNAPSHOTS_TABLE,
+    DEFAULT_HISTORY_TABLE,
+    ENV_PREFIX,
+)
 
 ENV_PLACEHOLDER_PATTERN = re.compile(r"\$\{([^}:]+)(?::-(.*?))?\}")
 
@@ -42,7 +47,10 @@ _ENVIRONMENT_SECTION_KEYS: Tuple[str, ...] = ("environments", "resolve")
 #: Environment variable naming the active environment (overridable via
 #: ``resolve.env_var``). Deliberately NOT a registry property: like
 #: ``--config``, it selects configuration rather than being configuration.
-DEFAULT_ENV_SELECTOR_VAR = "DBLIFT_ENV"
+DEFAULT_ENV_SELECTOR_VAR = f"{ENV_PREFIX}ENV"
+
+#: Prefix for the ``DBLIFT_DB_*`` environment-variable overrides consumed below.
+_DB_ENV_PREFIX = f"{ENV_PREFIX}DB_"
 
 # Every top-level key ``DbliftConfig.from_dict`` (and its supporting helpers)
 # actually reads. File loading is permissive by construction — an unrecognized
@@ -510,8 +518,8 @@ class DbliftConfig:
     placeholders: Optional[Dict[str, str]] = None
 
     # Migration history configuration
-    history_table: str = "dblift_schema_history"
-    snapshot_table: str = "dblift_schema_snapshots"
+    history_table: str = DEFAULT_HISTORY_TABLE
+    snapshot_table: str = DBLIFT_SCHEMA_SNAPSHOTS_TABLE
     max_snapshots: int = (
         1  # Maximum number of snapshots to keep (oldest are deleted when limit exceeded)
     )
@@ -810,8 +818,8 @@ class DbliftConfig:
             strict_mode=data.get("strict_mode", False),
             clean_disabled=data.get("clean_disabled", True),
             placeholders=data.get("placeholders"),
-            history_table=data.get("history_table", "dblift_schema_history"),
-            snapshot_table=data.get("snapshot_table", "dblift_schema_snapshots"),
+            history_table=data.get("history_table", DEFAULT_HISTORY_TABLE),
+            snapshot_table=data.get("snapshot_table", DBLIFT_SCHEMA_SNAPSHOTS_TABLE),
             max_snapshots=data.get("max_snapshots", 1),
             log_file=data.get("log_file"),
             log_format=data.get("log_format"),
@@ -943,9 +951,9 @@ class DbliftConfig:
         )
 
         for var_name, var_value in env.items():
-            if not var_name.startswith("DBLIFT_DB_") or not var_value:
+            if not var_name.startswith(_DB_ENV_PREFIX) or not var_value:
                 continue
-            suffix = var_name[len("DBLIFT_DB_") :]
+            suffix = var_name[len(_DB_ENV_PREFIX) :]
             if suffix not in _ALLOWED:
                 if diagnostics is not None:
                     diagnostics.ignored_db_vars.append(var_name)

@@ -3,6 +3,7 @@
 import os
 from typing import Any, List, Optional
 
+from dblift.core.constants import ENV_PREFIX
 from dblift.core.exceptions import UnsupportedMetaCommandError
 from dblift.core.logger import Log
 from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
@@ -36,7 +37,7 @@ def resolve_migration_sql_dialect(dialect: Optional[str], config: Any, log: Log)
         dialect = config.database.type.lower()
         log.info(f"Using dialect '{dialect}' from config")
     if not dialect:
-        db_type = os.environ.get("DBLIFT_DATABASE_TYPE")
+        db_type = os.environ.get(f"{ENV_PREFIX}DATABASE_TYPE")
         if db_type:
             dialect = db_type.lower()
             log.info(f"Using dialect '{dialect}' from environment variable")

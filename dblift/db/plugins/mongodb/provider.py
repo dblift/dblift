@@ -6,6 +6,7 @@ Uses modular components to handle MongoDB-specific database operations.
 from typing import Any, Dict, List, Optional
 
 from dblift.config import DbliftConfig
+from dblift.core.constants import DEFAULT_HISTORY_TABLE
 from dblift.core.logger import Log
 from dblift.core.migration.clean_summary import CleanExecutionSummary
 from dblift.db.base_provider import NativeProvider
@@ -165,7 +166,7 @@ class MongoDbProvider(NativeProvider):
         self,
         schema: str,
         migration_info: Dict[str, Any],
-        table_name: str = "dblift_schema_history",
+        table_name: str = DEFAULT_HISTORY_TABLE,
     ) -> None:
         """Record a migration in the history collection."""
         self.history_manager.record_migration(None, schema, migration_info, table_name)
@@ -175,7 +176,7 @@ class MongoDbProvider(NativeProvider):
         schema: str,
         script_name: str,
         checksum: Any,
-        table_name: str = "dblift_schema_history",
+        table_name: str = DEFAULT_HISTORY_TABLE,
         success_value: Optional[Any] = None,
     ) -> bool:
         """Update checksum (and optionally success) of an existing history document."""
@@ -184,7 +185,7 @@ class MongoDbProvider(NativeProvider):
         )
 
     def get_applied_migrations(
-        self, schema: str, table_name: str = "dblift_schema_history"
+        self, schema: str, table_name: str = DEFAULT_HISTORY_TABLE
     ) -> List[Dict[str, Any]]:
         """Return every applied migration, oldest first."""
         return self.history_manager.get_applied_migrations(None, schema, table_name)
@@ -193,7 +194,7 @@ class MongoDbProvider(NativeProvider):
         self,
         schema: str,
         create_schema: bool = False,
-        table_name: str = "dblift_schema_history",
+        table_name: str = DEFAULT_HISTORY_TABLE,
     ) -> None:
         """Create the history collection when missing."""
         self.history_manager.create_migration_history_table_if_not_exists(

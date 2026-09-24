@@ -17,6 +17,12 @@ from abc import abstractmethod
 from typing import Any, Optional
 
 from dblift.config import DbliftConfig
+from dblift.core.constants import (
+    DBLIFT_DATA_AUDIT_TABLE,
+    DBLIFT_DATA_CHANGE_SET_TABLE,
+    DBLIFT_SCHEMA_SNAPSHOTS_TABLE,
+    DEFAULT_HISTORY_TABLE,
+)
 from dblift.core.logger import Log, NullLog
 from dblift.db.base_quirks import BaseQuirks
 from dblift.db.provider_interfaces import (
@@ -133,7 +139,7 @@ class BaseProvider(
         self,
         schema: str,
         create_schema: bool = False,
-        table_name: str = "dblift_schema_history",
+        table_name: str = DEFAULT_HISTORY_TABLE,
     ) -> None:
         """Create the migration history table if it doesn't exist.
 
@@ -147,7 +153,7 @@ class BaseProvider(
         self,
         schema: str,
         create_schema: bool = False,
-        table_name: str = "dblift_schema_history",
+        table_name: str = DEFAULT_HISTORY_TABLE,
     ) -> None:
         """Create the migration history table if it doesn't exist.
 
@@ -159,7 +165,7 @@ class BaseProvider(
         self.create_migration_history_table_if_not_exists(schema, create_schema, table_name)
 
     def create_snapshot_table_if_not_exists(
-        self, schema: str, table_name: str = "dblift_schema_snapshots"
+        self, schema: str, table_name: str = DBLIFT_SCHEMA_SNAPSHOTS_TABLE
     ) -> None:
         """Create the schema snapshot storage table if it does not exist.
 
@@ -184,13 +190,13 @@ class BaseProvider(
         self._create_data_table_if_not_exists(schema, table_name, kind="history")
 
     def create_data_change_set_table_if_not_exists(
-        self, schema: str, table_name: str = "dblift_data_change_set"
+        self, schema: str, table_name: str = DBLIFT_DATA_CHANGE_SET_TABLE
     ) -> None:
         """Create the data change-set table if it does not exist."""
         self._create_data_table_if_not_exists(schema, table_name, kind="change_set")
 
     def create_data_audit_table_if_not_exists(
-        self, schema: str, table_name: str = "dblift_data_audit"
+        self, schema: str, table_name: str = DBLIFT_DATA_AUDIT_TABLE
     ) -> None:
         """Create the append-only data audit table if it does not exist."""
         self._create_data_table_if_not_exists(schema, table_name, kind="audit")
@@ -308,7 +314,7 @@ class BaseProvider(
         # itself and own no ``history_manager`` component (only SQLite and
         # CosmosDB do), so the parameterised DELETE lives here for them —
         # the same statement ``repair`` used to build inline.
-        resolved = self.get_normalized_object_name(table_name or "dblift_schema_history")
+        resolved = self.get_normalized_object_name(table_name or DEFAULT_HISTORY_TABLE)
         qualified_table = self.get_schema_qualified_name(schema, resolved)
         false_literal = self.quirks.boolean_false_literal
         affected = self.execute_statement(

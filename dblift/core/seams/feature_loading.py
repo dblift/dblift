@@ -28,6 +28,8 @@ from collections.abc import Callable
 from importlib.metadata import PackageNotFoundError, entry_points, version
 from typing import Protocol
 
+from dblift.core.constants import ENV_PREFIX
+
 _log = logging.getLogger(__name__)
 
 FEATURE_ENTRY_POINT_GROUP = "dblift.features"
@@ -81,7 +83,7 @@ class _FeatureEntryPoint(Protocol):
 def load_feature_extensions() -> None:
     """Load every ``dblift.features`` entry point (idempotent, best-effort)."""
     global _features_loaded
-    if _features_loaded or os.environ.get("DBLIFT_DISABLE_CLI_EXTENSIONS") == "1":
+    if _features_loaded or os.environ.get(f"{ENV_PREFIX}DISABLE_CLI_EXTENSIONS") == "1":
         return
     discovered_by_name: dict[str, _FeatureEntryPoint] = {
         entry_point.name: entry_point

@@ -4,6 +4,8 @@ import os
 from typing import Any, Dict, List, Optional
 
 from dblift.config import DbliftConfig
+from dblift.core.constants import DEFAULT_HISTORY_TABLE
+from dblift.core.constants import MIGRATION_LOCK_TABLE as _MIGRATION_LOCK_TABLE
 from dblift.core.logger import Log
 from dblift.core.migration.clean_summary import CleanExecutionSummary
 from dblift.core.migration.sql.execution_statement import classify_execution_statement
@@ -27,7 +29,7 @@ class SqlServerProvider(SqlAlchemyProvider):
     """SQL Server provider implementation using native SQLAlchemy/pymssql."""
 
     canonical_dialect_key = "sqlserver"
-    MIGRATION_LOCK_TABLE = "dblift_migration_lock"
+    MIGRATION_LOCK_TABLE = _MIGRATION_LOCK_TABLE
 
     #: The schema this connection's login is believed to actually carry right
     #: now — the baseline :meth:`set_current_schema` compares the catalog's
@@ -251,7 +253,7 @@ class SqlServerProvider(SqlAlchemyProvider):
 
     def acquire_migration_lock(self, schema: str, wait_timeout_seconds: int = 60) -> bool:
         """Acquire a session-scoped SQL Server application lock."""
-        lock_name = f"dblift_migration_lock_{schema}"
+        lock_name = f"{_MIGRATION_LOCK_TABLE}_{schema}"
         rows = self.execute_query(
             """
             DECLARE @result INT;
@@ -270,7 +272,7 @@ class SqlServerProvider(SqlAlchemyProvider):
 
     def release_migration_lock(self, schema: str) -> bool:
         """Release the session-scoped SQL Server application lock."""
-        lock_name = f"dblift_migration_lock_{schema}"
+        lock_name = f"{_MIGRATION_LOCK_TABLE}_{schema}"
         rows = self.execute_query(
             """
             DECLARE @result INT;
@@ -311,7 +313,7 @@ class SqlServerProvider(SqlAlchemyProvider):
         self,
         schema: str,
         create_schema: bool = False,
-        table_name: str = "dblift_schema_history",
+        table_name: str = DEFAULT_HISTORY_TABLE,
     ) -> None:
         """Create the migration history table if it is missing."""
         if create_schema:
@@ -338,7 +340,7 @@ class SqlServerProvider(SqlAlchemyProvider):
         self,
         schema: str,
         migration_info: Dict[str, Any],
-        table_name: str = "dblift_schema_history",
+        table_name: str = DEFAULT_HISTORY_TABLE,
     ) -> None:
         """Insert a migration record into the history table."""
         self.create_migration_history_table_if_not_exists(schema, table_name=table_name)
@@ -370,7 +372,7 @@ class SqlServerProvider(SqlAlchemyProvider):
         )
 
     def get_applied_migrations(
-        self, schema: str, table_name: str = "dblift_schema_history"
+        self, schema: str, table_name: str = DEFAULT_HISTORY_TABLE
     ) -> List[Dict[str, Any]]:
         """Return applied migration rows from the history table."""
         if not self.table_exists(schema, table_name):
@@ -403,7 +405,7 @@ class SqlServerProvider(SqlAlchemyProvider):
                 "execution_time": 0,
                 "success": True,
             },
-            table_name or "dblift_schema_history",
+            table_name or DEFAULT_HISTORY_TABLE,
         )
         return True
 
@@ -412,7 +414,7 @@ class SqlServerProvider(SqlAlchemyProvider):
         schema: str,
         script_name: str,
         checksum: Any,
-        table_name: str = "dblift_schema_history",
+        table_name: str = DEFAULT_HISTORY_TABLE,
         success_value: Optional[Any] = None,
     ) -> bool:
         """Update checksum and success state for an existing migration row."""

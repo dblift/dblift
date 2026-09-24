@@ -12,6 +12,8 @@ import os
 from importlib.metadata import entry_points
 from typing import Any, Callable, Dict, List
 
+from dblift.core.constants import ENV_PREFIX
+
 MCP_TOOLS_ENTRY_POINT_GROUP = "dblift.mcp_tools"
 
 ToolRegistrar = Callable[[Any], None]
@@ -24,7 +26,7 @@ def load_mcp_tool_registrars() -> List[ToolRegistrar]:
     rejects two entry points sharing a name — silently keeping one would make
     the tool list depend on install order.
     """
-    if os.environ.get("DBLIFT_DISABLE_CLI_EXTENSIONS") == "1":
+    if os.environ.get(f"{ENV_PREFIX}DISABLE_CLI_EXTENSIONS") == "1":
         return []
     by_name: Dict[str, ToolRegistrar] = {}
     for entry_point in entry_points(group=MCP_TOOLS_ENTRY_POINT_GROUP):

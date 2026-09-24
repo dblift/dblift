@@ -6,6 +6,8 @@ import time
 from typing import Any, Dict, List, Optional, Union
 
 from dblift.config import DbliftConfig
+from dblift.core.constants import DEFAULT_HISTORY_TABLE
+from dblift.core.constants import MIGRATION_LOCK_TABLE as _MIGRATION_LOCK_TABLE
 from dblift.core.logger import Log
 from dblift.core.migration.clean_summary import CleanExecutionSummary
 from dblift.db.object_naming import get_normalized_object_name
@@ -74,7 +76,7 @@ class OracleProvider(SqlAlchemyProvider):
     canonical_dialect_key = "oracle"
     provider_transport = "native"
     LOCK_X_MODE = 6
-    MIGRATION_LOCK_TABLE = "DBLIFT_MIGRATION_LOCK"
+    MIGRATION_LOCK_TABLE = _MIGRATION_LOCK_TABLE.upper()
     # ORA-04080: "trigger does not exist" — raised when dropping a trigger
     # whose owning table/view was already removed (e.g. by CASCADE CONSTRAINTS).
     _ORA_TRIGGER_DOES_NOT_EXIST = 4080
@@ -453,7 +455,7 @@ class OracleProvider(SqlAlchemyProvider):
         self._lock_handles.pop(lock_key, None)
         return released
 
-    def create_history_table(self, schema: str, table_name: str = "dblift_schema_history") -> str:
+    def create_history_table(self, schema: str, table_name: str = DEFAULT_HISTORY_TABLE) -> str:
         """Return the DDL for the Oracle migration history table."""
         table = _oracle_name(table_name)
         return f"""
@@ -475,7 +477,7 @@ class OracleProvider(SqlAlchemyProvider):
         self,
         schema: str,
         create_schema: bool = False,
-        table_name: str = "dblift_schema_history",
+        table_name: str = DEFAULT_HISTORY_TABLE,
     ) -> None:
         """Create the Oracle migration history table if missing."""
         if create_schema:
@@ -508,7 +510,7 @@ class OracleProvider(SqlAlchemyProvider):
         table_name: Optional[str] = None,
     ) -> None:
         """Insert a migration row into Oracle history."""
-        raw_table = table_name or "dblift_schema_history"
+        raw_table = table_name or DEFAULT_HISTORY_TABLE
         table = _oracle_name(raw_table)
         self.create_migration_history_table_if_not_exists(schema, table_name=raw_table)
         success_value = 1 if migration_info.get("success", True) else 0
@@ -539,7 +541,7 @@ class OracleProvider(SqlAlchemyProvider):
         self, schema: str, table_name: Optional[str] = None
     ) -> List[Dict[str, Any]]:
         """Return applied Oracle migration rows with normalized keys."""
-        raw_table = table_name or "dblift_schema_history"
+        raw_table = table_name or DEFAULT_HISTORY_TABLE
         table = _oracle_name(raw_table)
         if not self.table_exists(schema, table):
             return []
@@ -588,7 +590,7 @@ class OracleProvider(SqlAlchemyProvider):
         schema: str,
         script_name: str,
         checksum: Union[int, str],
-        table_name: str = "dblift_schema_history",
+        table_name: str = DEFAULT_HISTORY_TABLE,
         success_value: Optional[Any] = None,
     ) -> bool:
         """Update an Oracle migration history row."""

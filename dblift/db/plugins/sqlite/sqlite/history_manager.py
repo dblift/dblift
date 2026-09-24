@@ -10,6 +10,7 @@ import sqlite3
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
+from dblift.core.constants import DEFAULT_HISTORY_TABLE as _DEFAULT_HISTORY_TABLE
 from dblift.core.logger import Log
 from dblift.db.object_naming import get_normalized_object_name
 from dblift.db.plugins.base_history_manager import BaseHistoryManager, installed_on_to_bind
@@ -19,7 +20,7 @@ class SQLiteHistoryManager(BaseHistoryManager):
     """Manages SQLite migration history operations."""
 
     # SQLite is case-insensitive; we use lowercase by convention
-    DEFAULT_HISTORY_TABLE = "dblift_schema_history"
+    DEFAULT_HISTORY_TABLE = _DEFAULT_HISTORY_TABLE
 
     def __init__(
         self,
@@ -57,7 +58,7 @@ class SQLiteHistoryManager(BaseHistoryManager):
         connection: sqlite3.Connection,
         schema: str,
         create_schema: bool = False,
-        table_name: str = "dblift_schema_history",
+        table_name: str = DEFAULT_HISTORY_TABLE,
     ) -> None:
         """Create the migration history table if it doesn't exist.
 
@@ -131,7 +132,7 @@ class SQLiteHistoryManager(BaseHistoryManager):
 
         if not self.query_executor.table_exists(connection, schema, table):
             self.create_migration_history_table_if_not_exists(
-                connection, schema, True, table_name or "dblift_schema_history"
+                connection, schema, True, table_name or self.DEFAULT_HISTORY_TABLE
             )
 
         try:
