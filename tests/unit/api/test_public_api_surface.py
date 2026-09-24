@@ -57,6 +57,15 @@ LOGGER_EXPORT_SOURCES = {
     "state_text": "dblift.core.logger.console",
 }
 
+SECRETS_EXPORT_SOURCES = {
+    "resolve_secret_refs": "dblift.config.secrets._resolver",
+    "clear_cache": "dblift.config.secrets._resolver",
+    "SecretsResolutionError": "dblift.config.secrets._provider_base",
+    "SecretsConfig": "dblift.config.secrets._secrets_config",
+    "AbstractSecretsProvider": "dblift.config.secrets._provider_base",
+    "register_provider": "dblift.config.secrets._registry",
+}
+
 
 def test_package_has_py_typed_marker():
     marker = Path(__file__).resolve().parents[3] / "dblift" / "py.typed"
@@ -409,6 +418,64 @@ class TestConfigPackageSurface:
         import dblift.config as config
 
         assert set(config.__all__) == {"DatabaseConfig", "DbliftConfig", "load_config"}
+
+
+class TestConfigSecretsSurface:
+    """The documented ``dblift.config.secrets`` extension path."""
+
+    EXPECTED_EXPORTS = [
+        "resolve_secret_refs",
+        "clear_cache",
+        "SecretsResolutionError",
+        "SecretsConfig",
+        "AbstractSecretsProvider",
+        "register_provider",
+    ]
+
+    def test_all_lists_exactly_the_documented_symbols(self) -> None:
+        import dblift.config.secrets as secrets
+
+        assert secrets.__all__ == self.EXPECTED_EXPORTS
+
+    @pytest.mark.parametrize("symbol_name", EXPECTED_EXPORTS)
+    def test_public_path_reexports_the_implementation_object(self, symbol_name: str) -> None:
+        import dblift.config.secrets as secrets
+
+        implementation = importlib.import_module(SECRETS_EXPORT_SOURCES[symbol_name])
+
+        assert getattr(secrets, symbol_name) is getattr(implementation, symbol_name)
+
+    def test_custom_provider_resolves_and_cache_clear_is_observable(self, monkeypatch) -> None:
+        import dblift.config.secrets as secrets
+        import dblift.config.secrets._registry as secrets_registry
+
+        monkeypatch.setattr(secrets_registry, "_providers", {})
+        secrets.clear_cache()
+
+        class ContractProvider(secrets.AbstractSecretsProvider):
+            scheme = "contract-test"
+            resolutions = 0
+
+            def is_available(self) -> bool:
+                return True
+
+            def resolve(self, uri: str) -> str:
+                type(self).resolutions += 1
+                return f"resolved-{self.resolutions}:{uri}"
+
+        secrets.register_provider(ContractProvider.scheme, ContractProvider)
+        try:
+            first = secrets.resolve_secret_refs("contract-test://value")
+            assert first == "resolved-1:contract-test://value"
+            assert secrets.resolve_secret_refs("contract-test://value") == first
+
+            secrets.clear_cache()
+
+            assert secrets.resolve_secret_refs("contract-test://value") == (
+                "resolved-2:contract-test://value"
+            )
+        finally:
+            secrets.clear_cache()
 
 
 class TestMigrationTypeSurface:
