@@ -11,7 +11,11 @@ import yaml
 from dblift.config.database_config import BaseDatabaseConfig
 from dblift.config.errors import ConfigurationError
 from dblift.config.secrets import SecretsConfig, resolve_secret_refs
-from dblift.core.constants import DEFAULT_HISTORY_TABLE, ENV_PREFIX
+from dblift.core.constants import (
+    DBLIFT_SCHEMA_SNAPSHOTS_TABLE,
+    DEFAULT_HISTORY_TABLE,
+    ENV_PREFIX,
+)
 
 ENV_PLACEHOLDER_PATTERN = re.compile(r"\$\{([^}:]+)(?::-(.*?))?\}")
 
@@ -515,7 +519,7 @@ class DbliftConfig:
 
     # Migration history configuration
     history_table: str = DEFAULT_HISTORY_TABLE
-    snapshot_table: str = "dblift_schema_snapshots"
+    snapshot_table: str = DBLIFT_SCHEMA_SNAPSHOTS_TABLE
     max_snapshots: int = (
         1  # Maximum number of snapshots to keep (oldest are deleted when limit exceeded)
     )
@@ -815,7 +819,7 @@ class DbliftConfig:
             clean_disabled=data.get("clean_disabled", True),
             placeholders=data.get("placeholders"),
             history_table=data.get("history_table", DEFAULT_HISTORY_TABLE),
-            snapshot_table=data.get("snapshot_table", "dblift_schema_snapshots"),
+            snapshot_table=data.get("snapshot_table", DBLIFT_SCHEMA_SNAPSHOTS_TABLE),
             max_snapshots=data.get("max_snapshots", 1),
             log_file=data.get("log_file"),
             log_format=data.get("log_format"),

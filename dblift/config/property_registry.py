@@ -13,7 +13,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Callable, List, Optional
 
-from dblift.core.constants import DEFAULT_HISTORY_TABLE, ENV_PREFIX
+from dblift.core.constants import DBLIFT_SCHEMA_SNAPSHOTS_TABLE, DEFAULT_HISTORY_TABLE, ENV_PREFIX
 
 
 def env_name(name: str) -> str:
@@ -70,7 +70,7 @@ PROPERTY_REGISTRY: List[PropertySpec] = [
     PropertySpec(
         "snapshot_table",
         "str",
-        "dblift_schema_snapshots",
+        DBLIFT_SCHEMA_SNAPSHOTS_TABLE,
         help="dblift schema-snapshots table name",
     ),
     PropertySpec("max_snapshots", "int", 1, coerce=int, help="Max snapshots to retain"),

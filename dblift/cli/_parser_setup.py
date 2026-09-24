@@ -11,7 +11,7 @@ from importlib import import_module
 from typing import Any, Dict, List, Optional, Tuple
 
 from dblift.cli.db_utils import setup_db_utils_parser
-from dblift.core.constants import DEFAULT_HISTORY_TABLE
+from dblift.core.constants import DBLIFT_SCHEMA_SNAPSHOTS_TABLE, DEFAULT_HISTORY_TABLE
 
 
 def _native_dialect_choices() -> List[str]:
@@ -176,7 +176,7 @@ def _make_snapshot_table_parent() -> argparse.ArgumentParser:
     p.add_argument(
         "--snapshot-table",
         dest="snapshot_table",
-        help="Custom schema snapshot table name (default: dblift_schema_snapshots)",
+        help=f"Custom schema snapshot table name (default: {DBLIFT_SCHEMA_SNAPSHOTS_TABLE})",
     )
     return p
 

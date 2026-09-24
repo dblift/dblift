@@ -11,7 +11,14 @@ from typing import Collection, Iterator
 
 import pytest
 
-from dblift.core.constants import DEFAULT_HISTORY_TABLE, ENV_PREFIX, MIGRATION_LOCK_TABLE
+from dblift.core.constants import (
+    DBLIFT_DATA_AUDIT_TABLE,
+    DBLIFT_DATA_CHANGE_SET_TABLE,
+    DBLIFT_SCHEMA_SNAPSHOTS_TABLE,
+    DEFAULT_HISTORY_TABLE,
+    ENV_PREFIX,
+    MIGRATION_LOCK_TABLE,
+)
 
 pytestmark = [pytest.mark.unit]
 
@@ -75,6 +82,9 @@ def test_values_are_the_historical_defaults() -> None:
     assert DEFAULT_HISTORY_TABLE == "dblift_schema_history"
     assert MIGRATION_LOCK_TABLE == "dblift_migration_lock"
     assert ENV_PREFIX == "DBLIFT_"
+    assert DBLIFT_SCHEMA_SNAPSHOTS_TABLE == "dblift_schema_snapshots"
+    assert DBLIFT_DATA_CHANGE_SET_TABLE == "dblift_data_change_set"
+    assert DBLIFT_DATA_AUDIT_TABLE == "dblift_data_audit"
 
 
 def test_history_table_literal_appears_only_in_constants() -> None:
@@ -87,3 +97,15 @@ def test_lock_table_literal_appears_only_in_constants() -> None:
 
 def test_env_prefix_literal_appears_only_in_constants() -> None:
     assert _offenders(r'["\']DBLIFT_', ALLOWED_ENV_PREFIX_SITES) == []
+
+
+def test_snapshot_table_literal_appears_only_in_constants() -> None:
+    assert _offenders(r'["\']dblift_schema_snapshots["\']') == []
+
+
+def test_data_change_set_table_literal_appears_only_in_constants() -> None:
+    assert _offenders(r'["\']dblift_data_change_set["\']') == []
+
+
+def test_data_audit_table_literal_appears_only_in_constants() -> None:
+    assert _offenders(r'["\']dblift_data_audit["\']') == []

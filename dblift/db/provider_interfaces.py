@@ -10,7 +10,11 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, cast
 
-from dblift.core.constants import DEFAULT_HISTORY_TABLE
+from dblift.core.constants import (
+    DBLIFT_DATA_CHANGE_SET_TABLE,
+    DBLIFT_SCHEMA_SNAPSHOTS_TABLE,
+    DEFAULT_HISTORY_TABLE,
+)
 
 
 @dataclass(frozen=True)
@@ -190,7 +194,7 @@ class SchemaProvider(ABC):
 
     @abstractmethod
     def create_snapshot_table_if_not_exists(
-        self, schema: str, table_name: str = "dblift_schema_snapshots"
+        self, schema: str, table_name: str = DBLIFT_SCHEMA_SNAPSHOTS_TABLE
     ) -> None:
         """Create the schema snapshot storage table if it does not exist.
 
@@ -212,7 +216,7 @@ class SchemaProvider(ABC):
 
     @abstractmethod
     def create_data_change_set_table_if_not_exists(
-        self, schema: str, table_name: str = "dblift_data_change_set"
+        self, schema: str, table_name: str = DBLIFT_DATA_CHANGE_SET_TABLE
     ) -> None:
         """Create the data change-set table (before/after payloads via snapshot codec) if it does not exist.
 
