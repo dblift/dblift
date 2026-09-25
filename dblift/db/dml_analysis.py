@@ -94,11 +94,27 @@ def _analyze_dml_sqlglot(statement: str, dialect: Optional[str]) -> Optional[Dml
 
 
 def _sqlglot_table(ast: "exp.Expression") -> str:
-    target = ast.this if isinstance(ast, exp.Insert) else ast
-    table = target.find(exp.Table)
+    table = _dml_target_table(ast)
     if table is None:
         return ""
     return ".".join(part for part in (table.catalog, table.db, table.name) if part)
+
+
+def _dml_target_table(ast: "exp.Expression") -> Optional["exp.Table"]:
+    """The table a DML statement writes to, resolving a ``DELETE <alias> FROM`` target."""
+    source: Optional[exp.Expression] = ast.this
+    if source is None:
+        return None
+    candidates: List[exp.Table] = list(source.find_all(exp.Table))
+    if not candidates:
+        return None
+    targets = ast.args.get("tables") if isinstance(ast, exp.Delete) else None
+    if targets:
+        wanted = targets[0].name
+        for table in candidates:
+            if wanted in (table.alias, table.name):
+                return table
+    return candidates[0]
 
 
 def _sqlglot_events(ast: "exp.Expression") -> Optional[Set[str]]:
@@ -396,6 +412,7 @@ def extract_dml_table_name(statement: str) -> str:
     patterns = (
         rf"^\s*UPDATE\s+({_IDENTIFIER})\s+SET\b",
         rf"^\s*DELETE\s+FROM\s+({_IDENTIFIER}){_after}",
+        rf"^\s*DELETE\s+{_IDENTIFIER}\s+FROM\s+({_IDENTIFIER}){_after}",
         rf"^\s*INSERT\s+INTO\s+({_IDENTIFIER}){_after}",
     )
     for pattern in patterns:
@@ -433,8 +450,9 @@ def statement_dml_table(statement: str, dialect: Optional[str] = None) -> str:
 def _sqlglot_dml_table_sql(text: str, dialect: str) -> str:
     """Dialect-quoted table reference for a DML statement via the sqlglot AST.
 
-    Returns the quoted ``schema.table`` (any table alias stripped) or ``""``
-    when sqlglot cannot parse *text* or it is not DML, letting the caller fall
+    Returns the quoted ``schema.table`` (any table alias and, for a joined
+    DELETE naming the FROM-anchor, its JOIN clause stripped) or ``""`` when
+    sqlglot cannot parse *text* or it is not DML, letting the caller fall
     back to the regex scanner. Unlike :func:`_sqlglot_table` — which returns the
     bare unquoted name for table *matching* — this preserves quoting because the
     result is interpolated into raw SQL (e.g. a capture ``SELECT ... FROM``).
@@ -445,13 +463,13 @@ def _sqlglot_dml_table_sql(text: str, dialect: str) -> str:
         return ""
     if ast is None or not isinstance(ast, (exp.Insert, exp.Update, exp.Delete, exp.Merge)):
         return ""
-    target = ast.this if isinstance(ast, exp.Insert) else ast
-    table = target.find(exp.Table)
+    table = _dml_target_table(ast)
     if table is None:
         return ""
-    if table.args.get("alias"):
+    if table.args.get("alias") or table.args.get("joins"):
         table = table.copy()
         table.set("alias", None)
+        table.set("joins", None)
     return table.sql(dialect=dialect)
 
 

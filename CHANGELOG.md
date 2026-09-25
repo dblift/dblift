@@ -41,6 +41,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- DML analysis (`analyze_dml`, `statement_dml_table`, `extract_dml_table_name`)
+  returned the alias instead of the table for the MySQL / SQL Server
+  multi-table `DELETE <alias> FROM <table> <alias>` spelling; the target is
+  now resolved through the alias, and `DELETE t2 FROM t1 JOIN t2 …` names
+  `t2`; the quoted-name form (`statement_dml_table`) no longer carries the
+  JOIN clause when the target is the FROM anchor of a joined DELETE.
 - `dblift mcp` now returns a tool call whose command failed before producing
   a result (a refused connection, a history table that could not be
   created, an exception inside the command) as an MCP error result carrying
