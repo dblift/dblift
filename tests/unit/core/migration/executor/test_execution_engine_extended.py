@@ -631,7 +631,10 @@ class TestSqlServerSchemaCacheResetsAtMigrationBoundary(unittest.TestCase):
                 self._connection = None
 
             def execute_query(self, sql, params=None):
-                return [{"db_user": "dbo", "default_schema": self._current_schema_set}]
+                # Not the real 'dbo' principal: a non-dbo login name, so this
+                # class's cache-boundary behavior is exercised independently
+                # of the dedicated fixed-dbo guard covered elsewhere.
+                return [{"db_user": "app_user", "default_schema": self._current_schema_set}]
 
         provider = _CountingProvider()
         sql_analyzer = MagicMock()
@@ -689,7 +692,7 @@ class TestSqlServerSchemaCacheResetsAtMigrationBoundary(unittest.TestCase):
         engine, provider = self._build_engine()
         catalog_schema = {"value": None}
         provider.execute_query = lambda sql, params=None: [
-            {"db_user": "dbo", "default_schema": catalog_schema["value"]}
+            {"db_user": "app_user", "default_schema": catalog_schema["value"]}
         ]
 
         with patch.object(

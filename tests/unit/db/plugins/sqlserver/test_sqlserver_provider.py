@@ -151,3 +151,55 @@ def test_release_migration_lock_uses_session_scoped_application_lock():
     assert "sp_releaseapplock" in sql
     assert "Session" in sql
     assert params == ["dblift_migration_lock_dbo"]
+
+
+def test_dbo_login_with_non_dbo_schema_raises_without_a_connection(monkeypatch):
+    """The dbo-principal guard raises before the doomed ALTER USER, and the
+    re-raise keeps it from being swallowed by the broad except — covered here
+    without a live SQL Server (the integration suite exercises the real
+    engine)."""
+    import pytest
+
+    from dblift.core.exceptions import ExecutionError
+
+    provider = object.__new__(SqlServerProvider)
+    provider.log = MagicMock()
+    provider._schema_applied_for = None
+    provider._current_schema_set = None
+    provider.execute_query = MagicMock(return_value=[{"db_user": "dbo", "default_schema": "dbo"}])
+    # Would be the doomed ALTER USER; must never be reached for the guard case.
+    monkeypatch.setattr(
+        SqlAlchemyProvider,
+        "execute_statement",
+        MagicMock(side_effect=AssertionError("ALTER USER should not run")),
+    )
+
+    with pytest.raises(ExecutionError, match="cannot be changed"):
+        provider.set_current_schema("otherschema")
+
+
+def test_dbo_login_with_case_variant_of_dbo_does_not_raise(monkeypatch):
+    """A dbo login writing to 'DBO'/'Dbo' (same schema, case-insensitive) is
+    not blocked; it falls through to the normal ALTER-USER attempt."""
+    provider = object.__new__(SqlServerProvider)
+    provider.log = MagicMock()
+    provider._schema_applied_for = None
+    provider._current_schema_set = None
+    provider.execute_query = MagicMock(return_value=[{"db_user": "dbo", "default_schema": "dbo"}])
+    monkeypatch.setattr(SqlAlchemyProvider, "execute_statement", MagicMock(return_value=0))
+
+    provider.set_current_schema("DBO")  # must not raise
+
+
+def test_non_dbo_login_is_not_blocked(monkeypatch):
+    """A login mapped to a non-dbo user never trips the guard."""
+    provider = object.__new__(SqlServerProvider)
+    provider.log = MagicMock()
+    provider._schema_applied_for = None
+    provider._current_schema_set = None
+    provider.execute_query = MagicMock(
+        return_value=[{"db_user": "app_user", "default_schema": "app_schema"}]
+    )
+    monkeypatch.setattr(SqlAlchemyProvider, "execute_statement", MagicMock(return_value=0))
+
+    provider.set_current_schema("some_schema")  # must not raise
