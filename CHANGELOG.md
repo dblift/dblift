@@ -47,6 +47,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   now resolved through the alias, and `DELETE t2 FROM t1 JOIN t2 …` names
   `t2`; the quoted-name form (`statement_dml_table`) no longer carries the
   JOIN clause when the target is the FROM anchor of a joined DELETE.
+- DML analysis (`analyze_dml`, `statement_dml_table`) returned the alias
+  instead of the table for SQL Server's `UPDATE <alias> SET … FROM <table>
+  AS <alias>` form — the only way T-SQL aliases an UPDATE target; the alias
+  is now resolved through the FROM clause.
 - `dblift mcp` now returns a tool call whose command failed before producing
   a result (a refused connection, a history table that could not be
   created, an exception inside the command) as an MCP error result carrying

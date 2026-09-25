@@ -134,6 +134,40 @@ def test_analyze_dml_resolves_delete_alias_that_differs_from_the_table_name():
     assert statement_dml_table(stmt, dialect="mysql") == "t2"
 
 
+def test_analyze_dml_resolves_tsql_update_from_alias_to_its_table():
+    # T-SQL's only valid aliased UPDATE form puts the bare alias in ``ast.this``
+    # and the real target in the FROM clause; it must resolve, not the alias.
+    stmt = "UPDATE o SET name = 'x' FROM [S].[t] AS o WHERE o.id = 2;"
+    mutation = analyze_dml(stmt, sqlglot_dialect="tsql")
+    assert mutation.table == "S.t"
+    assert mutation.events == {"UPDATE"}
+    assert mutation.updated_columns == ["name"]
+
+    # A joined FROM still resolves through the alias that matches ``ast.this``.
+    joined = (
+        "UPDATE o SET name = 'x' FROM [S].[t] AS o "
+        "JOIN [S].[u] AS u ON u.id = o.id WHERE u.b = 1;"
+    )
+    assert analyze_dml(joined, sqlglot_dialect="tsql").table == "S.t"
+
+    # An unaliased target is unaffected by the alias resolution (regression pin).
+    unaliased = "UPDATE [S].[t] SET name = 'x' FROM [S].[t] AS o WHERE o.id = 2;"
+    assert analyze_dml(unaliased, sqlglot_dialect="tsql").table == "S.t"
+
+
+def test_statement_dml_table_sqlglot_resolves_tsql_update_from_alias():
+    stmt = "UPDATE o SET name = 'x' FROM [S].[t] AS o WHERE o.id = 2;"
+    assert statement_dml_table(stmt, dialect="tsql") == "[S].[t]"
+
+
+def test_analyze_dml_keeps_postgres_update_from_target():
+    # A real aliased target (not a bare alias) must not be swapped for the
+    # FROM table, even though a FROM clause is present.
+    stmt = "UPDATE s.t AS o SET a = 1 FROM u WHERE o.id = u.id;"
+    assert analyze_dml(stmt, sqlglot_dialect="postgres").table == "s.t"
+    assert statement_dml_table(stmt, dialect="postgres") == "s.t"
+
+
 def test_extract_dml_table_name_resolves_delete_alias_from_spelling():
     assert extract_dml_table_name("DELETE o FROM t o WHERE o.id = 1") == "t"
     assert statement_dml_table("DELETE o FROM t o WHERE o.id = 1") == "t"
