@@ -666,8 +666,13 @@ class BaseCommand:
           2. ``create_schema_and_history_table()`` when
              ``ensure_history=True`` AND not ``dry_run`` — commands that
              require the history table (``migrate``, ``info``, ``undo``,
-             ``baseline``) call this idempotently; dry-run skips it
-             (PR-02 byte-identical contract).
+             ``baseline``, ``validate``) call this idempotently; dry-run
+             skips it (PR-02 byte-identical contract). A failure here names
+             the step (``Could not create the schema-history table: ...``)
+             rather than reusing ``_ensure_connected``'s generic
+             ``Connection failed: ...``, because the provider is already
+             connected at this point — what failed is the DDL, not the
+             connection.
           3. ``_populate_database_info(result)`` — reads live connection
              metadata onto the result. Must come AFTER phases 1 and 2
              because it calls provider methods that require a connection
@@ -706,12 +711,33 @@ class BaseCommand:
             try:
                 self.history_manager.create_schema_and_history_table(create_schema=create_schema)
             except Exception as exc:
-                from dblift.db.error import format_connection_error
-
-                db_type = getattr(self.provider, "canonical_dialect_key", "") or getattr(
-                    getattr(self.config, "database", None), "type", ""
+                from dblift.core.migration.sql.sql_execution_service import (
+                    _format_execution_error,
                 )
-                raise ConnectionError(format_connection_error(exc, str(db_type or ""))) from exc
+                from dblift.db.error import _SQL_STATEMENT_BLOCK_RE
+
+                # Strip the generated DDL SQLAlchemy appends to
+                # statement-bound errors (see _SQL_STATEMENT_BLOCK_RE in
+                # dblift.db.error) so a schema/history-table setup failure
+                # never leaks the CREATE TABLE text, matching
+                # format_connection_error's existing guarantee. The
+                # formatted message can itself strip down to empty (e.g. the
+                # wrapped exception carried no text of its own, only the SQL
+                # block) -- the fallback is then the same SQL-stripped
+                # str(exc), never the raw exception, which would still carry
+                # the unstripped block; only when even that is empty does
+                # the raw text get used as a last resort.
+                try:
+                    formatted = _SQL_STATEMENT_BLOCK_RE.sub(
+                        "", _format_execution_error(exc)
+                    ).strip()
+                except Exception:
+                    formatted = ""
+                if not formatted:
+                    formatted = _SQL_STATEMENT_BLOCK_RE.sub("", str(exc)).strip()
+                raise ConnectionError(
+                    f"Could not create the schema-history table: {formatted or exc}"
+                ) from exc
         self._populate_database_info(result)
 
     def _run_command_lifecycle(

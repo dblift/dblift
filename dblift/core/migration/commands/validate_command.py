@@ -88,31 +88,15 @@ class ValidateCommand(BaseCommand):
 
         read_snapshot = self.state_manager.new_read_snapshot()
 
-        # Log command execution with filters
-        # Populate database connection information
-        self._populate_database_info(result)
+        # Ensure the schema history table exists before validating, the same
+        # way info/migrate/undo/baseline do. A failure here (e.g. missing DB
+        # privileges) is a real command failure and must propagate rather
+        # than be swallowed into a validation result: validating scripts
+        # against a history table that couldn't be created would report
+        # success while the schema was left in an unusable state.
+        self._run_preflight(result, ensure_history=True)
 
         try:
-            # Ensure the schema history table exists before validating. A
-            # failure here (e.g. missing DB privileges) is a real command
-            # failure, not something to swallow: validating scripts against
-            # a history table that couldn't be created would report success
-            # while the schema was left in an unusable state.
-            try:
-                self.history_manager.create_schema_and_history_table(create_schema=False)
-            except Exception as e:
-                from dblift.core.migration.sql.sql_execution_service import _format_execution_error
-
-                try:
-                    formatted = _format_execution_error(e)
-                except Exception:
-                    formatted = ""
-                error_msg = f"Could not create schema history table: {formatted or str(e)}"
-                self.log.error(error_msg)
-                result.set_error(error_msg)
-                self._log_command_completion("validate", result)
-                return result
-
             # Log command execution with connection info (after connection is established)
             self._log_command_header_update(
                 "validate",
