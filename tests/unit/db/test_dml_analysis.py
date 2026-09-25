@@ -82,6 +82,44 @@ def test_statement_dml_table_sqlglot_strips_merge_alias():
     assert statement_dml_table(stmt, dialect="oracle") == '"S"."T"'
 
 
+def test_analyze_dml_resolves_delete_alias_target_to_its_table():
+    # ``DELETE <alias> FROM <table> <alias>`` puts the alias list ahead of the
+    # real target in sqlglot's tree; the table must resolve, not the alias.
+    mysql = analyze_dml("DELETE o FROM orders o WHERE o.id = 2;", sqlglot_dialect="mysql")
+    assert mysql.table == "orders"
+    assert mysql.events == {"DELETE"}
+
+    tsql = analyze_dml("DELETE o FROM [S].[t] AS o WHERE o.id = 1;", sqlglot_dialect="tsql")
+    assert tsql.table == "S.t"
+
+    # Multi-table DELETE naming the second join member as the sole target.
+    multi = analyze_dml(
+        "DELETE t2 FROM t1 JOIN t2 ON t2.a = t1.a WHERE t2.b = 1;", sqlglot_dialect="mysql"
+    )
+    assert multi.table == "t2"
+
+    # Multi-table DELETE naming the first join member as the sole target.
+    first = analyze_dml("DELETE t1 FROM t1 JOIN t2 ON t2.a = t1.a;", sqlglot_dialect="mysql")
+    assert first.table == "t1"
+
+    # The plain single-table alias spelling (no leading alias list) is unaffected.
+    plain = analyze_dml("DELETE FROM orders o WHERE o.id = 1;", sqlglot_dialect="mysql")
+    assert plain.table == "orders"
+
+
+def test_statement_dml_table_sqlglot_resolves_delete_alias_target():
+    mysql = statement_dml_table("DELETE o FROM `s`.`t` o WHERE o.id = 2;", dialect="mysql")
+    assert mysql == "`s`.`t`"
+
+    tsql = statement_dml_table("DELETE o FROM [S].[t] AS o WHERE o.id = 1;", dialect="tsql")
+    assert tsql == "[S].[t]"
+
+
+def test_extract_dml_table_name_resolves_delete_alias_from_spelling():
+    assert extract_dml_table_name("DELETE o FROM t o WHERE o.id = 1") == "t"
+    assert statement_dml_table("DELETE o FROM t o WHERE o.id = 1") == "t"
+
+
 def test_statement_dml_table_falls_back_to_regex_without_dialect():
     # No dialect -> regex scanner (dialect-agnostic last resort) still resolves.
     assert statement_dml_table('DELETE FROM "s"."t" WHERE id = 1;') == '"s"."t"'

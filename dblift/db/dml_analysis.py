@@ -94,11 +94,27 @@ def _analyze_dml_sqlglot(statement: str, dialect: Optional[str]) -> Optional[Dml
 
 
 def _sqlglot_table(ast: "exp.Expression") -> str:
-    target = ast.this if isinstance(ast, exp.Insert) else ast
-    table = target.find(exp.Table)
+    table = _dml_target_table(ast)
     if table is None:
         return ""
     return ".".join(part for part in (table.catalog, table.db, table.name) if part)
+
+
+def _dml_target_table(ast: "exp.Expression") -> Optional["exp.Table"]:
+    """The table a DML statement writes to, resolving a ``DELETE <alias> FROM`` target."""
+    source: Optional[exp.Expression] = ast.this
+    if source is None:
+        return None
+    candidates: List[exp.Table] = list(source.find_all(exp.Table))
+    if not candidates:
+        return None
+    targets = ast.args.get("tables") if isinstance(ast, exp.Delete) else None
+    if targets:
+        wanted = targets[0].name
+        for table in candidates:
+            if wanted in (table.alias, table.name):
+                return table
+    return candidates[0]
 
 
 def _sqlglot_events(ast: "exp.Expression") -> Optional[Set[str]]:
@@ -396,6 +412,7 @@ def extract_dml_table_name(statement: str) -> str:
     patterns = (
         rf"^\s*UPDATE\s+({_IDENTIFIER})\s+SET\b",
         rf"^\s*DELETE\s+FROM\s+({_IDENTIFIER}){_after}",
+        rf"^\s*DELETE\s+{_IDENTIFIER}\s+FROM\s+({_IDENTIFIER}){_after}",
         rf"^\s*INSERT\s+INTO\s+({_IDENTIFIER}){_after}",
     )
     for pattern in patterns:
@@ -445,8 +462,7 @@ def _sqlglot_dml_table_sql(text: str, dialect: str) -> str:
         return ""
     if ast is None or not isinstance(ast, (exp.Insert, exp.Update, exp.Delete, exp.Merge)):
         return ""
-    target = ast.this if isinstance(ast, exp.Insert) else ast
-    table = target.find(exp.Table)
+    table = _dml_target_table(ast)
     if table is None:
         return ""
     if table.args.get("alias"):
