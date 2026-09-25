@@ -36,6 +36,7 @@ def _command_with(validation_result: ValidationResult) -> ValidateCommand:
     cmd.config = MagicMock()
     cmd.config.database.schema = "main"
     cmd.log = MagicMock()
+    cmd.provider = MagicMock()
     cmd.validator = MagicMock()
     cmd.validator.validate_snapshot.return_value = validation_result
     cmd.history_manager = MagicMock()

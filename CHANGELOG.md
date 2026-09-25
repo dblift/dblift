@@ -28,6 +28,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The sample configuration files (`dblift-postgresql.yaml.template`,
   `dblift-sqlserver.yaml.template`, `dblift-cosmosdb.yaml.template`) moved
   from the repository root to `docs/examples/config/`.
+- `validate` now stops the way `info` does when dblift's schema-history table
+  cannot be created (a role without `CREATE`, a connection lost at that
+  step): `Could not create the schema-history table: <engine message>`,
+  instead of returning a validation result with `error_count: 1`.
+  `--format json` consumers get `{"success": false, "error": "..."}`, and
+  `dblift mcp` returns an error result. The same wording now replaces
+  `Connection failed: ...` for `info`, `migrate`, `undo` and `baseline` at
+  that step. Through the Python API, `DBLiftClient.validate()` now raises
+  `ConnectionError` for this failure instead of returning a result with
+  `success: false` (the `VALIDATION_FAILED` event fires, as for `info`).
 
 ### Fixed
 

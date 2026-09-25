@@ -189,21 +189,13 @@ def test_reader_role_on_schema_with_no_history_table_fails_closed(tmp_path):
 
         validate, info = anyio.run(_session, reader_yaml, scenario)
 
-        # `validate` catches the history-table failure itself
-        # (`ValidateCommand.execute`'s own try/except) and reports it as a
-        # result, so it is a verdict to the runner, not a crash.
-        assert validate.is_error is False
-        assert validate.structured_content["success"] is False
-        assert "permission denied" in validate.structured_content["error"]
+        # `validate` now shares `info`'s preflight
+        # (`BaseCommand._run_preflight`'s history-table step) instead of
+        # catching the failure itself, so both raise the same denial and the
+        # two tools now share the same error channel.
+        assert validate.is_error is True
+        assert "permission denied" in validate.content[0].text
 
-        # `info` raises the same denial from preflight instead of catching
-        # it, so the runner never gets a result object and it surfaces as an
-        # MCP error result. It still routes through
-        # dblift.db.error.format_connection_error, but an AUTHORIZATION-category
-        # error now keeps the engine's own text instead of being folded into
-        # "invalid credentials" — so `validate` and `info` now carry the same
-        # engine message on different channels: `validate` as a result,
-        # `info` as an error result.
         assert info.is_error is True
         assert "permission denied" in info.content[0].text
 
