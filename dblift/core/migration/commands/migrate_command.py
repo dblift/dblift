@@ -722,7 +722,11 @@ class MigrateCommand(BaseCommand):
         """
         from dblift.core.seams.runtime_checks import run_checks
 
-        run_checks("command.pre_migrate")
+        # A dry run applies nothing, so the pre-migrate checks that gate
+        # applying a migration do not run for it — the same reason the
+        # per-statement migration.pre_execution checks never fire in dry-run.
+        if not dry_run:
+            run_checks("command.pre_migrate")
         self._reset_callback_catalog()
         result = MigrateResult()
         result.show_sql = show_sql

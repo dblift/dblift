@@ -40,8 +40,15 @@ def _oracle_dictionary_name(name: str) -> str:
 
 
 def _schema_object(schema: str, obj: str) -> str:
-    """Return a quoted schema-qualified Oracle name."""
-    return f"{_q(_clean_identifier(schema))}.{_q(_clean_identifier(obj))}"
+    """Return a quoted schema-qualified Oracle name.
+
+    The schema half is run through :func:`_oracle_dictionary_name` — an
+    unquoted schema is upper-cased (Oracle uppercases unquoted identifiers),
+    an explicitly-quoted schema is preserved verbatim — so every DDL/DML
+    statement this builds targets the same user ``set_current_schema``
+    connects the session as.
+    """
+    return f"{_q(_oracle_dictionary_name(schema))}.{_q(_clean_identifier(obj))}"
 
 
 def _row_value(row: Dict[str, Any], *names: str, default: Any = None) -> Any:
@@ -165,8 +172,14 @@ class OracleProvider(SqlAlchemyProvider):
         return super().execute_query(stmt, params=params)
 
     def create_schema_if_not_exists(self, schema: str) -> None:
-        """Create an Oracle schema/user if it does not already exist."""
-        clean_schema = _clean_identifier(schema)
+        """Create an Oracle schema/user if it does not already exist.
+
+        *schema* is normalized with :func:`_oracle_dictionary_name` before
+        the ``ALL_USERS`` lookup and the ``CREATE USER``/``GRANT`` DDL, so a
+        lowercase config value creates (and finds) the same uppercase user
+        ``set_current_schema`` connects the session as.
+        """
+        clean_schema = _oracle_dictionary_name(schema)
         rows = self.execute_query(
             "SELECT COUNT(*) AS user_count FROM ALL_USERS WHERE username = ?",
             [clean_schema],
@@ -239,11 +252,20 @@ class OracleProvider(SqlAlchemyProvider):
         A no-op once this session already has *schema* applied, so an
         ``ALTER SESSION SET CURRENT_SCHEMA`` the migration itself runs later
         is not immediately reset back — see ``_schema_applied_for``.
+
+        The name is normalized with :func:`_oracle_dictionary_name`, as
+        object names are: an unquoted name is upper-cased (Oracle uppercases
+        unquoted identifiers, so a user created ``CREATE USER myschema`` is
+        ``MYSCHEMA``, and quoting the raw lowercase config value would emit
+        ``= "myschema"`` and fail ORA-01435 "user does not exist" against the
+        very account that owns the data); an explicitly-quoted name is
+        preserved verbatim. Matches the normalization
+        ``create_schema_if_not_exists`` and the catalog lookups now use.
         """
         if self._schema_applied_for == schema:
             return
         self.execute_statement(
-            f"ALTER SESSION SET CURRENT_SCHEMA = {_q(_clean_identifier(schema))}"
+            f"ALTER SESSION SET CURRENT_SCHEMA = {_q(_oracle_dictionary_name(schema))}"
         )
         self._schema_applied_for = schema
 
@@ -255,7 +277,7 @@ class OracleProvider(SqlAlchemyProvider):
             FROM ALL_TABLES
             WHERE OWNER = ? AND TABLE_NAME = ?
             """,
-            [_clean_identifier(schema), _oracle_dictionary_name(table_name)],
+            [_oracle_dictionary_name(schema), _oracle_dictionary_name(table_name)],
         )
         return bool(rows and int(_row_value(rows[0], "cnt", default=0)) > 0)
 
@@ -282,7 +304,7 @@ class OracleProvider(SqlAlchemyProvider):
             FROM ALL_TAB_IDENTITY_COLS
             WHERE OWNER = ? AND SEQUENCE_NAME = ?
             """,
-            [_clean_identifier(schema), _clean_identifier(sequence_name)],
+            [_oracle_dictionary_name(schema), _clean_identifier(sequence_name)],
         )
         return bool(rows and int(_row_value(rows[0], "cnt", default=0)) > 0)
 
@@ -310,7 +332,7 @@ class OracleProvider(SqlAlchemyProvider):
             WHERE OWNER = ? AND TABLE_NAME = ?
             ORDER BY COLUMN_ID
             """,
-            [_clean_identifier(schema), _oracle_name(table)],
+            [_oracle_dictionary_name(schema), _oracle_name(table)],
         )
 
     def get_add_column_sql(self, schema: str, table: str, column: str, type_def: str) -> str:
@@ -330,7 +352,7 @@ class OracleProvider(SqlAlchemyProvider):
             WHERE OWNER = ? AND TABLE_NAME NOT LIKE 'BIN$%'
             ORDER BY TABLE_NAME
             """,
-            [_clean_identifier(schema)],
+            [_oracle_dictionary_name(schema)],
         )
         return [str(_row_value(row, "table_name")) for row in rows]
 
@@ -653,7 +675,7 @@ class OracleProvider(SqlAlchemyProvider):
     def _clean_schema(self, schema: str, execute: bool) -> CleanExecutionSummary:
         """Shared Oracle clean implementation for execution and preview."""
         summary = CleanExecutionSummary()
-        clean_schema = _clean_identifier(schema)
+        clean_schema = _oracle_dictionary_name(schema)
 
         try:
             rows = self.execute_query("""

@@ -131,6 +131,23 @@ class TestCreateSchemaIfNotExists:
         assert len(create_user_attempts) == 2
         p.log.warning.assert_called()
 
+    def test_normalizes_lowercase_schema_for_catalog_lookup_and_ddl(self):
+        """The ALL_USERS lookup and the CREATE USER DDL must agree with the
+        connect-time schema set_current_schema uses, or a lowercase config
+        value creates a lowercase user that the session can then never
+        connect as (ORA-01435)."""
+        p = _Provider(username="ADMIN")
+        p.query_results["FROM ALL_USERS WHERE username"] = [{"user_count": 0}]
+
+        p.create_schema_if_not_exists("myschema")
+
+        query_sql, query_params = p.queries[-1]
+        assert "ALL_USERS" in query_sql
+        assert query_params == ["MYSCHEMA"]
+        create_user_stmt = next(s[0] for s in p.statements if "CREATE USER" in s[0])
+        assert '"MYSCHEMA"' in create_user_stmt
+        assert '"myschema"' not in create_user_stmt
+
 
 class TestSetCurrentSchema:
     def test_executes_alter_session_statement(self):
@@ -139,7 +156,27 @@ class TestSetCurrentSchema:
         p.set_current_schema("myschema")
 
         sql = p.statements[-1][0]
-        assert sql == 'ALTER SESSION SET CURRENT_SCHEMA = "myschema"'
+        # Case-folded to uppercase: Oracle uppercases unquoted identifiers, so
+        # a user created as MYSCHEMA is not "myschema"; quoting the raw
+        # lowercase config value would fail ORA-01435 "user does not exist".
+        assert sql == 'ALTER SESSION SET CURRENT_SCHEMA = "MYSCHEMA"'
+
+    def test_case_folds_the_schema_like_an_object_name(self):
+        """A lowercase, uppercase or mixed-case config value all resolve to the
+        same uppercase Oracle user, the way object names are normalized."""
+        for spelling in ("myschema", "MYSCHEMA", "MySchema"):
+            p = _Provider()
+            p.set_current_schema(spelling)
+            assert p.statements[-1][0] == 'ALTER SESSION SET CURRENT_SCHEMA = "MYSCHEMA"'
+
+    def test_preserves_explicitly_quoted_mixed_case_schema(self):
+        """A schema the user explicitly double-quoted in config is rare and
+        non-standard for Oracle, but it must be preserved verbatim rather
+        than upper-cased: Oracle itself never case-folds a quoted identifier,
+        so upper-casing it here would target a different, nonexistent user."""
+        p = _Provider()
+        p.set_current_schema('"MyMixed"')
+        assert p.statements[-1][0] == 'ALTER SESSION SET CURRENT_SCHEMA = "MyMixed"'
 
     def test_skips_reissue_for_same_schema(self):
         """A second call for the same schema does not re-issue ALTER SESSION.
@@ -201,6 +238,24 @@ class TestTableExists:
 
         _sql, params = p.queries[-1]
         assert params == ["MYSCHEMA", "MixedCase"]
+
+    def test_normalizes_lowercase_schema_in_catalog_param(self):
+        p = _Provider()
+        p.query_results["TABLE_NAME = ?"] = [{"cnt": 1}]
+
+        p.table_exists("myschema", "orders")
+
+        _sql, params = p.queries[-1]
+        assert params[0] == "MYSCHEMA"
+
+    def test_preserves_quoted_mixed_case_schema(self):
+        p = _Provider()
+        p.query_results["TABLE_NAME = ?"] = [{"cnt": 1}]
+
+        p.table_exists('"MySchema"', "orders")
+
+        _sql, params = p.queries[-1]
+        assert params[0] == "MySchema"
 
 
 class TestIsSystemGeneratedSequence:
@@ -271,19 +326,27 @@ class TestSupportsTransactionalDdl:
 
 class TestSchemaHelpers:
     def test_get_schema_qualified_name(self):
+        """An unquoted schema is upper-cased, like the catalog lookups and
+        set_current_schema — otherwise the qualified name this builds would
+        target a different (lowercase, nonexistent) user than the one the
+        session actually connects as."""
         p = _Provider()
-        assert p.get_schema_qualified_name("myschema", "orders") == '"myschema"."orders"'
+        assert p.get_schema_qualified_name("myschema", "orders") == '"MYSCHEMA"."orders"'
+
+    def test_get_schema_qualified_name_preserves_quoted_mixed_case_schema(self):
+        p = _Provider()
+        assert p.get_schema_qualified_name('"MySchema"', "orders") == '"MySchema"."orders"'
 
     def test_get_columns_query(self):
         p = _Provider()
         sql, params = p.get_columns_query("myschema", "orders")
         assert "ALL_TAB_COLUMNS" in sql
-        assert params[0] == "myschema"
+        assert params[0] == "MYSCHEMA"
 
     def test_get_add_column_sql(self):
         p = _Provider()
         sql = p.get_add_column_sql("myschema", "orders", "amount", "NUMBER(10,2)")
-        assert sql == 'ALTER TABLE "myschema"."orders" ADD ("amount" NUMBER(10,2))'
+        assert sql == 'ALTER TABLE "MYSCHEMA"."orders" ADD ("amount" NUMBER(10,2))'
 
     def test_get_parameter_placeholders(self):
         p = _Provider()

@@ -20,7 +20,7 @@ from dblift.core.logger.results import (
 class JsonFormatter:
     """JSON formatter for structured log output."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize the JSON formatter."""
         self.log_entries: List[Dict[str, Any]] = []
 
