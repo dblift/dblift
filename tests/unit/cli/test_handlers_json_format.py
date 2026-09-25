@@ -242,6 +242,52 @@ def test_migrate_result_to_dict_shape():
 
 
 @pytest.mark.unit
+def test_migrate_result_to_dict_carries_sql_only_when_show_sql_is_true():
+    from dblift.cli.handlers.migrate import _migrate_result_to_dict
+    from dblift.core.logger.results import MigrationSqlInfo
+
+    result_with_sql = SimpleNamespace(
+        success=True,
+        error_message=None,
+        target_schema="main",
+        current_schema_version="1",
+        dry_run_count=1,
+        migrations=[],
+        migrations_applied=[],
+        show_sql=True,
+        sql=[
+            MigrationSqlInfo(
+                script="V1__x.sql", version="1", description="x", statements=["CREATE TABLE ..."]
+            )
+        ],
+    )
+
+    data = _migrate_result_to_dict(result_with_sql, dry_run=True)
+
+    assert data["sql"] == [
+        {
+            "script": "V1__x.sql",
+            "version": "1",
+            "description": "x",
+            "statements": ["CREATE TABLE ..."],
+        }
+    ]
+
+    result_without_sql = SimpleNamespace(
+        success=True,
+        error_message=None,
+        target_schema="main",
+        current_schema_version="1",
+        dry_run_count=1,
+        migrations=[],
+        migrations_applied=[],
+        show_sql=False,
+    )
+
+    assert "sql" not in _migrate_result_to_dict(result_without_sql, dry_run=True)
+
+
+@pytest.mark.unit
 def test_handle_migrate_dry_run_json(capsys):
     from dblift.cli.handlers.migrate import _handle_migrate
 

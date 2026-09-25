@@ -65,9 +65,16 @@ def migrate_dry_run_argv(
     versions: "str | list[str] | None" = None,
     exclude_versions: "str | list[str] | None" = None,
     placeholders: "dict[str, str] | None" = None,
+    show_sql: bool = False,
 ) -> List[str]:
-    """Show which migrations would be applied. Never writes: ``--dry-run`` is fixed."""
+    """Show which migrations would be applied. Never writes: ``--dry-run`` is fixed.
+
+    Pass ``show_sql=True`` to have the result's ``sql`` array carry the
+    rendered statements for each pending migration.
+    """
     argv = ["--dry-run", *_filter_argv(locals())]
+    if show_sql:
+        argv.append("--show-sql")
     if placeholders:
         # `--placeholders` is `nargs="+"` + `action="append"` (see
         # `_make_filter_parent` in `_parser_setup.py`), not a single

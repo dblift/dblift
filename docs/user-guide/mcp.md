@@ -52,6 +52,11 @@ against the recorded history too — checksums, script order, missing files.
 It does not parse or check the SQL inside them; a script with invalid SQL
 passes both `validate` and `migrate_dry_run`.
 
+Pass `show_sql: true` to `migrate_dry_run` to also run with `--show-sql`; the
+result then carries a `sql` array with each pending migration's rendered
+statements — review it to catch an unresolved `${VAR}` or an unexpected
+value before proposing the change. Without it, the result has no `sql` key.
+
 ## What protects the database
 
 None of the built-in tools can apply, undo or clean a migration (see *Not

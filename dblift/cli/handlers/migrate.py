@@ -11,11 +11,12 @@ from dblift.cli.handlers._shared import (
     run_json_guarded,
 )
 from dblift.cli.handlers.validate import _validate_result_to_dict
+from dblift.core.logger.formatters.jsonformatter import JsonFormatter
 
 
 def _migrate_result_to_dict(result: Any, dry_run: bool) -> Dict[str, Any]:
     """Serialize a MigrateResult to a JSON-compatible dict."""
-    return {
+    data = {
         "success": bool(getattr(result, "success", True)),
         "error": getattr(result, "error_message", None),
         "dry_run": bool(dry_run),
@@ -25,6 +26,13 @@ def _migrate_result_to_dict(result: Any, dry_run: bool) -> Dict[str, Any]:
         "migrations": [_migration_info_to_dict(m) for m in getattr(result, "migrations", [])],
         "migrations_applied": list(getattr(result, "migrations_applied", [])),
     }
+    # Reuse the same show-sql shape/sanitization JsonFormatter uses for the
+    # text/HTML log formats, instead of duplicating its getattr/sanitize
+    # pair here.
+    sql_visibility = JsonFormatter()._format_sql_visibility(result)
+    if "sql" in sql_visibility:
+        data["sql"] = sql_visibility["sql"]
+    return data
 
 
 def _handle_migrate(ctx: CliCommandContext) -> Tuple[bool, Any]:
