@@ -48,6 +48,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `validate --format json` now reports `error: null` on success, matching `info` and `migrate` — it was `error: ""` (a clean validate leaves the message empty), the one inconsistency across the three read tools' JSON error contract.
 - Oracle: a lowercase `schema:` value now resolves to the same uppercase Oracle user everywhere dblift uses it — connecting (`ALTER SESSION SET CURRENT_SCHEMA`), creating the schema/user, and every catalog lookup (table/sequence existence, column listings, clean). Oracle uppercases unquoted identifiers, so a user created as `myschema` is actually `MYSCHEMA`; dblift previously upper-cased it only when connecting, so `create_schema_if_not_exists` could create a lowercase user that the connect step then failed to find (`ORA-01435: user does not exist`), and DDL/catalog queries built from the raw value could miss it too. A schema explicitly wrapped in double quotes is still preserved verbatim, matching how object names are already handled.
 - DML analysis (`analyze_dml`, `statement_dml_table`, `extract_dml_table_name`)
   returned the alias instead of the table for the MySQL / SQL Server

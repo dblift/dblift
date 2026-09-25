@@ -334,3 +334,23 @@ def test_handle_migrate_validate_only_json_uses_validate_payload(capsys):
     _handle_migrate(CliCommandContext(client=client, args=args, log=MagicMock()))
 
     assert "validated_migrations" in json.loads(capsys.readouterr().out)
+
+
+@pytest.mark.unit
+def test_validate_result_to_dict_error_is_null_on_success_like_info_and_migrate():
+    """A clean validate leaves ``error_message`` empty; the JSON ``error`` must
+    be ``null`` (as info/migrate emit), not ``""`` — one contract across the
+    three read tools."""
+    from dblift.cli.handlers.validate import _validate_result_to_dict
+
+    result = SimpleNamespace(
+        success=True,
+        error_message="",
+        target_schema="main",
+        error_count=0,
+        issues=[],
+        validated_migrations=[],
+        failed_migrations=[],
+    )
+
+    assert _validate_result_to_dict(result)["error"] is None

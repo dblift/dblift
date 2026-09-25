@@ -77,9 +77,14 @@ exists, `info`, `validate` and `migrate_dry_run` need `USAGE` on the schema and
 PostgreSQL. On a database that has no history table yet, the reader has no
 `CREATE`, so `info` and `validate` fail instead of creating it, and
 `migrate_dry_run` neither fails nor creates it: a dry run skips the table
-entirely and reports every script as pending. Create the table with the role
-that applies migrations first (`dblift migrate` or `dblift baseline`), then
-hand the reader to the agent. On PostgreSQL:
+entirely and reports every script as pending. (On engines where a schema is a
+whole database — MySQL/MariaDB — a dry run against a database that does not
+exist yet fails at connection time instead, before the skip-the-table logic
+runs.) Create the table with the role that applies migrations first
+(`dblift migrate` or `dblift baseline`), then hand the reader to the agent.
+The reader's grants must cover only the one schema the server is pointed at:
+the root `--db-schema` flag can retarget any schema the role can read, and no
+restriction flag fences it — the role is the boundary. On PostgreSQL:
 
 ```sql
 CREATE ROLE dblift_reader LOGIN PASSWORD '...';
