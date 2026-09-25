@@ -203,6 +203,95 @@ def test_handle_validate_json_emits_payload_only(capsys):
     assert payload["success"] is True and payload["validated_migrations"] == []
 
 
+_HISTORY = "Could not create the schema-history table: permission denied"
+
+
+def _history_failure_result():
+    result = SimpleNamespace(
+        success=False,
+        error_message=_HISTORY,
+        target_schema="public",
+        error_count=1,
+        issues=[],
+        validated_migrations=[],
+        failed_migrations=[],
+        execution_time=lambda: 0,
+    )
+    return result
+
+
+@pytest.mark.unit
+def test_handle_validate_json_history_table_failure_stays_an_error_payload(capsys):
+    """JSON validate keeps the #416 error document for this failure."""
+    from dblift.cli.handlers.validate import _handle_validate
+
+    client = MagicMock()
+    client.validate.return_value = _history_failure_result()
+    ctx = CliCommandContext(client=client, args=SimpleNamespace(format="json"), log=MagicMock())
+
+    ok, returned = _handle_validate(ctx)
+
+    assert ok is False
+    assert returned is None
+    payload = json.loads(capsys.readouterr().out)
+    assert payload == {"success": False, "error": f"ConnectionError: {_HISTORY}"}
+
+
+@pytest.mark.unit
+def test_handle_validate_human_history_table_failure_still_raises():
+    from dblift.cli.handlers.validate import _handle_validate
+
+    client = MagicMock()
+    client.validate.return_value = _history_failure_result()
+    ctx = CliCommandContext(client=client, args=SimpleNamespace(format="console"), log=MagicMock())
+
+    with pytest.raises(ConnectionError, match="Could not create the schema-history table"):
+        _handle_validate(ctx)
+
+
+@pytest.mark.unit
+def test_handle_validate_json_keeps_a_normal_failure_as_a_verdict(capsys):
+    from dblift.cli.handlers.validate import _handle_validate
+
+    client = MagicMock()
+    client.validate.return_value = SimpleNamespace(
+        success=False,
+        error_message="checksum mismatch",
+        target_schema="main",
+        error_count=1,
+        issues=["checksum mismatch"],
+        validated_migrations=[],
+        failed_migrations=[],
+    )
+    ctx = CliCommandContext(client=client, args=SimpleNamespace(format="json"), log=MagicMock())
+
+    ok, returned = _handle_validate(ctx)
+
+    assert ok is False
+    assert returned is not None
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["success"] is False
+    assert payload["error"] == "checksum mismatch"
+    assert "ConnectionError" not in payload["error"]
+
+
+@pytest.mark.unit
+def test_handle_migrate_validate_only_json_history_table_failure_stays_an_error(capsys):
+    from dblift.cli.handlers.migrate import _handle_migrate
+
+    client = MagicMock()
+    client.validate.return_value = _history_failure_result()
+    args = SimpleNamespace(format="json", dry_run=False, validate_only=True)
+
+    ok, returned = _handle_migrate(CliCommandContext(client=client, args=args, log=MagicMock()))
+
+    assert ok is False
+    assert returned is None
+    payload = json.loads(capsys.readouterr().out)
+    assert payload == {"success": False, "error": f"ConnectionError: {_HISTORY}"}
+    client.migrate.assert_not_called()
+
+
 @pytest.mark.unit
 def test_validate_parser_accepts_format_json():
     from dblift.cli._parser_setup import create_parser

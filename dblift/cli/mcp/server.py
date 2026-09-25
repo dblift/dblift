@@ -61,6 +61,8 @@ its `migrations` list. Pass `show_sql: true` to `migrate_dry_run` to also get
 a `sql` array with each pending migration's rendered statements — read it to
 review the actual SQL, catch an unresolved `${VAR}`, or spot an unexpected
 value before proposing the change; without it the result has no `sql` key.
+Those statements have placeholders resolved, so a placeholder value that is a
+secret appears in the output.
 `validate` checks the scripts on disk for consistency
 (duplicate versions, unsupported formats) and, once migrations have been
 applied, compares them against the recorded history too — checksums. Pass

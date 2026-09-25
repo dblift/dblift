@@ -1,6 +1,7 @@
 """Main client for programmatic access to DBLift."""
 
 import threading
+import warnings
 from functools import wraps
 from pathlib import Path
 from types import TracebackType
@@ -44,6 +45,7 @@ from dblift.core.logger.results import (
     UndoResult,
     ValidateResult,
 )
+from dblift.core.migration.commands.base_command import SCHEMA_HISTORY_CREATE_ERROR_PREFIX
 from dblift.core.migration.executor.migration_executor import MigrationExecutor
 from dblift.core.premium_manifest import PREMIUM_COMMANDS, UPGRADE_URL, render_upsell
 from dblift.core.seams.capabilities import CapabilityDeniedError
@@ -147,6 +149,18 @@ def _with_client_emitter(
     if method is not None:
         return decorator(method)
     return decorator
+
+
+def _schema_history_create_failure_message(exc: BaseException) -> Optional[str]:
+    """Message when *exc* is the schema-history DDL failure, else None.
+
+    Only that ``ConnectionError`` is turned back into a failed
+    ``ValidateResult``. Every other error, including a refused connection,
+    still propagates.
+    """
+    if isinstance(exc, ConnectionError) and str(exc).startswith(SCHEMA_HISTORY_CREATE_ERROR_PREFIX):
+        return str(exc)
+    return None
 
 
 def _raise_if_reentrant(
@@ -572,7 +586,16 @@ class DBLiftClient:
             **kwargs: Additional options
 
         Returns:
-            ValidateResult with validation status
+            ValidateResult with validation status. When the schema-history
+            table cannot be created, this is a failed result whose message
+            starts with ``Could not create the schema-history table``, and
+            ``VALIDATION_FAILED`` is emitted.
+
+        Raises:
+            ConnectionError: Future behavior. The next major version will
+                raise ``ConnectionError`` when the schema-history table
+                cannot be created, instead of returning the failed result
+                above. This method does not raise for that failure.
         """
         self._guard_scripts_dir_kwarg(kwargs)
         self.events.emit(EventType.VALIDATION_STARTED, {"dialect": getattr(self, "dialect", None)})
@@ -605,6 +628,20 @@ class DBLiftClient:
                 EventType.VALIDATION_FAILED,
                 {"error": str(e), "dialect": getattr(self, "dialect", None)},
             )
+            history_message = _schema_history_create_failure_message(e)
+            if history_message is not None:
+                # Only this failure is deprecated. A warning on every
+                # validate() call would fire for successful runs too.
+                warnings.warn(
+                    "DBLiftClient.validate() returns a failed result when the "
+                    "schema-history table cannot be created. The next major "
+                    "version will raise ConnectionError instead.",
+                    DeprecationWarning,
+                    stacklevel=3,
+                )
+                failed = ValidateResult()
+                failed.set_error(history_message)
+                return failed
             raise
 
     @_with_client_emitter

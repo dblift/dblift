@@ -44,6 +44,10 @@ from dblift.db.provider_interfaces import SchemaProvider
 
 from ._script_events import emit_script_event as _emit_script_event
 
+# ``DBLiftClient.validate`` matches this prefix and returns a failed result.
+# The raised text has to keep starting with it.
+SCHEMA_HISTORY_CREATE_ERROR_PREFIX = "Could not create the schema-history table"
+
 
 @dataclass
 class BaseCommandContext:
@@ -736,7 +740,7 @@ class BaseCommand:
                 if not formatted:
                     formatted = _SQL_STATEMENT_BLOCK_RE.sub("", str(exc)).strip()
                 raise ConnectionError(
-                    f"Could not create the schema-history table: {formatted or exc}"
+                    f"{SCHEMA_HISTORY_CREATE_ERROR_PREFIX}: {formatted or exc}"
                 ) from exc
         self._populate_database_info(result)
 

@@ -82,9 +82,7 @@ def test_empty_db_cleans_schema(
     assert not exists
 
 
-def test_validate_callable_succeeds(
-    dblift_migrated_db: DBLiftClient, dblift_validate: Any
-) -> None:
+def test_validate_callable_succeeds(dblift_migrated_db: DBLiftClient, dblift_validate: Any) -> None:
     dblift_migrated_db.migrate()
     result = dblift_validate()
     assert result.success is True
@@ -94,3 +92,20 @@ def test_validate_callable_succeeds(
 
 def test_dblift_validate_is_callable(dblift_validate: Any) -> None:
     assert callable(dblift_validate)
+
+
+def test_dblift_validate_fixture_reports_history_table_failure(
+    dblift_client: DBLiftClient, dblift_validate: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The fixture calls ``DBLiftClient.validate()``. A history-table failure
+    comes back as a failed result, so the fixture's assertion names it
+    instead of letting ``ConnectionError`` escape."""
+    message = "Could not create the schema-history table: permission denied"
+
+    def _fail(*args: Any, **kwargs: Any) -> None:
+        raise ConnectionError(message)
+
+    monkeypatch.setattr(dblift_client.executor, "validate", _fail)
+
+    with pytest.raises(AssertionError, match="Could not create the schema-history table"):
+        dblift_validate()

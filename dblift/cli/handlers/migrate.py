@@ -10,7 +10,10 @@ from dblift.cli.handlers._shared import (
     _migration_info_to_dict,
     run_json_guarded,
 )
-from dblift.cli.handlers.validate import _validate_result_to_dict
+from dblift.cli.handlers.validate import (
+    _reraise_schema_history_create_failure,
+    _validate_result_to_dict,
+)
 from dblift.core.logger.formatters.jsonformatter import JsonFormatter
 
 
@@ -45,15 +48,17 @@ def _handle_migrate(ctx: CliCommandContext) -> Tuple[bool, Any]:
     if getattr(ctx.args, "validate_only", False):
 
         def _validate_call() -> Any:
-            return ctx.client.validate(
-                target_version=target_version,
-                tags=tags,
-                exclude_tags=exclude_tags,
-                versions=versions,
-                exclude_versions=exclude_versions,
-                recursive=ctx.recursive,
-                dir_recursive_map=ctx.dir_recursive_map or None,
-                additional_dirs=additional_dirs,
+            return _reraise_schema_history_create_failure(
+                ctx.client.validate(
+                    target_version=target_version,
+                    tags=tags,
+                    exclude_tags=exclude_tags,
+                    versions=versions,
+                    exclude_versions=exclude_versions,
+                    recursive=ctx.recursive,
+                    dir_recursive_map=ctx.dir_recursive_map or None,
+                    additional_dirs=additional_dirs,
+                )
             )
 
         return run_json_guarded(ctx, "VALIDATE", _validate_call, _validate_result_to_dict)
