@@ -41,6 +41,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `validate --format json` now reports `error: null` on success, matching `info` and `migrate` — it was `error: ""` (a clean validate leaves the message empty), the one inconsistency across the three read tools' JSON error contract.
 - DML analysis (`analyze_dml`, `statement_dml_table`, `extract_dml_table_name`)
   returned the alias instead of the table for the MySQL / SQL Server
   multi-table `DELETE <alias> FROM <table> <alias>` spelling; the target is
