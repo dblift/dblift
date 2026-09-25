@@ -22,6 +22,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- An unrecognized key under `database:` (a typo like `srvice` for `service_name`, or `service` for `service_name`) is now logged as a warning naming the key instead of being dropped in silence. It is still ignored, not fatal — a genuine driver-specific option belongs under `extra_params` — and a key that is a valid field of another engine, or an internal `_`-prefixed key, does not warn.
 - The secrets provider contract now documents `resolve`'s failure mode: raise `SecretsResolutionError` when the secret cannot be produced; the CLI and `dblift mcp` report it as a configuration error (as they do a bare `ValueError` or `RuntimeError`), a direct `DbliftConfig.from_dict()` caller receives whatever `resolve` raises. Stated in `AbstractSecretsProvider.resolve`, `register_provider` and the configuration guide; no behaviour change.
 - The documented `dblift.config.secrets` extension imports are now explicitly
   included in the public compatibility contract.

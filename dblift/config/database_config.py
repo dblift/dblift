@@ -1,3 +1,4 @@
+import logging
 import re
 import urllib.parse
 from abc import ABC, abstractmethod
@@ -6,6 +7,8 @@ from typing import Any, Callable, ClassVar, Dict, Optional, Type
 
 from dblift.config._credential_masking import mask_credentials
 from dblift.config._url_builder_mixin import UrlBuilderMixin
+
+_LOG = logging.getLogger(__name__)
 
 # Constants will be ported separately if needed
 DEFAULT_CONNECTION_TIMEOUT_SECONDS = 30
@@ -370,7 +373,32 @@ def _instantiate_config(
     """Phase 7: filter ``data`` to ``config_class``'s dataclass fields and instantiate."""
     config_fields = set(f.name for f in config_class.__dataclass_fields__.values())
     filtered_data = {k: v for k, v in data.items() if k in config_fields}
-    # NOTE: Debug logging omitted - filtered_data contains sensitive credentials
+    # A key that is not a field is dropped here; a near-miss of a real field
+    # (``srvice`` for ``service_name``, ``service`` for ``service_name``) would
+    # otherwise be ignored in silence and the value fall back to a default.
+    # Warn, naming the keys, but do not raise: a driver-specific option belongs
+    # under ``extra_params``. Only warn for a key that is neither internal
+    # (leading ``_``) nor a real field of *some* dialect — a field valid for
+    # another engine (``sid`` in a PostgreSQL block) is misplaced, not a typo,
+    # and warning on it would flood a config that carries a cross-dialect
+    # superset. (Names only — values may be credentials, never logged.)
+    known_any_dialect = {
+        f.name
+        for cls in BaseDatabaseConfig._registry.values()
+        for f in cls.__dataclass_fields__.values()
+    }
+    unknown = sorted(
+        key
+        for key in set(data) - config_fields
+        if not key.startswith("_") and key not in known_any_dialect
+    )
+    if unknown:
+        _LOG.warning(
+            "Ignoring unrecognized %s config key(s): %s. "
+            "Check for a typo, or put driver-specific options under 'extra_params'.",
+            config_class.__name__,
+            ", ".join(unknown),
+        )
     return config_class(**filtered_data)
 
 
