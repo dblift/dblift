@@ -168,6 +168,22 @@ def test_analyze_dml_keeps_postgres_update_from_target():
     assert statement_dml_table(stmt, dialect="postgres") == "s.t"
 
 
+def test_analyze_dml_update_from_alias_does_not_hijack_an_aliased_target():
+    # ``this`` here has its own alias ("x"); it must not be treated as a bare
+    # T-SQL-style alias just because a FROM table happens to alias to "t".
+    stmt = "UPDATE t AS x SET a = 1 FROM other AS t WHERE x.id = t.id;"
+    assert analyze_dml(stmt, sqlglot_dialect="postgres").table == "t"
+    assert statement_dml_table(stmt, dialect="postgres") == "t"
+
+
+def test_analyze_dml_update_from_alias_does_not_hijack_a_qualified_target():
+    # ``this`` is schema-qualified (db="S"); it must not be treated as a bare
+    # alias just because a FROM table happens to alias to its bare name.
+    stmt = "UPDATE S.t SET a = 1 FROM other AS t WHERE t.id = 1;"
+    assert analyze_dml(stmt, sqlglot_dialect="tsql").table == "S.t"
+    assert statement_dml_table(stmt, dialect="tsql") == "S.t"
+
+
 def test_extract_dml_table_name_resolves_delete_alias_from_spelling():
     assert extract_dml_table_name("DELETE o FROM t o WHERE o.id = 1") == "t"
     assert statement_dml_table("DELETE o FROM t o WHERE o.id = 1") == "t"
