@@ -450,8 +450,9 @@ def statement_dml_table(statement: str, dialect: Optional[str] = None) -> str:
 def _sqlglot_dml_table_sql(text: str, dialect: str) -> str:
     """Dialect-quoted table reference for a DML statement via the sqlglot AST.
 
-    Returns the quoted ``schema.table`` (any table alias stripped) or ``""``
-    when sqlglot cannot parse *text* or it is not DML, letting the caller fall
+    Returns the quoted ``schema.table`` (any table alias and, for a joined
+    DELETE naming the FROM-anchor, its JOIN clause stripped) or ``""`` when
+    sqlglot cannot parse *text* or it is not DML, letting the caller fall
     back to the regex scanner. Unlike :func:`_sqlglot_table` — which returns the
     bare unquoted name for table *matching* — this preserves quoting because the
     result is interpolated into raw SQL (e.g. a capture ``SELECT ... FROM``).
@@ -465,9 +466,10 @@ def _sqlglot_dml_table_sql(text: str, dialect: str) -> str:
     table = _dml_target_table(ast)
     if table is None:
         return ""
-    if table.args.get("alias"):
+    if table.args.get("alias") or table.args.get("joins"):
         table = table.copy()
         table.set("alias", None)
+        table.set("joins", None)
     return table.sql(dialect=dialect)
 
 

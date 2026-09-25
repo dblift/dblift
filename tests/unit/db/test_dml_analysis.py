@@ -114,6 +114,25 @@ def test_statement_dml_table_sqlglot_resolves_delete_alias_target():
     tsql = statement_dml_table("DELETE o FROM [S].[t] AS o WHERE o.id = 1;", dialect="tsql")
     assert tsql == "[S].[t]"
 
+    # Multi-table DELETE where the target is the FROM-anchor: sqlglot hangs the
+    # JOIN list off that same Table node, so it must be stripped along with the
+    # alias or it leaks into the returned reference.
+    my_join = statement_dml_table("DELETE t1 FROM t1 JOIN t2 ON t2.a = t1.a;", dialect="mysql")
+    assert my_join == "t1"
+
+    tsql_join = statement_dml_table("DELETE t1 FROM t1 JOIN t2 ON t2.a = t1.a;", dialect="tsql")
+    assert tsql_join == "t1"
+
+
+def test_analyze_dml_resolves_delete_alias_that_differs_from_the_table_name():
+    # The wanted target ("x") is the alias of the second join member, and does
+    # not equal any table's real name here — this only resolves through the
+    # ``table.alias`` arm of ``wanted in (table.alias, table.name)``.
+    stmt = "DELETE x FROM t1 AS o JOIN t2 AS x ON o.id = x.id WHERE x.b = 1;"
+    mutation = analyze_dml(stmt, sqlglot_dialect="mysql")
+    assert mutation.table == "t2"
+    assert statement_dml_table(stmt, dialect="mysql") == "t2"
+
 
 def test_extract_dml_table_name_resolves_delete_alias_from_spelling():
     assert extract_dml_table_name("DELETE o FROM t o WHERE o.id = 1") == "t"
