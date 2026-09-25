@@ -48,9 +48,10 @@ it was opened, so calls within the same second still land in one file.
 
 `validate` checks the scripts on disk for consistency (duplicate versions,
 unsupported formats) and, once migrations have been applied, compares them
-against the recorded history too — checksums, script order, missing files.
-It does not parse or check the SQL inside them; a script with invalid SQL
-passes both `validate` and `migrate_dry_run`.
+against the recorded history too — checksums. Pass `strict: true` to also fail
+when a previously applied migration is now missing from disk and to require
+strict version order. It does not parse or check the SQL inside them; a script
+with invalid SQL passes both `validate` and `migrate_dry_run`.
 
 ## What protects the database
 

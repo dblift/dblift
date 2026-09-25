@@ -52,9 +52,18 @@ def validate_argv(
     exclude_tags: "str | list[str] | None" = None,
     versions: "str | list[str] | None" = None,
     exclude_versions: "str | list[str] | None" = None,
+    strict: bool = False,
 ) -> List[str]:
-    """Validate scripts for consistency and, once applied, against history (SQL not parsed)."""
-    return _filter_argv(locals())
+    """Validate scripts for consistency and, once applied, against history (SQL not parsed).
+
+    ``strict`` adds ``--strict``: a previously applied migration now missing
+    from disk fails validation, and migrations are required in strict version
+    order. Off by default, matching the CLI.
+    """
+    argv = _filter_argv({k: v for k, v in locals().items() if k != "strict"})
+    if strict:
+        argv.append("--strict")
+    return argv
 
 
 def migrate_dry_run_argv(
