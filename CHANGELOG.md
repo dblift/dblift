@@ -20,6 +20,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   SQL statements and generation options used by extensions.
 - Added `dblift.extensions.logging`, a stable import path for logging sinks,
   formatters, operation results, and console rendering used by extensions.
+- `dblift mcp`'s `migrate_dry_run` tool gains a `show_sql` parameter; when
+  `true`, the result carries a `sql` array with each pending migration's
+  rendered statements. `migrate --show-sql --format json` now includes that
+  same `sql` key in its output.
 
 ### Changed
 

@@ -74,6 +74,17 @@ def test_migrate_dry_run_argv_always_carries_dry_run():
 
 
 @pytest.mark.unit
+def test_migrate_dry_run_argv_show_sql():
+    assert "--show-sql" not in migrate_dry_run_argv()
+
+    argv = migrate_dry_run_argv(show_sql=True)
+
+    assert "--show-sql" in argv
+    ns = _parse_like_cli("migrate", argv)
+    assert ns.show_sql is True
+
+
+@pytest.mark.unit
 def test_migrate_dry_run_argv_placeholders():
     argv = migrate_dry_run_argv(placeholders={"env": "dev", "owner": "app"})
 
