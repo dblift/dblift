@@ -101,10 +101,24 @@ def _sqlglot_table(ast: "exp.Expression") -> str:
 
 
 def _dml_target_table(ast: "exp.Expression") -> Optional["exp.Table"]:
-    """The table a DML statement writes to, resolving a ``DELETE <alias> FROM`` target."""
+    """The table a DML statement writes to: resolves ``DELETE <alias> FROM`` and
+    ``UPDATE <alias> ... FROM <table> AS <alias>`` (T-SQL) targets to the table."""
     source: Optional[exp.Expression] = ast.this
     if source is None:
         return None
+    if (
+        isinstance(ast, exp.Update)
+        and isinstance(source, exp.Table)
+        and not source.alias
+        and not source.db
+        and not source.catalog
+    ):
+        from_ = ast.args.get("from_") or ast.args.get("from")
+        if from_ is not None:
+            from_tables: List[exp.Table] = list(from_.find_all(exp.Table))
+            for table in from_tables:
+                if table.alias == source.name:
+                    return table
     candidates: List[exp.Table] = list(source.find_all(exp.Table))
     if not candidates:
         return None
