@@ -27,11 +27,11 @@ def _migrate_result_to_dict(result: Any, dry_run: bool) -> Dict[str, Any]:
         "migrations_applied": list(getattr(result, "migrations_applied", [])),
     }
     # Reuse the same show-sql shape/sanitization JsonFormatter uses for the
-    # text/HTML log formats, instead of duplicating its getattr/sanitize
-    # pair here.
-    sql_visibility = JsonFormatter()._format_sql_visibility(result)
-    if "sql" in sql_visibility:
-        data["sql"] = sql_visibility["sql"]
+    # text/HTML log formats, instead of duplicating its getattr/sanitize pair
+    # here. It returns both `show_sql` and `sql` when show_sql is set, and {}
+    # otherwise — merge it whole so this payload matches the log-format JSON
+    # and adds nothing to ordinary output.
+    data.update(JsonFormatter()._format_sql_visibility(result))
     return data
 
 

@@ -264,6 +264,8 @@ def test_migrate_result_to_dict_carries_sql_only_when_show_sql_is_true():
 
     data = _migrate_result_to_dict(result_with_sql, dry_run=True)
 
+    # Both keys, matching the log-format JSON shape.
+    assert data["show_sql"] is True
     assert data["sql"] == [
         {
             "script": "V1__x.sql",
@@ -284,7 +286,9 @@ def test_migrate_result_to_dict_carries_sql_only_when_show_sql_is_true():
         show_sql=False,
     )
 
-    assert "sql" not in _migrate_result_to_dict(result_without_sql, dry_run=True)
+    without = _migrate_result_to_dict(result_without_sql, dry_run=True)
+    assert "sql" not in without
+    assert "show_sql" not in without
 
 
 @pytest.mark.unit
