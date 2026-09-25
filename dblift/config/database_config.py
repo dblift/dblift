@@ -13,6 +13,13 @@ _LOG = logging.getLogger(__name__)
 # Constants will be ported separately if needed
 DEFAULT_CONNECTION_TIMEOUT_SECONDS = 30
 
+# Unquoted names, or one pair of double quotes around the same safe
+# character set. The quotes are part of the value (YAML ``schema: "name"``
+# strips them; ``schema: '"name"'`` keeps them) so a case-sensitive Oracle
+# user can be addressed exactly. The interior stays alphanumeric plus
+# underscore so a quoted value cannot carry SQL.
+_SCHEMA_NAME_RE = re.compile(r"""^(?:[A-Za-z0-9_]+|"[A-Za-z0-9_]+")$""")
+
 
 def _detect_dialect_from_url(url: str) -> str:
     """Resolve dialect from the URL scheme only.
@@ -435,10 +442,11 @@ class BaseDatabaseConfig(UrlBuilderMixin, ABC):
         if not hasattr(self, "type"):
             raise ValueError("Database type is required")
 
-        if self.schema and not re.match(r"^[a-zA-Z0-9_]+$", self.schema):
+        if self.schema and not _SCHEMA_NAME_RE.match(self.schema):
             raise ValueError(
                 f"Invalid schema name: {self.schema!r}. "
-                "Schema names must contain only ASCII letters, digits, and underscores."
+                "Schema names must contain only ASCII letters, digits, and underscores, "
+                'or be a double-quoted identifier ("Name") with that same interior.'
             )
 
         # Convert port to int if needed

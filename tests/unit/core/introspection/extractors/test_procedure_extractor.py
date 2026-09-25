@@ -565,6 +565,18 @@ class TestStripEmbeddedOraclePackageSpec(unittest.TestCase):
         # The returned text should not contain the package
         self.assertNotIn("CREATE OR REPLACE PACKAGE", result)
 
+    def test_quoted_schema_cache_key_keeps_exact_case(self):
+        ext = _make_extractor(dialect="oracle")
+        defn = (
+            "CREATE OR REPLACE PROCEDURE MY_PROC AS BEGIN NULL; END;\n"
+            "CREATE OR REPLACE PACKAGE MY_PKG AS PROCEDURE helper; END MY_PKG;"
+        )
+        ext._strip_embedded_oracle_package_spec('"mySchema"', defn)
+        self.assertIn(("mySchema", "MY_PKG"), ext._oracle_package_specs)
+        self.assertNotIn(("MYSCHEMA", "MY_PKG"), ext._oracle_package_specs)
+        ext._strip_embedded_oracle_package_spec("myschema", defn)
+        self.assertIn(("MYSCHEMA", "MY_PKG"), ext._oracle_package_specs)
+
     def test_package_only_definition_returns_none(self):
         ext = _make_extractor(dialect="oracle")
         defn = "CREATE OR REPLACE PACKAGE MY_PKG AS PROCEDURE helper; END MY_PKG;"

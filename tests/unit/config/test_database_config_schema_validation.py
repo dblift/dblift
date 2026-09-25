@@ -57,6 +57,17 @@ class TestSchemaValidation:
         with pytest.raises(ValueError, match="Invalid schema name"):
             _make_config("my schema")
 
+    def test_double_quoted_identifier_accepted(self):
+        """Oracle keeps a double-quoted schema's case; the quotes are the value."""
+        cfg = _make_config('"myschema"')
+        assert cfg.schema == '"myschema"'
+        mixed = _make_config('"MySchema"')
+        assert mixed.schema == '"MySchema"'
+
+    def test_quoted_identifier_with_injection_rejected(self):
+        with pytest.raises(ValueError, match="Invalid schema name"):
+            _make_config('"myschema"; DROP TABLE users')
+
     def test_schema_with_quote_rejected(self):
         with pytest.raises(ValueError, match="Invalid schema name"):
             _make_config("schema'--")

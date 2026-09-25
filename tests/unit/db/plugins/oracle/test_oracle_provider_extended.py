@@ -7,6 +7,7 @@ import pytest
 from sqlalchemy.exc import DatabaseError
 
 import dblift.db.plugins.oracle.provider as oracle_provider_module
+from dblift.core.exceptions import ExecutionError
 from dblift.db.plugins.oracle.provider import (
     DroppableObject,
     OracleProvider,
@@ -317,6 +318,120 @@ class TestGetDatabaseVersion:
     def test_without_rows(self):
         p = _Provider()
         assert p.get_database_version() == "Unknown Oracle Version"
+
+
+class TestQuotedSchemaKeepsExactCase:
+    """A double-quoted schema must survive every path that used to strip quotes.
+
+    ``_ensure_schema_ready`` used to run the name through ``_clean_identifier``,
+    which drops the quotes, and then the unquoted spelling was uppercased.
+    """
+
+    def test_readiness_history_objects_and_cache_keep_quoted_case(self):
+        p = _Provider(username="ADMIN")
+        p.query_results["FROM ALL_USERS WHERE username"] = [{"user_count": 0}]
+        p.query_results["TABLE_NAME = ?"] = [{"cnt": 0}]
+
+        p._ensure_schema_ready('"mySchema"')
+
+        create_user = next(sql for sql, _, _ in p.statements if "CREATE USER" in sql)
+        assert '"mySchema"' in create_user
+        assert '"MYSCHEMA"' not in create_user
+        alters = [sql for sql, _, _ in p.statements if "ALTER SESSION" in sql]
+        assert alters == ['ALTER SESSION SET CURRENT_SCHEMA = "mySchema"']
+        assert p._schema_applied_for == "mySchema"
+
+        history = p.create_history_table('"mySchema"', "dblift_schema_history")
+        assert '"mySchema"."DBLIFT_SCHEMA_HISTORY"' in history
+        assert '"MYSCHEMA"' not in history
+
+        assert p.get_schema_qualified_name('"mySchema"', "orders") == '"mySchema"."orders"'
+
+        # Quoted and unquoted spellings of the same catalog name share a cache
+        # key. A quoted lowercase name is a different user and must not collide.
+        shared = _Provider()
+        shared.set_current_schema('"MYSCHEMA"')
+        shared.set_current_schema("myschema")
+        shared_alters = [sql for sql, _, _ in shared.statements if "ALTER SESSION" in sql]
+        assert shared_alters == ['ALTER SESSION SET CURRENT_SCHEMA = "MYSCHEMA"']
+        assert shared._schema_applied_for == "MYSCHEMA"
+        assert shared.get_lock_name('"MYSCHEMA"') == shared.get_lock_name("myschema")
+
+        shared.set_current_schema('"myschema"')
+        shared_alters = [sql for sql, _, _ in shared.statements if "ALTER SESSION" in sql]
+        assert shared_alters[-1] == 'ALTER SESSION SET CURRENT_SCHEMA = "myschema"'
+        assert shared._schema_applied_for == "myschema"
+        assert shared.get_lock_name('"myschema"') != shared.get_lock_name("myschema")
+        assert shared.get_lock_name('"myschema"').endswith("myschema")
+
+
+class TestUnquotedSchemaUpgradeGuard:
+    def test_existing_exact_user_stops_before_any_ddl(self):
+        p = _Provider(username="ADMIN")
+        p.query_results["SELECT USERNAME AS username FROM ALL_USERS"] = [{"username": "myschema"}]
+
+        with pytest.raises(ExecutionError, match="Quote the schema name in config"):
+            p.create_migration_history_table_if_not_exists("myschema")
+
+        assert p.statements == []
+        assert all("ALL_USERS" in sql for sql, _ in p.queries)
+        assert not any("ALL_TABLES" in sql for sql, _ in p.queries)
+
+    def test_message_names_the_quoting_fix(self):
+        p = _Provider(username="ADMIN")
+        p.query_results["SELECT USERNAME AS username FROM ALL_USERS"] = [{"username": "myschema"}]
+
+        with pytest.raises(ExecutionError) as exc_info:
+            p.create_schema_if_not_exists("myschema")
+
+        message = str(exc_info.value)
+        assert "myschema" in message
+        assert "MYSCHEMA" in message
+        assert "schema: '\"myschema\"'" in message
+        assert "keep the existing lowercase schema" in message
+        assert p.statements == []
+
+    def test_already_uppercase_is_not_guarded(self):
+        p = _Provider(username="ADMIN")
+        p.query_results["FROM ALL_USERS WHERE username"] = [{"user_count": 1}]
+
+        p.set_current_schema("MYSCHEMA")
+
+        assert not any("SELECT USERNAME AS username" in sql for sql, _ in p.queries)
+        assert p.statements[-1][0] == 'ALTER SESSION SET CURRENT_SCHEMA = "MYSCHEMA"'
+
+    def test_quoted_name_is_not_guarded_even_when_the_user_exists(self):
+        p = _Provider(username="ADMIN")
+        p.query_results["FROM ALL_USERS WHERE username"] = [{"user_count": 1}]
+
+        p.create_schema_if_not_exists('"myschema"')
+
+        assert not any("SELECT USERNAME AS username" in sql for sql, _ in p.queries)
+        lookup = [params for sql, params in p.queries if "user_count" in sql]
+        assert lookup == [["myschema"]]
+        assert not any("CREATE USER" in sql for sql, _, _ in p.statements)
+
+    def test_missing_exact_user_still_creates_the_uppercase_user(self):
+        p = _Provider(username="ADMIN")
+        p.query_results["SELECT USERNAME AS username FROM ALL_USERS"] = []
+        p.query_results["FROM ALL_USERS WHERE username"] = [{"user_count": 0}]
+
+        p.create_schema_if_not_exists("myschema")
+
+        create_user = next(sql for sql, _, _ in p.statements if "CREATE USER" in sql)
+        assert '"MYSCHEMA"' in create_user
+        assert '"myschema"' not in create_user
+
+    def test_case_insensitive_catalog_hit_does_not_stop(self):
+        """A linguistic ALL_USERS match that returns the uppercase user is not
+        the exact lowercase user 4.8.0 created."""
+        p = _Provider(username="ADMIN")
+        p.query_results["SELECT USERNAME AS username FROM ALL_USERS"] = [{"username": "MYSCHEMA"}]
+        p.query_results["FROM ALL_USERS WHERE username"] = [{"user_count": 1}]
+
+        p.create_schema_if_not_exists("myschema")
+
+        assert not any("CREATE USER" in sql for sql, _, _ in p.statements)
 
 
 class TestSupportsTransactionalDdl:

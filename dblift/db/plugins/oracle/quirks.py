@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Any, Dict, List, Mapping, Optional, Tuple, Typ
 from dblift.db.base_quirks import BaseQuirks, RowLimitClauses
 from dblift.db.error import ErrorCategory
 from dblift.db.feature_gate import FeatureGate
+from dblift.db.object_naming import dictionary_identifier
 
 if TYPE_CHECKING:
     from dblift.core.introspection.version_detector import DatabaseVersion
@@ -678,7 +679,7 @@ class OracleQuirks(BaseQuirks):
         REPLACE PACKAGE`` blocks); anything still missing is fetched
         from ``ALL_SOURCE``."""
         for package in packages:
-            schema_key = (schema or "").upper()
+            schema_key = dictionary_identifier(schema or "", "oracle")
             cache_key = (schema_key, (package.name or "").upper())
             cached_spec = extractor._oracle_package_specs.get(cache_key)
             if cached_spec:
