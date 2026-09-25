@@ -41,6 +41,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Oracle: a lowercase `schema:` value now resolves to the uppercase Oracle user instead of failing `ORA-01435: user does not exist`. Oracle uppercases unquoted identifiers, so a user created `CREATE USER myschema` is `MYSCHEMA`; dblift was quoting the raw config value (`ALTER SESSION SET CURRENT_SCHEMA = "myschema"`). The schema is now upper-cased like object names, so a natural lowercase spelling connects.
 - DML analysis (`analyze_dml`, `statement_dml_table`, `extract_dml_table_name`)
   returned the alias instead of the table for the MySQL / SQL Server
   multi-table `DELETE <alias> FROM <table> <alias>` spelling; the target is

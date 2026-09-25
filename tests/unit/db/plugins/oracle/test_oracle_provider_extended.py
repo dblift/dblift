@@ -139,7 +139,18 @@ class TestSetCurrentSchema:
         p.set_current_schema("myschema")
 
         sql = p.statements[-1][0]
-        assert sql == 'ALTER SESSION SET CURRENT_SCHEMA = "myschema"'
+        # Case-folded to uppercase: Oracle uppercases unquoted identifiers, so
+        # a user created as MYSCHEMA is not "myschema"; quoting the raw
+        # lowercase config value would fail ORA-01435 "user does not exist".
+        assert sql == 'ALTER SESSION SET CURRENT_SCHEMA = "MYSCHEMA"'
+
+    def test_case_folds_the_schema_like_an_object_name(self):
+        """A lowercase, uppercase or mixed-case config value all resolve to the
+        same uppercase Oracle user, the way object names are normalized."""
+        for spelling in ("myschema", "MYSCHEMA", "MySchema"):
+            p = _Provider()
+            p.set_current_schema(spelling)
+            assert p.statements[-1][0] == 'ALTER SESSION SET CURRENT_SCHEMA = "MYSCHEMA"'
 
     def test_skips_reissue_for_same_schema(self):
         """A second call for the same schema does not re-issue ALTER SESSION.

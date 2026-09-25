@@ -239,11 +239,18 @@ class OracleProvider(SqlAlchemyProvider):
         A no-op once this session already has *schema* applied, so an
         ``ALTER SESSION SET CURRENT_SCHEMA`` the migration itself runs later
         is not immediately reset back — see ``_schema_applied_for``.
+
+        The name is upper-cased, as object names are (Oracle uppercases
+        unquoted identifiers, so a user created ``CREATE USER myschema`` is
+        ``MYSCHEMA``): quoting the raw lowercase config value would emit
+        ``= "myschema"`` and fail ORA-01435 "user does not exist" against the
+        very account that owns the data. Matches the ``.upper()`` the
+        schema-existence and ownership checks already use.
         """
         if self._schema_applied_for == schema:
             return
         self.execute_statement(
-            f"ALTER SESSION SET CURRENT_SCHEMA = {_q(_clean_identifier(schema))}"
+            f"ALTER SESSION SET CURRENT_SCHEMA = {_q(_clean_identifier(schema).upper())}"
         )
         self._schema_applied_for = schema
 
