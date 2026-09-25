@@ -424,6 +424,13 @@ Call `register_provider` once at application startup, before any call to
 through the same pipeline — caching, two-phase bootstrap, and offline bypass
 all apply.
 
+`resolve` should raise `SecretsResolutionError` when it cannot produce the
+secret (missing, denied, backend unreachable). Through the `dblift` CLI or
+`dblift mcp` that is reported the same way as a missing configuration file or
+an unknown `--env` (a bare `ValueError` or `RuntimeError` from `resolve` is
+reported the same way). Through `DbliftConfig.from_dict()` or `DBLiftClient`,
+whatever `resolve` raises reaches your own code unwrapped.
+
 `register_provider` validates that:
 
 - `scheme` is non-empty and does not contain `://`
