@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- The `validate` MCP tool now accepts `strict`, adding `--strict` so an agent can have a previously applied but now-missing migration reported and strict version order enforced (the CLI flag was already there; the tool did not expose it). The server instructions and MCP guide no longer imply the default `validate` reports missing files — it does so under `strict`.
 - Added `dblift.extensions.providers`, a stable import path for provider plugin
   metadata, registry access, and transport typing.
 - `dblift mcp` now prints the environment and database it resolved on stderr
@@ -19,10 +20,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   SQL statements and generation options used by extensions.
 - Added `dblift.extensions.logging`, a stable import path for logging sinks,
   formatters, operation results, and console rendering used by extensions.
+- `dblift mcp`'s `migrate_dry_run` tool gains a `show_sql` parameter; when
+  `true`, the result carries a `sql` array with each pending migration's
+  rendered statements. `migrate --show-sql --format json` now includes that
+  same `sql` key in its output.
 
 ### Changed
 
 - An unrecognized key under `database:` (a typo like `srvice` for `service_name`, or `service` for `service_name`) is now logged as a warning naming the key instead of being dropped in silence. It is still ignored, not fatal — a genuine driver-specific option belongs under `extra_params` — and a key that is a valid field of another engine, or an internal `_`-prefixed key, does not warn.
+- A `--dry-run` migration no longer runs the `command.pre_migrate` runtime checks. A dry run applies nothing, so the checks that gate *applying* a migration do not run for it — mirroring `migration.pre_execution`, which already never fires in dry-run. An installed extension that registers a `command.pre_migrate` check to gate real migrations therefore no longer blocks a dry run.
 - The secrets provider contract now documents `resolve`'s failure mode: raise `SecretsResolutionError` when the secret cannot be produced; the CLI and `dblift mcp` report it as a configuration error (as they do a bare `ValueError` or `RuntimeError`), a direct `DbliftConfig.from_dict()` caller receives whatever `resolve` raises. Stated in `AbstractSecretsProvider.resolve`, `register_provider` and the configuration guide; no behaviour change.
 - The documented `dblift.config.secrets` extension imports are now explicitly
   included in the public compatibility contract.
@@ -65,6 +71,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   driver does not bind, so they could not execute at all. The foreign-key
   lookup now also reads the system catalog instead of `information_schema`,
   so a read-only role sees the referencing keys too.
+- SQL Server: a login that maps to the fixed `dbo` database user (a
+  `sa`/sysadmin login, or a database's owner) with `schema:` set to anything
+  other than `dbo` now fails `migrate` with a clear error before any
+  statement runs, instead of logging a warning and creating unqualified
+  objects in `dbo` while reporting success. Connect with a login mapped to a
+  non-`dbo` database user, or set `schema` to `dbo`.
 
 ### Removed
 

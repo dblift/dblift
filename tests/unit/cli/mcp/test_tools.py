@@ -74,6 +74,17 @@ def test_migrate_dry_run_argv_always_carries_dry_run():
 
 
 @pytest.mark.unit
+def test_migrate_dry_run_argv_show_sql():
+    assert "--show-sql" not in migrate_dry_run_argv()
+
+    argv = migrate_dry_run_argv(show_sql=True)
+
+    assert "--show-sql" in argv
+    ns = _parse_like_cli("migrate", argv)
+    assert ns.show_sql is True
+
+
+@pytest.mark.unit
 def test_migrate_dry_run_argv_placeholders():
     argv = migrate_dry_run_argv(placeholders={"env": "dev", "owner": "app"})
 
@@ -289,3 +300,18 @@ def test_an_offline_server_starts_with_no_config_and_no_dsn(tmp_path, monkeypatc
     assert result.is_error is True
     assert "--offline" in result.content[0].text
     assert "Database URL is required" not in result.content[0].text
+
+
+@pytest.mark.unit
+def test_validate_argv_carries_strict_when_requested():
+    """The MCP validate tool must be able to ask for strict mode, so an agent
+    can have a previously applied but now-missing migration reported."""
+    assert "--strict" in validate_argv(strict=True)
+    assert "--strict" not in validate_argv()
+
+
+@pytest.mark.unit
+def test_validate_argv_strict_parses_through_the_real_parser():
+    ns = _parse_like_cli("validate", [*validate_argv(strict=True), "--format", "json"])
+
+    assert ns.strict_mode is True
