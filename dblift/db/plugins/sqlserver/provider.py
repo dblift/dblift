@@ -6,6 +6,7 @@ from typing import Any, Dict, List, Optional
 from dblift.config import DbliftConfig
 from dblift.core.constants import DEFAULT_HISTORY_TABLE
 from dblift.core.constants import MIGRATION_LOCK_TABLE as _MIGRATION_LOCK_TABLE
+from dblift.core.exceptions import ExecutionError
 from dblift.core.logger import Log
 from dblift.core.migration.clean_summary import CleanExecutionSummary
 from dblift.core.migration.sql.execution_statement import classify_execution_statement
@@ -165,6 +166,10 @@ class SqlServerProvider(SqlAlchemyProvider):
         and its record disagrees with the catalog identically either way
         (issue #362). A dedicated SQL Server login per ``--db-schema``
         avoids concurrent interference entirely.
+
+        One login can never do this at all: ``dbo``, whose DEFAULT_SCHEMA
+        SQL Server refuses to change. That case raises instead of warning —
+        see the guard below.
         """
         try:
             rows = self.execute_query(
@@ -176,6 +181,29 @@ class SqlServerProvider(SqlAlchemyProvider):
                 raise RuntimeError("could not determine the connecting database user")
 
             catalog_schema = rows[0].get("default_schema") if rows else None
+
+            # The 'dbo' database user is fixed (principal_id 1) and its
+            # DEFAULT_SCHEMA cannot be changed - SQL Server rejects
+            # ALTER USER [dbo] WITH DEFAULT_SCHEMA = ... with error 15150.
+            # Any sysadmin login (e.g. sa) or a database's owner maps to
+            # 'dbo', so this is not a query failure to warn and continue
+            # past: continuing would run every unqualified statement of the
+            # migration against 'dbo' instead of the configured schema
+            # while reporting success. Fail fast instead. SQL Server
+            # identifiers are case-insensitive, so 'DBO' is still the dbo
+            # schema and must not trip this guard — compare case-folded.
+            if (
+                current_user == "dbo"
+                and catalog_schema is not None
+                and schema.lower() != catalog_schema.lower()
+            ):
+                raise ExecutionError(
+                    f"SQL Server login '{current_user}' maps to the fixed 'dbo' "
+                    f"database user, whose default schema cannot be changed, so "
+                    f"unqualified objects cannot be created in schema '{schema}'. "
+                    f"Connect with a login mapped to a non-'dbo' database user, or "
+                    f"set the schema to 'dbo'."
+                )
 
             if self._schema_applied_for == schema:
                 # Cache hit: nothing on this connection asked for a change
@@ -209,6 +237,8 @@ class SqlServerProvider(SqlAlchemyProvider):
             )
             self._current_schema_set = schema
             self._schema_applied_for = schema
+        except ExecutionError:
+            raise
         except Exception as e:
             self.log.warning(
                 f"SQL Server: could not set the connecting user's default schema to "
