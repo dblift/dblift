@@ -1,10 +1,15 @@
-"""A lowercase ``schema:`` value resolves to the uppercase Oracle user.
+"""A lowercase ``schema:`` value resolves consistently across the whole
+Oracle admin flow: create, connect and catalog lookup.
 
 Oracle uppercases unquoted identifiers, so ``CREATE USER myschema`` creates
-``MYSCHEMA``. dblift used to quote the raw config value — ``ALTER SESSION SET
-CURRENT_SCHEMA = "myschema"`` — which fails ORA-01435 "user does not exist"
-against that very account. The provider now upper-cases the schema, as it does
-object names, so a natural lowercase spelling works.
+``MYSCHEMA``. The provider now normalizes the schema the same way at every
+site that uses it against the database — ``create_schema_if_not_exists``,
+``set_current_schema`` and the catalog lookups (``table_exists`` among them)
+— so a lowercase config value creates, connects to and finds objects in the
+same uppercase user throughout. Before the fix, ``create_schema_if_not_exists``
+created a *lowercase* user (it quoted the raw value verbatim) while
+``set_current_schema`` upper-cased it, so the two could never agree: the
+create step produced a user the connect step could not find (ORA-01435).
 
 Prerequisites: an Oracle instance reachable at localhost:1521, service
 FREEPDB1, connectable as ``system`` / ``oracle`` (the container fixture's
@@ -12,6 +17,7 @@ credentials).
 """
 
 import uuid
+from typing import Any, List
 
 import pytest
 
@@ -41,42 +47,53 @@ def _admin_config() -> DbliftConfig:
     )
 
 
-def test_lowercase_schema_resolves_to_the_uppercase_oracle_user():
-    schema = f"mcpt_ora_{uuid.uuid4().hex[:8]}"  # lowercase, as a user might write it
-    admin = ProviderRegistry.create_provider(_admin_config())
-    admin.create_connection()
-    try:
-        admin.execute_statement(f"CREATE USER {schema.upper()} IDENTIFIED BY Pw123456")
-        admin.execute_statement(f"GRANT CREATE SESSION TO {schema.upper()}")
+def _scalar(rows: List[Any]) -> Any:
+    """Return the single column of the single row of an Oracle query result."""
+    row = rows[0]
+    return next(iter(row.values())) if isinstance(row, dict) else row[0]
 
-        # A provider configured with the lowercase spelling.
-        cfg = DbliftConfig(
-            database=OracleConfig(
-                type="oracle",
-                host=HOST,
-                port=PORT,
-                service_name=SERVICE,
-                username=ADMIN_USER,
-                password=ADMIN_PASSWORD,
-                schema=schema,
-            )
+
+def _user_count(provider: Any, username: str) -> int:
+    rows = provider.execute_query(
+        "SELECT COUNT(*) AS c FROM ALL_USERS WHERE username = ?", [username]
+    )
+    return int(_scalar(rows))
+
+
+def test_lowercase_schema_is_consistent_across_create_connect_and_lookup():
+    """The create -> connect -> lookup flow a real migration drives, all
+    exercised for one lowercase ``schema:`` value on a single admin
+    connection (no separate per-user login needed: every method here just
+    targets the named schema over the admin session)."""
+    schema = f"mcpt_ora_{uuid.uuid4().hex[:8]}"  # lowercase, as a user might write it
+    schema_upper = schema.upper()
+    table = "PROBE_TBL"
+
+    provider = ProviderRegistry.create_provider(_admin_config())
+    provider.create_connection()
+    try:
+        # Would have created a LOWERCASE user before the fix, which
+        # set_current_schema below could then never find (ORA-01435).
+        provider.create_schema_if_not_exists(schema)
+
+        assert _user_count(provider, schema_upper) == 1, f"expected one {schema_upper} user"
+        assert _user_count(provider, schema) == 0, f"stray lowercase user {schema} was created"
+
+        provider.set_current_schema(schema)
+        current = _scalar(
+            provider.execute_query("SELECT SYS_CONTEXT('USERENV', 'CURRENT_SCHEMA') AS s FROM dual")
         )
-        provider = ProviderRegistry.create_provider(cfg)
-        provider.create_connection()
+        assert current == schema_upper
+
+        provider.execute_statement(f'CREATE TABLE "{schema_upper}"."{table}" (id NUMBER)')
         try:
-            # Would raise ORA-01435 before the fix (quoted lowercase).
-            provider.set_current_schema(schema)
-            rows = provider.execute_query(
-                "SELECT SYS_CONTEXT('USERENV', 'CURRENT_SCHEMA') AS s FROM dual"
-            )
-            current = rows[0]["s"] if isinstance(rows[0], dict) else rows[0][0]
-            assert current == schema.upper()
+            assert provider.table_exists(schema, table) is True
         finally:
-            close = getattr(provider, "close", None)
-            if callable(close):
-                close()
+            provider.execute_statement(f'DROP TABLE "{schema_upper}"."{table}" PURGE')
     finally:
-        admin.execute_statement(f"DROP USER {schema.upper()} CASCADE")
-        close = getattr(admin, "close", None)
+        provider.execute_statement(f'DROP USER "{schema_upper}" CASCADE')
+        assert _user_count(provider, schema_upper) == 0, "stray Oracle user left behind"
+        assert _user_count(provider, schema) == 0, "stray Oracle user left behind"
+        close = getattr(provider, "close", None)
         if callable(close):
             close()
