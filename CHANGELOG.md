@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- The `validate` MCP tool now accepts `strict`, adding `--strict` so an agent can have a previously applied but now-missing migration reported and strict version order enforced (the CLI flag was already there; the tool did not expose it). The server instructions and MCP guide no longer imply the default `validate` reports missing files — it does so under `strict`.
 - Added `dblift.extensions.providers`, a stable import path for provider plugin
   metadata, registry access, and transport typing.
 - `dblift mcp` now prints the environment and database it resolved on stderr
