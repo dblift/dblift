@@ -388,7 +388,8 @@ class TestUnquotedSchemaUpgradeGuard:
         assert "myschema" in message
         assert "MYSCHEMA" in message
         assert "schema: '\"myschema\"'" in message
-        assert "keep the existing lowercase schema" in message
+        assert "not uppercase" in message
+        assert "set schema to MYSCHEMA" in message
         assert p.statements == []
 
     def test_already_uppercase_is_not_guarded(self):
@@ -432,6 +433,50 @@ class TestUnquotedSchemaUpgradeGuard:
         p.create_schema_if_not_exists("myschema")
 
         assert not any("CREATE USER" in sql for sql, _, _ in p.statements)
+
+    def test_mixed_case_existing_user_is_guarded(self):
+        p = _Provider(username="ADMIN")
+        p.query_results["SELECT USERNAME AS username FROM ALL_USERS"] = [{"username": "MySchema"}]
+
+        with pytest.raises(ExecutionError, match="not uppercase") as exc_info:
+            p.get_applied_migrations("MySchema")
+
+        assert "set schema to MYSCHEMA" in str(exc_info.value)
+        assert p.statements == []
+        assert not any("ALL_TABLES" in sql for sql, _ in p.queries)
+
+    def test_get_applied_migrations_stops_before_reading_history(self):
+        """Dry-run reads history here and must not treat the uppercase user as empty."""
+        p = _Provider(username="ADMIN")
+        p.query_results["SELECT USERNAME AS username FROM ALL_USERS"] = [{"username": "myschema"}]
+
+        with pytest.raises(ExecutionError, match="Quote the schema name in config"):
+            p.get_applied_migrations("myschema")
+
+        assert not any("ALL_TABLES" in sql for sql, _ in p.queries)
+
+    def test_guard_query_is_cached_across_repeated_reads(self):
+        p = _Provider(username="ADMIN")
+        p.query_results["SELECT USERNAME AS username FROM ALL_USERS"] = []
+        p.query_results["TABLE_NAME = ?"] = [{"cnt": 0}]
+
+        assert p.get_applied_migrations("myschema") == []
+        assert p.get_applied_migrations("myschema") == []
+
+        guard_queries = [sql for sql, _ in p.queries if "SELECT USERNAME AS username" in sql]
+        assert len(guard_queries) == 1
+
+
+class TestQuotedSchemaGrants:
+    def test_quoted_schema_still_grants_when_login_differs_only_by_case(self):
+        p = _Provider(username="MYSCHEMA")
+        p.query_results["FROM ALL_USERS WHERE username"] = [{"user_count": 1}]
+
+        p.create_schema_if_not_exists('"myschema"')
+
+        grants = [sql for sql, _, _ in p.statements if "GRANT" in sql]
+        assert grants
+        assert '"myschema"' in grants[0]
 
 
 class TestSupportsTransactionalDdl:

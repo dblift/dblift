@@ -84,7 +84,7 @@ def _history_count(provider, schema: str) -> int:
     return int(_scalar(rows))
 
 
-def _migrate(schema: str, migrations_dir):
+def _migrate(schema: str, migrations_dir, *, dry_run: bool = False):
     config = DbliftConfig(
         database=OracleConfig(
             type="oracle",
@@ -101,7 +101,7 @@ def _migrate(schema: str, migrations_dir):
     provider.create_connection()
     try:
         client = DBLiftClient(provider=provider, migrations_dir=migrations_dir, config=config)
-        return client.migrate()
+        return client.migrate(dry_run=dry_run)
     finally:
         provider.close()
 
@@ -155,12 +155,25 @@ def test_unquoted_lowercase_schema_stops_and_quoted_keeps_it(tmp_path):
         assert not blocked.success
         assert blocked.error_message
         assert "Quote the schema name in config" in blocked.error_message
-        assert "keep the existing lowercase schema" in blocked.error_message
+        assert "not uppercase" in blocked.error_message
+        assert f"set schema to {schema_upper}" in blocked.error_message
         assert f"schema: '\"{schema}\"'" in blocked.error_message
         assert _user_count(admin, schema_upper) == 0, "uppercase user was created before the stop"
         assert _history_count(admin, schema) == 1
         assert _table_count(admin, schema, "WIDGET") == 0
         assert _table_count(admin, schema, "MARKER") == 0
+        assert _table_count(admin, schema_upper, "WIDGET") == 0
+        assert _table_count(admin, schema_upper, "DBLIFT_SCHEMA_HISTORY") == 0
+
+        dry = _migrate(schema, migrations_dir, dry_run=True)
+
+        assert not dry.success
+        assert dry.error_message
+        assert "Quote the schema name in config" in dry.error_message
+        assert "not uppercase" in dry.error_message
+        assert _user_count(admin, schema_upper) == 0
+        assert _history_count(admin, schema) == 1
+        assert _table_count(admin, schema, "WIDGET") == 0
         assert _table_count(admin, schema_upper, "WIDGET") == 0
         assert _table_count(admin, schema_upper, "DBLIFT_SCHEMA_HISTORY") == 0
 

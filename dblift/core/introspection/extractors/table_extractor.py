@@ -6,6 +6,7 @@ from typing import Any, List, Optional, Set
 
 from dblift.core.introspection.extractors.base_extractor import BaseExtractor
 from dblift.core.sql_model.table import Table
+from dblift.db.object_naming import dictionary_identifier
 
 logger = logging.getLogger(__name__)
 
@@ -378,10 +379,24 @@ class TableExtractor(BaseExtractor):
     def _verify_schema_match(
         self, table_schema: Optional[str], expected_schema: str, table_name: str
     ) -> bool:
-        """Verify that table schema matches expected schema (case-insensitive)."""
-        if table_schema and table_schema.upper() != expected_schema.upper():
+        """Verify that a table's schema is the configured catalog spelling.
+
+        The configured name is normalized with :func:`dictionary_identifier`,
+        so ``"MYSCHEMA"`` matches the catalog owner ``MYSCHEMA``. A catalog
+        owner is already stored spelling: folding ``myschema`` again would
+        turn the quoted user into ``MYSCHEMA`` and skip every table, so an
+        exact match against that catalog text is also accepted.
+        """
+        if not table_schema:
+            return True
+        dialect = self.dialect or ""
+        actual_text = str(table_schema)
+        expected_name = dictionary_identifier(expected_schema, dialect)
+        actual_name = dictionary_identifier(actual_text, dialect)
+        if actual_name != expected_name and actual_text != expected_name:
             self.log.debug(
-                f"Skipping table {table_name} from different schema: {table_schema} != {expected_schema}"
+                f"Skipping table {table_name} from different schema: "
+                f"{table_schema} != {expected_schema}"
             )
             return False
         return True

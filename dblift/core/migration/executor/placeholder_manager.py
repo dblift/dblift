@@ -12,6 +12,7 @@ if TYPE_CHECKING:
 
 from dblift.config import DbliftConfig
 from dblift.core.logger import Log, NullLog
+from dblift.db.object_naming import configured_identifier_text
 
 
 class PlaceholderManager:
@@ -38,7 +39,9 @@ class PlaceholderManager:
         """
         placeholders = {
             # Default system placeholders with dblift_ prefix
-            "dblift_schema": self.config.database.schema,
+            # Catalog text without the quotes, and without uppercasing an
+            # unquoted name. ``"myschema"`` becomes ``myschema``.
+            "dblift_schema": configured_identifier_text(self.config.database.schema or ""),
             "dblift_database": getattr(
                 self.config.database,
                 "database",

@@ -45,13 +45,15 @@ def _oracle_dictionary_name(name: str) -> str:
 
 def _legacy_unquoted_schema_message(raw: str) -> str:
     """Tell the operator to quote a pre-existing non-uppercase schema."""
+    folded = raw.upper()
     return (
         f"Oracle schema '{raw}' exists with that exact case. "
-        f"An unquoted schema name is uppercased to '{raw.upper()}', "
+        f"An unquoted schema name is uppercased to '{folded}', "
         "which would target a different schema and replay every migration. "
-        "Quote the schema name in config to keep the existing lowercase "
-        "schema. The double quotes are part of the value "
-        f"""(schema: '"{raw}"')."""
+        "Quote the schema name in config to keep the existing schema, "
+        "which is not uppercase. The double quotes are part of the value "
+        f"""(schema: '"{raw}"'). """
+        f"To use the uppercase user instead, set schema to {folded}."
     )
 
 
@@ -295,10 +297,10 @@ class OracleProvider(SqlAlchemyProvider):
                 )
 
         configured_user = getattr(getattr(self.config, "database", None), "username", None)
-        if (
-            configured_user
-            and _clean_identifier(str(configured_user)).upper() == clean_schema.upper()
-        ):
+        # Catalog spelling, not a case-folded compare: login MYSCHEMA is a
+        # different user from the quoted schema "myschema", and that user
+        # still needs the grants.
+        if configured_user and _oracle_dictionary_name(str(configured_user)) == clean_schema:
             return
 
         grant_statements = [
@@ -647,7 +649,14 @@ class OracleProvider(SqlAlchemyProvider):
     def get_applied_migrations(
         self, schema: str, table_name: Optional[str] = None
     ) -> List[Dict[str, Any]]:
-        """Return applied Oracle migration rows with normalized keys."""
+        """Return applied Oracle migration rows with normalized keys.
+
+        ``migrate --dry-run`` skips history-table creation and reads applied
+        rows through this method. The upgrade guard has to run here too, or
+        an unquoted lowercase schema looks empty under the uppercase name
+        and every migration is reported pending.
+        """
+        self._guard_unquoted_existing_schema(schema)
         raw_table = table_name or DEFAULT_HISTORY_TABLE
         table = _oracle_name(raw_table)
         if not self.table_exists(schema, table):

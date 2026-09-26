@@ -39,6 +39,22 @@ def get_normalized_object_name(object_name: str, dialect: str) -> str:
     return object_name.upper() if case == "uppercase" else object_name.lower()
 
 
+def configured_identifier_text(name: str) -> str:
+    """Return a configured identifier with surrounding quotes removed.
+
+    Case is left as written. ``${dblift_schema}`` expands to this so a
+    double-quoted Oracle schema ``"myschema"`` becomes ``myschema`` inside
+    ``"${dblift_schema}"``, the spelling 4.8.0 scripts already used, and an
+    unquoted value is not uppercased.
+    """
+    if not name:
+        return ""
+    clean = name.strip()
+    if len(clean) >= 2 and clean[0] == '"' and clean[-1] == '"':
+        return clean[1:-1].replace('""', '"')
+    return clean
+
+
 def dictionary_identifier(name: str, dialect: str) -> str:
     """Return the catalog spelling of a possibly double-quoted identifier.
 
@@ -55,7 +71,7 @@ def dictionary_identifier(name: str, dialect: str) -> str:
         return ""
     clean = name.strip()
     if len(clean) >= 2 and clean[0] == '"' and clean[-1] == '"':
-        return clean[1:-1].replace('""', '"')
+        return configured_identifier_text(clean)
     return get_normalized_object_name(clean, dialect)
 
 
