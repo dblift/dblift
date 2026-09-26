@@ -7,6 +7,7 @@ from dblift.core.constants import DEFAULT_HISTORY_TABLE
 from dblift.core.constants import MIGRATION_LOCK_TABLE as _MIGRATION_LOCK_TABLE
 from dblift.core.logger import Log
 from dblift.core.migration.clean_summary import CleanExecutionSummary
+from dblift.core.migration.migration import success_to_bool
 from dblift.db.plugins.base_history_manager import UNDO_HISTORY_TYPE, installed_on_to_bind
 from dblift.db.plugins.mysql.mysql.schema_operations import MySqlSchemaOperations
 from dblift.db.provider_interfaces import DroppableObject
@@ -241,7 +242,7 @@ class MySqlProvider(SqlAlchemyProvider):
             """)
         for row in rows:
             if "success" in row and row["success"] is not None:
-                row["success"] = bool(row["success"])
+                row["success"] = success_to_bool(row["success"])
         return rows
 
     def record_migration(

@@ -10,6 +10,7 @@ from dblift.core.constants import DEFAULT_HISTORY_TABLE
 from dblift.core.constants import MIGRATION_LOCK_TABLE as _MIGRATION_LOCK_TABLE
 from dblift.core.logger import Log
 from dblift.core.migration.clean_summary import CleanExecutionSummary
+from dblift.core.migration.migration import success_to_bool
 from dblift.db.object_naming import get_normalized_object_name
 from dblift.db.plugins.base_history_manager import UNDO_HISTORY_TYPE, installed_on_to_bind
 from dblift.db.plugins.db2.db2.schema_operations import Db2SchemaOperations
@@ -366,7 +367,7 @@ class Db2Provider(SqlAlchemyProvider):
         for row in rows:
             item = {str(key).lower(): value for key, value in row.items()}
             if item.get("success") is not None:
-                item["success"] = bool(int(item["success"]))
+                item["success"] = success_to_bool(item["success"])
             normalized.append(item)
         return normalized
 

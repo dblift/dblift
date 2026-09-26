@@ -12,6 +12,7 @@ from typing import Any, Dict, List, Optional
 
 from dblift.core.constants import DEFAULT_HISTORY_TABLE as _DEFAULT_HISTORY_TABLE
 from dblift.core.logger import Log
+from dblift.core.migration.migration import success_to_bool
 from dblift.db.object_naming import get_normalized_object_name
 from dblift.db.plugins.base_history_manager import BaseHistoryManager, installed_on_to_bind
 
@@ -209,10 +210,10 @@ class SQLiteHistoryManager(BaseHistoryManager):
         try:
             results = self.query_executor.execute_query(connection, query)
 
-            # Convert SQLite integer success values to boolean
+            # Read success as a boolean, whether stored as an integer or as text
             for row in results:
                 if "success" in row and row["success"] is not None:
-                    row["success"] = bool(row["success"])
+                    row["success"] = success_to_bool(row["success"])
 
             return list(results)  # Ensure it's a list, not Any
 

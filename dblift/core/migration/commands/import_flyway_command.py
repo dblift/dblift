@@ -6,23 +6,8 @@ from typing import Any, Dict, List
 from dblift.core.constants import DEFAULT_HISTORY_TABLE
 from dblift.core.logger.results import OperationResult
 from dblift.core.migration.commands.base_command import BaseCommand
-from dblift.core.migration.migration import MigrationType
+from dblift.core.migration.migration import MigrationType, success_to_bool
 from dblift.core.sql_validator._flyway_compatibility import FLYWAY_TYPE_TO_MIGRATION_TYPE
-
-
-def _as_bool(value: Any) -> bool:
-    """Read Flyway's ``success`` column as a real boolean.
-
-    Flyway declares this column BOOLEAN on PostgreSQL but an integer type on
-    MySQL and SQLite, and a hand-built table can hold the string "0". Our own
-    PostgreSQL history column is BOOLEAN and psycopg refuses an int for it, so
-    the value is normalised here rather than trusted as read.
-    """
-    if isinstance(value, bool):
-        return value
-    if isinstance(value, str):
-        return value.strip().lower() not in ("", "0", "false", "f", "n", "no")
-    return bool(value)
 
 
 class ImportFlywayCommand(BaseCommand):
@@ -225,4 +210,4 @@ class ImportFlywayCommand(BaseCommand):
             # Flyway's convention for a repeatable migration is type=SQL with
             # no version — dblift models this as its own REPEATABLE type.
             mapped_type = MigrationType.REPEATABLE.name
-        return {**row, "type": mapped_type, "success": _as_bool(row.get("success", True))}
+        return {**row, "type": mapped_type, "success": success_to_bool(row.get("success", True))}
