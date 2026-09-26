@@ -6,7 +6,6 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-
 from pytest_dblift._client import resolve_dblift_config
 
 

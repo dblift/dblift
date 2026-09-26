@@ -5,9 +5,8 @@ from __future__ import annotations
 from typing import Any
 
 import pytest
-from sqlalchemy import text
-
 from pytest_dblift._client import _worker_id
+from sqlalchemy import text
 
 
 def test_xdist_worker_isolation(
@@ -20,9 +19,7 @@ def test_xdist_worker_isolation(
     url = dblift_config["url"]
 
     if wid != "master":
-        assert wid in url, (
-            f"worker isolation missing: worker {wid!r} not in default url {url!r}"
-        )
+        assert wid in url, f"worker isolation missing: worker {wid!r} not in default url {url!r}"
 
     assert "sqlite" in url and ":memory:" not in url
     tag = f"iso-{wid}"
