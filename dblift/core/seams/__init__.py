@@ -19,8 +19,9 @@ Seam map — module, entry-point group, and where the core calls it:
 
 ``runtime_checks``
     In-process registry keyed by check point. ``run_checks("migration.pre_execution")``
-    in ``core/migration/executor/execution_engine.py`` and
-    ``run_checks("command.pre_migrate")`` in
+    in ``core/migration/executor/execution_engine.py``,
+    ``run_checks("command.pre_migrate")`` and
+    ``run_checks("command.pre_migrate_dry_run")`` in
     ``core/migration/commands/migrate_command.py``. A check raises to abort.
 
 ``capabilities``
