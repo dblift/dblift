@@ -39,6 +39,41 @@ def get_normalized_object_name(object_name: str, dialect: str) -> str:
     return object_name.upper() if case == "uppercase" else object_name.lower()
 
 
+def configured_identifier_text(name: str) -> str:
+    """Return a configured identifier with surrounding quotes removed.
+
+    Case is left as written. Oracle's ``${dblift_schema}`` uses
+    :func:`dictionary_identifier` instead, so an unquoted Oracle name is
+    the uppercase catalog spelling.
+    """
+    if not name:
+        return ""
+    clean = name.strip()
+    if len(clean) >= 2 and clean[0] == '"' and clean[-1] == '"':
+        return clean[1:-1].replace('""', '"')
+    return clean
+
+
+def dictionary_identifier(name: str, dialect: str) -> str:
+    """Return the catalog spelling of a possibly double-quoted identifier.
+
+    A name wrapped in double quotes keeps the exact text inside the quotes
+    (a doubled quote inside is one quote character). An unquoted name is
+    folded with :func:`get_normalized_object_name`.
+
+    Schema caches should key on this spelling. Quoted and unquoted forms of
+    the same catalog name (``myschema`` and ``"MYSCHEMA"`` on Oracle) share
+    a key; a quoted lowercase name (``"myschema"``) stays distinct from the
+    folded uppercase one.
+    """
+    if not name:
+        return ""
+    clean = name.strip()
+    if len(clean) >= 2 and clean[0] == '"' and clean[-1] == '"':
+        return configured_identifier_text(clean)
+    return get_normalized_object_name(clean, dialect)
+
+
 def normalized_quoted_identifier(name: str, dialect: str) -> str:
     """Quote *name* after normalizing it to the dialect's identifier case.
 

@@ -13,6 +13,25 @@ _LOG = logging.getLogger(__name__)
 # Constants will be ported separately if needed
 DEFAULT_CONNECTION_TIMEOUT_SECONDS = 30
 
+# Alphanumeric plus underscore. ``\Z`` (via ``fullmatch``) rejects a trailing
+# newline, which ``$`` would allow. A double-quoted form is Oracle-only;
+# see :func:`schema_name_allowed`.
+_UNQUOTED_SCHEMA_RE = re.compile(r"[A-Za-z0-9_]+")
+_QUOTED_SCHEMA_RE = re.compile(r'"[A-Za-z0-9_]+"')
+
+
+def schema_name_allowed(schema: str, *, allow_quoted: bool = False) -> bool:
+    """Return whether *schema* is a safe configured schema name.
+
+    Every dialect accepts an unquoted name of ASCII letters, digits, and
+    underscores. Oracle also accepts one pair of double quotes around that
+    same interior (the quotes are part of the value). A trailing newline
+    does not match.
+    """
+    if re.fullmatch(_UNQUOTED_SCHEMA_RE, schema):
+        return True
+    return bool(allow_quoted and re.fullmatch(_QUOTED_SCHEMA_RE, schema))
+
 
 def _detect_dialect_from_url(url: str) -> str:
     """Resolve dialect from the URL scheme only.
@@ -435,16 +454,24 @@ class BaseDatabaseConfig(UrlBuilderMixin, ABC):
         if not hasattr(self, "type"):
             raise ValueError("Database type is required")
 
-        if self.schema and not re.match(r"^[a-zA-Z0-9_]+$", self.schema):
-            raise ValueError(
-                f"Invalid schema name: {self.schema!r}. "
-                "Schema names must contain only ASCII letters, digits, and underscores."
-            )
+        if self.schema and not self._configured_schema_allowed(self.schema):
+            raise ValueError(self._invalid_schema_message())
 
         # Convert port to int if needed
         if isinstance(self.port, str):
             # mypy unreachable workaround: do not attempt conversion here
             pass
+
+    def _configured_schema_allowed(self, schema: str) -> bool:
+        """Unquoted names only. Oracle overrides this to allow one quoted form."""
+        return schema_name_allowed(schema)
+
+    def _invalid_schema_message(self) -> str:
+        """Error text for a schema name this dialect will not accept."""
+        return (
+            f"Invalid schema name: {self.schema!r}. "
+            "Schema names must contain only ASCII letters, digits, and underscores."
+        )
 
     @classmethod
     def from_url(cls, url: str) -> "BaseDatabaseConfig":
