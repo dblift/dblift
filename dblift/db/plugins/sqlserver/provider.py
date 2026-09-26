@@ -6,11 +6,12 @@ from typing import Any, Dict, List, Optional
 from dblift.config import DbliftConfig
 from dblift.core.constants import DEFAULT_HISTORY_TABLE
 from dblift.core.constants import MIGRATION_LOCK_TABLE as _MIGRATION_LOCK_TABLE
-from dblift.core.exceptions import ExecutionError
+from dblift.core.exceptions import ExecutionError, FixedDboSchemaError
 from dblift.core.logger import Log
 from dblift.core.migration.clean_summary import CleanExecutionSummary
 from dblift.core.migration.sql.execution_statement import classify_execution_statement
 from dblift.db.plugins.base_history_manager import UNDO_HISTORY_TYPE, installed_on_to_bind
+from dblift.db.plugins.sqlserver.config import SqlServerConfig
 from dblift.db.plugins.sqlserver.sqlserver.schema_operations import SqlServerSchemaOperations
 from dblift.db.provider_interfaces import DroppableObject
 from dblift.db.sqlalchemy_provider import SqlAlchemyProvider
@@ -168,8 +169,8 @@ class SqlServerProvider(SqlAlchemyProvider):
         avoids concurrent interference entirely.
 
         One login can never do this at all: ``dbo``, whose DEFAULT_SCHEMA
-        SQL Server refuses to change. That case raises instead of warning —
-        see the guard below.
+        SQL Server refuses to change. The default warns and continues
+        (same outcome as 4.8.0); ``fail_on_fixed_dbo`` fails the run instead.
         """
         try:
             rows = self.execute_query(
@@ -182,28 +183,41 @@ class SqlServerProvider(SqlAlchemyProvider):
 
             catalog_schema = rows[0].get("default_schema") if rows else None
 
-            # The 'dbo' database user is fixed (principal_id 1) and its
-            # DEFAULT_SCHEMA cannot be changed - SQL Server rejects
-            # ALTER USER [dbo] WITH DEFAULT_SCHEMA = ... with error 15150.
-            # Any sysadmin login (e.g. sa) or a database's owner maps to
-            # 'dbo', so this is not a query failure to warn and continue
-            # past: continuing would run every unqualified statement of the
-            # migration against 'dbo' instead of the configured schema
-            # while reporting success. Fail fast instead. SQL Server
-            # identifiers are case-insensitive, so 'DBO' is still the dbo
-            # schema and must not trip this guard — compare case-folded.
-            if (
-                current_user == "dbo"
-                and catalog_schema is not None
-                and schema.lower() != catalog_schema.lower()
-            ):
-                raise ExecutionError(
+            # 'dbo' cannot change DEFAULT_SCHEMA (error 15150). sa, sysadmin,
+            # and the database owner map to it. A case-insensitive match is
+            # already dbo, so skip ALTER USER. A mismatch warns once (same
+            # outcome as 4.8.0) or raises FixedDboSchemaError.
+            if current_user == "dbo" and catalog_schema is not None:
+                if schema.lower() == catalog_schema.lower():
+                    self._schema_applied_for = schema
+                    return
+                message = (
                     f"SQL Server login '{current_user}' maps to the fixed 'dbo' "
                     f"database user, whose default schema cannot be changed, so "
                     f"unqualified objects cannot be created in schema '{schema}'. "
-                    f"Connect with a login mapped to a non-'dbo' database user, or "
-                    f"set the schema to 'dbo'."
+                    f"Connect with a login mapped to a non-'dbo' database user."
                 )
+                # object.__new__ providers in unit tests have no config.
+                try:
+                    database = self.config.database
+                except AttributeError:
+                    fail_fast = False
+                else:
+                    fail_fast = isinstance(database, SqlServerConfig) and database.fail_on_fixed_dbo
+                if fail_fast:
+                    raise FixedDboSchemaError(
+                        f"{message} fail_on_fixed_dbo is enabled, so the run "
+                        f"stops before any migration or callback statement "
+                        f"executes; no history row is written."
+                    )
+                if self._schema_applied_for != schema:
+                    self.log.warning(
+                        f"{message} Unqualified objects will be created in "
+                        f"'{catalog_schema}' and the run will continue. Set "
+                        f"fail_on_fixed_dbo to true to fail the run instead."
+                    )
+                    self._schema_applied_for = schema
+                return
 
             if self._schema_applied_for == schema:
                 # Cache hit: nothing on this connection asked for a change

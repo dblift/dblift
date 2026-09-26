@@ -926,6 +926,7 @@ class DbliftConfig:
             "TRUST_SERVER_CERTIFICATE",
             "INTEGRATED_SECURITY",
             "USE_MANAGED_IDENTITY",
+            "FAIL_ON_FIXED_DBO",
         }
         # All accepted suffixes — union of every category plus plain string fields
         _ALLOWED = (

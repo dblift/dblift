@@ -5,6 +5,7 @@ Clean command implementation.
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from dblift.core.exceptions import FixedDboSchemaError
 from dblift.core.logger.results import CleanResult
 from dblift.db.provider_interfaces import TransactionalProvider
 
@@ -81,6 +82,11 @@ class CleanCommand(BaseCommand):
             if hasattr(self.provider, "set_current_schema"):
                 try:
                     self.provider.set_current_schema(self.config.database.schema)
+                except FixedDboSchemaError:
+                    # Opt-in SQL Server guard. Other set_current_schema
+                    # failures, including a plain ExecutionError, stay
+                    # non-fatal for clean.
+                    raise
                 except Exception as e:
                     self.log.debug(f"set_current_schema skipped: {e}")
 

@@ -105,6 +105,118 @@ def _test_schema_for_service(service: str, config: Dict[str, Any]) -> str:
     return "TEST_SCHEMA"
 
 
+# The SQL Server container boots as ``sa``, which maps to the fixed ``dbo``
+# user and cannot change DEFAULT_SCHEMA. The harness connects as this login
+# instead: a non-dbo database user whose default schema is TEST_SCHEMA.
+_SQLSERVER_SA_PASSWORD = "YourStrong@Passw0rd"
+_SQLSERVER_APP_LOGIN = "dblift_app"
+_SQLSERVER_APP_PASSWORD = "Dblift_App1!"
+_SQLSERVER_APP_SCHEMA = "TEST_SCHEMA"
+
+
+def _ensure_sqlserver_app_login(host: str, port: int) -> None:
+    """Create the non-dbo integration login if this container does not have it yet.
+
+    Idempotent. ``sa`` is used only to provision the login; tests connect as
+    ``dblift_app``. The login is not a sysadmin and not the database owner, so
+    ``USER_NAME()`` is the login's own user and ``ALTER USER ... WITH
+    DEFAULT_SCHEMA`` can succeed.
+    """
+    import pymssql
+
+    login = _SQLSERVER_APP_LOGIN
+    password = _SQLSERVER_APP_PASSWORD
+    schema = _SQLSERVER_APP_SCHEMA
+    conn = pymssql.connect(
+        server=host,
+        port=int(port),
+        user="sa",
+        password=_SQLSERVER_SA_PASSWORD,
+        database="master",
+        autocommit=True,
+    )
+    try:
+        cursor = conn.cursor()
+        statements = [
+            (
+                f"IF NOT EXISTS (SELECT 1 FROM sys.server_principals WHERE name = N'{login}') "
+                f"CREATE LOGIN [{login}] WITH PASSWORD = N'{password}', "
+                "CHECK_POLICY = OFF, CHECK_EXPIRATION = OFF"
+            ),
+            (
+                f"IF NOT EXISTS (SELECT 1 FROM sys.database_principals WHERE name = N'{login}') "
+                f"CREATE USER [{login}] FOR LOGIN [{login}]"
+            ),
+            (
+                f"IF NOT EXISTS (SELECT 1 FROM sys.schemas WHERE name = N'{schema}') "
+                f"EXEC(N'CREATE SCHEMA [{schema}] AUTHORIZATION [{login}]')"
+            ),
+            f"ALTER USER [{login}] WITH DEFAULT_SCHEMA = [{schema}]",
+            (
+                f"IF IS_ROLEMEMBER('db_owner', N'{login}') <> 1 "
+                f"ALTER ROLE db_owner ADD MEMBER [{login}]"
+            ),
+        ]
+        for statement in statements:
+            cursor.execute(statement)
+    finally:
+        conn.close()
+    _ensure_sqlserver_interference_login(host, port)
+
+
+def _ensure_sqlserver_interference_login(host: str, port: int) -> None:
+    """Create the ``dblift_test`` login and database used by the shared-login tests.
+
+    Idempotent. The login is not a sysadmin and is not the database owner, so
+    ``ALTER USER ... WITH DEFAULT_SCHEMA`` succeeds. Those tests connect as
+    this login rather than ``sa``.
+    """
+    import pymssql
+
+    login = "dblift_test"
+    password = "Dblift_Test1!"
+    database = "dblift_test"
+    master = pymssql.connect(
+        server=host,
+        port=int(port),
+        user="sa",
+        password=_SQLSERVER_SA_PASSWORD,
+        database="master",
+        autocommit=True,
+    )
+    try:
+        cursor = master.cursor()
+        cursor.execute(
+            f"IF NOT EXISTS (SELECT 1 FROM sys.server_principals WHERE name = N'{login}') "
+            f"CREATE LOGIN [{login}] WITH PASSWORD = N'{password}', "
+            "CHECK_POLICY = OFF, CHECK_EXPIRATION = OFF"
+        )
+        cursor.execute(f"IF DB_ID(N'{database}') IS NULL CREATE DATABASE [{database}]")
+    finally:
+        master.close()
+
+    conn = pymssql.connect(
+        server=host,
+        port=int(port),
+        user="sa",
+        password=_SQLSERVER_SA_PASSWORD,
+        database=database,
+        autocommit=True,
+    )
+    try:
+        cursor = conn.cursor()
+        cursor.execute(
+            f"IF NOT EXISTS (SELECT 1 FROM sys.database_principals WHERE name = N'{login}') "
+            f"CREATE USER [{login}] FOR LOGIN [{login}]"
+        )
+        cursor.execute(
+            f"IF IS_ROLEMEMBER('db_owner', N'{login}') <> 1 "
+            f"ALTER ROLE db_owner ADD MEMBER [{login}]"
+        )
+    finally:
+        conn.close()
+
+
 def _published_host_port(container: Any, container_port: str) -> int | None:
     """Return the host port Docker published for a container port."""
     ports = container.attrs.get("NetworkSettings", {}).get("Ports", {})
@@ -299,6 +411,8 @@ def db_containers(docker_client, request):
             print(f"[DEBUG] Docker run arguments for {service}: {run_kwargs}")
             container = docker_client.containers.run(**run_kwargs)
         wait_for_readiness(service, container)
+        if service == "sqlserver":
+            _ensure_sqlserver_app_login("localhost", port_map[service]["1433/tcp"])
     yield
     # Do not remove containers after tests (leave running for reuse)
 
@@ -337,8 +451,8 @@ def db_configs() -> Dict[str, Dict[str, Any]]:
             "host": "localhost",
             "port": 1433,
             "database": "master",
-            "username": "sa",
-            "password": "YourStrong@Passw0rd",
+            "username": _SQLSERVER_APP_LOGIN,
+            "password": _SQLSERVER_APP_PASSWORD,
             "encrypt": False,
             "trust_server_certificate": True,
         },
@@ -533,6 +647,8 @@ def db_container(docker_client, request, db_configs):
         container = docker_client.containers.run(**run_kwargs)
     wait_for_readiness(service, container)
     config = db_configs[service].copy()
+    if service == "sqlserver":
+        _ensure_sqlserver_app_login(config["host"], config["port"])
     # Always use the same schema for all tests
     config["schema"] = _test_schema_for_service(service, config)
     config["type"] = service  # Ensure type is set
@@ -1079,6 +1195,7 @@ def sqlserver_container(docker_client, db_configs):
 
     wait_for_readiness(service, container)
     config = db_configs[service].copy()
+    _ensure_sqlserver_app_login(config["host"], config["port"])
     # For Oracle, use the connected user schema (SYSTEM)
     if service == "oracle":
         config["schema"] = config.get("username", "SYSTEM").upper()

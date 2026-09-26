@@ -151,6 +151,27 @@ DBLift works with these databases:
 | Azure Cosmos DB | `https://account.documents.azure.com:443/` (see [CosmosDB Configuration](#cosmosdb-configuration)) | `dblift[cosmosdb]` |
 | MongoDB | `mongodb://host:27017` or `mongodb+srv://…` (see [MongoDB Configuration](#mongodb-configuration)) | `dblift[mongodb]` |
 
+## SQL Server Configuration
+
+```yaml
+database:
+  type: "sqlserver"
+  url: mssql+pymssql://localhost:1433/mydb?encrypt=false
+  schema: dbo
+  username: your_username
+  password: your_password
+  integrated_security: false
+  trust_server_certificate: false
+  encrypt: false
+  fail_on_fixed_dbo: false
+```
+
+`fail_on_fixed_dbo` defaults to `false`. A login mapped to the fixed `dbo` user (`sa`, a sysadmin, or the database owner) cannot change its default schema. When `schema` names anything else, dblift logs a warning and continues, same outcome as 4.8.0: unqualified objects are created in `dbo` and the run is reported successful. Set `fail_on_fixed_dbo: true` to fail the run before any migration or callback statement executes; no history row is written. A dry-run does not predict this failure, and neither does a migrate with nothing pending. The way to honor a non-`dbo` schema is a login mapped to a non-`dbo` database user.
+
+On an existing deployment, do not switch `schema` to `dbo` to avoid the warning. That points dblift at `[dbo].[dblift_schema_history]` and replays every migration. A new deployment that has never recorded history may use `schema: dbo` with a dbo-mapped login; that is not this mismatch.
+
+See the [SQL Server template](https://github.com/dblift/dblift/blob/main/docs/examples/config/dblift-sqlserver.yaml.template).
+
 ## SQLite Configuration
 
 SQLite uses a simpler configuration format since it's a file-based database:
