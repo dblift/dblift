@@ -50,7 +50,8 @@ class TestValidateHistoryTableClient:
         assert result.error_message == _HISTORY
         assert result.error_count == 1
         assert result.target_schema == "app"
-        assert isinstance(result.preflight_error, PreflightConnectionError)
+        assert isinstance(result._preflight_error, PreflightConnectionError)
+        assert result.end_time is not None
         assert EventType.VALIDATION_FAILED in _emitted(client)
         assert EventType.VALIDATION_COMPLETED not in _emitted(client)
         client.events.emit.assert_any_call(
@@ -71,7 +72,7 @@ class TestValidateHistoryTableClient:
         assert result.error_message == _CONNECTION
         assert result.error_count == 1
         assert result.target_schema == "app"
-        assert isinstance(result.preflight_error, PreflightConnectionError)
+        assert isinstance(result._preflight_error, PreflightConnectionError)
         assert EventType.VALIDATION_FAILED in _emitted(client)
         assert EventType.VALIDATION_COMPLETED not in _emitted(client)
         assert len(_deprecations(caught)) == 1
@@ -87,7 +88,7 @@ class TestValidateHistoryTableClient:
         assert result is attached
         assert result.target_schema == "kept"
         assert result.error_message == _CONNECTION
-        assert result.preflight_error is not None
+        assert result._preflight_error is not None
 
     def test_non_preflight_connection_error_still_raises(self):
         """A ConnectionError that is not a preflight failure still propagates.
@@ -145,13 +146,31 @@ class TestValidateHistoryTableClient:
         assert len(deprecations) == 1
         text = str(deprecations[0].message)
         assert "ConnectionError" in text
-        assert "next major" in text
+        assert "the next major release" in text
         assert "Deprecated since 4.9.0" in text
+
+    @pytest.mark.filterwarnings("error::DeprecationWarning")
+    def test_direct_validate_raises_when_deprecation_warnings_are_errors(self):
+        """A caller's own validate() still warns, so -W error raises it."""
+        client = _make_client(PreflightConnectionError(_CONNECTION))
+
+        with pytest.raises(DeprecationWarning, match="the next major release"):
+            client.validate()
+
+    @pytest.mark.filterwarnings("error::DeprecationWarning")
+    def test_internal_call_does_not_warn_when_deprecation_warnings_are_errors(self):
+        client = _make_client(PreflightConnectionError(_HISTORY))
+
+        result = client.validate(_warn_on_preflight_failure=False)
+
+        assert result.success is False
+        assert result.error_message == _HISTORY
+        assert result.end_time is not None
 
     def test_docstring_marks_the_future_connection_error(self):
         doc = DBLiftClient.validate.__doc__ or ""
         assert "Raises:" in doc
         assert "ConnectionError" in doc
         assert "Future behavior" in doc
-        assert "next major" in doc
+        assert "the next major release" in doc
         assert "Deprecated since 4.9.0" in doc

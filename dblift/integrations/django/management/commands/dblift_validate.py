@@ -16,7 +16,7 @@ class Command(BaseCommand):
     def handle(self, *args: Any, **options: Any) -> None:
         client = get_client()
         try:
-            result = client.validate()
+            result = client.validate(_warn_on_preflight_failure=False)
         finally:
             client.close()
         if not getattr(result, "success", False):

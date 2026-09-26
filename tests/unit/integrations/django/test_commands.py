@@ -187,6 +187,7 @@ def test_info_command_surfaces_failed_history_after_bad_migrate(tmp_path):
         assert "V2_0_0__bad.sql" in text or "1 failed" in text
 
 
+@pytest.mark.filterwarnings("error::DeprecationWarning")
 def test_dblift_validate_history_table_failure_is_command_error_without_traceback(tmp_path, capsys):
     """A role that cannot create the history table must not dump a traceback.
 
@@ -217,6 +218,7 @@ def test_dblift_validate_history_table_failure_is_command_error_without_tracebac
     assert denial in combined
 
 
+@pytest.mark.filterwarnings("error::DeprecationWarning")
 def test_dblift_validate_connection_failure_is_command_error_without_traceback(tmp_path, capsys):
     """An unreachable database must not dump a traceback from dblift_validate.
 

@@ -426,8 +426,9 @@ class ValidateResult(OperationResult):
         self.issues: List[str] = []
         # Set when this result stands in for a preflight connection or
         # history-table failure. Surfaces that must still raise match this
-        # type instead of the message text.
-        self.preflight_error: Optional[BaseException] = None
+        # type instead of the message text. Underscore: not part of the
+        # public result.
+        self._preflight_error: Optional[BaseException] = None
 
     def add_validated_migration(self, migration: MigrationInfo) -> None:
         """Add a validated migration to the result."""

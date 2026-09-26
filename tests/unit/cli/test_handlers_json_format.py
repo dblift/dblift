@@ -2,19 +2,19 @@
 
 from __future__ import annotations
 
-import io
 import json
-from contextlib import redirect_stdout
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
 
+from dblift.api.client import DBLiftClient
 from dblift.cli.handlers._shared import (
     CliCommandContext,
     _migration_info_to_dict,
     run_json_guarded,
 )
+from dblift.config import DbliftConfig
 from dblift.core.migration.commands.base_command import PreflightConnectionError
 
 
@@ -194,7 +194,7 @@ def test_handle_validate_json_emits_payload_only(capsys):
         error_count=0,
         validated_migrations=[],
         failed_migrations=[],
-        preflight_error=None,
+        _preflight_error=None,
     )
     ctx = CliCommandContext(client=client, args=SimpleNamespace(format="json"), log=MagicMock())
 
@@ -219,12 +219,24 @@ def _preflight_failure_result(message):
         validated_migrations=[],
         failed_migrations=[],
         execution_time=lambda: 0,
-        preflight_error=PreflightConnectionError(message),
+        _preflight_error=PreflightConnectionError(message),
     )
 
 
 def _history_failure_result():
     return _preflight_failure_result(_HISTORY)
+
+
+def _real_preflight_client(message):
+    """A client whose validate() hits the real deprecation path."""
+    client = DBLiftClient.__new__(DBLiftClient)
+    client.config = DbliftConfig.from_dict({"database": {"type": "sqlite", "path": ":memory:"}})
+    client.provider = MagicMock()
+    client.executor = MagicMock()
+    client.executor.validate.side_effect = PreflightConnectionError(message)
+    client.events = MagicMock()
+    client.dialect = "sqlite"
+    return client
 
 
 @pytest.mark.unit
@@ -292,6 +304,57 @@ def test_handle_validate_human_connection_failure_still_raises():
 
 
 @pytest.mark.unit
+@pytest.mark.filterwarnings("error::DeprecationWarning")
+def test_handle_validate_json_preflight_stays_connection_error_when_warnings_are_errors(capsys):
+    """The CLI must not turn the deprecation into the JSON error text."""
+    from dblift.cli.handlers.validate import _handle_validate
+
+    client = _real_preflight_client(_CONNECTION)
+    ctx = CliCommandContext(client=client, args=SimpleNamespace(format="json"), log=MagicMock())
+
+    ok, returned = _handle_validate(ctx)
+
+    assert ok is False
+    assert returned is None
+    payload = json.loads(capsys.readouterr().out)
+    assert payload == {"success": False, "error": f"ConnectionError: {_CONNECTION}"}
+
+
+@pytest.mark.unit
+@pytest.mark.filterwarnings("error::DeprecationWarning")
+def test_handle_validate_human_preflight_stays_connection_error_when_warnings_are_errors():
+    from dblift.cli.handlers.validate import _handle_validate
+
+    client = _real_preflight_client(_HISTORY)
+    ctx = CliCommandContext(client=client, args=SimpleNamespace(format="console"), log=MagicMock())
+
+    with pytest.raises(
+        ConnectionError, match="Could not create the schema-history table"
+    ) as raised:
+        _handle_validate(ctx)
+
+    assert type(raised.value) is ConnectionError
+
+
+@pytest.mark.unit
+@pytest.mark.filterwarnings("error::DeprecationWarning")
+def test_migrate_validate_only_json_preflight_stays_connection_error_when_warnings_are_errors(
+    capsys,
+):
+    from dblift.cli.handlers.migrate import _handle_migrate
+
+    client = _real_preflight_client(_CONNECTION)
+    args = SimpleNamespace(format="json", dry_run=False, validate_only=True)
+
+    ok, returned = _handle_migrate(CliCommandContext(client=client, args=args, log=MagicMock()))
+
+    assert ok is False
+    assert returned is None
+    payload = json.loads(capsys.readouterr().out)
+    assert payload == {"success": False, "error": f"ConnectionError: {_CONNECTION}"}
+
+
+@pytest.mark.unit
 def test_handle_validate_json_keeps_a_normal_failure_as_a_verdict(capsys):
     from dblift.cli.handlers.validate import _handle_validate
 
@@ -304,7 +367,7 @@ def test_handle_validate_json_keeps_a_normal_failure_as_a_verdict(capsys):
         issues=["checksum mismatch"],
         validated_migrations=[],
         failed_migrations=[],
-        preflight_error=None,
+        _preflight_error=None,
     )
     ctx = CliCommandContext(client=client, args=SimpleNamespace(format="json"), log=MagicMock())
 
@@ -460,7 +523,7 @@ def test_handle_migrate_validate_only_json_uses_validate_payload(capsys):
         error_count=0,
         validated_migrations=[],
         failed_migrations=[],
-        preflight_error=None,
+        _preflight_error=None,
     )
     args = SimpleNamespace(format="json", dry_run=False, validate_only=True)
 

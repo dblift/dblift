@@ -85,6 +85,7 @@ def test_crashed_command_is_an_error_result_with_its_payload(project):
 
 
 @pytest.mark.unit
+@pytest.mark.filterwarnings("error::DeprecationWarning")
 def test_validate_preflight_failure_is_an_error_result(project):
     """`validate` failing in preflight (read-only file, no history table)
     is an MCP error result, the same as `info`. A returned validation
@@ -97,7 +98,41 @@ def test_validate_preflight_failure_is_an_error_result(project):
     result = anyio.run(_session, scenario)
 
     assert result.is_error is True
-    assert "readonly database" in result.content[0].text
+    text = result.content[0].text
+    assert "readonly database" in text
+    assert "ConnectionError" in text
+    assert "DeprecationWarning" not in text
+
+
+@pytest.mark.unit
+@pytest.mark.filterwarnings("error::DeprecationWarning")
+def test_validate_refused_connection_is_an_error_result(project):
+    """A database that cannot be opened is an MCP error, still worded as ConnectionError."""
+    # A parent that is a file, not a missing directory: SQLite will not
+    # create intermediate directories, and a missing directory is created
+    # by some environments before connect. A file parent cannot be opened.
+    blocked = project / "not-a-directory"
+    blocked.write_text("x")
+    missing = blocked / "t.sqlite"
+    (project / "dblift.yaml").write_text(
+        yaml.safe_dump(
+            {
+                "database": {"type": "sqlite", "path": str(missing)},
+                "migrations": {"directory": str(project / "migrations")},
+            }
+        )
+    )
+
+    async def scenario(client):
+        return await client.call_tool("validate", {})
+
+    result = anyio.run(_session, scenario)
+
+    assert result.is_error is True
+    text = result.content[0].text
+    assert "ConnectionError" in text
+    assert "Connection failed:" in text
+    assert "DeprecationWarning" not in text
 
 
 @pytest.mark.unit

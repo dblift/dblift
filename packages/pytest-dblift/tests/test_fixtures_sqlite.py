@@ -94,6 +94,7 @@ def test_dblift_validate_is_callable(dblift_validate: Any) -> None:
     assert callable(dblift_validate)
 
 
+@pytest.mark.filterwarnings("error::DeprecationWarning")
 def test_dblift_validate_fixture_reports_history_table_failure(
     dblift_client: DBLiftClient, dblift_validate: Any, monkeypatch: pytest.MonkeyPatch
 ) -> None:

@@ -37,7 +37,7 @@ class _FailedCommandResult(Protocol):
 
     success: bool
     error_message: Optional[str]
-    preflight_error: Optional[BaseException]
+    _preflight_error: Optional[BaseException]
 
 
 def _reraise_preflight_failure(
@@ -54,7 +54,7 @@ def _reraise_preflight_failure(
     another ``ConnectionError`` that was not a preflight failure, is returned
     as a validation verdict.
     """
-    error = result.preflight_error
+    error = result._preflight_error
     if result.success is False and isinstance(error, PreflightConnectionError):
         raise ConnectionError(str(error))
     return result
@@ -78,6 +78,7 @@ def _handle_validate(ctx: CliCommandContext) -> Tuple[bool, Any]:
                 additional_dirs=(
                     ctx.additional_scripts_dirs if ctx.additional_scripts_dirs else None
                 ),
+                _warn_on_preflight_failure=False,
             )
         )
 
