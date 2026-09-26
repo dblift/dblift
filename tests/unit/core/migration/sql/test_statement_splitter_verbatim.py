@@ -96,7 +96,9 @@ class TestPostgresVerbatim:
 class TestPostgresCopyFromStdin:
     """``COPY ... FROM stdin`` data ends at its own ``\\.`` line — it does
     not glue onto whatever statement follows, which is what ``pg_dump``
-    emits for table contents by default."""
+    emits for table contents by default. The header and its data are one
+    statement: executing the header alone leaves the connection waiting for
+    COPY data that never arrives."""
 
     def test_data_block_ends_before_the_next_statement(self):
         sql = "COPY t (id, name) FROM stdin;\n1\talice\n2\tbob\n\\.\nSELECT 1;\n"
@@ -104,8 +106,7 @@ class TestPostgresCopyFromStdin:
         stmts = StatementSplitter("postgresql").split_statements(sql)
 
         assert stmts == [
-            "COPY t (id, name) FROM stdin;",
-            "1\talice\n2\tbob\n\\.",
+            "COPY t (id, name) FROM stdin;\n1\talice\n2\tbob\n\\.",
             "SELECT 1;",
         ]
 
@@ -115,8 +116,7 @@ class TestPostgresCopyFromStdin:
         stmts = StatementSplitter("postgresql").split_statements(sql)
 
         assert stmts == [
-            "COPY t (id, name) FROM stdin;",
-            "1\talice\n\\.",
+            "COPY t (id, name) FROM stdin;\n1\talice\n\\.",
         ]
 
     def test_backslash_dot_mid_line_is_not_a_terminator(self):
@@ -127,8 +127,7 @@ class TestPostgresCopyFromStdin:
         stmts = StatementSplitter("postgresql").split_statements(sql)
 
         assert stmts == [
-            "COPY t (id, note) FROM stdin;",
-            "1\tO'Brien said \\. wasn't done\n\\.",
+            "COPY t (id, note) FROM stdin;\n1\tO'Brien said \\. wasn't done\n\\.",
             "SELECT 1;",
         ]
 
@@ -140,8 +139,7 @@ class TestPostgresCopyFromStdin:
         stmts = StatementSplitter("postgresql").split_statements(sql)
 
         assert stmts == [
-            "COPY t (id, cmd) FROM stdin;",
-            "1\tSELECT 1; DROP TABLE t;\n\\.",
+            "COPY t (id, cmd) FROM stdin;\n1\tSELECT 1; DROP TABLE t;\n\\.",
             "SELECT 2;",
         ]
 
@@ -151,8 +149,7 @@ class TestPostgresCopyFromStdin:
         stmts = StatementSplitter("postgresql").split_statements(sql)
 
         assert stmts == [
-            "COPY t (id) FROM stdin;",
-            "\\.",
+            "COPY t (id) FROM stdin;\n\\.",
             "SELECT 1;",
         ]
 
@@ -162,8 +159,7 @@ class TestPostgresCopyFromStdin:
         stmts = StatementSplitter("postgresql").split_statements(sql)
 
         assert stmts == [
-            "COPY t (id, name) FROM stdin;",
-            "1\talice\r\n2\tbob\r\n\\.",
+            "COPY t (id, name) FROM stdin;\r\n1\talice\r\n2\tbob\r\n\\.",
             "SELECT 1;",
         ]
 
@@ -221,8 +217,7 @@ class TestPostgresMetaCommand:
         stmts = StatementSplitter("postgresql").split_statements(sql)
 
         assert stmts == [
-            "COPY t (id, name) FROM stdin;",
-            "1\t\\N\n2\tbob\n\\.",
+            "COPY t (id, name) FROM stdin;\n1\t\\N\n2\tbob\n\\.",
             "SELECT 1;",
         ]
 
@@ -231,7 +226,7 @@ class TestPostgresMetaCommand:
 
         stmts = StatementSplitter("postgresql").split_statements(sql)
 
-        assert stmts == ["COPY t (id) FROM stdin;", "1\n\\.", "SELECT 1;"]
+        assert stmts == ["COPY t (id) FROM stdin;\n1\n\\.", "SELECT 1;"]
 
     def test_unsupported_meta_command_is_refused_by_default(self):
         """The refusal must reach the caller under the *default* (non-strict)
