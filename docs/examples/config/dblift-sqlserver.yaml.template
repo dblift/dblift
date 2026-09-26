@@ -11,6 +11,16 @@ database:
   integrated_security: false  # Set to true for Windows Authentication
   trust_server_certificate: false  # Set to true to trust server certificate
   encrypt: false  # Set to true to enable encryption
+  # A login mapped to the fixed dbo user (sa, sysadmin, or the database
+  # owner) cannot change its default schema. The default is false: dblift
+  # logs a warning and continues, and unqualified objects are created in
+  # dbo. Set true to fail the run before any statement executes. Use a
+  # login mapped to a non-dbo database user when schema must be honored.
+  # On an existing deployment, do not switch schema to dbo to avoid the
+  # warning: that targets [dbo].[dblift_schema_history] and replays every
+  # migration. A new deployment that has never recorded history may use
+  # schema: dbo with a dbo-mapped login; that is not this mismatch.
+  fail_on_fixed_dbo: false
 
 migrations:
   directory: ./migrations

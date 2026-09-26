@@ -404,6 +404,7 @@ class TestDbSpecificFieldsOcp:
         "encrypt",
         "trust_server_certificate",
         "integrated_security",
+        "fail_on_fixed_dbo",
         "service_name",
         "ssl_mode",
         "ssl_enabled",
@@ -430,12 +431,14 @@ class TestDbSpecificFieldsOcp:
             encrypt=True,
             trust_server_certificate=True,
             integrated_security=True,
+            fail_on_fixed_dbo=True,
         )
         d = config.to_dict()
         assert d["instance"] == "INST1"
         assert d["encrypt"] is True
         assert d["trust_server_certificate"] is True
         assert d["integrated_security"] is True
+        assert d["fail_on_fixed_dbo"] is True
 
     def test_oracle_to_dict_includes_specific_fields(self):
         config = OracleConfig(
@@ -493,6 +496,7 @@ class TestDbSpecificFieldsOcp:
             encrypt=True,
             trust_server_certificate=True,
             integrated_security=False,
+            fail_on_fixed_dbo=True,
         )
         rebuilt = BaseDatabaseConfig.create(original.to_dict())
         assert isinstance(rebuilt, SqlServerConfig)
@@ -500,6 +504,7 @@ class TestDbSpecificFieldsOcp:
         assert rebuilt.encrypt is True
         assert rebuilt.trust_server_certificate is True
         assert rebuilt.integrated_security is False
+        assert rebuilt.fail_on_fixed_dbo is True
 
     def test_roundtrip_oracle(self):
         original = OracleConfig(

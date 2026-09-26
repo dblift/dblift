@@ -14,8 +14,9 @@ import logging
 
 import pytest
 
-from dblift.config.database_config import _instantiate_config
+from dblift.config.database_config import BaseDatabaseConfig, _instantiate_config
 from dblift.db.plugins.postgresql.config import PostgreSqlConfig
+from dblift.db.plugins.sqlserver.config import SqlServerConfig
 
 
 @pytest.mark.unit
@@ -49,3 +50,38 @@ def test_a_clean_config_warns_about_nothing(caplog):
         )
 
     assert [r.getMessage() for r in caplog.records if r.levelno >= logging.WARNING] == []
+
+
+@pytest.mark.unit
+def test_sqlserver_fail_on_fixed_dbo_is_a_recognized_key(caplog):
+    """The opt-in guard must not trip the unrecognized-key warning."""
+    with caplog.at_level(logging.WARNING):
+        cfg = _instantiate_config(
+            SqlServerConfig,
+            {
+                "type": "sqlserver",
+                "host": "localhost",
+                "username": "sa",
+                "password": "pw",
+                "fail_on_fixed_dbo": True,
+            },
+        )
+
+    assert isinstance(cfg, SqlServerConfig)
+    assert cfg.fail_on_fixed_dbo is True
+    assert [r.getMessage() for r in caplog.records if r.levelno >= logging.WARNING] == []
+
+
+@pytest.mark.unit
+def test_sqlserver_fail_on_fixed_dbo_defaults_to_false():
+    cfg = BaseDatabaseConfig.create(
+        {
+            "type": "sqlserver",
+            "host": "localhost",
+            "username": "sa",
+            "password": "pw",
+            "database": "app",
+        }
+    )
+    assert isinstance(cfg, SqlServerConfig)
+    assert cfg.fail_on_fixed_dbo is False

@@ -96,6 +96,23 @@ class TestCleanCommandEnsureConnectionLogging:
         debug_calls = [str(c) for c in log.debug.call_args_list]
         assert not any("_ensure_connection skipped" in c for c in debug_calls)
 
+    def test_set_current_schema_execution_error_fails_clean(self):
+        """The opt-in dbo guard raises ExecutionError and must fail clean.
+
+        Other set_current_schema failures stay non-fatal. This one is the
+        configured fail-fast path and must stop before any drop runs.
+        """
+        from dblift.core.exceptions import ExecutionError
+
+        cmd, provider, _log = self._make_command()
+        provider.set_current_schema.side_effect = ExecutionError("dbo cannot change schema")
+
+        result = cmd.execute()
+
+        assert result.success is False
+        assert "dbo cannot change schema" in (result.error_message or "")
+        provider.list_droppable_objects.assert_not_called()
+
     def test_set_current_schema_success_no_debug_log(self):
         """set_current_schema succeeds → no 'set_current_schema skipped' debug log."""
         cmd, provider, log = self._make_command()

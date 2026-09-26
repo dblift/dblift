@@ -79,10 +79,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   so a read-only role sees the referencing keys too.
 - SQL Server: a login that maps to the fixed `dbo` database user (a
   `sa`/sysadmin login, or a database's owner) with `schema:` set to anything
-  other than `dbo` now fails `migrate` with a clear error before any
-  statement runs, instead of logging a warning and creating unqualified
-  objects in `dbo` while reporting success. Connect with a login mapped to a
-  non-`dbo` database user, or set `schema` to `dbo`.
+  other than `dbo` logs a warning and continues, as in 4.8.0: unqualified
+  objects are created in `dbo` and the run is reported successful. Set
+  `fail_on_fixed_dbo: true` under `database:` to fail the run before any
+  statement executes instead. Connect with a login mapped to a non-`dbo`
+  database user when the configured schema must be honored.
 
 ### Removed
 
