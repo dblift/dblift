@@ -138,6 +138,13 @@ class TestVerifySchemaMatch(unittest.TestCase):
         self.assertTrue(e._verify_schema_match("myschema", '"myschema"', "EMPLOYEES"))
         self.assertFalse(e._verify_schema_match("MYSCHEMA", '"myschema"', "EMPLOYEES"))
 
+    def test_oracle_rejects_the_other_cased_user(self):
+        """Both users can exist. Only the catalog spelling of the config matches."""
+        e = _make_extractor(dialect="oracle")
+        self.assertFalse(e._verify_schema_match("myschema", '"MYSCHEMA"', "EMPLOYEES"))
+        self.assertFalse(e._verify_schema_match("myschema", "myschema", "EMPLOYEES"))
+        self.assertTrue(e._verify_schema_match("MYSCHEMA", "myschema", "EMPLOYEES"))
+
 
 # --- _is_temporary_table ---
 

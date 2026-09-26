@@ -42,10 +42,9 @@ def get_normalized_object_name(object_name: str, dialect: str) -> str:
 def configured_identifier_text(name: str) -> str:
     """Return a configured identifier with surrounding quotes removed.
 
-    Case is left as written. ``${dblift_schema}`` expands to this so a
-    double-quoted Oracle schema ``"myschema"`` becomes ``myschema`` inside
-    ``"${dblift_schema}"``, the spelling 4.8.0 scripts already used, and an
-    unquoted value is not uppercased.
+    Case is left as written. Oracle's ``${dblift_schema}`` uses
+    :func:`dictionary_identifier` instead, so an unquoted Oracle name is
+    the uppercase catalog spelling.
     """
     if not name:
         return ""

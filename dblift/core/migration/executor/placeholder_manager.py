@@ -11,8 +11,25 @@ if TYPE_CHECKING:
     from dblift.core.migration.placeholders.placeholder_service import PlaceholderService
 
 from dblift.config import DbliftConfig
+from dblift.config.database_config import BaseDatabaseConfig
 from dblift.core.logger import Log, NullLog
-from dblift.db.object_naming import configured_identifier_text
+from dblift.db.object_naming import configured_identifier_text, dictionary_identifier
+
+
+def _dblift_schema_placeholder(database: BaseDatabaseConfig) -> Optional[str]:
+    """Value of ``${dblift_schema}``.
+
+    Oracle expands to the catalog spelling with the quotes removed: unquoted
+    ``myschema`` becomes ``MYSCHEMA``, and ``"myschema"`` stays ``myschema``.
+    Other dialects keep the configured text. A null schema stays ``None``.
+    """
+    schema = database.schema
+    if not isinstance(schema, str):
+        return None
+    # Unquoted Oracle names are uppercased everywhere else dblift uses them.
+    if database.type == "oracle":  # lint: allow-dialect-string: catalog spelling
+        return dictionary_identifier(schema, database.type)
+    return configured_identifier_text(schema)
 
 
 class PlaceholderManager:
@@ -38,10 +55,8 @@ class PlaceholderManager:
             Dictionary of placeholders and their values
         """
         placeholders = {
-            # Default system placeholders with dblift_ prefix
-            # Catalog text without the quotes, and without uppercasing an
-            # unquoted name. ``"myschema"`` becomes ``myschema``.
-            "dblift_schema": configured_identifier_text(self.config.database.schema or ""),
+            # Default system placeholders with dblift_ prefix.
+            "dblift_schema": _dblift_schema_placeholder(self.config.database),
             "dblift_database": getattr(
                 self.config.database,
                 "database",
