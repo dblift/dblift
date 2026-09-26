@@ -140,6 +140,20 @@ def test_stdio_round_trip_keeps_stdout_pure(tmp_path: Path, restriction: list[st
             proc.stdin.write(_frame(3, "tools/call", {"name": "info", "arguments": {}}))
             proc.stdin.flush()
             _next_line()
+
+            proc.stdin.write(
+                _frame(4, "tools/call", {"name": "info", "arguments": {"format": "html"}})
+            )
+            proc.stdin.flush()
+            _next_line()
+            if restriction != ["--tools", "info"]:
+                proc.stdin.write(
+                    _frame(
+                        5, "tools/call", {"name": "migrate_dry_run", "arguments": {"target": "1"}}
+                    )
+                )
+                proc.stdin.flush()
+                _next_line()
         finally:
             proc.stdin.close()
 
@@ -173,6 +187,16 @@ def test_stdio_round_trip_keeps_stdout_pure(tmp_path: Path, restriction: list[st
         else:
             assert served >= {"info", "validate", "migrate_dry_run"}
             assert "skipped tool" not in stderr
+        assert all(
+            tool["inputSchema"]["additionalProperties"] is False
+            for tool in by_id[2]["result"]["tools"]
+        )
+        rejected = [(4, "format")]
+        if restriction != ["--tools", "info"]:
+            rejected.append((5, "target"))
+        for request_id, unknown_key in rejected:
+            assert by_id[request_id]["result"]["isError"] is True
+            assert unknown_key in by_id[request_id]["result"]["content"][0]["text"]
         assert by_id[3]["result"]["isError"] is False
         assert by_id[3]["result"]["structuredContent"]["migrations"][0]["script"] == "V1__init.sql"
     finally:

@@ -52,9 +52,18 @@ def validate_argv(
     exclude_tags: "str | list[str] | None" = None,
     versions: "str | list[str] | None" = None,
     exclude_versions: "str | list[str] | None" = None,
+    strict: bool = False,
 ) -> List[str]:
-    """Validate scripts for consistency and, once applied, against history (SQL not parsed)."""
-    return _filter_argv(locals())
+    """Validate scripts for consistency and, once applied, against history (SQL not parsed).
+
+    ``strict`` adds ``--strict``: a previously applied migration now missing
+    from disk fails validation, and migrations are required in strict version
+    order. Off by default, matching the CLI.
+    """
+    argv = _filter_argv({k: v for k, v in locals().items() if k != "strict"})
+    if strict:
+        argv.append("--strict")
+    return argv
 
 
 def migrate_dry_run_argv(
@@ -65,9 +74,18 @@ def migrate_dry_run_argv(
     versions: "str | list[str] | None" = None,
     exclude_versions: "str | list[str] | None" = None,
     placeholders: "dict[str, str] | None" = None,
+    show_sql: bool = False,
 ) -> List[str]:
-    """Show which migrations would be applied. Never writes: ``--dry-run`` is fixed."""
+    """Show which migrations would be applied. Never writes: ``--dry-run`` is fixed.
+
+    Pass ``show_sql=True`` to have the result's ``sql`` array carry the
+    rendered statements for each pending migration. Placeholders in those
+    statements are resolved, so a placeholder value that is a secret appears
+    in the output.
+    """
     argv = ["--dry-run", *_filter_argv(locals())]
+    if show_sql:
+        argv.append("--show-sql")
     if placeholders:
         # `--placeholders` is `nargs="+"` + `action="append"` (see
         # `_make_filter_parent` in `_parser_setup.py`), not a single

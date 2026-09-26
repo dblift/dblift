@@ -115,7 +115,7 @@ class SqlObject:
         if not identifier:
             return identifier
 
-        # Story 26-5: identifier quote characters come from plugin Quirks
+        # Identifier quote characters come from plugin Quirks
         # via the central registry. ``BaseQuirks`` defaults to double
         # quotes, plugins (MySQL/MariaDB → backticks, SQL Server →
         # brackets) override. Unknown dialects fall back to no quoting.

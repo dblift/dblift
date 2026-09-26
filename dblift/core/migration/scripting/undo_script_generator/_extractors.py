@@ -306,7 +306,7 @@ class _UndoExtractorsMixin:
     def _quote_identifier(self, identifier: str) -> str:
         """Quote identifier based on dialect.
 
-        Delegates to quote_identifier (story 21-14 dispatch).
+        Delegates to quote_identifier.
 
         Args:
             identifier: Identifier to quote

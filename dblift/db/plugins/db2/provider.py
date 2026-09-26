@@ -6,6 +6,8 @@ import time
 from typing import Any, Dict, List, Optional, cast
 
 from dblift.config import DbliftConfig
+from dblift.core.constants import DEFAULT_HISTORY_TABLE
+from dblift.core.constants import MIGRATION_LOCK_TABLE as _MIGRATION_LOCK_TABLE
 from dblift.core.logger import Log
 from dblift.core.migration.clean_summary import CleanExecutionSummary
 from dblift.db.object_naming import get_normalized_object_name
@@ -13,6 +15,8 @@ from dblift.db.plugins.base_history_manager import UNDO_HISTORY_TYPE, installed_
 from dblift.db.plugins.db2.db2.schema_operations import Db2SchemaOperations
 from dblift.db.provider_interfaces import DroppableObject
 from dblift.db.sqlalchemy_provider import SqlAlchemyProvider
+
+_HISTORY_TABLE = DEFAULT_HISTORY_TABLE.upper()
 
 DB2_LOCK_STALE_SECONDS = 24 * 60 * 60
 
@@ -99,7 +103,7 @@ class Db2Provider(SqlAlchemyProvider):
 
     canonical_dialect_key = "db2"
     provider_transport = "native"
-    MIGRATION_LOCK_TABLE = "DBLIFT_MIGRATION_LOCK"
+    MIGRATION_LOCK_TABLE = _MIGRATION_LOCK_TABLE.upper()
 
     #: Schema this connection was last ``SET SCHEMA``'d to. Lets
     #: :meth:`set_current_schema` skip re-issuing ``SET SCHEMA`` on every
@@ -302,7 +306,7 @@ class Db2Provider(SqlAlchemyProvider):
         self,
         schema: str,
         create_schema: bool = False,
-        table_name: str = "DBLIFT_SCHEMA_HISTORY",
+        table_name: str = _HISTORY_TABLE,
     ) -> None:
         """Create the DB2 migration history table if it is missing."""
         table_name = _db2_object_name(table_name)
@@ -327,7 +331,7 @@ class Db2Provider(SqlAlchemyProvider):
                 "Baseline cannot be applied to a schema with existing migrations."
             )
 
-    def create_history_table(self, schema: str, table_name: str = "DBLIFT_SCHEMA_HISTORY") -> str:
+    def create_history_table(self, schema: str, table_name: str = _HISTORY_TABLE) -> str:
         """Return SQL for the DB2 migration history table."""
         table_name = _db2_object_name(table_name)
         return f"""
@@ -346,7 +350,7 @@ class Db2Provider(SqlAlchemyProvider):
         """
 
     def get_applied_migrations(
-        self, schema: str, table_name: str = "DBLIFT_SCHEMA_HISTORY"
+        self, schema: str, table_name: str = _HISTORY_TABLE
     ) -> List[Dict[str, Any]]:
         """Return applied migration rows from the DB2 history table."""
         table_name = _db2_object_name(table_name)
@@ -367,7 +371,7 @@ class Db2Provider(SqlAlchemyProvider):
         return normalized
 
     def record_migration(
-        self, schema: str, migration_info: Dict[str, Any], table_name: str = "DBLIFT_SCHEMA_HISTORY"
+        self, schema: str, migration_info: Dict[str, Any], table_name: str = _HISTORY_TABLE
     ) -> None:
         """Insert a migration record into the DB2 history table."""
         table_name = _db2_object_name(table_name)
@@ -415,7 +419,7 @@ class Db2Provider(SqlAlchemyProvider):
                 "execution_time": 0,
                 "success": True,
             },
-            table_name or "DBLIFT_SCHEMA_HISTORY",
+            table_name or _HISTORY_TABLE,
         )
         return True
 
@@ -424,7 +428,7 @@ class Db2Provider(SqlAlchemyProvider):
         schema: str,
         script_name: str,
         checksum: Any,
-        table_name: str = "DBLIFT_SCHEMA_HISTORY",
+        table_name: str = _HISTORY_TABLE,
         success_value: Optional[Any] = None,
     ) -> bool:
         """Update checksum and success state for an existing DB2 migration row."""

@@ -1,4 +1,4 @@
-"""SQLite :class:`DialectQuirks` — Epic 26."""
+"""SQLite :class:`DialectQuirks`."""
 
 from __future__ import annotations
 

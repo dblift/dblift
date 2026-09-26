@@ -163,13 +163,16 @@ def format_connection_error(error: Exception, db_type: str = "") -> str:
 
 
 def _is_auth_error(error: Exception, lowered_message: str, db_type: str) -> bool:
-    """Return True when *error* clearly describes an auth failure.
+    """Return True when *error* clearly describes an authentication failure.
 
     Checks cheap substring markers first, then falls back to the dialect's
     quirks-based ``DatabaseErrorClassifier`` so vendor error codes (e.g.
     Oracle's ORA-01017) are recognized generically across every dialect that
     declares ``error_patterns()``, not just the ones with a hardcoded marker
-    below.
+    below. An AUTHORIZATION error (the role connected but lacks a privilege)
+    is not an auth failure: it keeps the engine's own text so the operator
+    sees which privilege is missing, instead of being told the credentials
+    are wrong.
     """
     auth_markers = (
         "authentication",
@@ -192,7 +195,7 @@ def _is_auth_error(error: Exception, lowered_message: str, db_type: str) -> bool
         category = DatabaseErrorClassifier(db_type).categorize_error(error)
     except Exception:
         return False
-    return category in (ErrorCategory.AUTHENTICATION, ErrorCategory.AUTHORIZATION)
+    return category == ErrorCategory.AUTHENTICATION
 
 
 def _extract_sqlstate(error: Exception) -> Optional[str]:

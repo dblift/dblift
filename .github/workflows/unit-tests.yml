@@ -58,7 +58,7 @@ jobs:
 
       - name: Run pytest-dblift tests
         run: |
-          python -m pytest packages/pytest-dblift/tests \
+          python -m pytest packages/pytest-dblift/tests -W error::DeprecationWarning \
             -n auto \
             --dist=loadscope \
             -p no:benchmark \

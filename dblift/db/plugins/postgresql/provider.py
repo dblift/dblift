@@ -4,6 +4,8 @@ import time
 from typing import Any, Dict, List, Optional
 
 from dblift.config import DbliftConfig
+from dblift.core.constants import DEFAULT_HISTORY_TABLE
+from dblift.core.constants import MIGRATION_LOCK_TABLE as _MIGRATION_LOCK_TABLE
 from dblift.core.logger import Log
 from dblift.core.migration.clean_summary import CleanExecutionSummary
 from dblift.db.plugins.base_history_manager import UNDO_HISTORY_TYPE, installed_on_to_bind
@@ -23,7 +25,7 @@ class PostgreSqlProvider(SqlAlchemyProvider):
     """PostgreSQL provider implementation using native SQLAlchemy connections."""
 
     canonical_dialect_key = "postgresql"
-    MIGRATION_LOCK_TABLE = "dblift_migration_lock"
+    MIGRATION_LOCK_TABLE = _MIGRATION_LOCK_TABLE
 
     #: Wrap every ``clean`` drop in a savepoint — see :meth:`drop_object`.
     #: Redshift inherits this provider but has no ``SAVEPOINT`` statement,
@@ -233,7 +235,7 @@ class PostgreSqlProvider(SqlAlchemyProvider):
         return bool(rows and rows[0].get("released"))
 
     def get_applied_migrations(
-        self, schema: str, table_name: str = "dblift_schema_history"
+        self, schema: str, table_name: str = DEFAULT_HISTORY_TABLE
     ) -> List[Dict[str, Any]]:
         """Return applied migration rows from the history table."""
         if not self.table_exists(schema, table_name):
@@ -248,7 +250,7 @@ class PostgreSqlProvider(SqlAlchemyProvider):
         self,
         schema: str,
         create_schema: bool = False,
-        table_name: str = "dblift_schema_history",
+        table_name: str = DEFAULT_HISTORY_TABLE,
     ) -> None:
         """Create the migration history table if it is missing."""
         if create_schema:
@@ -274,9 +276,13 @@ class PostgreSqlProvider(SqlAlchemyProvider):
             )
 
     def record_migration(
-        self, schema: str, migration_info: Dict[str, Any], table_name: str = "dblift_schema_history"
+        self, schema: str, migration_info: Dict[str, Any], table_name: str = DEFAULT_HISTORY_TABLE
     ) -> None:
-        """Insert a migration record into the history table."""
+        """Insert a migration record under the caller's migration lock.
+
+        Preserve existing rank defaults and identities. Flyway tables have
+        neither, so allocate their next rank from history under the lock.
+        """
         self.create_migration_history_table_if_not_exists(schema, table_name=table_name)
         installed_on = installed_on_to_bind(migration_info.get("installed_on"))
         installed_on_column = ", installed_on" if installed_on is not None else ""
@@ -293,11 +299,26 @@ class PostgreSqlProvider(SqlAlchemyProvider):
         ]
         if installed_on is not None:
             params.append(installed_on)
+        qualified_table = self.get_schema_qualified_name(schema, table_name)
+        rank_metadata = self.execute_query(
+            "SELECT (atthasdef OR attidentity <> '') AS has_rank_default "
+            "FROM pg_catalog.pg_attribute "
+            "WHERE attrelid = to_regclass(?) AND attname = 'installed_rank' "
+            "AND NOT attisdropped",
+            params=[qualified_table],
+        )
+        has_rank_default = bool(rank_metadata and rank_metadata[0].get("has_rank_default"))
+        rank_column = "" if has_rank_default else ", installed_rank"
+        rank_value = (
+            ""
+            if has_rank_default
+            else f", (SELECT COALESCE(MAX(installed_rank), 0) + 1 FROM {qualified_table})"
+        )
         self.execute_statement(
             f"""
-            INSERT INTO {self.get_schema_qualified_name(schema, table_name)}
-                (version, description, type, script, checksum, installed_by, execution_time, success{installed_on_column})
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?{installed_on_value})
+            INSERT INTO {qualified_table}
+                (version, description, type, script, checksum, installed_by, execution_time, success{installed_on_column}{rank_column})
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?{installed_on_value}{rank_value})
             """,
             params=params,
         )
@@ -321,7 +342,7 @@ class PostgreSqlProvider(SqlAlchemyProvider):
                 "checksum": 0,
                 "success": True,
             },
-            table_name or "dblift_schema_history",
+            table_name or DEFAULT_HISTORY_TABLE,
         )
         return True
 
@@ -330,7 +351,7 @@ class PostgreSqlProvider(SqlAlchemyProvider):
         schema: str,
         script_name: str,
         checksum: Any,
-        table_name: str = "dblift_schema_history",
+        table_name: str = DEFAULT_HISTORY_TABLE,
         success_value: Optional[Any] = None,
     ) -> bool:
         """Update checksum and success state for an existing migration row."""

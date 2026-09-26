@@ -16,6 +16,7 @@ from dblift.api._cli_support import (
 )
 from dblift.cli._output import CommandOutput, from_args
 from dblift.config.dblift_config import DbliftConfig, load_config, unrecognized_top_level_keys
+from dblift.core.constants import ENV_PREFIX
 from dblift.core.logger import DbliftLogger, LogFormat
 from dblift.core.utils.url_masking import mask_database_url
 
@@ -83,7 +84,7 @@ def validate_config(args: argparse.Namespace) -> int:
         config_file = getattr(args, "config", None)
         if config_file:
             # If the user passed --config, load it: otherwise validate-config is useless as a
-            # config-file linter, since DbliftConfig.from_args only reads CLI flags (BUG-02).
+            # config-file linter, since DbliftConfig.from_args only reads CLI flags.
             try:
                 config = load_config(config_file, args)
             except (FileNotFoundError, RuntimeError) as load_err:
@@ -91,13 +92,15 @@ def validate_config(args: argparse.Namespace) -> int:
                 return 1
             _warn_if_unrecognized_top_level_keys(config_file, out)
         else:
-            # Batch-6 BUG-04: without ``--config`` and without ``--db-url`` (or
+            # Without ``--config`` and without ``--db-url`` (or
             # the ``DBLIFT_DB_URL`` env var), ``load_config`` returns a config
             # populated from an implicit SQL Server placeholder. That can report
             # "valid" even though the user supplied nothing to validate.
             cli_url = getattr(args, "db_url", None) or getattr(args, "database_url", None)
-            env_url = os.environ.get("DBLIFT_DB_URL") or os.environ.get("DBLIFT_DATABASE_URL")
-            has_db_env = any(k.startswith("DBLIFT_DB_") for k in os.environ)
+            env_url = os.environ.get(f"{ENV_PREFIX}DB_URL") or os.environ.get(
+                f"{ENV_PREFIX}DATABASE_URL"
+            )
+            has_db_env = any(k.startswith(f"{ENV_PREFIX}DB_") for k in os.environ)
             if not cli_url and not env_url and not has_db_env:
                 out.error(
                     "Error: no configuration source provided. Pass --config, "
@@ -111,7 +114,7 @@ def validate_config(args: argparse.Namespace) -> int:
 
         if is_valid:
             out.status("Database configuration and driver are valid.")
-            # B9-NOTE-02: validate-config only checks URL/driver structure. For
+            # validate-config only checks URL/driver structure. For
             # server-based providers (postgres/mysql/oracle/sqlserver/db2), empty
             # credentials are a near-certain misconfiguration — warn explicitly
             # and point users at check-connection for live credential testing.
@@ -159,7 +162,7 @@ def _is_credentialless(db_type: str) -> bool:
 
 
 def _warn_if_missing_credentials(config: Any, out: CommandOutput) -> None:
-    """Emit a stderr warning when required credentials are empty (B9-NOTE-02).
+    """Emit a stderr warning when required credentials are empty.
 
     ``validate-config`` historically reported "valid" even when
     ``username``/``password`` were absent because it only checks URL shape and

@@ -66,7 +66,7 @@ class OperationResult:
         self.database_url_masked: Optional[str] = None  # Masked database URL for security
         self.server_name: Optional[str] = None  # Database server name/IP
 
-        # Batch-5 BUG-06: ``schema_name`` and ``target_schema`` represent the
+        # ``schema_name`` and ``target_schema`` represent the
         # same concept but were populated inconsistently — commands set
         # ``target_schema`` while the text formatter reads ``schema_name``,
         # so API callers observed an empty ``InfoResult.schema_name``.
@@ -290,7 +290,7 @@ class CleanResult(OperationResult):
         """Initialize empty per-type object buckets and detail metadata."""
         super().__init__()
         self.target_schema: str = ""
-        # ``schema_name`` comes from OperationResult as a property (BUG-06).
+        # ``schema_name`` comes from OperationResult as a property.
         self._objects_by_type: Dict[str, Set[str]] = defaultdict(set)
         self._object_details: Dict[str, Dict[str, Dict[str, str]]] = defaultdict(dict)
 
@@ -424,6 +424,11 @@ class ValidateResult(OperationResult):
         # Every issue the console logs. ``error_message`` holds only the first,
         # so without this a machine-readable caller loses every later one.
         self.issues: List[str] = []
+        # Set when this result stands in for a preflight connection or
+        # history-table failure. Surfaces that must still raise match this
+        # type instead of the message text. Underscore: not part of the
+        # public result.
+        self._preflight_error: Optional[BaseException] = None
 
     def add_validated_migration(self, migration: MigrationInfo) -> None:
         """Add a validated migration to the result."""
@@ -470,7 +475,7 @@ class InfoResult(OperationResult):
         self.target_schema: str = ""
         self.migration_data: Optional[Any] = None
         self.current_schema_version: Optional[str] = None
-        # ``schema_name`` comes from OperationResult as a property (BUG-06).
+        # ``schema_name`` comes from OperationResult as a property.
         self.migrations: List[MigrationInfo] = []
 
     def add_migration(self, migration: MigrationInfo) -> None:
@@ -540,7 +545,7 @@ class BaselineResult(OperationResult):
         super().__init__()
         self.target_schema: str = ""
         self.baseline_version: str = ""
-        # ``schema_name`` comes from OperationResult as a property (BUG-06).
+        # ``schema_name`` comes from OperationResult as a property.
 
     def set_baseline_version(self, version: str) -> None:
         """Set the baseline version."""
@@ -554,7 +559,7 @@ class RepairResult(OperationResult):
         """Initialize empty repaired/removed/aligned migration lists and repair counters."""
         super().__init__()
         self.target_schema: str = ""
-        # ``schema_name`` comes from OperationResult as a property (BUG-06).
+        # ``schema_name`` comes from OperationResult as a property.
         self.repaired_migrations: List[MigrationInfo] = []
         self.removed_migrations: List[MigrationInfo] = []
         self.aligned_migrations: List[MigrationInfo] = []
@@ -583,7 +588,7 @@ class UndoResult(OperationResult):
         super().__init__()
         self.target_version: str = ""
         self.target_schema: str = ""
-        # ``schema_name`` comes from OperationResult as a property (BUG-06).
+        # ``schema_name`` comes from OperationResult as a property.
         self.current_schema_version: Optional[str] = None
         self.undone_migrations: List[MigrationInfo] = []
         self.undone_count: int = 0

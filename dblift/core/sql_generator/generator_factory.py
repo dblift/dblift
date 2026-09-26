@@ -64,7 +64,7 @@ class SqlGeneratorFactory:
                 "no dialect context" — the factory resolves it to the
                 registry's ANSI/generic reference dialect
                 (``ProviderRegistry.reference_dialect_name()`` → PostgreSQL),
-                which renders dialect-agnostic models. (ADR-26 E, story 26-5.)
+                which renders dialect-agnostic models. (ADR-26 E.)
                 An empty string (``""``) is a distinct, explicit signal that
                 deliberately routes to the generic ``SqlGenerator`` — several
                 single-dialect models pass ``self.dialect or ""`` to render
@@ -115,7 +115,7 @@ class SqlGeneratorFactory:
     def _register_defaults(cls) -> None:
         """Register default generator implementations.
 
-        Story 26-3: dialect-specific generators live inside their plugin
+        Dialect-specific generators live inside their plugin
         package and are advertised via ``DialectQuirks.ddl_generator_class()``.
         Iterate the registered plugins and consult each one's quirks —
         no hardcoded dialect names in this factory.

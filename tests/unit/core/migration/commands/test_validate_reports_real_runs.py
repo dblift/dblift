@@ -122,7 +122,11 @@ def test_undo_scripts_are_not_reported_as_validated(tmp_path, project):
 
 
 def test_a_command_level_failure_still_counts(tmp_path):
-    """``error_count`` must not read 0 beside ``success: false``."""
+    """A connection failure must surface as a real error, not a validation
+    result with an empty ``error`` — ``validate`` now stops the way ``info``
+    does when it can't even reach the database, so ``--format json`` gets
+    the ``{"success": false, "error": "..."}`` shape instead of a result
+    payload."""
     scripts = tmp_path / "migrations"
     scripts.mkdir()
     proc = subprocess.run(
@@ -149,4 +153,4 @@ def test_a_command_level_failure_still_counts(tmp_path):
     )
     payload = json.loads(proc.stdout)
     assert payload["success"] is False
-    assert payload["error_count"] >= 1, "a failed command reported error_count: 0"
+    assert payload["error"], "a failed command reported no error text"

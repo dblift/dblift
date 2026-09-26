@@ -1,4 +1,4 @@
-"""MySQL :class:`DialectQuirks` — Epic 26."""
+"""MySQL :class:`DialectQuirks`."""
 
 from __future__ import annotations
 
@@ -279,7 +279,7 @@ class MysqlQuirks(BaseQuirks):
             return MySqlRegexParser
         return None
 
-    # Story 26-3: MySQL DELIMITER wrapping has two distinct call paths
+    # MySQL DELIMITER wrapping has two distinct call paths
     # with different object-type sets — preserve both rather than
     # collapsing into one (PR #241 Bugbot).
     #
@@ -353,12 +353,12 @@ class MysqlQuirks(BaseQuirks):
             dialect=dialect,
         )
 
-    # Story 27-2: MySQL/MariaDB identity — AUTO_INCREMENT.
+    # MySQL/MariaDB identity — AUTO_INCREMENT.
     def render_identity_clause(self, col: object) -> "Optional[str]":
         """MySQL identity columns use ``AUTO_INCREMENT`` (no seed/increment syntax)."""
         return "AUTO_INCREMENT"
 
-    # Story 27-5: MySQL normalises ENUM/CHAR/TEXT default values to single-
+    # MySQL normalises ENUM/CHAR/TEXT default values to single-
     # quoted strings; backtick and double-quote wrapping is stripped.
     def unwrap_default_value(self, default_str: str, column: object) -> str:
         """Normalise character-column defaults to single-quoted form.
@@ -497,7 +497,7 @@ class MysqlQuirks(BaseQuirks):
         routine: Any,
         status: Any = None,
     ) -> None:
-        """MySQL / MariaDB: BUG-01 — ``information_schema.ROUTINES`` exposes
+        """MySQL / MariaDB: ``information_schema.ROUTINES`` exposes
         only the body, not the full CREATE statement. Skip when a
         definition is already attached; otherwise issue ``SHOW CREATE
         PROCEDURE`` / ``SHOW CREATE FUNCTION`` and refresh ``body`` from

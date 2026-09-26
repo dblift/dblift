@@ -45,28 +45,30 @@ def dblift_client(dblift_engine: Any, dblift_config: dict[str, Any]) -> Iterator
 @pytest.fixture
 def dblift_migrated_db(dblift_client: DBLiftClient) -> Iterator[DBLiftClient]:
     result = dblift_client.migrate()
-    assert getattr(result, "success", False), (
-        f"migrate failed: {getattr(result, 'error_message', result)}"
-    )
+    assert getattr(
+        result, "success", False
+    ), f"migrate failed: {getattr(result, 'error_message', result)}"
     yield dblift_client
 
 
 @pytest.fixture
 def dblift_empty_db(dblift_client: DBLiftClient) -> Iterator[DBLiftClient]:
     result = dblift_client.clean(clean_enabled=True)
-    assert getattr(result, "success", False), (
-        f"clean failed: {getattr(result, 'error_message', result)}"
-    )
+    assert getattr(
+        result, "success", False
+    ), f"clean failed: {getattr(result, 'error_message', result)}"
     yield dblift_client
 
 
 @pytest.fixture
 def dblift_validate(dblift_client: DBLiftClient) -> Callable[..., Any]:
     def _run_validate(**kwargs: Any) -> Any:
-        result = dblift_client.validate(**kwargs)
-        assert getattr(result, "success", False), (
-            f"validate failed: {getattr(result, 'error_message', result)}"
-        )
+        call_kwargs = dict(kwargs)
+        call_kwargs["_warn_on_preflight_failure"] = False
+        result = dblift_client.validate(**call_kwargs)
+        assert getattr(
+            result, "success", False
+        ), f"validate failed: {getattr(result, 'error_message', result)}"
         return result
 
     return _run_validate
@@ -76,9 +78,9 @@ def dblift_validate(dblift_client: DBLiftClient) -> Callable[..., Any]:
 def dblift_undo(dblift_client: DBLiftClient) -> Callable[..., Any]:
     def _run_undo(**kwargs: Any) -> Any:
         result = dblift_client.undo(**kwargs)
-        assert getattr(result, "success", False), (
-            f"undo failed: {getattr(result, 'error_message', result)}"
-        )
+        assert getattr(
+            result, "success", False
+        ), f"undo failed: {getattr(result, 'error_message', result)}"
         return result
 
     return _run_undo

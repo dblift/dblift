@@ -34,6 +34,38 @@ ADDITIONAL_SQL_MODEL_EXPORT_SOURCES = {
     "supports_feature": "dblift.core.sql_model.feature_gates",
 }
 
+LOGGER_EXPORT_SOURCES = {
+    "ConsoleLog": "dblift.core.logger.log",
+    "DbliftLogger": "dblift.core.logger",
+    "FileLog": "dblift.core.logger.log",
+    "HtmlFormatter": "dblift.core.logger.formatters.htmlformatter",
+    "JsonFormatter": "dblift.core.logger.formatters.jsonformatter",
+    "Log": "dblift.core.logger._base",
+    "LogFormat": "dblift.core.logger._levels",
+    "LogLevel": "dblift.core.logger._levels",
+    "MultiLog": "dblift.core.logger._multi",
+    "NullLog": "dblift.core.logger._null",
+    "OperationResult": "dblift.core.logger.results",
+    "OutputFormatter": "dblift.core.logger.formatters.formatter",
+    "TextFormatter": "dblift.core.logger._formatters",
+    "UndoResult": "dblift.core.logger.results",
+    "console_status": "dblift.core.logger.console",
+    "get_stdout_console": "dblift.core.logger.console",
+    "render_panel_to_str": "dblift.core.logger.console",
+    "render_records_table": "dblift.core.logger.console",
+    "render_tree_to_str": "dblift.core.logger.console",
+    "state_text": "dblift.core.logger.console",
+}
+
+SECRETS_EXPORT_SOURCES = {
+    "resolve_secret_refs": "dblift.config.secrets._resolver",
+    "clear_cache": "dblift.config.secrets._resolver",
+    "SecretsResolutionError": "dblift.config.secrets._provider_base",
+    "SecretsConfig": "dblift.config.secrets._secrets_config",
+    "AbstractSecretsProvider": "dblift.config.secrets._provider_base",
+    "register_provider": "dblift.config.secrets._registry",
+}
+
 
 def test_package_has_py_typed_marker():
     marker = Path(__file__).resolve().parents[3] / "dblift" / "py.typed"
@@ -79,13 +111,6 @@ class TestExtensionSqlModelSurface:
         "supports_feature",
     }
 
-    def test_extension_package_exposes_only_named_categories(self):
-        import dblift.extensions as extensions
-        from dblift.extensions import sql_model
-
-        assert extensions.__all__ == ["sql_model"]
-        assert extensions.sql_model is sql_model
-
     def test_sql_model_exports_are_explicit(self):
         from dblift.extensions import sql_model
 
@@ -106,6 +131,225 @@ class TestExtensionSqlModelSurface:
         assert dialect_requires_schema("sqlite") is False
         assert dialect_requires_schema("postgresql") is True
         assert dialect_requires_schema("unknown") is True
+
+
+class TestExtensionPackageSurface:
+    def test_extension_package_exposes_only_named_categories(self):
+        import dblift.extensions as extensions
+        from dblift.extensions import logging, providers, sql_generation, sql_model
+
+        assert extensions.__all__ == [
+            "logging",
+            "providers",
+            "sql_generation",
+            "sql_model",
+        ]
+        assert extensions.logging is logging
+        assert extensions.providers is providers
+        assert extensions.sql_generation is sql_generation
+        assert extensions.sql_model is sql_model
+
+
+class TestExtensionLoggingSurface:
+    EXPECTED_EXPORTS = [
+        "ConsoleLog",
+        "DbliftLogger",
+        "FileLog",
+        "HtmlFormatter",
+        "JsonFormatter",
+        "Log",
+        "LogFormat",
+        "LogLevel",
+        "MultiLog",
+        "NullLog",
+        "OperationResult",
+        "OutputFormatter",
+        "TextFormatter",
+        "UndoResult",
+        "console_status",
+        "get_stdout_console",
+        "render_panel_to_str",
+        "render_records_table",
+        "render_tree_to_str",
+        "state_text",
+    ]
+
+    def test_logging_exports_are_exact(self):
+        from dblift.extensions import logging
+
+        assert logging.__all__ == self.EXPECTED_EXPORTS
+
+    @pytest.mark.parametrize("symbol_name", EXPECTED_EXPORTS)
+    def test_logging_reexports_existing_objects(self, symbol_name):
+        from dblift.extensions import logging
+
+        source_module = importlib.import_module(LOGGER_EXPORT_SOURCES[symbol_name])
+
+        assert getattr(logging, symbol_name) is getattr(source_module, symbol_name)
+
+    def test_log_identity_is_shared_across_existing_paths(self):
+        from dblift.core.logger import Log as RootLog
+        from dblift.core.logger._base import Log as DefinedLog
+        from dblift.core.logger.log import Log as LegacyLog
+        from dblift.extensions.logging import Log as ExtensionLog
+
+        assert ExtensionLog is RootLog is DefinedLog is LegacyLog
+
+    def test_null_log_stays_silent(self, capsys):
+        from dblift.extensions.logging import NullLog
+
+        log = NullLog()
+        log.info("hidden")
+        log.error("hidden")
+
+        captured = capsys.readouterr()
+        assert captured.out == ""
+        assert captured.err == ""
+
+    def test_operation_result_retains_data_and_completion_state(self):
+        from dblift.extensions.logging import OperationResult
+
+        result = OperationResult(data={"rows": 3})
+        assert result.end_time is None
+        assert result.execution_time() == 0
+
+        result.complete()
+
+        assert result.data == {"rows": 3}
+        assert result.end_time is not None
+        assert result.execution_time() >= 0
+
+    def test_render_helpers_keep_plain_text_output(self):
+        from rich.panel import Panel
+        from rich.tree import Tree
+
+        from dblift.extensions.logging import (
+            render_panel_to_str,
+            render_records_table,
+            render_tree_to_str,
+            state_text,
+        )
+
+        panel = render_panel_to_str(Panel("ready"))
+        tree = Tree("root")
+        tree.add("leaf")
+        rendered_tree = render_tree_to_str(tree)
+        table = render_records_table(
+            [("State", "left")],
+            [[state_text("PENDING")]],
+        )
+
+        assert "ready" in panel
+        assert "root" in rendered_tree
+        assert "leaf" in rendered_tree
+        assert "State" in table
+        assert "PENDING" in table
+
+    def test_import_does_not_create_runtime_outputs(self, tmp_path):
+        import os
+        import subprocess
+        import sys
+
+        source_root = Path(__file__).resolve().parents[3]
+        environment = os.environ.copy()
+        environment["PYTHONPATH"] = os.pathsep.join(
+            value for value in (str(source_root), environment.get("PYTHONPATH", "")) if value
+        )
+
+        completed = subprocess.run(
+            [
+                sys.executable,
+                "-c",
+                "from dblift.extensions import logging; assert logging.__all__",
+            ],
+            cwd=tmp_path,
+            env=environment,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
+        assert completed.returncode == 0, completed.stderr
+        assert list(tmp_path.iterdir()) == []
+
+
+class TestExtensionSqlGenerationSurface:
+    EXPECTED_EXPORTS = {"GenerationOptions", "SqlStatement"}
+
+    def test_sql_generation_exports_are_explicit(self):
+        from dblift.extensions import sql_generation
+
+        assert set(sql_generation.__all__) == self.EXPECTED_EXPORTS
+
+    @pytest.mark.parametrize("symbol_name", sorted(EXPECTED_EXPORTS))
+    def test_sql_generation_reexports_existing_objects(self, symbol_name):
+        from dblift.core.state import sql_statement
+        from dblift.extensions import sql_generation
+
+        assert getattr(sql_generation, symbol_name) is getattr(sql_statement, symbol_name)
+
+    def test_generation_statement_keeps_values_and_dependency_default(self):
+        from dblift.extensions.sql_generation import SqlStatement
+
+        statement = SqlStatement(
+            sql="ALTER TABLE users ADD COLUMN email TEXT",
+            statement_type="ALTER",
+            object_type="COLUMN",
+            object_name="users.email",
+            dialect="postgresql",
+            pre_check="SELECT 1",
+            error_if_check_fails=True,
+            error_message="pre-check failed",
+            impact={"level": "lock"},
+        )
+
+        assert statement.sql == "ALTER TABLE users ADD COLUMN email TEXT"
+        assert statement.statement_type == "ALTER"
+        assert statement.object_type == "COLUMN"
+        assert statement.object_name == "users.email"
+        assert statement.dialect == "postgresql"
+        assert statement.pre_check == "SELECT 1"
+        assert statement.error_if_check_fails is True
+        assert statement.error_message == "pre-check failed"
+        assert statement.depends_on == []
+        assert statement.impact == {"level": "lock"}
+
+    def test_generation_options_keep_defaults_and_require_keyword_dialect(self):
+        from dblift.extensions.sql_generation import GenerationOptions
+
+        options = GenerationOptions(dialect="postgresql")
+
+        assert options.dialect == "postgresql"
+        assert options.include_comments is True
+        assert options.dry_run is False
+        assert options.validate_before_execute is True
+        assert options.combine_statements is True
+
+        with pytest.raises(TypeError):
+            GenerationOptions()
+
+        with pytest.raises(TypeError):
+            GenerationOptions("postgresql")
+
+
+class TestExtensionProvidersSurface:
+    EXPECTED_EXPORTS = {
+        "PluginInfo",
+        "ProviderRegistry",
+        "ProviderTransport",
+    }
+
+    def test_provider_exports_are_explicit(self):
+        from dblift.extensions import providers
+
+        assert set(providers.__all__) == self.EXPECTED_EXPORTS
+
+    @pytest.mark.parametrize("symbol_name", sorted(EXPECTED_EXPORTS))
+    def test_provider_surface_reexports_existing_objects(self, symbol_name):
+        from dblift.db import provider_registry
+        from dblift.extensions import providers
+
+        assert getattr(providers, symbol_name) is getattr(provider_registry, symbol_name)
 
 
 class TestApiPackageSurface:
@@ -174,6 +418,64 @@ class TestConfigPackageSurface:
         import dblift.config as config
 
         assert set(config.__all__) == {"DatabaseConfig", "DbliftConfig", "load_config"}
+
+
+class TestConfigSecretsSurface:
+    """The documented ``dblift.config.secrets`` extension path."""
+
+    EXPECTED_EXPORTS = [
+        "resolve_secret_refs",
+        "clear_cache",
+        "SecretsResolutionError",
+        "SecretsConfig",
+        "AbstractSecretsProvider",
+        "register_provider",
+    ]
+
+    def test_all_lists_exactly_the_documented_symbols(self) -> None:
+        import dblift.config.secrets as secrets
+
+        assert secrets.__all__ == self.EXPECTED_EXPORTS
+
+    @pytest.mark.parametrize("symbol_name", EXPECTED_EXPORTS)
+    def test_public_path_reexports_the_implementation_object(self, symbol_name: str) -> None:
+        import dblift.config.secrets as secrets
+
+        implementation = importlib.import_module(SECRETS_EXPORT_SOURCES[symbol_name])
+
+        assert getattr(secrets, symbol_name) is getattr(implementation, symbol_name)
+
+    def test_custom_provider_resolves_and_cache_clear_is_observable(self, monkeypatch) -> None:
+        import dblift.config.secrets as secrets
+        import dblift.config.secrets._registry as secrets_registry
+
+        monkeypatch.setattr(secrets_registry, "_providers", {})
+        secrets.clear_cache()
+
+        class ContractProvider(secrets.AbstractSecretsProvider):
+            scheme = "contract-test"
+            resolutions = 0
+
+            def is_available(self) -> bool:
+                return True
+
+            def resolve(self, uri: str) -> str:
+                type(self).resolutions += 1
+                return f"resolved-{self.resolutions}:{uri}"
+
+        secrets.register_provider(ContractProvider.scheme, ContractProvider)
+        try:
+            first = secrets.resolve_secret_refs("contract-test://value")
+            assert first == "resolved-1:contract-test://value"
+            assert secrets.resolve_secret_refs("contract-test://value") == first
+
+            secrets.clear_cache()
+
+            assert secrets.resolve_secret_refs("contract-test://value") == (
+                "resolved-2:contract-test://value"
+            )
+        finally:
+            secrets.clear_cache()
 
 
 class TestMigrationTypeSurface:

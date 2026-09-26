@@ -34,7 +34,7 @@ def _builtin_option(table: "Table", capability: str, key: str, default: Any = No
 
     The namespace (``sqlserver`` / ``oracle`` / ``postgresql`` / ``mysql``) is
     resolved from the plugin registry via the capability flag, so this module
-    names no dialect literal (ADR-26 E story 26-5). Call sites stay gated by the
+    names no dialect literal (ADR-26 E). Call sites stay gated by the
     same ``quirks.<capability>`` checks, which guarantee the table's dialect is
     the namespace owner whenever the value is read.
     """

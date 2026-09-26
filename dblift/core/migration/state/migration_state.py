@@ -152,7 +152,11 @@ class MigrationEntry:
 class MigrationState:
     """Snapshot of migration state consumed by commands and formatters."""
 
-    generated_at: str = field(default_factory=lambda: _dt.datetime.utcnow().isoformat() + "Z")
+    generated_at: str = field(
+        default_factory=lambda: _dt.datetime.now(_dt.timezone.utc)
+        .isoformat()
+        .replace("+00:00", "Z")
+    )
     current_version: Optional[str] = None
     baseline_version: Optional[str] = None
     applied: List[MigrationEntry] = field(default_factory=list)

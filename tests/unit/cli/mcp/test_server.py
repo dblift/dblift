@@ -54,6 +54,16 @@ def test_command_tool_exposes_signature_and_read_only_annotations():
 
 
 @pytest.mark.unit
+def test_server_instructions_disclose_resolved_placeholders_in_show_sql():
+    from dblift.cli.mcp.server import SERVER_INSTRUCTIONS
+
+    normalized = " ".join(SERVER_INSTRUCTIONS.split())
+    assert "show_sql: true" in normalized
+    assert "placeholders resolved" in normalized
+    assert "secret" in normalized
+
+
+@pytest.mark.unit
 def test_server_instructions_scope_validate_to_history_not_sql():
     """The instructions must not oversell `validate`: it checks migration
     history against scripts (checksums, ordering, missing files); it does
@@ -1217,3 +1227,61 @@ def test_the_server_reports_the_package_version_in_its_server_info():
 
     assert server_info.name == "dblift"
     assert server_info.version == dblift.__version__
+
+
+@pytest.mark.parametrize("registration", ["raw", "command"])
+@pytest.mark.parametrize("arguments", [{"target": "1"}, {"bogus_key": "x", "target_version": "1"}])
+def test_unknown_arguments_are_reported_before_tool_execution(registration, arguments):
+    server = _server()
+    calls = []
+
+    def shape(*, target_version: Optional[str] = None) -> list[str]:
+        calls.append(target_version)
+        return []
+
+    if registration == "raw":
+        server.raw_tool(
+            name="probe",
+            description="d",
+            signature_of=shape,
+            fn=lambda **kw: calls.append(kw) or {},
+            connects=False,
+        )
+    else:
+        server.command_tool(name="probe", command="info", description="d", fn=shape)
+
+    async def scenario(client):
+        listed = (await client.list_tools()).tools[0]
+        result = await client.call_tool("probe", arguments)
+        return listed, result
+
+    with patch("dblift.cli.mcp.server.run_command", return_value={"success": True}):
+        listed, result = anyio.run(_with_client, server, scenario)
+
+    assert result.is_error
+    assert calls == []
+    message = " ".join(item.text for item in result.content if hasattr(item, "text"))
+    assert ("target" if "target" in arguments else "bogus_key") in message
+    assert listed.input_schema["additionalProperties"] is False
+
+
+def test_argument_validation_preserves_defaults_and_dictionary_contents():
+    server = _server()
+
+    def shape(*, values: dict[str, str], limit: int = 2) -> dict:
+        return {"values": values, "limit": limit}
+
+    server.raw_tool(
+        name="probe",
+        description="d",
+        fn=shape,
+        signature_of=shape,
+        connects=False,
+    )
+
+    async def scenario(client):
+        return await client.call_tool("probe", {"values": {"custom_key": "value"}})
+
+    result = anyio.run(_with_client, server, scenario)
+    assert not result.is_error
+    assert result.structured_content == {"values": {"custom_key": "value"}, "limit": 2}

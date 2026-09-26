@@ -9,9 +9,197 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Public `dblift.core.migration.sql.is_comment_only_statement` helper shares the executor's existing comment classification, including executable MySQL/MariaDB directives.
+
 ### Changed
 
 ### Fixed
+
+- MCP tools reject unknown argument names before execution and advertise closed argument schemas, preventing misspelled filters from silently running with defaults.
+
+- `undo --target-version` skips versions already undone and continues rolling back applied versions above the target. Other refusal reasons still fail the command.
+- PostgreSQL migrations can record history in a Flyway-created table without an `installed_rank` default. Rank allocation occurs under the migration lock; history failures still roll back transactional migration changes.
+- Migration state timestamps use timezone-aware UTC without Python 3.12 deprecation warnings, retaining the existing `Z` format.
+- A null schema leaves `${dblift_schema}` undefined: it is preserved with a warning, or uses its explicit `${dblift_schema:default}` value. Oracle and other configured schema expansions are unchanged.
+- Narrow and dumb terminals retain the migration table's Description column.
+- PostgreSQL view extraction retains the `security_barrier` option supplied by catalog queries.
+- Integration tests skip unavailable snapshot and vendor introspection capabilities before starting database fixtures. PR formatting checks cover `packages/`, and pytest-dblift tests run with deprecation warnings treated as errors.
+
+### Removed
+
+## [4.9.0] - 2026-09-25
+
+### Upgrading
+
+- `DBLiftClient.validate()` still returns a failed `ValidateResult` when the
+  connection cannot be opened or the schema-history table cannot be created.
+  `target_schema` is set, `error_count` is 1, `VALIDATION_FAILED` is emitted,
+  and the result's message is the preflight text. A direct call also emits
+  `DeprecationWarning`: `DBLiftClient.validate() returns a failed result when
+  the connection fails or the schema-history table cannot be created.
+  Deprecated since 4.9.0; the next major release will raise ConnectionError
+  instead.` The private keyword `_warn_on_preflight_failure` defaults to
+  `True`; pass `False` and that warning is not emitted. The CLI,
+  `migrate --validate-only`, `dblift mcp`, Django `dblift_validate`, and the
+  pytest-dblift fixture pass `False`. Under `-W error::DeprecationWarning`, a
+  direct call raises that `DeprecationWarning` instead of returning the failed
+  result; `VALIDATION_FAILED` has already been emitted. Any other
+  `ConnectionError` still propagates. The CLI and `dblift mcp` re-raise the
+  preflight failure as `ConnectionError` (JSON is
+  `{"success": false, "error": "ConnectionError: ..."}`). Django raises
+  `CommandError` from the failed result's message. In 4.8.0 an unreachable
+  database came back as `Could not create schema history table: <connection
+  error>`; the message is now `Connection failed: ...`. A history-table
+  failure was `Could not create schema history table: ...`; it is now
+  `Could not create the schema-history table: ...`. Returning the failed
+  result is deprecated and will raise `ConnectionError` in the next major
+  release.
+- SQL Server: a login mapped to the fixed `dbo` user (`sa`, a sysadmin, or
+  the database owner) with `schema` set to anything other than `dbo` (any
+  case) logs a warning and continues. Unqualified objects are created in
+  `dbo` and the run is reported successful, the same outcome as 4.8.0. Set
+  `fail_on_fixed_dbo: true` under `database:` — or
+  `DBLIFT_DB_FAIL_ON_FIXED_DBO` to `1`, `true`, or `yes` — to fail before any
+  migration or callback statement executes. That raises `FixedDboSchemaError`
+  and writes no history row. When `schema` is `dbo` in any case, there is no
+  warning and no `ALTER USER`. A dry-run `migrate` or `undo`, and a migrate
+  with nothing pending, do not predict the warning or the failure: the check
+  runs in `set_current_schema` when a real run is about to execute a
+  migration or callback, which those paths never call. `clean` calls
+  `set_current_schema` even for `--dry-run`, so a dry-run clean does warn, or
+  fails when `fail_on_fixed_dbo` is set. Do not switch an existing
+  deployment's `schema` to `dbo` to silence the warning: that targets
+  `[dbo].[dblift_schema_history]` and replays every migration.
+- A dry-run `migrate` no longer runs `command.pre_migrate` (4.8.0 ran that
+  point for a dry run too). It runs `command.pre_migrate_dry_run` instead, at
+  the start of `MigrateCommand.execute`, before connecting. With nothing
+  registered the new point is a no-op. A check registered there runs only on
+  a dry run, and an exception it raises aborts the migrate.
+  `client.migrate(dry_run=True)`, `client.executor.migrate(dry_run=True)`,
+  `MigrationExecutor.migrate(dry_run=True)`, and
+  `MigrateCommand.execute(dry_run=True)` all go through that method.
+  `command.pre_migrate` still runs on a real migrate.
+- Oracle: an unquoted `schema` is uppercased when dblift connects, creates
+  the user, writes history and other objects, and looks the name up in the
+  catalog. 4.8.0 used the configured spelling verbatim, so a lowercase
+  `schema` really did target a lowercase user. If that exact case-sensitive
+  name is already in `ALL_USERS`, dblift stops before creating any object or
+  history row, including on `migrate --dry-run` (the guard runs when applied
+  history is read), and tells you to quote the schema in config. In YAML the
+  quotes are part of the value: `schema: '"myschema"'`, because
+  `schema: "myschema"` is the unquoted name. To use the uppercase user, set
+  `schema` to that uppercase name. A double-quoted schema is accepted for
+  Oracle only; PostgreSQL, MySQL, SQL Server, DB2, and SQLite still reject
+  one. `${dblift_schema}` on Oracle expands to the catalog spelling without
+  quotes. In 4.9.0 a null schema produces a null placeholder value; the next patch leaves the key undefined. Other dialects keep
+  the configured text.
+- `fail_on_fixed_dbo` is the only new `database:` key (SQL Server, default
+  `false`). No CLI flags were added. An unrecognized key under `database:`
+  is now logged as a warning naming the key and is still ignored. The
+  `validate` MCP tool accepts `strict` (the CLI `--strict` flag was already
+  there). `migrate_dry_run` accepts `show_sql` (the CLI `--show-sql` flag
+  was already there); placeholders in that SQL are resolved, so a placeholder
+  value that is a secret appears in the tool result and in
+  `migrate --show-sql --format json`.
+
+### Added
+
+- `command.pre_migrate_dry_run` check point runs before a dry-run migrate.
+- The `validate` MCP tool now accepts `strict`, adding `--strict` so an agent can have a previously applied but now-missing migration reported and strict version order enforced (the CLI flag was already there; the tool did not expose it). The server instructions and MCP guide no longer imply the default `validate` reports missing files — it does so under `strict`.
+- Added `dblift.extensions.providers`, a stable import path for provider plugin
+  metadata, registry access, and transport typing.
+- `dblift mcp` now prints the environment and database it resolved on stderr
+  at start — never a secret — so an operator can confirm a read-only pin
+  took before letting an agent call anything. A configuration that fails to
+  load is reported the same way and the server still starts.
+- Added `dblift.extensions.sql_generation`, a stable import path for generated
+  SQL statements and generation options used by extensions.
+- Added `dblift.extensions.logging`, a stable import path for logging sinks,
+  formatters, operation results, and console rendering used by extensions.
+- `dblift mcp`'s `migrate_dry_run` tool gains a `show_sql` parameter; when
+  `true`, the result carries a `sql` array with each pending migration's
+  rendered statements. Resolved placeholder values appear in that output,
+  and those values can include secrets. `migrate --show-sql --format json`
+  now includes that same `sql` key in its output.
+
+### Changed
+
+- Oracle: an unquoted `schema:` is uppercased when dblift connects, creates the user, writes the history table and other objects, and looks the name up in the catalog. 4.8.0 used the configured name verbatim everywhere, including connect, so a lowercase `schema:` really did target a lowercase user. A double-quoted `schema:` value is accepted for Oracle only and keeps that exact case through schema readiness, the history table, object creation, the OSS binds and matching, and schema cache keys (the key is the catalog spelling, so `myschema` and `"MYSCHEMA"` share a key and `"myschema"` does not collide with them). Quotes are not stripped before the user is created or the session schema is set. PostgreSQL, MySQL, SQL Server, DB2, and SQLite reject a quoted schema. `${dblift_schema}` expands to the Oracle catalog spelling without quotes: an unquoted `myschema` becomes `MYSCHEMA`, and `schema: '"myschema"'` makes `${dblift_schema}.t`, `"${dblift_schema}"`, and `'${dblift_schema}'` all use `myschema`. Other dialects keep the configured text, and in 4.9.0 a null schema produces a null placeholder value; the next patch leaves the key undefined. If the configured schema is unquoted, is not already uppercase, and `ALL_USERS` contains that exact case-sensitive name, dblift stops before creating any object or history row, including on `migrate --dry-run`, and tells you to quote the schema name in config to keep the existing schema (it is not uppercase). To use the uppercase user instead, set `schema:` to that uppercase name (`MYSCHEMA`). In YAML the quotes are part of the value: `schema: '"myschema"'`, because `schema: "myschema"` is the unquoted name.
+- An unrecognized key under `database:` (a typo like `srvice` for `service_name`, or `service` for `service_name`) is now logged as a warning naming the key instead of being dropped in silence. It is still ignored, not fatal — a genuine driver-specific option belongs under `extra_params` — and a key that is a valid field of another engine, or an internal `_`-prefixed key, does not warn.
+- A `--dry-run` migration no longer runs the `command.pre_migrate` runtime checks. A dry run applies nothing, so the checks that gate *applying* a migration do not run for it — mirroring `migration.pre_execution`, which already never fires in dry-run. An installed extension that registers a `command.pre_migrate` check to gate real migrations therefore no longer blocks a dry run.
+- The secrets provider contract now documents `resolve`'s failure mode: raise `SecretsResolutionError` when the secret cannot be produced; the CLI and `dblift mcp` report it as a configuration error (as they do a bare `ValueError` or `RuntimeError`), a direct `DbliftConfig.from_dict()` caller receives whatever `resolve` raises. Stated in `AbstractSecretsProvider.resolve`, `register_provider` and the configuration guide; no behaviour change.
+- The documented `dblift.config.secrets` extension imports are now explicitly
+  included in the public compatibility contract.
+- The sample configuration files (`dblift-postgresql.yaml.template`,
+  `dblift-sqlserver.yaml.template`, `dblift-cosmosdb.yaml.template`) moved
+  from the repository root to `docs/examples/config/`.
+- `validate` now stops the way `info` does when dblift's schema-history table
+  cannot be created (a role without `CREATE`, a connection lost at that
+  step): `Could not create the schema-history table: <engine message>`,
+  instead of returning a validation result with `error_count: 1`.
+  `--format json` consumers get `{"success": false, "error": "..."}`, and
+  `dblift mcp` returns an error result. The same wording now replaces
+  `Connection failed: ...` for `info`, `migrate`, `undo` and `baseline` at
+  that step. Through the Python API, `DBLiftClient.validate()` still returns
+  a failed result, and emits `VALIDATION_FAILED`, both when the connection
+  fails and when the history table cannot be created. In 4.8.0 an unreachable
+  database returned `Could not create schema history table: <connection error>`;
+  4.9.0 returns `Connection failed: ...`. In 4.8.0 the history-table message
+  was `Could not create schema history table: ...`; it is now
+  `Could not create the schema-history table: ...`. Returning the failed
+  result is deprecated and will raise `ConnectionError` in the next major
+  release.
+
+### Deprecated
+
+- `DBLiftClient.validate()` returning a failed result on a connection or history-table failure is deprecated since 4.9.0 and will raise `ConnectionError` in the next major release; a DeprecationWarning is emitted on a direct call.
+- Under `-W error::DeprecationWarning`, a direct `DBLiftClient.validate()` call raises the warning instead of returning a failed result. The CLI, JSON output, `dblift mcp`, Django `dblift_validate`, and the pytest-dblift fixture do not emit that warning.
+
+### Fixed
+
+- `validate --format json` now reports `error: null` on success, matching `info` and `migrate` — it was `error: ""` (a clean validate leaves the message empty), the one inconsistency across the three read tools' JSON error contract.
+- DML analysis (`analyze_dml`, `statement_dml_table`, `extract_dml_table_name`)
+  returned the alias instead of the table for the MySQL / SQL Server
+  multi-table `DELETE <alias> FROM <table> <alias>` spelling; the target is
+  now resolved through the alias, and `DELETE t2 FROM t1 JOIN t2 …` names
+  `t2`; the quoted-name form (`statement_dml_table`) no longer carries the
+  JOIN clause when the target is the FROM anchor of a joined DELETE.
+- DML analysis (`analyze_dml`, `statement_dml_table`) returned the alias
+  instead of the table for SQL Server's `UPDATE <alias> SET … FROM <table>
+  AS <alias>` form — the only way T-SQL aliases an UPDATE target; the alias
+  is now resolved through the FROM clause.
+- `dblift mcp` now returns a tool call whose command failed before producing
+  a result (a refused connection, a history table that could not be
+  created, an exception inside the command) as an MCP error result carrying
+  the CLI's message, instead of a normal result with `success: false` that
+  an agent could read as success. The `dblift://history` and
+  `dblift://pending` resources report such a failure instead of returning an
+  empty list. A command that ran to a result — even a failed one, such as
+  validation issues — is still a normal result.
+- A database role that can connect but lacks a privilege — creating
+  dblift's schema-history table, for instance — is no longer reported as
+  `Connection failed: invalid credentials`; the engine's own permission
+  error is shown, as it already was for MySQL and Db2.
+- On PostgreSQL, the queries the drop-column safety check runs to find
+  referencing foreign keys and covering indexes used a placeholder style the
+  driver does not bind, so they could not execute at all. The foreign-key
+  lookup now also reads the system catalog instead of `information_schema`,
+  so a read-only role sees the referencing keys too.
+- SQL Server: a login that maps to the fixed `dbo` database user (a
+  `sa`/sysadmin login, or a database's owner) with `schema:` set to anything
+  other than `dbo` logs a warning and continues, same outcome as 4.8.0:
+  unqualified objects are created in `dbo` and the run is reported successful.
+  Set `fail_on_fixed_dbo: true` under `database:` to fail the run before any
+  migration or callback statement executes; no history row is written.
+  Connect with a login mapped to a non-`dbo` database user when the
+  configured schema must be honored. On an existing deployment, do not switch
+  `schema` to `dbo` to avoid the warning: that targets
+  `[dbo].[dblift_schema_history]` and replays every migration. Only a new
+  deployment that has never recorded history can use `schema: dbo` with a
+  dbo-mapped login. A dry-run `migrate` or `undo` does not predict this
+  warning or failure, because the check runs in `set_current_schema` when a
+  real run is about to execute a migration or callback, which those dry runs
+  never call (`clean`, including `clean --dry-run`, does).
 
 ### Removed
 

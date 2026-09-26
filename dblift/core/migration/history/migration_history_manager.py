@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from types import MappingProxyType
 from typing import Any, Dict, List, Mapping, Optional, Union, cast
 
+from dblift.core.constants import DEFAULT_HISTORY_TABLE
 from dblift.core.logger import Log
 from dblift.core.migration.migration import AppliedMigration, Migration, MigrationType
 from dblift.core.migration.scripting.migration_script_manager import MigrationScriptManager
@@ -141,7 +142,7 @@ class MigrationHistoryManager:
         # - PostgreSQL: Use lowercase quoted identifiers
         # - MySQL: Use lowercase backticked identifiers
         # - SQL Server: Case-insensitive, use lowercase by convention
-        base_table_name = table_name or "dblift_schema_history"
+        base_table_name = table_name or DEFAULT_HISTORY_TABLE
         self.history_table = base_table_name
 
         if self.logger:
@@ -161,7 +162,7 @@ class MigrationHistoryManager:
         ANSI double-quotes later (a quoted lowercase identifier is
         *literally* lowercase to Oracle).
 
-        ADR-0015 (BUG-03): every call site that qualifies the history-
+        ADR-0015: every call site that qualifies the history-
         table identifier via ``provider.get_schema_qualified_name`` or
         ``provider.table_exists`` must pass the normalized form so the
         quoted literal matches what the database actually stored.
@@ -243,7 +244,7 @@ class MigrationHistoryManager:
         EXISTS`` is not atomic under concurrent sessions and the losing
         transaction is left in an aborted state until rolled back, which
         cascades "transaction is aborted" errors onto every subsequent
-        statement. BUG-07.
+        statement.
 
         Race detection is delegated to ``provider.quirks.is_schema_history_race_error``
         instead of a single hard-coded marker list: dialects whose bare

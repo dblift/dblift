@@ -3,6 +3,7 @@
 from pathlib import Path
 from typing import Any, Dict, List
 
+from dblift.core.constants import DEFAULT_HISTORY_TABLE
 from dblift.core.logger.results import OperationResult
 from dblift.core.migration.commands.base_command import BaseCommand
 from dblift.core.migration.migration import MigrationType
@@ -53,7 +54,7 @@ class ImportFlywayCommand(BaseCommand):
         target_table = (
             configured_target.strip()
             if isinstance(configured_target, str) and configured_target.strip()
-            else "dblift_schema_history"
+            else DEFAULT_HISTORY_TABLE
         )
 
         # Ensure the provider has a live connection before reading connection
@@ -115,7 +116,7 @@ class ImportFlywayCommand(BaseCommand):
             # leaves the target table untouched rather than half-populated.
             mapped_rows = [self._row_with_mapped_type(row) for row in rows_to_import]
 
-            # BUG-06: emit a user-visible preview in dry-run mode so callers
+            # Emit a user-visible preview in dry-run mode so callers
             # see the list of rows that would be written to dblift_schema_history
             # (previously only log.debug, invisible unless debug logging on).
             if dry_run:

@@ -1,0 +1,60 @@
+# DBLift Configuration Template for SQL Server
+# Copy this file to dblift-sqlserver.yaml and update with your actual database credentials
+
+database:
+  url: mssql+pymssql://localhost:1433/your_database_name?encrypt=false
+  schema: dbo
+  username: your_username
+  password: your_password
+
+  # SQL Server specific options
+  integrated_security: false  # Set to true for Windows Authentication
+  trust_server_certificate: false  # Set to true to trust server certificate
+  encrypt: false  # Set to true to enable encryption
+  # A login mapped to the fixed dbo user (sa, sysadmin, or the database
+  # owner) cannot change its default schema. The default is false: dblift
+  # logs a warning and continues, same outcome as 4.8.0, and unqualified
+  # objects are created in dbo. Set true to fail the run before any
+  # migration or callback statement executes; no history row is written.
+  # A dry-run does not predict this failure, and neither does a migrate
+  # with nothing pending. Use a login mapped to a non-dbo database user
+  # when schema must be honored. On an existing deployment, do not switch
+  # schema to dbo to avoid the warning: that targets
+  # [dbo].[dblift_schema_history] and replays every migration. Only a new
+  # deployment that has never recorded history can use schema: dbo.
+  fail_on_fixed_dbo: false
+
+migrations:
+  directory: ./migrations
+  script_encoding: utf-8  # Encoding for reading migration script files (utf-8, windows-1252, iso-8859-1, etc.)
+  detect_encoding: false  # Set true to detect script encoding before reading; decoding errors still fail migrations
+  recursive: true
+
+  # Alternative: Use 'directories' for multiple directories
+  # directories:
+  #   - ./migrations/core
+  #   - ./migrations/features
+  #
+  # Per-directory recursive settings:
+  # directories:
+  #   - path: ./migrations/core
+  #     recursive: true    # Search subdirectories
+  #   - path: ./migrations/features
+  #     recursive: false   # Only top-level files
+
+logging:
+  level: INFO
+
+# Optional CLI overrides
+log_format: text  # text, json, or html
+
+# Environments — one file for ALL your environments (selected with --env / DBLIFT_ENV).
+# Root sections above are the shared base; each block below overrides only what differs.
+# See docs/user-guide/configuration.md#environments
+# environments:
+#   prod:
+#     database:
+#       url: "${DBLIFT_PROD_URL}"
+#   uat:
+#     database:
+#       url: "${DBLIFT_UAT_URL}"

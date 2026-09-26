@@ -32,6 +32,7 @@ from dblift.core.migration.placeholders.placeholder_service import PlaceholderSe
 from dblift.core.migration.sql.execution_statement import (
     ExecutionStatement,
     classify_execution_statement,
+    is_comment_only_statement,
 )
 from dblift.core.migration.sql.migration_sql_parser import (
     fallback_migration_sql,
@@ -126,21 +127,8 @@ class ExecutionEngine:
             placeholder_service=placeholder_service,
         )
 
-    @staticmethod
-    def _is_comment_only_statement(sql: str) -> bool:
-        """True if *sql* has no executable tokens after removing block and line comments.
-
-        MySQL/MariaDB executable comment directives (``/*!...*/``, ``/*M!...*/``) are not
-        comments the server skips — it runs their contents — so they are excluded from the
-        strip and never count as "comment only".
-        """
-
-        body = sql.strip()
-        if not body:
-            return True
-        body = re.sub(r"/\*(?!!|M!).*?\*/", "", body, flags=re.DOTALL)
-        body = re.sub(r"--.*?$", "", body, flags=re.MULTILINE)
-        return not body.strip()
+    # Compatibility alias; script tooling and the engine share one implementation.
+    _is_comment_only_statement = staticmethod(is_comment_only_statement)
 
     def execute_migration(self, migration: Migration, result: OperationResult) -> None:
         """Execute a single migration.
@@ -516,7 +504,7 @@ class ExecutionEngine:
     def _probe_dialect_key(self) -> Optional[str]:
         """Best-effort dialect string for transaction probes (lowercase, non-empty).
 
-        Epic 26 dialect isolation: the provider is **authoritative** for
+        Dialect isolation: the provider is **authoritative** for
         its own dialect (each plugin sets
         :attr:`dblift.db.base_provider.BaseProvider.canonical_dialect_key`). The
         framework no longer URL-sniffs or branches on dialect names; it
@@ -641,7 +629,7 @@ class ExecutionEngine:
                     continue
 
             # Placeholders were already substituted in `_parse_sql_statements` on the
-            # full content before tokenisation (BUG-06 fix). Re-substituting here would
+            # full content before tokenisation. Re-substituting here would
             # risk re-interpreting `${...}` fragments that legitimately appear *inside*
             # a resolved placeholder value.
 
@@ -976,7 +964,7 @@ class ExecutionEngine:
                                             dialect = getattr(
                                                 self.sql_analyzer, "dialect", ""
                                             ).lower()
-                                            # B10-BUG-01: quote identifiers per dialect rules
+                                            # Quote identifiers per dialect rules
                                             # (backticks for MySQL, brackets for SQL Server,
                                             # ANSI double-quotes elsewhere). The prior
                                             # hardcoded ``"schema"."table"`` form crashed on
@@ -1021,7 +1009,7 @@ class ExecutionEngine:
         history → commit — mirroring the SQL path so that DDL issued by a Python migration
         is actually persisted. Without this envelope, the DDL and the history insert stay in
         an uncommitted transaction that `_prepare_transaction` for the *next* migration
-        rolls back, silently discarding the user's work (BUG-04).
+        rolls back, silently discarding the user's work.
 
         Placeholder substitution (``placeholder_service``) is intentionally not applied
         here.  Non-SQL formats (Python scripts) are executed as code, not SQL text, so
@@ -1109,7 +1097,7 @@ class ExecutionEngine:
                             error=error_msg,
                         )
                     )
-                # BUG-04: Python/non-SQL executor failures must leave a FAILED
+                # Python/non-SQL executor failures must leave a FAILED
                 # row in dblift_schema_history so `repair` can detect and clear
                 # them. Mirror the SQL failure path in _handle_statement_failure:
                 # post-rollback, open a fresh transaction just to persist the

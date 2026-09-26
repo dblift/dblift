@@ -160,7 +160,7 @@ class AbstractLog(Log):
         # Clean up fully qualified exception class names for better user experience.
         error_msg = str(e)
 
-        # B8-BUG-04: strip fully-qualified exception class prefixes
+        # Strip fully-qualified exception class prefixes
         # (e.g. ``org.postgresql.util.PSQLException: FATAL: ...`` →
         # ``FATAL: ...``).
         error_msg = re.sub(

@@ -29,7 +29,7 @@ class PluginInfo:
     dialects: List[str]  # Supported database dialects
     provider_class: Type[BaseProvider]
     transport: ProviderTransport = "native"
-    # Epic 26: per-dialect behaviour-overlay class. None means use
+    # Per-dialect behaviour-overlay class. None means use
     # ``BaseQuirks`` (no overrides). Plugins that need to customise
     # rendering/parsing/comparison declare a subclass here.
     quirks_class: Optional[Type[BaseQuirks]] = None
@@ -124,7 +124,7 @@ class ProviderRegistry:
 
     _plugins: Dict[str, PluginInfo] = {}
     _discovered: bool = False
-    # Story 26-3 / PR #241 Bugbot: cache resolved Quirks instances per
+    # PR #241: cache resolved Quirks instances per
     # dialect string. Quirks subclasses are stateless behaviour
     # overlays (no per-call state), so reusing a single instance per
     # dialect avoids re-instantiating on every framework call site
@@ -137,7 +137,7 @@ class ProviderRegistry:
     def discover_plugins(cls) -> None:
         """Auto-discover provider plugins.
 
-        Story 26-12: discovery happens in two passes.
+        Discovery happens in two passes.
 
         1. Entry-point pass — reads ``importlib.metadata.entry_points
            (group="dblift.providers")``. First-party plugins are
@@ -264,7 +264,7 @@ class ProviderRegistry:
         # creates an isolated module instance — call sites that
         # later ``import db.plugins.<X>`` get a *different* class
         # object with the same name, breaking ``isinstance`` /
-        # ``is`` checks downstream (story 26-13 mariadb tests).
+        # ``is`` checks downstream.
         import importlib
 
         try:
@@ -280,7 +280,7 @@ class ProviderRegistry:
         dialects = getattr(module, "__plugin_dialects__", [name])
         transport: ProviderTransport = "native"
 
-        # Epic 27 + action #11: read the exported ``plugin.py:PLUGIN`` constant
+        # Read the exported ``plugin.py:PLUGIN`` constant
         # (entry-point-style declaration) up front. Importing plugin.py also
         # triggers any ``@register_database_type`` decorators on the config
         # class so the legacy ``BaseDatabaseConfig._registry`` lookup keeps
@@ -331,7 +331,7 @@ class ProviderRegistry:
             if not (isinstance(provider_class, type) and issubclass(provider_class, BaseProvider)):
                 return None
 
-        # Epic 26: optional quirks class. Resolve by importing
+        # Optional quirks class. Resolve by importing
         # ``db/plugins/<X>/quirks.py`` and picking the first class whose name
         # ends in ``Quirks``; fall back to the quirks class declared on
         # ``PLUGIN`` (factory-built engines carry it there and ship no
@@ -570,7 +570,7 @@ class ProviderRegistry:
         unknown aliases.
 
         Replaces hand-rolled alias maps in ``cli/`` and other top-level
-        layers (Epic 26 followup).
+        layers.
         """
         if not cls._discovered:
             cls.discover_plugins()
@@ -613,7 +613,7 @@ class ProviderRegistry:
         ``"table_supports_storage_params"`` → Oracle,
         ``"table_uses_storage_engine_clause"`` → MySQL). Lets framework code
         resolve a ``dialect_options`` namespace from the registry instead of
-        hardcoding a dialect string literal (ADR-26 E story 26-5).
+        hardcoding a dialect string literal (ADR-26 E).
 
         Returns the single matching plugin's canonical name, or ``None`` when
         zero or more than one plugin advertise the capability (so callers can

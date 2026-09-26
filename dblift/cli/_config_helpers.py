@@ -16,6 +16,18 @@ from dblift.core.utils.database_url_parser import DatabaseUrlParser
 from dblift.core.utils.string_utils import safe_split_first
 from dblift.core.utils.url_masking import mask_database_url
 
+# Exceptions load_config() raises for a bad or missing configuration — the
+# CLI's own, reportable errors, as opposed to a bug surfacing as something
+# else. Shared with dblift.cli.handlers.mcp._announce_target, which needs
+# the same set without the sys.exit this module wraps it in below.
+CONFIG_LOAD_ERRORS = (
+    ConfigurationError,
+    FileNotFoundError,
+    RuntimeError,
+    ValueError,
+    SecretsResolutionError,
+)
+
 # Global flags that are boolean (action="store_true") and therefore do NOT
 # consume a following value. Without this set, `dblift --dry-run migrate`
 # would treat `migrate` as --dry-run's value and leave `commands` empty.
@@ -168,7 +180,7 @@ def _build_args_namespace(
         args, unknown_args, has_validation_error = parse_with_selective_errors(parser)
         if has_validation_error:
             # argparse convention: exit 2 on usage/validation errors so scripts can detect
-            # them with `$?` (BUG-05).
+            # them with `$?`.
             sys.exit(2)
 
         if args is None:
@@ -263,13 +275,7 @@ def _load_and_merge_config(args: argparse.Namespace, log: Any) -> Any:
 
     try:
         config = load_config(args.config, args)
-    except (
-        ConfigurationError,
-        FileNotFoundError,
-        RuntimeError,
-        ValueError,
-        SecretsResolutionError,
-    ) as e:
+    except CONFIG_LOAD_ERRORS as e:
         message = str(e)
         if isinstance(e, ConfigurationError) and (
             "No configuration source provided" in message
@@ -605,7 +611,7 @@ def _resolve_scripts_directories(
             scripts_dir = config_base_dir / "migrations"
             recursive = getattr(config.migrations, "recursive", True)
 
-    # Batch-5 BUG-02: CLI --recursive / --no-recursive wins over config and
+    # CLI --recursive / --no-recursive wins over config and
     # default. ``recursive_flag`` is ``None`` when neither is passed, so the
     # branches above remain authoritative unless the user explicitly asked.
     cli_recursive = getattr(args, "recursive_flag", None)

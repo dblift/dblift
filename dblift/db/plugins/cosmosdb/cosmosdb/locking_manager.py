@@ -17,7 +17,7 @@ import socket
 import time
 from typing import TYPE_CHECKING, Optional
 
-from dblift.core.constants import DEFAULT_MIGRATION_LOCK_TIMEOUT_SECONDS
+from dblift.core.constants import DEFAULT_MIGRATION_LOCK_TIMEOUT_SECONDS, MIGRATION_LOCK_TABLE
 from dblift.core.logger import Log
 from dblift.db.plugins.nosql_base import DocumentLockingManager
 
@@ -44,7 +44,7 @@ class CosmosDbLockingManager(DocumentLockingManager):
     Base BaseLockingManager interface without breaking its existing API.
     """
 
-    LOCK_CONTAINER_NAME = "dblift_migration_lock"
+    LOCK_CONTAINER_NAME = MIGRATION_LOCK_TABLE
     LOCK_DOCUMENT_ID = "migration_lock"
 
     def __init__(self, query_executor: CosmosDbQueryExecutor, log: Optional[Log] = None):

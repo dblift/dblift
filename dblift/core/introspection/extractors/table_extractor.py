@@ -6,6 +6,7 @@ from typing import Any, List, Optional, Set
 
 from dblift.core.introspection.extractors.base_extractor import BaseExtractor
 from dblift.core.sql_model.table import Table
+from dblift.db.object_naming import dictionary_identifier
 
 logger = logging.getLogger(__name__)
 
@@ -301,7 +302,7 @@ class TableExtractor(BaseExtractor):
     def _get_dblift_internal_names(self) -> Set[str]:
         """Build the set of dblift-internal table names to hide from introspection.
 
-        BUG-03B: names are config-overridable (``history_table`` /
+        Names are config-overridable (``history_table`` /
         ``snapshot_table`` in ``DatabaseConfig``, ENV ``DBLIFT_HISTORY_TABLE`` /
         ``DBLIFT_SNAPSHOT_TABLE``). Hardcoded literals broke the filter when
         the user overrode the names. Default values come from the canonical
@@ -318,15 +319,19 @@ class TableExtractor(BaseExtractor):
         if self._dblift_internal_names is not None:
             return self._dblift_internal_names
 
-        from dblift.core.constants import DBLIFT_SCHEMA_SNAPSHOTS_TABLE
+        from dblift.core.constants import (
+            DBLIFT_SCHEMA_SNAPSHOTS_TABLE,
+            DEFAULT_HISTORY_TABLE,
+            MIGRATION_LOCK_TABLE,
+        )
         from dblift.db.object_naming import get_normalized_object_name
 
         db = getattr(getattr(self.provider, "config", None), "database", None)
         history_raw = getattr(db, "history_table", None)
         snapshot_raw = getattr(db, "snapshot_table", None)
-        history = history_raw if isinstance(history_raw, str) else "dblift_schema_history"
+        history = history_raw if isinstance(history_raw, str) else DEFAULT_HISTORY_TABLE
         snapshot = snapshot_raw if isinstance(snapshot_raw, str) else DBLIFT_SCHEMA_SNAPSHOTS_TABLE
-        lock = getattr(self.provider, "MIGRATION_LOCK_TABLE", "dblift_migration_lock")
+        lock = getattr(self.provider, "MIGRATION_LOCK_TABLE", MIGRATION_LOCK_TABLE)
         flyway_legacy = "schema_version"
 
         dialect = self.dialect or ""
@@ -374,10 +379,29 @@ class TableExtractor(BaseExtractor):
     def _verify_schema_match(
         self, table_schema: Optional[str], expected_schema: str, table_name: str
     ) -> bool:
-        """Verify that table schema matches expected schema (case-insensitive)."""
-        if table_schema and table_schema.upper() != expected_schema.upper():
+        """Verify that a table's schema is the configured catalog spelling.
+
+        Oracle compares the owner to that spelling only. ``"MYSCHEMA"``
+        matches owner ``MYSCHEMA`` and does not match owner ``myschema``,
+        and an unquoted ``myschema`` matches ``MYSCHEMA`` only. Folding the
+        owner would accept both users in the same database. Other dialects
+        still compare case-folded spellings.
+        """
+        if not table_schema:
+            return True
+        dialect = self.dialect or ""
+        actual_text = str(table_schema)
+        expected_name = dictionary_identifier(expected_schema, dialect)
+        # Both cased users can exist; folding the owner would accept both.
+        if dialect == "oracle":  # lint: allow-dialect-string: case-sensitive catalog owner
+            matched = actual_text == expected_name
+        else:
+            actual_name = dictionary_identifier(actual_text, dialect)
+            matched = actual_name == expected_name or actual_text == expected_name
+        if not matched:
             self.log.debug(
-                f"Skipping table {table_name} from different schema: {table_schema} != {expected_schema}"
+                f"Skipping table {table_name} from different schema: "
+                f"{table_schema} != {expected_schema}"
             )
             return False
         return True

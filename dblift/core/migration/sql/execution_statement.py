@@ -17,6 +17,22 @@ class ExecutionStatement:
     transaction_reason: Optional[str] = None
 
 
+def is_comment_only_statement(sql: str) -> bool:
+    """True if *sql* has no executable tokens after removing block and line comments.
+
+    MySQL/MariaDB executable comment directives (``/*!...*/``, ``/*M!...*/``) are not
+    comments the server skips — it runs their contents — so they are excluded from the
+    strip and never count as "comment only".
+    """
+
+    body = sql.strip()
+    if not body:
+        return True
+    body = re.sub(r"/\*(?!!|M!).*?\*/", "", body, flags=re.DOTALL)
+    body = re.sub(r"--.*?$", "", body, flags=re.MULTILINE)
+    return not body.strip()
+
+
 def classify_execution_statement(
     sql: str, *, dialect: str, statement_type: str = "UNKNOWN"
 ) -> ExecutionStatement:

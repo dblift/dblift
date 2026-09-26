@@ -23,6 +23,20 @@ from dblift.core.utils.metadata_helpers import _fetch_mysql_show_create_routine 
 logger = logging.getLogger(__name__)
 
 
+def _oracle_schema_cache_key(schema: Optional[str]) -> str:
+    """Catalog spelling for a schema-keyed cache on this extractor.
+
+    A double-quoted name keeps the text inside the quotes. An unquoted
+    name is folded to uppercase, which is how unquoted identifiers are
+    stored. ``myschema`` and ``"MYSCHEMA"`` therefore share a key, and
+    ``"myschema"`` does not collide with them.
+    """
+    raw = (schema or "").strip()
+    if len(raw) >= 2 and raw[0] == '"' and raw[-1] == '"':
+        return raw[1:-1].replace('""', '"')
+    return raw.upper()
+
+
 def _extract_definition_parts(definition: Optional[str]) -> tuple[Optional[str], Optional[str]]:
     """Return (full_definition, body) for a routine/trigger definition."""
     if not definition:
@@ -296,7 +310,7 @@ class ProcedureExtractor(BaseExtractor):
         spec_text = definition[pkg_start:].strip()
         cleaned = definition[:pkg_start].rstrip()
 
-        schema_key = (schema or "").upper()
+        schema_key = _oracle_schema_cache_key(schema)
         cache_key = (schema_key, package_name.upper())
         self._oracle_package_specs[cache_key] = spec_text
 
@@ -726,7 +740,7 @@ class ProcedureExtractor(BaseExtractor):
                         def_sql, def_params = self.vendor_queries.get_function_definition_query(
                             schema, function_name
                         )
-                        # BUG-01: if the vendor has no definition query (base
+                        # If the vendor has no definition query (base
                         # returns (None, [])), keep the function — don't drop
                         # it entirely. Missing-definition is a capture warning,
                         # not a reason to skip the object from export.

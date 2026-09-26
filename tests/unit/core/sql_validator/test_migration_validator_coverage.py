@@ -665,6 +665,7 @@ class TestValidateMigrations(unittest.TestCase):
         cmd.config = MagicMock()
         cmd.config.database.schema = "main"
         cmd.log = log
+        cmd.provider = MagicMock()
         cmd.validator = MagicMock()
         cmd.validator.validate_snapshot.return_value = validation_result
         cmd.history_manager = MagicMock()

@@ -32,7 +32,16 @@ from tests.integration.helpers.migration_helper import create_config
 @pytest.mark.integration
 @pytest.mark.parametrize(
     "db_container",
-    ["postgresql", "oracle", "sqlserver", "mysql", "db2"],
+    [
+        pytest.param(
+            dialect,
+            marks=pytest.mark.skipif(
+                ProviderRegistry.get_quirks(dialect).vendor_queries_class() is None,
+                reason=f"{dialect} vendor metadata queries are not installed",
+            ),
+        )
+        for dialect in ("postgresql", "oracle", "sqlserver", "mysql", "db2")
+    ],
     indirect=True,
 )
 class TestSchemaIntrospection:

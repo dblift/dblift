@@ -195,7 +195,7 @@ class MySqlSchemaOperations(BaseSchemaOperations):
     def get_clean_preview(self, connection: Any, schema: str) -> CleanExecutionSummary:
         """Return the objects a MySQL clean would drop, without executing the DROPs.
 
-        BUG-03: dry-run must mirror ``clean_schema`` exactly so the user sees
+        Dry-run must mirror ``clean_schema`` exactly so the user sees
         every object that will be dropped, including dblift-internal tables
         (history / lock). Enumerates the same six kinds
         ``clean_schema`` processes: triggers, views, tables, functions,

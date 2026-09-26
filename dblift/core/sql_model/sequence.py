@@ -6,7 +6,7 @@ from dblift.core.sql_model.base import SqlObject, SqlObjectType
 
 
 def _quirks_for(dialect: Optional[str]) -> Any:
-    """Story 26-5: resolve quirks for *dialect* via the registry."""
+    """Resolve quirks for *dialect* via the registry."""
     from dblift.db.base_quirks import BaseQuirks
     from dblift.db.provider_registry import ProviderRegistry
 
@@ -90,7 +90,7 @@ class Sequence(SqlObject):
         """Build CREATE SEQUENCE DDL using plugin Quirks (dialect-agnostic path).
 
         Used when no dialect is registered or when the generator is unavailable.
-        Story 26-5: dialect dispatch routed through plugin Quirks.
+        Dialect dispatch routed through plugin Quirks.
         """
         quirks = _quirks_for(self.dialect)
 
@@ -140,7 +140,7 @@ class Sequence(SqlObject):
         schema_prefix = self.format_identifier(self.schema) + "." if self.schema else ""
         seq_name = self.format_identifier(self.name)
 
-        # Story 26-5: ``IF EXISTS`` support comes from plugin Quirks.
+        # ``IF EXISTS`` support comes from plugin Quirks.
         if _quirks_for(self.dialect).seq_drop_supports_if_exists:
             return f"DROP SEQUENCE IF EXISTS {schema_prefix}{seq_name}"
         return f"DROP SEQUENCE {schema_prefix}{seq_name}"

@@ -13,12 +13,14 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Callable, List, Optional
 
+from dblift.core.constants import DBLIFT_SCHEMA_SNAPSHOTS_TABLE, DEFAULT_HISTORY_TABLE, ENV_PREFIX
+
 
 def env_name(name: str) -> str:
     """Derive the env var: ``database.username`` -> ``DBLIFT_DB_USERNAME``."""
     if name.startswith("database."):
         name = "db_" + name[len("database.") :]
-    return "DBLIFT_" + name.replace(".", "_").upper()
+    return ENV_PREFIX + name.replace(".", "_").upper()
 
 
 def cli_flag(name: str) -> str:
@@ -61,14 +63,14 @@ PROPERTY_REGISTRY: List[PropertySpec] = [
     PropertySpec(
         "history_table",
         "str",
-        "dblift_schema_history",
+        DEFAULT_HISTORY_TABLE,
         cli_aliases=("--table",),
         help="dblift schema-history table name",
     ),
     PropertySpec(
         "snapshot_table",
         "str",
-        "dblift_schema_snapshots",
+        DBLIFT_SCHEMA_SNAPSHOTS_TABLE,
         help="dblift schema-snapshots table name",
     ),
     PropertySpec("max_snapshots", "int", 1, coerce=int, help="Max snapshots to retain"),

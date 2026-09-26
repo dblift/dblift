@@ -44,6 +44,37 @@ from dblift.db.provider_interfaces import SchemaProvider
 
 from ._script_events import emit_script_event as _emit_script_event
 
+# Message text for a schema-history DDL failure during preflight. The
+# raised type is PreflightConnectionError; the wording stays stable.
+SCHEMA_HISTORY_CREATE_ERROR_PREFIX = "Could not create the schema-history table"
+
+
+class PreflightConnectionError(ConnectionError):
+    """Connection or schema-history failure raised during command preflight.
+
+    ``DBLiftClient.validate`` returns a failed result for this error. Every
+    other command lets it propagate. It subclasses ``ConnectionError``, so
+    handlers that already catch that type still catch it, and the message
+    text is the same text those steps used to raise as ``ConnectionError``.
+    """
+
+    def __init__(self, message: str, result: Optional["OperationResult"] = None) -> None:
+        """Store *message* and the command result this failure interrupted."""
+        super().__init__(message)
+        self.result = result
+
+
+def reported_exception_name(error: BaseException) -> str:
+    """Type name published in CLI JSON and MCP error text.
+
+    ``PreflightConnectionError`` is how the two preflight steps are told
+    apart in process. Callers still see ``ConnectionError: ...`` for both,
+    which is the text those steps produced before the subclass existed.
+    """
+    if isinstance(error, PreflightConnectionError):
+        return "ConnectionError"
+    return type(error).__name__
+
 
 @dataclass
 class BaseCommandContext:
@@ -445,7 +476,7 @@ class BaseCommand:
                     f"Command {command_name} completed with status {status} in {time_str}"
                 )
 
-        # BUG-11: resolve the schema version *after* the operation has run
+        # Resolve the schema version *after* the operation has run
         # so the footer reflects the post-state (undo rolling back V3 now
         # shows "Schema Version: 3" in the footer, not the pre-op "4" that
         # the header emitted at command start). Resolution can fail for
@@ -564,12 +595,12 @@ class BaseCommand:
             success: Whether the command succeeded
             execution_time: Formatted execution time string
             error_message: Optional ``result.error_message`` to surface on
-                the failure path. BUG-01 (ADR-0013): the pre-ADR footer
+                the failure path. ADR-0013: the pre-ADR footer
                 always dropped this, leaving the operator with
                 ``"Command X failed"`` and zero signal even when the
                 command layer had captured a precise explanation.
             schema_version: Optional post-operation schema version.
-                BUG-11: the header-only Schema Version was a snapshot
+                The header-only Schema Version was a snapshot
                 taken *before* the command ran, so after an undo /
                 migrate / baseline / clean it showed the stale value.
                 Rendering the post-state version in the footer gives
@@ -647,7 +678,8 @@ class BaseCommand:
             db_type = getattr(self.provider, "canonical_dialect_key", "") or getattr(
                 getattr(self.config, "database", None), "type", ""
             )
-            raise ConnectionError(format_connection_error(exc, str(db_type or ""))) from exc
+            message = format_connection_error(exc, str(db_type or ""))
+            raise PreflightConnectionError(message) from exc
 
     def _run_preflight(
         self,
@@ -666,8 +698,13 @@ class BaseCommand:
           2. ``create_schema_and_history_table()`` when
              ``ensure_history=True`` AND not ``dry_run`` — commands that
              require the history table (``migrate``, ``info``, ``undo``,
-             ``baseline``) call this idempotently; dry-run skips it
-             (PR-02 byte-identical contract).
+             ``baseline``, ``validate``) call this idempotently; dry-run
+             skips it (PR-02 byte-identical contract). A failure here names
+             the step (``Could not create the schema-history table: ...``)
+             rather than reusing ``_ensure_connected``'s generic
+             ``Connection failed: ...``, because the provider is already
+             connected at this point — what failed is the DDL, not the
+             connection. Both steps raise ``PreflightConnectionError``.
           3. ``_populate_database_info(result)`` — reads live connection
              metadata onto the result. Must come AFTER phases 1 and 2
              because it calls provider methods that require a connection
@@ -701,17 +738,47 @@ class BaseCommand:
                 (it may be the first command run against a fresh
                 database).
         """
-        self._ensure_connected()
+        try:
+            self._ensure_connected()
+        except PreflightConnectionError as exc:
+            # The command result already has target_schema. Keep this
+            # exception object: a plain ConnectionError raised by a
+            # replacement for _ensure_connected is not this type and
+            # must propagate unchanged.
+            exc.result = result
+            raise
         if ensure_history and not dry_run:
             try:
                 self.history_manager.create_schema_and_history_table(create_schema=create_schema)
             except Exception as exc:
-                from dblift.db.error import format_connection_error
-
-                db_type = getattr(self.provider, "canonical_dialect_key", "") or getattr(
-                    getattr(self.config, "database", None), "type", ""
+                from dblift.core.migration.sql.sql_execution_service import (
+                    _format_execution_error,
                 )
-                raise ConnectionError(format_connection_error(exc, str(db_type or ""))) from exc
+                from dblift.db.error import _SQL_STATEMENT_BLOCK_RE
+
+                # Strip the generated DDL SQLAlchemy appends to
+                # statement-bound errors (see _SQL_STATEMENT_BLOCK_RE in
+                # dblift.db.error) so a schema/history-table setup failure
+                # never leaks the CREATE TABLE text, matching
+                # format_connection_error's existing guarantee. The
+                # formatted message can itself strip down to empty (e.g. the
+                # wrapped exception carried no text of its own, only the SQL
+                # block) -- the fallback is then the same SQL-stripped
+                # str(exc), never the raw exception, which would still carry
+                # the unstripped block; only when even that is empty does
+                # the raw text get used as a last resort.
+                try:
+                    formatted = _SQL_STATEMENT_BLOCK_RE.sub(
+                        "", _format_execution_error(exc)
+                    ).strip()
+                except Exception:
+                    formatted = ""
+                if not formatted:
+                    formatted = _SQL_STATEMENT_BLOCK_RE.sub("", str(exc)).strip()
+                raise PreflightConnectionError(
+                    f"{SCHEMA_HISTORY_CREATE_ERROR_PREFIX}: {formatted or exc}",
+                    result,
+                ) from exc
         self._populate_database_info(result)
 
     def _run_command_lifecycle(

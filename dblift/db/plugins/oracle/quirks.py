@@ -1,4 +1,4 @@
-"""Oracle :class:`DialectQuirks` — Epic 26."""
+"""Oracle :class:`DialectQuirks`."""
 
 from __future__ import annotations
 
@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Any, Dict, List, Mapping, Optional, Tuple, Typ
 from dblift.db.base_quirks import BaseQuirks, RowLimitClauses
 from dblift.db.error import ErrorCategory
 from dblift.db.feature_gate import FeatureGate
+from dblift.db.object_naming import dictionary_identifier
 
 if TYPE_CHECKING:
     from dblift.core.introspection.version_detector import DatabaseVersion
@@ -329,7 +330,7 @@ class OracleQuirks(BaseQuirks):
             return OracleParser
         return None
 
-    # Story 26-3: Oracle DROP variants — native IF EXISTS (23ai+/19.28+, no
+    # Oracle DROP variants — native IF EXISTS (23ai+/19.28+, no
     # version gate) for every object type, CASCADE CONSTRAINTS for tables.
     # TRIGGER/INDEX handled explicitly so they don't fall through the
     # generic quirks-driven fallback (which would emit a shape keyed on
@@ -456,7 +457,7 @@ class OracleQuirks(BaseQuirks):
             return "SYSTIMESTAMP"
         return text
 
-    # Story 27-2: Oracle identity — GENERATED AS IDENTITY with optional
+    # Oracle identity — GENERATED AS IDENTITY with optional
     # seed/increment from column metadata.
     def render_identity_clause(self, col: object) -> "Optional[str]":
         """Oracle identity: ``GENERATED AS IDENTITY`` with optional ``START WITH/INCREMENT BY``.
@@ -472,10 +473,15 @@ class OracleQuirks(BaseQuirks):
             return f"GENERATED AS IDENTITY (START WITH {seed_str} INCREMENT BY {inc_str})"
         return "GENERATED AS IDENTITY"
 
-    # Story 27-4: Oracle FK reference query uses schema twice.
+    # Oracle FK reference query uses schema twice.
     def fk_reference_bind_params(self, schema: str, table: str, column: str) -> "list[str]":
-        """Oracle's FK lookup query references the schema twice (``r_owner`` and ``owner``)."""
-        return [schema, schema, table, column]
+        """Oracle's FK lookup query references the schema twice (``r_owner`` and ``owner``).
+
+        The schema bind is the catalog spelling. A configured ``"MYSCHEMA"``
+        must not be sent with the quote characters still attached.
+        """
+        catalog_schema = dictionary_identifier(schema, "oracle")
+        return [catalog_schema, catalog_schema, table, column]
 
     def is_internal_sequence(self, sequence: Any) -> bool:
         """Oracle ``IDENTITY`` columns auto-generate backing sequences named
@@ -678,7 +684,7 @@ class OracleQuirks(BaseQuirks):
         REPLACE PACKAGE`` blocks); anything still missing is fetched
         from ``ALL_SOURCE``."""
         for package in packages:
-            schema_key = (schema or "").upper()
+            schema_key = dictionary_identifier(schema or "", "oracle")
             cache_key = (schema_key, (package.name or "").upper())
             cached_spec = extractor._oracle_package_specs.get(cache_key)
             if cached_spec:
@@ -724,7 +730,8 @@ class OracleQuirks(BaseQuirks):
                 AND table_name = :2
                 AND column_name = :3
         """
-        return (sql, [schema, table, col])
+        catalog_schema = dictionary_identifier(schema, "oracle")
+        return (sql, [catalog_schema, table, col])
 
     def type_equivalents(self) -> "dict[str, str]":
         """Oracle alias → canonical type map.

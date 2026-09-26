@@ -11,6 +11,7 @@ from importlib import import_module
 from typing import Any, Dict, List, Optional, Tuple
 
 from dblift.cli.db_utils import setup_db_utils_parser
+from dblift.core.constants import DBLIFT_SCHEMA_SNAPSHOTS_TABLE, DEFAULT_HISTORY_TABLE
 
 
 def _native_dialect_choices() -> List[str]:
@@ -101,7 +102,7 @@ def _make_history_table_parent() -> argparse.ArgumentParser:
     p.add_argument(
         "--table",
         dest="table_name",
-        help="Custom schema history table name (default: dblift_schema_history)",
+        help=f"Custom schema history table name (default: {DEFAULT_HISTORY_TABLE})",
     )
     return p
 
@@ -175,7 +176,7 @@ def _make_snapshot_table_parent() -> argparse.ArgumentParser:
     p.add_argument(
         "--snapshot-table",
         dest="snapshot_table",
-        help="Custom schema snapshot table name (default: dblift_schema_snapshots)",
+        help=f"Custom schema snapshot table name (default: {DBLIFT_SCHEMA_SNAPSHOTS_TABLE})",
     )
     return p
 
@@ -444,7 +445,7 @@ def create_parser(
             "migrations.recursive=false in YAML or pass --no-recursive to opt out."
         ),
     )
-    # Batch-5 BUG-02: allow CLI override of recursive scan for --scripts. A
+    # Allow CLI override of recursive scan for --scripts. A
     # ``None`` default means "defer to config"; explicit ``--recursive`` /
     # ``--no-recursive`` win over the config value and the hard-coded default.
     recursive_group = parser.add_mutually_exclusive_group()
