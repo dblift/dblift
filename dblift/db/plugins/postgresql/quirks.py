@@ -241,6 +241,8 @@ class PostgresqlQuirks(BaseQuirks):
         boolean-coerced columns."""
         from dblift.core.utils.row_access import get_row_value
 
+        if get_row_value(row, "security_barrier"):
+            view.set_dialect_option("postgresql", "security_barrier", True)
         security_definer = get_row_value(row, "security_definer")
         security_invoker = get_row_value(row, "security_invoker")
         if security_definer is not None:

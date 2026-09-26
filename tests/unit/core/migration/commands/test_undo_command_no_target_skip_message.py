@@ -128,16 +128,25 @@ def test_no_target_version_skips_past_undone_version_without_message():
 
 
 @pytest.mark.unit
-def test_explicit_target_version_still_logs_message_for_already_undone():
-    """Sanity check: the explicit --target-version path (which routes through
-    should_undo_version) keeps producing its message -- only the no-target
-    auto-scan above became silent."""
+def test_target_version_skips_undone_versions_and_continues_to_older_applied():
+    v1 = _make_migration(1, installed_rank=1)
+    v2 = _make_migration(2, installed_rank=2)
+    u2 = _make_migration(2, mtype=MigrationType.UNDO_SQL, installed_rank=3)
+    cmd = _make_command(
+        [v1, v2, u2],
+        migration_rules=MigrationRules(MagicMock()),
+        undo_scripts=[_make_undo_script(1)],
+    )
+    result = cmd.execute(scripts_dir=MagicMock(), target_version=0)
+    assert not result.error_message
+    assert [m.version for m in result.undone_migrations] == ["1"]
+
+
+@pytest.mark.unit
+def test_target_version_succeeds_when_all_candidates_already_undone():
     v2 = _make_migration(2, installed_rank=1)
     u2 = _make_migration(2, mtype=MigrationType.UNDO_SQL, installed_rank=2)
-
-    migration_rules = MigrationRules(MagicMock())
-    cmd = _make_command([v2, u2], migration_rules=migration_rules)
+    cmd = _make_command([v2, u2], migration_rules=MigrationRules(MagicMock()))
     result = cmd.execute(scripts_dir=MagicMock(), target_version=1)
-
-    assert result.error_message
-    assert "already been undone" in result.error_message
+    assert not result.error_message
+    assert result.undone_migrations == []
