@@ -177,6 +177,17 @@ def test_call_tool_info_accepts_a_list_for_tags(project):
 
 
 @pytest.mark.unit
+def test_call_tool_migrate_dry_run_rejects_an_unknown_argument(project):
+    async def scenario(client):
+        return await client.call_tool("migrate_dry_run", {"bogus": 1, "target_version": "1"})
+
+    result = anyio.run(_session, scenario)
+
+    assert result.is_error is True
+    assert "bogus" in result.content[0].text
+
+
+@pytest.mark.unit
 def test_info_and_history_resource_agree(project):
     async def scenario(client):
         info = await client.call_tool("info", {})

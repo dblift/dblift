@@ -158,6 +158,37 @@ def test_invocation_error_becomes_is_error_result_with_message():
 
 
 @pytest.mark.unit
+def test_unknown_argument_is_rejected_naming_the_key():
+    server = _server()
+    server.command_tool(
+        name="t", command="info", description="d", fn=lambda *, v: ["--versions", v]
+    )
+
+    async def scenario(client):
+        return await client.call_tool("t", {"v": "1", "bogus": 2})
+
+    result = anyio.run(_with_client, server, scenario)
+
+    assert result.is_error is True
+    assert "bogus" in result.content[0].text
+
+
+@pytest.mark.unit
+def test_input_schema_forbids_additional_properties():
+    server = _server()
+    server.command_tool(
+        name="t", command="info", description="d", fn=lambda *, v: ["--versions", v]
+    )
+
+    async def scenario(client):
+        return await client.list_tools()
+
+    tools = anyio.run(_with_client, server, scenario).tools
+    (tool,) = tools
+    assert tool.input_schema.get("additionalProperties") is False
+
+
+@pytest.mark.unit
 def test_duplicate_tool_name_is_rejected():
     server = _server()
     server.command_tool(name="t", command="info", description="d", fn=lambda: [])

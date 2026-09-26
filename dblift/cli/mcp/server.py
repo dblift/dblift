@@ -34,6 +34,7 @@ from __future__ import annotations
 import inspect
 import logging
 from typing import (
+    TYPE_CHECKING,
     Any,
     Callable,
     Dict,
@@ -51,6 +52,9 @@ import dblift
 from dblift.cli.mcp.registry import load_mcp_tool_registrars
 from dblift.cli.mcp.runner import JSON_FORMAT_ARGV, CommandInvocationError, run_command
 from dblift.core.seams.feature_loading import load_feature_extensions
+
+if TYPE_CHECKING:  # the `mcp` extra is optional at runtime; only needed for type-checking
+    from mcp.server.mcpserver import MCPServer
 
 SDK_HINT = 'The MCP server needs the "mcp" package. Install it with: pip install "dblift[mcp]"'
 
@@ -168,6 +172,34 @@ def _resolved_hints(func: Callable[..., Any]) -> Dict[str, Any]:
         return dict(get_type_hints(func, include_extras=True))
     except Exception:
         return dict(getattr(func, "__annotations__", {}))
+
+
+def _forbid_unknown_arguments(mcpserver: "MCPServer", name: str) -> None:
+    """Make the just-registered tool ``name`` reject a call with an unknown argument.
+
+    The SDK builds each tool's argument model with ``create_model(..., __base__=ArgModelBase)``
+    (``mcp.server.mcpserver.utilities.func_metadata``), and ``ArgModelBase`` does not set
+    ``extra="forbid"`` — pydantic's default is ``"ignore"`` — so an unrecognised key is silently
+    dropped instead of failing validation. There is no parameter on ``MCPServer.add_tool`` to ask
+    for a stricter model, so this reaches into the tool the SDK already built and swaps in a
+    subclass that does forbid extras; pydantic accepts a narrower ``__config__`` on a subclass
+    without redeclaring its fields, and the tool's published ``parameters`` schema is regenerated
+    from that subclass, so ``additionalProperties: false`` reaches ``tools/list`` too. Both
+    ``fn_metadata.arg_model`` (what ``Tool.run`` validates a call's arguments against) and
+    ``parameters`` (what ``tools/list`` publishes) are attributes on the SDK's already-constructed
+    ``Tool``, not something ``add_tool`` lets a caller pass in, hence reading ``_tool_manager``
+    directly instead of a public accessor.
+    """
+    from pydantic import ConfigDict, create_model
+
+    tool = mcpserver._tool_manager.get_tool(name)
+    assert tool is not None, f"just-registered MCP tool {name!r} is missing from the tool manager"
+    arg_model = tool.fn_metadata.arg_model
+    strict_arg_model = create_model(
+        arg_model.__name__, __base__=arg_model, __config__=ConfigDict(extra="forbid")
+    )
+    tool.fn_metadata.arg_model = strict_arg_model
+    tool.parameters = strict_arg_model.model_json_schema(by_alias=True)
 
 
 class DbliftMcpServer:
@@ -490,6 +522,7 @@ class DbliftMcpServer:
             annotations=self._annotations(read_only, destructive),
             structured_output=True,
         )
+        _forbid_unknown_arguments(self.mcpserver, name)
         self._offered.add(name)
         self._names.append(name)
         if connects:

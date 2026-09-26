@@ -20,6 +20,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Narrow and dumb terminals retain the migration table's Description column.
 - PostgreSQL view extraction retains the `security_barrier` option supplied by catalog queries.
 - Integration tests skip unavailable snapshot and vendor introspection capabilities before starting database fixtures. PR formatting checks cover `packages/`, and pytest-dblift tests run with deprecation warnings treated as errors.
+- `dblift mcp` tools reject a call carrying an unknown argument name instead of silently dropping it; the input schema published in `tools/list` also marks unrecognised properties as invalid.
 
 ### Removed
 
