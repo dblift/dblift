@@ -561,8 +561,9 @@ class TestValidateResolvedMigrations(unittest.TestCase):
         s1 = self._sql_script()
         sm.has_script_changed.return_value = False
         result = v.validate_resolved_migrations([s1])
-        # Should succeed (error is swallowed into applied_migrations=[])
-        self.assertTrue(result.success)
+        # An unreadable history must not validate against an empty history
+        self.assertFalse(result.success)
+        self.assertIn("could not read migration history: boom", result.error_message)
 
     def test_strict_mode_enabled_calls_validate_strict(self):
         v, sm, hm, _ = _make_validator()

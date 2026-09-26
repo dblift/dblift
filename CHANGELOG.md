@@ -22,6 +22,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Migration state timestamps use timezone-aware UTC without Python 3.12 deprecation warnings, retaining the existing `Z` format.
 - A null schema leaves `${dblift_schema}` undefined: it is preserved with a warning, or uses its explicit `${dblift_schema:default}` value. Oracle and other configured schema expansions are unchanged.
 - `import-flyway` keeps failed Flyway rows failed when a hand-built Flyway table stores `success` as text such as `'0'` or `'false'`. MySQL and SQLite previously imported those rows as successful, and Oracle and DB2 failed to read a `'false'` value.
+- `validate` fails when the schema history table cannot be read, with or without `--strict`, instead of reporting success. The CLI exits non-zero, `--format json` and the MCP `validate` tool return `success: false`, and `DBLiftClient.validate()` returns a failed result whose error names the history read failure, matching `info` and `undo`.
 - Narrow and dumb terminals retain the migration table's Description column.
 - PostgreSQL view extraction retains the `security_barrier` option supplied by catalog queries.
 - Integration tests skip unavailable snapshot and vendor introspection capabilities before starting database fixtures. PR formatting checks cover `packages/`, and pytest-dblift tests run with deprecation warnings treated as errors.

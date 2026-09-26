@@ -337,4 +337,6 @@ def test_strict_empty_catalog_history_failure_remains_a_validation_failure(tmp_p
     )
     result = validator.validate_migrations(tmp_path, resolved_migrations=[])
     assert not result.success
-    assert result.error_message == "Validation failed: history unavailable"
+    assert result.error_message == (
+        "Validation failed: could not read migration history: history unavailable"
+    )

@@ -397,3 +397,27 @@ def test_unreachable_database_is_an_error_for_migrate_dry_run_and_pending(unreac
     assert "ConnectionError: Connection failed" in dry_run.content[0].text
     assert "Migration operation failed" not in dry_run.content[0].text
     assert errors["dblift://pending"] == errors["dblift://history"]
+
+
+@pytest.mark.unit
+def test_validate_fails_when_history_is_unreadable(project):
+    import sqlite3
+
+    from dblift.api import DBLiftClient
+
+    with DBLiftClient.from_config_file("dblift.yaml") as client:
+        assert client.migrate().success
+    connection = sqlite3.connect(project / "t.sqlite")
+    try:
+        connection.execute("ALTER TABLE dblift_schema_history RENAME COLUMN checksum TO renamed")
+        connection.commit()
+    finally:
+        connection.close()
+
+    async def scenario(client):
+        return await client.call_tool("validate", {})
+
+    result = anyio.run(_session, scenario)
+
+    assert result.structured_content["success"] is False
+    assert "could not read migration history" in result.structured_content["error"]
