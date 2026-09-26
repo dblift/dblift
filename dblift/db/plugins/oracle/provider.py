@@ -3,14 +3,15 @@
 import os
 import re
 import time
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Set, Union
 
 from dblift.config import DbliftConfig
 from dblift.core.constants import DEFAULT_HISTORY_TABLE
 from dblift.core.constants import MIGRATION_LOCK_TABLE as _MIGRATION_LOCK_TABLE
+from dblift.core.exceptions import ExecutionError
 from dblift.core.logger import Log
 from dblift.core.migration.clean_summary import CleanExecutionSummary
-from dblift.db.object_naming import get_normalized_object_name
+from dblift.db.object_naming import dictionary_identifier, get_normalized_object_name
 from dblift.db.plugins.base_history_manager import UNDO_HISTORY_TYPE, installed_on_to_bind
 from dblift.db.provider_interfaces import DroppableObject
 from dblift.db.sqlalchemy_provider import SqlAlchemyProvider
@@ -32,11 +33,28 @@ def _oracle_name(name: str) -> str:
 
 
 def _oracle_dictionary_name(name: str) -> str:
-    """Return the Oracle dictionary name for quoted or unquoted identifiers."""
-    clean_name = name.strip()
-    if len(clean_name) >= 2 and clean_name[0] == '"' and clean_name[-1] == '"':
-        return clean_name[1:-1].replace('""', '"')
-    return _oracle_name(clean_name)
+    """Return the Oracle dictionary name for quoted or unquoted identifiers.
+
+    An unquoted name is upper-cased. A double-quoted name keeps the exact
+    text inside the quotes. This is also the normalized key for any cache
+    keyed by schema, so ``myschema`` and ``"MYSCHEMA"`` share a key while
+    ``"myschema"`` does not collide with them.
+    """
+    return dictionary_identifier(name, "oracle")
+
+
+def _legacy_unquoted_schema_message(raw: str) -> str:
+    """Tell the operator to quote a pre-existing non-uppercase schema."""
+    folded = raw.upper()
+    return (
+        f"Oracle schema '{raw}' exists with that exact case. "
+        f"An unquoted schema name is uppercased to '{folded}', "
+        "which would target a different schema and replay every migration. "
+        "Quote the schema name in config to keep the existing schema, "
+        "which is not uppercase. The double quotes are part of the value "
+        f"""(schema: '"{raw}"'). """
+        f"To use the uppercase user instead, set schema to {folded}."
+    )
 
 
 def _schema_object(schema: str, obj: str) -> str:
@@ -98,6 +116,10 @@ class OracleProvider(SqlAlchemyProvider):
     #: configured schema. Class-level default so tests constructing via
     #: ``object.__new__`` still see ``None``.
     _schema_applied_for: Optional[str] = None
+    #: Unquoted spellings the upgrade guard has already found absent from
+    #: ``ALL_USERS``. Instance-level; the class default stays ``None`` so
+    #: providers built without ``__init__`` don't share one set.
+    _legacy_schema_case_checked: Optional[Set[str]] = None
 
     def __init__(self, config: DbliftConfig, log: Optional[Log] = None) -> None:
         """Initialize the native Oracle provider."""
@@ -116,29 +138,85 @@ class OracleProvider(SqlAlchemyProvider):
 
     @staticmethod
     def get_lock_name(schema: str) -> str:
-        """Return the Oracle application-lock name for a schema."""
+        """Return the Oracle application-lock name for a schema.
+
+        Keyed by the dictionary name, not a forced uppercase spelling, so
+        ``myschema`` and ``"MYSCHEMA"`` share a lock while ``"myschema"``
+        does not collide with them.
+        """
         prefix = "DBLIFT_MIG_LOCK_"
         max_schema_len = 30 - len(prefix)
-        return f"{prefix}{_clean_identifier(schema).upper()[:max_schema_len]}"
+        return f"{prefix}{_oracle_dictionary_name(schema)[:max_schema_len]}"
 
     @classmethod
     def get_lock_key(cls, schema: str) -> str:
         """Return the in-memory key used for lock handles."""
         return cls.get_lock_name(schema)
 
-    def _ensure_schema_ready(self, schema: Optional[str]) -> None:
-        """Ensure Oracle schema/user exists when possible and set it current."""
+    def _legacy_schema_spellings_checked(self) -> Set[str]:
+        """Spellings already confirmed safe by the unquoted-schema upgrade guard."""
+        checked = self._legacy_schema_case_checked
+        if checked is None:
+            checked = set()
+            self._legacy_schema_case_checked = checked
+        return checked
+
+    def _guard_unquoted_existing_schema(self, schema: Optional[str]) -> None:
+        """Stop before using an unquoted name that would abandon a real user.
+
+        4.8.0 used the configured schema verbatim. An unquoted name that is
+        not already uppercase is now folded to uppercase, so a 4.8.0 user
+        whose Oracle user really is lowercase would get a new empty schema
+        and a full replay. When ``ALL_USERS`` contains that exact
+        case-sensitive name, refuse before any object or history row is
+        created and tell the operator to quote the schema in config.
+
+        A double-quoted name is the opt-in that keeps the existing case, so
+        it never trips this guard. A name that is already uppercase matches
+        what Oracle stores for an unquoted identifier and is left alone.
+        """
         if not schema:
             return
-        clean_schema = _clean_identifier(schema)
-        if clean_schema.upper() in ("SYS", "SYSTEM"):
+        raw = schema.strip()
+        if len(raw) >= 2 and raw[0] == '"' and raw[-1] == '"':
+            return
+        if raw == raw.upper():
+            return
+        checked = self._legacy_schema_spellings_checked()
+        if raw in checked:
+            return
+        rows = self.execute_query(
+            "SELECT USERNAME AS username FROM ALL_USERS WHERE USERNAME = ?",
+            [raw],
+        )
+        for row in rows:
+            if str(_row_value(row, "username", default="")) == raw:
+                raise ExecutionError(_legacy_unquoted_schema_message(raw))
+        checked.add(raw)
+
+    def _ensure_schema_ready(self, schema: Optional[str]) -> None:
+        """Ensure Oracle schema/user exists when possible and set it current.
+
+        The original spelling is passed through, quotes included. Stripping
+        quotes here would turn a double-quoted schema into an unquoted name
+        and uppercase it, so ``"myschema"`` would create ``MYSCHEMA``.
+        """
+        if not schema:
+            return
+        self._guard_unquoted_existing_schema(schema)
+        dictionary_name = _oracle_dictionary_name(schema)
+        if dictionary_name.upper() in ("SYS", "SYSTEM"):
             return
         try:
-            self.create_schema_if_not_exists(clean_schema)
+            self.create_schema_if_not_exists(schema)
+        except ExecutionError:
+            raise
         except Exception as e:
             self.log.debug(f"Oracle: could not create schema {schema} (non-fatal): {e}")
         try:
-            self.set_current_schema(clean_schema)
+            self.set_current_schema(schema)
+        except ExecutionError:
+            raise
         except Exception as e:
             self.log.warning(f"Oracle: could not set current schema to {schema}: {e}")
 
@@ -179,6 +257,7 @@ class OracleProvider(SqlAlchemyProvider):
         lowercase config value creates (and finds) the same uppercase user
         ``set_current_schema`` connects the session as.
         """
+        self._guard_unquoted_existing_schema(schema)
         clean_schema = _oracle_dictionary_name(schema)
         rows = self.execute_query(
             "SELECT COUNT(*) AS user_count FROM ALL_USERS WHERE username = ?",
@@ -218,10 +297,10 @@ class OracleProvider(SqlAlchemyProvider):
                 )
 
         configured_user = getattr(getattr(self.config, "database", None), "username", None)
-        if (
-            configured_user
-            and _clean_identifier(str(configured_user)).upper() == clean_schema.upper()
-        ):
+        # Catalog spelling, not a case-folded compare: login MYSCHEMA is a
+        # different user from the quoted schema "myschema", and that user
+        # still needs the grants.
+        if configured_user and _oracle_dictionary_name(str(configured_user)) == clean_schema:
             return
 
         grant_statements = [
@@ -251,7 +330,9 @@ class OracleProvider(SqlAlchemyProvider):
 
         A no-op once this session already has *schema* applied, so an
         ``ALTER SESSION SET CURRENT_SCHEMA`` the migration itself runs later
-        is not immediately reset back — see ``_schema_applied_for``.
+        is not immediately reset back — see ``_schema_applied_for``. The
+        cache stores the dictionary name, so ``myschema`` and ``"MYSCHEMA"``
+        are one entry and ``"myschema"`` is a different one.
 
         The name is normalized with :func:`_oracle_dictionary_name`, as
         object names are: an unquoted name is upper-cased (Oracle uppercases
@@ -262,12 +343,14 @@ class OracleProvider(SqlAlchemyProvider):
         preserved verbatim. Matches the normalization
         ``create_schema_if_not_exists`` and the catalog lookups now use.
         """
-        if self._schema_applied_for == schema:
+        self._guard_unquoted_existing_schema(schema)
+        # Cache the dictionary name, not the raw spelling, so ``myschema``
+        # and ``"MYSCHEMA"`` are one session schema and ``"myschema"`` is not.
+        cache_key = _oracle_dictionary_name(schema)
+        if self._schema_applied_for == cache_key:
             return
-        self.execute_statement(
-            f"ALTER SESSION SET CURRENT_SCHEMA = {_q(_oracle_dictionary_name(schema))}"
-        )
-        self._schema_applied_for = schema
+        self.execute_statement(f"ALTER SESSION SET CURRENT_SCHEMA = {_q(cache_key)}")
+        self._schema_applied_for = cache_key
 
     def table_exists(self, schema: str, table_name: str) -> bool:
         """Return whether a table exists in the given Oracle schema."""
@@ -363,6 +446,7 @@ class OracleProvider(SqlAlchemyProvider):
 
     def create_migration_lock_table_if_not_exists(self, schema: str) -> None:
         """Create the fallback Oracle migration lock table if missing."""
+        self._guard_unquoted_existing_schema(schema)
         self.create_schema_if_not_exists(schema)
         table = self.MIGRATION_LOCK_TABLE
         if self.table_exists(schema, table):
@@ -502,6 +586,9 @@ class OracleProvider(SqlAlchemyProvider):
         table_name: str = DEFAULT_HISTORY_TABLE,
     ) -> None:
         """Create the Oracle migration history table if missing."""
+        # Before the existence check: an uppercase history table left by a
+        # partial run must not count as "already there" and skip the guard.
+        self._guard_unquoted_existing_schema(schema)
         if create_schema:
             self.create_schema_if_not_exists(schema)
         table = _oracle_name(table_name)
@@ -562,7 +649,14 @@ class OracleProvider(SqlAlchemyProvider):
     def get_applied_migrations(
         self, schema: str, table_name: Optional[str] = None
     ) -> List[Dict[str, Any]]:
-        """Return applied Oracle migration rows with normalized keys."""
+        """Return applied Oracle migration rows with normalized keys.
+
+        ``migrate --dry-run`` skips history-table creation and reads applied
+        rows through this method. The upgrade guard has to run here too, or
+        an unquoted lowercase schema looks empty under the uppercase name
+        and every migration is reported pending.
+        """
+        self._guard_unquoted_existing_schema(schema)
         raw_table = table_name or DEFAULT_HISTORY_TABLE
         table = _oracle_name(raw_table)
         if not self.table_exists(schema, table):
@@ -675,6 +769,7 @@ class OracleProvider(SqlAlchemyProvider):
     def _clean_schema(self, schema: str, execute: bool) -> CleanExecutionSummary:
         """Shared Oracle clean implementation for execution and preview."""
         summary = CleanExecutionSummary()
+        self._guard_unquoted_existing_schema(schema)
         clean_schema = _oracle_dictionary_name(schema)
 
         try:
