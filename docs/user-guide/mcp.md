@@ -15,6 +15,10 @@ Claude Code — `.mcp.json` at the project root:
 { "mcpServers": { "dblift": { "command": "dblift", "args": ["mcp"] } } }
 ```
 
+Tool arguments must match the names advertised by `tools/list`. Unknown names
+return an error before the command runs; for example, use `target_version`, not
+`target`, with `migrate_dry_run`. Omitted optional arguments keep their defaults.
+
 Root flags go before `mcp` and apply to every tool call:
 `"args": ["--config", "config/dblift.yaml", "--env", "dev", "mcp"]`.
 

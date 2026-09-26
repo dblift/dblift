@@ -32,6 +32,7 @@ from dblift.core.migration.placeholders.placeholder_service import PlaceholderSe
 from dblift.core.migration.sql.execution_statement import (
     ExecutionStatement,
     classify_execution_statement,
+    is_comment_only_statement,
 )
 from dblift.core.migration.sql.migration_sql_parser import (
     fallback_migration_sql,
@@ -126,21 +127,8 @@ class ExecutionEngine:
             placeholder_service=placeholder_service,
         )
 
-    @staticmethod
-    def _is_comment_only_statement(sql: str) -> bool:
-        """True if *sql* has no executable tokens after removing block and line comments.
-
-        MySQL/MariaDB executable comment directives (``/*!...*/``, ``/*M!...*/``) are not
-        comments the server skips — it runs their contents — so they are excluded from the
-        strip and never count as "comment only".
-        """
-
-        body = sql.strip()
-        if not body:
-            return True
-        body = re.sub(r"/\*(?!!|M!).*?\*/", "", body, flags=re.DOTALL)
-        body = re.sub(r"--.*?$", "", body, flags=re.MULTILINE)
-        return not body.strip()
+    # Compatibility alias; script tooling and the engine share one implementation.
+    _is_comment_only_statement = staticmethod(is_comment_only_statement)
 
     def execute_migration(self, migration: Migration, result: OperationResult) -> None:
         """Execute a single migration.
