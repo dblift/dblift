@@ -1,8 +1,7 @@
 """${dblift_schema} expands to the Oracle catalog spelling, quotes removed.
 
 Unquoted ``myschema`` becomes ``MYSCHEMA``. Quoted ``"myschema"`` stays
-``myschema``. Other dialects keep the configured text. A null schema stays
-``None``.
+``myschema``. Other dialects keep the configured text. A null schema leaves the placeholder undefined.
 """
 
 import pytest
@@ -64,6 +63,8 @@ def test_non_oracle_schema_placeholder_is_unchanged():
     assert values["dblift_schema"] == "MySchema"
 
 
-def test_null_schema_placeholder_is_none():
+def test_null_schema_placeholder_is_undefined():
     values = _oracle(None)
-    assert values["dblift_schema"] is None
+    assert "dblift_schema" not in values
+    assert _replace(values, "${dblift_schema}.t") == "${dblift_schema}.t"
+    assert _replace(values, "${dblift_schema:fallback}.t") == "fallback.t"

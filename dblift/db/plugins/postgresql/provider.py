@@ -278,7 +278,11 @@ class PostgreSqlProvider(SqlAlchemyProvider):
     def record_migration(
         self, schema: str, migration_info: Dict[str, Any], table_name: str = DEFAULT_HISTORY_TABLE
     ) -> None:
-        """Insert a migration record into the history table."""
+        """Insert a migration record under the caller's migration lock.
+
+        Preserve existing rank defaults and identities. Flyway tables have
+        neither, so allocate their next rank from history under the lock.
+        """
         self.create_migration_history_table_if_not_exists(schema, table_name=table_name)
         installed_on = installed_on_to_bind(migration_info.get("installed_on"))
         installed_on_column = ", installed_on" if installed_on is not None else ""
@@ -295,11 +299,26 @@ class PostgreSqlProvider(SqlAlchemyProvider):
         ]
         if installed_on is not None:
             params.append(installed_on)
+        qualified_table = self.get_schema_qualified_name(schema, table_name)
+        rank_metadata = self.execute_query(
+            "SELECT (atthasdef OR attidentity <> '') AS has_rank_default "
+            "FROM pg_catalog.pg_attribute "
+            "WHERE attrelid = to_regclass(?) AND attname = 'installed_rank' "
+            "AND NOT attisdropped",
+            params=[qualified_table],
+        )
+        has_rank_default = bool(rank_metadata and rank_metadata[0].get("has_rank_default"))
+        rank_column = "" if has_rank_default else ", installed_rank"
+        rank_value = (
+            ""
+            if has_rank_default
+            else f", (SELECT COALESCE(MAX(installed_rank), 0) + 1 FROM {qualified_table})"
+        )
         self.execute_statement(
             f"""
-            INSERT INTO {self.get_schema_qualified_name(schema, table_name)}
-                (version, description, type, script, checksum, installed_by, execution_time, success{installed_on_column})
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?{installed_on_value})
+            INSERT INTO {qualified_table}
+                (version, description, type, script, checksum, installed_by, execution_time, success{installed_on_column}{rank_column})
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?{installed_on_value}{rank_value})
             """,
             params=params,
         )

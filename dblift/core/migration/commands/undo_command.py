@@ -213,8 +213,7 @@ class UndoCommand(BaseCommand):
                     version = str(migration.version)
                     # Auto-scan mode: silently skip candidates that are already
                     # undone instead of routing through should_undo_version(),
-                    # whose "please specify version X" message is meant for the
-                    # explicit --target-version path below, not this scan.
+                    # which reports a refusal for an already-undone version.
                     if self.migration_rules._is_currently_undone(
                         version,
                         applied_migrations,
@@ -234,6 +233,10 @@ class UndoCommand(BaseCommand):
                     if compare_versions(str(migration.version), str(target_version)) <= 0:
                         continue
                     version = str(migration.version)
+                    if self.migration_rules._is_currently_undone(
+                        version, applied_migrations, version_ranks=version_ranks
+                    ):
+                        continue
                     can_undo, message = self.migration_rules.should_undo_version(
                         version,
                         applied_migrations,

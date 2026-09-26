@@ -56,7 +56,6 @@ class PlaceholderManager:
         """
         placeholders = {
             # Default system placeholders with dblift_ prefix.
-            "dblift_schema": _dblift_schema_placeholder(self.config.database),
             "dblift_database": getattr(
                 self.config.database,
                 "database",
@@ -73,6 +72,9 @@ class PlaceholderManager:
                 self.executor.get_installed_by() if self.executor else self.config.database.username
             ),
         }
+        schema = _dblift_schema_placeholder(self.config.database)
+        if schema is not None:
+            placeholders["dblift_schema"] = schema
         # Add user-defined placeholders if present
         if hasattr(self.config, "placeholders") and self.config.placeholders:
             placeholders.update(self.config.placeholders)

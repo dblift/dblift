@@ -30,10 +30,10 @@ jobs:
           python -m pip install -e ".[dev,mcp]"
 
       - name: Check formatting
-        run: black --check --diff dblift/ tests/ scripts/
+        run: black --check --diff dblift/ tests/ scripts/ packages/
 
       - name: Check imports
-        run: isort --check --diff dblift/ tests/ scripts/
+        run: isort --check --diff dblift/ tests/ scripts/ packages/
 
       # tests/ and scripts/ are excluded in .flake8 (legacy volume) — see the
       # note there. Mirrors scripts/check_code_quality.sh.
