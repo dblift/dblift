@@ -161,6 +161,60 @@ def _ensure_sqlserver_app_login(host: str, port: int) -> None:
             cursor.execute(statement)
     finally:
         conn.close()
+    _ensure_sqlserver_interference_login(host, port)
+
+
+def _ensure_sqlserver_interference_login(host: str, port: int) -> None:
+    """Create the ``dblift_test`` login and database used by the shared-login tests.
+
+    Idempotent. The login is not a sysadmin and is not the database owner, so
+    ``ALTER USER ... WITH DEFAULT_SCHEMA`` succeeds. Those tests connect as
+    this login rather than ``sa``.
+    """
+    import pymssql
+
+    login = "dblift_test"
+    password = "Dblift_Test1!"
+    database = "dblift_test"
+    master = pymssql.connect(
+        server=host,
+        port=int(port),
+        user="sa",
+        password=_SQLSERVER_SA_PASSWORD,
+        database="master",
+        autocommit=True,
+    )
+    try:
+        cursor = master.cursor()
+        cursor.execute(
+            f"IF NOT EXISTS (SELECT 1 FROM sys.server_principals WHERE name = N'{login}') "
+            f"CREATE LOGIN [{login}] WITH PASSWORD = N'{password}', "
+            "CHECK_POLICY = OFF, CHECK_EXPIRATION = OFF"
+        )
+        cursor.execute(f"IF DB_ID(N'{database}') IS NULL CREATE DATABASE [{database}]")
+    finally:
+        master.close()
+
+    conn = pymssql.connect(
+        server=host,
+        port=int(port),
+        user="sa",
+        password=_SQLSERVER_SA_PASSWORD,
+        database=database,
+        autocommit=True,
+    )
+    try:
+        cursor = conn.cursor()
+        cursor.execute(
+            f"IF NOT EXISTS (SELECT 1 FROM sys.database_principals WHERE name = N'{login}') "
+            f"CREATE USER [{login}] FOR LOGIN [{login}]"
+        )
+        cursor.execute(
+            f"IF IS_ROLEMEMBER('db_owner', N'{login}') <> 1 "
+            f"ALTER ROLE db_owner ADD MEMBER [{login}]"
+        )
+    finally:
+        conn.close()
 
 
 def _published_host_port(container: Any, container_port: str) -> int | None:

@@ -96,22 +96,38 @@ class TestCleanCommandEnsureConnectionLogging:
         debug_calls = [str(c) for c in log.debug.call_args_list]
         assert not any("_ensure_connection skipped" in c for c in debug_calls)
 
-    def test_set_current_schema_execution_error_fails_clean(self):
-        """The opt-in dbo guard raises ExecutionError and must fail clean.
+    def test_set_current_schema_fixed_dbo_error_fails_clean(self):
+        """The opt-in dbo guard raises FixedDboSchemaError and must fail clean.
 
         Other set_current_schema failures stay non-fatal. This one is the
         configured fail-fast path and must stop before any drop runs.
         """
-        from dblift.core.exceptions import ExecutionError
+        from dblift.core.exceptions import FixedDboSchemaError
 
         cmd, provider, _log = self._make_command()
-        provider.set_current_schema.side_effect = ExecutionError("dbo cannot change schema")
+        provider.set_current_schema.side_effect = FixedDboSchemaError("dbo cannot change schema")
 
         result = cmd.execute()
 
         assert result.success is False
         assert "dbo cannot change schema" in (result.error_message or "")
         provider.list_droppable_objects.assert_not_called()
+
+    def test_set_current_schema_execution_error_stays_nonfatal(self):
+        """A plain ExecutionError from set_current_schema does not fail clean."""
+        from dblift.core.exceptions import ExecutionError
+
+        cmd, provider, log = self._make_command()
+        provider.set_current_schema.side_effect = ExecutionError("schema write failed")
+        provider.list_droppable_objects.return_value = []
+
+        result = cmd.execute()
+
+        assert result.success is True
+        assert "schema write failed" not in (result.error_message or "")
+        provider.list_droppable_objects.assert_called()
+        debug_calls = [str(c) for c in log.debug.call_args_list]
+        assert any("set_current_schema skipped" in c for c in debug_calls)
 
     def test_set_current_schema_success_no_debug_log(self):
         """set_current_schema succeeds → no 'set_current_schema skipped' debug log."""

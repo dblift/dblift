@@ -36,6 +36,15 @@ class ExecutionError(DbliftError):
     """Base exception for migration execution errors."""
 
 
+class FixedDboSchemaError(ExecutionError):
+    """A SQL Server login mapped to ``dbo`` cannot honor the configured schema.
+
+    Raised only when ``fail_on_fixed_dbo`` is set. ``set_current_schema``
+    raises it before any migration or callback statement executes, so no
+    history row is written.
+    """
+
+
 class TransactionAbortedError(ExecutionError):
     """Raised when a database transaction is in an aborted state."""
 

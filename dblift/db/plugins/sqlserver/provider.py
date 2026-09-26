@@ -6,7 +6,7 @@ from typing import Any, Dict, List, Optional
 from dblift.config import DbliftConfig
 from dblift.core.constants import DEFAULT_HISTORY_TABLE
 from dblift.core.constants import MIGRATION_LOCK_TABLE as _MIGRATION_LOCK_TABLE
-from dblift.core.exceptions import ExecutionError
+from dblift.core.exceptions import ExecutionError, FixedDboSchemaError
 from dblift.core.logger import Log
 from dblift.core.migration.clean_summary import CleanExecutionSummary
 from dblift.core.migration.sql.execution_statement import classify_execution_statement
@@ -170,7 +170,7 @@ class SqlServerProvider(SqlAlchemyProvider):
 
         One login can never do this at all: ``dbo``, whose DEFAULT_SCHEMA
         SQL Server refuses to change. The default warns and continues
-        (4.8.0); ``fail_on_fixed_dbo`` fails the run instead.
+        (same outcome as 4.8.0); ``fail_on_fixed_dbo`` fails the run instead.
         """
         try:
             rows = self.execute_query(
@@ -183,24 +183,21 @@ class SqlServerProvider(SqlAlchemyProvider):
 
             catalog_schema = rows[0].get("default_schema") if rows else None
 
-            # 'dbo' (principal_id 1) cannot change DEFAULT_SCHEMA: ALTER USER
-            # raises error 15150. sa, sysadmin, and the database owner map to
-            # it. Default matches 4.8.0: warn once and continue, so unqualified
-            # objects land in dbo. fail_on_fixed_dbo stops the run first.
-            # Identifiers are case-insensitive; 'DBO' is still dbo.
-            if (
-                current_user == "dbo"
-                and catalog_schema is not None
-                and schema.lower() != catalog_schema.lower()
-            ):
+            # 'dbo' cannot change DEFAULT_SCHEMA (error 15150). sa, sysadmin,
+            # and the database owner map to it. A case-insensitive match is
+            # already dbo, so skip ALTER USER. A mismatch warns once (same
+            # outcome as 4.8.0) or raises FixedDboSchemaError.
+            if current_user == "dbo" and catalog_schema is not None:
+                if schema.lower() == catalog_schema.lower():
+                    self._schema_applied_for = schema
+                    return
                 message = (
                     f"SQL Server login '{current_user}' maps to the fixed 'dbo' "
                     f"database user, whose default schema cannot be changed, so "
                     f"unqualified objects cannot be created in schema '{schema}'. "
                     f"Connect with a login mapped to a non-'dbo' database user."
                 )
-                # object.__new__ providers in unit tests have no config; that
-                # is the default (warn and continue).
+                # object.__new__ providers in unit tests have no config.
                 try:
                     database = self.config.database
                 except AttributeError:
@@ -208,12 +205,11 @@ class SqlServerProvider(SqlAlchemyProvider):
                 else:
                     fail_fast = isinstance(database, SqlServerConfig) and database.fail_on_fixed_dbo
                 if fail_fast:
-                    raise ExecutionError(
+                    raise FixedDboSchemaError(
                         f"{message} fail_on_fixed_dbo is enabled, so the run "
-                        f"stops before any migration statement executes."
+                        f"stops before any migration or callback statement "
+                        f"executes; no history row is written."
                     )
-                # Once per schema until reset_schema_cache() at the next
-                # migration boundary.
                 if self._schema_applied_for != schema:
                     self.log.warning(
                         f"{message} Unqualified objects will be created in "
