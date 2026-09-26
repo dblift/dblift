@@ -148,6 +148,7 @@ class TestValidateHistoryTableClient:
         assert "ConnectionError" in text
         assert "the next major release" in text
         assert "Deprecated since 4.9.0" in text
+        assert deprecations[0].filename == __file__
 
     @pytest.mark.filterwarnings("error::DeprecationWarning")
     def test_direct_validate_raises_when_deprecation_warnings_are_errors(self):

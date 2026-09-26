@@ -4,6 +4,8 @@ pytest plugin for [DBLift](https://github.com/dblift/dblift). It applies your mi
 
 This is a **separate PyPI package**, not `dblift[pytest]`.
 
+pytest-dblift 0.2.0 requires dblift 4.9.0 or later. `dblift_validate` calls `DBLiftClient.validate` in a way that dblift 4.8.0 does not accept.
+
 ## Install
 
 SQLite (default, stdlib driver):

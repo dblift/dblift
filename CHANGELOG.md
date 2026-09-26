@@ -39,7 +39,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `validate` now stops the way `info` does when dblift's schema-history table
   cannot be created (a role without `CREATE`, a connection lost at that
   step): `Could not create the schema-history table: <engine message>`,
-  instead of going on to validate scripts.
+  instead of returning a validation result with `error_count: 1`.
   `--format json` consumers get `{"success": false, "error": "..."}`, and
   `dblift mcp` returns an error result. The same wording now replaces
   `Connection failed: ...` for `info`, `migrate`, `undo` and `baseline` at
