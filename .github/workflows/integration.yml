@@ -1,0 +1,214 @@
+name: Integration
+
+# One pull_request block cannot OR a branch filter with a path filter
+# (GitHub ANDs them). Trigger on every pull request, then let the gate job
+# run the expensive jobs only for:
+#   - workflow_dispatch
+#   - a pull request whose base is main (the develop-to-main release PR)
+#   - any other pull request that changes this file (so the change is tested
+#     on the pull request that introduces it)
+on:
+  workflow_dispatch:
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  gate:
+    name: gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      run: ${{ steps.decide.outputs.run }}
+    steps:
+      - name: Decide whether to run the database jobs
+        id: decide
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_REF: ${{ github.base_ref }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          echo "event=${EVENT_NAME} base=${BASE_REF}"
+          if [ "$EVENT_NAME" = "workflow_dispatch" ] || [ "$BASE_REF" = "main" ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          files=$(gh api --paginate "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}/files" --jq '.[].filename')
+          if printf '%s\n' "$files" | grep -qx '.github/workflows/integration.yml'; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  docker-build:
+    name: docker-build
+    needs: gate
+    if: needs.gate.outputs.run == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Build image
+        run: docker build -t dblift:ci .
+
+      - name: Smoke-run the image
+        run: docker run --rm dblift:ci --version
+
+  integration:
+    name: ${{ matrix.engine }}
+    needs: gate
+    if: needs.gate.outputs.run == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 150
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - engine: postgresql
+            service: postgresql
+            container: dblift_postgres
+            extra: postgresql
+            health_timeout: 180
+          - engine: mysql
+            service: mysql
+            container: dblift_mysql
+            extra: mysql
+            health_timeout: 240
+          - engine: sqlserver
+            service: sqlserver
+            container: dblift_sqlserver
+            extra: sqlserver
+            health_timeout: 420
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install package and database driver
+        env:
+          PIP_CONSTRAINT: constraints-ci.txt
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev,${{ matrix.extra }}]"
+
+      - name: Start database
+        working-directory: tests/integration
+        run: |
+          set -euo pipefail
+          # Pass the base file only. docker-compose.override.yml republishes
+          # MySQL on host port 3307 for local ARM machines; the suite expects 3306.
+          docker compose -f docker-compose.yml up -d ${{ matrix.service }}
+
+      - name: Wait for database health
+        run: |
+          set -euo pipefail
+          name="${{ matrix.container }}"
+          deadline=$((SECONDS + ${{ matrix.health_timeout }}))
+          while true; do
+            status=$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' "$name" 2>/dev/null || echo missing)
+            echo "container=${name} health=${status} elapsed=${SECONDS}s"
+            if [ "$status" = "healthy" ]; then
+              exit 0
+            fi
+            if [ "$status" = "exited" ] || [ "$status" = "dead" ]; then
+              echo "container ${name} stopped before it became healthy"
+              docker logs --tail 100 "$name" || true
+              exit 1
+            fi
+            if [ "$SECONDS" -ge "$deadline" ]; then
+              echo "timed out waiting for ${name} to become healthy"
+              docker logs --tail 100 "$name" || true
+              exit 1
+            fi
+            sleep 10
+          done
+
+      - name: Run integration tests
+        env:
+          ENGINE: ${{ matrix.engine }}
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          mkdir -p reports
+          common=(-p no:benchmark --tb=short --timeout=600 -ra)
+          shared=(
+            tests/integration/commands
+            tests/integration/concurrency/test_concurrent_migrations.py
+            tests/integration/db/test_introspection_integration.py
+          )
+          case "$ENGINE" in
+            postgresql)
+              # Engine-named modules, the postgresql marker
+              # (matrix/test_schema_sql_fanout.py), and suites that open a
+              # PostgreSQL connection through postgresql_container or a
+              # localhost:5432 fixture rather than a parameter id.
+              spec=(
+                tests/integration/test_postgresql_*.py
+                tests/integration/parsers/test_postgresql_parser.py
+                tests/integration/features
+                tests/integration/scenarios
+                tests/integration/test_mcp_reader_role.py
+                tests/integration/test_autocommit_ddl_execution.py
+                tests/integration/matrix/test_schema_sql_fanout.py
+              )
+              ;;
+            mysql)
+              spec=(
+                tests/integration/test_mysql_*.py
+                tests/integration/parsers/test_mysql_parser.py
+              )
+              ;;
+            sqlserver)
+              spec=(
+                tests/integration/test_sqlserver_*.py
+                tests/integration/parsers/test_sqlserver_parser.py
+              )
+              ;;
+            *)
+              echo "unknown engine: $ENGINE"
+              exit 1
+              ;;
+          esac
+          if [ "${#spec[@]}" -eq 0 ]; then
+            echo "no engine-specific tests found for ${ENGINE}"
+            exit 1
+          fi
+          rc=0
+          python -m pytest "${spec[@]}" "${common[@]}" --junitxml="reports/${ENGINE}-specific.xml" || rc=$?
+          python -m pytest "${shared[@]}" -k "$ENGINE" "${common[@]}" --junitxml="reports/${ENGINE}-shared.xml" || rc=$?
+          python - <<'PY'
+          import xml.etree.ElementTree as ET
+          from pathlib import Path
+
+          reports = sorted(Path("reports").glob("*.xml"))
+          if not reports:
+              raise SystemExit("no junit reports were written")
+          for path in reports:
+              root = ET.parse(path).getroot()
+              suites = root.findall("testsuite") if root.tag == "testsuites" else [root]
+              tests = failures = errors = skipped = 0
+              for suite in suites:
+                  tests += int(suite.get("tests") or 0)
+                  failures += int(suite.get("failures") or 0)
+                  errors += int(suite.get("errors") or 0)
+                  skipped += int(suite.get("skipped") or 0)
+              passed = tests - failures - errors - skipped
+              print(
+                  f"{path.name}: tests={tests} passed={passed} "
+                  f"failed={failures} errors={errors} skipped={skipped}"
+              )
+          PY
+          exit "$rc"
