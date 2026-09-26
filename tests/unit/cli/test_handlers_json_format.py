@@ -487,6 +487,27 @@ def test_migrate_result_to_dict_carries_sql_only_when_show_sql_is_true():
 
 
 @pytest.mark.unit
+@pytest.mark.parametrize("message", [_CONNECTION, _HISTORY])
+@pytest.mark.parametrize("dry_run", [False, True])
+def test_handle_migrate_json_preflight_failure_is_a_connection_error(capsys, message, dry_run):
+    """`migrate --format json` reports a preflight failure with the same
+    `ConnectionError: ...` document info and validate produce: the client
+    lets it propagate rather than returning a failed migrate result."""
+    from dblift.cli.handlers.migrate import _handle_migrate
+
+    client = _real_preflight_client(message)
+    client.executor.migrate.side_effect = PreflightConnectionError(message)
+    args = SimpleNamespace(format="json", dry_run=dry_run, validate_only=False)
+
+    ok, returned = _handle_migrate(CliCommandContext(client=client, args=args, log=MagicMock()))
+
+    assert ok is False
+    assert returned is None
+    payload = json.loads(capsys.readouterr().out)
+    assert payload == {"success": False, "error": f"ConnectionError: {message}"}
+
+
+@pytest.mark.unit
 def test_handle_migrate_dry_run_json(capsys):
     from dblift.cli.handlers.migrate import _handle_migrate
 

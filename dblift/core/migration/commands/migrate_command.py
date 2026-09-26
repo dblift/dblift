@@ -40,7 +40,7 @@ from dblift.core.sql_validator.migration_validator import MigrationValidator
 from dblift.db.base_provider import BaseProvider
 
 from ._script_events import emit_script_event as _emit_script_event
-from .base_command import BaseCommand, BaseCommandContext
+from .base_command import BaseCommand, BaseCommandContext, PreflightConnectionError
 
 
 class MigrateCommand(BaseCommand):
@@ -977,6 +977,11 @@ class MigrateCommand(BaseCommand):
             self._log_command_completion("migrate", result)
             return result
 
+        except PreflightConnectionError:
+            # The connection or schema-history setup failed before migrate
+            # produced anything: propagate it, as info and validate do,
+            # instead of reporting it as a failed migration.
+            raise
         except StrictModeError as e:
             # Strict-mode out-of-order violations raised when selecting
             # executable pending. Specific subclass of ``ValueError`` so

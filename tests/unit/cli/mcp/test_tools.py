@@ -340,3 +340,60 @@ def test_validate_argv_strict_parses_through_the_real_parser():
     ns = _parse_like_cli("validate", [*validate_argv(strict=True), "--format", "json"])
 
     assert ns.strict_mode is True
+
+
+@pytest.fixture
+def unreachable_project(tmp_path, monkeypatch):
+    """A PostgreSQL project pointed at a localhost port nothing listens on."""
+    import socket
+
+    with socket.socket() as sock:
+        sock.bind(("127.0.0.1", 0))
+        port = sock.getsockname()[1]
+    migrations = tmp_path / "migrations"
+    migrations.mkdir()
+    (migrations / "V1__init.sql").write_text("CREATE TABLE widgets (id INTEGER PRIMARY KEY);")
+    (tmp_path / "dblift.yaml").write_text(
+        yaml.safe_dump(
+            {
+                "database": {
+                    "url": f"postgresql://u:p@127.0.0.1:{port}/db",
+                    "schema": "public",
+                },
+                "migrations": {"directory": str(migrations)},
+            }
+        )
+    )
+    monkeypatch.chdir(tmp_path)
+    return tmp_path
+
+
+@pytest.mark.unit
+def test_unreachable_database_is_an_error_for_migrate_dry_run_and_pending(unreachable_project):
+    """A connection that fails before migrate builds a result is an error
+    result for `migrate_dry_run` and a failed read for `dblift://pending`,
+    exactly as `info` and `dblift://history` report it — not a normal
+    payload with `success: false` or an empty pending list."""
+    pytest.importorskip("psycopg")
+    from mcp.shared.exceptions import MCPError
+
+    async def scenario(client):
+        info = await client.call_tool("info", {})
+        dry_run = await client.call_tool("migrate_dry_run", {})
+        errors = {}
+        for uri in ("dblift://history", "dblift://pending"):
+            with pytest.raises(MCPError) as exc_info:
+                await client.read_resource(uri)
+            errors[uri] = str(exc_info.value)
+        return info, dry_run, errors
+
+    info, dry_run, errors = anyio.run(_session, scenario)
+
+    assert info.is_error is True
+    assert dry_run.is_error is True, dry_run.content[0].text
+    assert dry_run.content[0].text == info.content[0].text.replace(
+        "tool info:", "tool migrate_dry_run:"
+    )
+    assert "ConnectionError: Connection failed" in dry_run.content[0].text
+    assert "Migration operation failed" not in dry_run.content[0].text
+    assert errors["dblift://pending"] == errors["dblift://history"]

@@ -24,6 +24,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Narrow and dumb terminals retain the migration table's Description column.
 - PostgreSQL view extraction retains the `security_barrier` option supplied by catalog queries.
 - Integration tests skip unavailable snapshot and vendor introspection capabilities before starting database fixtures. PR formatting checks cover `packages/`, and pytest-dblift tests run with deprecation warnings treated as errors.
+- `migrate`, `undo` and `baseline` report a failed connection or an uncreatable schema-history table the way `info` and `validate` do: `--format json` emits `ConnectionError: ...`, the MCP `migrate_dry_run` tool returns an error result, and reading `dblift://pending` fails instead of returning `[]`. `DBLiftClient.migrate()`, `undo()` and `baseline()` raise the error as `info()` does. Failures while migrating are still returned as failed results.
 
 ### Removed
 

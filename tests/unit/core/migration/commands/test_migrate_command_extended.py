@@ -22,6 +22,7 @@ from unittest.mock import MagicMock, call, patch
 from sqlalchemy.exc import OperationalError
 
 from dblift.core.logger.results import MigrateResult, MigrationInfo
+from dblift.core.migration.commands.base_command import PreflightConnectionError
 from dblift.core.migration.commands.migrate_command import MigrateCommand
 from dblift.core.migration.migration import MigrationType
 from dblift.core.migration.state.migration_display_state import MigrationDisplayState
@@ -842,14 +843,31 @@ class TestMigrateCommandExecute(unittest.TestCase):
         cmd.history_manager.create_schema_and_history_table.side_effect = raw_error
 
         with patch.object(cmd, "_log_command_completion"):
-            result = cmd.execute(Path("/migrations"))
+            with self.assertRaises(PreflightConnectionError) as ctx:
+                cmd.execute(Path("/migrations"))
 
-        self.assertFalse(result.success)
-        self.assertNotIn("CREATE TABLE", result.error_message or "")
-        self.assertTrue(
-            "ORA-01435" in (result.error_message or "")
-            or "does not exist" in (result.error_message or "")
-        )
+        message = str(ctx.exception)
+        self.assertNotIn("CREATE TABLE", message)
+        self.assertIn("Could not create the schema-history table", message)
+        self.assertTrue("ORA-01435" in message or "does not exist" in message)
+
+    def test_preflight_failure_propagates_instead_of_failed_result(self):
+        """A connection failure in preflight propagates, as it does for info
+        and validate, instead of becoming "Migration operation failed: ..."."""
+        m = _make_migration("V1__a.sql")
+        cmd = self._make_execute_cmd(pending=[m])
+
+        for dry_run in (False, True):
+            with patch.object(
+                cmd,
+                "_ensure_connected",
+                side_effect=PreflightConnectionError("Connection failed: host unreachable"),
+            ):
+                with self.assertRaises(PreflightConnectionError) as ctx:
+                    cmd.execute(Path("/migrations"), dry_run=dry_run)
+
+            self.assertEqual(str(ctx.exception), "Connection failed: host unreachable")
+            self.assertIsInstance(ctx.exception.result, MigrateResult)
 
 
 class TestStrictModeWarningSupression(unittest.TestCase):

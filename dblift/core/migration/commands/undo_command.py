@@ -18,7 +18,7 @@ from dblift.core.migration.state.rank_wins import latest_successful_ranks
 from dblift.core.migration.version_utils import compare_versions, is_migration_success
 
 from ._script_events import emit_script_event as _emit_script_event
-from .base_command import BaseCommand
+from .base_command import BaseCommand, PreflightConnectionError
 
 
 class UndoCommand(BaseCommand):
@@ -548,6 +548,10 @@ class UndoCommand(BaseCommand):
             self._log_command_completion("undo", result)
             return result
 
+        except PreflightConnectionError:
+            # Connection or schema-history setup failed before undo started;
+            # propagate it as info does rather than as a failed undo.
+            raise
         except Exception as e:
             self.log.error(f"Undo operation failed: {e}")
             result.set_error(f"Undo operation failed: {e}")
