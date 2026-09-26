@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `command.pre_migrate_dry_run` check point runs before a dry-run migrate.
 - The `validate` MCP tool now accepts `strict`, adding `--strict` so an agent can have a previously applied but now-missing migration reported and strict version order enforced (the CLI flag was already there; the tool did not expose it). The server instructions and MCP guide no longer imply the default `validate` reports missing files — it does so under `strict`.
 - Added `dblift.extensions.providers`, a stable import path for provider plugin
   metadata, registry access, and transport typing.
@@ -22,11 +23,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   formatters, operation results, and console rendering used by extensions.
 - `dblift mcp`'s `migrate_dry_run` tool gains a `show_sql` parameter; when
   `true`, the result carries a `sql` array with each pending migration's
-  rendered statements. `migrate --show-sql --format json` now includes that
-  same `sql` key in its output.
+  rendered statements. Resolved placeholder values appear in that output,
+  and those values can include secrets. `migrate --show-sql --format json`
+  now includes that same `sql` key in its output.
 
 ### Changed
 
+- Oracle: an unquoted `schema:` is uppercased when dblift connects, creates the user, writes the history table and other objects, and looks the name up in the catalog. 4.8.0 used the configured name verbatim everywhere, including connect, so a lowercase `schema:` really did target a lowercase user. A double-quoted `schema:` value is accepted for Oracle only and keeps that exact case through schema readiness, the history table, object creation, through the OSS binds and matching, and schema cache keys (the key is the catalog spelling, so `myschema` and `"MYSCHEMA"` share a key and `"myschema"` does not collide with them). Quotes are not stripped before the user is created or the session schema is set. PostgreSQL, MySQL, SQL Server, DB2, and SQLite reject a quoted schema. `${dblift_schema}` expands to the Oracle catalog spelling without quotes: an unquoted `myschema` becomes `MYSCHEMA`, and `schema: '"myschema"'` makes `${dblift_schema}.t`, `"${dblift_schema}"`, and `'${dblift_schema}'` all use `myschema`. Other dialects keep the configured text, and a null schema stays null. If the configured schema is unquoted, is not already uppercase, and `ALL_USERS` contains that exact case-sensitive name, dblift stops before creating any object or history row, including on `migrate --dry-run`, and tells you to quote the schema name in config to keep the existing schema (it is not uppercase). To use the uppercase user instead, set `schema:` to that uppercase name (`MYSCHEMA`). In YAML the quotes are part of the value: `schema: '"myschema"'`, because `schema: "myschema"` is the unquoted name.
 - An unrecognized key under `database:` (a typo like `srvice` for `service_name`, or `service` for `service_name`) is now logged as a warning naming the key instead of being dropped in silence. It is still ignored, not fatal — a genuine driver-specific option belongs under `extra_params` — and a key that is a valid field of another engine, or an internal `_`-prefixed key, does not warn.
 - A `--dry-run` migration no longer runs the `command.pre_migrate` runtime checks. A dry run applies nothing, so the checks that gate *applying* a migration do not run for it — mirroring `migration.pre_execution`, which already never fires in dry-run. An installed extension that registers a `command.pre_migrate` check to gate real migrations therefore no longer blocks a dry run.
 - The secrets provider contract now documents `resolve`'s failure mode: raise `SecretsResolutionError` when the secret cannot be produced; the CLI and `dblift mcp` report it as a configuration error (as they do a bare `ValueError` or `RuntimeError`), a direct `DbliftConfig.from_dict()` caller receives whatever `resolve` raises. Stated in `AbstractSecretsProvider.resolve`, `register_provider` and the configuration guide; no behaviour change.
@@ -42,14 +45,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `--format json` consumers get `{"success": false, "error": "..."}`, and
   `dblift mcp` returns an error result. The same wording now replaces
   `Connection failed: ...` for `info`, `migrate`, `undo` and `baseline` at
-  that step. Through the Python API, `DBLiftClient.validate()` now raises
-  `ConnectionError` for this failure instead of returning a result with
-  `success: false` (the `VALIDATION_FAILED` event fires, as for `info`).
+  that step. Through the Python API, `DBLiftClient.validate()` still returns
+  a failed result, and emits `VALIDATION_FAILED`, both when the connection
+  fails and when the history table cannot be created. In 4.8.0 an unreachable
+  database returned `Could not create schema history table: <connection error>`;
+  4.9.0 returns `Connection failed: ...`. In 4.8.0 the history-table message
+  was `Could not create schema history table: ...`; it is now
+  `Could not create the schema-history table: ...`. Returning the failed
+  result is deprecated and will raise `ConnectionError` in the next major
+  release.
+
+### Deprecated
+
+- `DBLiftClient.validate()` returning a failed result on a connection or history-table failure is deprecated since 4.9.0 and will raise `ConnectionError` in the next major release; a DeprecationWarning is emitted on a direct call.
+- Under `-W error::DeprecationWarning`, a direct `DBLiftClient.validate()` call raises the warning instead of returning a failed result. The CLI, JSON output, `dblift mcp`, Django `dblift_validate`, and the pytest-dblift fixture do not emit that warning.
 
 ### Fixed
 
 - `validate --format json` now reports `error: null` on success, matching `info` and `migrate` — it was `error: ""` (a clean validate leaves the message empty), the one inconsistency across the three read tools' JSON error contract.
-- Oracle: a lowercase `schema:` value now resolves to the same uppercase Oracle user everywhere dblift uses it — connecting (`ALTER SESSION SET CURRENT_SCHEMA`), creating the schema/user, and every catalog lookup (table/sequence existence, column listings, clean). Oracle uppercases unquoted identifiers, so a user created as `myschema` is actually `MYSCHEMA`; dblift previously upper-cased it only when connecting, so `create_schema_if_not_exists` could create a lowercase user that the connect step then failed to find (`ORA-01435: user does not exist`), and DDL/catalog queries built from the raw value could miss it too. A schema explicitly wrapped in double quotes is still preserved verbatim, matching how object names are already handled.
 - DML analysis (`analyze_dml`, `statement_dml_table`, `extract_dml_table_name`)
   returned the alias instead of the table for the MySQL / SQL Server
   multi-table `DELETE <alias> FROM <table> <alias>` spelling; the target is

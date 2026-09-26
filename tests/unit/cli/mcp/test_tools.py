@@ -74,6 +74,31 @@ def test_migrate_dry_run_argv_always_carries_dry_run():
 
 
 @pytest.mark.unit
+def test_migrate_dry_run_tool_description_discloses_resolved_placeholders():
+    """The description the MCP client sees must say resolved placeholders
+    can include secrets."""
+    from mcp import Client
+
+    from dblift.cli.mcp.server import build_server
+
+    server = build_server([])
+
+    async def scenario(client):
+        listed = await client.list_tools()
+        return next(tool.description for tool in listed.tools if tool.name == "migrate_dry_run")
+
+    async def _session(fn):
+        async with Client(server.mcpserver) as client:
+            return await fn(client)
+
+    description = anyio.run(_session, scenario)
+    lowered = description.lower()
+    assert "show_sql" in lowered
+    assert "placeholder" in lowered
+    assert "secret" in lowered
+
+
+@pytest.mark.unit
 def test_migrate_dry_run_argv_show_sql():
     assert "--show-sql" not in migrate_dry_run_argv()
 

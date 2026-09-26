@@ -14,6 +14,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
+from dblift.core.migration.commands.base_command import reported_exception_name
+
 # Flyway-compatible migration filename patterns — used by SQL-file validation to
 # skip non-migration SQL files when scanning a directory (e.g. leftover
 # temp files, schema dumps) so only intentional migration scripts are
@@ -209,7 +211,7 @@ def run_json_guarded(
         error = exc
     if error is not None or result is None:
         text = (
-            f"{type(error).__name__}: {error}"
+            f"{reported_exception_name(error)}: {error}"
             if error is not None
             else f"{command_type.lower()}() returned no result"
         )
