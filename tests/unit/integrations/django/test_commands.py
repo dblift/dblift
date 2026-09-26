@@ -217,6 +217,34 @@ def test_dblift_validate_history_table_failure_is_command_error_without_tracebac
     assert denial in combined
 
 
+def test_dblift_validate_connection_failure_is_command_error_without_traceback(tmp_path, capsys):
+    """An unreachable database must not dump a traceback from dblift_validate.
+
+    ``validate()`` returns a failed result for that preflight failure, and
+    the command turns it into ``CommandError``. ``manage.py`` prints that
+    and exits 1.
+    """
+    from unittest.mock import patch
+
+    with override_settings(**_settings(tmp_path)):
+        with patch(
+            "dblift.core.migration.commands.base_command.ensure_provider_connection",
+            side_effect=RuntimeError("no route to host"),
+        ):
+            from django.core.management import get_commands, load_command_class
+
+            app_name = get_commands()["dblift_validate"]
+            command = load_command_class(app_name, "dblift_validate")
+            with pytest.raises(SystemExit) as exc_info:
+                command.run_from_argv(["manage.py", "dblift_validate"])
+
+    assert exc_info.value.code == 1
+    captured = capsys.readouterr()
+    combined = captured.out + captured.err
+    assert "Traceback" not in combined
+    assert "Connection failed: no route to host" in combined
+
+
 def test_dblift_commands_skip_system_checks():
     from dblift.integrations.django.management.commands.dblift_info import Command as InfoCommand
     from dblift.integrations.django.management.commands.dblift_migrate import (

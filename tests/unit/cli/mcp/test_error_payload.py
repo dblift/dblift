@@ -85,6 +85,22 @@ def test_crashed_command_is_an_error_result_with_its_payload(project):
 
 
 @pytest.mark.unit
+def test_validate_preflight_failure_is_an_error_result(project):
+    """`validate` failing in preflight (read-only file, no history table)
+    is an MCP error result, the same as `info`. A returned validation
+    verdict would have ``is_error`` false."""
+    _make_database_read_only(project)
+
+    async def scenario(client):
+        return await client.call_tool("validate", {})
+
+    result = anyio.run(_session, scenario)
+
+    assert result.is_error is True
+    assert "readonly database" in result.content[0].text
+
+
+@pytest.mark.unit
 def test_negative_verdict_stays_a_normal_result(project):
     """A validation that finds a checksum mismatch runs to a result object —
     `run_json_guarded` returns `(result.success, result)`, never `(False,

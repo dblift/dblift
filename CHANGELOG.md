@@ -44,8 +44,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `dblift mcp` returns an error result. The same wording now replaces
   `Connection failed: ...` for `info`, `migrate`, `undo` and `baseline` at
   that step. Through the Python API, `DBLiftClient.validate()` still returns
-  a failed result carrying that message, and emits `VALIDATION_FAILED`; it
-  will raise `ConnectionError` in the next major.
+  a failed result, and emits `VALIDATION_FAILED`, both when the connection
+  fails and when the history table cannot be created. In 4.8.0 that
+  history-table message was `Could not create schema history table: ...`;
+  it is now `Could not create the schema-history table: ...`. Returning
+  the failed result is deprecated and will raise `ConnectionError` in 5.0.
+
+### Deprecated
+
+- `DBLiftClient.validate()` returning a failed result on a connection or history-table failure is deprecated since 4.9.0 and will raise `ConnectionError` in 5.0; a DeprecationWarning is emitted.
+- Under `-W error::DeprecationWarning`, `validate()` raises the warning instead of returning a failed result.
 
 ### Fixed
 

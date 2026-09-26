@@ -15,6 +15,7 @@ from dblift.cli.handlers._shared import (
     _migration_info_to_dict,
     run_json_guarded,
 )
+from dblift.core.migration.commands.base_command import PreflightConnectionError
 
 
 def _migration(**overrides):
@@ -193,6 +194,7 @@ def test_handle_validate_json_emits_payload_only(capsys):
         error_count=0,
         validated_migrations=[],
         failed_migrations=[],
+        preflight_error=None,
     )
     ctx = CliCommandContext(client=client, args=SimpleNamespace(format="json"), log=MagicMock())
 
@@ -204,20 +206,25 @@ def test_handle_validate_json_emits_payload_only(capsys):
 
 
 _HISTORY = "Could not create the schema-history table: permission denied"
+_CONNECTION = "Connection failed: connection refused"
 
 
-def _history_failure_result():
-    result = SimpleNamespace(
+def _preflight_failure_result(message):
+    return SimpleNamespace(
         success=False,
-        error_message=_HISTORY,
+        error_message=message,
         target_schema="public",
         error_count=1,
         issues=[],
         validated_migrations=[],
         failed_migrations=[],
         execution_time=lambda: 0,
+        preflight_error=PreflightConnectionError(message),
     )
-    return result
+
+
+def _history_failure_result():
+    return _preflight_failure_result(_HISTORY)
 
 
 @pytest.mark.unit
@@ -245,8 +252,43 @@ def test_handle_validate_human_history_table_failure_still_raises():
     client.validate.return_value = _history_failure_result()
     ctx = CliCommandContext(client=client, args=SimpleNamespace(format="console"), log=MagicMock())
 
-    with pytest.raises(ConnectionError, match="Could not create the schema-history table"):
+    with pytest.raises(
+        ConnectionError, match="Could not create the schema-history table"
+    ) as excinfo:
         _handle_validate(ctx)
+
+    assert type(excinfo.value) is ConnectionError
+
+
+@pytest.mark.unit
+def test_handle_validate_json_connection_failure_stays_an_error_payload(capsys):
+    """A refused connection keeps the same JSON error document as history DDL."""
+    from dblift.cli.handlers.validate import _handle_validate
+
+    client = MagicMock()
+    client.validate.return_value = _preflight_failure_result(_CONNECTION)
+    ctx = CliCommandContext(client=client, args=SimpleNamespace(format="json"), log=MagicMock())
+
+    ok, returned = _handle_validate(ctx)
+
+    assert ok is False
+    assert returned is None
+    payload = json.loads(capsys.readouterr().out)
+    assert payload == {"success": False, "error": f"ConnectionError: {_CONNECTION}"}
+
+
+@pytest.mark.unit
+def test_handle_validate_human_connection_failure_still_raises():
+    from dblift.cli.handlers.validate import _handle_validate
+
+    client = MagicMock()
+    client.validate.return_value = _preflight_failure_result(_CONNECTION)
+    ctx = CliCommandContext(client=client, args=SimpleNamespace(format="console"), log=MagicMock())
+
+    with pytest.raises(ConnectionError, match="Connection failed: connection refused") as excinfo:
+        _handle_validate(ctx)
+
+    assert type(excinfo.value) is ConnectionError
 
 
 @pytest.mark.unit
@@ -262,6 +304,7 @@ def test_handle_validate_json_keeps_a_normal_failure_as_a_verdict(capsys):
         issues=["checksum mismatch"],
         validated_migrations=[],
         failed_migrations=[],
+        preflight_error=None,
     )
     ctx = CliCommandContext(client=client, args=SimpleNamespace(format="json"), log=MagicMock())
 
@@ -417,6 +460,7 @@ def test_handle_migrate_validate_only_json_uses_validate_payload(capsys):
         error_count=0,
         validated_migrations=[],
         failed_migrations=[],
+        preflight_error=None,
     )
     args = SimpleNamespace(format="json", dry_run=False, validate_only=True)
 

@@ -10,7 +10,7 @@ from dblift.cli.handlers._shared import (
     _migration_info_to_dict,
     run_json_guarded,
 )
-from dblift.core.migration.commands.base_command import SCHEMA_HISTORY_CREATE_ERROR_PREFIX
+from dblift.core.migration.commands.base_command import PreflightConnectionError
 
 
 def _validate_result_to_dict(result: Any) -> Dict[str, Any]:
@@ -37,25 +37,26 @@ class _FailedCommandResult(Protocol):
 
     success: bool
     error_message: Optional[str]
+    preflight_error: Optional[BaseException]
 
 
-def _reraise_schema_history_create_failure(
+def _reraise_preflight_failure(
     result: _FailedCommandResult,
 ) -> _FailedCommandResult:
-    """Keep the CLI, JSON and MCP error path for a history-table failure.
+    """Keep the CLI, JSON and MCP error path for a preflight failure.
 
-    ``DBLiftClient.validate()`` returns a failed result for that case. These
-    surfaces still raise ``ConnectionError``, which ``run_json_guarded``
-    already turns into ``{"success": false, "error": "ConnectionError: ..."}``
-    and which ``dblift mcp`` reports as an error result.
+    ``DBLiftClient.validate()`` returns a failed result when the connection
+    fails or the schema-history table cannot be created. These surfaces
+    still raise ``ConnectionError`` — the base type, so the published text
+    stays ``ConnectionError: ...`` — which ``run_json_guarded`` turns into
+    ``{"success": false, "error": "ConnectionError: ..."}`` and which
+    ``dblift mcp`` reports as an error result. Any other result, including
+    another ``ConnectionError`` that was not a preflight failure, is returned
+    as a validation verdict.
     """
-    message = result.error_message or ""
-    if (
-        result.success is False
-        and isinstance(message, str)
-        and message.startswith(SCHEMA_HISTORY_CREATE_ERROR_PREFIX)
-    ):
-        raise ConnectionError(message)
+    error = result.preflight_error
+    if result.success is False and isinstance(error, PreflightConnectionError):
+        raise ConnectionError(str(error))
     return result
 
 
@@ -65,7 +66,7 @@ def _handle_validate(ctx: CliCommandContext) -> Tuple[bool, Any]:
     )
 
     def call() -> Any:
-        return _reraise_schema_history_create_failure(
+        return _reraise_preflight_failure(
             ctx.client.validate(
                 target_version=target_version,
                 tags=tags,

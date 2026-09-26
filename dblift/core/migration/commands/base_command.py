@@ -44,9 +44,36 @@ from dblift.db.provider_interfaces import SchemaProvider
 
 from ._script_events import emit_script_event as _emit_script_event
 
-# ``DBLiftClient.validate`` matches this prefix and returns a failed result.
-# The raised text has to keep starting with it.
+# Message text for a schema-history DDL failure during preflight. The
+# raised type is PreflightConnectionError; the wording stays stable.
 SCHEMA_HISTORY_CREATE_ERROR_PREFIX = "Could not create the schema-history table"
+
+
+class PreflightConnectionError(ConnectionError):
+    """Connection or schema-history failure raised during command preflight.
+
+    ``DBLiftClient.validate`` returns a failed result for this error. Every
+    other command lets it propagate. It subclasses ``ConnectionError``, so
+    handlers that already catch that type still catch it, and the message
+    text is the same text those steps used to raise as ``ConnectionError``.
+    """
+
+    def __init__(self, message: str, result: Optional["OperationResult"] = None) -> None:
+        """Store *message* and the command result this failure interrupted."""
+        super().__init__(message)
+        self.result = result
+
+
+def reported_exception_name(error: BaseException) -> str:
+    """Type name published in CLI JSON and MCP error text.
+
+    ``PreflightConnectionError`` is how the two preflight steps are told
+    apart in process. Callers still see ``ConnectionError: ...`` for both,
+    which is the text those steps produced before the subclass existed.
+    """
+    if isinstance(error, PreflightConnectionError):
+        return "ConnectionError"
+    return type(error).__name__
 
 
 @dataclass
@@ -651,7 +678,8 @@ class BaseCommand:
             db_type = getattr(self.provider, "canonical_dialect_key", "") or getattr(
                 getattr(self.config, "database", None), "type", ""
             )
-            raise ConnectionError(format_connection_error(exc, str(db_type or ""))) from exc
+            message = format_connection_error(exc, str(db_type or ""))
+            raise PreflightConnectionError(message) from exc
 
     def _run_preflight(
         self,
@@ -676,7 +704,7 @@ class BaseCommand:
              rather than reusing ``_ensure_connected``'s generic
              ``Connection failed: ...``, because the provider is already
              connected at this point — what failed is the DDL, not the
-             connection.
+             connection. Both steps raise ``PreflightConnectionError``.
           3. ``_populate_database_info(result)`` — reads live connection
              metadata onto the result. Must come AFTER phases 1 and 2
              because it calls provider methods that require a connection
@@ -710,7 +738,15 @@ class BaseCommand:
                 (it may be the first command run against a fresh
                 database).
         """
-        self._ensure_connected()
+        try:
+            self._ensure_connected()
+        except PreflightConnectionError as exc:
+            # The command result already has target_schema. Keep this
+            # exception object: a plain ConnectionError raised by a
+            # replacement for _ensure_connected is not this type and
+            # must propagate unchanged.
+            exc.result = result
+            raise
         if ensure_history and not dry_run:
             try:
                 self.history_manager.create_schema_and_history_table(create_schema=create_schema)
@@ -739,8 +775,9 @@ class BaseCommand:
                     formatted = ""
                 if not formatted:
                     formatted = _SQL_STATEMENT_BLOCK_RE.sub("", str(exc)).strip()
-                raise ConnectionError(
-                    f"{SCHEMA_HISTORY_CREATE_ERROR_PREFIX}: {formatted or exc}"
+                raise PreflightConnectionError(
+                    f"{SCHEMA_HISTORY_CREATE_ERROR_PREFIX}: {formatted or exc}",
+                    result,
                 ) from exc
         self._populate_database_info(result)
 

@@ -11,7 +11,7 @@ from dblift.cli.handlers._shared import (
     run_json_guarded,
 )
 from dblift.cli.handlers.validate import (
-    _reraise_schema_history_create_failure,
+    _reraise_preflight_failure,
     _validate_result_to_dict,
 )
 from dblift.core.logger.formatters.jsonformatter import JsonFormatter
@@ -48,7 +48,7 @@ def _handle_migrate(ctx: CliCommandContext) -> Tuple[bool, Any]:
     if getattr(ctx.args, "validate_only", False):
 
         def _validate_call() -> Any:
-            return _reraise_schema_history_create_failure(
+            return _reraise_preflight_failure(
                 ctx.client.validate(
                     target_version=target_version,
                     tags=tags,

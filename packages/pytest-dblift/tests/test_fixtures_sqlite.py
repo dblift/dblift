@@ -100,10 +100,12 @@ def test_dblift_validate_fixture_reports_history_table_failure(
     """The fixture calls ``DBLiftClient.validate()``. A history-table failure
     comes back as a failed result, so the fixture's assertion names it
     instead of letting ``ConnectionError`` escape."""
+    from dblift.core.migration.commands.base_command import PreflightConnectionError
+
     message = "Could not create the schema-history table: permission denied"
 
     def _fail(*args: Any, **kwargs: Any) -> None:
-        raise ConnectionError(message)
+        raise PreflightConnectionError(message)
 
     monkeypatch.setattr(dblift_client.executor, "validate", _fail)
 

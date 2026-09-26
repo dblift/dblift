@@ -424,6 +424,10 @@ class ValidateResult(OperationResult):
         # Every issue the console logs. ``error_message`` holds only the first,
         # so without this a machine-readable caller loses every later one.
         self.issues: List[str] = []
+        # Set when this result stands in for a preflight connection or
+        # history-table failure. Surfaces that must still raise match this
+        # type instead of the message text.
+        self.preflight_error: Optional[BaseException] = None
 
     def add_validated_migration(self, migration: MigrationInfo) -> None:
         """Add a validated migration to the result."""
