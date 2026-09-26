@@ -218,6 +218,25 @@ def test_dbo_login_with_non_dbo_schema_raises_when_opted_in(monkeypatch):
     provider.log.warning.assert_not_called()
 
 
+def test_dbo_login_with_exact_dbo_schema_skips_alter_user(monkeypatch):
+    """schema exactly 'dbo' is already the fixed user's schema.
+
+    No warning is emitted and ALTER USER is not attempted.
+    """
+    provider = object.__new__(SqlServerProvider)
+    provider.log = MagicMock()
+    provider._schema_applied_for = None
+    provider._current_schema_set = None
+    provider.execute_query = MagicMock(return_value=[{"db_user": "dbo", "default_schema": "dbo"}])
+    execute = MagicMock(return_value=0)
+    monkeypatch.setattr(SqlAlchemyProvider, "execute_statement", execute)
+
+    provider.set_current_schema("dbo")
+
+    execute.assert_not_called()
+    provider.log.warning.assert_not_called()
+
+
 def test_dbo_login_with_case_variant_of_dbo_skips_alter_user(monkeypatch):
     """'DBO'/'Dbo' already name dbo. ALTER USER [dbo] is error 15150, so the
     guard returns without issuing it and without warning."""
