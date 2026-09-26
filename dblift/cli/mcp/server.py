@@ -490,6 +490,14 @@ class DbliftMcpServer:
             annotations=self._annotations(read_only, destructive),
             structured_output=True,
         )
+        # MCPServer.add_tool does not expose argument-model configuration. Configure
+        # the registered model so schema publication and runtime validation agree.
+        registered_tool = self.mcpserver._tool_manager.get_tool(name)
+        assert registered_tool is not None
+        arg_model = registered_tool.fn_metadata.arg_model
+        arg_model.model_config["extra"] = "forbid"
+        arg_model.model_rebuild(force=True)
+        registered_tool.parameters = arg_model.model_json_schema(by_alias=True)
         self._offered.add(name)
         self._names.append(name)
         if connects:
