@@ -1,6 +1,7 @@
 """Main client for programmatic access to DBLift."""
 
 import threading
+import warnings
 from functools import wraps
 from pathlib import Path
 from types import TracebackType
@@ -44,6 +45,7 @@ from dblift.core.logger.results import (
     UndoResult,
     ValidateResult,
 )
+from dblift.core.migration.commands.base_command import PreflightConnectionError
 from dblift.core.migration.executor.migration_executor import MigrationExecutor
 from dblift.core.premium_manifest import PREMIUM_COMMANDS, UPGRADE_URL, render_upsell
 from dblift.core.seams.capabilities import CapabilityDeniedError
@@ -147,6 +149,33 @@ def _with_client_emitter(
     if method is not None:
         return decorator(method)
     return decorator
+
+
+def _preflight_connection_failure(exc: BaseException) -> Optional[PreflightConnectionError]:
+    """The preflight connection or history-table failure, else None.
+
+    Only ``PreflightConnectionError`` is turned back into a failed
+    ``ValidateResult``. Every other error, including another
+    ``ConnectionError``, still propagates.
+    """
+    if isinstance(exc, PreflightConnectionError):
+        return exc
+    return None
+
+
+def _failed_validate_result(exc: PreflightConnectionError, schema: str) -> ValidateResult:
+    """Failed result for a preflight error, keeping the command's schema."""
+    attached = exc.result
+    if isinstance(attached, ValidateResult):
+        failed = attached
+    else:
+        failed = ValidateResult()
+    if not failed.target_schema:
+        failed.target_schema = schema
+    failed.set_error(str(exc))
+    failed._preflight_error = exc
+    failed.complete()
+    return failed
 
 
 def _raise_if_reentrant(
@@ -572,8 +601,23 @@ class DBLiftClient:
             **kwargs: Additional options
 
         Returns:
-            ValidateResult with validation status
+            ValidateResult with validation status. When the connection fails
+            or the schema-history table cannot be created, this is a failed
+            result with ``target_schema`` set, and ``VALIDATION_FAILED`` is
+            emitted. Deprecated since 4.9.0; raising instead is planned for
+            the next major release.
+
+        Raises:
+            ConnectionError: Future behavior. The next major release will
+                raise ``ConnectionError`` when the connection fails or the
+                schema-history table cannot be created, instead of returning
+                the failed result above. This method does not raise for
+                those two failures.
         """
+        # Private. CLI, MCP, Django, and the pytest fixture pass False so
+        # the warning stays on a direct validate() call. Not part of the
+        # public signature.
+        warn_on_preflight_failure = kwargs.pop("_warn_on_preflight_failure", True)
         self._guard_scripts_dir_kwarg(kwargs)
         self.events.emit(EventType.VALIDATION_STARTED, {"dialect": getattr(self, "dialect", None)})
 
@@ -605,6 +649,21 @@ class DBLiftClient:
                 EventType.VALIDATION_FAILED,
                 {"error": str(e), "dialect": getattr(self, "dialect", None)},
             )
+            preflight = _preflight_connection_failure(e)
+            if preflight is not None:
+                # Only a direct validate() call warns. CLI, MCP, Django, and
+                # the pytest fixture pass _warn_on_preflight_failure=False so
+                # their own call sites stay quiet, including under -W error.
+                if warn_on_preflight_failure:
+                    warnings.warn(
+                        "DBLiftClient.validate() returns a failed result when the "
+                        "connection fails or the schema-history table cannot be "
+                        "created. Deprecated since 4.9.0; the next major release "
+                        "will raise ConnectionError instead.",
+                        DeprecationWarning,
+                        stacklevel=3,
+                    )
+                return _failed_validate_result(preflight, self.config.database.schema)
             raise
 
     @_with_client_emitter

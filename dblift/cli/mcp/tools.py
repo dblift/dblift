@@ -79,7 +79,9 @@ def migrate_dry_run_argv(
     """Show which migrations would be applied. Never writes: ``--dry-run`` is fixed.
 
     Pass ``show_sql=True`` to have the result's ``sql`` array carry the
-    rendered statements for each pending migration.
+    rendered statements for each pending migration. Placeholders in those
+    statements are resolved, so a placeholder value that is a secret appears
+    in the output.
     """
     argv = ["--dry-run", *_filter_argv(locals())]
     if show_sql:

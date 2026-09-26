@@ -47,7 +47,7 @@ from pathlib import Path
 from typing import Any, Dict, Optional, Sequence
 
 from dblift.cli._constants import EXIT_LICENSE_REQUIRED
-from dblift.cli.handlers._shared import CliCommandContext
+from dblift.cli.handlers._shared import CliCommandContext, reported_exception_name
 from dblift.core.logger import LogFactory
 from dblift.core.seams.capabilities import CapabilityDeniedError
 from dblift.core.seams.tier_resolver import resolve_tier
@@ -279,7 +279,7 @@ def _run_command_locked(
             f"dblift {command} exited with code {code}: {detail}", code
         ) from exc
     except Exception as exc:
-        raise CommandInvocationError(f"{type(exc).__name__}: {exc}", 1) from exc
+        raise CommandInvocationError(f"{reported_exception_name(exc)}: {exc}", 1) from exc
     finally:
         close = getattr(client, "close", None)
         if callable(close):

@@ -23,8 +23,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   formatters, operation results, and console rendering used by extensions.
 - `dblift mcp`'s `migrate_dry_run` tool gains a `show_sql` parameter; when
   `true`, the result carries a `sql` array with each pending migration's
-  rendered statements. `migrate --show-sql --format json` now includes that
-  same `sql` key in its output.
+  rendered statements. Resolved placeholder values appear in that output,
+  and those values can include secrets. `migrate --show-sql --format json`
+  now includes that same `sql` key in its output.
 
 ### Changed
 
@@ -44,9 +45,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `--format json` consumers get `{"success": false, "error": "..."}`, and
   `dblift mcp` returns an error result. The same wording now replaces
   `Connection failed: ...` for `info`, `migrate`, `undo` and `baseline` at
-  that step. Through the Python API, `DBLiftClient.validate()` now raises
-  `ConnectionError` for this failure instead of returning a result with
-  `success: false` (the `VALIDATION_FAILED` event fires, as for `info`).
+  that step. Through the Python API, `DBLiftClient.validate()` still returns
+  a failed result, and emits `VALIDATION_FAILED`, both when the connection
+  fails and when the history table cannot be created. In 4.8.0 an unreachable
+  database returned `Could not create schema history table: <connection error>`;
+  4.9.0 returns `Connection failed: ...`. In 4.8.0 the history-table message
+  was `Could not create schema history table: ...`; it is now
+  `Could not create the schema-history table: ...`. Returning the failed
+  result is deprecated and will raise `ConnectionError` in the next major
+  release.
+
+### Deprecated
+
+- `DBLiftClient.validate()` returning a failed result on a connection or history-table failure is deprecated since 4.9.0 and will raise `ConnectionError` in the next major release; a DeprecationWarning is emitted on a direct call.
+- Under `-W error::DeprecationWarning`, a direct `DBLiftClient.validate()` call raises the warning instead of returning a failed result. The CLI, JSON output, `dblift mcp`, Django `dblift_validate`, and the pytest-dblift fixture do not emit that warning.
 
 ### Fixed
 
