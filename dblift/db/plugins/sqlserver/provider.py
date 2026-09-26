@@ -6,7 +6,7 @@ from typing import Any, Dict, List, Optional
 from dblift.config import DbliftConfig
 from dblift.core.constants import DEFAULT_HISTORY_TABLE
 from dblift.core.constants import MIGRATION_LOCK_TABLE as _MIGRATION_LOCK_TABLE
-from dblift.core.exceptions import ExecutionError, FixedDboSchemaError
+from dblift.core.exceptions import FixedDboSchemaError
 from dblift.core.logger import Log
 from dblift.core.migration.clean_summary import CleanExecutionSummary
 from dblift.core.migration.sql.execution_statement import classify_execution_statement
@@ -251,7 +251,7 @@ class SqlServerProvider(SqlAlchemyProvider):
             )
             self._current_schema_set = schema
             self._schema_applied_for = schema
-        except ExecutionError:
+        except FixedDboSchemaError:
             raise
         except Exception as e:
             self.log.warning(

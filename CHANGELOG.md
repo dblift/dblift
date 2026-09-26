@@ -9,6 +9,89 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+### Changed
+
+### Fixed
+
+### Removed
+
+## [4.9.0] - 2026-09-25
+
+### Upgrading
+
+- `DBLiftClient.validate()` still returns a failed `ValidateResult` when the
+  connection cannot be opened or the schema-history table cannot be created.
+  `target_schema` is set, `error_count` is 1, `VALIDATION_FAILED` is emitted,
+  and the result's message is the preflight text. A direct call also emits
+  `DeprecationWarning`: `DBLiftClient.validate() returns a failed result when
+  the connection fails or the schema-history table cannot be created.
+  Deprecated since 4.9.0; the next major release will raise ConnectionError
+  instead.` The private keyword `_warn_on_preflight_failure` defaults to
+  `True`; pass `False` and that warning is not emitted. The CLI,
+  `migrate --validate-only`, `dblift mcp`, Django `dblift_validate`, and the
+  pytest-dblift fixture pass `False`. Under `-W error::DeprecationWarning`, a
+  direct call raises that `DeprecationWarning` instead of returning the failed
+  result; `VALIDATION_FAILED` has already been emitted. Any other
+  `ConnectionError` still propagates. The CLI and `dblift mcp` re-raise the
+  preflight failure as `ConnectionError` (JSON is
+  `{"success": false, "error": "ConnectionError: ..."}`). Django raises
+  `CommandError` from the failed result's message. In 4.8.0 an unreachable
+  database came back as `Could not create schema history table: <connection
+  error>`; the message is now `Connection failed: ...`. A history-table
+  failure was `Could not create schema history table: ...`; it is now
+  `Could not create the schema-history table: ...`. Returning the failed
+  result is deprecated and will raise `ConnectionError` in the next major
+  release.
+- SQL Server: a login mapped to the fixed `dbo` user (`sa`, a sysadmin, or
+  the database owner) with `schema` set to anything other than `dbo` (any
+  case) logs a warning and continues. Unqualified objects are created in
+  `dbo` and the run is reported successful, the same outcome as 4.8.0. Set
+  `fail_on_fixed_dbo: true` under `database:` — or
+  `DBLIFT_DB_FAIL_ON_FIXED_DBO` to `1`, `true`, or `yes` — to fail before any
+  migration or callback statement executes. That raises `FixedDboSchemaError`
+  and writes no history row. When `schema` is `dbo` in any case, there is no
+  warning and no `ALTER USER`. A dry-run `migrate` or `undo`, and a migrate
+  with nothing pending, do not predict the warning or the failure: the check
+  runs in `set_current_schema` when a real run is about to execute a
+  migration or callback, which those paths never call. `clean` calls
+  `set_current_schema` even for `--dry-run`, so a dry-run clean does warn, or
+  fails when `fail_on_fixed_dbo` is set. Do not switch an existing
+  deployment's `schema` to `dbo` to silence the warning: that targets
+  `[dbo].[dblift_schema_history]` and replays every migration.
+- A dry-run `migrate` no longer runs `command.pre_migrate` (4.8.0 ran that
+  point for a dry run too). It runs `command.pre_migrate_dry_run` instead, at
+  the start of `MigrateCommand.execute`, before connecting. With nothing
+  registered the new point is a no-op. A check registered there runs only on
+  a dry run, and an exception it raises aborts the migrate.
+  `client.migrate(dry_run=True)`, `client.executor.migrate(dry_run=True)`,
+  `MigrationExecutor.migrate(dry_run=True)`, and
+  `MigrateCommand.execute(dry_run=True)` all go through that method.
+  `command.pre_migrate` still runs on a real migrate.
+- Oracle: an unquoted `schema` is uppercased when dblift connects, creates
+  the user, writes history and other objects, and looks the name up in the
+  catalog. 4.8.0 used the configured spelling verbatim, so a lowercase
+  `schema` really did target a lowercase user. If that exact case-sensitive
+  name is already in `ALL_USERS`, dblift stops before creating any object or
+  history row, including on `migrate --dry-run` (the guard runs when applied
+  history is read), and tells you to quote the schema in config. In YAML the
+  quotes are part of the value: `schema: '"myschema"'`, because
+  `schema: "myschema"` is the unquoted name. To use the uppercase user, set
+  `schema` to that uppercase name. A double-quoted schema is accepted for
+  Oracle only; PostgreSQL, MySQL, SQL Server, DB2, and SQLite still reject
+  one. `${dblift_schema}` on Oracle expands to the catalog spelling without
+  quotes. A null schema stays null, unchanged from 4.8.0. Other dialects keep
+  the configured text.
+- `fail_on_fixed_dbo` is the only new `database:` key (SQL Server, default
+  `false`). No CLI flags were added. An unrecognized key under `database:`
+  is now logged as a warning naming the key and is still ignored. The
+  `validate` MCP tool accepts `strict` (the CLI `--strict` flag was already
+  there). `migrate_dry_run` accepts `show_sql` (the CLI `--show-sql` flag
+  was already there); placeholders in that SQL are resolved, so a placeholder
+  value that is a secret appears in the tool result and in
+  `migrate --show-sql --format json`.
+
+### Added
+
 - `command.pre_migrate_dry_run` check point runs before a dry-run migrate.
 - The `validate` MCP tool now accepts `strict`, adding `--strict` so an agent can have a previously applied but now-missing migration reported and strict version order enforced (the CLI flag was already there; the tool did not expose it). The server instructions and MCP guide no longer imply the default `validate` reports missing files — it does so under `strict`.
 - Added `dblift.extensions.providers`, a stable import path for provider plugin
@@ -29,7 +112,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- Oracle: an unquoted `schema:` is uppercased when dblift connects, creates the user, writes the history table and other objects, and looks the name up in the catalog. 4.8.0 used the configured name verbatim everywhere, including connect, so a lowercase `schema:` really did target a lowercase user. A double-quoted `schema:` value is accepted for Oracle only and keeps that exact case through schema readiness, the history table, object creation, through the OSS binds and matching, and schema cache keys (the key is the catalog spelling, so `myschema` and `"MYSCHEMA"` share a key and `"myschema"` does not collide with them). Quotes are not stripped before the user is created or the session schema is set. PostgreSQL, MySQL, SQL Server, DB2, and SQLite reject a quoted schema. `${dblift_schema}` expands to the Oracle catalog spelling without quotes: an unquoted `myschema` becomes `MYSCHEMA`, and `schema: '"myschema"'` makes `${dblift_schema}.t`, `"${dblift_schema}"`, and `'${dblift_schema}'` all use `myschema`. Other dialects keep the configured text, and a null schema stays null. If the configured schema is unquoted, is not already uppercase, and `ALL_USERS` contains that exact case-sensitive name, dblift stops before creating any object or history row, including on `migrate --dry-run`, and tells you to quote the schema name in config to keep the existing schema (it is not uppercase). To use the uppercase user instead, set `schema:` to that uppercase name (`MYSCHEMA`). In YAML the quotes are part of the value: `schema: '"myschema"'`, because `schema: "myschema"` is the unquoted name.
+- Oracle: an unquoted `schema:` is uppercased when dblift connects, creates the user, writes the history table and other objects, and looks the name up in the catalog. 4.8.0 used the configured name verbatim everywhere, including connect, so a lowercase `schema:` really did target a lowercase user. A double-quoted `schema:` value is accepted for Oracle only and keeps that exact case through schema readiness, the history table, object creation, the OSS binds and matching, and schema cache keys (the key is the catalog spelling, so `myschema` and `"MYSCHEMA"` share a key and `"myschema"` does not collide with them). Quotes are not stripped before the user is created or the session schema is set. PostgreSQL, MySQL, SQL Server, DB2, and SQLite reject a quoted schema. `${dblift_schema}` expands to the Oracle catalog spelling without quotes: an unquoted `myschema` becomes `MYSCHEMA`, and `schema: '"myschema"'` makes `${dblift_schema}.t`, `"${dblift_schema}"`, and `'${dblift_schema}'` all use `myschema`. Other dialects keep the configured text, and a null schema stays null, unchanged from 4.8.0. If the configured schema is unquoted, is not already uppercase, and `ALL_USERS` contains that exact case-sensitive name, dblift stops before creating any object or history row, including on `migrate --dry-run`, and tells you to quote the schema name in config to keep the existing schema (it is not uppercase). To use the uppercase user instead, set `schema:` to that uppercase name (`MYSCHEMA`). In YAML the quotes are part of the value: `schema: '"myschema"'`, because `schema: "myschema"` is the unquoted name.
 - An unrecognized key under `database:` (a typo like `srvice` for `service_name`, or `service` for `service_name`) is now logged as a warning naming the key instead of being dropped in silence. It is still ignored, not fatal — a genuine driver-specific option belongs under `extra_params` — and a key that is a valid field of another engine, or an internal `_`-prefixed key, does not warn.
 - A `--dry-run` migration no longer runs the `command.pre_migrate` runtime checks. A dry run applies nothing, so the checks that gate *applying* a migration do not run for it — mirroring `migration.pre_execution`, which already never fires in dry-run. An installed extension that registers a `command.pre_migrate` check to gate real migrations therefore no longer blocks a dry run.
 - The secrets provider contract now documents `resolve`'s failure mode: raise `SecretsResolutionError` when the secret cannot be produced; the CLI and `dblift mcp` report it as a configuration error (as they do a bare `ValueError` or `RuntimeError`), a direct `DbliftConfig.from_dict()` caller receives whatever `resolve` raises. Stated in `AbstractSecretsProvider.resolve`, `register_provider` and the configuration guide; no behaviour change.
@@ -101,7 +184,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `schema` to `dbo` to avoid the warning: that targets
   `[dbo].[dblift_schema_history]` and replays every migration. Only a new
   deployment that has never recorded history can use `schema: dbo` with a
-  dbo-mapped login.
+  dbo-mapped login. A dry-run `migrate` or `undo` does not predict this
+  warning or failure, because the check runs in `set_current_schema` when a
+  real run is about to execute a migration or callback, which those dry runs
+  never call (`clean`, including `clean --dry-run`, does).
 
 ### Removed
 
