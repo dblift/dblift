@@ -36,7 +36,7 @@ def _safe_name(value: str) -> str:
     safe = re.sub(r"[^\w.-]+", "_", value)
     if len(safe) <= _SAFE_NAME_MAX_LEN:
         return safe
-    digest = hashlib.sha1(value.encode("utf-8")).hexdigest()[:8]
+    digest = hashlib.sha1(value.encode("utf-8"), usedforsecurity=False).hexdigest()[:8]
     tail = safe[-(_SAFE_NAME_MAX_LEN - len(digest) - 1) :].lstrip("_.")
     return f"{digest}_{tail}"
 
