@@ -8,6 +8,7 @@ from typing import Callable, List, Optional, Union
 
 from dblift.core.exceptions import UnsupportedMetaCommandError
 from dblift.core.logger import Log
+from dblift.core.migration.sql.execution_statement import is_comment_only_statement
 from dblift.core.sql_parser.parser_factory import SqlParserFactory
 from dblift.core.sql_parser.parser_interface import SqlParserInterface
 
@@ -51,6 +52,11 @@ class StatementSplitter:
 
             if statements:
                 return list(statements)
+            # Nothing executable is a correct result for a blank or comment-only
+            # script; the permissive fallback would only reintroduce comment
+            # fragments (e.g. a stray ``*`` from a closing ``*/``).
+            if is_comment_only_statement(sql):
+                return []
             if self.logger:
                 self.logger.warning(
                     f"{self.dialect}-specific statement splitter returned no statements"

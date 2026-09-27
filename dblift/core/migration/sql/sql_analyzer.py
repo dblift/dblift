@@ -680,7 +680,8 @@ class SqlAnalyzer:
                     i += 1  # Skip the next character
                 elif char == "*" and next_char == "/" and in_block_comment:
                     in_block_comment = False
-                    i += 1  # Skip the next character
+                    i += 2  # Skip the closing marker so it is not kept as SQL
+                    continue
 
                 # Handle semicolons (statement separators) but only if not in literals or comments
                 elif (

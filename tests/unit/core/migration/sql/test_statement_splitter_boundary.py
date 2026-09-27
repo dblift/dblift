@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import pytest
 
+from dblift.core.migration.sql import is_comment_only_statement
 from dblift.core.migration.sql import statement_splitter as splitter_module
 from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
 from dblift.core.migration.sql.statement_splitter import StatementSplitter
@@ -69,3 +70,43 @@ def test_sql_parser_factory_get_parser_honors_regex_parser_type():
     parser = factory.get_parser()
 
     assert parser.__class__.__name__ == "PostgreSqlRegexParser"
+
+
+_ALL_SPLITTER_DIALECTS = [
+    "mysql",
+    "mariadb",
+    "postgresql",
+    "sqlserver",
+    "oracle",
+    "sqlite",
+    "duckdb",
+]
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("dialect", _ALL_SPLITTER_DIALECTS)
+@pytest.mark.parametrize(
+    "sql",
+    [
+        "/* just a comment */",
+        "/* just a comment */\n",
+        "/* block */\n-- line\n",
+        "-- only a line comment\n",
+        "/*\n multi\n line\n*/\n",
+    ],
+)
+def test_comment_only_script_yields_no_executable_statement(dialect, sql):
+    """A comment-only migration is a no-op: nothing handed to the engine may
+    contain executable tokens (a stray ``*`` from ``*/`` used to reach the server)."""
+    statements = SqlAnalyzer(dialect=dialect).split_statements(sql)
+
+    assert all(is_comment_only_statement(stmt) for stmt in statements), statements
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("dialect", _ALL_SPLITTER_DIALECTS)
+def test_regex_fallback_drops_closing_block_comment_marker(dialect):
+    analyzer = SqlAnalyzer(dialect=dialect)
+
+    assert analyzer._split_statements_with_regex("/* just a comment */") == []
+    assert analyzer._split_statements_with_regex("/* c */ SELECT 1;") == ["SELECT 1;"]

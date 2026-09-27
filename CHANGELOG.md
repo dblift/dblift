@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- A migration containing only a block comment (`/* ... */`), alone or mixed with `--` comments, is applied as a no-op on every dialect. MySQL, MariaDB, PostgreSQL, SQL Server and Oracle previously sent a stray `*` to the server and recorded a failed migration.
 - MCP tools reject unknown argument names before execution and advertise closed argument schemas, preventing misspelled filters from silently running with defaults.
 
 - `undo --target-version` skips versions already undone and continues rolling back applied versions above the target. Other refusal reasons still fail the command.
