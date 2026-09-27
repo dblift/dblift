@@ -256,15 +256,22 @@ class UndoCommand(BaseCommand):
 
             self.log.info(f"Found {len(migrations_to_undo)} migration(s) to undo")
 
+            # Resolve every undo script before any write so a missing script
+            # anywhere in the plan refuses the real run exactly like the dry run,
+            # instead of failing midway and leaving a partial rollback.
+            undo_plan = []
+            for migration in migrations_to_undo:
+                undo_migration = self._find_undo_script(migration, migration_state)
+                if undo_migration is None:
+                    error_msg = f"No undo script found for {migration.script_name}"
+                    self.log.error(error_msg)
+                    result.set_error(error_msg)
+                    self._log_command_completion("undo", result)
+                    return result
+                undo_plan.append((migration, undo_migration))
+
             if dry_run:
-                for migration in migrations_to_undo:
-                    undo_migration = self._find_undo_script(migration, migration_state)
-                    if undo_migration is None:
-                        error_msg = f"No undo script found for {migration.script_name}"
-                        self.log.error(error_msg)
-                        result.set_error(error_msg)
-                        self._log_command_completion("undo", result)
-                        return result
+                for migration, undo_migration in undo_plan:
                     if show_sql:
                         if undo_migration.format == MigrationFormat.PYTHON:
                             self._add_empty_visible_sql(undo_migration, result)
@@ -306,10 +313,9 @@ class UndoCommand(BaseCommand):
                 return result
 
             # Execute undo for each migration
-            for migration in migrations_to_undo:
+            for migration, undo_migration in undo_plan:
                 # Initialize variables to avoid NameError in exception handler
                 start_time = None
-                undo_migration = None
                 journal_started = False
 
                 try:
@@ -322,24 +328,6 @@ class UndoCommand(BaseCommand):
                         dir_recursive_map,
                         result=result,
                     )
-
-                    # SQL path: find the corresponding UNDO_SQL script
-                    undo_migration = self._find_undo_script(migration, migration_state)
-
-                    if undo_migration is None:
-                        error_msg = f"No undo script found for {migration.script_name}"
-                        self.log.error(error_msg)
-                        result.set_error(error_msg)
-                        # Execute afterUndoError callbacks when undo fails
-                        self._execute_callbacks(
-                            scripts_dir,
-                            "afterUndoError",
-                            use_recursive,
-                            use_additional_dirs,
-                            dir_recursive_map,
-                            result=result,
-                        )
-                        break
 
                     start_time = time.time()
 

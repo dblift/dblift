@@ -21,6 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - MCP tools reject unknown argument names before execution and advertise closed argument schemas, preventing misspelled filters from silently running with defaults.
 
 - `undo --target-version` skips versions already undone and continues rolling back applied versions above the target. Other refusal reasons still fail the command.
+- `undo` checks that every version it would roll back has an undo script before executing any of them. A missing script lower in the plan now refuses the run up front, with the same message as `--dry-run`, instead of rolling back the higher versions first and leaving the database partially undone.
 - PostgreSQL migrations can record history in a Flyway-created table without an `installed_rank` default. Rank allocation occurs under the migration lock; history failures still roll back transactional migration changes.
 - Migration state timestamps use timezone-aware UTC without Python 3.12 deprecation warnings, retaining the existing `Z` format.
 - A null schema leaves `${dblift_schema}` undefined: it is preserved with a warning, or uses its explicit `${dblift_schema:default}` value. Oracle and other configured schema expansions are unchanged.
