@@ -85,6 +85,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   one. `${dblift_schema}` on Oracle expands to the catalog spelling without
   quotes. A null schema leaves the key undefined. Other dialects keep
   the configured text.
+- `clean` (and `clean --dry-run`) now fails, with the database's error and
+  before dropping anything, when a query that lists the objects to drop
+  fails. 4.8.0 skipped that kind of object and could report success with
+  objects left behind, for example for a role that cannot read a catalog
+  view. Grant the role read access to the catalogs `clean` queries, or
+  clean with the schema owner.
 - `fail_on_fixed_dbo` is the only new `database:` key (SQL Server, default
   `false`). No CLI flags were added. An unrecognized key under `database:`
   is now logged as a warning naming the key and is still ignored. The
