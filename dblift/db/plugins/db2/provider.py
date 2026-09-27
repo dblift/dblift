@@ -35,12 +35,18 @@ def _without_nested_comments(sql: str) -> str:
     ``/* a /* b */ ; */ CREATE TABLE t ...`` it ends the statement at the
     ``;`` after the inner ``*/``, runs only the comment and reports success,
     so ``CREATE TABLE t`` never runs. The CLP runs it. Other statements are
-    sent unchanged, so routine bodies keep their comments.
+    sent unchanged, so routine bodies keep their comments. Each comment
+    becomes a space, as a comment separates tokens: ``a/* x /* y */ z */b``
+    must stay ``a b``, not become the name ``ab``.
     """
 
     def strip(nested: bool) -> str:
         return strip_comments_preserving_quotes(
-            sql, line_prefixes=["--"], has_block_comments=True, nested_block_comments=nested
+            sql,
+            line_prefixes=["--"],
+            has_block_comments=True,
+            nested_block_comments=nested,
+            block_comment_replacement=" ",
         )
 
     stripped = strip(True)

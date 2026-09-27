@@ -64,6 +64,19 @@ class TestExecuteStatement:
 
         assert self._sent(sql) == "CREATE TABLE t (x INT)"
 
+    def test_removed_nested_comment_still_separates_identifiers(self) -> None:
+        # The CLP rejects this with SQL0104N ("b" unexpected); joining the
+        # two names would instead drop a different table called AB.
+        assert self._sent("DROP TABLE a/* x /* y */ z */b") == "DROP TABLE a b"
+
+    def test_removed_nested_comment_still_separates_keyword_and_column(self) -> None:
+        assert self._sent("SELECT/*c /*d*/ e*/col FROM t") == "SELECT col FROM t"
+
+    def test_comment_markers_inside_a_string_literal_are_kept(self) -> None:
+        sql = "/* a /* b */ c */ INSERT INTO t VALUES ('/* not /* a */ comment */')"
+
+        assert self._sent(sql) == "INSERT INTO t VALUES ('/* not /* a */ comment */')"
+
     def test_statement_without_a_nested_comment_is_sent_unchanged(self) -> None:
         sql = "/* header; */\nCREATE TABLE t (x INT) -- tail\n"
 

@@ -24,6 +24,7 @@ def strip_comments_preserving_quotes(
     has_block_comments: bool,
     nested_block_comments: bool,
     supports_dollar_quoting: bool = False,
+    block_comment_replacement: str = "",
 ) -> str:
     """Remove comments without touching text inside a quoted span.
 
@@ -34,7 +35,9 @@ def strip_comments_preserving_quotes(
     for a literal quote inside the span and do not end it. Block comments
     nest (``/* outer /* inner */ outer */``) only when
     ``nested_block_comments`` is true; otherwise the first ``*/`` closes,
-    matching statement splitting for the same dialect.
+    matching statement splitting for the same dialect. Each removed block
+    comment becomes ``block_comment_replacement``; pass ``" "`` when the
+    result is sent to a server, so ``a/* c */b`` stays two tokens.
     """
     markers = list(line_prefixes) + (["/*"] if has_block_comments else [])
     if not any(marker in sql for marker in markers):
@@ -46,6 +49,7 @@ def strip_comments_preserving_quotes(
         has_block_comments=has_block_comments,
         nested_block_comments=nested_block_comments,
         supports_dollar_quoting=supports_dollar_quoting,
+        block_comment_replacement=block_comment_replacement,
     )
     return scanner.run()
 
@@ -68,12 +72,14 @@ class _Scanner:
         has_block_comments: bool,
         nested_block_comments: bool,
         supports_dollar_quoting: bool,
+        block_comment_replacement: str = "",
     ) -> None:
         self.sql = sql
         self.line_prefixes = line_prefixes
         self.has_block_comments = has_block_comments
         self.nested_block_comments = nested_block_comments
         self.supports_dollar_quoting = supports_dollar_quoting
+        self.block_comment_replacement = block_comment_replacement
 
         self.result: List[str] = []
         self.i = 0
@@ -219,6 +225,7 @@ class _Scanner:
     def _try_comment_start(self, char: str) -> bool:
         if self.has_block_comments and char == "/" and self.sql[self.i + 1 : self.i + 2] == "*":
             self.block_comment_depth = 1
+            self.result.append(self.block_comment_replacement)
             self.i += 2
             return True
         matched_prefix = next(
