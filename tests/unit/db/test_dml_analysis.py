@@ -1,5 +1,7 @@
 """Tests for the dialect-agnostic DML undo-safety scanner."""
 
+import pytest
+
 from dblift.db.base_quirks import BaseQuirks
 from dblift.db.dml_analysis import (
     analyze_dml,
@@ -11,6 +13,7 @@ from dblift.db.dml_analysis import (
     statement_dml_table,
     updates_restore_key,
 )
+from dblift.db.provider_registry import ProviderRegistry
 
 _DEFAULT_KEYS = ("id", "pk", "uuid", "key")
 
@@ -187,6 +190,42 @@ def test_analyze_dml_update_from_alias_does_not_hijack_a_qualified_target():
 def test_extract_dml_table_name_resolves_delete_alias_from_spelling():
     assert extract_dml_table_name("DELETE o FROM t o WHERE o.id = 1") == "t"
     assert statement_dml_table("DELETE o FROM t o WHERE o.id = 1") == "t"
+
+
+_ALIAS_TARGET_CASES = [
+    ("DELETE a FROM orders a WHERE a.id = 1;", "orders"),
+    ("DELETE a FROM orders AS a WHERE a.id = 1;", "orders"),
+    ("DELETE t2 FROM t1 JOIN t2 ON t2.a = t1.a;", "t2"),
+    ("DELETE t1 FROM t1 JOIN t2 ON t2.a = t1.a;", "t1"),
+    ("DELETE x FROM t1 AS o JOIN t2 AS x ON o.id = x.id;", "t2"),
+    ("UPDATE a SET qty = 1 FROM orders AS a WHERE a.id = 1;", "orders"),
+    ("UPDATE i SET qty = 1 FROM items AS i JOIN orders o ON o.id = i.oid;", "items"),
+]
+
+
+@pytest.mark.parametrize("dialect", ["sqlserver", "mysql", "mariadb", "postgresql"])
+@pytest.mark.parametrize(("stmt", "table"), _ALIAS_TARGET_CASES)
+def test_alias_targets_resolve_with_dblift_dialect_names(dialect, stmt, table):
+    # Callers pass dblift's own dialect names ("sqlserver", "postgresql"), not
+    # sqlglot's ("tsql", "postgres"); the lookup must map them rather than let
+    # sqlglot reject the name and drop to the regex scanner.
+    assert ProviderRegistry.get_quirks(dialect).analyze_dml(stmt).table == table
+    assert analyze_dml(stmt, sqlglot_dialect=dialect).table == table
+    assert statement_dml_table(stmt, dialect=dialect) == table
+
+
+@pytest.mark.parametrize(("stmt", "table"), _ALIAS_TARGET_CASES)
+def test_extract_dml_table_name_resolves_alias_targets(stmt, table):
+    assert extract_dml_table_name(stmt) == table
+
+
+def test_extract_dml_table_name_resolves_qualified_alias_targets():
+    stmt = "UPDATE o SET name = 'x' FROM [S].[t] AS o WHERE o.id = 2;"
+    assert extract_dml_table_name(stmt) == "[S].[t]"
+    assert extract_dml_table_name("DELETE o FROM s.t o WHERE o.id = 1;") == "s.t"
+    # A qualified or unaliased UPDATE target is the table itself.
+    assert extract_dml_table_name("UPDATE s.t SET a = 1 FROM u AS t;") == "s.t"
+    assert extract_dml_table_name("UPDATE t SET a = 1 FROM u WHERE u.id = t.id;") == "t"
 
 
 def test_statement_dml_table_falls_back_to_regex_without_dialect():
