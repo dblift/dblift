@@ -41,7 +41,7 @@ from dblift.db.provider_capabilities import (
     get_provider_display_url,
     get_provider_driver_display,
 )
-from dblift.db.provider_interfaces import SchemaProvider
+from dblift.db.provider_interfaces import SchemaProvider, TransactionalProvider
 from dblift.db.provider_registry import ProviderRegistry
 
 from ._script_events import emit_script_event as _emit_script_event
@@ -1037,6 +1037,12 @@ class BaseCommand:
             return self.state_manager.resolve_current_schema_version(read_snapshot)
         except Exception as e:
             self.log.debug(f"Could not retrieve schema version: {e}")
+            # A failed read aborts PostgreSQL's transaction; roll it back so the
+            # command's own history read reports the real error instead of
+            # InFailedSqlTransaction. A rollback that fails means the connection
+            # itself is unusable, so that error is left to propagate.
+            if isinstance(self.provider, TransactionalProvider):
+                self.provider.rollback_transaction()
             return None
 
     def _resolve_database_url_masked(self) -> Optional[str]:

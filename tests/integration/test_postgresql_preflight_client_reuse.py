@@ -96,3 +96,61 @@ def test_client_is_reusable_after_history_table_preflight_failure(tmp_path):
                 admin.execute_statement(f'DROP ROLE IF EXISTS "{role}"')
             finally:
                 admin.close()
+
+
+def test_unreadable_history_reports_the_read_error_and_client_stays_usable(tmp_path):
+    """A failed history read aborts the transaction; the real error must surface."""
+    schema = f"fix_hist_read_{uuid.uuid4().hex[:8]}"
+    role = f"fix_hist_read_role_{uuid.uuid4().hex[:8]}"
+    password = "ReadPass123"
+
+    migrations = tmp_path / "migrations"
+    migrations.mkdir()
+    (migrations / "V1__init.sql").write_text("CREATE TABLE t1 (id INTEGER);\n", encoding="utf-8")
+
+    admin = ProviderRegistry.create_provider(_admin_config(schema))
+    admin.create_connection()
+    client = None
+    try:
+        admin.execute_statement(f"CREATE ROLE \"{role}\" LOGIN PASSWORD '{password}'")
+        admin.execute_statement(f'CREATE SCHEMA "{schema}" AUTHORIZATION "{role}"')
+
+        client = DBLiftClient.from_config(
+            DbliftConfig.from_dict(
+                {
+                    "database": {
+                        "url": f"postgresql://{role}:{password}@localhost:5432/testdb",
+                        "schema": schema,
+                    },
+                    "migrations": {"directory": str(migrations)},
+                }
+            )
+        )
+        assert client.migrate().success is True
+        (migrations / "V2__next.sql").write_text(
+            "CREATE TABLE t2 (id INTEGER);\n", encoding="utf-8"
+        )
+
+        admin.execute_statement(f'REVOKE SELECT ON "{schema}".dblift_schema_history FROM "{role}"')
+        for result in (client.info(), client.validate(), client.migrate(dry_run=True)):
+            assert result.success is False
+            assert "permission denied for table dblift_schema_history" in result.error_message
+            assert "InFailedSqlTransaction" not in result.error_message
+
+        admin.execute_statement(f'GRANT SELECT ON "{schema}".dblift_schema_history TO "{role}"')
+        assert client.info().success is True
+        assert client.validate().success is True
+        dry = client.migrate(dry_run=True)
+        assert dry.success is True, dry.error_message
+    finally:
+        try:
+            if client is not None:
+                client.close()
+        finally:
+            try:
+                admin.rollback_transaction()
+                admin.execute_statement(f'DROP SCHEMA IF EXISTS "{schema}" CASCADE')
+                admin.execute_statement(f'DROP OWNED BY "{role}"')
+                admin.execute_statement(f'DROP ROLE IF EXISTS "{role}"')
+            finally:
+                admin.close()
