@@ -110,3 +110,39 @@ def test_regex_fallback_drops_closing_block_comment_marker(dialect):
 
     assert analyzer._split_statements_with_regex("/* just a comment */") == []
     assert analyzer._split_statements_with_regex("/* c */ SELECT 1;") == ["SELECT 1;"]
+
+
+_NESTED_COMMENT_ONLY = "/* outer /* nested */ still comment */"
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("dialect", ["postgresql", "sqlserver", "duckdb"])
+def test_nested_comment_only_script_is_a_no_op_where_comments_nest(dialect):
+    """These engines nest block comments, so the whole text is one comment
+    (psql/sqlcmd accept it); ``still comment */`` must not reach the server."""
+    statements = SqlAnalyzer(dialect=dialect).split_statements(_NESTED_COMMENT_ONLY)
+
+    assert all(
+        is_comment_only_statement(stmt, nested_block_comments=True) for stmt in statements
+    ), statements
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("dialect", ["mysql", "oracle", "sqlite"])
+def test_nested_comment_text_still_reaches_engine_where_comments_do_not_nest(dialect):
+    """The first ``*/`` closes the comment here, so ``still comment */`` is
+    real (invalid) SQL that the engine itself rejects; it is not a no-op."""
+    statements = SqlAnalyzer(dialect=dialect).split_statements(_NESTED_COMMENT_ONLY)
+
+    assert any("still comment" in stmt for stmt in statements), statements
+    assert not all(is_comment_only_statement(stmt) for stmt in statements), statements
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("dialect", ["postgresql", "sqlserver", "duckdb"])
+def test_nested_comment_before_statement_keeps_the_statement(dialect):
+    statements = SqlAnalyzer(dialect=dialect).split_statements(_NESTED_COMMENT_ONLY + "\nSELECT 1;")
+
+    assert len(statements) == 1, statements
+    assert statements[0].rstrip(";").endswith("SELECT 1"), statements
+    assert not statements[0].startswith("still comment"), statements

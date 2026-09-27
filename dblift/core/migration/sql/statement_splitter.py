@@ -9,6 +9,7 @@ from typing import Callable, List, Optional, Union
 from dblift.core.exceptions import UnsupportedMetaCommandError
 from dblift.core.logger import Log
 from dblift.core.migration.sql.execution_statement import is_comment_only_statement
+from dblift.core.sql_parser.enhanced_regex_parser import EnhancedRegexParser
 from dblift.core.sql_parser.parser_factory import SqlParserFactory
 from dblift.core.sql_parser.parser_interface import SqlParserInterface
 
@@ -55,7 +56,13 @@ class StatementSplitter:
             # Nothing executable is a correct result for a blank or comment-only
             # script; the permissive fallback would only reintroduce comment
             # fragments (e.g. a stray ``*`` from a closing ``*/``).
-            if is_comment_only_statement(sql):
+            # Whether ``/* a /* b */ c */`` is one comment is the dialect's
+            # call; its tokenizer already declares it.
+            nested = (
+                isinstance(parser, EnhancedRegexParser)
+                and parser.tokenizer_class.NESTED_BLOCK_COMMENTS
+            )
+            if is_comment_only_statement(sql, nested_block_comments=nested):
                 return []
             if self.logger:
                 self.logger.warning(
