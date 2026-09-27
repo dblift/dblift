@@ -19,6 +19,7 @@ from dblift.api import DBLiftClient
 from dblift.config.dblift_config import DbliftConfig
 from dblift.core.logger import NullLog
 from dblift.core.migration.history.migration_history_manager import MigrationHistoryManager
+from dblift.core.sql_validator._flyway_compatibility import validate_flyway_compatibility
 from dblift.db.plugins.oracle.config import OracleConfig
 from dblift.db.provider_registry import ProviderRegistry
 
@@ -155,3 +156,9 @@ def test_import_flyway_reads_history_table_shape(
             "V1__init.sql",
             "V2__broken.sql",
         ]
+        assert [r["script"] for r in snapshot.dblift_migrations] == [
+            "V1__init.sql",
+            "V2__broken.sql",
+        ]
+        verdict = validate_flyway_compatibility(snapshot)
+        assert verdict["compatible"] is True, verdict["error_message"]

@@ -9,6 +9,7 @@ import pytest
 
 from dblift.core.logger import NullLog
 from dblift.core.migration.history.migration_history_manager import MigrationHistoryManager
+from dblift.core.sql_validator._flyway_compatibility import validate_flyway_compatibility
 from dblift.core.sql_validator.migration_validator import MigrationValidator
 
 
@@ -59,6 +60,7 @@ def test_uppercase_folding_dialect_reads_flyway_quoted_lowercase_table(quirks_pa
         lambda schema, table: f'"{schema}"."{table.strip(chr(34))}"'
     )
     provider.execute_query.side_effect = [[_row()], [_row()]]
+    provider.get_applied_migrations.return_value = [_row()]
     provider.get_normalized_object_name.side_effect = str.upper
     history = MigrationHistoryManager(provider, "APP", "tester", NullLog())
 
@@ -69,6 +71,10 @@ def test_uppercase_folding_dialect_reads_flyway_quoted_lowercase_table(quirks_pa
     assert [row["script"] for row in snapshot.flyway_migrations] == ["V1__init.sql"]
     flyway_query = provider.execute_query.call_args_list[0].args[0]
     assert flyway_query == 'SELECT * FROM "APP"."flyway_schema_history"'
+    # dblift's own history is read the way import-flyway reads it.
+    provider.get_applied_migrations.assert_called_once_with("APP", "DBLIFT_SCHEMA_HISTORY")
+    assert [row["script"] for row in snapshot.dblift_migrations] == ["V1__init.sql"]
+    assert validate_flyway_compatibility(snapshot)["compatible"] is True
 
 
 @pytest.mark.unit

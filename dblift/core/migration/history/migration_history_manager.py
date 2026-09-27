@@ -114,6 +114,10 @@ class MigrationHistoryManager:
                     MappingProxyType(row)
                     for row in self.read_history_rows(self.schema, flyway_table, flyway_source=True)
                 )
+                dblift_rows = tuple(
+                    MappingProxyType(row)
+                    for row in self.read_history_rows(self.schema, self.normalized_history_table)
+                )
             elif flyway_exists and dblift_exists:
                 flyway_query = f'''SELECT "version", "description", "type", "script",
                     "installed_by", "installed_rank", "checksum", "success"
