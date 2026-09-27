@@ -536,24 +536,18 @@ class TestMergeObjectsReconcilesPerStatementPerType:
         regex-truncated name is dropped rather than surviving beside the
         correct one, and the divergence is logged at DEBUG.
 
-        MySQL backtick-doubling (``a``` `` -> literal backtick) is not
-        unescaped by the regex parser, which truncates at the first
-        backtick; sqlglot decodes it correctly. This is the same shape as
-        the SQL Server ``]]``-escape example in #377 (fixed for SQL Server
-        specifically by #375), reproduced here on a dialect and escape
-        style #375 did not touch, showing the underlying merge mechanism —
-        not just that one instance — is what #377 is about.
+        The regex name is the MySQL backtick-doubling truncation the regex
+        parser used to produce for `` `real``one` `` (it stopped at the
+        first backtick; sqlglot decodes the escape). The regex parser now
+        reads the name whole, so the divergence is fed in directly to keep
+        the merge mechanism itself -- not just that one instance -- pinned.
         """
         parser = HybridParser("mysql")
-        sql = "CREATE TABLE `real``one` (id int);"
-
-        regex_objects = parser.regex_parser.extract_objects(sql, None)
-        sqlglot_objects = parser.sqlglot_parser.extract_objects(sql, None)
-        assert regex_objects[0].name == "real"  # truncated at the first backtick
-        assert sqlglot_objects[0].name == "real`one"  # correctly unescaped
+        regex_objects = [SqlObject("real", SqlObjectType.TABLE, schema=None, dialect="mysql")]
+        sqlglot_objects = [SqlObject("real`one", SqlObjectType.TABLE, schema=None, dialect="mysql")]
 
         with caplog.at_level("DEBUG", logger="dblift.core.sql_parser.hybrid_parser"):
-            merged = parser.extract_objects(sql, None)
+            merged = parser._merge_objects(regex_objects, sqlglot_objects)
 
         # fixed: only sqlglot's correctly-decoded name survives
         assert {obj.name for obj in merged} == {"real`one"}

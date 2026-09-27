@@ -537,3 +537,50 @@ def test_oracle_undo_keeps_statement_with_close_marker_in_string():
     assert len(undo_sql) == 2
     assert "UB" in undo_sql[0].upper() and "DROP TABLE" in undo_sql[0]
     assert "UA" in undo_sql[1].upper() and "DROP TABLE" in undo_sql[1]
+
+
+def _mysql_undo_sql(dialect, content):
+    generator = UndoScriptGenerator(dialect=dialect, logger=LogFactory.get_log("test"))
+    migration = Migration(
+        script_name="V1__names.sql",
+        content=content,
+        version="1",
+        description="names",
+        logger=generator.logger,
+    )
+    return [stmt.sql.strip() for stmt in generator._generate_undo_statements(migration)]
+
+
+@pytest.mark.parametrize("dialect", ["mysql", "mariadb"])
+@pytest.mark.parametrize(
+    ("create_sql", "expected_drop"),
+    [
+        # Table names are case-sensitive on a Linux server, so the name is
+        # dropped exactly as it was created.
+        ("CREATE TABLE MyTable (id INT);", "DROP TABLE IF EXISTS `MyTable`;"),
+        ("CREATE TABLE `Quoted Mixed` (id INT);", "DROP TABLE IF EXISTS `Quoted Mixed`;"),
+        # A doubled backtick is one literal backtick, not the end of the name:
+        # stopping there would drop a different table called `we`.
+        ("CREATE TABLE `we``ird` (id INT);", "DROP TABLE IF EXISTS `we``ird`;"),
+        ("CREATE TABLE `db`.`T` (id INT);", "DROP TABLE IF EXISTS `db`.`T`;"),
+        ("CREATE TABLE Db.T2 (id INT);", "DROP TABLE IF EXISTS `Db`.`T2`;"),
+        ("CREATE TABLE `d``b`.`x``y` (id INT);", "DROP TABLE IF EXISTS `d``b`.`x``y`;"),
+        ("CREATE VIEW MyView AS SELECT 1 AS a;", "DROP VIEW IF EXISTS `MyView`;"),
+        ("CREATE VIEW `V``x` AS SELECT 1 AS a;", "DROP VIEW IF EXISTS `V``x`;"),
+        ("CREATE INDEX IxB ON MyTable (id);", "DROP INDEX `IxB` ON `MyTable`;"),
+        ("CREATE INDEX `Ix``A` ON `we``ird` (id);", "DROP INDEX `Ix``A` ON `we``ird`;"),
+    ],
+)
+def test_mysql_undo_keeps_identifiers_exactly_as_written(dialect, create_sql, expected_drop):
+    """Generated DROPs name the object that was created, case and quoting intact."""
+    assert _mysql_undo_sql(dialect, create_sql) == [expected_drop]
+
+
+@pytest.mark.parametrize("dialect", ["mysql", "mariadb"])
+def test_mysql_undo_does_not_drop_a_prefix_named_table(dialect):
+    """`we``ird` and a separate table `we` each get their own DROP."""
+    undo_sql = _mysql_undo_sql(
+        dialect, "CREATE TABLE `we``ird` (id INT);\nCREATE TABLE we (id INT);\n"
+    )
+
+    assert undo_sql == ["DROP TABLE IF EXISTS `we`;", "DROP TABLE IF EXISTS `we``ird`;"]
