@@ -8,11 +8,13 @@ expanded ``${dblift_schema}`` to an empty string.
 
 import argparse
 import copy
+import socket
 from unittest.mock import MagicMock, patch
 
 import pytest
 
 from dblift.api._client_factory import apply_derived_schema, client_from_config
+from dblift.api.client import DBLiftClient
 from dblift.cli._config_helpers import _validate_db_config
 from dblift.config import DatabaseConfig, DbliftConfig
 
@@ -168,3 +170,86 @@ def test_api_factory_does_not_mutate_the_callers_config():
         with pytest.raises(RuntimeError):
             client_from_config(config, logger=MagicMock())
     assert config.database.schema == ""
+
+
+# A dialect that requires a schema and derives none: the CLI refuses the
+# command, and the API returns a failed result with the same message instead
+# of running against an empty schema (DB2 emitted ``CREATE SCHEMA ""``).
+SCHEMA_REQUIRED = (
+    "Database schema is required. Specify it in the config file, "
+    "environment variables, or command line."
+)
+UNDERIVABLE = {
+    "db2": dict(type="db2", url="db2+ibm_db://127.0.0.1:{port}/testdb", username="u", password="p"),
+    "mysql": dict(
+        type="mysql", url="mysql+pymysql://127.0.0.1:{port}/", username="u", password="p"
+    ),
+}
+
+
+def _closed_port():
+    sock = socket.socket()
+    sock.bind(("127.0.0.1", 0))
+    port = sock.getsockname()[1]
+    sock.close()
+    return port
+
+
+def _underivable(dialect):
+    kwargs = dict(UNDERIVABLE[dialect])
+    kwargs["url"] = kwargs["url"].format(port=_closed_port())
+    return _config(kwargs)
+
+
+def _cli_error(database):
+    """Message the CLI validation step refuses *database* with, or None."""
+    config = MagicMock()
+    config.database = database
+    parser = MagicMock(spec=argparse.ArgumentParser)
+    parser.error.side_effect = SystemExit(2)
+    args = argparse.Namespace(command="migrate", database_url=None)
+    try:
+        _validate_db_config(args, config, parser, ["migrate"])
+    except SystemExit:
+        return parser.error.call_args.args[0]
+    return None
+
+
+@pytest.mark.parametrize("dialect", sorted(UNDERIVABLE))
+def test_cli_refuses_a_schema_it_cannot_derive(dialect):
+    assert _cli_error(_underivable(dialect)) == SCHEMA_REQUIRED
+
+
+_API_CALLS = [
+    ("info", {}),
+    ("validate", {}),
+    ("undo", {}),
+    ("repair", {}),
+    ("import_flyway", {}),
+    ("migrate", {}),
+    ("migrate", {"dry_run": True}),
+    ("baseline", {"version": "1"}),
+    ("clean", {"clean_enabled": True}),
+]
+
+
+@pytest.mark.parametrize("method,kwargs", _API_CALLS, ids=[f"{m}{k}" for m, k in _API_CALLS])
+@pytest.mark.parametrize("dialect", sorted(UNDERIVABLE))
+def test_api_fails_like_the_cli_before_connecting(tmp_path, monkeypatch, dialect, method, kwargs):
+    monkeypatch.chdir(tmp_path)
+    config = DbliftConfig(database=_underivable(dialect))
+    config.migrations.directory = str(tmp_path)
+    client = DBLiftClient.from_config(config)
+    try:
+        result = getattr(client, method)(**kwargs)
+    finally:
+        client.close()
+    assert result.success is False
+    # The port is closed, so a connection attempt would report "Connection failed".
+    assert result.error_message == SCHEMA_REQUIRED
+
+
+@pytest.mark.parametrize("dialect", sorted(CASES))
+def test_a_derived_schema_is_not_refused(dialect):
+    kwargs, _ = CASES[dialect]
+    assert _cli_error(_config(kwargs)) is None

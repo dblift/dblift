@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional
 
 from dblift.config import DbliftConfig
+from dblift.config.database_config import BaseDatabaseConfig
 
 if TYPE_CHECKING:
     from dblift.core.logger.results import OperationResult
@@ -41,12 +42,27 @@ from dblift.db.provider_capabilities import (
     get_provider_driver_display,
 )
 from dblift.db.provider_interfaces import SchemaProvider
+from dblift.db.provider_registry import ProviderRegistry
 
 from ._script_events import emit_script_event as _emit_script_event
 
 # Message text for a schema-history DDL failure during preflight. The
 # raised type is PreflightConnectionError; the wording stays stable.
 SCHEMA_HISTORY_CREATE_ERROR_PREFIX = "Could not create the schema-history table"
+
+# Shared by the CLI config validation and the command preflight.
+SCHEMA_REQUIRED_ERROR = (
+    "Database schema is required. Specify it in the config file, environment variables, "
+    "or command line."
+)
+
+
+def is_required_schema_missing(database_config: BaseDatabaseConfig) -> bool:
+    """True when the dialect needs a schema and none is set or derivable."""
+    if database_config.schema or not database_config.type:
+        return False
+    quirks = ProviderRegistry.get_quirks(database_config.type)
+    return quirks.schema_required and not quirks.derive_schema_name(database_config)
 
 
 class PreflightConnectionError(ConnectionError):
@@ -739,6 +755,11 @@ class BaseCommand:
                 (it may be the first command run against a fresh
                 database).
         """
+        # A dialect that needs a schema and derives none would otherwise run
+        # against an empty one (e.g. DB2 ``CREATE SCHEMA ""``). Fail before
+        # connecting, with the message the CLI refuses the command with.
+        if is_required_schema_missing(self.config.database):
+            raise PreflightConnectionError(SCHEMA_REQUIRED_ERROR, result)
         try:
             self._ensure_connected()
         except PreflightConnectionError as exc:

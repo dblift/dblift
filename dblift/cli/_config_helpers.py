@@ -13,6 +13,10 @@ from dblift.config.dblift_config import _placeholder_tokens, load_config
 from dblift.config.errors import ConfigurationError
 from dblift.config.secrets._provider_base import SecretsResolutionError
 from dblift.core.logger import LogFactory, LogFormat, LogLevel
+from dblift.core.migration.commands.base_command import (
+    SCHEMA_REQUIRED_ERROR,
+    is_required_schema_missing,
+)
 from dblift.core.utils.database_url_parser import DatabaseUrlParser
 from dblift.core.utils.string_utils import safe_split_first
 from dblift.core.utils.url_masking import mask_database_url
@@ -438,10 +442,8 @@ def _validate_db_config(
 
         apply_derived_schema(config.database)
 
-        if _qcs.schema_required and not getattr(config.database, "schema", None):
-            parser.error(
-                "Database schema is required. Specify it in the config file, environment variables, or command line."
-            )
+        if is_required_schema_missing(config.database):
+            parser.error(SCHEMA_REQUIRED_ERROR)
 
     # For baseline command, default to version "1" if not specified
     if args.command == "baseline" and not getattr(args, "baseline_version", None):

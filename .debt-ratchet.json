@@ -3,7 +3,7 @@
   "_policy": "Initial measurement on develop fdfe3be (2026-09-21); tightened on develop 1f2a12e after unreachable code was removed. Comment-only lines are never counted. function_level_imports: package imports below module level. any_annotations: non-import lines using Any in a type. dynamic_attribute_access: lines calling getattr/hasattr. broad_excepts: 'except Exception' handlers. large_files: modules over 800 lines. process_references: lines naming an internal tracking identifier (epic/story numbers, ticket ids); held at 0.",
   "function_level_imports": 464,
   "any_annotations": 1367,
-  "dynamic_attribute_access": 1196,
+  "dynamic_attribute_access": 1195,
   "broad_excepts": 489,
   "process_references": 0,
   "large_files": 21
