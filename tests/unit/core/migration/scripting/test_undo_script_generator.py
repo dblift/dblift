@@ -584,3 +584,46 @@ def test_mysql_undo_does_not_drop_a_prefix_named_table(dialect):
     )
 
     assert undo_sql == ["DROP TABLE IF EXISTS `we`;", "DROP TABLE IF EXISTS `we``ird`;"]
+
+
+_ORA_PROC = "CREATE OR REPLACE PROCEDURE pp AS\nBEGIN\n  NULL;\nEND;\n/\n"
+_ORA_FUNC = "CREATE OR REPLACE FUNCTION ff RETURN NUMBER AS\nBEGIN\n  RETURN 1;\nEND;\n/\n"
+_ORA_TRIG = (
+    "CREATE OR REPLACE TRIGGER tt BEFORE INSERT ON pt FOR EACH ROW\n" "BEGIN\n  NULL;\nEND;\n/\n"
+)
+_ORA_PKG = "CREATE OR REPLACE PACKAGE pk AS\n  PROCEDURE p1;\nEND pk;\n/\n"
+_ORA_PKG_BODY = (
+    "CREATE OR REPLACE PACKAGE BODY pk AS\n"
+    "  PROCEDURE p1 IS\n  BEGIN\n    NULL;\n  END p1;\nEND pk;\n/\n"
+)
+
+
+@pytest.mark.parametrize(
+    "content, expected",
+    [
+        (_ORA_PROC + _ORA_PKG, ['DROP PACKAGE "PK"', 'DROP PROCEDURE "PP"']),
+        (_ORA_PROC + _ORA_PKG_BODY, ['DROP PACKAGE BODY "PK"', 'DROP PROCEDURE "PP"']),
+        (_ORA_FUNC + _ORA_PKG, ['DROP PACKAGE "PK"', '"FF"']),
+        (_ORA_PKG + _ORA_PROC, ['DROP PROCEDURE "PP"', 'DROP PACKAGE "PK"']),
+        (_ORA_TRIG + _ORA_PKG, ['DROP PACKAGE "PK"', "CREATE OR REPLACE TRIGGER tt"]),
+    ],
+    ids=["proc-pkg", "proc-pkg-body", "func-pkg", "pkg-proc", "trigger-pkg"],
+)
+def test_oracle_undo_drops_package_next_to_other_plsql_block(content, expected):
+    """A block followed by a package yields one undo entry each, and the package is dropped."""
+    generator = UndoScriptGenerator(dialect="oracle", logger=LogFactory.get_log("test"))
+    migration = Migration(
+        script_name="V1__plsql.sql",
+        content=content,
+        version="1",
+        description="plsql",
+        logger=generator.logger,
+    )
+
+    undo = generator._generate_undo_statements(migration)
+
+    assert len(undo) == 2
+    for stmt, fragment in zip(undo, expected):
+        assert fragment in stmt.sql or stmt.original_statement.startswith(fragment), [
+            u.sql for u in undo
+        ]

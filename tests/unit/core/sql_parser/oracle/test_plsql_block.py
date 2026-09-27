@@ -12,6 +12,7 @@ from dblift.db.plugins.oracle.parser._plsql_block import (
     is_single_plsql_block,
     parse_plsql_create_header,
 )
+from dblift.db.plugins.oracle.parser._statement_splitter import split_statements_regex
 
 
 @pytest.mark.unit
@@ -310,3 +311,42 @@ class TestIsPartialPlsqlFragment:
     )
     def test_rejects_complete_statements(self, stmt: str) -> None:
         assert is_partial_plsql_fragment(stmt) is False
+
+
+_PROC = "CREATE OR REPLACE PROCEDURE pp AS\nBEGIN\n  NULL;\nEND;\n/\n"
+_FUNC = "CREATE OR REPLACE FUNCTION ff RETURN NUMBER AS\nBEGIN\n  RETURN 1;\nEND;\n/\n"
+_TRIG = (
+    "CREATE OR REPLACE TRIGGER tt BEFORE INSERT ON pt FOR EACH ROW\n" "BEGIN\n  NULL;\nEND;\n/\n"
+)
+_PKG = "CREATE OR REPLACE PACKAGE pk AS\n  PROCEDURE p1;\nEND pk;\n/\n"
+_PKG_BODY = (
+    "CREATE OR REPLACE PACKAGE BODY pk AS\n"
+    "  PROCEDURE p1 IS\n  BEGIN\n    NULL;\n  END p1;\nEND pk;\n/\n"
+)
+
+
+@pytest.mark.unit
+class TestPackageAfterOtherBlock:
+    """A later ``CREATE PACKAGE`` must not change how the current block is read."""
+
+    @pytest.mark.parametrize(
+        "first, second",
+        [
+            (_PROC, _PKG),
+            (_PROC, _PKG_BODY),
+            (_FUNC, _PKG),
+            (_PKG, _PROC),
+            (_TRIG, _PKG),
+        ],
+        ids=["proc-pkg", "proc-pkg-body", "func-pkg", "pkg-proc", "trigger-pkg"],
+    )
+    def test_splits_into_two_blocks(self, first: str, second: str) -> None:
+        out = split_statements_regex(first + second, extract_plsql_block=extract_plsql_block)
+        assert len(out) == 2
+        assert out[0].startswith(first.split("\n", 1)[0])
+        assert out[1].startswith(second.split("\n", 1)[0])
+
+    def test_procedure_header_ignores_later_package(self):
+        _, body, pkg, _, _, _, _ = parse_plsql_create_header(_PROC + _PKG, 0)
+        assert body is False
+        assert pkg is False
