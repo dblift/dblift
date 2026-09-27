@@ -9,6 +9,8 @@ from dblift.core.constants import DEFAULT_HISTORY_TABLE
 from dblift.core.logger import Log
 from dblift.core.migration.migration import AppliedMigration, Migration, MigrationType
 from dblift.core.migration.scripting.migration_script_manager import MigrationScriptManager
+from dblift.core.sql_model.dialect import quote_identifier
+from dblift.db.object_naming import configured_identifier_text
 from dblift.db.provider_interfaces import TransactionalProvider
 
 
@@ -35,12 +37,12 @@ class MigrationHistoryManager:
         if not flyway_source or not self.provider.quirks.flyway_source_table_case_sensitive:
             return cast(List[Dict[str, Any]], self.provider.get_applied_migrations(schema, table))
         qualified_table = self.provider.get_schema_qualified_name(schema, table)
-        rows = self.provider.execute_query(f"""
-            SELECT script, installed_rank, version, description,
-                   type, checksum, installed_by, installed_on, execution_time, success
-            FROM {qualified_table} ORDER BY installed_rank
-        """)
-        return [self._normalize_flyway_row(row) for row in rows]
+        # SELECT * because the column case differs between Flyway's own table
+        # (quoted lowercase) and a hand-built one (unquoted, folded). Sorting
+        # here keeps ORDER BY from naming a column in the wrong case.
+        rows = self.provider.execute_query(f"SELECT * FROM {qualified_table}")
+        normalized = [self._normalize_flyway_row(row) for row in rows]
+        return sorted(normalized, key=lambda row: row["installed_rank"])
 
     @staticmethod
     def _normalize_flyway_row(row: Dict[str, Any]) -> Dict[str, Any]:
@@ -68,14 +70,22 @@ class MigrationHistoryManager:
             schema, table
         )
 
-    def resolve_flyway_source_table(self, table: str) -> str:
-        """Normalize only Flyway's default name for case-sensitive providers."""
-        if (
-            table == "flyway_schema_history"
-            and self.provider.quirks.flyway_source_table_case_sensitive
-        ):
-            return str(self.provider.get_normalized_object_name(table))
-        return table
+    def resolve_flyway_source_table(self, schema: str, table: str) -> str:
+        """Return the Flyway source table spelling for case-sensitive providers.
+
+        Flyway creates its table under the exact configured name, quoted
+        (``"flyway_schema_history"`` on Oracle), so that spelling is tried
+        first; an unquoted table the database folded is the fallback. A
+        name the caller already quoted is kept as written.
+        """
+        if not self.provider.quirks.flyway_source_table_case_sensitive:
+            return table
+        if configured_identifier_text(table) != table:
+            return table
+        exact = quote_identifier(self.provider.quirks.dialect_name, table)
+        if self.history_source_exists(schema, exact):
+            return exact
+        return str(self.provider.get_normalized_object_name(table))
 
     def ensure_history_table(self) -> None:
         """Initialize history when absent, preserving the public validator adapter."""

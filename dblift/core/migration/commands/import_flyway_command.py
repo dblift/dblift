@@ -34,7 +34,6 @@ class ImportFlywayCommand(BaseCommand):
         result.target_schema = self.config.database.schema
         default_source_table = "flyway_schema_history"
         source_table = (flyway_table or default_source_table).strip()
-        source_table = self.state_manager.resolve_flyway_source_table(source_table)
         configured_target = getattr(self.config, "history_table", None)
         target_table = (
             configured_target.strip()
@@ -63,6 +62,7 @@ class ImportFlywayCommand(BaseCommand):
 
             # Read entries from the Flyway history table
             schema = self.config.database.schema
+            source_table = self.state_manager.resolve_flyway_source_table(schema, source_table)
 
             # Distinguish "table missing" (configuration error) from "table empty"
             # (benign but still notable). get_applied_migrations silently returns
