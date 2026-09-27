@@ -5,11 +5,48 @@ This module handles PostgreSQL-specific schema operations including schema creat
 cleaning, and metadata queries for tables, columns, and other database objects.
 """
 
-from typing import Any, List, Optional, Set, Tuple
+from typing import Any, List, Mapping, Optional, Set, Tuple
 
 from dblift.core.logger import Log, NullLog
 from dblift.core.migration.clean_summary import CleanExecutionSummary
 from dblift.db.plugins.base_schema_operations import BaseSchemaOperations
+
+# Routines are read from pg_proc rather than information_schema.routines,
+# which omits aggregates. Members of an extension (deptype 'e') go with
+# DROP EXTENSION, and internal dependents (deptype 'i', e.g. a range type's
+# constructor functions) go with the object that owns them, so neither is
+# listed. The identity arguments let each overload be dropped on its own.
+_ROUTINES_QUERY = """
+SELECT p.proname AS routine_name,
+       p.prokind AS routine_kind,
+       pg_get_function_identity_arguments(p.oid) AS identity_arguments
+FROM pg_proc p
+JOIN pg_namespace n ON p.pronamespace = n.oid
+WHERE n.nspname = ?
+  AND p.prokind IN ('f', 'p', 'a', 'w')
+  AND NOT EXISTS (
+      SELECT 1
+      FROM pg_depend d
+      WHERE d.classid = 'pg_proc'::regclass
+        AND d.objid = p.oid
+        AND d.deptype IN ('e', 'i')
+  )
+ORDER BY p.proname, identity_arguments
+"""
+
+# 'r' is a range type; its multirange companion ('m', PostgreSQL 14+) is
+# dropped along with it, so only the range is listed.
+_TYPES_QUERY = """
+SELECT typname as type_name, typtype
+FROM pg_type t
+JOIN pg_namespace n ON t.typnamespace = n.oid
+WHERE n.nspname = ?
+  AND t.typtype IN ('c', 'e', 'd', 'r')
+  AND t.typname NOT LIKE 'pg_%'
+ORDER BY typname
+"""
+
+_ROUTINE_DROP_VERBS = {"p": "PROCEDURE", "a": "AGGREGATE"}
 
 
 class PostgreSqlSchemaOperations(BaseSchemaOperations):
@@ -98,24 +135,21 @@ class PostgreSqlSchemaOperations(BaseSchemaOperations):
             ORDER BY extname
             """
 
-            try:
-                extensions = self.query_executor.execute_query(
-                    connection, extensions_query, params=[schema]
-                )
-                for ext_row in extensions:
-                    ext_name = ext_row.get("extension_name", ext_row.get("EXTENSION_NAME"))
-                    if ext_name:
-                        drop_sql = f'DROP EXTENSION IF EXISTS "{ext_name}" CASCADE'
-                        try:
-                            self.query_executor.execute_statement(connection, drop_sql)
-                            summary.record_drop(
-                                drop_sql, object_type="extension", name=ext_name, schema=schema
-                            )
-                            self.log.debug(f"Dropped extension: {ext_name}")
-                        except Exception as e:
-                            self.log.warning(f"Failed to drop extension {ext_name}: {str(e)}")
-            except Exception as e:
-                self.log.debug(f"Could not query extensions: {str(e)}")
+            extensions = self.query_executor.execute_query(
+                connection, extensions_query, params=[schema]
+            )
+            for ext_row in extensions:
+                ext_name = ext_row.get("extension_name", ext_row.get("EXTENSION_NAME"))
+                if ext_name:
+                    drop_sql = f'DROP EXTENSION IF EXISTS "{ext_name}" CASCADE'
+                    try:
+                        self.query_executor.execute_statement(connection, drop_sql)
+                        summary.record_drop(
+                            drop_sql, object_type="extension", name=ext_name, schema=schema
+                        )
+                        self.log.debug(f"Dropped extension: {ext_name}")
+                    except Exception as e:
+                        self.log.warning(f"Failed to drop extension {ext_name}: {str(e)}")
 
             # 2. Drop all views (they may depend on tables)
             self.log.debug("Dropping all views...")
@@ -158,41 +192,25 @@ class PostgreSqlSchemaOperations(BaseSchemaOperations):
             # 5. Drop all functions and procedures
             self.log.debug("Dropping all functions and procedures...")
 
-            functions_query = """
-            SELECT routine_name, routine_type
-            FROM information_schema.routines
-            WHERE routine_schema = ?
-            ORDER BY routine_name
-            """
-
             functions = self.query_executor.execute_query(
-                connection, functions_query, params=[schema]
+                connection, _ROUTINES_QUERY, params=[schema]
             )
             for func_row in functions:
-                func_name = func_row.get("routine_name", func_row.get("ROUTINE_NAME"))
-                func_type = func_row.get("routine_type", func_row.get("ROUTINE_TYPE"))
-                if func_name and func_type:
-                    qualified_func = self.query_executor.get_schema_qualified_name(
-                        schema, func_name
+                routine = self._routine_drop(schema, func_row)
+                if routine is None:
+                    continue
+                drop_sql, func_type, func_name = routine
+                try:
+                    self.query_executor.execute_statement(connection, drop_sql)
+                    summary.record_drop(
+                        drop_sql,
+                        object_type=func_type,
+                        name=func_name,
+                        schema=schema,
                     )
-                    if func_type.upper() == "FUNCTION":
-                        drop_sql = f"DROP FUNCTION IF EXISTS {qualified_func} CASCADE"
-                    else:  # PROCEDURE
-                        drop_sql = f"DROP PROCEDURE IF EXISTS {qualified_func} CASCADE"
-
-                    try:
-                        self.query_executor.execute_statement(connection, drop_sql)
-                        summary.record_drop(
-                            drop_sql,
-                            object_type=func_type.lower(),
-                            name=func_name,
-                            schema=schema,
-                        )
-                        self.log.debug(f"Dropped {func_type.lower()}: {func_name}")
-                    except Exception as e:
-                        self.log.warning(
-                            f"Failed to drop {func_type.lower()} {func_name}: {str(e)}"
-                        )
+                    self.log.debug(f"Dropped {func_type}: {func_name}")
+                except Exception as e:
+                    self.log.warning(f"Failed to drop {func_type} {func_name}: {str(e)}")
 
             # 6. Drop all user-defined types (after tables to handle dependencies)
             self.log.debug("Dropping all user-defined types...")
@@ -202,63 +220,50 @@ class PostgreSqlSchemaOperations(BaseSchemaOperations):
             # filter below becomes a no-op.
             preserved_tables: List[str] = []
 
-            types_query = """
-            SELECT typname as type_name, typtype
-            FROM pg_type t
-            JOIN pg_namespace n ON t.typnamespace = n.oid
-            WHERE n.nspname = ?
-              AND t.typtype IN ('c', 'e', 'd')
-              AND t.typname NOT LIKE 'pg_%'
-            ORDER BY typname
-            """
-
             type_drop_failures = []
-            try:
-                types = self.query_executor.execute_query(connection, types_query, params=[schema])
-                for type_row in types:
-                    type_name = type_row.get("type_name", type_row.get("TYPE_NAME"))
-                    if type_name:
-                        # Check if this type is used by any preserved tables
-                        # Use prefix matching to cover type name variants (e.g. dblift_migration_lock_status)
-                        type_used_by_preserved = False
-                        for preserved_table in preserved_tables:
-                            if type_name.lower().startswith(preserved_table.lower()):
-                                type_used_by_preserved = True
-                                self.log.debug(
-                                    f"Preserving type {type_name} (used by preserved table {preserved_table})"
-                                )
-                                break
-
-                        if type_used_by_preserved:
-                            continue
-
-                        # Determine whether it's a DOMAIN or TYPE based on typtype
-                        type_category = type_row.get("typtype", "c")
-                        qualified_type = self.query_executor.get_schema_qualified_name(
-                            schema, type_name
-                        )
-                        if type_category == "d":
-                            drop_sql = f"DROP DOMAIN IF EXISTS {qualified_type} CASCADE"
-                            recorded_type = "domain"
-                        else:  # 'c' (composite) or 'e' (enum)
-                            drop_sql = f"DROP TYPE IF EXISTS {qualified_type} CASCADE"
-                            recorded_type = "type"
-
-                        try:
-                            self.query_executor.execute_statement(connection, drop_sql)
-                            summary.record_drop(
-                                drop_sql,
-                                object_type=recorded_type,
-                                name=type_name,
-                                schema=schema,
+            types = self.query_executor.execute_query(connection, _TYPES_QUERY, params=[schema])
+            for type_row in types:
+                type_name = type_row.get("type_name", type_row.get("TYPE_NAME"))
+                if type_name:
+                    # Check if this type is used by any preserved tables
+                    # Use prefix matching to cover type name variants (e.g. dblift_migration_lock_status)
+                    type_used_by_preserved = False
+                    for preserved_table in preserved_tables:
+                        if type_name.lower().startswith(preserved_table.lower()):
+                            type_used_by_preserved = True
+                            self.log.debug(
+                                f"Preserving type {type_name} (used by preserved table {preserved_table})"
                             )
-                            self.log.debug(f"Dropped {recorded_type}: {type_name}")
-                        except Exception as e:
-                            error_msg = f"Failed to drop type {type_name}: {str(e)}"
-                            type_drop_failures.append(error_msg)
-                            self.log.warning(error_msg)
-            except Exception as e:
-                self.log.debug(f"Could not query user-defined types: {str(e)}")
+                            break
+
+                    if type_used_by_preserved:
+                        continue
+
+                    # Determine whether it's a DOMAIN or TYPE based on typtype
+                    type_category = type_row.get("typtype", "c")
+                    qualified_type = self.query_executor.get_schema_qualified_name(
+                        schema, type_name
+                    )
+                    if type_category == "d":
+                        drop_sql = f"DROP DOMAIN IF EXISTS {qualified_type} CASCADE"
+                        recorded_type = "domain"
+                    else:  # 'c' (composite), 'e' (enum) or 'r' (range)
+                        drop_sql = f"DROP TYPE IF EXISTS {qualified_type} CASCADE"
+                        recorded_type = "type"
+
+                    try:
+                        self.query_executor.execute_statement(connection, drop_sql)
+                        summary.record_drop(
+                            drop_sql,
+                            object_type=recorded_type,
+                            name=type_name,
+                            schema=schema,
+                        )
+                        self.log.debug(f"Dropped {recorded_type}: {type_name}")
+                    except Exception as e:
+                        error_msg = f"Failed to drop type {type_name}: {str(e)}"
+                        type_drop_failures.append(error_msg)
+                        self.log.warning(error_msg)
 
             # Check for critical failures and fail the operation if necessary
             if type_drop_failures:
@@ -288,6 +293,28 @@ class PostgreSqlSchemaOperations(BaseSchemaOperations):
             error_msg = f"Error cleaning schema {schema}: {str(e)}"
             self.log.error(error_msg)
             raise
+
+    def _routine_drop(
+        self, schema: str, row: Mapping[str, Optional[str]]
+    ) -> Optional[Tuple[str, str, str]]:
+        """Return ``(drop_sql, object_type, name)`` for a ``_ROUTINES_QUERY`` row.
+
+        The DROP names the routine's identity arguments so overloads do not
+        make it ambiguous, and so does the recorded name, so overloads are
+        reported as separate objects. An aggregate taking no arguments is
+        written ``(*)``.
+        """
+        name = row.get("routine_name", row.get("ROUTINE_NAME"))
+        kind = row.get("routine_kind", row.get("ROUTINE_KIND"))
+        if not name or not kind:
+            return None
+        arguments = row.get("identity_arguments", row.get("IDENTITY_ARGUMENTS")) or ""
+        if kind == "a" and not arguments:
+            arguments = "*"
+        verb = _ROUTINE_DROP_VERBS.get(kind, "FUNCTION")
+        qualified = self.query_executor.get_schema_qualified_name(schema, name)
+        drop_sql = f"DROP {verb} IF EXISTS {qualified}({arguments}) CASCADE"
+        return drop_sql, verb.lower(), f"{name}({arguments})"
 
     def _get_continuous_aggregate_names(self, connection: Any, schema: str) -> Set[str]:
         """Return lower-cased TimescaleDB continuous aggregate names in ``schema``.
@@ -340,7 +367,7 @@ class PostgreSqlSchemaOperations(BaseSchemaOperations):
         exactly — no introspector fallback, no hidden objects.
 
         Mirrors ``clean_schema`` enumeration: extensions, views, tables,
-        sequences, functions/procedures, types/domains.
+        sequences, functions/procedures/aggregates, types/domains.
 
         Every catalog queried here exists on all supported servers, so a query
         failure (permission denied, aborted transaction, lost connection)
@@ -441,36 +468,16 @@ class PostgreSqlSchemaOperations(BaseSchemaOperations):
                 drop_sql = f"DROP SEQUENCE IF EXISTS {qualified} CASCADE"
                 summary.record_drop(drop_sql, object_type="sequence", name=name, schema=schema)
 
-        # Functions / Procedures
-        functions_query = """
-        SELECT routine_name, routine_type
-        FROM information_schema.routines
-        WHERE routine_schema = ?
-        ORDER BY routine_name
-        """
-        functions = self.query_executor.execute_query(connection, functions_query, params=[schema])
+        # Functions / Procedures / Aggregates
+        functions = self.query_executor.execute_query(connection, _ROUTINES_QUERY, params=[schema])
         for row in functions:
-            fname = row.get("routine_name", row.get("ROUTINE_NAME"))
-            ftype = row.get("routine_type", row.get("ROUTINE_TYPE"))
-            if fname and ftype:
-                qualified = self.query_executor.get_schema_qualified_name(schema, fname)
-                if ftype.upper() == "FUNCTION":
-                    drop_sql = f"DROP FUNCTION IF EXISTS {qualified} CASCADE"
-                else:
-                    drop_sql = f"DROP PROCEDURE IF EXISTS {qualified} CASCADE"
-                summary.record_drop(drop_sql, object_type=ftype.lower(), name=fname, schema=schema)
+            routine = self._routine_drop(schema, row)
+            if routine is not None:
+                drop_sql, ftype, fname = routine
+                summary.record_drop(drop_sql, object_type=ftype, name=fname, schema=schema)
 
         # Types / Domains
-        types_query = """
-        SELECT typname as type_name, typtype
-        FROM pg_type t
-        JOIN pg_namespace n ON t.typnamespace = n.oid
-        WHERE n.nspname = ?
-          AND t.typtype IN ('c', 'e', 'd')
-          AND t.typname NOT LIKE 'pg_%'
-        ORDER BY typname
-        """
-        types = self.query_executor.execute_query(connection, types_query, params=[schema])
+        types = self.query_executor.execute_query(connection, _TYPES_QUERY, params=[schema])
         for row in types:
             tname = row.get("type_name", row.get("TYPE_NAME"))
             tcat = row.get("typtype", "c")
