@@ -104,6 +104,7 @@ def extract_regular_statement(text: str, start_pos: int) -> Tuple[str, int]:
     in_string = False
     string_char = None
     statement = ""
+    line_buffering = False
 
     while i < len(text):
         char = text[i]
@@ -133,6 +134,17 @@ def extract_regular_statement(text: str, start_pos: int) -> Tuple[str, int]:
         if not in_string and char == ";":
             statement += char
             i += 1
+
+            # Comments are already stripped, so a "*/" left on this line is
+            # stray. SQL*Plus does not end the statement there, and from then
+            # on only at a ";" that is the last thing on its line (see
+            # OracleStatementParser._ends_sqlplus_line).
+            eol = text.find("\n", i)
+            rest_of_line = text[i : eol if eol != -1 else len(text)]
+            if not line_buffering:
+                line_buffering = "*/" in rest_of_line
+            if line_buffering and rest_of_line.strip():
+                continue
 
             # Swallow whitespace and an optional trailing SQL*Plus ``/``.
             while i < len(text) and text[i].isspace():

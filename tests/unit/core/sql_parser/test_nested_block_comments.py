@@ -186,8 +186,11 @@ class TestNonNestingDialectsUnchanged(unittest.TestCase):
         self.assertTrue(any("DROP TABLE victim" in s for s in stmts))
 
     def test_oracle_stops_at_first_close(self):
+        # The first "*/" closes, but the ";" followed by a stray "*/" does
+        # not end the statement (SQL*Plus keeps buffering to a line-final
+        # ";"), so DROP TABLE victim is never sent on its own.
         stmts = OracleParser().split_statements(ISSUE_EXAMPLE)
-        self.assertTrue(any("DROP TABLE victim" in s for s in stmts))
+        self.assertEqual(stmts, ["DROP TABLE victim; still outer */\nSELECT 1;"])
 
     def test_sqlite_stops_at_first_close(self):
         stmts = SQLiteRegexParser().split_statements(ISSUE_EXAMPLE)
