@@ -773,16 +773,16 @@ class OracleProvider(SqlAlchemyProvider):
         self._guard_unquoted_existing_schema(schema)
         clean_schema = _oracle_dictionary_name(schema)
 
-        try:
-            rows = self.execute_query("""
-                SELECT DB_LINK AS object_name
-                FROM ALL_DB_LINKS
-                WHERE OWNER = SYS_CONTEXT('USERENV', 'SESSION_USER')
-                ORDER BY DB_LINK
-                """)
-        except Exception as e:
-            self.log.debug(f"Could not query Oracle database links: {e}")
-            rows = []
+        # Catalog query failures propagate: reading one as "no objects of this
+        # kind" made clean report success having dropped nothing. Only the
+        # reference-partition lookup below, which affects drop order and not
+        # which objects are found, falls back on failure.
+        rows = self.execute_query("""
+            SELECT DB_LINK AS object_name
+            FROM ALL_DB_LINKS
+            WHERE OWNER = SYS_CONTEXT('USERENV', 'SESSION_USER')
+            ORDER BY DB_LINK
+            """)
         for row in rows:
             name = _row_value(row, "object_name", "db_link")
             if not name:
@@ -869,11 +869,7 @@ class OracleProvider(SqlAlchemyProvider):
         }
 
         for object_type, drop_prefix, query, suffix in object_queries:
-            try:
-                rows = self.execute_query(query, [clean_schema])
-            except Exception as e:
-                self.log.debug(f"Could not query Oracle {object_type}s: {e}")
-                continue
+            rows = self.execute_query(query, [clean_schema])
             if object_type == "table" and ref_partitioned_children:
                 rows = sorted(
                     rows,
@@ -897,23 +893,19 @@ class OracleProvider(SqlAlchemyProvider):
                         continue
                 summary.record_drop(stmt, object_type, str(name), schema=schema)
 
-        try:
-            rows = self.execute_query(
-                """
-                SELECT OBJECT_NAME AS object_name, OBJECT_TYPE AS object_type
-                FROM ALL_OBJECTS
-                WHERE OWNER = ?
-                  AND OBJECT_TYPE IN ('PROCEDURE', 'FUNCTION', 'PACKAGE', 'PACKAGE BODY',
-                                      'TYPE', 'TYPE BODY', 'TRIGGER')
-                  AND OBJECT_NAME NOT LIKE 'BIN$%'
-                ORDER BY DECODE(OBJECT_TYPE, 'PACKAGE BODY', 1, 'TYPE BODY', 1, 2),
-                         OBJECT_NAME
-                """,
-                [clean_schema],
-            )
-        except Exception as e:
-            self.log.debug(f"Could not query Oracle program objects: {e}")
-            rows = []
+        rows = self.execute_query(
+            """
+            SELECT OBJECT_NAME AS object_name, OBJECT_TYPE AS object_type
+            FROM ALL_OBJECTS
+            WHERE OWNER = ?
+              AND OBJECT_TYPE IN ('PROCEDURE', 'FUNCTION', 'PACKAGE', 'PACKAGE BODY',
+                                  'TYPE', 'TYPE BODY', 'TRIGGER')
+              AND OBJECT_NAME NOT LIKE 'BIN$%'
+            ORDER BY DECODE(OBJECT_TYPE, 'PACKAGE BODY', 1, 'TYPE BODY', 1, 2),
+                     OBJECT_NAME
+            """,
+            [clean_schema],
+        )
 
         for row in rows:
             name = _row_value(row, "object_name")
@@ -939,15 +931,11 @@ class OracleProvider(SqlAlchemyProvider):
                         continue
             summary.record_drop(stmt, normalized_type, str(name), schema=schema)
 
-        try:
-            rows = self.execute_query(
-                "SELECT SYNONYM_NAME AS object_name FROM ALL_SYNONYMS WHERE OWNER = ? "
-                "ORDER BY SYNONYM_NAME",
-                [clean_schema],
-            )
-        except Exception as e:
-            self.log.debug(f"Could not query Oracle synonyms: {e}")
-            rows = []
+        rows = self.execute_query(
+            "SELECT SYNONYM_NAME AS object_name FROM ALL_SYNONYMS WHERE OWNER = ? "
+            "ORDER BY SYNONYM_NAME",
+            [clean_schema],
+        )
         for row in rows:
             name = _row_value(row, "object_name")
             if not name:

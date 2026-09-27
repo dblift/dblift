@@ -4,6 +4,8 @@ import logging
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
+import pytest
+
 from dblift.config import DbliftConfig
 from dblift.core.migration.clean_summary import CleanExecutionSummary
 from dblift.db.plugins.db2.provider import DB2_LOCK_STALE_SECONDS, Db2Provider
@@ -370,7 +372,8 @@ def test_create_history_table_normalizes_db2_history_table_name() -> None:
     assert 'CREATE TABLE "APP"."DBLIFT_SCHEMA_HISTORY"' in ddl
 
 
-def test_clean_schema_continues_when_catalog_query_fails() -> None:
+def test_clean_schema_raises_when_catalog_query_fails() -> None:
+    # A failed catalog query must not read as "no objects of this kind".
     provider = DummyDb2Provider()
 
     def fake_query(sql, params=None):
@@ -383,11 +386,10 @@ def test_clean_schema_continues_when_catalog_query_fails() -> None:
 
     provider.execute_query = fake_query
 
-    summary = provider.clean_schema("APP")
+    with pytest.raises(RuntimeError, match="no trigger privilege"):
+        provider.clean_schema("APP")
 
-    assert ("statement", 'SET SCHEMA "APP"', None, None) in provider.calls
-    assert ("statement", 'DROP VIEW "APP"."APP_VIEW"', None, None) in provider.calls
-    assert any(drop.object_type == "view" for drop in summary.objects)
+    assert ("statement", 'DROP VIEW "APP"."APP_VIEW"', None, None) not in provider.calls
 
 
 def test_clean_schema_drops_foreign_keys_before_tables() -> None:

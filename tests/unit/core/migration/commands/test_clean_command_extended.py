@@ -204,6 +204,22 @@ class TestCleanCommandDryRun(unittest.TestCase):
                     with self.assertRaises(PreflightConnectionError):
                         cmd.execute(dry_run=True)
 
+    def test_dry_run_discovery_error_fails_the_result(self):
+        # Discovery failing must not read as "(schema appears empty)".
+        provider = MagicMock()
+        provider.list_droppable_objects.side_effect = RuntimeError(
+            "permission denied for pg_tables"
+        )
+        cmd = _make_cmd(provider=provider, clean_disabled=False)
+
+        with patch.object(cmd, "_ensure_connected"):
+            with patch.object(cmd, "_populate_database_info"):
+                with patch.object(cmd, "_log_command_completion"):
+                    result = cmd.execute(dry_run=True)
+
+        self.assertFalse(result.success)
+        self.assertIn("permission denied for pg_tables", result.error_message)
+
 
 # ---------------------------------------------------------------------------
 # execute() — droppable-object paths
@@ -385,6 +401,7 @@ class TestCleanCommandCleanSchema(unittest.TestCase):
 
         self.assertFalse(result.success)
         self.assertIn("afterCleanError", callback_calls)
+        provider.drop_object.assert_not_called()
 
     def test_commit_error_raises(self):
         """commit_transaction failure should propagate (caught by outer except)."""

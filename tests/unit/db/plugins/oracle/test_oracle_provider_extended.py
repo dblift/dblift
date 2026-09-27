@@ -987,7 +987,8 @@ class TestCleanSchema:
         assert p.statements == []
         assert summary.statements
 
-    def test_query_failures_for_each_section_are_handled(self):
+    def test_catalog_query_failure_propagates(self):
+        # A failed catalog query must not read as "no objects of this kind".
         p = _Provider()
 
         def execute_query(sql, params=None):
@@ -996,11 +997,8 @@ class TestCleanSchema:
 
         p.execute_query = execute_query
 
-        summary = p.clean_schema("MYSCHEMA")
-
-        assert p.log.debug.call_count >= 6
-        assert summary.statements == []
-        assert summary.errors == []
+        with pytest.raises(Exception, match="query failed"):
+            p.clean_schema("MYSCHEMA")
 
     def test_drop_failures_are_recorded_as_errors(self):
         p = _Provider()

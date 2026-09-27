@@ -218,6 +218,24 @@ class TestPlainPostgresqlUnaffected(unittest.TestCase):
             'DROP VIEW IF EXISTS "public"."plain_v" CASCADE',
         )
 
+    def test_aggregate_query_failure_propagates(self):
+        # The probe found the catalog, so a failed read is a real error, not
+        # an absent extension. On PostgreSQL it also aborts the transaction,
+        # so swallowing it would hide the cause behind later failures.
+        qx = _timescale_qx()
+        default = qx.execute_query.side_effect
+
+        def _execute_query(connection, query, params=None):
+            if CAGG_FROM in query:
+                raise RuntimeError("permission denied for view continuous_aggregates")
+            return default(connection, query, params)
+
+        qx.execute_query.side_effect = _execute_query
+        ops = PostgreSqlSchemaOperations(query_executor=qx, log=MagicMock())
+
+        with self.assertRaisesRegex(RuntimeError, "permission denied"):
+            ops.get_clean_preview(MagicMock(), "dblift_test")
+
 
 if __name__ == "__main__":
     unittest.main()

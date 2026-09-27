@@ -6,6 +6,8 @@ Targets fallback/exception branches not covered by the existing
 
 from unittest.mock import MagicMock
 
+import pytest
+
 from dblift.db.plugins.db2.db2.schema_operations import Db2SchemaOperations
 
 
@@ -127,16 +129,16 @@ class TestCleanSchemaExtended:
         assert not any("DROP INDEX" in statement for statement in summary.statements)
         assert not any(obj.object_type == "index" for obj in summary.objects)
 
-    def test_catalog_query_failure_is_logged_without_raising(self):
+    def test_catalog_query_failure_propagates(self):
+        # A failed catalog query must not read as "no objects of this kind".
         ops, qe, log = _make_ops()
         conn = _make_connection(auto_commit=False)
         qe.execute_query.side_effect = RuntimeError("triggers query failed")
 
-        summary = ops.clean_schema(conn, "myschema")
-
-        assert not summary.statements
-        debug_calls = [str(c) for c in log.debug.call_args_list]
-        assert any("Could not query DB2 trigger" in c for c in debug_calls)
+        with pytest.raises(RuntimeError, match="triggers query failed"):
+            ops.clean_schema(conn, "myschema")
+        executed = [c.args[1] for c in qe.execute_statement.call_args_list]
+        assert not any(sql.startswith("DROP") for sql in executed)
 
     def test_initial_rollback_failure_is_logged_and_clean_continues(self):
         ops, qe, log = _make_ops()

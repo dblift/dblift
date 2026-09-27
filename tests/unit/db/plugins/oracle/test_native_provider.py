@@ -3,6 +3,8 @@
 import re
 from types import SimpleNamespace
 
+import pytest
+
 from dblift.db.plugins.oracle.provider import OracleProvider
 
 
@@ -289,7 +291,8 @@ def test_clean_schema_drops_private_database_links() -> None:
     assert any(drop.object_type == "database_link" for drop in summary.objects)
 
 
-def test_clean_schema_continues_after_program_object_query_failure() -> None:
+def test_clean_schema_raises_when_program_object_query_fails() -> None:
+    # A failed catalog query must not read as "no program objects".
     provider = DummyOracleProvider()
 
     def fake_query(sql, params=None):
@@ -308,16 +311,10 @@ def test_clean_schema_continues_after_program_object_query_failure() -> None:
         or 1
     )
 
-    summary = provider.clean_schema("APP")
+    with pytest.raises(RuntimeError, match="program query denied"):
+        provider.clean_schema("APP")
 
-    query_sql = [call[1] for call in provider.calls if call[0] == "query"]
-    program_query_index = next(index for index, sql in enumerate(query_sql) if "ALL_OBJECTS" in sql)
-    synonym_query_index = next(
-        index for index, sql in enumerate(query_sql) if "ALL_SYNONYMS" in sql
-    )
-    assert program_query_index < synonym_query_index
-    assert ("statement", 'DROP SYNONYM "APP"."APP_SYNONYM"', None, None) in provider.calls
-    assert any(drop.object_type == "synonym" for drop in summary.objects)
+    assert ("statement", 'DROP SYNONYM "APP"."APP_SYNONYM"', None, None) not in provider.calls
 
 
 def test_clean_schema_records_program_object_drop() -> None:

@@ -87,12 +87,14 @@ class TestMysqlGetCleanPreview(unittest.TestCase):
         self.assertEqual(summary.statements, [])
         self.assertEqual(summary.objects, [])
 
-    def test_preview_query_failure_does_not_abort(self):
+    def test_preview_query_failure_propagates(self):
+        # A failed catalog query must not read as "no objects of this kind":
+        # clean would then report success having dropped nothing.
         qx = MagicMock()
 
         def _execute_query(connection, query, params=None):
-            if "EVENTS" in query:
-                raise RuntimeError("EVENTS table not present")
+            if "information_schema.VIEWS" in query:
+                raise RuntimeError("Lost connection to MySQL server during query")
             if "TABLES" in query:
                 return [{"TABLE_NAME": "users"}]
             return []
@@ -101,10 +103,9 @@ class TestMysqlGetCleanPreview(unittest.TestCase):
         qx.get_schema_qualified_name.side_effect = lambda s, n: f"`{s}`.`{n}`"
         ops = MySqlSchemaOperations(query_executor=qx, log=MagicMock())
 
-        summary = ops.get_clean_preview(MagicMock(), "testdb")
-
-        names = {o.name for o in summary.objects}
-        self.assertIn("users", names)
+        with self.assertRaisesRegex(RuntimeError, "Lost connection"):
+            ops.get_clean_preview(MagicMock(), "testdb")
+        qx.execute_statement.assert_not_called()
 
     def test_native_provider_preview_delegates_to_object_enumeration(self):
         provider = object.__new__(MySqlProvider)
@@ -133,6 +134,23 @@ class TestMysqlGetCleanPreview(unittest.TestCase):
         self.assertTrue(any("DROP TABLE" in sql for sql in statements))
         names = {(o.object_type, o.name) for o in summary.objects}
         self.assertIn(("table", "users"), names)
+
+    def test_category_query_failure_propagates(self):
+        # A failed catalog query must not read as "no objects of this kind".
+        qx = _qx_with_rows({"TABLES": [{"TABLE_NAME": "users"}]})
+        default = qx.execute_query.side_effect
+
+        def _execute_query(connection, query, params=None):
+            if "information_schema.VIEWS" in query:
+                raise RuntimeError("Lost connection to MySQL server during query")
+            return default(connection, query, params)
+
+        qx.execute_query.side_effect = _execute_query
+        ops = MySqlSchemaOperations(query_executor=qx, log=MagicMock())
+
+        with self.assertRaisesRegex(RuntimeError, "Lost connection"):
+            ops.get_clean_preview(MagicMock(), "testdb")
+        qx.execute_statement.assert_not_called()
 
 
 if __name__ == "__main__":

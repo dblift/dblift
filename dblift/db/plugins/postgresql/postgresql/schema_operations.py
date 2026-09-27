@@ -305,8 +305,8 @@ class PostgreSqlSchemaOperations(BaseSchemaOperations):
         handler, leaving an empty preview. Clean would drop nothing and still
         report success. The probe below therefore establishes existence with a
         ``pg_class`` lookup that is valid on every PostgreSQL server, and the
-        TimescaleDB view is read only once that probe finds it. The
-        ``except`` is a backstop for unexpected failures, not the guard.
+        TimescaleDB view is read only once that probe finds it. Any other
+        query failure propagates, as for the rest of the clean enumeration.
         """
         probe_query = """
         SELECT 1 AS present
@@ -320,13 +320,9 @@ class PostgreSqlSchemaOperations(BaseSchemaOperations):
         FROM timescaledb_information.continuous_aggregates
         WHERE view_schema = ?
         """
-        try:
-            if not self.query_executor.execute_query(connection, probe_query):
-                return set()
-            rows = self.query_executor.execute_query(connection, aggregates_query, params=[schema])
-        except Exception as e:
-            self.log.debug(f"Could not query continuous aggregates: {str(e)}")
+        if not self.query_executor.execute_query(connection, probe_query):
             return set()
+        rows = self.query_executor.execute_query(connection, aggregates_query, params=[schema])
 
         names = set()
         for row in rows:
@@ -345,6 +341,11 @@ class PostgreSqlSchemaOperations(BaseSchemaOperations):
 
         Mirrors ``clean_schema`` enumeration: extensions, views, tables,
         sequences, functions/procedures, types/domains.
+
+        Every catalog queried here exists on all supported servers, so a query
+        failure (permission denied, aborted transaction, lost connection)
+        propagates instead of being read as "no objects of this kind". Treating
+        it as empty made ``clean`` report success having dropped nothing.
         """
         summary = CleanExecutionSummary()
         relation_type_names = set()
@@ -357,19 +358,14 @@ class PostgreSqlSchemaOperations(BaseSchemaOperations):
         WHERE n.nspname = ?
         ORDER BY extname
         """
-        try:
-            extensions = self.query_executor.execute_query(
-                connection, extensions_query, params=[schema]
-            )
-            for ext_row in extensions:
-                ext_name = ext_row.get("extension_name", ext_row.get("EXTENSION_NAME"))
-                if ext_name:
-                    drop_sql = f'DROP EXTENSION IF EXISTS "{ext_name}" CASCADE'
-                    summary.record_drop(
-                        drop_sql, object_type="extension", name=ext_name, schema=schema
-                    )
-        except Exception as e:
-            self.log.debug(f"Could not query extensions for preview: {str(e)}")
+        extensions = self.query_executor.execute_query(
+            connection, extensions_query, params=[schema]
+        )
+        for ext_row in extensions:
+            ext_name = ext_row.get("extension_name", ext_row.get("EXTENSION_NAME"))
+            if ext_name:
+                drop_sql = f'DROP EXTENSION IF EXISTS "{ext_name}" CASCADE'
+                summary.record_drop(drop_sql, object_type="extension", name=ext_name, schema=schema)
 
         # Views. TimescaleDB continuous aggregates are relkind='v' rows, so
         # they arrive here mixed in with plain views and need the other verb.
@@ -380,24 +376,19 @@ class PostgreSqlSchemaOperations(BaseSchemaOperations):
         WHERE schemaname = ?
         ORDER BY viewname
         """
-        try:
-            views = self.query_executor.execute_query(connection, views_query, params=[schema])
-            for row in views:
-                name = row.get("view_name", row.get("VIEW_NAME"))
-                if name:
-                    relation_type_names.add(str(name).lower())
-                    qualified = self.query_executor.get_schema_qualified_name(schema, name)
-                    if str(name).lower() in continuous_aggregates:
-                        drop_sql = f"DROP MATERIALIZED VIEW IF EXISTS {qualified} CASCADE"
-                        recorded_type = "materialized_view"
-                    else:
-                        drop_sql = f"DROP VIEW IF EXISTS {qualified} CASCADE"
-                        recorded_type = "view"
-                    summary.record_drop(
-                        drop_sql, object_type=recorded_type, name=name, schema=schema
-                    )
-        except Exception as e:
-            self.log.debug(f"Could not query views for preview: {str(e)}")
+        views = self.query_executor.execute_query(connection, views_query, params=[schema])
+        for row in views:
+            name = row.get("view_name", row.get("VIEW_NAME"))
+            if name:
+                relation_type_names.add(str(name).lower())
+                qualified = self.query_executor.get_schema_qualified_name(schema, name)
+                if str(name).lower() in continuous_aggregates:
+                    drop_sql = f"DROP MATERIALIZED VIEW IF EXISTS {qualified} CASCADE"
+                    recorded_type = "materialized_view"
+                else:
+                    drop_sql = f"DROP VIEW IF EXISTS {qualified} CASCADE"
+                    recorded_type = "view"
+                summary.record_drop(drop_sql, object_type=recorded_type, name=name, schema=schema)
 
         # Materialized views
         matviews_query = """
@@ -406,21 +397,16 @@ class PostgreSqlSchemaOperations(BaseSchemaOperations):
         WHERE schemaname = ?
         ORDER BY matviewname
         """
-        try:
-            matviews = self.query_executor.execute_query(
-                connection, matviews_query, params=[schema]
-            )
-            for row in matviews:
-                name = row.get("matview_name", row.get("MATVIEW_NAME", row.get("matviewname")))
-                if name:
-                    relation_type_names.add(str(name).lower())
-                    qualified = self.query_executor.get_schema_qualified_name(schema, name)
-                    drop_sql = f"DROP MATERIALIZED VIEW IF EXISTS {qualified} CASCADE"
-                    summary.record_drop(
-                        drop_sql, object_type="materialized_view", name=name, schema=schema
-                    )
-        except Exception as e:
-            self.log.debug(f"Could not query materialized views for preview: {str(e)}")
+        matviews = self.query_executor.execute_query(connection, matviews_query, params=[schema])
+        for row in matviews:
+            name = row.get("matview_name", row.get("MATVIEW_NAME", row.get("matviewname")))
+            if name:
+                relation_type_names.add(str(name).lower())
+                qualified = self.query_executor.get_schema_qualified_name(schema, name)
+                drop_sql = f"DROP MATERIALIZED VIEW IF EXISTS {qualified} CASCADE"
+                summary.record_drop(
+                    drop_sql, object_type="materialized_view", name=name, schema=schema
+                )
 
         # Tables
         tables_query = """
@@ -429,19 +415,16 @@ class PostgreSqlSchemaOperations(BaseSchemaOperations):
         WHERE schemaname = ?
         ORDER BY tablename
         """
-        try:
-            table_names = set()
-            tables = self.query_executor.execute_query(connection, tables_query, params=[schema])
-            for row in tables:
-                name = row.get("table_name", row.get("TABLE_NAME"))
-                if name:
-                    table_names.add(str(name).lower())
-                    relation_type_names.add(str(name).lower())
-                    qualified = self.query_executor.get_schema_qualified_name(schema, name)
-                    drop_sql = f"DROP TABLE IF EXISTS {qualified} CASCADE"
-                    summary.record_drop(drop_sql, object_type="table", name=name, schema=schema)
-        except Exception as e:
-            self.log.debug(f"Could not query tables for preview: {str(e)}")
+        table_names = set()
+        tables = self.query_executor.execute_query(connection, tables_query, params=[schema])
+        for row in tables:
+            name = row.get("table_name", row.get("TABLE_NAME"))
+            if name:
+                table_names.add(str(name).lower())
+                relation_type_names.add(str(name).lower())
+                qualified = self.query_executor.get_schema_qualified_name(schema, name)
+                drop_sql = f"DROP TABLE IF EXISTS {qualified} CASCADE"
+                summary.record_drop(drop_sql, object_type="table", name=name, schema=schema)
 
         # Sequences
         sequences_query = """
@@ -450,18 +433,13 @@ class PostgreSqlSchemaOperations(BaseSchemaOperations):
         WHERE sequence_schema = ?
         ORDER BY sequence_name
         """
-        try:
-            sequences = self.query_executor.execute_query(
-                connection, sequences_query, params=[schema]
-            )
-            for row in sequences:
-                name = row.get("sequence_name", row.get("SEQUENCE_NAME"))
-                if name:
-                    qualified = self.query_executor.get_schema_qualified_name(schema, name)
-                    drop_sql = f"DROP SEQUENCE IF EXISTS {qualified} CASCADE"
-                    summary.record_drop(drop_sql, object_type="sequence", name=name, schema=schema)
-        except Exception as e:
-            self.log.debug(f"Could not query sequences for preview: {str(e)}")
+        sequences = self.query_executor.execute_query(connection, sequences_query, params=[schema])
+        for row in sequences:
+            name = row.get("sequence_name", row.get("SEQUENCE_NAME"))
+            if name:
+                qualified = self.query_executor.get_schema_qualified_name(schema, name)
+                drop_sql = f"DROP SEQUENCE IF EXISTS {qualified} CASCADE"
+                summary.record_drop(drop_sql, object_type="sequence", name=name, schema=schema)
 
         # Functions / Procedures
         functions_query = """
@@ -470,24 +448,17 @@ class PostgreSqlSchemaOperations(BaseSchemaOperations):
         WHERE routine_schema = ?
         ORDER BY routine_name
         """
-        try:
-            functions = self.query_executor.execute_query(
-                connection, functions_query, params=[schema]
-            )
-            for row in functions:
-                fname = row.get("routine_name", row.get("ROUTINE_NAME"))
-                ftype = row.get("routine_type", row.get("ROUTINE_TYPE"))
-                if fname and ftype:
-                    qualified = self.query_executor.get_schema_qualified_name(schema, fname)
-                    if ftype.upper() == "FUNCTION":
-                        drop_sql = f"DROP FUNCTION IF EXISTS {qualified} CASCADE"
-                    else:
-                        drop_sql = f"DROP PROCEDURE IF EXISTS {qualified} CASCADE"
-                    summary.record_drop(
-                        drop_sql, object_type=ftype.lower(), name=fname, schema=schema
-                    )
-        except Exception as e:
-            self.log.debug(f"Could not query routines for preview: {str(e)}")
+        functions = self.query_executor.execute_query(connection, functions_query, params=[schema])
+        for row in functions:
+            fname = row.get("routine_name", row.get("ROUTINE_NAME"))
+            ftype = row.get("routine_type", row.get("ROUTINE_TYPE"))
+            if fname and ftype:
+                qualified = self.query_executor.get_schema_qualified_name(schema, fname)
+                if ftype.upper() == "FUNCTION":
+                    drop_sql = f"DROP FUNCTION IF EXISTS {qualified} CASCADE"
+                else:
+                    drop_sql = f"DROP PROCEDURE IF EXISTS {qualified} CASCADE"
+                summary.record_drop(drop_sql, object_type=ftype.lower(), name=fname, schema=schema)
 
         # Types / Domains
         types_query = """
@@ -499,26 +470,21 @@ class PostgreSqlSchemaOperations(BaseSchemaOperations):
           AND t.typname NOT LIKE 'pg_%'
         ORDER BY typname
         """
-        try:
-            types = self.query_executor.execute_query(connection, types_query, params=[schema])
-            for row in types:
-                tname = row.get("type_name", row.get("TYPE_NAME"))
-                tcat = row.get("typtype", "c")
-                if tname:
-                    if tcat == "c" and str(tname).lower() in relation_type_names:
-                        continue
-                    qualified = self.query_executor.get_schema_qualified_name(schema, tname)
-                    if tcat == "d":
-                        drop_sql = f"DROP DOMAIN IF EXISTS {qualified} CASCADE"
-                        recorded_type = "domain"
-                    else:
-                        drop_sql = f"DROP TYPE IF EXISTS {qualified} CASCADE"
-                        recorded_type = "type"
-                    summary.record_drop(
-                        drop_sql, object_type=recorded_type, name=tname, schema=schema
-                    )
-        except Exception as e:
-            self.log.debug(f"Could not query types for preview: {str(e)}")
+        types = self.query_executor.execute_query(connection, types_query, params=[schema])
+        for row in types:
+            tname = row.get("type_name", row.get("TYPE_NAME"))
+            tcat = row.get("typtype", "c")
+            if tname:
+                if tcat == "c" and str(tname).lower() in relation_type_names:
+                    continue
+                qualified = self.query_executor.get_schema_qualified_name(schema, tname)
+                if tcat == "d":
+                    drop_sql = f"DROP DOMAIN IF EXISTS {qualified} CASCADE"
+                    recorded_type = "domain"
+                else:
+                    drop_sql = f"DROP TYPE IF EXISTS {qualified} CASCADE"
+                    recorded_type = "type"
+                summary.record_drop(drop_sql, object_type=recorded_type, name=tname, schema=schema)
 
         return summary
 
