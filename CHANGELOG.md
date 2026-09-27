@@ -92,7 +92,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   fails. 4.8.0 skipped that kind of object and could report success with
   objects left behind, for example for a role that cannot read a catalog
   view. Grant the role read access to the catalogs `clean` queries, or
-  clean with the schema owner.
+  clean with the schema owner. On MySQL and MariaDB, `clean` also fails
+  when the user lacks the EVENT privilege on the database, which 4.8.0
+  read as "no events" and left them behind; grant EVENT on the database.
 - `fail_on_fixed_dbo` is the only new `database:` key (SQL Server, default
   `false`). No CLI flags were added. An unrecognized key under `database:`
   is now logged as a warning naming the key and is still ignored. The
