@@ -9,33 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Public `dblift.core.migration.sql.is_comment_only_statement` helper shares the executor's existing comment classification, including executable MySQL/MariaDB directives.
-
 ### Changed
 
 ### Fixed
-
-- A migration containing only a block comment (`/* ... */`), alone or mixed with `--` comments, is applied as a no-op on every dialect. MySQL, MariaDB, PostgreSQL, SQL Server and Oracle previously sent a stray `*` to the server and recorded a failed migration.
-- DML target-table resolution through an alias (`DELETE <alias> FROM <table> <alias>`, `DELETE t2 FROM t1 JOIN t2 …`, SQL Server `UPDATE <alias> SET … FROM <table> AS <alias>`) now also works when `statement_dml_table` / `analyze_dml` are given dblift's dialect names (`sqlserver`, `postgresql`, `mariadb`) rather than sqlglot's, and in the regex fallback `extract_dml_table_name`; before, those calls returned the alias or the FROM anchor.
-- The HTML log report named the objects touched by aliased `UPDATE` / `DELETE` statements by their alias (`a`, `t2`) and listed every table read by a DML statement as changed; it now names the one table the statement writes.
-- MCP tools reject unknown argument names before execution and advertise closed argument schemas, preventing misspelled filters from silently running with defaults.
-
-- `undo --target-version` skips versions already undone and continues rolling back applied versions above the target. Other refusal reasons still fail the command.
-- `undo` checks that every version it would roll back has an undo script before executing any of them. A missing script lower in the plan now refuses the run up front, with the same message as `--dry-run`, instead of rolling back the higher versions first and leaving the database partially undone.
-- Oracle and DB2 `import-flyway` read the history table Flyway creates, `"flyway_schema_history"` with quoted lowercase columns, including under a configured `--flyway-table` name. An unquoted uppercase table still imports. The Flyway history compatibility check finds the same table.
-- PostgreSQL migrations can record history in a Flyway-created table without an `installed_rank` default. Rank allocation occurs under the migration lock; history failures still roll back transactional migration changes.
-- Migration state timestamps use timezone-aware UTC without Python 3.12 deprecation warnings, retaining the existing `Z` format.
-- A null schema leaves `${dblift_schema}` undefined: it is preserved with a warning, or uses its explicit `${dblift_schema:default}` value. Oracle and other configured schema expansions are unchanged.
-- `import-flyway` keeps failed Flyway rows failed when a hand-built Flyway table stores `success` as text such as `'0'` or `'false'`. MySQL and SQLite previously imported those rows as successful, and Oracle and DB2 failed to read a `'false'` value.
-- `validate` fails when the schema history table cannot be read, with or without `--strict`, instead of reporting success. The CLI exits non-zero, `--format json` and the MCP `validate` tool return `success: false`, and `DBLiftClient.validate()` returns a failed result whose error names the history read failure, matching `info` and `undo`.
-- Python API clients built without a `schema` use the same default schema as the CLI: the username on Oracle, the selected database on MySQL and MariaDB, and `dbo` on SQL Server. Oracle no longer fails with ORA-01741 on an empty schema-history table name, and an empty schema leaves `${dblift_schema}` undefined instead of expanding to an empty string.
-- Narrow and dumb terminals retain the migration table's Description column.
-- PostgreSQL `pg_dump` `COPY ... FROM stdin` blocks now load their rows. The header and its data are sent together through psycopg's copy API; previously the driver refused the COPY and left the connection stuck, so the failure was never recorded in history and the migration lock was not released. A COPY that fails on bad data is recorded as a failed migration and rolls back.
-- A SQLite or DuckDB file in a deeply nested directory no longer crashes every command with `File name too long`: the default log filename and the JSON/HTML report filenames from the public formatter API bound the database identifier, keeping its basename. An unwritable log location now prints a short error instead of a traceback.
-- Oracle: a `;` followed on the same line by a stray `*/` no longer ends the statement. Oracle comments do not nest, so in `/* outer /* inner */ DROP TABLE t; */` the `DROP` is outside the comment; SQL*Plus keeps it in the buffer up to the next line ending in `;` and the server rejects the joined text, so `t` survives. dblift previously ran `DROP TABLE t` on its own; it now sends the same text SQL*Plus does.
-- PostgreSQL view extraction retains the `security_barrier` option supplied by catalog queries.
-- Integration tests skip unavailable snapshot and vendor introspection capabilities before starting database fixtures. PR formatting checks cover `packages/`, and pytest-dblift tests run with deprecation warnings treated as errors.
-- `migrate`, `undo`, `baseline`, `clean`, `repair` and `import-flyway` report a failed connection or an uncreatable schema-history table the way `info` and `validate` do: the CLI fails with `ConnectionError: ...` (also under `--format json`), the MCP `migrate_dry_run` tool returns an error result, and reading `dblift://pending` fails instead of returning `[]`. `DBLiftClient.migrate()`, `undo()`, `baseline()`, `clean()`, `repair()` and `import_flyway()` return a failed result whose message is the preflight text, as `info()` and `validate()` do. `clean` no longer carries on past a connection it could not open. Failures while migrating are still returned as failed results.
 
 ### Removed
 
@@ -120,6 +96,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Public `dblift.core.migration.sql.is_comment_only_statement` helper shares the executor's existing comment classification, including executable MySQL/MariaDB directives.
 - `command.pre_migrate_dry_run` check point runs before a dry-run migrate.
 - The `validate` MCP tool now accepts `strict`, adding `--strict` so an agent can have a previously applied but now-missing migration reported and strict version order enforced (the CLI flag was already there; the tool did not expose it). The server instructions and MCP guide no longer imply the default `validate` reports missing files — it does so under `strict`.
 - Added `dblift.extensions.providers`, a stable import path for provider plugin
@@ -166,6 +143,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- A migration containing only a block comment (`/* ... */`), alone or mixed with `--` comments, is applied as a no-op on every dialect. MySQL, MariaDB, PostgreSQL, SQL Server and Oracle previously sent a stray `*` to the server and recorded a failed migration.
+- DML target-table resolution through an alias (`DELETE <alias> FROM <table> <alias>`, `DELETE t2 FROM t1 JOIN t2 …`, SQL Server `UPDATE <alias> SET … FROM <table> AS <alias>`) now also works when `statement_dml_table` / `analyze_dml` are given dblift's dialect names (`sqlserver`, `postgresql`, `mariadb`) rather than sqlglot's, and in the regex fallback `extract_dml_table_name`; before, those calls returned the alias or the FROM anchor.
+- The HTML log report named the objects touched by aliased `UPDATE` / `DELETE` statements by their alias (`a`, `t2`) and listed every table read by a DML statement as changed; it now names the one table the statement writes.
+- MCP tools reject unknown argument names before execution and advertise closed argument schemas, preventing misspelled filters from silently running with defaults.
+- `undo --target-version` skips versions already undone and continues rolling back applied versions above the target. Other refusal reasons still fail the command.
+- `undo` checks that every version it would roll back has an undo script before executing any of them. A missing script lower in the plan now refuses the run up front, with the same message as `--dry-run`, instead of rolling back the higher versions first and leaving the database partially undone.
+- Oracle and DB2 `import-flyway` read the history table Flyway creates, `"flyway_schema_history"` with quoted lowercase columns, including under a configured `--flyway-table` name. An unquoted uppercase table still imports. The Flyway history compatibility check finds the same table.
+- PostgreSQL migrations can record history in a Flyway-created table without an `installed_rank` default. Rank allocation occurs under the migration lock; history failures still roll back transactional migration changes.
+- Migration state timestamps use timezone-aware UTC without Python 3.12 deprecation warnings, retaining the existing `Z` format.
+- A null schema leaves `${dblift_schema}` undefined: it is preserved with a warning, or uses its explicit `${dblift_schema:default}` value. Oracle and other configured schema expansions are unchanged.
+- `import-flyway` keeps failed Flyway rows failed when a hand-built Flyway table stores `success` as text such as `'0'` or `'false'`. MySQL and SQLite previously imported those rows as successful, and Oracle and DB2 failed to read a `'false'` value.
+- `validate` fails when the schema history table cannot be read, with or without `--strict`, instead of reporting success. The CLI exits non-zero, `--format json` and the MCP `validate` tool return `success: false`, and `DBLiftClient.validate()` returns a failed result whose error names the history read failure, matching `info` and `undo`.
+- Python API clients built without a `schema` use the same default schema as the CLI: the username on Oracle, the selected database on MySQL and MariaDB, and `dbo` on SQL Server. Oracle no longer fails with ORA-01741 on an empty schema-history table name, and an empty schema leaves `${dblift_schema}` undefined instead of expanding to an empty string.
+- Narrow and dumb terminals retain the migration table's Description column.
+- PostgreSQL `pg_dump` `COPY ... FROM stdin` blocks now load their rows. The header and its data are sent together through psycopg's copy API; previously the driver refused the COPY and left the connection stuck, so the failure was never recorded in history and the migration lock was not released. A COPY that fails on bad data is recorded as a failed migration and rolls back.
+- A SQLite or DuckDB file in a deeply nested directory no longer crashes every command with `File name too long`: the default log filename and the JSON/HTML report filenames from the public formatter API bound the database identifier, keeping its basename. An unwritable log location now prints a short error instead of a traceback.
+- Oracle: a `;` followed on the same line by a stray `*/` no longer ends the statement. Oracle comments do not nest, so in `/* outer /* inner */ DROP TABLE t; */` the `DROP` is outside the comment; SQL*Plus keeps it in the buffer up to the next line ending in `;` and the server rejects the joined text, so `t` survives. dblift previously ran `DROP TABLE t` on its own; it now sends the same text SQL*Plus does.
+- PostgreSQL view extraction retains the `security_barrier` option supplied by catalog queries.
+- Integration tests skip unavailable snapshot and vendor introspection capabilities before starting database fixtures. PR formatting checks cover `packages/`, and pytest-dblift tests run with deprecation warnings treated as errors.
+- `migrate`, `undo`, `baseline`, `clean`, `repair` and `import-flyway` report a failed connection or an uncreatable schema-history table the way `info` and `validate` do: the CLI fails with `ConnectionError: ...` (also under `--format json`), the MCP `migrate_dry_run` tool returns an error result, and reading `dblift://pending` fails instead of returning `[]`. `DBLiftClient.migrate()`, `undo()`, `baseline()`, `clean()`, `repair()` and `import_flyway()` return a failed result whose message is the preflight text, as `info()` and `validate()` do. `clean` no longer carries on past a connection it could not open. Failures while migrating are still returned as failed results.
 - `validate --format json` now reports `error: null` on success, matching `info` and `migrate` — it was `error: ""` (a clean validate leaves the message empty), the one inconsistency across the three read tools' JSON error contract.
 - DML analysis (`analyze_dml`, `statement_dml_table`, `extract_dml_table_name`)
   returned the alias instead of the table for the MySQL / SQL Server
