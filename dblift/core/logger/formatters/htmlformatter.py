@@ -10,7 +10,7 @@ from typing import Any, Dict, List, Optional
 
 import jinja2
 
-from dblift.core.logger._formatters import resolve_dblift_package_version
+from dblift.core.logger._formatters import _safe_name, resolve_dblift_package_version
 from dblift.core.logger.results import OperationResult
 
 
@@ -697,7 +697,10 @@ class HtmlFormatter:
             String containing the filename
         """
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        return f"Dblift_{schema_name}_{database_name}_{command_type}_{timestamp}.html"
+        return (
+            f"Dblift_{_safe_name(str(schema_name))}_{_safe_name(str(database_name))}_"
+            f"{command_type}_{timestamp}.html"
+        )
 
     def _add_test_markers(self, html_output: str) -> str:
         """Add test-specific markers to the HTML output.

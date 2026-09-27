@@ -3,7 +3,7 @@
 import argparse
 import sys
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional, Tuple
+from typing import Any, Dict, Iterable, List, NoReturn, Optional, Tuple
 
 from dblift.api._cli_support import ConnectionProvider
 from dblift.cli._parser_setup import create_parser, parse_with_selective_errors
@@ -460,7 +460,10 @@ def _configure_logging(
         Configured log instance
     """
     log_dir_path = Path(args.log_dir if args.log_dir is not None else "logs")
-    log_dir_path.mkdir(parents=True, exist_ok=True)
+    try:
+        log_dir_path.mkdir(parents=True, exist_ok=True)
+    except OSError as e:
+        _exit_log_location_error(e)
 
     _LOG_LEVEL_MAP = {
         "debug": LogLevel.DEBUG,
@@ -537,9 +540,23 @@ def _configure_logging(
         console_log_level=console_log_level,
     )
 
-    log = LogFactory.get_log("Dblift")
+    try:
+        log = LogFactory.get_log("Dblift")
+    except OSError as e:
+        _exit_log_location_error(e)
     log.debug(f"Using database name: {db_name}")
     return log
+
+
+def _exit_log_location_error(e: OSError) -> NoReturn:
+    """Report an unusable log location (unwritable dir, bad name) without a traceback."""
+    target = f": {e.filename}" if e.filename else ""
+    print(
+        f"Error: cannot write log file ({e.strerror or e}){target}. "
+        "Use --log-dir or --log-file to choose a writable location.",
+        file=sys.stderr,
+    )
+    sys.exit(1)
 
 
 def _resolve_scripts_directories(
