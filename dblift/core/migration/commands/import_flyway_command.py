@@ -6,8 +6,8 @@ from typing import Any, Dict, List
 from dblift.core.constants import DEFAULT_HISTORY_TABLE
 from dblift.core.logger.results import OperationResult
 from dblift.core.migration.commands.base_command import BaseCommand
-from dblift.core.migration.migration import MigrationType, success_to_bool
-from dblift.core.sql_validator._flyway_compatibility import FLYWAY_TYPE_TO_MIGRATION_TYPE
+from dblift.core.migration.migration import success_to_bool
+from dblift.core.sql_validator._flyway_compatibility import dblift_type_for_flyway_row
 
 
 class ImportFlywayCommand(BaseCommand):
@@ -193,14 +193,12 @@ class ImportFlywayCommand(BaseCommand):
         # ``flyway_type`` is a raw column value from Flyway's own history
         # table (e.g. "SQL", "JDBC"), never a MigrationType member — the
         # str() is defensive against non-text column types, not an enum cast.
-        mapped_type = FLYWAY_TYPE_TO_MIGRATION_TYPE.get(str(flyway_type))  # lint: allow-enum-str
+        mapped_type = dblift_type_for_flyway_row(
+            str(flyway_type), row.get("version")  # lint: allow-enum-str
+        )
         if mapped_type is None:
             raise ValueError(
                 f"Unrecognised Flyway migration type '{flyway_type}' for script "
                 f"'{row.get('script')}': no mapping to a Dblift MigrationType is defined."
             )
-        if mapped_type == MigrationType.SQL.name and not row.get("version"):
-            # Flyway's convention for a repeatable migration is type=SQL with
-            # no version — dblift models this as its own REPEATABLE type.
-            mapped_type = MigrationType.REPEATABLE.name
         return {**row, "type": mapped_type, "success": success_to_bool(row.get("success", True))}

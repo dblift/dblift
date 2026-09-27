@@ -53,3 +53,44 @@ def test_import_flyway_text_success_column_keeps_failed_rows_failed(tmp_path):
             conn.execute("SELECT version, success FROM dblift_schema_history").fetchall()
         )
     assert imported == {"1": 1, "2": 0, "3": 0}
+
+
+def test_imported_history_with_repeatable_is_flyway_compatible(tmp_path):
+    """Flyway stores a repeatable as a versionless SQL row and import-flyway
+    records it as REPEATABLE; the compatibility check must accept the pair."""
+    migrations = tmp_path / "migrations"
+    migrations.mkdir()
+    db_file = tmp_path / "app.db"
+
+    with sqlite3.connect(db_file) as conn:
+        conn.execute("""CREATE TABLE flyway_schema_history (
+            installed_rank INTEGER NOT NULL PRIMARY KEY, version TEXT,
+            description TEXT NOT NULL, type TEXT NOT NULL, script TEXT NOT NULL,
+            checksum INTEGER, installed_by TEXT NOT NULL,
+            installed_on TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            execution_time INTEGER NOT NULL, success INTEGER NOT NULL
+        )""")
+        conn.executemany(
+            "INSERT INTO flyway_schema_history (installed_rank, version, description, type,"
+            " script, checksum, installed_by, execution_time, success)"
+            " VALUES (?, ?, ?, 'SQL', ?, ?, 'flyway', 1, 1)",
+            [(1, "1", "init", "V1__init.sql", 111), (2, None, "view", "R__view.sql", 222)],
+        )
+
+    engine = create_engine(f"sqlite:///{db_file}")
+    client = DBLiftClient.from_sqlalchemy(engine, migrations_dir=migrations)
+    try:
+        result = client.import_flyway(flyway_table="flyway_schema_history")
+        assert result.success, result.error_message
+        verdict = client.executor.validator.validate_flyway_compatibility()
+    finally:
+        client.close()
+        engine.dispose()
+
+    with sqlite3.connect(db_file) as conn:
+        types = conn.execute(
+            "SELECT type FROM dblift_schema_history ORDER BY installed_rank"
+        ).fetchall()
+    assert types == [("SQL",), ("REPEATABLE",)]
+    assert verdict["flyway_count"] == verdict["Dblift_count"] == 2
+    assert verdict["compatible"] is True, verdict["error_message"]

@@ -95,6 +95,8 @@ def _seed(schema, table, quoted):
     return [
         (insert, [1, "1", "init", "SQL", "V1__init.sql", 111, "flyway", SUCCESS_ON, 10, 1]),
         (insert, [2, "2", "broken", "SQL", "V2__broken.sql", 222, "flyway", FAILED_ON, 20, 0]),
+        # Flyway records a repeatable migration as a versionless SQL row.
+        (insert, [3, None, "view", "SQL", "R__view.sql", 333, "flyway", SUCCESS_ON, 5, 1]),
     ]
 
 
@@ -136,14 +138,15 @@ def test_import_flyway_reads_history_table_shape(
     try:
         result = client.import_flyway(flyway_table=flyway_table)
         assert result.success, result.error_message
-        assert "2 entries imported" in result.message
+        assert "3 entries imported" in result.message
     finally:
         client.close()
 
     rows = sorted(admin.get_applied_migrations(schema), key=lambda r: r["installed_rank"])
-    assert [r["script"] for r in rows] == ["V1__init.sql", "V2__broken.sql"]
-    assert [r["success"] for r in rows] == [True, False]
-    assert [r["installed_on"] for r in rows] == [SUCCESS_ON, FAILED_ON]
+    assert [r["script"] for r in rows] == ["V1__init.sql", "V2__broken.sql", "R__view.sql"]
+    assert [r["type"] for r in rows] == ["SQL", "SQL", "REPEATABLE"]
+    assert [r["success"] for r in rows] == [True, False, True]
+    assert [r["installed_on"] for r in rows] == [SUCCESS_ON, FAILED_ON, SUCCESS_ON]
 
     if flyway_table == "flyway_schema_history":
         # The Flyway compatibility check reads the same source table.
@@ -155,10 +158,12 @@ def test_import_flyway_reads_history_table_shape(
         assert [r["script"] for r in snapshot.flyway_migrations] == [
             "V1__init.sql",
             "V2__broken.sql",
+            "R__view.sql",
         ]
         assert [r["script"] for r in snapshot.dblift_migrations] == [
             "V1__init.sql",
             "V2__broken.sql",
+            "R__view.sql",
         ]
         verdict = validate_flyway_compatibility(snapshot)
         assert verdict["compatible"] is True, verdict["error_message"]

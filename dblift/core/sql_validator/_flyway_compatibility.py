@@ -1,6 +1,6 @@
 """Pure Flyway compatibility rules over HistoryManager table snapshots."""
 
-from typing import TYPE_CHECKING, Dict
+from typing import TYPE_CHECKING, Dict, Optional
 
 if TYPE_CHECKING:
     from dblift.core.sql_validator.migration_validator import ValidationResult
@@ -32,18 +32,20 @@ FLYWAY_TYPE_TO_MIGRATION_TYPE: Dict[str, str] = {
     "DELETE": MigrationType.DELETE.name,
 }
 
-# The two histories accept different type vocabularies, so one set cannot serve
-# both sides of the comparison.
-#
-# Flyway has no notion of a Python migration and never writes ``PYTHON``;
-# accepting it here would weaken a real check.
-FLYWAY_VALID_TYPES = frozenset(FLYWAY_TYPE_TO_MIGRATION_TYPE)
 
-# Dblift additionally stores ``PYTHON`` for versioned scripts in a non-SQL
-# format (``MigrationType.SQL`` means "versioned", not "SQL format"). Without
-# it a single Python migration made a dblift history declare itself
-# Flyway-incompatible.
-DBLIFT_VALID_TYPES = FLYWAY_VALID_TYPES | {MigrationType.PYTHON.name}
+def dblift_type_for_flyway_row(flyway_type: str, version: object) -> Optional[str]:
+    """Return the Dblift ``MigrationType`` name a Flyway history row maps to.
+
+    ``import-flyway`` writes imported rows with this mapping and the
+    compatibility check compares against it, so the two cannot disagree.
+    Flyway records a repeatable migration as a versionless ``SQL`` row, which
+    Dblift stores as ``REPEATABLE``. Returns ``None`` for a Flyway type with
+    no Dblift equivalent (Flyway never writes ``PYTHON``, for instance).
+    """
+    mapped = FLYWAY_TYPE_TO_MIGRATION_TYPE.get(flyway_type)
+    if mapped == MigrationType.SQL.name and not version:
+        return MigrationType.REPEATABLE.name
+    return mapped
 
 
 def validate_flyway_compatibility(snapshot: FlywayCompatibilitySnapshot) -> Dict[str, object]:
@@ -72,7 +74,7 @@ def validate_flyway_compatibility(snapshot: FlywayCompatibilitySnapshot) -> Dict
             result["compatible"] = False
             result["error_message"] = (
                 f"Flyway has {len(flyway_migrations)} migrations but Dblift has "
-                f"{len(Dblift_migrations)} migrations. ."
+                f"{len(Dblift_migrations)} migrations."
             )
             return result
 
@@ -86,7 +88,7 @@ def validate_flyway_compatibility(snapshot: FlywayCompatibilitySnapshot) -> Dict
                 result["error_message"] = (
                     f"Migration version mismatch at position {i+1}: "
                     f"Flyway version '{flyway_migration.get('version')}' vs "
-                    f"Dblift version '{Dblift_migration.get('version')}'. ."
+                    f"Dblift version '{Dblift_migration.get('version')}'."
                 )
                 break
 
@@ -94,18 +96,26 @@ def validate_flyway_compatibility(snapshot: FlywayCompatibilitySnapshot) -> Dict
             flyway_type = flyway_migration.get("type", "").upper()
             Dblift_type = Dblift_migration.get("type", "").upper()
 
-            if flyway_type not in FLYWAY_VALID_TYPES:
+            expected_type = dblift_type_for_flyway_row(flyway_type, flyway_migration.get("version"))
+            if expected_type is None:
                 result["compatible"] = False
                 result["error_message"] = (
                     f"Unsupported migration type at position {i+1}: "
-                    f"Flyway type '{flyway_type}'.  ."
+                    f"Flyway type '{flyway_type}'."
                 )
                 break
-            if Dblift_type not in DBLIFT_VALID_TYPES:
+            # Dblift stores a versioned script in a non-SQL format as
+            # ``PYTHON`` (``MigrationType.SQL`` means "versioned", not "SQL
+            # format"), so it stands in for a versioned Flyway row.
+            accepted_types = {expected_type}
+            if expected_type == MigrationType.SQL.name:
+                accepted_types.add(MigrationType.PYTHON.name)
+            if Dblift_type not in accepted_types:
                 result["compatible"] = False
                 result["error_message"] = (
                     f"Migration type mismatch at position {i+1}: "
-                    f"Flyway type '{flyway_type}' vs Dblift type '{Dblift_type}'.  ."
+                    f"Flyway type '{flyway_type}' (Dblift '{expected_type}') vs "
+                    f"Dblift type '{Dblift_type}'."
                 )
                 break
             # Check script name (both Flyway and Dblift now use 'script')
@@ -114,7 +124,7 @@ def validate_flyway_compatibility(snapshot: FlywayCompatibilitySnapshot) -> Dict
                 result["error_message"] = (
                     f"Migration script name mismatch at position {i+1}: "
                     f"Flyway script '{flyway_migration.get('script')}' vs "
-                    f"Dblift script '{Dblift_migration.get('script')}'. ."
+                    f"Dblift script '{Dblift_migration.get('script')}'."
                 )
                 break
 
@@ -125,7 +135,7 @@ def validate_flyway_compatibility(snapshot: FlywayCompatibilitySnapshot) -> Dict
                 result["error_message"] = (
                     f"Migration checksum mismatch at position {i+1}: "
                     f"Flyway checksum '{flyway_migration.get('checksum')}' vs "
-                    f"Dblift checksum '{Dblift_migration.get('checksum')}'. ."
+                    f"Dblift checksum '{Dblift_migration.get('checksum')}'."
                 )
                 break
 
@@ -152,7 +162,10 @@ def check_flyway_history_table(snapshot: FlywayCompatibilitySnapshot) -> "Valida
         result.error_message = f"Error checking Flyway {context}: {snapshot.collection_error}"
     elif snapshot.flyway_exists and not snapshot.dblift_exists:
         result.success = False
-        result.error_message = " ."
+        result.error_message = (
+            "A Flyway schema history table exists but the Dblift schema history "
+            "table does not. Run import-flyway to import the Flyway history."
+        )
     elif snapshot.flyway_exists:
         comparison = validate_flyway_compatibility(snapshot)
         if not comparison["compatible"]:
