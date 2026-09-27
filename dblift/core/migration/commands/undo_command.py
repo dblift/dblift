@@ -14,7 +14,7 @@ from dblift.core.logger.results import MigrationInfo, MigrationSqlInfo, UndoResu
 from dblift.core.migration.formats.migration_format import MigrationFormat
 from dblift.core.migration.migration import MigrationType
 from dblift.core.migration.state.migration_display_state import MigrationDisplayState
-from dblift.core.migration.state.rank_wins import latest_successful_ranks
+from dblift.core.migration.state.rank_wins import installed_rank, latest_successful_ranks
 from dblift.core.migration.version_utils import compare_versions, is_migration_success
 
 from ._script_events import emit_script_event as _emit_script_event
@@ -197,6 +197,13 @@ class UndoCommand(BaseCommand):
             except (TypeError, AttributeError):
                 candidates = success_applied
             version_ranks = latest_successful_ranks(applied_migrations)
+            # A version undone and then re-applied has several successful rows;
+            # only the latest one is currently applied, so plan that row alone.
+            candidates = [
+                migration
+                for migration in candidates
+                if installed_rank(migration) == version_ranks[str(migration.version)].versioned
+            ]
 
             # Find migrations to undo using migration rules (based on state)
             migrations_to_undo = []
