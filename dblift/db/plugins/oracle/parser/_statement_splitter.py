@@ -24,7 +24,11 @@ import re
 from typing import Callable, List, Tuple
 
 from dblift.db.plugins.oracle.parser._comments import strip_sql_comments
-from dblift.db.plugins.oracle.parser._sqlplus import is_plsql_keyword_start, is_sqlplus_command
+from dblift.db.plugins.oracle.parser._sqlplus import (
+    is_plsql_keyword_start,
+    is_sqlplus_command,
+    tokenize_outside_sqlplus_directives,
+)
 from dblift.db.plugins.oracle.parser.oracle_tokenizer import (
     OracleTokenizer,
     has_stray_comment_close,
@@ -195,7 +199,16 @@ def split_statements_regex(
         return []
 
     statements: List[str] = []
-    text = strip_sql_comments(sql).strip()
+    # SQL*Plus directives end at the end of their line, with or without a
+    # ";", and their text is not SQL: drop them so "PROMPT customer's table"
+    # neither opens a literal nor merges with the next statement.
+    _, directive_lines = tokenize_outside_sqlplus_directives(sql)
+    parts, last = [], 0
+    for start, end in directive_lines:
+        parts.append(sql[last:start])
+        last = end
+    parts.append(sql[last:])
+    text = strip_sql_comments("".join(parts)).strip()
     i = 0
 
     while i < len(text):

@@ -16,17 +16,16 @@ different contexts with subtly different needs:
 
 Comments are found with :class:`OracleTokenizer`, the same scanner the
 tokenizer split path uses, so ``--`` and ``/*`` inside plain and
-q-quoted literals (``'a -- b'``, ``q'[--]'``) are kept as data.
+q-quoted literals (``'a -- b'``, ``q'[--]'``) are kept as data, and
+SQL*Plus directive lines (``REM don't run twice``) are left untouched.
 """
 
 from __future__ import annotations
 
 import re
-import warnings
 
-from dblift.core.sql_parser.base_tokenizer import TokenizerWarning
 from dblift.core.sql_parser.tokens import TokenType
-from dblift.db.plugins.oracle.parser.oracle_tokenizer import OracleTokenizer
+from dblift.db.plugins.oracle.parser._sqlplus import tokenize_outside_sqlplus_directives
 
 __all__ = ["strip_comments", "strip_sql_comments"]
 
@@ -38,15 +37,13 @@ def _remove_comments(sql: str) -> str:
 
     A line comment runs to (not including) the newline; a block comment to
     the first ``*/`` (Oracle comments do not nest). An unterminated ``/*``
-    and the text after it are left in place.
+    and the text after it are left in place. SQL*Plus directive lines are
+    free text, not SQL, and are kept as they are: the apostrophe in
+    ``PROMPT Creating customer's table`` opens no literal.
     """
     if "--" not in sql and "/*" not in sql:
         return sql
-    with warnings.catch_warnings():
-        # Only comment spans are used here; unclaimed characters are
-        # reported when the statements themselves are tokenized.
-        warnings.simplefilter("ignore", TokenizerWarning)
-        tokens = OracleTokenizer(sql).tokenize()
+    tokens, _ = tokenize_outside_sqlplus_directives(sql)
     parts = []
     last = 0
     for token in tokens:

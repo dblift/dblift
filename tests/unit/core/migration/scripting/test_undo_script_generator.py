@@ -653,3 +653,110 @@ def test_oracle_undo_keeps_statements_after_comment_marker_in_string(literal):
     assert len(undo_sql) == 3
     for sql, table in zip(undo_sql, ("DC", "DB", "DA")):
         assert "DROP TABLE" in sql and f'"{table}"' in sql
+
+
+# The SQL*Plus directive-stripping script from the release test protocol,
+# with apostrophes in the free-text directives, then literals holding comment
+# markers.
+SQLPLUS_DIRECTIVES_SCRIPT = """SET SERVEROUTPUT ON
+SET LINESIZE 200
+SET PAGESIZE 0
+SET FEEDBACK OFF
+SET ECHO OFF
+SET VERIFY OFF
+SET DEFINE ON
+SET TERMOUT ON
+SPOOL /tmp/dblift_test.log
+SPOOL OFF
+PROMPT Starting migration V10's objects
+REMARK This is the customer's comment
+REM Another comment style, don't run twice
+DEFINE migration_label = V10_test
+COLUMN username FORMAT A30
+TIMING START migration_v10
+TIMING STOP
+DESCRIBE DBLIFT_TEST.USERS
+CLEAR SCREEN
+TTITLE 'Migration Report'
+BTITLE 'End'
+REPHEADER 'Header'
+REPFOOTER 'Footer'
+PAUSE
+VARIABLE v_count NUMBER
+PRINT v_count
+BREAK ON username
+COMPUTE COUNT OF id ON username
+-- Actual SQL to verify migration applied:
+CREATE TABLE DBLIFT_TEST.sqlplus_test (id NUMBER PRIMARY KEY, label VARCHAR2(100));
+PROMPT Creating customer's table
+CREATE TABLE DBLIFT_TEST.sp_dash (v VARCHAR2(20) DEFAULT '--');
+REM it's q'[--]' next
+CREATE TABLE DBLIFT_TEST.sp_q (v VARCHAR2(20) DEFAULT q'[--]');
+CREATE TABLE DBLIFT_TEST.sp_last (id NUMBER);
+"""
+
+
+def test_oracle_undo_with_apostrophes_in_sqlplus_directives():
+    """``PROMPT ...'s`` / ``REM don't`` do not open a literal that hides DDL."""
+    generator = UndoScriptGenerator(dialect="oracle", logger=LogFactory.get_log("test"))
+    migration = Migration(
+        script_name="V10__sqlplus_directives.sql",
+        content=SQLPLUS_DIRECTIVES_SCRIPT,
+        version="10",
+        description="sqlplus directives",
+        logger=generator.logger,
+    )
+
+    undo_sql = [stmt.sql.upper() for stmt in generator._generate_undo_statements(migration)]
+
+    assert len(undo_sql) == 4
+    for sql, table in zip(undo_sql, ("SP_LAST", "SP_Q", "SP_DASH", "SQLPLUS_TEST")):
+        assert "DROP TABLE" in sql and f'"{table}"' in sql
+
+
+def _oracle_undo_sql(content):
+    generator = UndoScriptGenerator(dialect="oracle", logger=LogFactory.get_log("test"))
+    migration = Migration(
+        script_name="V1__directives.sql",
+        content=content,
+        version="1",
+        description="directives",
+        logger=generator.logger,
+    )
+    return [stmt.sql.upper() for stmt in generator._generate_undo_statements(migration)]
+
+
+@pytest.mark.parametrize(
+    "directive",
+    ["PROMPT Creating customer's table", "REM don't run twice", "REMARK it's fine"],
+)
+def test_oracle_undo_drops_every_table_around_directive_with_apostrophe(directive):
+    undo_sql = _oracle_undo_sql(
+        f"{directive}\nCREATE TABLE a (id NUMBER);\n{directive}\n"
+        "CREATE TABLE b (id NUMBER);\nCREATE TABLE c (id NUMBER); -- gone\n"
+    )
+
+    assert len(undo_sql) == 3
+    for sql, table in zip(undo_sql, ("C", "B", "A")):
+        assert "DROP TABLE" in sql and f'"{table}"' in sql
+
+
+@pytest.mark.parametrize(
+    "block",
+    [
+        "BEGIN\n  EXECUTE IMMEDIATE 'CREATE TABLE x (\nPROMPT it''s data\n"
+        "    id NUMBER)';\nEND;\n/\n",
+        "INSERT INTO t (v) VALUES ('first\nREM it''s data\nSET x ON\n');\n",
+    ],
+    ids=["plsql-block", "multi-line-literal"],
+)
+def test_oracle_undo_keeps_directive_lookalikes_inside_sql(block):
+    """Directive-looking lines inside a block or a literal are SQL, not directives."""
+    undo_sql = _oracle_undo_sql(
+        f"PROMPT it's next\nCREATE TABLE a (id NUMBER);\n{block}"
+        "REM don't\nCREATE TABLE b (id NUMBER);\n"
+    )
+
+    drops = [sql for sql in undo_sql if "DROP TABLE" in sql]
+    assert len(drops) == 2
+    assert '"B"' in drops[0] and '"A"' in drops[1]

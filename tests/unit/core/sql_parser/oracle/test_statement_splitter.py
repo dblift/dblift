@@ -262,3 +262,23 @@ class TestSplitStatementsRegex:
         assert len(out) == 2
         assert "'a;b'" in out[0]
         assert "'c;d'" in out[1]
+
+    def test_apostrophe_in_sqlplus_directive_does_not_open_a_literal(self):
+        sql = (
+            "PROMPT Creating customer's table\n"
+            "REM don't run twice\n"
+            "REMARK it's fine\n"
+            "CREATE TABLE a (v VARCHAR2(9) DEFAULT '--');\n"
+            "PROMPT it's the next one\n"
+            "CREATE TABLE b (id NUMBER);\n"
+        )
+        out = split_statements_regex(sql, extract_plsql_block=_fake_plsql_extractor)
+        assert out == [
+            "CREATE TABLE a (v VARCHAR2(9) DEFAULT '--');",
+            "CREATE TABLE b (id NUMBER);",
+        ]
+
+    def test_directive_without_semicolon_does_not_swallow_next_statement(self):
+        sql = "SET SERVEROUTPUT ON\nCREATE TABLE a (id NUMBER);\nSPOOL OFF\nCREATE TABLE b (id NUMBER);"
+        out = split_statements_regex(sql, extract_plsql_block=_fake_plsql_extractor)
+        assert out == ["CREATE TABLE a (id NUMBER);", "CREATE TABLE b (id NUMBER);"]

@@ -103,3 +103,41 @@ def test_comment_markers_inside_literals_are_kept(strip, literal):
 @pytest.mark.unit
 def test_line_comment_marker_inside_block_comment():
     assert strip_comments("SELECT /* a -- b */ 1 FROM dual;") == "SELECT  1 FROM dual;"
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("strip", [strip_comments, strip_sql_comments])
+@pytest.mark.parametrize(
+    "directive",
+    ["PROMPT Creating customer's table", "REM don't run twice", "REMARK it's fine"],
+)
+def test_apostrophe_in_sqlplus_directive_does_not_open_a_literal(strip, directive):
+    sql = (
+        f"{directive}\n"
+        "CREATE TABLE t (id NUMBER); -- gone\n"
+        "CREATE TABLE u (v VARCHAR2(9) DEFAULT '--'); /* gone */\n"
+    )
+    result = strip(sql)
+    assert directive in result
+    assert "gone" not in result
+    assert "DEFAULT '--');" in result
+
+
+@pytest.mark.unit
+def test_directive_keyword_inside_plsql_block_is_sql_not_a_directive():
+    """``EXECUTE IMMEDIATE '...`` inside a block opens a real literal."""
+    sql = (
+        "PROMPT it's a block\n"
+        "BEGIN\n"
+        "  NULL;\n"
+        "  EXECUTE IMMEDIATE 'CREATE TABLE x (\n"
+        "    v VARCHAR2(9) DEFAULT ''--'')';\n"
+        "END;\n"
+        "/\n"
+        "REM don't\n"
+        "CREATE TABLE y (id NUMBER); -- gone\n"
+    )
+    result = strip_comments(sql)
+    assert "DEFAULT ''--'')';\nEND;" in result
+    assert "REM don't" in result
+    assert "gone" not in result
