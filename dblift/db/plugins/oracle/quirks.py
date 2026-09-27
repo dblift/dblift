@@ -255,7 +255,7 @@ class OracleQuirks(BaseQuirks):
         return extract_sqlplus_context(sql)
 
     def terminate_script_directives(self, sql: str) -> str:
-        """Append ``;`` to SQL*Plus directive lines so the tokenizer splits them."""
+        """Keep SQL*Plus directive lines from merging with the next statement."""
         from dblift.db.plugins.oracle.parser.sqlplus_context import terminate_sqlplus_directives
 
         return terminate_sqlplus_directives(sql)

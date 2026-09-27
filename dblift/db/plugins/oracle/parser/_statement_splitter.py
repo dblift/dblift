@@ -14,8 +14,8 @@ script into individual statements. It is:
   * SQL*Plus-aware via :func:`_sqlplus.is_sqlplus_command`,
   * comment-aware via :func:`_comments.strip_sql_comments`.
 
-All functions are pure module-level functions. The regex that detects
-PL/SQL block headers is compiled once at module load.
+All functions are pure module-level functions. PL/SQL block headers are
+detected by :func:`_sqlplus.is_plsql_keyword_start`.
 """
 
 from __future__ import annotations
@@ -24,7 +24,7 @@ import re
 from typing import Callable, List, Tuple
 
 from dblift.db.plugins.oracle.parser._comments import strip_sql_comments
-from dblift.db.plugins.oracle.parser._sqlplus import is_sqlplus_command
+from dblift.db.plugins.oracle.parser._sqlplus import is_plsql_keyword_start, is_sqlplus_command
 from dblift.db.plugins.oracle.parser.oracle_tokenizer import (
     OracleTokenizer,
     has_stray_comment_close,
@@ -40,37 +40,10 @@ __all__ = [
 ]
 
 
-# PL/SQL block header detection — captures CREATE [OR REPLACE]
-# [(NON)EDITIONABLE] {PROCEDURE | FUNCTION | PACKAGE [BODY] | TRIGGER |
-# TYPE [BODY] | COMPOUND TRIGGER | [AND (RESOLVE|COMPILE)] JAVA SOURCE}.
-_PLSQL_START_REGEX = re.compile(
-    r"^CREATE\s+(?:OR\s+REPLACE\s+)?(?:(?:NON)?EDITIONABLE\s+)?"
-    r"(?:"
-    r"PROCEDURE|FUNCTION|PACKAGE\s+BODY|PACKAGE|TRIGGER|TYPE\s+BODY|TYPE"
-    r"|COMPOUND\s+TRIGGER"
-    r"|(?:AND\s+(?:RESOLVE|COMPILE)\s+)?JAVA\s+SOURCE"
-    r")",
-    re.IGNORECASE,
-)
-
-_ANON_BLOCK_START = re.compile(r"^(?:DECLARE|BEGIN)\b", re.IGNORECASE)
-
 # Type alias for the PL/SQL block extractor callable injected by the
 # parser. ``(text, start_pos) -> (block_text, next_pos)``. See the
 # module docstring for why this is injected rather than imported.
 PlsqlBlockExtractor = Callable[[str, int], Tuple[str, int]]
-
-
-def is_plsql_keyword_start(text: str) -> bool:
-    """Return ``True`` if ``text`` begins with a PL/SQL block keyword.
-
-    Recognises anonymous blocks (``DECLARE``/``BEGIN``) and all
-    ``CREATE``-form PL/SQL headers (see :data:`_PLSQL_START_REGEX`).
-    """
-    stripped = text.strip()
-    if _ANON_BLOCK_START.match(stripped):
-        return True
-    return bool(_PLSQL_START_REGEX.match(stripped))
 
 
 def word_at_position(text: str, pos: int, word: str) -> bool:

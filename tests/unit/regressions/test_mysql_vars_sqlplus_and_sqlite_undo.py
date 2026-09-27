@@ -63,9 +63,10 @@ class TestSqlplusDirectiveTermination(unittest.TestCase):
     line silently merged with the following DDL/DML, either dropping the
     user's real statement (when ``is_sqlplus_command`` matched the merged
     text) or pushing invalid SQL to the execution provider. Fix:
-    ``terminate_sqlplus_directives()`` walks the script line-by-line and
-    appends ``;`` to any line that matches ``is_sqlplus_command`` or
-    ``parse_whenever_sqlerror`` and is not already terminated.
+    ``terminate_sqlplus_directives()`` finds the directive lines where a
+    statement can begin, appends ``;`` to a ``WHENEVER SQLERROR`` line not
+    already terminated, and empties the other directive lines (they are
+    never executed), so their text cannot merge with the next statement.
     """
 
     def _split(self, sql: str) -> list[str]:
@@ -80,21 +81,23 @@ class TestSqlplusDirectiveTermination(unittest.TestCase):
 
         raw = "SET SERVEROUTPUT ON\nCREATE TABLE t (id NUMBER);\n"
         terminated = terminate_sqlplus_directives(raw)
-        self.assertIn("SET SERVEROUTPUT ON;", terminated)
+        self.assertEqual(terminated, "\nCREATE TABLE t (id NUMBER);\n")
         stmts = self._split(terminated)
         self.assertTrue(any("CREATE TABLE" in s for s in stmts))
 
-    def test_define_directive_is_terminated(self) -> None:
+    def test_define_directive_is_removed(self) -> None:
         from dblift.db.plugins.oracle.parser.sqlplus_context import terminate_sqlplus_directives
 
         raw = "DEFINE schema_name = APP\nCREATE TABLE &schema_name..t (id NUMBER);\n"
-        self.assertIn("DEFINE schema_name = APP;", terminate_sqlplus_directives(raw))
+        self.assertEqual(
+            terminate_sqlplus_directives(raw), "\nCREATE TABLE &schema_name..t (id NUMBER);\n"
+        )
 
-    def test_prompt_directive_is_terminated(self) -> None:
+    def test_prompt_directive_is_removed(self) -> None:
         from dblift.db.plugins.oracle.parser.sqlplus_context import terminate_sqlplus_directives
 
         raw = "PROMPT Creating schema\nCREATE TABLE t (id NUMBER);\n"
-        self.assertIn("PROMPT Creating schema;", terminate_sqlplus_directives(raw))
+        self.assertEqual(terminate_sqlplus_directives(raw), "\nCREATE TABLE t (id NUMBER);\n")
 
     def test_whenever_sqlerror_continue_is_terminated(self) -> None:
         from dblift.db.plugins.oracle.parser.sqlplus_context import terminate_sqlplus_directives
@@ -108,11 +111,17 @@ class TestSqlplusDirectiveTermination(unittest.TestCase):
         raw = "WHENEVER SQLERROR EXIT\nSELECT 1 FROM dual;\n"
         self.assertIn("WHENEVER SQLERROR EXIT;", terminate_sqlplus_directives(raw))
 
-    def test_directive_already_terminated_unchanged(self) -> None:
+    def test_directive_already_terminated_is_removed(self) -> None:
         from dblift.db.plugins.oracle.parser.sqlplus_context import terminate_sqlplus_directives
 
         raw = "SET SERVEROUTPUT ON;\nCREATE TABLE t (id NUMBER);\n"
-        self.assertEqual(terminate_sqlplus_directives(raw).count("SET SERVEROUTPUT ON;"), 1)
+        self.assertEqual(terminate_sqlplus_directives(raw), "\nCREATE TABLE t (id NUMBER);\n")
+
+    def test_whenever_already_terminated_unchanged(self) -> None:
+        from dblift.db.plugins.oracle.parser.sqlplus_context import terminate_sqlplus_directives
+
+        raw = "WHENEVER SQLERROR EXIT;\nCREATE TABLE t (id NUMBER);\n"
+        self.assertEqual(terminate_sqlplus_directives(raw), raw)
 
     def test_non_directive_lines_pass_through(self) -> None:
         from dblift.db.plugins.oracle.parser.sqlplus_context import terminate_sqlplus_directives

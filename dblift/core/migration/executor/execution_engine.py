@@ -370,7 +370,7 @@ class ExecutionEngine:
             self._current_sqlplus_ctx = ctx
             for msg in getattr(ctx, "prompts", []) or []:
                 self.log.info(f"[PROMPT] {msg}")
-            # Append ';' to directive lines (SET, DEFINE, PROMPT, WHENEVER SQLERROR …)
+            # Terminate or empty directive lines (SET, DEFINE, PROMPT, WHENEVER SQLERROR …)
             # so the tokeniser does not merge them with the next DDL/DML. Without this,
             # ``SET SERVEROUTPUT ON\nCREATE TABLE ...`` becomes a single statement that
             # the driver rejects (or that ``is_script_directive`` filters wholesale, dropping

@@ -2,10 +2,13 @@
 
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from dblift.core.exceptions import TransactionAbortedError
 from dblift.core.migration.executor.execution_engine import ExecutionEngine
 from dblift.core.migration.formats import MigrationFormat
 from dblift.core.migration.migration import Migration
+from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
 from dblift.db.plugins.oracle.parser.sqlplus_context import SqlplusContext
 
 
@@ -86,6 +89,163 @@ class TestSqlplusContextExtraction:
 
         log_calls = [str(c) for c in engine.log.info.call_args_list]
         assert any("Starting data migration" in c for c in log_calls)
+
+
+# The directive-stripping script from the release test protocol, with
+# apostrophes in the free-text directives.
+SQLPLUS_DIRECTIVES_SCRIPT = """SET SERVEROUTPUT ON
+SET LINESIZE 200
+SET PAGESIZE 0
+SET FEEDBACK OFF
+SET ECHO OFF
+SET VERIFY OFF
+SET DEFINE ON
+SET TERMOUT ON
+SPOOL /tmp/dblift_test.log
+SPOOL OFF
+PROMPT Starting migration V10's objects
+REMARK This is the customer's comment
+REM Another comment style, don't run twice
+DEFINE migration_label = V10_test
+COLUMN username FORMAT A30
+TIMING START migration_v10
+TIMING STOP
+DESCRIBE DBLIFT_TEST.USERS
+CLEAR SCREEN
+TTITLE 'Migration Report'
+BTITLE 'End'
+REPHEADER 'Header'
+REPFOOTER 'Footer'
+PAUSE
+VARIABLE v_count NUMBER
+PRINT v_count
+BREAK ON username
+COMPUTE COUNT OF id ON username
+-- Actual SQL to verify migration applied:
+CREATE TABLE DBLIFT_TEST.sqlplus_test (id NUMBER PRIMARY KEY, label VARCHAR2(100));
+PROMPT Creating customer's table
+CREATE TABLE DBLIFT_TEST.sp_a (id NUMBER);
+REM it's q'[--]' next
+CREATE TABLE DBLIFT_TEST.sp_b (v VARCHAR2(20) DEFAULT q'[--]');
+"""
+
+
+def _oracle_statements(content: str) -> list:
+    engine = _make_engine("oracle")
+    engine.sql_analyzer = SqlAnalyzer(dialect="oracle", logger=engine.log)
+    return engine._parse_sql_statements(_make_sql_migration(content), MagicMock())
+
+
+class TestSqlplusDirectiveApostrophes:
+    """An apostrophe in a directive line does not open a literal.
+
+    Before the fix the tokenizer read ``customer's`` as the start of a
+    string running to the next apostrophe, so every statement in between
+    was dropped along with the directive, and ``migrate`` still succeeded.
+    """
+
+    def test_five_line_script_runs_every_create(self):
+        statements = _oracle_statements(
+            "PROMPT Creating customer's table\n"
+            "CREATE TABLE a (id NUMBER);\n"
+            "REM don't run twice\n"
+            "CREATE TABLE b (id NUMBER);\n"
+            "CREATE TABLE c (id NUMBER);\n"
+        )
+
+        assert statements == [
+            "CREATE TABLE a (id NUMBER);",
+            "CREATE TABLE b (id NUMBER);",
+            "CREATE TABLE c (id NUMBER);",
+        ]
+
+    @pytest.mark.parametrize(
+        "directive",
+        [
+            "PROMPT Creating customer's table",
+            "REM don't run twice",
+            "REMARK it's fine",
+            'PROMPT say "hi',
+            "  prompt it's indented",
+        ],
+    )
+    def test_lone_directive_with_quote_keeps_next_statements(self, directive):
+        statements = _oracle_statements(
+            f"CREATE TABLE a (id NUMBER);\n{directive}\n"
+            "CREATE TABLE b (id NUMBER);\nCREATE TABLE c (v VARCHAR2(9) DEFAULT 'x');\n"
+        )
+
+        assert statements == [
+            "CREATE TABLE a (id NUMBER);",
+            "CREATE TABLE b (id NUMBER);",
+            "CREATE TABLE c (v VARCHAR2(9) DEFAULT 'x');",
+        ]
+
+    def test_release_protocol_directive_block_with_apostrophes(self):
+        statements = _oracle_statements(SQLPLUS_DIRECTIVES_SCRIPT)
+
+        assert statements == [
+            "CREATE TABLE DBLIFT_TEST.sqlplus_test "
+            "(id NUMBER PRIMARY KEY, label VARCHAR2(100));",
+            "CREATE TABLE DBLIFT_TEST.sp_a (id NUMBER);",
+            "CREATE TABLE DBLIFT_TEST.sp_b (v VARCHAR2(20) DEFAULT q'[--]');",
+        ]
+
+    def test_whenever_line_still_reaches_the_executor(self):
+        statements = _oracle_statements(
+            "WHENEVER SQLERROR CONTINUE\nPROMPT it's next\nCREATE TABLE a (id NUMBER);\n"
+        )
+
+        assert statements == ["WHENEVER SQLERROR CONTINUE;", "CREATE TABLE a (id NUMBER);"]
+
+    def test_trailing_comment_on_directive_line_is_a_comment(self):
+        engine = _make_engine("oracle")
+        migration = _make_sql_migration(
+            "WHENEVER SQLERROR CONTINUE -- it's fine\n"
+            "DEFINE owner = APP -- the owner's schema\n"
+            "PROMPT Loading -- don't\n"
+            "SELECT * FROM &owner..t;\n"
+        )
+        engine.sql_analyzer = SqlAnalyzer(dialect="oracle", logger=engine.log)
+
+        statements = engine._parse_sql_statements(migration, MagicMock())
+
+        assert engine._current_sqlplus_ctx.defines == {"OWNER": "APP"}
+        assert engine._current_sqlplus_ctx.prompts == ["Loading"]
+        assert statements == ["WHENEVER SQLERROR CONTINUE;", "SELECT * FROM APP.t;"]
+
+    @pytest.mark.parametrize(
+        "block",
+        [
+            # A multi-line literal whose lines look like directives.
+            "BEGIN\n"
+            "  EXECUTE IMMEDIATE 'CREATE TABLE x (\n"
+            "PROMPT it''s not a directive\n"
+            "REM nor this\n"
+            "    id NUMBER)';\n"
+            "END;",
+            # EXECUTE / EXEC lines inside a block are PL/SQL, not directives.
+            "BEGIN\n  EXECUTE IMMEDIATE\n    'CREATE TABLE x (id NUMBER)';\n"
+            "  EXEC_PROC('it''s');\nEND;",
+            "CREATE OR REPLACE PROCEDURE p AS\nBEGIN\n"
+            "  EXECUTE IMMEDIATE 'INSERT INTO t VALUES (\n'\n"
+            "    || '''don''''t'')';\nEND;",
+        ],
+        ids=["literal-lines", "execute-lines", "procedure"],
+    )
+    def test_directive_keywords_inside_plsql_are_kept(self, block):
+        statements = _oracle_statements(
+            f"PROMPT it's a block\n{block}\n/\nREM don't\nCREATE TABLE y (id NUMBER);\n"
+        )
+
+        assert statements == [block, "CREATE TABLE y (id NUMBER);"]
+
+    def test_directive_keywords_inside_multi_line_literal_are_kept(self):
+        insert = "INSERT INTO t (v) VALUES ('first line\nPROMPT it''s data\nSET x ON\n');"
+
+        statements = _oracle_statements(f"{insert}\nCREATE TABLE y (id NUMBER);\n")
+
+        assert statements == [insert, "CREATE TABLE y (id NUMBER);"]
 
 
 class TestWheneverSqlerrorContinue:
