@@ -35,7 +35,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Oracle: a `;` followed on the same line by a stray `*/` no longer ends the statement. Oracle comments do not nest, so in `/* outer /* inner */ DROP TABLE t; */` the `DROP` is outside the comment; SQL*Plus keeps it in the buffer up to the next line ending in `;` and the server rejects the joined text, so `t` survives. dblift previously ran `DROP TABLE t` on its own; it now sends the same text SQL*Plus does.
 - PostgreSQL view extraction retains the `security_barrier` option supplied by catalog queries.
 - Integration tests skip unavailable snapshot and vendor introspection capabilities before starting database fixtures. PR formatting checks cover `packages/`, and pytest-dblift tests run with deprecation warnings treated as errors.
-- `migrate`, `undo` and `baseline` report a failed connection or an uncreatable schema-history table the way `info` and `validate` do: `--format json` emits `ConnectionError: ...`, the MCP `migrate_dry_run` tool returns an error result, and reading `dblift://pending` fails instead of returning `[]`. `DBLiftClient.migrate()`, `undo()` and `baseline()` raise the error as `info()` does. Failures while migrating are still returned as failed results.
+- `migrate`, `undo`, `baseline`, `clean`, `repair` and `import-flyway` report a failed connection or an uncreatable schema-history table the way `info` and `validate` do: the CLI fails with `ConnectionError: ...` (also under `--format json`), the MCP `migrate_dry_run` tool returns an error result, and reading `dblift://pending` fails instead of returning `[]`. `DBLiftClient.migrate()`, `undo()`, `baseline()`, `clean()`, `repair()` and `import_flyway()` return a failed result whose message is the preflight text, as `info()` and `validate()` do. `clean` no longer carries on past a connection it could not open. Failures while migrating are still returned as failed results.
 
 ### Removed
 
@@ -43,29 +43,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Upgrading
 
-- `DBLiftClient.validate()` still returns a failed `ValidateResult` when the
-  connection cannot be opened or the schema-history table cannot be created.
-  `target_schema` is set, `error_count` is 1, `VALIDATION_FAILED` is emitted,
-  and the result's message is the preflight text. A direct call also emits
-  `DeprecationWarning`: `DBLiftClient.validate() returns a failed result when
-  the connection fails or the schema-history table cannot be created.
-  Deprecated since 4.9.0; the next major release will raise ConnectionError
-  instead.` The private keyword `_warn_on_preflight_failure` defaults to
-  `True`; pass `False` and that warning is not emitted. The CLI,
-  `migrate --validate-only`, `dblift mcp`, Django `dblift_validate`, and the
-  pytest-dblift fixture pass `False`. Under `-W error::DeprecationWarning`, a
-  direct call raises that `DeprecationWarning` instead of returning the failed
-  result; `VALIDATION_FAILED` has already been emitted. Any other
-  `ConnectionError` still propagates. The CLI and `dblift mcp` re-raise the
-  preflight failure as `ConnectionError` (JSON is
-  `{"success": false, "error": "ConnectionError: ..."}`). Django raises
-  `CommandError` from the failed result's message. In 4.8.0 an unreachable
-  database came back as `Could not create schema history table: <connection
-  error>`; the message is now `Connection failed: ...`. A history-table
-  failure was `Could not create schema history table: ...`; it is now
-  `Could not create the schema-history table: ...`. Returning the failed
-  result is deprecated and will raise `ConnectionError` in the next major
-  release.
+- Every `DBLiftClient` command method (`info()`, `validate()`, `migrate()`,
+  `undo()`, `baseline()`, `clean()`, `repair()` and `import_flyway()`)
+  returns a failed result of its own type when the connection cannot be
+  opened or the schema-history table cannot be created. `success` is
+  `False`, the error message is the preflight text (`Connection failed: ...`
+  or `Could not create the schema-history table: ...`), `target_schema` is
+  set, and the command's failed event is emitted (`MIGRATION_FAILED` for
+  `import_flyway()`). Nothing is raised and no warning is emitted. Any other
+  exception, including another `ConnectionError`, still propagates.
+  `client.info()` is the one API change: 4.8.0 raised `ConnectionError` for
+  these two failures, 4.9.0 returns the failed `InfoResult`, so check
+  `result.success` instead of catching the exception. The other methods
+  already returned a failed result in 4.8.0; their message is now the
+  preflight text on its own, without a `Migration operation failed: ` style
+  prefix. The CLI (including `--format json`) and `dblift mcp` still report
+  both failures as `ConnectionError`: JSON is
+  `{"success": false, "error": "ConnectionError: ..."}`, the MCP tools return
+  an error result, and reading `dblift://history` or `dblift://pending`
+  fails. The FastAPI and Flask helpers (`migration_guard`,
+  `check_migrations_current`, `health_payload`) still raise
+  `ConnectionError`. Django `dblift_info`, `dblift_migrate` and
+  `dblift_validate` raise `CommandError` with the preflight text, and the
+  pytest-dblift fixtures fail their assertion with it. In 4.8.0 an
+  unreachable database came back as `Could not create schema history table:
+  <connection error>`; the message is now `Connection failed: ...`. A
+  history-table failure was `Could not create schema history table: ...`; it
+  is now `Could not create the schema-history table: ...`.
 - SQL Server: a login mapped to the fixed `dbo` user (`sa`, a sysadmin, or
   the database owner) with `schema` set to anything other than `dbo` (any
   case) logs a warning and continues. Unqualified objects are created in
@@ -152,20 +156,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `--format json` consumers get `{"success": false, "error": "..."}`, and
   `dblift mcp` returns an error result. The same wording now replaces
   `Connection failed: ...` for `info`, `migrate`, `undo` and `baseline` at
-  that step. Through the Python API, `DBLiftClient.validate()` still returns
-  a failed result, and emits `VALIDATION_FAILED`, both when the connection
-  fails and when the history table cannot be created. In 4.8.0 an unreachable
-  database returned `Could not create schema history table: <connection error>`;
-  4.9.0 returns `Connection failed: ...`. In 4.8.0 the history-table message
-  was `Could not create schema history table: ...`; it is now
-  `Could not create the schema-history table: ...`. Returning the failed
-  result is deprecated and will raise `ConnectionError` in the next major
-  release.
-
-### Deprecated
-
-- `DBLiftClient.validate()` returning a failed result on a connection or history-table failure is deprecated since 4.9.0 and will raise `ConnectionError` in the next major release; a DeprecationWarning is emitted on a direct call.
-- Under `-W error::DeprecationWarning`, a direct `DBLiftClient.validate()` call raises the warning instead of returning a failed result. The CLI, JSON output, `dblift mcp`, Django `dblift_validate`, and the pytest-dblift fixture do not emit that warning.
+  that step. Through the Python API, `DBLiftClient.validate()` and every
+  other command method return a failed result for both failures instead of
+  raising (see Upgrading). In 4.8.0 an unreachable database returned
+  `Could not create schema history table: <connection error>`; 4.9.0 returns
+  `Connection failed: ...`. In 4.8.0 the history-table message was
+  `Could not create schema history table: ...`; it is now
+  `Could not create the schema-history table: ...`.
 
 ### Fixed
 

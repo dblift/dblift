@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from django.core.management.base import BaseCommand
+from django.core.management.base import BaseCommand, CommandError
 
 from dblift.integrations.django._client import get_client
 
@@ -19,6 +19,8 @@ class Command(BaseCommand):
             info = client.info()
         finally:
             client.close()
+        if not info.success:
+            raise CommandError(info.error_message or "dblift info failed")
         pending = getattr(info, "pending_migrations", []) or []
         failed = getattr(info, "failed_migrations", []) or []
         # Pending and failed are separate dimensions. Printing only

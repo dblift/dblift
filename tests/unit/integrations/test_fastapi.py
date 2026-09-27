@@ -133,6 +133,27 @@ def test_health_payload_rejects_failed_info_result() -> None:
         health_payload(client)
 
 
+def test_migration_guard_keeps_connection_error_for_a_preflight_failure() -> None:
+    """``client.info()`` returns a failed result when the database cannot be
+    reached; the helpers still raise ``ConnectionError`` for it."""
+    from dblift.core.migration.commands.base_command import PreflightConnectionError
+    from dblift.integrations.fastapi import health_payload, migration_guard
+
+    message = "Connection failed: host unreachable"
+    client = SimpleNamespace(
+        info=lambda: SimpleNamespace(
+            success=False,
+            error_message=message,
+            _preflight_error=PreflightConnectionError(message),
+        )
+    )
+
+    for helper in (migration_guard, health_payload):
+        with pytest.raises(ConnectionError, match=message) as raised:
+            helper(client)
+        assert type(raised.value) is ConnectionError
+
+
 def test_migration_guard_noop_on_current_or_ignore(tmp_path: Path) -> None:
     """migration_guard is a no-op (does not raise) when current or on_pending=ignore."""
     from dblift.integrations.fastapi import (

@@ -65,20 +65,14 @@ class CleanCommand(BaseCommand):
             result.complete()
             return result
 
+        # Connect and read connection metadata (clean needs no history table).
+        # Needed for both dry-run enumeration and the actual clean: a failed
+        # connection must be reported, not hidden, otherwise a dry run shows
+        # "(schema appears empty)" when the schema may be full. Failures raise
+        # PreflightConnectionError, as for every other command.
+        self._run_preflight(result)
+
         try:
-            # Establish connection (needed for both dry-run enumeration and actual clean).
-            # In dry-run mode the connection is the sole source of truth for what
-            # would be dropped — a failed connection must be reported, not hidden,
-            # otherwise the user sees "(schema appears empty)" when the schema may
-            # be full.  Re-raising lets the outer except handler set result.set_error.
-            # In non-dry-run mode, swallowing is acceptable because the subsequent
-            # clean_schema() call will raise a clear error if the connection is broken.
-            try:
-                self._ensure_connected()
-            except Exception as e:
-                if dry_run:
-                    raise
-                self.log.debug(f"_ensure_connection skipped: {e}")
             if hasattr(self.provider, "set_current_schema"):
                 try:
                     self.provider.set_current_schema(self.config.database.schema)
@@ -89,9 +83,6 @@ class CleanCommand(BaseCommand):
                     raise
                 except Exception as e:
                     self.log.debug(f"set_current_schema skipped: {e}")
-
-            # Populate database connection information (requires an active connection)
-            self._populate_database_info(result)
 
             try:
                 self._log_command_header_update("clean", dry_run=dry_run)

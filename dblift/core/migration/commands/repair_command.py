@@ -78,13 +78,12 @@ class RepairCommand(BaseCommand):
         result = RepairResult()
         result.target_schema = self.config.database.schema
 
-        # Populate database connection information
-        self._populate_database_info(result)
+        # Connect, ensure the schema-history table exists and read connection
+        # metadata. Failures raise PreflightConnectionError, as for every
+        # other command.
+        self._run_preflight(result, ensure_history=True)
 
         try:
-            # Ensure schema and history table exist (this establishes the connection)
-            self.history_manager.create_schema_and_history_table(create_schema=False)
-
             # Log command execution with connection info (after connection is established)
             self._log_command_header_update("repair", dry_run=dry_run)
 

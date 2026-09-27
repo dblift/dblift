@@ -52,8 +52,8 @@ SCHEMA_HISTORY_CREATE_ERROR_PREFIX = "Could not create the schema-history table"
 class PreflightConnectionError(ConnectionError):
     """Connection or schema-history failure raised during command preflight.
 
-    ``DBLiftClient.validate`` returns a failed result for this error. Every
-    other command lets it propagate. It subclasses ``ConnectionError``, so
+    Commands let it propagate; every ``DBLiftClient`` command method turns
+    it into a failed result of its own type. It subclasses ``ConnectionError``, so
     handlers that already catch that type still catch it, and the message
     text is the same text those steps used to raise as ``ConnectionError``.
     """
@@ -698,7 +698,8 @@ class BaseCommand:
           2. ``create_schema_and_history_table()`` when
              ``ensure_history=True`` AND not ``dry_run`` — commands that
              require the history table (``migrate``, ``info``, ``undo``,
-             ``baseline``, ``validate``) call this idempotently; dry-run
+             ``baseline``, ``validate``, ``repair``, ``import-flyway``)
+             call this idempotently; dry-run
              skips it (PR-02 byte-identical contract). A failure here names
              the step (``Could not create the schema-history table: ...``)
              rather than reusing ``_ensure_connected``'s generic
@@ -719,9 +720,9 @@ class BaseCommand:
         Args:
             result: OperationResult to populate with database metadata.
             ensure_history: If True, create the schema history table when
-                not in dry-run. ``migrate``, ``info``, ``undo`` and
-                ``baseline`` pass True; ``clean`` passes False (it doesn't
-                need history).
+                not in dry-run. ``migrate``, ``info``, ``undo``,
+                ``baseline``, ``validate``, ``repair`` and ``import-flyway``
+                pass True; ``clean`` passes False (it doesn't need history).
             dry_run: Skip history-table creation when True, regardless
                 of ``ensure_history``. ``_ensure_connected`` and
                 ``_populate_database_info`` still run — dry-run must

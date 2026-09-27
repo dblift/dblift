@@ -187,12 +187,16 @@ def test_info_command_surfaces_failed_history_after_bad_migrate(tmp_path):
         assert "V2_0_0__bad.sql" in text or "1 failed" in text
 
 
+_PREFLIGHT_COMMANDS = ["dblift_info", "dblift_migrate", "dblift_validate"]
+
+
 @pytest.mark.filterwarnings("error::DeprecationWarning")
-def test_dblift_validate_history_table_failure_is_command_error_without_traceback(tmp_path, capsys):
+@pytest.mark.parametrize("name", _PREFLIGHT_COMMANDS)
+def test_dblift_history_table_failure_is_command_error_without_traceback(name, tmp_path, capsys):
     """A role that cannot create the history table must not dump a traceback.
 
-    ``manage.py`` prints ``CommandError`` and exits. ``ConnectionError`` from
-    ``validate()`` would be an uncaught exception and a traceback instead.
+    The client returns a failed result; ``manage.py`` prints ``CommandError``
+    and exits instead of an uncaught ``ConnectionError`` traceback.
     """
     from unittest.mock import patch
 
@@ -205,10 +209,10 @@ def test_dblift_validate_history_table_failure_is_command_error_without_tracebac
         ):
             from django.core.management import get_commands, load_command_class
 
-            app_name = get_commands()["dblift_validate"]
-            command = load_command_class(app_name, "dblift_validate")
+            app_name = get_commands()[name]
+            command = load_command_class(app_name, name)
             with pytest.raises(SystemExit) as exc_info:
-                command.run_from_argv(["manage.py", "dblift_validate"])
+                command.run_from_argv(["manage.py", name])
 
     assert exc_info.value.code == 1
     captured = capsys.readouterr()
@@ -219,12 +223,13 @@ def test_dblift_validate_history_table_failure_is_command_error_without_tracebac
 
 
 @pytest.mark.filterwarnings("error::DeprecationWarning")
-def test_dblift_validate_connection_failure_is_command_error_without_traceback(tmp_path, capsys):
-    """An unreachable database must not dump a traceback from dblift_validate.
+@pytest.mark.parametrize("name", _PREFLIGHT_COMMANDS)
+def test_dblift_connection_failure_is_command_error_without_traceback(name, tmp_path, capsys):
+    """An unreachable database must not dump a traceback from any command.
 
-    ``validate()`` returns a failed result for that preflight failure, and
-    the command turns it into ``CommandError``. ``manage.py`` prints that
-    and exits 1.
+    The client returns a failed result for that preflight failure, and the
+    command turns it into ``CommandError``. ``manage.py`` prints that and
+    exits 1.
     """
     from unittest.mock import patch
 
@@ -235,10 +240,10 @@ def test_dblift_validate_connection_failure_is_command_error_without_traceback(t
         ):
             from django.core.management import get_commands, load_command_class
 
-            app_name = get_commands()["dblift_validate"]
-            command = load_command_class(app_name, "dblift_validate")
+            app_name = get_commands()[name]
+            command = load_command_class(app_name, name)
             with pytest.raises(SystemExit) as exc_info:
-                command.run_from_argv(["manage.py", "dblift_validate"])
+                command.run_from_argv(["manage.py", name])
 
     assert exc_info.value.code == 1
     captured = capsys.readouterr()

@@ -41,20 +41,13 @@ class ImportFlywayCommand(BaseCommand):
             else DEFAULT_HISTORY_TABLE
         )
 
-        # Ensure the provider has a live connection before reading connection
-        # metadata or querying the Flyway table — dry-run skips
-        # create_schema_and_history_table below, which would otherwise be the
-        # only thing establishing the connection for providers that need it.
-        self._ensure_connected()
-
-        # Populate database connection information
-        self._populate_database_info(result)
+        # Connect, create the schema-history table (skipped in dry-run so no
+        # table is created as a side effect) and read connection metadata.
+        # Failures raise PreflightConnectionError, as for every other command.
+        self._run_preflight(result, ensure_history=True, dry_run=dry_run)
 
         try:
-            # Ensure schema and history table exist. Skipped in dry-run so no
-            # table is created as a side effect.
             if not dry_run:
-                self.history_manager.create_schema_and_history_table(create_schema=False)
                 self.state_manager.new_read_snapshot()
 
             # Log command execution with connection info (after connection is established)

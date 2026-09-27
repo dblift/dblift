@@ -379,17 +379,21 @@ def test_unreachable_database_is_an_error_for_migrate_dry_run_and_pending(unreac
 
     async def scenario(client):
         info = await client.call_tool("info", {})
+        validate = await client.call_tool("validate", {})
         dry_run = await client.call_tool("migrate_dry_run", {})
         errors = {}
         for uri in ("dblift://history", "dblift://pending"):
             with pytest.raises(MCPError) as exc_info:
                 await client.read_resource(uri)
             errors[uri] = str(exc_info.value)
-        return info, dry_run, errors
+        return info, validate, dry_run, errors
 
-    info, dry_run, errors = anyio.run(_session, scenario)
+    info, validate, dry_run, errors = anyio.run(_session, scenario)
 
     assert info.is_error is True
+    assert "ConnectionError: Connection failed" in info.content[0].text
+    assert validate.is_error is True
+    assert validate.content[0].text == info.content[0].text.replace("tool info:", "tool validate:")
     assert dry_run.is_error is True, dry_run.content[0].text
     assert dry_run.content[0].text == info.content[0].text.replace(
         "tool info:", "tool migrate_dry_run:"
@@ -397,6 +401,40 @@ def test_unreachable_database_is_an_error_for_migrate_dry_run_and_pending(unreac
     assert "ConnectionError: Connection failed" in dry_run.content[0].text
     assert "Migration operation failed" not in dry_run.content[0].text
     assert errors["dblift://pending"] == errors["dblift://history"]
+    assert "ConnectionError: Connection failed" in errors["dblift://history"]
+
+
+@pytest.mark.unit
+@pytest.mark.filterwarnings("error::DeprecationWarning")
+def test_uncreatable_history_table_is_an_error_for_info_validate_and_history(project):
+    """A schema-history table that cannot be created is an error result for
+    `info` and `validate` and a failed read for `dblift://history`, worded as
+    `ConnectionError: Could not create the schema-history table: ...`.
+    `migrate_dry_run` and `dblift://pending` never create the table."""
+    from unittest.mock import patch
+
+    from mcp.shared.exceptions import MCPError
+
+    async def scenario(client):
+        info = await client.call_tool("info", {})
+        validate = await client.call_tool("validate", {})
+        with pytest.raises(MCPError) as exc_info:
+            await client.read_resource("dblift://history")
+        return info, validate, str(exc_info.value)
+
+    with patch(
+        "dblift.core.migration.history.migration_history_manager."
+        "MigrationHistoryManager.create_schema_and_history_table",
+        side_effect=RuntimeError("permission denied for schema main"),
+    ):
+        info, validate, history_error = anyio.run(_session, scenario)
+
+    expected = "ConnectionError: Could not create the schema-history table: "
+    for result in (info, validate):
+        assert result.is_error is True
+        assert expected in result.content[0].text
+        assert "permission denied for schema main" in result.content[0].text
+    assert expected in history_error
 
 
 @pytest.mark.unit

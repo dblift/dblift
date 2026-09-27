@@ -59,6 +59,11 @@ class OperationResult:
         # None when not applicable; True/False when a failed migration row was/was not
         # persisted to history after an execution failure.
         self.failed_history_persisted: Optional[bool] = None
+        # Set when this result stands in for a preflight connection or
+        # history-table failure. Surfaces that must still raise match this
+        # type instead of the message text. Underscore: not part of the
+        # public result.
+        self._preflight_error: Optional[BaseException] = None
 
         # Database connection information for reports
         self.db_version: Optional[str] = None  # Database version (e.g., "PostgreSQL 15.14")
@@ -424,11 +429,6 @@ class ValidateResult(OperationResult):
         # Every issue the console logs. ``error_message`` holds only the first,
         # so without this a machine-readable caller loses every later one.
         self.issues: List[str] = []
-        # Set when this result stands in for a preflight connection or
-        # history-table failure. Surfaces that must still raise match this
-        # type instead of the message text. Underscore: not part of the
-        # public result.
-        self._preflight_error: Optional[BaseException] = None
 
     def add_validated_migration(self, migration: MigrationInfo) -> None:
         """Add a validated migration to the result."""
