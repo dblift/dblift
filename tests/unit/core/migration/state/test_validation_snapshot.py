@@ -199,3 +199,57 @@ def test_catalog_collection_failure_is_immutable_snapshot_input(
     assert snapshot.resolved_migrations == snapshot.selected_migrations == ()
     with pytest.raises(FrozenInstanceError):
         snapshot.catalog_read_error = "changed"
+
+
+def _break_history_table(tmp_path):
+    import sqlite3
+
+    connection = sqlite3.connect(tmp_path / "app.db")
+    try:
+        connection.execute("ALTER TABLE dblift_schema_history RENAME COLUMN checksum TO renamed")
+        connection.commit()
+    finally:
+        connection.close()
+
+
+def test_history_read_failure_is_immutable_snapshot_input(client, tmp_path):
+    manager = client.executor.state_manager
+    with patch.object(
+        manager.history_manager,
+        "get_applied_migrations",
+        side_effect=RuntimeError("history unavailable"),
+    ):
+        snapshot = manager.build_validation_snapshot(tmp_path)
+    assert snapshot.history_read_error == "history unavailable"
+    assert snapshot.all_applied_migrations == ()
+    with pytest.raises(FrozenInstanceError):
+        snapshot.history_read_error = "changed"
+
+
+@pytest.mark.parametrize("strict", [False, True])
+@pytest.mark.parametrize("with_scripts", [False, True])
+def test_unreadable_history_fails_validation(client, tmp_path, strict, with_scripts):
+    (tmp_path / "V1__init.sql").write_text("SELECT 1;")
+    assert client.migrate().success
+    if not with_scripts:
+        (tmp_path / "V1__init.sql").unlink()
+    _break_history_table(tmp_path)
+    manager = client.executor.state_manager
+    snapshot = manager.build_validation_snapshot(tmp_path, "validate", strict_mode=strict)
+    result = client.executor.validator.validate_snapshot(snapshot, "validate")
+    assert not result.success
+    assert result.error_message.startswith("Validation failed: could not read migration history:")
+    assert "checksum" in result.error_message
+
+
+def test_client_validate_returns_failed_result_for_unreadable_history(client, tmp_path):
+    import warnings
+
+    (tmp_path / "V1__init.sql").write_text("SELECT 1;")
+    assert client.migrate().success
+    _break_history_table(tmp_path)
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", DeprecationWarning)
+        result = client.validate()
+    assert not result.success
+    assert "could not read migration history" in result.error_message

@@ -90,16 +90,22 @@ class TestSqlplusDirectiveTerminationCorpus(unittest.TestCase):
                 with self.subTest(name=d.name, example=example):
                     raw = f"{example}\nCREATE TABLE t_{d.name.lower()} (id NUMBER);\n"
                     terminated = terminate_sqlplus_directives(raw)
-                    # The directive line must have gained a `;`. Trailing
-                    # whitespace is rstripped before the `;` is inserted, so
-                    # compare against the rstripped example.
-                    expected = f"{example.rstrip()};"
-                    self.assertIn(
-                        expected,
-                        terminated,
-                        f"{d.name}: terminate_sqlplus_directives did not append `;` "
-                        f"to {example!r}; merged script:\n{terminated}",
-                    )
+                    # A WHENEVER SQLERROR line must have gained a `;` (trailing
+                    # whitespace is rstripped first); any other directive line
+                    # is emptied, since it is never executed.
+                    if d.filter_from_execution:
+                        self.assertTrue(
+                            terminated.startswith("\nCREATE TABLE"),
+                            f"{d.name}: terminate_sqlplus_directives did not remove "
+                            f"{example!r}; merged script:\n{terminated}",
+                        )
+                    else:
+                        self.assertIn(
+                            f"{example.rstrip()};",
+                            terminated,
+                            f"{d.name}: terminate_sqlplus_directives did not append `;` "
+                            f"to {example!r}; merged script:\n{terminated}",
+                        )
                     stmts = self._split(terminated)
                     self.assertTrue(
                         any(f"t_{d.name.lower()}" in s for s in stmts),
@@ -198,12 +204,12 @@ class TestConnectDirectiveExcludesDatabaseLinkSyntax(unittest.TestCase):
         self.assertIn("CONNECT TO remote_user IDENTIFIED BY remote_pass", matching[0])
         self.assertIn("USING '(DESCRIPTION=", matching[0])
 
-    def test_genuine_sqlplus_connect_command_still_terminated(self) -> None:
+    def test_genuine_sqlplus_connect_command_still_removed(self) -> None:
         """Regression guard: real SQL*Plus ``CONNECT user/pass@db`` directives
-        (no ``TO``) must still get their trailing ``;`` inserted.
+        (no ``TO``) are still recognised and kept away from the next statement.
         """
         raw = "CONNECT app_user/app_pass@orcl\nSELECT 1 FROM dual;\n"
-        self.assertIn("CONNECT app_user/app_pass@orcl;", terminate_sqlplus_directives(raw))
+        self.assertEqual(terminate_sqlplus_directives(raw), "\nSELECT 1 FROM dual;\n")
 
 
 if __name__ == "__main__":

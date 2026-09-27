@@ -107,9 +107,9 @@ class MigrationStateManager:
         """Expose source-table existence through the history data owner."""
         return self.history_manager.history_source_exists(schema, table)
 
-    def resolve_flyway_source_table(self, table: str) -> str:
+    def resolve_flyway_source_table(self, schema: str, table: str) -> str:
         """Delegate the provider-owned source-table naming policy."""
-        return self.history_manager.resolve_flyway_source_table(table)
+        return self.history_manager.resolve_flyway_source_table(schema, table)
 
     def get_flyway_compatibility_snapshot(
         self, read_snapshot: Optional[MigrationReadSnapshot] = None

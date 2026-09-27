@@ -259,8 +259,14 @@ class TestPostgreSqlSchemaOperations(unittest.TestCase):
         conn, _, _ = _make_connection()
 
         def query_side_effect(c, sql, params=None, **kw):
-            if "information_schema.routines" in sql:
-                return [{"routine_name": "my_func", "routine_type": "FUNCTION"}]
+            if "pg_proc" in sql:
+                return [
+                    {
+                        "routine_name": "my_func",
+                        "routine_kind": "f",
+                        "identity_arguments": "integer",
+                    }
+                ]
             return []
 
         qe.execute_query.side_effect = query_side_effect
@@ -275,8 +281,14 @@ class TestPostgreSqlSchemaOperations(unittest.TestCase):
         conn, _, _ = _make_connection()
 
         def query_side_effect(c, sql, params=None, **kw):
-            if "information_schema.routines" in sql:
-                return [{"routine_name": "my_proc", "routine_type": "PROCEDURE"}]
+            if "pg_proc" in sql:
+                return [
+                    {
+                        "routine_name": "my_proc",
+                        "routine_kind": "p",
+                        "identity_arguments": "integer",
+                    }
+                ]
             return []
 
         qe.execute_query.side_effect = query_side_effect
@@ -285,6 +297,56 @@ class TestPostgreSqlSchemaOperations(unittest.TestCase):
 
         calls = [str(c) for c in qe.execute_statement.call_args_list]
         self.assertTrue(any("DROP PROCEDURE" in c for c in calls))
+
+    def test_clean_schema_drops_aggregates_and_overloads_by_signature(self):
+        ops, qe, log = self._make_ops()
+        conn, _, _ = _make_connection()
+
+        def query_side_effect(c, sql, params=None, **kw):
+            if "pg_proc" in sql:
+                return [
+                    {"routine_name": "ov", "routine_kind": "f", "identity_arguments": "integer"},
+                    {"routine_name": "ov", "routine_kind": "f", "identity_arguments": "text"},
+                    {
+                        "routine_name": "my_sum",
+                        "routine_kind": "a",
+                        "identity_arguments": "integer",
+                    },
+                ]
+            if "pg_type" in sql:
+                return [{"type_name": "float_range", "typtype": "r"}]
+            return []
+
+        qe.execute_query.side_effect = query_side_effect
+
+        ops.clean_schema(conn, "public")
+
+        statements = [c.args[1] for c in qe.execute_statement.call_args_list]
+        self.assertEqual(
+            [s for s in statements if "ov" in s or "my_sum" in s or "float_range" in s],
+            [
+                'DROP FUNCTION IF EXISTS "public"."ov"(integer) CASCADE',
+                'DROP FUNCTION IF EXISTS "public"."ov"(text) CASCADE',
+                'DROP AGGREGATE IF EXISTS "public"."my_sum"(integer) CASCADE',
+                'DROP TYPE IF EXISTS "public"."float_range" CASCADE',
+            ],
+        )
+
+    def test_clean_schema_propagates_extension_and_type_query_failures(self):
+        for catalog in ("pg_extension", "pg_type"):
+            with self.subTest(catalog=catalog):
+                ops, qe, log = self._make_ops()
+                conn, _, _ = _make_connection()
+
+                def query_side_effect(c, sql, params=None, **kw):
+                    if catalog in sql:
+                        raise RuntimeError(f"permission denied for table {catalog}")
+                    return []
+
+                qe.execute_query.side_effect = query_side_effect
+
+                with self.assertRaisesRegex(RuntimeError, "permission denied"):
+                    ops.clean_schema(conn, "public")
 
     def test_clean_schema_returns_summary(self):
         from dblift.core.migration.clean_summary import CleanExecutionSummary

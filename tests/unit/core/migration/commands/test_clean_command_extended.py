@@ -13,6 +13,7 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 from dblift.core.logger.results import CleanResult
+from dblift.core.migration.commands.base_command import PreflightConnectionError
 from dblift.core.migration.commands.clean_command import CleanCommand
 from dblift.db.provider_interfaces import DroppableObject, TransactionalProvider
 
@@ -192,15 +193,32 @@ class TestCleanCommandDryRun(unittest.TestCase):
         info_calls = " ".join(str(c) for c in log.info.call_args_list)
         self.assertIn("orders", info_calls)
 
-    def test_dry_run_connection_error_returns_error(self):
+    def test_dry_run_connection_error_propagates_as_preflight_failure(self):
         cmd = _make_cmd(clean_disabled=False)
 
-        with patch.object(cmd, "_ensure_connected", side_effect=RuntimeError("no conn")):
+        with patch.object(
+            cmd, "_ensure_connected", side_effect=PreflightConnectionError("Connection failed: x")
+        ):
+            with patch.object(cmd, "_populate_database_info"):
+                with patch.object(cmd, "_log_command_completion"):
+                    with self.assertRaises(PreflightConnectionError):
+                        cmd.execute(dry_run=True)
+
+    def test_dry_run_discovery_error_fails_the_result(self):
+        # Discovery failing must not read as "(schema appears empty)".
+        provider = MagicMock()
+        provider.list_droppable_objects.side_effect = RuntimeError(
+            "permission denied for pg_tables"
+        )
+        cmd = _make_cmd(provider=provider, clean_disabled=False)
+
+        with patch.object(cmd, "_ensure_connected"):
             with patch.object(cmd, "_populate_database_info"):
                 with patch.object(cmd, "_log_command_completion"):
                     result = cmd.execute(dry_run=True)
 
         self.assertFalse(result.success)
+        self.assertIn("permission denied for pg_tables", result.error_message)
 
 
 # ---------------------------------------------------------------------------
@@ -383,6 +401,7 @@ class TestCleanCommandCleanSchema(unittest.TestCase):
 
         self.assertFalse(result.success)
         self.assertIn("afterCleanError", callback_calls)
+        provider.drop_object.assert_not_called()
 
     def test_commit_error_raises(self):
         """commit_transaction failure should propagate (caught by outer except)."""

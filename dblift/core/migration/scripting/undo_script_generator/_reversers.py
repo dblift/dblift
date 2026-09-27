@@ -237,7 +237,17 @@ class _UndoReversersMixin:
             obj_type, obj_name, schema = obj_info
 
         # Generate DROP statement based on object type
-        if obj_type in ("TABLE", "INDEX", "VIEW", "SEQUENCE", "TRIGGER", "PROCEDURE", "FUNCTION"):
+        if obj_type in (
+            "TABLE",
+            "INDEX",
+            "VIEW",
+            "SEQUENCE",
+            "TRIGGER",
+            "PROCEDURE",
+            "FUNCTION",
+            "PACKAGE",
+            "PACKAGE BODY",
+        ):
             if obj_type == "INDEX" and _is_unnamed_fulltext_index(sql):
                 return _cannot_reverse_fulltext_index(sql)
             drop_sql = self._generate_drop_statement(obj_type, obj_name, schema, sql)
@@ -289,7 +299,17 @@ class _UndoReversersMixin:
             )
 
         # Generate DROP statement based on object type
-        if obj_type in ("TABLE", "INDEX", "VIEW", "SEQUENCE", "TRIGGER", "PROCEDURE", "FUNCTION"):
+        if obj_type in (
+            "TABLE",
+            "INDEX",
+            "VIEW",
+            "SEQUENCE",
+            "TRIGGER",
+            "PROCEDURE",
+            "FUNCTION",
+            "PACKAGE",
+            "PACKAGE BODY",
+        ):
             drop_sql = self._generate_drop_statement(obj_type, obj_name, schema, sql)
             if drop_sql is None:
                 return _cannot_determine_index_table(obj_name, sql)

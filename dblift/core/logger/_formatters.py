@@ -5,7 +5,9 @@ from ``dblift.core.logger.log`` for back-compat. JSON / HTML formatters live in
 ``core/logger/formatters/`` and are loaded lazily.
 """
 
+import hashlib
 import logging
+import re
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -14,6 +16,29 @@ from typing import Any, Dict, Optional
 from dblift.core.logger._levels import LogEvent, LogLevel
 
 _logger = logging.getLogger(__name__)
+
+
+_SAFE_NAME_MAX_LEN = 64
+
+
+def _safe_name(value: str) -> str:
+    """Collapse anything that isn't a safe filename char to ``_``.
+
+    Used for the schema/database-name components of a log filename so a
+    path-like identifier (e.g. a SQLite file path) cannot inject directory
+    separators and point the log at a nonexistent nested directory.
+
+    Long values (e.g. a SQLite/DuckDB file in a deep directory) are bounded to
+    ``_SAFE_NAME_MAX_LEN`` chars so the filename stays under the OS limit: the
+    tail (which carries the file's basename) is kept and prefixed with a short
+    hash of the full value so different long paths don't collide.
+    """
+    safe = re.sub(r"[^\w.-]+", "_", value)
+    if len(safe) <= _SAFE_NAME_MAX_LEN:
+        return safe
+    digest = hashlib.sha1(value.encode("utf-8"), usedforsecurity=False).hexdigest()[:8]
+    tail = safe[-(_SAFE_NAME_MAX_LEN - len(digest) - 1) :].lstrip("_.")
+    return f"{digest}_{tail}"
 
 
 def resolve_dblift_package_version() -> Optional[str]:

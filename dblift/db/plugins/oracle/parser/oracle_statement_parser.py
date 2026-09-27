@@ -12,6 +12,7 @@ from dblift.core.sql_parser.tokens import Token, TokenType
 from dblift.db.plugins.oracle.parser._sqlplus import (
     is_sqlplus_command as _shared_is_sqlplus_command,
 )
+from dblift.db.plugins.oracle.parser.oracle_tokenizer import has_stray_comment_close
 
 
 class OracleStatementParser(BaseStatementParser):
@@ -49,6 +50,10 @@ class OracleStatementParser(BaseStatementParser):
         self.package_body_depth = 0
         self.in_declaration_section = False  # Between AS/IS and BEGIN
         self._seen_create = False  # Cached flag: True once CREATE is seen in current statement
+        # True once a ";" was not taken as the end because a stray "*/"
+        # followed it on its line; the statement then ends, as in SQL*Plus,
+        # only at a ";" that is the last thing on its line.
+        self._sqlplus_line_buffering = False
 
     def split_statements(self) -> List[str]:
         """Split tokens into statements with Oracle-specific handling.
@@ -99,6 +104,7 @@ class OracleStatementParser(BaseStatementParser):
                 self.package_body_depth = 0
                 self.package_name = None
                 self._seen_create = False
+                self._sqlplus_line_buffering = False
 
         # Handle any remaining tokens
         if current_statement_tokens:
@@ -179,10 +185,37 @@ class OracleStatementParser(BaseStatementParser):
         # Check if this delimiter matches the expected delimiter
         # For PL/SQL blocks, context.delimiter is "/", for regular SQL it's ";"
         if token.text == self.context.delimiter:
+            if token.text == ";" and not self._ends_sqlplus_line():
+                return False
             return True
 
         # No delimiter match - not a statement end
         return False
+
+    def _ends_sqlplus_line(self) -> bool:
+        """Whether the ``;`` at ``current_idx`` ends the statement for SQL*Plus.
+
+        SQL*Plus only ends a statement at a ``;`` that is the last thing on
+        its line. Oracle comments do not nest, so text such as
+        ``/* a /* b */ DROP TABLE t; */`` leaves ``DROP TABLE t;`` outside
+        the comment followed by a stray ``*/``; SQL*Plus keeps buffering
+        there and the server rejects the joined text, so ``DROP TABLE t``
+        never runs on its own. A ``;`` followed on its line by a stray
+        ``*/`` therefore does not end the statement, and from then on only
+        a line-final ``;`` does. Otherwise a ``;`` followed by comments or
+        further statements on the same line still ends the statement.
+        """
+        line = self.tokens[self.current_idx].line
+        rest = []
+        for tok in self.tokens[self.current_idx + 1 :]:
+            if tok.line != line or tok.type == TokenType.EOF:
+                break
+            rest.append(tok)
+        if not rest:
+            return True
+        if not self._sqlplus_line_buffering:
+            self._sqlplus_line_buffering = has_stray_comment_close(rest)
+        return not self._sqlplus_line_buffering
 
     def _is_sqlplus_command(self, stmt: str) -> bool:
         """Check if statement is a SQL*Plus command (not valid Oracle SQL for native execution).

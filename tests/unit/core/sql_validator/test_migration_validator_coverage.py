@@ -25,6 +25,7 @@ def _make_validator(dialect="postgresql"):
     from dblift.core.migration.scripting.migration_script_manager import MigrationScriptManager
     from dblift.db.base_quirks import BaseQuirks
 
+    hm.provider.quirks = BaseQuirks()
     hm.collect_flyway_compatibility_snapshot.side_effect = (
         lambda: MigrationHistoryManager.collect_flyway_compatibility_snapshot(hm)
     )
@@ -146,7 +147,7 @@ class TestValidateFlywayCompatibilityBranches(unittest.TestCase):
 
     def test_flyway_invalid_type(self):
         # BOGUS_TYPE, not JDBC: JDBC is a legitimate Flyway vocabulary value
-        # (Java-based migration resolver) and FLYWAY_VALID_TYPES now accepts
+        # (Java-based migration resolver) and the Flyway type mapping now accepts
         # it, so it no longer exercises the "unsupported type" branch here.
         v, _, hm, _ = _make_validator()
         hm.provider.table_exists.return_value = True
@@ -561,8 +562,9 @@ class TestValidateResolvedMigrations(unittest.TestCase):
         s1 = self._sql_script()
         sm.has_script_changed.return_value = False
         result = v.validate_resolved_migrations([s1])
-        # Should succeed (error is swallowed into applied_migrations=[])
-        self.assertTrue(result.success)
+        # An unreadable history must not validate against an empty history
+        self.assertFalse(result.success)
+        self.assertIn("could not read migration history: boom", result.error_message)
 
     def test_strict_mode_enabled_calls_validate_strict(self):
         v, sm, hm, _ = _make_validator()

@@ -15,6 +15,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from dblift.core.migration.commands.base_command import PreflightConnectionError
 from dblift.core.migration.commands.baseline_command import BaselineCommand
 from dblift.core.migration.commands.undo_command import UndoCommand
 
@@ -148,6 +149,38 @@ class TestUndoUsesRunPreflight:
         cmd.execute(scripts_dir=MagicMock())
 
         assert calls == ["connect", "create_history"]
+
+    @pytest.mark.parametrize("step", ["connect", "history"])
+    def test_preflight_failure_propagates_instead_of_failed_result(self, step):
+        """Like info and validate, undo lets a preflight failure propagate
+        rather than reporting it as "Undo operation failed: ..."."""
+        hm = MagicMock()
+        cmd = _make_undo_cmd(history_manager=hm)
+        if step == "connect":
+            patcher = patch.object(
+                cmd,
+                "_ensure_connected",
+                side_effect=PreflightConnectionError("Connection failed: host unreachable"),
+            )
+        else:
+            hm.create_schema_and_history_table.side_effect = Exception("permission denied")
+            patcher = patch.object(cmd, "_ensure_connected")
+
+        with patcher, patch.object(cmd, "_execute_callbacks") as callbacks:
+            with pytest.raises(PreflightConnectionError) as excinfo:
+                cmd.execute(scripts_dir=MagicMock())
+
+        assert "Undo operation failed" not in str(excinfo.value)
+        callbacks.assert_not_called()
+
+    def test_ordinary_failure_is_still_a_failed_result(self):
+        cmd = _make_undo_cmd()
+        cmd.state_manager.build_state.side_effect = RuntimeError("history denied")
+
+        result = cmd.execute(scripts_dir=MagicMock())
+
+        assert result.success is False
+        assert result.error_message == "Undo operation failed: history denied"
 
 
 @pytest.mark.unit

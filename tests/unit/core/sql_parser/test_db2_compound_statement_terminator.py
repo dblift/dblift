@@ -1085,3 +1085,65 @@ END;
 END"""
 
         assert parser.split_statements(f"{package_body};") == [package_body]
+
+
+FUNCTION_BODY = """CREATE FUNCTION add_one(p INTEGER)
+RETURNS INTEGER
+LANGUAGE SQL
+BEGIN ATOMIC
+    DECLARE v INTEGER;
+    SET v = p + 1;
+    RETURN v;
+END"""
+
+SECOND_TRIGGER_BODY = """CREATE TRIGGER trg_audit_upd
+AFTER UPDATE ON employees
+REFERENCING NEW AS n
+FOR EACH ROW
+BEGIN ATOMIC
+    INSERT INTO audit_log (id, msg) VALUES (n.id, 'updated');
+END"""
+
+VIEW = "CREATE VIEW v_audit AS SELECT id, msg FROM audit_log"
+INDEX = "CREATE INDEX ix_audit ON audit_log (id)"
+
+
+@pytest.mark.unit
+class TestDB2MixedCompoundBlocks:
+    """Each compound block in a script is kept whole, whatever its kind.
+
+    The splitter used to pick one mode per script: once a procedure or
+    function was present, only those blocks were recognised and a trigger in
+    the same script was cut at the first ``;`` of its body.
+    """
+
+    @pytest.mark.parametrize(
+        "blocks",
+        [
+            pytest.param([PROCEDURE_BODY, TRIGGER_BODY], id="procedure-then-trigger"),
+            pytest.param([FUNCTION_BODY, TRIGGER_BODY], id="function-then-trigger"),
+            pytest.param([TRIGGER_BODY, PROCEDURE_BODY], id="trigger-then-procedure"),
+            pytest.param([TRIGGER_BODY, FUNCTION_BODY], id="trigger-then-function"),
+            pytest.param([TRIGGER_BODY, SECOND_TRIGGER_BODY], id="two-triggers"),
+            pytest.param([PROCEDURE_BODY, COMPOUND_BODY], id="procedure-then-compound"),
+            pytest.param([TRIGGER_BODY, COMPOUND_BODY], id="trigger-then-compound"),
+            pytest.param(
+                [TRIGGER_BODY, PROCEDURE_BODY, FUNCTION_BODY, SECOND_TRIGGER_BODY],
+                id="trigger-procedure-function-trigger",
+            ),
+        ],
+    )
+    @TERMINATORS
+    def test_blocks_between_plain_ddl_stay_whole(self, blocks, terminator):
+        parser = DB2RegexParser()
+        parts = [PRELUDE, *blocks[:1], VIEW, *blocks[1:], INDEX]
+        script = "\n\n".join(f"{part};" for part in parts[:-1]) + f"\n\n{parts[-1]}{terminator}"
+
+        assert parser.split_statements(script) == parts
+
+    @TERMINATORS
+    def test_trailing_block_without_ddl_after_it(self, terminator):
+        parser = DB2RegexParser()
+        script = f"{PRELUDE};\n{PROCEDURE_BODY};\n{TRIGGER_BODY}{terminator}"
+
+        assert parser.split_statements(script) == [PRELUDE, PROCEDURE_BODY, TRIGGER_BODY]

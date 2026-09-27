@@ -18,6 +18,8 @@ from typing import Any, Dict, List, Optional, Sequence, Set, Tuple
 import sqlglot
 from sqlglot import exp
 
+from dblift.core.sql_model.dialect import get_sqlglot_dialect
+
 #: Quote delimiters understood by the scanner: opening char -> closing char.
 #: Union of every dialect's string/identifier quoting so the mechanics are
 #: safe regardless of dialect; plugins may narrow this via quirks.
@@ -424,15 +426,18 @@ def extract_dml_table_name(statement: str) -> str:
     # pattern is unaffected because it ends in ``SET``).
     _after = r"(?=\s|;|\(|$)"
     patterns = (
+        # ``UPDATE a SET … FROM t AS a`` / ``DELETE a FROM t a``: the table behind the alias.
+        rf"^\s*(?:UPDATE|DELETE)\s+([A-Za-z_][\w$]*)\s+(?:SET|FROM)\b[\s\S]*?(?<![\w$.`\]\"])"
+        rf"(?!(?:FROM|JOIN|ON|AND|OR|WHERE|SET|AS)\b)({_IDENTIFIER})\s+(?:AS\s+)?\1(?=[\s;,)]|$)",
         rf"^\s*UPDATE\s+({_IDENTIFIER})\s+SET\b",
         rf"^\s*DELETE\s+FROM\s+({_IDENTIFIER}){_after}",
-        rf"^\s*DELETE\s+{_IDENTIFIER}\s+FROM\s+({_IDENTIFIER}){_after}",
+        rf"^\s*DELETE\s+({_IDENTIFIER})\s+FROM\s+{_IDENTIFIER}{_after}",
         rf"^\s*INSERT\s+INTO\s+({_IDENTIFIER}){_after}",
     )
     for pattern in patterns:
         match = re.search(pattern, statement, flags=re.IGNORECASE)
         if match:
-            return re.sub(r"\s*\.\s*", ".", match.group(1))
+            return re.sub(r"\s*\.\s*", ".", match.group(match.lastindex or 1))
     return ""
 
 
@@ -449,7 +454,7 @@ def statement_dml_table(statement: str, dialect: Optional[str] = None) -> str:
     """
     text = strip_leading_sql_comments(statement).lstrip()
     if dialect:
-        ast_table = _sqlglot_dml_table_sql(text, dialect)
+        ast_table = _sqlglot_dml_table_sql(text, get_sqlglot_dialect(dialect) or dialect)
         if ast_table:
             return ast_table
     table = extract_dml_table_name(text)

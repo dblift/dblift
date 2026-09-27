@@ -519,3 +519,244 @@ class TestUndoScriptGenerator:
 
         # VIEW should come before TABLE (reverse order)
         assert view_pos < table_pos
+
+
+def test_oracle_undo_keeps_statement_with_close_marker_in_string():
+    """A ``*/`` in a string after a same-line ``;`` does not join statements."""
+    generator = UndoScriptGenerator(dialect="oracle", logger=LogFactory.get_log("test"))
+    migration = Migration(
+        script_name="V1__star.sql",
+        content="CREATE TABLE ua (id NUMBER); CREATE TABLE ub (v VARCHAR2(10) DEFAULT '*/');\n",
+        version="1",
+        description="star",
+        logger=generator.logger,
+    )
+
+    undo_sql = [stmt.sql for stmt in generator._generate_undo_statements(migration)]
+
+    assert len(undo_sql) == 2
+    assert "UB" in undo_sql[0].upper() and "DROP TABLE" in undo_sql[0]
+    assert "UA" in undo_sql[1].upper() and "DROP TABLE" in undo_sql[1]
+
+
+def _mysql_undo_sql(dialect, content):
+    generator = UndoScriptGenerator(dialect=dialect, logger=LogFactory.get_log("test"))
+    migration = Migration(
+        script_name="V1__names.sql",
+        content=content,
+        version="1",
+        description="names",
+        logger=generator.logger,
+    )
+    return [stmt.sql.strip() for stmt in generator._generate_undo_statements(migration)]
+
+
+@pytest.mark.parametrize("dialect", ["mysql", "mariadb"])
+@pytest.mark.parametrize(
+    ("create_sql", "expected_drop"),
+    [
+        # Table names are case-sensitive on a Linux server, so the name is
+        # dropped exactly as it was created.
+        ("CREATE TABLE MyTable (id INT);", "DROP TABLE IF EXISTS `MyTable`;"),
+        ("CREATE TABLE `Quoted Mixed` (id INT);", "DROP TABLE IF EXISTS `Quoted Mixed`;"),
+        # A doubled backtick is one literal backtick, not the end of the name:
+        # stopping there would drop a different table called `we`.
+        ("CREATE TABLE `we``ird` (id INT);", "DROP TABLE IF EXISTS `we``ird`;"),
+        ("CREATE TABLE `db`.`T` (id INT);", "DROP TABLE IF EXISTS `db`.`T`;"),
+        ("CREATE TABLE Db.T2 (id INT);", "DROP TABLE IF EXISTS `Db`.`T2`;"),
+        ("CREATE TABLE `d``b`.`x``y` (id INT);", "DROP TABLE IF EXISTS `d``b`.`x``y`;"),
+        ("CREATE VIEW MyView AS SELECT 1 AS a;", "DROP VIEW IF EXISTS `MyView`;"),
+        ("CREATE VIEW `V``x` AS SELECT 1 AS a;", "DROP VIEW IF EXISTS `V``x`;"),
+        ("CREATE INDEX IxB ON MyTable (id);", "DROP INDEX `IxB` ON `MyTable`;"),
+        ("CREATE INDEX `Ix``A` ON `we``ird` (id);", "DROP INDEX `Ix``A` ON `we``ird`;"),
+    ],
+)
+def test_mysql_undo_keeps_identifiers_exactly_as_written(dialect, create_sql, expected_drop):
+    """Generated DROPs name the object that was created, case and quoting intact."""
+    assert _mysql_undo_sql(dialect, create_sql) == [expected_drop]
+
+
+@pytest.mark.parametrize("dialect", ["mysql", "mariadb"])
+def test_mysql_undo_does_not_drop_a_prefix_named_table(dialect):
+    """`we``ird` and a separate table `we` each get their own DROP."""
+    undo_sql = _mysql_undo_sql(
+        dialect, "CREATE TABLE `we``ird` (id INT);\nCREATE TABLE we (id INT);\n"
+    )
+
+    assert undo_sql == ["DROP TABLE IF EXISTS `we`;", "DROP TABLE IF EXISTS `we``ird`;"]
+
+
+_ORA_PROC = "CREATE OR REPLACE PROCEDURE pp AS\nBEGIN\n  NULL;\nEND;\n/\n"
+_ORA_FUNC = "CREATE OR REPLACE FUNCTION ff RETURN NUMBER AS\nBEGIN\n  RETURN 1;\nEND;\n/\n"
+_ORA_TRIG = (
+    "CREATE OR REPLACE TRIGGER tt BEFORE INSERT ON pt FOR EACH ROW\n" "BEGIN\n  NULL;\nEND;\n/\n"
+)
+_ORA_PKG = "CREATE OR REPLACE PACKAGE pk AS\n  PROCEDURE p1;\nEND pk;\n/\n"
+_ORA_PKG_BODY = (
+    "CREATE OR REPLACE PACKAGE BODY pk AS\n"
+    "  PROCEDURE p1 IS\n  BEGIN\n    NULL;\n  END p1;\nEND pk;\n/\n"
+)
+
+
+@pytest.mark.parametrize(
+    "content, expected",
+    [
+        (_ORA_PROC + _ORA_PKG, ['DROP PACKAGE "PK"', 'DROP PROCEDURE "PP"']),
+        (_ORA_PROC + _ORA_PKG_BODY, ['DROP PACKAGE BODY "PK"', 'DROP PROCEDURE "PP"']),
+        (_ORA_FUNC + _ORA_PKG, ['DROP PACKAGE "PK"', '"FF"']),
+        (_ORA_PKG + _ORA_PROC, ['DROP PROCEDURE "PP"', 'DROP PACKAGE "PK"']),
+        (_ORA_TRIG + _ORA_PKG, ['DROP PACKAGE "PK"', "CREATE OR REPLACE TRIGGER tt"]),
+    ],
+    ids=["proc-pkg", "proc-pkg-body", "func-pkg", "pkg-proc", "trigger-pkg"],
+)
+def test_oracle_undo_drops_package_next_to_other_plsql_block(content, expected):
+    """A block followed by a package yields one undo entry each, and the package is dropped."""
+    generator = UndoScriptGenerator(dialect="oracle", logger=LogFactory.get_log("test"))
+    migration = Migration(
+        script_name="V1__plsql.sql",
+        content=content,
+        version="1",
+        description="plsql",
+        logger=generator.logger,
+    )
+
+    undo = generator._generate_undo_statements(migration)
+
+    assert len(undo) == 2
+    for stmt, fragment in zip(undo, expected):
+        assert fragment in stmt.sql or stmt.original_statement.startswith(fragment), [
+            u.sql for u in undo
+        ]
+
+
+@pytest.mark.parametrize(
+    "literal",
+    ["'--'", "'a -- b'", "q'[--]'", "q'{/* x */}'", "'it''s -- ok'"],
+)
+def test_oracle_undo_keeps_statements_after_comment_marker_in_string(literal):
+    """``--`` or ``/*`` inside a literal does not hide the statements after it."""
+    generator = UndoScriptGenerator(dialect="oracle", logger=LogFactory.get_log("test"))
+    migration = Migration(
+        script_name="V1__dash.sql",
+        content=(
+            f"CREATE TABLE da (v VARCHAR2(20) DEFAULT {literal});\n"
+            "CREATE TABLE db (id NUMBER);\n"
+            "CREATE TABLE dc (id NUMBER);\n"
+        ),
+        version="1",
+        description="dash",
+        logger=generator.logger,
+    )
+
+    undo_sql = [stmt.sql.upper() for stmt in generator._generate_undo_statements(migration)]
+
+    assert len(undo_sql) == 3
+    for sql, table in zip(undo_sql, ("DC", "DB", "DA")):
+        assert "DROP TABLE" in sql and f'"{table}"' in sql
+
+
+# The SQL*Plus directive-stripping script from the release test protocol,
+# with apostrophes in the free-text directives, then literals holding comment
+# markers.
+SQLPLUS_DIRECTIVES_SCRIPT = """SET SERVEROUTPUT ON
+SET LINESIZE 200
+SET PAGESIZE 0
+SET FEEDBACK OFF
+SET ECHO OFF
+SET VERIFY OFF
+SET DEFINE ON
+SET TERMOUT ON
+SPOOL /tmp/dblift_test.log
+SPOOL OFF
+PROMPT Starting migration V10's objects
+REMARK This is the customer's comment
+REM Another comment style, don't run twice
+DEFINE migration_label = V10_test
+COLUMN username FORMAT A30
+TIMING START migration_v10
+TIMING STOP
+DESCRIBE DBLIFT_TEST.USERS
+CLEAR SCREEN
+TTITLE 'Migration Report'
+BTITLE 'End'
+REPHEADER 'Header'
+REPFOOTER 'Footer'
+PAUSE
+VARIABLE v_count NUMBER
+PRINT v_count
+BREAK ON username
+COMPUTE COUNT OF id ON username
+-- Actual SQL to verify migration applied:
+CREATE TABLE DBLIFT_TEST.sqlplus_test (id NUMBER PRIMARY KEY, label VARCHAR2(100));
+PROMPT Creating customer's table
+CREATE TABLE DBLIFT_TEST.sp_dash (v VARCHAR2(20) DEFAULT '--');
+REM it's q'[--]' next
+CREATE TABLE DBLIFT_TEST.sp_q (v VARCHAR2(20) DEFAULT q'[--]');
+CREATE TABLE DBLIFT_TEST.sp_last (id NUMBER);
+"""
+
+
+def test_oracle_undo_with_apostrophes_in_sqlplus_directives():
+    """``PROMPT ...'s`` / ``REM don't`` do not open a literal that hides DDL."""
+    generator = UndoScriptGenerator(dialect="oracle", logger=LogFactory.get_log("test"))
+    migration = Migration(
+        script_name="V10__sqlplus_directives.sql",
+        content=SQLPLUS_DIRECTIVES_SCRIPT,
+        version="10",
+        description="sqlplus directives",
+        logger=generator.logger,
+    )
+
+    undo_sql = [stmt.sql.upper() for stmt in generator._generate_undo_statements(migration)]
+
+    assert len(undo_sql) == 4
+    for sql, table in zip(undo_sql, ("SP_LAST", "SP_Q", "SP_DASH", "SQLPLUS_TEST")):
+        assert "DROP TABLE" in sql and f'"{table}"' in sql
+
+
+def _oracle_undo_sql(content):
+    generator = UndoScriptGenerator(dialect="oracle", logger=LogFactory.get_log("test"))
+    migration = Migration(
+        script_name="V1__directives.sql",
+        content=content,
+        version="1",
+        description="directives",
+        logger=generator.logger,
+    )
+    return [stmt.sql.upper() for stmt in generator._generate_undo_statements(migration)]
+
+
+@pytest.mark.parametrize(
+    "directive",
+    ["PROMPT Creating customer's table", "REM don't run twice", "REMARK it's fine"],
+)
+def test_oracle_undo_drops_every_table_around_directive_with_apostrophe(directive):
+    undo_sql = _oracle_undo_sql(
+        f"{directive}\nCREATE TABLE a (id NUMBER);\n{directive}\n"
+        "CREATE TABLE b (id NUMBER);\nCREATE TABLE c (id NUMBER); -- gone\n"
+    )
+
+    assert len(undo_sql) == 3
+    for sql, table in zip(undo_sql, ("C", "B", "A")):
+        assert "DROP TABLE" in sql and f'"{table}"' in sql
+
+
+@pytest.mark.parametrize(
+    "block",
+    [
+        "BEGIN\n  EXECUTE IMMEDIATE 'CREATE TABLE x (\nPROMPT it''s data\n"
+        "    id NUMBER)';\nEND;\n/\n",
+        "INSERT INTO t (v) VALUES ('first\nREM it''s data\nSET x ON\n');\n",
+    ],
+    ids=["plsql-block", "multi-line-literal"],
+)
+def test_oracle_undo_keeps_directive_lookalikes_inside_sql(block):
+    """Directive-looking lines inside a block or a literal are SQL, not directives."""
+    undo_sql = _oracle_undo_sql(
+        f"PROMPT it's next\nCREATE TABLE a (id NUMBER);\n{block}"
+        "REM don't\nCREATE TABLE b (id NUMBER);\n"
+    )
+
+    drops = [sql for sql in undo_sql if "DROP TABLE" in sql]
+    assert len(drops) == 2
+    assert '"B"' in drops[0] and '"A"' in drops[1]

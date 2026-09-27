@@ -13,8 +13,6 @@ Targets the residual uncovered branches after PR-F4:
   non-int for the "not query" branch (line 534).
 * ``_execute_statements`` ``read_dbms_output`` exception swallow (lines 554-555).
 * ``_handle_statement_failure`` ``add_migration`` failure swallow (lines 621-622).
-* ``_commit_and_verify`` qualified-name validation break (line 772).
-* ``_commit_and_verify`` outer-block exception swallow (lines 810-811).
 """
 
 import unittest
@@ -332,79 +330,3 @@ class TestHandleStatementFailureAddMigrationException(unittest.TestCase):
 
         warning_msgs = [str(c) for c in engine.log.warning.call_args_list]
         assert any("Could not add failed migration" in m for m in warning_msgs)
-
-
-# ---------------------------------------------------------------------------
-# _commit_and_verify: invalid qualified name → break verification (line 772)
-# ---------------------------------------------------------------------------
-
-
-class TestCommitAndVerifyInvalidQualifiedName(unittest.TestCase):
-    """Line 772 is defense-in-depth — the regex's ``\\w+`` capture already
-    excludes everything but ``[A-Za-z0-9_]``, so the ``re.match`` guard at
-    line 769 can never actually trigger on real input. We force the guard
-    to fail explicitly to cover the ``break`` line."""
-
-    def test_validation_guard_break_skips_verification(self):
-        engine = _make_engine()
-        engine.sql_analyzer.dialect = "postgresql"
-        migration = _make_sql_migration()
-        statements = ['CREATE TABLE "public"."t" (id INT)']
-
-        # Force the OWASP defense-in-depth guard to fail. The regex match
-        # itself extracts only \w+ groups so this is otherwise unreachable.
-        with patch(
-            "dblift.core.migration.executor.execution_engine.re.match",
-            return_value=None,
-        ):
-            engine._commit_and_verify(migration, statements, 100)
-
-        engine.provider.commit_transaction.assert_called_once()
-        engine.provider.execute_query.assert_not_called()
-
-    def test_inner_verification_isclosed_exception_logged_inner_block(self):
-        # Inner ``try/except Exception as verify_e`` (line 805-808): a probe
-        # failure inside the verification body is swallowed at the inner
-        # level, not by the outer block (lines 810-811).
-        engine = _make_engine()
-        engine.sql_analyzer.dialect = "postgresql"
-        migration = _make_sql_migration()
-
-        engine.provider.connection.isClosed.side_effect = RuntimeError(
-            "connection state probe failed"
-        )
-        statements = ["CREATE TABLE public.t (id INT)"]
-
-        engine._commit_and_verify(migration, statements, 100)
-
-        engine.provider.commit_transaction.assert_called_once()
-        debug_msgs = [str(c) for c in engine.log.debug.call_args_list]
-        assert any("Post-commit verification query failed" in m for m in debug_msgs)
-
-
-# ---------------------------------------------------------------------------
-# _commit_and_verify: outer post-commit verification block raises (lines 810-811)
-# ---------------------------------------------------------------------------
-
-
-class TestCommitAndVerifyOuterExceptionSwallowed(unittest.TestCase):
-    def test_outer_post_commit_block_exception_logged_debug(self):
-        engine = _make_engine()
-        engine.sql_analyzer.dialect = "postgresql"
-        migration = _make_sql_migration()
-
-        # Inject a non-string statement so ``sql_stmt.upper()`` (line 759)
-        # raises an AttributeError BEFORE entering the inner try block.
-        # That bubbles up to the outer except at lines 810-811. The string
-        # representation of ``statements`` must contain "CREATE TABLE" so
-        # the outer guard at line 757 passes; we place the bad item first
-        # so the loop hits ``sql_stmt.upper()`` on it.
-        bad_statement = MagicMock()
-        bad_statement.upper.side_effect = AttributeError("not a string")
-        statements = [bad_statement, "CREATE TABLE public.t (id INT)"]
-
-        engine._commit_and_verify(migration, statements, 100)
-
-        engine.provider.commit_transaction.assert_called_once()
-        debug_msgs = [str(c) for c in engine.log.debug.call_args_list]
-        assert any("Could not perform post-commit state verification" in m for m in debug_msgs)

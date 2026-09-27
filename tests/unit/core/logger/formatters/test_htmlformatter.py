@@ -575,6 +575,15 @@ class TestHtmlFormatter:
 
             assert filename == "Dblift_test_schema_test_db_migrate_20230101_120000.html"
 
+    def test_get_output_filename_bounds_long_sqlite_path(self):
+        """A SQLite file in a deep directory must yield a flat, OS-valid filename."""
+        database_name = "/" + "/".join(["deeply_nested_directory_level"] * 12) + "/app.db"
+        filename = HtmlFormatter().get_output_filename("main", database_name, "migrate")
+        assert "/" not in filename
+        assert len(filename) <= 255
+        assert "app.db" in filename
+        assert filename.endswith(".html")
+
     def test_add_test_markers(self):
         """Test adding test markers to HTML output."""
         formatter = HtmlFormatter()

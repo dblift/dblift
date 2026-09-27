@@ -1,7 +1,6 @@
 """Main client for programmatic access to DBLift."""
 
 import threading
-import warnings
 from functools import wraps
 from pathlib import Path
 from types import TracebackType
@@ -57,6 +56,7 @@ from dblift.db.provider_interfaces import ConnectionProvider, TransactionalProvi
 __all__ = ["DBLiftClient"]
 
 _F = TypeVar("_F", bound=Callable[..., Any])
+_R = TypeVar("_R", bound=OperationResult)
 
 # Paid-tier commands that have a corresponding OSS-visible DBLiftClient
 # method name (issue #753). Keyed by ``api_method`` so
@@ -154,22 +154,24 @@ def _with_client_emitter(
 def _preflight_connection_failure(exc: BaseException) -> Optional[PreflightConnectionError]:
     """The preflight connection or history-table failure, else None.
 
-    Only ``PreflightConnectionError`` is turned back into a failed
-    ``ValidateResult``. Every other error, including another
-    ``ConnectionError``, still propagates.
+    Only ``PreflightConnectionError`` is turned back into a failed command
+    result. Every other error, including another ``ConnectionError``, still
+    propagates.
     """
     if isinstance(exc, PreflightConnectionError):
         return exc
     return None
 
 
-def _failed_validate_result(exc: PreflightConnectionError, schema: str) -> ValidateResult:
-    """Failed result for a preflight error, keeping the command's schema."""
+def _failed_preflight_result(
+    exc: PreflightConnectionError, result_cls: type[_R], schema: str
+) -> _R:
+    """Failed *result_cls* for a preflight error, keeping the command's schema."""
     attached = exc.result
-    if isinstance(attached, ValidateResult):
+    if isinstance(attached, result_cls):
         failed = attached
     else:
-        failed = ValidateResult()
+        failed = result_cls()
     if not failed.target_schema:
         failed.target_schema = schema
     failed.set_error(str(exc))
@@ -502,6 +504,11 @@ class DBLiftClient:
                     "dialect": getattr(self, "dialect", None),
                 },
             )
+            preflight = _preflight_connection_failure(e)
+            if preflight is not None:
+                return _failed_preflight_result(
+                    preflight, MigrateResult, self.config.database.schema
+                )
             raise
 
     @_with_client_emitter(mutating=False)
@@ -574,6 +581,9 @@ class DBLiftClient:
             return result
         except Exception as e:
             self.events.emit(EventType.INFO_FAILED, {"error": str(e)})
+            preflight = _preflight_connection_failure(e)
+            if preflight is not None:
+                return _failed_preflight_result(preflight, InfoResult, self.config.database.schema)
             raise
 
     @_with_client_emitter(mutating=False)
@@ -604,20 +614,8 @@ class DBLiftClient:
             ValidateResult with validation status. When the connection fails
             or the schema-history table cannot be created, this is a failed
             result with ``target_schema`` set, and ``VALIDATION_FAILED`` is
-            emitted. Deprecated since 4.9.0; raising instead is planned for
-            the next major release.
-
-        Raises:
-            ConnectionError: Future behavior. The next major release will
-                raise ``ConnectionError`` when the connection fails or the
-                schema-history table cannot be created, instead of returning
-                the failed result above. This method does not raise for
-                those two failures.
+            emitted.
         """
-        # Private. CLI, MCP, Django, and the pytest fixture pass False so
-        # the warning stays on a direct validate() call. Not part of the
-        # public signature.
-        warn_on_preflight_failure = kwargs.pop("_warn_on_preflight_failure", True)
         self._guard_scripts_dir_kwarg(kwargs)
         self.events.emit(EventType.VALIDATION_STARTED, {"dialect": getattr(self, "dialect", None)})
 
@@ -651,19 +649,9 @@ class DBLiftClient:
             )
             preflight = _preflight_connection_failure(e)
             if preflight is not None:
-                # Only a direct validate() call warns. CLI, MCP, Django, and
-                # the pytest fixture pass _warn_on_preflight_failure=False so
-                # their own call sites stay quiet, including under -W error.
-                if warn_on_preflight_failure:
-                    warnings.warn(
-                        "DBLiftClient.validate() returns a failed result when the "
-                        "connection fails or the schema-history table cannot be "
-                        "created. Deprecated since 4.9.0; the next major release "
-                        "will raise ConnectionError instead.",
-                        DeprecationWarning,
-                        stacklevel=3,
-                    )
-                return _failed_validate_result(preflight, self.config.database.schema)
+                return _failed_preflight_result(
+                    preflight, ValidateResult, self.config.database.schema
+                )
             raise
 
     @_with_client_emitter
@@ -760,6 +748,9 @@ class DBLiftClient:
                     "operation": "undo",
                 },
             )
+            preflight = _preflight_connection_failure(e)
+            if preflight is not None:
+                return _failed_preflight_result(preflight, UndoResult, self.config.database.schema)
             raise
 
     # Mutating on purpose: it emits MIGRATION_* events, so a listener
@@ -925,6 +916,9 @@ class DBLiftClient:
                     "operation": "clean",
                 },
             )
+            preflight = _preflight_connection_failure(e)
+            if preflight is not None:
+                return _failed_preflight_result(preflight, CleanResult, self.config.database.schema)
             raise
 
     @_with_client_emitter
@@ -985,6 +979,11 @@ class DBLiftClient:
                     "operation": "baseline",
                 },
             )
+            preflight = _preflight_connection_failure(e)
+            if preflight is not None:
+                return _failed_preflight_result(
+                    preflight, BaselineResult, self.config.database.schema
+                )
             raise
 
     @_with_client_emitter
@@ -1056,6 +1055,11 @@ class DBLiftClient:
                     "operation": "repair",
                 },
             )
+            preflight = _preflight_connection_failure(e)
+            if preflight is not None:
+                return _failed_preflight_result(
+                    preflight, RepairResult, self.config.database.schema
+                )
             raise
 
     @_with_client_emitter
@@ -1110,6 +1114,11 @@ class DBLiftClient:
                     "operation": "import_flyway",
                 },
             )
+            preflight = _preflight_connection_failure(e)
+            if preflight is not None:
+                return _failed_preflight_result(
+                    preflight, OperationResult, self.config.database.schema
+                )
             raise
 
     # Paid-tier stubs (issue #753): visible on the OSS class so

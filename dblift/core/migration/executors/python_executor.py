@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING, Any, Dict, List, Mapping, Optional
 
 from dblift.core.migration.formats import MigrationFormat
 from dblift.core.migration.migration import Migration
+from dblift.core.migration.sql.sql_analyzer import is_select_into
 
 from .base_executor import BaseMigrationExecutor, MigrationExecutionResult
 
@@ -60,7 +61,7 @@ def _is_query_statement(sql: Any) -> bool:
     # Allow a leading ``(`` for parenthesised queries.
     stripped = stripped.lstrip("(").lstrip()
     head = stripped[:8].upper()
-    return any(head.startswith(p) for p in _QUERY_PREFIXES)
+    return any(head.startswith(p) for p in _QUERY_PREFIXES) and not is_select_into(stripped)
 
 
 @dataclass

@@ -261,7 +261,9 @@ class TestImportFlywayDryRunPreview(unittest.TestCase):
             )
         )
         history.resolve_flyway_source_table = (
-            lambda table: MigrationHistoryManager.resolve_flyway_source_table(history, table)
+            lambda schema, table: MigrationHistoryManager.resolve_flyway_source_table(
+                history, schema, table
+            )
         )
         history.history_source_exists = (
             lambda schema, table: MigrationHistoryManager.history_source_exists(

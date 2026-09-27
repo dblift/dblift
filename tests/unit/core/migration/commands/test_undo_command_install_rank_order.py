@@ -124,7 +124,10 @@ def test_undo_planning_reads_each_history_rank_once():
     result = cmd.execute(scripts_dir=MagicMock(), dry_run=True)
 
     assert result.success
-    assert rank_reads[0] == len(rows)
+    # One read per row to build the rank state, plus one per successful
+    # versioned row to keep only the currently applied row of each version.
+    versioned_rows = [row for row in rows if row.type == MigrationType.SQL]
+    assert rank_reads[0] == len(rows) + len(versioned_rows)
 
 
 @pytest.mark.unit

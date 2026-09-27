@@ -657,6 +657,51 @@ class TestFileLog:
         # Header write happened in __init__ without raising; file exists.
         assert log.log_file.exists()
 
+    @pytest.mark.parametrize(
+        "url",
+        [
+            "sqlite:///" + "/".join(["deeply_nested_directory_level"] * 12) + "/app.db",
+            "duckdb:///" + "/".join(["deeply_nested_directory_level"] * 12) + "/warehouse.duckdb",
+            "sqlite:///" + "/".join(["d" * 40] * 8) + "/app.db?mode=ro&cache=shared",
+        ],
+        ids=["long-sqlite", "long-duckdb", "long-sqlite-query-params"],
+    )
+    def test_default_log_file_name_is_bounded_for_long_file_paths(self, tmp_path, url):
+        """A long SQLite/DuckDB file path must not produce a log filename that
+        exceeds the OS filename limit (ENAMETOOLONG on every command)."""
+        from dblift.core.utils.database_url_parser import DatabaseUrlParser
+
+        database_name = DatabaseUrlParser.parse_database_name(url)
+        assert len(database_name) > 255
+        log = FileLog(
+            "test_log", tmp_path, LogFormat.HTML, schema="main", database_name=database_name
+        )
+        assert log.log_file.parent == tmp_path
+        assert len(log.log_file.name) <= 255
+        assert "?" not in log.log_file.name
+        # The file's basename stays recognisable in the log filename.
+        assert Path(database_name).name in log.log_file.name
+        assert log.log_file.exists()
+
+    def test_default_log_file_name_distinguishes_long_paths(self, tmp_path):
+        """Two long paths sharing a basename must not collapse to one log name."""
+        deep = "/".join(["deeply_nested_directory_level"] * 12)
+        a = FileLog("t", tmp_path, schema="main", database_name=f"/a/{deep}/app.db")
+        b = FileLog("t", tmp_path, schema="main", database_name=f"/b/{deep}/app.db")
+        assert a.log_file.name != b.log_file.name
+
+    def test_default_log_file_name_unchanged_for_postgres(self, tmp_path):
+        """Ordinary server database names keep the existing filename shape."""
+        from dblift.core.utils.database_url_parser import DatabaseUrlParser
+
+        database_name = DatabaseUrlParser.parse_database_name(
+            "postgresql://user:pw@localhost:5432/testdb?sslmode=disable"
+        )
+        log = FileLog("t", tmp_path, LogFormat.TEXT, schema="public", database_name=database_name)
+        name = log.log_file.name
+        assert name.startswith("Dblift_public_testdb_")
+        assert name.endswith(".log")
+
     def test_init_with_log_file_pattern(self, tmp_path):
         """Test FileLog initialization with log file pattern."""
         log = FileLog(

@@ -8,12 +8,10 @@ from dblift.cli.handlers._shared import (
     CliCommandContext,
     _extract_version_filters,
     _migration_info_to_dict,
+    _reraise_preflight_failure,
     run_json_guarded,
 )
-from dblift.cli.handlers.validate import (
-    _reraise_preflight_failure,
-    _validate_result_to_dict,
-)
+from dblift.cli.handlers.validate import _validate_result_to_dict
 from dblift.core.logger.formatters.jsonformatter import JsonFormatter
 
 
@@ -58,7 +56,6 @@ def _handle_migrate(ctx: CliCommandContext) -> Tuple[bool, Any]:
                     recursive=ctx.recursive,
                     dir_recursive_map=ctx.dir_recursive_map or None,
                     additional_dirs=additional_dirs,
-                    _warn_on_preflight_failure=False,
                 )
             )
 
@@ -67,20 +64,22 @@ def _handle_migrate(ctx: CliCommandContext) -> Tuple[bool, Any]:
     dry_run = bool(getattr(ctx.args, "dry_run", False))
 
     def migrate_call() -> Any:
-        return ctx.client.migrate(
-            target_version=target_version,
-            dry_run=dry_run,
-            tags=tags,
-            exclude_tags=exclude_tags,
-            versions=versions,
-            exclude_versions=exclude_versions,
-            mark_as_executed=getattr(ctx.args, "mark_as_executed", False),
-            show_sql=getattr(ctx.args, "show_sql", False),
-            show_query_results=getattr(ctx.args, "show_query_results", False),
-            placeholders=ctx.placeholders,
-            recursive=ctx.recursive,
-            dir_recursive_map=ctx.dir_recursive_map or None,
-            additional_dirs=additional_dirs,
+        return _reraise_preflight_failure(
+            ctx.client.migrate(
+                target_version=target_version,
+                dry_run=dry_run,
+                tags=tags,
+                exclude_tags=exclude_tags,
+                versions=versions,
+                exclude_versions=exclude_versions,
+                mark_as_executed=getattr(ctx.args, "mark_as_executed", False),
+                show_sql=getattr(ctx.args, "show_sql", False),
+                show_query_results=getattr(ctx.args, "show_query_results", False),
+                placeholders=ctx.placeholders,
+                recursive=ctx.recursive,
+                dir_recursive_map=ctx.dir_recursive_map or None,
+                additional_dirs=additional_dirs,
+            )
         )
 
     return run_json_guarded(

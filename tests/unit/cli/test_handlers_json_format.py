@@ -228,7 +228,7 @@ def _history_failure_result():
 
 
 def _real_preflight_client(message):
-    """A client whose validate() hits the real deprecation path."""
+    """A real client whose validate() hits a preflight failure."""
     client = DBLiftClient.__new__(DBLiftClient)
     client.config = DbliftConfig.from_dict({"database": {"type": "sqlite", "path": ":memory:"}})
     client.provider = MagicMock()
@@ -352,6 +352,72 @@ def test_migrate_validate_only_json_preflight_stays_connection_error_when_warnin
     assert returned is None
     payload = json.loads(capsys.readouterr().out)
     assert payload == {"success": False, "error": f"ConnectionError: {_CONNECTION}"}
+
+
+# (handler module, handler, executor method, args, has --format json)
+_PREFLIGHT_HANDLERS = [
+    ("info", "_handle_info", "info", {}, True),
+    ("validate", "_handle_validate", "validate", {}, True),
+    ("migrate", "_handle_migrate", "migrate", {"dry_run": False, "validate_only": False}, True),
+    ("undo", "_handle_undo", "undo", {"dry_run": False}, False),
+    ("baseline", "_handle_baseline", "baseline", {"baseline_version": "1"}, False),
+    ("clean", "_handle_clean", "clean", {"dry_run": False}, False),
+    ("repair", "_handle_repair", "repair", {"dry_run": False}, False),
+    ("import_flyway", "_handle_import_flyway", "import_flyway", {"dry_run": False}, False),
+]
+
+
+def _run_preflight_handler(module, handler, executor_method, args, message):
+    import importlib
+
+    client = _real_preflight_client(message)
+    client.executor.validate.side_effect = None
+    getattr(client.executor, executor_method).side_effect = PreflightConnectionError(message)
+    handle = getattr(importlib.import_module(f"dblift.cli.handlers.{module}"), handler)
+    return handle(CliCommandContext(client=client, args=SimpleNamespace(**args), log=MagicMock()))
+
+
+@pytest.mark.unit
+@pytest.mark.filterwarnings("error::DeprecationWarning")
+@pytest.mark.parametrize("message", [_CONNECTION, _HISTORY])
+@pytest.mark.parametrize(
+    "module,handler,executor_method,args,has_json",
+    _PREFLIGHT_HANDLERS,
+    ids=[entry[0] for entry in _PREFLIGHT_HANDLERS],
+)
+def test_every_handler_reraises_a_preflight_failure_as_connection_error(
+    module, handler, executor_method, args, has_json, message
+):
+    """The client returns a failed result; every CLI command still fails
+    with the same plain ``ConnectionError`` the outer runner reports."""
+    with pytest.raises(ConnectionError) as raised:
+        _run_preflight_handler(
+            module, handler, executor_method, {"format": "console", **args}, message
+        )
+
+    assert type(raised.value) is ConnectionError
+    assert str(raised.value) == message
+
+
+@pytest.mark.unit
+@pytest.mark.filterwarnings("error::DeprecationWarning")
+@pytest.mark.parametrize("message", [_CONNECTION, _HISTORY])
+@pytest.mark.parametrize(
+    "module,handler,executor_method,args",
+    [entry[:4] for entry in _PREFLIGHT_HANDLERS if entry[4]],
+    ids=[entry[0] for entry in _PREFLIGHT_HANDLERS if entry[4]],
+)
+def test_every_json_handler_reports_a_preflight_failure_as_connection_error(
+    capsys, module, handler, executor_method, args, message
+):
+    ok, returned = _run_preflight_handler(
+        module, handler, executor_method, {"format": "json", **args}, message
+    )
+
+    assert ok is False
+    assert returned is None
+    payload = json.loads(capsys.readouterr().out)
+    assert payload == {"success": False, "error": f"ConnectionError: {message}"}
 
 
 @pytest.mark.unit
@@ -484,6 +550,27 @@ def test_migrate_result_to_dict_carries_sql_only_when_show_sql_is_true():
     without = _migrate_result_to_dict(result_without_sql, dry_run=True)
     assert "sql" not in without
     assert "show_sql" not in without
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("message", [_CONNECTION, _HISTORY])
+@pytest.mark.parametrize("dry_run", [False, True])
+def test_handle_migrate_json_preflight_failure_is_a_connection_error(capsys, message, dry_run):
+    """`migrate --format json` reports a preflight failure with the same
+    `ConnectionError: ...` document info and validate produce: the client
+    lets it propagate rather than returning a failed migrate result."""
+    from dblift.cli.handlers.migrate import _handle_migrate
+
+    client = _real_preflight_client(message)
+    client.executor.migrate.side_effect = PreflightConnectionError(message)
+    args = SimpleNamespace(format="json", dry_run=dry_run, validate_only=False)
+
+    ok, returned = _handle_migrate(CliCommandContext(client=client, args=args, log=MagicMock()))
+
+    assert ok is False
+    assert returned is None
+    payload = json.loads(capsys.readouterr().out)
+    assert payload == {"success": False, "error": f"ConnectionError: {message}"}
 
 
 @pytest.mark.unit

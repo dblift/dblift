@@ -112,6 +112,22 @@ class ResolvedMigration:
         return migration
 
 
+def success_to_bool(value: Any) -> bool:
+    """Read a history table's ``success`` column as a real boolean.
+
+    Flyway declares this column BOOLEAN on PostgreSQL but an integer type on
+    MySQL and SQLite, and a hand-built table can hold text such as "0" or
+    "false" — which plain ``bool()`` reads as true. Our own PostgreSQL history
+    column is BOOLEAN and psycopg refuses an int for it, so the value is
+    normalised here rather than trusted as read.
+    """
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return value.strip().lower() not in ("", "0", "false", "f", "n", "no")
+    return bool(value)
+
+
 @dataclass(frozen=True)
 class AppliedMigration:
     """History-table record for an already applied migration."""

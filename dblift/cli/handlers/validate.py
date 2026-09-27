@@ -2,15 +2,15 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, Optional, Protocol, Tuple
+from typing import Any, Dict, Tuple
 
 from dblift.cli.handlers._shared import (
     CliCommandContext,
     _extract_version_filters,
     _migration_info_to_dict,
+    _reraise_preflight_failure,
     run_json_guarded,
 )
-from dblift.core.migration.commands.base_command import PreflightConnectionError
 
 
 def _validate_result_to_dict(result: Any) -> Dict[str, Any]:
@@ -32,34 +32,6 @@ def _validate_result_to_dict(result: Any) -> Dict[str, Any]:
     }
 
 
-class _FailedCommandResult(Protocol):
-    """The fields this handler reads off a failed command result."""
-
-    success: bool
-    error_message: Optional[str]
-    _preflight_error: Optional[BaseException]
-
-
-def _reraise_preflight_failure(
-    result: _FailedCommandResult,
-) -> _FailedCommandResult:
-    """Keep the CLI, JSON and MCP error path for a preflight failure.
-
-    ``DBLiftClient.validate()`` returns a failed result when the connection
-    fails or the schema-history table cannot be created. These surfaces
-    still raise ``ConnectionError`` — the base type, so the published text
-    stays ``ConnectionError: ...`` — which ``run_json_guarded`` turns into
-    ``{"success": false, "error": "ConnectionError: ..."}`` and which
-    ``dblift mcp`` reports as an error result. Any other result, including
-    another ``ConnectionError`` that was not a preflight failure, is returned
-    as a validation verdict.
-    """
-    error = result._preflight_error
-    if result.success is False and isinstance(error, PreflightConnectionError):
-        raise ConnectionError(str(error))
-    return result
-
-
 def _handle_validate(ctx: CliCommandContext) -> Tuple[bool, Any]:
     target_version, versions, exclude_versions, tags, exclude_tags = _extract_version_filters(
         ctx.args
@@ -78,7 +50,6 @@ def _handle_validate(ctx: CliCommandContext) -> Tuple[bool, Any]:
                 additional_dirs=(
                     ctx.additional_scripts_dirs if ctx.additional_scripts_dirs else None
                 ),
-                _warn_on_preflight_failure=False,
             )
         )
 

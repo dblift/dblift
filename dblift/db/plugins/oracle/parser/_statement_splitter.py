@@ -14,8 +14,8 @@ script into individual statements. It is:
   * SQL*Plus-aware via :func:`_sqlplus.is_sqlplus_command`,
   * comment-aware via :func:`_comments.strip_sql_comments`.
 
-All functions are pure module-level functions. The regex that detects
-PL/SQL block headers is compiled once at module load.
+All functions are pure module-level functions. PL/SQL block headers are
+detected by :func:`_sqlplus.is_plsql_keyword_start`.
 """
 
 from __future__ import annotations
@@ -24,7 +24,15 @@ import re
 from typing import Callable, List, Tuple
 
 from dblift.db.plugins.oracle.parser._comments import strip_sql_comments
-from dblift.db.plugins.oracle.parser._sqlplus import is_sqlplus_command
+from dblift.db.plugins.oracle.parser._sqlplus import (
+    is_plsql_keyword_start,
+    is_sqlplus_command,
+    tokenize_outside_sqlplus_directives,
+)
+from dblift.db.plugins.oracle.parser.oracle_tokenizer import (
+    OracleTokenizer,
+    has_stray_comment_close,
+)
 
 __all__ = [
     "extract_next_complete_statement",
@@ -36,37 +44,10 @@ __all__ = [
 ]
 
 
-# PL/SQL block header detection — captures CREATE [OR REPLACE]
-# [(NON)EDITIONABLE] {PROCEDURE | FUNCTION | PACKAGE [BODY] | TRIGGER |
-# TYPE [BODY] | COMPOUND TRIGGER | [AND (RESOLVE|COMPILE)] JAVA SOURCE}.
-_PLSQL_START_REGEX = re.compile(
-    r"^CREATE\s+(?:OR\s+REPLACE\s+)?(?:(?:NON)?EDITIONABLE\s+)?"
-    r"(?:"
-    r"PROCEDURE|FUNCTION|PACKAGE\s+BODY|PACKAGE|TRIGGER|TYPE\s+BODY|TYPE"
-    r"|COMPOUND\s+TRIGGER"
-    r"|(?:AND\s+(?:RESOLVE|COMPILE)\s+)?JAVA\s+SOURCE"
-    r")",
-    re.IGNORECASE,
-)
-
-_ANON_BLOCK_START = re.compile(r"^(?:DECLARE|BEGIN)\b", re.IGNORECASE)
-
 # Type alias for the PL/SQL block extractor callable injected by the
 # parser. ``(text, start_pos) -> (block_text, next_pos)``. See the
 # module docstring for why this is injected rather than imported.
 PlsqlBlockExtractor = Callable[[str, int], Tuple[str, int]]
-
-
-def is_plsql_keyword_start(text: str) -> bool:
-    """Return ``True`` if ``text`` begins with a PL/SQL block keyword.
-
-    Recognises anonymous blocks (``DECLARE``/``BEGIN``) and all
-    ``CREATE``-form PL/SQL headers (see :data:`_PLSQL_START_REGEX`).
-    """
-    stripped = text.strip()
-    if _ANON_BLOCK_START.match(stripped):
-        return True
-    return bool(_PLSQL_START_REGEX.match(stripped))
 
 
 def word_at_position(text: str, pos: int, word: str) -> bool:
@@ -104,6 +85,7 @@ def extract_regular_statement(text: str, start_pos: int) -> Tuple[str, int]:
     in_string = False
     string_char = None
     statement = ""
+    line_buffering = False
 
     while i < len(text):
         char = text[i]
@@ -133,6 +115,17 @@ def extract_regular_statement(text: str, start_pos: int) -> Tuple[str, int]:
         if not in_string and char == ";":
             statement += char
             i += 1
+
+            # A "*/" left on this line outside a literal is stray (comments
+            # are already stripped). SQL*Plus does not end the statement
+            # there, and from then on only at a ";" that is the last thing on
+            # its line (see OracleStatementParser._ends_sqlplus_line).
+            eol = text.find("\n", i)
+            rest_of_line = text[i : eol if eol != -1 else len(text)]
+            if not line_buffering and "*/" in rest_of_line:
+                line_buffering = has_stray_comment_close(OracleTokenizer(rest_of_line).tokenize())
+            if line_buffering and rest_of_line.strip():
+                continue
 
             # Swallow whitespace and an optional trailing SQL*Plus ``/``.
             while i < len(text) and text[i].isspace():
@@ -206,7 +199,16 @@ def split_statements_regex(
         return []
 
     statements: List[str] = []
-    text = strip_sql_comments(sql).strip()
+    # SQL*Plus directives end at the end of their line, with or without a
+    # ";", and their text is not SQL: drop them so "PROMPT customer's table"
+    # neither opens a literal nor merges with the next statement.
+    _, directive_lines = tokenize_outside_sqlplus_directives(sql)
+    parts, last = [], 0
+    for start, end in directive_lines:
+        parts.append(sql[last:start])
+        last = end
+    parts.append(sql[last:])
+    text = strip_sql_comments("".join(parts)).strip()
     i = 0
 
     while i < len(text):

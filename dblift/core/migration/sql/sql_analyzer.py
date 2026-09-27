@@ -19,7 +19,12 @@ from dblift.core.sql_parser.dialects.identifier_tokens import (
     strip_identifier_quotes as _strip_identifier_quotes,
 )
 from dblift.core.sql_parser.parser_factory import SqlParserFactory
-from dblift.db.dml_analysis import cte_outer_statement_type
+from dblift.db.dml_analysis import (
+    DEFAULT_QUOTE_PAIRS,
+    _find_top_level_keyword,
+    cte_outer_statement_type,
+    strip_leading_sql_comments,
+)
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -292,6 +297,28 @@ def _qualified_object_name(raw: str, drop_last_part: bool = False) -> str:
     return f"{DEFAULT_SCHEMA_PLACEHOLDER}.{parts[0]}"
 
 
+def is_select_into(statement: str) -> bool:
+    """True for a top-level ``SELECT ... INTO <target>``, optionally behind a CTE list.
+
+    It writes its result instead of returning rows: PostgreSQL and SQL Server
+    create a table, MySQL/MariaDB fill variables or a file. Only an ``INTO``
+    outside quotes, comments, dollar quotes and parentheses counts, so a CTE
+    body or subquery never matches. A procedural ``SELECT ... INTO var`` sits
+    inside a ``DO`` or ``CREATE FUNCTION`` body and never starts the statement.
+    """
+    text = strip_leading_sql_comments(statement).lstrip()
+    if not re.match(r"(?:SELECT|WITH)\b", text, flags=re.IGNORECASE):
+        return False
+    into = _find_top_level_keyword(text, "INTO", DEFAULT_QUOTE_PAIRS)
+    if into < 0:
+        return False
+    # ``WITH ... INSERT INTO`` / ``MERGE INTO`` is the outer DML's own INTO.
+    return all(
+        not 0 <= _find_top_level_keyword(text, verb, DEFAULT_QUOTE_PAIRS) < into
+        for verb in ("INSERT", "MERGE")
+    )
+
+
 class SqlAnalyzer:
     """Analyzes SQL statements for type and affected objects."""
 
@@ -352,6 +379,11 @@ class SqlAnalyzer:
 
         if not sql:
             return "UNKNOWN"
+
+        # Starts like a query but returns no rows; checked ahead of the
+        # dialect parsers, which classify by the leading keyword.
+        if is_select_into(sql):
+            return "DML"
 
         # Try database-specific parser classification first
         if self.dialect and hasattr(self, "_db_specific_parser") and self._db_specific_parser:
@@ -680,7 +712,8 @@ class SqlAnalyzer:
                     i += 1  # Skip the next character
                 elif char == "*" and next_char == "/" and in_block_comment:
                     in_block_comment = False
-                    i += 1  # Skip the next character
+                    i += 2  # Skip the closing marker so it is not kept as SQL
+                    continue
 
                 # Handle semicolons (statement separators) but only if not in literals or comments
                 elif (

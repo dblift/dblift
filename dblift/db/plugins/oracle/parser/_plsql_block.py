@@ -215,7 +215,7 @@ def parse_plsql_create_header(
     is_named_block = True
     is_compound_trigger = bool(is_compound_trigger_match)
     is_package_body = bool(is_package_body_match) or is_compound_trigger
-    is_package = bool(not is_package_body and _RE_PACKAGE_IS_PACKAGE.search(remaining))
+    is_package = bool(not is_package_body and _RE_PACKAGE_IS_PACKAGE.match(remaining))
 
     package_name: Optional[str] = None
     if is_package_body or is_package:

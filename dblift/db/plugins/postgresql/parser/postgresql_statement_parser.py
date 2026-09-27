@@ -116,10 +116,18 @@ class PostgreSQLStatementParser(BaseStatementParser):
                         self.in_atomic_block = False
 
     def _is_statement_end(self, token: Token) -> bool:
-        """A COPY data block ends its own statement — no ``;`` follows its ``\\.`` line."""
+        """A COPY data block ends its own statement — no ``;`` follows its ``\\.`` line.
+
+        The ``;`` closing a ``COPY ... FROM stdin`` header does not end the
+        statement: the header and its data block are one COPY, which the
+        provider streams through the driver's copy API in a single call.
+        """
         if token.type == TokenType.COPY_DATA:
             return True
-        return super()._is_statement_end(token)
+        if not super()._is_statement_end(token):
+            return False
+        next_token = self._peek_next_token(skip_comments=False)
+        return next_token is None or next_token.type != TokenType.COPY_DATA
 
     def split_statements(self) -> List[str]:
         """Override to keep META_COMMAND lines out of statement text.

@@ -6,13 +6,23 @@ features including SQL/PL syntax, triggers, stored procedures, and utility state
 
 import logging
 import re
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Type
 
 from dblift.core.sql_model.base import ParseResult, SqlStatement, SqlStatementType
+from dblift.core.sql_parser.base_tokenizer import BaseTokenizer
 from dblift.core.sql_parser.enhanced_regex_parser import EnhancedRegexParser
 from dblift.db.plugins.db2.parser.parser_config import DB2Config
 
 logger = logging.getLogger(__name__)
+
+
+class _DB2NestingCommentTokenizer(BaseTokenizer):
+    """Carries only the flag: Db2 nests ``/* ... */`` (checked with the CLP
+    and ``ibm_db``). The Db2 splitter scans characters itself and never
+    instantiates a tokenizer."""
+
+    NESTED_BLOCK_COMMENTS = True
+
 
 # Trailing trivia (whitespace, line comments, block comments) that may follow
 # a block's undelimited closing END before the true end of the script. The
@@ -27,6 +37,12 @@ class DB2RegexParser(EnhancedRegexParser):
     """DB2-specific regex parser with enhanced DB2 feature support."""
 
     dialect_name = "db2"  # lint: allow-dialect-string: dialect dispatch
+
+    #: Db2's block-comment nesting rule, read by ``_split_by_semicolon_db2``,
+    #: the comment checks below and the inherited ``extract_objects``'s
+    #: comment stripper, so they cannot disagree about whether ``/* ... */``
+    #: nests.
+    tokenizer_class: Type[BaseTokenizer] = _DB2NestingCommentTokenizer
 
     def __init__(self) -> None:
         """Initialize DB2 regex parser."""
@@ -60,18 +76,16 @@ class DB2RegexParser(EnhancedRegexParser):
         if self._has_module_blocks(sql_content):
             return self._split_with_module_awareness(sql_content)
 
-        # Handle SQL/PL blocks (procedures and functions)
-        if self._has_sqlpl_blocks(sql_content):
-            return self._split_with_sqlpl_awareness(sql_content)
-
-        # Handle trigger blocks BEFORE compound statements
-        # Triggers contain BEGIN ATOMIC, so they must be checked before generic compound statements
-        if self._has_trigger_blocks(sql_content):
-            return self._split_with_trigger_awareness(sql_content)
-
-        # Handle compound statements
-        if self._has_compound_statements(sql_content):
-            return self._split_with_compound_awareness(sql_content)
+        # Handle SQL/PL blocks (procedures and functions), trigger blocks and
+        # compound statements together: one script can mix them, and picking a
+        # single kind per script left the other kinds to plain semicolon
+        # splitting, cutting e.g. a trigger body at its first inner ``;``.
+        if (
+            self._has_sqlpl_blocks(sql_content)
+            or self._has_trigger_blocks(sql_content)
+            or self._has_compound_statements(sql_content)
+        ):
+            return self._split_with_block_awareness(sql_content)
 
         # Handle SPUFI terminator customization
         if self._has_spufi_terminators(sql_content):
@@ -262,6 +276,44 @@ class DB2RegexParser(EnhancedRegexParser):
 
         return statements
 
+    def _split_with_block_awareness(self, sql: str) -> List[str]:
+        """Split SQL keeping every SQL/PL, trigger and compound block whole.
+
+        Each extractor only knows its own kind of block, so their results are
+        merged in script order. A block that starts inside one already taken
+        (the ``BEGIN ATOMIC`` body of a trigger or function is also found by
+        the compound extractor) is dropped; sorting longest-first at a given
+        start keeps the enclosing statement.
+        """
+        blocks = (
+            self.config.extract_sqlpl_blocks(sql)
+            + self.config.extract_trigger_blocks(sql)
+            + self.config.extract_compound_statements(sql)
+        )
+        blocks.sort(key=lambda b: (int(b["start"]), -int(b["end"])))
+
+        statements = []
+        current_pos = 0
+        for block in blocks:
+            if int(block["start"]) < current_pos:
+                continue
+
+            # Add any SQL before this block
+            before_block = sql[current_pos : int(block["start"])].strip()
+            if before_block:
+                statements.extend(self._split_by_semicolon_db2(before_block))
+
+            # Add the block as a single statement
+            statements.append(block["content"])
+            current_pos = int(block["end"])
+
+        # Add any remaining SQL after the last block
+        remaining_sql = sql[current_pos:].strip()
+        if remaining_sql:
+            statements.extend(self._split_by_semicolon_db2(remaining_sql))
+
+        return statements
+
     def _split_with_sqlpl_awareness(self, sql: str) -> List[str]:
         """Split SQL with SQL/PL block awareness."""
         statements = []
@@ -381,11 +433,13 @@ class DB2RegexParser(EnhancedRegexParser):
         in_string = False
         in_quoted_identifier = False
         in_line_comment = False
-        in_block_comment = False
+        block_comment_depth = 0
+        nested_block_comments = self.tokenizer_class.NESTED_BLOCK_COMMENTS
         string_char = None
         i = 0
 
         while i < len(sql):
+            in_block_comment = block_comment_depth > 0
             char = sql[i]
 
             # Handle string literals
@@ -417,22 +471,29 @@ class DB2RegexParser(EnhancedRegexParser):
 
             # Handle comments
             if not in_string and not in_quoted_identifier:
-                # Line comments
-                if char == "-" and i + 1 < len(sql) and sql[i + 1] == "-":
+                # Line comments (``--`` inside a block comment is comment text)
+                if char == "-" and i + 1 < len(sql) and sql[i + 1] == "-" and not in_block_comment:
                     in_line_comment = True
                     current.append(char)
                     current.append(sql[i + 1])
                     i += 2
                     continue
-                # Block comments
-                elif char == "/" and i + 1 < len(sql) and sql[i + 1] == "*":
-                    in_block_comment = True
+                # Block comments; Db2 nests them, so each ``/*`` inside one
+                # opens another level that its own ``*/`` closes.
+                elif (
+                    char == "/"
+                    and i + 1 < len(sql)
+                    and sql[i + 1] == "*"
+                    and not in_line_comment
+                    and (not in_block_comment or nested_block_comments)
+                ):
+                    block_comment_depth += 1
                     current.append(char)
                     current.append(sql[i + 1])
                     i += 2
                     continue
                 elif char == "*" and i + 1 < len(sql) and sql[i + 1] == "/" and in_block_comment:
-                    in_block_comment = False
+                    block_comment_depth -= 1
                     current.append(char)
                     current.append(sql[i + 1])
                     i += 2
@@ -448,7 +509,7 @@ class DB2RegexParser(EnhancedRegexParser):
                 and not in_string
                 and not in_quoted_identifier
                 and not in_line_comment
-                and not in_block_comment
+                and block_comment_depth == 0
             ):
                 # Don't include the delimiter in the statement
                 stmt = "".join(current).strip()
@@ -593,17 +654,22 @@ class DB2RegexParser(EnhancedRegexParser):
         return ParseResult(success=success, statements=statements, errors=errors)
 
     def _clean_db2_comments(self, sql: str) -> str:
-        """Clean DB2-specific comments from SQL."""
-        # Remove -- comments
-        sql = re.sub(r"--.*$", "", sql, flags=re.MULTILINE)
+        """Clean DB2-specific comments from SQL.
 
-        # Remove /* */ comments
-        sql = re.sub(r"/\*.*?\*/", "", sql, flags=re.DOTALL)
+        Uses the shared quote-aware stripper, which nests ``/* ... */`` as
+        Db2 does (``tokenizer_class``); a first-``*/`` regex left the tail
+        of a nested comment behind as live SQL.
+        """
+        return self._strip_comments_preserving_quotes(sql)
 
-        # Remove SPUFI terminator comments but preserve for processing
-        # Don't remove these as they're functional
+    def _is_empty_or_comment(self, stmt: str) -> bool:
+        """True if *stmt* holds nothing but whitespace and Db2 comments.
 
-        return sql
+        Nesting-aware, like the splitter: ``/* a /* b */ c */`` is one
+        comment. The inherited pattern check also mistook a statement that
+        merely starts with ``/*`` and ends with ``*/`` for a comment.
+        """
+        return not self._strip_comments_preserving_quotes(stmt).strip()
 
     def validate_sql(self, sql_content: str) -> Dict[str, Any]:
         """Validate DB2 SQL content.

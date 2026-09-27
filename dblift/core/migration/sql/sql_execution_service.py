@@ -220,37 +220,33 @@ class SqlExecutionService:
                             elif statement_type == SqlStatementType.DML.value:
                                 stmt_upper = statement.strip().upper()
                                 if stmt_upper.startswith(("INSERT", "UPDATE", "DELETE")):
-                                    # Try to use parser to extract table name
-                                    if getattr(self.sql_analyzer, "parser_factory", None):
-                                        try:
-                                            objects_affected = (
-                                                self.sql_analyzer.parser_factory.extract_objects(
-                                                    statement, self.schema
-                                                )
-                                                or []
-                                            )
-                                        except Exception as e:
-                                            self.log.debug(
-                                                f"Could not extract objects from statement: {e}"
-                                            )
+                                    # The dialect's DML analysis names the one table
+                                    # written, resolving target aliases (``DELETE a
+                                    # FROM t a``, T-SQL ``UPDATE a ... FROM t AS a``);
+                                    # the object parsers report the alias and every
+                                    # table read as separate objects.
+                                    table_ref = self.quirks.analyze_dml(statement).table
+                                    table_name = (
+                                        self._extract_simple_table_name(table_ref)
+                                        if table_ref
+                                        else self._extract_table_from_dml(statement)
+                                    )
+                                    qualifier = table_ref.rpartition(".")[0] if table_ref else ""
+                                    if table_name:
+                                        from dblift.core.sql_model.base import (
+                                            SqlObject,
+                                            SqlObjectType,
+                                        )
 
-                                    # Fallback: parsers only cover DDL, so DML normally
-                                    # yields no objects (empty list, no exception)
-                                    if not objects_affected:
-                                        table_name = self._extract_table_from_dml(statement)
-                                        if table_name:
-                                            from dblift.core.sql_model.base import (
-                                                SqlObject,
-                                                SqlObjectType,
+                                        objects_affected = [
+                                            SqlObject(
+                                                name=table_name,
+                                                object_type=SqlObjectType.TABLE,
+                                                schema=self._extract_simple_table_name(qualifier)
+                                                or self.schema
+                                                or "",
                                             )
-
-                                            objects_affected = [
-                                                SqlObject(
-                                                    name=table_name,
-                                                    object_type=SqlObjectType.TABLE,
-                                                    schema=self.schema or "",
-                                                )
-                                            ]
+                                        ]
 
                             if objects_affected:
                                 # Convert SqlObject instances to dictionaries for JSON serialization

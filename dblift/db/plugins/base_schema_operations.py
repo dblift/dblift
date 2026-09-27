@@ -212,14 +212,11 @@ class BaseSchemaOperations(ABC):
         real clean does — same query, same DROP SQL — but must not execute
         the DROP. Records each candidate via ``summary.record_drop`` instead.
 
-        Query failures are caught and logged at debug level so a missing
-        object kind on a given backend does not abort the preview.
+        Query failures propagate: reading a failed catalog query as "no
+        objects of this kind" made ``clean`` report success having dropped
+        nothing.
         """
-        try:
-            objects = self.query_executor.execute_query(connection, query, params=query_params)
-        except Exception as e:
-            self.log.debug(f"Could not query {object_type}s for clean preview: {str(e)}")
-            return
+        objects = self.query_executor.execute_query(connection, query, params=query_params)
 
         for row in objects:
             name = get_row_value(row, name_key.lower())

@@ -8,6 +8,7 @@ from dblift.cli.handlers._shared import (
     CliCommandContext,
     _extract_version_filters,
     _migration_info_to_dict,
+    _reraise_preflight_failure,
     run_json_guarded,
 )
 
@@ -53,5 +54,8 @@ def _handle_info(ctx: CliCommandContext) -> Tuple[bool, Any]:
         "display_human": not use_json,
     }
     return run_json_guarded(
-        ctx, "INFO", lambda: ctx.client.info(**info_kwargs), _info_result_to_dict
+        ctx,
+        "INFO",
+        lambda: _reraise_preflight_failure(ctx.client.info(**info_kwargs)),
+        _info_result_to_dict,
     )

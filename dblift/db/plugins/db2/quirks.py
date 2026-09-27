@@ -57,6 +57,9 @@ class Db2Quirks(BaseQuirks):
     schema_required = True
     uppercase_identifiers = True
     clean_strategy = "introspector"
+    # import-flyway reads Flyway's quoted lowercase source table directly, as on
+    # Oracle; get_applied_migrations would uppercase the name and miss it.
+    flyway_source_table_case_sensitive = True
     # Data-set ledger DDL: DB2 has no TEXT type (use CLOB) and defaults the
     # install timestamp from the CURRENT TIMESTAMP special register.
     data_history_text_type = "CLOB"

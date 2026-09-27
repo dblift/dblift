@@ -1,6 +1,6 @@
 """Nested block comments (/* /* */ */) must not split into extra statements.
 
-PostgreSQL, SQL Server and DuckDB document/exhibit nested block comments, so a
+PostgreSQL, SQL Server, DuckDB and Db2 document/exhibit nested block comments, so a
 ``;`` inside a nested comment must stay inside it. MySQL/MariaDB, Oracle and
 SQLite document that block comments do NOT nest (the first ``*/`` always
 closes), so those dialects must keep splitting at the first ``*/`` — the
@@ -186,23 +186,95 @@ class TestNonNestingDialectsUnchanged(unittest.TestCase):
         self.assertTrue(any("DROP TABLE victim" in s for s in stmts))
 
     def test_oracle_stops_at_first_close(self):
+        # The first "*/" closes, but the ";" followed by a stray "*/" does
+        # not end the statement (SQL*Plus keeps buffering to a line-final
+        # ";"), so DROP TABLE victim is never sent on its own.
         stmts = OracleParser().split_statements(ISSUE_EXAMPLE)
-        self.assertTrue(any("DROP TABLE victim" in s for s in stmts))
+        self.assertEqual(stmts, ["DROP TABLE victim; still outer */\nSELECT 1;"])
 
     def test_sqlite_stops_at_first_close(self):
         stmts = SQLiteRegexParser().split_statements(ISSUE_EXAMPLE)
         self.assertTrue(any("DROP TABLE victim" in s for s in stmts))
 
 
-class TestDb2Unchanged(unittest.TestCase):
-    """Db2 nested-bracketed-comment support could not be verified against a
-    live engine (see CHANGELOG.md); this pins current behavior so a change
-    is deliberate rather than incidental.
+class TestDb2NestedBlockComments(unittest.TestCase):
+    """Db2 nests block comments, confirmed live on Db2 12.1 with both the
+    CLP and the raw ``ibm_db`` driver: ``VALUES 1 /* a /* b */ c */``
+    returns 1, and a CLP script whose nested comment holds ``;``,
+    ``CREATE TABLE`` and ``DROP TABLE`` runs none of them. Like DuckDB's,
+    this splitter keeps comment text in the statement it precedes, so a
+    ``;`` inside the nested comment must not split there.
     """
 
-    def test_stops_at_first_close(self):
-        stmts = DB2RegexParser().split_statements(ISSUE_EXAMPLE)
-        self.assertTrue(any("DROP TABLE victim" in s for s in stmts))
+    def setUp(self):
+        self.parser = DB2RegexParser()
+
+    def test_tokenizer_declares_nesting(self):
+        self.assertTrue(self.parser.tokenizer_class.NESTED_BLOCK_COMMENTS)
+
+    def test_issue_example_keeps_drop_inside_the_comment(self):
+        stmts = self.parser.split_statements(ISSUE_EXAMPLE)
+        self.assertEqual(stmts, [ISSUE_EXAMPLE.rstrip(";")])
+
+    def test_three_deep(self):
+        stmts = self.parser.split_statements(THREE_DEEP)
+        self.assertEqual(stmts, [THREE_DEEP.rstrip(";")])
+
+    def test_unterminated_inner_comment_swallows_rest_of_file(self):
+        stmts = self.parser.split_statements(UNTERMINATED_INNER)
+        self.assertEqual(stmts, [])
+
+    def test_comment_only_file_produces_no_statements(self):
+        sql = "/* outer\n   /* inner */\n   still comment\n*/\n"
+        self.assertEqual(self.parser.split_statements(sql), [])
+
+    def test_nested_comment_with_statements_inside_is_not_split_or_run(self):
+        sql = (
+            "/* a /* b */ ; CREATE TABLE t_in (x INT); DROP TABLE t_keep; */\n"
+            "CREATE TABLE t_after (x INT);\n"
+            "CREATE TABLE t_after2 (x INT);"
+        )
+        stmts = self.parser.split_statements(sql)
+        self.assertEqual(len(stmts), 2, stmts)
+        self.assertTrue(stmts[0].endswith("CREATE TABLE t_after (x INT)"), stmts)
+        self.assertEqual(stmts[1], "CREATE TABLE t_after2 (x INT)")
+        live = [self.parser._strip_comments_preserving_quotes(s) for s in stmts]
+        self.assertFalse(any("t_in" in s or "DROP" in s for s in live), live)
+
+    def test_statement_ending_in_a_comment_is_kept(self):
+        sql = (
+            "/* x /* y */ DROP TABLE t_keep; */ CREATE TABLE t_after (x INT) /* tail */;\n"
+            "CREATE TABLE t_after2 (x INT);"
+        )
+        stmts = self.parser.split_statements(sql)
+        self.assertEqual(len(stmts), 2, stmts)
+        self.assertIn("CREATE TABLE t_after (x INT)", stmts[0])
+        self.assertEqual(stmts[1], "CREATE TABLE t_after2 (x INT)")
+
+    def test_nested_comment_before_a_procedure_keeps_the_block_whole(self):
+        sql = (
+            "/* a /* b */ ; DROP TABLE t_keep; */\n"
+            "CREATE PROCEDURE p1() BEGIN DECLARE v INT; SET v = 1; END@\n"
+            "CREATE TABLE t_after (x INT);"
+        )
+        stmts = self.parser.split_statements(sql)
+        live = [self.parser._strip_comments_preserving_quotes(s).strip() for s in stmts]
+        self.assertEqual(
+            live,
+            [
+                "CREATE PROCEDURE p1() BEGIN DECLARE v INT; SET v = 1; END",
+                "CREATE TABLE t_after (x INT)",
+            ],
+        )
+
+    def test_parse_sql_ignores_objects_inside_a_nested_comment(self):
+        sql = (
+            "/* a /* b */ ; CREATE TABLE t_in (x INT); DROP TABLE t_keep; */\n"
+            "CREATE TABLE t_after (x INT);"
+        )
+        result = self.parser.parse_sql(sql)
+        names = [o.name for stmt in result.statements for o in stmt.objects]
+        self.assertEqual(names, ["T_AFTER"])
 
 
 class TestPostgresWireCompatibleEnginesThatRunRealPostgres(unittest.TestCase):

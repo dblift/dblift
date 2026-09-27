@@ -42,14 +42,21 @@ Behaviour notes inherited from PR-E (ADR-0012 §Follow-ups closed):
 from __future__ import annotations
 
 import re
+import warnings
 from dataclasses import dataclass
-from typing import Optional, Tuple
+from typing import List, Optional, Tuple
+
+from dblift.core.sql_parser.base_tokenizer import TokenizerWarning
+from dblift.core.sql_parser.tokens import Token, TokenType
+from dblift.db.plugins.oracle.parser.oracle_tokenizer import OracleTokenizer
 
 __all__ = [
     "SQLPLUS_DIRECTIVES",
     "SqlplusDirective",
+    "is_plsql_keyword_start",
     "is_sqlplus_command",
     "parse_whenever_sqlerror",
+    "tokenize_outside_sqlplus_directives",
 ]
 
 
@@ -317,3 +324,109 @@ def parse_whenever_sqlerror(stmt: str) -> Optional[str]:
     if _WHENEVER_SQLERROR_EXIT.match(stmt):
         return "exit"
     return None
+
+
+# PL/SQL block header detection — SQL*Plus buffers a unit starting this way
+# up to a line holding only "/". Captures CREATE [OR REPLACE]
+# [(NON)EDITIONABLE] {PROCEDURE | FUNCTION | PACKAGE [BODY] | TRIGGER |
+# TYPE [BODY] | COMPOUND TRIGGER | [AND (RESOLVE|COMPILE)] JAVA SOURCE}.
+_PLSQL_START_REGEX = re.compile(
+    r"^CREATE\s+(?:OR\s+REPLACE\s+)?(?:(?:NON)?EDITIONABLE\s+)?"
+    r"(?:"
+    r"PROCEDURE|FUNCTION|PACKAGE\s+BODY|PACKAGE|TRIGGER|TYPE\s+BODY|TYPE"
+    r"|COMPOUND\s+TRIGGER"
+    r"|(?:AND\s+(?:RESOLVE|COMPILE)\s+)?JAVA\s+SOURCE"
+    r")",
+    re.IGNORECASE,
+)
+
+_ANON_BLOCK_START = re.compile(r"^(?:DECLARE|BEGIN)\b", re.IGNORECASE)
+
+
+def is_plsql_keyword_start(text: str) -> bool:
+    """Return ``True`` if ``text`` begins with a PL/SQL block keyword.
+
+    Recognises anonymous blocks (``DECLARE``/``BEGIN``) and all
+    ``CREATE``-form PL/SQL headers (see :data:`_PLSQL_START_REGEX`).
+    """
+    stripped = text.strip()
+    if _ANON_BLOCK_START.match(stripped):
+        return True
+    return bool(_PLSQL_START_REGEX.match(stripped))
+
+
+class _DirectiveLineTokenizer(OracleTokenizer):
+    """Oracle tokenizer that steps over SQL*Plus directive lines.
+
+    A directive is only read where a statement can begin: at the top of the
+    script, after a ``;``-terminated statement, or after the ``/`` line that
+    ends a PL/SQL unit. There the whole line is consumed without producing
+    tokens and its span is recorded in :attr:`directive_lines`.
+    """
+
+    def __init__(self, sql: str):
+        super().__init__(sql)
+        self.directive_lines: List[Tuple[int, int]] = []
+        self._at_statement_start = True
+        self._in_plsql = False
+
+    def _next_token(self) -> Optional[Token]:
+        self._skip_whitespace()
+        if self._at_statement_start and self.pos < len(self.sql):
+            line_start = self.sql.rfind("\n", 0, self.pos) + 1
+            eol = self.sql.find("\n", self.pos)
+            eol = eol if eol != -1 else len(self.sql)
+            # A "--" ends the directive; the rest of the line is a comment.
+            comment = self.sql.find("--", self.pos, eol)
+            end = comment if comment != -1 else eol
+            line = self.sql[line_start:end]
+            if not self.sql[line_start : self.pos].strip() and (
+                is_sqlplus_command(line) or parse_whenever_sqlerror(line) is not None
+            ):
+                self.directive_lines.append((line_start, end))
+                self.read(end - self.pos)
+                return None
+        token = super()._next_token()
+        if token is None or token.type in (TokenType.COMMENT, TokenType.EOF):
+            return token
+        if self._at_statement_start:
+            self._at_statement_start = False
+            end = self.sql.find(";", token.pos)
+            self._in_plsql = is_plsql_keyword_start(
+                self.sql[token.pos : end if end != -1 else None]
+            )
+        if token.text == "/" and self._alone_on_line(token):
+            self._at_statement_start, self._in_plsql = True, False
+        elif token.text == ";" and not self._in_plsql:
+            self._at_statement_start = True
+        return token
+
+    def _alone_on_line(self, token: Token) -> bool:
+        line_start = self.sql.rfind("\n", 0, token.pos) + 1
+        eol = self.sql.find("\n", token.pos)
+        rest = self.sql[token.pos + 1 : eol if eol != -1 else None]
+        return not self.sql[line_start : token.pos].strip() and not rest.strip()
+
+
+def tokenize_outside_sqlplus_directives(sql: str) -> Tuple[List[Token], List[Tuple[int, int]]]:
+    """Tokenize Oracle SQL, setting SQL*Plus directive lines aside.
+
+    A directive (``PROMPT Creating customer's table``, ``REM don't run
+    twice``, ``SET ...``, ``WHENEVER SQLERROR ...``) runs to the end of its
+    line and its text is not SQL, so an apostrophe in it must not open a
+    literal. SQL*Plus only reads one where a statement can begin; anywhere
+    else the line is SQL text, e.g. ``EXECUTE IMMEDIATE '...`` inside a
+    block or a line of a multi-line literal, and is tokenized as usual.
+
+    Returns the tokens of everything but the directive lines, and the
+    ``(start, end)`` span of each directive. A span stops at the newline,
+    or at a ``--`` that starts a trailing comment, which is tokenized.
+    """
+    tokenizer = _DirectiveLineTokenizer(sql)
+    with warnings.catch_warnings():
+        # Callers use comment spans and statement boundaries only; unclaimed
+        # characters are reported when the statements themselves are
+        # tokenized.
+        warnings.simplefilter("ignore", TokenizerWarning)
+        tokens = tokenizer.tokenize()
+    return tokens, tokenizer.directive_lines

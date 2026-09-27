@@ -63,9 +63,7 @@ def dblift_empty_db(dblift_client: DBLiftClient) -> Iterator[DBLiftClient]:
 @pytest.fixture
 def dblift_validate(dblift_client: DBLiftClient) -> Callable[..., Any]:
     def _run_validate(**kwargs: Any) -> Any:
-        call_kwargs = dict(kwargs)
-        call_kwargs["_warn_on_preflight_failure"] = False
-        result = dblift_client.validate(**call_kwargs)
+        result = dblift_client.validate(**kwargs)
         assert getattr(
             result, "success", False
         ), f"validate failed: {getattr(result, 'error_message', result)}"

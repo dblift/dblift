@@ -16,7 +16,9 @@ Coverage focus:
 import unittest
 from unittest.mock import MagicMock, patch
 
-from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
+import pytest
+
+from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer, is_select_into
 from dblift.core.sql_model.dialect import get_sqlglot_dialect
 
 
@@ -525,6 +527,55 @@ class TestSqlAnalyzerInit(unittest.TestCase):
             mock_factory_cls.return_value = instance
             analyzer = SqlAnalyzer(dialect="postgresql")
         self.assertIsNone(analyzer._db_specific_parser)
+
+
+# ``SELECT ... INTO <target>`` writes its result (a new table on PostgreSQL /
+# SQL Server, variables or a file on MySQL/MariaDB) and returns no rows, so it
+# must not be routed to the row-fetching query path.
+_SELECT_INTO_CASES = [
+    ("postgresql", 'SELECT 2 AS id INTO "select into t"'),
+    ("postgresql", "SELECT * INTO TEMP t2 FROM t"),
+    ("postgresql", "-- copy\n/* lead */ SELECT 1 AS id INTO t"),
+    ("postgresql", "WITH c AS (SELECT 1 AS id) SELECT * INTO t FROM c"),
+    ("sqlserver", "SELECT id INTO dbo.t_copy FROM dbo.t"),
+    ("sqlserver", "SELECT * INTO #tmp FROM t"),
+    ("mysql", "SELECT COUNT(*) INTO @n FROM t"),
+    ("mariadb", "SELECT * FROM t INTO OUTFILE '/tmp/t.csv'"),
+]
+
+
+@pytest.mark.parametrize("dialect,sql", _SELECT_INTO_CASES)
+def test_select_into_is_not_a_query(dialect, sql):
+    assert SqlAnalyzer(dialect=dialect).get_statement_type(sql) == "DML"
+
+
+@pytest.mark.parametrize("dialect", ["postgresql", "sqlserver", "mysql", "mariadb", "oracle"])
+def test_plain_select_stays_a_query(dialect):
+    analyzer = SqlAnalyzer(dialect=dialect)
+    assert analyzer.get_statement_type("SELECT 'INTO' AS w FROM t") == "QUERY"
+    assert analyzer.get_statement_type("SELECT id FROM t WHERE id IN (SELECT 1)") == "QUERY"
+    assert analyzer.get_statement_type('SELECT "into" FROM t -- INTO x') == "QUERY"
+    assert analyzer.get_statement_type("/* INTO */ SELECT 1 /* INTO t */") == "QUERY"
+
+
+def test_dollar_quoted_into_and_returning_cte_stay_queries():
+    analyzer = SqlAnalyzer(dialect="postgresql")
+    assert analyzer.get_statement_type("SELECT $$ INTO $$") == "QUERY"
+    sql = "WITH d AS (INSERT INTO t VALUES (1) RETURNING id) SELECT * FROM d"
+    assert analyzer.get_statement_type(sql) == "QUERY"
+
+
+def test_outer_insert_or_merge_into_is_not_select_into():
+    assert not is_select_into("WITH c AS (SELECT 1 AS id) INSERT INTO t SELECT * FROM c")
+    assert not is_select_into(
+        "WITH c AS (SELECT 1 AS id) MERGE INTO t USING c ON t.id = c.id WHEN MATCHED THEN DELETE"
+    )
+    assert is_select_into("WITH c AS (SELECT 1 AS id) SELECT * INTO t FROM c")
+
+
+def test_select_into_inside_do_block_is_not_reclassified():
+    sql = "DO $$ DECLARE v int; BEGIN SELECT 1 INTO v; END $$"
+    assert SqlAnalyzer(dialect="postgresql").get_statement_type(sql) != "QUERY"
 
 
 if __name__ == "__main__":

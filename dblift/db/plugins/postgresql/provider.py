@@ -1,15 +1,25 @@
 """PostgreSQL native provider backed by SQLAlchemy Core."""
 
+import io
 import time
-from typing import Any, Dict, List, Optional
+from itertools import takewhile
+from typing import Any, Dict, List, Optional, Tuple
+
+from sqlalchemy.engine import Connection
 
 from dblift.config import DbliftConfig
 from dblift.core.constants import DEFAULT_HISTORY_TABLE
 from dblift.core.constants import MIGRATION_LOCK_TABLE as _MIGRATION_LOCK_TABLE
+from dblift.core.exceptions import ExecutionError
 from dblift.core.logger import Log
 from dblift.core.migration.clean_summary import CleanExecutionSummary
+from dblift.core.sql_parser.tokens import TokenType
 from dblift.db.plugins.base_history_manager import UNDO_HISTORY_TYPE, installed_on_to_bind
 from dblift.db.plugins.postgresql._provider_query_executor import ProviderQueryExecutor
+from dblift.db.plugins.postgresql.parser.postgresql_tokenizer import (
+    PostgreSQLTokenizer,
+    copy_header_reads,
+)
 from dblift.db.plugins.postgresql.postgresql._lock_key import _get_advisory_lock_key
 from dblift.db.plugins.postgresql.postgresql.schema_operations import PostgreSqlSchemaOperations
 from dblift.db.plugins.postgresql.search_path import search_path_schemas
@@ -19,6 +29,37 @@ from dblift.db.sqlalchemy_provider import SqlAlchemyProvider
 
 def _quote_identifier(identifier: str) -> str:
     return '"' + identifier.replace('"', '""') + '"'
+
+
+def _split_copy_from_stdin(sql: str) -> Optional[Tuple[str, str]]:
+    """Split a ``COPY ... FROM stdin`` statement into ``(header, data)``.
+
+    The statement splitter keeps a COPY header and its data block together;
+    the tokenizer's ``COPY_DATA`` token says where the data starts. The
+    header loses its ``;`` and the data its ``\\.`` end-of-data line, which
+    is psql framing rather than rows. Returns ``None`` for anything else.
+    """
+    if sql.lstrip()[:4].upper() != "COPY":
+        return None
+    data_token = next(
+        (t for t in PostgreSQLTokenizer(sql).tokenize() if t.type == TokenType.COPY_DATA),
+        None,
+    )
+    if data_token is None:
+        return None
+    header = sql[: data_token.pos].strip().rstrip(";").rstrip()
+    lines = data_token.text.splitlines(keepends=True)
+    if lines and lines[-1].startswith("\\."):
+        lines.pop()
+    return header, "".join(lines)
+
+
+def _is_copy_to_stdout(sql: str) -> bool:
+    """Whether *sql* is a ``COPY ... TO STDOUT`` statement."""
+    if sql.lstrip()[:4].upper() != "COPY":
+        return False
+    header = takewhile(lambda t: t.type != TokenType.DELIMITER, PostgreSQLTokenizer(sql).tokenize())
+    return copy_header_reads(header, "TO", "STDOUT")
 
 
 class PostgreSqlProvider(SqlAlchemyProvider):
@@ -93,11 +134,49 @@ class PostgreSqlProvider(SqlAlchemyProvider):
     def execute_statement(
         self, sql: str, schema: Optional[str] = None, params: Optional[List[Any]] = None
     ) -> int:
-        """Execute a SQL statement, optionally preparing the schema first."""
+        """Execute a SQL statement, optionally preparing the schema first.
+
+        A ``COPY ... FROM stdin`` statement (header plus data block) is
+        streamed through the driver's copy API: psycopg refuses it through
+        ``execute`` and leaves the connection stuck mid-COPY. ``COPY ... TO
+        STDOUT`` is refused before anything is sent, for the same reason: a
+        migration has nowhere to deliver its rows.
+        """
+        if params is None and _is_copy_to_stdout(sql):
+            raise ExecutionError(
+                "COPY ... TO STDOUT is not supported in a migration: dblift has "
+                "nowhere to send the rows. Use COPY ... TO a server file instead."
+            )
         if schema:
             self.create_schema_if_not_exists(schema)
             self.set_current_schema(schema)
-        return super().execute_statement(sql, schema=schema, params=params)
+        copy_parts = _split_copy_from_stdin(sql) if params is None else None
+        if copy_parts is None:
+            return super().execute_statement(sql, schema=schema, params=params)
+        with self._lock:
+            conn = self._ensure_connection()
+            if not conn.in_transaction():
+                # Let SQLAlchemy track the transaction the raw cursor opens,
+                # so the commit below (or the caller's rollback) ends it.
+                conn.begin()
+            rowcount = self._copy_from_stdin(conn, *copy_parts)
+            if self._tx is None:
+                conn.commit()
+            return rowcount
+
+    @staticmethod
+    def _copy_from_stdin(conn: Connection, header: str, data: str) -> int:
+        """Run *header* as a COPY FROM STDIN, feeding it *data*."""
+        cursor = conn.connection.cursor()
+        try:
+            if conn.dialect.driver == "psycopg2":
+                cursor.copy_expert(header, io.StringIO(data))
+            else:
+                with cursor.copy(header) as copy:
+                    copy.write(data)
+            return cursor.rowcount if cursor.rowcount is not None else -1
+        finally:
+            cursor.close()
 
     def create_schema_if_not_exists(self, schema: str) -> None:
         """Create a PostgreSQL schema if it is missing."""

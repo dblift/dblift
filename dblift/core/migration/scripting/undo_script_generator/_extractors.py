@@ -62,6 +62,8 @@ class _UndoExtractorsMixin:
                 r"CREATE\s+(?:OR\s+REPLACE\s+)?(?:PROCEDURE|FUNCTION)\s+(?:(\w+)\.)?(\w+)",
                 "PROCEDURE",
             ),
+            (r"CREATE\s+(?:OR\s+REPLACE\s+)?PACKAGE\s+BODY\s+(?:(\w+)\.)?(\w+)", "PACKAGE BODY"),
+            (r"CREATE\s+(?:OR\s+REPLACE\s+)?PACKAGE\s+(?:(\w+)\.)?(\w+)", "PACKAGE"),
         ]
 
         for pattern, obj_type in patterns:

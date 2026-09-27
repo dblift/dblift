@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional
 
 from dblift.config import DbliftConfig
+from dblift.config.database_config import BaseDatabaseConfig
 
 if TYPE_CHECKING:
     from dblift.core.logger.results import OperationResult
@@ -40,7 +41,8 @@ from dblift.db.provider_capabilities import (
     get_provider_display_url,
     get_provider_driver_display,
 )
-from dblift.db.provider_interfaces import SchemaProvider
+from dblift.db.provider_interfaces import SchemaProvider, TransactionalProvider
+from dblift.db.provider_registry import ProviderRegistry
 
 from ._script_events import emit_script_event as _emit_script_event
 
@@ -48,12 +50,26 @@ from ._script_events import emit_script_event as _emit_script_event
 # raised type is PreflightConnectionError; the wording stays stable.
 SCHEMA_HISTORY_CREATE_ERROR_PREFIX = "Could not create the schema-history table"
 
+# Shared by the CLI config validation and the command preflight.
+SCHEMA_REQUIRED_ERROR = (
+    "Database schema is required. Specify it in the config file, environment variables, "
+    "or command line."
+)
+
+
+def is_required_schema_missing(database_config: BaseDatabaseConfig) -> bool:
+    """True when the dialect needs a schema and none is set or derivable."""
+    if database_config.schema or not database_config.type:
+        return False
+    quirks = ProviderRegistry.get_quirks(database_config.type)
+    return quirks.schema_required and not quirks.derive_schema_name(database_config)
+
 
 class PreflightConnectionError(ConnectionError):
     """Connection or schema-history failure raised during command preflight.
 
-    ``DBLiftClient.validate`` returns a failed result for this error. Every
-    other command lets it propagate. It subclasses ``ConnectionError``, so
+    Commands let it propagate; every ``DBLiftClient`` command method turns
+    it into a failed result of its own type. It subclasses ``ConnectionError``, so
     handlers that already catch that type still catch it, and the message
     text is the same text those steps used to raise as ``ConnectionError``.
     """
@@ -681,6 +697,28 @@ class BaseCommand:
             message = format_connection_error(exc, str(db_type or ""))
             raise PreflightConnectionError(message) from exc
 
+    def _preflight_connect(self, result: "OperationResult") -> None:
+        """Preflight phase 1: ``_ensure_connected()``, attaching *result* on failure.
+
+        ``_run_preflight`` starts with this; a command that must touch the
+        connection before the rest of its preflight calls it first, so an
+        unusable connection fails the same way.
+        """
+        # A dialect that needs a schema and derives none would otherwise run
+        # against an empty one (e.g. DB2 ``CREATE SCHEMA ""``). Fail before
+        # connecting, with the message the CLI refuses the command with.
+        if is_required_schema_missing(self.config.database):
+            raise PreflightConnectionError(SCHEMA_REQUIRED_ERROR, result)
+        try:
+            self._ensure_connected()
+        except PreflightConnectionError as exc:
+            # The command result already has target_schema. Keep this
+            # exception object: a plain ConnectionError raised by a
+            # replacement for _ensure_connected is not this type and
+            # must propagate unchanged.
+            exc.result = result
+            raise
+
     def _run_preflight(
         self,
         result: Any,
@@ -698,7 +736,8 @@ class BaseCommand:
           2. ``create_schema_and_history_table()`` when
              ``ensure_history=True`` AND not ``dry_run`` — commands that
              require the history table (``migrate``, ``info``, ``undo``,
-             ``baseline``, ``validate``) call this idempotently; dry-run
+             ``baseline``, ``validate``, ``repair``, ``import-flyway``)
+             call this idempotently; dry-run
              skips it (PR-02 byte-identical contract). A failure here names
              the step (``Could not create the schema-history table: ...``)
              rather than reusing ``_ensure_connected``'s generic
@@ -719,9 +758,9 @@ class BaseCommand:
         Args:
             result: OperationResult to populate with database metadata.
             ensure_history: If True, create the schema history table when
-                not in dry-run. ``migrate``, ``info``, ``undo`` and
-                ``baseline`` pass True; ``clean`` passes False (it doesn't
-                need history).
+                not in dry-run. ``migrate``, ``info``, ``undo``,
+                ``baseline``, ``validate``, ``repair`` and ``import-flyway``
+                pass True; ``clean`` passes False (it doesn't need history).
             dry_run: Skip history-table creation when True, regardless
                 of ``ensure_history``. ``_ensure_connected`` and
                 ``_populate_database_info`` still run — dry-run must
@@ -738,15 +777,7 @@ class BaseCommand:
                 (it may be the first command run against a fresh
                 database).
         """
-        try:
-            self._ensure_connected()
-        except PreflightConnectionError as exc:
-            # The command result already has target_schema. Keep this
-            # exception object: a plain ConnectionError raised by a
-            # replacement for _ensure_connected is not this type and
-            # must propagate unchanged.
-            exc.result = result
-            raise
+        self._preflight_connect(result)
         if ensure_history and not dry_run:
             try:
                 self.history_manager.create_schema_and_history_table(create_schema=create_schema)
@@ -1006,6 +1037,12 @@ class BaseCommand:
             return self.state_manager.resolve_current_schema_version(read_snapshot)
         except Exception as e:
             self.log.debug(f"Could not retrieve schema version: {e}")
+            # A failed read aborts PostgreSQL's transaction; roll it back so the
+            # command's own history read reports the real error instead of
+            # InFailedSqlTransaction. A rollback that fails means the connection
+            # itself is unusable, so that error is left to propagate.
+            if isinstance(self.provider, TransactionalProvider):
+                self.provider.rollback_transaction()
             return None
 
     def _resolve_database_url_masked(self) -> Optional[str]:

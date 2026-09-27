@@ -20,6 +20,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from dblift.core.migration.commands.base_command import BaseCommand
+from dblift.db.provider_interfaces import TransactionalProvider
 
 
 def _make_command_stub() -> BaseCommand:
@@ -135,3 +136,43 @@ class TestLogCommandCompletionResolvesSchemaVersion:
 
         # Resolution must happen at completion — the whole point of this fix.
         cmd._resolve_current_schema_version.assert_called_once()
+
+
+@pytest.mark.unit
+class TestResolveSchemaVersionRollsBackFailedRead:
+    """A failed history read aborts PostgreSQL's transaction. The header/footer
+    lookup swallows the error, so it must roll back; otherwise the command's own
+    history read fails with InFailedSqlTransaction instead of the real error."""
+
+    def _command(self, provider):
+        cmd = _make_command_stub()
+        cmd.provider = provider
+        cmd.state_manager = MagicMock()
+        cmd.state_manager.resolve_current_schema_version.side_effect = RuntimeError(
+            "permission denied for table dblift_schema_history"
+        )
+        return cmd
+
+    def test_failed_read_rolls_back_and_omits_version(self):
+        provider = MagicMock(spec=TransactionalProvider)
+        cmd = self._command(provider)
+
+        assert cmd._resolve_current_schema_version() is None
+        provider.rollback_transaction.assert_called_once_with()
+
+    def test_rollback_failure_propagates(self):
+        provider = MagicMock(spec=TransactionalProvider)
+        provider.rollback_transaction.side_effect = RuntimeError("connection closed")
+        cmd = self._command(provider)
+
+        with pytest.raises(RuntimeError, match="connection closed"):
+            cmd._resolve_current_schema_version()
+
+    def test_successful_read_does_not_roll_back(self):
+        provider = MagicMock(spec=TransactionalProvider)
+        cmd = self._command(provider)
+        cmd.state_manager.resolve_current_schema_version.side_effect = None
+        cmd.state_manager.resolve_current_schema_version.return_value = "2"
+
+        assert cmd._resolve_current_schema_version() == "2"
+        provider.rollback_transaction.assert_not_called()

@@ -176,16 +176,23 @@ class TestSqlServerExtractionNestsBlockComments(unittest.TestCase):
         self.assertEqual(objects, [])
 
 
-class TestDb2ExtractionDoesNotNestBlockComments(unittest.TestCase):
-    """Db2 nesting was left unverified and kept non-nesting (see
-    CHANGELOG.md); extraction must match, not assume nesting. Db2
-    upper-cases unquoted identifiers, hence "VICTIM".
+class TestDb2ExtractionNestsBlockComments(unittest.TestCase):
+    """Db2 nests block comments (confirmed live, see
+    ``test_nested_block_comments.py``): the whole span up to the matching
+    outer ``*/`` is one comment, so there must be no object at all.
     """
 
-    def test_nested_comment_leaves_live_statement_visible(self):
+    def test_nested_comment_hides_the_statement(self):
         objects = DB2RegexParser().extract_objects(NESTED_COMMENT_SQL)
-        self.assertEqual(len(objects), 1, objects)
-        self.assertEqual(objects[0].name, "VICTIM")
+        self.assertEqual(objects, [])
+
+    def test_nested_comment_hides_create_and_drop_but_not_the_statement_after(self):
+        sql = (
+            "/* a /* b */ ; CREATE TABLE t_in (x INT); DROP TABLE t_keep; */\n"
+            "CREATE TABLE t_after (x INT);"
+        )
+        objects = DB2RegexParser().extract_objects(sql)
+        self.assertEqual([o.name for o in objects], ["T_AFTER"], objects)
 
 
 class TestSQLiteExtractionDoesNotNestBlockComments(unittest.TestCase):

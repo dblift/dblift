@@ -41,7 +41,6 @@ from dblift.core.migration.sql.migration_sql_parser import (
 )
 from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
 from dblift.core.migration.sql.sql_execution_service import SqlExecutionService
-from dblift.core.sql_model.dialect import quote_qualified
 from dblift.db.base_provider import BaseProvider
 from dblift.db.provider_interfaces import TransactionalProvider
 from dblift.db.provider_registry import ProviderRegistry
@@ -194,7 +193,7 @@ class ExecutionEngine:
 
             if policy.transactional:
                 self._record_migration_history(migration, execution_time)  # may raise
-                self._commit_and_verify(migration, statements, execution_time)
+                self._commit_migration(migration)
             else:
                 self._record_autocommit_migration_history(migration, execution_time)
 
@@ -371,7 +370,7 @@ class ExecutionEngine:
             self._current_sqlplus_ctx = ctx
             for msg in getattr(ctx, "prompts", []) or []:
                 self.log.info(f"[PROMPT] {msg}")
-            # Append ';' to directive lines (SET, DEFINE, PROMPT, WHENEVER SQLERROR …)
+            # Terminate or empty directive lines (SET, DEFINE, PROMPT, WHENEVER SQLERROR …)
             # so the tokeniser does not merge them with the next DDL/DML. Without this,
             # ``SET SERVEROUTPUT ON\nCREATE TABLE ...`` becomes a single statement that
             # the driver rejects (or that ``is_script_directive`` filters wholesale, dropping
@@ -917,87 +916,16 @@ class ExecutionEngine:
                 )
             raise history_error
 
-    def _commit_and_verify(
-        self, migration: Migration, statements: List[str], execution_time: int
-    ) -> None:
-        """Commit transaction and optionally verify CREATE TABLE results.
+    def _commit_migration(self, migration: Migration) -> None:
+        """Commit the migration's transaction.
 
         Raises:
             Exception: If commit_transaction() fails — caller must handle and rollback.
-
-        Note:
-            Post-commit verification failures (CREATE TABLE SELECT check) are non-critical
-            and are caught internally — they do not raise.
         """
         if not isinstance(self.provider, TransactionalProvider):
             return
         try:
             self.provider.commit_transaction()
-
-            if (
-                isinstance(self.provider, TransactionalProvider)
-                and hasattr(self.provider, "connection")
-                and self.provider.connection
-            ):
-                try:
-                    if "CREATE TABLE" in str(statements).upper():
-                        for sql_stmt in statements:
-                            if "CREATE TABLE" in sql_stmt.upper():
-                                match = re.search(
-                                    r'CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?["\']?(\w+)["\']?\.["\']?(\w+)["\']?',
-                                    sql_stmt,
-                                    re.IGNORECASE,
-                                )
-                                if match:
-                                    schema_name = match.group(1)
-                                    table_name = match.group(2)
-                                    # Explicit guard: validate names before SQL interpolation (OWASP defense-in-depth)
-                                    if not re.match(
-                                        r"^[a-zA-Z0-9_]+$", schema_name
-                                    ) or not re.match(r"^[a-zA-Z0-9_]+$", table_name):
-                                        break  # skip verification if names don't match alphanumeric+underscore
-                                    try:
-                                        if self.provider.connection and (
-                                            not hasattr(self.provider.connection, "isClosed")
-                                            or not self.provider.connection.isClosed()
-                                        ):
-                                            dialect = getattr(
-                                                self.sql_analyzer, "dialect", ""
-                                            ).lower()
-                                            # Quote identifiers per dialect rules
-                                            # (backticks for MySQL, brackets for SQL Server,
-                                            # ANSI double-quotes elsewhere). The prior
-                                            # hardcoded ``"schema"."table"`` form crashed on
-                                            # MySQL and mismatched Oracle's default
-                                            # upper-cased storage. Oracle folds unquoted
-                                            # identifiers to uppercase — match that so
-                                            # verification finds the table created by
-                                            # scripts that wrote plain (unquoted) names.
-                                            # Safe: schema/table validated as \w+ —
-                                            # alphanumeric and underscore only.
-                                            qualified = quote_qualified(
-                                                dialect, schema_name, table_name
-                                            )
-                                            from dblift.db.provider_registry import ProviderRegistry
-
-                                            _quirks = ProviderRegistry.get_quirks(dialect)
-                                            if _quirks.select_supports_limit:
-                                                test_query = f"SELECT COUNT(*) as cnt FROM {qualified} LIMIT 1"
-                                            else:
-                                                test_query = (
-                                                    f"SELECT COUNT(*) as cnt FROM {qualified}"
-                                                )
-                                            self.provider.execute_query(test_query)
-                                    except Exception as verify_e:
-                                        self.log.debug(
-                                            f"Post-commit verification query failed for {migration.script_name} (non-critical): {verify_e}"
-                                        )
-                                break
-                except Exception as e:
-                    self.log.debug(
-                        f"Could not perform post-commit state verification for {migration.script_name}: {e}"
-                    )
-
         except Exception as e:
             self.log.warning(f"Could not commit transaction for {migration.script_name}: {e}")
             raise  # Propagate commit failure to caller

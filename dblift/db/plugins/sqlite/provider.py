@@ -7,6 +7,8 @@ This provider uses Python's native sqlite3 module.
 import sqlite3
 from typing import Any, Callable, Dict, List, Optional
 
+from sqlalchemy.exc import SQLAlchemyError
+
 from dblift.config import DbliftConfig
 from dblift.core.constants import DEFAULT_HISTORY_TABLE
 from dblift.core.constants import MIGRATION_LOCK_TABLE as _MIGRATION_LOCK_TABLE
@@ -83,7 +85,15 @@ class SQLiteProvider(NativeProvider, TransactionalProvider):
         self._external_engine = engine
         self._external_sa_connection = connection
         self._external_connection = True
-        self._bind_external_sqlalchemy()
+        try:
+            self._bind_external_sqlalchemy()
+        except (SQLAlchemyError, sqlite3.Error) as exc:
+            # A database file that cannot be opened: leave the connection
+            # unbound. ``_ensure_connection`` binds it again on first use, so
+            # the command's connection preflight reports the failure instead
+            # of the client failing while it is being built.
+            self.connection = None
+            self.log.debug(f"Deferred binding the caller's SQLite connection: {exc}")
 
     def _bind_external_sqlalchemy(self) -> sqlite3.Connection:
         """(Re)extract the caller's underlying sqlite3 connection.

@@ -20,3 +20,19 @@ from dblift.core.migration import sql as migration_sql
 )
 def test_public_comment_check_preserves_executable_directives(statement, expected):
     assert migration_sql.is_comment_only_statement(statement) is expected
+
+
+@pytest.mark.parametrize(
+    ("statement", "nested", "expected"),
+    [
+        ("/* outer /* nested */ still comment */", False, False),
+        ("/* outer /* nested */ still comment */", True, True),
+        ("/* outer /* nested */ still comment */ -- tail\n", True, True),
+        ("/* outer /* nested */ still comment */ SELECT 1", True, False),
+        ("/* a */ still */", True, False),
+    ],
+)
+def test_comment_check_follows_dialect_nesting_rule(statement, nested, expected):
+    assert (
+        migration_sql.is_comment_only_statement(statement, nested_block_comments=nested) is expected
+    )
