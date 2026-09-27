@@ -131,3 +131,67 @@ def test_copy_with_bad_data_records_failure_and_releases_lock(pg_schema, tmp_pat
         other.release_migration_lock(SCHEMA)
     finally:
         other.close()
+
+
+def test_pg_dump_copy_with_long_quoted_header_loads_rows(pg_schema, tmp_path) -> None:
+    """A real dump names every column, so the header is long; its length and
+    quoting must not stop the data block from being recognised."""
+    admin = pg_schema
+    migrations_dir = tmp_path / "migrations"
+    table = f'"{SCHEMA}"."WideRows"'
+    create_versioned_migration(
+        migrations_dir,
+        "1",
+        "pg_dump_wide",
+        f'CREATE TABLE {table} (id integer, "First Name" text, last_name text, email text,\n'
+        "    age integer, score numeric(6,2), active boolean, joined date, note text,\n"
+        '    "Weird""Col" text, payload jsonb, tags text[]);\n'
+        # Verbatim pg_dump 15 output for this table.
+        f'COPY {table} (id, "First Name", last_name, email, age, score, active, joined, '
+        'note, "Weird""Col", payload, tags) FROM stdin;\n'
+        '1\tAnn\tLee\tann@x.io\t31\t12.50\tt\t2024-01-02\tsemi; colon\tq"uote\t{"a": 1}\t{x,y}\n'
+        "2\t\\N\tO'Brien\t\\N\t\\N\t\\N\tf\t\\N\ttab\\there\\nnewline\t\\N\t\\N\t\\N\n"
+        "3\t\tback\\\\slash\te\t0\t0.00\t\\N\t1999-12-31\t\\\\.\t lead\t[]\t{}\n"
+        "\\.\n",
+    )
+
+    result = _migrate(migrations_dir)
+
+    assert result.success, result.error_message
+    rows = admin.execute_query(
+        f'SELECT id, "First Name" AS fn, last_name, note, "Weird""Col" AS w FROM {table} '
+        "ORDER BY id"
+    )
+    assert rows == [
+        {"id": 1, "fn": "Ann", "last_name": "Lee", "note": "semi; colon", "w": 'q"uote'},
+        {"id": 2, "fn": None, "last_name": "O'Brien", "note": "tab\there\nnewline", "w": None},
+        {"id": 3, "fn": "", "last_name": "back\\slash", "note": "\\.", "w": " lead"},
+    ]
+
+
+def test_copy_to_stdout_records_failure_and_releases_lock(pg_schema, tmp_path) -> None:
+    """``COPY ... TO STDOUT`` is refused before it is sent, so the connection
+    is not left mid-COPY: the failure is recorded and the lock released."""
+    admin = pg_schema
+    migrations_dir = tmp_path / "migrations"
+    create_versioned_migration(
+        migrations_dir,
+        "1",
+        "to_stdout",
+        f'CREATE TABLE "{SCHEMA}"."ts" (id INT);\n'
+        f'INSERT INTO "{SCHEMA}"."ts" VALUES (1);\n'
+        f'COPY "{SCHEMA}"."ts" TO stdout;\n',
+    )
+
+    result = _migrate(migrations_dir)
+
+    assert not result.success
+    assert "COPY ... TO STDOUT" in (result.error_message or "")
+    assert _history(admin) == [{"version": "1", "success": False}]
+    other = PostgreSqlProvider(_pg_config(SCHEMA))
+    other.create_connection()
+    try:
+        assert other.acquire_migration_lock(SCHEMA, wait_timeout_seconds=1)
+        other.release_migration_lock(SCHEMA)
+    finally:
+        other.close()

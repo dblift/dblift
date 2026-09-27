@@ -2,6 +2,7 @@
 
 import io
 import time
+from itertools import takewhile
 from typing import Any, Dict, List, Optional, Tuple
 
 from sqlalchemy.engine import Connection
@@ -9,12 +10,16 @@ from sqlalchemy.engine import Connection
 from dblift.config import DbliftConfig
 from dblift.core.constants import DEFAULT_HISTORY_TABLE
 from dblift.core.constants import MIGRATION_LOCK_TABLE as _MIGRATION_LOCK_TABLE
+from dblift.core.exceptions import ExecutionError
 from dblift.core.logger import Log
 from dblift.core.migration.clean_summary import CleanExecutionSummary
 from dblift.core.sql_parser.tokens import TokenType
 from dblift.db.plugins.base_history_manager import UNDO_HISTORY_TYPE, installed_on_to_bind
 from dblift.db.plugins.postgresql._provider_query_executor import ProviderQueryExecutor
-from dblift.db.plugins.postgresql.parser.postgresql_tokenizer import PostgreSQLTokenizer
+from dblift.db.plugins.postgresql.parser.postgresql_tokenizer import (
+    PostgreSQLTokenizer,
+    copy_header_reads,
+)
 from dblift.db.plugins.postgresql.postgresql._lock_key import _get_advisory_lock_key
 from dblift.db.plugins.postgresql.postgresql.schema_operations import PostgreSqlSchemaOperations
 from dblift.db.plugins.postgresql.search_path import search_path_schemas
@@ -47,6 +52,14 @@ def _split_copy_from_stdin(sql: str) -> Optional[Tuple[str, str]]:
     if lines and lines[-1].startswith("\\."):
         lines.pop()
     return header, "".join(lines)
+
+
+def _is_copy_to_stdout(sql: str) -> bool:
+    """Whether *sql* is a ``COPY ... TO STDOUT`` statement."""
+    if sql.lstrip()[:4].upper() != "COPY":
+        return False
+    header = takewhile(lambda t: t.type != TokenType.DELIMITER, PostgreSQLTokenizer(sql).tokenize())
+    return copy_header_reads(header, "TO", "STDOUT")
 
 
 class PostgreSqlProvider(SqlAlchemyProvider):
@@ -125,8 +138,15 @@ class PostgreSqlProvider(SqlAlchemyProvider):
 
         A ``COPY ... FROM stdin`` statement (header plus data block) is
         streamed through the driver's copy API: psycopg refuses it through
-        ``execute`` and leaves the connection stuck mid-COPY.
+        ``execute`` and leaves the connection stuck mid-COPY. ``COPY ... TO
+        STDOUT`` is refused before anything is sent, for the same reason: a
+        migration has nowhere to deliver its rows.
         """
+        if params is None and _is_copy_to_stdout(sql):
+            raise ExecutionError(
+                "COPY ... TO STDOUT is not supported in a migration: dblift has "
+                "nowhere to send the rows. Use COPY ... TO a server file instead."
+            )
         if schema:
             self.create_schema_if_not_exists(schema)
             self.set_current_schema(schema)

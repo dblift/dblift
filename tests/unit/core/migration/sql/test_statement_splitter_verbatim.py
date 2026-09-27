@@ -163,6 +163,68 @@ class TestPostgresCopyFromStdin:
             "SELECT 1;",
         ]
 
+    # Verbatim pg_dump 15 output for a 12-column table in a quoted schema.
+    PG_DUMP_COPY = (
+        'COPY "App Schema"."Wide Rows" (id, "First Name", last_name, email, age, score, '
+        'active, joined, note, "Weird""Col", payload, tags) FROM stdin;\n'
+        '1\tAnn\tLee\tann@x.io\t31\t12.50\tt\t2024-01-02\tsemi; colon\tq"uote\t{"a": 1}\t{x,y}\n'
+        "2\t\\N\tO'Brien\t\\N\t\\N\t\\N\tf\t\\N\ttab\\there\\nnewline\t\\N\t\\N\t\\N\n"
+        "3\t\tback\\\\slash\te\t0\t0.00\t\\N\t1999-12-31\t\\\\.\t lead\t[]\t{}\n"
+        "\\.\n"
+    )
+
+    def test_pg_dump_copy_with_long_quoted_header(self):
+        """The header length does not matter: a real dump names every column."""
+        sql = self.PG_DUMP_COPY + "\nSELECT 1;\n"
+
+        stmts = StatementSplitter("postgresql").split_statements(sql)
+
+        assert stmts == [self.PG_DUMP_COPY.rstrip("\n"), "SELECT 1;"]
+
+    @pytest.mark.parametrize(
+        "header",
+        [
+            "COPY w (" + ", ".join(f"c{i}" for i in range(1, 21)) + ") FROM stdin;",
+            'COPY "s"."Child Rows" ("a b", "c", d, e, f, g) FROM STDIN;',
+            "COPY t (id) FROM Stdin WITH (FORMAT text, DELIMITER E'\\t');",
+            "COPY t (id) FROM stdin WITH CSV HEADER;",
+            "COPY t FROM /* data follows */ stdin;",
+        ],
+    )
+    def test_copy_from_stdin_header_shapes(self, header):
+        sql = f"{header}\n1\n\\.\nSELECT 1;\n"
+
+        stmts = StatementSplitter("postgresql").split_statements(sql)
+
+        assert stmts == [f"{header}\n1\n\\.", "SELECT 1;"]
+
+    def test_copy_header_detection_stops_at_its_semicolon(self):
+        """A COPY that is not FROM stdin must not borrow the next statement's
+        ``FROM stdin`` — each COPY header ends at its own ``;``."""
+        sql = "COPY a TO '/tmp/a.txt';\nCOPY b FROM stdin;\n1\n\\.\nSELECT 1;\n"
+
+        stmts = StatementSplitter("postgresql").split_statements(sql)
+
+        assert stmts == [
+            "COPY a TO '/tmp/a.txt';",
+            "COPY b FROM stdin;\n1\n\\.",
+            "SELECT 1;",
+        ]
+
+    @pytest.mark.parametrize(
+        "sql",
+        [
+            "COPY (SELECT x FROM stdin) TO STDOUT;\nSELECT 1;\n",
+            "COPY t FROM '/tmp/stdin';\nSELECT 1;\n",
+            'COPY t FROM "stdin";\nSELECT 1;\n',
+        ],
+    )
+    def test_stdin_that_is_not_the_copy_source_opens_no_data_block(self, sql):
+        stmts = StatementSplitter("postgresql").split_statements(sql)
+
+        assert stmts[-1] == "SELECT 1;"
+        assert len(stmts) == 2
+
 
 @pytest.mark.unit
 class TestPostgresMetaCommand:

@@ -10,6 +10,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from dblift.core.exceptions import ExecutionError
 from dblift.core.migration.sql.statement_splitter import StatementSplitter
 from dblift.db.plugins.postgresql.provider import PostgreSqlProvider
 
@@ -131,8 +132,8 @@ def test_empty_copy_block_sends_no_rows():
     "sql",
     [
         "SELECT 1",
-        "COPY t TO stdout",
         "COPY t FROM '/tmp/data.csv'",
+        "COPY t TO '/tmp/stdout'",
     ],
 )
 def test_other_statements_still_go_through_exec_driver_sql(sql):
@@ -144,4 +145,26 @@ def test_other_statements_still_go_through_exec_driver_sql(sql):
     provider.execute_statement(sql)
 
     conn.exec_driver_sql.assert_called_once()
+    assert cursor.copy_sql is None
+
+
+@pytest.mark.parametrize(
+    "sql",
+    [
+        "COPY t TO stdout",
+        'COPY "s"."T" (a, b) TO STDOUT WITH (FORMAT csv)',
+        "copy (SELECT * FROM t) to Stdout;",
+    ],
+)
+def test_copy_to_stdout_is_refused_before_anything_is_sent(sql):
+    """psycopg refuses ``COPY ... TO STDOUT`` through ``execute`` and leaves
+    the connection mid-COPY, so the failure could not be recorded nor the
+    lock released. A migration has nowhere to send the rows anyway."""
+    cursor = _Psycopg3Cursor()
+    provider, conn = _provider(cursor)
+
+    with pytest.raises(ExecutionError, match="COPY ... TO STDOUT"):
+        provider.execute_statement(sql)
+
+    conn.exec_driver_sql.assert_not_called()
     assert cursor.copy_sql is None

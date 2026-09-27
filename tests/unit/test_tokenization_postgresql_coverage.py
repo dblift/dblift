@@ -172,10 +172,9 @@ SELECT 1;"""
         assert "\\N" in token.text
 
     def test_meta_command_gate_protects_the_copy_header_window(self):
-        """Unlike the data block above, the ``in_copy_data`` gate *is* load-
-        bearing here: ``in_copy_data`` is already True for the header tokens
-        between ``COPY ... FROM STDIN`` being recognized and its terminating
-        ``;`` (a multi-line column list, say), and a stray ``\\`` there must
+        """Unlike the data block above, the COPY-header gate *is* load-
+        bearing here: a header is open for the tokens between ``COPY`` and
+        its terminating ``;`` (a multi-line column list, say), and a stray ``\\`` there must
         still fall to the unclaimed-character path, not become a
         META_COMMAND — removing the gate reddens this test."""
         sql = "COPY t (\n    id\n)\n\\restrict tok\nFROM stdin;\n1\n\\.\n"
