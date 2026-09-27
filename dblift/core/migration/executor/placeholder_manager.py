@@ -21,10 +21,11 @@ def _dblift_schema_placeholder(database: BaseDatabaseConfig) -> Optional[str]:
 
     Oracle expands to the catalog spelling with the quotes removed: unquoted
     ``myschema`` becomes ``MYSCHEMA``, and ``"myschema"`` stays ``myschema``.
-    Other dialects keep the configured text. A null schema stays ``None``.
+    Other dialects keep the configured text. A null or empty schema stays
+    ``None``, so the placeholder is left undefined.
     """
     schema = database.schema
-    if not isinstance(schema, str):
+    if not isinstance(schema, str) or not schema:
         return None
     # Unquoted Oracle names are uppercased everywhere else dblift uses them.
     if database.type == "oracle":  # lint: allow-dialect-string: catalog spelling

@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any, Dict, Iterable, List, NoReturn, Optional, Tuple
 
 from dblift.api._cli_support import ConnectionProvider
+from dblift.api._client_factory import apply_derived_schema
 from dblift.cli._parser_setup import create_parser, parse_with_selective_errors
 from dblift.config.config_builder import ConfigBuilder
 from dblift.config.dblift_config import _placeholder_tokens, load_config
@@ -404,8 +405,7 @@ def _validate_db_config(
                 "Specify it in the config file (path, database, or url field), "
                 "environment variables, or command line."
             )
-        if not getattr(config.database, "schema", None) and _qcs.default_schema_name:
-            config.database.schema = _qcs.default_schema_name
+        apply_derived_schema(config.database)
     elif not _qcs.requires_credentials:
         # CosmosDB and similar: no URL validation needed.
         pass
@@ -436,10 +436,7 @@ def _validate_db_config(
                 "Database password is required. Specify it in the config file, environment variables, or command line."
             )
 
-        if not getattr(config.database, "schema", None):
-            derived_schema = _qcs.derive_schema_name(config.database)
-            if derived_schema:
-                config.database.schema = derived_schema
+        apply_derived_schema(config.database)
 
         if _qcs.schema_required and not getattr(config.database, "schema", None):
             parser.error(

@@ -68,3 +68,21 @@ def test_null_schema_placeholder_is_undefined():
     assert "dblift_schema" not in values
     assert _replace(values, "${dblift_schema}.t") == "${dblift_schema}.t"
     assert _replace(values, "${dblift_schema:fallback}.t") == "fallback.t"
+
+
+def test_empty_schema_placeholder_is_undefined():
+    from dblift.db.plugins.mysql.config import MySqlConfig
+
+    config = DbliftConfig(
+        database=MySqlConfig(
+            type="mysql",
+            url="mysql+pymysql://localhost:3306/",
+            username="root",
+            password="root",
+            schema="",
+        )
+    )
+    values = PlaceholderManager(config, NullLog()).init_placeholders()
+    assert "dblift_schema" not in values
+    assert _replace(values, "${dblift_schema}.t") == "${dblift_schema}.t"
+    assert _replace(values, "${dblift_schema:main}.t") == "main.t"

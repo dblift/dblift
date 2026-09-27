@@ -13,6 +13,7 @@ from typing import Any, Dict, List, Optional, Protocol, Union
 from dblift.api._engine_config import config_from_engine
 from dblift.config import DbliftConfig
 from dblift.config.config_builder import ConfigBuilder
+from dblift.config.database_config import BaseDatabaseConfig
 from dblift.config.errors import ConfigurationError
 from dblift.core.logger import DbliftLogger, LogFormat, LogLevel
 from dblift.db.native_connection_manager import NativeConnectionManager
@@ -197,6 +198,24 @@ def apply_ctor_overrides(
         setattr(config, "log_file", log_file)
 
 
+def apply_derived_schema(database_config: BaseDatabaseConfig) -> None:
+    """Fill an omitted schema with the dialect's derived default, in place.
+
+    The dialect decides through ``derive_schema_name``: Oracle uses the
+    username, MySQL/MariaDB the selected database, SQL Server ``dbo``, and
+    other dialects their ``default_schema_name``. The CLI validation step and
+    the client factories both call this so they target the same schema. A
+    configured schema is never changed, and nothing is set when the dialect
+    derives no name.
+    """
+    if getattr(database_config, "schema", None):
+        return
+    db_type = (getattr(database_config, "type", "") or "").lower()
+    derived = ProviderRegistry.get_quirks(db_type).derive_schema_name(database_config)
+    if derived:
+        database_config.schema = derived
+
+
 def client_from_config(
     config: "DbliftConfig",
     logger: Optional[Any] = None,
@@ -233,6 +252,7 @@ def client_from_config(
             logfile_dir=resolve_client_logfile_dir(config, eff_log_file),
         )
 
+    apply_derived_schema(client_config.database)
     provider = ProviderRegistry.create_provider(client_config, logger)
 
     # Caller-supplied migrations_dir takes priority over config.migrations.directory.
@@ -384,6 +404,7 @@ def client_from_sqlalchemy(
     if logger is None:
         logger = build_default_logger(derived, log_level, log_format, log_file)
 
+    apply_derived_schema(derived.database)
     provider = ProviderRegistry.create_provider(derived, logger)
 
     # Inject external engine so provider re-uses caller's Engine/Connection
