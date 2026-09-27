@@ -229,6 +229,29 @@ class TestPythonContextExecuteRouting(unittest.TestCase):
         self.assertFalse(_is_query_statement("CALL my_proc()"))
         self.assertFalse(_is_query_statement("EXEC sp_who"))
 
+    def test_select_into_routes_to_execute_statement(self) -> None:
+        """``SELECT ... INTO new_table`` returns no rows; fetching them fails."""
+        for sql in (
+            "SELECT id INTO t_copy FROM t",
+            "-- copy\nSELECT * INTO #tmp FROM t",
+            "WITH c AS (SELECT 1 AS id) SELECT * INTO t2 FROM c",
+            "SELECT COUNT(*) INTO @n FROM t",
+        ):
+            with self.subTest(sql=sql):
+                provider = MagicMock()
+                self._ctx(provider).execute(sql)
+                provider.execute_statement.assert_called_once_with(sql)
+                provider.execute_query.assert_not_called()
+
+    def test_into_outside_the_outer_select_stays_a_query(self) -> None:
+        from dblift.core.migration.executors.python_executor import _is_query_statement
+
+        self.assertTrue(_is_query_statement("SELECT 'INTO' AS w FROM t"))
+        self.assertTrue(_is_query_statement("SELECT 1 -- INTO t"))
+        self.assertTrue(
+            _is_query_statement("WITH d AS (INSERT INTO t VALUES (1) RETURNING id) SELECT * FROM d")
+        )
+
 
 class TestUrlPrefixDialect(unittest.TestCase):
     """Substring matching misclassified URLs like
