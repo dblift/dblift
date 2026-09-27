@@ -25,6 +25,10 @@ from typing import Callable, List, Tuple
 
 from dblift.db.plugins.oracle.parser._comments import strip_sql_comments
 from dblift.db.plugins.oracle.parser._sqlplus import is_sqlplus_command
+from dblift.db.plugins.oracle.parser.oracle_tokenizer import (
+    OracleTokenizer,
+    has_stray_comment_close,
+)
 
 __all__ = [
     "extract_next_complete_statement",
@@ -135,14 +139,14 @@ def extract_regular_statement(text: str, start_pos: int) -> Tuple[str, int]:
             statement += char
             i += 1
 
-            # Comments are already stripped, so a "*/" left on this line is
-            # stray. SQL*Plus does not end the statement there, and from then
-            # on only at a ";" that is the last thing on its line (see
-            # OracleStatementParser._ends_sqlplus_line).
+            # A "*/" left on this line outside a literal is stray (comments
+            # are already stripped). SQL*Plus does not end the statement
+            # there, and from then on only at a ";" that is the last thing on
+            # its line (see OracleStatementParser._ends_sqlplus_line).
             eol = text.find("\n", i)
             rest_of_line = text[i : eol if eol != -1 else len(text)]
-            if not line_buffering:
-                line_buffering = "*/" in rest_of_line
+            if not line_buffering and "*/" in rest_of_line:
+                line_buffering = has_stray_comment_close(OracleTokenizer(rest_of_line).tokenize())
             if line_buffering and rest_of_line.strip():
                 continue
 

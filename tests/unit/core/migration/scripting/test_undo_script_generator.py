@@ -519,3 +519,21 @@ class TestUndoScriptGenerator:
 
         # VIEW should come before TABLE (reverse order)
         assert view_pos < table_pos
+
+
+def test_oracle_undo_keeps_statement_with_close_marker_in_string():
+    """A ``*/`` in a string after a same-line ``;`` does not join statements."""
+    generator = UndoScriptGenerator(dialect="oracle", logger=LogFactory.get_log("test"))
+    migration = Migration(
+        script_name="V1__star.sql",
+        content="CREATE TABLE ua (id NUMBER); CREATE TABLE ub (v VARCHAR2(10) DEFAULT '*/');\n",
+        version="1",
+        description="star",
+        logger=generator.logger,
+    )
+
+    undo_sql = [stmt.sql for stmt in generator._generate_undo_statements(migration)]
+
+    assert len(undo_sql) == 2
+    assert "UB" in undo_sql[0].upper() and "DROP TABLE" in undo_sql[0]
+    assert "UA" in undo_sql[1].upper() and "DROP TABLE" in undo_sql[1]

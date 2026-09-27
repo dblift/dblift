@@ -12,6 +12,7 @@ from dblift.core.sql_parser.tokens import Token, TokenType
 from dblift.db.plugins.oracle.parser._sqlplus import (
     is_sqlplus_command as _shared_is_sqlplus_command,
 )
+from dblift.db.plugins.oracle.parser.oracle_tokenizer import has_stray_comment_close
 
 
 class OracleStatementParser(BaseStatementParser):
@@ -213,10 +214,7 @@ class OracleStatementParser(BaseStatementParser):
         if not rest:
             return True
         if not self._sqlplus_line_buffering:
-            self._sqlplus_line_buffering = any(
-                a.text == "*" and b.text == "/" and b.pos == a.pos + 1
-                for a, b in zip(rest, rest[1:])
-            )
+            self._sqlplus_line_buffering = has_stray_comment_close(rest)
         return not self._sqlplus_line_buffering
 
     def _is_sqlplus_command(self, stmt: str) -> bool:

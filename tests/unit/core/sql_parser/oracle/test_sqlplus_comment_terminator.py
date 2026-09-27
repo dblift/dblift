@@ -100,6 +100,19 @@ LENIENT_CASES = {
         "CREATE TABLE d1 (id NUMBER); CREATE TABLE d2 (id NUMBER);\n",
         ["CREATE TABLE d1 (id NUMBER);", "CREATE TABLE d2 (id NUMBER);"],
     ),
+    # A "*/" inside a literal or a line comment after the ";" is not stray.
+    "close_marker_in_string_after_semicolon": (
+        "CREATE TABLE s1 (id NUMBER); INSERT INTO s2 VALUES ('*/');\n",
+        ["CREATE TABLE s1 (id NUMBER);", "INSERT INTO s2 VALUES ('*/');"],
+    ),
+    "close_marker_in_q_quote_after_semicolon": (
+        "CREATE TABLE q1 (id NUMBER); INSERT INTO q2 VALUES (q'[it's */]');\n",
+        ["CREATE TABLE q1 (id NUMBER);", "INSERT INTO q2 VALUES (q'[it's */]');"],
+    ),
+    "close_marker_in_line_comment_after_semicolon": (
+        "CREATE TABLE c1 (id NUMBER); -- ends */ here\nCREATE TABLE c2 (id NUMBER);\n",
+        ["CREATE TABLE c1 (id NUMBER);", "CREATE TABLE c2 (id NUMBER);"],
+    ),
 }
 
 ALL_CASES = {**FAITHFUL_CASES, **LENIENT_CASES}

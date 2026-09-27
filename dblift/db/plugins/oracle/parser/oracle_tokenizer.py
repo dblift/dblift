@@ -10,6 +10,18 @@ from dblift.core.sql_parser.base_tokenizer import BaseTokenizer
 from dblift.core.sql_parser.tokens import Token, TokenType
 
 
+def has_stray_comment_close(tokens: List[Token]) -> bool:
+    """Whether ``tokens`` contain a ``*/`` outside any comment or literal.
+
+    The tokenizer has already consumed comments and string, q-quote and
+    quoted-identifier literals, so a ``*`` symbol directly followed by a
+    ``/`` symbol is a block-comment close with no matching open.
+    """
+    return any(
+        a.text == "*" and b.text == "/" and b.pos == a.pos + 1 for a, b in zip(tokens, tokens[1:])
+    )
+
+
 class OracleTokenizer(BaseTokenizer):
     """Oracle-specific tokenizer with Q-quote and wrapped PL/SQL support.
 
