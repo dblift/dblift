@@ -62,6 +62,8 @@ class _UndoExtractorsMixin:
                 r"CREATE\s+(?:OR\s+REPLACE\s+)?(?:PROCEDURE|FUNCTION)\s+(?:(\w+)\.)?(\w+)",
                 "PROCEDURE",
             ),
+            (r"CREATE\s+(?:OR\s+REPLACE\s+)?PACKAGE\s+BODY\s+(?:(\w+)\.)?(\w+)", "PACKAGE BODY"),
+            (r"CREATE\s+(?:OR\s+REPLACE\s+)?PACKAGE\s+(?:(\w+)\.)?(\w+)", "PACKAGE"),
         ]
 
         for pattern, obj_type in patterns:
@@ -306,7 +308,7 @@ class _UndoExtractorsMixin:
     def _quote_identifier(self, identifier: str) -> str:
         """Quote identifier based on dialect.
 
-        Delegates to quote_identifier (story 21-14 dispatch).
+        Delegates to quote_identifier.
 
         Args:
             identifier: Identifier to quote

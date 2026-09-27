@@ -2,7 +2,11 @@
 
 import pytest
 
-from dblift.db.object_naming import get_normalized_object_name, normalized_quoted_identifier
+from dblift.db.object_naming import (
+    dictionary_identifier,
+    get_normalized_object_name,
+    normalized_quoted_identifier,
+)
 
 
 @pytest.mark.unit
@@ -19,6 +23,23 @@ class TestNormalizedQuotedIdentifier:
 
     def test_sqlserver_uses_brackets(self):
         assert normalized_quoted_identifier("id", "sqlserver") == "[id]"
+
+
+@pytest.mark.unit
+class TestDictionaryIdentifier:
+    def test_oracle_unquoted_folds_and_quoted_keeps_case(self):
+        assert dictionary_identifier("myschema", "oracle") == "MYSCHEMA"
+        assert dictionary_identifier('"MYSCHEMA"', "oracle") == "MYSCHEMA"
+        assert dictionary_identifier('"myschema"', "oracle") == "myschema"
+        assert dictionary_identifier('"My""Schema"', "oracle") == 'My"Schema'
+
+    def test_quoted_and_unquoted_same_name_share_a_key(self):
+        assert dictionary_identifier("myschema", "oracle") == dictionary_identifier(
+            '"MYSCHEMA"', "oracle"
+        )
+        assert dictionary_identifier('"myschema"', "oracle") != dictionary_identifier(
+            "myschema", "oracle"
+        )
 
 
 @pytest.mark.unit

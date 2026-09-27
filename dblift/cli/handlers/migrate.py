@@ -8,14 +8,16 @@ from dblift.cli.handlers._shared import (
     CliCommandContext,
     _extract_version_filters,
     _migration_info_to_dict,
+    _reraise_preflight_failure,
     run_json_guarded,
 )
 from dblift.cli.handlers.validate import _validate_result_to_dict
+from dblift.core.logger.formatters.jsonformatter import JsonFormatter
 
 
 def _migrate_result_to_dict(result: Any, dry_run: bool) -> Dict[str, Any]:
     """Serialize a MigrateResult to a JSON-compatible dict."""
-    return {
+    data = {
         "success": bool(getattr(result, "success", True)),
         "error": getattr(result, "error_message", None),
         "dry_run": bool(dry_run),
@@ -25,6 +27,13 @@ def _migrate_result_to_dict(result: Any, dry_run: bool) -> Dict[str, Any]:
         "migrations": [_migration_info_to_dict(m) for m in getattr(result, "migrations", [])],
         "migrations_applied": list(getattr(result, "migrations_applied", [])),
     }
+    # Reuse the same show-sql shape/sanitization JsonFormatter uses for the
+    # text/HTML log formats, instead of duplicating its getattr/sanitize pair
+    # here. It returns both `show_sql` and `sql` when show_sql is set, and {}
+    # otherwise — merge it whole so this payload matches the log-format JSON
+    # and adds nothing to ordinary output.
+    data.update(JsonFormatter()._format_sql_visibility(result))
+    return data
 
 
 def _handle_migrate(ctx: CliCommandContext) -> Tuple[bool, Any]:
@@ -37,15 +46,17 @@ def _handle_migrate(ctx: CliCommandContext) -> Tuple[bool, Any]:
     if getattr(ctx.args, "validate_only", False):
 
         def _validate_call() -> Any:
-            return ctx.client.validate(
-                target_version=target_version,
-                tags=tags,
-                exclude_tags=exclude_tags,
-                versions=versions,
-                exclude_versions=exclude_versions,
-                recursive=ctx.recursive,
-                dir_recursive_map=ctx.dir_recursive_map or None,
-                additional_dirs=additional_dirs,
+            return _reraise_preflight_failure(
+                ctx.client.validate(
+                    target_version=target_version,
+                    tags=tags,
+                    exclude_tags=exclude_tags,
+                    versions=versions,
+                    exclude_versions=exclude_versions,
+                    recursive=ctx.recursive,
+                    dir_recursive_map=ctx.dir_recursive_map or None,
+                    additional_dirs=additional_dirs,
+                )
             )
 
         return run_json_guarded(ctx, "VALIDATE", _validate_call, _validate_result_to_dict)
@@ -53,20 +64,22 @@ def _handle_migrate(ctx: CliCommandContext) -> Tuple[bool, Any]:
     dry_run = bool(getattr(ctx.args, "dry_run", False))
 
     def migrate_call() -> Any:
-        return ctx.client.migrate(
-            target_version=target_version,
-            dry_run=dry_run,
-            tags=tags,
-            exclude_tags=exclude_tags,
-            versions=versions,
-            exclude_versions=exclude_versions,
-            mark_as_executed=getattr(ctx.args, "mark_as_executed", False),
-            show_sql=getattr(ctx.args, "show_sql", False),
-            show_query_results=getattr(ctx.args, "show_query_results", False),
-            placeholders=ctx.placeholders,
-            recursive=ctx.recursive,
-            dir_recursive_map=ctx.dir_recursive_map or None,
-            additional_dirs=additional_dirs,
+        return _reraise_preflight_failure(
+            ctx.client.migrate(
+                target_version=target_version,
+                dry_run=dry_run,
+                tags=tags,
+                exclude_tags=exclude_tags,
+                versions=versions,
+                exclude_versions=exclude_versions,
+                mark_as_executed=getattr(ctx.args, "mark_as_executed", False),
+                show_sql=getattr(ctx.args, "show_sql", False),
+                show_query_results=getattr(ctx.args, "show_query_results", False),
+                placeholders=ctx.placeholders,
+                recursive=ctx.recursive,
+                dir_recursive_map=ctx.dir_recursive_map or None,
+                additional_dirs=additional_dirs,
+            )
         )
 
     return run_json_guarded(

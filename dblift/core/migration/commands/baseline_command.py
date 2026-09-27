@@ -10,7 +10,7 @@ from dblift.core.logger.results import BaselineResult
 from dblift.core.migration.migration import Migration, MigrationType
 from dblift.db.provider_interfaces import TransactionalProvider
 
-from .base_command import BaseCommand
+from .base_command import BaseCommand, PreflightConnectionError
 
 
 class BaselineCommand(BaseCommand):
@@ -109,6 +109,10 @@ class BaselineCommand(BaseCommand):
             self._log_command_completion("baseline", result)
             return result
 
+        except PreflightConnectionError:
+            # Connection or schema-history setup failed before baseline
+            # started; propagate it as info does rather than as a failed baseline.
+            raise
         except Exception as e:
             self.log.error(f"Baseline operation failed: {e}")
             result.set_error(f"Baseline operation failed: {e}")

@@ -17,11 +17,10 @@ overwriting DEFAULT_SCHEMA between two identical calls is actually detected
 catalog when the requested schema itself changed, so it never noticed
 interference in exactly this steady-state scenario).
 
-Prerequisites: a running SQL Server instance reachable at localhost:1433 with
-the ``dblift_test`` login (see tests/integration/conftest.py's db_configs for
-the general-purpose container fixtures; this module connects directly with
-dblift_test's own credentials rather than the shared ``sa`` fixture so it
-doesn't depend on how that container happened to be provisioned).
+Prerequisites: a running SQL Server instance reachable at localhost:1433.
+``tests/integration/conftest.py`` provisions the ``dblift_test`` login and
+database (not a sysadmin, ``db_owner`` on ``dblift_test``). This module
+connects with those credentials rather than ``sa``.
 """
 
 import uuid
@@ -78,6 +77,9 @@ def provider():
     and drops any schema this test created, so concurrent test runs / other
     agents sharing this login and container are not disturbed.
     """
+    from tests.integration.conftest import _ensure_sqlserver_interference_login
+
+    _ensure_sqlserver_interference_login(HOST, PORT)
     p = ProviderRegistry.create_provider(_config("dbo"))
     assert isinstance(p, SqlServerProvider)
     p.create_connection()

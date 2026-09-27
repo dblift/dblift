@@ -44,6 +44,7 @@ from dblift.core.logger.results import (
     UndoResult,
     ValidateResult,
 )
+from dblift.core.migration.commands.base_command import PreflightConnectionError
 from dblift.core.migration.executor.migration_executor import MigrationExecutor
 from dblift.core.premium_manifest import PREMIUM_COMMANDS, UPGRADE_URL, render_upsell
 from dblift.core.seams.capabilities import CapabilityDeniedError
@@ -55,6 +56,7 @@ from dblift.db.provider_interfaces import ConnectionProvider, TransactionalProvi
 __all__ = ["DBLiftClient"]
 
 _F = TypeVar("_F", bound=Callable[..., Any])
+_R = TypeVar("_R", bound=OperationResult)
 
 # Paid-tier commands that have a corresponding OSS-visible DBLiftClient
 # method name (issue #753). Keyed by ``api_method`` so
@@ -147,6 +149,35 @@ def _with_client_emitter(
     if method is not None:
         return decorator(method)
     return decorator
+
+
+def _preflight_connection_failure(exc: BaseException) -> Optional[PreflightConnectionError]:
+    """The preflight connection or history-table failure, else None.
+
+    Only ``PreflightConnectionError`` is turned back into a failed command
+    result. Every other error, including another ``ConnectionError``, still
+    propagates.
+    """
+    if isinstance(exc, PreflightConnectionError):
+        return exc
+    return None
+
+
+def _failed_preflight_result(
+    exc: PreflightConnectionError, result_cls: type[_R], schema: str
+) -> _R:
+    """Failed *result_cls* for a preflight error, keeping the command's schema."""
+    attached = exc.result
+    if isinstance(attached, result_cls):
+        failed = attached
+    else:
+        failed = result_cls()
+    if not failed.target_schema:
+        failed.target_schema = schema
+    failed.set_error(str(exc))
+    failed._preflight_error = exc
+    failed.complete()
+    return failed
 
 
 def _raise_if_reentrant(
@@ -294,7 +325,7 @@ class DBLiftClient:
     def _guard_scripts_dir_kwarg(self, kwargs: Dict[str, Any]) -> None:
         """Raise a clear error if a caller passes ``scripts_dir`` via kwargs.
 
-        BUG-01: Public API methods bind ``scripts_dir`` from client config and
+        Public API methods bind ``scripts_dir`` from client config and
         forward ``**kwargs`` to the executor. A caller-supplied ``scripts_dir``
         collides with the bound keyword, raising a confusing
         ``TypeError: ... got multiple values for keyword argument 'scripts_dir'``.
@@ -473,6 +504,11 @@ class DBLiftClient:
                     "dialect": getattr(self, "dialect", None),
                 },
             )
+            preflight = _preflight_connection_failure(e)
+            if preflight is not None:
+                return _failed_preflight_result(
+                    preflight, MigrateResult, self.config.database.schema
+                )
             raise
 
     @_with_client_emitter(mutating=False)
@@ -545,6 +581,9 @@ class DBLiftClient:
             return result
         except Exception as e:
             self.events.emit(EventType.INFO_FAILED, {"error": str(e)})
+            preflight = _preflight_connection_failure(e)
+            if preflight is not None:
+                return _failed_preflight_result(preflight, InfoResult, self.config.database.schema)
             raise
 
     @_with_client_emitter(mutating=False)
@@ -572,7 +611,10 @@ class DBLiftClient:
             **kwargs: Additional options
 
         Returns:
-            ValidateResult with validation status
+            ValidateResult with validation status. When the connection fails
+            or the schema-history table cannot be created, this is a failed
+            result with ``target_schema`` set, and ``VALIDATION_FAILED`` is
+            emitted.
         """
         self._guard_scripts_dir_kwarg(kwargs)
         self.events.emit(EventType.VALIDATION_STARTED, {"dialect": getattr(self, "dialect", None)})
@@ -605,6 +647,11 @@ class DBLiftClient:
                 EventType.VALIDATION_FAILED,
                 {"error": str(e), "dialect": getattr(self, "dialect", None)},
             )
+            preflight = _preflight_connection_failure(e)
+            if preflight is not None:
+                return _failed_preflight_result(
+                    preflight, ValidateResult, self.config.database.schema
+                )
             raise
 
     @_with_client_emitter
@@ -701,6 +748,9 @@ class DBLiftClient:
                     "operation": "undo",
                 },
             )
+            preflight = _preflight_connection_failure(e)
+            if preflight is not None:
+                return _failed_preflight_result(preflight, UndoResult, self.config.database.schema)
             raise
 
     # Mutating on purpose: it emits MIGRATION_* events, so a listener
@@ -866,6 +916,9 @@ class DBLiftClient:
                     "operation": "clean",
                 },
             )
+            preflight = _preflight_connection_failure(e)
+            if preflight is not None:
+                return _failed_preflight_result(preflight, CleanResult, self.config.database.schema)
             raise
 
     @_with_client_emitter
@@ -926,6 +979,11 @@ class DBLiftClient:
                     "operation": "baseline",
                 },
             )
+            preflight = _preflight_connection_failure(e)
+            if preflight is not None:
+                return _failed_preflight_result(
+                    preflight, BaselineResult, self.config.database.schema
+                )
             raise
 
     @_with_client_emitter
@@ -997,6 +1055,11 @@ class DBLiftClient:
                     "operation": "repair",
                 },
             )
+            preflight = _preflight_connection_failure(e)
+            if preflight is not None:
+                return _failed_preflight_result(
+                    preflight, RepairResult, self.config.database.schema
+                )
             raise
 
     @_with_client_emitter
@@ -1051,6 +1114,11 @@ class DBLiftClient:
                     "operation": "import_flyway",
                 },
             )
+            preflight = _preflight_connection_failure(e)
+            if preflight is not None:
+                return _failed_preflight_result(
+                    preflight, OperationResult, self.config.database.schema
+                )
             raise
 
     # Paid-tier stubs (issue #753): visible on the OSS class so
@@ -1109,7 +1177,7 @@ class DBLiftClient:
                 ``config.migrations.directories``.
             **kwargs: Forwarded to the client constructor.
 
-        BUG-07: ``migrations_dir`` used to be undocumented — it was honored
+        ``migrations_dir`` used to be undocumented — it was honored
         only because the factory popped it from ``kwargs``. Making it an
         explicit parameter keeps Python tooling (type checkers, IDEs,
         ``help()``) honest and prevents users from silently falling back to

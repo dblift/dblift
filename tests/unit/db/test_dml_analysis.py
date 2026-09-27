@@ -1,5 +1,7 @@
 """Tests for the dialect-agnostic DML undo-safety scanner."""
 
+import pytest
+
 from dblift.db.base_quirks import BaseQuirks
 from dblift.db.dml_analysis import (
     analyze_dml,
@@ -11,6 +13,7 @@ from dblift.db.dml_analysis import (
     statement_dml_table,
     updates_restore_key,
 )
+from dblift.db.provider_registry import ProviderRegistry
 
 _DEFAULT_KEYS = ("id", "pk", "uuid", "key")
 
@@ -80,6 +83,149 @@ def test_statement_dml_table_sqlglot_strips_merge_alias():
     # MERGE's table carries an alias in the AST; it must not leak into the name.
     stmt = 'MERGE INTO "S"."T" t USING x ON (t.id = x.id) WHEN MATCHED THEN UPDATE SET a = 1;'
     assert statement_dml_table(stmt, dialect="oracle") == '"S"."T"'
+
+
+def test_analyze_dml_resolves_delete_alias_target_to_its_table():
+    # ``DELETE <alias> FROM <table> <alias>`` puts the alias list ahead of the
+    # real target in sqlglot's tree; the table must resolve, not the alias.
+    mysql = analyze_dml("DELETE o FROM orders o WHERE o.id = 2;", sqlglot_dialect="mysql")
+    assert mysql.table == "orders"
+    assert mysql.events == {"DELETE"}
+
+    tsql = analyze_dml("DELETE o FROM [S].[t] AS o WHERE o.id = 1;", sqlglot_dialect="tsql")
+    assert tsql.table == "S.t"
+
+    # Multi-table DELETE naming the second join member as the sole target.
+    multi = analyze_dml(
+        "DELETE t2 FROM t1 JOIN t2 ON t2.a = t1.a WHERE t2.b = 1;", sqlglot_dialect="mysql"
+    )
+    assert multi.table == "t2"
+
+    # Multi-table DELETE naming the first join member as the sole target.
+    first = analyze_dml("DELETE t1 FROM t1 JOIN t2 ON t2.a = t1.a;", sqlglot_dialect="mysql")
+    assert first.table == "t1"
+
+    # The plain single-table alias spelling (no leading alias list) is unaffected.
+    plain = analyze_dml("DELETE FROM orders o WHERE o.id = 1;", sqlglot_dialect="mysql")
+    assert plain.table == "orders"
+
+
+def test_statement_dml_table_sqlglot_resolves_delete_alias_target():
+    mysql = statement_dml_table("DELETE o FROM `s`.`t` o WHERE o.id = 2;", dialect="mysql")
+    assert mysql == "`s`.`t`"
+
+    tsql = statement_dml_table("DELETE o FROM [S].[t] AS o WHERE o.id = 1;", dialect="tsql")
+    assert tsql == "[S].[t]"
+
+    # Multi-table DELETE where the target is the FROM-anchor: sqlglot hangs the
+    # JOIN list off that same Table node, so it must be stripped along with the
+    # alias or it leaks into the returned reference.
+    my_join = statement_dml_table("DELETE t1 FROM t1 JOIN t2 ON t2.a = t1.a;", dialect="mysql")
+    assert my_join == "t1"
+
+    tsql_join = statement_dml_table("DELETE t1 FROM t1 JOIN t2 ON t2.a = t1.a;", dialect="tsql")
+    assert tsql_join == "t1"
+
+
+def test_analyze_dml_resolves_delete_alias_that_differs_from_the_table_name():
+    # The wanted target ("x") is the alias of the second join member, and does
+    # not equal any table's real name here — this only resolves through the
+    # ``table.alias`` arm of ``wanted in (table.alias, table.name)``.
+    stmt = "DELETE x FROM t1 AS o JOIN t2 AS x ON o.id = x.id WHERE x.b = 1;"
+    mutation = analyze_dml(stmt, sqlglot_dialect="mysql")
+    assert mutation.table == "t2"
+    assert statement_dml_table(stmt, dialect="mysql") == "t2"
+
+
+def test_analyze_dml_resolves_tsql_update_from_alias_to_its_table():
+    # T-SQL's only valid aliased UPDATE form puts the bare alias in ``ast.this``
+    # and the real target in the FROM clause; it must resolve, not the alias.
+    stmt = "UPDATE o SET name = 'x' FROM [S].[t] AS o WHERE o.id = 2;"
+    mutation = analyze_dml(stmt, sqlglot_dialect="tsql")
+    assert mutation.table == "S.t"
+    assert mutation.events == {"UPDATE"}
+    assert mutation.updated_columns == ["name"]
+
+    # A joined FROM still resolves through the alias that matches ``ast.this``.
+    joined = (
+        "UPDATE o SET name = 'x' FROM [S].[t] AS o "
+        "JOIN [S].[u] AS u ON u.id = o.id WHERE u.b = 1;"
+    )
+    assert analyze_dml(joined, sqlglot_dialect="tsql").table == "S.t"
+
+    # An unaliased target is unaffected by the alias resolution (regression pin).
+    unaliased = "UPDATE [S].[t] SET name = 'x' FROM [S].[t] AS o WHERE o.id = 2;"
+    assert analyze_dml(unaliased, sqlglot_dialect="tsql").table == "S.t"
+
+
+def test_statement_dml_table_sqlglot_resolves_tsql_update_from_alias():
+    stmt = "UPDATE o SET name = 'x' FROM [S].[t] AS o WHERE o.id = 2;"
+    assert statement_dml_table(stmt, dialect="tsql") == "[S].[t]"
+
+
+def test_analyze_dml_keeps_postgres_update_from_target():
+    # A real aliased target (not a bare alias) must not be swapped for the
+    # FROM table, even though a FROM clause is present.
+    stmt = "UPDATE s.t AS o SET a = 1 FROM u WHERE o.id = u.id;"
+    assert analyze_dml(stmt, sqlglot_dialect="postgres").table == "s.t"
+    assert statement_dml_table(stmt, dialect="postgres") == "s.t"
+
+
+def test_analyze_dml_update_from_alias_does_not_hijack_an_aliased_target():
+    # ``this`` here has its own alias ("x"); it must not be treated as a bare
+    # T-SQL-style alias just because a FROM table happens to alias to "t".
+    stmt = "UPDATE t AS x SET a = 1 FROM other AS t WHERE x.id = t.id;"
+    assert analyze_dml(stmt, sqlglot_dialect="postgres").table == "t"
+    assert statement_dml_table(stmt, dialect="postgres") == "t"
+
+
+def test_analyze_dml_update_from_alias_does_not_hijack_a_qualified_target():
+    # ``this`` is schema-qualified (db="S"); it must not be treated as a bare
+    # alias just because a FROM table happens to alias to its bare name.
+    stmt = "UPDATE S.t SET a = 1 FROM other AS t WHERE t.id = 1;"
+    assert analyze_dml(stmt, sqlglot_dialect="tsql").table == "S.t"
+    assert statement_dml_table(stmt, dialect="tsql") == "S.t"
+
+
+def test_extract_dml_table_name_resolves_delete_alias_from_spelling():
+    assert extract_dml_table_name("DELETE o FROM t o WHERE o.id = 1") == "t"
+    assert statement_dml_table("DELETE o FROM t o WHERE o.id = 1") == "t"
+
+
+_ALIAS_TARGET_CASES = [
+    ("DELETE a FROM orders a WHERE a.id = 1;", "orders"),
+    ("DELETE a FROM orders AS a WHERE a.id = 1;", "orders"),
+    ("DELETE t2 FROM t1 JOIN t2 ON t2.a = t1.a;", "t2"),
+    ("DELETE t1 FROM t1 JOIN t2 ON t2.a = t1.a;", "t1"),
+    ("DELETE x FROM t1 AS o JOIN t2 AS x ON o.id = x.id;", "t2"),
+    ("UPDATE a SET qty = 1 FROM orders AS a WHERE a.id = 1;", "orders"),
+    ("UPDATE i SET qty = 1 FROM items AS i JOIN orders o ON o.id = i.oid;", "items"),
+]
+
+
+@pytest.mark.parametrize("dialect", ["sqlserver", "mysql", "mariadb", "postgresql"])
+@pytest.mark.parametrize(("stmt", "table"), _ALIAS_TARGET_CASES)
+def test_alias_targets_resolve_with_dblift_dialect_names(dialect, stmt, table):
+    # Callers pass dblift's own dialect names ("sqlserver", "postgresql"), not
+    # sqlglot's ("tsql", "postgres"); the lookup must map them rather than let
+    # sqlglot reject the name and drop to the regex scanner.
+    assert ProviderRegistry.get_quirks(dialect).analyze_dml(stmt).table == table
+    assert analyze_dml(stmt, sqlglot_dialect=dialect).table == table
+    assert statement_dml_table(stmt, dialect=dialect) == table
+
+
+@pytest.mark.parametrize(("stmt", "table"), _ALIAS_TARGET_CASES)
+def test_extract_dml_table_name_resolves_alias_targets(stmt, table):
+    assert extract_dml_table_name(stmt) == table
+
+
+def test_extract_dml_table_name_resolves_qualified_alias_targets():
+    stmt = "UPDATE o SET name = 'x' FROM [S].[t] AS o WHERE o.id = 2;"
+    assert extract_dml_table_name(stmt) == "[S].[t]"
+    assert extract_dml_table_name("DELETE o FROM s.t o WHERE o.id = 1;") == "s.t"
+    # A qualified or unaliased UPDATE target is the table itself.
+    assert extract_dml_table_name("UPDATE s.t SET a = 1 FROM u AS t;") == "s.t"
+    assert extract_dml_table_name("UPDATE t SET a = 1 FROM u WHERE u.id = t.id;") == "t"
 
 
 def test_statement_dml_table_falls_back_to_regex_without_dialect():

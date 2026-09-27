@@ -63,7 +63,7 @@ class Event(SqlObject):
     def _normalize_schedule(self, schedule: Optional[str]) -> Optional[str]:
         """Ensure MySQL/MariaDB schedule clauses quote literal timestamps.
 
-        Story 26-5: dialect dispatch via plugin Quirks
+        Dialect dispatch via plugin Quirks
         (``event_supports_mysql_schedule``).
         """
         if not schedule or not self.dialect:

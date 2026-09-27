@@ -3,6 +3,7 @@
 from abc import ABC, abstractmethod
 from typing import Any, Optional
 
+from dblift.core.constants import MIGRATION_LOCK_TABLE
 from dblift.core.logger import Log, NullLog
 from dblift.db.object_naming import get_normalized_object_name
 
@@ -54,7 +55,7 @@ class BaseLockingManager(ABC):
     """
 
     # Subclasses override these to provide dialect-specific values.
-    DEFAULT_LOCK_TABLE: str = "dblift_migration_lock"
+    DEFAULT_LOCK_TABLE: str = MIGRATION_LOCK_TABLE
     DIALECT: str = ""
 
     def __init__(self, query_executor: Any, log: Optional[Log] = None) -> None:

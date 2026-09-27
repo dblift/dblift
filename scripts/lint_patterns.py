@@ -29,7 +29,7 @@ Rules
     ``"mysql"``, ``"sqlserver"``, ``"db2"``, ``"sqlite"``,
     ``"cosmosdb"``, ``"mariadb"``, …) appearing in ``api/``, ``cli/``,
     ``config/``, ``core/`` or ``db/`` couple framework code to specific
-    dialects and prevent the plug-and-play architecture from Epic 26.
+    dialects and prevent the plug-and-play architecture of dialect plugins.
     ``db/`` is scanned in full, including the shared base modules
     directly under ``db/plugins/`` (``db/plugins/*.py``, e.g.
     ``base_snapshot_manager.py``) — they are framework code. Only a
@@ -349,7 +349,7 @@ def _check_dialect_string_literal(
             node.col_offset + 1,
             "dialect-string-literal",
             f"Dialect name {node.value!r} hardcoded in framework code. "
-            "Replace with a DialectQuirks hook on the provider (Epic 26). "
+            "Replace with a DialectQuirks hook on the provider. "
             "Annotate intentional uses with "
             "'# lint: allow-dialect-string: <reason>'.",
         )

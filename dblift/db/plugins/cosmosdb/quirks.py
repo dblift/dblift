@@ -1,4 +1,4 @@
-"""CosmosDB :class:`DialectQuirks` — Epic 26."""
+"""CosmosDB :class:`DialectQuirks`."""
 
 from __future__ import annotations
 
@@ -80,7 +80,7 @@ class CosmosdbQuirks(BaseQuirks):
         """
         return None
 
-    # Story 26-3: CosmosDB has no SQL DDL, so every "DROP X" form renders as
+    # CosmosDB has no SQL DDL, so every "DROP X" form renders as
     # an explanatory comment. Centralised here so ``sql_generator.py`` no
     # longer carries ``if dialect == "cosmosdb"`` branches.
     def render_drop_for_object(

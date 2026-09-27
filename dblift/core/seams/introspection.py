@@ -1,4 +1,4 @@
-"""Discover and run tier-provided introspection registrars."""
+"""Discover and run introspection registrars contributed by add-on packages."""
 
 from __future__ import annotations
 

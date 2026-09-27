@@ -23,6 +23,24 @@ def test_oracle_compat_snapshot_ddl_is_clob_plain_create():
     )
 
 
+def test_reference_queries_bind_the_catalog_spelling():
+    quirks = OracleQuirks()
+    assert quirks.fk_reference_bind_params('"MYSCHEMA"', "ORDERS", "ID") == [
+        "MYSCHEMA",
+        "MYSCHEMA",
+        "ORDERS",
+        "ID",
+    ]
+    assert quirks.fk_reference_bind_params('"myschema"', "ORDERS", "ID") == [
+        "myschema",
+        "myschema",
+        "ORDERS",
+        "ID",
+    ]
+    _sql, params = quirks.index_reference_query('"myschema"', "ORDERS", "ID")
+    assert params == ["myschema", "ORDERS", "ID"]
+
+
 def test_oracle_does_not_skip_existence_check():
     from dblift.db.plugins.oracle.quirks import OracleQuirks
 

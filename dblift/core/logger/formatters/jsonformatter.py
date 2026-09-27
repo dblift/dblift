@@ -10,6 +10,7 @@ from typing import Any, Dict, List, Optional
 
 _logger = logging.getLogger(__name__)
 
+from dblift.core.logger._formatters import _safe_name
 from dblift.core.logger.results import (
     CleanResult,
     MigrationInfo,
@@ -20,7 +21,7 @@ from dblift.core.logger.results import (
 class JsonFormatter:
     """JSON formatter for structured log output."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize the JSON formatter."""
         self.log_entries: List[Dict[str, Any]] = []
 
@@ -609,7 +610,10 @@ class JsonFormatter:
             String containing the filename
         """
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        return f"Dblift_{schema_name}_{database_name}_{command_type}_{timestamp}.json"
+        return (
+            f"Dblift_{_safe_name(str(schema_name))}_{_safe_name(str(database_name))}_"
+            f"{command_type}_{timestamp}.json"
+        )
 
     def _sanitize_message(self, message: str) -> str:
         """Sanitize a log message to ensure it's JSON-safe.

@@ -8,8 +8,8 @@ from dblift.core.sql_model.base import SqlObject, SqlObjectType
 def _quirks_for(dialect: Optional[str]) -> Any:
     """Resolve quirks for *dialect* via the registry.
 
-    Story 26-5: replaces inline ``if dialect in {...}`` dispatch in the
-    procedure / parameter DDL paths. Returns a ``BaseQuirks`` fallback
+    Procedure / parameter DDL paths dispatch via plugin Quirks instead of
+    inline ``if dialect in {...}`` branches. Returns a ``BaseQuirks`` fallback
     when the dialect is unknown so callers can read the default flags
     without guarding.
     """
@@ -56,7 +56,7 @@ class Parameter:
 
     def __str__(self) -> str:
         """String representation of the parameter."""
-        # Story 26-5: parameter direction keyword + default support both
+        # Parameter direction keyword + default support both
         # come from plugin Quirks (``proc_param_inout_keyword`` and
         # ``proc_param_supports_default``).
         quirks = _quirks_for(self.dialect)
@@ -198,7 +198,7 @@ class Procedure(SqlObject):
         proc_name = self.format_identifier(self.name)
         object_keyword = "FUNCTION" if self.is_function else "PROCEDURE"
 
-        # Story 26-5: ``IF EXISTS`` support comes from plugin Quirks.
+        # ``IF EXISTS`` support comes from plugin Quirks.
         if _quirks_for(self.dialect).proc_drop_supports_if_exists:
             return f"DROP {object_keyword} IF EXISTS {schema_prefix}{proc_name}"
         return f"DROP {object_keyword} {schema_prefix}{proc_name}"

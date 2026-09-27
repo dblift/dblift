@@ -3,7 +3,11 @@
 from dataclasses import dataclass
 from typing import Any, Dict, Optional
 
-from dblift.config.database_config import BaseDatabaseConfig, register_database_type
+from dblift.config.database_config import (
+    BaseDatabaseConfig,
+    register_database_type,
+    schema_name_allowed,
+)
 
 
 # lint: allow-dialect-string: config type registration
@@ -15,6 +19,18 @@ class OracleConfig(BaseDatabaseConfig):
     # Oracle specific attributes
     service_name: Optional[str] = None
     sid: Optional[str] = None
+
+    def _configured_schema_allowed(self, schema: str) -> bool:
+        """Oracle keeps a double-quoted schema's exact case; other dialects do not."""
+        return schema_name_allowed(schema, allow_quoted=True)
+
+    def _invalid_schema_message(self) -> str:
+        """Mention the quoted form only Oracle accepts."""
+        return (
+            super()._invalid_schema_message()
+            + ' A double-quoted identifier ("Name") with that same interior'
+            " is also accepted."
+        )
 
     def __post_init__(self) -> None:
         super().__post_init__()

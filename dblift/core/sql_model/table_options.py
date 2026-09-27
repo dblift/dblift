@@ -1,7 +1,5 @@
 """Dialect-specific options for ``Table``, regrouped into immutable dataclasses.
 
-SIMP-48
--------
 ``dblift.core.sql_model.table.Table.__init__`` now exposes only base/structural
 parameters. All dialect-specific properties (MySQL ``storage_engine``,
 SQL Server ``memory_optimized``, PostgreSQL ``row_security``,
@@ -74,7 +72,7 @@ class TableOptions:
 
 
 # ---------------------------------------------------------------------------
-# Built-in ``dialect_options`` namespace map (ADR-26 E story 26-5).
+# Built-in ``dialect_options`` namespace map (ADR-26 E).
 #
 # ``Table`` stores its built-in per-dialect options inside ``dialect_options``
 # under the owning plugin's *canonical* namespace (``mysql`` / ``sqlserver`` /

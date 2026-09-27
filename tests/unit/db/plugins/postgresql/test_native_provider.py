@@ -39,7 +39,7 @@ class _Provider(PostgreSqlProvider):
         return self.history_table_exists
 
 
-def test_record_migration_lets_database_assign_installed_rank():
+def test_record_migration_allocates_rank_without_requiring_a_default():
     provider = _Provider()
 
     provider.record_migration(
@@ -53,8 +53,9 @@ def test_record_migration_lets_database_assign_installed_rank():
     )
 
     sql, _schema, params = provider.statements[-1]
-    assert "installed_rank" not in sql
+    assert "COALESCE(MAX(installed_rank), 0) + 1" in sql
     assert len(params) == 8
+    assert provider.queries[-1][1] == ['"public"."dblift_schema_history"']
 
 
 def test_record_undo_records_synthetic_undo_migration():

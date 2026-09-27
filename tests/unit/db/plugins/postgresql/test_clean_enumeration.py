@@ -21,16 +21,31 @@ class _Provider(PostgreSqlProvider):
             return [{"table_name": "orders"}]
         if "information_schema.sequences" in sql:
             return [{"sequence_name": "orders_id_seq"}]
-        if "information_schema.routines" in sql:
+        if "pg_proc" in sql:
             return [
-                {"routine_name": "calc_total", "routine_type": "FUNCTION"},
-                {"routine_name": "refresh_totals", "routine_type": "PROCEDURE"},
+                {"routine_name": "calc_total", "routine_kind": "f", "identity_arguments": ""},
+                {
+                    "routine_name": "calc_total",
+                    "routine_kind": "f",
+                    "identity_arguments": "order_id integer",
+                },
+                {
+                    "routine_name": "refresh_totals",
+                    "routine_kind": "p",
+                    "identity_arguments": "INOUT n integer",
+                },
+                {
+                    "routine_name": "sum_amounts",
+                    "routine_kind": "a",
+                    "identity_arguments": "numeric",
+                },
             ]
         if "pg_type" in sql:
             return [
                 {"type_name": "active_orders", "typtype": "c"},
                 {"type_name": "order_status", "typtype": "e"},
                 {"type_name": "positive_int", "typtype": "d"},
+                {"type_name": "price_range", "typtype": "r"},
             ]
         return []
 
@@ -71,14 +86,24 @@ def test_list_droppable_objects_returns_preview_order_without_executing_drops():
             drop_sql='DROP SEQUENCE IF EXISTS "tenant_a"."orders_id_seq" CASCADE',
         ),
         DroppableObject(
-            name="calc_total",
+            name="calc_total()",
             object_type="function",
-            drop_sql='DROP FUNCTION IF EXISTS "tenant_a"."calc_total" CASCADE',
+            drop_sql='DROP FUNCTION IF EXISTS "tenant_a"."calc_total"() CASCADE',
         ),
         DroppableObject(
-            name="refresh_totals",
+            name="calc_total(order_id integer)",
+            object_type="function",
+            drop_sql='DROP FUNCTION IF EXISTS "tenant_a"."calc_total"(order_id integer) CASCADE',
+        ),
+        DroppableObject(
+            name="refresh_totals(INOUT n integer)",
             object_type="procedure",
-            drop_sql='DROP PROCEDURE IF EXISTS "tenant_a"."refresh_totals" CASCADE',
+            drop_sql='DROP PROCEDURE IF EXISTS "tenant_a"."refresh_totals"(INOUT n integer) CASCADE',
+        ),
+        DroppableObject(
+            name="sum_amounts(numeric)",
+            object_type="aggregate",
+            drop_sql='DROP AGGREGATE IF EXISTS "tenant_a"."sum_amounts"(numeric) CASCADE',
         ),
         DroppableObject(
             name="order_status",
@@ -90,6 +115,11 @@ def test_list_droppable_objects_returns_preview_order_without_executing_drops():
             object_type="domain",
             drop_sql='DROP DOMAIN IF EXISTS "tenant_a"."positive_int" CASCADE',
         ),
+        DroppableObject(
+            name="price_range",
+            object_type="type",
+            drop_sql='DROP TYPE IF EXISTS "tenant_a"."price_range" CASCADE',
+        ),
     ]
     assert not provider.statements
     # Queries carrying a placeholder are schema-scoped and must bind the schema.
@@ -99,3 +129,34 @@ def test_list_droppable_objects_returns_preview_order_without_executing_drops():
     assert schema_scoped
     assert all(params == ["tenant_a"] for _sql, params in schema_scoped)
     assert all("tenant_a" not in sql for sql, _params in provider.queries)
+
+
+def test_routine_discovery_reads_pg_proc_and_skips_owned_routines():
+    """information_schema.routines omits aggregates, so clean left them behind."""
+    provider = _Provider()
+
+    provider.list_droppable_objects("tenant_a")
+
+    routine_sql = next(sql for sql, _params in provider.queries if "pg_proc" in sql)
+    assert "information_schema.routines" not in routine_sql
+    assert "prokind IN ('f', 'p', 'a', 'w')" in routine_sql
+    assert "pg_get_function_identity_arguments" in routine_sql
+    # Extension members and a range type's constructors are dropped with their owner.
+    assert "deptype IN ('e', 'i')" in routine_sql
+    type_sql = next(sql for sql, _params in provider.queries if "pg_type" in sql)
+    assert "'r'" in type_sql
+    assert "'m'" not in type_sql
+
+
+def test_zero_argument_aggregate_is_dropped_with_star():
+    class _AggProvider(_Provider):
+        def execute_query(self, sql, params=None):
+            if "pg_proc" in sql:
+                return [{"routine_name": "tally", "routine_kind": "a", "identity_arguments": ""}]
+            return []
+
+    objects = _AggProvider().list_droppable_objects("tenant_a")
+
+    assert [o.drop_sql for o in objects] == [
+        'DROP AGGREGATE IF EXISTS "tenant_a"."tally"(*) CASCADE'
+    ]

@@ -808,14 +808,20 @@ class TestMySqlConfig:
         config = MySqlConfig()
 
         result = config.normalize_identifier("`TestName`", is_quoted=False)
-        assert result == "testname"  # Backticks removed, lowercase
+        assert result == "TestName"  # Backticks removed, case kept
+
+    def test_normalize_identifier_doubled_backtick(self):
+        """A doubled backtick inside the name is one literal backtick."""
+        config = MySqlConfig()
+
+        assert config.normalize_identifier("`we``ird`") == "we`ird"
 
     def test_normalize_identifier_unquoted(self):
         """Test normalize_identifier with unquoted identifier."""
         config = MySqlConfig()
 
         result = config.normalize_identifier("TestName", is_quoted=False)
-        assert result == "testname"  # Lowercase
+        assert result == "TestName"  # Case kept: table names are case-sensitive on Linux
 
     def test_normalize_identifier_empty(self):
         """Test normalize_identifier with empty identifier."""

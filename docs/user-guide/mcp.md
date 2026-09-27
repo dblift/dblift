@@ -15,8 +15,21 @@ Claude Code — `.mcp.json` at the project root:
 { "mcpServers": { "dblift": { "command": "dblift", "args": ["mcp"] } } }
 ```
 
+Tool arguments must match the names advertised by `tools/list`. Unknown names
+return an error before the command runs; for example, use `target_version`, not
+`target`, with `migrate_dry_run`. Omitted optional arguments keep their defaults.
+
 Root flags go before `mcp` and apply to every tool call:
 `"args": ["--config", "config/dblift.yaml", "--env", "dev", "mcp"]`.
+
+At start, the server prints on stderr the environment it resolved and the
+database it will use, never a secret — check that line before letting an
+agent call anything, especially if you meant to pin it to a read-only
+environment. A missing or unreadable configuration file, an unknown
+environment, an invalid database field (a bad port, a missing username) or a
+secret that cannot be resolved never stops the start — the line says so and
+the server starts anyway; every tool call still loads the configuration
+itself and reports its own error.
 
 Each tool call logs under `--log-dir`, exactly as one CLI invocation does.
 With the default text log format, the server writes one log file per
@@ -39,11 +52,91 @@ it was opened, so calls within the same second still land in one file.
 
 `validate` checks the scripts on disk for consistency (duplicate versions,
 unsupported formats) and, once migrations have been applied, compares them
-against the recorded history too — checksums, script order, missing files.
-It does not parse or check the SQL inside them; a script with invalid SQL
-passes both `validate` and `migrate_dry_run`.
+against the recorded history too — checksums. Pass `strict: true` to also fail
+when a previously applied migration is now missing from disk and to require
+strict version order. It does not parse or check the SQL inside them; a script
+with invalid SQL passes both `validate` and `migrate_dry_run`.
+
+Pass `show_sql: true` to `migrate_dry_run` to also run with `--show-sql`; the
+result then carries a `sql` array with each pending migration's rendered
+statements — review it to catch an unresolved `${VAR}` or an unexpected
+value before proposing the change. Placeholders in that SQL are resolved, so
+a placeholder value that is a secret appears in the output. Without it, the
+result has no `sql` key.
+
+## What protects the database
+
+None of the built-in tools can apply, undo or clean a migration (see *Not
+exposed* below). That is not what protects a database from an agent, though.
+The agent has a shell next to this server, and both run with the same
+`dblift.yaml`, environment variables and secrets. What protects the database is
+the role the server connects with and the environment it is pointed at. The
+flags in the next section only shape what an agent sees and asks this server
+for: `--read-only` and `--mode review` trust each tool's own `read_only`
+declaration, `--offline` trusts its `connects` declaration, `--tools` and
+`--resources` are exact-name allowlists, and all of them live in a file the
+agent can edit.
+
+**Give the agent a role that can only read.** Once the schema-history table
+exists, `info`, `validate` and `migrate_dry_run` need `USAGE` on the schema and
+`SELECT` on its tables, nothing else; the integration suite pins this on
+PostgreSQL. On a database that has no history table yet, the reader has no
+`CREATE`, so `info` and `validate` fail instead of creating it, and
+`migrate_dry_run` neither fails nor creates it: a dry run skips the table
+entirely and reports every script as pending. (On engines where a schema is a
+whole database — MySQL/MariaDB — a dry run against a database that does not
+exist yet fails at connection time instead, before the skip-the-table logic
+runs.) Create the table with the role that applies migrations first
+(`dblift migrate` or `dblift baseline`), then hand the reader to the agent.
+The reader's grants must cover only the one schema the server is pointed at:
+the root `--db-schema` flag can retarget any schema the role can read, and no
+restriction flag fences it — the role is the boundary. On PostgreSQL:
+
+```sql
+CREATE ROLE dblift_reader LOGIN PASSWORD '...';
+GRANT USAGE ON SCHEMA public TO dblift_reader;
+GRANT SELECT ON ALL TABLES IN SCHEMA public TO dblift_reader;
+```
+
+**Point the server at its own environment and pin it.** Declare the reader's
+credentials as an environment of their own and name it in `.mcp.json`, so the
+agent never runs under the block your deploy pipeline uses. An environment is
+deep-merged over the root sections (see [Configuration](configuration.md#environments)), so
+only the credential differs:
+
+```yaml
+database:
+  type: postgresql
+  host: localhost
+  database: app
+  username: dblift_app
+  password: "${DBLIFT_APP_PASSWORD}"
+
+environments:
+  agent:
+    database:
+      username: dblift_reader
+      password: "${DBLIFT_READER_PASSWORD}"
+```
+
+```json
+{ "mcpServers": { "dblift": { "command": "dblift", "args": ["--env", "agent", "mcp"] } } }
+```
+
+`--env` placed before `mcp` applies to every tool call, and no tool argument
+can change it.
+
+**Keep production out of the agent's process entirely.** The credential that
+can `CREATE`, `DROP` or `TRUNCATE` belongs to the pipeline that runs
+`dblift migrate`, not to a developer's shell with a coding agent in it. A
+production connection string in that shell's environment is reachable by the
+agent whatever this server withholds. A rule in a prompt is a request; a
+secret that is not there is a lock.
 
 ## Restricting a session
+
+These flags narrow what an agent can ask this server for. They are not what
+protects the database; the section above is.
 
 `dblift mcp --read-only` skips every tool whose registrar declared it
 `read_only=False`. It trusts declarations: it catches an honest add-on's
@@ -92,8 +185,9 @@ from a missing tool. **All three built-in tools and both built-in resources
 read the schema-history table**, so on an install with no add-on packages an
 offline server refuses everything; the flag is for installs whose add-on
 tools run from the project's files. The server starts even with no
-`dblift.yaml` and no database configured — nothing is loaded until a tool is
-called. Start-up prints, on stderr, which registrations will refuse.
+`dblift.yaml` and no database configured — the configuration is read at
+start only to print the resolved target; no connection is opened until a
+tool is called. Start-up prints, on stderr, which registrations will refuse.
 
 The flags compose: `--read-only --tools my_addon_tool` admits the name an
 add-on contributed and still skips the tool if it declares
@@ -118,4 +212,10 @@ read-only — each tool declares its own read-only hint, and a client should
 trust that per-tool hint over this paragraph.
 
 Tool errors carry the same message the CLI prints (a missing configuration, a
-command the installed edition does not cover, …) and never stop the server.
+command the installed edition does not cover, …) and never stop the server. A
+command that fails before producing a result — a refused connection, a
+history table that could not be created, an exception inside the command —
+is returned as an MCP error result carrying the CLI's message, and
+`dblift://history` / `dblift://pending` report that failure instead of
+returning an empty list. A command that ran to a result, even a failed one
+such as validation issues, is still a normal result with `success: false`.

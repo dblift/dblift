@@ -14,11 +14,11 @@ from dblift.core.logger.results import MigrationInfo, MigrationSqlInfo, UndoResu
 from dblift.core.migration.formats.migration_format import MigrationFormat
 from dblift.core.migration.migration import MigrationType
 from dblift.core.migration.state.migration_display_state import MigrationDisplayState
-from dblift.core.migration.state.rank_wins import latest_successful_ranks
+from dblift.core.migration.state.rank_wins import installed_rank, latest_successful_ranks
 from dblift.core.migration.version_utils import compare_versions, is_migration_success
 
 from ._script_events import emit_script_event as _emit_script_event
-from .base_command import BaseCommand
+from .base_command import BaseCommand, PreflightConnectionError
 
 
 class UndoCommand(BaseCommand):
@@ -197,6 +197,13 @@ class UndoCommand(BaseCommand):
             except (TypeError, AttributeError):
                 candidates = success_applied
             version_ranks = latest_successful_ranks(applied_migrations)
+            # A version undone and then re-applied has several successful rows;
+            # only the latest one is currently applied, so plan that row alone.
+            candidates = [
+                migration
+                for migration in candidates
+                if installed_rank(migration) == version_ranks[str(migration.version)].versioned
+            ]
 
             # Find migrations to undo using migration rules (based on state)
             migrations_to_undo = []
@@ -213,8 +220,7 @@ class UndoCommand(BaseCommand):
                     version = str(migration.version)
                     # Auto-scan mode: silently skip candidates that are already
                     # undone instead of routing through should_undo_version(),
-                    # whose "please specify version X" message is meant for the
-                    # explicit --target-version path below, not this scan.
+                    # which reports a refusal for an already-undone version.
                     if self.migration_rules._is_currently_undone(
                         version,
                         applied_migrations,
@@ -234,6 +240,10 @@ class UndoCommand(BaseCommand):
                     if compare_versions(str(migration.version), str(target_version)) <= 0:
                         continue
                     version = str(migration.version)
+                    if self.migration_rules._is_currently_undone(
+                        version, applied_migrations, version_ranks=version_ranks
+                    ):
+                        continue
                     can_undo, message = self.migration_rules.should_undo_version(
                         version,
                         applied_migrations,
@@ -253,15 +263,22 @@ class UndoCommand(BaseCommand):
 
             self.log.info(f"Found {len(migrations_to_undo)} migration(s) to undo")
 
+            # Resolve every undo script before any write so a missing script
+            # anywhere in the plan refuses the real run exactly like the dry run,
+            # instead of failing midway and leaving a partial rollback.
+            undo_plan = []
+            for migration in migrations_to_undo:
+                undo_migration = self._find_undo_script(migration, migration_state)
+                if undo_migration is None:
+                    error_msg = f"No undo script found for {migration.script_name}"
+                    self.log.error(error_msg)
+                    result.set_error(error_msg)
+                    self._log_command_completion("undo", result)
+                    return result
+                undo_plan.append((migration, undo_migration))
+
             if dry_run:
-                for migration in migrations_to_undo:
-                    undo_migration = self._find_undo_script(migration, migration_state)
-                    if undo_migration is None:
-                        error_msg = f"No undo script found for {migration.script_name}"
-                        self.log.error(error_msg)
-                        result.set_error(error_msg)
-                        self._log_command_completion("undo", result)
-                        return result
+                for migration, undo_migration in undo_plan:
                     if show_sql:
                         if undo_migration.format == MigrationFormat.PYTHON:
                             self._add_empty_visible_sql(undo_migration, result)
@@ -303,10 +320,9 @@ class UndoCommand(BaseCommand):
                 return result
 
             # Execute undo for each migration
-            for migration in migrations_to_undo:
+            for migration, undo_migration in undo_plan:
                 # Initialize variables to avoid NameError in exception handler
                 start_time = None
-                undo_migration = None
                 journal_started = False
 
                 try:
@@ -319,24 +335,6 @@ class UndoCommand(BaseCommand):
                         dir_recursive_map,
                         result=result,
                     )
-
-                    # SQL path: find the corresponding UNDO_SQL script
-                    undo_migration = self._find_undo_script(migration, migration_state)
-
-                    if undo_migration is None:
-                        error_msg = f"No undo script found for {migration.script_name}"
-                        self.log.error(error_msg)
-                        result.set_error(error_msg)
-                        # Execute afterUndoError callbacks when undo fails
-                        self._execute_callbacks(
-                            scripts_dir,
-                            "afterUndoError",
-                            use_recursive,
-                            use_additional_dirs,
-                            dir_recursive_map,
-                            result=result,
-                        )
-                        break
 
                     start_time = time.time()
 
@@ -545,6 +543,10 @@ class UndoCommand(BaseCommand):
             self._log_command_completion("undo", result)
             return result
 
+        except PreflightConnectionError:
+            # Connection or schema-history setup failed before undo started;
+            # propagate it as info does rather than as a failed undo.
+            raise
         except Exception as e:
             self.log.error(f"Undo operation failed: {e}")
             result.set_error(f"Undo operation failed: {e}")

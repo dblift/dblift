@@ -143,7 +143,7 @@ class TestTableRendererPrintMigrationTable(unittest.TestCase):
             }
         ]
         buf = io.StringIO()
-        with patch.dict(os.environ, {"COLUMNS": "80"}):
+        with patch.dict(os.environ, {"COLUMNS": "80", "TERM": "dumb", "FORCE_COLOR": "1"}):
             with contextlib.redirect_stdout(buf):
                 self.renderer.print_migration_table(data)
         out = buf.getvalue()

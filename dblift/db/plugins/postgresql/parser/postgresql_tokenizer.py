@@ -4,10 +4,25 @@ This module provides PostgreSQL-specific tokenization including dollar quotes
 and COPY FROM STDIN data block handling.
 """
 
-from typing import Optional
+from typing import Iterable, List, Optional
 
 from dblift.core.sql_parser.base_tokenizer import BaseTokenizer
 from dblift.core.sql_parser.tokens import Token, TokenType
+
+
+def copy_header_reads(tokens: Iterable[Token], direction: str, stream: str) -> bool:
+    """Whether a ``COPY`` header's tokens contain *direction* *stream* at the top level.
+
+    For example ``("FROM", "STDIN")`` or ``("TO", "STDOUT")``. Words inside
+    parentheses (a column list, ``WITH (...)`` options, a ``COPY (query)``)
+    and quoted identifiers or strings never match, and comments are skipped.
+    """
+    words = [
+        token.text.upper()
+        for token in tokens
+        if token.type != TokenType.COMMENT and token.parens_depth == 0
+    ]
+    return any(a == direction and b == stream for a, b in zip(words, words[1:]))
 
 
 class PostgreSQLTokenizer(BaseTokenizer):
@@ -36,8 +51,10 @@ class PostgreSQLTokenizer(BaseTokenizer):
         # Set once the ';' ending a "COPY ... FROM STDIN" header has been read;
         # the very next token is then the data block, not ordinary SQL.
         self._copy_data_pending = False
+        # Tokens read since a COPY keyword, until the ';' ending its header.
+        self._copy_header: Optional[List[Token]] = None
 
-    def _next_token(self) -> Optional[Token]:
+    def _next_sql_token(self) -> Optional[Token]:
         """Get the next token from the input.
 
         Overrides base to handle double-quoted identifiers.
@@ -57,10 +74,10 @@ class PostgreSQLTokenizer(BaseTokenizer):
         char = self.peek()
 
         # psql client meta-command (e.g. \restrict, \i): a line whose first
-        # non-whitespace character is '\' at the top level. Gated on
-        # in_copy_data, not reused for anything else, because a COPY data
-        # row may legitimately start with \N (SQL NULL) and must stay data.
-        if char == "\\" and not self.in_copy_data and self._is_at_line_start():
+        # non-whitespace character is '\' at the top level. Not inside a COPY
+        # header (up to its ';'), which stays one unit with its data block;
+        # the data block itself (rows may start with \N) is read whole above.
+        if char == "\\" and self._copy_header is None and self._is_at_line_start():
             return self._handle_meta_command()
 
         # Flyway / DBLift placeholders ${name} or ${name:default} — not PostgreSQL
@@ -216,79 +233,31 @@ class PostgreSQLTokenizer(BaseTokenizer):
             self.parens_depth,
         )
 
-    def _handle_keyword(self) -> Token:
-        """Handle keywords, including COPY detection.
+    def _next_token(self) -> Optional[Token]:
+        """Get the next token, tracking whether a ``COPY`` header reads FROM STDIN.
+
+        The tokens after ``COPY`` are collected up to the ``;`` that ends the
+        header, whatever its length; only then is the header classified. A
+        header never looks past its own ``;``.
 
         Returns:
-            Keyword token
+            Next token or None if no more tokens
         """
-        # Read the keyword
-        token = super()._handle_keyword()
-
-        # Check if this is COPY FROM STDIN
-        if token.text.upper() == "COPY":
-            # Check if followed by FROM STDIN pattern
-            if self._is_copy_from_stdin():
+        token = self._next_sql_token()
+        if token is None:
+            return None
+        if token.type == TokenType.DELIMITER:
+            if self._copy_header is not None and copy_header_reads(
+                self._copy_header, "FROM", "STDIN"
+            ):
                 self.in_copy_data = True
-
+                self._copy_data_pending = True
+            self._copy_header = None
+        elif self._copy_header is not None:
+            self._copy_header.append(token)
+        elif token.type == TokenType.KEYWORD and token.text.upper() == "COPY":
+            self._copy_header = []
         return token
-
-    def _handle_delimiter(self) -> Token:
-        """Handle ``;``, arming the copy-data read once a COPY header ends.
-
-        Returns:
-            Delimiter token
-        """
-        token = super()._handle_delimiter()
-        if self.in_copy_data:
-            self._copy_data_pending = True
-        return token
-
-    def _is_copy_from_stdin(self) -> bool:
-        """Check if we're in a COPY FROM STDIN statement.
-
-        Returns:
-            True if COPY FROM STDIN is detected
-        """
-        # Look ahead to find FROM STDIN pattern
-        saved_pos = self.pos
-        saved_line = self.line
-        saved_col = self.col
-
-        try:
-            # Skip whitespace and tokens until we find FROM and STDIN
-            found_from = False
-            found_stdin = False
-
-            for _ in range(20):  # Look ahead up to 20 tokens
-                self._skip_whitespace()
-                if self.pos >= len(self.sql):
-                    break
-
-                # Read next word
-                if self._is_keyword_start():
-                    word = ""
-                    while self.pos < len(self.sql) and (
-                        self.sql[self.pos].isalnum() or self.sql[self.pos] == "_"
-                    ):
-                        word += self.read()
-
-                    if word.upper() == "FROM":
-                        found_from = True
-                    elif word.upper() == "STDIN" and found_from:
-                        found_stdin = True
-                        break
-                else:
-                    # Skip non-keyword character
-                    self.read()
-
-            return found_from and found_stdin
-
-        finally:
-            # Restore position
-            self.pos = saved_pos
-            self.line = saved_line
-            self.col = saved_col
 
     def handle_copy_data(self) -> Token:
         r"""Handle a COPY FROM STDIN data block, ending at \. on its own line.

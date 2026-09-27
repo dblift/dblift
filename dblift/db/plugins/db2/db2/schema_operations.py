@@ -362,11 +362,9 @@ class Db2SchemaOperations(BaseSchemaOperations):
         drop_factory: Callable[[str, Dict[str, Any]], str],
         details_factory: Optional[Callable[[Dict[str, Any]], Dict[str, str]]] = None,
     ) -> None:
-        try:
-            rows = self.query_executor.execute_query(connection, query, params=[clean_schema])
-        except DB_OPERATION_EXCEPTIONS as e:
-            self.log.debug(f"Could not query DB2 {object_type}s for preview: {e}")
-            return
+        # A failed catalog query propagates: reading it as "no objects of this
+        # kind" made clean report success having dropped nothing.
+        rows = self.query_executor.execute_query(connection, query, params=[clean_schema])
 
         for row in rows:
             name = _row_value(row, *name_fields)

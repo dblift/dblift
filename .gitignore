@@ -96,3 +96,6 @@ cli/**/*.c
 *.pem
 .dblift_private_key*
 .worktrees/
+
+# Written by scripts/create_release.py for the GitHub release body.
+RELEASE_NOTES.md

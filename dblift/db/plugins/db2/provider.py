@@ -6,13 +6,19 @@ import time
 from typing import Any, Dict, List, Optional, cast
 
 from dblift.config import DbliftConfig
+from dblift.core.constants import DEFAULT_HISTORY_TABLE
+from dblift.core.constants import MIGRATION_LOCK_TABLE as _MIGRATION_LOCK_TABLE
 from dblift.core.logger import Log
 from dblift.core.migration.clean_summary import CleanExecutionSummary
-from dblift.db.object_naming import get_normalized_object_name
+from dblift.core.migration.migration import success_to_bool
+from dblift.core.sql_parser.common.comment_stripping import strip_comments_preserving_quotes
+from dblift.db.object_naming import configured_identifier_text, get_normalized_object_name
 from dblift.db.plugins.base_history_manager import UNDO_HISTORY_TYPE, installed_on_to_bind
 from dblift.db.plugins.db2.db2.schema_operations import Db2SchemaOperations
 from dblift.db.provider_interfaces import DroppableObject
 from dblift.db.sqlalchemy_provider import SqlAlchemyProvider
+
+_HISTORY_TABLE = DEFAULT_HISTORY_TABLE.upper()
 
 DB2_LOCK_STALE_SECONDS = 24 * 60 * 60
 
@@ -20,6 +26,31 @@ DB2_LOCK_STALE_SECONDS = 24 * 60 * 60
 def _q(name: str) -> str:
     """Return a double-quoted DB2 identifier."""
     return '"' + name.replace('"', '""') + '"'
+
+
+def _without_nested_comments(sql: str) -> str:
+    """Return *sql* without its comments if it holds a nested block comment.
+
+    Db2 nests ``/* ... */``, but the driver does not: given
+    ``/* a /* b */ ; */ CREATE TABLE t ...`` it ends the statement at the
+    ``;`` after the inner ``*/``, runs only the comment and reports success,
+    so ``CREATE TABLE t`` never runs. The CLP runs it. Other statements are
+    sent unchanged, so routine bodies keep their comments. Each comment
+    becomes a space, as a comment separates tokens: ``a/* x /* y */ z */b``
+    must stay ``a b``, not become the name ``ab``.
+    """
+
+    def strip(nested: bool) -> str:
+        return strip_comments_preserving_quotes(
+            sql,
+            line_prefixes=["--"],
+            has_block_comments=True,
+            nested_block_comments=nested,
+            block_comment_replacement=" ",
+        )
+
+    stripped = strip(True)
+    return stripped if stripped != strip(False) else sql
 
 
 def _clean_identifier(name: str) -> str:
@@ -99,7 +130,7 @@ class Db2Provider(SqlAlchemyProvider):
 
     canonical_dialect_key = "db2"
     provider_transport = "native"
-    MIGRATION_LOCK_TABLE = "DBLIFT_MIGRATION_LOCK"
+    MIGRATION_LOCK_TABLE = _MIGRATION_LOCK_TABLE.upper()
 
     #: Schema this connection was last ``SET SCHEMA``'d to. Lets
     #: :meth:`set_current_schema` skip re-issuing ``SET SCHEMA`` on every
@@ -143,7 +174,7 @@ class Db2Provider(SqlAlchemyProvider):
         if schema:
             self.create_schema_if_not_exists(schema)
             self.set_current_schema(schema)
-        stmt = sql.strip()
+        stmt = _without_nested_comments(sql).strip()
         while stmt.endswith(";"):
             stmt = stmt[:-1].rstrip()
         return super().execute_statement(stmt, schema=schema, params=params)
@@ -173,12 +204,22 @@ class Db2Provider(SqlAlchemyProvider):
         self._schema_applied_for = schema
 
     def table_exists(self, schema: str, table_name: str) -> bool:
-        """Return whether a table exists in the given DB2 schema."""
+        """Return whether a table exists in the given DB2 schema.
+
+        An unquoted name matches in any case. A double-quoted name matches
+        only its exact text, so ``"flyway_schema_history"`` is not satisfied
+        by an uppercase ``FLYWAY_SCHEMA_HISTORY`` table.
+        """
+        table_match = (
+            "TABNAME = ?"
+            if configured_identifier_text(table_name) != table_name.strip()
+            else "UPPER(TABNAME) = UPPER(?)"
+        )
         rows = self.execute_query(
-            """
+            f"""
             SELECT TABNAME
             FROM SYSCAT.TABLES
-            WHERE UPPER(TABSCHEMA) = UPPER(?) AND UPPER(TABNAME) = UPPER(?)
+            WHERE UPPER(TABSCHEMA) = UPPER(?) AND {table_match}
             """,
             [_clean_identifier(schema), _clean_identifier(table_name)],
         )
@@ -302,7 +343,7 @@ class Db2Provider(SqlAlchemyProvider):
         self,
         schema: str,
         create_schema: bool = False,
-        table_name: str = "DBLIFT_SCHEMA_HISTORY",
+        table_name: str = _HISTORY_TABLE,
     ) -> None:
         """Create the DB2 migration history table if it is missing."""
         table_name = _db2_object_name(table_name)
@@ -327,7 +368,7 @@ class Db2Provider(SqlAlchemyProvider):
                 "Baseline cannot be applied to a schema with existing migrations."
             )
 
-    def create_history_table(self, schema: str, table_name: str = "DBLIFT_SCHEMA_HISTORY") -> str:
+    def create_history_table(self, schema: str, table_name: str = _HISTORY_TABLE) -> str:
         """Return SQL for the DB2 migration history table."""
         table_name = _db2_object_name(table_name)
         return f"""
@@ -346,7 +387,7 @@ class Db2Provider(SqlAlchemyProvider):
         """
 
     def get_applied_migrations(
-        self, schema: str, table_name: str = "DBLIFT_SCHEMA_HISTORY"
+        self, schema: str, table_name: str = _HISTORY_TABLE
     ) -> List[Dict[str, Any]]:
         """Return applied migration rows from the DB2 history table."""
         table_name = _db2_object_name(table_name)
@@ -362,12 +403,12 @@ class Db2Provider(SqlAlchemyProvider):
         for row in rows:
             item = {str(key).lower(): value for key, value in row.items()}
             if item.get("success") is not None:
-                item["success"] = bool(int(item["success"]))
+                item["success"] = success_to_bool(item["success"])
             normalized.append(item)
         return normalized
 
     def record_migration(
-        self, schema: str, migration_info: Dict[str, Any], table_name: str = "DBLIFT_SCHEMA_HISTORY"
+        self, schema: str, migration_info: Dict[str, Any], table_name: str = _HISTORY_TABLE
     ) -> None:
         """Insert a migration record into the DB2 history table."""
         table_name = _db2_object_name(table_name)
@@ -415,7 +456,7 @@ class Db2Provider(SqlAlchemyProvider):
                 "execution_time": 0,
                 "success": True,
             },
-            table_name or "DBLIFT_SCHEMA_HISTORY",
+            table_name or _HISTORY_TABLE,
         )
         return True
 
@@ -424,7 +465,7 @@ class Db2Provider(SqlAlchemyProvider):
         schema: str,
         script_name: str,
         checksum: Any,
-        table_name: str = "DBLIFT_SCHEMA_HISTORY",
+        table_name: str = _HISTORY_TABLE,
         success_value: Optional[Any] = None,
     ) -> bool:
         """Update checksum and success state for an existing DB2 migration row."""

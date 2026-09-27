@@ -4,7 +4,7 @@ Centralises the import path for sentinels and types so a single mistake
 about where the SDK exposes a constant cannot recur in multiple call
 sites.
 
-B10-BUG-24 root cause: ``PartitionKey.NonePartitionKeyValue`` does not
+Root cause: ``PartitionKey.NonePartitionKeyValue`` does not
 exist on the ``PartitionKey`` *class*. The constant is defined at module
 level in ``azure.cosmos.partition_key``. Both call sites (clean / repair)
 hit the wrong path independently. Routing every reference through this

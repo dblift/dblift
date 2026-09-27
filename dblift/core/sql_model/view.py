@@ -13,7 +13,7 @@ class View(SqlObject):
 
     Supports both regular views and materialized views with refresh options.
 
-    # SIMP-48: ``__init__`` still exposes 20 kwargs because flattening them
+    # ``__init__`` still exposes 20 kwargs because flattening them
     # would require a codemod over 249+ call sites. As a stepping stone,
     # ``dblift.core.sql_model.view_options.ViewOptions`` groups the dialect-specific
     # subset, and ``View.from_options`` / ``View.to_options`` below let new
@@ -179,7 +179,7 @@ class View(SqlObject):
         )
 
     # ------------------------------------------------------------------
-    # SIMP-48 — Typed-options surface (non-breaking).
+    # Typed-options surface (non-breaking).
     # ------------------------------------------------------------------
 
     @classmethod

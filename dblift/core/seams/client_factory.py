@@ -1,16 +1,15 @@
 """Resolve the CLI's client class through the ``dblift.client`` seam.
 
-The CLI builds one client per invocation. Paid tiers ship a ``DBLiftClient``
-subclass carrying their commands (offline planning, snapshots, ...) and
-register it under the ``dblift.client`` entry-point group; the CLI then
-constructs that subclass instead of the OSS client, so tier-provided command
-handlers receive a client exposing their methods. Without a registration the
-OSS ``api.DBLiftClient`` is used — behavior is unchanged for OSS-only
-installs.
+The CLI builds one client per invocation. An add-on package may ship a
+``DBLiftClient`` subclass carrying extra commands and register it under the
+``dblift.client`` entry-point group; the CLI then constructs that subclass
+instead of the built-in client, so the add-on's command handlers receive a
+client exposing their methods. Without a registration the built-in
+``api.DBLiftClient`` is used — behaviour is unchanged for a plain install.
 
 At most one registration is honored (the first the interpreter yields);
-loading failures are logged and fall back to the OSS client, so a broken
-plugin can never take the CLI down.
+loading failures are logged and fall back to the built-in client, so a
+broken plugin can never take the CLI down.
 """
 
 from __future__ import annotations
@@ -28,7 +27,7 @@ _resolution_done = False
 
 
 def resolve_client_class() -> Type[Any]:
-    """The registered ``dblift.client`` class, or the OSS ``DBLiftClient``."""
+    """The registered ``dblift.client`` class, or the built-in ``DBLiftClient``."""
     global _resolved_class, _resolution_done
     if not _resolution_done:
         _resolution_done = True

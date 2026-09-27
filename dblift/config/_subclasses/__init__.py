@@ -1,8 +1,8 @@
 """Non-dialect ``BaseDatabaseConfig`` subclass modules.
 
 The per-dialect configuration classes that used to live here have moved into
-their plugin packages (``db/plugins/<dialect>/config.py``, ADR-26 D /
-story 26-11): each plugin declares ``config_class=XxxConfig`` on its
+their plugin packages (``db/plugins/<dialect>/config.py``, ADR-26 D):
+each plugin declares ``config_class=XxxConfig`` on its
 ``PluginInfo`` and registers via plugin discovery, so adding a dialect no
 longer requires editing ``config/``.
 

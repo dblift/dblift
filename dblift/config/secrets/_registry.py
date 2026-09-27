@@ -33,7 +33,12 @@ def register_provider(scheme: str, cls: Type) -> None:
             non-empty and must not contain ``://``.
         cls:    Provider class.  Must subclass
             ``dblift.config.secrets.AbstractSecretsProvider`` and implement
-            ``resolve(uri) -> str`` and ``is_available() -> bool``.
+            ``resolve(uri) -> str`` and ``is_available() -> bool``. ``resolve``
+            raises ``SecretsResolutionError`` when the secret cannot be
+            produced; the CLI and ``dblift mcp`` report it as a configuration
+            error, as they do a bare ``ValueError`` or ``RuntimeError``, while
+            a direct ``DbliftConfig.from_dict`` caller receives whatever
+            ``resolve`` raises.
 
     Raises:
         ValueError: if *scheme* is empty or contains ``://``.
@@ -41,8 +46,11 @@ def register_provider(scheme: str, cls: Type) -> None:
 
     Example::
 
-        from dblift.config.secrets import AbstractSecretsProvider, register_provider
-        from dblift.config.secrets._secrets_config import SecretsConfig
+        from dblift.config.secrets import (
+            AbstractSecretsProvider,
+            SecretsConfig,
+            register_provider,
+        )
 
         class CyberArkProvider(AbstractSecretsProvider):
             scheme = "cyberark"

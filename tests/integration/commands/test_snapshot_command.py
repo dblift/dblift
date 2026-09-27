@@ -7,6 +7,7 @@ import json
 
 import pytest
 
+from dblift.cli.extensions import load_command_handlers
 from tests.integration.helpers.cli_runner import DBLiftCLI
 from tests.integration.helpers.migration_helper import (
     create_config,
@@ -15,6 +16,9 @@ from tests.integration.helpers.migration_helper import (
 )
 
 
+@pytest.mark.skipif(
+    "snapshot" not in load_command_handlers(), reason="snapshot command handler is not installed"
+)
 @pytest.mark.integration
 @pytest.mark.parametrize(
     "db_container",

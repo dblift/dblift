@@ -7,7 +7,10 @@ from dataclasses import dataclass, field
 from typing import Dict, List
 
 from dblift.db.plugins.oracle.parser._comments import strip_comments
-from dblift.db.plugins.oracle.parser._sqlplus import is_sqlplus_command, parse_whenever_sqlerror
+from dblift.db.plugins.oracle.parser._sqlplus import (
+    parse_whenever_sqlerror,
+    tokenize_outside_sqlplus_directives,
+)
 
 __all__ = [
     "SqlplusContext",
@@ -88,7 +91,7 @@ def extract_sqlplus_context(raw_sql: str) -> SqlplusContext:
 
 
 def terminate_sqlplus_directives(raw_sql: str) -> str:
-    """Append ``;`` to lines holding a SQL*Plus directive or WHENEVER SQLERROR.
+    """Prepare SQL*Plus directive lines for the ``;``/``/`` statement splitter.
 
     Why: SQL*Plus directives (``SET SERVEROUTPUT ON``, ``DEFINE x=1``,
     ``PROMPT msg``, ``WHENEVER SQLERROR CONTINUE`` …) are line-terminated in
@@ -96,71 +99,39 @@ def terminate_sqlplus_directives(raw_sql: str) -> str:
     on ``;`` or ``/``, so a directive line silently merges with the next
     DDL/DML and either gets dropped wholesale (when the merged text still
     matches ``is_sqlplus_command``) or sent to the driver verbatim and rejected
-    (when it does not). Either way the user's actual statement disappears
-    or fails.
+    (when it does not). Their text is not SQL either: the apostrophe in
+    ``PROMPT Creating customer's table`` would open a literal that swallows
+    the statements below it.
 
-    Fix: walk the script line-by-line and append ``;`` to any line that
-    matches ``is_sqlplus_command`` *or* ``parse_whenever_sqlerror`` and is
-    not already terminated by ``;`` / ``/``. Other lines pass through
-    unchanged so multi-line DDL keeps its original layout. Lines inside a
-    block comment are left alone — comments are stripped only for the
-    detection step, never written back.
+    Fix: find the directive lines where a statement can begin
+    (:func:`tokenize_outside_sqlplus_directives`). A ``WHENEVER SQLERROR``
+    line gets a ``;`` appended (unless already terminated by ``;`` / ``/``)
+    so it reaches the executor as its own statement; every other directive
+    is dropped before execution anyway, so its text is removed (a trailing
+    ``--`` comment and the newline stay).
+    Other lines pass through unchanged, including lines inside a PL/SQL
+    block or a multi-line literal that merely look like a directive
+    (``EXECUTE IMMEDIATE '...``).
     """
     if not raw_sql:
         return raw_sql
 
-    src_lines = raw_sql.splitlines(keepends=True)
-    bare_lines = [line.rstrip("\r\n") for line in src_lines]
-
-    # Track whether each source line is *currently* inside a /* ... */ block.
-    in_block_comment = False
-    inside_block: List[bool] = []
-    for line in bare_lines:
-        inside_block.append(in_block_comment)
-        i = 0
-        while i < len(line):
-            two = line[i : i + 2]
-            if not in_block_comment and two == "/*":
-                in_block_comment = True
-                i += 2
-                continue
-            if in_block_comment and two == "*/":
-                in_block_comment = False
-                i += 2
-                continue
-            i += 1
-
+    _, directive_lines = tokenize_outside_sqlplus_directives(raw_sql)
     out: List[str] = []
-    for src_line, bare, in_block in zip(src_lines, bare_lines, inside_block):
-        if in_block:
-            out.append(src_line)
+    last = 0
+    for start, end in directive_lines:
+        out.append(raw_sql[last:start])
+        last = end
+        line = raw_sql[start:end]
+        directive = line.rstrip()
+        if parse_whenever_sqlerror(line) is None:
             continue
-
-        # Strip line comment (--) for directive detection only.
-        detect = bare.split("--", 1)[0]
-        stripped = detect.strip()
-        if not stripped:
-            out.append(src_line)
-            continue
-        if stripped.endswith(";") or stripped.endswith("/"):
-            out.append(src_line)
-            continue
-        if not (is_sqlplus_command(stripped) or parse_whenever_sqlerror(stripped) is not None):
-            out.append(src_line)
-            continue
-
-        # Insert ';' before any trailing comment / line-ending whitespace.
-        idx = src_line.find("--")
-        if idx == -1:
-            # No inline comment: insert before trailing newline characters.
-            trail_start = len(src_line)
-            while trail_start > 0 and src_line[trail_start - 1] in ("\n", "\r"):
-                trail_start -= 1
-            new_line = src_line[:trail_start].rstrip() + ";" + src_line[trail_start:]
+        if directive.endswith(";") or directive.endswith("/"):
+            out.append(line)
         else:
-            new_line = src_line[:idx].rstrip() + "; " + src_line[idx:]
-        out.append(new_line)
-
+            # Insert ';' before any trailing comment / line-ending whitespace.
+            out.append(directive + ";" + line[len(directive) :])
+    out.append(raw_sql[last:])
     return "".join(out)
 
 

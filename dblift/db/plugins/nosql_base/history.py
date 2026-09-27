@@ -3,6 +3,7 @@
 from abc import abstractmethod
 from typing import Any, Optional
 
+from dblift.core.constants import DEFAULT_HISTORY_TABLE
 from dblift.db.plugins.base_history_manager import BaseHistoryManager
 
 
@@ -28,7 +29,7 @@ class DocumentHistoryManager(BaseHistoryManager):
     #: Name of the collection/container holding migration history.
     #: Implementations override; the framework never assumes a SQL table
     #: name so this may differ from ``dblift_schema_history``.
-    HISTORY_CONTAINER_NAME: str = "dblift_schema_history"
+    HISTORY_CONTAINER_NAME: str = DEFAULT_HISTORY_TABLE
 
     @abstractmethod
     def delete_failed_migration_entry(

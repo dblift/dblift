@@ -1,11 +1,11 @@
-"""Registry for the CLI's license-info provider, contributed by higher tiers.
+"""Registry for the CLI's license-info provider, contributed by add-on packages.
 
-OSS core calls :func:`get_license_info` to learn what (if anything) to show
+The core calls :func:`get_license_info` to learn what (if anything) to show
 in the "Licensed to: ..." log banner. With nothing registered, every
-invocation resolves to ``None`` and the banner is omitted. Installed higher
-tiers register a provider here (via the ``dblift.features`` entry-point
-group) that returns the resolved license's display info, or ``None`` when
-no valid license is present.
+invocation resolves to ``None`` and the banner is omitted. An installed
+add-on registers a provider here (via the ``dblift.features`` entry-point
+group) that returns the display info, or ``None`` when there is nothing to
+show.
 """
 
 from __future__ import annotations

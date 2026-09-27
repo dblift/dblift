@@ -2,6 +2,8 @@
 
 from types import SimpleNamespace
 
+import pytest
+
 from dblift.db.plugins.db2.provider import Db2Provider
 
 
@@ -114,3 +116,21 @@ def test_list_droppable_objects_excludes_db2_identity_sequences() -> None:
     assert [(obj.object_type, obj.name, obj.drop_sql) for obj in objects] == [
         ("sequence", "ORDER_SEQ", 'DROP SEQUENCE "APP"."ORDER_SEQ"')
     ]
+
+
+def test_list_droppable_objects_propagates_catalog_query_failure() -> None:
+    # A failed catalog query must not read as "no objects of this kind":
+    # clean would then report success having dropped nothing.
+    provider = DummyDb2Provider({"AND TYPE = 'T'": [{"TABNAME": "ORDERS"}]})
+    default = provider.execute_query
+
+    def failing_query(sql, params=None):
+        if "SYSCAT.TRIGGERS" in sql:
+            raise RuntimeError("SQL0551N no SELECT privilege on SYSCAT.TRIGGERS")
+        return default(sql, params)
+
+    provider.execute_query = failing_query
+
+    with pytest.raises(RuntimeError, match="SQL0551N"):
+        provider.list_droppable_objects("APP")
+    assert all(call[0] != "statement" for call in provider.calls)

@@ -1,3 +1,4 @@
+import logging
 import re
 import urllib.parse
 from abc import ABC, abstractmethod
@@ -7,21 +8,41 @@ from typing import Any, Callable, ClassVar, Dict, Optional, Type
 from dblift.config._credential_masking import mask_credentials
 from dblift.config._url_builder_mixin import UrlBuilderMixin
 
+_LOG = logging.getLogger(__name__)
+
 # Constants will be ported separately if needed
 DEFAULT_CONNECTION_TIMEOUT_SECONDS = 30
 
+# Alphanumeric plus underscore. ``\Z`` (via ``fullmatch``) rejects a trailing
+# newline, which ``$`` would allow. A double-quoted form is Oracle-only;
+# see :func:`schema_name_allowed`.
+_UNQUOTED_SCHEMA_RE = re.compile(r"[A-Za-z0-9_]+")
+_QUOTED_SCHEMA_RE = re.compile(r'"[A-Za-z0-9_]+"')
+
+
+def schema_name_allowed(schema: str, *, allow_quoted: bool = False) -> bool:
+    """Return whether *schema* is a safe configured schema name.
+
+    Every dialect accepts an unquoted name of ASCII letters, digits, and
+    underscores. Oracle also accepts one pair of double quotes around that
+    same interior (the quotes are part of the value). A trailing newline
+    does not match.
+    """
+    if re.fullmatch(_UNQUOTED_SCHEMA_RE, schema):
+        return True
+    return bool(allow_quoted and re.fullmatch(_QUOTED_SCHEMA_RE, schema))
+
 
 def _detect_dialect_from_url(url: str) -> str:
-    """Resolve dialect from the URL scheme only (B10-BUG-22).
+    """Resolve dialect from the URL scheme only.
 
     Returns the dialect's canonical name (resolved through the plugin
     registry — aliases like ``postgres`` / ``sqlite3`` map to their
     canonical primary names) or ``""`` when the scheme is unknown.
 
-    Story 26-11: dropped the hardcoded ``_SCHEME_TO_DIALECT`` dict in
-    favour of ``ProviderRegistry.canonical_dialect_name``. Adding a
-    new dialect = drop a plugin folder; the URL-scheme lookup
-    follows automatically.
+    Resolution uses ``ProviderRegistry.canonical_dialect_name`` instead of
+    a hardcoded ``_SCHEME_TO_DIALECT`` dict. Adding a new dialect = drop a
+    plugin folder; the URL-scheme lookup follows automatically.
     """
     if not url:
         return ""
@@ -371,7 +392,32 @@ def _instantiate_config(
     """Phase 7: filter ``data`` to ``config_class``'s dataclass fields and instantiate."""
     config_fields = set(f.name for f in config_class.__dataclass_fields__.values())
     filtered_data = {k: v for k, v in data.items() if k in config_fields}
-    # NOTE: Debug logging omitted - filtered_data contains sensitive credentials
+    # A key that is not a field is dropped here; a near-miss of a real field
+    # (``srvice`` for ``service_name``, ``service`` for ``service_name``) would
+    # otherwise be ignored in silence and the value fall back to a default.
+    # Warn, naming the keys, but do not raise: a driver-specific option belongs
+    # under ``extra_params``. Only warn for a key that is neither internal
+    # (leading ``_``) nor a real field of *some* dialect — a field valid for
+    # another engine (``sid`` in a PostgreSQL block) is misplaced, not a typo,
+    # and warning on it would flood a config that carries a cross-dialect
+    # superset. (Names only — values may be credentials, never logged.)
+    known_any_dialect = {
+        f.name
+        for cls in BaseDatabaseConfig._registry.values()
+        for f in cls.__dataclass_fields__.values()
+    }
+    unknown = sorted(
+        key
+        for key in set(data) - config_fields
+        if not key.startswith("_") and key not in known_any_dialect
+    )
+    if unknown:
+        _LOG.warning(
+            "Ignoring unrecognized %s config key(s): %s. "
+            "Check for a typo, or put driver-specific options under 'extra_params'.",
+            config_class.__name__,
+            ", ".join(unknown),
+        )
     return config_class(**filtered_data)
 
 
@@ -408,16 +454,24 @@ class BaseDatabaseConfig(UrlBuilderMixin, ABC):
         if not hasattr(self, "type"):
             raise ValueError("Database type is required")
 
-        if self.schema and not re.match(r"^[a-zA-Z0-9_]+$", self.schema):
-            raise ValueError(
-                f"Invalid schema name: {self.schema!r}. "
-                "Schema names must contain only ASCII letters, digits, and underscores."
-            )
+        if self.schema and not self._configured_schema_allowed(self.schema):
+            raise ValueError(self._invalid_schema_message())
 
         # Convert port to int if needed
         if isinstance(self.port, str):
             # mypy unreachable workaround: do not attempt conversion here
             pass
+
+    def _configured_schema_allowed(self, schema: str) -> bool:
+        """Unquoted names only. Oracle overrides this to allow one quoted form."""
+        return schema_name_allowed(schema)
+
+    def _invalid_schema_message(self) -> str:
+        """Error text for a schema name this dialect will not accept."""
+        return (
+            f"Invalid schema name: {self.schema!r}. "
+            "Schema names must contain only ASCII letters, digits, and underscores."
+        )
 
     @classmethod
     def from_url(cls, url: str) -> "BaseDatabaseConfig":
@@ -505,6 +559,33 @@ class BaseDatabaseConfig(UrlBuilderMixin, ABC):
         """
         return mask_credentials(self.to_dict())
 
+    def describe_target(self) -> str:
+        """One-line, secret-free summary of this database target."""
+        info = self.to_safe_dict()
+        url = info.get("url")
+        if url:
+            return str(url)
+        path = info.get("path")
+        if path:
+            return f"{self.type} {path}"
+
+        identity = info.get("host") or info.get("account") or info.get("account_endpoint")
+        name = info.get("database") or info.get("database_name")
+        if not identity and not name:
+            return f"{self.type} (no host, account or path configured)"
+
+        target = identity.rstrip("/") if identity else ""
+        port = info.get("port")
+        if identity and port:
+            target += f":{port}"
+        if name:
+            target = f"{target}/{name}" if target else name
+
+        username = info.get("username")
+        if username and identity:
+            return f"{self.type} {username}@{target}"
+        return f"{self.type} {target}"
+
     def __repr__(self) -> str:
         """Return a safe string representation that doesn't expose credentials."""
         safe_dict = self.to_safe_dict()
@@ -582,7 +663,7 @@ class DatabaseConfig:
 # ---------------------------------------------------------------------------
 # Per-dialect config subclasses now live in their plugin packages
 # (``db/plugins/<dialect>/config.py``) and register via plugin discovery
-# (story 26-11 / ADR-26 D). Each plugin declares ``config_class=XxxConfig`` on
+# (ADR-26 D). Each plugin declares ``config_class=XxxConfig`` on
 # its ``PluginInfo`` and ``_resolve_config_class`` (above) picks it up through
 # the plugin registry — adding a dialect no longer requires editing ``config/``.
 #

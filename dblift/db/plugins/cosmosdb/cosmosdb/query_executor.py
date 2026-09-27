@@ -96,7 +96,7 @@ class CosmosDbQueryExecutor(BaseQueryExecutor):
         self.log.debug(f"Executing Cosmos DB query: {sql[:100]}...")
 
         try:
-            # BUG-04: same scalar-SELECT short-circuit as execute_statement.
+            # Same scalar-SELECT short-circuit as execute_statement.
             # ``SELECT 1`` / ``SELECT CURRENT_TIMESTAMP`` have no FROM and
             # cannot bind to any container. Returning ``[]`` keeps callers
             # (liveness probes, smoke tests) working without the misleading
@@ -458,7 +458,7 @@ class CosmosDbQueryExecutor(BaseQueryExecutor):
         list). Strings are single-quoted and escaped; numbers/bools/None are
         rendered verbatim. Raises ``ValueError`` on placeholder/param mismatch
         so repair paths surface a clear error instead of silently deleting
-        zero rows (B9-BUG-01).
+        zero rows.
 
         Args:
             sql_fragment: SQL text (full query or clause fragment) containing ``?`` placeholders.

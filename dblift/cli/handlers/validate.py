@@ -8,6 +8,7 @@ from dblift.cli.handlers._shared import (
     CliCommandContext,
     _extract_version_filters,
     _migration_info_to_dict,
+    _reraise_preflight_failure,
     run_json_guarded,
 )
 
@@ -16,7 +17,9 @@ def _validate_result_to_dict(result: Any) -> Dict[str, Any]:
     """Serialize a ValidateResult to a JSON-compatible dict."""
     return {
         "success": bool(getattr(result, "success", True)),
-        "error": getattr(result, "error_message", None),
+        # A clean validate leaves error_message empty (""); emit null, as info
+        # and migrate do, so the three read tools share one error contract.
+        "error": getattr(result, "error_message", None) or None,
         "target_schema": getattr(result, "target_schema", ""),
         "error_count": getattr(result, "error_count", 0),
         "issues": list(getattr(result, "issues", [])),
@@ -35,15 +38,19 @@ def _handle_validate(ctx: CliCommandContext) -> Tuple[bool, Any]:
     )
 
     def call() -> Any:
-        return ctx.client.validate(
-            target_version=target_version,
-            tags=tags,
-            exclude_tags=exclude_tags,
-            versions=versions,
-            exclude_versions=exclude_versions,
-            recursive=ctx.recursive,
-            dir_recursive_map=ctx.dir_recursive_map or None,
-            additional_dirs=ctx.additional_scripts_dirs if ctx.additional_scripts_dirs else None,
+        return _reraise_preflight_failure(
+            ctx.client.validate(
+                target_version=target_version,
+                tags=tags,
+                exclude_tags=exclude_tags,
+                versions=versions,
+                exclude_versions=exclude_versions,
+                recursive=ctx.recursive,
+                dir_recursive_map=ctx.dir_recursive_map or None,
+                additional_dirs=(
+                    ctx.additional_scripts_dirs if ctx.additional_scripts_dirs else None
+                ),
+            )
         )
 
     return run_json_guarded(ctx, "VALIDATE", call, _validate_result_to_dict)

@@ -272,6 +272,13 @@ class MigrationValidator:
             result.success = False
             result.error_message = f"Validation failed: {snapshot.catalog_read_error}"
             return result
+        if snapshot.history_read_error:
+            result.success = False
+            result.error_message = (
+                f"Validation failed: could not read migration history: "
+                f"{snapshot.history_read_error}"
+            )
+            return result
         if not snapshot.scripts_directory_exists:
             result.success = False
             result.error_message = (
@@ -285,10 +292,6 @@ class MigrationValidator:
                 result.issues = issues
                 return result
             if not scripts:
-                if snapshot.strict_mode and snapshot.history_read_error:
-                    result.success = False
-                    result.error_message = f"Validation failed: {snapshot.history_read_error}"
-                    return result
                 result.success = not (snapshot.strict_mode and snapshot.all_applied_migrations)
                 result.execution_time = TEST_PLACEHOLDER_TIME_MS
                 return result

@@ -10,6 +10,12 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, cast
 
+from dblift.core.constants import (
+    DBLIFT_DATA_CHANGE_SET_TABLE,
+    DBLIFT_SCHEMA_SNAPSHOTS_TABLE,
+    DEFAULT_HISTORY_TABLE,
+)
+
 
 @dataclass(frozen=True)
 class DroppableObject:
@@ -188,7 +194,7 @@ class SchemaProvider(ABC):
 
     @abstractmethod
     def create_snapshot_table_if_not_exists(
-        self, schema: str, table_name: str = "dblift_schema_snapshots"
+        self, schema: str, table_name: str = DBLIFT_SCHEMA_SNAPSHOTS_TABLE
     ) -> None:
         """Create the schema snapshot storage table if it does not exist.
 
@@ -210,7 +216,7 @@ class SchemaProvider(ABC):
 
     @abstractmethod
     def create_data_change_set_table_if_not_exists(
-        self, schema: str, table_name: str = "dblift_data_change_set"
+        self, schema: str, table_name: str = DBLIFT_DATA_CHANGE_SET_TABLE
     ) -> None:
         """Create the data change-set table (before/after payloads via snapshot codec) if it does not exist.
 
@@ -293,7 +299,7 @@ class MigrationProvider(ABC):
 
     @abstractmethod
     def get_applied_migrations(
-        self, schema: str, table_name: str = "dblift_schema_history"
+        self, schema: str, table_name: str = DEFAULT_HISTORY_TABLE
     ) -> List[Dict[str, Any]]:
         """Get list of applied migrations from history table.
 
@@ -308,7 +314,7 @@ class MigrationProvider(ABC):
 
     @abstractmethod
     def record_migration(
-        self, schema: str, migration_info: Dict[str, Any], table_name: str = "dblift_schema_history"
+        self, schema: str, migration_info: Dict[str, Any], table_name: str = DEFAULT_HISTORY_TABLE
     ) -> None:
         """Record a migration in the history table.
 
@@ -334,7 +340,7 @@ class MigrationProvider(ABC):
 
     @abstractmethod
     def create_history_table_if_not_exists(
-        self, schema: str, create_schema: bool = False, table_name: str = "dblift_schema_history"
+        self, schema: str, create_schema: bool = False, table_name: str = DEFAULT_HISTORY_TABLE
     ) -> None:
         """Create the migration history table if it doesn't exist.
 

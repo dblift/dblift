@@ -7,6 +7,9 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from dblift.core.logger import NullLog
+from dblift.core.migration.history.migration_history_manager import MigrationHistoryManager
+from dblift.core.sql_validator._flyway_compatibility import validate_flyway_compatibility
 from dblift.core.sql_validator.migration_validator import MigrationValidator
 
 
@@ -18,6 +21,7 @@ def _make_validator(provider: MagicMock) -> MigrationValidator:
 
     provider.get_schema_qualified_name.return_value = "public.dblift_schema_history"
     provider.get_normalized_object_name.side_effect = lambda name: name
+    provider.quirks = BaseQuirks()
     history = MigrationHistoryManager(provider, "public", "tester", NullLog())
     return MigrationValidator(
         MigrationScriptManager(NullLog()), history, NullLog(), quirks=BaseQuirks()
@@ -39,6 +43,38 @@ def _row(
         "installed_rank": 1,
         "success": True,
     }
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("quirks_path", ["oracle", "db2"])
+def test_uppercase_folding_dialect_reads_flyway_quoted_lowercase_table(quirks_path):
+    """Oracle and DB2: Flyway's table is ``"flyway_schema_history"`` with
+    quoted lowercase columns. The snapshot must find it and read its rows."""
+    from dblift.db.provider_registry import ProviderRegistry
+
+    provider = MagicMock()
+    provider.quirks = ProviderRegistry.get_quirks(quirks_path)
+    existing = {'"flyway_schema_history"', "DBLIFT_SCHEMA_HISTORY"}
+    provider.table_exists.side_effect = lambda schema, table: table in existing
+    provider.get_schema_qualified_name.side_effect = (
+        lambda schema, table: f'"{schema}"."{table.strip(chr(34))}"'
+    )
+    provider.execute_query.side_effect = [[_row()], [_row()]]
+    provider.get_applied_migrations.return_value = [_row()]
+    provider.get_normalized_object_name.side_effect = str.upper
+    history = MigrationHistoryManager(provider, "APP", "tester", NullLog())
+
+    snapshot = history.collect_flyway_compatibility_snapshot()
+
+    assert snapshot.collection_error == ""
+    assert snapshot.flyway_exists is True
+    assert [row["script"] for row in snapshot.flyway_migrations] == ["V1__init.sql"]
+    flyway_query = provider.execute_query.call_args_list[0].args[0]
+    assert flyway_query == 'SELECT * FROM "APP"."flyway_schema_history"'
+    # dblift's own history is read the way import-flyway reads it.
+    provider.get_applied_migrations.assert_called_once_with("APP", "DBLIFT_SCHEMA_HISTORY")
+    assert [row["script"] for row in snapshot.dblift_migrations] == ["V1__init.sql"]
+    assert validate_flyway_compatibility(snapshot)["compatible"] is True
 
 
 @pytest.mark.unit
@@ -158,6 +194,112 @@ class TestFlywayCompatibilityAcceptedTypes:
 
         assert result["compatible"] is False
         assert "Migration type mismatch" in str(result["error_message"])
+
+
+def _imported_history(flyway_rows: list[dict[str, object]]) -> list[dict[str, object]]:
+    """The dblift rows import-flyway writes for ``flyway_rows``."""
+    from dblift.core.migration.commands.import_flyway_command import ImportFlywayCommand
+
+    command = ImportFlywayCommand.__new__(ImportFlywayCommand)
+    return [command._row_with_mapped_type(row) for row in flyway_rows]
+
+
+def _compare(flyway_rows, dblift_rows):
+    from dblift.core.migration.history.migration_history_manager import (
+        FlywayCompatibilitySnapshot,
+    )
+
+    snapshot = FlywayCompatibilitySnapshot(True, True, tuple(flyway_rows), tuple(dblift_rows))
+    return validate_flyway_compatibility(snapshot)
+
+
+@pytest.mark.unit
+class TestFlywayCompatibilityAfterImport:
+    """A history import-flyway just wrote must read back as compatible."""
+
+    @pytest.mark.parametrize(
+        ("flyway_type", "version", "script"),
+        [
+            ("SQL", "1", "V1__init.sql"),
+            ("SQL", None, "R__view.sql"),
+            ("JDBC", "2", "db.migration.V2__java"),
+            ("JDBC", None, "db.migration.R__java"),
+            ("SPRING_JDBC", "3", "db.migration.V3__spring"),
+            ("SCRIPT", "4", "V4__script.sh"),
+            ("BASELINE", "5", "<< Flyway Baseline >>"),
+            ("UNDO_SQL", "5", "U5__init.sql"),
+            ("UNDO_SCRIPT", "5", "U5__init.sql"),
+            ("DELETE", "6", "V6__gone.sql"),
+        ],
+    )
+    def test_imported_row_is_compatible(self, flyway_type, version, script):
+        flyway_rows = [{**_row(version=version, script=script), "type": flyway_type}]
+
+        result = _compare(flyway_rows, _imported_history(flyway_rows))
+
+        assert result["compatible"] is True, result["error_message"]
+
+    def test_mixed_history_with_repeatable_is_compatible(self):
+        flyway_rows = [
+            _row(version="1", script="V1__init.sql"),
+            _row(version="2", script="V2__more.sql"),
+            {**_row(version=None, script="R__view.sql"), "installed_rank": 3},
+        ]
+        dblift_rows = _imported_history(flyway_rows)
+        assert dblift_rows[2]["type"] == "REPEATABLE"
+
+        result = _compare(flyway_rows, dblift_rows)
+
+        assert result["compatible"] is True, result["error_message"]
+
+    def test_python_versioned_row_stands_in_for_versioned_flyway_row(self):
+        result = _compare([_row()], [{**_row(), "type": "PYTHON"}])
+
+        assert result["compatible"] is True, result["error_message"]
+
+    @pytest.mark.parametrize(
+        ("flyway_row", "dblift_type"),
+        [
+            (_row(), "REPEATABLE"),
+            (_row(), "BASELINE"),
+            (_row(version=None, script="R__view.sql"), "SQL"),
+            (_row(version=None, script="R__view.sql"), "PYTHON"),
+            ({**_row(), "type": "BASELINE"}, "SQL"),
+            ({**_row(), "type": "UNDO_SQL"}, "SQL"),
+        ],
+    )
+    def test_mismatched_type_is_incompatible(self, flyway_row, dblift_type):
+        result = _compare([flyway_row], [{**flyway_row, "type": dblift_type}])
+
+        assert result["compatible"] is False
+        assert str(result["error_message"]).startswith("Migration type mismatch at position 1:")
+        assert str(result["error_message"]).endswith(f"vs Dblift type '{dblift_type}'.")
+
+
+@pytest.mark.unit
+def test_error_messages_have_no_placeholder_punctuation():
+    messages = [
+        _compare([_row()], [])["error_message"],
+        _compare([_row()], [_row(version="2")])["error_message"],
+        _compare([{**_row(), "type": "PYTHON"}], [_row()])["error_message"],
+        _compare([_row()], [{**_row(), "type": "NONSENSE"}])["error_message"],
+        _compare([_row()], [_row(script="V1__other.sql")])["error_message"],
+        _compare([_row()], [_row(checksum=9)])["error_message"],
+    ]
+    from dblift.core.migration.history.migration_history_manager import (
+        FlywayCompatibilitySnapshot,
+    )
+    from dblift.core.sql_validator._flyway_compatibility import check_flyway_history_table
+
+    messages.append(
+        check_flyway_history_table(
+            FlywayCompatibilitySnapshot(flyway_exists=True, dblift_exists=False)
+        ).error_message
+    )
+    for message in messages:
+        assert message and ". ." not in message and ".  ." not in message
+        assert message.strip() != "."
+    assert "import-flyway" in messages[-1]
 
 
 def test_state_read_phase_caches_data_and_new_phase_refreshes():

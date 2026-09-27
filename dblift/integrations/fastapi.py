@@ -21,6 +21,7 @@ if TYPE_CHECKING:
     from dblift.api import DBLiftClient
     from dblift.api.async_client import AsyncDBLiftClient
 
+from dblift.cli.handlers._shared import _reraise_preflight_failure
 from dblift.core.exceptions import DbliftError
 
 
@@ -30,6 +31,7 @@ def _pending_ids_from_info(info: Any) -> list[str]:
     The strings are the migration "ids" (primarily script names, with version
     info when useful) so callers can log or surface them in health responses.
     """
+    _reraise_preflight_failure(info)
     if not getattr(info, "success", True):
         detail = getattr(info, "error_message", None) or "migration state is unavailable"
         raise DbliftError(f"Could not determine migration state: {detail}")

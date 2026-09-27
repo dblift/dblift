@@ -160,6 +160,11 @@ class TestFromEnvDictAutoMapping:
             result = DbliftConfig.from_env_dict()
             assert result["database"]["encrypt"] is True, f"Expected True for {truthy!r}"
 
+    def test_fail_on_fixed_dbo_env_var_is_a_bool(self, monkeypatch):
+        monkeypatch.setenv("DBLIFT_DB_FAIL_ON_FIXED_DBO", "true")
+        result = DbliftConfig.from_env_dict()
+        assert result["database"]["fail_on_fixed_dbo"] is True
+
     def test_bool_field_false_values(self, monkeypatch):
         for falsy in ("false", "False", "0", "no", "No"):
             monkeypatch.setenv("DBLIFT_DB_ENCRYPT", falsy)

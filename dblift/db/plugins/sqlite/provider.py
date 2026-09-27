@@ -7,7 +7,11 @@ This provider uses Python's native sqlite3 module.
 import sqlite3
 from typing import Any, Callable, Dict, List, Optional
 
+from sqlalchemy.exc import SQLAlchemyError
+
 from dblift.config import DbliftConfig
+from dblift.core.constants import DEFAULT_HISTORY_TABLE
+from dblift.core.constants import MIGRATION_LOCK_TABLE as _MIGRATION_LOCK_TABLE
 from dblift.core.logger import Log
 from dblift.core.migration.clean_summary import CleanExecutionSummary
 from dblift.db.base_provider import NativeProvider
@@ -31,13 +35,13 @@ class SQLiteProvider(NativeProvider, TransactionalProvider):
     # what value restores the driver's own default.
     DEFAULT_BUSY_TIMEOUT_SECONDS = DEFAULT_BUSY_TIMEOUT_SECONDS
 
-    # BUG-04: schema_snapshot_service filters internal tables by looking up
+    # schema_snapshot_service filters internal tables by looking up
     # ``provider.MIGRATION_LOCK_TABLE`` via ``getattr(..., "")``. Without this
     # attribute, the filter reduced to the empty string and the lock table
     # appeared in snapshots as if it were a user table. SQLite inherits from
     # ``BaseProvider``, so we declare it here explicitly, matching the hardcoded name used by
     # ``SQLiteLockingManager``.
-    MIGRATION_LOCK_TABLE = "dblift_migration_lock"
+    MIGRATION_LOCK_TABLE = _MIGRATION_LOCK_TABLE
 
     def __init__(self, config: DbliftConfig, log: Optional[Log] = None) -> None:
         """Initialize SQLite provider with modular components.
@@ -81,7 +85,15 @@ class SQLiteProvider(NativeProvider, TransactionalProvider):
         self._external_engine = engine
         self._external_sa_connection = connection
         self._external_connection = True
-        self._bind_external_sqlalchemy()
+        try:
+            self._bind_external_sqlalchemy()
+        except (SQLAlchemyError, sqlite3.Error) as exc:
+            # A database file that cannot be opened: leave the connection
+            # unbound. ``_ensure_connection`` binds it again on first use, so
+            # the command's connection preflight reports the failure instead
+            # of the client failing while it is being built.
+            self.connection = None
+            self.log.debug(f"Deferred binding the caller's SQLite connection: {exc}")
 
     def _bind_external_sqlalchemy(self) -> sqlite3.Connection:
         """(Re)extract the caller's underlying sqlite3 connection.
@@ -430,7 +442,7 @@ class SQLiteProvider(NativeProvider, TransactionalProvider):
         schema: str,
         script_name: str,
         checksum: Any,
-        table_name: str = "dblift_schema_history",
+        table_name: str = DEFAULT_HISTORY_TABLE,
         success_value: Optional[Any] = None,
     ) -> bool:
         """Update checksum and success state for an existing migration row.
@@ -473,7 +485,7 @@ class SQLiteProvider(NativeProvider, TransactionalProvider):
         self,
         schema: str,
         create_schema: bool = False,
-        table_name: str = "dblift_schema_history",
+        table_name: str = DEFAULT_HISTORY_TABLE,
     ) -> None:
         """Create migration history table if it doesn't exist.
 

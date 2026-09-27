@@ -4,6 +4,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from dblift.core.migration.commands.base_command import PreflightConnectionError
 from dblift.core.migration.commands.clean_command import CleanCommand
 
 
@@ -35,34 +36,25 @@ class TestCleanCommandEnsureConnectionLogging:
         provider.commit_transaction.return_value = None
         return cmd, provider, log
 
-    def test_ensure_connection_exception_logs_debug(self):
-        """AC#3.1: _ensure_connection raises → log.debug called with '_ensure_connection skipped'.
+    @pytest.mark.parametrize("dry_run", [False, True])
+    def test_ensure_connection_failure_raises_preflight_error(self, dry_run):
+        """A failed connection is a preflight failure, as for every command.
 
-        ``_ensure_connected`` now formats connection failures via
-        ``dblift.db.error.format_connection_error`` before re-raising (so every
-        command reports connection errors the same friendly way), so the
-        debug log carries that formatted message rather than the raw
-        driver text.
+        It is raised before anything is dropped, with the friendly
+        ``Connection failed: ...`` text and the clean result attached, so
+        ``DBLiftClient.clean()`` can return it as a failed result.
         """
-        cmd, provider, log = self._make_command()
+        cmd, provider, _log = self._make_command()
+        cmd.config.clean_disabled = False
         provider._ensure_connection.side_effect = RuntimeError("conn refused")
 
-        cmd.execute()
+        with pytest.raises(PreflightConnectionError, match="Connection failed") as exc_info:
+            cmd.execute(dry_run=dry_run)
 
-        debug_calls = [str(c) for c in log.debug.call_args_list]
-        assert any("_ensure_connection skipped" in c for c in debug_calls)
-        assert any("Connection failed" in c for c in debug_calls)
-
-    def test_ensure_connection_exception_does_not_raise(self):
-        """AC#3.2: _ensure_connection raises → execute() does not propagate."""
-        cmd, provider, log = self._make_command()
-        provider._ensure_connection.side_effect = Exception("timeout")
-
-        result = cmd.execute()
-
-        assert result is not None
-        debug_calls = [str(c) for c in log.debug.call_args_list]
-        assert any("_ensure_connection skipped" in c for c in debug_calls)
+        assert exc_info.value.result is not None
+        assert exc_info.value.result.target_schema == "myschema"
+        provider.clean_schema.assert_not_called()
+        provider.list_droppable_objects.assert_not_called()
 
     def test_set_current_schema_exception_logs_debug(self):
         """AC#3.3: set_current_schema raises → log.debug called with 'set_current_schema skipped'."""
@@ -95,6 +87,39 @@ class TestCleanCommandEnsureConnectionLogging:
 
         debug_calls = [str(c) for c in log.debug.call_args_list]
         assert not any("_ensure_connection skipped" in c for c in debug_calls)
+
+    def test_set_current_schema_fixed_dbo_error_fails_clean(self):
+        """The opt-in dbo guard raises FixedDboSchemaError and must fail clean.
+
+        Other set_current_schema failures stay non-fatal. This one is the
+        configured fail-fast path and must stop before any drop runs.
+        """
+        from dblift.core.exceptions import FixedDboSchemaError
+
+        cmd, provider, _log = self._make_command()
+        provider.set_current_schema.side_effect = FixedDboSchemaError("dbo cannot change schema")
+
+        result = cmd.execute()
+
+        assert result.success is False
+        assert "dbo cannot change schema" in (result.error_message or "")
+        provider.list_droppable_objects.assert_not_called()
+
+    def test_set_current_schema_execution_error_stays_nonfatal(self):
+        """A plain ExecutionError from set_current_schema does not fail clean."""
+        from dblift.core.exceptions import ExecutionError
+
+        cmd, provider, log = self._make_command()
+        provider.set_current_schema.side_effect = ExecutionError("schema write failed")
+        provider.list_droppable_objects.return_value = []
+
+        result = cmd.execute()
+
+        assert result.success is True
+        assert "schema write failed" not in (result.error_message or "")
+        provider.list_droppable_objects.assert_called()
+        debug_calls = [str(c) for c in log.debug.call_args_list]
+        assert any("set_current_schema skipped" in c for c in debug_calls)
 
     def test_set_current_schema_success_no_debug_log(self):
         """set_current_schema succeeds → no 'set_current_schema skipped' debug log."""

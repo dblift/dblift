@@ -70,6 +70,7 @@ def _make_command(applied_migrations, undo_scripts):
     )
 
     migration_rules = MagicMock()
+    migration_rules._is_currently_undone.return_value = False
     migration_rules.should_undo_version.return_value = (True, None)
 
     executor_factory = MagicMock()

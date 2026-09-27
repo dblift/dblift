@@ -5,6 +5,7 @@ Clean command implementation.
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from dblift.core.exceptions import FixedDboSchemaError
 from dblift.core.logger.results import CleanResult
 from dblift.db.provider_interfaces import TransactionalProvider
 
@@ -38,7 +39,7 @@ class CleanCommand(BaseCommand):
         result = CleanResult()
         clean_enabled = kwargs.pop("clean_enabled", False) is True
         result.show_query_results = kwargs.pop("show_query_results", False) is True
-        # BUG-10: CosmosDB has no SQL schema, so ``config.database.schema`` is
+        # CosmosDB has no SQL schema, so ``config.database.schema`` is
         # empty and the summary line rendered as "Cleaned N object(s) from
         # schema '':". Fall back to the database-scope name when schema is
         # unset so the label is meaningful across dialects. For SQL dialects
@@ -64,28 +65,24 @@ class CleanCommand(BaseCommand):
             result.complete()
             return result
 
+        # Connect and read connection metadata (clean needs no history table).
+        # Needed for both dry-run enumeration and the actual clean: a failed
+        # connection must be reported, not hidden, otherwise a dry run shows
+        # "(schema appears empty)" when the schema may be full. Failures raise
+        # PreflightConnectionError, as for every other command.
+        self._run_preflight(result)
+
         try:
-            # Establish connection (needed for both dry-run enumeration and actual clean).
-            # In dry-run mode the connection is the sole source of truth for what
-            # would be dropped — a failed connection must be reported, not hidden,
-            # otherwise the user sees "(schema appears empty)" when the schema may
-            # be full.  Re-raising lets the outer except handler set result.set_error.
-            # In non-dry-run mode, swallowing is acceptable because the subsequent
-            # clean_schema() call will raise a clear error if the connection is broken.
-            try:
-                self._ensure_connected()
-            except Exception as e:
-                if dry_run:
-                    raise
-                self.log.debug(f"_ensure_connection skipped: {e}")
             if hasattr(self.provider, "set_current_schema"):
                 try:
                     self.provider.set_current_schema(self.config.database.schema)
+                except FixedDboSchemaError:
+                    # Opt-in SQL Server guard. Other set_current_schema
+                    # failures, including a plain ExecutionError, stay
+                    # non-fatal for clean.
+                    raise
                 except Exception as e:
                     self.log.debug(f"set_current_schema skipped: {e}")
-
-            # Populate database connection information (requires an active connection)
-            self._populate_database_info(result)
 
             try:
                 self._log_command_header_update("clean", dry_run=dry_run)

@@ -38,8 +38,8 @@ class SqlFormatter:
                     Note: DB2 is not supported and will use fallback
         """
         self.dialect = dialect.lower()
-        # Populate the lazy map before reading — Epic 26 followup
-        # moved the entries onto plugin Quirks.
+        # Populate the lazy map before reading — the entries live on
+        # plugin Quirks.
         _populate_sqlglot_map()
         self.sqlglot_dialect = _SQLGLOT_DIALECT_MAP.get(self.dialect) or self.dialect
 

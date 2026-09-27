@@ -5,9 +5,12 @@ from dataclasses import dataclass
 from types import MappingProxyType
 from typing import Any, Dict, List, Mapping, Optional, Union, cast
 
+from dblift.core.constants import DEFAULT_HISTORY_TABLE
 from dblift.core.logger import Log
 from dblift.core.migration.migration import AppliedMigration, Migration, MigrationType
 from dblift.core.migration.scripting.migration_script_manager import MigrationScriptManager
+from dblift.core.sql_model.dialect import quote_identifier
+from dblift.db.object_naming import configured_identifier_text
 from dblift.db.provider_interfaces import TransactionalProvider
 
 
@@ -34,12 +37,12 @@ class MigrationHistoryManager:
         if not flyway_source or not self.provider.quirks.flyway_source_table_case_sensitive:
             return cast(List[Dict[str, Any]], self.provider.get_applied_migrations(schema, table))
         qualified_table = self.provider.get_schema_qualified_name(schema, table)
-        rows = self.provider.execute_query(f"""
-            SELECT script, installed_rank, version, description,
-                   type, checksum, installed_by, installed_on, execution_time, success
-            FROM {qualified_table} ORDER BY installed_rank
-        """)
-        return [self._normalize_flyway_row(row) for row in rows]
+        # SELECT * because the column case differs between Flyway's own table
+        # (quoted lowercase) and a hand-built one (unquoted, folded). Sorting
+        # here keeps ORDER BY from naming a column in the wrong case.
+        rows = self.provider.execute_query(f"SELECT * FROM {qualified_table}")
+        normalized = [self._normalize_flyway_row(row) for row in rows]
+        return sorted(normalized, key=lambda row: row["installed_rank"])
 
     @staticmethod
     def _normalize_flyway_row(row: Dict[str, Any]) -> Dict[str, Any]:
@@ -67,14 +70,22 @@ class MigrationHistoryManager:
             schema, table
         )
 
-    def resolve_flyway_source_table(self, table: str) -> str:
-        """Normalize only Flyway's default name for case-sensitive providers."""
-        if (
-            table == "flyway_schema_history"
-            and self.provider.quirks.flyway_source_table_case_sensitive
-        ):
-            return str(self.provider.get_normalized_object_name(table))
-        return table
+    def resolve_flyway_source_table(self, schema: str, table: str) -> str:
+        """Return the Flyway source table spelling for case-sensitive providers.
+
+        Flyway creates its table under the exact configured name, quoted
+        (``"flyway_schema_history"`` on Oracle), so that spelling is tried
+        first; an unquoted table the database folded is the fallback. A
+        name the caller already quoted is kept as written.
+        """
+        if not self.provider.quirks.flyway_source_table_case_sensitive:
+            return table
+        if configured_identifier_text(table) != table:
+            return table
+        exact = quote_identifier(self.provider.quirks.dialect_name, table)
+        if self.history_source_exists(schema, exact):
+            return exact
+        return str(self.provider.get_normalized_object_name(table))
 
     def ensure_history_table(self) -> None:
         """Initialize history when absent, preserving the public validator adapter."""
@@ -89,12 +100,25 @@ class MigrationHistoryManager:
         dblift_rows: tuple[Mapping[str, Any], ...] = ()
         error = ""
         try:
-            flyway_exists = self.provider.table_exists(self.schema, "flyway_schema_history")
+            flyway_table = "flyway_schema_history"
+            case_sensitive = self.provider.quirks.flyway_source_table_case_sensitive
+            if case_sensitive:
+                flyway_table = self.resolve_flyway_source_table(self.schema, flyway_table)
+            flyway_exists = self.provider.table_exists(self.schema, flyway_table)
             if flyway_exists:
                 dblift_exists = self.provider.table_exists(
                     self.schema, self.normalized_history_table
                 )
-            if flyway_exists and dblift_exists:
+            if flyway_exists and dblift_exists and case_sensitive:
+                flyway_rows = tuple(
+                    MappingProxyType(row)
+                    for row in self.read_history_rows(self.schema, flyway_table, flyway_source=True)
+                )
+                dblift_rows = tuple(
+                    MappingProxyType(row)
+                    for row in self.read_history_rows(self.schema, self.normalized_history_table)
+                )
+            elif flyway_exists and dblift_exists:
                 flyway_query = f'''SELECT "version", "description", "type", "script",
                     "installed_by", "installed_rank", "checksum", "success"
                     FROM {self.schema}.flyway_schema_history ORDER BY "installed_rank"'''
@@ -141,7 +165,7 @@ class MigrationHistoryManager:
         # - PostgreSQL: Use lowercase quoted identifiers
         # - MySQL: Use lowercase backticked identifiers
         # - SQL Server: Case-insensitive, use lowercase by convention
-        base_table_name = table_name or "dblift_schema_history"
+        base_table_name = table_name or DEFAULT_HISTORY_TABLE
         self.history_table = base_table_name
 
         if self.logger:
@@ -161,7 +185,7 @@ class MigrationHistoryManager:
         ANSI double-quotes later (a quoted lowercase identifier is
         *literally* lowercase to Oracle).
 
-        ADR-0015 (BUG-03): every call site that qualifies the history-
+        ADR-0015: every call site that qualifies the history-
         table identifier via ``provider.get_schema_qualified_name`` or
         ``provider.table_exists`` must pass the normalized form so the
         quoted literal matches what the database actually stored.
@@ -243,7 +267,7 @@ class MigrationHistoryManager:
         EXISTS`` is not atomic under concurrent sessions and the losing
         transaction is left in an aborted state until rolled back, which
         cascades "transaction is aborted" errors onto every subsequent
-        statement. BUG-07.
+        statement.
 
         Race detection is delegated to ``provider.quirks.is_schema_history_race_error``
         instead of a single hard-coded marker list: dialects whose bare
@@ -275,6 +299,16 @@ class MigrationHistoryManager:
                 )
                 return
             except Exception as e:
+                # Clear any aborted-transaction state on the provider's connection
+                # so the retry can issue statements again -- or, when this is
+                # re-raised, so the next command on the same connection (a
+                # reused DBLiftClient) can. Swallow failures: the retry or the
+                # re-raised error surfaces any real issue.
+                if isinstance(self.provider, TransactionalProvider):
+                    try:
+                        self.provider.rollback_transaction()
+                    except Exception:
+                        pass
                 is_race = self.provider.quirks.is_schema_history_race_error(str(e))
                 if not is_race or attempt == MAX_ATTEMPTS - 1:
                     raise
@@ -283,14 +317,6 @@ class MigrationHistoryManager:
                         f"Concurrent schema/history-table creation detected "
                         f"(attempt {attempt + 1}/{MAX_ATTEMPTS}): {e}. Retrying..."
                     )
-                # Clear any aborted-transaction state on the provider's connection
-                # so the retry can issue statements again. Swallow failures — the
-                # retry itself will surface any real issue.
-                if isinstance(self.provider, TransactionalProvider):
-                    try:
-                        self.provider.rollback_transaction()
-                    except Exception:
-                        pass
                 # Exponential backoff with jitter lets the winner commit.
                 time.sleep(0.1 * (2**attempt) + random.uniform(0, 0.05))
 

@@ -15,6 +15,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from dblift.core.migration.commands.base_command import PreflightConnectionError
 from dblift.core.migration.commands.baseline_command import BaselineCommand
 from dblift.core.migration.commands.undo_command import UndoCommand
 
@@ -149,6 +150,38 @@ class TestUndoUsesRunPreflight:
 
         assert calls == ["connect", "create_history"]
 
+    @pytest.mark.parametrize("step", ["connect", "history"])
+    def test_preflight_failure_propagates_instead_of_failed_result(self, step):
+        """Like info and validate, undo lets a preflight failure propagate
+        rather than reporting it as "Undo operation failed: ..."."""
+        hm = MagicMock()
+        cmd = _make_undo_cmd(history_manager=hm)
+        if step == "connect":
+            patcher = patch.object(
+                cmd,
+                "_ensure_connected",
+                side_effect=PreflightConnectionError("Connection failed: host unreachable"),
+            )
+        else:
+            hm.create_schema_and_history_table.side_effect = Exception("permission denied")
+            patcher = patch.object(cmd, "_ensure_connected")
+
+        with patcher, patch.object(cmd, "_execute_callbacks") as callbacks:
+            with pytest.raises(PreflightConnectionError) as excinfo:
+                cmd.execute(scripts_dir=MagicMock())
+
+        assert "Undo operation failed" not in str(excinfo.value)
+        callbacks.assert_not_called()
+
+    def test_ordinary_failure_is_still_a_failed_result(self):
+        cmd = _make_undo_cmd()
+        cmd.state_manager.build_state.side_effect = RuntimeError("history denied")
+
+        result = cmd.execute(scripts_dir=MagicMock())
+
+        assert result.success is False
+        assert result.error_message == "Undo operation failed: history denied"
+
 
 @pytest.mark.unit
 class TestBaselineUsesRunPreflight:
@@ -218,3 +251,58 @@ class TestBaselineUsesRunPreflight:
                 cmd.execute("1.0", "initial baseline")
 
         assert calls == ["connect", "create_history"]
+
+
+@pytest.mark.unit
+class TestRunPreflightHistoryTableFailureMessage:
+    """The history-table branch of ``_run_preflight`` names the step, so
+    every command sharing the preflight (info, migrate, undo, baseline, and
+    now validate) reports the same wording -- distinct from the plain
+    ``Connection failed: ...`` a connect failure still gets.
+    """
+
+    def test_history_table_creation_failure_names_the_step(self):
+        hm = MagicMock()
+        hm.create_schema_and_history_table.side_effect = Exception("permission denied for schema s")
+        cmd = _make_undo_cmd(history_manager=hm)
+
+        with pytest.raises(ConnectionError) as excinfo:
+            cmd._run_preflight(MagicMock(), ensure_history=True)
+
+        assert str(excinfo.value) == (
+            "Could not create the schema-history table: permission denied for schema s"
+        )
+
+    def test_connect_failure_is_unaffected_by_the_history_table_wording(self):
+        """A connect failure still surfaces ``_ensure_connected``'s own
+        ``Connection failed: ...`` message -- the history-table except block
+        must not catch or reword a failure from an earlier phase."""
+        cmd = _make_undo_cmd()
+        connect_error = ConnectionError("Connection failed: no route to host")
+        with patch.object(cmd, "_ensure_connected", side_effect=connect_error):
+            with pytest.raises(ConnectionError) as excinfo:
+                cmd._run_preflight(MagicMock(), ensure_history=True)
+
+        assert excinfo.value is connect_error
+
+    def test_history_table_creation_failure_never_leaks_sql_when_formatted_message_is_empty(
+        self,
+    ):
+        """When _format_execution_error's stripped output is itself empty
+        (e.g. the wrapped exception carried no message of its own, only the
+        SQL block SQLAlchemy appends), the fallback must not be the raw,
+        unstripped exception -- that still carries the generated CREATE
+        TABLE text. The fallback must be the same SQL-stripped str(exc)."""
+        from sqlalchemy.exc import OperationalError
+
+        hm = MagicMock()
+        hm.create_schema_and_history_table.side_effect = OperationalError(
+            "CREATE TABLE dblift_schema_history (...)", None, Exception("")
+        )
+        cmd = _make_undo_cmd(history_manager=hm)
+
+        with pytest.raises(ConnectionError) as excinfo:
+            cmd._run_preflight(MagicMock(), ensure_history=True)
+
+        assert "[SQL:" not in str(excinfo.value)
+        assert "CREATE TABLE dblift_schema_history" not in str(excinfo.value)

@@ -7,7 +7,7 @@ BaselineCommand:
   - execute() transaction begin failure — continues (autoCommit mode)
   - execute() commit failure — rolls back, raises, outer catch returns error
   - execute() rollback failure — logged, exception still raised
-  - execute() history_manager.create fails — caught, returns error
+  - execute() history_manager.create fails — raises the preflight ConnectionError like info
   - execute() record_migration fails — caught, returns error
   - result.baseline_version set on success
 
@@ -15,7 +15,7 @@ ValidateCommand:
   - execute() happy path — validation passes
   - execute() validation fails — issues list logged as errors
   - execute() validation fails — fallback to error_message when no issues
-  - execute() schema history bootstrap failure — fails the command with a clean error
+  - execute() schema history bootstrap failure — raises ConnectionError like info (via preflight)
   - execute() schema history bootstrap failure, error formatter itself raises — falls back to str(e)
   - execute() validator raises unexpectedly — caught, returns error
   - result.target_schema set on start
@@ -27,6 +27,7 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock, call, patch
 
 from dblift.core.logger.results import BaselineResult, ValidateResult
+from dblift.core.migration.commands.base_command import PreflightConnectionError
 from dblift.core.migration.commands.baseline_command import BaselineCommand
 from dblift.core.migration.commands.validate_command import ValidateCommand
 from dblift.db.provider_interfaces import TransactionalProvider
@@ -319,7 +320,10 @@ class TestBaselineCommandTransactionFailures(unittest.TestCase):
         debug_calls = " ".join(str(c) for c in log.debug.call_args_list)
         self.assertIn("rollback", debug_calls.lower())
 
-    def test_history_table_creation_failure_returns_error(self):
+    def test_history_table_creation_failure_raises_connection_error(self):
+        """A history-table bootstrap failure stops baseline the way it stops
+        info and validate: the preflight error propagates instead of being
+        reported as a failed baseline, and nothing is recorded."""
         hm = MagicMock()
         hm.create_schema_and_history_table.side_effect = RuntimeError("table create failed")
 
@@ -327,10 +331,28 @@ class TestBaselineCommandTransactionFailures(unittest.TestCase):
 
         with patch.object(cmd, "_populate_database_info"):
             with patch.object(cmd, "_log_command_completion"):
-                result = cmd.execute("1.0")
+                with self.assertRaises(PreflightConnectionError) as ctx:
+                    cmd.execute("1.0")
 
-        self.assertFalse(result.success)
-        self.assertIn("Baseline operation failed", result.error_message)
+        message = str(ctx.exception)
+        self.assertIn("Could not create the schema-history table", message)
+        self.assertIn("table create failed", message)
+        self.assertNotIn("Baseline operation failed", message)
+        hm.record_migration.assert_not_called()
+
+    def test_connection_failure_raises_connection_error(self):
+        provider = MagicMock()
+        cmd = _make_baseline_cmd(provider=provider)
+
+        with patch(
+            "dblift.core.migration.commands.base_command.ensure_provider_connection",
+            side_effect=OSError("refused"),
+        ):
+            with self.assertRaises(PreflightConnectionError) as ctx:
+                cmd.execute("1.0")
+
+        self.assertIn("Connection failed", str(ctx.exception))
+        self.assertIsNotNone(ctx.exception.result)
 
     def test_record_migration_failure_returns_error(self):
         provider = MagicMock()
@@ -509,9 +531,12 @@ class TestValidateCommandFailurePaths(unittest.TestCase):
 
 
 class TestValidateCommandConnectionError(unittest.TestCase):
-    def test_history_table_bootstrap_failure_fails_command(self):
-        """If create_schema_and_history_table raises, validate must fail (not
-        silently proceed to report success from the script-only checks)."""
+    def test_history_table_bootstrap_failure_raises_connection_error(self):
+        """If create_schema_and_history_table raises, validate must stop the
+        way info does: a ConnectionError propagates out of execute() (via the
+        shared preflight) instead of being swallowed into a validation
+        result. The message must name the step, and the validator must never
+        run against a history table that couldn't be created."""
         log = MagicMock()
         hm = MagicMock()
         hm.create_schema_and_history_table.side_effect = RuntimeError("no DB")
@@ -527,34 +552,18 @@ class TestValidateCommandConnectionError(unittest.TestCase):
 
         with patch.object(cmd, "_populate_database_info"):
             with patch.object(cmd, "_log_command_completion"):
-                result = cmd.execute(Path("/migrations"))
+                with self.assertRaises(ConnectionError) as ctx:
+                    cmd.execute(Path("/migrations"))
 
-        self.assertFalse(result.success)
-        self.assertIn("no DB", result.error_message)
+        message = str(ctx.exception)
+        self.assertIn("Could not create the schema-history table", message)
+        self.assertIn("no DB", message)
         validator.validate_snapshot.assert_not_called()
-
-    def test_history_table_bootstrap_failure_logs_clean_error_message(self):
-        """The bootstrap failure should be logged as a clean, single-line
-        error rather than a raw driver exception dump."""
-        log = MagicMock()
-        hm = MagicMock()
-        hm.create_schema_and_history_table.side_effect = RuntimeError("no DB")
-
-        validator = MagicMock()
-        cmd = _make_validate_cmd(log=log, history_manager=hm, validator=validator)
-
-        with patch.object(cmd, "_populate_database_info"):
-            with patch.object(cmd, "_log_command_completion"):
-                cmd.execute(Path("/migrations"))
-
-        error_calls = " ".join(str(c) for c in log.error.call_args_list)
-        self.assertIn("Could not create schema history table", error_calls)
-        self.assertIn("no DB", error_calls)
 
     def test_history_table_bootstrap_failure_formatter_raises_falls_back_to_str(self):
         """If _format_execution_error itself raises while formatting the
-        bootstrap failure, the command must still fail using str(e) instead
-        of letting the formatter's exception propagate."""
+        bootstrap failure, the raised ConnectionError must still carry
+        str(e) instead of letting the formatter's exception propagate."""
         log = MagicMock()
         hm = MagicMock()
         hm.create_schema_and_history_table.side_effect = RuntimeError("no DB")
@@ -568,10 +577,10 @@ class TestValidateCommandConnectionError(unittest.TestCase):
         ):
             with patch.object(cmd, "_populate_database_info"):
                 with patch.object(cmd, "_log_command_completion"):
-                    result = cmd.execute(Path("/migrations"))
+                    with self.assertRaises(ConnectionError) as ctx:
+                        cmd.execute(Path("/migrations"))
 
-        self.assertFalse(result.success)
-        self.assertIn("no DB", result.error_message)
+        self.assertIn("no DB", str(ctx.exception))
         validator.validate_snapshot.assert_not_called()
 
 

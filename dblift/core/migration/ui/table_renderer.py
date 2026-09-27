@@ -113,12 +113,13 @@ class TableRenderer:
         # width to the table's natural width so every column stays visible
         # (narrow terminals soft-wrap a complete table instead). Measure with an
         # unconstrained console so the natural width isn't clamped to con.width.
-        measure_con = Console(width=10_000)
+        measure_con = Console(width=10_000, height=con.height)
         natural_width = Measurement.get(measure_con, measure_con.options, table).maximum
         if con.width < natural_width:
             con = Console(
                 file=sys.stdout,
                 width=natural_width,
+                height=con.height,
                 highlight=False,
                 markup=False,
                 soft_wrap=True,

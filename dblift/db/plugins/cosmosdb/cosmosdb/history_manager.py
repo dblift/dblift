@@ -11,6 +11,7 @@ import time
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 from dblift.config import DbliftConfig
+from dblift.core.constants import DEFAULT_HISTORY_TABLE as _DEFAULT_HISTORY_TABLE
 from dblift.core.logger import Log
 from dblift.db.plugins.nosql_base import DocumentHistoryManager
 
@@ -25,8 +26,8 @@ class CosmosDbHistoryManager(DocumentHistoryManager):
     """Manages migration history in Cosmos DB."""
 
     # CosmosDB uses container names as-is (case-sensitive)
-    DEFAULT_HISTORY_TABLE = "dblift_schema_history"
-    HISTORY_CONTAINER_NAME = "dblift_schema_history"
+    DEFAULT_HISTORY_TABLE = _DEFAULT_HISTORY_TABLE
+    HISTORY_CONTAINER_NAME = DEFAULT_HISTORY_TABLE
     HISTORY_CREATE_MAX_RETRIES = 5
     HISTORY_CREATE_BACKOFF_BASE = 2.0
 
@@ -61,7 +62,7 @@ class CosmosDbHistoryManager(DocumentHistoryManager):
         )
 
     def create_history_container_if_not_exists(
-        self, schema: str, table_name: str = "dblift_schema_history"
+        self, schema: str, table_name: str = DEFAULT_HISTORY_TABLE
     ) -> None:
         """Create history container if it doesn't exist.
 
@@ -497,7 +498,7 @@ class CosmosDbHistoryManager(DocumentHistoryManager):
         connection: Any,
         schema: str,
         create_schema: bool = False,
-        table_name: str = "dblift_schema_history",
+        table_name: str = DEFAULT_HISTORY_TABLE,
     ) -> None:
         """Create migration history container if it doesn't exist.
 

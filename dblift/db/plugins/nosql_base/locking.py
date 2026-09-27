@@ -3,6 +3,7 @@
 from abc import ABC, abstractmethod
 from typing import Any, Optional
 
+from dblift.core.constants import MIGRATION_LOCK_TABLE
 from dblift.core.logger import Log, NullLog
 
 
@@ -24,7 +25,7 @@ class DocumentLockingManager(ABC):
     """
 
     #: Collection/container holding the lease document.
-    LOCK_CONTAINER_NAME: str = "dblift_migration_lock"
+    LOCK_CONTAINER_NAME: str = MIGRATION_LOCK_TABLE
 
     def __init__(self, query_executor: Any, log: Optional[Log] = None) -> None:
         """Store the executor (for its connection manager) and the logger."""

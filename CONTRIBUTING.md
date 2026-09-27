@@ -32,6 +32,8 @@ python -m pip install -e packages/pytest-dblift   # only if you touch the pytest
 
 SQLite needs no server and no extra, so most of the code can be exercised locally. Add an engine extra when you work on one, e.g. `pip install -e ".[dev,postgresql]"` (DuckDB, `.[dev,duckdb]`, also runs without a server).
 
+Building your own tool on this code base rather than contributing to it? [docs/developer-guide/forking.md](docs/developer-guide/forking.md) maps the packages and lists what to rename or remove.
+
 ## Tests
 
 ```bash

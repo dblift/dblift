@@ -12,8 +12,8 @@ from dblift.core.sql_model.base import SqlObject, SqlObjectType
 def _quirks_for(dialect: Optional[str]) -> Any:
     """Resolve quirks for *dialect* via the registry.
 
-    Story 26-5: replaces inline ``if dialect in {...}`` dispatch in
-    the trigger DDL paths.
+    Trigger DDL paths dispatch via plugin Quirks instead of inline
+    ``if dialect in {...}`` branches.
     """
     from dblift.db.base_quirks import BaseQuirks
     from dblift.db.provider_registry import ProviderRegistry
@@ -262,7 +262,7 @@ class Trigger(SqlObject):
     def _format_body(self, body: str) -> str:
         """Normalize trigger body text.
 
-        Story 26-5: BEGIN/END / DECLARE wrapping is handled by the
+        BEGIN/END / DECLARE wrapping is handled by the
         per-dialect ``ModelQuirks.wrap_trigger_body`` hook. Default
         passes the body through unchanged; Oracle wraps it in a
         valid PL/SQL block.

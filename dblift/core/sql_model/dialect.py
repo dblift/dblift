@@ -1,23 +1,16 @@
 """Dialect quoting and capability helpers for database dialect identifiers.
 
-Story 21-14 — Phase 1 pilot: identifier-quoting dispatch centralised here.
+Identifier-quoting dispatch is centralized here: the module-level
+``quote_identifier`` / ``quote_qualified`` functions hold the canonical
+quoting rules, so callers use them instead of branching on dialect name.
 
-Before (2 files, 9 if/elif branches):
-  base_converter.py      _quote_identifier()  — 5 branches
-  undo_script_generator.py _quote_identifier() — 4 branches
+This module also holds the ``DialectGroup`` frozensets and
+``SQLGLOT_DIALECT_MAP``, so callers can import them instead of repeating
+inline string comparisons.
 
-After (0 branches in those files, 1 quirks-delegated function below):
-  Each `_quote_identifier` becomes a one-liner:
-    return quote_identifier(self.dialect, identifier)
-
-SIMP-37 — Phase 0: DialectGroup constants + SQLGLOT_DIALECT_MAP centralized here
-  so that all clusters (Phase 1–5) can import frozensets instead of repeating
-  inline string comparisons.
-
-Story 26-5 — Removed the ``DialectEnum`` canonical-name vocabulary; the
-  quoting statics became the module-level ``quote_identifier`` /
-  ``quote_qualified`` functions and canonical-name resolution moved to
-  ``ProviderRegistry.canonical_dialect_name``.
+Canonical-name resolution lives in ``ProviderRegistry.canonical_dialect_name``;
+per-dialect behaviour is dispatched through each plugin's Quirks class rather
+than hardcoded here.
 """
 
 from typing import TYPE_CHECKING, Any, Callable, Dict, FrozenSet, Optional
@@ -30,7 +23,7 @@ if TYPE_CHECKING:
     SCHEMA_OPTIONAL_DIALECTS: FrozenSet[str]
 
 # ---------------------------------------------------------------------------
-# SIMP-37 Phase 0 — DialectGroup frozensets
+# DialectGroup frozensets
 #
 # These constants replace scattered `dialect == "x"` comparisons with
 # membership tests (`dialect in SOME_DIALECTS`).  Import them in any module
@@ -83,10 +76,10 @@ class DialectCapabilities:
     clean_strategy: str
 
 
-# Capabilities now live on plugin Quirks (Epic 26 story 26-13
-# followup). The lazy ``_CAPABILITIES`` dict below is built once on
-# first ``get_dialect_capabilities`` call by reading each registered
-# plugin's quirks. This module no longer hardcodes any dialect name.
+# Capabilities now live on plugin Quirks. The lazy ``_CAPABILITIES`` dict
+# below is built once on first ``get_dialect_capabilities`` call by reading
+# each registered plugin's quirks. This module no longer hardcodes any
+# dialect name.
 _CAPABILITIES: Dict[str, DialectCapabilities] = {}
 
 
@@ -252,20 +245,15 @@ def get_sqlglot_dialect(dialect: Optional[str]) -> Optional[str]:
 
 
 # ---------------------------------------------------------------------------
-# SIMP-37 Phase 0 — Centralized sqlglot dialect mapping (single source of truth)
+# Centralized sqlglot dialect mapping (single source of truth).
 #
-# Previously duplicated in:
-#   core/sql_generator/formatter.py      — _SQLGLOT_DIALECT_MAP  (private)
-#   core/logger/formatters/diff_utils.py — SQLGLOT_DIALECT_MAP   (public)
-#
-# Both importers now use this definition.  The map is deliberately kept as a
-# plain Dict (not a property) so it can be constructed at import time with
-# zero overhead.
+# Kept as a plain Dict (not a property) so it can be constructed at import
+# time with zero overhead.
 # ---------------------------------------------------------------------------
 
 #: Maps dblift dialect names (and common aliases) to sqlglot dialect
 #: names. Lazily populated from each plugin's ``Quirks.sqlglot_dialect``
-#: on first access (Epic 26 followup). A value of ``None`` means
+#: on first access. A value of ``None`` means
 #: sqlglot has no matching dialect; callers should fall back to
 #: unformatted output or a generic dialect.
 SQLGLOT_DIALECT_MAP: Dict[str, Optional[str]] = {}
@@ -343,7 +331,7 @@ def quote_qualified(
     """Quote a schema-qualified SQL identifier using dialect rules.
 
     Bans the ``f'"{schema}"."{table}"'`` anti-pattern that ignored
-    dialect quoting (B10-BUG-01). On Oracle, unquoted identifiers fold
+    dialect quoting. On Oracle, unquoted identifiers fold
     to upper-case at CREATE TABLE time, so explicitly quoted lower-case
     idents target a non-existent object — Oracle inputs are upper-cased
     here to match the folding done at definition.

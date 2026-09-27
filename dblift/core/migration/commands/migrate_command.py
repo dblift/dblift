@@ -40,7 +40,7 @@ from dblift.core.sql_validator.migration_validator import MigrationValidator
 from dblift.db.base_provider import BaseProvider
 
 from ._script_events import emit_script_event as _emit_script_event
-from .base_command import BaseCommand, BaseCommandContext
+from .base_command import BaseCommand, BaseCommandContext, PreflightConnectionError
 
 
 class MigrateCommand(BaseCommand):
@@ -722,7 +722,15 @@ class MigrateCommand(BaseCommand):
         """
         from dblift.core.seams.runtime_checks import run_checks
 
-        run_checks("command.pre_migrate")
+        # A dry run applies nothing, so the pre-migrate checks that gate
+        # applying a migration do not run for it — the same reason the
+        # per-statement migration.pre_execution checks never fire in dry-run.
+        # Dry-run has its own point, so an add-on can register a check that
+        # runs only before a preview.
+        if not dry_run:
+            run_checks("command.pre_migrate")
+        else:
+            run_checks("command.pre_migrate_dry_run")
         self._reset_callback_catalog()
         result = MigrateResult()
         result.show_sql = show_sql
@@ -734,16 +742,18 @@ class MigrateCommand(BaseCommand):
 
         read_snapshot = self.state_manager.new_read_snapshot()
 
-        # SQLite only: widen busy_timeout for this command; the provider
-        # returns what undoes it (None when nothing was changed).
-        widen_busy_timeout = getattr(self.provider, "widen_busy_timeout", None)
-        restore_busy_timeout = (
-            widen_busy_timeout(DEFAULT_MIGRATION_LOCK_TIMEOUT_SECONDS)
-            if callable(widen_busy_timeout)
-            else None
-        )
-
+        restore_busy_timeout = None
         try:
+            # SQLite only: widen busy_timeout for this command; the provider
+            # returns what undoes it (None when nothing was changed). This
+            # opens the connection, so connect through the preflight first:
+            # a database that cannot be opened then fails as a preflight
+            # connection error rather than a raw driver error.
+            widen_busy_timeout = getattr(self.provider, "widen_busy_timeout", None)
+            if callable(widen_busy_timeout):
+                self._preflight_connect(result)
+                restore_busy_timeout = widen_busy_timeout(DEFAULT_MIGRATION_LOCK_TIMEOUT_SECONDS)
+
             # Initialize and validate migrations
             validation_success, use_recursive, use_additional_dirs = (
                 self._initialize_migration_execution(
@@ -872,7 +882,7 @@ class MigrateCommand(BaseCommand):
                     lock_acquired = True
                     self.log.info("Migration lock acquired successfully")
 
-                    # BUG-01: re-read history after lock acquisition. Another
+                    # Re-read history after lock acquisition. Another
                     # process may have applied versioned migrations while we
                     # were waiting; running them again would fail and write
                     # duplicate failure rows into the history table.
@@ -969,6 +979,11 @@ class MigrateCommand(BaseCommand):
             self._log_command_completion("migrate", result)
             return result
 
+        except PreflightConnectionError:
+            # The connection or schema-history setup failed before migrate
+            # produced anything: propagate it, as info and validate do,
+            # instead of reporting it as a failed migration.
+            raise
         except StrictModeError as e:
             # Strict-mode out-of-order violations raised when selecting
             # executable pending. Specific subclass of ``ValueError`` so

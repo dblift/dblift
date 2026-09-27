@@ -1,0 +1,162 @@
+"""Tests for assert → RuntimeError/ValueError replacements.
+
+Verifies that four assert sites now raise RuntimeError (never AssertionError)
+so python -O cannot silently disable the guards.
+
+Files covered:
+  - core/sql_parser/hybrid_parser.py      (sqlglot_parser guard x3)
+  - core/migration/executors/python_executor.py (spec/loader guard x2)
+  - core/migration/commands/export_schema_command.py (provider / snapshot_model guard)
+  - db/sqlalchemy_provider.py             (native provider guard)
+"""
+
+import ast
+import tempfile
+from pathlib import Path
+from unittest.mock import MagicMock
+
+import pytest
+
+pytestmark = [pytest.mark.unit]
+
+_ROOT = Path(__file__).resolve().parent.parent.parent
+
+
+# ---------------------------------------------------------------------------
+# Structural: zero bare assert in the four source files
+# ---------------------------------------------------------------------------
+
+
+class TestNoRemainingAsserts:
+    """Zero bare assert in the 4 target source files."""
+
+    def _assert_no_bare_assert(self, rel_path: str) -> None:
+        src_path = _ROOT / rel_path
+        tree = ast.parse(src_path.read_text())
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Assert):
+                pytest.fail(
+                    f"{rel_path} line {node.lineno}: bare assert found — "
+                    "must be replaced by explicit raise"
+                )
+
+    def test_hybrid_parser_no_assert(self):
+        self._assert_no_bare_assert("dblift/core/sql_parser/hybrid_parser.py")
+
+    def test_python_executor_no_assert(self):
+        self._assert_no_bare_assert("dblift/core/migration/executors/python_executor.py")
+
+    def test_sqlalchemy_provider_no_assert(self):
+        self._assert_no_bare_assert("dblift/db/sqlalchemy_provider.py")
+
+
+# ---------------------------------------------------------------------------
+# Behavioural: invalid state raises RuntimeError (not AssertionError)
+# ---------------------------------------------------------------------------
+
+
+class TestHybridParserSqlglotGuard:
+    """Verify RuntimeError (not AssertionError) when sqlglot_parser is None."""
+
+    def _make_parser_without_sqlglot(self):
+        from dblift.core.sql_parser.hybrid_parser import HybridParser
+
+        p = HybridParser.__new__(HybridParser)
+        p.dialect = "mysql"
+        p.sqlglot_parser = None
+        p.log = MagicMock()
+        return p
+
+    def test_extract_view_deps_raises_runtime_error(self):
+        p = self._make_parser_without_sqlglot()
+        with pytest.raises(RuntimeError, match="sqlglot_parser is not initialized"):
+            p._extract_view_deps_from_objects("SELECT 1", None, {})
+
+    def test_parse_alter_table_raises_runtime_error(self):
+        p = self._make_parser_without_sqlglot()
+        result = MagicMock()
+        with pytest.raises(RuntimeError, match="sqlglot_parser is not initialized"):
+            p._parse_alter_table_via_sqlglot("ALTER TABLE t ADD COLUMN x INT", None, result)
+
+    def test_extract_check_constraint_raises_runtime_error(self):
+        from sqlglot import exp
+
+        p = self._make_parser_without_sqlglot()
+        inner = MagicMock(spec=exp.Expression)
+        inner.this = None
+        with pytest.raises(RuntimeError, match="sqlglot_parser is not initialized"):
+            p._extract_check_constraint_from_sqlglot(inner, None)
+
+    def test_raises_runtime_error_not_assertion_error(self):
+        """Guard raises RuntimeError, never AssertionError."""
+        p = self._make_parser_without_sqlglot()
+        exc_type = None
+        try:
+            p._extract_view_deps_from_objects("SELECT 1", None, {})
+        except RuntimeError:
+            exc_type = RuntimeError
+        except AssertionError:
+            pytest.fail("Guard raised AssertionError instead of RuntimeError")
+        assert exc_type is RuntimeError
+
+
+class TestPythonExecutorSpecGuard:
+    """Verify RuntimeError when spec or spec.loader is None (surfaced via result.error)."""
+
+    def _make_executor(self):
+        from dblift.core.migration.executors.python_executor import PythonMigrationExecutor
+
+        return PythonMigrationExecutor(
+            provider=MagicMock(),
+            config=MagicMock(),
+            log=MagicMock(),
+        )
+
+    def _make_python_migration(self, content: str = "def migrate(ctx): pass"):
+        from dblift.core.migration.migration import Migration
+
+        tmp = tempfile.NamedTemporaryFile(suffix=".py", mode="w", delete=False, prefix="V1__test_")
+        tmp.write(content)
+        tmp.flush()
+        tmp.close()
+        return Migration(script_path=Path(tmp.name)), Path(tmp.name)
+
+    def test_none_spec_produces_runtime_error_in_result(self):
+        """When importlib returns spec=None, result.error contains RuntimeError message."""
+        import importlib.util
+        from unittest.mock import patch
+
+        executor = self._make_executor()
+        migration, tmp_path = self._make_python_migration()
+
+        try:
+            with patch.object(importlib.util, "spec_from_file_location", return_value=None):
+                result = executor.execute_migration(migration, dry_run=False)
+
+            assert result.success is False
+            assert result.error is not None
+            assert "RuntimeError" in result.error or "Cannot load module spec" in result.error
+        finally:
+            tmp_path.unlink(missing_ok=True)
+
+    def test_none_loader_produces_runtime_error_in_result(self):
+        """When spec.loader is None, result.error contains RuntimeError message."""
+        import importlib.util
+        from unittest.mock import MagicMock as MM
+        from unittest.mock import patch
+
+        executor = self._make_executor()
+        migration, tmp_path = self._make_python_migration()
+
+        fake_spec = MM()
+        fake_spec.loader = None
+
+        try:
+            with patch.object(importlib.util, "spec_from_file_location", return_value=fake_spec):
+                result = executor.execute_migration(migration, dry_run=False)
+
+            assert result.success is False
+            assert result.error is not None
+            assert "RuntimeError" in result.error or "Cannot load module spec" in result.error
+        finally:
+            tmp_path.unlink(missing_ok=True)

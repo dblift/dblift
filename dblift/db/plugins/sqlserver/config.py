@@ -17,6 +17,12 @@ class SqlServerConfig(BaseDatabaseConfig):
     encrypt: bool = False
     trust_server_certificate: bool = False
     integrated_security: bool = False
+    # Opt-in. A login mapped to the fixed ``dbo`` user (sa, sysadmin, or the
+    # database owner) cannot change its default schema. The default logs a
+    # warning and continues, same outcome as 4.8.0. Set this to fail the run
+    # before any migration or callback statement executes; no history row is
+    # written.
+    fail_on_fixed_dbo: bool = False
 
     def __post_init__(self) -> None:
         super().__post_init__()
@@ -31,6 +37,7 @@ class SqlServerConfig(BaseDatabaseConfig):
                 "encrypt": self.encrypt,
                 "trust_server_certificate": self.trust_server_certificate,
                 "integrated_security": self.integrated_security,
+                "fail_on_fixed_dbo": self.fail_on_fixed_dbo,
             }
         )
         return result

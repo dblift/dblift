@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 class AlterGeneratorFactory:
     """Factory for creating database-specific ALTER generators.
 
-    Story 26-3: each dialect's ALTER generator is owned by its plugin
+    Each dialect's ALTER generator is owned by its plugin
     and exposed via ``DialectQuirks.alter_generator_class()``. The
     registry is built lazily on first use by iterating registered
     plugins; no dialect name is hardcoded in this factory.

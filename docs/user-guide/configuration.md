@@ -151,6 +151,27 @@ DBLift works with these databases:
 | Azure Cosmos DB | `https://account.documents.azure.com:443/` (see [CosmosDB Configuration](#cosmosdb-configuration)) | `dblift[cosmosdb]` |
 | MongoDB | `mongodb://host:27017` or `mongodb+srv://…` (see [MongoDB Configuration](#mongodb-configuration)) | `dblift[mongodb]` |
 
+## SQL Server Configuration
+
+```yaml
+database:
+  type: "sqlserver"
+  url: mssql+pymssql://localhost:1433/mydb?encrypt=false
+  schema: dbo
+  username: your_username
+  password: your_password
+  integrated_security: false
+  trust_server_certificate: false
+  encrypt: false
+  fail_on_fixed_dbo: false
+```
+
+`fail_on_fixed_dbo` defaults to `false`. A login mapped to the fixed `dbo` user (`sa`, a sysadmin, or the database owner) cannot change its default schema. When `schema` names anything else, dblift logs a warning and continues, same outcome as 4.8.0: unqualified objects are created in `dbo` and the run is reported successful. Set `fail_on_fixed_dbo: true` to fail the run before any migration or callback statement executes; no history row is written. A dry-run does not predict this failure, and neither does a migrate with nothing pending. The way to honor a non-`dbo` schema is a login mapped to a non-`dbo` database user.
+
+On an existing deployment, do not switch `schema` to `dbo` to avoid the warning. That points dblift at `[dbo].[dblift_schema_history]` and replays every migration. A new deployment that has never recorded history may use `schema: dbo` with a dbo-mapped login; that is not this mismatch.
+
+See the [SQL Server template](https://github.com/dblift/dblift/blob/main/docs/examples/config/dblift-sqlserver.yaml.template).
+
 ## SQLite Configuration
 
 SQLite uses a simpler configuration format since it's a file-based database:
@@ -365,9 +386,9 @@ When detection is enabled, DBLift uses the detected encoding for that file. If d
 
 Sample configuration files for different databases are available in the repository:
 
-- [PostgreSQL Template](https://github.com/dblift/dblift/blob/main/dblift-postgresql.yaml.template)
-- [SQL Server Template](https://github.com/dblift/dblift/blob/main/dblift-sqlserver.yaml.template)
-- [Cosmos DB Template](https://github.com/dblift/dblift/blob/main/dblift-cosmosdb.yaml.template)
+- [PostgreSQL Template](https://github.com/dblift/dblift/blob/main/docs/examples/config/dblift-postgresql.yaml.template)
+- [SQL Server Template](https://github.com/dblift/dblift/blob/main/docs/examples/config/dblift-sqlserver.yaml.template)
+- [Cosmos DB Template](https://github.com/dblift/dblift/blob/main/docs/examples/config/dblift-cosmosdb.yaml.template)
 
 ## Secrets Manager Integration
 
@@ -394,9 +415,11 @@ If your organisation uses a secrets backend not bundled with dblift
 a custom provider at startup without forking dblift:
 
 ```python
-from dblift.config.secrets import AbstractSecretsProvider, register_provider
-from dblift.config.secrets._secrets_config import SecretsConfig
-from typing import Optional
+from dblift.config.secrets import (
+    AbstractSecretsProvider,
+    SecretsConfig,
+    register_provider,
+)
 
 class CyberArkProvider(AbstractSecretsProvider):
     scheme = "cyberark"
@@ -421,6 +444,13 @@ Call `register_provider` once at application startup, before any call to
 `cyberark://secrets/db/password` in `dblift.yaml` resolve automatically
 through the same pipeline — caching, two-phase bootstrap, and offline bypass
 all apply.
+
+`resolve` should raise `SecretsResolutionError` when it cannot produce the
+secret (missing, denied, backend unreachable). Through the `dblift` CLI or
+`dblift mcp` that is reported the same way as a missing configuration file or
+an unknown `--env` (a bare `ValueError` or `RuntimeError` from `resolve` is
+reported the same way). Through `DbliftConfig.from_dict()` or `DBLiftClient`,
+whatever `resolve` raises reaches your own code unwrapped.
 
 `register_provider` validates that:
 

@@ -47,6 +47,7 @@ def _make_command(applied_migrations, *, rules_side_effect=None):
     )
 
     migration_rules = MagicMock()
+    migration_rules._is_currently_undone.return_value = False
     if rules_side_effect:
         migration_rules.should_undo_version.side_effect = rules_side_effect
     else:

@@ -3,7 +3,7 @@
 Target file: core/migration/executor/execution_engine.py
 Focuses on: execute_migration full path, _is_comment_only_statement, _prepare_transaction,
 _probe_dialect_key, _transaction_liveness_probe_sql, _record_migration_history,
-_record_autocommit_migration_history, _commit_and_verify, _handle_statement_failure,
+_record_autocommit_migration_history, _commit_migration, _handle_statement_failure,
 execute_callback, _execute_via_factory, autocommit statement routing.
 """
 
@@ -236,7 +236,7 @@ class TestExecuteMigrationMainFlow(unittest.TestCase):
                 with patch.object(engine, "_prepare_transaction", return_value=True):
                     with patch.object(engine, "_execute_statements", return_value=True):
                         with patch.object(engine, "_record_migration_history") as mock_rec:
-                            with patch.object(engine, "_commit_and_verify") as mock_commit:
+                            with patch.object(engine, "_commit_migration") as mock_commit:
                                 engine.execute_migration(migration, result)
 
         mock_rec.assert_called_once()
@@ -631,7 +631,10 @@ class TestSqlServerSchemaCacheResetsAtMigrationBoundary(unittest.TestCase):
                 self._connection = None
 
             def execute_query(self, sql, params=None):
-                return [{"db_user": "dbo", "default_schema": self._current_schema_set}]
+                # Not the real 'dbo' principal: a non-dbo login name, so this
+                # class's cache-boundary behavior is exercised independently
+                # of the dedicated fixed-dbo guard covered elsewhere.
+                return [{"db_user": "app_user", "default_schema": self._current_schema_set}]
 
         provider = _CountingProvider()
         sql_analyzer = MagicMock()
@@ -689,7 +692,7 @@ class TestSqlServerSchemaCacheResetsAtMigrationBoundary(unittest.TestCase):
         engine, provider = self._build_engine()
         catalog_schema = {"value": None}
         provider.execute_query = lambda sql, params=None: [
-            {"db_user": "dbo", "default_schema": catalog_schema["value"]}
+            {"db_user": "app_user", "default_schema": catalog_schema["value"]}
         ]
 
         with patch.object(
@@ -1326,16 +1329,16 @@ class TestHandleStatementFailure(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
-# _commit_and_verify
+# _commit_migration
 # ---------------------------------------------------------------------------
 
 
-class TestCommitAndVerify(unittest.TestCase):
+class TestCommitMigration(unittest.TestCase):
     def test_commits_transaction(self):
         engine = _make_engine()
         migration = _make_sql_migration()
 
-        engine._commit_and_verify(migration, ["SELECT 1"], 100)
+        engine._commit_migration(migration)
 
         engine.provider.commit_transaction.assert_called_once()
 
@@ -1345,63 +1348,23 @@ class TestCommitAndVerify(unittest.TestCase):
         migration = _make_sql_migration()
 
         with self.assertRaises(Exception, msg="commit failed"):
-            engine._commit_and_verify(migration, ["SELECT 1"], 100)
+            engine._commit_migration(migration)
 
         engine.log.warning.assert_called()
 
-    def test_create_table_triggers_verification(self):
+    def test_no_query_after_commit(self):
+        """Nothing runs on the connection after the commit. A post-commit probe
+        of a created table used to read ``"s"."Wide Rows"`` as ``"s"."Wide"``;
+        on PostgreSQL its failure aborted the connection's transaction, and the
+        lock release after a committed migration failed."""
         engine = _make_engine()
         migration = _make_sql_migration()
-        engine.provider.connection.isClosed.return_value = False
-        engine.provider.execute_query.return_value = [{"cnt": 0}]
-        engine.sql_analyzer.dialect = "postgresql"
 
-        statements = ["CREATE TABLE public.users (id SERIAL)"]
-        engine._commit_and_verify(migration, statements, 100)
+        engine._commit_migration(migration)
 
-        engine.provider.commit_transaction.assert_called_once()
-        # execute_query for verification
-        query_calls = [str(c) for c in engine.provider.execute_query.call_args_list]
-        self.assertTrue(any("users" in c.lower() for c in query_calls))
-
-    def test_create_table_verification_failure_is_non_critical(self):
-        engine = _make_engine()
-        migration = _make_sql_migration()
-        engine.provider.connection.isClosed.return_value = False
-        engine.provider.execute_query.side_effect = Exception("table not found")
-        engine.sql_analyzer.dialect = "postgresql"
-
-        statements = ["CREATE TABLE public.users (id SERIAL)"]
-        # Should not raise
-        engine._commit_and_verify(migration, statements, 100)
-
-        debug_calls = [str(c) for c in engine.log.debug.call_args_list]
-        self.assertTrue(any("Post-commit verification" in c for c in debug_calls))
-
-    def test_no_isclosed_attribute_still_runs_verification(self):
-        """Python DB-API drivers (e.g. python-oracledb) expose ``closed`` as a
-        property, not an isClosed() method. Without a guard, the missing
-        attribute raised AttributeError, was swallowed by the inner
-        try/except, and the post-commit verification query never ran. It
-        should instead fall back to assuming the connection is open (the
-        caller already confirmed ``self.provider.connection`` is truthy) and
-        actually run the verification query.
-        """
-        engine = _make_engine()
-        migration = _make_sql_migration()
-        engine.provider.connection = object()  # no getAutoCommit()/isClosed()
-        engine.provider.execute_query.return_value = [{"cnt": 0}]
-        engine.sql_analyzer.dialect = "postgresql"
-
-        statements = ["CREATE TABLE public.users (id SERIAL)"]
-        engine._commit_and_verify(migration, statements, 100)
-
-        engine.provider.execute_query.assert_called_once()
-        debug_calls = [str(c) for c in engine.log.debug.call_args_list]
-        self.assertFalse(
-            any("Post-commit verification query failed" in c for c in debug_calls),
-            "isClosed() absence should be handled by a guard, not caught as an error",
-        )
+        engine.provider.execute_query.assert_not_called()
+        engine.provider.execute_statement.assert_not_called()
+        engine.provider.rollback_transaction.assert_not_called()
 
 
 # ---------------------------------------------------------------------------

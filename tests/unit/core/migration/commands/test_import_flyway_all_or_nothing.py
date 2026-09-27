@@ -72,7 +72,9 @@ def command(mock_dependencies):
         history, *args, **kwargs
     )
     history.resolve_flyway_source_table = (
-        lambda table: MigrationHistoryManager.resolve_flyway_source_table(history, table)
+        lambda schema, table: MigrationHistoryManager.resolve_flyway_source_table(
+            history, schema, table
+        )
     )
     mock_dependencies["state_manager"] = MigrationStateManager(
         mock_dependencies["log"],

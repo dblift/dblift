@@ -26,7 +26,8 @@ docs/
 │   └── events.md
 ├── developer-guide/             # Provider/plugin developer guides
 │   ├── creating-a-provider.md
-│   └── plugin-entry-points.md
+│   ├── plugin-entry-points.md
+│   └── forking.md               # Using this repository as the base of another tool
 ├── operations/recovery/         # Failure-mode recovery runbooks
 └── examples/                    # Code examples
     ├── basic-migrations.md

@@ -143,7 +143,7 @@ class SQLiteConnectionManager:
         ``base_command.py:_format_command_header`` calls this method via
         ``hasattr`` to render the "Database URL" line;
         returning a canonical ``sqlite://`` URI gives the operator a
-        meaningful value instead of ``<not available>`` (BUG-08).
+        meaningful value instead of ``<not available>``.
 
         Relative paths are resolved to absolute before being embedded in the
         URI. Per RFC 3986 a URI like ``sqlite://data/local.db`` has

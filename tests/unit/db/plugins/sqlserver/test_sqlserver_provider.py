@@ -151,3 +151,119 @@ def test_release_migration_lock_uses_session_scoped_application_lock():
     assert "sp_releaseapplock" in sql
     assert "Session" in sql
     assert params == ["dblift_migration_lock_dbo"]
+
+
+def _enable_fixed_dbo_guard(provider, enabled: bool) -> None:
+    """Attach the opt-in flag without a live connection or full config."""
+    from dblift.db.plugins.sqlserver.config import SqlServerConfig
+
+    provider.config = type("Cfg", (), {})()
+    provider.config.database = SqlServerConfig(type="sqlserver", fail_on_fixed_dbo=enabled)
+
+
+def test_dbo_login_with_non_dbo_schema_warns_by_default(monkeypatch):
+    """Without fail_on_fixed_dbo, a dbo login logs a warning and does not
+    attempt the doomed ALTER USER. Unqualified DDL then lands in dbo, the
+    same outcome as 4.8.0."""
+    provider = object.__new__(SqlServerProvider)
+    provider.log = MagicMock()
+    provider._schema_applied_for = None
+    provider._current_schema_set = None
+    provider.execute_query = MagicMock(return_value=[{"db_user": "dbo", "default_schema": "dbo"}])
+    monkeypatch.setattr(
+        SqlAlchemyProvider,
+        "execute_statement",
+        MagicMock(side_effect=AssertionError("ALTER USER should not run")),
+    )
+
+    provider.set_current_schema("otherschema")
+    provider.set_current_schema("otherschema")
+
+    provider.log.warning.assert_called_once()
+    warning = provider.log.warning.call_args[0][0]
+    assert "cannot be changed" in warning
+    assert "fail_on_fixed_dbo" in warning
+    assert "set the schema" not in warning.lower()
+    assert "set schema" not in warning.lower()
+
+
+def test_dbo_login_with_non_dbo_schema_raises_when_opted_in(monkeypatch):
+    """fail_on_fixed_dbo raises before the doomed ALTER USER, and the
+    re-raise keeps it from being swallowed by the broad except — covered here
+    without a live SQL Server (the integration suite exercises the real
+    engine)."""
+    import pytest
+
+    from dblift.core.exceptions import ExecutionError, FixedDboSchemaError
+
+    provider = object.__new__(SqlServerProvider)
+    provider.log = MagicMock()
+    provider._schema_applied_for = None
+    provider._current_schema_set = None
+    _enable_fixed_dbo_guard(provider, True)
+    provider.execute_query = MagicMock(return_value=[{"db_user": "dbo", "default_schema": "dbo"}])
+    monkeypatch.setattr(
+        SqlAlchemyProvider,
+        "execute_statement",
+        MagicMock(side_effect=AssertionError("ALTER USER should not run")),
+    )
+
+    with pytest.raises(FixedDboSchemaError, match="cannot be changed") as raised:
+        provider.set_current_schema("otherschema")
+
+    assert isinstance(raised.value, ExecutionError)
+    assert "no history row is written" in str(raised.value)
+    assert "set the schema" not in str(raised.value).lower()
+    assert "set schema" not in str(raised.value).lower()
+    provider.log.warning.assert_not_called()
+
+
+def test_dbo_login_with_exact_dbo_schema_skips_alter_user(monkeypatch):
+    """schema exactly 'dbo' is already the fixed user's schema.
+
+    No warning is emitted and ALTER USER is not attempted.
+    """
+    provider = object.__new__(SqlServerProvider)
+    provider.log = MagicMock()
+    provider._schema_applied_for = None
+    provider._current_schema_set = None
+    provider.execute_query = MagicMock(return_value=[{"db_user": "dbo", "default_schema": "dbo"}])
+    execute = MagicMock(return_value=0)
+    monkeypatch.setattr(SqlAlchemyProvider, "execute_statement", execute)
+
+    provider.set_current_schema("dbo")
+
+    execute.assert_not_called()
+    provider.log.warning.assert_not_called()
+
+
+def test_dbo_login_with_case_variant_of_dbo_skips_alter_user(monkeypatch):
+    """'DBO'/'Dbo' already name dbo. ALTER USER [dbo] is error 15150, so the
+    guard returns without issuing it and without warning."""
+    provider = object.__new__(SqlServerProvider)
+    provider.log = MagicMock()
+    provider._schema_applied_for = None
+    provider._current_schema_set = None
+    provider.execute_query = MagicMock(return_value=[{"db_user": "dbo", "default_schema": "dbo"}])
+    execute = MagicMock(return_value=0)
+    monkeypatch.setattr(SqlAlchemyProvider, "execute_statement", execute)
+
+    provider.set_current_schema("DBO")
+    provider.set_current_schema("Dbo")
+
+    execute.assert_not_called()
+    provider.log.warning.assert_not_called()
+
+
+def test_non_dbo_login_is_not_blocked(monkeypatch):
+    """A login mapped to a non-dbo user never trips the guard."""
+    provider = object.__new__(SqlServerProvider)
+    provider.log = MagicMock()
+    provider._schema_applied_for = None
+    provider._current_schema_set = None
+    provider.execute_query = MagicMock(
+        return_value=[{"db_user": "app_user", "default_schema": "app_schema"}]
+    )
+    monkeypatch.setattr(SqlAlchemyProvider, "execute_statement", MagicMock(return_value=0))
+
+    provider.set_current_schema("some_schema")  # must not raise

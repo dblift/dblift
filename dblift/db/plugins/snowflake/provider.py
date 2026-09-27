@@ -7,6 +7,8 @@ from typing import Any, Dict, List, Optional
 from sqlalchemy.engine import Connection, Transaction
 
 from dblift.config import DbliftConfig
+from dblift.core.constants import DEFAULT_HISTORY_TABLE
+from dblift.core.constants import MIGRATION_LOCK_TABLE as _MIGRATION_LOCK_TABLE
 from dblift.core.logger import Log
 from dblift.core.migration.clean_summary import CleanExecutionSummary
 from dblift.db.plugins.base_history_manager import UNDO_HISTORY_TYPE
@@ -40,7 +42,7 @@ class SnowflakeProvider(SqlAlchemyProvider):
     """Snowflake provider using the Snowflake SQLAlchemy dialect."""
 
     canonical_dialect_key = "snowflake"
-    MIGRATION_LOCK_TABLE = "DBLIFT_MIGRATION_LOCK"
+    MIGRATION_LOCK_TABLE = _MIGRATION_LOCK_TABLE.upper()
     _migration_lock_connection: Connection | None = None
     _migration_lock_transaction: Transaction | None = None
 
@@ -303,7 +305,7 @@ class SnowflakeProvider(SqlAlchemyProvider):
             super().close()
 
     def get_applied_migrations(
-        self, schema: str, table_name: str = "dblift_schema_history"
+        self, schema: str, table_name: str = DEFAULT_HISTORY_TABLE
     ) -> List[Dict[str, Any]]:
         """Return applied migration rows from the history table."""
         normalized_table = table_name.upper()
@@ -320,7 +322,7 @@ class SnowflakeProvider(SqlAlchemyProvider):
         self,
         schema: str,
         create_schema: bool = False,
-        table_name: str = "dblift_schema_history",
+        table_name: str = DEFAULT_HISTORY_TABLE,
     ) -> None:
         """Create the Snowflake migration history table if missing."""
         normalized_table = table_name.upper()
@@ -354,7 +356,7 @@ class SnowflakeProvider(SqlAlchemyProvider):
         self,
         schema: str,
         migration_info: Dict[str, Any],
-        table_name: str = "dblift_schema_history",
+        table_name: str = DEFAULT_HISTORY_TABLE,
     ) -> None:
         """Insert a migration record into the Snowflake history table."""
         normalized_table = table_name.upper()
@@ -404,7 +406,7 @@ class SnowflakeProvider(SqlAlchemyProvider):
                 "checksum": 0,
                 "success": True,
             },
-            table_name or "dblift_schema_history",
+            table_name or DEFAULT_HISTORY_TABLE,
         )
         return True
 
@@ -413,7 +415,7 @@ class SnowflakeProvider(SqlAlchemyProvider):
         schema: str,
         script_name: str,
         checksum: Any,
-        table_name: str = "dblift_schema_history",
+        table_name: str = DEFAULT_HISTORY_TABLE,
         success_value: Optional[Any] = None,
     ) -> bool:
         """Update checksum and success state for an existing migration row."""

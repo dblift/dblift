@@ -10,7 +10,7 @@ from dblift.core.sql_model.base import (
 )
 from dblift.core.sql_model.partition import Partition
 
-# ADR-26 E / story 26-5 — ``Table`` stores its built-in per-dialect options
+# ``Table`` stores its built-in per-dialect options (ADR-26 E)
 # inside ``dialect_options`` under the owning plugin's canonical namespace
 # (``mysql`` / ``sqlserver`` / ``postgresql`` / ``oracle``), the same public
 # extension point third-party plugins use. Those namespace strings are resolved
@@ -27,7 +27,7 @@ if TYPE_CHECKING:
 class Table(SqlObject):
     """Represents a database table.
 
-    SIMP-48: ``__init__`` only accepts base/structural parameters.
+    ``__init__`` only accepts base/structural parameters.
 
     Tier-3 plugin isolation (current):
     Dialect-specific options are stored in :attr:`dialect_options` keyed by
@@ -128,7 +128,7 @@ class Table(SqlObject):
             self.mark_property_explicit("tablespace")
 
     # ------------------------------------------------------------------
-    # SIMP-48 — Typed-options surface (non-breaking).
+    # Typed-options surface (non-breaking).
     # ------------------------------------------------------------------
 
     @classmethod
@@ -491,7 +491,7 @@ class Table(SqlObject):
             differences["temporary"] = {"self": self.temporary, "other": other_table.temporary}
 
         # T-SQL grammar-based: Compare filegroup (SQL Server).
-        # Story 26-5: gate via plugin Quirks (``table_uses_filegroup_syntax``)
+        # Gate via plugin Quirks (``table_uses_filegroup_syntax``)
         # and read the built-ins from ``dialect_options`` under the canonical
         # SQL Server namespace resolved from the registry (no dialect literal).
         from dblift.core.sql_model.table_options import builtin_namespace_for
@@ -671,7 +671,7 @@ class Table(SqlObject):
             # pctfree / row_security / ...) live exclusively inside
             # ``dialect_options`` under their canonical namespace — the public
             # extension point — and are no longer mirrored as redundant
-            # top-level keys (ADR-26 E story 26-5).
+            # top-level keys (ADR-26 E).
             "partition_method": self.partition_method,
             "partition_columns": self.partition_columns,
             "partitions": (
@@ -806,7 +806,7 @@ class Table(SqlObject):
         # pctfree / row_security / inherits / ...) live inside
         # ``dialect_options``, so the single ``dialect_options`` comparison
         # covers every one of them — no need to enumerate each built-in
-        # (ADR-26 E story 26-5).
+        # (ADR-26 E).
         return (
             self.name == other.name
             and self.schema == other.schema

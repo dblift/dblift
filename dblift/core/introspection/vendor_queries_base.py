@@ -600,7 +600,7 @@ class VendorMetadataQueries(ABC):
         """Whether this dialect supports extensions (PostgreSQL-specific)."""
         return False
 
-    # --- Optional query methods (added by story 20-18) ---
+    # --- Optional query methods ---
     # These methods are called via hasattr() in extractors. Adding them here
     # with safe defaults formalizes the ABC contract and eliminates duck-typing.
 

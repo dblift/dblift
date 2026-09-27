@@ -3,18 +3,35 @@
 import argparse
 import sys
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional, Tuple
+from typing import Any, Dict, Iterable, List, NoReturn, Optional, Tuple
 
 from dblift.api._cli_support import ConnectionProvider
+from dblift.api._client_factory import apply_derived_schema
 from dblift.cli._parser_setup import create_parser, parse_with_selective_errors
 from dblift.config.config_builder import ConfigBuilder
 from dblift.config.dblift_config import _placeholder_tokens, load_config
 from dblift.config.errors import ConfigurationError
 from dblift.config.secrets._provider_base import SecretsResolutionError
 from dblift.core.logger import LogFactory, LogFormat, LogLevel
+from dblift.core.migration.commands.base_command import (
+    SCHEMA_REQUIRED_ERROR,
+    is_required_schema_missing,
+)
 from dblift.core.utils.database_url_parser import DatabaseUrlParser
 from dblift.core.utils.string_utils import safe_split_first
 from dblift.core.utils.url_masking import mask_database_url
+
+# Exceptions load_config() raises for a bad or missing configuration — the
+# CLI's own, reportable errors, as opposed to a bug surfacing as something
+# else. Shared with dblift.cli.handlers.mcp._announce_target, which needs
+# the same set without the sys.exit this module wraps it in below.
+CONFIG_LOAD_ERRORS = (
+    ConfigurationError,
+    FileNotFoundError,
+    RuntimeError,
+    ValueError,
+    SecretsResolutionError,
+)
 
 # Global flags that are boolean (action="store_true") and therefore do NOT
 # consume a following value. Without this set, `dblift --dry-run migrate`
@@ -168,7 +185,7 @@ def _build_args_namespace(
         args, unknown_args, has_validation_error = parse_with_selective_errors(parser)
         if has_validation_error:
             # argparse convention: exit 2 on usage/validation errors so scripts can detect
-            # them with `$?` (BUG-05).
+            # them with `$?`.
             sys.exit(2)
 
         if args is None:
@@ -263,13 +280,7 @@ def _load_and_merge_config(args: argparse.Namespace, log: Any) -> Any:
 
     try:
         config = load_config(args.config, args)
-    except (
-        ConfigurationError,
-        FileNotFoundError,
-        RuntimeError,
-        ValueError,
-        SecretsResolutionError,
-    ) as e:
+    except CONFIG_LOAD_ERRORS as e:
         message = str(e)
         if isinstance(e, ConfigurationError) and (
             "No configuration source provided" in message
@@ -398,8 +409,7 @@ def _validate_db_config(
                 "Specify it in the config file (path, database, or url field), "
                 "environment variables, or command line."
             )
-        if not getattr(config.database, "schema", None) and _qcs.default_schema_name:
-            config.database.schema = _qcs.default_schema_name
+        apply_derived_schema(config.database)
     elif not _qcs.requires_credentials:
         # CosmosDB and similar: no URL validation needed.
         pass
@@ -430,15 +440,10 @@ def _validate_db_config(
                 "Database password is required. Specify it in the config file, environment variables, or command line."
             )
 
-        if not getattr(config.database, "schema", None):
-            derived_schema = _qcs.derive_schema_name(config.database)
-            if derived_schema:
-                config.database.schema = derived_schema
+        apply_derived_schema(config.database)
 
-        if _qcs.schema_required and not getattr(config.database, "schema", None):
-            parser.error(
-                "Database schema is required. Specify it in the config file, environment variables, or command line."
-            )
+        if is_required_schema_missing(config.database):
+            parser.error(SCHEMA_REQUIRED_ERROR)
 
     # For baseline command, default to version "1" if not specified
     if args.command == "baseline" and not getattr(args, "baseline_version", None):
@@ -454,7 +459,10 @@ def _configure_logging(
         Configured log instance
     """
     log_dir_path = Path(args.log_dir if args.log_dir is not None else "logs")
-    log_dir_path.mkdir(parents=True, exist_ok=True)
+    try:
+        log_dir_path.mkdir(parents=True, exist_ok=True)
+    except OSError as e:
+        _exit_log_location_error(e)
 
     _LOG_LEVEL_MAP = {
         "debug": LogLevel.DEBUG,
@@ -531,9 +539,23 @@ def _configure_logging(
         console_log_level=console_log_level,
     )
 
-    log = LogFactory.get_log("Dblift")
+    try:
+        log = LogFactory.get_log("Dblift")
+    except OSError as e:
+        _exit_log_location_error(e)
     log.debug(f"Using database name: {db_name}")
     return log
+
+
+def _exit_log_location_error(e: OSError) -> NoReturn:
+    """Report an unusable log location (unwritable dir, bad name) without a traceback."""
+    target = f": {e.filename}" if e.filename else ""
+    print(
+        f"Error: cannot write log file ({e.strerror or e}){target}. "
+        "Use --log-dir or --log-file to choose a writable location.",
+        file=sys.stderr,
+    )
+    sys.exit(1)
 
 
 def _resolve_scripts_directories(
@@ -605,7 +627,7 @@ def _resolve_scripts_directories(
             scripts_dir = config_base_dir / "migrations"
             recursive = getattr(config.migrations, "recursive", True)
 
-    # Batch-5 BUG-02: CLI --recursive / --no-recursive wins over config and
+    # CLI --recursive / --no-recursive wins over config and
     # default. ``recursive_flag`` is ``None`` when neither is passed, so the
     # branches above remain authoritative unless the user explicitly asked.
     cli_recursive = getattr(args, "recursive_flag", None)

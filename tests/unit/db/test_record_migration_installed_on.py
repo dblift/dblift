@@ -86,6 +86,7 @@ def _provider(provider_cls: Type[Any]) -> Any:
     provider.create_migration_history_table_if_not_exists = lambda *a, **k: None
     provider.get_schema_qualified_name = lambda schema, table: f"{schema}.{table}"
     provider.execute_statement = _StatementRecorder()
+    provider.execute_query = lambda *a, **k: [{"has_rank_default": True}]
     return provider
 
 

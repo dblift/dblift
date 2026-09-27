@@ -11,7 +11,26 @@ if TYPE_CHECKING:
     from dblift.core.migration.placeholders.placeholder_service import PlaceholderService
 
 from dblift.config import DbliftConfig
+from dblift.config.database_config import BaseDatabaseConfig
 from dblift.core.logger import Log, NullLog
+from dblift.db.object_naming import configured_identifier_text, dictionary_identifier
+
+
+def _dblift_schema_placeholder(database: BaseDatabaseConfig) -> Optional[str]:
+    """Value of ``${dblift_schema}``.
+
+    Oracle expands to the catalog spelling with the quotes removed: unquoted
+    ``myschema`` becomes ``MYSCHEMA``, and ``"myschema"`` stays ``myschema``.
+    Other dialects keep the configured text. A null or empty schema stays
+    ``None``, so the placeholder is left undefined.
+    """
+    schema = database.schema
+    if not isinstance(schema, str) or not schema:
+        return None
+    # Unquoted Oracle names are uppercased everywhere else dblift uses them.
+    if database.type == "oracle":  # lint: allow-dialect-string: catalog spelling
+        return dictionary_identifier(schema, database.type)
+    return configured_identifier_text(schema)
 
 
 class PlaceholderManager:
@@ -37,8 +56,7 @@ class PlaceholderManager:
             Dictionary of placeholders and their values
         """
         placeholders = {
-            # Default system placeholders with dblift_ prefix
-            "dblift_schema": self.config.database.schema,
+            # Default system placeholders with dblift_ prefix.
             "dblift_database": getattr(
                 self.config.database,
                 "database",
@@ -55,6 +73,9 @@ class PlaceholderManager:
                 self.executor.get_installed_by() if self.executor else self.config.database.username
             ),
         }
+        schema = _dblift_schema_placeholder(self.config.database)
+        if schema is not None:
+            placeholders["dblift_schema"] = schema
         # Add user-defined placeholders if present
         if hasattr(self.config, "placeholders") and self.config.placeholders:
             placeholders.update(self.config.placeholders)

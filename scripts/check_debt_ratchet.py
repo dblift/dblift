@@ -36,8 +36,12 @@ _LINE_PATTERNS: Dict[str, "re.Pattern[str]"] = {
     "any_annotations": re.compile(r"^(?!\s*(?:from|import)\s).*(?:[:\[,]\s*|->\s*)Any\b"),
     "dynamic_attribute_access": re.compile(r"\b(hasattr|getattr)\("),
     "broad_excepts": re.compile(r"^\s*except Exception\b"),
-    # Internal tracking identifiers mean nothing to a reader of the public tree.
-    "process_references": re.compile(r"\b(?:Epic|epic|Story|story)\s+\d"),
+    # Internal tracking identifiers mean nothing to a reader of the public tree:
+    # epic/story numbers and ticket ids such as SIMP-37, DEDUP-30 or B10-BUG-01.
+    "process_references": re.compile(
+        r"\b(?:Epic|epic|Story|story)\s+\d"
+        r"|\b(?:SIMP|DIP|DEDUP|SMELL|DEAD|DEAD-NEW|NEW-BUG|B\d+-BUG|BUG|NOTE)-\d+"
+    ),
 }
 
 # Signals for which a comment-only line counts: a comment that names a tracking

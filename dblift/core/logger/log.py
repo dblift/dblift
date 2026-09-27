@@ -30,7 +30,11 @@ from typing import Any, Dict, Optional, Union
 # patches that target ``dblift.core.logger.log.X`` resolve to the same object.
 from dblift.core.logger._base import Log
 from dblift.core.logger._factory import LogFactory  # noqa: F401  re-export
-from dblift.core.logger._formatters import LogFormatter, TextFormatter  # noqa: F401  re-export
+from dblift.core.logger._formatters import (  # noqa: F401  re-export
+    LogFormatter,
+    TextFormatter,
+    _safe_name,
+)
 from dblift.core.logger._levels import (  # noqa: F401  re-export
     _LOG_LEVEL_PRIORITIES,
     LogEvent,
@@ -160,7 +164,7 @@ class AbstractLog(Log):
         # Clean up fully qualified exception class names for better user experience.
         error_msg = str(e)
 
-        # B8-BUG-04: strip fully-qualified exception class prefixes
+        # Strip fully-qualified exception class prefixes
         # (e.g. ``org.postgresql.util.PSQLException: FATAL: ...`` →
         # ``FATAL: ...``).
         error_msg = re.sub(
@@ -394,16 +398,6 @@ class ConsoleLog(AbstractLog):
             # Just log debug message if debug is enabled
             if self.is_debug_enabled():
                 self.debug(f"Could not display result summary: {e}")
-
-
-def _safe_name(value: str) -> str:
-    """Collapse anything that isn't a safe filename char to ``_``.
-
-    Used for the schema/database-name components of a log filename so a
-    path-like identifier (e.g. a SQLite file path) cannot inject directory
-    separators and point the log at a nonexistent nested directory.
-    """
-    return re.sub(r"[^\w.-]+", "_", value)
 
 
 # File log implementation

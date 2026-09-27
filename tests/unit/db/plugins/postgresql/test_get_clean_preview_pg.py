@@ -43,9 +43,14 @@ class TestPgGetCleanPreview(unittest.TestCase):
                     {"sequence_name": "dblift_schema_history_installed_rank_seq"},
                     {"sequence_name": "users_id_seq"},
                 ],
-                "information_schema.routines": [
-                    {"routine_name": "calc_total", "routine_type": "FUNCTION"},
-                    {"routine_name": "do_thing", "routine_type": "PROCEDURE"},
+                "pg_proc": [
+                    {"routine_name": "calc_total", "routine_kind": "f", "identity_arguments": ""},
+                    {"routine_name": "do_thing", "routine_kind": "p", "identity_arguments": ""},
+                    {
+                        "routine_name": "my_sum",
+                        "routine_kind": "a",
+                        "identity_arguments": "integer",
+                    },
                 ],
                 "pg_type": [
                     {"type_name": "status_enum", "typtype": "e"},
@@ -69,8 +74,9 @@ class TestPgGetCleanPreview(unittest.TestCase):
         self.assertIn(("table", "dblift_migration_lock"), names)
         self.assertIn(("table", "users"), names)
         self.assertIn(("sequence", "dblift_schema_history_installed_rank_seq"), names)
-        self.assertIn(("function", "calc_total"), names)
-        self.assertIn(("procedure", "do_thing"), names)
+        self.assertIn(("function", "calc_total()"), names)
+        self.assertIn(("procedure", "do_thing()"), names)
+        self.assertIn(("aggregate", "my_sum(integer)"), names)
         self.assertIn(("type", "status_enum"), names)
         self.assertIn(("type", "address_t"), names)
         self.assertIn(("domain", "pos_int"), names)
@@ -147,6 +153,34 @@ class TestPgGetCleanPreview(unittest.TestCase):
         self.assertNotIn(("type", "v_paid_orders"), names)
         self.assertNotIn(("type", "mv_order_totals"), names)
         self.assertIn(("type", "address_t"), names)
+
+    def test_category_query_failure_propagates(self):
+        # A failed catalog query must not read as "no tables": clean would
+        # then report success having dropped nothing.
+        qx = _qx_with_results({"pg_views": [{"view_name": "user_view"}]})
+        default = qx.execute_query.side_effect
+
+        def _execute_query(connection, query, params=None):
+            if "pg_tables" in query:
+                raise RuntimeError("permission denied for view pg_tables")
+            return default(connection, query, params)
+
+        qx.execute_query.side_effect = _execute_query
+        ops = PostgreSqlSchemaOperations(query_executor=qx, log=MagicMock())
+
+        with self.assertRaisesRegex(RuntimeError, "permission denied for view pg_tables"):
+            ops.get_clean_preview(MagicMock(), "public")
+        qx.execute_statement.assert_not_called()
+
+    def test_aborted_transaction_propagates(self):
+        qx = MagicMock()
+        qx.execute_query.side_effect = RuntimeError(
+            "current transaction is aborted, commands ignored until end of transaction block"
+        )
+        ops = PostgreSqlSchemaOperations(query_executor=qx, log=MagicMock())
+
+        with self.assertRaisesRegex(RuntimeError, "current transaction is aborted"):
+            ops.get_clean_preview(MagicMock(), "public")
 
 
 if __name__ == "__main__":

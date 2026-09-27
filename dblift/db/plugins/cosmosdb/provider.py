@@ -7,6 +7,7 @@ This provider uses modular components to handle Cosmos DB-specific database oper
 from typing import Any, Dict, List, Optional
 
 from dblift.config import DbliftConfig
+from dblift.core.constants import DEFAULT_HISTORY_TABLE
 from dblift.core.logger import Log
 from dblift.core.migration.clean_summary import CleanExecutionSummary
 from dblift.db.base_provider import NativeProvider
@@ -263,7 +264,7 @@ class CosmosDbProvider(NativeProvider):
         return self.schema_operations.get_clean_preview(schema)
 
     def get_applied_migrations(
-        self, schema: str, table_name: str = "dblift_schema_history"
+        self, schema: str, table_name: str = DEFAULT_HISTORY_TABLE
     ) -> List[Dict[str, Any]]:
         """Get list of applied migrations from history container."""
         connection = self._get_connection_or_raise()
@@ -294,7 +295,7 @@ class CosmosDbProvider(NativeProvider):
         return ", ".join(["?" for _ in range(count)])
 
     def record_migration(
-        self, schema: str, migration_info: Dict[str, Any], table_name: str = "dblift_schema_history"
+        self, schema: str, migration_info: Dict[str, Any], table_name: str = DEFAULT_HISTORY_TABLE
     ) -> None:
         """Record a migration in the history container."""
         connection = self._get_connection_or_raise()
@@ -305,7 +306,7 @@ class CosmosDbProvider(NativeProvider):
         schema: str,
         script_name: str,
         checksum: Any,
-        table_name: str = "dblift_schema_history",
+        table_name: str = DEFAULT_HISTORY_TABLE,
         success_value: Optional[Any] = None,
     ) -> bool:
         """Update checksum (and optionally success) of an existing history document."""
@@ -319,7 +320,7 @@ class CosmosDbProvider(NativeProvider):
         return self.history_manager.create_history_table(schema, table_name)
 
     def create_migration_history_table_if_not_exists(
-        self, schema: str, create_schema: bool = False, table_name: str = "dblift_schema_history"
+        self, schema: str, create_schema: bool = False, table_name: str = DEFAULT_HISTORY_TABLE
     ) -> None:
         """Create migration history container if it doesn't exist."""
         self.history_manager.create_history_container_if_not_exists(schema, table_name)

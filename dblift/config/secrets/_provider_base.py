@@ -20,7 +20,14 @@ class AbstractSecretsProvider(ABC):
 
     @abstractmethod
     def resolve(self, uri: str) -> str:
-        """Resolve a secret URI to its plaintext value."""
+        """Resolve a secret URI to its plaintext value.
+
+        Raise :class:`SecretsResolutionError` when the secret cannot be
+        produced (missing, denied, backend unreachable). The CLI and
+        ``dblift mcp`` report it as a configuration error, as they do a bare
+        ``ValueError`` or ``RuntimeError``; a caller of
+        :meth:`DbliftConfig.from_dict` receives whatever ``resolve`` raises.
+        """
 
     @abstractmethod
     def is_available(self) -> bool:

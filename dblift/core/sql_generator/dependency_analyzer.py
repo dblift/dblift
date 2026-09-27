@@ -294,7 +294,7 @@ class DependencyAnalyzer:
             # SQL Server system-versioned temporal tables depend on their
             # history table. Read the built-ins from ``dialect_options`` under
             # the canonical SQL Server namespace resolved from the registry, so
-            # this module names no dialect (ADR-26 E story 26-5).
+            # this module names no dialect (ADR-26 E).
             def _ss(key: str, default: Any = None) -> Any:
                 if not hasattr(obj, "get_dialect_option"):
                     return getattr(obj, key, default)

@@ -7,6 +7,8 @@ cleaning, and metadata queries for tables, columns, and other database objects.
 
 from typing import Any, List, Optional
 
+from sqlalchemy.exc import SQLAlchemyError
+
 from dblift.core.logger import Log, NullLog
 from dblift.core.migration.clean_summary import CleanExecutionSummary
 from dblift.db.plugins.base_schema_operations import BaseSchemaOperations
@@ -121,6 +123,7 @@ class MySqlSchemaOperations(BaseSchemaOperations):
 
         # Set current database
         self.set_current_schema(connection, schema)
+        self._check_events_listable(connection, schema)
 
         try:
             # Disable foreign key checks to avoid dependency issues
@@ -192,16 +195,36 @@ class MySqlSchemaOperations(BaseSchemaOperations):
             self.log.error(error_msg)
             raise
 
+    def _check_events_listable(self, connection: object, schema: str) -> None:
+        """Fail unless this connection may list the database's events.
+
+        ``information_schema.EVENTS`` silently hides the events of a database
+        on which the user lacks the EVENT privilege, so an empty result cannot
+        be told apart from "no events" and clean would report success with
+        events left behind. ``SHOW EVENTS FROM`` runs the same privilege check
+        but raises instead, so it is used as the probe.
+        """
+        quoted_schema = self.query_executor.get_quoted_schema_name(schema)
+        try:
+            self.query_executor.execute_query(connection, f"SHOW EVENTS FROM {quoted_schema}")
+        except SQLAlchemyError as e:
+            raise RuntimeError(
+                f"Cannot list the events in database '{schema}': clean needs the "
+                f"EVENT privilege on it to find and drop events ({e})"
+            ) from e
+
     def get_clean_preview(self, connection: Any, schema: str) -> CleanExecutionSummary:
         """Return the objects a MySQL clean would drop, without executing the DROPs.
 
-        BUG-03: dry-run must mirror ``clean_schema`` exactly so the user sees
+        Dry-run must mirror ``clean_schema`` exactly so the user sees
         every object that will be dropped, including dblift-internal tables
         (history / lock). Enumerates the same six kinds
         ``clean_schema`` processes: triggers, views, tables, functions,
         procedures, events.
         """
         summary = CleanExecutionSummary()
+
+        self._check_events_listable(connection, schema)
 
         # Triggers
         self._enumerate_objects_by_type(

@@ -21,6 +21,7 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock, call, patch
 
 from dblift.core.logger.results import RepairResult
+from dblift.core.migration.commands.base_command import PreflightConnectionError
 from dblift.core.migration.commands.repair_command import (
     RepairCommand,
     RepairSafetyError,
@@ -909,13 +910,25 @@ class TestRepairCommandExecute(unittest.TestCase):
         info_calls = " ".join(str(c) for c in log.info.call_args_list)
         self.assertIn("DRY RUN", info_calls)
 
-    def test_general_exception_is_caught(self):
+    def test_history_table_failure_raises_preflight_error(self):
         cmd = self._make_execute_cmd()
         cmd.history_manager.create_schema_and_history_table.side_effect = RuntimeError("no DB")
 
         with patch.object(cmd, "_populate_database_info"):
             with patch.object(cmd, "_log_command_completion"):
-                result = cmd.execute(Path("/migrations"))
+                with self.assertRaises(PreflightConnectionError) as ctx:
+                    cmd.execute(Path("/migrations"))
+
+        self.assertIn("Could not create the schema-history table", str(ctx.exception))
+        self.assertIsNotNone(ctx.exception.result)
+
+    def test_general_exception_is_caught(self):
+        cmd = self._make_execute_cmd()
+
+        with patch.object(cmd, "_populate_database_info"):
+            with patch.object(cmd, "_build_migration_state", side_effect=RuntimeError("no DB")):
+                with patch.object(cmd, "_log_command_completion"):
+                    result = cmd.execute(Path("/migrations"))
 
         self.assertFalse(result.success)
         self.assertIn("Repair operation failed", result.error_message)

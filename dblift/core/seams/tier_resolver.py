@@ -1,16 +1,15 @@
-"""Registry for the CLI's feature-tier resolution, contributed by higher tiers.
+"""Registry for the CLI's tier resolution, contributed by add-on packages.
 
-OSS core calls :func:`resolve_tier` to learn which tier the current
-invocation is entitled to. The tier value itself is opaque to OSS: it is
-produced and consumed entirely by paid code — OSS only stores and passes it
-through (``CliCommandContext.license_tier``). With nothing registered, every
-invocation resolves to ``None``. Installed higher tiers register a resolver
-here (via the ``dblift.features`` entry-point group) that inspects the
-license token and returns the tier it grants.
+The core calls :func:`resolve_tier` and stores the result on
+``CliCommandContext.license_tier`` without interpreting it: the value is
+produced and consumed entirely by the add-on that registered the resolver.
+With nothing registered, every invocation resolves to ``None``. An
+installed add-on registers a resolver here (via the ``dblift.features``
+entry-point group).
 
 A registered resolver that raises is treated the same as no resolver at
 all: :func:`resolve_tier` swallows it and returns ``None`` (fail-closed),
-rather than letting a misbehaving license check crash the CLI.
+rather than letting a misbehaving resolver crash the CLI.
 """
 
 from __future__ import annotations

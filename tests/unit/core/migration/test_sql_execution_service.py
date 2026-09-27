@@ -287,6 +287,33 @@ class TestDmlStatementType(unittest.TestCase):
         assert objects[0]["object_name"] == "customers"
         assert objects[0]["object_type"] == "TABLE"
 
+    def test_object_changes_name_the_table_behind_a_dml_target_alias(self):
+        """The HTML report's object column must name the written table, not an alias."""
+        from dblift.core.sql_parser.parser_factory import SqlParserFactory
+
+        cases = [
+            ("UPDATE a SET qty = 1 FROM orders AS a WHERE a.id = 1", "orders", "dbo"),
+            (
+                "UPDATE i SET qty = 1 FROM sales.items AS i JOIN orders o ON o.id = i.oid",
+                "items",
+                "sales",
+            ),
+            ("DELETE a FROM orders a WHERE a.id = 1", "orders", "dbo"),
+            ("DELETE t2 FROM t1 JOIN t2 ON t2.a = t1.a", "t2", "dbo"),
+            ("INSERT INTO [dbo].[orders] (id) SELECT id FROM src", "orders", "dbo"),
+        ]
+        for statement, table, schema in cases:
+            svc, _, sql_analyzer, _, journal = _make_service(
+                stmt_type=SqlStatementType.DML.value, has_journal=True, schema="dbo"
+            )
+            # The real dialect parser (not a mock) is what feeds the report.
+            sql_analyzer.parser_factory = SqlParserFactory("sqlserver")
+            svc.execute_statement(statement, stmt_index=0)
+            objects = journal.record_object_changes.call_args[0][2]
+            assert [(o["object_name"], o["schema"]) for o in objects] == [
+                (table, schema)
+            ], statement
+
 
 # ===========================================================================
 # Unknown/fallback statement type

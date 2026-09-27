@@ -2,10 +2,45 @@
 
 from __future__ import annotations
 
+import argparse
+import copy
 from typing import Any, List, Optional, Tuple
 
+from dblift.cli._config_helpers import CONFIG_LOAD_ERRORS, _discover_default_config
 from dblift.cli._output import CommandOutput
 from dblift.cli.handlers._shared import CliCommandContext
+from dblift.config.dblift_config import load_config
+
+
+def _announce_target(args: argparse.Namespace) -> None:
+    """Print, on stderr, the environment and database this server resolved.
+
+    Loads the configuration once, purely to report it — no connection is
+    opened. Calls ``load_config`` directly rather than the CLI's
+    ``_load_and_merge_config``, which exits the process on a configuration
+    error instead of raising it: an error the CLI itself would report
+    (``CONFIG_LOAD_ERRORS``) is printed here and swallowed, since each tool
+    call loads the configuration for itself and reports its own error;
+    anything else is a bug and surfaces.
+    """
+    shadow_args = copy.copy(args)
+    output = CommandOutput("console")
+    try:
+        if not shadow_args.config and not vars(shadow_args).get("database_url"):
+            discovered = _discover_default_config()
+            if discovered:
+                shadow_args.config = discovered
+        config = load_config(shadow_args.config, shadow_args)
+        environment = vars(config).get("_active_environment") or "none"
+        output.error(
+            f"dblift mcp: environment {environment}; "
+            f"database {config.database.describe_target()}"
+        )
+    except CONFIG_LOAD_ERRORS as exc:
+        output.error(
+            f"dblift mcp: configuration not loaded at start ({type(exc).__name__}: {exc}); "
+            "each tool call loads it and reports its own error"
+        )
 
 
 def _name_list(raw: Optional[str], flag: str) -> Tuple[Optional[List[str]], bool]:
@@ -27,7 +62,8 @@ def _name_list(raw: Optional[str], flag: str) -> Tuple[Optional[List[str]], bool
 def _handle_mcp(ctx: CliCommandContext) -> Tuple[bool, Any]:
     """Build the MCP server and block on stdin/stdout until the client disconnects.
 
-    Zero-config: no project config or database is touched at start. Each tool
+    Zero-config: the configuration is read at start only to print the
+    environment and database it resolved; no connection is opened. Each tool
     call loads the config the way the CLI would, prefixed with the root flags
     this process was started with (``ctx.args.global_arguments``).
 
@@ -101,6 +137,7 @@ def _handle_mcp(ctx: CliCommandContext) -> Tuple[bool, Any]:
         unknown_names = True
     if unknown_names:
         return (False, None)
+    _announce_target(ctx.args)
     if offline:
         # Said once at start-up, on stderr: the alternative is an operator who
         # learns which tools refuse one failed agent call at a time.

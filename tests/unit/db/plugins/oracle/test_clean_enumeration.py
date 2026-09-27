@@ -2,6 +2,8 @@
 
 from types import SimpleNamespace
 
+import pytest
+
 from dblift.db.plugins.oracle.provider import OracleProvider
 from dblift.db.provider_interfaces import DroppableObject
 
@@ -108,4 +110,24 @@ def test_list_droppable_objects_returns_oracle_clean_order_without_executing_dro
             drop_sql='DROP SYNONYM "APP"."APP_SYNONYM"',
         ),
     ]
+    assert not any(call[0] == "statement" for call in provider.calls)
+
+
+@pytest.mark.parametrize(
+    "failing_view", ["ALL_DB_LINKS", "ALL_TABLES", "ALL_OBJECTS", "ALL_SYNONYMS"]
+)
+def test_list_droppable_objects_propagates_catalog_query_failure(failing_view: str) -> None:
+    # A failed catalog query must not read as "no objects of this kind":
+    # clean would then report success having dropped nothing.
+    provider = DummyOracleProvider()
+
+    def fake_query(sql, params=None):
+        if failing_view in sql:
+            raise RuntimeError("ORA-03113: end-of-file on communication channel")
+        return []
+
+    provider.execute_query = fake_query
+
+    with pytest.raises(RuntimeError, match="ORA-03113"):
+        provider.list_droppable_objects("APP")
     assert not any(call[0] == "statement" for call in provider.calls)

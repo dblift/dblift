@@ -15,6 +15,221 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
+## [4.9.0] - 2026-09-27
+
+### Upgrading
+
+- Every `DBLiftClient` command method (`info()`, `validate()`, `migrate()`,
+  `undo()`, `baseline()`, `clean()`, `repair()` and `import_flyway()`)
+  returns a failed result of its own type when the connection cannot be
+  opened or the schema-history table cannot be created. `success` is
+  `False`, the error message is the preflight text (`Connection failed: ...`
+  or `Could not create the schema-history table: ...`), `target_schema` is
+  set, and the command's failed event is emitted (`MIGRATION_FAILED` for
+  `import_flyway()`). Nothing is raised and no warning is emitted. Any other
+  exception, including another `ConnectionError`, still propagates.
+  `client.info()` is the one API change: 4.8.0 raised `ConnectionError` for
+  these two failures, 4.9.0 returns the failed `InfoResult`, so check
+  `result.success` instead of catching the exception. The other methods
+  already returned a failed result in 4.8.0; their message is now the
+  preflight text on its own, without a `Migration operation failed: ` style
+  prefix. The CLI (including `--format json`) and `dblift mcp` still report
+  both failures as `ConnectionError`: JSON is
+  `{"success": false, "error": "ConnectionError: ..."}`, the MCP tools return
+  an error result, and reading `dblift://history` or `dblift://pending`
+  fails (`migrate_dry_run` and `dblift://pending` only for a failed
+  connection: a dry run never creates the schema-history table). The
+  FastAPI and Flask helpers (`migration_guard`,
+  `check_migrations_current`, `health_payload`) still raise
+  `ConnectionError`. Django `dblift_info`, `dblift_migrate` and
+  `dblift_validate` raise `CommandError` with the preflight text, and the
+  pytest-dblift fixtures fail their assertion with it. In 4.8.0 an
+  unreachable database came back as `Could not create schema history table:
+  <connection error>`; the message is now `Connection failed: ...`. A
+  history-table failure was `Could not create schema history table: ...`; it
+  is now `Could not create the schema-history table: ...`.
+- SQL Server: a login mapped to the fixed `dbo` user (`sa`, a sysadmin, or
+  the database owner) with `schema` set to anything other than `dbo` (any
+  case) logs a warning and continues. Unqualified objects are created in
+  `dbo` and the run is reported successful, the same outcome as 4.8.0. Set
+  `fail_on_fixed_dbo: true` under `database:` — or
+  `DBLIFT_DB_FAIL_ON_FIXED_DBO` to `1`, `true`, or `yes` — to fail before any
+  migration or callback statement executes. That raises `FixedDboSchemaError`
+  and writes no history row. When `schema` is `dbo` in any case, there is no
+  warning and no `ALTER USER`. A dry-run `migrate` or `undo`, and a migrate
+  with nothing pending, do not predict the warning or the failure: the check
+  runs in `set_current_schema` when a real run is about to execute a
+  migration or callback, which those paths never call. `clean` calls
+  `set_current_schema` even for `--dry-run`, so a dry-run clean does warn, or
+  fails when `fail_on_fixed_dbo` is set. Do not switch an existing
+  deployment's `schema` to `dbo` to silence the warning: that targets
+  `[dbo].[dblift_schema_history]` and replays every migration.
+- A dry-run `migrate` no longer runs `command.pre_migrate` (4.8.0 ran that
+  point for a dry run too). It runs `command.pre_migrate_dry_run` instead, at
+  the start of `MigrateCommand.execute`, before connecting. With nothing
+  registered the new point is a no-op. A check registered there runs only on
+  a dry run, and an exception it raises aborts the migrate.
+  `client.migrate(dry_run=True)`, `client.executor.migrate(dry_run=True)`,
+  `MigrationExecutor.migrate(dry_run=True)`, and
+  `MigrateCommand.execute(dry_run=True)` all go through that method.
+  `command.pre_migrate` still runs on a real migrate.
+- Oracle: an unquoted `schema` is uppercased when dblift connects, creates
+  the user, writes history and other objects, and looks the name up in the
+  catalog. 4.8.0 used the configured spelling verbatim, so a lowercase
+  `schema` really did target a lowercase user. If that exact case-sensitive
+  name is already in `ALL_USERS`, dblift stops before creating any object or
+  history row, including on `migrate --dry-run` (the guard runs when applied
+  history is read), and tells you to quote the schema in config. In YAML the
+  quotes are part of the value: `schema: '"myschema"'`, because
+  `schema: "myschema"` is the unquoted name. To use the uppercase user, set
+  `schema` to that uppercase name. A double-quoted schema is accepted for
+  Oracle only; PostgreSQL, MySQL, SQL Server, DB2, and SQLite still reject
+  one. `${dblift_schema}` on Oracle expands to the catalog spelling without
+  quotes. A null schema leaves the key undefined. Other dialects keep
+  the configured text.
+- `clean` (and `clean --dry-run`) now fails, with the database's error and
+  before dropping anything, when a query that lists the objects to drop
+  fails. 4.8.0 skipped that kind of object and could report success with
+  objects left behind, for example for a role that cannot read a catalog
+  view. Grant the role read access to the catalogs `clean` queries, or
+  clean with the schema owner. On MySQL and MariaDB, `clean` also fails
+  when the user lacks the EVENT privilege on the database, which 4.8.0
+  read as "no events" and left them behind; grant EVENT on the database.
+- `fail_on_fixed_dbo` is the only new `database:` key (SQL Server, default
+  `false`). No CLI flags were added. An unrecognized key under `database:`
+  is now logged as a warning naming the key and is still ignored. The
+  `validate` MCP tool accepts `strict` (the CLI `--strict` flag was already
+  there). `migrate_dry_run` accepts `show_sql` (the CLI `--show-sql` flag
+  was already there); placeholders in that SQL are resolved, so a placeholder
+  value that is a secret appears in the tool result and in
+  `migrate --show-sql --format json`.
+
+### Added
+
+- Public `dblift.core.migration.sql.is_comment_only_statement` helper shares the executor's existing comment classification, including executable MySQL/MariaDB directives.
+- `command.pre_migrate_dry_run` check point runs before a dry-run migrate.
+- The `validate` MCP tool now accepts `strict`, adding `--strict` so an agent can have a previously applied but now-missing migration reported and strict version order enforced (the CLI flag was already there; the tool did not expose it). The server instructions and MCP guide no longer imply the default `validate` reports missing files — it does so under `strict`.
+- Added `dblift.extensions.providers`, a stable import path for provider plugin
+  metadata, registry access, and transport typing.
+- `dblift mcp` now prints the environment and database it resolved on stderr
+  at start — never a secret — so an operator can confirm a read-only pin
+  took before letting an agent call anything. A configuration that fails to
+  load is reported the same way and the server still starts.
+- Added `dblift.extensions.sql_generation`, a stable import path for generated
+  SQL statements and generation options used by extensions.
+- Added `dblift.extensions.logging`, a stable import path for logging sinks,
+  formatters, operation results, and console rendering used by extensions.
+- `dblift mcp`'s `migrate_dry_run` tool gains a `show_sql` parameter; when
+  `true`, the result carries a `sql` array with each pending migration's
+  rendered statements. Resolved placeholder values appear in that output,
+  and those values can include secrets. `migrate --show-sql --format json`
+  now includes that same `sql` key in its output.
+
+### Changed
+
+- Oracle: an unquoted `schema:` is uppercased when dblift connects, creates the user, writes the history table and other objects, and looks the name up in the catalog. 4.8.0 used the configured name verbatim everywhere, including connect, so a lowercase `schema:` really did target a lowercase user. A double-quoted `schema:` value is accepted for Oracle only and keeps that exact case through schema readiness, the history table, object creation, the OSS binds and matching, and schema cache keys (the key is the catalog spelling, so `myschema` and `"MYSCHEMA"` share a key and `"myschema"` does not collide with them). Quotes are not stripped before the user is created or the session schema is set. PostgreSQL, MySQL, SQL Server, DB2, and SQLite reject a quoted schema. `${dblift_schema}` expands to the Oracle catalog spelling without quotes: an unquoted `myschema` becomes `MYSCHEMA`, and `schema: '"myschema"'` makes `${dblift_schema}.t`, `"${dblift_schema}"`, and `'${dblift_schema}'` all use `myschema`. Other dialects keep the configured text, and a null schema leaves the key undefined. If the configured schema is unquoted, is not already uppercase, and `ALL_USERS` contains that exact case-sensitive name, dblift stops before creating any object or history row, including on `migrate --dry-run`, and tells you to quote the schema name in config to keep the existing schema (it is not uppercase). To use the uppercase user instead, set `schema:` to that uppercase name (`MYSCHEMA`). In YAML the quotes are part of the value: `schema: '"myschema"'`, because `schema: "myschema"` is the unquoted name.
+- An unrecognized key under `database:` (a typo like `srvice` for `service_name`, or `service` for `service_name`) is now logged as a warning naming the key instead of being dropped in silence. It is still ignored, not fatal — a genuine driver-specific option belongs under `extra_params` — and a key that is a valid field of another engine, or an internal `_`-prefixed key, does not warn.
+- A `--dry-run` migration no longer runs the `command.pre_migrate` runtime checks. A dry run applies nothing, so the checks that gate *applying* a migration do not run for it — mirroring `migration.pre_execution`, which already never fires in dry-run. An installed extension that registers a `command.pre_migrate` check to gate real migrations therefore no longer blocks a dry run.
+- The secrets provider contract now documents `resolve`'s failure mode: raise `SecretsResolutionError` when the secret cannot be produced; the CLI and `dblift mcp` report it as a configuration error (as they do a bare `ValueError` or `RuntimeError`), a direct `DbliftConfig.from_dict()` caller receives whatever `resolve` raises. Stated in `AbstractSecretsProvider.resolve`, `register_provider` and the configuration guide; no behaviour change.
+- The documented `dblift.config.secrets` extension imports are now explicitly
+  included in the public compatibility contract.
+- The sample configuration files (`dblift-postgresql.yaml.template`,
+  `dblift-sqlserver.yaml.template`, `dblift-cosmosdb.yaml.template`) moved
+  from the repository root to `docs/examples/config/`.
+- `validate` now stops the way `info` does when dblift's schema-history table
+  cannot be created (a role without `CREATE`, a connection lost at that
+  step): `Could not create the schema-history table: <engine message>`,
+  instead of returning a validation result with `error_count: 1`.
+  `--format json` consumers get `{"success": false, "error": "..."}`, and
+  `dblift mcp` returns an error result. The same wording now replaces
+  `Connection failed: ...` for `info`, `migrate`, `undo` and `baseline` at
+  that step. Through the Python API, `DBLiftClient.validate()` and every
+  other command method return a failed result for both failures instead of
+  raising (see Upgrading). In 4.8.0 an unreachable database returned
+  `Could not create schema history table: <connection error>`; 4.9.0 returns
+  `Connection failed: ...`. In 4.8.0 the history-table message was
+  `Could not create schema history table: ...`; it is now
+  `Could not create the schema-history table: ...`.
+
+### Fixed
+
+- A migration containing only a block comment (`/* ... */`), alone or mixed with `--` comments, is applied as a no-op on every dialect. MySQL, MariaDB, PostgreSQL, SQL Server and Oracle previously sent a stray `*` to the server and recorded a failed migration. On PostgreSQL, SQL Server, DuckDB and DB2, where block comments nest, this includes a nested comment such as `/* outer /* inner */ outer */`; PostgreSQL, SQL Server and DB2 previously sent the text after the inner `*/`. On DB2 a `;` inside a nested comment also no longer ends a statement, so a commented-out `CREATE TABLE` or `DROP TABLE` in `/* a /* b */ DROP TABLE t; */` is not run and not reported as a touched object, and the statements after the comment still run. Where comments do not nest, the first `*/` ends the comment, so the rest is still sent and the engine rejects it, as its own client does.
+- DML target-table resolution through an alias (`DELETE <alias> FROM <table> <alias>`, `DELETE t2 FROM t1 JOIN t2 …`, SQL Server `UPDATE <alias> SET … FROM <table> AS <alias>`) now also works when `statement_dml_table` / `analyze_dml` are given dblift's dialect names (`sqlserver`, `postgresql`, `mariadb`) rather than sqlglot's, and in the regex fallback `extract_dml_table_name`; before, those calls returned the alias or the FROM anchor.
+- The HTML log report named the objects touched by aliased `UPDATE` / `DELETE` statements by their alias (`a`, `t2`) and listed every table read by a DML statement as changed; it now names the one table the statement writes.
+- MCP tools reject unknown argument names before execution and advertise closed argument schemas, preventing misspelled filters from silently running with defaults.
+- `undo --target-version` skips versions already undone and continues rolling back applied versions above the target. Other refusal reasons still fail the command.
+- `undo` checks that every version it would roll back has an undo script before executing any of them. A missing script lower in the plan now refuses the run up front, with the same message as `--dry-run`, instead of rolling back the higher versions first and leaving the database partially undone.
+- `undo` plans each version once after it has been undone and migrated again. The history then holds several successful rows for that version, and `undo --target-version` used to plan all of them, so it ran the same undo script twice, failed on the second run and never reached the lower versions. `--dry-run` also reported that inflated count. Only the latest successful row of a version is treated as applied now, the same rule `info` uses.
+- A DB2 migration that mixes a procedure or function with a trigger, or with a bare `BEGIN ATOMIC` block, keeps each body whole. The splitter recognised only procedures and functions once one was present, so the trigger was cut at the first `;` inside its body and the migration failed with SQL0104N.
+- Oracle and DB2 `import-flyway` read the history table Flyway creates, `"flyway_schema_history"` with quoted lowercase columns, including under a configured `--flyway-table` name. An unquoted uppercase table still imports. The Flyway history compatibility check finds the same table and compares it with the dblift history, so it no longer reports "Dblift has 0 migrations" after an import.
+- The Flyway history compatibility check uses the same Flyway-to-dblift type mapping as `import-flyway`, so an imported history with a repeatable migration (a versionless Flyway `SQL` row, stored by dblift as `REPEATABLE`) is compatible instead of failing with "Flyway type 'SQL' vs Dblift type 'REPEATABLE'". Each row's dblift type must now match its Flyway type, so a history whose types disagree, such as a versioned Flyway row recorded as `BASELINE`, is reported incompatible. The check's messages no longer end in a stray " ." and the one for a Flyway table with no dblift history suggests running `import-flyway`.
+- PostgreSQL migrations can record history in a Flyway-created table without an `installed_rank` default. Rank allocation occurs under the migration lock; history failures still roll back transactional migration changes.
+- Migration state timestamps use timezone-aware UTC without Python 3.12 deprecation warnings, retaining the existing `Z` format.
+- A null schema leaves `${dblift_schema}` undefined: it is preserved with a warning, or uses its explicit `${dblift_schema:default}` value. Oracle and other configured schema expansions are unchanged.
+- `import-flyway` keeps failed Flyway rows failed when a hand-built Flyway table stores `success` as text such as `'0'` or `'false'`. MySQL and SQLite previously imported those rows as successful, and Oracle and DB2 failed to read a `'false'` value.
+- `validate` fails when the schema history table cannot be read, with or without `--strict`, instead of reporting success. The CLI exits non-zero, `--format json` and the MCP `validate` tool return `success: false`, and `DBLiftClient.validate()` returns a failed result whose error names the history read failure, matching `info` and `undo`. On PostgreSQL that error (for example `permission denied for table dblift_schema_history`) is now what `validate`, `info` and `migrate --dry-run` report, instead of `InFailedSqlTransaction`: the schema-version lookup for the command header rolls back its failed read, and a reused `DBLiftClient` keeps working once the table is readable again.
+- Python API clients built without a `schema` use the same default schema as the CLI: the username on Oracle, the selected database on MySQL and MariaDB, and `dbo` on SQL Server. Oracle no longer fails with ORA-01741 on an empty schema-history table name, and an empty schema leaves `${dblift_schema}` undefined instead of expanding to an empty string. Where no schema can be derived (DB2, or MySQL and MariaDB with no database selected), `info()`, `migrate()` (including dry runs), `validate()`, `undo()`, `baseline()`, `clean()`, `repair()` and `import_flyway()` return a failed result with the CLI's `Database schema is required. ...` message before connecting; DB2 previously failed with a `CREATE SCHEMA ""` syntax error and a dry-run `migrate()` reported success with an empty target schema.
+- Narrow and dumb terminals retain the migration table's Description column.
+- PostgreSQL `pg_dump` `COPY ... FROM stdin` blocks now load their rows. The header and its data are sent together through psycopg's copy API; previously the driver refused the COPY and left the connection stuck, so the failure was never recorded in history and the migration lock was not released. A COPY that fails on bad data is recorded as a failed migration and rolls back. The block is recognised whatever the header's length (a dump names every column, often in a quoted, schema-qualified table), and each COPY header ends at its own `;`, so a `COPY ... TO` file no longer borrows the next statement's `FROM stdin`. `COPY ... TO STDOUT` is refused before it is sent, since a migration has nowhere to deliver the rows: the migration is recorded as failed, rolls back and releases the lock, instead of leaving the connection stuck.
+- A migration creating a table whose name contains a space or another non-word character (`CREATE TABLE "s"."Wide Rows"`, common in `pg_dump` output) no longer ends with a failed run after it committed. On PostgreSQL the migration was recorded as successful but the migration-lock release failed and `migrate` exited non-zero. The table probe dblift ran after each commit, which caused this, was removed.
+- A SQLite or DuckDB file in a deeply nested directory no longer crashes every command with `File name too long`: the default log filename and the JSON/HTML report filenames from the public formatter API bound the database identifier, keeping its basename. An unwritable log location now prints a short error instead of a traceback.
+- Oracle: a `;` followed on the same line by a stray `*/` no longer ends the statement. Oracle comments do not nest, so in `/* outer /* inner */ DROP TABLE t; */` the `DROP` is outside the comment; SQL*Plus keeps it in the buffer up to the next line ending in `;` and the server rejects the joined text, so `t` survives. dblift previously ran `DROP TABLE t` on its own; it now sends the same text SQL*Plus does. A `*/` inside a string or q-quoted literal (`'*/'`, `q'[*/]'`) or a `--` comment is not stray, so statements such as `CREATE TABLE a (x NUMBER); INSERT INTO b VALUES ('*/');` still split in two, including in generated undo scripts.
+- MySQL and MariaDB: generated undo scripts drop the tables, views and indexes the migration created, with the name exactly as written. Names were lowercased, so `CREATE TABLE MyTable` produced a `DROP TABLE` of `mytable`, which does not exist on a server with case-sensitive table names (the Linux default); the undo reported success and left the table behind. A doubled backtick inside a quoted name is now read as part of the name: `` `we``ird` `` used to be cut at `` `we` ``, so the undo dropped a different table called `we`. A schema-qualified unquoted name such as `db.T` is dropped as `` `db`.`T` `` instead of as a table named `db`.
+- Oracle generated undo scripts: a procedure, function or trigger followed later in the file by a `CREATE PACKAGE` or `CREATE PACKAGE BODY` is no longer read as one block with the package, which left the package out of the undo script without a warning. `CREATE PACKAGE` and `CREATE PACKAGE BODY` now generate `DROP PACKAGE` and `DROP PACKAGE BODY`; they were previously flagged for manual review. `migrate` was not affected.
+- A migration statement `SELECT ... INTO <target>` (PostgreSQL and SQL Server `SELECT ... INTO new_table`, `INTO TEMP`/`#temp`, also behind a `WITH` list; MySQL and MariaDB `INTO @var` or `INTO OUTFILE`) no longer fails with `This result object does not return rows`. It was classified as a row-returning query because it starts with `SELECT`; it now runs as a statement. The same applies to `context.execute()` in Python migrations, which sent it to the query path for the same reason. Plain `SELECT` results under `--show-query-results`, and `SELECT ... INTO var` inside `DO` blocks and function bodies, are unchanged.
+- Oracle generated undo scripts no longer silently miss statements after a `--` or `/*` inside a string or q-quoted literal. In a migration such as `CREATE TABLE a (v VARCHAR2(20) DEFAULT '-- x'); CREATE TABLE b (id NUMBER);`, the undo generator's statement splitter read `-- x');` as a comment, so the literal never closed and the rest of the file was lost: the script dropped only `a` and reported no warning. Comments are now found with the Oracle tokenizer, which skips plain and q-quoted literals, so every table gets its `DROP`. `migrate` was not affected.
+- Oracle `migrate` no longer skips statements after a SQL*Plus line holding an apostrophe or a double quote, such as `PROMPT Creating customer's table` or `REM don't run twice`. The quote was read as the start of a string literal running to the next quote in the file, so every statement in between was dropped together with the directive, and the migration still reported success. In a script of `PROMPT Creating customer's table`, `CREATE TABLE a ...;`, `REM don't run twice`, `CREATE TABLE b ...;`, `CREATE TABLE c ...;`, table `a` was never created. Generated undo scripts had the same problem and, for that script, dropped only `c`, without a warning; they now drop all three tables. SQL*Plus directives (`PROMPT`, `REM`/`REMARK`, `SET`, `DEFINE`, `SPOOL` and the others) are now recognised as whole lines where a statement can begin, before the script is split. A line inside a PL/SQL block or a multi-line string that only looks like a directive is now left alone; before, a line such as `EXECUTE IMMEDIATE 'CREATE TABLE x (` continued on the next line got a `;` appended, which changed the statement sent to the server.
+- PostgreSQL view extraction retains the `security_barrier` option supplied by catalog queries.
+- Integration tests skip unavailable snapshot and vendor introspection capabilities before starting database fixtures. PR formatting checks cover `packages/`, and pytest-dblift tests run with deprecation warnings treated as errors.
+- `migrate`, `undo`, `baseline`, `clean`, `repair` and `import-flyway` report a failed connection or an uncreatable schema-history table the way `info` and `validate` do: the CLI fails with `ConnectionError: ...` (also under `--format json`). For a failed connection, the MCP `migrate_dry_run` tool also returns an error result and reading `dblift://pending` fails instead of returning `[]`; a dry run never creates the schema-history table, so an uncreatable one does not fail either of them. `DBLiftClient.migrate()`, `undo()`, `baseline()`, `clean()`, `repair()` and `import_flyway()` return a failed result whose message is the preflight text, as `info()` and `validate()` do. `clean` no longer carries on past a connection it could not open. Failures while migrating are still returned as failed results. The console prints the same `ConnectionError: ...` line, without the `Unexpected error:` and `Exception:` lines. A SQLite file that cannot be opened is reported this way by `migrate` too, including a dry run, instead of a raw `PermissionError` or `OperationalError`, and the Django commands raise `CommandError` for it. The connection is rolled back after a failed schema-history table creation, so a reused `DBLiftClient` keeps working: on PostgreSQL the next command no longer fails with `InFailedSqlTransaction`, and `clean()` no longer reports success having dropped nothing.
+- `clean` and `clean --dry-run` fail, with the database's error, when a query that lists the objects to drop fails on PostgreSQL, MySQL, MariaDB, Oracle or DB2. Each object kind's query used to log the error at debug level and count as empty, so a connection clean could not use (a role unable to read a catalog view, a transaction already aborted, a lost connection) reported success having dropped nothing, and a dry run showed a partial list. Nothing is dropped when discovery fails. Optional object kinds that a server may lack, such as TimescaleDB continuous aggregates, are still skipped when absent. On MySQL and MariaDB, where `information_schema.EVENTS` hides events from a user without the EVENT privilege instead of failing, `clean` and `clean --dry-run` first run `SHOW EVENTS`, which does fail, and stop with a message naming the EVENT privilege; they used to report success with the events left in place. A missing TRIGGER privilege hides triggers the same way but does not fail `clean`: dropping a table drops its triggers.
+- PostgreSQL `clean` now drops aggregates, overloaded functions and range types. Routines were listed from `information_schema.routines`, which leaves out aggregates, so an aggregate survived a clean that reported success and the next `migrate` failed with "already exists". Each function, procedure and aggregate is now dropped with its argument types (`DROP FUNCTION f(integer)`), so two overloads of the same name no longer make the DROP ambiguous, and `clean --dry-run` lists each overload separately, as `name(arguments)`. Range types (and, on PostgreSQL 14+, the multirange that goes with each) were not listed at all. Routines that belong to an extension are still left to `DROP EXTENSION`.
+- `validate --format json` now reports `error: null` on success, matching `info` and `migrate` — it was `error: ""` (a clean validate leaves the message empty), the one inconsistency across the three read tools' JSON error contract.
+- DML analysis (`analyze_dml`, `statement_dml_table`, `extract_dml_table_name`)
+  returned the alias instead of the table for the MySQL / SQL Server
+  multi-table `DELETE <alias> FROM <table> <alias>` spelling; the target is
+  now resolved through the alias, and `DELETE t2 FROM t1 JOIN t2 …` names
+  `t2`; the quoted-name form (`statement_dml_table`) no longer carries the
+  JOIN clause when the target is the FROM anchor of a joined DELETE.
+- DML analysis (`analyze_dml`, `statement_dml_table`) returned the alias
+  instead of the table for SQL Server's `UPDATE <alias> SET … FROM <table>
+  AS <alias>` form — the only way T-SQL aliases an UPDATE target; the alias
+  is now resolved through the FROM clause.
+- `dblift mcp` now returns a tool call whose command failed before producing
+  a result (a refused connection, a history table that could not be
+  created, an exception inside the command) as an MCP error result carrying
+  the CLI's message, instead of a normal result with `success: false` that
+  an agent could read as success. The `dblift://history` and
+  `dblift://pending` resources report such a failure instead of returning an
+  empty list. A command that ran to a result — even a failed one, such as
+  validation issues — is still a normal result.
+- A database role that can connect but lacks a privilege — creating
+  dblift's schema-history table, for instance — is no longer reported as
+  `Connection failed: invalid credentials`; the engine's own permission
+  error is shown, as it already was for MySQL and Db2.
+- On PostgreSQL, the queries the drop-column safety check runs to find
+  referencing foreign keys and covering indexes used a placeholder style the
+  driver does not bind, so they could not execute at all. The foreign-key
+  lookup now also reads the system catalog instead of `information_schema`,
+  so a read-only role sees the referencing keys too.
+- SQL Server: a login that maps to the fixed `dbo` database user (a
+  `sa`/sysadmin login, or a database's owner) with `schema:` set to anything
+  other than `dbo` logs a warning and continues, same outcome as 4.8.0:
+  unqualified objects are created in `dbo` and the run is reported successful.
+  Set `fail_on_fixed_dbo: true` under `database:` to fail the run before any
+  migration or callback statement executes; no history row is written.
+  Connect with a login mapped to a non-`dbo` database user when the
+  configured schema must be honored. On an existing deployment, do not switch
+  `schema` to `dbo` to avoid the warning: that targets
+  `[dbo].[dblift_schema_history]` and replays every migration. Only a new
+  deployment that has never recorded history can use `schema: dbo` with a
+  dbo-mapped login. A dry-run `migrate` or `undo` does not predict this
+  warning or failure, because the check runs in `set_current_schema` when a
+  real run is about to execute a migration or callback, which those dry runs
+  never call (`clean`, including `clean --dry-run`, does).
+
+### Removed
+
 ## [4.8.0] - 2026-09-22
 
 ### Added

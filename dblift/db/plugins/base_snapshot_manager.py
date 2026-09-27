@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from dblift.core.constants import DBLIFT_SCHEMA_SNAPSHOTS_TABLE
 from dblift.db.constants import CHECKSUM_VARCHAR_SIZE, SNAPSHOT_ID_VARCHAR_SIZE
 from dblift.db.exceptions import DB_OPERATION_EXCEPTIONS
 from dblift.db.object_naming import get_normalized_object_name
@@ -59,7 +60,7 @@ class BaseSnapshotManager:
         return provider_key is not None and provider_key == dialect
 
     def create_snapshot_table_if_not_exists(
-        self, schema: str, table_name: str = "dblift_schema_snapshots"
+        self, schema: str, table_name: str = DBLIFT_SCHEMA_SNAPSHOTS_TABLE
     ) -> None:
         """Create the schema snapshot storage table if it does not exist."""
         provider = self._provider

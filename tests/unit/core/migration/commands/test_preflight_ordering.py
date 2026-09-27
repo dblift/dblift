@@ -61,6 +61,7 @@ def _make_minimal_command():
     cmd = BaseCommand.__new__(BaseCommand)
     cmd.log = MagicMock()
     cmd.provider = MagicMock()
+    cmd.config = MagicMock()
     return cmd
 
 
@@ -139,3 +140,25 @@ class TestPreflightOrdering:
             assert (
                 connect_idx < populate_idx
             ), f"With flags {flags}: populate must come after connect, got {order}"
+
+    def test_missing_required_schema_fails_before_connecting(self, monkeypatch, recorder):
+        """A required schema that is empty and underivable stops preflight first."""
+        from dblift.config import DatabaseConfig
+        from dblift.core.migration.commands.base_command import (
+            SCHEMA_REQUIRED_ERROR,
+            PreflightConnectionError,
+        )
+
+        cmd = _make_minimal_command()
+        cmd.config.database = DatabaseConfig(
+            type="db2", url="db2+ibm_db://localhost:50000/testdb", username="u", password="p"
+        )
+        _patch_preflight(monkeypatch, cmd, recorder)
+        result = MagicMock()
+
+        with pytest.raises(PreflightConnectionError) as excinfo:
+            cmd._run_preflight(result=result, ensure_history=True, dry_run=True)
+
+        assert str(excinfo.value) == SCHEMA_REQUIRED_ERROR
+        assert excinfo.value.result is result
+        assert recorder.calls == []

@@ -653,6 +653,44 @@ def test_manager_snapshot_retries_failed_reads_and_retains_successful_empty_hist
     assert counts["history"] == 1
 
 
+@pytest.mark.parametrize("operation", ["info", "validate", "migrate_dry_run"])
+def test_unreadable_history_surfaces_the_read_error_not_an_aborted_transaction(
+    database_client, operation
+):
+    """Emulate PostgreSQL: a failed read aborts the transaction until rollback."""
+    client, _, migrations, _ = database_client
+    (migrations / "V1__app.sql").write_text("CREATE TABLE app (id INTEGER PRIMARY KEY);")
+    assert client.migrate().success
+    aborted = False
+    rollback = client.provider.rollback_transaction
+
+    def read_history(*args, **kwargs):
+        nonlocal aborted
+        if aborted:
+            raise RuntimeError("current transaction is aborted")
+        aborted = True
+        raise RuntimeError("permission denied for table dblift_schema_history")
+
+    def rollback_and_clear():
+        nonlocal aborted
+        aborted = False
+        rollback()
+
+    with (
+        patch.object(client.provider, "get_applied_migrations", read_history),
+        patch.object(client.provider, "rollback_transaction", rollback_and_clear),
+    ):
+        if operation == "migrate_dry_run":
+            result = client.migrate(dry_run=True)
+        else:
+            result = getattr(client, operation)()
+
+    assert result.success is False
+    assert "permission denied for table dblift_schema_history" in result.error_message
+    assert "transaction is aborted" not in result.error_message
+    assert client.info().success
+
+
 def test_callback_discovery_sees_file_created_during_lock_acquisition(database_client):
     client, _, migrations, database = database_client
     (migrations / "V1__app.sql").write_text("CREATE TABLE app (id INTEGER PRIMARY KEY);")

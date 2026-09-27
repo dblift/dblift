@@ -78,13 +78,12 @@ class RepairCommand(BaseCommand):
         result = RepairResult()
         result.target_schema = self.config.database.schema
 
-        # Populate database connection information
-        self._populate_database_info(result)
+        # Connect, ensure the schema-history table exists and read connection
+        # metadata. Failures raise PreflightConnectionError, as for every
+        # other command.
+        self._run_preflight(result, ensure_history=True)
 
         try:
-            # Ensure schema and history table exist (this establishes the connection)
-            self.history_manager.create_schema_and_history_table(create_schema=False)
-
             # Log command execution with connection info (after connection is established)
             self._log_command_header_update("repair", dry_run=dry_run)
 
@@ -255,7 +254,7 @@ class RepairCommand(BaseCommand):
         # A load failure (permission denied, missing
         # directory not caught by the CLI layer, malformed script) propagates
         # — silently falling back to an empty set turned this into a
-        # mass-mark-missing footgun (BUG-04). The CLI has already verified
+        # mass-mark-missing footgun. The CLI has already verified
         # that the directory exists for every command except ``baseline``;
         # anything that raises here is the operator's to fix before repair
         # can proceed safely.
@@ -275,7 +274,7 @@ class RepairCommand(BaseCommand):
         # Safety gate: if the filesystem produced zero scripts but the
         # history has applied migrations that would all be marked MISSING,
         # refuse — this is almost always a misconfigured ``--scripts`` or
-        # empty default ``./migrations`` directory (BUG-04). Without this
+        # empty default ``./migrations`` directory. Without this
         # guard, a single ``repair`` invocation without ``--dry-run`` would
         # convert every applied migration into a DELETE entry.
         if not filesystem_scripts:
@@ -451,7 +450,7 @@ class RepairCommand(BaseCommand):
         version = repair.get("version")
 
         try:
-            # BUG-03 (ADR-0015): must use the normalized name — passing the
+            # ADR-0015: must use the normalized name — passing the
             # raw lowercase "dblift_schema_history" through
             # ``get_schema_qualified_name`` produces ``"DBLIFT_TEST"."dblift_schema_history"``
             # on Oracle, and Oracle reads that as a literally-named
@@ -544,7 +543,7 @@ class RepairCommand(BaseCommand):
                         continue
 
                     new_checksum = repair.get("new_checksum")
-                    # Epic 17: checksum column is INT; pass int for CRC32, not str
+                    # The checksum column is INT; pass int for CRC32, not str
                     if new_checksum is not None and not isinstance(new_checksum, int):
                         try:
                             new_checksum = int(new_checksum)

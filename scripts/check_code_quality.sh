@@ -20,12 +20,12 @@ fi
 echo -e "\n===== Checking formatting with black ====="
 # Use line length specified in pyproject.toml (100) - check only, don't fix
 # Check all Python source directories
-black --check --diff dblift/ tests/ scripts/ || { echo "❌ Formatting issues found. Run 'black .' to fix them."; exit_code=1; }
+black --check --diff dblift/ tests/ scripts/ packages/ || { echo "❌ Formatting issues found. Run 'black .' to fix them."; exit_code=1; }
 
 echo -e "\n===== Checking imports with isort ====="
 # Check import order without fixing automatically (like GitHub workflow)
 # Check all Python source directories
-isort --check --diff dblift/ tests/ scripts/ || { echo "❌ Import order issues found. Run 'isort .' to fix them."; exit_code=1; }
+isort --check --diff dblift/ tests/ scripts/ packages/ || { echo "❌ Import order issues found. Run 'isort .' to fix them."; exit_code=1; }
 
 echo -e "\n===== Checking style with flake8 ====="
 # Use the .flake8 file from the project root.

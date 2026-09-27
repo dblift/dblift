@@ -5,6 +5,8 @@ from argparse import ArgumentParser
 from importlib import metadata
 from typing import Any, Callable, Dict
 
+from dblift.core.constants import ENV_PREFIX
+
 COMMAND_ENTRY_POINT_GROUP = "dblift.commands"
 HANDLER_ENTRY_POINT_GROUP = "dblift.command_handlers"
 TERMINAL_ENTRY_POINT_GROUP = "dblift.terminal_commands"
@@ -13,7 +15,7 @@ TerminalCommand = Callable[[Any], int]
 
 
 def _extensions_disabled() -> bool:
-    return os.environ.get("DBLIFT_DISABLE_CLI_EXTENSIONS") == "1"
+    return os.environ.get(f"{ENV_PREFIX}DISABLE_CLI_EXTENSIONS") == "1"
 
 
 def load_command_extensions(parser: ArgumentParser) -> None:

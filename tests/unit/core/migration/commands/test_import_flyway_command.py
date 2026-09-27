@@ -59,7 +59,9 @@ class TestImportFlywayCommand:
             )
         )
         history.resolve_flyway_source_table = (
-            lambda table: MigrationHistoryManager.resolve_flyway_source_table(history, table)
+            lambda schema, table: MigrationHistoryManager.resolve_flyway_source_table(
+                history, schema, table
+            )
         )
         mock_dependencies["state_manager"] = MigrationStateManager(
             mock_dependencies["log"],
@@ -191,77 +193,83 @@ class TestImportFlywayCommand:
             "public", "flyway_schema_history"
         )
 
-    def test_oracle_default_flyway_table_normalized_to_uppercase(self, command, mock_dependencies):
-        """Default (non-overridden) source table is uppercased for Oracle so it
-
-        matches a real Flyway installation's table, which Oracle case-folds to
-        uppercase because Flyway creates it via unquoted DDL.
-        """
-        row = {
-            "INSTALLED_RANK": 1,
-            "VERSION": "1",
-            "DESCRIPTION": "init",
-            "TYPE": "SQL",
-            "SCRIPT": "V1__init.sql",
-            "CHECKSUM": 123,
-            "INSTALLED_BY": "flyway",
-            "INSTALLED_ON": "2026-01-01 00:00:00",
-            "EXECUTION_TIME": 42,
-            "SUCCESS": True,
-        }
-        mock_dependencies["config"].database.type = "oracle"
+    @staticmethod
+    def _oracle_provider(mock_dependencies, existing_tables):
         from dblift.db.plugins.oracle.quirks import OracleQuirks
 
-        mock_dependencies["provider"].quirks = OracleQuirks()
-        mock_dependencies["provider"].get_normalized_object_name.side_effect = (
-            lambda name: name.upper()
+        provider = mock_dependencies["provider"]
+        mock_dependencies["config"].database.type = "oracle"
+        provider.quirks = OracleQuirks()
+        provider.get_normalized_object_name.side_effect = lambda name: name.upper()
+        provider.get_schema_qualified_name.side_effect = (
+            lambda schema, table: f'"{schema}"."{table.strip(chr(34))}"'
         )
-        mock_dependencies["provider"].get_schema_qualified_name.return_value = (
-            '"public"."FLYWAY_SCHEMA_HISTORY"'
+        provider.table_exists.side_effect = lambda schema, table: table in existing_tables
+        provider.get_applied_migrations.return_value = []
+        return provider
+
+    def test_oracle_default_reads_flyway_quoted_lowercase_table(self, command, mock_dependencies):
+        """Flyway creates ``"flyway_schema_history"`` with quoted lowercase
+        columns on Oracle; the import must find and read that table."""
+        provider = self._oracle_provider(mock_dependencies, {'"flyway_schema_history"'})
+        rows = [
+            {**self._make_flyway_row("2", "V2__b.sql"), "installed_rank": 2, "success": 0},
+            {**self._make_flyway_row("1", "V1__a.sql"), "installed_rank": 1, "success": 1},
+        ]
+        provider.execute_query.return_value = rows
+
+        result = command.execute(scripts_dir=Path("/scripts"), dry_run=False)
+
+        assert result.success is True, result.error_message
+        provider.get_schema_qualified_name.assert_called_once_with(
+            "public", '"flyway_schema_history"'
         )
-        mock_dependencies["provider"].execute_query.return_value = [row]
-        mock_dependencies["provider"].get_applied_migrations.return_value = []
+        query = provider.execute_query.call_args.args[0]
+        # No column is named in the query: its case differs between shapes.
+        assert query == 'SELECT * FROM "public"."flyway_schema_history"'
+        imported = [c.args[1] for c in provider.record_migration.call_args_list]
+        assert [(r["script"], r["success"]) for r in imported] == [
+            ("V1__a.sql", True),
+            ("V2__b.sql", False),
+        ]
 
-        command.execute(scripts_dir=Path("/scripts"), dry_run=False)
+    def test_oracle_default_falls_back_to_uppercase_table(self, command, mock_dependencies):
+        """A hand-built unquoted table (folded to uppercase) still imports."""
+        provider = self._oracle_provider(mock_dependencies, {"FLYWAY_SCHEMA_HISTORY"})
+        provider.execute_query.return_value = [
+            {k.upper(): v for k, v in self._make_flyway_row("1", "V1__init.sql").items()}
+        ]
 
-        mock_dependencies["provider"].get_schema_qualified_name.assert_called_once_with(
+        result = command.execute(scripts_dir=Path("/scripts"), dry_run=False)
+
+        assert result.success is True, result.error_message
+        provider.get_schema_qualified_name.assert_called_once_with(
             "public", "FLYWAY_SCHEMA_HISTORY"
         )
-        query = mock_dependencies["provider"].execute_query.call_args.args[0]
-        assert 'FROM "public"."FLYWAY_SCHEMA_HISTORY"' in query
-        mock_dependencies["provider"].get_applied_migrations.assert_called_once_with(
-            "public", "dblift_schema_history"
-        )
-        imported = mock_dependencies["provider"].record_migration.call_args.args[1]
+        imported = provider.record_migration.call_args.args[1]
         assert imported["script"] == "V1__init.sql"
 
-    def test_oracle_explicit_flyway_table_override_preserved_exactly(
+    def test_oracle_configured_flyway_table_prefers_exact_spelling(
         self, command, mock_dependencies
     ):
-        """An explicit --flyway-table override is passed through verbatim,
-
-        even on Oracle — only the unspecified default name gets normalized.
-        """
-        mock_dependencies["config"].database.type = "oracle"
-        from dblift.db.plugins.oracle.quirks import OracleQuirks
-
-        mock_dependencies["provider"].quirks = OracleQuirks()
-        mock_dependencies["provider"].get_normalized_object_name.side_effect = (
-            lambda name: name.upper()
-        )
-        mock_dependencies["provider"].get_schema_qualified_name.return_value = (
-            '"public"."Custom_Flyway_Tbl"'
-        )
-        mock_dependencies["provider"].execute_query.return_value = []
-        mock_dependencies["provider"].get_applied_migrations.return_value = []
+        """A configured Flyway table name is looked up with its exact case
+        first, as Flyway quotes it when creating the table."""
+        provider = self._oracle_provider(mock_dependencies, {'"Custom_Flyway_Tbl"'})
+        provider.execute_query.return_value = []
 
         command.execute(
             scripts_dir=Path("/scripts"), dry_run=False, flyway_table="Custom_Flyway_Tbl"
         )
 
-        mock_dependencies["provider"].get_schema_qualified_name.assert_called_once_with(
-            "public", "Custom_Flyway_Tbl"
-        )
+        provider.get_schema_qualified_name.assert_called_once_with("public", '"Custom_Flyway_Tbl"')
+
+    def test_oracle_quoted_flyway_table_kept_as_written(self, command, mock_dependencies):
+        provider = self._oracle_provider(mock_dependencies, {'"my_history"'})
+        provider.execute_query.return_value = []
+
+        command.execute(scripts_dir=Path("/scripts"), dry_run=False, flyway_table='"my_history"')
+
+        provider.table_exists.assert_called_once_with("public", '"my_history"')
 
     # ------------------------------------------------------------------ BUG-05
     def test_missing_flyway_table_reports_error(self, command, mock_dependencies):

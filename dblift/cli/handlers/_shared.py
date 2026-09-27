@@ -12,7 +12,12 @@ import io
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Protocol, Tuple, TypeVar
+
+from dblift.core.migration.commands.base_command import (
+    PreflightConnectionError,
+    reported_exception_name,
+)
 
 # Flyway-compatible migration filename patterns — used by SQL-file validation to
 # skip non-migration SQL files when scanning a directory (e.g. leftover
@@ -75,8 +80,37 @@ class ConfigOnlyClient:
     config: Any
 
 
+class _FailedCommandResult(Protocol):
+    """The fields ``_reraise_preflight_failure`` reads off a command result."""
+
+    success: bool
+    error_message: Optional[str]
+    _preflight_error: Optional[BaseException]
+
+
+_ResultT = TypeVar("_ResultT", bound=_FailedCommandResult)
+
+
+def _reraise_preflight_failure(result: _ResultT) -> _ResultT:
+    """Keep the CLI, JSON and MCP error path for a preflight failure.
+
+    ``DBLiftClient`` command methods return a failed result when the
+    connection fails or the schema-history table cannot be created. These
+    surfaces still raise ``ConnectionError`` — the base type, so the
+    published text stays ``ConnectionError: ...`` — which ``run_json_guarded``
+    turns into ``{"success": false, "error": "ConnectionError: ..."}`` and
+    which ``dblift mcp`` reports as an error result. Any other result,
+    including one for another ``ConnectionError`` that was not a preflight
+    failure, is returned as the command's verdict.
+    """
+    error = getattr(result, "_preflight_error", None)
+    if isinstance(error, PreflightConnectionError) and result.success is False:
+        raise ConnectionError(str(error))
+    return result
+
+
 def _set_command_completed(log: Any, result: Any, command_type: str) -> None:
-    """Helper to report command completion to the logger (eliminates SMELL-04 duplication)."""
+    """Helper to report command completion to the logger (eliminates duplication)."""
     if result is None:
         return
     execution_time = result.execution_time() if hasattr(result, "execution_time") else 0
@@ -209,7 +243,7 @@ def run_json_guarded(
         error = exc
     if error is not None or result is None:
         text = (
-            f"{type(error).__name__}: {error}"
+            f"{reported_exception_name(error)}: {error}"
             if error is not None
             else f"{command_type.lower()}() returned no result"
         )

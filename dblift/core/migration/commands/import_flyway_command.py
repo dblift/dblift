@@ -3,25 +3,11 @@
 from pathlib import Path
 from typing import Any, Dict, List
 
+from dblift.core.constants import DEFAULT_HISTORY_TABLE
 from dblift.core.logger.results import OperationResult
 from dblift.core.migration.commands.base_command import BaseCommand
-from dblift.core.migration.migration import MigrationType
-from dblift.core.sql_validator._flyway_compatibility import FLYWAY_TYPE_TO_MIGRATION_TYPE
-
-
-def _as_bool(value: Any) -> bool:
-    """Read Flyway's ``success`` column as a real boolean.
-
-    Flyway declares this column BOOLEAN on PostgreSQL but an integer type on
-    MySQL and SQLite, and a hand-built table can hold the string "0". Our own
-    PostgreSQL history column is BOOLEAN and psycopg refuses an int for it, so
-    the value is normalised here rather than trusted as read.
-    """
-    if isinstance(value, bool):
-        return value
-    if isinstance(value, str):
-        return value.strip().lower() not in ("", "0", "false", "f", "n", "no")
-    return bool(value)
+from dblift.core.migration.migration import success_to_bool
+from dblift.core.sql_validator._flyway_compatibility import dblift_type_for_flyway_row
 
 
 class ImportFlywayCommand(BaseCommand):
@@ -48,28 +34,20 @@ class ImportFlywayCommand(BaseCommand):
         result.target_schema = self.config.database.schema
         default_source_table = "flyway_schema_history"
         source_table = (flyway_table or default_source_table).strip()
-        source_table = self.state_manager.resolve_flyway_source_table(source_table)
         configured_target = getattr(self.config, "history_table", None)
         target_table = (
             configured_target.strip()
             if isinstance(configured_target, str) and configured_target.strip()
-            else "dblift_schema_history"
+            else DEFAULT_HISTORY_TABLE
         )
 
-        # Ensure the provider has a live connection before reading connection
-        # metadata or querying the Flyway table — dry-run skips
-        # create_schema_and_history_table below, which would otherwise be the
-        # only thing establishing the connection for providers that need it.
-        self._ensure_connected()
-
-        # Populate database connection information
-        self._populate_database_info(result)
+        # Connect, create the schema-history table (skipped in dry-run so no
+        # table is created as a side effect) and read connection metadata.
+        # Failures raise PreflightConnectionError, as for every other command.
+        self._run_preflight(result, ensure_history=True, dry_run=dry_run)
 
         try:
-            # Ensure schema and history table exist. Skipped in dry-run so no
-            # table is created as a side effect.
             if not dry_run:
-                self.history_manager.create_schema_and_history_table(create_schema=False)
                 self.state_manager.new_read_snapshot()
 
             # Log command execution with connection info (after connection is established)
@@ -77,6 +55,7 @@ class ImportFlywayCommand(BaseCommand):
 
             # Read entries from the Flyway history table
             schema = self.config.database.schema
+            source_table = self.state_manager.resolve_flyway_source_table(schema, source_table)
 
             # Distinguish "table missing" (configuration error) from "table empty"
             # (benign but still notable). get_applied_migrations silently returns
@@ -115,7 +94,7 @@ class ImportFlywayCommand(BaseCommand):
             # leaves the target table untouched rather than half-populated.
             mapped_rows = [self._row_with_mapped_type(row) for row in rows_to_import]
 
-            # BUG-06: emit a user-visible preview in dry-run mode so callers
+            # Emit a user-visible preview in dry-run mode so callers
             # see the list of rows that would be written to dblift_schema_history
             # (previously only log.debug, invisible unless debug logging on).
             if dry_run:
@@ -214,14 +193,12 @@ class ImportFlywayCommand(BaseCommand):
         # ``flyway_type`` is a raw column value from Flyway's own history
         # table (e.g. "SQL", "JDBC"), never a MigrationType member — the
         # str() is defensive against non-text column types, not an enum cast.
-        mapped_type = FLYWAY_TYPE_TO_MIGRATION_TYPE.get(str(flyway_type))  # lint: allow-enum-str
+        mapped_type = dblift_type_for_flyway_row(
+            str(flyway_type), row.get("version")  # lint: allow-enum-str
+        )
         if mapped_type is None:
             raise ValueError(
                 f"Unrecognised Flyway migration type '{flyway_type}' for script "
                 f"'{row.get('script')}': no mapping to a Dblift MigrationType is defined."
             )
-        if mapped_type == MigrationType.SQL.name and not row.get("version"):
-            # Flyway's convention for a repeatable migration is type=SQL with
-            # no version — dblift models this as its own REPEATABLE type.
-            mapped_type = MigrationType.REPEATABLE.name
-        return {**row, "type": mapped_type, "success": _as_bool(row.get("success", True))}
+        return {**row, "type": mapped_type, "success": success_to_bool(row.get("success", True))}

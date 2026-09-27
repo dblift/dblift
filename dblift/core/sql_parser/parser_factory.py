@@ -23,7 +23,7 @@ class SqlParserFactory:
     - 'sqlglot': Pure sqlglot parsing (fails on procedural languages, not recommended)
     """
 
-    # Story 26-9 / 26-4: parser classes are owned by the plugin via
+    # Parser classes are owned by the plugin via
     # ``DialectQuirks.parser_class(parser_type)``. The three legacy
     # ``*_PARSER_MAP`` dicts are gone — adding a new dialect = drop a
     # plugin folder and override ``parser_class`` in its quirks.py.
@@ -184,9 +184,10 @@ class SqlParserFactory:
     def _resolve_parser(dialect: str, parser_type: str) -> SqlParserInterface:
         """Resolve and instantiate a parser via the plugin's quirks.
 
-        Story 26-9 / 26-4: replaces the three static ``PARSER_MAP`` /
-        ``REGEX_PARSER_MAP`` / ``SQLGLOT_PARSER_MAP`` dicts. Adding a
-        dialect = override ``parser_class`` in its plugin quirks.py.
+        Parser classes are owned by the plugin via this hook, not via
+        static ``PARSER_MAP`` / ``REGEX_PARSER_MAP`` / ``SQLGLOT_PARSER_MAP``
+        dicts. Adding a dialect = override ``parser_class`` in its plugin
+        quirks.py.
         """
         from dblift.db.provider_registry import ProviderRegistry
 

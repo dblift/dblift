@@ -127,3 +127,19 @@ class TestJsonFormatterQueryResults:
         assert row[0] == "2024-01-01 12:00:00"
         assert row[1] == "19.99"
         assert isinstance(row[2], str)
+
+
+class TestJsonFormatterOutputFilename:
+    def test_get_output_filename_keeps_short_names(self):
+        filename = JsonFormatter().get_output_filename("public", "testdb", "migrate")
+        assert filename.startswith("Dblift_public_testdb_migrate_")
+        assert filename.endswith(".json")
+
+    def test_get_output_filename_bounds_long_sqlite_path(self):
+        """A SQLite file in a deep directory must yield a flat, OS-valid filename."""
+        database_name = "/" + "/".join(["deeply_nested_directory_level"] * 12) + "/app.db"
+        filename = JsonFormatter().get_output_filename("main", database_name, "migrate")
+        assert "/" not in filename
+        assert len(filename) <= 255
+        assert "app.db" in filename
+        assert filename.endswith(".json")

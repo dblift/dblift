@@ -8,6 +8,10 @@ import re
 from typing import Dict, List, Optional, Pattern, Set
 
 from dblift.core.sql_parser.dialects.base_config import DialectConfig
+from dblift.core.sql_parser.dialects.identifier_tokens import (
+    BACKTICK_IDENTIFIER,
+    strip_identifier_quotes,
+)
 
 
 class MySqlConfig(DialectConfig):
@@ -243,13 +247,20 @@ class MySqlConfig(DialectConfig):
         - TEMPORARY table support
         - ONLINE/OFFLINE for indexes
         """
+        # A backtick inside a quoted name is escaped by doubling it
+        # (`` `we``ird` `` is ``we`ird``), so the quoted alternative reads a
+        # doubled pair as part of the name instead of stopping there. The
+        # delimiters are captured with the name; normalize_identifier strips
+        # them afterwards.
+        id_token = rf"(?:{BACKTICK_IDENTIFIER}|[a-zA-Z_][a-zA-Z0-9_]*)"
+        captured_id = f"({id_token})"
+        qualified_name = rf"{captured_id}(?:\.{captured_id})?"
         return {
             # Grammar-based: CREATE TEMPORARY? TABLE ifNotExists? tableName
             # Supports backticks and TEMPORARY
             "table": re.compile(
                 r"\b(?:CREATE|DROP|ALTER)\s+(?:TEMPORARY\s+)?TABLE\s+(?:IF\s+(?:NOT\s+)?EXISTS\s+)?"
-                r"(?:(?:`([^`]+)`)|([a-zA-Z_][a-zA-Z0-9_]*))"
-                r"(?:\.(?:`([^`]+)`)|([a-zA-Z_][a-zA-Z0-9_]*))?",
+                + qualified_name,
                 re.IGNORECASE,
             ),
             # Grammar-based: CREATE orReplace? (ALGORITHM '=' algType)? ownerStatement? ... VIEW fullId
@@ -259,9 +270,7 @@ class MySqlConfig(DialectConfig):
                 r"(?:ALGORITHM\s*=\s*(?:MERGE|TEMPTABLE|UNDEFINED)\s+)?"
                 r"(?:DEFINER\s*=\s*[^@]+@[^\s]+\s+)?"
                 r"(?:SQL\s+SECURITY\s+(?:DEFINER|INVOKER)\s+)?"
-                r"VIEW\s+(?:IF\s+(?:NOT\s+)?EXISTS\s+)?"
-                r"(?:(?:`([^`]+)`)|([a-zA-Z_][a-zA-Z0-9_]*))"
-                r"(?:\.(?:`([^`]+)`)|([a-zA-Z_][a-zA-Z0-9_]*))?",
+                r"VIEW\s+(?:IF\s+(?:NOT\s+)?EXISTS\s+)?" + qualified_name,
                 re.IGNORECASE,
             ),
             # Grammar-based: CREATE intimeAction? indexCategory? INDEX uid ... ON tableName
@@ -273,49 +282,41 @@ class MySqlConfig(DialectConfig):
                 r"\b(?:CREATE|DROP)\s+(?:ONLINE|OFFLINE\s+)?"
                 r"(?:UNIQUE\s+|FULLTEXT\s+|SPATIAL\s+)?"
                 r"INDEX\s+(?:IF\s+(?:NOT\s+)?EXISTS\s+)?"
-                r"(?:(?:`([^`]+)`)|([a-zA-Z_][a-zA-Z0-9_]*))"
-                r"(?:\s+ON\s+(?:`[^`]+`|[a-zA-Z_][a-zA-Z0-9_]*)"
-                r"(?:\.(?:`[^`]+`)|[a-zA-Z_][a-zA-Z0-9_]*)?)?",
+                + captured_id
+                + rf"(?:\s+ON\s+{id_token}(?:\.{id_token})?)?",
                 re.IGNORECASE,
             ),
             "database": re.compile(
-                r"\b(?:CREATE|DROP|ALTER)\s+(?:DATABASE|SCHEMA)\s+(?:IF\s+(?:NOT\s+)?EXISTS\s+)?(?:(?:`([^`]+)`)|([a-zA-Z_][a-zA-Z0-9_]*))",
+                r"\b(?:CREATE|DROP|ALTER)\s+(?:DATABASE|SCHEMA)\s+(?:IF\s+(?:NOT\s+)?EXISTS\s+)?"
+                + captured_id,
                 re.IGNORECASE,
             ),
             # Grammar-based: CREATE ownerStatement? PROCEDURE ifNotExists? fullId
             # Supports DEFINER, IF NOT EXISTS, backticks
             "procedure": re.compile(
                 r"\b(?:CREATE|DROP|ALTER)\s+(?:DEFINER\s*=\s*[^@]+@[^\s]+\s+)?"
-                r"PROCEDURE\s+(?:IF\s+(?:NOT\s+)?EXISTS\s+)?"
-                r"(?:(?:`([^`]+)`)|([a-zA-Z_][a-zA-Z0-9_]*))"
-                r"(?:\.(?:`([^`]+)`)|([a-zA-Z_][a-zA-Z0-9_]*))?",
+                r"PROCEDURE\s+(?:IF\s+(?:NOT\s+)?EXISTS\s+)?" + qualified_name,
                 re.IGNORECASE,
             ),
             # Grammar-based: CREATE ownerStatement? AGGREGATE? FUNCTION ifNotExists? fullId
             # Supports DEFINER, AGGREGATE, IF NOT EXISTS, backticks
             "function": re.compile(
                 r"\b(?:CREATE|DROP|ALTER)\s+(?:DEFINER\s*=\s*[^@]+@[^\s]+\s+)?"
-                r"(?:AGGREGATE\s+)?FUNCTION\s+(?:IF\s+(?:NOT\s+)?EXISTS\s+)?"
-                r"(?:(?:`([^`]+)`)|([a-zA-Z_][a-zA-Z0-9_]*))"
-                r"(?:\.(?:`([^`]+)`)|([a-zA-Z_][a-zA-Z0-9_]*))?",
+                r"(?:AGGREGATE\s+)?FUNCTION\s+(?:IF\s+(?:NOT\s+)?EXISTS\s+)?" + qualified_name,
                 re.IGNORECASE,
             ),
             # Grammar-based: CREATE ownerStatement? TRIGGER ifNotExists? fullId
             # Supports DEFINER, IF NOT EXISTS, backticks
             "trigger": re.compile(
                 r"\b(?:CREATE|DROP)\s+(?:DEFINER\s*=\s*[^@]+@[^\s]+\s+)?"
-                r"TRIGGER\s+(?:IF\s+(?:NOT\s+)?EXISTS\s+)?"
-                r"(?:(?:`([^`]+)`)|([a-zA-Z_][a-zA-Z0-9_]*))"
-                r"(?:\.(?:`([^`]+)`)|([a-zA-Z_][a-zA-Z0-9_]*))?",
+                r"TRIGGER\s+(?:IF\s+(?:NOT\s+)?EXISTS\s+)?" + qualified_name,
                 re.IGNORECASE,
             ),
             # Grammar-based: CREATE ownerStatement? EVENT ifNotExists? fullId
             # Supports DEFINER, IF NOT EXISTS, backticks
             "event": re.compile(
                 r"\b(?:CREATE|DROP|ALTER)\s+(?:DEFINER\s*=\s*[^@]+@[^\s]+\s+)?"
-                r"EVENT\s+(?:IF\s+(?:NOT\s+)?EXISTS\s+)?"
-                r"(?:(?:`([^`]+)`)|([a-zA-Z_][a-zA-Z0-9_]*))"
-                r"(?:\.(?:`([^`]+)`)|([a-zA-Z_][a-zA-Z0-9_]*))?",
+                r"EVENT\s+(?:IF\s+(?:NOT\s+)?EXISTS\s+)?" + qualified_name,
                 re.IGNORECASE,
             ),
         }
@@ -415,6 +416,12 @@ class MySqlConfig(DialectConfig):
     def normalize_identifier(self, identifier: str, is_quoted: bool = False) -> str:
         """Normalize MySQL identifier according to dialect rules.
 
+        Removes the backticks and collapses a doubled backtick back to one.
+        The case is kept as written: table and view names are case-sensitive
+        on a Linux server (``lower_case_table_names=0``), so folding them
+        would name an object that does not exist. Callers that need a
+        case-insensitive match compare with ``.lower()`` themselves.
+
         Args:
             identifier: Raw identifier string
 
@@ -424,13 +431,7 @@ class MySqlConfig(DialectConfig):
         if not identifier:
             return identifier
 
-        # Remove backticks if present
-        if identifier.startswith("`") and identifier.endswith("`"):
-            identifier = identifier[1:-1]
-
-        # MySQL identifiers are case-insensitive by default on Windows/Mac
-        # but case-sensitive on Linux - we'll normalize to lowercase
-        return identifier.lower()
+        return strip_identifier_quotes(identifier)
 
     def extract_delimiter_blocks(self, sql: str) -> List[Dict[str, str]]:
         """Extract MySQL DELIMITER blocks for stored procedures.
@@ -521,7 +522,7 @@ class MySqlConfig(DialectConfig):
             Compiled regex pattern for MySQL identifiers
         """
         # MySQL identifiers: backtick-quoted or unquoted (alphanumeric + underscore, starting with letter)
-        return re.compile(r"(?:`[^`]+`|[a-zA-Z_][a-zA-Z0-9_]*)", re.IGNORECASE)
+        return re.compile(rf"(?:{BACKTICK_IDENTIFIER}|[a-zA-Z_][a-zA-Z0-9_]*)", re.IGNORECASE)
 
     def get_qualified_identifier_pattern(self) -> "re.Pattern[str]":
         """Get regex pattern for qualified identifiers (schema.table).
@@ -533,7 +534,7 @@ class MySqlConfig(DialectConfig):
             Compiled regex pattern for qualified MySQL identifiers
         """
         # Grammar-based: Support backticks for MySQL identifiers
-        identifier = r"(?:`[^`]+`|[a-zA-Z_][a-zA-Z0-9_]*)"
+        identifier = rf"(?:{BACKTICK_IDENTIFIER}|[a-zA-Z_][a-zA-Z0-9_]*)"
         return re.compile(rf"(?:{identifier}\.)?{identifier}", re.IGNORECASE)
 
     def extract_backtick_identifiers(self, sql: str) -> List[str]:

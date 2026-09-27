@@ -8,9 +8,9 @@ from dblift.core.sql_model.base import SqlObject, SqlObjectType
 def _quirks_for(dialect: Optional[str]) -> Any:
     """Resolve quirks for *dialect* via the registry.
 
-    Story 26-5: replaces the inline ``if dialect in {...}`` dispatch
-    in the index DDL paths. Returns ``BaseQuirks`` defaults when the
-    dialect is unknown.
+    Index DDL paths dispatch via plugin Quirks instead of inline
+    ``if dialect in {...}`` branches. Returns ``BaseQuirks`` defaults when
+    the dialect is unknown.
     """
     from dblift.db.base_quirks import BaseQuirks
     from dblift.db.provider_registry import ProviderRegistry
@@ -130,7 +130,7 @@ class Index(SqlObject):
             self.format_identifier(self.table_schema) + "." if self.table_schema else ""
         )
 
-        # Story 26-5: DROP INDEX shape comes from plugin Quirks.
+        # DROP INDEX shape comes from plugin Quirks.
         quirks = _quirks_for(self.dialect)
         if quirks.index_drop_includes_table:
             if_exists = "IF EXISTS " if quirks.index_drop_table_form_supports_if_exists else ""
