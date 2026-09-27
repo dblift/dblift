@@ -437,8 +437,7 @@ class BaseQuirks:
     #: engine behaviour behind the divergence was measured against a live db2
     #: 12.01.0500 server by a capability probe that runs outside this
     #: distribution and cannot be re-run from this repository. When False,
-    #: post-commit verification queries and similar probes omit the
-    #: ``LIMIT`` clause.
+    #: optional probes omit the ``LIMIT`` clause.
     select_supports_limit: bool = True
     #: How a SELECT is bounded to N rows. One of:
     #: ``"limit"`` (trailing ``LIMIT n`` — PostgreSQL family, MySQL,

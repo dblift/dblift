@@ -113,7 +113,7 @@ class TestMigrateResultNoDuplicateForPythonMigration(unittest.TestCase):
                     with patch.object(engine, "_prepare_transaction", return_value=True):
                         with patch.object(engine, "_execute_statements", return_value=True):
                             with patch.object(engine, "_record_migration_history"):
-                                with patch.object(engine, "_commit_and_verify"):
+                                with patch.object(engine, "_commit_migration"):
                                     success_sql = cmd._execute_single_migration(
                                         sql_migration,
                                         Path("/migrations"),

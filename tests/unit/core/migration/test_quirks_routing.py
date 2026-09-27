@@ -8,7 +8,7 @@ pytestmark = [pytest.mark.unit]
 
 
 class TestSelectSupportsLimit:
-    """select_supports_limit quirks property drives post-commit verification."""
+    """select_supports_limit quirks property per dialect."""
 
     @pytest.mark.parametrize(
         "dialect, expected",
