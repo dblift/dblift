@@ -141,6 +141,19 @@ def test_table_exists_matches_db2_catalog_names_case_insensitively() -> None:
     assert query_call[2] == ["app", "customer"]
 
 
+def test_table_exists_matches_quoted_name_exactly() -> None:
+    """Flyway's quoted lowercase table must not be satisfied by an uppercase one."""
+    provider = DummyDb2Provider()
+
+    provider.table_exists("APP", '"flyway_schema_history"')
+
+    query_call = provider.calls[-1]
+    assert "UPPER(TABSCHEMA) = UPPER(?)" in query_call[1]
+    assert "AND TABNAME = ?" in query_call[1]
+    assert "UPPER(TABNAME)" not in query_call[1]
+    assert query_call[2] == ["APP", "flyway_schema_history"]
+
+
 def test_lock_table_creation_uses_db2_catalog_and_uppercase_table() -> None:
     provider = DummyDb2Provider()
     provider.table_exists = lambda schema, table_name: False

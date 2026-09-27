@@ -749,7 +749,8 @@ class BaseQuirks:
     #: rather than through ``get_applied_migrations`` (which folds the name
     #: to the dialect's catalogue case). True only for dialects whose
     #: history-name normalisation would otherwise miss a verbatim-cased
-    #: Flyway table — Oracle, where ``get_applied_migrations`` uppercases.
+    #: Flyway table — Oracle and DB2, where ``get_applied_migrations``
+    #: uppercases but Flyway creates a quoted lowercase table.
     flyway_source_table_case_sensitive: bool = False
 
     # ------------------------------------------------------------------

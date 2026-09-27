@@ -17,6 +17,8 @@ import pytest
 
 from dblift.api import DBLiftClient
 from dblift.config.dblift_config import DbliftConfig
+from dblift.core.logger import NullLog
+from dblift.core.migration.history.migration_history_manager import MigrationHistoryManager
 from dblift.db.plugins.oracle.config import OracleConfig
 from dblift.db.provider_registry import ProviderRegistry
 
@@ -141,3 +143,15 @@ def test_import_flyway_reads_history_table_shape(
     assert [r["script"] for r in rows] == ["V1__init.sql", "V2__broken.sql"]
     assert [r["success"] for r in rows] == [True, False]
     assert [r["installed_on"] for r in rows] == [SUCCESS_ON, FAILED_ON]
+
+    if flyway_table == "flyway_schema_history":
+        # The Flyway compatibility check reads the same source table.
+        snapshot = MigrationHistoryManager(
+            admin, schema, "tester", NullLog()
+        ).collect_flyway_compatibility_snapshot()
+        assert snapshot.collection_error == ""
+        assert snapshot.flyway_exists and snapshot.dblift_exists
+        assert [r["script"] for r in snapshot.flyway_migrations] == [
+            "V1__init.sql",
+            "V2__broken.sql",
+        ]

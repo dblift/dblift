@@ -25,6 +25,7 @@ def _make_validator(dialect="postgresql"):
     from dblift.core.migration.scripting.migration_script_manager import MigrationScriptManager
     from dblift.db.base_quirks import BaseQuirks
 
+    hm.provider.quirks = BaseQuirks()
     hm.collect_flyway_compatibility_snapshot.side_effect = (
         lambda: MigrationHistoryManager.collect_flyway_compatibility_snapshot(hm)
     )

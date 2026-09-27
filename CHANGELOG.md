@@ -22,7 +22,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `undo --target-version` skips versions already undone and continues rolling back applied versions above the target. Other refusal reasons still fail the command.
 - `undo` checks that every version it would roll back has an undo script before executing any of them. A missing script lower in the plan now refuses the run up front, with the same message as `--dry-run`, instead of rolling back the higher versions first and leaving the database partially undone.
-- Oracle `import-flyway` reads the history table Flyway creates, `"flyway_schema_history"` with quoted lowercase columns, including under a configured `--flyway-table` name. An unquoted uppercase table still imports.
+- Oracle and DB2 `import-flyway` read the history table Flyway creates, `"flyway_schema_history"` with quoted lowercase columns, including under a configured `--flyway-table` name. An unquoted uppercase table still imports. The Flyway history compatibility check finds the same table.
 - PostgreSQL migrations can record history in a Flyway-created table without an `installed_rank` default. Rank allocation occurs under the migration lock; history failures still roll back transactional migration changes.
 - Migration state timestamps use timezone-aware UTC without Python 3.12 deprecation warnings, retaining the existing `Z` format.
 - A null schema leaves `${dblift_schema}` undefined: it is preserved with a warning, or uses its explicit `${dblift_schema:default}` value. Oracle and other configured schema expansions are unchanged.

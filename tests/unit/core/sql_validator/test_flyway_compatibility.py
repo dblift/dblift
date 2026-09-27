@@ -7,6 +7,8 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from dblift.core.logger import NullLog
+from dblift.core.migration.history.migration_history_manager import MigrationHistoryManager
 from dblift.core.sql_validator.migration_validator import MigrationValidator
 
 
@@ -18,6 +20,7 @@ def _make_validator(provider: MagicMock) -> MigrationValidator:
 
     provider.get_schema_qualified_name.return_value = "public.dblift_schema_history"
     provider.get_normalized_object_name.side_effect = lambda name: name
+    provider.quirks = BaseQuirks()
     history = MigrationHistoryManager(provider, "public", "tester", NullLog())
     return MigrationValidator(
         MigrationScriptManager(NullLog()), history, NullLog(), quirks=BaseQuirks()
@@ -39,6 +42,33 @@ def _row(
         "installed_rank": 1,
         "success": True,
     }
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("quirks_path", ["oracle", "db2"])
+def test_uppercase_folding_dialect_reads_flyway_quoted_lowercase_table(quirks_path):
+    """Oracle and DB2: Flyway's table is ``"flyway_schema_history"`` with
+    quoted lowercase columns. The snapshot must find it and read its rows."""
+    from dblift.db.provider_registry import ProviderRegistry
+
+    provider = MagicMock()
+    provider.quirks = ProviderRegistry.get_quirks(quirks_path)
+    existing = {'"flyway_schema_history"', "DBLIFT_SCHEMA_HISTORY"}
+    provider.table_exists.side_effect = lambda schema, table: table in existing
+    provider.get_schema_qualified_name.side_effect = (
+        lambda schema, table: f'"{schema}"."{table.strip(chr(34))}"'
+    )
+    provider.execute_query.side_effect = [[_row()], [_row()]]
+    provider.get_normalized_object_name.side_effect = str.upper
+    history = MigrationHistoryManager(provider, "APP", "tester", NullLog())
+
+    snapshot = history.collect_flyway_compatibility_snapshot()
+
+    assert snapshot.collection_error == ""
+    assert snapshot.flyway_exists is True
+    assert [row["script"] for row in snapshot.flyway_migrations] == ["V1__init.sql"]
+    flyway_query = provider.execute_query.call_args_list[0].args[0]
+    assert flyway_query == 'SELECT * FROM "APP"."flyway_schema_history"'
 
 
 @pytest.mark.unit

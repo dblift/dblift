@@ -100,12 +100,21 @@ class MigrationHistoryManager:
         dblift_rows: tuple[Mapping[str, Any], ...] = ()
         error = ""
         try:
-            flyway_exists = self.provider.table_exists(self.schema, "flyway_schema_history")
+            flyway_table = "flyway_schema_history"
+            case_sensitive = self.provider.quirks.flyway_source_table_case_sensitive
+            if case_sensitive:
+                flyway_table = self.resolve_flyway_source_table(self.schema, flyway_table)
+            flyway_exists = self.provider.table_exists(self.schema, flyway_table)
             if flyway_exists:
                 dblift_exists = self.provider.table_exists(
                     self.schema, self.normalized_history_table
                 )
-            if flyway_exists and dblift_exists:
+            if flyway_exists and dblift_exists and case_sensitive:
+                flyway_rows = tuple(
+                    MappingProxyType(row)
+                    for row in self.read_history_rows(self.schema, flyway_table, flyway_source=True)
+                )
+            elif flyway_exists and dblift_exists:
                 flyway_query = f'''SELECT "version", "description", "type", "script",
                     "installed_by", "installed_rank", "checksum", "success"
                     FROM {self.schema}.flyway_schema_history ORDER BY "installed_rank"'''

@@ -11,7 +11,7 @@ from dblift.core.constants import MIGRATION_LOCK_TABLE as _MIGRATION_LOCK_TABLE
 from dblift.core.logger import Log
 from dblift.core.migration.clean_summary import CleanExecutionSummary
 from dblift.core.migration.migration import success_to_bool
-from dblift.db.object_naming import get_normalized_object_name
+from dblift.db.object_naming import configured_identifier_text, get_normalized_object_name
 from dblift.db.plugins.base_history_manager import UNDO_HISTORY_TYPE, installed_on_to_bind
 from dblift.db.plugins.db2.db2.schema_operations import Db2SchemaOperations
 from dblift.db.provider_interfaces import DroppableObject
@@ -178,12 +178,22 @@ class Db2Provider(SqlAlchemyProvider):
         self._schema_applied_for = schema
 
     def table_exists(self, schema: str, table_name: str) -> bool:
-        """Return whether a table exists in the given DB2 schema."""
+        """Return whether a table exists in the given DB2 schema.
+
+        An unquoted name matches in any case. A double-quoted name matches
+        only its exact text, so ``"flyway_schema_history"`` is not satisfied
+        by an uppercase ``FLYWAY_SCHEMA_HISTORY`` table.
+        """
+        table_match = (
+            "TABNAME = ?"
+            if configured_identifier_text(table_name) != table_name.strip()
+            else "UPPER(TABNAME) = UPPER(?)"
+        )
         rows = self.execute_query(
-            """
+            f"""
             SELECT TABNAME
             FROM SYSCAT.TABLES
-            WHERE UPPER(TABSCHEMA) = UPPER(?) AND UPPER(TABNAME) = UPPER(?)
+            WHERE UPPER(TABSCHEMA) = UPPER(?) AND {table_match}
             """,
             [_clean_identifier(schema), _clean_identifier(table_name)],
         )
