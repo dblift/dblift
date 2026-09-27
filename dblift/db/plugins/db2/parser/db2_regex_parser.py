@@ -60,18 +60,16 @@ class DB2RegexParser(EnhancedRegexParser):
         if self._has_module_blocks(sql_content):
             return self._split_with_module_awareness(sql_content)
 
-        # Handle SQL/PL blocks (procedures and functions)
-        if self._has_sqlpl_blocks(sql_content):
-            return self._split_with_sqlpl_awareness(sql_content)
-
-        # Handle trigger blocks BEFORE compound statements
-        # Triggers contain BEGIN ATOMIC, so they must be checked before generic compound statements
-        if self._has_trigger_blocks(sql_content):
-            return self._split_with_trigger_awareness(sql_content)
-
-        # Handle compound statements
-        if self._has_compound_statements(sql_content):
-            return self._split_with_compound_awareness(sql_content)
+        # Handle SQL/PL blocks (procedures and functions), trigger blocks and
+        # compound statements together: one script can mix them, and picking a
+        # single kind per script left the other kinds to plain semicolon
+        # splitting, cutting e.g. a trigger body at its first inner ``;``.
+        if (
+            self._has_sqlpl_blocks(sql_content)
+            or self._has_trigger_blocks(sql_content)
+            or self._has_compound_statements(sql_content)
+        ):
+            return self._split_with_block_awareness(sql_content)
 
         # Handle SPUFI terminator customization
         if self._has_spufi_terminators(sql_content):
@@ -252,6 +250,44 @@ class DB2RegexParser(EnhancedRegexParser):
                 statements.extend(self._split_by_semicolon_db2(before_block))
 
             # Add the EXEC SQL block content as a statement
+            statements.append(block["content"])
+            current_pos = int(block["end"])
+
+        # Add any remaining SQL after the last block
+        remaining_sql = sql[current_pos:].strip()
+        if remaining_sql:
+            statements.extend(self._split_by_semicolon_db2(remaining_sql))
+
+        return statements
+
+    def _split_with_block_awareness(self, sql: str) -> List[str]:
+        """Split SQL keeping every SQL/PL, trigger and compound block whole.
+
+        Each extractor only knows its own kind of block, so their results are
+        merged in script order. A block that starts inside one already taken
+        (the ``BEGIN ATOMIC`` body of a trigger or function is also found by
+        the compound extractor) is dropped; sorting longest-first at a given
+        start keeps the enclosing statement.
+        """
+        blocks = (
+            self.config.extract_sqlpl_blocks(sql)
+            + self.config.extract_trigger_blocks(sql)
+            + self.config.extract_compound_statements(sql)
+        )
+        blocks.sort(key=lambda b: (int(b["start"]), -int(b["end"])))
+
+        statements = []
+        current_pos = 0
+        for block in blocks:
+            if int(block["start"]) < current_pos:
+                continue
+
+            # Add any SQL before this block
+            before_block = sql[current_pos : int(block["start"])].strip()
+            if before_block:
+                statements.extend(self._split_by_semicolon_db2(before_block))
+
+            # Add the block as a single statement
             statements.append(block["content"])
             current_pos = int(block["end"])
 
