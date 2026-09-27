@@ -627,3 +627,29 @@ def test_oracle_undo_drops_package_next_to_other_plsql_block(content, expected):
         assert fragment in stmt.sql or stmt.original_statement.startswith(fragment), [
             u.sql for u in undo
         ]
+
+
+@pytest.mark.parametrize(
+    "literal",
+    ["'--'", "'a -- b'", "q'[--]'", "q'{/* x */}'", "'it''s -- ok'"],
+)
+def test_oracle_undo_keeps_statements_after_comment_marker_in_string(literal):
+    """``--`` or ``/*`` inside a literal does not hide the statements after it."""
+    generator = UndoScriptGenerator(dialect="oracle", logger=LogFactory.get_log("test"))
+    migration = Migration(
+        script_name="V1__dash.sql",
+        content=(
+            f"CREATE TABLE da (v VARCHAR2(20) DEFAULT {literal});\n"
+            "CREATE TABLE db (id NUMBER);\n"
+            "CREATE TABLE dc (id NUMBER);\n"
+        ),
+        version="1",
+        description="dash",
+        logger=generator.logger,
+    )
+
+    undo_sql = [stmt.sql.upper() for stmt in generator._generate_undo_statements(migration)]
+
+    assert len(undo_sql) == 3
+    for sql, table in zip(undo_sql, ("DC", "DB", "DA")):
+        assert "DROP TABLE" in sql and f'"{table}"' in sql

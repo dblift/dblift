@@ -76,3 +76,30 @@ class TestStripSqlComments:
 
     def test_empty_input(self):
         assert strip_sql_comments("") == ""
+
+
+# Comment markers inside plain and q-quoted literals are data, not comments.
+LITERAL_MARKERS = [
+    "'--'",
+    "'a -- b'",
+    "q'[--]'",
+    "q'{/* x */}'",
+    "'it''s -- ok'",
+    "'/*'",
+]
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("literal", LITERAL_MARKERS)
+@pytest.mark.parametrize("strip", [strip_comments, strip_sql_comments])
+def test_comment_markers_inside_literals_are_kept(strip, literal):
+    sql = f"INSERT INTO t VALUES ({literal}); -- gone\nCREATE TABLE u (id NUMBER); /* gone */"
+    result = strip(sql)
+    assert literal in result
+    assert "gone" not in result
+    assert "CREATE TABLE u (id NUMBER);" in result
+
+
+@pytest.mark.unit
+def test_line_comment_marker_inside_block_comment():
+    assert strip_comments("SELECT /* a -- b */ 1 FROM dual;") == "SELECT  1 FROM dual;"

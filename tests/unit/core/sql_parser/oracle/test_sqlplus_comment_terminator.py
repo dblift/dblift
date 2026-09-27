@@ -113,6 +113,22 @@ LENIENT_CASES = {
         "CREATE TABLE c1 (id NUMBER); -- ends */ here\nCREATE TABLE c2 (id NUMBER);\n",
         ["CREATE TABLE c1 (id NUMBER);", "CREATE TABLE c2 (id NUMBER);"],
     ),
+    # Comment markers inside literals do not start a comment.
+    "line_comment_marker_in_string": (
+        "CREATE TABLE da (v VARCHAR2(20) DEFAULT '-- x');\nCREATE TABLE db (id NUMBER);\n",
+        ["CREATE TABLE da (v VARCHAR2(20) DEFAULT '-- x');", "CREATE TABLE db (id NUMBER);"],
+    ),
+    "line_comment_marker_in_q_quote": (
+        "CREATE TABLE qa (v VARCHAR2(20) DEFAULT q'[--]');\nCREATE TABLE qb (id NUMBER);\n",
+        ["CREATE TABLE qa (v VARCHAR2(20) DEFAULT q'[--]');", "CREATE TABLE qb (id NUMBER);"],
+    ),
+    "block_comment_in_q_quote": (
+        "CREATE TABLE qc (v VARCHAR2(20) DEFAULT q'{/* x */}');\nCREATE TABLE qd (id NUMBER);\n",
+        [
+            "CREATE TABLE qc (v VARCHAR2(20) DEFAULT q'{/* x */}');",
+            "CREATE TABLE qd (id NUMBER);",
+        ],
+    ),
 }
 
 ALL_CASES = {**FAITHFUL_CASES, **LENIENT_CASES}
