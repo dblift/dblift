@@ -47,6 +47,28 @@ class TestExecuteStatement:
         assert ("set_schema", "APP") in provider.calls
         connection.exec_driver_sql.assert_called_once_with("SELECT 1")
 
+    def _sent(self, sql: str) -> str:
+        provider = DummyDb2Provider()
+        connection = MagicMock()
+        provider._ensure_connection = lambda: connection
+        provider._tx = None
+        provider._external_connection = False
+        Db2Provider.execute_statement(provider, sql)
+        return connection.exec_driver_sql.call_args.args[0]
+
+    def test_nested_comment_is_removed_before_the_driver_sees_it(self) -> None:
+        # Checked live on Db2 12.1 through ibm_db: with a ``;`` between the
+        # inner and the outer ``*/`` the driver ran nothing after the ``;``
+        # and still reported success, so CREATE TABLE t was silently skipped.
+        sql = "/* a /* b */ ; DROP TABLE keep; */\nCREATE TABLE t (x INT)"
+
+        assert self._sent(sql) == "CREATE TABLE t (x INT)"
+
+    def test_statement_without_a_nested_comment_is_sent_unchanged(self) -> None:
+        sql = "/* header; */\nCREATE TABLE t (x INT) -- tail\n"
+
+        assert self._sent(sql) == "/* header; */\nCREATE TABLE t (x INT) -- tail"
+
 
 class TestGetDatabaseVersion:
     def test_returns_dbms_ver_from_driver_connection(self) -> None:

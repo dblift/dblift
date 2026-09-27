@@ -116,7 +116,7 @@ _NESTED_COMMENT_ONLY = "/* outer /* nested */ still comment */"
 
 
 @pytest.mark.unit
-@pytest.mark.parametrize("dialect", ["postgresql", "sqlserver", "duckdb"])
+@pytest.mark.parametrize("dialect", ["postgresql", "sqlserver", "duckdb", "db2"])
 def test_nested_comment_only_script_is_a_no_op_where_comments_nest(dialect):
     """These engines nest block comments, so the whole text is one comment
     (psql/sqlcmd accept it); ``still comment */`` must not reach the server."""
@@ -139,10 +139,32 @@ def test_nested_comment_text_still_reaches_engine_where_comments_do_not_nest(dia
 
 
 @pytest.mark.unit
-@pytest.mark.parametrize("dialect", ["postgresql", "sqlserver", "duckdb"])
+@pytest.mark.parametrize("dialect", ["postgresql", "sqlserver", "duckdb", "db2"])
 def test_nested_comment_before_statement_keeps_the_statement(dialect):
     statements = SqlAnalyzer(dialect=dialect).split_statements(_NESTED_COMMENT_ONLY + "\nSELECT 1;")
 
     assert len(statements) == 1, statements
     assert statements[0].rstrip(";").endswith("SELECT 1"), statements
     assert not statements[0].startswith("still comment"), statements
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    "sql",
+    [
+        "/* a /* b */ ; CREATE TABLE t_in (x INT); DROP TABLE t_keep; */\n"
+        "CREATE TABLE t_after (x INT);",
+        "/* a /* b */ DROP TABLE t_keep; */ CREATE TABLE t_after (x INT) /* tail */;",
+    ],
+)
+def test_db2_nested_comment_text_is_never_executed(sql):
+    """Db2 nests block comments (confirmed live with the CLP and the driver):
+    the ``;``, ``CREATE TABLE`` and ``DROP`` inside the comment are comment
+    text, and only the statement after it reaches the server."""
+    statements = SqlAnalyzer(dialect="db2").split_statements(sql)
+
+    assert len(statements) == 1, statements
+    assert "CREATE TABLE t_after (x INT)" in statements[0], statements
+    live = StatementSplitter("db2").parser_factory.get_parser()
+    stripped = live._strip_comments_preserving_quotes(statements[0])
+    assert "t_in" not in stripped and "DROP" not in stripped, statements
