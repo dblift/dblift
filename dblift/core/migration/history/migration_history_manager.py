@@ -299,6 +299,16 @@ class MigrationHistoryManager:
                 )
                 return
             except Exception as e:
+                # Clear any aborted-transaction state on the provider's connection
+                # so the retry can issue statements again -- or, when this is
+                # re-raised, so the next command on the same connection (a
+                # reused DBLiftClient) can. Swallow failures: the retry or the
+                # re-raised error surfaces any real issue.
+                if isinstance(self.provider, TransactionalProvider):
+                    try:
+                        self.provider.rollback_transaction()
+                    except Exception:
+                        pass
                 is_race = self.provider.quirks.is_schema_history_race_error(str(e))
                 if not is_race or attempt == MAX_ATTEMPTS - 1:
                     raise
@@ -307,14 +317,6 @@ class MigrationHistoryManager:
                         f"Concurrent schema/history-table creation detected "
                         f"(attempt {attempt + 1}/{MAX_ATTEMPTS}): {e}. Retrying..."
                     )
-                # Clear any aborted-transaction state on the provider's connection
-                # so the retry can issue statements again. Swallow failures — the
-                # retry itself will surface any real issue.
-                if isinstance(self.provider, TransactionalProvider):
-                    try:
-                        self.provider.rollback_transaction()
-                    except Exception:
-                        pass
                 # Exponential backoff with jitter lets the winner commit.
                 time.sleep(0.1 * (2**attempt) + random.uniform(0, 0.05))
 

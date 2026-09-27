@@ -869,6 +869,26 @@ class TestMigrateCommandExecute(unittest.TestCase):
             self.assertEqual(str(ctx.exception), "Connection failed: host unreachable")
             self.assertIsInstance(ctx.exception.result, MigrateResult)
 
+    def test_busy_timeout_is_widened_only_after_connecting(self):
+        """Widening the SQLite busy_timeout opens the connection, so it must
+        come after the preflight connect: an unopenable database then fails
+        as a preflight connection error, not a raw driver error."""
+        cmd = self._make_execute_cmd(pending=[])
+        cmd.provider.widen_busy_timeout.side_effect = PermissionError("[Errno 1] no access")
+
+        for dry_run in (False, True):
+            with patch.object(
+                cmd,
+                "_ensure_connected",
+                side_effect=PreflightConnectionError("Connection failed: no access"),
+            ):
+                with self.assertRaises(PreflightConnectionError) as ctx:
+                    cmd.execute(Path("/migrations"), dry_run=dry_run)
+
+            self.assertEqual(str(ctx.exception), "Connection failed: no access")
+            self.assertIsInstance(ctx.exception.result, MigrateResult)
+        cmd.provider.widen_busy_timeout.assert_not_called()
+
 
 class TestStrictModeWarningSupression(unittest.TestCase):
     """Strict mode must fail when selecting out-of-order executable pending.

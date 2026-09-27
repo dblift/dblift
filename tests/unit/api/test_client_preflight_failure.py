@@ -196,6 +196,42 @@ class TestClientPreflightFailureRealCommands:
         assert isinstance(result._preflight_error, PreflightConnectionError)
         assert events and events[-1].error == result.error_message
 
+    @pytest.mark.parametrize("nested", [False, True], ids=["read-only-dir", "uncreatable-dir"])
+    @pytest.mark.parametrize(
+        "method,executor_method,kwargs,result_cls,failed_event",
+        _COMMANDS + [("migrate", "migrate", {"dry_run": True}, MigrateResult, None)],
+        ids=_IDS + ["migrate-dry-run"],
+    )
+    def test_unopenable_sqlite_path(
+        self,
+        tmp_path,
+        monkeypatch,
+        method,
+        executor_method,
+        kwargs,
+        result_cls,
+        failed_event,
+        nested,
+    ):
+        """A SQLite file that cannot be opened (OperationalError) or whose
+        directory cannot be created (PermissionError) is a connection failure."""
+        monkeypatch.chdir(tmp_path)
+        locked = tmp_path / "locked"
+        locked.mkdir()
+        db_path = locked / "sub" / "app.db" if nested else locked / "app.db"
+        client = _real_client(tmp_path, f"sqlite:///{db_path}", "main")
+        locked.chmod(0o500)
+        try:
+            result = getattr(client, method)(**kwargs)
+        finally:
+            locked.chmod(0o700)
+            client.close()
+
+        assert type(result) is result_cls
+        assert result.success is False
+        assert result.error_message.startswith("Connection failed: ")
+        assert isinstance(result._preflight_error, PreflightConnectionError)
+
     # clean does not need the schema-history table, so it has no such failure.
     @pytest.mark.parametrize(
         "method,executor_method,kwargs,result_cls,failed_event",

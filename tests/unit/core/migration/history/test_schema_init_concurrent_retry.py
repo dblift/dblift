@@ -133,6 +133,29 @@ class TestCreateSchemaAndHistoryTableRetry:
         # Permission errors are not a concurrency race — must not retry.
         assert provider.create_schema_if_not_exists.call_count == 1
 
+    def test_non_race_error_rolls_back_before_reraising(self):
+        """A failed CREATE aborts a PostgreSQL transaction; roll it back so
+        the next command on the same connection can still run."""
+        provider = MagicMock()
+        provider.create_history_table_if_not_exists.side_effect = Exception(
+            "permission denied for schema new_schema"
+        )
+
+        mgr = _make_manager(provider)
+        with pytest.raises(Exception, match="permission denied"):
+            mgr.create_schema_and_history_table()
+
+        provider.rollback_transaction.assert_called_once_with()
+
+    def test_rollback_failure_does_not_mask_the_original_error(self):
+        provider = MagicMock()
+        provider.create_history_table_if_not_exists.side_effect = Exception("permission denied")
+        provider.rollback_transaction.side_effect = RuntimeError("connection closed")
+
+        mgr = _make_manager(provider)
+        with pytest.raises(Exception, match="permission denied"):
+            mgr.create_schema_and_history_table()
+
 
 @pytest.mark.unit
 class TestCreateSchemaAndHistoryTableRaceCrossEngine:

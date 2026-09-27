@@ -252,6 +252,23 @@ def test_dblift_connection_failure_is_command_error_without_traceback(name, tmp_
     assert "Connection failed: no route to host" in combined
 
 
+@pytest.mark.parametrize("name", _PREFLIGHT_COMMANDS)
+def test_dblift_unopenable_sqlite_file_is_command_error(name, tmp_path):
+    """A SQLite file that cannot be opened is a CommandError, not a raw
+    ``OperationalError``/``PermissionError``, from every command."""
+    locked = tmp_path / "locked"
+    locked.mkdir()
+    settings = _settings(tmp_path)
+    settings["DATABASES"]["default"]["NAME"] = str(locked / "db.sqlite")
+    locked.chmod(0o500)
+    try:
+        with override_settings(**settings):
+            with pytest.raises(CommandError, match="Connection failed: "):
+                call_command(name)
+    finally:
+        locked.chmod(0o700)
+
+
 def test_dblift_commands_skip_system_checks():
     from dblift.integrations.django.management.commands.dblift_info import Command as InfoCommand
     from dblift.integrations.django.management.commands.dblift_migrate import (

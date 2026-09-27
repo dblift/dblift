@@ -742,16 +742,18 @@ class MigrateCommand(BaseCommand):
 
         read_snapshot = self.state_manager.new_read_snapshot()
 
-        # SQLite only: widen busy_timeout for this command; the provider
-        # returns what undoes it (None when nothing was changed).
-        widen_busy_timeout = getattr(self.provider, "widen_busy_timeout", None)
-        restore_busy_timeout = (
-            widen_busy_timeout(DEFAULT_MIGRATION_LOCK_TIMEOUT_SECONDS)
-            if callable(widen_busy_timeout)
-            else None
-        )
-
+        restore_busy_timeout = None
         try:
+            # SQLite only: widen busy_timeout for this command; the provider
+            # returns what undoes it (None when nothing was changed). This
+            # opens the connection, so connect through the preflight first:
+            # a database that cannot be opened then fails as a preflight
+            # connection error rather than a raw driver error.
+            widen_busy_timeout = getattr(self.provider, "widen_busy_timeout", None)
+            if callable(widen_busy_timeout):
+                self._preflight_connect(result)
+                restore_busy_timeout = widen_busy_timeout(DEFAULT_MIGRATION_LOCK_TIMEOUT_SECONDS)
+
             # Initialize and validate migrations
             validation_success, use_recursive, use_additional_dirs = (
                 self._initialize_migration_execution(

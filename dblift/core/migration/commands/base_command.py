@@ -697,6 +697,28 @@ class BaseCommand:
             message = format_connection_error(exc, str(db_type or ""))
             raise PreflightConnectionError(message) from exc
 
+    def _preflight_connect(self, result: "OperationResult") -> None:
+        """Preflight phase 1: ``_ensure_connected()``, attaching *result* on failure.
+
+        ``_run_preflight`` starts with this; a command that must touch the
+        connection before the rest of its preflight calls it first, so an
+        unusable connection fails the same way.
+        """
+        # A dialect that needs a schema and derives none would otherwise run
+        # against an empty one (e.g. DB2 ``CREATE SCHEMA ""``). Fail before
+        # connecting, with the message the CLI refuses the command with.
+        if is_required_schema_missing(self.config.database):
+            raise PreflightConnectionError(SCHEMA_REQUIRED_ERROR, result)
+        try:
+            self._ensure_connected()
+        except PreflightConnectionError as exc:
+            # The command result already has target_schema. Keep this
+            # exception object: a plain ConnectionError raised by a
+            # replacement for _ensure_connected is not this type and
+            # must propagate unchanged.
+            exc.result = result
+            raise
+
     def _run_preflight(
         self,
         result: Any,
@@ -755,20 +777,7 @@ class BaseCommand:
                 (it may be the first command run against a fresh
                 database).
         """
-        # A dialect that needs a schema and derives none would otherwise run
-        # against an empty one (e.g. DB2 ``CREATE SCHEMA ""``). Fail before
-        # connecting, with the message the CLI refuses the command with.
-        if is_required_schema_missing(self.config.database):
-            raise PreflightConnectionError(SCHEMA_REQUIRED_ERROR, result)
-        try:
-            self._ensure_connected()
-        except PreflightConnectionError as exc:
-            # The command result already has target_schema. Keep this
-            # exception object: a plain ConnectionError raised by a
-            # replacement for _ensure_connected is not this type and
-            # must propagate unchanged.
-            exc.result = result
-            raise
+        self._preflight_connect(result)
         if ensure_history and not dry_run:
             try:
                 self.history_manager.create_schema_and_history_table(create_schema=create_schema)

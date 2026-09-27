@@ -45,6 +45,7 @@ from dblift.cli._constants import EXIT_LICENSE_REQUIRED
 from dblift.cli._output import CommandOutput, from_args
 from dblift.cli._parser_setup import create_parser, parse_with_selective_errors
 from dblift.cli.extensions import load_terminal_commands
+from dblift.cli.handlers._shared import reported_exception_name
 from dblift.cli.premium_manifest import render_upsell
 from dblift.config.property_registry import PROPERTY_REGISTRY
 from dblift.core.seams.feature_loading import load_feature_extensions
@@ -736,6 +737,12 @@ def _dispatch_command(ctx: _CliContext, command_output: CommandOutput) -> int:
         # SystemExit with a dedicated code; flush logs then propagate.
         _close_logs(ctx.log)
         raise
+    except ConnectionError as e:
+        # A connection or schema-history preflight failure: report it as
+        # ``ConnectionError: ...``, the text the JSON output and MCP use.
+        ctx.log.error(f"{reported_exception_name(e)}: {e}")
+        _close_logs(ctx.log)
+        return 1
     except Exception as e:
         ctx.log.error(f"Unexpected error: {str(e)}")
         ctx.log.error_with_exception("Command execution failed", e)
