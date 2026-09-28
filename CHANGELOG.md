@@ -15,6 +15,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `validate-sql` infers the dialect from a config's `database.url` when no `database.type` is set, the same way every other command already does. A config with only `database.url: sqlite:///...` (no `type:`) previously failed with "validate-sql requires --dialect for offline validation when no database type is configured." even though the dialect was unambiguous from the URL scheme.
 - `dblift mcp` tool results no longer carry stray library log output mixed into the command's own console output. Building the MCP server left an unrelated logging handler installed process-wide, which could pick up verbose third-party log lines that the CLI itself never prints and mirror them into a tool's result.
+- `dblift mcp` no longer leaves a small, unfinished log file behind on every call when `--log-format html` or a combined format such as `text,html` is used. A throwaway logger built while a call's configuration loads, before the call's own log format is known, no longer opens a file of its own; the real, per-call logger configured moments later is unaffected.
+- `DBLiftClient.import_flyway()` emits `MIGRATION_FAILED` (matching `migrate()` and `undo()`) instead of `MIGRATION_COMPLETED` when the import returns a failed result without raising an exception, so listeners can tell a failed import from a successful one.
 
 ### Removed
 

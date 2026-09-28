@@ -1097,13 +1097,22 @@ class DBLiftClient:
                 flyway_table=flyway_table,
             )
 
-            self.events.emit(
-                EventType.MIGRATION_COMPLETED,
-                {
-                    "result": result,
-                    "operation": "import_flyway",
-                },
-            )
+            if result.success:
+                self.events.emit(
+                    EventType.MIGRATION_COMPLETED,
+                    {
+                        "result": result,
+                        "operation": "import_flyway",
+                    },
+                )
+            else:
+                self.events.emit(
+                    EventType.MIGRATION_FAILED,
+                    {
+                        "error": result.error_message,
+                        "operation": "import_flyway",
+                    },
+                )
 
             return result
         except Exception as e:
