@@ -13,6 +13,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `validate-sql` infers the dialect from a config's `database.url` when no `database.type` is set, the same way every other command already does. A config with only `database.url: sqlite:///...` (no `type:`) previously failed with "validate-sql requires --dialect for offline validation when no database type is configured." even though the dialect was unambiguous from the URL scheme.
+
 ### Removed
 
 ## [4.9.0] - 2026-09-27

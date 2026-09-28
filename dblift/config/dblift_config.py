@@ -8,7 +8,7 @@ from typing import Any, Dict, FrozenSet, List, Mapping, Optional, Tuple, Type, U
 
 import yaml
 
-from dblift.config.database_config import BaseDatabaseConfig
+from dblift.config.database_config import BaseDatabaseConfig, _infer_type_from_url_scheme
 from dblift.config.errors import ConfigurationError
 from dblift.config.secrets import SecretsConfig, resolve_secret_refs
 from dblift.core.constants import (
@@ -145,7 +145,13 @@ def _validate_sql_effective_dialect(args: Any, config_data: Dict[str, Any]) -> O
     if isinstance(database_config, dict):
         from dblift.db.provider_registry import ProviderRegistry
 
-        db_type = str(database_config.get("type") or "").strip().lower()
+        # Reuse the same URL-scheme inference ``BaseDatabaseConfig`` applies when
+        # building a real database config, so a ``database.url``-only config (no
+        # explicit ``type:``) resolves a dialect here too.
+        inferred = dict(database_config)
+        inferred["type"] = str(inferred.get("type") or "").strip().lower()
+        _infer_type_from_url_scheme(inferred)
+        db_type = str(inferred.get("type") or "").strip().lower()
         if db_type:
             return ProviderRegistry.canonical_dialect_name(db_type) or db_type
 
