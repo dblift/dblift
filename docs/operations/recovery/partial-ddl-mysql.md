@@ -131,8 +131,8 @@ only when A and B genuinely don't fit.
   (V101..V105) instead of one with 5 statements. Each is then
   independently retryable.
 - **Pair every DDL migration with an undo script** (`U<N>__*.sql`)
-  so Path B is always available. dblift supports undo via the
-  `generate_undo_script` API and the `undo` command.
+  so Path B is always available, and apply it with the `undo`
+  command.
 - **Validate before applying.** Run `dblift validate` in CI
   against pending migrations to catch problems before they fail
   mid-migration.

@@ -25,6 +25,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+### Deprecated
+
+- `DBLiftClient.generate_undo_script()` / `generate_undo_scripts()` and
+  their `AsyncDBLiftClient` counterparts emit `DeprecationWarning` and will
+  be removed in the next major release. Undo generation works from the
+  migration's SQL text: it inverts additive statements and returns a
+  warning for anything that needs state the file does not hold
+  (`DROP COLUMN`, `DROP CONSTRAINT`, `MODIFY` / `ALTER COLUMN`, any `DROP`,
+  several `CREATE` kinds). That limit is structural to reading the text, so
+  the feature is being retired rather than extended. Generated scripts are
+  unchanged until removal; write `U*__.sql` undo scripts by hand for
+  migrations it cannot reverse.
+
 ### Fixed
 
 ### Removed

@@ -1,6 +1,7 @@
 """Main client for programmatic access to DBLift."""
 
 import threading
+import warnings
 from functools import wraps
 from pathlib import Path
 from types import TracebackType
@@ -57,6 +58,13 @@ __all__ = ["DBLiftClient"]
 
 _F = TypeVar("_F", bound=Callable[..., Any])
 _R = TypeVar("_R", bound=OperationResult)
+
+# Shared with ``AsyncDBLiftClient``, which warns from its own methods.
+_TEXT_UNDO_DEPRECATION_MESSAGE = (
+    "text-based undo script generation is deprecated and will be removed in "
+    "the next major release; see CHANGELOG"
+)
+
 
 # Paid-tier commands that have a corresponding OSS-visible DBLiftClient
 # method name (issue #753). Keyed by ``api_method`` so
@@ -765,6 +773,12 @@ class DBLiftClient:
     ) -> "GenerateUndoScriptResult":
         """Generate an undo script for a versioned migration.
 
+        Deprecated since v4.10: text-based undo script generation will be
+        removed in the next major release. It reverses the migration's SQL
+        text, so it cannot reverse changes whose prior state the file does
+        not hold (``DROP COLUMN``, ``DROP CONSTRAINT``, column modifications,
+        any ``DROP``). Emits ``DeprecationWarning``.
+
         Args:
             migration_path: Path to the versioned SQL migration file (V*__.sql)
             output_dir: Directory to write undo script (default: same as migration file)
@@ -786,6 +800,8 @@ class DBLiftClient:
             ... )
             >>> print(f"Generated: {result.undo_script_path}")
         """
+        # stacklevel=3: this method, then the ``_with_client_emitter`` wrapper.
+        warnings.warn(_TEXT_UNDO_DEPRECATION_MESSAGE, DeprecationWarning, stacklevel=3)
         return generate_undo_script_operation(
             self,
             migration_path=migration_path,
@@ -805,6 +821,10 @@ class DBLiftClient:
         **kwargs: Any,
     ) -> List["GenerateUndoScriptResult"]:
         """Generate undo scripts for one or more versioned migrations.
+
+        Deprecated since v4.10: text-based undo script generation will be
+        removed in the next major release (see :meth:`generate_undo_script`).
+        Emits ``DeprecationWarning``.
 
         Args:
             migration_paths: List of paths to versioned SQL migration files (V*__.sql).
@@ -834,6 +854,8 @@ class DBLiftClient:
             >>> results = client.generate_undo_scripts(overwrite=True)
             >>> print(f"Generated {len(results)} undo scripts")
         """
+        # stacklevel=3: this method, then the ``_with_client_emitter`` wrapper.
+        warnings.warn(_TEXT_UNDO_DEPRECATION_MESSAGE, DeprecationWarning, stacklevel=3)
         return generate_undo_scripts_operation(
             self,
             migration_paths=migration_paths,
