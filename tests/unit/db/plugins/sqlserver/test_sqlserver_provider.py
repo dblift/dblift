@@ -187,6 +187,30 @@ def test_dbo_login_with_non_dbo_schema_warns_by_default(monkeypatch):
     assert "set schema" not in warning.lower()
 
 
+def test_dbo_login_with_non_dbo_schema_names_the_login_not_the_dbo_user(monkeypatch):
+    """The warning must name the SQL Server *login* (e.g. 'sa'), which maps
+    to the fixed 'dbo' database user -- not repeat 'dbo' as if it were the
+    login. Connecting as 'sa' previously produced the nonsensical "SQL
+    Server login 'dbo' maps to the fixed 'dbo' database user"."""
+    provider = object.__new__(SqlServerProvider)
+    provider.log = MagicMock()
+    provider._schema_applied_for = None
+    provider._current_schema_set = None
+    provider.execute_query = MagicMock(
+        return_value=[{"db_user": "dbo", "login_name": "sa", "default_schema": "dbo"}]
+    )
+    monkeypatch.setattr(
+        SqlAlchemyProvider,
+        "execute_statement",
+        MagicMock(side_effect=AssertionError("ALTER USER should not run")),
+    )
+
+    provider.set_current_schema("otherschema")
+
+    warning = provider.log.warning.call_args[0][0]
+    assert "SQL Server login 'sa' maps to the fixed 'dbo' database user" in warning
+
+
 def test_dbo_login_with_non_dbo_schema_raises_when_opted_in(monkeypatch):
     """fail_on_fixed_dbo raises before the doomed ALTER USER, and the
     re-raise keeps it from being swallowed by the broad except — covered here
