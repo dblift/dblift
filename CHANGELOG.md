@@ -17,6 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `dblift mcp` tool results no longer carry stray library log output mixed into the command's own console output. Building the MCP server left an unrelated logging handler installed process-wide, which could pick up verbose third-party log lines that the CLI itself never prints and mirror them into a tool's result.
 - `dblift mcp` no longer leaves a small, unfinished log file behind on every call when `--log-format html` or a combined format such as `text,html` is used. A throwaway logger built while a call's configuration loads, before the call's own log format is known, no longer opens a file of its own; the real, per-call logger configured moments later is unaffected.
 - `DBLiftClient.import_flyway()` emits `MIGRATION_FAILED` (matching `migrate()` and `undo()`) instead of `MIGRATION_COMPLETED` when the import returns a failed result without raising an exception, so listeners can tell a failed import from a successful one.
+- Oracle `SqlAnalyzer.split_statements` now strips SQL*Plus `PROMPT` / `REM` directives the same way `migrate` already does, instead of letting them merge with the statement that follows. A script such as `PROMPT Creating the customer's table` / `CREATE TABLE ...` previously either merged the directive's text into the next statement (an apostrophe in the message could even swallow a later `CREATE INDEX`) or dropped statements outright; it now returns every statement, matching what `migrate` executes.
 
 ### Removed
 
