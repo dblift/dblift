@@ -91,6 +91,7 @@ class _CountedMigration:
         self.success = True
         self.script_name = f"V{version}__test.sql"
         self.description = "test"
+        self.tags = []
         self._rank = rank
         self._rank_reads = rank_reads
 

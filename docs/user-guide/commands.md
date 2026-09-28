@@ -90,6 +90,16 @@ dblift undo --target-version=1.0.0
 
 This will undo all migrations after version 1.0.0.
 
+**Migrations written as one group:** if several migrations carry the same
+`dblift-group-...`-prefixed tag (see [Using Tags](#using-tags)) -- for
+example because a tool generated them together as one logical change split
+across several files -- `dblift undo` treats them as a single unit. A plain
+`dblift undo` with no `--target-version` reverts every applied migration in
+that group, highest version first, instead of stopping after just the most
+recent one; `--target-version` does the same when the target version would
+otherwise land in the middle of a group, widening the rollback to cover the
+whole group rather than leaving part of it applied.
+
 ### Working with Existing Databases
 
 Already have a database with tables? Use baseline to tell DBLift where to start:

@@ -13,6 +13,7 @@ from dblift.core.constants import SECONDS_TO_MILLISECONDS
 from dblift.core.logger.results import MigrationInfo, MigrationSqlInfo, UndoResult
 from dblift.core.migration.formats.migration_format import MigrationFormat
 from dblift.core.migration.migration import MigrationType
+from dblift.core.migration.rules.migration_rules import expand_undo_set_to_groups
 from dblift.core.migration.state.migration_display_state import MigrationDisplayState
 from dblift.core.migration.state.rank_wins import installed_rank, latest_successful_ranks
 from dblift.core.migration.version_utils import compare_versions, is_migration_success
@@ -230,6 +231,24 @@ class UndoCommand(BaseCommand):
                     migrations_to_undo.append(migration)
                     if not tag_filter_active:
                         break  # Only undo the most recent undoable migration
+
+                if migrations_to_undo:
+                    migrations_to_undo, added = expand_undo_set_to_groups(
+                        self.migration_rules,
+                        migrations_to_undo,
+                        candidates,
+                        applied_migrations,
+                        version_ranks=version_ranks,
+                    )
+                    if added:
+                        self.log.info(
+                            "Undoing %d additional migration(s) written as one group with %s: %s"
+                            % (
+                                len(added),
+                                migrations_to_undo[-1].script_name,
+                                ", ".join(str(m.version) for m in added),
+                            )
+                        )
             else:
                 # Target version specified - undo every installed version strictly
                 # above the target, regardless of install rank. Out-of-order history
@@ -255,6 +274,30 @@ class UndoCommand(BaseCommand):
                         result.set_error(message)
                         self._log_command_completion("undo", result)
                         return result
+
+                # --target-version undoes every version strictly above the
+                # target; if that boundary lands in the middle of a group,
+                # widen the plan to the whole group rather than leaving some
+                # of its migrations applied and others undone (same rule the
+                # no-target-version branch above applies).
+                if migrations_to_undo:
+                    migrations_to_undo, added = expand_undo_set_to_groups(
+                        self.migration_rules,
+                        migrations_to_undo,
+                        candidates,
+                        applied_migrations,
+                        version_ranks=version_ranks,
+                    )
+                    if added:
+                        self.log.info(
+                            "--target-version %s falls inside a group of migrations written "
+                            "as one unit; undoing %d additional migration(s) too: %s"
+                            % (
+                                target_version,
+                                len(added),
+                                ", ".join(str(m.version) for m in added),
+                            )
+                        )
 
             if not migrations_to_undo:
                 self.log.info("No migrations to undo")

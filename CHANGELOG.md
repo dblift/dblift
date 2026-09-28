@@ -11,6 +11,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- `dblift undo` now treats migrations that carry the same `dblift-group-...`
+  filename tag as one unit: a plain `dblift undo` reverts every applied
+  migration in that group, highest version first, instead of stopping after
+  the single most recently applied one, and `--target-version` widens its
+  rollback to cover the whole group when the target would otherwise land in
+  the middle of it. Migrations with no such tag are unaffected.
+
 ### Fixed
 
 - `validate-sql` infers the dialect from a config's `database.url` when no `database.type` is set, the same way every other command already does. A config with only `database.url: sqlite:///...` (no `type:`) previously failed with "validate-sql requires --dialect for offline validation when no database type is configured." even though the dialect was unambiguous from the URL scheme.

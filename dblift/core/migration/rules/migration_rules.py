@@ -14,6 +14,34 @@ from dblift.core.migration.version_utils import (
     is_migration_success,
 )
 
+#: Prefix that marks a filename tag (``strip_migration_tags``) as a group
+#: marker rather than an ordinary user tag. Migrations written as one group
+#: carry a tag ``f"{GROUP_TAG_PREFIX}<key>"`` with the same ``<key>``; the
+#: prefix makes it vanishingly unlikely to collide with a tag a user picked
+#: for filtering (``--tags prod``, ``--tags nightly``, ...). Filename-safe by
+#: construction -- no ``<>:"/\|?*`` -- since a tag lives inside the migration
+#: filename itself (``[tag]``) and those characters are illegal in a Windows
+#: filename (a colon in particular is also a drive-letter separator there, so
+#: an earlier ``dblift:group:V9`` form could not even be checked out on
+#: Windows -- ``dblift-group-V9`` is the corrected, filename-safe form).
+#: This is the one place that defines the convention -- every reader of a
+#: migration's group membership goes through :func:`group_tag_of` instead of
+#: re-deriving it.
+GROUP_TAG_PREFIX = "dblift-group-"
+
+
+def group_tag_of(migration: Migration) -> Optional[str]:
+    """Return the group tag carried by *migration*, or ``None``.
+
+    A migration belongs to a group when one of its filename tags starts with
+    :data:`GROUP_TAG_PREFIX`; two migrations with the same such tag were
+    written as one unit.
+    """
+    for tag in migration.tags:
+        if tag.startswith(GROUP_TAG_PREFIX):
+            return tag
+    return None
+
 
 class MigrationRules:
     """Migration business rules implementation - handles execution logic."""
@@ -152,3 +180,59 @@ class MigrationRules:
             return candidate
 
         return None
+
+
+def expand_undo_set_to_groups(
+    migration_rules: "MigrationRules",
+    seed_migrations: List[Migration],
+    candidate_pool: List[Migration],
+    applied_migrations: List[Migration],
+    *,
+    version_ranks: Mapping[str, "VersionRankState"],
+) -> Tuple[List[Migration], List[Migration]]:
+    """Extend *seed_migrations* so every group it touches is undone whole.
+
+    Migrations written as one group (:func:`group_tag_of`) are undone or kept
+    applied together, never left half-reverted. When any migration in
+    *seed_migrations* carries a group tag, every other still-applied
+    migration in *candidate_pool* carrying the same tag is pulled in too --
+    this is the single function both the no-target-version and the
+    ``--target-version`` branches of ``undo`` call to stay consistent with
+    each other. *migration_rules* is used only for its ``_is_currently_undone``
+    check, matching how both callers already determine "still applied".
+    *version_ranks* is the same precomputed state both callers already build
+    (``latest_successful_ranks(applied_migrations)``); passing it in avoids a
+    second pass over history here.
+
+    Returns ``(full_set, added)``: *full_set* is highest version first (the
+    order ``undo`` already executes a multi-version plan in), and *added* is
+    what was pulled in beyond the seed, for callers that want to tell the
+    user the scope was widened.
+    """
+    seed_tags = {group_tag_of(m) for m in seed_migrations}
+    seed_tags.discard(None)
+    if not seed_tags:
+        return list(seed_migrations), []
+
+    by_version = {str(m.version): m for m in seed_migrations}
+    added: List[Migration] = []
+    for migration in candidate_pool:
+        tag = group_tag_of(migration)
+        if tag not in seed_tags:
+            continue
+        version = str(migration.version)
+        if version in by_version:
+            continue
+        if migration_rules._is_currently_undone(
+            version, applied_migrations, version_ranks=version_ranks
+        ):
+            continue
+        by_version[version] = migration
+        added.append(migration)
+
+    full_set = list(by_version.values())
+    full_set.sort(
+        key=cmp_to_key(lambda a, b: compare_versions(str(a.version), str(b.version))),
+        reverse=True,
+    )
+    return full_set, added
