@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from typing import Optional
 
 from dblift.core.sql_parser.common.comment_stripping import strip_comments_preserving_quotes
+from dblift.core.utils.row_access import strip_leading_comments
 
 
 @dataclass(frozen=True)
@@ -50,7 +51,10 @@ def classify_execution_statement(
     """Classify transaction metadata for high-confidence dialect-specific cases."""
     from dblift.db.provider_registry import ProviderRegistry
 
-    normalized = re.sub(r"\s+", " ", sql.strip()).upper()
+    # A comment in front of the statement (a migration's own notes, a
+    # generated script's header) is not part of it; the patterns are anchored
+    # at the statement's first keyword.
+    normalized = re.sub(r"\s+", " ", strip_leading_comments(sql).strip()).upper()
     quirks = ProviderRegistry.get_quirks(dialect.lower())
 
     for pattern, reason in quirks.non_transactional_sql_patterns:
