@@ -211,6 +211,22 @@ class BaseSqlGenerator(ABC):
             DROP statement SQL string
         """
 
+    def generate_drop_statement(self, obj: SqlObject, dialect: str) -> str:
+        """
+        Generate a DROP statement for an object.
+
+        Public name for the dialect hook ``_generate_drop_statement``, which
+        subclasses keep implementing.
+
+        Args:
+            obj: SQL Model object to drop
+            dialect: SQL dialect
+
+        Returns:
+            DROP statement SQL string
+        """
+        return self._generate_drop_statement(obj, dialect)
+
     def generate_create_statement(self, obj: SqlObject) -> str:
         """
         Generate a CREATE statement for an SQL object using the type dispatch registry.

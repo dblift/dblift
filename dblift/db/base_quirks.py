@@ -35,8 +35,7 @@ from dblift.db.dml_analysis import (
 from dblift.db.feature_gate import FeatureGate
 
 if TYPE_CHECKING:
-    from dblift.core.sql_generator.alter.base_alter_generator import BaseAlterGenerator
-    from dblift.core.sql_generator.base_generator import BaseSqlGenerator
+    from dblift.db.generator_protocol import AlterGeneratorProtocol, SqlGeneratorProtocol
 
 
 class RowLimitClauses(NamedTuple):
@@ -1055,11 +1054,11 @@ class BaseQuirks:
     # DdlQuirks
     # ------------------------------------------------------------------
 
-    def ddl_generator_class(self) -> Optional[Type["BaseSqlGenerator"]]:
+    def ddl_generator_class(self) -> Optional[Type["SqlGeneratorProtocol"]]:
         """Default: no dialect-specific DDL generator (falls back to ``SqlGenerator``)."""
         return None
 
-    def alter_generator_class(self) -> Optional[Type["BaseAlterGenerator"]]:
+    def alter_generator_class(self) -> Optional[Type["AlterGeneratorProtocol"]]:
         """Default: no dialect-specific ALTER generator (factory raises)."""
         return None
 

@@ -7,10 +7,7 @@ from typing import TYPE_CHECKING, Any, Optional, Type
 from dblift.db.base_quirks import BaseQuirks
 
 if TYPE_CHECKING:
-    from dblift.core.sql_generator.alter.base_alter_generator import (
-        BaseAlterGenerator,
-    )
-    from dblift.core.sql_generator.base_generator import BaseSqlGenerator
+    from dblift.db.generator_protocol import AlterGeneratorProtocol, SqlGeneratorProtocol
 
 
 class SnowflakeQuirks(BaseQuirks):
@@ -60,11 +57,11 @@ class SnowflakeQuirks(BaseQuirks):
             )
         return bool(str(url or "").strip() or str(account or "").strip())
 
-    def ddl_generator_class(self) -> Optional[Type["BaseSqlGenerator"]]:
+    def ddl_generator_class(self) -> Optional[Type["SqlGeneratorProtocol"]]:
         """Snowflake rich DDL generation is registered by higher tiers."""
         return None
 
-    def alter_generator_class(self) -> Optional[Type["BaseAlterGenerator"]]:
+    def alter_generator_class(self) -> Optional[Type["AlterGeneratorProtocol"]]:
         """Snowflake ALTER generation is registered by higher tiers."""
         return None
 

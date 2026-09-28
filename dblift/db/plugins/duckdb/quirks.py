@@ -7,8 +7,7 @@ from typing import TYPE_CHECKING, Any, Optional, Type
 from dblift.db.base_quirks import BaseQuirks
 
 if TYPE_CHECKING:
-    from dblift.core.sql_generator.alter.base_alter_generator import BaseAlterGenerator
-    from dblift.core.sql_generator.base_generator import BaseSqlGenerator
+    from dblift.db.generator_protocol import AlterGeneratorProtocol, SqlGeneratorProtocol
 
 
 class DuckDBQuirks(BaseQuirks):
@@ -67,11 +66,11 @@ class DuckDBQuirks(BaseQuirks):
         return None
 
     # Optional hooks — registered by an installed extension package.
-    def ddl_generator_class(self) -> Optional[Type["BaseSqlGenerator"]]:
+    def ddl_generator_class(self) -> Optional[Type["SqlGeneratorProtocol"]]:
         """DDL generator is supplied by an installed extension package."""
         return None
 
-    def alter_generator_class(self) -> Optional[Type["BaseAlterGenerator"]]:
+    def alter_generator_class(self) -> Optional[Type["AlterGeneratorProtocol"]]:
         """ALTER generator is supplied by an installed extension package."""
         return None
 

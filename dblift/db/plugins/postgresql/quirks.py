@@ -35,8 +35,7 @@ _DROP_TRIGGER_ON_RE = re.compile(
 )
 
 if TYPE_CHECKING:
-    from dblift.core.sql_generator.alter.base_alter_generator import BaseAlterGenerator
-    from dblift.core.sql_generator.base_generator import BaseSqlGenerator
+    from dblift.db.generator_protocol import AlterGeneratorProtocol, SqlGeneratorProtocol
 
 
 class PostgresqlQuirks(BaseQuirks):
@@ -152,11 +151,11 @@ class PostgresqlQuirks(BaseQuirks):
             return True
         return bool(_value("host") and _value("database"))
 
-    def ddl_generator_class(self) -> Optional[Type["BaseSqlGenerator"]]:
+    def ddl_generator_class(self) -> Optional[Type["SqlGeneratorProtocol"]]:
         """DDL generator is supplied by an installed extension package."""
         return None
 
-    def alter_generator_class(self) -> Optional[Type["BaseAlterGenerator"]]:
+    def alter_generator_class(self) -> Optional[Type["AlterGeneratorProtocol"]]:
         """ALTER generator is supplied by an installed extension package."""
         return None
 
@@ -711,7 +710,7 @@ class PostgresqlQuirks(BaseQuirks):
         SET NOT NULL emits a pre-check counting NULL rows so a violating migration
         fails cleanly before the ALTER runs.
         """
-        from dblift.core.sql_generator.sql_statement import SqlStatement
+        from dblift.core.state.sql_statement import SqlStatement
 
         nullable_diff = getattr(col_diff, "nullable_diff", None)
         if nullable_diff is None:
@@ -741,7 +740,7 @@ class PostgresqlQuirks(BaseQuirks):
         self, col_diff: object, formatted_table: str, formatted_column: str, dialect: str
     ) -> "Optional[object]":
         """``ALTER TABLE … ALTER COLUMN <c> SET|DROP DEFAULT`` — PostgreSQL DEFAULT change."""
-        from dblift.core.sql_generator.sql_statement import SqlStatement
+        from dblift.core.state.sql_statement import SqlStatement
 
         default_diff = getattr(col_diff, "default_diff", None)
         if default_diff is None:
@@ -763,7 +762,7 @@ class PostgresqlQuirks(BaseQuirks):
         self, col_diff: object, formatted_table: str, formatted_column: str, dialect: str
     ) -> "Optional[object]":
         """``ALTER TABLE … ALTER COLUMN <c> TYPE <type>`` — PostgreSQL column-type change form."""
-        from dblift.core.sql_generator.sql_statement import SqlStatement
+        from dblift.core.state.sql_statement import SqlStatement
 
         data_type_diff = getattr(col_diff, "data_type_diff", None)
         if data_type_diff is None:
@@ -781,7 +780,7 @@ class PostgresqlQuirks(BaseQuirks):
         self, col_diff: object, formatted_table: str, formatted_column: str, dialect: str
     ) -> "Optional[object]":
         """``ALTER TABLE … ALTER COLUMN <c> SET COLLATION <coll>`` — PG collation change."""
-        from dblift.core.sql_generator.sql_statement import SqlStatement
+        from dblift.core.state.sql_statement import SqlStatement
 
         collation_diff = getattr(col_diff, "collation_diff", None)
         if collation_diff is None:

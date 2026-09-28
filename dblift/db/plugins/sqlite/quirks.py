@@ -7,8 +7,7 @@ from typing import TYPE_CHECKING, Any, Optional, Type
 from dblift.db.base_quirks import BaseQuirks
 
 if TYPE_CHECKING:
-    from dblift.core.sql_generator.alter.base_alter_generator import BaseAlterGenerator
-    from dblift.core.sql_generator.base_generator import BaseSqlGenerator
+    from dblift.db.generator_protocol import AlterGeneratorProtocol, SqlGeneratorProtocol
 
 
 class SqliteQuirks(BaseQuirks):
@@ -48,11 +47,11 @@ class SqliteQuirks(BaseQuirks):
         """Initialize SQLite quirks with the dialect name."""
         super().__init__(dialect_name=dialect_name)
 
-    def ddl_generator_class(self) -> Optional[Type["BaseSqlGenerator"]]:
+    def ddl_generator_class(self) -> Optional[Type["SqlGeneratorProtocol"]]:
         """DDL generator is supplied by an installed extension package."""
         return None
 
-    def alter_generator_class(self) -> Optional[Type["BaseAlterGenerator"]]:
+    def alter_generator_class(self) -> Optional[Type["AlterGeneratorProtocol"]]:
         """ALTER generator is supplied by an installed extension package."""
         return None
 

@@ -9,6 +9,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `dblift.db.generator_protocol`: `SqlGeneratorProtocol` and
+  `AlterGeneratorProtocol`, runtime-checkable Protocols describing a DDL
+  generator and an ALTER generator. The `ddl_generator_class()` /
+  `alter_generator_class()` quirks hooks (`BaseQuirks`, every bundled
+  plugin, `DdlQuirks`) are now typed against them, and `dblift/db/` no
+  longer imports `dblift.core.sql_generator`. Annotation-only: the
+  generator factories and SQL output are unchanged.
+- `BaseSqlGenerator.generate_drop_statement(obj, dialect)`: public name for
+  an object's DROP statement. It delegates to `_generate_drop_statement`,
+  which subclasses keep implementing.
+- `dblift.core.sql_generator.dependency_analyzer.table_references(sql)`:
+  public name for the `(schema, table)` references a query reads, the same
+  extractor `DependencyAnalyzer` uses for view and procedure dependencies.
+
 ### Changed
 
 ### Fixed

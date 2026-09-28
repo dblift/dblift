@@ -54,8 +54,7 @@ import re
 from typing import TYPE_CHECKING, Any, Optional, Protocol, Type, runtime_checkable
 
 if TYPE_CHECKING:
-    from dblift.core.sql_generator.alter.base_alter_generator import BaseAlterGenerator
-    from dblift.core.sql_generator.base_generator import BaseSqlGenerator
+    from dblift.db.generator_protocol import AlterGeneratorProtocol, SqlGeneratorProtocol
 
 
 @runtime_checkable
@@ -68,10 +67,10 @@ class DdlQuirks(Protocol):
     :class:`dblift.core.sql_generator.sql_generator.SqlGenerator`.
     """
 
-    def ddl_generator_class(self) -> Optional[Type["BaseSqlGenerator"]]:
+    def ddl_generator_class(self) -> Optional[Type["SqlGeneratorProtocol"]]:
         """Return the dialect-specific DDL generator class, or ``None``."""
 
-    def alter_generator_class(self) -> Optional[Type["BaseAlterGenerator"]]:
+    def alter_generator_class(self) -> Optional[Type["AlterGeneratorProtocol"]]:
         """Return the dialect-specific ALTER generator class, or ``None``."""
 
     def render_drop_for_object(

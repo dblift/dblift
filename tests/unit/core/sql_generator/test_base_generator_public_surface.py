@@ -35,6 +35,7 @@ PUBLIC_METHOD_SURFACE = frozenset(
     {
         "generate_create_statement",
         "generate_ddl",
+        "generate_drop_statement",
         "generate_drop_statements",
         "generate_schema_script",
     }
@@ -93,6 +94,18 @@ def test_public_method_surface_is_pinned():
         if not name.startswith("_") and callable(vars(BaseSqlGenerator)[name])
     }
     assert actual == set(PUBLIC_METHOD_SURFACE)
+
+
+@pytest.mark.parametrize("dialect", DIALECTS)
+def test_generate_drop_statement_matches_the_private_hook(dialect):
+    """The public name returns exactly what the private hook renders."""
+    generator = SqlGeneratorFactory.create(dialect)
+    users = _schema(dialect)["tables"][1]
+
+    sql = generator.generate_drop_statement(users, dialect)
+
+    assert "DROP TABLE" in sql.upper() and "users" in sql
+    assert sql == generator._generate_drop_statement(users, dialect)
 
 
 @pytest.mark.parametrize("dialect", DIALECTS)
