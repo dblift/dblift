@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - `validate-sql` infers the dialect from a config's `database.url` when no `database.type` is set, the same way every other command already does. A config with only `database.url: sqlite:///...` (no `type:`) previously failed with "validate-sql requires --dialect for offline validation when no database type is configured." even though the dialect was unambiguous from the URL scheme.
+- `dblift mcp` tool results no longer carry stray library log output mixed into the command's own console output. Building the MCP server left an unrelated logging handler installed process-wide, which could pick up verbose third-party log lines that the CLI itself never prints and mirror them into a tool's result.
 
 ### Removed
 
