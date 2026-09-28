@@ -1365,3 +1365,54 @@ class TestLogFactory:
         LogFactory.configure(tmp_path, LogFormat.TEXT, use_console=False, use_file=False)
         log = LogFactory.get_log(TestLogFactory)
         assert isinstance(log, ConsoleLog)
+
+    def test_reset_restores_fresh_process_defaults(self, tmp_path):
+        """``reset()`` undoes everything ``configure()`` and the other
+        ``set_*``/``use_existing_log_file`` classmethods can change, restoring
+        the class-level state a fresh process starts with. A caller that
+        replays the CLI's own phases for many commands in one long-lived
+        process (``dblift mcp``) needs this between calls, since the class
+        state otherwise persists from whichever call configured it last."""
+        log_file = tmp_path / "existing.log"
+        log_file.write_text("")
+
+        LogFactory.enable_debug(True)
+        LogFactory.set_schema("test_schema")
+        LogFactory.set_database_name("test_db")
+        LogFactory.set_log_file_pattern("custom_<schema>.log")
+        LogFactory.use_existing_log_file(log_file)
+        LogFactory.configure(
+            tmp_path,
+            [LogFormat.HTML, LogFormat.JSON],
+            log_level=LogLevel.WARN,
+            use_console=False,
+            use_file=False,
+            console_log_level=LogLevel.ERROR,
+        )
+
+        LogFactory.reset()
+
+        assert LogFactory._debug_enabled is False
+        assert LogFactory._schema is None
+        assert LogFactory._database_name is None
+        assert LogFactory._log_format == LogFormat.TEXT
+        assert LogFactory._log_formats == []
+        assert LogFactory._log_file_pattern is None
+        assert LogFactory._existing_log_file is None
+        assert LogFactory._log_dir is None
+        assert LogFactory._use_console is True
+        assert LogFactory._use_file is True
+        assert LogFactory._log_level == LogLevel.INFO
+        assert LogFactory._console_log_level is None
+
+    def test_reset_leaves_a_fresh_bootstrap_logger_file_free(self, tmp_path):
+        """The behaviour ``reset()`` exists for: right after ``reset()``, the
+        bootstrap ``get_log()`` a fresh CLI process makes before its own
+        ``configure()`` call opens no file, exactly as it would on the very
+        first call in a brand new process."""
+        LogFactory.configure(tmp_path, LogFormat.HTML)
+
+        LogFactory.reset()
+        LogFactory.get_log(TestLogFactory)
+
+        assert list(tmp_path.glob("*")) == []

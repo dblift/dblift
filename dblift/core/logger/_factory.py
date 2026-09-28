@@ -8,7 +8,7 @@ Extracted from ``core/logger/log.py`` in PR-B5. Re-exported from
 
 import logging
 from pathlib import Path
-from typing import Any, List, Optional, Union
+from typing import Any, ClassVar, List, Optional, Tuple, Union
 
 from dblift.core.logger._base import Log
 from dblift.core.logger._levels import LogFormat, LogLevel
@@ -29,6 +29,29 @@ class LogFactory:
     _use_file: bool = True
     _log_level: LogLevel = LogLevel.INFO
     _console_log_level: Optional[LogLevel] = None
+
+    # Names of the mutable class-level configuration state declared above.
+    # ``reset()`` restores each one from :data:`_STATE_DEFAULTS`, a snapshot
+    # taken once below right after the class body runs — so the fresh-process
+    # defaults are derived from the attributes above rather than re-typed as
+    # a second set of literals that could drift out of sync with them.
+    _STATE_ATTRS: ClassVar[Tuple[str, ...]] = (
+        "_debug_enabled",
+        "_schema",
+        "_database_name",
+        "_log_format",
+        "_log_formats",
+        "_log_file_pattern",
+        "_existing_log_file",
+        "_log_dir",
+        "_use_console",
+        "_use_file",
+        "_log_level",
+        "_console_log_level",
+    )
+    # Populated once, right after the class body runs, from the values above
+    # — see the assignment at the bottom of this module.
+    _STATE_DEFAULTS: ClassVar[Tuple[object, ...]] = ()
 
     @classmethod
     def enable_debug(cls, enable: bool = True) -> None:
@@ -57,6 +80,25 @@ class LogFactory:
             raise ValueError(f"Log file {log_file_path} does not exist")
 
         cls._existing_log_file = log_file_path
+
+    @classmethod
+    def reset(cls) -> None:
+        """Restore the class-level state a fresh process starts with.
+
+        ``LogFactory``'s configuration lives on the class, not an instance,
+        so it normally persists for the life of the process — fine for the
+        CLI, which is one process per command. A long-lived caller that
+        replays the CLI's own phases for many commands in one process (the
+        ``dblift mcp`` server) must call this before each one, or a call
+        inherits whatever the *previous* call's :meth:`configure` left behind
+        (format, directory, file pattern, ...) instead of the blank slate
+        each CLI invocation gets. In particular, with ``_log_dir`` unset the
+        bootstrap logger ``main.py`` builds while a call's configuration
+        loads — before that call's own format/pattern is known — opens no
+        file sink at all, matching what happens in a fresh CLI process.
+        """
+        for name, default in zip(cls._STATE_ATTRS, cls._STATE_DEFAULTS):
+            setattr(cls, name, default)
 
     @classmethod
     def configure(
@@ -237,3 +279,11 @@ class LogFactory:
             return logs[0]
         else:
             return MultiLog(logs)
+
+
+# Snapshot of the fresh-process defaults declared on the class body above,
+# taken once at import time (straight off the class's own __dict__, before
+# anything can call a `set_*`/`configure` classmethod and overwrite them) so
+# `LogFactory.reset()` restores from this rather than a second, hand-typed
+# copy of the same values.
+LogFactory._STATE_DEFAULTS = tuple(LogFactory.__dict__[name] for name in LogFactory._STATE_ATTRS)
