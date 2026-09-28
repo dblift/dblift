@@ -43,6 +43,18 @@ class SqliteQuirks(BaseQuirks):
     # In-memory DB: never touches disk, safe as a validate-sql offline placeholder.
     lint_placeholder_url = "sqlite:///:memory:"
 
+    # SQLite's own reference: "This pragma is a no-op within a transaction;
+    # foreign key constraint enforcement may only be enabled or disabled when
+    # there is no pending BEGIN" (pragma.html#pragma_foreign_keys). A migration
+    # that sets this pragma inside a transactional migrate run otherwise
+    # executes silently without taking effect.
+    non_transactional_sql_patterns = (
+        (
+            r"^PRAGMA\s+FOREIGN_KEYS\s*=?\s*\(?\s*(ON|OFF|TRUE|FALSE|0|1)\s*\)?;?$",
+            "SQLite PRAGMA foreign_keys is a no-op inside a transaction block",
+        ),
+    )
+
     def __init__(self, dialect_name: str = "sqlite") -> None:
         """Initialize SQLite quirks with the dialect name."""
         super().__init__(dialect_name=dialect_name)

@@ -15,6 +15,7 @@ from dblift.core.migration.migration import success_to_bool
 from dblift.db.object_naming import dictionary_identifier, get_normalized_object_name
 from dblift.db.plugins.base_history_manager import UNDO_HISTORY_TYPE, installed_on_to_bind
 from dblift.db.provider_interfaces import DroppableObject
+from dblift.db.provider_registry import ProviderRegistry
 from dblift.db.sqlalchemy_provider import SqlAlchemyProvider
 
 
@@ -868,6 +869,19 @@ class OracleProvider(SqlAlchemyProvider):
             if _row_value(row, "child_table")
         }
 
+        # Engine-managed support tables (Oracle Text's ``DR$<idx>$*`` among
+        # them) share the quirks-declared prefix list used to filter them out
+        # of introspection (``BaseQuirks.materialized_view_support_table_prefixes``).
+        # They are listed in ALL_TABLES like any other table, but Oracle drops
+        # them itself when the owning index (here, a CTXSYS.CONTEXT index) is
+        # dropped -- which happens as a side effect of the CASCADE CONSTRAINTS
+        # table drop below. Dropping them here too raced that implicit drop
+        # and always lost, so the later DROP TABLE hit ORA-00942 and clean was
+        # reported as failed even though every object was gone.
+        engine_support_table_prefixes = ProviderRegistry.get_quirks(
+            "oracle"
+        ).materialized_view_support_table_prefixes
+
         for object_type, drop_prefix, query, suffix in object_queries:
             rows = self.execute_query(query, [clean_schema])
             if object_type == "table" and ref_partitioned_children:
@@ -882,6 +896,10 @@ class OracleProvider(SqlAlchemyProvider):
                     continue
                 if object_type == "sequence" and self.is_system_generated_sequence(
                     schema, str(name)
+                ):
+                    continue
+                if object_type == "table" and str(name).upper().startswith(
+                    engine_support_table_prefixes
                 ):
                     continue
                 stmt = f"{drop_prefix} {_schema_object(schema, str(name))}{suffix}"

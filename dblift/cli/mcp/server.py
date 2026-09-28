@@ -265,9 +265,26 @@ class DbliftMcpServer:
             instructions += RESTRICTED_INSTRUCTIONS
         # Without a version the SDK reports ``serverInfo.version: ""``, and a
         # client that logs or pins server identity sees an unversioned server.
+        #
+        # ``MCPServer.__init__`` unconditionally calls the SDK's own
+        # ``configure_logging()``, which installs a RichHandler on the *root*
+        # logger. dblift's own console output never goes through the root
+        # logger (see ``dblift.core.logger``), so that handler only exists to
+        # pick up whatever else propagates there — library INFO lines,
+        # verbose third-party DEBUG output, etc. Since ``cli/mcp/runner.py``
+        # mirrors real stderr into every tool result, that extra handler
+        # would leak that noise into results the CLI itself never prints.
+        # Snapshot the root logger and restore it right after construction so
+        # a tool result's output stays limited to the command's own console
+        # output.
+        _root_logger = logging.getLogger()
+        _prior_handlers = list(_root_logger.handlers)
+        _prior_level = _root_logger.level
         self.mcpserver = mcpserver_cls(
             "dblift", instructions=instructions, version=dblift.__version__
         )
+        _root_logger.handlers = _prior_handlers
+        _root_logger.setLevel(_prior_level)
         self._tool_annotations_cls = ToolAnnotations
         self._names: List[str] = []
         self._skipped: List[Tuple[str, str]] = []

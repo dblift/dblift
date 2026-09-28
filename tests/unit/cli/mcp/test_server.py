@@ -1229,6 +1229,34 @@ def test_the_server_reports_the_package_version_in_its_server_info():
     assert server_info.version == dblift.__version__
 
 
+@pytest.mark.unit
+def test_construction_does_not_leave_a_root_logging_handler():
+    """The SDK's ``MCPServer.__init__`` unconditionally installs a RichHandler on
+    the root logger the first time it runs in a process (``logging.basicConfig``
+    is a no-op once the root logger already has a handler). dblift's own
+    console output never goes through the root logger, and
+    ``cli/mcp/runner.py`` mirrors real stderr into every tool result — so a
+    leftover root handler would leak unrelated library log output (e.g.
+    verbose third-party DEBUG lines) into results the CLI itself never
+    prints. Building a server must leave the root logger exactly as it found
+    it, even on the very first server built in the process.
+    """
+    import logging
+
+    root_logger = logging.getLogger()
+    before_handlers = list(root_logger.handlers)
+    before_level = root_logger.level
+    root_logger.handlers = []
+    try:
+        _server()
+
+        assert root_logger.handlers == []
+        assert root_logger.level == before_level
+    finally:
+        root_logger.handlers = before_handlers
+        root_logger.setLevel(before_level)
+
+
 @pytest.mark.parametrize("registration", ["raw", "command"])
 @pytest.mark.parametrize("arguments", [{"target": "1"}, {"bogus_key": "x", "target_version": "1"}])
 def test_unknown_arguments_are_reported_before_tool_execution(registration, arguments):

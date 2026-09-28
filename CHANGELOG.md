@@ -26,6 +26,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- `dblift undo` now treats migrations that carry the same `dblift-group-...`
+  filename tag as one unit: a plain `dblift undo` reverts every applied
+  migration in that group, highest version first, instead of stopping after
+  the single most recently applied one, and `--target-version` widens its
+  rollback to cover the whole group when the target would otherwise land in
+  the middle of it. Migrations with no such tag are unaffected.
+
+### Fixed
+
+- A comment in front of a statement no longer hides that it must run outside a transaction. A migration such as `-- build online` followed by `CREATE INDEX CONCURRENTLY …` on PostgreSQL (or a SQLite `PRAGMA foreign_keys` after a comment) was classified as transactional, so `migrate` ran it inside the transaction block and PostgreSQL rejected it. Classification now skips leading comments before matching.
+
+- `validate-sql` infers the dialect from a config's `database.url` when no `database.type` is set, the same way every other command already does. A config with only `database.url: sqlite:///...` (no `type:`) previously failed with "validate-sql requires --dialect for offline validation when no database type is configured." even though the dialect was unambiguous from the URL scheme.
+- `dblift mcp` tool results no longer carry stray library log output mixed into the command's own console output. Building the MCP server left an unrelated logging handler installed process-wide, which could pick up verbose third-party log lines that the CLI itself never prints and mirror them into a tool's result.
+- `dblift mcp` no longer leaves a small, unfinished log file behind on every call when `--log-format html` or a combined format such as `text,html` is used. A throwaway logger built while a call's configuration loads, before the call's own log format is known, no longer opens a file of its own; the real, per-call logger configured moments later is unaffected.
+- `DBLiftClient.import_flyway()` emits `MIGRATION_FAILED` (matching `migrate()` and `undo()`) instead of `MIGRATION_COMPLETED` when the import returns a failed result without raising an exception, so listeners can tell a failed import from a successful one.
+- Oracle `SqlAnalyzer.split_statements` now strips SQL*Plus `PROMPT` / `REM` directives the same way `migrate` already does, instead of letting them merge with the statement that follows. A script such as `PROMPT Creating the customer's table` / `CREATE TABLE ...` previously either merged the directive's text into the next statement (an apostrophe in the message could even swallow a later `CREATE INDEX`) or dropped statements outright; it now returns every statement, matching what `migrate` executes.
+- Oracle `clean` no longer reports an error for a Text index's `DR$<idx>$*` support tables. Oracle drops them itself when the owning index is cascade-dropped with its table, but they were also listed as ordinary tables and dropped a second time, and the resulting ORA-00942 was counted as a clean failure even though the schema was already fully cleaned.
+- SQL Server's `fail_on_fixed_dbo` message now names the connecting login (e.g. `sa`) instead of repeating the fixed `dbo` database user it maps to, so "SQL Server login 'dbo' maps to the fixed 'dbo' database user" reads correctly as "SQL Server login 'sa' maps to the fixed 'dbo' database user".
+- A SQLite migration whose only statement was `PRAGMA foreign_keys = ON` (or
+  `OFF`) used to run inside `migrate`'s transaction and silently have no
+  effect — SQLite treats that pragma as a no-op while a transaction is open.
+  It is now classified as an autocommit-only statement, the same way
+  PostgreSQL's `CREATE INDEX CONCURRENTLY` already is, so it actually runs
+  outside any transaction and takes effect.
 ### Deprecated
 
 - `DBLiftClient.generate_undo_script()` / `generate_undo_scripts()` and

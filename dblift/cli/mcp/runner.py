@@ -213,6 +213,18 @@ def _run_command_locked(
     try:
         with contextlib.redirect_stdout(stdout_buf), contextlib.redirect_stderr(stderr_tee):
             pinned = _pinned_log_file()
+            # ``LogFactory`` is process-global class state, meant for one CLI
+            # process per command. This runner replays the CLI's own phases
+            # for many commands in one long-lived process, so without a reset
+            # each call would inherit whatever the *previous* call's
+            # ``configure()`` left behind (format, directory, ...) instead of
+            # the blank slate a fresh CLI process gets. That blank slate is
+            # what keeps ``_parse_argv_and_load_config``'s own bootstrap
+            # logger (built before this call's format/pattern is known, to
+            # report config-load warnings) from opening a file sink of its
+            # own: with ``_log_dir`` unset, as it is in a fresh process, it
+            # stays console-only, the same as a plain ``dblift`` invocation.
+            LogFactory.reset()
             # Config loading builds a logger of its own before the call's own
             # configuration lands, so the pattern has to be stated before the
             # parse and not only on ``args`` — and stated on every call, pin
@@ -223,8 +235,8 @@ def _run_command_locked(
             # that logger from the deleted path and write the file back.
             # ``_configure_logging`` overwrites the pattern from
             # ``args.log_file`` moments later; a call that fails before then
-            # leaves the value set here in place until the next call sets it
-            # again, which is why it is re-stated rather than restored.
+            # leaves the value set here in place until the next call resets
+            # it, which is why it is re-stated rather than restored.
             LogFactory.set_log_file_pattern(str(pinned) if pinned is not None else "")
             ctx = cli_main._parse_argv_and_load_config(full_argv)
             text_only = _writes_one_text_file(ctx.args)
