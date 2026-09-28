@@ -12,8 +12,7 @@ from dblift.db.object_naming import dictionary_identifier
 
 if TYPE_CHECKING:
     from dblift.core.introspection.version_detector import DatabaseVersion
-    from dblift.core.sql_generator.alter.base_alter_generator import BaseAlterGenerator
-    from dblift.core.sql_generator.base_generator import BaseSqlGenerator
+    from dblift.db.generator_protocol import AlterGeneratorProtocol, SqlGeneratorProtocol
 
 
 # Each entry: (compiled regex, ErrorCategory). Sourced by
@@ -297,11 +296,11 @@ class OracleQuirks(BaseQuirks):
 
         read_dbms_output(connection, log)
 
-    def ddl_generator_class(self) -> Optional[Type["BaseSqlGenerator"]]:
+    def ddl_generator_class(self) -> Optional[Type["SqlGeneratorProtocol"]]:
         """DDL generator is supplied by an installed extension package."""
         return None
 
-    def alter_generator_class(self) -> Optional[Type["BaseAlterGenerator"]]:
+    def alter_generator_class(self) -> Optional[Type["AlterGeneratorProtocol"]]:
         """ALTER generator is supplied by an installed extension package."""
         return None
 
@@ -374,7 +373,7 @@ class OracleQuirks(BaseQuirks):
         Setting NOT NULL emits a pre-check counting NULL rows so a violating
         migration fails cleanly before the ALTER runs.
         """
-        from dblift.core.sql_generator.sql_statement import SqlStatement
+        from dblift.core.state.sql_statement import SqlStatement
 
         nullable_diff = getattr(col_diff, "nullable_diff", None)
         if nullable_diff is None:
@@ -403,7 +402,7 @@ class OracleQuirks(BaseQuirks):
         self, col_diff: object, formatted_table: str, formatted_column: str, dialect: str
     ) -> "Optional[object]":
         """``ALTER TABLE … MODIFY <col> DEFAULT <expr|NULL>`` — Oracle's DEFAULT change form."""
-        from dblift.core.sql_generator.sql_statement import SqlStatement
+        from dblift.core.state.sql_statement import SqlStatement
 
         default_diff = getattr(col_diff, "default_diff", None)
         if default_diff is None:
@@ -425,7 +424,7 @@ class OracleQuirks(BaseQuirks):
         self, col_diff: object, formatted_table: str, formatted_column: str, dialect: str
     ) -> "Optional[object]":
         """``ALTER TABLE … MODIFY <col> <type>`` — Oracle column-type change form."""
-        from dblift.core.sql_generator.sql_statement import SqlStatement
+        from dblift.core.state.sql_statement import SqlStatement
 
         data_type_diff = getattr(col_diff, "data_type_diff", None)
         if data_type_diff is None:

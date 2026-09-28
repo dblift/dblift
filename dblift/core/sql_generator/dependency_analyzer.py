@@ -600,3 +600,22 @@ class DependencyAnalyzer:
         """
         self.build_graph(objects)
         return self.topological_sort(objects, reverse=True)
+
+
+def table_references(sql: str) -> List[Tuple[Optional[str], str]]:
+    """Return the tables a query reads, as ``(schema, table)`` tuples.
+
+    Names are lower-cased and unquoted; ``schema`` is ``None`` when the
+    reference is unqualified. This is the regex extractor the analyzer uses
+    for view and procedure dependencies: it matches ``FROM``/``JOIN``
+    targets and does not parse the query.
+
+    Args:
+        sql: SQL query text
+
+    Returns:
+        De-duplicated ``(schema, table)`` tuples, sorted with unqualified
+        references first, then by schema and table name
+    """
+    references = DependencyAnalyzer()._extract_table_references_from_query(sql)
+    return sorted(references, key=lambda ref: (ref[0] is not None, ref[0] or "", ref[1]))

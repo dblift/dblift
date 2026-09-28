@@ -6,7 +6,7 @@ BaseSqlGenerator implementation based on the database dialect.
 """
 
 import logging
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, cast
 
 from dblift.core.seams.feature_loading import load_feature_extensions
 from dblift.core.seams.sql_generators import attach_registered_sql_generators
@@ -139,8 +139,10 @@ class SqlGeneratorFactory:
                 generator_class = quirks.ddl_generator_class()
                 if generator_class is None:
                     continue
+                # Quirks type the hook against SqlGeneratorProtocol; the
+                # classes they return are BaseSqlGenerator subclasses.
                 for alias in plugin_info.dialects:
-                    cls.register(alias, generator_class)
+                    cls.register(alias, cast(type[BaseSqlGenerator], generator_class))
             except Exception as exc:
                 logger.warning(
                     "Failed to register DDL generator for plugin %r: %s",

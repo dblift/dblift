@@ -14,12 +14,28 @@ the same as any other synchronous call would.
 from __future__ import annotations
 
 import asyncio
+import warnings
 from concurrent.futures import ThreadPoolExecutor
 from functools import partial
-from typing import Any
+from typing import Any, Callable, TypeVar
 
-from dblift.api.client import DBLiftClient
+from dblift.api.client import (
+    _TEXT_UNDO_DEPRECATION_MESSAGE,
+    DBLiftClient,
+    _text_undo_deprecation_gate,
+)
 from dblift.api.events import EventEmitter
+
+_T = TypeVar("_T")
+
+
+def _without_text_undo_deprecation(fn: Callable[..., _T], *args: object, **kwargs: object) -> _T:
+    """Run *fn* on this thread with the sync client's undo deprecation silenced."""
+    _text_undo_deprecation_gate.silenced = True
+    try:
+        return fn(*args, **kwargs)
+    finally:
+        _text_undo_deprecation_gate.silenced = False
 
 
 class AsyncDBLiftClient:
@@ -98,12 +114,26 @@ class AsyncDBLiftClient:
         return await self._run(self._sync.undo, *args, **kwargs)
 
     async def generate_undo_script(self, *args: Any, **kwargs: Any) -> Any:
-        """Generate one undo script without blocking the event loop."""
-        return await self._run(self._sync.generate_undo_script, *args, **kwargs)
+        """Generate one undo script without blocking the event loop.
+
+        Deprecated since v4.10: text-based undo script generation will be
+        removed in the next major release. Emits ``DeprecationWarning``.
+        """
+        warnings.warn(_TEXT_UNDO_DEPRECATION_MESSAGE, DeprecationWarning, stacklevel=2)
+        return await self._run(
+            _without_text_undo_deprecation, self._sync.generate_undo_script, *args, **kwargs
+        )
 
     async def generate_undo_scripts(self, *args: Any, **kwargs: Any) -> Any:
-        """Generate undo scripts without blocking the event loop."""
-        return await self._run(self._sync.generate_undo_scripts, *args, **kwargs)
+        """Generate undo scripts without blocking the event loop.
+
+        Deprecated since v4.10: text-based undo script generation will be
+        removed in the next major release. Emits ``DeprecationWarning``.
+        """
+        warnings.warn(_TEXT_UNDO_DEPRECATION_MESSAGE, DeprecationWarning, stacklevel=2)
+        return await self._run(
+            _without_text_undo_deprecation, self._sync.generate_undo_scripts, *args, **kwargs
+        )
 
     async def clean(self, *args: Any, **kwargs: Any) -> Any:
         """Clean database objects without blocking the event loop."""
