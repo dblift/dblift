@@ -5,7 +5,7 @@ based on the database dialect.
 """
 
 import logging
-from typing import Dict, Type
+from typing import Dict, Type, cast
 
 from dblift.core.seams.feature_loading import load_feature_extensions
 from dblift.core.seams.sql_generators import attach_registered_sql_generators
@@ -55,8 +55,10 @@ class AlterGeneratorFactory:
                 alter_class = quirks.alter_generator_class()
                 if alter_class is None:
                     continue
+                # Quirks type the hook against AlterGeneratorProtocol; the
+                # classes they return are BaseAlterGenerator subclasses.
                 for alias in plugin_info.dialects:
-                    cls._generators[alias.lower()] = alter_class
+                    cls._generators[alias.lower()] = cast(Type[BaseAlterGenerator], alter_class)
             except Exception as exc:
                 logger.warning(
                     "Failed to register ALTER generator for plugin %r: %s",

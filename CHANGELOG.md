@@ -9,7 +9,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `dblift.db.generator_protocol`: `SqlGeneratorProtocol` and
+  `AlterGeneratorProtocol`, runtime-checkable Protocols describing a DDL
+  generator and an ALTER generator. The `ddl_generator_class()` /
+  `alter_generator_class()` quirks hooks (`BaseQuirks`, every bundled
+  plugin, `DdlQuirks`) are now typed against them, and `dblift/db/` no
+  longer imports `dblift.core.sql_generator`. Annotation-only: the
+  generator factories and SQL output are unchanged.
+- `BaseSqlGenerator.generate_drop_statement(obj, dialect)`: public name for
+  an object's DROP statement. It delegates to `_generate_drop_statement`,
+  which subclasses keep implementing.
+- `dblift.core.sql_generator.dependency_analyzer.table_references(sql)`:
+  public name for the `(schema, table)` references a query reads, sorted
+  with unqualified references first. Same extractor `DependencyAnalyzer`
+  uses for view and procedure dependencies.
+
 ### Changed
+
+### Deprecated
+
+- `DBLiftClient.generate_undo_script()` / `generate_undo_scripts()` and
+  their `AsyncDBLiftClient` counterparts emit `DeprecationWarning` and will
+  be removed in the next major release. Undo generation works from the
+  migration's SQL text: it inverts additive statements and returns a
+  warning for anything that needs state the file does not hold
+  (`DROP COLUMN`, `DROP CONSTRAINT`, `MODIFY` / `ALTER COLUMN`, any `DROP`,
+  several `CREATE` kinds). That limit is structural to reading the text, so
+  the feature is being retired rather than extended. Generated scripts are
+  unchanged until removal; write `U*__.sql` undo scripts by hand for
+  migrations it cannot reverse.
 
 ### Fixed
 
