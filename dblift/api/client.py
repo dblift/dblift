@@ -66,6 +66,21 @@ _TEXT_UNDO_DEPRECATION_MESSAGE = (
 )
 
 
+class _TextUndoDeprecationGate(threading.local):
+    """Per-thread switch that silences the sync methods' deprecation warning.
+
+    ``AsyncDBLiftClient`` warns at its caller's line, then runs the sync
+    method on its worker thread with ``silenced`` set, so one call warns once.
+    Thread-local because ``warnings.catch_warnings`` changes process-wide
+    filters and would also swallow other threads' warnings.
+    """
+
+    silenced = False
+
+
+_text_undo_deprecation_gate = _TextUndoDeprecationGate()
+
+
 # Paid-tier commands that have a corresponding OSS-visible DBLiftClient
 # method name (issue #753). Keyed by ``api_method`` so
 # ``_make_premium_stub_method`` can look up the right upsell text per stub.
@@ -801,7 +816,8 @@ class DBLiftClient:
             >>> print(f"Generated: {result.undo_script_path}")
         """
         # stacklevel=3: this method, then the ``_with_client_emitter`` wrapper.
-        warnings.warn(_TEXT_UNDO_DEPRECATION_MESSAGE, DeprecationWarning, stacklevel=3)
+        if not _text_undo_deprecation_gate.silenced:
+            warnings.warn(_TEXT_UNDO_DEPRECATION_MESSAGE, DeprecationWarning, stacklevel=3)
         return generate_undo_script_operation(
             self,
             migration_path=migration_path,
@@ -855,7 +871,8 @@ class DBLiftClient:
             >>> print(f"Generated {len(results)} undo scripts")
         """
         # stacklevel=3: this method, then the ``_with_client_emitter`` wrapper.
-        warnings.warn(_TEXT_UNDO_DEPRECATION_MESSAGE, DeprecationWarning, stacklevel=3)
+        if not _text_undo_deprecation_gate.silenced:
+            warnings.warn(_TEXT_UNDO_DEPRECATION_MESSAGE, DeprecationWarning, stacklevel=3)
         return generate_undo_scripts_operation(
             self,
             migration_paths=migration_paths,

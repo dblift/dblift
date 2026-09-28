@@ -35,3 +35,16 @@ def test_table_references_matches_the_private_extractor():
     assert sorted(table_references(query), key=str) == sorted(
         DependencyAnalyzer()._extract_table_references_from_query(query), key=str
     )
+
+
+def test_table_references_are_sorted_unqualified_first():
+    query = "SELECT * FROM zeta JOIN s2.b ON 1 = 1 JOIN alpha ON 1 = 1 JOIN s1.c ON 1 = 1"
+
+    assert table_references(query) == [
+        (None, "alpha"),
+        (None, "b"),
+        (None, "c"),
+        (None, "zeta"),
+        ("s1", "c"),
+        ("s2", "b"),
+    ]

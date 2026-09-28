@@ -614,6 +614,8 @@ def table_references(sql: str) -> List[Tuple[Optional[str], str]]:
         sql: SQL query text
 
     Returns:
-        De-duplicated list of ``(schema, table)`` tuples, in no fixed order
+        De-duplicated ``(schema, table)`` tuples, sorted with unqualified
+        references first, then by schema and table name
     """
-    return DependencyAnalyzer()._extract_table_references_from_query(sql)
+    references = DependencyAnalyzer()._extract_table_references_from_query(sql)
+    return sorted(references, key=lambda ref: (ref[0] is not None, ref[0] or "", ref[1]))

@@ -20,8 +20,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   an object's DROP statement. It delegates to `_generate_drop_statement`,
   which subclasses keep implementing.
 - `dblift.core.sql_generator.dependency_analyzer.table_references(sql)`:
-  public name for the `(schema, table)` references a query reads, the same
-  extractor `DependencyAnalyzer` uses for view and procedure dependencies.
+  public name for the `(schema, table)` references a query reads, sorted
+  with unqualified references first. Same extractor `DependencyAnalyzer`
+  uses for view and procedure dependencies.
 
 ### Changed
 
