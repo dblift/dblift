@@ -20,6 +20,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Oracle `SqlAnalyzer.split_statements` now strips SQL*Plus `PROMPT` / `REM` directives the same way `migrate` already does, instead of letting them merge with the statement that follows. A script such as `PROMPT Creating the customer's table` / `CREATE TABLE ...` previously either merged the directive's text into the next statement (an apostrophe in the message could even swallow a later `CREATE INDEX`) or dropped statements outright; it now returns every statement, matching what `migrate` executes.
 - Oracle `clean` no longer reports an error for a Text index's `DR$<idx>$*` support tables. Oracle drops them itself when the owning index is cascade-dropped with its table, but they were also listed as ordinary tables and dropped a second time, and the resulting ORA-00942 was counted as a clean failure even though the schema was already fully cleaned.
 - SQL Server's `fail_on_fixed_dbo` message now names the connecting login (e.g. `sa`) instead of repeating the fixed `dbo` database user it maps to, so "SQL Server login 'dbo' maps to the fixed 'dbo' database user" reads correctly as "SQL Server login 'sa' maps to the fixed 'dbo' database user".
+- A SQLite migration whose only statement was `PRAGMA foreign_keys = ON` (or
+  `OFF`) used to run inside `migrate`'s transaction and silently have no
+  effect — SQLite treats that pragma as a no-op while a transaction is open.
+  It is now classified as an autocommit-only statement, the same way
+  PostgreSQL's `CREATE INDEX CONCURRENTLY` already is, so it actually runs
+  outside any transaction and takes effect.
 
 ### Removed
 
