@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Table and column comment templates are now available for PostgreSQL, Oracle and Db2, including escaped quotes; installed DDL generators must wire them into export and replay.
+
 - Sequence data types are now captured, serialized and compared through `Sequence.data_type`; `AS <type>` will be rendered once installed DDL generators read this field.
 
 - `BaseQuirks.view_supports_create_or_replace` and

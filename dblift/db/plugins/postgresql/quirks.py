@@ -130,6 +130,13 @@ class PostgresqlQuirks(BaseQuirks):
     # Default canonical name; ProviderRegistry.get_quirks() passes the
     # caller's db_type so that aliases (e.g. "postgres") preserve the
     # invariant ``provider.config.database.type == provider.quirks.dialect_name``.
+    # Table and column comments use standalone COMMENT ON statements.
+    # https://www.postgresql.org/docs/current/sql-comment.html
+    table_comment_template = "COMMENT ON TABLE {schema_prefix}{table_name} IS '{escaped_comment}';"
+    column_comment_template = (
+        "COMMENT ON COLUMN {schema_prefix}{table_name}.{column_name} IS '{escaped_comment}';"
+    )
+
     def __init__(self, dialect_name: str = "postgresql") -> None:
         """Initialize PostgreSQL quirks with the dialect name."""
         super().__init__(dialect_name=dialect_name)

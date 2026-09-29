@@ -214,6 +214,13 @@ class OracleQuirks(BaseQuirks):
     # bare host/port URL is not enough (see build_sqlalchemy_url).
     lint_placeholder_url = "oracle://localhost:1521/?service_name=XEPDB1"
 
+    # Table and column comments use standalone COMMENT ON statements.
+    # https://docs.oracle.com/en/database/oracle/oracle-database/19/sqlrf/COMMENT.html
+    table_comment_template = "COMMENT ON TABLE {schema_prefix}{table_name} IS '{escaped_comment}';"
+    column_comment_template = (
+        "COMMENT ON COLUMN {schema_prefix}{table_name}.{column_name} IS '{escaped_comment}';"
+    )
+
     def __init__(self, dialect_name: str = "oracle") -> None:
         """Initialize Oracle quirks with the dialect name."""
         super().__init__(dialect_name=dialect_name)

@@ -1629,13 +1629,23 @@ class BaseQuirks:
     supports_constraint_triggers: bool = False
 
     # ------------------------------------------------------------------
-    # Index comment hooks.
+    # Object comment hooks.
     # ------------------------------------------------------------------
 
     #: SQL template for ``COMMENT ON INDEX``. Empty = dialect does not
     #: support index-level comments. Placeholders: ``{schema_prefix}``,
     #: ``{idx_name}``, ``{escaped_comment}``.
     index_comment_template: str = ""
+
+    #: Standalone table comment SQL, or empty when another mechanism is needed.
+    #: Placeholders: ``{schema_prefix}``, ``{table_name}``, ``{escaped_comment}``.
+    #: Names must already be formatted; schema_prefix includes its trailing dot,
+    #: and escaped_comment has SQL single quotes doubled by the caller.
+    table_comment_template: str = ""
+
+    #: Standalone column comment SQL, with the same contract as the table template
+    #: plus ``{column_name}``. Installed DDL generators consume these templates.
+    column_comment_template: str = ""
 
     # ------------------------------------------------------------------
     # Type normalisation hooks.

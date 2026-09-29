@@ -27,6 +27,11 @@ class SqlserverQuirks(BaseQuirks):
     memory-optimised and system-versioned tables.
     """
 
+    # Table/column descriptions use extended properties, not COMMENT ON SQL.
+    # https://learn.microsoft.com/en-us/sql/relational-databases/system-stored-procedures/sp-addextendedproperty-transact-sql
+    table_comment_template = ""
+    column_comment_template = ""
+
     # Capability matrix (was ``_CAPABILITIES["sqlserver"]``).
     supports_transactions = True
     supports_transactional_ddl = True

@@ -50,6 +50,11 @@ class MysqlQuirks(BaseQuirks):
     catalog-mode metadata queries (no separate schema concept).
     """
 
+    # Comments are inline COMMENT '...' clauses in table/column definitions.
+    # https://dev.mysql.com/doc/refman/8.4/en/create-table.html
+    table_comment_template = ""
+    column_comment_template = ""
+
     # Capability matrix (was ``_CAPABILITIES["mysql"]``).
     supports_transactions = True
     supports_transactional_ddl = False  # DDL auto-commits

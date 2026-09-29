@@ -761,3 +761,33 @@ class TestTableFkSupportsRestrict:
         assert "table_fk_supports_restrict" in vars(DuckDBQuirks)
         assert "table_fk_supports_restrict" in vars(OracleQuirks)
         assert "table_fk_supports_restrict" in vars(SqlserverQuirks)
+
+
+class TestTableAndColumnComments:
+    @pytest.mark.parametrize("attribute", ["table_comment_template", "column_comment_template"])
+    def test_every_dialect_declares_a_string(self, attribute):
+        assert isinstance(getattr(BaseQuirks(), attribute), str)
+        for dialect in all_registered_dialects():
+            assert isinstance(getattr(quirks(dialect), attribute), str), dialect
+
+    @pytest.mark.parametrize("dialect", ["postgresql", "oracle", "db2"])
+    @pytest.mark.parametrize("schema_prefix", ["", '"app".'])
+    def test_comment_templates_preserve_escaped_quotes(self, dialect, schema_prefix):
+        q = quirks(dialect)
+        values = dict(
+            schema_prefix=schema_prefix,
+            table_name='"t"',
+            column_name='"c"',
+            escaped_comment="Owner's note".replace("'", "''"),
+        )
+        assert q.table_comment_template.format(**values) == (
+            f"COMMENT ON TABLE {schema_prefix}\"t\" IS 'Owner''s note';"
+        )
+        assert q.column_comment_template.format(**values) == (
+            f"COMMENT ON COLUMN {schema_prefix}\"t\".\"c\" IS 'Owner''s note';"
+        )
+
+    @pytest.mark.parametrize("dialect", ["mysql", "mariadb", "sqlserver"])
+    def test_dialects_without_standalone_comment_statements_have_empty_templates(self, dialect):
+        assert quirks(dialect).table_comment_template == ""
+        assert quirks(dialect).column_comment_template == ""
