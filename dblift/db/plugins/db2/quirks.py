@@ -124,9 +124,18 @@ class Db2Quirks(BaseQuirks):
     missing_connection_identifier_hint = "DB2 connection requires url or host/database fields"
     native_url_schema_params = ("currentSchema", "schema")
     # Procedure / function DDL.
+    # Db2 LUW 9.7+: CREATE OR REPLACE PROCEDURE/FUNCTION.
+    # https://www.ibm.com/docs/en/db2/12.1.x?topic=statements-create-procedure-sql
+    proc_supports_create_or_replace = True
     proc_param_supports_default = False  # DB2 rejects ``= default``
     # Synonym DDL. DB2 calls them ALIAS.
     synonym_keyword = "ALIAS"
+    # Db2 LUW 9.7+: CREATE OR REPLACE ALIAS.
+    # https://www.ibm.com/docs/en/db2/11.1?topic=statements-create-alias
+    synonym_supports_create_or_replace = True
+    # https://www.ibm.com/docs/en/db2/12.1.x?topic=statements-create-view
+    view_supports_create_or_replace = True
+    view_create_or_replace_keyword = "CREATE OR REPLACE"
     # Sequence comparison: DB2 uses INT64 max as implicit "no max".
     seq_implicit_max_value = 9223372036854775807
     # Table DDL.

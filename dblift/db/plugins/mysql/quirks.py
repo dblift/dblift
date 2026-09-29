@@ -105,6 +105,9 @@ class MysqlQuirks(BaseQuirks):
     table_supports_inline_collate = True
     table_check_strip_utf8mb4 = True
     table_uses_storage_engine_clause = True
+    # https://dev.mysql.com/doc/refman/8.4/en/create-view.html
+    view_supports_create_or_replace = True
+    view_create_or_replace_keyword = "CREATE OR REPLACE"
     # Wave A hooks.
     view_supports_algorithm = True
     proc_skip_empty_comparison = True

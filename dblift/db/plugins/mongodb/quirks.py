@@ -31,6 +31,8 @@ class MongodbQuirks(BaseQuirks):
     # Collections and indexes are created through pymongo, so migrations are
     # Python scripts (``migrate(context)``) rather than SQL.
     supports_sql_migrations = False
+    # Uses collMod: https://www.mongodb.com/docs/manual/core/views/update-view/
+    view_supports_create_or_replace = False
     # MongoDB authenticates with an ordinary username/password (or none at
     # all on a local mongod), unlike an account-key cloud API — so neither
     # of the credential gates applies.

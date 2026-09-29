@@ -180,6 +180,9 @@ class OracleQuirks(BaseQuirks):
     # Synonym DDL.
     synonym_supports_create_or_replace = True
     # View DDL.
+    # https://docs.oracle.com/en/database/oracle/oracle-database/19/sqlrf/CREATE-VIEW.html
+    view_supports_create_or_replace = True
+    view_create_or_replace_keyword = "CREATE OR REPLACE"
     view_drop_supports_if_exists = True
     # UDT DDL. Oracle ``CREATE TYPE foo AS OBJECT`` uses
     # semicolons in the body; SQL Server uses different syntax.

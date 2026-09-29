@@ -30,6 +30,10 @@ class MariadbQuirks(MysqlQuirks):
     :class:`BaseSnapshotManager` falls through to the compat path.
     """
 
+    # https://mariadb.com/docs/server/server-usage/views/create-view
+    view_supports_create_or_replace = True
+    view_create_or_replace_keyword = "CREATE OR REPLACE"
+
     # MariaDB 10.2+ JSON; keep MySQL-family keys from parent for shared class attrs.
     version_specific_type_mappings = {
         **MysqlQuirks.version_specific_type_mappings,
