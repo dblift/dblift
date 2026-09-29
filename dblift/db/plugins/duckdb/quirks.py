@@ -33,7 +33,6 @@ class DuckDBQuirks(BaseQuirks):
     drop_supports_if_exists = True
     # https://duckdb.org/docs/current/sql/statements/create_view
     view_supports_create_or_replace = True
-    view_create_or_replace_keyword = "CREATE OR REPLACE"
     table_drop_style = "cascade"  # DuckDB supports DROP TABLE ... CASCADE
     # ON DELETE RESTRICT parses, but the key is then catalogued with
     # delete_rule = NO ACTION (probed on 1.5.5), so the keyword would claim

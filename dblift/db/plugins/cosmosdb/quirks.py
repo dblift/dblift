@@ -34,8 +34,8 @@ class CosmosdbQuirks(BaseQuirks):
     # Cosmos containers are created and reshaped through the Azure SDK, so
     # migrations are Python scripts (``migrate(context)``) rather than SQL.
     supports_sql_migrations = False
-    # Query-only SQL: https://learn.microsoft.com/en-us/cosmos-db/query/overview
-    view_supports_create_or_replace = False
+    # view_supports_create_or_replace inherits False: no SQL view DDL.
+    # https://learn.microsoft.com/en-us/cosmos-db/query/overview
     # Azure account auth (endpoint + key, or managed identity) instead of
     # host/user/password. Gates the auth validation in
     # ``DbliftConfig.validate_complete_data``.

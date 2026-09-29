@@ -135,7 +135,6 @@ class Db2Quirks(BaseQuirks):
     synonym_supports_create_or_replace = True
     # https://www.ibm.com/docs/en/db2/12.1.x?topic=statements-create-view
     view_supports_create_or_replace = True
-    view_create_or_replace_keyword = "CREATE OR REPLACE"
     # Sequence comparison: DB2 uses INT64 max as implicit "no max".
     seq_implicit_max_value = 9223372036854775807
     # Table DDL.

@@ -98,7 +98,6 @@ class PostgresqlQuirks(BaseQuirks):
     # View DDL.
     # https://www.postgresql.org/docs/current/sql-createview.html
     view_supports_create_or_replace = True
-    view_create_or_replace_keyword = "CREATE OR REPLACE"
     view_supports_security_with_clause = True
     # View comparison.
     view_supports_unlogged_and_security = True
