@@ -40,6 +40,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- SQLite column type changes now appear as SQL comments naming the table, column and both types and explaining that a table rebuild is required.
+
 - Oracle identity columns now capture, compare and render ALWAYS, BY DEFAULT and BY DEFAULT ON NULL without changing the legacy output when the generation kind is unspecified. Identity generation is now part of column equality and hashing (and therefore table comparison): older snapshots with an unspecified kind (`None`) compare unequal to an explicit kind such as `ALWAYS`, even where that matches the engine default.
 
 - SQL Server column type changes now preserve NULL/NOT NULL from `nullable_diff`, `expected_nullable` or `expected_column.nullable`. New behavior: when none supplies known nullability, the hook returns `None` so the caller can warn, instead of emitting SQL that silently makes the column nullable.
