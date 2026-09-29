@@ -102,8 +102,7 @@ def load_feature_extensions() -> None:
     # no tier package is installed at all -- an empty result is only the
     # documented race (an add-on package's dblift.features entry point not
     # yet reaching this process's importlib.metadata view, needing a retry
-    # on a later call, exactly like the identical latch bug fixed in
-    # AlterGeneratorFactory._ensure_populated) when a listed distribution is
+    # on a later call) when a listed distribution is
     # actually installed. In a plain install, with no add-on package,
     # OSS's own pyproject.toml declares the entry-points group empty, so an
     # empty result is permanent and must latch immediately.

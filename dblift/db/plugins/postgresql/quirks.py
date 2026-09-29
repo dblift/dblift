@@ -75,9 +75,8 @@ class PostgresqlQuirks(BaseQuirks):
     # for dialects that declare none of their own (DB2, CosmosDB). See
     # ``dblift.core.migration.scripting.undo_script_generator._helpers``.
     is_default_sqlglot_read_fallback = True
-    # PostgreSQL is the ANSI/generic reference dialect dblift renders with when
-    # a model has no dialect of its own. The SqlGeneratorFactory resolves a
-    # falsy dialect to this plugin (ADR-26 E).
+    # PostgreSQL is the ANSI/generic rendering reference when a model has no
+    # dialect of its own, resolved via ProviderRegistry.reference_dialect_name.
     is_ansi_reference_dialect = True
     pygments_lexer = "postgresql"
     default_schema_name = "public"

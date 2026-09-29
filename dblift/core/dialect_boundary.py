@@ -62,9 +62,8 @@ class DdlQuirks(Protocol):
     """DDL / SQL-rendering hooks.
 
     First hooks: the DDL generator class and the ALTER generator class
-    for this dialect. Returning ``None`` means the framework falls back
-    to the dialect-agnostic
-    :class:`dblift.core.sql_generator.sql_generator.SqlGenerator`.
+    for this dialect, consumed by a ``SqlGeneratorProtocol`` implementation.
+    Returning ``None`` means no dialect-specific generator is provided.
     """
 
     def ddl_generator_class(self) -> Optional[Type["SqlGeneratorProtocol"]]:
@@ -82,9 +81,9 @@ class DdlQuirks(Protocol):
     ) -> Optional[str]:
         """Render a dialect-specific DROP statement, or ``None`` to defer.
 
-        Used by ``SqlGenerator._generate_drop_statement`` so the
-        framework no longer branches on the dialect name. Returning
-        ``None`` lets the framework emit the generic
+        Consumed by a ``SqlGeneratorProtocol`` implementation without
+        branching on the dialect name. Returning ``None`` lets that
+        implementation emit the generic
         ``DROP <type> IF EXISTS <schema>.<obj>`` form.
         """
 

@@ -170,39 +170,6 @@ class Procedure(SqlObject):
                     self.return_type = inferred_type
                 self.parameters = self.parameters[1:]
 
-    @property
-    def create_statement(self) -> str:
-        """Generate CREATE PROCEDURE or CREATE FUNCTION statement using database-specific generators.
-
-        Returns:
-            Dialect-specific CREATE PROCEDURE/FUNCTION statement
-        """
-        from dblift.core.sql_generator.generator_factory import (
-            SqlGeneratorFactory,
-        )
-
-        try:
-            generator = SqlGeneratorFactory.create(self.dialect)
-            return str(generator.generate_create_statement(self))
-        except (ValueError, ImportError, AttributeError):
-            return ""
-
-    @property
-    def drop_statement(self) -> str:
-        """Generate DROP PROCEDURE or DROP FUNCTION statement.
-
-        Returns:
-            SQL DROP PROCEDURE/FUNCTION statement
-        """
-        schema_prefix = self.format_identifier(self.schema) + "." if self.schema else ""
-        proc_name = self.format_identifier(self.name)
-        object_keyword = "FUNCTION" if self.is_function else "PROCEDURE"
-
-        # ``IF EXISTS`` support comes from plugin Quirks.
-        if _quirks_for(self.dialect).proc_drop_supports_if_exists:
-            return f"DROP {object_keyword} IF EXISTS {schema_prefix}{proc_name}"
-        return f"DROP {object_keyword} {schema_prefix}{proc_name}"
-
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "Procedure":
         """Create procedure/function from dictionary representation.

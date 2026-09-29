@@ -353,16 +353,14 @@ no_implicit_optional = true
 warn_unused_ignores = true
 strict_equality = true
 
-# PR-G2: second wave of strict expansion — sql_parser / sql_generator /
-# sql_validator leaves, normalization, and two cli/handlers leaves.
+# PR-G2: second wave of strict expansion — sql_parser / sql_validator
+# leaves, normalization, and two cli/handlers leaves.
 # Same flag set as the api/* carve-outs above.
 [[tool.mypy.overrides]]
 module = [
     "dblift.core.sql_parser.hybrid_parser",
     "dblift.core.sql_parser.enhanced_regex_parser",
     "dblift.core.sql_parser.unified_regex_parser",
-    "dblift.core.sql_generator.formatter",
-    "dblift.core.sql_generator.sql_generator",
     "dblift.core.normalization",
     "dblift.core.sql_model.view_options",
     "dblift.cli.handlers._shared",

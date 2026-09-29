@@ -22,6 +22,7 @@ from dblift.core.sql_model.index import Index
 from dblift.core.sql_parser.dialects.identifier_tokens import (
     strip_identifier_quotes as _strip_identifier_quotes,
 )
+from dblift.db.base_quirks import BaseQuirks
 from dblift.db.provider_registry import ProviderRegistry
 
 # Reused rather than redefined: _IDENTIFIER/_QUALIFIED_NAME are the same
@@ -287,7 +288,7 @@ class _UndoExtractorsMixin:
                     table_schema=table_schema,
                     dialect=self.dialect,
                 )
-                return f"{index.drop_statement};"
+                return f"{self._generate_drop_index_statement(index)};"
             return None
 
         # Format object name
@@ -304,6 +305,26 @@ class _UndoExtractorsMixin:
         cascade = " CASCADE" if obj_type == "TABLE" and _quirks.drop_table_default_cascade else ""
 
         return f"DROP {obj_type} {if_exists} {formatted_name}{cascade};".replace("  ", " ").strip()
+
+    @staticmethod
+    def _generate_drop_index_statement(index: Index) -> str:
+        """Render the undo DROP INDEX using the dialect quirks."""
+        schema_prefix = index.format_identifier(index.schema) + "." if index.schema else ""
+        idx_name = index.format_identifier(index.name)
+        table_name = index.format_identifier(index.table_name)
+        table_schema_prefix = (
+            index.format_identifier(index.table_schema) + "." if index.table_schema else ""
+        )
+
+        # DROP INDEX shape comes from plugin Quirks.
+        canonical = ProviderRegistry.canonical_dialect_name(index.dialect or "")
+        quirks = ProviderRegistry.get_quirks(canonical) if canonical else BaseQuirks()
+        if quirks.index_drop_includes_table:
+            if_exists = "IF EXISTS " if quirks.index_drop_table_form_supports_if_exists else ""
+            return f"DROP INDEX {if_exists}{idx_name} ON {table_schema_prefix}{table_name}"
+        # Standalone form (PostgreSQL, SQLite: IF EXISTS; Oracle, DB2: no IF EXISTS).
+        if_exists = "IF EXISTS " if quirks.index_drop_standalone_supports_if_exists else ""
+        return f"DROP INDEX {if_exists}{schema_prefix}{idx_name}"
 
     def _quote_identifier(self, identifier: str) -> str:
         """Quote identifier based on dialect.

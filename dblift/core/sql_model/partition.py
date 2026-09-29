@@ -54,36 +54,6 @@ class Partition(SqlObject):
             return f"{self.schema}.{self.table}"
         return self.table
 
-    @property
-    def create_statement(self) -> str:
-        """Generate partition definition (part of ALTER TABLE or CREATE TABLE).
-
-        Note: Partitions are typically not created standalone,
-        but as part of CREATE TABLE or ALTER TABLE statements.
-
-        Returns:
-            Partition definition clause
-        """
-        stmt = f"PARTITION {self.format_identifier(self.name)}"
-
-        # Add partition description (VALUES clause)
-        if self.partition_description:
-            stmt += f" {self.partition_description}"
-
-        # Add subpartitions if any
-        if self.subpartitions:
-            sub_defs = []
-            for sub in self.subpartitions:
-                sub_def = f"SUBPARTITION {self.format_identifier(sub.name)}"
-                if sub.partition_description:
-                    sub_def += f" {sub.partition_description}"
-                sub_defs.append(sub_def)
-
-            if sub_defs:
-                stmt += f" ({', '.join(sub_defs)})"
-
-        return stmt
-
     def __str__(self) -> str:
         """Return string representation of the partition."""
         method_desc = f"{self.partition_method}"

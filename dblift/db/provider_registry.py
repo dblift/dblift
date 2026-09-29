@@ -128,7 +128,7 @@ class ProviderRegistry:
     # dialect string. Quirks subclasses are stateless behaviour
     # overlays (no per-call state), so reusing a single instance per
     # dialect avoids re-instantiating on every framework call site
-    # (``_quirks_for`` is hit several times per ``generate_ddl``).
+    # during repeated capability lookups.
     _quirks_cache: Dict[str, BaseQuirks] = {}
 
     ENTRY_POINT_GROUP = "dblift.providers"
@@ -526,8 +526,7 @@ class ProviderRegistry:
         never ``None`` — so call sites stay branch-free.
 
         Instances are cached per dialect string so that hot paths
-        (e.g. ``SqlGenerator.generate_ddl`` calls ``_quirks_for``
-        ~5x per object) reuse a single instance instead of
+        reuse a single instance instead of
         re-instantiating on every call.
         """
         normalized = db_type.lower()

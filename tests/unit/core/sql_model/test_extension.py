@@ -43,12 +43,6 @@ class TestExtension:
         ext = Extension("postgis", relocatable=False)
         assert ext.relocatable is False
 
-    def test_drop_statement(self):
-        """Test drop statement generation."""
-        ext = Extension("postgis", dialect="postgresql")
-        result = ext.drop_statement
-        assert result == 'DROP EXTENSION IF EXISTS "postgis"'
-
     def test_str_representation_basic(self):
         """Test string representation without version or description."""
         ext = Extension("postgis")

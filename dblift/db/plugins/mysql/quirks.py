@@ -290,7 +290,7 @@ class MysqlQuirks(BaseQuirks):
     # collapsing into one (PR #241 Bugbot).
     #
     #   ``_DELIMITER_OBJECT_TYPES`` (narrow) — PROCEDURE/FUNCTION only.
-    #     Used by ``SqlGenerator.generate_ddl`` to wrap CREATE
+    #     Used by a DDL generator implementation to wrap CREATE
     #     statements with ``DELIMITER //...//\nDELIMITER ;``.
     #
     #   ``_BLOCK_DELIMITER_OBJECT_TYPES`` (wider) — adds TRIGGER and

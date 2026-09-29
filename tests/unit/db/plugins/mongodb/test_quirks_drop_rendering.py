@@ -1,7 +1,7 @@
 """``MongodbQuirks.render_drop_for_object`` — DBLIFT-NOSQL-001 regression.
 
 MongoDB has no SQL DDL path, so before this override every DROP fell through
-to the relational fallback in ``core/sql_generator/sql_generator.py`` and
+to a relational SQL fallback and
 produced statements like ``DROP TABLE IF EXISTS orders CASCADE;`` — which
 then made a ``.sql`` migration for a NoSQL store and got rejected outright.
 ``render_drop_for_object`` must intercept every object type and render an
@@ -10,9 +10,6 @@ explanatory comment instead of SQL.
 
 import pytest
 
-from dblift.core.sql_generator.sql_generator import SqlGenerator
-from dblift.core.sql_model.index import Index
-from dblift.core.sql_model.table import Table
 from dblift.db.plugins.mongodb.quirks import MongodbQuirks
 
 
@@ -161,23 +158,3 @@ def test_unknown_object_type_still_renders_a_comment():
     assert comment.strip() != ""
     assert "orders" in comment
     assert not comment.upper().startswith("DROP ")
-
-
-def test_table_drop_via_sql_generator_does_not_emit_drop_table():
-    """Guard for the actual defect: DROP TABLE must not appear for MongoDB."""
-    table = Table(name="orders", dialect="mongodb")
-    generator = SqlGenerator(default_dialect="mongodb")
-
-    sql = generator.generate_drop_statements([table])
-
-    assert "DROP TABLE" not in sql.upper()
-
-
-def test_index_drop_via_sql_generator_does_not_emit_drop_index():
-    """Guard for the actual defect: DROP INDEX must not appear for MongoDB."""
-    index = Index(name="idx_email", table_name="orders", columns=["email"], dialect="mongodb")
-    generator = SqlGenerator(default_dialect="mongodb")
-
-    sql = generator.generate_drop_statements([index])
-
-    assert "DROP INDEX" not in sql.upper()

@@ -1,19 +1,8 @@
-"""Dialect-agnostic ``Sequence`` SQL object — CREATE/ALTER DDL for numeric sequences."""
+"""Dialect-agnostic ``Sequence`` SQL object — numeric sequence attributes."""
 
 from typing import Any, Dict, Optional
 
 from dblift.core.sql_model.base import SqlObject, SqlObjectType
-
-
-def _quirks_for(dialect: Optional[str]) -> Any:
-    """Resolve quirks for *dialect* via the registry."""
-    from dblift.db.base_quirks import BaseQuirks
-    from dblift.db.provider_registry import ProviderRegistry
-
-    canonical = ProviderRegistry.canonical_dialect_name(dialect or "")
-    if canonical:
-        return ProviderRegistry.get_quirks(canonical)
-    return BaseQuirks()
 
 
 class Sequence(SqlObject):
@@ -75,90 +64,6 @@ class Sequence(SqlObject):
     def __hash__(self) -> int:
         """Hash sequence identity and its captured data type."""
         return hash((super().__hash__(), self.data_type))
-
-    @property
-    def create_statement(self) -> str:
-        """Generate CREATE SEQUENCE statement using database-specific generators.
-
-        For sequences with a known dialect the dialect-specific SQL generator is
-        used.  When no dialect is set the quirks-based DDL path is taken directly
-        so that generic sequence attributes (CYCLE, NOCYCLE, CACHE, etc.) are
-        rendered using the ``BaseQuirks`` defaults without requiring a registered
-        generator for the dialect.
-
-        Returns:
-            Dialect-specific CREATE SEQUENCE statement
-        """
-        if self.dialect:
-            from dblift.core.sql_generator.generator_factory import SqlGeneratorFactory
-
-            try:
-                generator = SqlGeneratorFactory.create(self.dialect)
-                return str(generator.generate_create_statement(self))
-            except (ValueError, ImportError, AttributeError):
-                pass
-
-        # No dialect or generator unavailable — build DDL from quirks directly.
-        return self._build_sequence_ddl()
-
-    def _build_sequence_ddl(self) -> str:
-        """Build CREATE SEQUENCE DDL using plugin Quirks (dialect-agnostic path).
-
-        Used when no dialect is registered or when the generator is unavailable.
-        Dialect dispatch routed through plugin Quirks.
-        """
-        quirks = _quirks_for(self.dialect)
-
-        schema_name = self.format_identifier(self.schema) if self.schema else ""
-        seq_name = self.format_identifier(self.name)
-        schema_prefix = f"{schema_name}." if schema_name else ""
-
-        temp_prefix = "TEMPORARY " if self.temp and quirks.seq_supports_temp else ""
-
-        stmt = f"CREATE {temp_prefix}SEQUENCE {schema_prefix}{seq_name}"
-
-        if self.start_with is not None:
-            stmt += f" START WITH {self.start_with}"
-
-        if self.increment_by is not None and self.increment_by != 1:
-            stmt += f" INCREMENT BY {self.increment_by}"
-
-        if self.min_value is not None:
-            stmt += f" MINVALUE {self.min_value}"
-
-        if self.max_value is not None:
-            stmt += f" MAXVALUE {self.max_value}"
-
-        stmt += " CYCLE" if self.cycle else f" {quirks.seq_nocycle_keyword}"
-
-        cache_clause = ""
-        if self.cache is None:
-            if quirks.seq_default_nocache_when_unset:
-                cache_clause = " NOCACHE"
-        else:
-            if quirks.seq_cache_one_means_nocache and self.cache <= 1:
-                cache_clause = " NOCACHE"
-            else:
-                cache_clause = f" CACHE {self.cache}"
-
-        stmt += cache_clause
-
-        return stmt
-
-    @property
-    def drop_statement(self) -> str:
-        """Generate DROP SEQUENCE statement.
-
-        Returns:
-            SQL DROP SEQUENCE statement for this sequence
-        """
-        schema_prefix = self.format_identifier(self.schema) + "." if self.schema else ""
-        seq_name = self.format_identifier(self.name)
-
-        # ``IF EXISTS`` support comes from plugin Quirks.
-        if _quirks_for(self.dialect).seq_drop_supports_if_exists:
-            return f"DROP SEQUENCE IF EXISTS {schema_prefix}{seq_name}"
-        return f"DROP SEQUENCE {schema_prefix}{seq_name}"
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "Sequence":

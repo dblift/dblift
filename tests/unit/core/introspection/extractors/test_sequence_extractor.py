@@ -196,17 +196,6 @@ class TestSequenceExtractorCycle(unittest.TestCase):
         self.assertFalse(seqs[0].cycle)
 
 
-def _exported_create_sequence(name):
-    """Standalone CREATE SEQUENCE text export-schema emits for a free-standing sequence.
-
-    OSS dialect generators do not render sequences (paid generators do), so the
-    model fallback without a dialect is the portable assertion for this layer.
-    """
-    from dblift.core.sql_model.sequence import Sequence
-
-    return Sequence(name).create_statement
-
-
 def _pg_sequence_row(name, **extra):
     row = {
         "sequence_name": name,
@@ -255,12 +244,8 @@ class TestSequenceExtractorPostgresqlIdentityOwned(unittest.TestCase):
 
         names = [s.name for s in seqs]
         self.assertEqual(names, ["order_seq"])
-        ddl = "\n".join(_exported_create_sequence(s.name) for s in seqs)
-        self.assertIn("CREATE SEQUENCE", ddl)
-        self.assertIn("order_seq", ddl)
-        self.assertNotIn("app_users_legacy_id_seq", ddl)
 
-    def test_emits_create_sequence_for_free_standing_order_seq_only(self):
+    def test_extracts_free_standing_order_seq_only(self):
         vq, _ = _simple_vq([])
         extractor = _make_extractor(dialect="postgresql", vendor_queries=vq)
         extractor.provider.query_executor.execute_query.side_effect = (
@@ -271,8 +256,6 @@ class TestSequenceExtractorPostgresqlIdentityOwned(unittest.TestCase):
 
         self.assertEqual(len(seqs), 1)
         self.assertEqual(seqs[0].name, "order_seq")
-        self.assertIn("CREATE SEQUENCE", _exported_create_sequence(seqs[0].name))
-        self.assertIn("order_seq", _exported_create_sequence(seqs[0].name))
 
     def test_identity_owned_sequence_alone_is_not_exported(self):
         vq, _ = _simple_vq([])
@@ -287,10 +270,6 @@ class TestSequenceExtractorPostgresqlIdentityOwned(unittest.TestCase):
         seqs = extractor.get_sequences("public")
 
         self.assertEqual(seqs, [])
-        self.assertNotIn(
-            "app_users_legacy_id_seq",
-            "\n".join(_exported_create_sequence(s.name) for s in seqs),
-        )
 
     def test_serial_owned_sequence_is_still_exported(self):
         """SERIAL ``OWNED BY`` uses ``deptype = 'a'``, not identity ``'i'``."""
@@ -314,7 +293,6 @@ class TestSequenceExtractorPostgresqlIdentityOwned(unittest.TestCase):
 
         self.assertEqual(len(seqs), 1)
         self.assertEqual(seqs[0].name, "users_id_seq")
-        self.assertIn("CREATE SEQUENCE", _exported_create_sequence(seqs[0].name))
 
 
 class TestSequenceExtractorOracleFilter(unittest.TestCase):

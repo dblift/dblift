@@ -103,24 +103,6 @@ class TestSynonym:
         assert "@" in result
         assert "remote_link" in result
 
-    def test_drop_statement_db2(self):
-        """Test drop statement for DB2."""
-        synonym = Synonym("synonym_name", "target_table", dialect="db2")
-        result = synonym.drop_statement
-        assert result == 'DROP ALIAS "synonym_name"'
-
-    def test_drop_statement_other_dialects(self):
-        """Test drop statement for other dialects."""
-        synonym = Synonym("synonym_name", "target_table", dialect="oracle")
-        result = synonym.drop_statement
-        assert result == 'DROP SYNONYM "synonym_name"'
-
-    def test_drop_statement_with_schema(self):
-        """Test drop statement with schema."""
-        synonym = Synonym("synonym_name", "target_table", schema="public", dialect="oracle")
-        result = synonym.drop_statement
-        assert result == 'DROP SYNONYM "public"."synonym_name"'
-
     def test_str_representation(self):
         """Test string representation."""
         synonym = Synonym("synonym_name", "target_table", target_schema="remote_schema")

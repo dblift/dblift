@@ -97,48 +97,6 @@ class TestPartition:
         assert part_with_schema.qualified_table_name == "sales.orders"
         assert part_without_schema.qualified_table_name == "orders"
 
-    def test_partition_create_statement_simple(self):
-        """Test partition definition statement generation."""
-        partition = Partition(
-            name="p2024",
-            table="sales",
-            partition_method="RANGE",
-            partition_description="VALUES LESS THAN (2025)",
-        )
-
-        stmt = partition.create_statement
-        assert "PARTITION p2024" in stmt
-        assert "VALUES LESS THAN (2025)" in stmt
-
-    def test_partition_create_statement_with_subpartitions(self):
-        """Test partition definition with subpartitions."""
-        sub1 = Partition(
-            name="sp1",
-            table="sales",
-            partition_method="HASH",
-            partition_description="VALUES IN (1, 2, 3)",
-        )
-        sub2 = Partition(
-            name="sp2",
-            table="sales",
-            partition_method="HASH",
-            partition_description="VALUES IN (4, 5, 6)",
-        )
-
-        partition = Partition(
-            name="p2024",
-            table="sales",
-            partition_method="RANGE",
-            subpartitions=[sub1, sub2],
-        )
-
-        stmt = partition.create_statement
-        assert "PARTITION p2024" in stmt
-        assert "SUBPARTITION sp1" in stmt
-        assert "SUBPARTITION sp2" in stmt
-        assert "VALUES IN (1, 2, 3)" in stmt
-        assert "VALUES IN (4, 5, 6)" in stmt
-
     def test_partition_str_representation(self):
         """Test string representation."""
         partition = Partition(

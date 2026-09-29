@@ -1,7 +1,7 @@
 """Characterization tests for ADR-26 E story 26-5.
 
 Pins byte-identical ``to_dict`` output, ``from_dict`` round-trips, ``__eq__``
-discrimination, and ``create_statement`` / ``drop_statement`` rendering for the
+discrimination for the
 six models whose per-dialect ``dialect_options`` indirection (``_NS_X``
 namespace keys) is being inlined into plain instance attributes.
 
@@ -126,21 +126,6 @@ def test_sequence_temp_defaults_false():
     assert d["temp"] is False
     assert d["owned_by_table"] is None
     assert d["owned_by_column"] is None
-
-
-def test_sequence_create_statement_temp_no_dialect():
-    # No registered dialect -> quirks DDL path; temp keyword gated on quirks.
-    seq = Sequence(name="s", schema="app", temp=True, start_with=5)
-    stmt = seq.create_statement
-    assert "CREATE" in stmt and "SEQUENCE" in stmt
-    assert "START WITH 5" in stmt
-
-
-def test_sequence_drop_statement_renders():
-    seq = _make_sequence()
-    drop = seq.drop_statement
-    assert "DROP SEQUENCE" in drop
-    assert "order_seq" in drop
 
 
 # ---------------------------------------------------------------------------
@@ -278,13 +263,6 @@ def test_procedure_defaults_none():
     assert proc.data_access is None
 
 
-def test_procedure_drop_statement_renders():
-    proc = _make_procedure()
-    drop = proc.drop_statement
-    assert "DROP PROCEDURE" in drop
-    assert "do_thing" in drop
-
-
 # ---------------------------------------------------------------------------
 # Index (MySQL + PostgreSQL + Oracle)
 # ---------------------------------------------------------------------------
@@ -348,13 +326,6 @@ def test_index_concurrently_defaults_false():
     assert d["online"] is None
     assert d["tablespace"] is None
     assert d["is_local"] is None
-
-
-def test_index_drop_statement_renders():
-    idx = _make_index()
-    drop = idx.drop_statement
-    assert "DROP INDEX" in drop
-    assert "idx_orders" in drop
 
 
 # ---------------------------------------------------------------------------
