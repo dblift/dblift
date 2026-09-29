@@ -40,6 +40,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- SQL Server nullability changes now include the column type and decline to render when it is unknown, preserving the NULL-count pre-check.
+
 - Db2 quirks now declare `proc_supports_create_or_replace` and
   `synonym_supports_create_or_replace` as true: Db2 LUW 9.7+ supports
   `CREATE OR REPLACE PROCEDURE` / `FUNCTION` and `CREATE OR REPLACE ALIAS`.

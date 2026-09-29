@@ -272,7 +272,7 @@ class SqlserverQuirks(BaseQuirks):
     def render_column_nullable_change(
         self, col_diff: object, formatted_table: str, formatted_column: str, dialect: str
     ) -> "Optional[object]":
-        """``ALTER TABLE … ALTER COLUMN <col> NOT NULL|NULL`` — T-SQL nullable toggle.
+        """``ALTER TABLE … ALTER COLUMN <col> <type> NOT NULL|NULL`` — T-SQL nullable toggle.
 
         Setting NOT NULL emits a pre-check counting NULL rows so the migration
         fails cleanly when existing data would violate the constraint.
@@ -282,10 +282,22 @@ class SqlserverQuirks(BaseQuirks):
         nullable_diff = getattr(col_diff, "nullable_diff", None)
         if nullable_diff is None:
             return None
+        # ALTER COLUMN requires the data type even for a nullability-only change.
+        # https://learn.microsoft.com/en-us/sql/t-sql/statements/alter-table-column-definition-transact-sql
+        # https://learn.microsoft.com/en-us/sql/t-sql/statements/alter-table-transact-sql
+        data_type = getattr(col_diff, "expected_data_type", None)
+        if not data_type:
+            data_type_diff = getattr(col_diff, "data_type_diff", None)
+            data_type = data_type_diff[0] if data_type_diff else None
+        if not data_type:
+            return None
         expected_nullable, _ = nullable_diff
         if not expected_nullable:
             return SqlStatement(
-                sql=f"ALTER TABLE {formatted_table} ALTER COLUMN {formatted_column} NOT NULL;",
+                sql=(
+                    f"ALTER TABLE {formatted_table} ALTER COLUMN "
+                    f"{formatted_column} {data_type} NOT NULL;"
+                ),
                 statement_type="ALTER",
                 object_type="COLUMN",
                 object_name=f"{formatted_table}.{formatted_column}",
@@ -295,7 +307,7 @@ class SqlserverQuirks(BaseQuirks):
                 error_message="Cannot set NOT NULL: column contains NULL values",
             )
         return SqlStatement(
-            sql=f"ALTER TABLE {formatted_table} ALTER COLUMN {formatted_column} NULL;",
+            sql=f"ALTER TABLE {formatted_table} ALTER COLUMN {formatted_column} {data_type} NULL;",
             statement_type="ALTER",
             object_type="COLUMN",
             object_name=f"{formatted_table}.{formatted_column}",
