@@ -359,3 +359,26 @@ class TestEnhanceWithVendorQueries(unittest.TestCase):
         result = extractor._enhance_with_vendor_queries("dbo", "orders", [col])
         # Existing default preserved
         self.assertEqual(result[0].default_value, "'active'")
+
+
+@pytest.mark.parametrize(
+    "generation, on_null, expected",
+    [
+        ("ALWAYS", "NO", "ALWAYS"),
+        ("BY DEFAULT", "NO", "BY DEFAULT"),
+        ("BY DEFAULT", "YES", "BY DEFAULT ON NULL"),
+    ],
+)
+def test_oracle_identity_catalog_generation_is_captured(generation, on_null, expected):
+    extractor = _make_extractor(dialect="oracle")
+    extractor.provider.query_executor.execute_query.side_effect = [
+        [{"COLUMN_NAME": "Id", "DATA_TYPE": "NUMBER", "IS_IDENTITY": "YES"}],
+        [{"COLUMN_NAME": "Id", "GENERATION_TYPE": generation, "DEFAULT_ON_NULL": on_null}],
+    ]
+    columns = extractor.get_columns('"App"', "Orders")
+    assert columns[0].identity_generation == expected
+    query, params = extractor.provider.query_executor.execute_query.call_args.args[1:]
+    assert "ALL_TAB_IDENTITY_COLS" in query
+    assert "GENERATION_TYPE" in query
+    assert "DEFAULT_ON_NULL" in query
+    assert params == ["App", "Orders"]

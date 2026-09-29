@@ -125,6 +125,7 @@ class SequenceExtractor(BaseExtractor):
                     cache=to_int(get_row_value(row, "cache_size")),
                     dialect=self.dialect,
                     temp=is_temp,
+                    data_type=get_row_value(row, "data_type"),
                 )
                 owning_schema = get_row_value(row, "owning_schema")
                 owning_table = get_row_value(row, "owning_table")
@@ -143,6 +144,7 @@ class SequenceExtractor(BaseExtractor):
 
                 # Track property capture
                 if sequence_status:
+                    sequence_status.add_property_status("data_type", sequence.data_type is not None)
                     sequence_status.add_property_status(
                         "start_with", sequence.start_with is not None
                     )

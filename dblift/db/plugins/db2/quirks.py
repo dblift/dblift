@@ -187,6 +187,13 @@ class Db2Quirks(BaseQuirks):
             return True
         return bool(_value("host") and _value("database"))
 
+    # Table and column comments use standalone COMMENT ON statements.
+    # https://www.ibm.com/docs/en/db2/11.5.x?topic=statements-comment
+    table_comment_template = "COMMENT ON TABLE {schema_prefix}{table_name} IS '{escaped_comment}';"
+    column_comment_template = (
+        "COMMENT ON COLUMN {schema_prefix}{table_name}.{column_name} IS '{escaped_comment}';"
+    )
+
     def __init__(self, dialect_name: str = "db2") -> None:
         """Initialize Db2 quirks with the dialect name."""
         super().__init__(dialect_name=dialect_name)

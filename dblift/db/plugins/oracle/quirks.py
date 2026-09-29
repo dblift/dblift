@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, Any, Dict, List, Mapping, Optional, Tuple, Typ
 from dblift.db.base_quirks import BaseQuirks, RowLimitClauses
 from dblift.db.error import ErrorCategory
 from dblift.db.feature_gate import FeatureGate
-from dblift.db.object_naming import dictionary_identifier
+from dblift.db.object_naming import configured_identifier_text, dictionary_identifier
 
 if TYPE_CHECKING:
     from dblift.core.introspection.version_detector import DatabaseVersion
@@ -213,6 +213,13 @@ class OracleQuirks(BaseQuirks):
     # validate-sql offline placeholder — a service_name is required, so a
     # bare host/port URL is not enough (see build_sqlalchemy_url).
     lint_placeholder_url = "oracle://localhost:1521/?service_name=XEPDB1"
+
+    # Table and column comments use standalone COMMENT ON statements.
+    # https://docs.oracle.com/en/database/oracle/oracle-database/19/sqlrf/COMMENT.html
+    table_comment_template = "COMMENT ON TABLE {schema_prefix}{table_name} IS '{escaped_comment}';"
+    column_comment_template = (
+        "COMMENT ON COLUMN {schema_prefix}{table_name}.{column_name} IS '{escaped_comment}';"
+    )
 
     def __init__(self, dialect_name: str = "oracle") -> None:
         """Initialize Oracle quirks with the dialect name."""
@@ -458,21 +465,63 @@ class OracleQuirks(BaseQuirks):
             return "SYSTIMESTAMP"
         return text
 
+    def enhance_columns(
+        self, extractor: Any, schema: str, table: str, columns: "list[Any]"
+    ) -> None:
+        """Capture the generation kind for columns identified as identity columns."""
+        identity_columns = {col.name: col for col in columns if col.is_identity}
+        if not identity_columns:
+            return
+        # GENERATION_TYPE reports ALWAYS/BY DEFAULT; DEFAULT_ON_NULL distinguishes
+        # the ON NULL variant. These identity catalog fields require Oracle 12c+.
+        # https://docs.oracle.com/en/database/oracle/oracle-database/19/refrn/ALL_TAB_IDENTITY_COLS.html
+        # https://docs.oracle.com/en/database/oracle/oracle-database/19/refrn/ALL_TAB_COLUMNS.html
+        query = """
+            SELECT i.COLUMN_NAME, i.GENERATION_TYPE, c.DEFAULT_ON_NULL
+            FROM ALL_TAB_IDENTITY_COLS i
+            JOIN ALL_TAB_COLUMNS c
+              ON c.OWNER = i.OWNER AND c.TABLE_NAME = i.TABLE_NAME
+             AND c.COLUMN_NAME = i.COLUMN_NAME
+            WHERE i.OWNER = ? AND i.TABLE_NAME = ?
+        """
+        rows = extractor.provider.query_executor.execute_query(
+            extractor.connection,
+            query,
+            [dictionary_identifier(schema, "oracle"), configured_identifier_text(table)],
+        )
+        for row in rows:
+            column = identity_columns.get(extractor.get_row_value(row, "column_name"))
+            generation = extractor.get_row_value(row, "generation_type")
+            if column is None or not generation:
+                continue
+            generation = str(generation).strip().upper()
+            if (
+                generation == "BY DEFAULT"
+                and extractor.get_row_value(row, "default_on_null") == "YES"
+            ):
+                generation = "BY DEFAULT ON NULL"
+            column.identity_generation = generation
+
+    # ALWAYS is the engine default when generation is omitted; BY DEFAULT permits
+    # explicit values, and ON NULL also generates a value for an explicit NULL.
+    # https://docs.oracle.com/en/database/oracle/oracle-database/19/sqlrf/CREATE-TABLE.html#GUID-F9CE0CC3-13AE-4744-A43C-EAC7A71AAAB6
     # Oracle identity — GENERATED AS IDENTITY with optional
     # seed/increment from column metadata.
     def render_identity_clause(self, col: object) -> "Optional[str]":
-        """Oracle identity: ``GENERATED AS IDENTITY`` with optional ``START WITH/INCREMENT BY``.
+        """Render the captured generation kind and optional identity sequence options.
 
         Emits the seed/increment clause only when at least one of the two is set
         on the column; otherwise returns the bare keyword.
         """
+        generation = getattr(col, "identity_generation", None)
+        clause = f"GENERATED {generation} AS IDENTITY" if generation else "GENERATED AS IDENTITY"
         seed = getattr(col, "identity_seed", None)
         increment = getattr(col, "identity_increment", None)
         if seed is not None or increment is not None:
             seed_str = str(seed) if seed is not None else "1"
             inc_str = str(increment) if increment is not None else "1"
-            return f"GENERATED AS IDENTITY (START WITH {seed_str} INCREMENT BY {inc_str})"
-        return "GENERATED AS IDENTITY"
+            return f"{clause} (START WITH {seed_str} INCREMENT BY {inc_str})"
+        return clause
 
     # Oracle FK reference query uses schema twice.
     def fk_reference_bind_params(self, schema: str, table: str, column: str) -> "list[str]":

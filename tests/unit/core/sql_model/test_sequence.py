@@ -353,6 +353,7 @@ class TestSequence:
             "temp": False,  # Default for non-temporary sequences
             "owned_by_table": None,
             "owned_by_column": None,
+            "data_type": None,
         }
 
         assert result == expected
@@ -377,6 +378,7 @@ class TestSequence:
             "temp": False,  # Default for non-temporary sequences
             "owned_by_table": None,
             "owned_by_column": None,
+            "data_type": None,
         }
 
         assert result == expected
@@ -566,3 +568,19 @@ class TestSequence:
         """Oracle (23ai+/19.28+) drops sequences with native IF EXISTS."""
         sequence = Sequence(name="seq_id", dialect="oracle")
         assert sequence.drop_statement == 'DROP SEQUENCE IF EXISTS "seq_id"'
+
+
+@pytest.mark.parametrize("data_type", [None, "INT", "smallint"])
+def test_sequence_data_type_round_trip_and_equality(data_type):
+    sequence = Sequence("s", schema="app", data_type=data_type)
+    restored = Sequence.from_dict(sequence.to_dict())
+    assert restored.data_type == data_type
+    assert restored.to_dict()["data_type"] == data_type
+    assert restored == sequence
+    assert hash(restored) == hash(sequence)
+    different = Sequence("s", schema="app", data_type="BIGINT")
+    assert restored != different
+
+
+def test_legacy_sequence_dictionary_has_unknown_data_type():
+    assert Sequence.from_dict({"name": "s"}).data_type is None

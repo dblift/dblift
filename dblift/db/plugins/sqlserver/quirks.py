@@ -27,6 +27,11 @@ class SqlserverQuirks(BaseQuirks):
     memory-optimised and system-versioned tables.
     """
 
+    # Table/column descriptions use extended properties, not COMMENT ON SQL.
+    # https://learn.microsoft.com/en-us/sql/relational-databases/system-stored-procedures/sp-addextendedproperty-transact-sql
+    table_comment_template = ""
+    column_comment_template = ""
+
     # Capability matrix (was ``_CAPABILITIES["sqlserver"]``).
     supports_transactions = True
     supports_transactional_ddl = True
@@ -272,7 +277,7 @@ class SqlserverQuirks(BaseQuirks):
     def render_column_nullable_change(
         self, col_diff: object, formatted_table: str, formatted_column: str, dialect: str
     ) -> "Optional[object]":
-        """``ALTER TABLE … ALTER COLUMN <col> NOT NULL|NULL`` — T-SQL nullable toggle.
+        """``ALTER TABLE … ALTER COLUMN <col> <type> NOT NULL|NULL`` — T-SQL nullable toggle.
 
         Setting NOT NULL emits a pre-check counting NULL rows so the migration
         fails cleanly when existing data would violate the constraint.
@@ -282,10 +287,22 @@ class SqlserverQuirks(BaseQuirks):
         nullable_diff = getattr(col_diff, "nullable_diff", None)
         if nullable_diff is None:
             return None
+        # ALTER COLUMN requires the data type even for a nullability-only change.
+        # https://learn.microsoft.com/en-us/sql/t-sql/statements/alter-table-column-definition-transact-sql
+        # https://learn.microsoft.com/en-us/sql/t-sql/statements/alter-table-transact-sql
+        data_type = getattr(col_diff, "expected_data_type", None)
+        if not data_type:
+            data_type_diff = getattr(col_diff, "data_type_diff", None)
+            data_type = data_type_diff[0] if data_type_diff else None
+        if not data_type:
+            return None
         expected_nullable, _ = nullable_diff
         if not expected_nullable:
             return SqlStatement(
-                sql=f"ALTER TABLE {formatted_table} ALTER COLUMN {formatted_column} NOT NULL;",
+                sql=(
+                    f"ALTER TABLE {formatted_table} ALTER COLUMN "
+                    f"{formatted_column} {data_type} NOT NULL;"
+                ),
                 statement_type="ALTER",
                 object_type="COLUMN",
                 object_name=f"{formatted_table}.{formatted_column}",
@@ -295,7 +312,7 @@ class SqlserverQuirks(BaseQuirks):
                 error_message="Cannot set NOT NULL: column contains NULL values",
             )
         return SqlStatement(
-            sql=f"ALTER TABLE {formatted_table} ALTER COLUMN {formatted_column} NULL;",
+            sql=f"ALTER TABLE {formatted_table} ALTER COLUMN {formatted_column} {data_type} NULL;",
             statement_type="ALTER",
             object_type="COLUMN",
             object_name=f"{formatted_table}.{formatted_column}",
@@ -305,15 +322,37 @@ class SqlserverQuirks(BaseQuirks):
     def render_column_type_change(
         self, col_diff: object, formatted_table: str, formatted_column: str, dialect: str
     ) -> "Optional[object]":
-        """``ALTER TABLE … ALTER COLUMN <col> <type>`` — T-SQL column-type change."""
+        """Change a column type while preserving its known nullability.
+
+        Read the expected side of nullable_diff, then expected_nullable, then
+        expected_column.nullable. Return None when nullability is unknown:
+        omitting it makes the column nullable, while guessing NOT NULL can
+        reject existing rows.
+        """
         from dblift.core.state.sql_statement import SqlStatement
 
         data_type_diff = getattr(col_diff, "data_type_diff", None)
         if data_type_diff is None:
             return None
         expected_type, _ = data_type_diff
+        # ALTER COLUMN defaults to NULL unless nullability is explicitly supplied.
+        # https://learn.microsoft.com/en-us/sql/t-sql/statements/alter-table-transact-sql
+        nullable_diff = getattr(col_diff, "nullable_diff", None)
+        nullable = (
+            nullable_diff[0]
+            if nullable_diff is not None
+            else getattr(col_diff, "expected_nullable", None)
+        )
+        if nullable is None:
+            nullable = getattr(getattr(col_diff, "expected_column", None), "nullable", None)
+        if nullable is None:
+            return None
+        nullability = "NULL" if nullable else "NOT NULL"
         return SqlStatement(
-            sql=f"ALTER TABLE {formatted_table} ALTER COLUMN {formatted_column} {expected_type};",
+            sql=(
+                f"ALTER TABLE {formatted_table} ALTER COLUMN "
+                f"{formatted_column} {expected_type} {nullability};"
+            ),
             statement_type="ALTER",
             object_type="COLUMN",
             object_name=f"{formatted_table}.{formatted_column}",

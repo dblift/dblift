@@ -30,6 +30,11 @@ class MariadbQuirks(MysqlQuirks):
     :class:`BaseSnapshotManager` falls through to the compat path.
     """
 
+    # Comments use inline COMMENT '...' clauses, as in the MySQL parent.
+    # https://mariadb.com/docs/server/reference/sql-statements/data-definition/create/create-table
+    table_comment_template = ""
+    column_comment_template = ""
+
     # Plain-view redefinition inherits MySQL's CREATE OR REPLACE support.
     # https://mariadb.com/docs/server/server-usage/views/create-view
 

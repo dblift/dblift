@@ -1713,3 +1713,17 @@ class TestGetPackages(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def test_identity_enrichment_preserves_generation_captured_by_column_extractor():
+    si, _ = _make_si(has_connection=True)
+    si.vendor_queries = MagicMock()
+    si.vendor_queries.get_identity_columns_query.return_value = ("SELECT identity", [])
+    si.provider.query_executor.execute_query.return_value = [
+        {"column_name": "ID", "seed_value": 10, "increment_value": 5}
+    ]
+    column = SqlColumn("id", "NUMBER", is_identity=True, identity_generation="BY DEFAULT ON NULL")
+    si.enrich_columns_with_identity("APP", "T", [column])
+    assert column.identity_generation == "BY DEFAULT ON NULL"
+    assert column.identity_seed == 10
+    assert column.identity_increment == 5

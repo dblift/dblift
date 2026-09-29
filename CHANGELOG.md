@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Table and column comment templates are now available for PostgreSQL, Oracle and Db2, including escaped quotes; installed DDL generators must wire them into export and replay.
+
+- Sequence data types are now captured, serialized and compared through `Sequence.data_type`; `AS <type>` will be rendered once installed DDL generators read this field.
+
 - `BaseQuirks.view_supports_create_or_replace` and
   `view_create_or_replace_keyword` declare single-statement redefinition support
   for plain views only. SQL Server uses `CREATE OR ALTER` (2016 SP1+); other
@@ -39,6 +43,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the middle of it. Migrations with no such tag are unaffected.
 
 ### Fixed
+
+- SQLite column type changes now appear as SQL comments naming the table, column and both types and explaining that a table rebuild is required.
+
+- Oracle identity columns now capture, compare and render ALWAYS, BY DEFAULT and BY DEFAULT ON NULL without changing the legacy output when the generation kind is unspecified. Identity generation is now part of column equality and hashing (and therefore table comparison): older snapshots with an unspecified kind (`None`) compare unequal to an explicit kind such as `ALWAYS`, even where that matches the engine default.
+
+- SQL Server column type changes now preserve NULL/NOT NULL from `nullable_diff`, `expected_nullable` or `expected_column.nullable`. New behavior: when none supplies known nullability, the hook returns `None` so the caller can warn, instead of emitting SQL that silently makes the column nullable.
+
+- SQL Server nullability changes now include the column type and decline to render when it is unknown, preserving the NULL-count pre-check.
 
 - Db2 quirks now declare `proc_supports_create_or_replace` and
   `synonym_supports_create_or_replace` as true: Db2 LUW 9.7+ supports

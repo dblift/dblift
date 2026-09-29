@@ -398,7 +398,11 @@ def enrich_columns_with_identity(
                     # put there. Both are needed for the invariant "an
                     # is_identity=False column carries no generation kind"
                     # to hold whatever the row and the column arrived with.
-                    column.identity_generation = identity_data["identity_generation"]
+                    # A detail query may omit a kind already captured by the
+                    # column extractor. Keep that known value; decode failures
+                    # above still clear all identity metadata together.
+                    if identity_data["identity_generation"] is not None:
+                        column.identity_generation = identity_data["identity_generation"]
                     if identity_data["last_value"] is not None:
                         try:
                             column.identity_last_value = _decode_sql_variant_int(  # type: ignore[attr-defined]
