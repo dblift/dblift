@@ -102,6 +102,10 @@ class SqlserverQuirks(BaseQuirks):
     # Procedure / function DDL.
     proc_body_wrap_style = "begin_end"
     proc_param_inout_keyword = "OUTPUT"
+    # CREATE OR ALTER VIEW requires SQL Server 2016 SP1+.
+    # https://learn.microsoft.com/en-us/sql/t-sql/statements/create-view-transact-sql
+    view_supports_create_or_replace = True
+    view_create_or_replace_keyword = "CREATE OR ALTER"
     # Index DDL.
     index_qualifies_with_schema = False
     index_with_options_style = "uppercase"

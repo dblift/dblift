@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `BaseQuirks.view_supports_create_or_replace` and
+  `view_create_or_replace_keyword` declare single-statement redefinition support
+  for plain views only. SQL Server uses `CREATE OR ALTER` (2016 SP1+); other
+  supported engines use `CREATE OR REPLACE`. This is an additive MINOR API change;
+  SQL output is unchanged.
 - `dblift.db.generator_protocol`: `SqlGeneratorProtocol` and
   `AlterGeneratorProtocol`, runtime-checkable Protocols describing a DDL
   generator and an ALTER generator. The `ddl_generator_class()` /
@@ -35,6 +40,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Db2 quirks now declare `proc_supports_create_or_replace` and
+  `synonym_supports_create_or_replace` as true: Db2 LUW 9.7+ supports
+  `CREATE OR REPLACE PROCEDURE` / `FUNCTION` and `CREATE OR REPLACE ALIAS`.
 - A comment in front of a statement no longer hides that it must run outside a transaction. A migration such as `-- build online` followed by `CREATE INDEX CONCURRENTLY …` on PostgreSQL (or a SQLite `PRAGMA foreign_keys` after a comment) was classified as transactional, so `migrate` ran it inside the transaction block and PostgreSQL rejected it. Classification now skips leading comments before matching.
 
 - `validate-sql` infers the dialect from a config's `database.url` when no `database.type` is set, the same way every other command already does. A config with only `database.url: sqlite:///...` (no `type:`) previously failed with "validate-sql requires --dialect for offline validation when no database type is configured." even though the dialect was unambiguous from the URL scheme.

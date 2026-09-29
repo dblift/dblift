@@ -672,7 +672,7 @@ class BaseQuirks:
     # overrides the deltas; defaults match the most common ANSI shape.
     # ------------------------------------------------------------------
 
-    #: ``CREATE OR REPLACE PROCEDURE/FUNCTION`` is valid (Oracle, PostgreSQL).
+    #: ``CREATE OR REPLACE PROCEDURE/FUNCTION`` is valid (Oracle, PostgreSQL, Db2).
     proc_supports_create_or_replace: bool = False
     #: Function return-type keyword. Oracle uses ``RETURN``; everyone
     #: else uses ``RETURNS``.
@@ -825,13 +825,18 @@ class BaseQuirks:
     #: SYNONYM keyword. DB2 calls them ``ALIAS``; everyone else
     #: ``SYNONYM``. Used in CREATE / DROP statements.
     synonym_keyword: str = "SYNONYM"
-    #: ``CREATE OR REPLACE SYNONYM`` is valid (Oracle only).
+    #: ``CREATE OR REPLACE`` is valid for synonyms (Oracle) / aliases (Db2).
     synonym_supports_create_or_replace: bool = False
 
     # ------------------------------------------------------------------
     # View DDL hooks.
     # ------------------------------------------------------------------
 
+    #: Plain views only: an existing view can be redefined with one CREATE
+    #: statement. Excludes materialized views; the keyword below gives the spelling.
+    view_supports_create_or_replace: bool = False
+    #: CREATE prefix for plain-view redefinition when supported.
+    view_create_or_replace_keyword: str = "CREATE OR REPLACE"
     #: ``CREATE VIEW ... WITH (security_definer=true)`` clause
     #: (PostgreSQL only).
     view_supports_security_with_clause: bool = False

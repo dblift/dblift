@@ -96,6 +96,8 @@ class PostgresqlQuirks(BaseQuirks):
     # Sequence DDL.
     seq_supports_temp = True
     # View DDL.
+    # https://www.postgresql.org/docs/current/sql-createview.html
+    view_supports_create_or_replace = True
     view_supports_security_with_clause = True
     # View comparison.
     view_supports_unlogged_and_security = True

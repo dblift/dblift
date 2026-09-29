@@ -21,6 +21,8 @@ class SnowflakeQuirks(BaseQuirks):
     sqlglot_dialect = "snowflake"
     default_schema_name = "PUBLIC"
     drop_supports_if_exists = True
+    # https://docs.snowflake.com/en/sql-reference/sql/create-view
+    view_supports_create_or_replace = True
     table_drop_style = "if_exists_cascade"
     # The constraint grammar accepts ``ON DELETE/UPDATE { CASCADE | SET NULL |
     # SET DEFAULT | RESTRICT | NO ACTION }`` and the catalogue carries the rule
