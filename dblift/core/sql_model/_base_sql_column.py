@@ -53,7 +53,8 @@ class SqlColumn:
             constraints: List of constraints on this column
             dialect: SQL dialect
             is_identity: Whether this is an identity/auto-increment column
-            identity_generation: Identity generation strategy (ALWAYS, BY DEFAULT)
+            identity_generation: Identity generation strategy (ALWAYS, BY DEFAULT,
+                BY DEFAULT ON NULL); None uses the engine default
             identity_seed: Starting value for identity column
             identity_increment: Increment value for identity column
             is_computed: Whether this is a computed/generated column
@@ -74,7 +75,7 @@ class SqlColumn:
 
         # Identity column metadata
         self.is_identity = is_identity
-        self.identity_generation = identity_generation  # ALWAYS, BY DEFAULT
+        self.identity_generation = identity_generation
         self.identity_seed = identity_seed
         self.identity_increment = identity_increment
 
@@ -105,12 +106,15 @@ class SqlColumn:
         return (
             self.name.lower() == other.name.lower()
             and self.data_type.lower() == other.data_type.lower()
+            and self.identity_generation == other.identity_generation
             and self.collation == other.collation
         )
 
     def __hash__(self) -> int:
         """Return hash of the column."""
-        return hash((self.name.lower(), self.data_type.lower(), self.collation))
+        return hash(
+            (self.name.lower(), self.data_type.lower(), self.collation, self.identity_generation)
+        )
 
     def mark_property_explicit(self, property_name: str) -> None:
         """Mark a property as explicitly defined (not using a schema default).
