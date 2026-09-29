@@ -317,15 +317,37 @@ class SqlserverQuirks(BaseQuirks):
     def render_column_type_change(
         self, col_diff: object, formatted_table: str, formatted_column: str, dialect: str
     ) -> "Optional[object]":
-        """``ALTER TABLE … ALTER COLUMN <col> <type>`` — T-SQL column-type change."""
+        """Change a column type while preserving its known nullability.
+
+        Read the expected side of nullable_diff, then expected_nullable, then
+        expected_column.nullable. Return None when nullability is unknown:
+        omitting it makes the column nullable, while guessing NOT NULL can
+        reject existing rows.
+        """
         from dblift.core.state.sql_statement import SqlStatement
 
         data_type_diff = getattr(col_diff, "data_type_diff", None)
         if data_type_diff is None:
             return None
         expected_type, _ = data_type_diff
+        # ALTER COLUMN defaults to NULL unless nullability is explicitly supplied.
+        # https://learn.microsoft.com/en-us/sql/t-sql/statements/alter-table-transact-sql
+        nullable_diff = getattr(col_diff, "nullable_diff", None)
+        nullable = (
+            nullable_diff[0]
+            if nullable_diff is not None
+            else getattr(col_diff, "expected_nullable", None)
+        )
+        if nullable is None:
+            nullable = getattr(getattr(col_diff, "expected_column", None), "nullable", None)
+        if nullable is None:
+            return None
+        nullability = "NULL" if nullable else "NOT NULL"
         return SqlStatement(
-            sql=f"ALTER TABLE {formatted_table} ALTER COLUMN {formatted_column} {expected_type};",
+            sql=(
+                f"ALTER TABLE {formatted_table} ALTER COLUMN "
+                f"{formatted_column} {expected_type} {nullability};"
+            ),
             statement_type="ALTER",
             object_type="COLUMN",
             object_name=f"{formatted_table}.{formatted_column}",
