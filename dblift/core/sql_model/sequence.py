@@ -34,6 +34,7 @@ class Sequence(SqlObject):
         temp: bool = False,  # TEMP or TEMPORARY keyword (PostgreSQL)
         owned_by_table: Optional[str] = None,
         owned_by_column: Optional[str] = None,
+        data_type: Optional[str] = None,
     ):
         """Initialize a sequence.
 
@@ -46,6 +47,7 @@ class Sequence(SqlObject):
             max_value: Maximum value
             cycle: Whether to cycle when reaching max_value
             cache: Cache size
+            data_type: Declared sequence data type, if captured
             dialect: SQL dialect
             temp: Whether sequence is TEMPORARY (PostgreSQL grammar-based)
         """
@@ -56,10 +58,23 @@ class Sequence(SqlObject):
         self.max_value = max_value
         self.cycle = cycle
         self.cache = cache
+        self.data_type = data_type
         # PostgreSQL grammar-based sequence properties.
         self.temp = temp  # ``CREATE TEMPORARY SEQUENCE`` flag
         self.owned_by_table = owned_by_table  # ``OWNED BY <table>.<column>`` table
         self.owned_by_column = owned_by_column  # ``OWNED BY <table>.<column>`` column
+
+    def __eq__(self, other: object) -> bool:
+        """Compare sequence identity and its captured data type."""
+        return (
+            isinstance(other, Sequence)
+            and super().__eq__(other)
+            and self.data_type == other.data_type
+        )
+
+    def __hash__(self) -> int:
+        """Hash sequence identity and its captured data type."""
+        return hash((super().__hash__(), self.data_type))
 
     @property
     def create_statement(self) -> str:
@@ -168,6 +183,7 @@ class Sequence(SqlObject):
             temp=data.get("temp", False),
             owned_by_table=data.get("owned_by_table"),
             owned_by_column=data.get("owned_by_column"),
+            data_type=data.get("data_type"),
         )
 
     def to_dict(self) -> Dict[str, Any]:
@@ -190,4 +206,5 @@ class Sequence(SqlObject):
             "temp": self.temp,
             "owned_by_table": self.owned_by_table,
             "owned_by_column": self.owned_by_column,
+            "data_type": self.data_type,
         }

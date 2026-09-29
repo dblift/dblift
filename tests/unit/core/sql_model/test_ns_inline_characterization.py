@@ -108,6 +108,7 @@ def test_sequence_to_dict_pins_pg_keys():
         "temp": True,
         "owned_by_table": "orders",
         "owned_by_column": "id",
+        "data_type": None,
     }
 
 

@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Sequence data types are now captured, serialized and compared through `Sequence.data_type`; `AS <type>` will be rendered once installed DDL generators read this field.
+
 - `BaseQuirks.view_supports_create_or_replace` and
   `view_create_or_replace_keyword` declare single-statement redefinition support
   for plain views only. SQL Server uses `CREATE OR ALTER` (2016 SP1+); other

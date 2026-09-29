@@ -498,3 +498,26 @@ class TestSequenceExtractorResultTracker(unittest.TestCase):
         seqs = extractor.get_sequences("public")
         self.assertEqual(len(seqs), 1)
         tracker._track_object_status.assert_called_once_with("sequence", "seq1", "public")
+
+
+@pytest.mark.parametrize(
+    "dialect, row, expected",
+    [
+        ("sqlserver", {"sequence_name": "s", "data_type": "int"}, "int"),
+        ("postgresql", {"sequence_name": "s", "data_type": "smallint"}, "smallint"),
+        ("sqlserver", {"SEQUENCE_NAME": "s", "DATA_TYPE": "int"}, "int"),
+        ("postgresql", {"sequence_name": "s"}, None),
+    ],
+)
+def test_sequence_data_type_capture_and_status(dialect, row, expected):
+    from dblift.core.introspection.result import ObjectCaptureStatus
+
+    vq, _ = _simple_vq([])
+    extractor = _make_extractor(dialect=dialect, vendor_queries=vq)
+    extractor.provider.query_executor.execute_query.return_value = [row]
+    status = ObjectCaptureStatus("sequence", "s", "app")
+    extractor.result_tracker = MagicMock()
+    extractor.result_tracker._track_object_status.return_value = status
+    sequences = extractor.get_sequences("app")
+    assert sequences[0].data_type == expected
+    assert status.properties_captured["data_type"] is (expected is not None)
