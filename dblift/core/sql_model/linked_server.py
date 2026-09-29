@@ -45,58 +45,6 @@ class LinkedServer(SqlObject):
         self.catalog = catalog
         self.username = username
 
-    @property
-    def create_statement(self) -> str:
-        """
-        Generate CREATE LINKED SERVER statement using sp_addlinkedserver.
-
-        Note: For security reasons, passwords are not stored or generated.
-        Login mappings must be configured separately with sp_addlinkedsrvlogin.
-
-        Returns:
-            SQL Server EXEC sp_addlinkedserver statement (without password)
-        """
-        server_name = self.format_identifier(self.name)
-
-        # Build the sp_addlinkedserver call
-        stmt = f"EXEC sp_addlinkedserver\n  @server = {server_name}"
-
-        if self.product:
-            stmt += f",\n  @srvproduct = '{self.product}'"
-
-        if self.provider:
-            stmt += f",\n  @provider = '{self.provider}'"
-
-        if self.data_source:
-            stmt += f",\n  @datasrc = '{self.data_source}'"
-
-        if self.catalog:
-            stmt += f",\n  @catalog = '{self.catalog}'"
-
-        stmt += ";"
-
-        # Add login mapping note (not actual credentials)
-        if self.username:
-            stmt += "\n\n-- Configure login mapping:\n"
-            stmt += "-- EXEC sp_addlinkedsrvlogin\n"
-            stmt += f"--   @rmtsrvname = {server_name},\n"
-            stmt += "--   @useself = 'FALSE',\n"
-            stmt += f"--   @rmtuser = '{self.username}',\n"
-            stmt += "--   @rmtpassword = '<password>';"
-
-        return stmt
-
-    @property
-    def drop_statement(self) -> str:
-        """
-        Generate DROP LINKED SERVER statement using sp_dropserver.
-
-        Returns:
-            SQL Server EXEC sp_dropserver statement
-        """
-        server_name = self.format_identifier(self.name)
-        return f"EXEC sp_dropserver @server = {server_name}, @droplogins = 'droplogins';"
-
     def __str__(self) -> str:
         """Return string representation of the linked server."""
         info = f"LINKED SERVER {self.name}"

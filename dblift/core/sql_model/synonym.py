@@ -64,43 +64,6 @@ class Synonym(SqlObject):
 
         return result
 
-    @property
-    def create_statement(self) -> str:
-        """Generate CREATE SYNONYM statement using database-specific generators.
-
-        Returns:
-            Dialect-specific CREATE SYNONYM statement
-        """
-        from dblift.core.sql_generator.generator_factory import (
-            SqlGeneratorFactory,
-        )
-
-        try:
-            generator = SqlGeneratorFactory.create(self.dialect)
-            return str(generator.generate_create_statement(self))
-        except (ValueError, ImportError, AttributeError):
-            return ""
-
-    @property
-    def drop_statement(self) -> str:
-        """
-        Generate DROP SYNONYM statement.
-
-        Returns:
-            Dialect-specific DROP SYNONYM statement
-        """
-        from dblift.db.base_quirks import BaseQuirks
-        from dblift.db.provider_registry import ProviderRegistry
-
-        canonical = ProviderRegistry.canonical_dialect_name(self.dialect or "")
-        quirks = ProviderRegistry.get_quirks(canonical) if canonical else BaseQuirks()
-
-        schema_name = self.format_identifier(self.schema) if self.schema else ""
-        synonym_name = self.format_identifier(self.name)
-        schema_prefix = f"{schema_name}." if schema_name else ""
-
-        return f"DROP {quirks.synonym_keyword} {schema_prefix}{synonym_name}"
-
     def __str__(self) -> str:
         """Return string representation of the synonym."""
         return f"{self.object_type.value} {self.name} -> {self.target_full_name}"

@@ -105,48 +105,6 @@ class View(SqlObject):
         # Oracle:
         self.force = force  # ``FORCE`` / ``NOFORCE`` view modifier
 
-    @property
-    def create_statement(self) -> str:
-        """Generate CREATE VIEW statement using database-specific generators.
-
-        Returns:
-            Dialect-specific CREATE VIEW statement
-        """
-        from dblift.core.sql_generator.generator_factory import (
-            SqlGeneratorFactory,
-        )
-
-        try:
-            generator = SqlGeneratorFactory.create(self.dialect)
-            return str(generator.generate_create_statement(self))
-        except (ValueError, ImportError, AttributeError):
-            return ""
-
-    @property
-    def drop_statement(self) -> str:
-        """Generate DROP VIEW statement.
-
-        Returns:
-            SQL DROP VIEW statement for this view
-        """
-        from dblift.db.base_quirks import BaseQuirks
-        from dblift.db.provider_registry import ProviderRegistry
-
-        canonical = ProviderRegistry.canonical_dialect_name(self.dialect or "")
-        quirks = ProviderRegistry.get_quirks(canonical) if canonical else BaseQuirks()
-
-        schema_prefix = self.format_identifier(self.schema) + "." if self.schema else ""
-        view_name = self.format_identifier(self.name)
-        view_type = "MATERIALIZED VIEW" if self.materialized else "VIEW"
-
-        if quirks.view_drop_supports_if_exists:
-            return f"DROP {view_type} IF EXISTS {schema_prefix}{view_name}"
-        return f"DROP {view_type} {schema_prefix}{view_name}"
-
-    def __str__(self) -> str:
-        """Return string representation of the view."""
-        return self.create_statement
-
     def __eq__(self, other: Any) -> bool:
         """Check if two views are equal."""
         if not isinstance(other, View):

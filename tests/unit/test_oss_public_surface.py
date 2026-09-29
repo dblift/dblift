@@ -67,11 +67,7 @@ def test_oss_tests_do_not_name_non_oss_tiers():
 
 
 def test_oss_repo_does_not_ship_removed_tier_modules():
-    """core/sql_generator ships in OSS by design (phase2: keep OSS SQL generator
-    runtime, 2026-07-03) — it's the base DDL-generation engine higher tiers'
-    per-dialect generators subclass (BaseSqlGenerator/BaseAlterGenerator) and
-    register into (SqlGeneratorFactory/AlterGeneratorFactory); paid-tier
-    implementations live outside this module, not inside it."""
+    """Removed tier modules must remain absent from the OSS package."""
     tracked = _tracked_files()
     forbidden_roots = ("dblift/core/licensing/",)
     offenders = [

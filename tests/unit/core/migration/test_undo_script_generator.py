@@ -102,6 +102,21 @@ class TestUndoStatementEmitterGenerateDrop(unittest.TestCase):
         )
         self.assertEqual(sql, "DROP INDEX IF EXISTS [idx_users_email] ON [users];")
 
+    def test_schema_qualified_index_drop_text(self):
+        for dialect, expected in (
+            ("postgresql", 'DROP INDEX IF EXISTS "audit"."idx_users_email";'),
+            ("sqlserver", "DROP INDEX IF EXISTS [idx_users_email] ON [sales].[users];"),
+        ):
+            with self.subTest(dialect=dialect):
+                emitter = self._make_emitter(dialect)
+                sql = emitter._generate_drop_statement(
+                    "INDEX",
+                    "idx_users_email",
+                    "audit",
+                    "CREATE INDEX idx_users_email ON sales.users(email);",
+                )
+                self.assertEqual(sql, expected)
+
     def test_mysql_index_drop_names_the_table_no_if_exists(self):
         emitter = self._make_emitter("mysql")
         sql = emitter._generate_drop_statement(

@@ -1,17 +1,7 @@
-"""Reference-dialect render default.
+"""Reference-dialect capability and registry lookup.
 
-The no-dialect rendering default used to live as a ``self.dialect or
-"postgresql"`` literal in the 7 multi-dialect ``create_statement`` sites in
-``core/sql_model/``. It now lives in the generator factory, sourced from a
-plugin capability: the single quirks class whose
-``is_ansi_reference_dialect`` is True (PostgreSQL) is the dialect-agnostic
-render fallback, resolved through the registry.
-
-These tests pin:
-1. the capability attribute (default False on BaseQuirks, True on PostgreSQL),
-2. the ``ProviderRegistry.reference_dialect_name()`` single-winner lookup,
-3. the factory mapping a falsy dialect (``None`` / ``""``) to the reference
-   generator (byte-identical to ``create("postgresql")``).
+Pin the default False capability, PostgreSQL's True override and the
+single-winner ``ProviderRegistry.reference_dialect_name()`` lookup.
 """
 
 import pytest

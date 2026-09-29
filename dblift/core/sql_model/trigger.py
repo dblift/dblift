@@ -120,21 +120,6 @@ class Trigger(SqlObject):
         """
         return " OR ".join(self.events) if self.events else ""
 
-    @property
-    def create_statement(self) -> str:
-        """Generate CREATE TRIGGER statement using database-specific generators.
-
-        Returns:
-            Dialect-specific CREATE TRIGGER statement
-        """
-        from dblift.core.sql_generator.generator_factory import SqlGeneratorFactory
-
-        try:
-            generator = SqlGeneratorFactory.create(self.dialect)
-            return str(generator.generate_create_statement(self))
-        except (ValueError, ImportError, AttributeError):
-            return ""
-
     @staticmethod
     def _format_mysql_definer(definer: str) -> str:
         """Return a properly quoted MySQL DEFINER clause."""

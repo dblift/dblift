@@ -226,23 +226,6 @@ class TestViewFromDict(unittest.TestCase):
         self.assertEqual(v.query, v2.query)
 
 
-class TestViewDropStatement(unittest.TestCase):
-    def test_regular_view_drop(self):
-        from dblift.core.sql_model.view import View
-
-        v = View("v1", schema="public", dialect="postgresql")
-        drop = v.drop_statement
-        self.assertIn("DROP", drop.upper())
-        self.assertIn("v1", drop)
-
-    def test_materialized_view_drop(self):
-        from dblift.core.sql_model.view import View
-
-        v = View("mv1", schema="public", materialized=True, dialect="postgresql")
-        drop = v.drop_statement
-        self.assertIn("MATERIALIZED", drop.upper())
-
-
 class TestViewFormatMysqlDefiner(unittest.TestCase):
     def test_formats_definer(self):
         from dblift.core.sql_model.view import View

@@ -39,32 +39,6 @@ class ForeignDataWrapper(SqlObject):
         # Create a copy of options to avoid mutating caller's dictionary
         self.options = dict(options) if options else {}
 
-    @property
-    def create_statement(self) -> str:
-        """Generate CREATE FOREIGN DATA WRAPPER statement using database-specific generators.
-
-        Returns:
-            Dialect-specific CREATE FOREIGN DATA WRAPPER statement
-        """
-        from dblift.core.sql_generator.generator_factory import SqlGeneratorFactory
-
-        try:
-            generator = SqlGeneratorFactory.create(self.dialect or "")
-            return str(generator.generate_create_statement(self))
-        except (ValueError, ImportError, AttributeError):
-            return ""
-
-    @property
-    def drop_statement(self) -> str:
-        """
-        Generate DROP FOREIGN DATA WRAPPER statement.
-
-        Returns:
-            PostgreSQL DROP FOREIGN DATA WRAPPER statement
-        """
-        fdw_name = self.format_identifier(self.name)
-        return f"DROP FOREIGN DATA WRAPPER IF EXISTS {fdw_name} CASCADE;"
-
     def __str__(self) -> str:
         """Return string representation of the FDW."""
         info = f"FOREIGN DATA WRAPPER {self.name}"

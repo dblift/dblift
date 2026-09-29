@@ -80,12 +80,6 @@ class TestForeignServer:
         assert server.options["port"] == "5432"
         assert server.options["dbname"] == "remote_db"
 
-    def test_drop_statement(self):
-        """Test drop statement generation."""
-        server = ForeignServer("test_server", "test_fdw", dialect="postgresql")
-        result = server.drop_statement
-        assert result == 'DROP SERVER IF EXISTS "test_server" CASCADE;'
-
     def test_str_representation_basic(self):
         """Test string representation without connection info."""
         server = ForeignServer("test_server", "test_fdw")

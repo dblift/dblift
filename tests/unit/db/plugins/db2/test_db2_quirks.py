@@ -4,7 +4,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from dblift.core.sql_generator.sql_statement import SqlStatement
+from dblift.core.state.sql_statement import SqlStatement
 from dblift.db.plugins.db2.quirks import Db2Quirks
 
 

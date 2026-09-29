@@ -53,34 +53,6 @@ class ForeignServer(SqlObject):
         if self.dbname:
             self.options["dbname"] = self.dbname
 
-    @property
-    def create_statement(self) -> str:
-        """Generate CREATE SERVER statement using database-specific generators.
-
-        Returns:
-            Dialect-specific CREATE SERVER statement
-        """
-        from dblift.core.sql_generator.generator_factory import (
-            SqlGeneratorFactory,
-        )
-
-        try:
-            generator = SqlGeneratorFactory.create(self.dialect or "")
-            return str(generator.generate_create_statement(self))
-        except (ValueError, ImportError, AttributeError):
-            return ""
-
-    @property
-    def drop_statement(self) -> str:
-        """
-        Generate DROP SERVER statement.
-
-        Returns:
-            PostgreSQL DROP SERVER statement
-        """
-        server_name = self.format_identifier(self.name)
-        return f"DROP SERVER IF EXISTS {server_name} CASCADE;"
-
     def __str__(self) -> str:
         """Return string representation of the foreign server."""
         info = f"FOREIGN SERVER {self.name} (FDW: {self.fdw_name})"

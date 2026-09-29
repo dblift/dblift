@@ -400,53 +400,6 @@ class Table(SqlObject):
         """
         return [c for c in self.constraints if c.constraint_type.value == "CHECK"]
 
-    def generate_alter_table_check_constraints(self) -> List[str]:
-        """Generate ALTER TABLE statements for CHECK constraints.
-
-        Note: Only produces output for DB2 dialect. Returns empty list for all other dialects.
-        """
-        from dblift.core.sql_generator.basic_table_ddl_generator import BasicTableDdlGenerator
-
-        return BasicTableDdlGenerator(self).generate_alter_check_constraints()
-
-    def generate_alter_table_self_referencing_foreign_keys(self) -> List[str]:
-        """Generate ALTER TABLE statements for self-referencing foreign keys.
-
-        Note: Only produces output for DB2 dialect. Returns empty list for all other dialects.
-        """
-        from dblift.core.sql_generator.basic_table_ddl_generator import BasicTableDdlGenerator
-
-        return BasicTableDdlGenerator(self).generate_alter_self_referencing_fks()
-
-    @property
-    def create_statement(self) -> str:
-        """Generate CREATE TABLE statement using database-specific generators.
-
-        Returns:
-            Dialect-specific CREATE TABLE statement
-        """
-        from dblift.core.sql_generator.basic_table_ddl_generator import BasicTableDdlGenerator
-        from dblift.core.sql_generator.generator_factory import SqlGeneratorFactory
-
-        try:
-            generator = SqlGeneratorFactory.create(self.dialect)
-            if not hasattr(generator, "generate_create_statement"):
-                raise AttributeError("generator has no generate_create_statement")
-            return str(generator.generate_create_statement(self))
-        except (ValueError, ImportError, AttributeError):
-            return BasicTableDdlGenerator(self).generate_create_statement()
-
-    @property
-    def drop_statement(self) -> str:
-        """Generate DROP TABLE statement."""
-        from dblift.core.sql_generator.basic_table_ddl_generator import BasicTableDdlGenerator
-
-        return BasicTableDdlGenerator(self).generate_drop_statement()
-
-    def __str__(self) -> str:
-        """Return string representation of the table."""
-        return self.create_statement
-
     def compare_with_defaults(
         self, other: "SqlObject", schema_defaults: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:

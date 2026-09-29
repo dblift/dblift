@@ -87,6 +87,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
+- **`dblift.core.sql_generator` and the SQL model's rendering members are removed.**
+  `create_statement` / `drop_statement` on the model classes and
+  `Table.generate_alter_table_check_constraints` /
+  `generate_alter_table_self_referencing_foreign_keys` are gone, together with
+  the generator package and `dblift.core.seams.sql_generators`. The model
+  classes are data; nothing in the core rendered DDL from them. `dblift.core`
+  is outside the public API (semver policy). Code that rendered DDL through a
+  model reaches a generator through `dblift.db.generator_protocol` instead.
+  This is a MINOR release change.
+
 ## [4.9.0] - 2026-09-27
 
 ### Upgrading

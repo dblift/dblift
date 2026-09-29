@@ -33,23 +33,6 @@ class Package(SqlObject):
         self.procedures: List[str] = []
         self.functions: List[str] = []
 
-    @property
-    def create_statement(self) -> str:
-        """Generate CREATE PACKAGE statements using database-specific generators.
-
-        Returns:
-            Dialect-specific CREATE PACKAGE and CREATE PACKAGE BODY statements
-        """
-        from dblift.core.sql_generator.generator_factory import (
-            SqlGeneratorFactory,
-        )
-
-        try:
-            generator = SqlGeneratorFactory.create(self.dialect or "")
-            return str(generator.generate_create_statement(self))
-        except (ValueError, ImportError, AttributeError):
-            return ""
-
     def __str__(self) -> str:
         """Return string representation of the package."""
         qualified = f"{self.schema}.{self.name}" if self.schema else self.name

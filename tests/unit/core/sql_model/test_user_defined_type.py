@@ -108,26 +108,6 @@ class TestUserDefinedType:
         assert UserDefinedType("test", "COMPOSITE").is_distinct is False
         assert UserDefinedType("test", "ENUM").is_distinct is False
 
-    def test_drop_statement_domain(self):
-        """Test drop statement for domain type."""
-        udt = UserDefinedType("test_type", "DOMAIN", schema="public")
-        result = udt.drop_statement
-        assert "DROP DOMAIN" in result
-        assert "test_type" in result
-
-    def test_drop_statement_non_domain(self):
-        """Test drop statement for non-domain type."""
-        udt = UserDefinedType("test_type", "COMPOSITE", schema="public")
-        result = udt.drop_statement
-        assert "DROP TYPE" in result
-        assert "test_type" in result
-
-    def test_drop_statement_with_schema(self):
-        """Test drop statement with schema."""
-        udt = UserDefinedType("test_type", "COMPOSITE", schema="public")
-        result = udt.drop_statement
-        assert "public" in result or '"public"' in result
-
     def test_str_representation_enum(self):
         """Test string representation for enum type."""
         udt = UserDefinedType("test_type", "ENUM", enum_values=["val1", "val2", "val3"])

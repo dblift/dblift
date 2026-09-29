@@ -244,8 +244,7 @@ class BaseQuirks:
     def normalize_column_data_type(self, col: object, data_type: str) -> str:
         """Normalize a column's data type string for DDL generation.
 
-        Called by ``BasicTableDdlGenerator._normalize_column_data_type`` after
-        the base string is extracted from ``col.data_type``. Plugins override
+        Receives the base string extracted from ``col.data_type``. Plugins override
         to handle dialect-specific type representations:
         - SQL Server: strip ``IDENTITY`` suffix, collapse ``DATETIME(n)``
         - DB2: collapse ``TIMESTAMP(n)`` → ``TIMESTAMP``
@@ -259,8 +258,7 @@ class BaseQuirks:
     def render_identity_clause(self, col: object) -> "Optional[str]":
         """Return the identity/auto-increment clause for an identity column, or None.
 
-        Called by ``BasicTableDdlGenerator._build_identity_clause``.  When the
-        column is not an identity column the method should return ``None`` so the
+        When the column is not an identity column, return ``None`` so the
         caller can fall through to the non-identity path.
 
         Default: None (dialect has no identity syntax, or column is not identity).
@@ -346,8 +344,7 @@ class BaseQuirks:
 
     # ------------------------------------------------------------------
     # Column ALTER generation hooks.
-    # Drive the per-change ALTER rendering in the diff converters
-    # (``core/sql_generator/diff_converters``).
+    # Declare per-change ALTER rendering for generator implementations.
     # Each hook receives the pre-formatted identifiers so the plugin
     # only needs to compose the SQL string.  Return ``None`` to emit
     # a warning and skip the change; return a ``SqlStatement`` comment
@@ -617,10 +614,9 @@ class BaseQuirks:
     #: undo-script generators resolve the fallback from the registry rather
     #: than hardcoding ``"postgres"``.
     is_default_sqlglot_read_fallback: bool = False
-    #: This dialect is the ANSI/generic reference dialect dblift renders with
-    #: when a model carries no dialect of its own (``dialect is None``). The
-    #: ``SqlGeneratorFactory`` resolves a falsy dialect to the single plugin
-    #: that sets this True (PostgreSQL) via
+    #: This dialect is the ANSI/generic rendering reference when a model
+    #: carries no dialect of its own (``dialect is None``). The single
+    #: plugin that sets this True (PostgreSQL) is resolved via
     #: :meth:`dblift.db.provider_registry.ProviderRegistry.reference_dialect_name`,
     #: so the no-dialect render default is a registry/plugin decision with no
     #: hardcoded literal in ``core/``.
@@ -667,9 +663,8 @@ class BaseQuirks:
 
     # ------------------------------------------------------------------
     # Procedure / function DDL hooks.
-    # Drive ``Procedure._generate_basic_create_statement`` /
-    # ``Parameter.__str__`` / ``Procedure.drop_statement``. Each plugin
-    # overrides the deltas; defaults match the most common ANSI shape.
+    # Declare procedure/function syntax and parameter formatting. Each
+    # plugin overrides the deltas; defaults match the common ANSI shape.
     # ------------------------------------------------------------------
 
     #: ``CREATE OR REPLACE PROCEDURE/FUNCTION`` is valid (Oracle, PostgreSQL, Db2).
@@ -697,8 +692,7 @@ class BaseQuirks:
 
     # ------------------------------------------------------------------
     # Index DDL hooks.
-    # Drive ``Index._generate_basic_create_statement`` /
-    # ``Index.drop_statement``.
+    # Declare CREATE INDEX options and table-qualified/standalone DROP forms.
     # ------------------------------------------------------------------
 
     #: Whether ``CREATE INDEX schema.idx`` qualifies the index name with
@@ -797,8 +791,7 @@ class BaseQuirks:
 
     # ------------------------------------------------------------------
     # Sequence DDL hooks.
-    # Drive ``Sequence._generate_basic_create_statement`` and
-    # ``Sequence.drop_statement``.
+    # Declare sequence options and whether DROP accepts IF EXISTS.
     # ------------------------------------------------------------------
 
     #: ``CREATE TEMPORARY SEQUENCE`` is valid (PostgreSQL only).
@@ -818,8 +811,7 @@ class BaseQuirks:
 
     # ------------------------------------------------------------------
     # Synonym DDL hooks.
-    # Drive ``Synonym._generate_basic_create_statement`` and
-    # ``Synonym.drop_statement``.
+    # Declare the synonym keyword and CREATE OR REPLACE support.
     # ------------------------------------------------------------------
 
     #: SYNONYM keyword. DB2 calls them ``ALIAS``; everyone else
@@ -868,7 +860,7 @@ class BaseQuirks:
 
     # ------------------------------------------------------------------
     # Table DDL generation hooks.
-    # Drive ``BasicTableDdlGenerator`` dispatch.
+    # Declare table syntax choices for DDL generator implementations.
     # ------------------------------------------------------------------
 
     #: DROP TABLE style. ``"cascade_constraints"`` → ``DROP TABLE x CASCADE
@@ -943,7 +935,7 @@ class BaseQuirks:
 
         Empty ``dialect_name`` is allowed and signals "no dialect context"
         — the framework calls into ``BaseQuirks()`` from paths where the
-        dialect is unknown (e.g. ``SqlGenerator.generate_ddl(dialect=None)``).
+        dialect is unknown.
         All hooks return their generic defaults in that case. (PR #241 Bugbot.)
         """
         self.dialect_name = dialect_name
@@ -1060,7 +1052,7 @@ class BaseQuirks:
     # ------------------------------------------------------------------
 
     def ddl_generator_class(self) -> Optional[Type["SqlGeneratorProtocol"]]:
-        """Default: no dialect-specific DDL generator (falls back to ``SqlGenerator``)."""
+        """Default: no dialect-specific DDL generator is provided."""
         return None
 
     def alter_generator_class(self) -> Optional[Type["AlterGeneratorProtocol"]]:
@@ -1578,7 +1570,7 @@ class BaseQuirks:
     def requires_dialect_specific_wrapping(self, object_type_name: str) -> bool:
         """Default: no delimiter wrapping required.
 
-        Used by ``SqlGenerator.generate_ddl`` to decide whether to call
+        Consumed by a ``SqlGeneratorProtocol`` implementation to decide whether to call
         ``wrap_dialect_specific_block`` around an object's CREATE
         statement. MySQL covers procedures/functions here; the wider
         set covering triggers/events is exposed via the separate

@@ -39,33 +39,6 @@ class Extension(SqlObject):
         self.description = description
         self.relocatable = relocatable
 
-    @property
-    def create_statement(self) -> str:
-        """Generate CREATE EXTENSION statement using database-specific generators.
-
-        Returns:
-            Dialect-specific CREATE EXTENSION statement
-        """
-        from dblift.core.sql_generator.generator_factory import (
-            SqlGeneratorFactory,
-        )
-
-        try:
-            generator = SqlGeneratorFactory.create(self.dialect or "")
-            return str(generator.generate_create_statement(self))
-        except (ValueError, ImportError, AttributeError):
-            return ""
-
-    @property
-    def drop_statement(self) -> str:
-        """
-        Generate DROP EXTENSION statement.
-
-        Returns:
-            PostgreSQL DROP EXTENSION statement
-        """
-        return f"DROP EXTENSION IF EXISTS {self.format_identifier(self.name)}"
-
     def __str__(self) -> str:
         """Return string representation of the extension."""
         info = f"EXTENSION {self.name}"
