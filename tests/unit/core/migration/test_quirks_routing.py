@@ -2,8 +2,6 @@
 
 import pytest
 
-from dblift.db.provider_registry import ProviderRegistry
-
 pytestmark = [pytest.mark.unit]
 
 
