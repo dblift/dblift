@@ -114,6 +114,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `script_header_session_init`, `unwrap_default_value`,
   `wrap_dialect_specific_block`.
 
+- **The four `render_column_*_change` ALTER hooks on `BaseQuirks` and their plugin
+  overrides are removed.** They rendered `ALTER TABLE` statements for column diffs;
+  the SQL generator that read them left the core in 4.10 and nothing in the core
+  reads them. This is scheduled for a MINOR release; `dblift.db` is not public API.
+  Removed: `render_column_nullable_change`, `render_column_default_change`,
+  `render_column_type_change`, `render_column_collation_change`, and the overrides
+  in the cosmosdb, db2, mysql, oracle, postgresql, sqlite and sqlserver plugins.
+  A plugin that returns a generator from `ddl_generator_class` /
+  `alter_generator_class` is unaffected.
+
 - **`dblift.core.sql_generator` and the SQL model's rendering members are removed.**
   `create_statement` / `drop_statement` on the model classes and
   `Table.generate_alter_table_check_constraints` /

@@ -309,67 +309,6 @@ class BaseQuirks:
         """
         return self.default_schema_name
 
-    # ------------------------------------------------------------------
-    # Column ALTER generation hooks.
-    # Declare per-change ALTER rendering for generator implementations.
-    # Each hook receives the pre-formatted identifiers so the plugin
-    # only needs to compose the SQL string.  Return ``None`` to emit
-    # a warning and skip the change; return a ``SqlStatement`` comment
-    # to document a no-op (e.g. schema-less dialects).
-    # ------------------------------------------------------------------
-
-    def render_column_nullable_change(
-        self,
-        col_diff: object,
-        formatted_table: str,
-        formatted_column: str,
-        dialect: str,
-    ) -> "Optional[object]":
-        """Return ALTER statement to add/drop NOT NULL, or None if unsupported.
-
-        Default: None (dialect not implemented — caller logs a warning).
-        """
-        return None
-
-    def render_column_default_change(
-        self,
-        col_diff: object,
-        formatted_table: str,
-        formatted_column: str,
-        dialect: str,
-    ) -> "Optional[object]":
-        """Return ALTER statement to set/drop a column DEFAULT, or None if unsupported.
-
-        Default: None (dialect not implemented — caller logs a warning).
-        """
-        return None
-
-    def render_column_type_change(
-        self,
-        col_diff: object,
-        formatted_table: str,
-        formatted_column: str,
-        dialect: str,
-    ) -> "Optional[object]":
-        """Return ALTER statement to change a column's data type, or None if unsupported.
-
-        Default: None (dialect not implemented — caller logs a warning).
-        """
-        return None
-
-    def render_column_collation_change(
-        self,
-        col_diff: object,
-        formatted_table: str,
-        formatted_column: str,
-        dialect: str,
-    ) -> "Optional[object]":
-        """Return ALTER statement to change a column's collation, or None if unsupported.
-
-        Default: None (dialect not implemented — caller logs a warning).
-        """
-        return None
-
     #: Identifier-quoting characters. Default is ANSI double-quote on
     #: both sides; MySQL uses backticks, SQL Server uses square
     #: brackets. Plugins override the two attributes.
