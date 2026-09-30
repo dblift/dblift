@@ -241,30 +241,6 @@ class BaseQuirks:
         can't handle natively."""
         return sql_content
 
-    def normalize_column_data_type(self, col: object, data_type: str) -> str:
-        """Normalize a column's data type string for DDL generation.
-
-        Receives the base string extracted from ``col.data_type``. Plugins override
-        to handle dialect-specific type representations:
-        - SQL Server: strip ``IDENTITY`` suffix, collapse ``DATETIME(n)``
-        - DB2: collapse ``TIMESTAMP(n)`` → ``TIMESTAMP``
-        - PostgreSQL: strip precision from fixed-width float types, reorder
-          ``TIMESTAMP {WITH|WITHOUT} TIME ZONE(n)``
-
-        Default: passthrough (return ``data_type`` unchanged).
-        """
-        return data_type
-
-    def render_identity_clause(self, col: object) -> "Optional[str]":
-        """Return the identity/auto-increment clause for an identity column, or None.
-
-        When the column is not an identity column, return ``None`` so the
-        caller can fall through to the non-identity path.
-
-        Default: None (dialect has no identity syntax, or column is not identity).
-        """
-        return None
-
     def fk_reference_bind_params(self, schema: str, table: str, column: str) -> "list[str]":
         """Return the bind-parameter list for the FK reference safety-check query.
 
@@ -332,15 +308,6 @@ class BaseQuirks:
         a plain default schema name, such as PostgreSQL and SQLite.
         """
         return self.default_schema_name
-
-    def unwrap_default_value(self, default_str: str, column: object) -> str:
-        """Strip dialect-specific wrapping from a DEFAULT value string.
-
-        SQL Server stores default values in parentheses, e.g. ``(0)`` → ``0``.
-        MySQL backtick/double-quote string literals are normalised to single quotes.
-        Default: return ``default_str`` unchanged.
-        """
-        return default_str
 
     # ------------------------------------------------------------------
     # Column ALTER generation hooks.
@@ -667,8 +634,6 @@ class BaseQuirks:
     # plugin overrides the deltas; defaults match the common ANSI shape.
     # ------------------------------------------------------------------
 
-    #: ``CREATE OR REPLACE PROCEDURE/FUNCTION`` is valid (Oracle, PostgreSQL, Db2).
-    proc_supports_create_or_replace: bool = False
     #: Function return-type keyword. Oracle uses ``RETURN``; everyone
     #: else uses ``RETURNS``.
     proc_function_returns_keyword: str = "RETURNS"
@@ -681,9 +646,6 @@ class BaseQuirks:
     #:   ``"mysql_characteristics"`` (BEGIN/END plus characteristics — handled by
     #:   Procedure._render_mysql_body()).
     proc_body_wrap_style: str = "plain"
-    #: Procedure ``DROP`` accepts ``IF EXISTS``. Oracle is the only
-    #: ANSI dialect without it.
-    proc_drop_supports_if_exists: bool = True
     #: Keyword for an INOUT parameter. SQL Server uses ``OUTPUT``;
     #: others use ``INOUT``.
     proc_param_inout_keyword: str = "INOUT"
@@ -772,26 +734,9 @@ class BaseQuirks:
         """
         return (body or "").strip()
 
-    def render_computed_column(
-        self, col: Any, formatted_col_name: str
-    ) -> Tuple[Optional[str], Optional[str]]:
-        """Render a computed/generated column to ``(suffix_clause, new_parts0)``.
-
-        ``suffix_clause`` is appended to the column DDL after the column type;
-        ``new_parts0`` (when non-None) replaces the column-name+type prefix
-        — used by SQL Server's ``col AS (expr) [PERSISTED]`` shape, where the
-        type is omitted entirely.
-
-        Default (``standard`` / DB2 / SQLite): ``GENERATED ALWAYS AS (expr)``.
-        Override in plugin quirks for dialect-specific syntax (PR-G8).
-        """
-        if not getattr(col, "is_computed", False) or not getattr(col, "computed_expression", None):
-            return None, None
-        return f"GENERATED ALWAYS AS ({col.computed_expression})", None
-
     # ------------------------------------------------------------------
     # Sequence DDL hooks.
-    # Declare sequence options and whether DROP accepts IF EXISTS.
+    # Declare sequence options.
     # ------------------------------------------------------------------
 
     #: ``CREATE TEMPORARY SEQUENCE`` is valid (PostgreSQL only).
@@ -803,37 +748,17 @@ class BaseQuirks:
     seq_default_nocache_when_unset: bool = False
     #: Oracle treats ``CACHE 1`` (or 0) as ``NOCACHE``.
     seq_cache_one_means_nocache: bool = False
-    #: ``DROP SEQUENCE IF EXISTS`` is supported (everyone except Oracle).
-    seq_drop_supports_if_exists: bool = True
     #: Implicit "no max" sentinel for sequences. DB2 uses ``2**63 - 1``.
     #: ``None`` means no sentinel — comparison uses raw values.
     seq_implicit_max_value: Optional[int] = None
 
     # ------------------------------------------------------------------
-    # Synonym DDL hooks.
-    # Declare the synonym keyword and CREATE OR REPLACE support.
-    # ------------------------------------------------------------------
-
-    #: SYNONYM keyword. DB2 calls them ``ALIAS``; everyone else
-    #: ``SYNONYM``. Used in CREATE / DROP statements.
-    synonym_keyword: str = "SYNONYM"
-    #: ``CREATE OR REPLACE`` is valid for synonyms (Oracle) / aliases (Db2).
-    synonym_supports_create_or_replace: bool = False
-
-    # ------------------------------------------------------------------
     # View DDL hooks.
     # ------------------------------------------------------------------
 
-    #: Plain views only: an existing view can be redefined with one CREATE
-    #: statement. Excludes materialized views; the keyword below gives the spelling.
-    view_supports_create_or_replace: bool = False
-    #: CREATE prefix for plain-view redefinition when supported.
-    view_create_or_replace_keyword: str = "CREATE OR REPLACE"
     #: ``CREATE VIEW ... WITH (security_definer=true)`` clause
     #: (PostgreSQL only).
     view_supports_security_with_clause: bool = False
-    #: ``DROP VIEW IF EXISTS`` is supported (everyone except Oracle).
-    view_drop_supports_if_exists: bool = True
 
     # ------------------------------------------------------------------
     # Misc DDL flags.
@@ -870,30 +795,6 @@ class BaseQuirks:
     #: ``"if_exists_cascade"`` → ``DROP TABLE IF EXISTS x CASCADE``
     #: (default — PG/MSSQL/DB2).
     table_drop_style: str = "if_exists_cascade"
-    #: Whether ``CREATE TABLE`` supports a native ``IF NOT EXISTS`` clause.
-    #: Default False; Oracle (23ai+/19.28+) and SQLite opt in.
-    table_create_supports_if_not_exists: bool = False
-    #: Object keyword in the CREATE header for non-temporary tables. Every
-    #: current dialect says ``TABLE``; the hook stays so a dialect that
-    #: names the object differently can say so without a core branch.
-    table_create_keyword: str = "TABLE"
-    #: Temporary table syntax. ``"global_temporary"`` for Oracle,
-    #: ``"hash_prefix"`` for SQL Server, ``"temporary"`` for standard.
-    table_temporary_style: str = "temporary"
-    #: CHECK constraints must be added post-CREATE via ALTER (DB2).
-    table_check_via_alter: bool = False
-    #: Self-referencing FKs must be added post-CREATE via ALTER (DB2).
-    table_self_ref_fk_via_alter: bool = False
-    #: Inline COLLATE clause supported for character columns.
-    table_supports_inline_collate: bool = False
-    #: NOT NULL is implicit for identity-PK columns (DB2).
-    table_not_null_implicit_on_identity_pk: bool = False
-    #: NOT NULL is implicit for inline-PK columns (Oracle).
-    table_not_null_implicit_on_inline_pk: bool = False
-    #: Single-column UNIQUE constraints inlined in column def (DB2).
-    table_inline_unique_single_col: bool = False
-    #: FK ON UPDATE suppressed in DDL (Oracle does not support it).
-    table_fk_suppress_on_update: bool = False
     #: The engine accepts ``RESTRICT`` as a referential action and keeps it as
     #: written, so the clause is emitted rather than collapsed into the
     #: ``NO ACTION`` default. The test is "accepted and kept", not "does it
@@ -903,15 +804,6 @@ class BaseQuirks:
     #: Server, Oracle), no referential-action clause at all (Redshift), or
     #: parses the keyword but stores ``NO ACTION`` (DuckDB).
     table_fk_supports_restrict: bool = True
-    #: Constraint deferrable clauses supported (PG, Oracle).
-    table_supports_deferrable_constraints: bool = False
-    #: Constraint enable/validate/disable/novalidate (Oracle).
-    table_supports_constraint_state: bool = False
-    #: Constraint WITH NOCHECK (SQL Server).
-    table_supports_constraint_nocheck: bool = False
-    #: Tablespace clause format. ``"quoted"`` (Oracle), ``"plain"``
-    #: (PG/MySQL/MSSQL), ``"skip"`` (DB2 — tablespace in CREATE not used).
-    table_tablespace_style: str = "plain"
     #: Oracle storage parameters (PCTFREE, PCTUSED, INITIAL, NEXT).
     table_supports_storage_params: bool = False
     #: MySQL/MariaDB ``ENGINE=`` storage-engine clause (and the sibling
@@ -922,13 +814,6 @@ class BaseQuirks:
     table_uses_storage_engine_clause: bool = False
     #: PostgreSQL ``INHERITS (parent1, parent2)`` clause.
     table_supports_inherits: bool = False
-    #: Dialect inlines single-column PKs when there is no composite PK.
-    #: Oracle and DB2 always inline via ``table_not_null_implicit_on_inline_pk``
-    #: / ``table_check_via_alter``; this flag covers the PostgreSQL case where
-    #: inlining is preferred but only when ``len(pk_constraints) <= 1``.
-    table_prefers_inline_single_pk: bool = False
-    #: MySQL/MariaDB CHECK expression cleanup (strip _utf8mb4 prefixes).
-    table_check_strip_utf8mb4: bool = False
 
     def __init__(self, dialect_name: str = "") -> None:
         """Initialize the quirks instance with an optional ``dialect_name``.
@@ -1404,16 +1289,6 @@ class BaseQuirks:
         """
         return user_defined_types
 
-    def script_header_session_init(self) -> "list[str]":
-        """Lines to prepend to a generated DDL script's header.
-
-        Default: empty list. SQL Server overrides to inject
-        ``SET ANSI_NULLS ON;`` / ``SET QUOTED_IDENTIFIER ON;`` so the
-        emitted script behaves consistently regardless of the
-        connection's default settings.
-        """
-        return []
-
     def fetch_routine_parameters_fallback(
         self, extractor: Any, schema: str, name: str, kind: str
     ) -> "list[Any]":
@@ -1539,16 +1414,6 @@ class BaseQuirks:
         """
         return None
 
-    def render_drop_for_object(
-        self,
-        obj_type: str,
-        obj_name: str,
-        schema_prefix: str,
-        table_name: Optional[str],
-    ) -> Optional[str]:
-        """Default: defer to the generic ``DROP ... IF EXISTS`` fallback."""
-        return None
-
     def skip_index_ddl(self) -> bool:
         """Default: dialect manages indexes via SQL DDL."""
         return False
@@ -1566,33 +1431,6 @@ class BaseQuirks:
             "-- This dialect manages indexes outside SQL DDL.\n"
             "-- Update the index policy via the database's native API."
         )
-
-    def requires_dialect_specific_wrapping(self, object_type_name: str) -> bool:
-        """Default: no delimiter wrapping required.
-
-        Consumed by a ``SqlGeneratorProtocol`` implementation to decide whether to call
-        ``wrap_dialect_specific_block`` around an object's CREATE
-        statement. MySQL covers procedures/functions here; the wider
-        set covering triggers/events is exposed via the separate
-        ``requires_block_delimiter_wrapping`` hook (different code
-        path, different separator).
-        """
-        return False
-
-    def wrap_dialect_specific_block(self, sql: str) -> str:
-        """Default: pass-through."""
-        return sql
-
-    def requires_block_delimiter_wrapping(self, object_type_name: str) -> bool:
-        """Predicate for the ``$$``-flavoured MySQL DELIMITER helper.
-
-        Distinct from :meth:`requires_dialect_specific_wrapping`: that
-        hook governs CREATE-statement wrapping inside ``generate_ddl``
-        (uses ``//`` markers, narrower object set). This hook governs
-        the broader ``$$`` delimiter path, which historically covers
-        procedures, functions, triggers and events.
-        """
-        return False
 
     def preserves_object_definition(self, object_type_name: str) -> bool:
         """Default: object definition may be re-rendered by the generator."""
@@ -1619,25 +1457,6 @@ class BaseQuirks:
 
     #: PostgreSQL ``CREATE CONSTRAINT TRIGGER`` (deferred row trigger).
     supports_constraint_triggers: bool = False
-
-    # ------------------------------------------------------------------
-    # Object comment hooks.
-    # ------------------------------------------------------------------
-
-    #: SQL template for ``COMMENT ON INDEX``. Empty = dialect does not
-    #: support index-level comments. Placeholders: ``{schema_prefix}``,
-    #: ``{idx_name}``, ``{escaped_comment}``.
-    index_comment_template: str = ""
-
-    #: Standalone table comment SQL, or empty when another mechanism is needed.
-    #: Placeholders: ``{schema_prefix}``, ``{table_name}``, ``{escaped_comment}``.
-    #: Names must already be formatted; schema_prefix includes its trailing dot,
-    #: and escaped_comment has SQL single quotes doubled by the caller.
-    table_comment_template: str = ""
-
-    #: Standalone column comment SQL, with the same contract as the table template
-    #: plus ``{column_name}``. Installed DDL generators consume these templates.
-    column_comment_template: str = ""
 
     # ------------------------------------------------------------------
     # Type normalisation hooks.
@@ -1892,24 +1711,6 @@ class BaseQuirks:
 
     #: SQL Server system-versioned temporal tables.
     table_supports_system_versioned: bool = False
-
-    def render_system_versioning_alter(
-        self,
-        formatted_table: str,
-        enable: bool,
-        history_formatted: Optional[str] = None,
-        formatted_period_start: Optional[str] = None,
-        formatted_period_end: Optional[str] = None,
-    ) -> Optional[str]:
-        """Return the dialect-specific ALTER TABLE text to toggle system versioning.
-
-        Returns ``None`` when the dialect has no system-versioning syntax — the
-        caller should then skip emission. SQL Server overrides to emit its T-SQL
-        ``SET (SYSTEM_VERSIONING = ON|OFF …)`` shape. All identifier arguments
-        arrive pre-formatted (quote rules already applied) so the hook only
-        composes the surrounding SQL.
-        """
-        return None
 
     def introspector_class(self) -> "Optional[Type[Any]]":
         """Return the dialect-specific introspector class, or None.

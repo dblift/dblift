@@ -34,7 +34,6 @@ class CosmosdbQuirks(BaseQuirks):
     # Cosmos containers are created and reshaped through the Azure SDK, so
     # migrations are Python scripts (``migrate(context)``) rather than SQL.
     supports_sql_migrations = False
-    # view_supports_create_or_replace inherits False: no SQL view DDL.
     # https://learn.microsoft.com/en-us/cosmos-db/query/overview
     # Azure account auth (endpoint + key, or managed identity) instead of
     # host/user/password. Gates the auth validation in
@@ -80,63 +79,6 @@ class CosmosdbQuirks(BaseQuirks):
         parser is therefore an error, not a silent degradation.
         """
         return None
-
-    # CosmosDB has no SQL DDL, so every "DROP X" form renders as
-    # an explanatory comment. Centralised here so ``sql_generator.py`` no
-    # longer carries ``if dialect == "cosmosdb"`` branches.
-    def render_drop_for_object(
-        self,
-        obj_type: str,
-        obj_name: str,
-        schema_prefix: str,
-        table_name: Optional[str],
-    ) -> Optional[str]:
-        """Render every DROP form as an explanatory comment.
-
-        Nothing Cosmos drops is expressible in SQL: containers go through
-        ``database.delete_container`` and the remaining object types do not
-        exist in the NoSQL API. Emitting a comment keeps generated scripts
-        readable without pretending a statement is runnable.
-        """
-        if obj_type in ("VIEW", "MATERIALIZED_VIEW"):
-            return f"-- CosmosDB does not support views. No DROP VIEW needed for '{obj_name}'."
-        if obj_type == "TABLE":
-            return (
-                f"-- CosmosDB containers are dropped through the Azure SDK, not SQL.\n"
-                f"-- In a Python migration: "
-                f"context.db.delete_container({obj_name!r})"
-            )
-        if obj_type == "INDEX":
-            return (
-                "-- CosmosDB indexes are managed via indexing policy, not SQL DDL.\n"
-                "-- To modify indexes, update the container's indexing policy via Azure SDK."
-            )
-        if obj_type == "SEQUENCE":
-            return (
-                f"-- CosmosDB does not support sequences. "
-                f"No DROP SEQUENCE needed for '{obj_name}'."
-            )
-        if obj_type in ("PROCEDURE", "FUNCTION"):
-            return (
-                "-- CosmosDB SQL API does not support stored procedures/functions.\n"
-                "-- Use Azure Functions or stored procedures via other APIs if needed."
-            )
-        if obj_type == "TRIGGER":
-            return (
-                f"-- CosmosDB does not support triggers. "
-                f"No DROP TRIGGER needed for '{obj_name}'."
-            )
-        if obj_type == "EXTENSION":
-            return (
-                f"-- CosmosDB does not support extensions. "
-                f"No DROP EXTENSION needed for '{obj_name}'."
-            )
-        # Unknown type: still emit a comment rather than invalid SQL.
-        return (
-            f"-- CosmosDB does not support DROP {obj_type} via SQL API "
-            f"for '{obj_name}'.\n"
-            "-- This operation may need to be performed via Azure SDK or Portal."
-        )
 
     def skip_index_ddl(self) -> bool:
         """True — CosmosDB indexing policy is JSON metadata managed via the SDK, not SQL DDL."""

@@ -27,11 +27,6 @@ class SqlserverQuirks(BaseQuirks):
     memory-optimised and system-versioned tables.
     """
 
-    # Table/column descriptions use extended properties, not COMMENT ON SQL.
-    # https://learn.microsoft.com/en-us/sql/relational-databases/system-stored-procedures/sp-addextendedproperty-transact-sql
-    table_comment_template = ""
-    column_comment_template = ""
-
     # Capability matrix (was ``_CAPABILITIES["sqlserver"]``).
     supports_transactions = True
     supports_transactional_ddl = True
@@ -107,10 +102,6 @@ class SqlserverQuirks(BaseQuirks):
     # Procedure / function DDL.
     proc_body_wrap_style = "begin_end"
     proc_param_inout_keyword = "OUTPUT"
-    # CREATE OR ALTER VIEW requires SQL Server 2016 SP1+.
-    # https://learn.microsoft.com/en-us/sql/t-sql/statements/create-view-transact-sql
-    view_supports_create_or_replace = True
-    view_create_or_replace_keyword = "CREATE OR ALTER"
     # Index DDL.
     index_qualifies_with_schema = False
     index_with_options_style = "uppercase"
@@ -125,33 +116,12 @@ class SqlserverQuirks(BaseQuirks):
     table_uses_filegroup_syntax = True
     supports_online_index = True
     metadata_catalog_mode = "catalog+schema"
-    # Table DDL.
-    table_temporary_style = "hash_prefix"
-    table_supports_constraint_nocheck = True
     # T-SQL's referential-action grammar is ON DELETE/UPDATE { NO ACTION |
     # CASCADE | SET NULL | SET DEFAULT } -- RESTRICT is not a keyword here.
     table_fk_supports_restrict = False
     # Wave A hooks.
     table_supports_memory_optimized = True
     table_supports_system_versioned = True
-
-    def render_system_versioning_alter(
-        self,
-        formatted_table: str,
-        enable: bool,
-        history_formatted: Optional[str] = None,
-        formatted_period_start: Optional[str] = None,
-        formatted_period_end: Optional[str] = None,
-    ) -> Optional[str]:
-        """Emit T-SQL to toggle ``SYSTEM_VERSIONING`` on a temporal table."""
-        if not enable:
-            return f"ALTER TABLE {formatted_table} SET (SYSTEM_VERSIONING = OFF);"
-        return (
-            f"ALTER TABLE {formatted_table} "
-            f"ADD PERIOD FOR SYSTEM_TIME ({formatted_period_start}, {formatted_period_end});\n"
-            f"ALTER TABLE {formatted_table} "
-            f"SET (SYSTEM_VERSIONING = ON (HISTORY_TABLE = {history_formatted}));"
-        )
 
     default_index_type = "NONCLUSTERED"
     # Wave B hooks.
@@ -259,20 +229,6 @@ class SqlserverQuirks(BaseQuirks):
         result = _PK_CLUSTERED_RE.sub(r"\1", sql_content)
         return _UNIQUE_CLUSTERED_RE.sub(r"\1", result)
 
-    # SQL Server DROP INDEX needs an ON-clause.
-    def render_drop_for_object(
-        self,
-        obj_type: str,
-        obj_name: str,
-        schema_prefix: str,
-        table_name: Optional[str],
-    ) -> Optional[str]:
-        """``DROP INDEX IF EXISTS idx ON tbl`` — SQL Server binds the index name to its table."""
-        if obj_type == "INDEX":
-            target = table_name or "unknown"
-            return f"DROP INDEX IF EXISTS {obj_name} ON {schema_prefix}{target}"
-        return None
-
     # Column ALTER hooks.
     def render_column_nullable_change(
         self, col_diff: object, formatted_table: str, formatted_column: str, dialect: str
@@ -359,39 +315,6 @@ class SqlserverQuirks(BaseQuirks):
             dialect=dialect,
         )
 
-    # Strip IDENTITY suffix from type string; collapse DATETIME(n).
-    def normalize_column_data_type(self, col: object, data_type: str) -> str:
-        """Strip trailing ``IDENTITY`` on identity cols; collapse ``DATETIME(n)`` → ``DATETIME``."""
-        import re
-
-        result = data_type
-        if getattr(col, "is_identity", False):
-            result = re.sub(r"\s+identity\s*$", "", result, flags=re.IGNORECASE)
-        if re.match(r"^datetime\s*\(", result, re.IGNORECASE):
-            result = "datetime"
-        return result
-
-    # SQL Server identity — IDENTITY(seed, increment).
-    def render_identity_clause(self, col: object) -> "Optional[str]":
-        """SQL Server identity columns use ``IDENTITY(seed, increment)`` (defaults: 1, 1)."""
-        seed = getattr(col, "identity_seed", 1) or 1
-        increment = getattr(col, "identity_increment", 1) or 1
-        return f"IDENTITY({seed},{increment})"
-
-    # SQL Server wraps defaults in parentheses — unwrap when safe.
-    def unwrap_default_value(self, default_str: str, column: object) -> str:
-        """Strip outer ``(`` … ``)`` from a DEFAULT when the inner expression is a literal.
-
-        SQL Server stores defaults wrapped in parens (e.g. ``(0)``); the wrapper is
-        removed when the inner text contains no operators or boolean keywords, so
-        compound expressions like ``(a+b)`` stay quoted.
-        """
-        if default_str.startswith("(") and default_str.endswith(")"):
-            inner = default_str[1:-1].strip()
-            if not any(op in inner for op in ["+", "-", "*", "/", "=", "<", ">", "AND", "OR"]):
-                return inner
-        return default_str
-
     non_transactional_sql_patterns = (
         (
             r"^CREATE\s+FULLTEXT\s+CATALOG\b",
@@ -471,21 +394,6 @@ class SqlserverQuirks(BaseQuirks):
             table.partition_method = "RANGE"
         if part_cols:
             table.partition_columns = [c.strip() for c in part_cols.split(",")]
-
-    def script_header_session_init(self) -> "list[str]":
-        """SQL Server: pin ``ANSI_NULLS`` and ``QUOTED_IDENTIFIER`` ON in
-        the script header so the emitted DDL parses consistently
-        regardless of the connection's defaults."""
-        return [
-            "SET ANSI_NULLS ON;",
-            "SET QUOTED_IDENTIFIER ON;",
-            "SET ANSI_PADDING ON;",
-            "SET ANSI_WARNINGS ON;",
-            "SET CONCAT_NULL_YIELDS_NULL ON;",
-            "SET ARITHABORT ON;",
-            "SET NUMERIC_ROUNDABORT OFF;",
-            "--",
-        ]
 
     def fetch_unique_constraints(
         self, extractor: Any, schema: str, table: str
@@ -594,16 +502,6 @@ class SqlserverQuirks(BaseQuirks):
         is the correct timestamp-with-precision name.
         """
         return {"INTEGER": "INT", "VARCHAR": "VARCHAR", "TIMESTAMP": "DATETIME2"}
-
-    def render_computed_column(
-        self, col: Any, formatted_col_name: str
-    ) -> Tuple[Optional[str], Optional[str]]:
-        """SQL Server: ``col AS (expr) [PERSISTED]`` (replaces the type prefix)."""
-        if not getattr(col, "is_computed", False) or not getattr(col, "computed_expression", None):
-            return None, None
-        persisted = "PERSISTED" if getattr(col, "computed_stored", False) else ""
-        new_parts0 = f"{formatted_col_name} AS ({col.computed_expression})"
-        return (persisted if persisted else None), new_parts0
 
 
 __all__ = ["SqlserverQuirks"]

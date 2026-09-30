@@ -359,14 +359,9 @@ def enrich_columns_with_identity(
                         f"Could not decode identity metadata for column "
                         f"{column.name!r} in {schema}.{table}: {decode_error}"
                     )
-                    # A decode failure means we cannot reliably tell "seed
-                    # decoded fine, increment failed" apart from "failed
-                    # immediately" -- either way, downstream DDL rendering
-                    # must not mistake a leftover None for "never asked, use
-                    # SQL Server's own default". Reset is_identity and the
-                    # three fields render_identity_clause reads so the column
-                    # falls out of identity handling entirely rather than
-                    # rendering a guessed IDENTITY(1,1).
+                    # A decode failure leaves the identity metadata incomplete.
+                    # Reset the flag, seed, increment and generation kind together
+                    # so the column cannot claim a partially decoded identity.
                     #
                     # identity_generation is cleared here even though the
                     # else branch below is what assigns it: an earlier pass
@@ -389,7 +384,7 @@ def enrich_columns_with_identity(
                     #
                     # identity_generation is assigned here rather than
                     # alongside is_identity above so it shares the fate of
-                    # seed/increment: render_identity_clause reads it too,
+                    # seed/increment: these fields describe one identity,
                     # and a column whose identity metadata could not be
                     # decoded must fall out of identity handling entirely.
                     # This placement keeps a value we would immediately

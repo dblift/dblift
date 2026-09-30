@@ -42,56 +42,6 @@ def all_registered_dialects() -> "list[str]":
     return sorted({d for p in ProviderRegistry.list_plugins() for d in p.dialects})
 
 
-class TestViewCreateOrReplace:
-    """Callers can select the plain-view redefinition syntax without dialect branches."""
-
-    @pytest.mark.parametrize(
-        "dialect, supported, keyword",
-        [
-            ("postgresql", True, "CREATE OR REPLACE"),
-            ("neon", True, "CREATE OR REPLACE"),
-            ("supabase", True, "CREATE OR REPLACE"),
-            ("aurora-postgresql", True, "CREATE OR REPLACE"),
-            ("alloydb", True, "CREATE OR REPLACE"),
-            ("yugabytedb", True, "CREATE OR REPLACE"),
-            ("timescaledb", True, "CREATE OR REPLACE"),
-            ("citus", True, "CREATE OR REPLACE"),
-            ("cockroachdb", True, "CREATE OR REPLACE"),
-            ("redshift", True, "CREATE OR REPLACE"),
-            ("mysql", True, "CREATE OR REPLACE"),
-            ("mariadb", True, "CREATE OR REPLACE"),
-            ("oracle", True, "CREATE OR REPLACE"),
-            ("db2", True, "CREATE OR REPLACE"),
-            ("duckdb", True, "CREATE OR REPLACE"),
-            ("snowflake", True, "CREATE OR REPLACE"),
-            ("sqlserver", True, "CREATE OR ALTER"),
-            ("sqlite", False, "CREATE OR REPLACE"),
-            ("cosmosdb", False, "CREATE OR REPLACE"),
-            ("mongodb", False, "CREATE OR REPLACE"),
-        ],
-    )
-    def test_declared_syntax(self, dialect: str, supported: bool, keyword: str) -> None:
-        q = quirks(dialect)
-        assert q.view_supports_create_or_replace is supported
-        assert q.view_create_or_replace_keyword == keyword
-
-    def test_every_dialect_declares_a_boolean(self) -> None:
-        for dialect in all_registered_dialects():
-            assert isinstance(quirks(dialect).view_supports_create_or_replace, bool), dialect
-
-    def test_every_dialect_declares_a_create_keyword(self) -> None:
-        for dialect in all_registered_dialects():
-            keyword = quirks(dialect).view_create_or_replace_keyword
-            assert isinstance(keyword, str), dialect
-            assert keyword.startswith("CREATE "), dialect
-
-    def test_default_does_not_claim_redefinition_support(self) -> None:
-        assert BaseQuirks().view_supports_create_or_replace is False
-
-    def test_default_keyword_is_create_or_replace(self) -> None:
-        assert BaseQuirks().view_create_or_replace_keyword == "CREATE OR REPLACE"
-
-
 # --------------------------------------------------------------------------
 # row_limit_style
 # --------------------------------------------------------------------------
@@ -761,33 +711,3 @@ class TestTableFkSupportsRestrict:
         assert "table_fk_supports_restrict" in vars(DuckDBQuirks)
         assert "table_fk_supports_restrict" in vars(OracleQuirks)
         assert "table_fk_supports_restrict" in vars(SqlserverQuirks)
-
-
-class TestTableAndColumnComments:
-    @pytest.mark.parametrize("attribute", ["table_comment_template", "column_comment_template"])
-    def test_every_dialect_declares_a_string(self, attribute):
-        assert isinstance(getattr(BaseQuirks(), attribute), str)
-        for dialect in all_registered_dialects():
-            assert isinstance(getattr(quirks(dialect), attribute), str), dialect
-
-    @pytest.mark.parametrize("dialect", ["postgresql", "oracle", "db2"])
-    @pytest.mark.parametrize("schema_prefix", ["", '"app".'])
-    def test_comment_templates_preserve_escaped_quotes(self, dialect, schema_prefix):
-        q = quirks(dialect)
-        values = dict(
-            schema_prefix=schema_prefix,
-            table_name='"t"',
-            column_name='"c"',
-            escaped_comment="Owner's note".replace("'", "''"),
-        )
-        assert q.table_comment_template.format(**values) == (
-            f"COMMENT ON TABLE {schema_prefix}\"t\" IS 'Owner''s note';"
-        )
-        assert q.column_comment_template.format(**values) == (
-            f"COMMENT ON COLUMN {schema_prefix}\"t\".\"c\" IS 'Owner''s note';"
-        )
-
-    @pytest.mark.parametrize("dialect", ["mysql", "mariadb", "sqlserver"])
-    def test_dialects_without_standalone_comment_statements_have_empty_templates(self, dialect):
-        assert quirks(dialect).table_comment_template == ""
-        assert quirks(dialect).column_comment_template == ""

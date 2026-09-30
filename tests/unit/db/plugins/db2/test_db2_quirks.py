@@ -8,14 +8,6 @@ from dblift.core.state.sql_statement import SqlStatement
 from dblift.db.plugins.db2.quirks import Db2Quirks
 
 
-def test_db2_supports_create_or_replace_routines() -> None:
-    assert Db2Quirks().proc_supports_create_or_replace is True
-
-
-def test_db2_supports_create_or_replace_aliases() -> None:
-    assert Db2Quirks().synonym_supports_create_or_replace is True
-
-
 def test_build_snapshot_table_ddl_refuses_db2_snapshot_ddl() -> None:
     with pytest.raises(NotImplementedError):
         Db2Quirks().build_snapshot_table_ddl('"APP"."DBLIFT_SCHEMA_SNAPSHOTS"', 255, 128)

@@ -87,6 +87,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
+- Removed **37 `BaseQuirks` rendering members and their plugin overrides**.
+  The SQL generator that read them left the core in 4.10; nothing in the core
+  reads them. This is scheduled for a MINOR release; `dblift.db` is not public
+  API (see [the semver policy](docs/semver-policy.md)). A plugin that overrode
+  one of these members has nothing to override any more. Plugins returning a
+  generator from `ddl_generator_class` / `alter_generator_class` are unaffected.
+  Removed members:
+  `column_comment_template`, `index_comment_template`,
+  `table_comment_template`, `proc_drop_supports_if_exists`,
+  `proc_supports_create_or_replace`, `seq_drop_supports_if_exists`,
+  `synonym_keyword`, `synonym_supports_create_or_replace`,
+  `table_check_strip_utf8mb4`, `table_check_via_alter`,
+  `table_create_keyword`, `table_create_supports_if_not_exists`,
+  `table_fk_suppress_on_update`, `table_inline_unique_single_col`,
+  `table_not_null_implicit_on_identity_pk`, `table_not_null_implicit_on_inline_pk`,
+  `table_prefers_inline_single_pk`, `table_self_ref_fk_via_alter`,
+  `table_supports_constraint_nocheck`, `table_supports_constraint_state`,
+  `table_supports_deferrable_constraints`, `table_supports_inline_collate`,
+  `table_tablespace_style`, `table_temporary_style`,
+  `view_create_or_replace_keyword`, `view_drop_supports_if_exists`,
+  `view_supports_create_or_replace`, `normalize_column_data_type`,
+  `render_computed_column`, `render_drop_for_object`,
+  `render_identity_clause`, `render_system_versioning_alter`,
+  `requires_block_delimiter_wrapping`, `requires_dialect_specific_wrapping`,
+  `script_header_session_init`, `unwrap_default_value`,
+  `wrap_dialect_specific_block`.
+
 - **`dblift.core.sql_generator` and the SQL model's rendering members are removed.**
   `create_statement` / `drop_statement` on the model classes and
   `Table.generate_alter_table_check_constraints` /
