@@ -84,9 +84,5 @@ class MongodbQuirks(BaseQuirks):
         """No cross-dialect type mapping — BSON types are not SQL types."""
         return {}
 
-    def type_preferences(self) -> "Dict[str, str]":
-        """No preferred-type mapping — see :meth:`type_equivalents`."""
-        return {}
-
 
 __all__ = ["MongodbQuirks"]

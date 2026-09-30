@@ -83,24 +83,9 @@ class PostgresqlQuirks(BaseQuirks):
     drop_supports_if_exists = True
     drop_table_default_cascade = True
     supports_concurrent_index = True
-    proc_supports_language_clause = True
-    proc_body_wrap_style = "dollar_quotes"
     # Index DDL.
-    index_qualifies_with_schema = False
-    index_supports_using_clause = True
     index_no_sort_types = frozenset({"GIN", "GIST", "BRIN", "HASH", "SPGIST"})
-    index_with_options_style = "lowercase"
-    # Sequence DDL.
-    seq_supports_temp = True
-    view_supports_security_with_clause = True
-    # View comparison.
-    view_supports_unlogged_and_security = True
-    serial_types_alias_integer = True
     table_supports_inherits = True
-    # Wave A hooks.
-    supports_constraint_triggers = True
-    seq_uses_nextval_syntax = True
-    computed_column_introspection_incomplete = True
     supports_virtual_computed_columns = False
     # Wave B hooks.
     native_driver_display = "psycopg"
@@ -562,53 +547,6 @@ class PostgresqlQuirks(BaseQuirks):
                 names.add(str(name))
         return names
 
-    def fk_reference_query(
-        self, schema: str, table: str, col: str
-    ) -> "Tuple[Optional[str], list[Any]]":
-        """Return the PostgreSQL ``pg_constraint`` query for FKs targeting ``col``.
-
-        ``information_schema`` is visible only to a table's owner or a grantee
-        holding a privilege other than ``SELECT``; ``pg_catalog.pg_constraint``
-        is visible to any role that can see the table, so a read-only role
-        still finds the referencing key.
-        """
-        sql = """
-            SELECT
-                con.conname AS constraint_name,
-                nsp.nspname || '.' || rel.relname AS table_name
-            FROM pg_catalog.pg_constraint con
-            JOIN pg_catalog.pg_class ref ON ref.oid = con.confrelid
-            JOIN pg_catalog.pg_namespace refn ON refn.oid = ref.relnamespace
-            JOIN pg_catalog.pg_attribute refatt
-                ON refatt.attrelid = con.confrelid
-                AND refatt.attnum = ANY(con.confkey)
-            JOIN pg_catalog.pg_class rel ON rel.oid = con.conrelid
-            JOIN pg_catalog.pg_namespace nsp ON nsp.oid = rel.relnamespace
-            WHERE con.contype = 'f'
-                AND refn.nspname = ?
-                AND ref.relname = ?
-                AND refatt.attname = ?
-                AND NOT refatt.attisdropped
-        """
-        return (sql, self.fk_reference_bind_params(schema, table, col))
-
-    def index_reference_query(
-        self, schema: str, table: str, col: str
-    ) -> "Tuple[Optional[str], list[Any]]":
-        """PostgreSQL ``pg_index`` / ``pg_class`` query listing indexes covering ``col``."""
-        sql = """
-            SELECT i.relname as index_name
-            FROM pg_index ix
-            JOIN pg_class i ON i.oid = ix.indexrelid
-            JOIN pg_class t ON t.oid = ix.indrelid
-            JOIN pg_namespace n ON n.oid = t.relnamespace
-            JOIN pg_attribute a ON a.attrelid = t.oid AND a.attnum = ANY(ix.indkey)
-            WHERE n.nspname = ?
-                AND t.relname = ?
-                AND a.attname = ?
-        """
-        return (sql, [schema, table, col])
-
     def is_sqlglot_opaque_valid_ddl(self, sql_content: str) -> bool:
         """PG ``DROP TRIGGER name ON table`` — sqlglot rejects this valid DDL
         only when the table is schema-qualified (``ON schema.table``).
@@ -672,8 +610,6 @@ class PostgresqlQuirks(BaseQuirks):
             "TIMETZ": "TIME WITH TIME ZONE",
         }
 
-    version_specific_type_mappings = {("postgresql", "9.4+"): {"JSONB": "JSON"}}
-
     # Version-gated features (see core.sql_model.feature_gates). Inherited by
     # the PG-compatible family; divergent engines with their own quirks class
     # (Redshift, CockroachDB) redeclare ``feature_gates`` to opt out.
@@ -686,10 +622,6 @@ class PostgresqlQuirks(BaseQuirks):
             ),
         ),
     }
-
-    def type_preferences(self) -> "dict[str, str]":
-        """PostgreSQL keeps ANSI names — ``INTEGER`` / ``VARCHAR`` / ``TIMESTAMP`` unchanged."""
-        return {"INTEGER": "INTEGER", "VARCHAR": "VARCHAR", "TIMESTAMP": "TIMESTAMP"}
 
 
 __all__ = ["PostgresqlQuirks"]

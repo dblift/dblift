@@ -103,13 +103,5 @@ class SqliteQuirks(BaseQuirks):
             "DOUBLE": "REAL",
         }
 
-    def type_preferences(self) -> "dict[str, str]":
-        """SQLite prefers its storage-class affinity names.
-
-        ``VARCHAR`` → ``TEXT`` and ``TIMESTAMP`` → ``DATETIME`` reflect SQLite's
-        flexible typing where text and date/time are stored as TEXT.
-        """
-        return {"INTEGER": "INTEGER", "VARCHAR": "TEXT", "TIMESTAMP": "DATETIME"}
-
 
 __all__ = ["SqliteQuirks"]

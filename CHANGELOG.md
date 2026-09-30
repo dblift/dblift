@@ -124,6 +124,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   A plugin that returns a generator from `ddl_generator_class` /
   `alter_generator_class` is unaffected.
 
+- **46 unread `BaseQuirks` members, their plugin overrides, and the
+  `ComparatorQuirks` protocol are removed.** Nothing in the core reads them.
+  This is scheduled for a MINOR release; `dblift.db` and
+  `dblift.core.dialect_boundary` are not public API
+  (see [the semver policy](docs/semver-policy.md)).
+
+  - Members with no reader: `index_qualifies_with_schema`, `index_supports_bitmap`,
+    `index_supports_local_partitioned`, `index_supports_mysql_typed_keywords`,
+    `index_supports_using_clause`, `index_with_options_style`, `is_script_directive`,
+    `metadata_catalog_mode`, `proc_body_wrap_style`, `proc_function_returns_keyword`,
+    `proc_supports_language_clause`, `seq_cache_one_means_nocache`,
+    `seq_default_nocache_when_unset`, `seq_nocycle_keyword`, `trigger_supports_for_each_row`,
+    `udt_composite_object_modifier`, `udt_distinct_uses_from_syntax`,
+    `udt_object_body_uses_semicolons`, `version_specific_type_mappings`,
+    `view_supports_security_with_clause`.
+  - Protocol members with no caller: `skip_index_ddl`, `skip_index_ddl_comment` and
+    `preserves_object_definition` from `DdlQuirks`; `fk_reference_query` and
+    `index_reference_query` from `ValidatorQuirks`, plus their
+    `BaseQuirks.fk_reference_bind_params` helper; `type_preferences` from `TypeMapQuirks`.
+  - `select_supports_limit`, whose last reader was removed in 4.9.
+  - The schema-diff comparator facts: `computed_column_introspection_incomplete`,
+    `default_index_type`, `index_supports_tablespace`, `proc_skip_empty_comparison`,
+    `proc_uses_definition_field`, `seq_implicit_max_value`, `seq_supports_temp`,
+    `seq_uses_nextval_syntax`, `serial_types_alias_integer`, `supports_constraint_triggers`,
+    `table_column_default_has_on_update`, `table_fk_supports_restrict`,
+    `table_supports_compress`, `table_supports_memory_optimized`,
+    `table_supports_system_versioned`, `view_supports_algorithm`, `view_supports_force_noforce`,
+    `view_supports_unlogged_and_security`. `ComparatorQuirks` is removed, and
+    `event_supports_mysql_schedule` moves to `ModelQuirks`.
+
+  A plugin that overrode one of these has nothing to override any more.
+
 - **`dblift.core.sql_generator` and the SQL model's rendering members are removed.**
   `create_statement` / `drop_statement` on the model classes and
   `Table.generate_alter_table_check_constraints` /

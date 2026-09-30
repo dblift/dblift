@@ -124,10 +124,6 @@ class BaseQuirks:
 
     dialect_name: str = ""
 
-    #: Per-version vendor→canonical type aliases. Keys are
-    #: ``(dialect, version_spec)`` such as ``("postgresql", "9.4+")``.
-    #: Plugins override with non-empty dicts; base default is empty.
-    version_specific_type_mappings: ClassVar[dict[tuple[str, str], dict[str, str]]] = {}
     #: Version/edition feature gates, keyed by feature name (the shared
     #: vocabulary lives in ``dblift.core.sql_model.feature_gates.KNOWN_FEATURES``).
     #: Resolved by ``dblift.core.sql_model.feature_gates.supports_feature``. Read
@@ -241,16 +237,6 @@ class BaseQuirks:
         can't handle natively."""
         return sql_content
 
-    def fk_reference_bind_params(self, schema: str, table: str, column: str) -> "list[str]":
-        """Return the bind-parameter list for the FK reference safety-check query.
-
-        Most dialects use ``[schema, table, column]``.  Oracle's query references
-        the schema twice and needs ``[schema, schema, table, column]``.
-
-        Default: ``[schema, table, column]``.
-        """
-        return [schema, table, column]
-
     def row_limit_clauses(
         self,
         row_count: int,
@@ -325,22 +311,6 @@ class BaseQuirks:
     #: probe (e.g. connection pre-flight). DB2 rejects bare ``SELECT 1``;
     #: Oracle requires ``FROM DUAL``.
     connection_probe_sql: str = "SELECT 1"
-    #: ``SELECT … LIMIT N`` syntax is supported. PostgreSQL, MySQL and
-    #: SQLite accept ``LIMIT``; Oracle (``FETCH FIRST N ROWS ONLY``) does
-    #: not; SQL Server uses ``TOP N`` instead. DB2's *preferred* rendering
-    #: is also ``FETCH FIRST N ROWS ONLY`` (see :attr:`row_limit_style`),
-    #: but DB2 additionally accepts a bare trailing ``LIMIT`` clause, so it
-    #: sets this True even though its declared ``row_limit_style`` is not
-    #: ``"limit"``. That divergence is pinned from here by
-    #: ``test_row_limit_style_and_select_supports_limit_agree`` in
-    #: ``tests/unit/db/test_dialect_capability_quirks.py``, which sweeps every
-    #: registered dialect and asserts DB2 is the only one where the two
-    #: attributes disagree — so a second dialect cannot quietly join it. The
-    #: engine behaviour behind the divergence was measured against a live db2
-    #: 12.01.0500 server by a capability probe that runs outside this
-    #: distribution and cannot be re-run from this repository. When False,
-    #: optional probes omit the ``LIMIT`` clause.
-    select_supports_limit: bool = True
     #: How a SELECT is bounded to N rows. One of:
     #: ``"limit"`` (trailing ``LIMIT n`` — PostgreSQL family, MySQL,
     #: SQLite, Snowflake — default), ``"top"`` (``TOP (n)`` prefix on the
@@ -360,19 +330,8 @@ class BaseQuirks:
     #: than silently returning the wrong rows when the resolved style is
     #: ``"rownum"``.
     #: Read through :meth:`row_limit_clauses`, which renders the triple
-    #: rather than making each caller re-derive the syntax. Distinct from
-    #: :attr:`select_supports_limit`, which answers the coarser "may I
-    #: append ``LIMIT`` at all" question for optional probes — the two
-    #: usually correlate (SQL Server and Oracle, which set a non-default
-    #: ``row_limit_style``, also set ``select_supports_limit = False``,
-    #: since neither accepts a bare trailing ``LIMIT``) but they are NOT
-    #: guaranteed to: DB2 is a documented exception — it declares
-    #: ``row_limit_style = "fetch_first"`` as its preferred rendering yet
-    #: sets ``select_supports_limit = True`` because the live engine also
-    #: accepts a bare trailing ``LIMIT`` (see :attr:`select_supports_limit`
-    #: for how that is evidenced). Nothing in the framework enforces that the
-    #: two stay consistent, so a new dialect could set one without the other;
-    #: see the invariant test in ``tests/unit/db/test_dialect_capability_quirks.py``.
+    #: rather than making each caller re-derive the syntax. The style declares
+    #: the preferred rendering for the dialect.
     row_limit_style: str = "limit"
     #: How an "insert or update on primary-key conflict" is expressed.
     #: One of: ``"none"`` (no native upsert — the caller must fall back to
@@ -545,12 +504,6 @@ class BaseQuirks:
     #: handing them to a translator. Kept separate from :attr:`is_nosql`
     #: so a future NoSQL dialect with a genuine SQL surface can opt back in.
     supports_sql_migrations: bool = True
-    #: How metadata queries treat the catalog argument:
-    #:   ``"catalog"``   — schema arg becomes catalog (MySQL).
-    #:   ``"catalog+schema"`` — separate catalog (database) and schema
-    #:                          parameters (SQL Server).
-    #:   ``"schema_only"`` — catalog is None, only schema (default).
-    metadata_catalog_mode: str = "schema_only"
     #: Pygments lexer name for syntax-highlighting console output.
     #: Plugins override with their preferred lexer
     #: (PostgreSQL=``"postgresql"``, MySQL=``"mysql"``,
@@ -573,18 +526,6 @@ class BaseQuirks:
     # plugin overrides the deltas; defaults match the common ANSI shape.
     # ------------------------------------------------------------------
 
-    #: Function return-type keyword. Oracle uses ``RETURN``; everyone
-    #: else uses ``RETURNS``.
-    proc_function_returns_keyword: str = "RETURNS"
-    #: ``CREATE FUNCTION ... LANGUAGE plpgsql`` is supported (PostgreSQL).
-    proc_supports_language_clause: bool = False
-    #: Body wrap style. Opaque internal key (not a dialect name). One of:
-    #:   ``"plain"`` (``AS\n{body}``)
-    #:   ``"begin_end"`` (``AS\nBEGIN\n{body}\nEND``)
-    #:   ``"dollar_quotes"`` (``AS $$\n{body}\n$$``)
-    #:   ``"mysql_characteristics"`` (BEGIN/END plus characteristics — handled by
-    #:   Procedure._render_mysql_body()).
-    proc_body_wrap_style: str = "plain"
     #: Keyword for an INOUT parameter. SQL Server uses ``OUTPUT``;
     #: others use ``INOUT``.
     proc_param_inout_keyword: str = "INOUT"
@@ -596,28 +537,11 @@ class BaseQuirks:
     # Declare CREATE INDEX options and table-qualified/standalone DROP forms.
     # ------------------------------------------------------------------
 
-    #: Whether ``CREATE INDEX schema.idx`` qualifies the index name with
-    #: its own schema. PostgreSQL / SQL Server / MySQL / MariaDB store
-    #: the index in the table's schema, so the prefix is dropped.
-    index_qualifies_with_schema: bool = True
     #: ``CREATE ONLINE INDEX`` / ``CREATE OFFLINE INDEX`` keyword (MySQL).
     index_supports_online_offline: bool = False
-    #: ``USING <method>`` clause after ``CREATE INDEX ... ON tbl USING gin (...)``
-    #: (PostgreSQL non-BTREE index types).
-    index_supports_using_clause: bool = False
-    #: ``CREATE BITMAP INDEX`` keyword variant (Oracle).
-    index_supports_bitmap: bool = False
-    #: ``CREATE INDEX ... LOCAL`` for partitioned-table indexes (Oracle).
-    index_supports_local_partitioned: bool = False
-    #: ``TABLESPACE foo`` clause (Oracle).
-    index_supports_tablespace: bool = False
     #: Index types that do *not* accept ASC/DESC sort directions
     #: (PostgreSQL: GIN/GIST/BRIN/HASH/SPGIST). Names are uppercase.
     index_no_sort_types: "frozenset[str]" = frozenset()
-    #: ``WITH (...)`` storage-options style. ``""`` = no options
-    #: supported; ``"lowercase"`` = PG (``fillfactor=...``);
-    #: ``"uppercase"`` = SQL Server (``FILLFACTOR=...``).
-    index_with_options_style: str = ""
     #: ``DROP INDEX idx ON tbl`` shape — index name is bound to the
     #: table (SQL Server, MySQL, MariaDB).
     index_drop_includes_table: bool = False
@@ -627,17 +551,6 @@ class BaseQuirks:
     #: ``DROP INDEX IF EXISTS`` is supported in the standalone shape
     #: (PostgreSQL, SQLite: yes; Oracle, DB2: no).
     index_drop_standalone_supports_if_exists: bool = True
-    #: MySQL allows index-type prefixes in the CREATE INDEX header
-    #: (FULLTEXT, SPATIAL, etc.).
-    index_supports_mysql_typed_keywords: bool = False
-    #: Comparator: dialect's canonical default index type used for normalization
-    #: (e.g. ``BTREE`` for PG/MySQL, ``NONCLUSTERED`` for SQL Server,
-    #: ``NORMAL`` for Oracle, ``REGULAR`` for DB2). The comparator treats
-    #: ``BTREE`` and the dialect default as equivalent.
-    default_index_type: str = "BTREE"
-    #: Comparator: SERIAL/BIGSERIAL/SMALLSERIAL data types alias to
-    #: INTEGER/BIGINT/SMALLINT respectively (PostgreSQL identity columns).
-    serial_types_alias_integer: bool = False
     #: ``import-flyway`` reads the *source* Flyway table by its exact name
     #: rather than through ``get_applied_migrations`` (which folds the name
     #: to the dialect's catalogue case). True only for dialects whose
@@ -654,9 +567,6 @@ class BaseQuirks:
 
     #: ``CREATE DEFINER = user@host TRIGGER`` is valid (MySQL/MariaDB).
     trigger_supports_definer_clause: bool = False
-    #: ``FOR EACH ROW`` clause is emitted for row-level triggers.
-    #: SQL Server has no ``FOR EACH ROW`` syntax — set to False there.
-    trigger_supports_for_each_row: bool = True
     #: Statement terminator appended after the trigger body. Oracle
     #: SQL*Plus blocks end with ``\n/``; everyone else uses empty.
     trigger_terminator: str = ""
@@ -674,32 +584,6 @@ class BaseQuirks:
         return (body or "").strip()
 
     # ------------------------------------------------------------------
-    # Sequence DDL hooks.
-    # Declare sequence options.
-    # ------------------------------------------------------------------
-
-    #: ``CREATE TEMPORARY SEQUENCE`` is valid (PostgreSQL only).
-    seq_supports_temp: bool = False
-    #: Keyword for "do not cycle". Oracle / PostgreSQL / DB2 use
-    #: ``NOCYCLE`` (no space); SQL Server uses ``NO CYCLE``.
-    seq_nocycle_keyword: str = "NOCYCLE"
-    #: When ``cache`` is unset, append ``NOCACHE`` (Oracle behaviour).
-    seq_default_nocache_when_unset: bool = False
-    #: Oracle treats ``CACHE 1`` (or 0) as ``NOCACHE``.
-    seq_cache_one_means_nocache: bool = False
-    #: Implicit "no max" sentinel for sequences. DB2 uses ``2**63 - 1``.
-    #: ``None`` means no sentinel — comparison uses raw values.
-    seq_implicit_max_value: Optional[int] = None
-
-    # ------------------------------------------------------------------
-    # View DDL hooks.
-    # ------------------------------------------------------------------
-
-    #: ``CREATE VIEW ... WITH (security_definer=true)`` clause
-    #: (PostgreSQL only).
-    view_supports_security_with_clause: bool = False
-
-    # ------------------------------------------------------------------
     # Misc DDL flags.
     # ------------------------------------------------------------------
 
@@ -707,14 +591,6 @@ class BaseQuirks:
     #: ``ENDS '...'`` / ``AT '...'`` timestamp literal quoting.
     #: Only MySQL/MariaDB have CREATE EVENT.
     event_supports_mysql_schedule: bool = False
-    #: ``CREATE TYPE ... AS OBJECT`` body uses semicolons (Oracle only).
-    udt_object_body_uses_semicolons: bool = False
-    #: Oracle composite types add ``" OBJECT"`` after ``AS``
-    #: (``CREATE TYPE foo AS OBJECT (...)``).
-    udt_composite_object_modifier: str = ""
-    #: SQL Server distinct-type syntax: ``CREATE TYPE x FROM base`` vs.
-    #: standard ``CREATE DISTINCT TYPE x AS base`` everywhere else.
-    udt_distinct_uses_from_syntax: bool = False
     #: ``CREATE TABLE`` references ``ON [PRIMARY]`` / ``TEXTIMAGE_ON``
     #: (SQL Server filegroup syntax, used in cross-dialect comparisons).
     table_uses_filegroup_syntax: bool = False
@@ -734,15 +610,6 @@ class BaseQuirks:
     #: ``"if_exists_cascade"`` → ``DROP TABLE IF EXISTS x CASCADE``
     #: (default — PG/MSSQL/DB2).
     table_drop_style: str = "if_exists_cascade"
-    #: The engine accepts ``RESTRICT`` as a referential action and keeps it as
-    #: written, so the clause is emitted rather than collapsed into the
-    #: ``NO ACTION`` default. The test is "accepted and kept", not "does it
-    #: differ from NO ACTION": on PostgreSQL, SQLite and Db2 it is a stricter,
-    #: immediate check; on MySQL and MariaDB it is a synonym the catalogue still
-    #: reports as written. False where the engine has no such keyword (SQL
-    #: Server, Oracle), no referential-action clause at all (Redshift), or
-    #: parses the keyword but stores ``NO ACTION`` (DuckDB).
-    table_fk_supports_restrict: bool = True
     #: Oracle storage parameters (PCTFREE, PCTUSED, INITIAL, NEXT).
     table_supports_storage_params: bool = False
     #: MySQL/MariaDB ``ENGINE=`` storage-engine clause (and the sibling
@@ -813,15 +680,6 @@ class BaseQuirks:
         ``&&var`` substitution.
         """
         return sql
-
-    def is_script_directive(self, stmt: str) -> bool:
-        """Return ``True`` when *stmt* is a non-executable client-side directive.
-
-        Default: ``False``. Oracle overrides for SQL*Plus directives
-        (``SET``, ``SPOOL``, ``DEFINE``, …) so the statement splitter can
-        drop them before handing the rest to the SQL executor.
-        """
-        return False
 
     def parse_error_policy_directive(self, stmt: str) -> Optional[str]:
         """Parse a positional error-handling directive and return its policy.
@@ -1353,50 +1211,6 @@ class BaseQuirks:
         """
         return None
 
-    def skip_index_ddl(self) -> bool:
-        """Default: dialect manages indexes via SQL DDL."""
-        return False
-
-    def skip_index_ddl_comment(self) -> str:
-        """Comment emitted when ``skip_index_ddl()`` returns True.
-
-        Returned by the framework verbatim when an INDEX is encountered
-        for a dialect that manages indexes outside SQL DDL. Plugins
-        that set ``skip_index_ddl=True`` should override this with a
-        dialect-appropriate explanation. Default is intentionally
-        generic so the framework never names a dialect.
-        """
-        return (
-            "-- This dialect manages indexes outside SQL DDL.\n"
-            "-- Update the index policy via the database's native API."
-        )
-
-    def preserves_object_definition(self, object_type_name: str) -> bool:
-        """Default: object definition may be re-rendered by the generator."""
-        return False
-
-    # ------------------------------------------------------------------
-    # View comparison hooks.
-    # ------------------------------------------------------------------
-
-    #: MySQL/MariaDB ``ALGORITHM = MERGE | TEMPTABLE | UNDEFINED`` on views.
-    view_supports_algorithm: bool = False
-
-    #: Oracle ``CREATE FORCE VIEW`` / ``CREATE OR REPLACE FORCE VIEW``.
-    view_supports_force_noforce: bool = False
-
-    #: PostgreSQL ``UNLOGGED`` materialized views and view-level
-    #: ``security_definer`` / ``security_invoker`` attributes (used during
-    #: comparison to decide whether to diff these attributes).
-    view_supports_unlogged_and_security: bool = False
-
-    # ------------------------------------------------------------------
-    # Trigger comparison hooks.
-    # ------------------------------------------------------------------
-
-    #: PostgreSQL ``CREATE CONSTRAINT TRIGGER`` (deferred row trigger).
-    supports_constraint_triggers: bool = False
-
     # ------------------------------------------------------------------
     # Type normalisation hooks.
     # ------------------------------------------------------------------
@@ -1414,57 +1228,14 @@ class BaseQuirks:
         """
         return {}
 
-    def type_preferences(self) -> "dict[str, str]":
-        """Return per-dialect canonical → preferred-form mapping.
-
-        The type-mapping layer consults this to resolve the preferred
-        name for a canonical type in this dialect
-        (e.g. Oracle prefers ``NUMBER`` for ``INTEGER``).
-        Default: empty dict (use canonical form as-is).
-        """
-        return {}
-
-    # ------------------------------------------------------------------
-    # Procedure/function comparison hooks.
-    # ------------------------------------------------------------------
-
-    #: Oracle stores full procedure DDL in the ``definition`` field rather
-    #: than ``body``; comparator should prefer ``definition`` when ``body``
-    #: is empty.
-    proc_uses_definition_field: bool = False
-
-    #: MySQL cannot reliably introspect procedure parameters/body when empty
-    #: (driver limitation). When True, comparator skips parameter and body
-    #: diffs if the actual value is empty.
-    proc_skip_empty_comparison: bool = False
-
     # ------------------------------------------------------------------
     # Table comparison hooks.
     # ------------------------------------------------------------------
-
-    #: Column DEFAULT values may contain ``ON UPDATE CURRENT_TIMESTAMP``
-    #: (MySQL/MariaDB only). When True, the comparator strips that clause
-    #: before comparing defaults so dialect-specific syntax doesn't generate
-    #: false diffs.
-    table_column_default_has_on_update: bool = False
-
-    #: Sequence defaults use ``nextval('seq_name')`` syntax (PostgreSQL).
-    #: Used by the comparator to detect and normalise sequence-based defaults.
-    seq_uses_nextval_syntax: bool = False
-
-    #: When True, introspection may set ``is_computed`` without a reliable
-    #: ``computed_expression`` (e.g. PostgreSQL catalog/driver gaps). The table
-    #: comparator then suppresses ``(expected_expr, None)`` noise that would not
-    #: indicate a real drift vs. migration SQL.
-    computed_column_introspection_incomplete: bool = False
 
     #: Whether the dialect supports both ``VIRTUAL`` and ``STORED`` computed
     #: columns. PostgreSQL only supports ``STORED``; the validator warns when
     #: the source declares a ``VIRTUAL`` column for a PG target.
     supports_virtual_computed_columns: bool = True
-
-    #: DB2 ``COMPRESS YES/NO`` table clause.
-    table_supports_compress: bool = False
 
     def build_snapshot_table_ddl(
         self,
@@ -1645,12 +1416,6 @@ class BaseQuirks:
         """Whether the error indicates the data change-set table already exists."""
         return False
 
-    #: SQL Server memory-optimised tables (HEKATON).
-    table_supports_memory_optimized: bool = False
-
-    #: SQL Server system-versioned temporal tables.
-    table_supports_system_versioned: bool = False
-
     def introspector_class(self) -> "Optional[Type[Any]]":
         """Return the dialect-specific introspector class, or None.
 
@@ -1688,27 +1453,6 @@ class BaseQuirks:
             f"SELECT CASE WHEN EXISTS (SELECT 1 FROM {table_name} LIMIT 1)"
             f" THEN 1 ELSE 0 END as has_data"
         )
-
-    def fk_reference_query(
-        self, schema: str, table: str, col: str
-    ) -> "tuple[Optional[str], list[Any]]":
-        """Return ``(sql, params)`` to find FK constraints referencing *col*.
-
-        Returns ``(None, [])`` when the dialect has no implementation.
-        SQL is parameterized; params order matches the placeholders.
-        Params are produced by :meth:`fk_reference_bind_params` (already
-        overridden by Oracle to pass schema twice).
-        """
-        return (None, [])
-
-    def index_reference_query(
-        self, schema: str, table: str, col: str
-    ) -> "tuple[Optional[str], list[Any]]":
-        """Return ``(sql, params)`` to find indexes that include *col*.
-
-        Returns ``(None, [])`` when the dialect has no implementation.
-        """
-        return (None, [])
 
     # ------------------------------------------------------------------
     # Provider display / credential hooks.

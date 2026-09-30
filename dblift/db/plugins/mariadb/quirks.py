@@ -33,12 +33,6 @@ class MariadbQuirks(MysqlQuirks):
     # Plain-view redefinition inherits MySQL's CREATE OR REPLACE support.
     # https://mariadb.com/docs/server/server-usage/views/create-view
 
-    # MariaDB 10.2+ JSON; keep MySQL-family keys from parent for shared class attrs.
-    version_specific_type_mappings = {
-        **MysqlQuirks.version_specific_type_mappings,
-        ("mariadb", "10.2+"): {"JSON": "JSON"},
-    }
-
     # Version-gated features. ``feature_gates`` replaces the parent dict
     # wholesale (no MRO merging) — every gate MariaDB wants must be
     # restated here with its own thresholds.

@@ -58,11 +58,6 @@ def test_mariadb_managed_snapshot_table_ddl_opts_out() -> None:
         MariadbQuirks().build_snapshot_table_ddl("app.dblift_schema_snapshots", 128, 64)
 
 
-def test_mariadb_quirks_json_type_mapping() -> None:
-    """MariaDB 10.2+ JSON type is mapped in version_specific_type_mappings."""
-    assert ("mariadb", "10.2+") in MariadbQuirks.version_specific_type_mappings
-
-
 def test_mariadb_plugin_sqlalchemy_url_builder_rejects_jdbc() -> None:
     """URL builder rejects legacy legacy URLs on the native path."""
     from types import SimpleNamespace

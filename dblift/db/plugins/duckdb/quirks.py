@@ -32,10 +32,6 @@ class DuckDBQuirks(BaseQuirks):
     upsert_style = "on_conflict"
     drop_supports_if_exists = True
     table_drop_style = "cascade"  # DuckDB supports DROP TABLE ... CASCADE
-    # ON DELETE RESTRICT parses, but the key is then catalogued with
-    # delete_rule = NO ACTION (probed on 1.5.5), so the keyword would claim
-    # a stricter constraint than the engine stores.
-    table_fk_supports_restrict = False
     # Wave B hooks — embedded, file-based, no credentials (mirrors SQLite).
     native_driver_display = "duckdb"
     requires_credentials = False
@@ -94,10 +90,6 @@ class DuckDBQuirks(BaseQuirks):
             "DECIMAL": "NUMERIC",
             "DOUBLE": "DOUBLE",
         }
-
-    def type_preferences(self) -> "dict[str, str]":
-        """DuckDB keeps ANSI names — ``INTEGER`` / ``VARCHAR`` / ``TIMESTAMP`` unchanged."""
-        return {"INTEGER": "INTEGER", "VARCHAR": "VARCHAR", "TIMESTAMP": "TIMESTAMP"}
 
 
 __all__ = ["DuckDBQuirks"]

@@ -80,28 +80,12 @@ class CosmosdbQuirks(BaseQuirks):
         """
         return None
 
-    def skip_index_ddl(self) -> bool:
-        """True — CosmosDB indexing policy is JSON metadata managed via the SDK, not SQL DDL."""
-        # Indexing policy is JSON metadata managed via the SDK, not SQL.
-        return True
-
-    def skip_index_ddl_comment(self) -> str:
-        """Emit a CosmosDB-specific comment pointing users at the Azure SDK indexing-policy API."""
-        return (
-            "-- CosmosDB indexes are managed via indexing policy, not SQL DDL.\n"
-            "-- To modify indexes, update the container's indexing policy via Azure SDK."
-        )
-
     def introspector_class(self) -> "Optional[Type[Any]]":
         """CosmosDB rich introspection is supplied by an installed extension package."""
         return None
 
     def type_equivalents(self) -> "Dict[str, str]":
         """CosmosDB has no relational type aliases — JSON documents store untyped values."""
-        return {}
-
-    def type_preferences(self) -> "Dict[str, str]":
-        """CosmosDB has no preferred SQL types — values are JSON-typed at the document level."""
         return {}
 
 
