@@ -83,8 +83,6 @@ class PostgresqlQuirks(BaseQuirks):
     drop_supports_if_exists = True
     drop_table_default_cascade = True
     supports_concurrent_index = True
-    # Procedure / function DDL.
-    proc_supports_create_or_replace = True
     proc_supports_language_clause = True
     proc_body_wrap_style = "dollar_quotes"
     # Index DDL.
@@ -94,24 +92,16 @@ class PostgresqlQuirks(BaseQuirks):
     index_with_options_style = "lowercase"
     # Sequence DDL.
     seq_supports_temp = True
-    # View DDL.
-    # https://www.postgresql.org/docs/current/sql-createview.html
-    view_supports_create_or_replace = True
     view_supports_security_with_clause = True
     # View comparison.
     view_supports_unlogged_and_security = True
     serial_types_alias_integer = True
-    # Table DDL.
-    table_supports_inline_collate = True
-    table_supports_deferrable_constraints = True
     table_supports_inherits = True
     # Wave A hooks.
     supports_constraint_triggers = True
     seq_uses_nextval_syntax = True
     computed_column_introspection_incomplete = True
     supports_virtual_computed_columns = False
-    table_prefers_inline_single_pk = True
-    index_comment_template = "COMMENT ON INDEX {schema_prefix}{idx_name} IS '{escaped_comment}';"
     # Wave B hooks.
     native_driver_display = "psycopg"
     connection_identifier_attrs = ("url", "host", "database")
@@ -125,16 +115,6 @@ class PostgresqlQuirks(BaseQuirks):
     # (CockroachDB, Redshift, Citus, YugabyteDB, Neon, Supabase, AlloyDB,
     # Aurora PostgreSQL, TimescaleDB) — they all keep the postgresql:// scheme.
     lint_placeholder_url = "postgresql://localhost/dblift_validate_sql"
-
-    # Default canonical name; ProviderRegistry.get_quirks() passes the
-    # caller's db_type so that aliases (e.g. "postgres") preserve the
-    # invariant ``provider.config.database.type == provider.quirks.dialect_name``.
-    # Table and column comments use standalone COMMENT ON statements.
-    # https://www.postgresql.org/docs/current/sql-comment.html
-    table_comment_template = "COMMENT ON TABLE {schema_prefix}{table_name} IS '{escaped_comment}';"
-    column_comment_template = (
-        "COMMENT ON COLUMN {schema_prefix}{table_name}.{column_name} IS '{escaped_comment}';"
-    )
 
     def __init__(self, dialect_name: str = "postgresql") -> None:
         """Initialize PostgreSQL quirks with the dialect name."""
@@ -636,51 +616,6 @@ class PostgresqlQuirks(BaseQuirks):
         raise; it parses those forms without error."""
         return _DROP_TRIGGER_ON_RE.search(sql_content) is not None
 
-    # PostgreSQL DROP EXTENSION uses extension namespace.
-    def render_drop_for_object(
-        self,
-        obj_type: str,
-        obj_name: str,
-        schema_prefix: str,
-        table_name: Optional[str],
-    ) -> Optional[str]:
-        """``DROP EXTENSION IF EXISTS`` — extensions are unschema-qualified in PostgreSQL.
-
-        Other object types defer to the generic ``DROP ... IF EXISTS`` fallback.
-        """
-        if obj_type == "EXTENSION":
-            return f"DROP EXTENSION IF EXISTS {obj_name}"
-        return None
-
-    # Type normalization — strip precision from fixed-width float
-    # types and reorder TIMESTAMP {WITH|WITHOUT} TIME ZONE(n) → TIMESTAMP(n)
-    # {WITH|WITHOUT} TIME ZONE so downstream comparators see a canonical form.
-    def normalize_column_data_type(self, col: object, data_type: str) -> str:
-        """Strip precision from fixed-width floats; canonicalise ``TIMESTAMP(n) {WITH|WITHOUT} TZ``.
-
-        ``FLOAT4(...)`` / ``FLOAT8(...)`` / ``REAL(...)`` / ``DOUBLE PRECISION(...)`` lose
-        the precision suffix (PostgreSQL ignores it), and ``TIMESTAMP {WITH|WITHOUT} TIME
-        ZONE(n)`` is reordered to ``TIMESTAMP(n) {WITH|WITHOUT} TIME ZONE`` (canonical form).
-        """
-        import re
-
-        dt = data_type.upper()
-        if dt.startswith("FLOAT4("):
-            return "FLOAT4"
-        if dt.startswith("FLOAT8("):
-            return "FLOAT8"
-        if dt.startswith("REAL("):
-            return "REAL"
-        if dt.startswith("DOUBLE PRECISION("):
-            return "DOUBLE PRECISION"
-        m = re.search(r"TIMESTAMP WITHOUT TIME ZONE\((\d+)\)", dt)
-        if m:
-            return f"TIMESTAMP({m.group(1)}) WITHOUT TIME ZONE"
-        m = re.search(r"TIMESTAMP WITH TIME ZONE\((\d+)\)", dt)
-        if m:
-            return f"TIMESTAMP({m.group(1)}) WITH TIME ZONE"
-        return data_type
-
     def enhance_columns(
         self, extractor: Any, schema: str, table: str, columns: "list[Any]"
     ) -> None:
@@ -697,17 +632,6 @@ class PostgresqlQuirks(BaseQuirks):
             col.identity_generation = None
             col.identity_seed = None
             col.identity_increment = None
-
-    def unwrap_default_value(self, default_str: str, column: object) -> str:
-        """Normalize PostgreSQL sequence defaults to native ``nextval('seq'::regclass)``."""
-        match = re.match(
-            r"^\s*nextval\s*\(\s*cast\s*\(\s*'([^']+)'\s+as\s+regclass\s*\)\s*\)\s*$",
-            default_str,
-            re.IGNORECASE,
-        )
-        if match:
-            return f"nextval('{match.group(1)}'::regclass)"
-        return default_str
 
     # Column ALTER hooks.
     def render_column_nullable_change(
@@ -802,12 +726,6 @@ class PostgresqlQuirks(BaseQuirks):
             dialect=dialect,
         )
 
-    # Identity clause — PostgreSQL serial types encode the
-    # auto-increment in the type name; GENERATED … AS IDENTITY for plain
-    # integer types.
-    _PG_SERIAL_TYPES = frozenset(
-        {"serial", "serial4", "bigserial", "serial8", "smallserial", "serial2"}
-    )
     _PG_SERIAL_BASE_TYPES = {
         "serial": "INTEGER",
         "serial4": "INTEGER",
@@ -816,42 +734,6 @@ class PostgresqlQuirks(BaseQuirks):
         "smallserial": "SMALLINT",
         "serial2": "SMALLINT",
     }
-
-    def render_identity_clause(self, col: object) -> "Optional[str]":
-        """PostgreSQL identity: ``None`` for ``SERIAL*`` types (auto-increment is in the type name),
-        otherwise ``GENERATED [ALWAYS|BY DEFAULT] AS IDENTITY`` per ``identity_generation``.
-
-        ``identity_generation`` is trimmed and upper-cased before the
-        comparison because only ``ALWAYS`` tightens the clause and
-        everything else falls through to ``BY DEFAULT`` -- a fallback that
-        fails *open*, so an otherwise-correct value carrying padding or a
-        different case would quietly emit the clause that accepts
-        caller-supplied values the column rejects. Normalising here rather
-        than trusting the writer is what makes that fallback safe: this
-        method cannot know who set the field, since ``from_dict`` restores
-        whatever a serialized snapshot carried.
-
-        Sequence options: when either ``identity_seed`` or
-        ``identity_increment`` is set, append
-        ``(START WITH n INCREMENT BY m)``, defaulting only the unset
-        attribute to ``1``. When neither is set, emit the bare identity
-        keyword with no empty parentheses. Generation kind is unchanged.
-        """
-        data_type = (getattr(col, "data_type", "") or "").lower()
-        if data_type in self._PG_SERIAL_TYPES:
-            return None
-        generation = (getattr(col, "identity_generation", None) or "").strip().upper()
-        if generation == "ALWAYS":
-            clause = "GENERATED ALWAYS AS IDENTITY"
-        else:
-            clause = "GENERATED BY DEFAULT AS IDENTITY"
-        seed = getattr(col, "identity_seed", None)
-        increment = getattr(col, "identity_increment", None)
-        if seed is not None or increment is not None:
-            seed_str = str(seed) if seed is not None else "1"
-            inc_str = str(increment) if increment is not None else "1"
-            return f"{clause} (START WITH {seed_str} INCREMENT BY {inc_str})"
-        return clause
 
     def type_equivalents(self) -> "dict[str, str]":
         """PostgreSQL alias → canonical type map.
@@ -901,16 +783,6 @@ class PostgresqlQuirks(BaseQuirks):
     def type_preferences(self) -> "dict[str, str]":
         """PostgreSQL keeps ANSI names — ``INTEGER`` / ``VARCHAR`` / ``TIMESTAMP`` unchanged."""
         return {"INTEGER": "INTEGER", "VARCHAR": "VARCHAR", "TIMESTAMP": "TIMESTAMP"}
-
-    def render_computed_column(
-        self, col: Any, formatted_col_name: str
-    ) -> Tuple[Optional[str], Optional[str]]:
-        """PostgreSQL: ``GENERATED ALWAYS AS (expr) [STORED]``."""
-        if not getattr(col, "is_computed", False) or not getattr(col, "computed_expression", None):
-            return None, None
-        if getattr(col, "computed_stored", False):
-            return f"GENERATED ALWAYS AS ({col.computed_expression}) STORED", None
-        return f"GENERATED ALWAYS AS ({col.computed_expression})", None
 
 
 __all__ = ["PostgresqlQuirks"]

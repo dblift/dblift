@@ -127,11 +127,8 @@ class OracleQuirks(BaseQuirks):
             return str(username).upper()
         return None
 
-    # Procedure / function DDL.
-    proc_supports_create_or_replace = True
     proc_function_returns_keyword = "RETURN"  # Oracle: ``RETURN`` (no S)
     proc_body_wrap_style = "plain"
-    proc_drop_supports_if_exists = True
     # Index DDL.
     index_drop_standalone_supports_if_exists = True  # native since 23ai / 19.28
     index_supports_bitmap = True
@@ -176,35 +173,20 @@ class OracleQuirks(BaseQuirks):
     # Sequence DDL.
     seq_default_nocache_when_unset = True
     seq_cache_one_means_nocache = True
-    seq_drop_supports_if_exists = True
-    # Synonym DDL.
-    synonym_supports_create_or_replace = True
-    # View DDL.
-    # https://docs.oracle.com/en/database/oracle/oracle-database/19/sqlrf/CREATE-VIEW.html
-    view_supports_create_or_replace = True
-    view_drop_supports_if_exists = True
     # UDT DDL. Oracle ``CREATE TYPE foo AS OBJECT`` uses
     # semicolons in the body; SQL Server uses different syntax.
     udt_object_body_uses_semicolons = True
     udt_composite_object_modifier = " OBJECT"
     # Table DDL.
     table_drop_style = "if_exists_cascade_constraints"
-    table_create_supports_if_not_exists = True
-    table_temporary_style = "global_temporary"
-    table_not_null_implicit_on_inline_pk = True
-    table_fk_suppress_on_update = True
     # Oracle's ON DELETE takes only CASCADE or SET NULL; it has no NO ACTION
-    # or RESTRICT keyword, and no ON UPDATE clause (suppressed above).
+    # or RESTRICT keyword, and no ON UPDATE clause.
     table_fk_supports_restrict = False
-    table_supports_deferrable_constraints = True
-    table_supports_constraint_state = True
-    table_tablespace_style = "quoted"
     table_supports_storage_params = True
     supports_sqlplus_preprocessing = True
     # Wave A hooks.
     view_supports_force_noforce = True
     proc_uses_definition_field = True
-    index_comment_template = "COMMENT ON INDEX {schema_prefix}{idx_name} IS '{escaped_comment}';"
     default_index_type = "NORMAL"
     # Wave B hooks.
     native_driver_display = "python-oracledb"
@@ -213,13 +195,6 @@ class OracleQuirks(BaseQuirks):
     # validate-sql offline placeholder — a service_name is required, so a
     # bare host/port URL is not enough (see build_sqlalchemy_url).
     lint_placeholder_url = "oracle://localhost:1521/?service_name=XEPDB1"
-
-    # Table and column comments use standalone COMMENT ON statements.
-    # https://docs.oracle.com/en/database/oracle/oracle-database/19/sqlrf/COMMENT.html
-    table_comment_template = "COMMENT ON TABLE {schema_prefix}{table_name} IS '{escaped_comment}';"
-    column_comment_template = (
-        "COMMENT ON COLUMN {schema_prefix}{table_name}.{column_name} IS '{escaped_comment}';"
-    )
 
     def __init__(self, dialect_name: str = "oracle") -> None:
         """Initialize Oracle quirks with the dialect name."""
@@ -338,41 +313,6 @@ class OracleQuirks(BaseQuirks):
             return OracleParser
         return None
 
-    # Oracle DROP variants — native IF EXISTS (23ai+/19.28+, no
-    # version gate) for every object type, CASCADE CONSTRAINTS for tables.
-    # TRIGGER/INDEX handled explicitly so they don't fall through the
-    # generic quirks-driven fallback (which would emit a shape keyed on
-    # ``drop_supports_if_exists`` — routing through ``render_drop_for_object``
-    # keeps Oracle's drop grammar owned in one place. PR #241 Bugbot.)
-    def render_drop_for_object(
-        self,
-        obj_type: str,
-        obj_name: str,
-        schema_prefix: str,
-        table_name: Optional[str],
-    ) -> Optional[str]:
-        """Oracle DROP variants — native ``IF EXISTS``; ``CASCADE CONSTRAINTS`` on tables.
-
-        Handles ``VIEW``/``MATERIALIZED_VIEW``/``TABLE``/``INDEX``/``SEQUENCE``/
-        ``PROCEDURE``/``FUNCTION``/``TRIGGER`` so the entire Oracle DROP grammar
-        is owned here.
-        """
-        if obj_type == "VIEW":
-            return f"DROP VIEW IF EXISTS {schema_prefix}{obj_name}"
-        if obj_type == "MATERIALIZED_VIEW":
-            return f"DROP MATERIALIZED VIEW IF EXISTS {schema_prefix}{obj_name}"
-        if obj_type == "TABLE":
-            return f"DROP TABLE IF EXISTS {schema_prefix}{obj_name} CASCADE CONSTRAINTS"
-        if obj_type == "INDEX":
-            return f"DROP INDEX IF EXISTS {schema_prefix}{obj_name}"
-        if obj_type == "SEQUENCE":
-            return f"DROP SEQUENCE IF EXISTS {schema_prefix}{obj_name}"
-        if obj_type in ("PROCEDURE", "FUNCTION"):
-            return f"DROP {obj_type} IF EXISTS {schema_prefix}{obj_name}"
-        if obj_type == "TRIGGER":
-            return f"DROP TRIGGER IF EXISTS {schema_prefix}{obj_name}"
-        return None
-
     # Column ALTER hooks — Oracle uses MODIFY instead of ALTER COLUMN.
     def render_column_nullable_change(
         self, col_diff: object, formatted_table: str, formatted_column: str, dialect: str
@@ -447,24 +387,6 @@ class OracleQuirks(BaseQuirks):
             dialect=dialect,
         )
 
-    def unwrap_default_value(self, default_str: str, column: object) -> str:
-        """Strip empty-parens function-call wrapping from Oracle TIMESTAMP defaults.
-
-        Oracle rejects ``CURRENT_TIMESTAMP()`` / ``SYSTIMESTAMP()`` — bare
-        keyword form is required. Precision variants (``CURRENT_TIMESTAMP(6)``)
-        are also collapsed to the bare keyword in DEFAULT clauses where Oracle
-        infers precision from the column type.
-        """
-        text = default_str.strip()
-        upper = text.upper()
-        if upper in ("CURRENT_TIMESTAMP()", "SYSTIMESTAMP()"):
-            return text[:-2]
-        if upper.startswith("CURRENT_TIMESTAMP("):
-            return "CURRENT_TIMESTAMP"
-        if upper.startswith("SYSTIMESTAMP("):
-            return "SYSTIMESTAMP"
-        return text
-
     def enhance_columns(
         self, extractor: Any, schema: str, table: str, columns: "list[Any]"
     ) -> None:
@@ -501,27 +423,6 @@ class OracleQuirks(BaseQuirks):
             ):
                 generation = "BY DEFAULT ON NULL"
             column.identity_generation = generation
-
-    # ALWAYS is the engine default when generation is omitted; BY DEFAULT permits
-    # explicit values, and ON NULL also generates a value for an explicit NULL.
-    # https://docs.oracle.com/en/database/oracle/oracle-database/19/sqlrf/CREATE-TABLE.html#GUID-F9CE0CC3-13AE-4744-A43C-EAC7A71AAAB6
-    # Oracle identity — GENERATED AS IDENTITY with optional
-    # seed/increment from column metadata.
-    def render_identity_clause(self, col: object) -> "Optional[str]":
-        """Render the captured generation kind and optional identity sequence options.
-
-        Emits the seed/increment clause only when at least one of the two is set
-        on the column; otherwise returns the bare keyword.
-        """
-        generation = getattr(col, "identity_generation", None)
-        clause = f"GENERATED {generation} AS IDENTITY" if generation else "GENERATED AS IDENTITY"
-        seed = getattr(col, "identity_seed", None)
-        increment = getattr(col, "identity_increment", None)
-        if seed is not None or increment is not None:
-            seed_str = str(seed) if seed is not None else "1"
-            inc_str = str(increment) if increment is not None else "1"
-            return f"{clause} (START WITH {seed_str} INCREMENT BY {inc_str})"
-        return clause
 
     # Oracle FK reference query uses schema twice.
     def fk_reference_bind_params(self, schema: str, table: str, column: str) -> "list[str]":
@@ -909,15 +810,6 @@ class OracleQuirks(BaseQuirks):
     def type_preferences(self) -> "dict[str, str]":
         """Oracle prefers ``NUMBER`` (for ``INTEGER``) and ``VARCHAR2`` (not ``VARCHAR``)."""
         return {"INTEGER": "NUMBER", "VARCHAR": "VARCHAR2", "TIMESTAMP": "TIMESTAMP"}
-
-    def render_computed_column(
-        self, col: Any, formatted_col_name: str
-    ) -> Tuple[Optional[str], Optional[str]]:
-        """Oracle: ``GENERATED ALWAYS AS (expr) [VIRTUAL]``."""
-        if not getattr(col, "is_computed", False) or not getattr(col, "computed_expression", None):
-            return None, None
-        virtual = "VIRTUAL" if not getattr(col, "computed_stored", False) else ""
-        return f"GENERATED ALWAYS AS ({col.computed_expression}) {virtual}".strip(), None
 
 
 __all__ = ["OracleQuirks"]

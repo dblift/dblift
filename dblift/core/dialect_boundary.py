@@ -72,21 +72,6 @@ class DdlQuirks(Protocol):
     def alter_generator_class(self) -> Optional[Type["AlterGeneratorProtocol"]]:
         """Return the dialect-specific ALTER generator class, or ``None``."""
 
-    def render_drop_for_object(
-        self,
-        obj_type: str,
-        obj_name: str,
-        schema_prefix: str,
-        table_name: Optional[str],
-    ) -> Optional[str]:
-        """Render a dialect-specific DROP statement, or ``None`` to defer.
-
-        Consumed by a ``SqlGeneratorProtocol`` implementation without
-        branching on the dialect name. Returning ``None`` lets that
-        implementation emit the generic
-        ``DROP <type> IF EXISTS <schema>.<obj>`` form.
-        """
-
     def skip_index_ddl(self) -> bool:
         """True when the dialect manages indexes outside SQL DDL.
 
@@ -100,27 +85,6 @@ class DdlQuirks(Protocol):
         Plugins that set ``skip_index_ddl=True`` provide their own
         explanation here. The default is dialect-agnostic so the
         framework can stay branch-free.
-        """
-
-    def requires_dialect_specific_wrapping(self, object_type_name: str) -> bool:
-        """True when an object of this type needs delimiter wrapping.
-
-        Used by ``generate_ddl`` (``//`` separator). MySQL covers
-        procedures and functions here. The broader trigger/event set
-        is exposed via :meth:`requires_block_delimiter_wrapping`.
-        """
-
-    def wrap_dialect_specific_block(self, sql: str) -> str:
-        """Wrap a block of SQL in dialect-specific delimiters.
-
-        Default: return ``sql`` unchanged.
-        """
-
-    def requires_block_delimiter_wrapping(self, object_type_name: str) -> bool:
-        """Predicate for the ``$$``-flavoured MySQL DELIMITER helper.
-
-        Distinct from :meth:`requires_dialect_specific_wrapping` so the
-        two code paths can have different object-type sets.
         """
 
     def preserves_object_definition(self, object_type_name: str) -> bool:
@@ -168,17 +132,6 @@ class ModelQuirks(Protocol):
         ``BEGIN``.
         """
 
-    def render_computed_column(
-        self, col: Any, formatted_col_name: str
-    ) -> "tuple[Optional[str], Optional[str]]":
-        """Render a computed column to ``(suffix_clause, new_parts0)``.
-
-        ``suffix_clause`` is appended after the column type; ``new_parts0``
-        (when non-None) replaces the column-name+type prefix — used by SQL
-        Server's ``col AS (expr) [PERSISTED]`` shape. Returns ``(None, None)``
-        for non-computed columns.
-        """
-
 
 @runtime_checkable
 class ComparatorQuirks(Protocol):
@@ -189,7 +142,6 @@ class ComparatorQuirks(Protocol):
     view_supports_unlogged_and_security: bool
     event_supports_mysql_schedule: bool
     supports_constraint_triggers: bool
-    index_comment_template: str
     default_index_type: str
     serial_types_alias_integer: bool
     proc_uses_definition_field: bool
@@ -200,7 +152,6 @@ class ComparatorQuirks(Protocol):
     table_column_default_has_on_update: bool
     seq_uses_nextval_syntax: bool
     computed_column_introspection_incomplete: bool
-    table_prefers_inline_single_pk: bool
 
 
 @runtime_checkable

@@ -123,27 +123,9 @@ class Db2Quirks(BaseQuirks):
     connection_identifier_attrs = ("url", "host", "database")
     missing_connection_identifier_hint = "DB2 connection requires url or host/database fields"
     native_url_schema_params = ("currentSchema", "schema")
-    # Procedure / function DDL.
-    # Db2 LUW 9.7+: CREATE OR REPLACE PROCEDURE/FUNCTION.
-    # https://www.ibm.com/docs/en/db2/12.1.x?topic=statements-create-procedure-sql
-    proc_supports_create_or_replace = True
     proc_param_supports_default = False  # DB2 rejects ``= default``
-    # Synonym DDL. DB2 calls them ALIAS.
-    synonym_keyword = "ALIAS"
-    # Db2 LUW 9.7+: CREATE OR REPLACE ALIAS.
-    # https://www.ibm.com/docs/en/db2/11.1?topic=statements-create-alias
-    synonym_supports_create_or_replace = True
-    # https://www.ibm.com/docs/en/db2/12.1.x?topic=statements-create-view
-    view_supports_create_or_replace = True
     # Sequence comparison: DB2 uses INT64 max as implicit "no max".
     seq_implicit_max_value = 9223372036854775807
-    # Table DDL.
-    table_check_via_alter = True
-    table_self_ref_fk_via_alter = True
-    table_temporary_style = "global_temporary"
-    table_not_null_implicit_on_identity_pk = True
-    table_inline_unique_single_col = True
-    table_tablespace_style = "skip"
     # Wave A hooks.
     table_supports_compress = True
     default_index_type = "REGULAR"
@@ -186,13 +168,6 @@ class Db2Quirks(BaseQuirks):
         if _value("url"):
             return True
         return bool(_value("host") and _value("database"))
-
-    # Table and column comments use standalone COMMENT ON statements.
-    # https://www.ibm.com/docs/en/db2/11.5.x?topic=statements-comment
-    table_comment_template = "COMMENT ON TABLE {schema_prefix}{table_name} IS '{escaped_comment}';"
-    column_comment_template = (
-        "COMMENT ON COLUMN {schema_prefix}{table_name}.{column_name} IS '{escaped_comment}';"
-    )
 
     def __init__(self, dialect_name: str = "db2") -> None:
         """Initialize Db2 quirks with the dialect name."""
@@ -303,19 +278,6 @@ class Db2Quirks(BaseQuirks):
 
             return DB2RegexParser
         return None
-
-    # Collapse TIMESTAMP(n) → TIMESTAMP (DB2 ignores fractional-
-    # seconds precision in the DDL round-trip).
-    def normalize_column_data_type(self, col: object, data_type: str) -> str:
-        """Collapse ``TIMESTAMP(n)`` → ``TIMESTAMP`` — Db2 ignores fractional precision."""
-        if data_type.upper().startswith("TIMESTAMP("):
-            return "TIMESTAMP"
-        return data_type
-
-    # DB2 identity — GENERATED ALWAYS AS IDENTITY.
-    def render_identity_clause(self, col: object) -> "Optional[str]":
-        """Db2 identity columns use ``GENERATED ALWAYS AS IDENTITY`` (no seed/increment)."""
-        return "GENERATED ALWAYS AS IDENTITY"
 
     def normalize_view_name(self, name: str) -> str:
         """DB2 returns view names uppercase from SYSCAT.VIEWS but

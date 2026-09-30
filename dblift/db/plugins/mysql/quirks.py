@@ -50,11 +50,6 @@ class MysqlQuirks(BaseQuirks):
     catalog-mode metadata queries (no separate schema concept).
     """
 
-    # Comments are inline COMMENT '...' clauses in table/column definitions.
-    # https://dev.mysql.com/doc/refman/8.4/en/create-table.html
-    table_comment_template = ""
-    column_comment_template = ""
-
     # Capability matrix (was ``_CAPABILITIES["mysql"]``).
     supports_transactions = True
     supports_transactional_ddl = False  # DDL auto-commits
@@ -107,11 +102,7 @@ class MysqlQuirks(BaseQuirks):
     event_supports_mysql_schedule = True
     # Table DDL.
     table_drop_style = "if_exists"
-    table_supports_inline_collate = True
-    table_check_strip_utf8mb4 = True
     table_uses_storage_engine_clause = True
-    # https://dev.mysql.com/doc/refman/8.4/en/create-view.html
-    view_supports_create_or_replace = True
     # Wave A hooks.
     view_supports_algorithm = True
     proc_skip_empty_comparison = True
@@ -285,48 +276,7 @@ class MysqlQuirks(BaseQuirks):
             return MySqlRegexParser
         return None
 
-    # MySQL DELIMITER wrapping has two distinct call paths
-    # with different object-type sets — preserve both rather than
-    # collapsing into one (PR #241 Bugbot).
-    #
-    #   ``_DELIMITER_OBJECT_TYPES`` (narrow) — PROCEDURE/FUNCTION only.
-    #     Used by a DDL generator implementation to wrap CREATE
-    #     statements with ``DELIMITER //...//\nDELIMITER ;``.
-    #
-    #   ``_BLOCK_DELIMITER_OBJECT_TYPES`` (wider) — adds TRIGGER and
-    #     EVENT. Read through ``requires_block_delimiter_wrapping`` by the
-    #     separate ``$$``-flavoured delimiter path.
-    _DELIMITER_OBJECT_TYPES = frozenset({"PROCEDURE", "FUNCTION"})
-    _BLOCK_DELIMITER_OBJECT_TYPES = frozenset({"PROCEDURE", "FUNCTION", "TRIGGER", "EVENT"})
     _DEFINITION_PRESERVE_TYPES = frozenset({"VIEW", "PROCEDURE", "FUNCTION", "TRIGGER", "EVENT"})
-
-    def render_drop_for_object(
-        self,
-        obj_type: str,
-        obj_name: str,
-        schema_prefix: str,
-        table_name: Optional[str],
-    ) -> Optional[str]:
-        """``DROP TABLE IF EXISTS`` — MySQL has no ``CASCADE`` on ``DROP TABLE``.
-
-        All other object types defer to the generic ``DROP ... IF EXISTS`` fallback.
-        """
-        # MySQL omits CASCADE on DROP TABLE.
-        if obj_type == "TABLE":
-            return f"DROP TABLE IF EXISTS {schema_prefix}{obj_name}"
-        return None
-
-    def requires_dialect_specific_wrapping(self, object_type_name: str) -> bool:
-        """True for ``PROCEDURE``/``FUNCTION`` — wrap with ``DELIMITER //`` markers."""
-        return object_type_name in self._DELIMITER_OBJECT_TYPES
-
-    def requires_block_delimiter_wrapping(self, object_type_name: str) -> bool:
-        """True for ``PROCEDURE``/``FUNCTION``/``TRIGGER``/``EVENT`` — ``$$`` helper path."""
-        return object_type_name in self._BLOCK_DELIMITER_OBJECT_TYPES
-
-    def wrap_dialect_specific_block(self, sql: str) -> str:
-        """Wrap *sql* in ``DELIMITER //`` … ``//`` … ``DELIMITER ;`` for stored programs."""
-        return f"DELIMITER //\n{sql}\n//\nDELIMITER ;"
 
     def preserves_object_definition(self, object_type_name: str) -> bool:
         """Return True if the generator must round-trip the verbatim CREATE definition.
@@ -358,33 +308,6 @@ class MysqlQuirks(BaseQuirks):
             object_name=f"{formatted_table}.{formatted_column}",
             dialect=dialect,
         )
-
-    # MySQL/MariaDB identity — AUTO_INCREMENT.
-    def render_identity_clause(self, col: object) -> "Optional[str]":
-        """MySQL identity columns use ``AUTO_INCREMENT`` (no seed/increment syntax)."""
-        return "AUTO_INCREMENT"
-
-    # MySQL normalises ENUM/CHAR/TEXT default values to single-
-    # quoted strings; backtick and double-quote wrapping is stripped.
-    def unwrap_default_value(self, default_str: str, column: object) -> str:
-        """Normalise character-column defaults to single-quoted form.
-
-        For ``CHAR``/``TEXT``/``CLOB``/``ENUM`` columns, strip backtick or
-        double-quote wrapping and re-quote with single quotes (escaping any
-        inner ``'``). Non-character columns pass through unchanged.
-        """
-        data_type = (getattr(column, "data_type", "") or "").upper()
-        is_character_type = any(t in data_type for t in ("CHAR", "TEXT", "CLOB", "ENUM"))
-        if is_character_type:
-            if default_str.startswith("'") and default_str.endswith("'"):
-                return default_str
-            if default_str.startswith("`") and default_str.endswith("`"):
-                default_str = default_str[1:-1]
-            elif default_str.startswith('"') and default_str.endswith('"'):
-                default_str = default_str[1:-1]
-            escaped = default_str.replace("'", "''")
-            return f"'{escaped}'"
-        return default_str
 
     def enrich_view_from_row(self, view: Any, row: Dict[str, Any], view_status: Any = None) -> None:
         """MySQL / MariaDB views carry ``DEFINER`` (``user@host``) and
@@ -691,15 +614,6 @@ class MysqlQuirks(BaseQuirks):
     def type_preferences(self) -> "dict[str, str]":
         """MySQL prefers ``INT`` (not ``INTEGER``) and ``DATETIME`` (not ``TIMESTAMP``)."""
         return {"INTEGER": "INT", "VARCHAR": "VARCHAR", "TIMESTAMP": "DATETIME"}
-
-    def render_computed_column(
-        self, col: Any, formatted_col_name: str
-    ) -> Tuple[Optional[str], Optional[str]]:
-        """MySQL: ``AS (expr) STORED|VIRTUAL`` (no GENERATED ALWAYS prefix)."""
-        if not getattr(col, "is_computed", False) or not getattr(col, "computed_expression", None):
-            return None, None
-        stored = "STORED" if getattr(col, "computed_stored", False) else "VIRTUAL"
-        return f"AS ({col.computed_expression}) {stored}", None
 
 
 __all__ = ["MysqlQuirks"]
