@@ -110,25 +110,12 @@ class Db2Quirks(BaseQuirks):
         return super().is_schema_history_race_error(error_message)
 
     connection_probe_sql = "SELECT 1 FROM SYSIBM.SYSDUMMY1"
-    select_supports_limit = True
-    # Canonical rendering is trailing ``FETCH FIRST n ROWS ONLY``, but DB2
-    # also accepts a bare trailing ``LIMIT n`` — measured against a live db2
-    # 12.01.0500 server by a capability probe outside this distribution. That
-    # makes this dialect the one exception to the usual correlation between
-    # the two attributes; ``BaseQuirks.select_supports_limit`` records the
-    # evidence, and ``tests/unit/db/test_dialect_capability_quirks.py`` pins
-    # the exception from inside this repository.
     row_limit_style = "fetch_first"
     unquoted_identifier_case = "uppercase"
     connection_identifier_attrs = ("url", "host", "database")
     missing_connection_identifier_hint = "DB2 connection requires url or host/database fields"
     native_url_schema_params = ("currentSchema", "schema")
     proc_param_supports_default = False  # DB2 rejects ``= default``
-    # Sequence comparison: DB2 uses INT64 max as implicit "no max".
-    seq_implicit_max_value = 9223372036854775807
-    # Wave A hooks.
-    table_supports_compress = True
-    default_index_type = "REGULAR"
     index_drop_standalone_supports_if_exists = False  # DB2 has no DROP INDEX IF EXISTS
     # Wave B hooks.
     native_driver_display = "ibm_db_sa"
@@ -351,34 +338,6 @@ class Db2Quirks(BaseQuirks):
                 return tail
         return expr
 
-    def fk_reference_query(
-        self, schema: str, table: str, col: str
-    ) -> "Tuple[Optional[str], list[Any]]":
-        """Return the Db2 ``SYSCAT.REFERENCES`` query that finds FKs targeting ``col``."""
-        sql = """
-            SELECT
-                constname as constraint_name,
-                tabschema || '.' || tabname as table_name
-            FROM syscat.references
-            WHERE reftabschema = ?
-                AND reftabname = ?
-                AND fk_colnames LIKE '%' || ? || '%'
-        """
-        return (sql, self.fk_reference_bind_params(schema, table, col))
-
-    def index_reference_query(
-        self, schema: str, table: str, col: str
-    ) -> "Tuple[Optional[str], list[Any]]":
-        """Return the Db2 ``SYSCAT.INDEXCOLUSE`` query that lists indexes covering ``col``."""
-        sql = """
-            SELECT indname as index_name
-            FROM syscat.indexcoluse
-            WHERE indschema = ?
-                AND tabname = ?
-                AND colname = ?
-        """
-        return (sql, [schema, table, col])
-
     def type_equivalents(self) -> "dict[str, str]":
         """Db2 alias → canonical type map.
 
@@ -393,13 +352,6 @@ class Db2Quirks(BaseQuirks):
             "LONG VARGRAPHIC": "DBCLOB",
             "DOUBLE PRECISION": "DOUBLE",
         }
-
-    def type_preferences(self) -> "dict[str, str]":
-        """Db2 keeps the ANSI names as preferred output.
-
-        ``INTEGER``, ``VARCHAR``, ``TIMESTAMP`` are preserved verbatim.
-        """
-        return {"INTEGER": "INTEGER", "VARCHAR": "VARCHAR", "TIMESTAMP": "TIMESTAMP"}
 
 
 __all__ = ["Db2Quirks"]

@@ -373,7 +373,7 @@ class ExecutionEngine:
             # Terminate or empty directive lines (SET, DEFINE, PROMPT, WHENEVER SQLERROR …)
             # so the tokeniser does not merge them with the next DDL/DML. Without this,
             # ``SET SERVEROUTPUT ON\nCREATE TABLE ...`` becomes a single statement that
-            # the driver rejects (or that ``is_script_directive`` filters wholesale, dropping
+            # the driver rejects (or that directive filtering removes wholesale, dropping
             # the user's CREATE TABLE).
             terminated = quirks.terminate_script_directives(base)
             substituted = quirks.apply_script_substitution(terminated, ctx)

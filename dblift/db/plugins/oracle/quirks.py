@@ -107,7 +107,6 @@ class OracleQuirks(BaseQuirks):
         "INTERVAL (",
     )
     connection_probe_sql = "SELECT 1 FROM DUAL"
-    select_supports_limit = False
     # Trailing ``FETCH FIRST n ROWS ONLY`` (Oracle 12c+); no ``LIMIT``.
     row_limit_style = "fetch_first"
     boolean_false_literal = "0"
@@ -127,13 +126,8 @@ class OracleQuirks(BaseQuirks):
             return str(username).upper()
         return None
 
-    proc_function_returns_keyword = "RETURN"  # Oracle: ``RETURN`` (no S)
-    proc_body_wrap_style = "plain"
     # Index DDL.
     index_drop_standalone_supports_if_exists = True  # native since 23ai / 19.28
-    index_supports_bitmap = True
-    index_supports_local_partitioned = True
-    index_supports_tablespace = True
     # Trigger DDL.
     trigger_terminator = "\n/"
     # Engine-internal materialized-view support objects to skip during
@@ -170,24 +164,10 @@ class OracleQuirks(BaseQuirks):
             text = f"{trimmed};"
         return text
 
-    # Sequence DDL.
-    seq_default_nocache_when_unset = True
-    seq_cache_one_means_nocache = True
-    # UDT DDL. Oracle ``CREATE TYPE foo AS OBJECT`` uses
-    # semicolons in the body; SQL Server uses different syntax.
-    udt_object_body_uses_semicolons = True
-    udt_composite_object_modifier = " OBJECT"
     # Table DDL.
     table_drop_style = "if_exists_cascade_constraints"
-    # Oracle's ON DELETE takes only CASCADE or SET NULL; it has no NO ACTION
-    # or RESTRICT keyword, and no ON UPDATE clause.
-    table_fk_supports_restrict = False
     table_supports_storage_params = True
     supports_sqlplus_preprocessing = True
-    # Wave A hooks.
-    view_supports_force_noforce = True
-    proc_uses_definition_field = True
-    default_index_type = "NORMAL"
     # Wave B hooks.
     native_driver_display = "python-oracledb"
     # Oracle TIMESTAMP / TIME accept only fractional-seconds precision.
@@ -255,12 +235,6 @@ class OracleQuirks(BaseQuirks):
         if not isinstance(ctx, SqlplusContext):
             return sql
         return apply_define_substitution(sql, ctx)
-
-    def is_script_directive(self, stmt: str) -> bool:
-        """Return ``True`` for SQL*Plus client-side directives."""
-        from dblift.db.plugins.oracle.parser._sqlplus import is_sqlplus_command
-
-        return is_sqlplus_command(stmt)
 
     def parse_error_policy_directive(self, stmt: str) -> Optional[str]:
         """Return the Oracle ``WHENEVER SQLERROR`` policy encoded in *stmt*, or ``None``."""
@@ -349,16 +323,6 @@ class OracleQuirks(BaseQuirks):
             ):
                 generation = "BY DEFAULT ON NULL"
             column.identity_generation = generation
-
-    # Oracle FK reference query uses schema twice.
-    def fk_reference_bind_params(self, schema: str, table: str, column: str) -> "list[str]":
-        """Oracle's FK lookup query references the schema twice (``r_owner`` and ``owner``).
-
-        The schema bind is the catalog spelling. A configured ``"MYSCHEMA"``
-        must not be sent with the quote characters still attached.
-        """
-        catalog_schema = dictionary_identifier(schema, "oracle")
-        return [catalog_schema, catalog_schema, table, column]
 
     def is_internal_sequence(self, sequence: Any) -> bool:
         """Oracle ``IDENTITY`` columns auto-generate backing sequences named
@@ -577,39 +541,6 @@ class OracleQuirks(BaseQuirks):
                 if source_body:
                     package.body = source_body
 
-    def fk_reference_query(
-        self, schema: str, table: str, col: str
-    ) -> "Tuple[Optional[str], list[Any]]":
-        """Oracle ``ALL_CONS_COLUMNS`` / ``ALL_CONSTRAINTS`` query for FKs targeting ``col``."""
-        sql = """
-            SELECT
-                a.constraint_name,
-                a.owner || '.' || a.table_name as table_name
-            FROM all_cons_columns a
-            JOIN all_constraints c ON a.constraint_name = c.constraint_name
-            WHERE c.constraint_type = 'R'
-                AND c.r_owner = :1
-                AND c.r_constraint_name IN (
-                    SELECT constraint_name FROM all_cons_columns
-                    WHERE owner = :2 AND table_name = :3 AND column_name = :4
-                )
-        """
-        return (sql, self.fk_reference_bind_params(schema, table, col))
-
-    def index_reference_query(
-        self, schema: str, table: str, col: str
-    ) -> "Tuple[Optional[str], list[Any]]":
-        """Return the Oracle ``ALL_IND_COLUMNS`` query listing indexes covering ``col``."""
-        sql = """
-            SELECT index_name
-            FROM all_ind_columns
-            WHERE table_owner = :1
-                AND table_name = :2
-                AND column_name = :3
-        """
-        catalog_schema = dictionary_identifier(schema, "oracle")
-        return (sql, [catalog_schema, table, col])
-
     def type_equivalents(self) -> "dict[str, str]":
         """Oracle alias → canonical type map.
 
@@ -630,8 +561,6 @@ class OracleQuirks(BaseQuirks):
             "LONG": "CLOB",
             "LONG RAW": "BLOB",
         }
-
-    version_specific_type_mappings = {("oracle", "12.2+"): {"JSON": "JSON"}}
 
     # Edition-gated features (see core.sql_model.feature_gates). The pattern
     # matches the v$version banner, which doubles as the captured edition.
@@ -732,10 +661,6 @@ class OracleQuirks(BaseQuirks):
         if match is None:
             return None
         return DatabaseVersion(major=int(match.group(1)), full_version=raw)
-
-    def type_preferences(self) -> "dict[str, str]":
-        """Oracle prefers ``NUMBER`` (for ``INTEGER``) and ``VARCHAR2`` (not ``VARCHAR``)."""
-        return {"INTEGER": "NUMBER", "VARCHAR": "VARCHAR2", "TIMESTAMP": "TIMESTAMP"}
 
 
 __all__ = ["OracleQuirks"]

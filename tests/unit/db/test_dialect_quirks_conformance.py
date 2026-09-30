@@ -118,40 +118,7 @@ def test_base_quirks_does_not_reference_rich_introspection_paths() -> None:
     assert "dblift.core.introspection" not in source
 
 
-def test_fk_reference_bind_params_oracle_has_four_items() -> None:
-    """Story 27-4: Oracle FK bind list must include schema twice."""
-    quirks = ProviderRegistry.get_quirks("oracle")
-    params = quirks.fk_reference_bind_params("MY_SCHEMA", "MY_TABLE", "MY_COL")
-    assert params == ["MY_SCHEMA", "MY_SCHEMA", "MY_TABLE", "MY_COL"]
-
-
-@pytest.mark.parametrize(
-    "dialect",
-    [d for d in KNOWN_DIALECTS if d != "oracle"],
-)
-def test_fk_reference_bind_params_non_oracle_has_three_items(dialect: str) -> None:
-    """Story 27-4: Non-Oracle FK bind list must have three items."""
-    quirks = ProviderRegistry.get_quirks(dialect)
-    params = quirks.fk_reference_bind_params("s", "t", "c")
-    assert params == ["s", "t", "c"], f"{dialect}: fk_reference_bind_params returned {params!r}"
-
-
-# ---------------------------------------------------------------------------
-# PostgreSQL family: fk_reference_query / index_reference_query placeholder
-# style + catalog source. The PostgreSQL native driver is psycopg, whose
-# paramstyle only binds dblift's own ``?`` convention (translated by the
-# provider) -- never PostgreSQL's raw ``$1``/``$2``/``$3`` wire syntax.
-#
-# Every registered dialect whose quirks class subclasses PostgresqlQuirks
-# inherits both methods unchanged -- not just CockroachdbQuirks and
-# RedshiftQuirks, but also the seven PostgreSQL-wire-compatible engines
-# ``make_pg_compatible_quirks`` builds at runtime (AlloyDB, Aurora
-# PostgreSQL, Citus, Neon, Supabase, TimescaleDB, YugabyteDB -- see
-# ``dblift/db/plugins/_pg_compatible.py``). The family is derived from the
-# registry, not hardcoded, so a new PG-wire plugin -- or a future
-# ``quirks_overrides={"fk_reference_query": ...}`` entry that gets the SQL
-# wrong for one of them -- can't silently fall outside this guard's coverage.
-# ---------------------------------------------------------------------------
+# PostgreSQL-family registry coverage.
 
 _KNOWN_POSTGRESQL_FAMILY_DIALECTS = frozenset(
     {
@@ -180,55 +147,10 @@ def _postgresql_family_dialects() -> "list[str]":
 
 
 def test_postgresql_family_covers_at_least_the_known_pg_wire_engines() -> None:
-    """Guards the parametrization below against silently shrinking.
-
-    If the registry ever stopped reporting one of these ten, the two tests
-    below would quietly narrow their coverage instead of failing loudly.
-    """
+    """Keep the registered PostgreSQL family from silently losing a known engine."""
     derived = set(_postgresql_family_dialects())
     missing = _KNOWN_POSTGRESQL_FAMILY_DIALECTS - derived
     assert not missing, f"PostgreSQL-family guard lost dialects: {sorted(missing)}"
-
-
-@pytest.mark.parametrize("dialect", _postgresql_family_dialects())
-def test_postgresql_family_reference_queries_use_question_mark_placeholders(
-    dialect: str,
-) -> None:
-    """``fk_reference_query`` and ``index_reference_query`` must use ``?``,
-    not ``$1``/``$2``/``$3`` -- the driver's paramstyle never binds the
-    latter (verified against a running PostgreSQL 15 + psycopg)."""
-    quirks = ProviderRegistry.get_quirks(dialect)
-    fk_sql, fk_params = quirks.fk_reference_query("s", "t", "c")
-    index_sql, index_params = quirks.index_reference_query("s", "t", "c")
-
-    for name, sql in (("fk_reference_query", fk_sql), ("index_reference_query", index_sql)):
-        assert sql is not None, f"{dialect}: {name} returned no SQL"
-        assert (
-            "$1" not in sql and "$2" not in sql and "$3" not in sql
-        ), f"{dialect}: {name} still uses $n placeholders"
-        assert sql.count("?") == 3, f"{dialect}: {name} does not have exactly three '?'"
-
-    assert fk_params == ["s", "t", "c"], f"{dialect}: fk_reference_query params {fk_params!r}"
-    assert index_params == [
-        "s",
-        "t",
-        "c",
-    ], f"{dialect}: index_reference_query params {index_params!r}"
-
-
-@pytest.mark.parametrize("dialect", _postgresql_family_dialects())
-def test_postgresql_family_fk_reference_query_reads_pg_catalog(dialect: str) -> None:
-    """The FK lookup reads ``pg_catalog.pg_constraint``, not
-    ``information_schema`` -- visible to a read-only role."""
-    quirks = ProviderRegistry.get_quirks(dialect)
-    sql, _ = quirks.fk_reference_query("s", "t", "c")
-    assert sql is not None, f"{dialect}: fk_reference_query returned no SQL"
-    assert (
-        "pg_catalog.pg_constraint" in sql
-    ), f"{dialect}: fk_reference_query does not read pg_constraint"
-    assert (
-        "information_schema" not in sql
-    ), f"{dialect}: fk_reference_query still reads information_schema"
 
 
 def _nosql_plugin_names():

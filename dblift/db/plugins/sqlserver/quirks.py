@@ -80,7 +80,6 @@ class SqlserverQuirks(BaseQuirks):
     quote_open = "["
     quote_close = "]"
     boolean_false_literal = "0"
-    select_supports_limit = False  # SQL Server uses TOP, not LIMIT
     # ``SELECT TOP (n) …`` — a prefix on the select list, not a trailing clause.
     row_limit_style = "top"
     supports_go_batch_separator = True
@@ -100,30 +99,14 @@ class SqlserverQuirks(BaseQuirks):
     drop_supports_if_exists = True  # SQL Server 2016+ supports DROP ... IF EXISTS
     unquoted_identifier_case = "case_insensitive"
     # Procedure / function DDL.
-    proc_body_wrap_style = "begin_end"
     proc_param_inout_keyword = "OUTPUT"
     # Index DDL.
-    index_qualifies_with_schema = False
-    index_with_options_style = "uppercase"
     index_drop_includes_table = True
     index_drop_table_form_supports_if_exists = True
-    # Trigger DDL.
-    trigger_supports_for_each_row = False  # SQL Server has no FOR EACH ROW
-    # Sequence DDL.
-    seq_nocycle_keyword = "NO CYCLE"
     # UDT / Table DDL.
-    udt_distinct_uses_from_syntax = True
     table_uses_filegroup_syntax = True
     supports_online_index = True
-    metadata_catalog_mode = "catalog+schema"
-    # T-SQL's referential-action grammar is ON DELETE/UPDATE { NO ACTION |
-    # CASCADE | SET NULL | SET DEFAULT } -- RESTRICT is not a keyword here.
-    table_fk_supports_restrict = False
-    # Wave A hooks.
-    table_supports_memory_optimized = True
-    table_supports_system_versioned = True
 
-    default_index_type = "NONCLUSTERED"
     # Wave B hooks.
     native_driver_display = "pymssql"
     # SQL Server encodes ``VARCHAR(MAX)`` / ``NVARCHAR(MAX)`` via the
@@ -327,45 +310,6 @@ class SqlserverQuirks(BaseQuirks):
             return []
         return _build_unique_constraints_from_dict(extractor, unique_indexes)
 
-    def fk_reference_query(
-        self, schema: str, table: str, col: str
-    ) -> "Tuple[Optional[str], list[Any]]":
-        """SQL Server ``sys.foreign_keys`` + ``foreign_key_columns`` query for FKs on ``col``."""
-        sql = """
-            SELECT
-                fk.name as constraint_name,
-                OBJECT_SCHEMA_NAME(fk.parent_object_id) + '.'
-                    + OBJECT_NAME(fk.parent_object_id) as table_name
-            FROM sys.foreign_keys fk
-            INNER JOIN sys.foreign_key_columns fkc
-                ON fk.object_id = fkc.constraint_object_id
-            INNER JOIN sys.columns c
-                ON fkc.referenced_column_id = c.column_id
-                AND fkc.referenced_object_id = c.object_id
-            WHERE OBJECT_SCHEMA_NAME(fk.referenced_object_id) = ?
-                AND OBJECT_NAME(fk.referenced_object_id) = ?
-                AND c.name = ?
-        """
-        return (sql, self.fk_reference_bind_params(schema, table, col))
-
-    def index_reference_query(
-        self, schema: str, table: str, col: str
-    ) -> "Tuple[Optional[str], list[Any]]":
-        """SQL Server ``sys.indexes`` + ``sys.index_columns`` query for indexes on ``col``."""
-        sql = """
-            SELECT i.name as index_name
-            FROM sys.indexes i
-            INNER JOIN sys.index_columns ic
-                ON i.object_id = ic.object_id AND i.index_id = ic.index_id
-            INNER JOIN sys.columns c
-                ON ic.object_id = c.object_id AND ic.column_id = c.column_id
-            WHERE OBJECT_SCHEMA_NAME(i.object_id) = ?
-                AND OBJECT_NAME(i.object_id) = ?
-                AND c.name = ?
-                AND i.is_primary_key = 0
-        """
-        return (sql, [schema, table, col])
-
     def type_equivalents(self) -> "dict[str, str]":
         """SQL Server alias → canonical type map.
 
@@ -385,8 +329,6 @@ class SqlserverQuirks(BaseQuirks):
             "IMAGE": "VARBINARY",
         }
 
-    version_specific_type_mappings = {("sqlserver", "13.0+"): {"JSON": "JSON"}}
-
     # Edition-gated features (see core.sql_model.feature_gates). The edition
     # pattern matches SERVERPROPERTY('Edition') strings; Azure SQL always
     # supports online index builds.
@@ -396,8 +338,7 @@ class SqlserverQuirks(BaseQuirks):
             description="WITH (ONLINE = ON) index builds",
         ),
         # ALTER TABLE ... ALTER COLUMN WITH (ONLINE = ON): introduced in SQL
-        # Server 2016 (internal version 13.0, matching this file's own
-        # version_specific_type_mappings numbering above), same edition set
+        # Server 2016 (internal version 13.0), same edition set
         # as online_index_build (Enterprise/Developer/Evaluation/Azure)
         # only. Without a proven server, callers stay conservative rather
         # than assuming a feature two years newer than online index builds
@@ -408,14 +349,6 @@ class SqlserverQuirks(BaseQuirks):
             description="WITH (ONLINE = ON) ALTER COLUMN",
         ),
     }
-
-    def type_preferences(self) -> "dict[str, str]":
-        """SQL Server prefers ``INT`` (not ``INTEGER``) and ``DATETIME2`` (not ``TIMESTAMP``).
-
-        T-SQL's ``TIMESTAMP`` is a rowversion type, not a datetime; ``DATETIME2``
-        is the correct timestamp-with-precision name.
-        """
-        return {"INTEGER": "INT", "VARCHAR": "VARCHAR", "TIMESTAMP": "DATETIME2"}
 
 
 __all__ = ["SqlserverQuirks"]

@@ -2,11 +2,58 @@
 
 import pytest
 
+from dblift.core import dialect_boundary
 from dblift.core.dialect_boundary import DdlQuirks
 from dblift.db.base_quirks import BaseQuirks
 from dblift.db.provider_registry import ProviderRegistry
 
 REMOVED_MEMBERS = (
+    "index_qualifies_with_schema",
+    "index_supports_bitmap",
+    "index_supports_local_partitioned",
+    "index_supports_mysql_typed_keywords",
+    "index_supports_using_clause",
+    "index_with_options_style",
+    "is_script_directive",
+    "metadata_catalog_mode",
+    "proc_body_wrap_style",
+    "proc_function_returns_keyword",
+    "proc_supports_language_clause",
+    "seq_cache_one_means_nocache",
+    "seq_default_nocache_when_unset",
+    "seq_nocycle_keyword",
+    "trigger_supports_for_each_row",
+    "udt_composite_object_modifier",
+    "udt_distinct_uses_from_syntax",
+    "udt_object_body_uses_semicolons",
+    "version_specific_type_mappings",
+    "view_supports_security_with_clause",
+    "fk_reference_query",
+    "index_reference_query",
+    "fk_reference_bind_params",
+    "skip_index_ddl",
+    "skip_index_ddl_comment",
+    "preserves_object_definition",
+    "type_preferences",
+    "select_supports_limit",
+    "computed_column_introspection_incomplete",
+    "default_index_type",
+    "index_supports_tablespace",
+    "proc_skip_empty_comparison",
+    "proc_uses_definition_field",
+    "seq_implicit_max_value",
+    "seq_supports_temp",
+    "seq_uses_nextval_syntax",
+    "serial_types_alias_integer",
+    "supports_constraint_triggers",
+    "table_column_default_has_on_update",
+    "table_fk_supports_restrict",
+    "table_supports_compress",
+    "table_supports_memory_optimized",
+    "table_supports_system_versioned",
+    "view_supports_algorithm",
+    "view_supports_force_noforce",
+    "view_supports_unlogged_and_security",
     "column_comment_template",
     "index_comment_template",
     "table_comment_template",
@@ -68,3 +115,8 @@ def test_quirks_have_no_removed_rendering_member(name: str) -> None:
 def test_ddl_quirks_has_no_removed_rendering_member(name: str) -> None:
     assert not hasattr(DdlQuirks, name), f"DdlQuirks.{name} must be removed"
     assert name not in DdlQuirks.__annotations__
+
+
+def test_dialect_boundary_does_not_export_comparator_quirks() -> None:
+    assert not hasattr(dialect_boundary, "ComparatorQuirks")
+    assert "ComparatorQuirks" not in dialect_boundary.__all__

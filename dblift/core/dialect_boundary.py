@@ -28,7 +28,6 @@ Sub-protocols:
 * ``DdlQuirks`` — DDL/SQL rendering hooks.
 * ``ParserQuirks`` — parser/tokenizer factory hooks.
 * ``ModelQuirks`` — domain-model rendering hooks.
-* ``ComparatorQuirks`` — schema-diff comparator hooks.
 * ``ValidatorQuirks`` — lint/perf rule hooks.
 * ``TypeMapQuirks`` — type normalisation hooks.
 * ``ErrorQuirks`` — error-classification hooks.
@@ -72,29 +71,6 @@ class DdlQuirks(Protocol):
     def alter_generator_class(self) -> Optional[Type["AlterGeneratorProtocol"]]:
         """Return the dialect-specific ALTER generator class, or ``None``."""
 
-    def skip_index_ddl(self) -> bool:
-        """True when the dialect manages indexes outside SQL DDL.
-
-        CosmosDB sets this; the framework emits a comment instead of
-        a DDL statement for INDEX objects. Other dialects return False.
-        """
-
-    def skip_index_ddl_comment(self) -> str:
-        """Comment emitted when ``skip_index_ddl()`` returns True.
-
-        Plugins that set ``skip_index_ddl=True`` provide their own
-        explanation here. The default is dialect-agnostic so the
-        framework can stay branch-free.
-        """
-
-    def preserves_object_definition(self, object_type_name: str) -> bool:
-        """True when the verbatim object definition must be preserved.
-
-        MySQL views / procedures / functions / triggers / events carry
-        ``DEFINER`` clauses and quirky identifier quoting that the
-        generator should not strip.
-        """
-
     def introspector_class(self) -> "Optional[type]":
         """Return the dialect-specific BaseIntrospector class, or None.
 
@@ -124,6 +100,8 @@ class ModelQuirks(Protocol):
     :meth:`dblift.core.sql_model.trigger.Trigger._format_body`.
     """
 
+    event_supports_mysql_schedule: bool
+
     def wrap_trigger_body(self, body: str) -> str:
         """Wrap a trigger body in dialect-specific delimiters.
 
@@ -134,42 +112,11 @@ class ModelQuirks(Protocol):
 
 
 @runtime_checkable
-class ComparatorQuirks(Protocol):
-    """Schema-diff comparator hooks."""
-
-    view_supports_algorithm: bool
-    view_supports_force_noforce: bool
-    view_supports_unlogged_and_security: bool
-    event_supports_mysql_schedule: bool
-    supports_constraint_triggers: bool
-    default_index_type: str
-    serial_types_alias_integer: bool
-    proc_uses_definition_field: bool
-    proc_skip_empty_comparison: bool
-    table_supports_compress: bool
-    table_supports_memory_optimized: bool
-    table_supports_system_versioned: bool
-    table_column_default_has_on_update: bool
-    seq_uses_nextval_syntax: bool
-    computed_column_introspection_incomplete: bool
-
-
-@runtime_checkable
 class ValidatorQuirks(Protocol):
     """Lint / perf rule hooks."""
 
     def existence_check_sql(self, table_name: str) -> str:
         """Return SQL that checks whether *table_name* has any rows."""
-
-    def fk_reference_query(
-        self, schema: str, table: str, col: str
-    ) -> "tuple[Optional[str], list[Any]]":
-        """Return ``(sql, params)`` for FK reference lookup, or ``(None, [])``."""
-
-    def index_reference_query(
-        self, schema: str, table: str, col: str
-    ) -> "tuple[Optional[str], list[Any]]":
-        """Return ``(sql, params)`` for index reference lookup, or ``(None, [])``."""
 
 
 @runtime_checkable
@@ -178,9 +125,6 @@ class TypeMapQuirks(Protocol):
 
     def type_equivalents(self) -> "dict[str, str]":
         """Return dialect alias→canonical type mapping."""
-
-    def type_preferences(self) -> "dict[str, str]":
-        """Return dialect canonical→preferred type mapping."""
 
 
 @runtime_checkable
@@ -211,7 +155,6 @@ class DialectQuirks(
     DdlQuirks,
     ParserQuirks,
     ModelQuirks,
-    ComparatorQuirks,
     ValidatorQuirks,
     TypeMapQuirks,
     ErrorQuirks,
@@ -240,7 +183,6 @@ __all__ = [
     "DdlQuirks",
     "ParserQuirks",
     "ModelQuirks",
-    "ComparatorQuirks",
     "ValidatorQuirks",
     "TypeMapQuirks",
     "ErrorQuirks",

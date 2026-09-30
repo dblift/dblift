@@ -75,13 +75,8 @@ class MysqlQuirks(BaseQuirks):
     drop_supports_if_exists = True
     provider_compat_snapshot_skips_existence_check = True
     tinyint1_is_boolean = True
-    metadata_catalog_mode = "catalog"
-    # Procedure / function DDL.
-    proc_body_wrap_style = "mysql_characteristics"
     # Index DDL.
-    index_qualifies_with_schema = False
     index_supports_online_offline = True
-    index_supports_mysql_typed_keywords = True
     index_drop_includes_table = True
     index_drop_table_form_supports_if_exists = False
     # sqlglot's mysql grammar rejects DROP INDEX ("... always requires an ON
@@ -103,10 +98,6 @@ class MysqlQuirks(BaseQuirks):
     # Table DDL.
     table_drop_style = "if_exists"
     table_uses_storage_engine_clause = True
-    # Wave A hooks.
-    view_supports_algorithm = True
-    proc_skip_empty_comparison = True
-    table_column_default_has_on_update = True
     # Wave B hooks.
     native_driver_display = "pymysql"
     # validate-sql offline placeholder. Inherited by MariaDB, whose config
@@ -275,20 +266,6 @@ class MysqlQuirks(BaseQuirks):
 
             return MySqlRegexParser
         return None
-
-    _DEFINITION_PRESERVE_TYPES = frozenset({"VIEW", "PROCEDURE", "FUNCTION", "TRIGGER", "EVENT"})
-
-    def preserves_object_definition(self, object_type_name: str) -> bool:
-        """Return True if the generator must round-trip the verbatim CREATE definition.
-
-        MySQL views, procedures, functions, triggers, and events store
-        the user-supplied source text in ``information_schema``; the
-        introspector reads it back and the SQL generator should not
-        re-render those bodies (whitespace, quoting and the MySQL
-        ``DELIMITER`` wrapper would otherwise drift on round-trip).
-        Other object types are re-rendered from the structured model.
-        """
-        return object_type_name in self._DEFINITION_PRESERVE_TYPES
 
     def enrich_view_from_row(self, view: Any, row: Dict[str, Any], view_status: Any = None) -> None:
         """MySQL / MariaDB views carry ``DEFINER`` (``user@host``) and
@@ -520,34 +497,6 @@ class MysqlQuirks(BaseQuirks):
         if create_options:
             table.set_dialect_option("mysql", "create_options", create_options)
 
-    def fk_reference_query(
-        self, schema: str, table: str, col: str
-    ) -> "Tuple[Optional[str], list[Any]]":
-        """MySQL ``information_schema.key_column_usage`` query finding FKs targeting ``col``."""
-        sql = """
-            SELECT
-                constraint_name,
-                CONCAT(table_schema, '.', table_name) as table_name
-            FROM information_schema.key_column_usage
-            WHERE referenced_table_schema = %s
-                AND referenced_table_name = %s
-                AND referenced_column_name = %s
-        """
-        return (sql, self.fk_reference_bind_params(schema, table, col))
-
-    def index_reference_query(
-        self, schema: str, table: str, col: str
-    ) -> "Tuple[Optional[str], list[Any]]":
-        """MySQL ``information_schema.statistics`` query listing indexes covering ``col``."""
-        sql = """
-            SELECT DISTINCT index_name
-            FROM information_schema.statistics
-            WHERE table_schema = %s
-                AND table_name = %s
-                AND column_name = %s
-        """
-        return (sql, [schema, table, col])
-
     def type_equivalents(self) -> "dict[str, str]":
         """MySQL alias → canonical type map.
 
@@ -565,8 +514,6 @@ class MysqlQuirks(BaseQuirks):
             "LONG VARCHAR": "MEDIUMTEXT",
             "DOUBLE PRECISION": "DOUBLE",
         }
-
-    version_specific_type_mappings = {("mysql", "5.7+"): {"JSON": "JSON"}}
 
     # Version-gated features (see core.sql_model.feature_gates).
     feature_gates = {
@@ -591,10 +538,6 @@ class MysqlQuirks(BaseQuirks):
             description="ALTER TABLE ... ADD COLUMN, ALGORITHM=INSTANT",
         ),
     }
-
-    def type_preferences(self) -> "dict[str, str]":
-        """MySQL prefers ``INT`` (not ``INTEGER``) and ``DATETIME`` (not ``TIMESTAMP``)."""
-        return {"INTEGER": "INT", "VARCHAR": "VARCHAR", "TIMESTAMP": "DATETIME"}
 
 
 __all__ = ["MysqlQuirks"]

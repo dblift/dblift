@@ -7,35 +7,6 @@ from dblift.db.provider_registry import ProviderRegistry
 pytestmark = [pytest.mark.unit]
 
 
-class TestSelectSupportsLimit:
-    """select_supports_limit quirks property per dialect."""
-
-    @pytest.mark.parametrize(
-        "dialect, expected",
-        [
-            ("postgresql", True),
-            ("mysql", True),
-            ("sqlite", True),
-            ("oracle", False),
-            # A live db2 12.01.0500 server, probed via
-            # tests/integration/capabilities/test_engine_capabilities.py
-            # ::test_row_limit_clauses_match_the_engine, accepted a bare
-            # trailing ``SELECT ... LIMIT 2`` -- contradicting the
-            # ``select_supports_limit = False`` this
-            # dialect declared. Db2 still renders ``FETCH FIRST n ROWS ONLY``
-            # as its preferred row_limit_style; it merely ALSO tolerates a
-            # bare LIMIT, so the coarser "may I append LIMIT at all for an
-            # optional probe" question is True here even though the declared
-            # rendering style is not "limit".
-            ("db2", True),
-            ("sqlserver", False),
-        ],
-    )
-    def test_select_supports_limit_per_dialect(self, dialect, expected):
-        quirks = ProviderRegistry.get_quirks(dialect)
-        assert quirks.select_supports_limit is expected
-
-
 class TestUndoDropIfExistsRoutedThroughQuirks:
     """Undo _generate_drop_statement IF EXISTS routes through quirks."""
 
