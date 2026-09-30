@@ -290,25 +290,6 @@ class MysqlQuirks(BaseQuirks):
         """
         return object_type_name in self._DEFINITION_PRESERVE_TYPES
 
-    # Column ALTER hooks — MySQL uses MODIFY for type changes.
-    def render_column_type_change(
-        self, col_diff: object, formatted_table: str, formatted_column: str, dialect: str
-    ) -> "Optional[object]":
-        """``ALTER TABLE … MODIFY <col> <type>`` — MySQL's column-type change form."""
-        from dblift.core.state.sql_statement import SqlStatement
-
-        data_type_diff = getattr(col_diff, "data_type_diff", None)
-        if data_type_diff is None:
-            return None
-        expected_type, _ = data_type_diff
-        return SqlStatement(
-            sql=f"ALTER TABLE {formatted_table} MODIFY {formatted_column} {expected_type};",
-            statement_type="ALTER",
-            object_type="COLUMN",
-            object_name=f"{formatted_table}.{formatted_column}",
-            dialect=dialect,
-        )
-
     def enrich_view_from_row(self, view: Any, row: Dict[str, Any], view_status: Any = None) -> None:
         """MySQL / MariaDB views carry ``DEFINER`` (``user@host``) and
         ``SQL SECURITY`` (DEFINER | INVOKER) clauses recorded in

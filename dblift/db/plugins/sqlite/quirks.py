@@ -68,29 +68,6 @@ class SqliteQuirks(BaseQuirks):
         """ALTER generator is supplied by an installed extension package."""
         return None
 
-    def render_column_type_change(
-        self, col_diff: object, formatted_table: str, formatted_column: str, dialect: str
-    ) -> "Optional[object]":
-        """Expose type changes that require rebuilding the table as SQL comments."""
-        from dblift.core.state.sql_statement import SqlStatement
-
-        data_type_diff = getattr(col_diff, "data_type_diff", None)
-        if data_type_diff is None:
-            return None
-        expected_type, actual_type = data_type_diff
-        # SQLite has no ALTER COLUMN type syntax; use the documented 12-step rebuild.
-        # https://sqlite.org/lang_altertable.html#making_other_kinds_of_table_schema_changes
-        return SqlStatement(
-            sql=(
-                f"-- Column type change for {formatted_table}.{formatted_column} "
-                f"from {actual_type} to {expected_type} requires rebuilding the table."
-            ),
-            statement_type="COMMENT",
-            object_type="COLUMN",
-            object_name=f"{formatted_table}.{formatted_column}",
-            dialect=dialect,
-        )
-
     def parser_class(self, parser_type: str) -> Optional[type]:
         """SQLite uses :class:`SQLiteRegexParser` for ``"hybrid"`` and ``"regex"``.
 

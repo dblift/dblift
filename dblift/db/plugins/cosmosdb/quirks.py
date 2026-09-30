@@ -92,48 +92,6 @@ class CosmosdbQuirks(BaseQuirks):
             "-- To modify indexes, update the container's indexing policy via Azure SDK."
         )
 
-    # Column ALTER hooks — CosmosDB is schema-less; return comment statements.
-    def _cosmosdb_noop(
-        self, formatted_table: str, formatted_column: str, change_kind: str, dialect: str
-    ) -> object:
-        from dblift.core.state.sql_statement import SqlStatement
-
-        sql = (
-            f"-- CosmosDB is schema-less, no ALTER TABLE needed for "
-            f"{formatted_table}.{formatted_column} {change_kind} change"
-        )
-        return SqlStatement(
-            sql=sql,
-            statement_type="COMMENT",
-            object_type="COLUMN",
-            object_name=f"{formatted_table}.{formatted_column}",
-            dialect=dialect,
-        )
-
-    def render_column_nullable_change(
-        self, col_diff: object, formatted_table: str, formatted_column: str, dialect: str
-    ) -> "Optional[object]":
-        """Schema-less — emit a no-op comment rather than an ALTER for nullable changes."""
-        return self._cosmosdb_noop(formatted_table, formatted_column, "nullable", dialect)
-
-    def render_column_default_change(
-        self, col_diff: object, formatted_table: str, formatted_column: str, dialect: str
-    ) -> "Optional[object]":
-        """Schema-less — emit a no-op comment rather than an ALTER for default changes."""
-        return self._cosmosdb_noop(formatted_table, formatted_column, "default", dialect)
-
-    def render_column_type_change(
-        self, col_diff: object, formatted_table: str, formatted_column: str, dialect: str
-    ) -> "Optional[object]":
-        """Schema-less — emit a no-op comment rather than an ALTER for type changes."""
-        return self._cosmosdb_noop(formatted_table, formatted_column, "type", dialect)
-
-    def render_column_collation_change(
-        self, col_diff: object, formatted_table: str, formatted_column: str, dialect: str
-    ) -> "Optional[object]":
-        """Schema-less — emit a no-op comment rather than an ALTER for collation changes."""
-        return self._cosmosdb_noop(formatted_table, formatted_column, "collation", dialect)
-
     def introspector_class(self) -> "Optional[Type[Any]]":
         """CosmosDB rich introspection is supplied by an installed extension package."""
         return None
