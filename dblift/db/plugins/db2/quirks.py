@@ -110,7 +110,6 @@ class Db2Quirks(BaseQuirks):
         return super().is_schema_history_race_error(error_message)
 
     connection_probe_sql = "SELECT 1 FROM SYSIBM.SYSDUMMY1"
-    row_limit_style = "fetch_first"
     unquoted_identifier_case = "uppercase"
     connection_identifier_attrs = ("url", "host", "database")
     missing_connection_identifier_hint = "DB2 connection requires url or host/database fields"

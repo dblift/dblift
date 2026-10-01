@@ -97,7 +97,3 @@ def test_mariadb_plugin_sqlalchemy_url_builder_builds_pymysql_url() -> None:
     assert url.host == "db.example.com"
     assert url.database == "app"
     assert url.username == "maria"
-
-
-def test_mariadb_update_subquery_does_not_require_derived_table() -> None:
-    assert MariadbQuirks().update_subquery_requires_derived_table is False

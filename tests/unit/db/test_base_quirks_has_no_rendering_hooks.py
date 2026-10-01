@@ -4,10 +4,22 @@ import pytest
 
 from dblift.core import dialect_boundary
 from dblift.core.dialect_boundary import DdlQuirks
+from dblift.db import base_quirks
 from dblift.db.base_quirks import BaseQuirks
 from dblift.db.provider_registry import ProviderRegistry
 
 REMOVED_MEMBERS = (
+    "supports_online_index",
+    "index_supports_online_offline",
+    "supports_concurrent_index",
+    "existence_check_sql",
+    "update_subquery_requires_derived_table",
+    "subquery_row_limit_requires_derived_table",
+    "row_limit_clauses",
+    "row_limit_style",
+    "upsert_style",
+    "json_bind_cast_type",
+    "json_bind_cast",
     "index_qualifies_with_schema",
     "index_supports_bitmap",
     "index_supports_local_partitioned",
@@ -120,3 +132,12 @@ def test_ddl_quirks_has_no_removed_rendering_member(name: str) -> None:
 def test_dialect_boundary_does_not_export_comparator_quirks() -> None:
     assert not hasattr(dialect_boundary, "ComparatorQuirks")
     assert "ComparatorQuirks" not in dialect_boundary.__all__
+
+
+def test_base_quirks_does_not_export_row_limit_clauses() -> None:
+    assert not hasattr(base_quirks, "RowLimitClauses")
+
+
+def test_dialect_boundary_does_not_export_validator_quirks() -> None:
+    assert not hasattr(dialect_boundary, "ValidatorQuirks")
+    assert "ValidatorQuirks" not in dialect_boundary.__all__

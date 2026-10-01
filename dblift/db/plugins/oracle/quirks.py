@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 import re
-from typing import TYPE_CHECKING, Any, Dict, List, Mapping, Optional, Tuple, Type
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Type
 
-from dblift.db.base_quirks import BaseQuirks, RowLimitClauses
+from dblift.db.base_quirks import BaseQuirks
 from dblift.db.error import ErrorCategory
 from dblift.db.feature_gate import FeatureGate
 from dblift.db.object_naming import configured_identifier_text, dictionary_identifier
@@ -107,8 +107,6 @@ class OracleQuirks(BaseQuirks):
         "INTERVAL (",
     )
     connection_probe_sql = "SELECT 1 FROM DUAL"
-    # Trailing ``FETCH FIRST n ROWS ONLY`` (Oracle 12c+); no ``LIMIT``.
-    row_limit_style = "fetch_first"
     boolean_false_literal = "0"
     unquoted_identifier_case = "uppercase"
     # quote_qualified upper-cases idents to match Oracle's catalogue folding.
@@ -408,13 +406,6 @@ class OracleQuirks(BaseQuirks):
                 except (ValueError, TypeError):
                     pass
 
-    def existence_check_sql(self, table_name: str) -> str:
-        """``ROWNUM = 1`` + ``FROM DUAL`` — Oracle has no ``LIMIT`` and needs a FROM clause."""
-        return (
-            f"SELECT CASE WHEN EXISTS (SELECT 1 FROM {table_name} WHERE ROWNUM = 1)"
-            f" THEN 1 ELSE 0 END as has_data FROM DUAL"
-        )
-
     def fetch_unique_constraints(
         self, extractor: Any, schema: str, table: str
     ) -> "Optional[list[Any]]":
@@ -575,7 +566,7 @@ class OracleQuirks(BaseQuirks):
         ),
         "row_limit_fetch_first": FeatureGate(
             min_version="12.1+",
-            description="FETCH FIRST n ROWS ONLY",
+            description="SELECT row limiting with FETCH FIRST n ROWS ONLY",
         ),
         "online_table_move": FeatureGate(
             # Oracle's Database Licensing Information User Manual (Table 1-4,
@@ -591,59 +582,6 @@ class OracleQuirks(BaseQuirks):
             description="ALTER TABLE ... MOVE ONLINE",
         ),
     }
-
-    def row_limit_clauses(
-        self,
-        row_count: int,
-        server_info: Optional[Mapping[str, Any]] = None,
-        ordered: bool = False,
-    ) -> RowLimitClauses:
-        """Oracle's native ``FETCH FIRST n ROWS ONLY`` is 12.1+ only.
-
-        python-oracledb's default thin mode already requires 12.1, but thick
-        mode reaches back to 11.2, so there is a real window where the
-        declared style (``row_limit_style = "fetch_first"``, Oracle's
-        idiomatic form) would be invalid SQL. ``WHERE ROWNUM <= n`` is valid
-        on every Oracle release ever shipped, so it is the fallback: a gate
-        that cannot be evaluated (no server info captured, or an unparseable
-        version) must pick the form valid on the *widest* range of versions,
-        not the narrower one it merely hopes is safe. Only a gate that
-        resolves to ``True`` — a server proven to be 12.1+ — earns the
-        native form; ``False`` and ``None`` both fall back to ``ROWNUM``.
-
-        ``ordered=True`` tells this method the caller's query also carries an
-        ``ORDER BY`` whose result the cap must respect — i.e. the caller
-        wants the true top-*row_count* rows by that ordering. ``ROWNUM`` is
-        assigned *before* ``ORDER BY`` runs, so ``WHERE ROWNUM <= n ORDER BY
-        val`` takes *n* rows in whatever order the access path produced them
-        and only *then* sorts those *n* — it is not the same result as the
-        true ordered top-*n*. There is no way to fix this within the
-        three-fragment shape :class:`RowLimitClauses` offers: the correct
-        pre-12.1 form nests the ordered query in a subquery (``SELECT * FROM
-        (SELECT ... ORDER BY val) WHERE ROWNUM <= n``), which has no bare
-        predicate or suffix to hand back. So when the resolved style would be
-        ``"rownum"`` and ``ordered`` is ``True``, this raises rather than
-        returning a fragment that silently produces the wrong rows: capture
-        ``server_info`` (to prove the server is 12.1+ and unlock the native
-        ``FETCH FIRST`` form) or restructure the query around the nested
-        subquery form directly.
-        """
-        from dblift.core.sql_model.feature_gates import supports_feature
-
-        if supports_feature(self.dialect_name, "row_limit_fetch_first", server_info) is True:
-            return RowLimitClauses("", "", f" FETCH FIRST {row_count} ROWS ONLY")
-        if ordered:
-            raise ValueError(
-                "Cannot express an ordered top-N via ROWNUM: ROWNUM is assigned "
-                "before ORDER BY runs, so 'WHERE ROWNUM <= n ORDER BY ...' caps rows "
-                "in access-path order and sorts them afterward, which is not the "
-                "true ordered top-N. Oracle before 12.1 cannot express this through "
-                "row_limit_clauses() at all — capture server_info proving the "
-                "server is 12.1+ (to unlock native FETCH FIRST), or restructure the "
-                "query as 'SELECT * FROM (SELECT ... ORDER BY ...) WHERE ROWNUM <= n' "
-                "directly."
-            )
-        return RowLimitClauses("", f"ROWNUM <= {row_count}", "")
 
     _MARKETING_VERSION_RE = re.compile(r"\b(\d{2})(?:c|g|ai)\b", re.IGNORECASE)
 

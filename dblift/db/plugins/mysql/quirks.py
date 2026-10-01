@@ -56,16 +56,6 @@ class MysqlQuirks(BaseQuirks):
     schema_required = True
     uppercase_identifiers = False
     clean_strategy = "introspector"
-    # ``INSERT … ON DUPLICATE KEY UPDATE col = VALUES(col)``. Inherited by MariaDB.
-    upsert_style = "on_duplicate_key"
-    # MySQL's ``json`` column type needs the bound text parameter cast.
-    json_bind_cast_type: Optional[str] = "JSON"
-    # Error 1093: "can't specify target table for update in FROM clause".
-    update_subquery_requires_derived_table = True
-    # Error 1235: rejects LIMIT inside IN (subquery) outright. Inherited by
-    # MariaDB (which does NOT hit 1093 above, so this is declared separately
-    # rather than folded into update_subquery_requires_derived_table).
-    subquery_row_limit_requires_derived_table = True
     connection_identifier_attrs = ("url", "host", "database")
     missing_connection_identifier_hint = "MySQL connection requires url or host/database fields"
     sqlglot_dialect = "mysql"
@@ -76,7 +66,6 @@ class MysqlQuirks(BaseQuirks):
     provider_compat_snapshot_skips_existence_check = True
     tinyint1_is_boolean = True
     # Index DDL.
-    index_supports_online_offline = True
     index_drop_includes_table = True
     index_drop_table_form_supports_if_exists = False
     # sqlglot's mysql grammar rejects DROP INDEX ("... always requires an ON
@@ -523,7 +512,7 @@ class MysqlQuirks(BaseQuirks):
         ),
         "json_bind_cast": FeatureGate(
             min_version="5.7.8+",
-            description="CAST(? AS JSON) — native JSON type introduced in 5.7.8",
+            description="Native JSON parameter casting with CAST(? AS JSON)",
         ),
         "instant_add_column": FeatureGate(
             # INSTANT is the default ALGORITHM as of 8.0.12 (INPLACE before

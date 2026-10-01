@@ -80,8 +80,6 @@ class SqlserverQuirks(BaseQuirks):
     quote_open = "["
     quote_close = "]"
     boolean_false_literal = "0"
-    # ``SELECT TOP (n) …`` — a prefix on the select list, not a trailing clause.
-    row_limit_style = "top"
     supports_go_batch_separator = True
 
     def is_batch_separator(self, stmt: str) -> bool:
@@ -105,7 +103,6 @@ class SqlserverQuirks(BaseQuirks):
     index_drop_table_form_supports_if_exists = True
     # UDT / Table DDL.
     table_uses_filegroup_syntax = True
-    supports_online_index = True
 
     # Wave B hooks.
     native_driver_display = "pymssql"
@@ -254,13 +251,6 @@ class SqlserverQuirks(BaseQuirks):
                 table.set_dialect_option("sqlserver", "period_start_column", period_start)
             if period_end:
                 table.set_dialect_option("sqlserver", "period_end_column", period_end)
-
-    def existence_check_sql(self, table_name: str) -> str:
-        """Use ``SELECT TOP 1 1`` — SQL Server has no ``LIMIT`` clause."""
-        return (
-            f"SELECT CASE WHEN EXISTS (SELECT TOP 1 1 FROM {table_name})"
-            f" THEN 1 ELSE 0 END as has_data"
-        )
 
     def apply_routine_volatility_from_row(
         self, extractor: Any, routine: Any, row: Dict[str, Any]

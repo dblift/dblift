@@ -28,7 +28,6 @@ Sub-protocols:
 * ``DdlQuirks`` — DDL/SQL rendering hooks.
 * ``ParserQuirks`` — parser/tokenizer factory hooks.
 * ``ModelQuirks`` — domain-model rendering hooks.
-* ``ValidatorQuirks`` — lint/perf rule hooks.
 * ``TypeMapQuirks`` — type normalisation hooks.
 * ``ErrorQuirks`` — error-classification hooks.
 * ``ConnectionQuirks`` — connection / engine-pool hooks.
@@ -112,14 +111,6 @@ class ModelQuirks(Protocol):
 
 
 @runtime_checkable
-class ValidatorQuirks(Protocol):
-    """Lint / perf rule hooks."""
-
-    def existence_check_sql(self, table_name: str) -> str:
-        """Return SQL that checks whether *table_name* has any rows."""
-
-
-@runtime_checkable
 class TypeMapQuirks(Protocol):
     """Type-normalisation hooks."""
 
@@ -155,7 +146,6 @@ class DialectQuirks(
     DdlQuirks,
     ParserQuirks,
     ModelQuirks,
-    ValidatorQuirks,
     TypeMapQuirks,
     ErrorQuirks,
     ConnectionQuirks,
@@ -183,7 +173,6 @@ __all__ = [
     "DdlQuirks",
     "ParserQuirks",
     "ModelQuirks",
-    "ValidatorQuirks",
     "TypeMapQuirks",
     "ErrorQuirks",
     "ConnectionQuirks",
