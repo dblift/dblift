@@ -139,6 +139,7 @@ _CREATE_INDEX_RE = re.compile(
 # owns those statements, and it reports the target table as well as the type.
 _DDL_MODIFIER_KEYWORDS = (
     r"OR\s+REPLACE",
+    r"OR\s+ALTER",
     "GLOBAL",
     "LOCAL",
     "TEMPORARY",

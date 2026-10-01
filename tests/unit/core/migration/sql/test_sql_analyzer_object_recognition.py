@@ -142,6 +142,49 @@ class TestCreateObjectRecognition(unittest.TestCase):
         self.assertNotIn("EXISTS", obj["object_name"].upper())
 
 
+class TestSqlServerCreateOrAlterRecognition(unittest.TestCase):
+    """SQL Server's conditional DDL names the same object as plain CREATE."""
+
+    def setUp(self):
+        self.analyzer = SqlAnalyzer(dialect="sqlserver")
+
+    def test_create_or_alter_matches_plain_create(self):
+        cases = [
+            ("VIEW dbo.v WITH SCHEMABINDING AS SELECT id FROM dbo.t", "VIEW", "dbo.v"),
+            ("PROCEDURE dbo.p AS SELECT 1", "PROCEDURE", "dbo.p"),
+            ("FUNCTION dbo.f() RETURNS INT AS BEGIN RETURN 1 END", "FUNCTION", "dbo.f"),
+            ("TRIGGER dbo.tr ON dbo.t AFTER INSERT AS SELECT 1", "TRIGGER", "dbo.tr"),
+        ]
+        for statement, object_type, object_name in cases:
+            with self.subTest(object_type=object_type):
+                expected = [{"object_type": object_type, "object_name": object_name}]
+                self.assertEqual(self.analyzer.extract_objects(f"CREATE {statement}"), expected)
+                self.assertEqual(
+                    self.analyzer.extract_objects(f"CREATE OR ALTER {statement}"), expected
+                )
+
+    def test_create_or_alter_accepts_case_and_whitespace(self):
+        self.assertEqual(
+            self.analyzer.extract_objects("create or\n alter view dbo.v as select 1"),
+            [{"object_type": "VIEW", "object_name": "dbo.v"}],
+        )
+
+    def test_existing_ddl_forms_are_unchanged(self):
+        cases = [
+            ("sqlserver", "CREATE OR REPLACE VIEW v AS SELECT 1", "VIEW", "default_schema.v"),
+            ("sqlserver", "CREATE VIEW dbo.v AS SELECT 1", "VIEW", "dbo.v"),
+            ("sqlserver", "ALTER VIEW dbo.v AS SELECT 1", "VIEW", "dbo.v"),
+            ("sqlserver", 'CREATE TABLE "or" (id INT)', "TABLE", "default_schema.or"),
+            ("postgresql", "CREATE OR REPLACE VIEW v AS SELECT 1", "VIEW", "default_schema.v"),
+        ]
+        for dialect, sql, object_type, object_name in cases:
+            with self.subTest(dialect=dialect, sql=sql):
+                self.assertEqual(
+                    SqlAnalyzer(dialect=dialect).extract_objects(sql),
+                    [{"object_type": object_type, "object_name": object_name}],
+                )
+
+
 class TestMaterializedViewLogReportsTheTable(unittest.TestCase):
     """``MATERIALIZED VIEW LOG ON <table>`` names the table, not LOG.
 
