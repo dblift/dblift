@@ -8,8 +8,6 @@ modern versions) get added here as the epic touches each subsystem.
 
 from __future__ import annotations
 
-from typing import Optional
-
 from dblift.db.feature_gate import FeatureGate
 from dblift.db.plugins.mysql.quirks import MysqlQuirks
 
@@ -56,17 +54,6 @@ class MariadbQuirks(MysqlQuirks):
             description="ALTER TABLE ... ADD COLUMN, ALGORITHM=INSTANT",
         ),
     }
-
-    # MariaDB accepts UPDATE t ... WHERE id IN (SELECT id FROM t ...);
-    # MySQL error 1093 does not apply. Do not inherit MysqlQuirks' True.
-    update_subquery_requires_derived_table: bool = False
-
-    # MariaDB does not implement ``CAST(expr AS JSON)`` (MDEV-26448, still
-    # open). Its ``JSON`` type is only an alias for ``LONGTEXT`` with a
-    # validity CHECK, so inheriting MySQL's ``"JSON"`` here would emit a cast
-    # the MariaDB parser rejects; a serialized JSON value binds as plain text
-    # with no cast at all.
-    json_bind_cast_type: Optional[str] = None
 
     def __init__(self, dialect_name: str = "mariadb") -> None:
         """Initialize MariaDB quirks with the dialect name."""

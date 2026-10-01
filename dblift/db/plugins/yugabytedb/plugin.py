@@ -20,14 +20,6 @@ PLUGIN: PluginInfo = make_pg_compatible_plugin(
         # still leaves CREATE TABLE objects behind. Do not inherit
         # PostgreSQL's transactional-DDL claim.
         "supports_transactional_ddl": False,
-        # YugabyteDB's own CREATE INDEX reference: "the default mode is
-        # CONCURRENTLY, wherever possible" -- online index backfill is
-        # already the default, and NONCONCURRENTLY is the actual opt-out
-        # for restricted/blocking behavior. Inheriting PostgreSQL's
-        # ``True`` here has it backwards: it would recommend explicitly
-        # requesting what YugabyteDB already gives you, as though the
-        # plain form were the blocking one.
-        "supports_concurrent_index": False,
     },
 )
 

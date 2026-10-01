@@ -17,14 +17,6 @@ class CockroachdbQuirks(PostgresqlQuirks):
     # parent dict wholesale — CockroachDB declares no gates.
     feature_gates = {}
 
-    # CockroachDB always builds indexes online: per Cockroach Labs' own
-    # CREATE INDEX reference, "CONCURRENTLY" is "optional, no-op syntax for
-    # PostgreSQL compatibility. All indexes are created concurrently in
-    # CockroachDB." Inheriting PostgreSQL's ``True`` here would recommend
-    # adding a keyword that changes nothing, as though the plain form were
-    # the one that blocks.
-    supports_concurrent_index = False
-
     # CockroachDB is a ground-up reimplementation, not a PostgreSQL fork, so
     # wire compatibility alone isn't evidence for its comment grammar. Run
     # directly against a single-node CockroachDB container: after

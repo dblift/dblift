@@ -59,17 +59,6 @@ class PostgresqlQuirks(BaseQuirks):
     schema_required = True
     uppercase_identifiers = False
     clean_strategy = "introspector"
-    # ``INSERT … ON CONFLICT (col) DO UPDATE SET … EXCLUDED.x``. Inherited by
-    # every PG-wire engine built by ``_pg_compatible`` (Citus, TimescaleDB,
-    # YugabyteDB, AlloyDB, Aurora, Neon) and by CockroachDB — all of which
-    # genuinely support it. Redshift overrides back to ``"none"``. On Citus
-    # specifically, ``ON CONFLICT`` against a *distributed* table also
-    # requires the distribution column to be part of the unique constraint;
-    # the tables dblift creates are small local tables, so this is a
-    # documentation caveat rather than a reason to change the declared value.
-    upsert_style = "on_conflict"
-    # A ``jsonb`` column rejects a bound text parameter without an explicit cast.
-    json_bind_cast_type: Optional[str] = "JSONB"
     sqlglot_dialect = "postgres"
     # PostgreSQL's permissive grammar is the last-resort sqlglot read dialect
     # for dialects that declare none of their own (DB2, CosmosDB). See
@@ -82,7 +71,6 @@ class PostgresqlQuirks(BaseQuirks):
     default_schema_name = "public"
     drop_supports_if_exists = True
     drop_table_default_cascade = True
-    supports_concurrent_index = True
     # Index DDL.
     index_no_sort_types = frozenset({"GIN", "GIST", "BRIN", "HASH", "SPGIST"})
     table_supports_inherits = True

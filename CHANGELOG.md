@@ -156,6 +156,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
   A plugin that overrode one of these has nothing to override any more.
 
+- **11 more unread `BaseQuirks` members with their plugin overrides, the
+  `RowLimitClauses` type, and the `ValidatorQuirks` protocol are removed.**
+  Nothing in the core reads them. This is scheduled for a MINOR release;
+  `dblift.db` and `dblift.core.dialect_boundary` are not public API
+  (see [the semver policy](docs/semver-policy.md)).
+
+  - Index-build facts: `supports_online_index`, `index_supports_online_offline`,
+    `supports_concurrent_index`.
+  - `existence_check_sql`, removing `ValidatorQuirks`.
+  - Derived-table flags: `update_subquery_requires_derived_table`,
+    `subquery_row_limit_requires_derived_table`.
+  - Row limiting: `row_limit_clauses`, `row_limit_style`, `RowLimitClauses`.
+  - Data binding: `upsert_style`, `json_bind_cast_type`, `json_bind_cast()`.
+
+  The `row_limit_fetch_first` and `json_bind_cast` feature-gate names stay,
+  since feature names are cross-tier API. A plugin that overrode one of
+  these members has nothing to override any more.
+
 - **`dblift.core.sql_generator` and the SQL model's rendering members are removed.**
   `create_statement` / `drop_statement` on the model classes and
   `Table.generate_alter_table_check_constraints` /
