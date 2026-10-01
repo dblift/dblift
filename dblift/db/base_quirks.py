@@ -262,11 +262,6 @@ class BaseQuirks:
     #: handing them to a translator. Kept separate from :attr:`is_nosql`
     #: so a future NoSQL dialect with a genuine SQL surface can opt back in.
     supports_sql_migrations: bool = True
-    #: Pygments lexer name for syntax-highlighting console output.
-    #: Plugins override with their preferred lexer
-    #: (PostgreSQL=``"postgresql"``, MySQL=``"mysql"``,
-    #: SQL Server=``"tsql"``). Default ``"sql"`` works generically.
-    pygments_lexer: str = "sql"
     #: Native SQLAlchemy URL query parameter names that populate
     #: ``database.schema`` during config hydration. Plugins can add aliases
     #: without teaching ``config/`` about dialect-specific spellings.
@@ -359,13 +354,6 @@ class BaseQuirks:
     # Declare table syntax choices for DDL generator implementations.
     # ------------------------------------------------------------------
 
-    #: DROP TABLE style. ``"cascade_constraints"`` → ``DROP TABLE x CASCADE
-    #: CONSTRAINTS`` (Oracle pre-23ai); ``"if_exists_cascade_constraints"`` →
-    #: ``DROP TABLE IF EXISTS x CASCADE CONSTRAINTS`` (Oracle 23ai+/19.28+);
-    #: ``"if_exists"`` → ``DROP TABLE IF EXISTS x`` (MySQL);
-    #: ``"if_exists_cascade"`` → ``DROP TABLE IF EXISTS x CASCADE``
-    #: (default — PG/MSSQL/DB2).
-    table_drop_style: str = "if_exists_cascade"
     #: Oracle storage parameters (PCTFREE, PCTUSED, INITIAL, NEXT).
     table_supports_storage_params: bool = False
     #: MySQL/MariaDB ``ENGINE=`` storage-engine clause (and the sibling

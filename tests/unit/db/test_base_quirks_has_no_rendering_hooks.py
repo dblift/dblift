@@ -9,6 +9,8 @@ from dblift.db.base_quirks import BaseQuirks
 from dblift.db.provider_registry import ProviderRegistry
 
 REMOVED_MEMBERS = (
+    "table_drop_style",
+    "pygments_lexer",
     "supports_online_index",
     "index_supports_online_offline",
     "supports_concurrent_index",

@@ -29,7 +29,6 @@ class DuckDBQuirks(BaseQuirks):
     default_schema_name = "main"
     boolean_false_literal = "FALSE"  # native BOOLEAN, not 0/1
     drop_supports_if_exists = True
-    table_drop_style = "cascade"  # DuckDB supports DROP TABLE ... CASCADE
     # Wave B hooks — embedded, file-based, no credentials (mirrors SQLite).
     native_driver_display = "duckdb"
     requires_credentials = False
