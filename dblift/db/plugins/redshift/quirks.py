@@ -37,15 +37,13 @@ class RedshiftQuirks(PostgresqlQuirks):
         body's ``$$ ... $$``, not the outer SQL scanner ``split_statements``
         tokenizes — it is not evidence for this). Keep the pre-#333 reader
         (first ``*/`` closes) as the safer default rather than inherit
-        PostgreSQL's nesting unverified; everything else about PostgreSQL
-        parsing still applies.
+        PostgreSQL's nesting unverified. Redshift's tokenizer additionally
+        handles backslash escapes in all single-quoted string literals.
         """
         if parser_type == "regex":
-            from dblift.db.plugins.postgresql.parser.postgresql_regex_parser import (
-                NonNestingPostgreSqlRegexParser,
-            )
+            from dblift.db.plugins.redshift.parser.redshift_regex_parser import RedshiftRegexParser
 
-            return NonNestingPostgreSqlRegexParser
+            return RedshiftRegexParser
         return super().parser_class(parser_type)
 
     def build_snapshot_table_ddl(
