@@ -146,24 +146,28 @@ class PostgreSQLTokenizer(BaseTokenizer):
             return self._handle_quoted_identifier()
 
         if self.peek(2) in ("E'", "e'"):
-            start_pos, start_line, start_col = self.pos, self.line, self.col
-            self.read(2)  # Prefix and opening quote belong to the same token.
-            while self.pos < len(self.sql):
-                if self.peek() == "\\" or self.peek(2) == "''":
-                    self.read(2)
-                elif self.read() == "'":
-                    break
-            return Token(
-                TokenType.STRING,
-                self.sql[start_pos : self.pos],
-                start_pos,
-                start_line,
-                start_col,
-                self.parens_depth,
-            )
+            return self._handle_escape_string()
 
         # Standard single-quoted string
         return super()._handle_string()
+
+    def _handle_escape_string(self) -> Token:
+        """Read a backslash-escaped literal, including an optional E prefix."""
+        start_pos, start_line, start_col = self.pos, self.line, self.col
+        self.read(2 if self.peek(2) in ("E'", "e'") else 1)
+        while self.pos < len(self.sql):
+            if self.peek() == "\\" or self.peek(2) == "''":
+                self.read(2)
+            elif self.read() == "'":
+                break
+        return Token(
+            TokenType.STRING,
+            self.sql[start_pos : self.pos],
+            start_pos,
+            start_line,
+            start_col,
+            self.parens_depth,
+        )
 
     def _handle_dollar_quote(self) -> Token:
         """Handle PostgreSQL dollar-quoted strings.

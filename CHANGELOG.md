@@ -47,8 +47,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **PostgreSQL-family migrations split correctly around `E'...'` escape strings.**
   A `;` after a backslash-escaped quote inside an `E'...'` literal used to be
   taken for the end of the statement, so the script ran as two broken statements;
-  the literal is now read to its real end. Applies to PostgreSQL, DuckDB,
-  CockroachDB and Redshift.
+  the literal is now read to its real end. Applies to PostgreSQL, DuckDB and
+  CockroachDB. Redshift also handles backslash escapes in all single-quoted
+  string literals, including ordinary `'...'` strings without an `E` prefix.
 
 - SQLite column type changes now appear as SQL comments naming the table, column and both types and explaining that a table rebuild is required.
 
