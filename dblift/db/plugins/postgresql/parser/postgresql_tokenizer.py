@@ -117,18 +117,22 @@ class PostgreSQLTokenizer(BaseTokenizer):
         )
 
     def _is_alternative_string_start(self) -> bool:
-        """Check for PostgreSQL dollar-quote strings.
+        """Check for PostgreSQL escape strings and dollar-quote strings.
 
         Returns:
-            True if dollar-quote is detected
+            True if an escape prefix or dollar-quote is detected
         """
+        if self.peek(2) in ("E'", "e'"):
+            # An identifier suffix or a prefix touching a quote is not E'...'.
+            previous = self.sql[self.pos - 1] if self.pos else ""
+            return not previous or not (previous.isalnum() or previous in "_$'\"")
         if self.peek() != "$":
             return False
         # ${…} is handled in _next_token; do not treat as dollar-quoted string.
         return len(self.sql) <= self.pos + 1 or self.sql[self.pos + 1] != "{"
 
     def _handle_string(self) -> Token:
-        """Handle string literals including dollar-quotes.
+        """Handle standard strings, escape strings and dollar-quotes.
 
         Returns:
             String token
@@ -140,6 +144,23 @@ class PostgreSQLTokenizer(BaseTokenizer):
         # Check for double-quoted identifier (not string in PostgreSQL)
         if self.peek() == '"':
             return self._handle_quoted_identifier()
+
+        if self.peek(2) in ("E'", "e'"):
+            start_pos, start_line, start_col = self.pos, self.line, self.col
+            self.read(2)  # Prefix and opening quote belong to the same token.
+            while self.pos < len(self.sql):
+                if self.peek() == "\\" or self.peek(2) == "''":
+                    self.read(2)
+                elif self.read() == "'":
+                    break
+            return Token(
+                TokenType.STRING,
+                self.sql[start_pos : self.pos],
+                start_pos,
+                start_line,
+                start_col,
+                self.parens_depth,
+            )
 
         # Standard single-quoted string
         return super()._handle_string()
