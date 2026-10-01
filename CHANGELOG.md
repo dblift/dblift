@@ -44,6 +44,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **SQL Server `CREATE OR ALTER` statements are recognised.** A migration's
+  `CREATE OR ALTER VIEW`, `PROCEDURE`, `FUNCTION` or `TRIGGER` was not attributed
+  to the object it creates, so anything that tracks a migration's objects treated
+  it as touching none. It is now read as the plain `CREATE` form is.
+
 - **PostgreSQL-family migrations split correctly around `E'...'` escape strings.**
   A `;` after a backslash-escaped quote inside an `E'...'` literal used to be
   taken for the end of the statement, so the script ran as two broken statements;
