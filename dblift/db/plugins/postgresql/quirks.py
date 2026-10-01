@@ -67,7 +67,6 @@ class PostgresqlQuirks(BaseQuirks):
     # PostgreSQL is the ANSI/generic rendering reference when a model has no
     # dialect of its own, resolved via ProviderRegistry.reference_dialect_name.
     is_ansi_reference_dialect = True
-    pygments_lexer = "postgresql"
     default_schema_name = "public"
     drop_supports_if_exists = True
     drop_table_default_cascade = True

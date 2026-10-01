@@ -174,6 +174,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   since feature names are cross-tier API. A plugin that overrode one of
   these members has nothing to override any more.
 
+- **`table_drop_style` and `pygments_lexer` are removed from `BaseQuirks`, with
+  their plugin overrides.** Nothing in the core reads them: the first described
+  the DROP TABLE form for a DDL generator the core no longer ships, and the second
+  named a lexer for console highlighting the core never does. This is scheduled
+  for a MINOR release; `dblift.db` is not public API. Overrides are removed from
+  the duckdb, mysql, oracle, sqlite and snowflake plugins (`table_drop_style`)
+  and from the mysql, postgresql, snowflake and sqlserver plugins
+  (`pygments_lexer`). A plugin that set either one has nothing to override any more.
+
 - **`dblift.core.sql_generator` and the SQL model's rendering members are removed.**
   `create_statement` / `drop_statement` on the model classes and
   `Table.generate_alter_table_check_constraints` /

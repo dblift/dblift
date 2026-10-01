@@ -59,7 +59,6 @@ class MysqlQuirks(BaseQuirks):
     connection_identifier_attrs = ("url", "host", "database")
     missing_connection_identifier_hint = "MySQL connection requires url or host/database fields"
     sqlglot_dialect = "mysql"
-    pygments_lexer = "mysql"
     quote_open = "`"
     quote_close = "`"
     drop_supports_if_exists = True
@@ -85,7 +84,6 @@ class MysqlQuirks(BaseQuirks):
     # Event scheduler timestamp-quoting.
     event_supports_mysql_schedule = True
     # Table DDL.
-    table_drop_style = "if_exists"
     table_uses_storage_engine_clause = True
     # Wave B hooks.
     native_driver_display = "pymysql"

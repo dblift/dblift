@@ -21,14 +21,12 @@ class SnowflakeQuirks(BaseQuirks):
     sqlglot_dialect = "snowflake"
     default_schema_name = "PUBLIC"
     drop_supports_if_exists = True
-    table_drop_style = "if_exists_cascade"
     unquoted_identifier_case = "uppercase"
     quote_qualified_folds_to_uppercase = True
     connection_identifier_attrs = ("url", "account")
     missing_connection_identifier_hint = "Snowflake requires url or account"
     native_url_schema_params = ("schema",)
     native_driver_display = "snowflake-connector-python"
-    pygments_lexer = "sql"
 
     def __init__(self, dialect_name: str = "snowflake") -> None:
         super().__init__(dialect_name=dialect_name)

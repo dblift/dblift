@@ -72,7 +72,6 @@ class SqlserverQuirks(BaseQuirks):
             return True
         return super().is_schema_history_race_error(error_message)
 
-    pygments_lexer = "tsql"
     connection_identifier_attrs = ("url", "host", "database")
     missing_connection_identifier_hint = (
         "SQL Server connection requires url or host/database fields"

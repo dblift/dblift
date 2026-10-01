@@ -163,7 +163,6 @@ class OracleQuirks(BaseQuirks):
         return text
 
     # Table DDL.
-    table_drop_style = "if_exists_cascade_constraints"
     table_supports_storage_params = True
     supports_sqlplus_preprocessing = True
     # Wave B hooks.
