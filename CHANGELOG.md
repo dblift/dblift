@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **SQL-file models keep a table's partition count and partition list.** A model read from SQL files kept only the partitioning method and columns of `PARTITION BY`; `PARTITIONS n` and an explicit list of partitions are now kept as well, so tools that write DDL from the model can reproduce the partitioning the file declares.
+
 - Table and column comment templates are now available for PostgreSQL, Oracle and Db2, including escaped quotes; installed DDL generators must wire them into export and replay.
 
 - Sequence data types are now captured, serialized and compared through `Sequence.data_type`; `AS <type>` will be rendered once installed DDL generators read this field.
@@ -47,6 +49,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **HTML run report shows failed migrations as failed**, with the failing
   statement and its error. A failed undo script now appears in the report and
   JSON log; Min / Max no longer shows `999999`.
+- **Models read from SQL files keep generated columns, functional and descending indexes, foreign-key actions and triggers.** The SQL parser dropped a generated column's expression, the expression and sort order of an index's key parts, a foreign key's `ON DELETE` / `ON UPDATE` action, and triggers declared on an unqualified table (or with a multi-statement body). These are now kept, so a schema compared against such a model no longer reports them as differences.
+- **CockroachDB `INT` columns compare as the 64-bit integers CockroachDB creates.**
+  A column declared `INT` or `INTEGER` was read as a 4-byte integer, so comparing
+  a CockroachDB schema with its own DDL reported a type change on every such
+  column. They are now read as `BIGINT`, CockroachDB's default size; `INT4` stays
+  4 bytes.
 
 - **SQL Server `CREATE OR ALTER` statements are recognised.** A migration's
   `CREATE OR ALTER VIEW`, `PROCEDURE`, `FUNCTION` or `TRIGGER` was not attributed
