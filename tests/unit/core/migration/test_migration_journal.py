@@ -498,6 +498,42 @@ class TestGetMigrationPerformanceSummary:
         assert summary["slowest_statement"] == "CREATE TABLE t (id INT)"
         assert len(summary["statements"]) == 2
 
+    def test_summary_keeps_failed_statement_in_order(self):
+        """A failed statement stays in the summary so reports can show the failure."""
+        j = MigrationJournal()
+        mid = "V2__add_currency.sql"
+        j.start_migration(mid, details={"version": "2"})
+
+        j.record_statement_start("ALTER TABLE orders ADD currency CHAR(3)", 0)
+        j.record_statement_complete("ALTER TABLE orders ADD currency CHAR(3)", 0, 4)
+        j.record_statement_start("UPDATE orders SET currency = nope", 1)
+        j.record_statement_failed("UPDATE orders SET currency = nope", 1, "no such column", 2)
+        j.end_migration(mid, success=False, error_message="no such column", execution_time=6)
+
+        summary = j.get_migration_performance_summary(mid)
+        assert [(s["statement"], s["success"], s["error"]) for s in summary["statements"]] == [
+            ("ALTER TABLE orders ADD currency CHAR(3)", True, ""),
+            ("UPDATE orders SET currency = nope", False, "no such column"),
+        ]
+        assert summary["total_statements"] == 2
+        assert summary["total_execution_time"] == 6
+        assert summary["min_statement_time"] == 2
+
+    def test_summary_when_first_statement_fails(self):
+        j = MigrationJournal()
+        mid = "V2__bad.sql"
+        j.start_migration(mid, details={"version": "2"})
+
+        j.record_statement_start("UPDATE orders SET nope = 1", 0)
+        j.record_statement_failed("UPDATE orders SET nope = 1", 0, "no such column", 0)
+        j.end_migration(mid, success=False, error_message="no such column", execution_time=0)
+
+        summary = j.get_migration_performance_summary(mid)
+        assert [(s["statement"], s["success"]) for s in summary["statements"]] == [
+            ("UPDATE orders SET nope = 1", False)
+        ]
+        assert summary["total_statements"] == 1
+
     def test_summary_with_object_operations_dict_form(self):
         j = MigrationJournal()
         mid = "V1__init.sql"

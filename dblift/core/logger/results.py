@@ -592,16 +592,26 @@ class UndoResult(OperationResult):
         self.current_schema_version: Optional[str] = None
         self.undone_migrations: List[MigrationInfo] = []
         self.undone_count: int = 0
+        self.failed_migrations: List[MigrationInfo] = []
 
     def add_undone_migration(self, migration: MigrationInfo) -> None:
         """Add an undone migration to the result."""
         self.undone_migrations.append(migration)
         self.undone_count = len(self.undone_migrations)
 
+    def add_migration(self, migration: MigrationInfo) -> None:
+        """Record an undo script that failed.
+
+        The execution engine reports a failed script through ``add_migration``
+        for every command; successful undos go through ``add_undone_migration``,
+        so ``undone_migrations`` and ``undone_count`` keep counting only those.
+        """
+        self.failed_migrations.append(migration)
+
     @property
     def migrations(self) -> List[MigrationInfo]:
-        """Get the undone migrations for HTML template compatibility."""
-        return self.undone_migrations
+        """Undone migrations, then failed ones, for the log formatters."""
+        return self.undone_migrations + self.failed_migrations
 
 
 class GenerateUndoScriptResult(OperationResult):

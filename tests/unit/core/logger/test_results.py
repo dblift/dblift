@@ -16,6 +16,7 @@ from dblift.core.logger.results import (
     MigrationSqlInfo,
     OperationResult,
     RepairResult,
+    UndoResult,
     ValidateResult,
 )
 
@@ -634,3 +635,18 @@ class TestRepairResult:
         assert result.repaired_migrations[0] == repaired
         assert result.removed_migrations[0] == removed
         assert result.aligned_migrations[0] == aligned
+
+
+class TestUndoResult:
+    """Test UndoResult class."""
+
+    def test_failed_undo_is_listed_without_counting_as_undone(self):
+        """The execution engine reports a failed script through ``add_migration``."""
+        result = UndoResult()
+        result.add_undone_migration(MigrationInfo("U3__c.sql", status="UNDONE"))
+        result.add_migration(MigrationInfo("U2__b.sql", status="FAILED", error="no such table"))
+
+        assert [m.script for m in result.undone_migrations] == ["U3__c.sql"]
+        assert result.undone_count == 1
+        assert [(m.script, m.status) for m in result.failed_migrations] == [("U2__b.sql", "FAILED")]
+        assert [m.script for m in result.migrations] == ["U3__c.sql", "U2__b.sql"]

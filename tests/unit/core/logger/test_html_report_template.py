@@ -182,3 +182,26 @@ def test_mobile_statement_grid_keeps_object_columns():
     assert "minmax(0,1fr)" in mobile
     assert "stmt-timeline" in mobile
     assert "display:none" in mobile
+
+
+def test_min_max_shows_zero_ms_statements():
+    """Sub-millisecond statements are recorded as 0 ms; Min / Max must say so."""
+
+    class _ZeroJournal(_Journal):
+        def get_migration_performance_summary(self, migration_id):
+            summary = super().get_migration_performance_summary(migration_id)
+            summary["statements"][0]["execution_time"] = 0
+            summary.update(total_execution_time=0, min_statement_time=0, max_statement_time=0)
+            return summary
+
+    result = MigrateResult()
+    result.migrations.append(
+        MigrationInfo(script="V1__init.sql", version="1", description="init", status="SUCCESS")
+    )
+    result.journal = _ZeroJournal()
+    result.complete()
+
+    html = HtmlFormatter().format_result(result, "public", "demo", "MIGRATE")
+
+    assert "999999" not in html
+    assert ">0 / 0 ms<" in html
