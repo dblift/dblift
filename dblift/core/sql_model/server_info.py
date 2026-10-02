@@ -5,7 +5,7 @@ Snapshot capture stores the probed server identity as a plain mapping
 format stays dumb and stable. :class:`ServerInfo` is the read-side parse of
 that mapping: it resolves the dialect's quirks and turns the raw version
 banner into a comparable
-:class:`~core.introspection.version_detector.DatabaseVersion` via the
+:class:`~dblift.db.version.DatabaseVersion` via the
 ``parse_server_version`` quirks hook. Parsing failures degrade to ``None``
 fields — consumers treat "unknown" conservatively (see
 :mod:`dblift.core.sql_model.feature_gates`).
@@ -17,7 +17,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Mapping, Optional
 
 if TYPE_CHECKING:
-    from dblift.core.introspection.version_detector import DatabaseVersion
+    from dblift.db.version import DatabaseVersion
 
 
 @dataclass(frozen=True)
@@ -46,7 +46,7 @@ class ServerInfo:
         version_raw = str(version_value) if version_value not in (None, "") else None
         version: "Optional[DatabaseVersion]" = None
         if version_raw is not None:
-            from dblift.core.introspection.version_detector import DatabaseVersion, parse_version
+            from dblift.db.version import DatabaseVersion, parse_version
 
             if dialect:
                 try:

@@ -11,8 +11,8 @@ from dblift.db.feature_gate import FeatureGate
 from dblift.db.object_naming import configured_identifier_text, dictionary_identifier
 
 if TYPE_CHECKING:
-    from dblift.core.introspection.version_detector import DatabaseVersion
     from dblift.db.generator_protocol import AlterGeneratorProtocol, SqlGeneratorProtocol
+    from dblift.db.version import DatabaseVersion
 
 
 # Each entry: (compiled regex, ErrorCategory). Sourced by
@@ -589,7 +589,7 @@ class OracleQuirks(BaseQuirks):
         Database 23ai Free"``) still carry a marketing version — fall back
         to its major number when the generic dotted-run parse finds nothing.
         """
-        from dblift.core.introspection.version_detector import DatabaseVersion, parse_version
+        from dblift.db.version import DatabaseVersion, parse_version
 
         version = parse_version(raw)
         if version is not None or not raw:
