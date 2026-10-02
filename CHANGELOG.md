@@ -48,6 +48,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   statement and its error. A failed undo script now appears in the report and
   JSON log; Min / Max no longer shows `999999`.
 
+- **The run report shows the same error text as the command.** A failed
+  statement's error in the HTML report kept the driver's exception class
+  (e.g. `(psycopg.errors.UndefinedTable)`) and SQLAlchemy's
+  "Background on this error" link; it now reads exactly like the command error
+  and the JSON log, `[SQL: ...]` block included.
+
 - **SQL Server `CREATE OR ALTER` statements are recognised.** A migration's
   `CREATE OR ALTER VIEW`, `PROCEDURE`, `FUNCTION` or `TRIGGER` was not attributed
   to the object it creates, so anything that tracks a migration's objects treated

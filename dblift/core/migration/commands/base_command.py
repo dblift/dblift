@@ -785,10 +785,10 @@ class BaseCommand:
                 from dblift.core.migration.sql.sql_execution_service import (
                     _format_execution_error,
                 )
-                from dblift.db.error import _SQL_STATEMENT_BLOCK_RE
+                from dblift.db.error import strip_sql_statement_block
 
                 # Strip the generated DDL SQLAlchemy appends to
-                # statement-bound errors (see _SQL_STATEMENT_BLOCK_RE in
+                # statement-bound errors (see strip_sql_statement_block in
                 # dblift.db.error) so a schema/history-table setup failure
                 # never leaks the CREATE TABLE text, matching
                 # format_connection_error's existing guarantee. The
@@ -799,13 +799,11 @@ class BaseCommand:
                 # the unstripped block; only when even that is empty does
                 # the raw text get used as a last resort.
                 try:
-                    formatted = _SQL_STATEMENT_BLOCK_RE.sub(
-                        "", _format_execution_error(exc)
-                    ).strip()
+                    formatted = strip_sql_statement_block(_format_execution_error(exc))
                 except Exception:
                     formatted = ""
                 if not formatted:
-                    formatted = _SQL_STATEMENT_BLOCK_RE.sub("", str(exc)).strip()
+                    formatted = strip_sql_statement_block(str(exc))
                 raise PreflightConnectionError(
                     f"{SCHEMA_HISTORY_CREATE_ERROR_PREFIX}: {formatted or exc}",
                     result,
