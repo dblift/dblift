@@ -66,13 +66,14 @@ class _SqlglotBuildersMixin:
     # ------------------------------------------------------------------
 
     def _parse_trigger_header(self, sql: str) -> Optional[re.Match]:
+        identifier = r'(?:`[^`]+`|"[^"]+"|\[[^\]]+\]|[a-zA-Z_][a-zA-Z0-9_]*)'
         return re.search(
             r"CREATE\s+(?:DEFINER\s*=\s*[^@]+@[^\s]+\s+)?TRIGGER\s+"
-            r"(?:([a-zA-Z_][a-zA-Z0-9_]*)\.)?([a-zA-Z_][a-zA-Z0-9_]*)\s+"
+            rf"(?:({identifier})\.)?({identifier})\s+"
             r"(BEFORE|AFTER)\s+"
             r"(INSERT|UPDATE|DELETE)\s+"
             r"ON\s+"
-            r"([a-zA-Z_][a-zA-Z0-9_]*)\.([a-zA-Z_][a-zA-Z0-9_]*)",
+            rf"(?:({identifier})\.)?({identifier})",
             sql,
             re.IGNORECASE,
         )
@@ -116,17 +117,21 @@ class _SqlglotBuildersMixin:
         change and is tracked outside this complexity refactor.
         """
         return _TriggerHeader(
-            schema=match.group(1) or default_schema,
-            name=match.group(2) or "",
+            schema=(
+                self._normalize_identifier(match.group(1), preserve_case=True)
+                if match.group(1)
+                else default_schema
+            ),
+            name=self._normalize_identifier(match.group(2), preserve_case=True),
             timing=match.group(3).upper() if match.group(3) else None,
             event=match.group(4).upper() if match.group(4) else None,
-            table_name=match.group(6) or "",
+            table_name=self._normalize_identifier(match.group(6), preserve_case=True),
         )
 
     def _extract_trigger_definition(self, sql_text: str) -> Optional[str]:
         """Return the trigger body following ``FOR EACH ROW``, or ``None``."""
         match = re.search(
-            r"FOR\s+EACH\s+ROW\s+(.*?)(?:;|$)",
+            r"FOR\s+EACH\s+ROW\s+(.*)$",
             sql_text,
             re.IGNORECASE | re.DOTALL,
         )
@@ -290,6 +295,8 @@ class _SqlglotBuildersMixin:
         is_primary_key = False
         is_unique = False
         default_value = None
+        computed_expression = None
+        computed_stored = False
         inline_constraints: List[SqlConstraint] = []
 
         for constraint in column_def.args.get("constraints") or []:
@@ -304,6 +311,23 @@ class _SqlglotBuildersMixin:
             elif isinstance(kind, exp.DefaultColumnConstraint):
                 if kind.this and self.sqlglot_parser:
                     default_value = kind.this.sql(dialect=self.sqlglot_parser.sqlglot_dialect)
+            elif isinstance(kind, exp.ComputedColumnConstraint):
+                if kind.this is not None and self.sqlglot_parser:
+                    expression = kind.this
+                    if not isinstance(expression, exp.Paren):
+                        expression = exp.Paren(this=expression)
+                    computed_expression = expression.sql(
+                        dialect=self.sqlglot_parser.sqlglot_dialect
+                    )
+                    # sqlglot 30's PostgreSQL parser emits this node only for
+                    # STORED, but omits the persisted argument.
+                    computed_stored = bool(
+                        kind.args.get(
+                            "persisted",
+                            # lint: allow-dialect-string: sqlglot 30 AST compatibility
+                            self.sqlglot_parser.sqlglot_dialect == "postgres",
+                        )
+                    )
             elif isinstance(kind, exp.Reference):
                 fk = self._build_foreign_key_constraint([column_name], kind)
                 if fk:
@@ -330,6 +354,9 @@ class _SqlglotBuildersMixin:
             is_primary_key=is_primary_key,
             is_unique=is_unique,
             default_value=default_value,
+            is_computed=computed_expression is not None,
+            computed_expression=computed_expression,
+            computed_stored=computed_stored,
             dialect=self.dialect,
         )
 
@@ -496,12 +523,23 @@ class _SqlglotBuildersMixin:
             for identifier in schema_expr.expressions or []
         ]
 
+        on_delete = None
+        on_update = None
+        for option in reference.args.get("options") or []:
+            option = option.upper()
+            if option.startswith("ON DELETE "):
+                on_delete = option[len("ON DELETE ") :]
+            elif option.startswith("ON UPDATE "):
+                on_update = option[len("ON UPDATE ") :]
+
         constraint = SqlConstraint(
             ConstraintType.FOREIGN_KEY,
             name=constraint_name,
             column_names=column_names,
             reference_table=reference_table,
             reference_columns=reference_columns,
+            on_delete=on_delete,
+            on_update=on_update,
             dialect=self.dialect,
         )
         if reference_schema:
@@ -562,15 +600,20 @@ class _SqlglotBuildersMixin:
 
         params = index_expr.args.get("params")
         column_exprs = params.args.get("columns") if params else None
-        columns = [
-            self._normalize_identifier(
-                self._expression_name(
-                    ordered.this if isinstance(ordered, exp.Ordered) else ordered
-                ),
-                preserve_case=True,
+        columns = []
+        expression_flags = []
+        sort_directions = []
+        for ordered in column_exprs or []:
+            key = ordered.this if isinstance(ordered, exp.Ordered) else ordered
+            is_expression = not isinstance(key, exp.Column)
+            columns.append(
+                key.sql(dialect=self.sqlglot_parser.sqlglot_dialect)
+                if is_expression
+                else self._normalize_identifier(self._expression_name(key), preserve_case=True)
             )
-            for ordered in (column_exprs or [])
-        ]
+            expression_flags.append(is_expression)
+            descending = ordered.args.get("desc")
+            sort_directions.append("" if descending is None else "DESC" if descending else "ASC")
 
         if not columns:
             return None
@@ -581,6 +624,8 @@ class _SqlglotBuildersMixin:
             name=index_name,
             table_name=table_name,
             columns=columns,
+            expression_flags=expression_flags,
+            sort_directions=sort_directions if any(sort_directions) else [],
             schema=None,
             table_schema=table_schema,
             unique=unique,
