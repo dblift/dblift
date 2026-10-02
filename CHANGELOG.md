@@ -44,6 +44,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **CockroachDB `INT` columns compare as the 64-bit integers CockroachDB creates.**
+  A column declared `INT` or `INTEGER` was read as a 4-byte integer, so comparing
+  a CockroachDB schema with its own DDL reported a type change on every such
+  column. They are now read as `BIGINT`, CockroachDB's default size; `INT4` stays
+  4 bytes.
+
 - **SQL Server `CREATE OR ALTER` statements are recognised.** A migration's
   `CREATE OR ALTER VIEW`, `PROCEDURE`, `FUNCTION` or `TRIGGER` was not attributed
   to the object it creates, so anything that tracks a migration's objects treated
