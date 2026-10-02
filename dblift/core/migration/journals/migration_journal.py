@@ -410,7 +410,7 @@ class MigrationJournal:
         by_index: Dict[int, Any],
         by_text: Dict[str, Any],
     ) -> Tuple[str, str, str]:
-        """Return (operation, object_type, object_name) for a completed statement."""
+        """Return (operation, object_type, object_name) for an executed statement."""
         obj = by_index.get(entry.statement_index)
         if obj is None:
             obj = by_text.get(entry.statement)
@@ -589,13 +589,19 @@ class MigrationJournal:
                             }
                         )
 
-        for entry in entries:
-            if entry.entry_type == EntryType.STATEMENT_COMPLETE:
-                statement_times.append(entry.execution_time)
+        # A failed statement is part of the run: keep it, in order, so reports
+        # can show which statement stopped the migration.
+        executed = [
+            entry
+            for entry in entries
+            if entry.entry_type in (EntryType.STATEMENT_COMPLETE, EntryType.STATEMENT_FAILED)
+        ]
+        for entry in executed:
+            statement_times.append(entry.execution_time)
 
-                if entry.execution_time > slowest_time:
-                    slowest_time = entry.execution_time
-                    slowest_statement = entry.statement
+            if entry.execution_time > slowest_time:
+                slowest_time = entry.execution_time
+                slowest_statement = entry.statement
 
         by_index, by_text = self._object_change_lookups(entries)
 
@@ -636,10 +642,6 @@ class MigrationJournal:
             "max_statement_time": max(statement_times),
             "min_statement_time": min(statement_times),
             "slowest_statement": slowest_statement,
-            "statements": [
-                _statement_dict(entry)
-                for entry in entries
-                if entry.entry_type == EntryType.STATEMENT_COMPLETE
-            ],
+            "statements": [_statement_dict(entry) for entry in executed],
             "object_operations": object_operations,
         }

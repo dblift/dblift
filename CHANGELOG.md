@@ -44,6 +44,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **HTML run report shows failed migrations as failed**, with the failing
+  statement and its error. A failed undo script now appears in the report and
+  JSON log; Min / Max no longer shows `999999`.
+
 - **SQL Server `CREATE OR ALTER` statements are recognised.** A migration's
   `CREATE OR ALTER VIEW`, `PROCEDURE`, `FUNCTION` or `TRIGGER` was not attributed
   to the object it creates, so anything that tracks a migration's objects treated
