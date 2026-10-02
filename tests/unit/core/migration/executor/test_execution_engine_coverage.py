@@ -16,10 +16,7 @@ from unittest.mock import MagicMock, patch
 
 from dblift.core.exceptions import TransactionAbortedError
 from dblift.core.logger.results import OperationResult
-from dblift.core.migration.executor.execution_engine import (
-    ExecutionEngine,
-    _strip_driver_exception_prefix,
-)
+from dblift.core.migration.executor.execution_engine import ExecutionEngine
 from dblift.core.migration.formats import MigrationFormat
 from dblift.core.migration.migration import Migration
 
@@ -93,34 +90,6 @@ def _make_python_migration(name="V2__migrate.py"):
     m.type.value = "PYTHON"
     m.type.name = "VERSIONED"
     return m
-
-
-# ---------------------------------------------------------------------------
-# Module-level function _strip_driver_exception_prefix (line 55)
-# ---------------------------------------------------------------------------
-
-
-class TestStripJdbcPrefix(unittest.TestCase):
-
-    def test_strips_psql_exception_prefix(self):
-        msg = 'org.postgresql.util.PSQLException: ERROR: column "x" already exists'
-        result = _strip_driver_exception_prefix(msg)
-        self.assertNotIn("org.postgresql", result)
-        self.assertIn("already exists", result)
-
-    def test_strips_nested_exception_prefix(self):
-        msg = "com.ibm.db2.jcc.am.SqlException: ERROR: table not found"
-        result = _strip_driver_exception_prefix(msg)
-        self.assertNotIn("com.ibm", result)
-
-    def test_no_prefix_unchanged(self):
-        msg = "plain error message"
-        result = _strip_driver_exception_prefix(msg)
-        self.assertEqual(result, msg)
-
-    def test_empty_string(self):
-        result = _strip_driver_exception_prefix("")
-        self.assertEqual(result, "")
 
 
 # ---------------------------------------------------------------------------

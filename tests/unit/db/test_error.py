@@ -7,9 +7,12 @@ import pytest
 from dblift.db.error import (
     DatabaseErrorClassifier,
     ErrorCategory,
-    _extract_sqlstate,
     _is_auth_error,
+    clean_driver_error_message,
+    extract_error_code,
+    extract_sqlstate,
     format_connection_error,
+    strip_sql_statement_block,
 )
 
 # ---------------------------------------------------------------------------
@@ -266,8 +269,10 @@ class TestFormatConnectionError:
             "Unable to connect: Adaptive Server is unavailable or does not exist')"
         )
         result = format_connection_error(Exception(raw), "sqlserver")
-        assert "20009" not in result or "b'" not in result
-        assert "Unable to connect" in result
+        assert result == (
+            "Connection failed: DB-Lib error message 20009, severity 9: "
+            "Unable to connect: Adaptive Server is unavailable or does not exist"
+        )
 
     def test_sqlite_filesystem_permission_error_is_not_invalid_credentials(self):
         """A PermissionError raised while SQLite tries to open/create its
@@ -378,7 +383,7 @@ class TestIsAuthError:
 
 
 # ---------------------------------------------------------------------------
-# _extract_sqlstate
+# extract_sqlstate
 # ---------------------------------------------------------------------------
 
 
@@ -389,11 +394,100 @@ class TestExtractSqlstate:
     def test_returns_none_when_getSQLState_raises(self):
         err = Exception("driver error")
         err.getSQLState = MagicMock(side_effect=RuntimeError("driver crashed"))  # type: ignore[attr-defined]
-        assert _extract_sqlstate(err) is None
+        assert extract_sqlstate(err) is None
 
     def test_reads_plain_sqlstate_attribute(self):
         """Drivers that expose sqlstate as a plain attribute instead of a
         getSQLState() method are also supported."""
         err = Exception("driver error")
         err.sqlstate = "28000"  # type: ignore[attr-defined]
-        assert _extract_sqlstate(err) == "28000"
+        assert extract_sqlstate(err) == "28000"
+
+
+# ---------------------------------------------------------------------------
+# clean_driver_error_message / strip_sql_statement_block / extract_error_code
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestCleanDriverErrorMessage:
+    """Driver and SQLAlchemy wrapping is removed; the engine's own text stays."""
+
+    def test_strips_jdbc_exception_prefix(self):
+        msg = 'org.postgresql.util.PSQLException: ERROR: column "x" already exists'
+        assert clean_driver_error_message(msg) == 'column "x" already exists'
+
+    def test_strips_nested_jdbc_exception_prefix(self):
+        msg = "com.ibm.db2.jcc.am.SqlException: ERROR: table not found"
+        assert clean_driver_error_message(msg) == "table not found"
+
+    def test_strips_sqlalchemy_class_prefix_and_doc_link(self):
+        msg = (
+            '(psycopg.errors.UndefinedTable) table "t" does not exist\n'
+            "(Background on this error at: https://sqlalche.me/e/20/f405)"
+        )
+        assert clean_driver_error_message(msg) == 'table "t" does not exist'
+
+    def test_keeps_failing_statement_block(self):
+        msg = (
+            '(psycopg.errors.UndefinedTable) table "t" does not exist\n'
+            "[SQL: DROP TABLE t]\n"
+            "(Background on this error at: https://sqlalche.me/e/20/e3q8)"
+        )
+        assert clean_driver_error_message(msg) == 'table "t" does not exist\n[SQL: DROP TABLE t]'
+
+    def test_unwraps_dbapi_error_tuple_before_statement_block(self):
+        """PyMySQL renders its error as an (errno, message) tuple."""
+        msg = (
+            "(pymysql.err.OperationalError) (1054, \"Unknown column 'nope' in 'where clause'\")\n"
+            "[SQL: UPDATE t SET c = 1 WHERE nope = 1]\n"
+            "(Background on this error at: https://sqlalche.me/e/20/e3q8)"
+        )
+        assert clean_driver_error_message(msg) == (
+            "Unknown column 'nope' in 'where clause'\n[SQL: UPDATE t SET c = 1 WHERE nope = 1]"
+        )
+
+    def test_unwraps_dbapi_error_tuple_with_byte_string(self):
+        """pymssql renders its error as an (errno, b'message') tuple."""
+        msg = "(20009, b'DB-Lib error message 20009, severity 9: Unable to connect')"
+        assert clean_driver_error_message(msg) == (
+            "DB-Lib error message 20009, severity 9: Unable to connect"
+        )
+
+    def test_plain_message_unchanged(self):
+        assert clean_driver_error_message("plain error message") == "plain error message"
+
+    def test_empty_string(self):
+        assert clean_driver_error_message("") == ""
+
+
+@pytest.mark.unit
+class TestStripSqlStatementBlock:
+    def test_removes_statement_and_parameters(self):
+        msg = "relation exists\n[SQL: CREATE TABLE h (id INT)]\n[parameters: {}]"
+        assert strip_sql_statement_block(msg) == "relation exists"
+
+    def test_message_without_block_unchanged(self):
+        assert strip_sql_statement_block("relation exists") == "relation exists"
+
+
+@pytest.mark.unit
+class TestExtractErrorCode:
+    def test_reads_getErrorCode(self):
+        err = Exception("driver error")
+        err.getErrorCode = MagicMock(return_value=1051)  # type: ignore[attr-defined]
+        assert extract_error_code(err) == 1051
+
+    def test_returns_none_when_getErrorCode_raises(self):
+        err = Exception("driver error")
+        err.getErrorCode = MagicMock(side_effect=RuntimeError("driver crashed"))  # type: ignore[attr-defined]
+        assert extract_error_code(err) is None
+
+    @pytest.mark.parametrize("attr", ["errorcode", "errorCode"])
+    def test_reads_plain_attribute(self, attr):
+        err = Exception("driver error")
+        setattr(err, attr, "42P01")
+        assert extract_error_code(err) == "42P01"
+
+    def test_none_when_absent(self):
+        assert extract_error_code(Exception("driver error")) is None

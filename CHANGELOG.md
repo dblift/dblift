@@ -56,6 +56,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   column. They are now read as `BIGINT`, CockroachDB's default size; `INT4` stays
   4 bytes.
 
+- **Database errors read the same in the run report, command and JSON log**:
+  no driver class prefix or SQLAlchemy link, and MySQL / SQL Server errors drop
+  the `(errno, "...")` tuple.
+
 - **SQL Server `CREATE OR ALTER` statements are recognised.** A migration's
   `CREATE OR ALTER VIEW`, `PROCEDURE`, `FUNCTION` or `TRIGGER` was not attributed
   to the object it creates, so anything that tracks a migration's objects treated

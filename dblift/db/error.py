@@ -8,7 +8,7 @@ only the generic, dialect-agnostic fallback patterns.
 
 import re
 from enum import Enum
-from typing import Any, List, Optional, Tuple
+from typing import Any, List, Optional, Tuple, Union
 
 from dblift.core.logger import NullLog
 
@@ -36,17 +36,67 @@ class ErrorCategory(str, Enum):
 # (``db/plugins/<X>/quirks.py`` ``error_patterns()``) and are sourced at
 # classifier construction via ``ProviderRegistry.get_quirks`` (ADR-26 A2).
 
-# pymssql raises connection errors as a raw tuple, e.g.
-# "(20009, b'DB-Lib error message 20009, severity 9: Unable to connect: ...')"
-# — unwrap it to the human-readable message text before falling back to the
-# generic passthrough.
-_PYMSSQL_TUPLE_RE = re.compile(r"^\(\d+,\s*b?['\"](.+?)['\"]\)$")
+# Some DBAPI drivers render an error as its (errno, message) args tuple, e.g.
+# PyMySQL '(1054, "Unknown column \'x\' in \'where clause\'")' or pymssql
+# "(20009, b'DB-Lib error message 20009, severity 9: Unable to connect: ...')".
+# clean_driver_error_message() unwraps it to the message text.
+_DBAPI_ERROR_TUPLE_RE = re.compile(r"\A\(\d+,\s*b?(['\"])(.*?)\1\)", re.DOTALL)
 
 # SQLAlchemy appends the failing statement to statement-bound errors, e.g.
 # '...\n[SQL: CREATE TABLE dblift_schema_history (...)]\n[parameters: ...]'.
-# format_connection_error() strips this trailing block so a schema/table
+# strip_sql_statement_block() removes this trailing block so a schema/table
 # setup failure never leaks internal DDL to the user.
 _SQL_STATEMENT_BLOCK_RE = re.compile(r"\s*\[SQL:.*", re.IGNORECASE | re.DOTALL)
+
+_DRIVER_EXCEPTION_PREFIX_RE = re.compile(
+    r"^(?:"
+    r"[a-z][a-z0-9_]*(?:\.[a-z][a-z0-9_]*)+Exception:\s*"  # Java/JDBC: dotted.path.Exception:
+    r"|"
+    r"\([a-z_][a-z0-9_]*(?:\.[a-z0-9_]+)+\)\s*"  # SQLAlchemy: (dotted.path.ExceptionClass)
+    r")+"
+    r"(?:ERROR:\s*)?",
+    re.IGNORECASE,
+)
+# SQLAlchemy appends a doc-link pointer for every wrapped DBAPI error, e.g.
+# '(Background on this error at: https://sqlalche.me/e/20/e3q8)'.
+_SQLALCHEMY_DOC_LINK_RE = re.compile(
+    r"\s*\(Background on this error at:.*\)\s*\Z", re.IGNORECASE | re.DOTALL
+)
+
+
+def clean_driver_error_message(message: str) -> str:
+    """Strip driver and SQLAlchemy wrapping from a database error message.
+
+    Shared by every place that shows a database error to the user, so a
+    failure reads the same in the command error, the logs and the run report.
+    The ``[SQL: ...]`` block of a failing statement is kept: in a migration
+    error it tells the user which statement broke. Use
+    :func:`strip_sql_statement_block` where the statement is dblift's own.
+
+    e.g. 'org.postgresql.util.PSQLException: ERROR: column "x" already exists'
+         → 'column "x" already exists'
+    e.g. '(_duckdb.IOException) IO Error: Cannot open file "x": No such file or directory
+         (Background on this error at: https://sqlalche.me/e/20/e3q8)'
+         → 'IO Error: Cannot open file "x": No such file or directory'
+    e.g. '(pymysql.err.OperationalError) (1054, "Unknown column 'x' in 'where clause'")'
+         → "Unknown column 'x' in 'where clause'"
+    """
+    text = _DRIVER_EXCEPTION_PREFIX_RE.sub("", str(message).strip()).strip()
+    text = _SQLALCHEMY_DOC_LINK_RE.sub("", text).strip()
+    errno_tuple = _DBAPI_ERROR_TUPLE_RE.match(text)
+    if errno_tuple:
+        text = (errno_tuple.group(2) + text[errno_tuple.end() :]).strip()
+    return text
+
+
+def strip_sql_statement_block(message: str) -> str:
+    """Remove the ``[SQL: ...]`` block SQLAlchemy appends to statement-bound errors.
+
+    For connection and schema-history setup errors, where the statement is
+    dblift's own DDL rather than the user's migration.
+    """
+    return _SQL_STATEMENT_BLOCK_RE.sub("", message).strip()
+
 
 # Generic fallback patterns (checked for all database types)
 _GENERIC_PATTERNS: List[Tuple[re.Pattern[str], ErrorCategory]] = [
@@ -131,18 +181,14 @@ def format_connection_error(error: Exception, db_type: str = "") -> str:
         3D000 ``invalid_catalog_name``
         08004 ``sqlserver_rejected_establishment_of_sqlconnection``
     """
-    from dblift.core.migration.executor.execution_engine import _strip_driver_exception_prefix
-
-    message = _strip_driver_exception_prefix(str(error))
-    # See _SQL_STATEMENT_BLOCK_RE above for why this is stripped here only.
-    message = _SQL_STATEMENT_BLOCK_RE.sub("", message).strip()
+    message = strip_sql_statement_block(clean_driver_error_message(str(error)))
     lowered = message.lower()
     # SQL Server can report login failures with SQLState 08001, so inspect
     # explicit auth markers before classifying broad connection SQLStates.
     if _is_auth_error(error, lowered, db_type):
         return "Connection failed: invalid credentials"
 
-    sqlstate = _extract_sqlstate(error)
+    sqlstate = extract_sqlstate(error)
     if sqlstate in ("08001", "08006", "08S01"):
         return "Connection failed: host unreachable or connection timed out"
     if sqlstate in ("28000", "28P01"):
@@ -154,10 +200,6 @@ def format_connection_error(error: Exception, db_type: str = "") -> str:
         return "Connection failed: host unreachable"
     if "unknown host" in lowered or "name or service not known" in lowered:
         return "Connection failed: host not found"
-
-    pymssql_match = _PYMSSQL_TUPLE_RE.match(str(message).strip())
-    if pymssql_match:
-        return f"Connection failed: {pymssql_match.group(1)}"
 
     return f"Connection failed: {message}"
 
@@ -198,7 +240,7 @@ def _is_auth_error(error: Exception, lowered_message: str, db_type: str) -> bool
     return category == ErrorCategory.AUTHENTICATION
 
 
-def _extract_sqlstate(error: Exception) -> Optional[str]:
+def extract_sqlstate(error: BaseException) -> Optional[str]:
     """Return the 5-character SQLState of *error*, or None.
 
     Some driver exceptions expose ``getSQLState()``. ``sqlstate`` is also
@@ -216,3 +258,23 @@ def _extract_sqlstate(error: Exception) -> Optional[str]:
     if attr:
         return str(attr).strip() or None
     return None
+
+
+def extract_error_code(error: BaseException) -> Optional[Union[int, str]]:
+    """Return the vendor error code of *error*, or None.
+
+    Read from ``getErrorCode()`` when the driver exposes it, else from an
+    ``errorcode`` / ``errorCode`` attribute.
+    """
+    code: Optional[Union[int, str]] = None
+    get_code = getattr(error, "getErrorCode", None)
+    if callable(get_code):
+        try:
+            code = get_code()
+        except Exception:
+            code = None
+    if code is None:
+        code = getattr(error, "errorcode", None)
+    if code is None:
+        code = getattr(error, "errorCode", None)
+    return code
