@@ -44,6 +44,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Models read from SQL files keep generated columns, functional and descending indexes, foreign-key actions and triggers.** The SQL parser dropped a generated column's expression, the expression and sort order of an index's key parts, a foreign key's `ON DELETE` / `ON UPDATE` action, and triggers declared on an unqualified table (or with a multi-statement body). These are now kept, so a schema compared against such a model no longer reports them as differences.
+
 - **SQL Server `CREATE OR ALTER` statements are recognised.** A migration's
   `CREATE OR ALTER VIEW`, `PROCEDURE`, `FUNCTION` or `TRIGGER` was not attributed
   to the object it creates, so anything that tracks a migration's objects treated
