@@ -36,11 +36,11 @@ class ErrorCategory(str, Enum):
 # (``db/plugins/<X>/quirks.py`` ``error_patterns()``) and are sourced at
 # classifier construction via ``ProviderRegistry.get_quirks`` (ADR-26 A2).
 
-# pymssql raises connection errors as a raw tuple, e.g.
-# "(20009, b'DB-Lib error message 20009, severity 9: Unable to connect: ...')"
-# — unwrap it to the human-readable message text before falling back to the
-# generic passthrough.
-_PYMSSQL_TUPLE_RE = re.compile(r"^\(\d+,\s*b?['\"](.+?)['\"]\)$")
+# Some DBAPI drivers render an error as its (errno, message) args tuple, e.g.
+# PyMySQL '(1054, "Unknown column \'x\' in \'where clause\'")' or pymssql
+# "(20009, b'DB-Lib error message 20009, severity 9: Unable to connect: ...')".
+# clean_driver_error_message() unwraps it to the message text.
+_DBAPI_ERROR_TUPLE_RE = re.compile(r"\A\(\d+,\s*b?(['\"])(.*?)\1\)", re.DOTALL)
 
 # SQLAlchemy appends the failing statement to statement-bound errors, e.g.
 # '...\n[SQL: CREATE TABLE dblift_schema_history (...)]\n[parameters: ...]'.
@@ -78,9 +78,15 @@ def clean_driver_error_message(message: str) -> str:
     e.g. '(_duckdb.IOException) IO Error: Cannot open file "x": No such file or directory
          (Background on this error at: https://sqlalche.me/e/20/e3q8)'
          → 'IO Error: Cannot open file "x": No such file or directory'
+    e.g. '(pymysql.err.OperationalError) (1054, "Unknown column 'x' in 'where clause'")'
+         → "Unknown column 'x' in 'where clause'"
     """
     text = _DRIVER_EXCEPTION_PREFIX_RE.sub("", str(message).strip()).strip()
-    return _SQLALCHEMY_DOC_LINK_RE.sub("", text).strip()
+    text = _SQLALCHEMY_DOC_LINK_RE.sub("", text).strip()
+    errno_tuple = _DBAPI_ERROR_TUPLE_RE.match(text)
+    if errno_tuple:
+        text = (errno_tuple.group(2) + text[errno_tuple.end() :]).strip()
+    return text
 
 
 def strip_sql_statement_block(message: str) -> str:
@@ -194,10 +200,6 @@ def format_connection_error(error: Exception, db_type: str = "") -> str:
         return "Connection failed: host unreachable"
     if "unknown host" in lowered or "name or service not known" in lowered:
         return "Connection failed: host not found"
-
-    pymssql_match = _PYMSSQL_TUPLE_RE.match(str(message).strip())
-    if pymssql_match:
-        return f"Connection failed: {pymssql_match.group(1)}"
 
     return f"Connection failed: {message}"
 

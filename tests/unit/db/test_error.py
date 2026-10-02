@@ -269,8 +269,10 @@ class TestFormatConnectionError:
             "Unable to connect: Adaptive Server is unavailable or does not exist')"
         )
         result = format_connection_error(Exception(raw), "sqlserver")
-        assert "20009" not in result or "b'" not in result
-        assert "Unable to connect" in result
+        assert result == (
+            "Connection failed: DB-Lib error message 20009, severity 9: "
+            "Unable to connect: Adaptive Server is unavailable or does not exist"
+        )
 
     def test_sqlite_filesystem_permission_error_is_not_invalid_credentials(self):
         """A PermissionError raised while SQLite tries to open/create its
@@ -428,12 +430,28 @@ class TestCleanDriverErrorMessage:
 
     def test_keeps_failing_statement_block(self):
         msg = (
-            "(pymysql.err.OperationalError) (1051, \"Unknown table 'app.t'\")\n"
+            '(psycopg.errors.UndefinedTable) table "t" does not exist\n'
             "[SQL: DROP TABLE t]\n"
             "(Background on this error at: https://sqlalche.me/e/20/e3q8)"
         )
+        assert clean_driver_error_message(msg) == 'table "t" does not exist\n[SQL: DROP TABLE t]'
+
+    def test_unwraps_dbapi_error_tuple_before_statement_block(self):
+        """PyMySQL renders its error as an (errno, message) tuple."""
+        msg = (
+            "(pymysql.err.OperationalError) (1054, \"Unknown column 'nope' in 'where clause'\")\n"
+            "[SQL: UPDATE t SET c = 1 WHERE nope = 1]\n"
+            "(Background on this error at: https://sqlalche.me/e/20/e3q8)"
+        )
         assert clean_driver_error_message(msg) == (
-            "(1051, \"Unknown table 'app.t'\")\n[SQL: DROP TABLE t]"
+            "Unknown column 'nope' in 'where clause'\n[SQL: UPDATE t SET c = 1 WHERE nope = 1]"
+        )
+
+    def test_unwraps_dbapi_error_tuple_with_byte_string(self):
+        """pymssql renders its error as an (errno, b'message') tuple."""
+        msg = "(20009, b'DB-Lib error message 20009, severity 9: Unable to connect')"
+        assert clean_driver_error_message(msg) == (
+            "DB-Lib error message 20009, severity 9: Unable to connect"
         )
 
     def test_plain_message_unchanged(self):

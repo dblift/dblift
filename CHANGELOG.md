@@ -52,7 +52,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   statement's error in the HTML report kept the driver's exception class
   (e.g. `(psycopg.errors.UndefinedTable)`) and SQLAlchemy's
   "Background on this error" link; it now reads exactly like the command error
-  and the JSON log, `[SQL: ...]` block included.
+  and the JSON log, `[SQL: ...]` block included. MySQL / MariaDB (PyMySQL) and
+  SQL Server (pymssql) statement errors no longer show the driver's
+  `(errno, "message")` tuple, only the message, as connection errors already did.
 
 - **SQL Server `CREATE OR ALTER` statements are recognised.** A migration's
   `CREATE OR ALTER VIEW`, `PROCEDURE`, `FUNCTION` or `TRIGGER` was not attributed
