@@ -28,13 +28,17 @@ def _normalize_identifier(identifier: Optional[str], preserve_case: bool) -> str
 
 def apply_partition_metadata(table: Table, sql_text: str) -> None:
     """Extract partition metadata from SQL text and apply it to the table."""
-    pattern = re.compile(r"PARTITION\s+BY\s+([A-Z_]+)\s*\(", re.IGNORECASE)
+    pattern = re.compile(
+        r"PARTITION\s+BY\s+((?:LINEAR\s+)?(?:HASH|KEY)|[A-Z_]+)"
+        r"(?:(?<=KEY)\s+ALGORITHM\s*=\s*[12])?\s*\(",
+        re.IGNORECASE,
+    )
     match = pattern.search(sql_text)
     if not match:
         table.partition_method = None
         table.partition_columns = None
         return
-    method = match.group(1).upper()
+    method = " ".join(match.group(1).upper().split())
     start_index = match.end()
     column_expr = extract_balanced_partition_expression(sql_text, start_index)
     columns = normalize_partition_columns(column_expr)
@@ -51,7 +55,8 @@ def apply_partition_metadata(table: Table, sql_text: str) -> None:
     count = re.match(r"PARTITIONS\s+([0-9]+)(?=\s|[;(]|$)", remainder, re.IGNORECASE)
     if count:
         try:
-            table.partition_count = int(count.group(1))
+            parsed_count = int(count.group(1))
+            table.partition_count = parsed_count if parsed_count >= 1 else None
         except ValueError:  # Python limits conversion of excessively long integers.
             return
         remainder = remainder[count.end() :].lstrip()

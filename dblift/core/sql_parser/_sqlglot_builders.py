@@ -295,6 +295,7 @@ class _SqlglotBuildersMixin:
         is_primary_key = False
         is_unique = False
         default_value = None
+        collation = None
         computed_expression = None
         computed_stored = False
         inline_constraints: List[SqlConstraint] = []
@@ -308,6 +309,10 @@ class _SqlglotBuildersMixin:
                 is_nullable = False
             elif isinstance(kind, exp.UniqueColumnConstraint):
                 is_unique = True
+            elif isinstance(kind, exp.CollateColumnConstraint):
+                collation = kind.this.name
+                if self._quirks.unquoted_identifier_case == "uppercase":
+                    collation = collation.upper()
             elif isinstance(kind, exp.DefaultColumnConstraint):
                 if kind.this and self.sqlglot_parser:
                     default_value = kind.this.sql(dialect=self.sqlglot_parser.sqlglot_dialect)
@@ -354,6 +359,7 @@ class _SqlglotBuildersMixin:
             is_primary_key=is_primary_key,
             is_unique=is_unique,
             default_value=default_value,
+            collation=collation,
             is_computed=computed_expression is not None,
             computed_expression=computed_expression,
             computed_stored=computed_stored,

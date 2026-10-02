@@ -46,6 +46,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Models read from SQL files keep column collations and MySQL linear or algorithm-qualified partitioning.** A column's `COLLATE` setting was dropped on every engine, so comparing such a model with the database reported a collation change on each of those columns. A table partitioned by `LINEAR HASH`, `LINEAR KEY` or `KEY ALGORITHM=n` lost its partitioning entirely. Both are now kept.
 - Models read from SQL files keep each index's method and kind. A GIN, hash, GiST or BRIN index was read as a B-tree, an Oracle bitmap index likewise, and MySQL FULLTEXT / SPATIAL indexes, a trailing USING HASH, and SQL Server CLUSTERED / NONCLUSTERED indexes were not read at all. Comparing such a model with the database no longer reports these indexes as changed or missing.
 
 - **HTML run report shows failed migrations as failed**, with the failing
