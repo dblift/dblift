@@ -46,6 +46,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Models read from SQL files keep column collations and MySQL linear or algorithm-qualified partitioning.** A column's `COLLATE` setting was dropped on every engine, so comparing such a model with the database reported a collation change on each of those columns. A table partitioned by `LINEAR HASH`, `LINEAR KEY` or `KEY ALGORITHM=n` lost its partitioning entirely. Both are now kept.
+
 - **HTML run report shows failed migrations as failed**, with the failing
   statement and its error. A failed undo script now appears in the report and
   JSON log; Min / Max no longer shows `999999`.
