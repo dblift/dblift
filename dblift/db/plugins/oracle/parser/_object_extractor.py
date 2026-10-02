@@ -237,6 +237,11 @@ def extract_objects(sql: str, default_schema: Optional[str] = None) -> List[SqlO
                 columns=columns,
                 schema=actual_index_schema,
                 table_schema=actual_table_schema,
+                type=(
+                    "BITMAP"
+                    if re.match(r"CREATE\s+(?:UNIQUE\s+)?BITMAP\b", match.group(0), re.IGNORECASE)
+                    else "BTREE"
+                ),
             )
         )
 

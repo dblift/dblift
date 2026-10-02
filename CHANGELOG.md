@@ -46,6 +46,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Models read from SQL files keep each index's method and kind. A GIN, hash, GiST or BRIN index was read as a B-tree, an Oracle bitmap index likewise, and MySQL FULLTEXT / SPATIAL indexes, a trailing USING HASH, and SQL Server CLUSTERED / NONCLUSTERED indexes were not read at all. Comparing such a model with the database no longer reports these indexes as changed or missing.
+
 - **HTML run report shows failed migrations as failed**, with the failing
   statement and its error. A failed undo script now appears in the report and
   JSON log; Min / Max no longer shows `999999`.
