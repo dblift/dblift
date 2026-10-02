@@ -1,0 +1,20 @@
+{
+  "name": "t",
+  "schema": null,
+  "object_type": "TABLE",
+  "dialect": "mysql",
+  "columns": [],
+  "constraints": [],
+  "temporary": false,
+  "tablespace": null,
+  "comment": null,
+  "partition_method": null,
+  "partition_columns": null,
+  "partitions": [],
+  "export_partitions": [],
+  "derived_from": null,
+  "raw_ddl": null,
+  "metadata": {},
+  "dialect_options": {},
+  "explicit_properties": {}
+}

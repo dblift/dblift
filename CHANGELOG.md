@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **SQL-file models keep a table's partition count and partition list.** A model read from SQL files kept only the partitioning method and columns of `PARTITION BY`; `PARTITIONS n` and an explicit list of partitions are now kept as well, so tools that write DDL from the model can reproduce the partitioning the file declares.
+
 - Table and column comment templates are now available for PostgreSQL, Oracle and Db2, including escaped quotes; installed DDL generators must wire them into export and replay.
 
 - Sequence data types are now captured, serialized and compared through `Sequence.data_type`; `AS <type>` will be rendered once installed DDL generators read this field.
