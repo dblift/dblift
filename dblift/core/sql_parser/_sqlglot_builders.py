@@ -569,19 +569,51 @@ class _SqlglotBuildersMixin:
     # Index
     # ------------------------------------------------------------------
 
+    @staticmethod
+    def _normalize_index_fallback(sql_text: str) -> Tuple[str, Optional[str]]:
+        """Remove unsupported index modifiers, leaving key parsing to sqlglot."""
+        header = re.match(
+            r"\s*CREATE\s+(?:UNIQUE\s+)?(?:(FULLTEXT|SPATIAL)\s+)?INDEX\b",
+            sql_text,
+            re.IGNORECASE,
+        )
+        if not header:
+            return sql_text, None
+
+        index_type = header.group(1)
+        if index_type:
+            sql_text = sql_text[: header.start(1)] + sql_text[header.end(1) :]
+
+        # Only a terminal USING clause is removed. The AST must still contain
+        # a real key list; unsupported or unreadable keys are never fabricated.
+        trailing = re.search(r"\)\s+USING\s+(BTREE|HASH|RTREE)\s*;?\s*$", sql_text, re.IGNORECASE)
+        if trailing:
+            index_type = index_type or trailing.group(1)
+            sql_text = sql_text[: trailing.start() + 1]
+        return sql_text, index_type.upper() if index_type else None
+
     def _build_index_from_sqlglot(
         self, sql_text: str, default_schema: Optional[str]
     ) -> Optional[Index]:
         if not self.sqlglot_parser:
             return None
 
+        fallback_type = None
         try:
             ast = parse_one(sql_text, read=self.sqlglot_parser.sqlglot_dialect)
+            if isinstance(ast, exp.Command):
+                normalized, fallback_type = self._normalize_index_fallback(sql_text)
+                if normalized != sql_text:
+                    ast = parse_one(normalized, read=self.sqlglot_parser.sqlglot_dialect)
         except Exception as e:
             logger.debug(f"sqlglot could not parse INDEX statement: {e}")
             return None
 
-        if not isinstance(ast, exp.Create) or ast.kind != "INDEX":
+        if not isinstance(ast, exp.Create) or ast.kind not in (
+            "INDEX",
+            "CLUSTERED INDEX",
+            "NONCLUSTERED INDEX",
+        ):
             return None
 
         index_expr = ast.this
@@ -605,6 +637,10 @@ class _SqlglotBuildersMixin:
         )
 
         params = index_expr.args.get("params")
+        method = params.args.get("using") if params else None
+        index_type = fallback_type or (method.name.upper() if method else "BTREE")
+        if ast.kind != "INDEX":
+            index_type = ast.kind.removesuffix(" INDEX")
         column_exprs = params.args.get("columns") if params else None
         columns = []
         expression_flags = []
@@ -635,6 +671,7 @@ class _SqlglotBuildersMixin:
             schema=None,
             table_schema=table_schema,
             unique=unique,
+            type=index_type,
             dialect=self.dialect,
         )
 
