@@ -73,13 +73,27 @@ def test_plain_index_key_is_not_an_expression(dialect):
     "keys, directions",
     [
         ("a DESC, id ASC", ["DESC", "ASC"]),
-        ("a, id", ["ASC", "ASC"]),
-        ("a DESC, id", ["DESC", "ASC"]),
+        ("a, id", []),
+        ("a ASC, id ASC", ["ASC", "ASC"]),
+        ("a DESC, id", ["DESC", ""]),
+        ("a, id DESC", ["", "DESC"]),
+        ("a, id ASC", ["", "ASC"]),
     ],
 )
 def test_index_keeps_key_sort_directions(dialect, keys, directions):
     result = SqlParserFactory(dialect).get_parser().parse_sql(f"CREATE INDEX ix ON t ({keys})")
     assert result.indexes[0].sort_directions == directions
+
+
+@pytest.mark.parametrize("method", ["btree", "gin", "hash"])
+def test_postgresql_index_without_explicit_direction_keeps_empty_sort_directions(method):
+    result = (
+        SqlParserFactory("postgresql")
+        .get_parser()
+        .parse_sql(f"CREATE INDEX ix ON t USING {method} (a)")
+    )
+    assert len(result.indexes) == 1
+    assert result.indexes[0].sort_directions == []
 
 
 @pytest.mark.parametrize("dialect", DIALECTS)

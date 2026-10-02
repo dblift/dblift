@@ -612,7 +612,8 @@ class _SqlglotBuildersMixin:
                 else self._normalize_identifier(self._expression_name(key), preserve_case=True)
             )
             expression_flags.append(is_expression)
-            sort_directions.append("DESC" if ordered.args.get("desc") else "ASC")
+            descending = ordered.args.get("desc")
+            sort_directions.append("" if descending is None else "DESC" if descending else "ASC")
 
         if not columns:
             return None
@@ -624,7 +625,7 @@ class _SqlglotBuildersMixin:
             table_name=table_name,
             columns=columns,
             expression_flags=expression_flags,
-            sort_directions=sort_directions,
+            sort_directions=sort_directions if any(sort_directions) else [],
             schema=None,
             table_schema=table_schema,
             unique=unique,
