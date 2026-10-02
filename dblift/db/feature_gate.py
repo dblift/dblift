@@ -30,7 +30,7 @@ class FeatureGate:
     """
 
     #: Minimum server version spec, e.g. ``"8.0+"`` (see
-    #: :func:`dblift.core.introspection.version_detector.version_matches_spec`).
+    #: :func:`dblift.db.version.version_matches_spec`).
     min_version: Optional[str] = None
     #: Version (exclusive upper bound) in which the feature was removed.
     removed_in: Optional[str] = None

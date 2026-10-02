@@ -124,7 +124,7 @@ def supports_feature(
             else:
                 edition_ok = bool(re.search(gate.edition_pattern, info.edition, re.IGNORECASE))
 
-        from dblift.core.introspection.version_detector import version_matches_spec
+        from dblift.db.version import version_matches_spec
 
         min_version_ok: Optional[bool] = True
         if gate.min_version is not None:
