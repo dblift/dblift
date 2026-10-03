@@ -78,8 +78,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   outside any transaction and takes effect.
 
 - JSON and HTML file reports now reflect the actual result of `info`, `validate`
-  and `migrate` when the CLI uses `--format json`, including failures.
-- Separate JSON and HTML reports no longer overwrite one another when commands
+  and `migrate` when the CLI uses `--format json`, including failures. Validation
+  reports also retain every issue and affected script.
+- Repeated JSON or HTML reports no longer overwrite one another when commands
   run within the same second. Text logs keep their existing naming.
 
 ### Deprecated
