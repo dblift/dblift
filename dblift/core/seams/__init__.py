@@ -49,12 +49,6 @@ Seam map — module, entry-point group, and where the core calls it:
     subscribes registered listeners to the client's event bus
     (``api/client.py``).
 
-``introspection``
-    Group ``dblift.introspection``. ``attach_registered_introspection()`` runs
-    registrars that extend the schema introspectors
-    (``core/introspection/introspector_factory.py``,
-    ``core/introspection/vendor_queries_factory.py``).
-
 Related hooks outside this package: ``cli/extensions.py`` (groups
 ``dblift.commands``, ``dblift.command_handlers``, ``dblift.terminal_commands``),
 ``cli/mcp/registry.py`` (group ``dblift.mcp_tools``) and

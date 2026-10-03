@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Dict, Optional, Type
+from typing import TYPE_CHECKING, Dict, Optional, Type
 
 from dblift.db.base_quirks import BaseQuirks
 
@@ -78,10 +78,6 @@ class CosmosdbQuirks(BaseQuirks):
         executed verbatim — never parsed into a schema model. Asking for a
         parser is therefore an error, not a silent degradation.
         """
-        return None
-
-    def introspector_class(self) -> "Optional[Type[Any]]":
-        """CosmosDB rich introspection is supplied by an installed extension package."""
         return None
 
     def type_equivalents(self) -> "Dict[str, str]":

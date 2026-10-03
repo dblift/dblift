@@ -79,8 +79,6 @@ snowflake = "dblift.db.plugins.snowflake.plugin:PLUGIN"
 
 [project.entry-points."dblift.event_listeners"]
 
-[project.entry-points."dblift.introspection"]
-
 # MCP tool registrars: callables receiving the ``dblift mcp`` server object.
 [project.entry-points."dblift.mcp_tools"]
 
@@ -396,13 +394,7 @@ module = [
     "dblift.db.base_provider",
     "dblift.db.feature_gate",
     "dblift.db.provider_registry",
-    "dblift.db.plugins.cosmosdb.introspection",
-    "dblift.db.plugins.db2.introspection",
-    "dblift.db.plugins.mysql.introspection",
     "dblift.db.plugins.oracle.introspection",
-    "dblift.db.plugins.postgresql.introspection",
-    "dblift.db.plugins.sqlite.introspection",
-    "dblift.db.plugins.sqlserver.introspection",
 ]
 disallow_any_generics = true
 disallow_subclassing_any = true
@@ -535,70 +527,6 @@ module = [
     "dblift.core.migration.commands.info_command",
     "dblift.core.migration.commands.migrate_command",
     "dblift.core.migration.commands.undo_command",
-]
-disallow_any_generics = true
-disallow_subclassing_any = true
-disallow_untyped_calls = true
-disallow_untyped_defs = true
-disallow_incomplete_defs = true
-disallow_untyped_decorators = true
-no_implicit_optional = true
-warn_unused_ignores = true
-strict_equality = true
-
-# PR-H7a: strict db/introspection — dialect introspectors, all extractors,
-# and small leaf files.  Key fixes: ``__init__`` / ``__exit__`` / abstract
-# method signatures annotated with ``Any``-typed params and explicit return
-# types; bare ``List`` / ``Dict`` / ``frozenset`` literals replaced by their
-# generic forms; ``SchemaIntrospector(...)`` call sites typed as
-# ``temp_introspector: Any = SchemaIntrospector(...)  # type: ignore[no-untyped-call]``
-# with ``# type: ignore[no-any-return]`` on the corresponding ``return``
-# statements (SchemaIntrospector is not yet in the strict zone); stale
-# ``# type: ignore`` comments removed where the underlying type is now
-# ``Any``; ``self.connection: Any`` and ``self.metadata: Any`` added to
-# ``BaseIntrospector``; ``_should_preload_materialized_views`` wrapped in
-# ``bool(...)`` to fix ``Literal[False] | Any | None`` → ``bool`` mismatch.
-# Same flag set as the api/* carve-outs above.
-[[tool.mypy.overrides]]
-module = [
-    "dblift.core.introspection.result",
-    "dblift.core.introspection._partition_enricher",
-    "dblift.core.introspection._column_enricher",
-    "dblift.core.introspection._vendor_property_applier",
-    "dblift.core.introspection.vendor_queries_factory",
-    "dblift.core.introspection.introspector_factory",
-    "dblift.core.introspection.base_introspector",
-    "dblift.core.introspection.extractors.base_extractor",
-    "dblift.core.introspection.extractors.column_extractor",
-    "dblift.core.introspection.extractors.constraint_extractor",
-    "dblift.core.introspection.extractors.index_extractor",
-    "dblift.core.introspection.extractors.misc_extractor",
-    "dblift.core.introspection.extractors.procedure_extractor",
-    "dblift.core.introspection.extractors.table_extractor",
-    "dblift.core.introspection.extractors.trigger_extractor",
-    "dblift.core.introspection.extractors.view_extractor",
-    "dblift.db.plugins.sqlite.introspection.sqlite_introspector",
-    "dblift.db.plugins.cosmosdb.introspection.cosmosdb_introspector",
-]
-disallow_any_generics = true
-disallow_subclassing_any = true
-disallow_untyped_calls = true
-disallow_untyped_defs = true
-disallow_incomplete_defs = true
-disallow_untyped_decorators = true
-no_implicit_optional = true
-warn_unused_ignores = true
-strict_equality = true
-
-# PR-H7b: strict db/introspection — SchemaIntrospector orchestrator +
-# remaining helpers + db2/sqlserver introspectors.
-[[tool.mypy.overrides]]
-module = [
-    "dblift.core.introspection.schema_introspector",
-    "dblift.core.introspection.vendor_queries_base",
-    "dblift.core.introspection.vendor_queries_protocols",
-    "dblift.core.introspection.version_detector",
-    "dblift.core.introspection._utils",
 ]
 disallow_any_generics = true
 disallow_subclassing_any = true

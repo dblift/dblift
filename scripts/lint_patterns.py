@@ -34,8 +34,7 @@ Rules
     directly under ``db/plugins/`` (``db/plugins/*.py``, e.g.
     ``base_snapshot_manager.py``) — they are framework code. Only a
     per-dialect plugin *package* ``db/plugins/<X>/**`` may reference its
-    own dialect (and is exempt); ``core/introspection/`` is exempt for
-    its capability matrices; the rest of the framework should never name
+    own dialect (and is exempt); the rest of the framework should never name
     a dialect. Replace branches like
     ``if dialect.lower() == "oracle":`` with a ``DialectQuirks`` hook
     on the provider. Annotate intentional uses (e.g. registry keys
@@ -124,18 +123,12 @@ DIALECT_NAMES: frozenset = frozenset(
 # code is scanned in full, including the shared base modules directly
 # under ``db/plugins/`` (``db/plugins/*.py``). Only per-dialect plugin
 # packages ``db/plugins/<X>/**`` (handled positionally in
-# ``_is_under_dialect_rule_roots``) and ``core/introspection/`` (see
-# DIALECT_RULE_EXEMPT_PREFIXES) are exempt.
+# ``_is_under_dialect_rule_roots``) are exempt.
 DIALECT_RULE_ROOTS: Tuple[str, ...] = ("api", "cli", "config", "core", "db")
 
 # Path prefixes that are otherwise inside ``DIALECT_RULE_ROOTS`` but
 # exempted because the dialect-string literal is inherent to the
-# module's purpose. Currently empty: ``core/introspection/`` is now
-# scanned. The dialect-specific introspection filters that used to
-# require the exemption (Oracle's generated ``IS NOT NULL`` check,
-# version-detector parsing, and the dead capability/version stores)
-# have been moved into plugin quirks or deleted (ADR-26 B/B2), so the
-# schema-reading layer no longer names a dialect.
+# module's purpose. Currently empty.
 #
 # ``db/`` is scanned in full, *including* the shared base modules that
 # sit directly under ``db/plugins/`` (``db/plugins/*.py``, e.g.
@@ -295,10 +288,7 @@ def _is_under_dialect_rule_roots(path: Path) -> bool:
     ``base_snapshot_manager.py``) — those are framework code. The
     exemption is deliberately narrow: a per-dialect plugin *package*
     ``db/plugins/<X>/**`` legitimately references its own dialect.
-    ``core/introspection/`` is no longer exempt — its dialect-specific
-    filters were moved to plugin quirks (ADR-26 B2), so the schema-reading
-    layer is now scanned like the rest of ``core/``. scripts/ and docs/
-    ship one-off tools and are out of scope entirely.
+    scripts/ and docs/ ship one-off tools and are out of scope entirely.
     """
     parts = path.parts
     # The tree lives under the ``dblift`` package; rule roots and exemptions

@@ -504,9 +504,7 @@ class BaseQuirks:
         """Normalize a raw catalog view name before downstream lookups.
 
         Default: return *name* unchanged. DB2 overrides to lowercase
-        the name because the surrounding code path
-        (``_get_object_column_names``) compares case-sensitively
-        against catalog rows that come back lowercased.
+        the name because its catalog rows come back lowercased.
         """
         return name
 
@@ -522,8 +520,7 @@ class BaseQuirks:
           * PostgreSQL pulls ``security_definer`` / ``security_invoker``
             flags from ``pg_views`` + ``pg_proc`` joins.
 
-        ``view_status`` is the same opaque ``ObjectCaptureStatus`` tracker
-        passed to :meth:`enrich_trigger_from_row` — plugins call
+        ``view_status`` is an optional capture tracker. Plugins call
         ``add_property_status(name, captured)`` when they look for a
         dialect-specific attribute so the introspection summary can
         report "definer captured: yes / no".
@@ -544,7 +541,7 @@ class BaseQuirks:
     #: machinery (Oracle: ``MLOG$``, ``MVIEW$_``, ``SNAP$``, ``AQ$``,
     #: ``DR$`` …). Tables whose names start with any of these prefixes
     #: are filtered out of user-facing introspection results, and a
-    #: non-empty tuple also tells :class:`TableExtractor` that it must
+    #: non-empty tuple also tells the catalog reader that it must
     #: preload materialized-view names so it can drop them from the
     #: vendor table listing. Default: empty tuple (no filtering).
     materialized_view_support_table_prefixes: Tuple[str, ...] = ()
@@ -807,7 +804,7 @@ class BaseQuirks:
 
         Default: no-op. Oracle overrides to pull ``PACKAGE`` /
         ``PACKAGE BODY`` text from ``ALL_SOURCE`` (and from the
-        per-extractor ``_oracle_package_specs`` cache populated by the
+        per-extractor package-spec cache populated by the
         procedure extractor) for packages that came back from the
         vendor query without an attached definition.
         """
@@ -870,7 +867,7 @@ class BaseQuirks:
             text — and clears ``routine.body`` (DBMS_METADATA returns
             the full DDL, ``body`` becomes redundant).
 
-        ``status`` is the ``ObjectCaptureStatus`` tracker (or ``None``);
+        ``status`` is an optional capture tracker;
         the override marks ``definition`` failures on it when needed.
         """
         return None
@@ -930,8 +927,7 @@ class BaseQuirks:
 
           * MySQL / MariaDB pull ``DEFINER`` from the catalog row.
 
-        ``trigger_status`` is an opaque tracker (``ObjectCaptureStatus`` or
-        ``None``) — when present, plugins call its
+        ``trigger_status`` is an optional capture tracker — when present, plugins call its
         ``add_property_status(property_name, captured: bool)`` for any
         dialect-specific attribute they look for, so the introspection
         result summary can surface "definer captured: yes / no".
@@ -1163,20 +1159,16 @@ class BaseQuirks:
     def introspector_class(self) -> "Optional[Type[Any]]":
         """Return the dialect-specific introspector class, or None.
 
-        None means IntrospectorFactory falls back to SchemaIntrospector.
-        Plugins override with a lazy import to avoid circular imports at
-        module-load time.
+        ``None`` means the plugin does not supply a catalog reader.
+        Plugins may override with a lazy import.
         """
         return None
 
     def vendor_queries_class(self) -> "Optional[Type[Any]]":
         """Return the dialect-specific VendorMetadataQueries class, or None.
 
-        ``None`` means the plugin doesn't ship its own catalog-query
-        bundle and :class:`VendorQueriesFactory.create` returns ``None``
-        for the dialect. Plugins override with a lazy import to keep
-        the queries module out of the import graph until the factory
-        actually needs it. Mirrors :meth:`introspector_class`.
+        ``None`` means the plugin does not supply catalog queries.
+        Plugins may override with a lazy import.
         """
         return None
 

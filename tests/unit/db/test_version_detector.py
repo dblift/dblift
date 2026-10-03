@@ -4,7 +4,7 @@ Unit tests for DatabaseVersion.
 
 import pytest
 
-from dblift.core.introspection.version_detector import (
+from dblift.db.version import (
     DatabaseVersion,
     parse_version,
     version_matches_spec,

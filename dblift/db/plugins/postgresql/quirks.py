@@ -119,14 +119,6 @@ class PostgresqlQuirks(BaseQuirks):
         """ALTER generator is supplied by an installed extension package."""
         return None
 
-    def vendor_queries_class(self) -> "Optional[Type[Any]]":
-        """PostgreSQL rich metadata queries are supplied by an installed extension package."""
-        return None
-
-    def introspector_class(self) -> "Optional[Type[Any]]":
-        """PostgreSQL rich introspection is supplied by an installed extension package."""
-        return None
-
     def parser_class(self, parser_type: str) -> Optional[type]:
         """PostgreSQL parser dispatch: hybrid → :class:`HybridParser`, sqlglot →
         :class:`SqlGlotParser` (``postgres`` dialect), regex → :class:`PostgreSqlRegexParser`."""

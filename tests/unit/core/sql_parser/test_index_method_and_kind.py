@@ -2,7 +2,6 @@
 
 import pytest
 
-from dblift.core.introspection.extractors.index_extractor import IndexExtractor
 from dblift.core.sql_parser import SqlParserFactory
 
 pytestmark = pytest.mark.unit
@@ -98,32 +97,6 @@ def test_index_method_preserves_expressions_and_directions(
     assert index.columns == columns
     assert index.expression_flags == flags
     assert index.sort_directions == directions
-
-
-def test_parsed_gin_type_matches_introspection_case_insensitively():
-    parsed = (
-        SqlParserFactory("postgresql")
-        .get_parser()
-        .parse_sql("CREATE INDEX ix ON t USING GIN (doc)")
-        .indexes[0]
-    )
-    extracted = IndexExtractor(provider=None, dialect="postgresql")._build_index_objects(
-        "public",
-        "t",
-        {
-            "ix": {
-                "name": "ix",
-                "unique": False,
-                "type": "gin",
-                "columns": [{"column": "doc", "position": 1}],
-            }
-        },
-    )[0]
-    # Index comparison folds identifier/type case; pg_am.amname supplies lowercase.
-    assert parsed.type.lower() == extracted.type.lower() == "gin"
-    assert parsed.columns == extracted.columns == ["doc"]
-    assert parsed.expression_flags == extracted.expression_flags == [False]
-    assert parsed.sort_directions == extracted.sort_directions == []
 
 
 @pytest.mark.parametrize(

@@ -180,14 +180,6 @@ class Db2Quirks(BaseQuirks):
         """ALTER generator is supplied by an installed extension package."""
         return None
 
-    def vendor_queries_class(self) -> "Optional[Type[Any]]":
-        """DB2 rich metadata queries are supplied by an installed extension package."""
-        return None
-
-    def introspector_class(self) -> "Optional[Type[Any]]":
-        """DB2 rich introspection is supplied by an installed extension package."""
-        return None
-
     def parser_class(self, parser_type: str) -> Optional[type]:
         """Return the Db2 parser class for ``parser_type``, or ``None``.
 
@@ -208,8 +200,7 @@ class Db2Quirks(BaseQuirks):
 
     def normalize_view_name(self, name: str) -> str:
         """DB2 returns view names uppercase from SYSCAT.VIEWS but
-        ``_get_object_column_names`` compares against lowercase keys —
-        lowercase here so downstream lookups match."""
+        downstream catalog lookups use lowercase keys."""
         return name.lower()
 
     def apply_vendor_table_properties(self, table: Any, row: Dict[str, Any]) -> None:

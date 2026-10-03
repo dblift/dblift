@@ -129,8 +129,7 @@ class OracleQuirks(BaseQuirks):
     # Trigger DDL.
     trigger_terminator = "\n/"
     # Engine-internal materialized-view support objects to skip during
-    # table introspection. Non-empty also signals TableExtractor to
-    # preload MV names so it can filter them from the table list.
+    # catalog reads. Non-empty also signals MV-name preloading.
     materialized_view_support_table_prefixes: Tuple[str, ...] = (
         "MLOG$",
         "RUPD$",
@@ -257,14 +256,6 @@ class OracleQuirks(BaseQuirks):
 
     def alter_generator_class(self) -> Optional[Type["AlterGeneratorProtocol"]]:
         """ALTER generator is supplied by an installed extension package."""
-        return None
-
-    def vendor_queries_class(self) -> "Optional[Type[Any]]":
-        """Oracle rich metadata queries are supplied by an installed extension package."""
-        return None
-
-    def introspector_class(self) -> "Optional[Type[Any]]":
-        """Oracle rich introspection is supplied by an installed extension package."""
         return None
 
     def parser_class(self, parser_type: str) -> Optional[type]:
@@ -510,8 +501,8 @@ class OracleQuirks(BaseQuirks):
     ) -> None:
         """Oracle: backfill missing ``PACKAGE`` / ``PACKAGE BODY`` source.
 
-        Procedure-extractor scans cache the spec text in
-        ``_oracle_package_specs`` (extracted from embedded ``CREATE OR
+        Procedure scans cache the spec text for package lookup
+        (extracted from embedded ``CREATE OR
         REPLACE PACKAGE`` blocks); anything still missing is fetched
         from ``ALL_SOURCE``."""
         for package in packages:
