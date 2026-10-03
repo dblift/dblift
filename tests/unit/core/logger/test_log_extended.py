@@ -702,6 +702,36 @@ class TestFileLog:
         assert name.startswith("Dblift_public_testdb_")
         assert name.endswith(".log")
 
+    @pytest.mark.parametrize("log_format", [LogFormat.JSON, LogFormat.HTML])
+    def test_default_report_names_preserve_same_second_commands(
+        self, tmp_path, monkeypatch, log_format
+    ):
+        fixed_time = datetime(2026, 10, 3, 12, 0, 0)
+
+        class FrozenDatetime:
+            @staticmethod
+            def now():
+                return fixed_time
+
+        monkeypatch.setattr("dblift.core.logger.log.datetime", FrozenDatetime)
+        reports = []
+        for command in ("INFO", "MIGRATE"):
+            log = FileLog("test", tmp_path, log_format, schema="main", database_name="db")
+            result = OperationResult(success=True)
+            result.complete()
+            log.set_command_completed(True, command_type=command, result=result)
+            log.close()
+            reports.append(log.log_file)
+
+        assert reports[0] != reports[1]
+        assert all(path.exists() for path in reports)
+        if log_format == LogFormat.JSON:
+            assert len(list(tmp_path.glob("*.json"))) == 2
+        else:
+            assert len(list(tmp_path.glob("*.html"))) == 2
+            assert "INFO" in reports[0].read_text(encoding="utf-8")
+            assert "MIGRATE" in reports[1].read_text(encoding="utf-8")
+
     def test_init_with_log_file_pattern(self, tmp_path):
         """Test FileLog initialization with log file pattern."""
         log = FileLog(

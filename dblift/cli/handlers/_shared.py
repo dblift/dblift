@@ -247,7 +247,13 @@ def run_json_guarded(
             if error is not None
             else f"{command_type.lower()}() returned no result"
         )
+        from dblift.core.logger.results import OperationResult
+
+        failed_result = OperationResult(success=False, error_message=text)
+        failed_result.complete()
+        _set_command_completed(ctx.log, failed_result, command_type)
         command_output.machine({"success": False, "error": text})
         return (False, None)
+    _set_command_completed(ctx.log, result, command_type)
     command_output.machine(serialize(result))
     return (result.success, result)

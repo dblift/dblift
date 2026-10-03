@@ -15,6 +15,7 @@ from dblift.core.logger.results import (
     CleanResult,
     MigrationInfo,
     OperationResult,
+    ValidateResult,
 )
 
 
@@ -118,6 +119,8 @@ class JsonFormatter:
             output.update(self._format_query_results(result))
         output.update(self._format_migrate_metadata(result, command_type))
         output.update(self._format_clean_metadata(result, command_type))
+        if not (self.using_multi_command and self.command_results):
+            output.update(self._format_validate_metadata(result))
 
         total_execution_time, multi_updates = self._format_multi_command_metadata(
             result, schema, database_name, execution_time
@@ -330,6 +333,18 @@ class JsonFormatter:
 
         return output
 
+    def _format_validate_metadata(self, result: OperationResult) -> Dict[str, Any]:
+        if not isinstance(result, ValidateResult):
+            return {}
+        return {
+            "error_count": result.error_count,
+            "issues": [self._sanitize_message(issue) for issue in result.issues],
+            "validated_migrations": [
+                self._migration_to_dict(m) for m in result.validated_migrations
+            ],
+            "failed_migrations": [self._migration_to_dict(m) for m in result.failed_migrations],
+        }
+
     def _format_multi_command_metadata(
         self,
         result: OperationResult,
@@ -534,6 +549,8 @@ class JsonFormatter:
 
         cmd_output.update(self._format_sql_visibility(result))
         cmd_output.update(self._format_query_results(result))
+        if command_type == "VALIDATE":
+            cmd_output.update(self._format_validate_metadata(result))
 
         # Add version information for baseline commands
         if hasattr(result, "init_version") and result.init_version:

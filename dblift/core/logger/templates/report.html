@@ -487,6 +487,24 @@ table.t{width:100%;border-collapse:separate;border-spacing:0;font-size:12.5px}
   </div>
   {% endif %}
 
+  {% if cmd.command_type == 'VALIDATE' and cmd.result.error_count is defined %}
+  <div class="panel">
+    <div class="panel-h">
+      <div class="title">{{ icon_table() }} Validation results</div>
+      <div class="meta">{{ cmd.result.error_count }} error{% if cmd.result.error_count != 1 %}s{% endif %}</div>
+    </div>
+    {% for migration in cmd.result.failed_migrations %}
+    <div style="padding:8px 14px;border-top:1px solid var(--line)"><span class="badge fail">Failed</span> <code>{{ migration.script }}</code></div>
+    {% endfor %}
+    {% for migration in cmd.result.validated_migrations %}
+    <div style="padding:8px 14px;border-top:1px solid var(--line)"><span class="badge ok">Valid</span> <code>{{ migration.script }}</code></div>
+    {% endfor %}
+    {% for issue in cmd.result.issues %}
+    <div class="banner danger" style="margin:8px 14px"><div class="ic">{{ icon_alert() }}</div><p style="word-break:break-word">{{ issue }}</p></div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
   {% if cmd.command_type in ['MIGRATE','UNDO'] and cmd.callbacks %}
     <div class="panel">
       <div class="panel-h">
