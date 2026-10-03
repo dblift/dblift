@@ -9,6 +9,12 @@ def test_internal_schema_discovery_modules_are_absent() -> None:
     assert importlib.util.find_spec("dblift.db.plugins.nosql_base.introspection") is None
 
 
+def test_ddl_boundary_does_not_declare_discovery() -> None:
+    from dblift.core.dialect_boundary import DdlQuirks
+
+    assert not hasattr(DdlQuirks, "introspector_class")
+
+
 def test_public_client_and_version_leaf_remain_importable() -> None:
     from dblift.api import DBLiftClient
     from dblift.db.version import DatabaseVersion, parse_version

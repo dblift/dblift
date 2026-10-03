@@ -70,13 +70,6 @@ class DdlQuirks(Protocol):
     def alter_generator_class(self) -> Optional[Type["AlterGeneratorProtocol"]]:
         """Return the dialect-specific ALTER generator class, or ``None``."""
 
-    def introspector_class(self) -> "Optional[type]":
-        """Return the dialect-specific BaseIntrospector class, or None.
-
-        None causes IntrospectorFactory to fall back to SchemaIntrospector.
-        Plugins use a lazy import to avoid circular imports.
-        """
-
     non_transactional_sql_patterns: "tuple[tuple[str, str], ...]"
     native_driver_display: str
     requires_credentials: bool
