@@ -14,13 +14,13 @@ import re
 
 import pytest
 
-from dblift.core.introspection.version_detector import parse_version
 from dblift.core.sql_model.feature_gates import (
     KNOWN_FEATURES,
     FeatureGate,
     get_feature_gates,
     supports_feature,
 )
+from dblift.db.version import parse_version
 
 pytestmark = [pytest.mark.unit]
 

@@ -43,23 +43,6 @@ class Event(SqlObject):
         self.definer = definer
         self.event_type = event_type
 
-    @property
-    def create_statement(self) -> str:
-        """Generate CREATE EVENT statement using database-specific generators.
-
-        Returns:
-            Dialect-specific CREATE EVENT statement
-        """
-        from dblift.core.sql_generator.generator_factory import (
-            SqlGeneratorFactory,
-        )
-
-        try:
-            generator = SqlGeneratorFactory.create(self.dialect or "")
-            return str(generator.generate_create_statement(self))
-        except (ValueError, ImportError, AttributeError):
-            return ""
-
     def _normalize_schedule(self, schedule: Optional[str]) -> Optional[str]:
         """Ensure MySQL/MariaDB schedule clauses quote literal timestamps.
 

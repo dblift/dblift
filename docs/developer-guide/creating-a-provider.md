@@ -84,7 +84,7 @@ The layout deliberately mirrors `db/plugins/postgresql/` (and siblings) so the s
    - Subclass **`SqlAlchemyProvider`** (`db/sqlalchemy_provider.py`) to get connection/execute/transaction handling from a SQLAlchemy engine (this is what PostgreSQL, MySQL, Oracle, SQL Server, DB2 do). You still implement the history table, lock table, schema ops, and `clean` — even PostgreSQL overrides ~15 methods. "Just subclass `SqlAlchemyProvider`" gets you a *connection*, not a finished provider.
    - Subclass **`NativeProvider`** to drive a raw DB-API driver yourself (SQLite, CosmosDB). More code; full control.
 
-   Only `create_migration_history_table_if_not_exists` is a hard `@abstractmethod`; everything else has a safe default or is exercised at runtime, so lean on an existing plugin (PostgreSQL for a SQLAlchemy example) as your template rather than the base classes alone. See `db/base_quirks.py` for the full hook recipe (generators, parsers, introspection, the five manager components, etc.).
+   Only `create_migration_history_table_if_not_exists` is a hard `@abstractmethod`; everything else has a safe default or is exercised at runtime, so lean on an existing plugin (PostgreSQL for a SQLAlchemy example) as your template rather than the base classes alone. See `db/base_quirks.py` for the full hook recipe (generators, parsers, the five manager components, etc.).
 
    **File-based dialects need a config field.** The generated config stub only carries the base fields (`url`/`host`/`port`/`database`/`schema`). An embedded, file-path dialect (SQLite, DuckDB) must add its own `path` field and a `__post_init__` that resolves `path` from `url`/`database` and defaults the schema — copy SQLite's `config.py`.
 
@@ -117,7 +117,7 @@ print(plugin)
 
 - **Plugin owns its URL builder.** `sqlalchemy_url_builder` on `PluginInfo` is the only place the mapping from config object → SQLAlchemy URL lives for your dialect. Do not add branches in `config/database_config.py`, `config/_url_builder_mixin.py`, or anywhere in `core/`.
 - No edits outside your package. The isolation guarantee is verified by `tests/unit/test_plugin_isolation.py` and the `scripts/lint_patterns.py` "dialect-string-literal" rule.
-- Quirks (via `provider.quirks`) are the single source of truth for dialect-specific rendering, parsing, comparison, and introspection behaviour.
+- Quirks (via `provider.quirks`) are the single source of truth for dialect-specific rendering, parsing, and comparison behaviour.
 - Third-party plugins are first-class: `ProviderRegistry` makes no distinction between in-tree and entry-point plugins after discovery.
 
 ## Discovery mechanics

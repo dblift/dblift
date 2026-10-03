@@ -64,7 +64,6 @@ Listed in order of sensitivity, highest first.
 |---|---|---|
 | `cli` argparse | Malformed argv → crash / info leak | Structural + behavioural invariants pinned by `test_parser_invariants.py` (210 cases) |
 | `--format json` stdout | Log contamination → downstream parser crash on user data | `CommandOutput` abstraction + matrix `test_json_output_contract.py` |
-| SQL generation (`core/sql_generator/`) | SQL injection in generated DDL | Identifiers quoted via `DialectEnum.quote_identifier` (one policy per dialect); schema / table names restricted to ASCII regex; bandit flags 96 MEDIUM-severity `B608` for intentional SQL-as-string patterns (each reviewed) |
 | Placeholder substitution (`${var}`) | Injection via placeholder values | Substitution runs **before** tokenisation so values cannot smuggle DDL across statement boundaries. Values are still interpreted as literal text; users who place `${var}` inside identifier positions accept the substitution semantics |
 | Native database drivers | Malicious data in DB metadata responses | Metadata is normalized before diffing; driver exceptions are surfaced through dblift error handling |
 | History table writes | History table corruption | `acquire_migration_lock()` / `release_migration_lock()` per dialect, plus transactions where the dialect supports them (ADR-0007) |

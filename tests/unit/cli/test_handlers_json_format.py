@@ -15,6 +15,8 @@ from dblift.cli.handlers._shared import (
     run_json_guarded,
 )
 from dblift.config import DbliftConfig
+from dblift.core.logger.log import FileLog, LogFormat
+from dblift.core.logger.results import MigrationInfo, OperationResult, ValidateResult
 from dblift.core.migration.commands.base_command import PreflightConnectionError
 
 
@@ -79,6 +81,93 @@ def test_run_json_guarded_turns_exception_into_error_payload(capsys):
 
     assert (ok, returned) == (False, None)
     assert json.loads(capsys.readouterr().out) == {"success": False, "error": "RuntimeError: boom"}
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("log_format", [LogFormat.JSON, LogFormat.HTML])
+def test_run_json_guarded_records_failed_result_in_file_report(tmp_path, capsys, log_format):
+    log = FileLog("test", tmp_path, log_format, schema="main", database_name="db")
+    ctx = CliCommandContext(args=SimpleNamespace(format="json"), log=log)
+    result = OperationResult(success=False, error_message="checksum mismatch")
+    result.complete()
+
+    ok, returned = run_json_guarded(
+        ctx, "VALIDATE", lambda: result, lambda r: {"success": r.success}
+    )
+    log.close()
+
+    assert ok is False and returned is result
+    assert json.loads(capsys.readouterr().out) == {"success": False}
+    report = log.log_file.read_text(encoding="utf-8")
+    if log_format == LogFormat.JSON:
+        document = json.loads(report)
+        assert document["status"] == "FAILED"
+        assert document["error"] == "checksum mismatch"
+    else:
+        assert "VALIDATE" in report
+        assert "Failed" in report
+        assert "checksum mismatch" in report
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("log_format", [LogFormat.JSON, LogFormat.HTML])
+def test_run_json_guarded_records_exception_in_file_report(tmp_path, capsys, log_format):
+    log = FileLog("test", tmp_path, log_format, schema="main", database_name="db")
+    ctx = CliCommandContext(args=SimpleNamespace(format="json"), log=log)
+
+    def fail():
+        raise RuntimeError("boom")
+
+    ok, returned = run_json_guarded(ctx, "VALIDATE", fail, lambda r: {})
+    log.close()
+
+    assert (ok, returned) == (False, None)
+    assert json.loads(capsys.readouterr().out) == {"success": False, "error": "RuntimeError: boom"}
+    report = log.log_file.read_text(encoding="utf-8")
+    if log_format == LogFormat.JSON:
+        document = json.loads(report)
+        assert document["status"] == "FAILED"
+        assert document["error"] == "RuntimeError: boom"
+    else:
+        assert "VALIDATE" in report
+        assert "Failed" in report
+        assert "RuntimeError: boom" in report
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("log_format", [LogFormat.JSON, LogFormat.HTML])
+def test_validate_report_keeps_every_drift_and_validated_script(tmp_path, capsys, log_format):
+    log = FileLog("test", tmp_path, log_format, schema="main", database_name="db")
+    ctx = CliCommandContext(args=SimpleNamespace(format="json"), log=log)
+    result = ValidateResult()
+    result.add_failed_migration(MigrationInfo("V1__first.sql", status="FAILED"))
+    result.add_failed_migration(MigrationInfo("V2__second.sql", status="FAILED"))
+    result.add_validated_migration(MigrationInfo("V3__good.sql", status="SUCCESS"))
+    result.issues = ["V1__first.sql checksum mismatch", "V2__second.sql checksum mismatch"]
+    result.error_message = result.issues[0]
+    result.complete()
+
+    ok, returned = run_json_guarded(
+        ctx, "VALIDATE", lambda: result, lambda r: {"success": r.success}
+    )
+    log.close()
+
+    assert ok is False and returned is result
+    assert json.loads(capsys.readouterr().out) == {"success": False}
+    report = log.log_file.read_text(encoding="utf-8")
+    if log_format == LogFormat.JSON:
+        validation = json.loads(report)["commands"][0]
+        assert validation["error_count"] == 2
+        assert validation["issues"] == result.issues
+        assert [m["script"] for m in validation["failed_migrations"]] == [
+            "V1__first.sql",
+            "V2__second.sql",
+        ]
+        assert [m["script"] for m in validation["validated_migrations"]] == ["V3__good.sql"]
+    else:
+        assert "V1__first.sql checksum mismatch" in report
+        assert "V2__second.sql checksum mismatch" in report
+        assert "V3__good.sql" in report
 
 
 @pytest.mark.unit

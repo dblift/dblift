@@ -1,6 +1,6 @@
 """Tests for SQL model Sequence class."""
 
-from unittest.mock import Mock, patch
+from unittest.mock import Mock
 
 import pytest
 
@@ -64,186 +64,8 @@ class TestSequence:
 
         assert sequence.increment_by == 10
 
-    def test_create_statement_basic_sequence(self):
-        """Test CREATE SEQUENCE statement generation for basic sequence."""
-        sequence = Sequence("test_seq")
-
-        result = sequence.create_statement
-
-        assert "CREATE SEQUENCE test_seq" in result
-
-    def test_create_statement_with_schema(self):
-        """Test CREATE SEQUENCE statement with schema."""
-        sequence = Sequence(name="test_seq", schema="test_schema")
-
-        result = sequence.create_statement
-
-        assert "CREATE SEQUENCE test_schema.test_seq" in result
-
-    def test_create_statement_with_start_with(self):
-        """Test CREATE SEQUENCE statement with start value."""
-        sequence = Sequence(name="test_seq", start_with=100)
-
-        result = sequence.create_statement
-
-        assert "CREATE SEQUENCE test_seq" in result
-        assert "START WITH 100" in result
-
-    def test_create_statement_with_increment_by_default(self):
-        """Test CREATE SEQUENCE statement with default increment (should not be included)."""
-        sequence = Sequence(name="test_seq", increment_by=1)  # Default value
-
-        result = sequence.create_statement
-
-        assert "CREATE SEQUENCE test_seq" in result
-        assert "INCREMENT BY" not in result  # Should not include default value
-
-    def test_create_statement_with_increment_by_custom(self):
-        """Test CREATE SEQUENCE statement with custom increment."""
-        sequence = Sequence(name="test_seq", increment_by=5)
-
-        result = sequence.create_statement
-
-        assert "CREATE SEQUENCE test_seq" in result
-        assert "INCREMENT BY 5" in result
-
-    def test_create_statement_with_min_value(self):
-        """Test CREATE SEQUENCE statement with minimum value."""
-        sequence = Sequence(name="test_seq", min_value=1)
-
-        result = sequence.create_statement
-
-        assert "CREATE SEQUENCE test_seq" in result
-        assert "MINVALUE 1" in result
-
-    def test_create_statement_with_max_value(self):
-        """Test CREATE SEQUENCE statement with maximum value."""
-        sequence = Sequence(name="test_seq", max_value=1000)
-
-        result = sequence.create_statement
-
-        assert "CREATE SEQUENCE test_seq" in result
-        assert "MAXVALUE 1000" in result
-
-    def test_create_statement_with_cycle_true(self):
-        """Test CREATE SEQUENCE statement with cycle enabled."""
-        sequence = Sequence(name="test_seq", cycle=True)
-
-        result = sequence.create_statement
-
-        assert "CREATE SEQUENCE test_seq" in result
-        assert "CYCLE" in result
-
-    def test_create_statement_with_cycle_false(self):
-        """Test CREATE SEQUENCE statement with cycle disabled."""
-        sequence = Sequence(name="test_seq", cycle=False)
-
-        result = sequence.create_statement
-
-        assert "CREATE SEQUENCE test_seq" in result
-        assert "NOCYCLE" in result
-
-    def test_create_statement_with_cache(self):
-        """Test CREATE SEQUENCE statement with cache."""
-        sequence = Sequence(name="test_seq", cache=20)
-
-        result = sequence.create_statement
-
-        assert "CREATE SEQUENCE test_seq" in result
-        assert "CACHE 20" in result
-
-    def test_oracle_sequence_defaults_to_nocache(self):
-        """Oracle sequences without cache should emit NOCACHE.
-
-        Full Oracle sequence DDL is rendered by the Pro extension's Oracle
-        generator; the OSS fallback SqlGenerator returns "" for non-Table
-        objects (see core/sql_generator/sql_generator.py). Skip when that
-        generator isn't registered — an empty result means Pro isn't loaded,
-        not a bug.
-        """
-        sequence = Sequence(name="test_seq", dialect="oracle")
-
-        result = sequence.create_statement
-        if not result:
-            pytest.skip("Oracle sequence DDL generator not registered (Pro extension absent)")
-        assert "NOCACHE" in result.upper()
-
-    def test_oracle_sequence_cache_one_becomes_nocache(self):
-        """Oracle sequences with cache <= 1 should emit NOCACHE."""
-        sequence = Sequence(name="test_seq", cache=1, dialect="oracle")
-
-        result = sequence.create_statement
-        if not result:
-            pytest.skip("Oracle sequence DDL generator not registered (Pro extension absent)")
-        result = result.upper()
-        assert "NOCACHE" in result
-        assert "CACHE" not in result.replace("NOCACHE", "")
-
-    def test_create_statement_complex_example(self):
-        """Test CREATE SEQUENCE statement with all features."""
-        sequence = Sequence(
-            name="user_id_seq",
-            schema="public",
-            start_with=1000,
-            increment_by=2,
-            min_value=1,
-            max_value=999999,
-            cycle=True,
-            cache=50,
-        )
-
-        result = sequence.create_statement
-
-        assert "CREATE SEQUENCE public.user_id_seq" in result
-        assert "START WITH 1000" in result
-        assert "INCREMENT BY 2" in result
-        assert "MINVALUE 1" in result
-        assert "MAXVALUE 999999" in result
-        assert "CYCLE" in result
-        assert "CACHE 50" in result
-
-    def test_create_statement_negative_values(self):
-        """Test CREATE SEQUENCE statement with negative values."""
-        sequence = Sequence(
-            name="test_seq", start_with=-100, increment_by=-1, min_value=-1000, max_value=-1
-        )
-
-        result = sequence.create_statement
-
-        assert "CREATE SEQUENCE test_seq" in result
-        assert "START WITH -100" in result
-        assert "INCREMENT BY -1" in result
-        assert "MINVALUE -1000" in result
-        assert "MAXVALUE -1" in result
-
-    def test_create_statement_zero_values(self):
-        """Test CREATE SEQUENCE statement with zero values."""
-        sequence = Sequence(name="test_seq", start_with=0, min_value=0, max_value=0, cache=0)
-
-        result = sequence.create_statement
-
-        assert "CREATE SEQUENCE test_seq" in result
-        assert "START WITH 0" in result
-        assert "MINVALUE 0" in result
-        assert "MAXVALUE 0" in result
         # CACHE 0 might be filtered out as invalid/default by some generators
         # assert "CACHE 0" in result  # Commented out as this might be generator-specific
-
-    @patch.object(Sequence, "format_identifier")
-    def test_create_statement_uses_format_identifier(self, mock_format):
-        """Test that create_statement uses format_identifier for names."""
-        mock_format.side_effect = lambda x: f'"{x}"' if x else x
-
-        sequence = Sequence(name="test_seq", schema="test_schema")
-
-        result = sequence.create_statement
-
-        # Verify format_identifier was called for schema and sequence name
-        expected_calls = ["test_schema", "test_seq"]
-        actual_calls = [call[0][0] for call in mock_format.call_args_list]
-
-        for expected in expected_calls:
-            assert expected in actual_calls
 
     def test_from_dict_basic(self):
         """Test creating sequence from dictionary."""
@@ -353,6 +175,7 @@ class TestSequence:
             "temp": False,  # Default for non-temporary sequences
             "owned_by_table": None,
             "owned_by_column": None,
+            "data_type": None,
         }
 
         assert result == expected
@@ -377,6 +200,7 @@ class TestSequence:
             "temp": False,  # Default for non-temporary sequences
             "owned_by_table": None,
             "owned_by_column": None,
+            "data_type": None,
         }
 
         assert result == expected
@@ -452,53 +276,6 @@ class TestSequence:
         assert hasattr(sequence, "format_identifier")
         assert callable(sequence.format_identifier)
 
-    def test_sequence_with_special_characters_in_name(self):
-        """Test sequence with special characters in name."""
-        sequence = Sequence(name="user-id_seq", schema="test_schema")
-
-        result = sequence.create_statement
-
-        # Should handle the name properly
-        assert "user-id_seq" in result
-        assert "CREATE SEQUENCE test_schema.user-id_seq" in result
-
-    def test_get_sequence_syntax_function(self):
-        """Test the internal get_sequence_syntax function behavior."""
-        sequence = Sequence("test_seq")
-
-        # Call create_statement to trigger the internal function
-        result = sequence.create_statement
-
-        # Should generate a valid statement
-        assert "CREATE SEQUENCE" in result
-        assert "test_seq" in result
-
-        # Test with different dialect. Full Oracle DDL comes from the Pro
-        # extension's Oracle generator; the OSS fallback returns "" for
-        # non-Table objects, which means Pro isn't loaded here, not a bug —
-        # skip that part only.
-        sequence_with_dialect = Sequence("test_seq", dialect="oracle")
-        result_with_dialect = sequence_with_dialect.create_statement
-
-        if not result_with_dialect:
-            pytest.skip("Oracle sequence DDL generator not registered (Pro extension absent)")
-        assert "CREATE SEQUENCE" in result_with_dialect
-        assert "test_seq" in result_with_dialect
-
-    def test_create_statement_no_none_attributes(self):
-        """Test CREATE SEQUENCE statement doesn't include None attributes."""
-        sequence = Sequence(
-            name="test_seq", start_with=None, min_value=None, max_value=None, cache=None
-        )
-
-        result = sequence.create_statement
-
-        assert "CREATE SEQUENCE test_seq" in result
-        assert "START WITH" not in result
-        assert "MINVALUE" not in result
-        assert "MAXVALUE" not in result
-        assert "CACHE" not in result
-
     def test_sequence_equality_through_serialization(self):
         """Test that sequences can be compared through serialization."""
         seq1 = Sequence(name="test_seq", schema="test_schema", start_with=1, increment_by=1)
@@ -507,35 +284,6 @@ class TestSequence:
 
         # They should have the same dictionary representation
         assert seq1.to_dict() == seq2.to_dict()
-
-    def test_sequence_with_large_numbers(self):
-        """Test sequence with very large numbers."""
-        sequence = Sequence(
-            name="big_seq",
-            start_with=9223372036854775807,  # max int64
-            increment_by=1,
-            min_value=1,
-            max_value=9223372036854775807,
-            cache=1000,
-        )
-
-        result = sequence.create_statement
-
-        assert "CREATE SEQUENCE big_seq" in result
-        assert "START WITH 9223372036854775807" in result
-        assert "MAXVALUE 9223372036854775807" in result
-
-    def test_sequence_boolean_attributes(self):
-        """Test sequence with boolean attributes."""
-        # Test with cycle=True
-        seq_cycle = Sequence("test_seq", cycle=True)
-        result_cycle = seq_cycle.create_statement
-        assert "CYCLE" in result_cycle
-
-        # Test with cycle=False
-        seq_no_cycle = Sequence("test_seq", cycle=False)
-        result_no_cycle = seq_no_cycle.create_statement
-        assert "NOCYCLE" in result_no_cycle
 
     def test_none_values_handling(self):
         """Test handling of None values in various fields."""
@@ -558,11 +306,18 @@ class TestSequence:
         assert sequence.cache is None
         assert sequence.dialect is None
 
-        # Should still generate a basic statement
-        result = sequence.create_statement
-        assert "CREATE SEQUENCE test_seq" in result
 
-    def test_drop_statement_oracle_uses_if_exists(self):
-        """Oracle (23ai+/19.28+) drops sequences with native IF EXISTS."""
-        sequence = Sequence(name="seq_id", dialect="oracle")
-        assert sequence.drop_statement == 'DROP SEQUENCE IF EXISTS "seq_id"'
+@pytest.mark.parametrize("data_type", [None, "INT", "smallint"])
+def test_sequence_data_type_round_trip_and_equality(data_type):
+    sequence = Sequence("s", schema="app", data_type=data_type)
+    restored = Sequence.from_dict(sequence.to_dict())
+    assert restored.data_type == data_type
+    assert restored.to_dict()["data_type"] == data_type
+    assert restored == sequence
+    assert hash(restored) == hash(sequence)
+    different = Sequence("s", schema="app", data_type="BIGINT")
+    assert restored != different
+
+
+def test_legacy_sequence_dictionary_has_unknown_data_type():
+    assert Sequence.from_dict({"name": "s"}).data_type is None

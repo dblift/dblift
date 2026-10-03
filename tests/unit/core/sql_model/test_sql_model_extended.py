@@ -863,22 +863,6 @@ class TestProcedure(unittest.TestCase):
         self.assertEqual(fn.return_type, "BIGINT")
         self.assertEqual(fn.parameters, [])
 
-    def test_drop_statement_oracle(self):
-        proc = Procedure("sp1", dialect="oracle")
-        stmt = proc.drop_statement
-        self.assertIn("DROP PROCEDURE", stmt)
-        self.assertIn("IF EXISTS", stmt)
-
-    def test_drop_statement_non_oracle(self):
-        proc = Procedure("sp1", dialect="postgresql")
-        stmt = proc.drop_statement
-        self.assertIn("IF EXISTS", stmt)
-
-    def test_drop_statement_function(self):
-        fn = Procedure("fn1", is_function=True, dialect="postgresql")
-        stmt = fn.drop_statement
-        self.assertIn("DROP FUNCTION", stmt)
-
     def test_to_dict(self):
         proc = Procedure(
             "sp1",

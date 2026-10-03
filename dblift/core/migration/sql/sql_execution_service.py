@@ -12,7 +12,9 @@ from dblift.core.constants import (
 from dblift.core.logger import NullLog
 from dblift.core.sql_model.base import SqlStatementType
 from dblift.db.base_quirks import BaseQuirks
+from dblift.db.error import clean_driver_error_message, extract_error_code, extract_sqlstate
 from dblift.db.provider_interfaces import TransactionalProvider
+from dblift.db.value_utils import to_python_string
 
 
 def _format_execution_error(exc: BaseException) -> str:
@@ -20,53 +22,18 @@ def _format_execution_error(exc: BaseException) -> str:
 
     Driver exceptions can omit SQLSTATE / vendor codes from ``str(exc)`` but still
     expose them via attributes or getSQLState() / getErrorCode().
-    Mirrors the rationale in cli.db_utils._extract_sqlstate alongside error
-    string patterns matched in db/error.py (e.g. ``sqlstate=42...``).
     """
-    from dblift.core.migration.executor.execution_engine import _strip_driver_exception_prefix
-    from dblift.db.value_utils import to_python_string
-
-    base = _strip_driver_exception_prefix((to_python_string(exc) or str(exc)).strip())
     fragments: List[str] = []
+    base = clean_driver_error_message(to_python_string(exc) or str(exc))
     if base:
         fragments.append(base)
-
-    sqlstate: Optional[str] = None
-    get_sqlstate = getattr(exc, "getSQLState", None)
-    if callable(get_sqlstate):
-        try:
-            raw = get_sqlstate()
-            if raw:
-                sqlstate = str(raw).strip() or None
-        except Exception:
-            sqlstate = None
-    if not sqlstate:
-        attr_ss = getattr(exc, "sqlstate", None) or getattr(exc, "SQLState", None)
-        if attr_ss:
-            sqlstate = str(attr_ss).strip() or None
+    sqlstate = extract_sqlstate(exc)
     if sqlstate:
         fragments.append(f"sqlstate={sqlstate}")
-
-    code: Optional[Union[int, str]] = None
-    get_code = getattr(exc, "getErrorCode", None)
-    if callable(get_code):
-        try:
-            raw_c = get_code()
-            if raw_c is not None:
-                code = raw_c
-        except Exception:
-            code = None
-    if code is None:
-        attr_c = getattr(exc, "errorcode", None)
-        if attr_c is None:
-            attr_c = getattr(exc, "errorCode", None)
-        if attr_c is not None:
-            code = attr_c
-
+    code = extract_error_code(exc)
     if code is not None:
         fragments.append(f"errorcode={code}")
-
-    return " ".join(fragments) if fragments else ""
+    return " ".join(fragments)
 
 
 class SqlExecutionService:
@@ -332,7 +299,7 @@ class SqlExecutionService:
             # Record statement failure in journal if enabled
             if self.journal and hasattr(self.journal, "record_statement_failed"):
                 execution_time = int((time.time() - stmt_start_time) * SECONDS_TO_MILLISECONDS)
-                error_message = str(e)
+                error_message = clean_driver_error_message(to_python_string(e) or str(e))
                 self.journal.record_statement_failed(
                     statement, stmt_index, error_message, execution_time
                 )

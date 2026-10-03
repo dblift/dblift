@@ -447,12 +447,6 @@ class TestParseAlterTableWithRegex:
         assert "status IN ('A', 'B')" in expr
         ddl = f"ALTER TABLE APP.ORDERS ADD CONSTRAINT chk_amount CHECK ({expr})"
         assert ddl.count("(") == ddl.count(")"), ddl
-        from dblift.core.sql_generator.basic_table_ddl_generator import BasicTableDdlGenerator
-
-        emitted = BasicTableDdlGenerator(table).generate_alter_check_constraints()
-        assert emitted
-        assert emitted[0].count("(") == emitted[0].count(")"), emitted[0]
-        assert "(amount > 0)" in emitted[0]
 
 
 class TestEnsureViewMetadata:

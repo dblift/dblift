@@ -25,6 +25,7 @@ from dblift.db.dml_analysis import (
     cte_outer_statement_type,
     strip_leading_sql_comments,
 )
+from dblift.db.provider_registry import ProviderRegistry
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -138,6 +139,7 @@ _CREATE_INDEX_RE = re.compile(
 # owns those statements, and it reports the target table as well as the type.
 _DDL_MODIFIER_KEYWORDS = (
     r"OR\s+REPLACE",
+    r"OR\s+ALTER",
     "GLOBAL",
     "LOCAL",
     "TEMPORARY",
@@ -612,8 +614,22 @@ class SqlAnalyzer:
         Returns:
             List of individual SQL statements
         """
+        # Dialects with script-level preprocessing (Oracle SQL*Plus today) go
+        # through the same quirks hooks ``migrate`` uses (see
+        # ``ExecutionEngine._parse_sql_statements``), so a directive like
+        # ``PROMPT Creating the customer's table`` is terminated before the
+        # tokeniser sees it instead of merging with (and corrupting) the next
+        # statement. Reusing the quirks hooks keeps directive handling in one
+        # place rather than duplicating it here.
+        quirks = ProviderRegistry.get_quirks(self.dialect)
+        sql_to_split = sql
+        if quirks.supports_sqlplus_preprocessing:
+            ctx = quirks.extract_script_context(sql_to_split)
+            terminated = quirks.terminate_script_directives(sql_to_split)
+            sql_to_split = quirks.apply_script_substitution(terminated, ctx)
+
         statements = self.statement_splitter.split_statements(
-            sql,
+            sql_to_split,
             strict_tokenizer=strict_tokenizer,
             fallback=self._split_statements_with_regex,
         )
@@ -641,8 +657,6 @@ class SqlAnalyzer:
         # Special handling for dialects that use a ``GO`` batch
         # separator (SQL Server / Sybase). The capability flag lives on
         # the plugin's quirks; SQL Server is currently the only opt-in.
-        from dblift.db.provider_registry import ProviderRegistry
-
         if ProviderRegistry.get_quirks(self.dialect).supports_go_batch_separator:
             if re.search(r"(?i)^\s*GO\s*(?:--.*)?$", sql, flags=re.MULTILINE):
                 return self._split_sqlserver_with_go(sql)

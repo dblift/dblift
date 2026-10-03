@@ -23,43 +23,7 @@ def test_oracle_compat_snapshot_ddl_is_clob_plain_create():
     )
 
 
-def test_reference_queries_bind_the_catalog_spelling():
-    quirks = OracleQuirks()
-    assert quirks.fk_reference_bind_params('"MYSCHEMA"', "ORDERS", "ID") == [
-        "MYSCHEMA",
-        "MYSCHEMA",
-        "ORDERS",
-        "ID",
-    ]
-    assert quirks.fk_reference_bind_params('"myschema"', "ORDERS", "ID") == [
-        "myschema",
-        "myschema",
-        "ORDERS",
-        "ID",
-    ]
-    _sql, params = quirks.index_reference_query('"myschema"', "ORDERS", "ID")
-    assert params == ["myschema", "ORDERS", "ID"]
-
-
 def test_oracle_does_not_skip_existence_check():
     from dblift.db.plugins.oracle.quirks import OracleQuirks
 
     assert OracleQuirks().provider_compat_snapshot_skips_existence_check is False
-
-
-@pytest.mark.parametrize(
-    "obj_type, expected",
-    [
-        ("TABLE", 'DROP TABLE IF EXISTS "S"."T" CASCADE CONSTRAINTS'),
-        ("VIEW", 'DROP VIEW IF EXISTS "S"."T"'),
-        ("MATERIALIZED_VIEW", 'DROP MATERIALIZED VIEW IF EXISTS "S"."T"'),
-        ("INDEX", 'DROP INDEX IF EXISTS "S"."T"'),
-        ("SEQUENCE", 'DROP SEQUENCE IF EXISTS "S"."T"'),
-        ("PROCEDURE", 'DROP PROCEDURE IF EXISTS "S"."T"'),
-        ("FUNCTION", 'DROP FUNCTION IF EXISTS "S"."T"'),
-        ("TRIGGER", 'DROP TRIGGER IF EXISTS "S"."T"'),
-    ],
-)
-def test_oracle_render_drop_for_object_uses_native_if_exists(obj_type, expected):
-    result = OracleQuirks().render_drop_for_object(obj_type, '"T"', '"S".', None)
-    assert result == expected

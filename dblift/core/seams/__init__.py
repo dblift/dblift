@@ -12,9 +12,7 @@ Seam map — module, entry-point group, and where the core calls it:
     Group ``dblift.features``. Loads every registered no-arg callable once
     per process; those callables register into the other seams below.
     Called from ``cli/main.py`` (startup), ``api/client.py`` (client
-    construction), ``cli/mcp/server.py`` and the two SQL generator
-    factories (``core/sql_generator/generator_factory.py``,
-    ``core/sql_generator/alter/alter_generator_factory.py``).
+    construction) and ``cli/mcp/server.py``.
     ``DBLIFT_DISABLE_CLI_EXTENSIONS=1`` skips it.
 
 ``runtime_checks``
@@ -50,17 +48,6 @@ Seam map — module, entry-point group, and where the core calls it:
     Group ``dblift.event_listeners``. ``attach_registered_listeners(emitter)``
     subscribes registered listeners to the client's event bus
     (``api/client.py``).
-
-``introspection``
-    Group ``dblift.introspection``. ``attach_registered_introspection()`` runs
-    registrars that extend the schema introspectors
-    (``core/introspection/introspector_factory.py``,
-    ``core/introspection/vendor_queries_factory.py``).
-
-``sql_generators``
-    In-process registry filled by ``dblift.features`` callables;
-    ``attach_registered_sql_generators()`` runs them from the two SQL
-    generator factories.
 
 Related hooks outside this package: ``cli/extensions.py`` (groups
 ``dblift.commands``, ``dblift.command_handlers``, ``dblift.terminal_commands``),

@@ -1,18 +1,4 @@
-"""Oracle-specific introspection helpers.
-
-These helpers serve introspection paths that touch Oracle catalogs
-specifically (system-column filtering, partition-bound normalisation,
-``DBMS_METADATA`` XML aggregation cleanup). They live here — in a
-neutral utility module under ``dblift.core.introspection`` — instead of as
-duplicated copies on ``SchemaIntrospector`` / each extractor, so a
-fix lands once and every consumer sees it.
-
-Wave F.3 cleanup: previous copies existed in
-``schema_introspector.py`` (static methods), ``index_extractor.py``
-(instance method), ``misc_extractor.py`` (instance-method wrapper)
-and ``procedure_extractor.py`` (module-level function). All four
-were structurally identical; they now delegate here.
-"""
+"""Oracle catalog-text and hidden-column helpers shared by dialect hooks."""
 
 from __future__ import annotations
 

@@ -11,8 +11,7 @@ from dblift.db.error import ErrorCategory
 from dblift.db.feature_gate import FeatureGate
 
 if TYPE_CHECKING:
-    from dblift.core.sql_generator.alter.base_alter_generator import BaseAlterGenerator
-    from dblift.core.sql_generator.base_generator import BaseSqlGenerator
+    from dblift.db.generator_protocol import AlterGeneratorProtocol, SqlGeneratorProtocol
 
 
 # Each entry: (compiled regex, ErrorCategory). Sourced by
@@ -57,32 +56,15 @@ class MysqlQuirks(BaseQuirks):
     schema_required = True
     uppercase_identifiers = False
     clean_strategy = "introspector"
-    # ``INSERT … ON DUPLICATE KEY UPDATE col = VALUES(col)``. Inherited by MariaDB.
-    upsert_style = "on_duplicate_key"
-    # MySQL's ``json`` column type needs the bound text parameter cast.
-    json_bind_cast_type: Optional[str] = "JSON"
-    # Error 1093: "can't specify target table for update in FROM clause".
-    update_subquery_requires_derived_table = True
-    # Error 1235: rejects LIMIT inside IN (subquery) outright. Inherited by
-    # MariaDB (which does NOT hit 1093 above, so this is declared separately
-    # rather than folded into update_subquery_requires_derived_table).
-    subquery_row_limit_requires_derived_table = True
     connection_identifier_attrs = ("url", "host", "database")
     missing_connection_identifier_hint = "MySQL connection requires url or host/database fields"
     sqlglot_dialect = "mysql"
-    pygments_lexer = "mysql"
     quote_open = "`"
     quote_close = "`"
     drop_supports_if_exists = True
     provider_compat_snapshot_skips_existence_check = True
     tinyint1_is_boolean = True
-    metadata_catalog_mode = "catalog"
-    # Procedure / function DDL.
-    proc_body_wrap_style = "mysql_characteristics"
     # Index DDL.
-    index_qualifies_with_schema = False
-    index_supports_online_offline = True
-    index_supports_mysql_typed_keywords = True
     index_drop_includes_table = True
     index_drop_table_form_supports_if_exists = False
     # sqlglot's mysql grammar rejects DROP INDEX ("... always requires an ON
@@ -102,14 +84,7 @@ class MysqlQuirks(BaseQuirks):
     # Event scheduler timestamp-quoting.
     event_supports_mysql_schedule = True
     # Table DDL.
-    table_drop_style = "if_exists"
-    table_supports_inline_collate = True
-    table_check_strip_utf8mb4 = True
     table_uses_storage_engine_clause = True
-    # Wave A hooks.
-    view_supports_algorithm = True
-    proc_skip_empty_comparison = True
-    table_column_default_has_on_update = True
     # Wave B hooks.
     native_driver_display = "pymysql"
     # validate-sql offline placeholder. Inherited by MariaDB, whose config
@@ -246,20 +221,12 @@ class MysqlQuirks(BaseQuirks):
             ") ENGINE=InnoDB"
         )
 
-    def ddl_generator_class(self) -> Optional[Type["BaseSqlGenerator"]]:
+    def ddl_generator_class(self) -> Optional[Type["SqlGeneratorProtocol"]]:
         """DDL generator is supplied by an installed extension package."""
         return None
 
-    def alter_generator_class(self) -> Optional[Type["BaseAlterGenerator"]]:
+    def alter_generator_class(self) -> Optional[Type["AlterGeneratorProtocol"]]:
         """ALTER generator is supplied by an installed extension package."""
-        return None
-
-    def vendor_queries_class(self) -> "Optional[Type[Any]]":
-        """MySQL-family rich metadata queries are supplied by an installed extension package."""
-        return None
-
-    def introspector_class(self) -> "Optional[Type[Any]]":
-        """MySQL-family rich introspection is supplied by an installed extension package."""
         return None
 
     def parser_class(self, parser_type: str) -> Optional[type]:
@@ -278,107 +245,6 @@ class MysqlQuirks(BaseQuirks):
 
             return MySqlRegexParser
         return None
-
-    # MySQL DELIMITER wrapping has two distinct call paths
-    # with different object-type sets — preserve both rather than
-    # collapsing into one (PR #241 Bugbot).
-    #
-    #   ``_DELIMITER_OBJECT_TYPES`` (narrow) — PROCEDURE/FUNCTION only.
-    #     Used by ``SqlGenerator.generate_ddl`` to wrap CREATE
-    #     statements with ``DELIMITER //...//\nDELIMITER ;``.
-    #
-    #   ``_BLOCK_DELIMITER_OBJECT_TYPES`` (wider) — adds TRIGGER and
-    #     EVENT. Read through ``requires_block_delimiter_wrapping`` by the
-    #     separate ``$$``-flavoured delimiter path.
-    _DELIMITER_OBJECT_TYPES = frozenset({"PROCEDURE", "FUNCTION"})
-    _BLOCK_DELIMITER_OBJECT_TYPES = frozenset({"PROCEDURE", "FUNCTION", "TRIGGER", "EVENT"})
-    _DEFINITION_PRESERVE_TYPES = frozenset({"VIEW", "PROCEDURE", "FUNCTION", "TRIGGER", "EVENT"})
-
-    def render_drop_for_object(
-        self,
-        obj_type: str,
-        obj_name: str,
-        schema_prefix: str,
-        table_name: Optional[str],
-    ) -> Optional[str]:
-        """``DROP TABLE IF EXISTS`` — MySQL has no ``CASCADE`` on ``DROP TABLE``.
-
-        All other object types defer to the generic ``DROP ... IF EXISTS`` fallback.
-        """
-        # MySQL omits CASCADE on DROP TABLE.
-        if obj_type == "TABLE":
-            return f"DROP TABLE IF EXISTS {schema_prefix}{obj_name}"
-        return None
-
-    def requires_dialect_specific_wrapping(self, object_type_name: str) -> bool:
-        """True for ``PROCEDURE``/``FUNCTION`` — wrap with ``DELIMITER //`` markers."""
-        return object_type_name in self._DELIMITER_OBJECT_TYPES
-
-    def requires_block_delimiter_wrapping(self, object_type_name: str) -> bool:
-        """True for ``PROCEDURE``/``FUNCTION``/``TRIGGER``/``EVENT`` — ``$$`` helper path."""
-        return object_type_name in self._BLOCK_DELIMITER_OBJECT_TYPES
-
-    def wrap_dialect_specific_block(self, sql: str) -> str:
-        """Wrap *sql* in ``DELIMITER //`` … ``//`` … ``DELIMITER ;`` for stored programs."""
-        return f"DELIMITER //\n{sql}\n//\nDELIMITER ;"
-
-    def preserves_object_definition(self, object_type_name: str) -> bool:
-        """Return True if the generator must round-trip the verbatim CREATE definition.
-
-        MySQL views, procedures, functions, triggers, and events store
-        the user-supplied source text in ``information_schema``; the
-        introspector reads it back and the SQL generator should not
-        re-render those bodies (whitespace, quoting and the MySQL
-        ``DELIMITER`` wrapper would otherwise drift on round-trip).
-        Other object types are re-rendered from the structured model.
-        """
-        return object_type_name in self._DEFINITION_PRESERVE_TYPES
-
-    # Column ALTER hooks — MySQL uses MODIFY for type changes.
-    def render_column_type_change(
-        self, col_diff: object, formatted_table: str, formatted_column: str, dialect: str
-    ) -> "Optional[object]":
-        """``ALTER TABLE … MODIFY <col> <type>`` — MySQL's column-type change form."""
-        from dblift.core.sql_generator.sql_statement import SqlStatement
-
-        data_type_diff = getattr(col_diff, "data_type_diff", None)
-        if data_type_diff is None:
-            return None
-        expected_type, _ = data_type_diff
-        return SqlStatement(
-            sql=f"ALTER TABLE {formatted_table} MODIFY {formatted_column} {expected_type};",
-            statement_type="ALTER",
-            object_type="COLUMN",
-            object_name=f"{formatted_table}.{formatted_column}",
-            dialect=dialect,
-        )
-
-    # MySQL/MariaDB identity — AUTO_INCREMENT.
-    def render_identity_clause(self, col: object) -> "Optional[str]":
-        """MySQL identity columns use ``AUTO_INCREMENT`` (no seed/increment syntax)."""
-        return "AUTO_INCREMENT"
-
-    # MySQL normalises ENUM/CHAR/TEXT default values to single-
-    # quoted strings; backtick and double-quote wrapping is stripped.
-    def unwrap_default_value(self, default_str: str, column: object) -> str:
-        """Normalise character-column defaults to single-quoted form.
-
-        For ``CHAR``/``TEXT``/``CLOB``/``ENUM`` columns, strip backtick or
-        double-quote wrapping and re-quote with single quotes (escaping any
-        inner ``'``). Non-character columns pass through unchanged.
-        """
-        data_type = (getattr(column, "data_type", "") or "").upper()
-        is_character_type = any(t in data_type for t in ("CHAR", "TEXT", "CLOB", "ENUM"))
-        if is_character_type:
-            if default_str.startswith("'") and default_str.endswith("'"):
-                return default_str
-            if default_str.startswith("`") and default_str.endswith("`"):
-                default_str = default_str[1:-1]
-            elif default_str.startswith('"') and default_str.endswith('"'):
-                default_str = default_str[1:-1]
-            escaped = default_str.replace("'", "''")
-            return f"'{escaped}'"
-        return default_str
 
     def enrich_view_from_row(self, view: Any, row: Dict[str, Any], view_status: Any = None) -> None:
         """MySQL / MariaDB views carry ``DEFINER`` (``user@host``) and
@@ -610,34 +476,6 @@ class MysqlQuirks(BaseQuirks):
         if create_options:
             table.set_dialect_option("mysql", "create_options", create_options)
 
-    def fk_reference_query(
-        self, schema: str, table: str, col: str
-    ) -> "Tuple[Optional[str], list[Any]]":
-        """MySQL ``information_schema.key_column_usage`` query finding FKs targeting ``col``."""
-        sql = """
-            SELECT
-                constraint_name,
-                CONCAT(table_schema, '.', table_name) as table_name
-            FROM information_schema.key_column_usage
-            WHERE referenced_table_schema = %s
-                AND referenced_table_name = %s
-                AND referenced_column_name = %s
-        """
-        return (sql, self.fk_reference_bind_params(schema, table, col))
-
-    def index_reference_query(
-        self, schema: str, table: str, col: str
-    ) -> "Tuple[Optional[str], list[Any]]":
-        """MySQL ``information_schema.statistics`` query listing indexes covering ``col``."""
-        sql = """
-            SELECT DISTINCT index_name
-            FROM information_schema.statistics
-            WHERE table_schema = %s
-                AND table_name = %s
-                AND column_name = %s
-        """
-        return (sql, [schema, table, col])
-
     def type_equivalents(self) -> "dict[str, str]":
         """MySQL alias → canonical type map.
 
@@ -656,8 +494,6 @@ class MysqlQuirks(BaseQuirks):
             "DOUBLE PRECISION": "DOUBLE",
         }
 
-    version_specific_type_mappings = {("mysql", "5.7+"): {"JSON": "JSON"}}
-
     # Version-gated features (see core.sql_model.feature_gates).
     feature_gates = {
         "rename_column": FeatureGate(
@@ -666,7 +502,7 @@ class MysqlQuirks(BaseQuirks):
         ),
         "json_bind_cast": FeatureGate(
             min_version="5.7.8+",
-            description="CAST(? AS JSON) — native JSON type introduced in 5.7.8",
+            description="Native JSON parameter casting with CAST(? AS JSON)",
         ),
         "instant_add_column": FeatureGate(
             # INSTANT is the default ALGORITHM as of 8.0.12 (INPLACE before
@@ -681,19 +517,6 @@ class MysqlQuirks(BaseQuirks):
             description="ALTER TABLE ... ADD COLUMN, ALGORITHM=INSTANT",
         ),
     }
-
-    def type_preferences(self) -> "dict[str, str]":
-        """MySQL prefers ``INT`` (not ``INTEGER``) and ``DATETIME`` (not ``TIMESTAMP``)."""
-        return {"INTEGER": "INT", "VARCHAR": "VARCHAR", "TIMESTAMP": "DATETIME"}
-
-    def render_computed_column(
-        self, col: Any, formatted_col_name: str
-    ) -> Tuple[Optional[str], Optional[str]]:
-        """MySQL: ``AS (expr) STORED|VIRTUAL`` (no GENERATED ALWAYS prefix)."""
-        if not getattr(col, "is_computed", False) or not getattr(col, "computed_expression", None):
-            return None, None
-        stored = "STORED" if getattr(col, "computed_stored", False) else "VIRTUAL"
-        return f"AS ({col.computed_expression}) {stored}", None
 
 
 __all__ = ["MysqlQuirks"]

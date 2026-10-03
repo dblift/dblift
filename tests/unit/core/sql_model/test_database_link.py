@@ -48,62 +48,6 @@ class TestDatabaseLink:
         link = DatabaseLink("private_link", public=False)
         assert link.public is False
 
-    def test_create_statement_private_minimal(self):
-        """Test create statement for private link without credentials."""
-        link = DatabaseLink("test_link")
-        result = link.create_statement
-        assert "CREATE DATABASE LINK" in result
-        assert "PUBLIC" not in result
-        assert "test_link" in result
-
-    def test_create_statement_public_minimal(self):
-        """Test create statement for public link without credentials."""
-        link = DatabaseLink("test_link", public=True)
-        result = link.create_statement
-        assert "CREATE PUBLIC DATABASE LINK" in result
-        assert "test_link" in result
-
-    def test_create_statement_with_username(self):
-        """Test create statement with username."""
-        link = DatabaseLink("test_link", username="user1")
-        result = link.create_statement
-        assert "CREATE DATABASE LINK" in result
-        assert "CONNECT TO user1" in result
-        assert "IDENTIFIED BY <password>" in result
-
-    def test_create_statement_with_connect_string(self):
-        """Test create statement with connect string."""
-        link = DatabaseLink("test_link", connect_string="tns_name")
-        result = link.create_statement
-        assert "CREATE DATABASE LINK" in result
-        assert "USING 'tns_name'" in result
-
-    def test_create_statement_complete(self):
-        """Test create statement with all components."""
-        link = DatabaseLink(
-            "test_link",
-            username="user1",
-            connect_string="tns_name",
-            public=True,
-        )
-        result = link.create_statement
-        assert "CREATE PUBLIC DATABASE LINK" in result
-        assert "CONNECT TO user1" in result
-        assert "USING 'tns_name'" in result
-
-    def test_drop_statement_private(self):
-        """Test drop statement for private link."""
-        link = DatabaseLink("test_link", dialect="oracle")
-        result = link.drop_statement
-        assert result == 'DROP DATABASE LINK "test_link"'
-        assert "PUBLIC" not in result
-
-    def test_drop_statement_public(self):
-        """Test drop statement for public link."""
-        link = DatabaseLink("test_link", public=True, dialect="oracle")
-        result = link.drop_statement
-        assert result == 'DROP PUBLIC DATABASE LINK "test_link"'
-
     def test_str_representation_basic(self):
         """Test string representation without connection info."""
         link = DatabaseLink("test_link")

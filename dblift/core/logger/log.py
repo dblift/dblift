@@ -24,6 +24,7 @@ _logger = logging.getLogger(__name__)
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, Optional, Union
+from uuid import uuid4
 
 # Re-exports from the split submodules. Importing here ensures every
 # legacy ``from core.logger.log import X`` keeps working and lets test
@@ -508,6 +509,8 @@ class FileLog(AbstractLog):
                 return log_file_path
         else:
             # Use default naming convention
+            if self.log_format != LogFormat.TEXT:
+                timestamp = f"{timestamp}_{uuid4().hex}"
             log_file_name = (
                 f"Dblift_{_safe_name(str(self.schema))}_"
                 f"{_safe_name(str(self.database_name))}_{timestamp}.{extension}"

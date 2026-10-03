@@ -45,12 +45,6 @@ class TestForeignDataWrapper:
         fdw.options["new_key"] = "new_value"
         assert "new_key" not in original_options
 
-    def test_drop_statement(self):
-        """Test drop statement generation."""
-        fdw = ForeignDataWrapper("test_fdw", dialect="postgresql")
-        result = fdw.drop_statement
-        assert result == 'DROP FOREIGN DATA WRAPPER IF EXISTS "test_fdw" CASCADE;'
-
     def test_str_representation_basic(self):
         """Test string representation without handler."""
         fdw = ForeignDataWrapper("test_fdw")

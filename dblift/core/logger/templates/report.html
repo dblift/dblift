@@ -413,13 +413,13 @@ table.t{width:100%;border-collapse:separate;border-spacing:0;font-size:12.5px}
 
     {# Overall stats summary for MIGRATE/UNDO #}
     {% if cmd.command_type in ['MIGRATE','UNDO'] and cmd.per_migration_journal %}
-      {% set s = namespace(total_stmts=0, total_time=0, min_time=999999, max_time=0) %}
+      {% set s = namespace(total_stmts=0, total_time=0, min_time=none, max_time=0) %}
       {% for mig_script, mj in cmd.per_migration_journal.items() %}
         {% if mj.statements %}
           {% set s.total_stmts = s.total_stmts + (mj.statements|length) %}
           {% set s.total_time = s.total_time + (mj.total_execution_time or 0) %}
-          {% if mj.min_statement_time and mj.min_statement_time < s.min_time %}{% set s.min_time = mj.min_statement_time %}{% endif %}
-          {% if mj.max_statement_time and mj.max_statement_time > s.max_time %}{% set s.max_time = mj.max_statement_time %}{% endif %}
+          {% if mj.min_statement_time is number and (s.min_time is none or mj.min_statement_time < s.min_time) %}{% set s.min_time = mj.min_statement_time %}{% endif %}
+          {% if mj.max_statement_time is number and mj.max_statement_time > s.max_time %}{% set s.max_time = mj.max_statement_time %}{% endif %}
         {% endif %}
       {% endfor %}
       {% if s.total_stmts > 0 %}
@@ -427,7 +427,7 @@ table.t{width:100%;border-collapse:separate;border-spacing:0;font-size:12.5px}
         <div class="cell" style="background:var(--panel);padding:10px 14px"><div class="label" style="font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--text-dim)">Statements</div><div class="mono" style="font-size:16px;font-weight:600">{{ s.total_stmts }}</div></div>
         <div class="cell" style="background:var(--panel);padding:10px 14px"><div class="label" style="font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--text-dim)">Total time</div><div class="mono" style="font-size:16px;font-weight:600">{{ s.total_time }} ms</div></div>
         <div class="cell" style="background:var(--panel);padding:10px 14px"><div class="label" style="font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--text-dim)">Avg / stmt</div><div class="mono" style="font-size:16px;font-weight:600">{{ (s.total_time / s.total_stmts)|round(2) }} ms</div></div>
-        <div class="cell" style="background:var(--panel);padding:10px 14px"><div class="label" style="font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--text-dim)">Min / Max</div><div class="mono" style="font-size:16px;font-weight:600">{{ s.min_time }} / {{ s.max_time }} ms</div></div>
+        <div class="cell" style="background:var(--panel);padding:10px 14px"><div class="label" style="font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--text-dim)">Min / Max</div><div class="mono" style="font-size:16px;font-weight:600">{{ '—' if s.min_time is none else s.min_time }} / {{ s.max_time }} ms</div></div>
       </div>
       {% endif %}
     {% endif %}
@@ -484,6 +484,24 @@ table.t{width:100%;border-collapse:separate;border-spacing:0;font-size:12.5px}
         </tbody>
       </table>
     </div>
+  </div>
+  {% endif %}
+
+  {% if cmd.command_type == 'VALIDATE' and cmd.result.error_count is defined %}
+  <div class="panel">
+    <div class="panel-h">
+      <div class="title">{{ icon_table() }} Validation results</div>
+      <div class="meta">{{ cmd.result.error_count }} error{% if cmd.result.error_count != 1 %}s{% endif %}</div>
+    </div>
+    {% for migration in cmd.result.failed_migrations %}
+    <div style="padding:8px 14px;border-top:1px solid var(--line)"><span class="badge fail">Failed</span> <code>{{ migration.script }}</code></div>
+    {% endfor %}
+    {% for migration in cmd.result.validated_migrations %}
+    <div style="padding:8px 14px;border-top:1px solid var(--line)"><span class="badge ok">Valid</span> <code>{{ migration.script }}</code></div>
+    {% endfor %}
+    {% for issue in cmd.result.issues %}
+    <div class="banner danger" style="margin:8px 14px"><div class="ic">{{ icon_alert() }}</div><p style="word-break:break-word">{{ issue }}</p></div>
+    {% endfor %}
   </div>
   {% endif %}
 

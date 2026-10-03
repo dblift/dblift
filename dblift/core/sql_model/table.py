@@ -56,6 +56,7 @@ class Table(SqlObject):
         partitions: Optional[List["Partition"]] = None,
         export_partitions: Optional[List["Partition"]] = None,
         object_type: SqlObjectType = SqlObjectType.TABLE,
+        partition_count: Optional[int] = None,
     ):
         """Initialize a table with base/structural parameters only.
 
@@ -71,6 +72,7 @@ class Table(SqlObject):
             partitions: List of Partition objects (optional)
             export_partitions: Partition definitions used for export-only DDL generation
             object_type: ``SqlObjectType.TABLE`` (default) or a derived variant
+            partition_count: Explicit number of partitions (optional)
 
         For dialect-specific options (storage engine, system versioning,
         row-level security, Oracle storage parameters, etc.) build a
@@ -109,9 +111,10 @@ class Table(SqlObject):
         # Partition scheme tracking (strategy only, not individual partitions)
         # partition_method: RANGE, LIST, HASH, KEY (MySQL), INTERVAL (Oracle auto-partitioning)
         # partition_columns: Column(s) used for partitioning
-        # Note: Individual partitions are NOT tracked to avoid drift from auto-created partitions
+        # Explicit SQL-file definitions live in export_partitions, outside drift tracking.
         self.partition_method: Optional[str] = None
         self.partition_columns: Optional[List[str]] = None
+        self.partition_count: Optional[int] = partition_count
 
         # Dialect-specific key/value metadata (e.g. CosmosDB partition_key)
         self.metadata: Dict[str, str] = {}
@@ -147,6 +150,7 @@ class Table(SqlObject):
         partitions: Optional[List["Partition"]] = None,
         export_partitions: Optional[List["Partition"]] = None,
         object_type: SqlObjectType = SqlObjectType.TABLE,
+        partition_count: Optional[int] = None,
     ) -> "Table":
         """Build a ``Table`` and apply the typed dialect-specific options.
 
@@ -168,6 +172,7 @@ class Table(SqlObject):
             comment=comment,
             partitions=partitions,
             export_partitions=export_partitions,
+            partition_count=partition_count,
             object_type=object_type,
         )
         if options is not None:
@@ -399,53 +404,6 @@ class Table(SqlObject):
             List of check constraints
         """
         return [c for c in self.constraints if c.constraint_type.value == "CHECK"]
-
-    def generate_alter_table_check_constraints(self) -> List[str]:
-        """Generate ALTER TABLE statements for CHECK constraints.
-
-        Note: Only produces output for DB2 dialect. Returns empty list for all other dialects.
-        """
-        from dblift.core.sql_generator.basic_table_ddl_generator import BasicTableDdlGenerator
-
-        return BasicTableDdlGenerator(self).generate_alter_check_constraints()
-
-    def generate_alter_table_self_referencing_foreign_keys(self) -> List[str]:
-        """Generate ALTER TABLE statements for self-referencing foreign keys.
-
-        Note: Only produces output for DB2 dialect. Returns empty list for all other dialects.
-        """
-        from dblift.core.sql_generator.basic_table_ddl_generator import BasicTableDdlGenerator
-
-        return BasicTableDdlGenerator(self).generate_alter_self_referencing_fks()
-
-    @property
-    def create_statement(self) -> str:
-        """Generate CREATE TABLE statement using database-specific generators.
-
-        Returns:
-            Dialect-specific CREATE TABLE statement
-        """
-        from dblift.core.sql_generator.basic_table_ddl_generator import BasicTableDdlGenerator
-        from dblift.core.sql_generator.generator_factory import SqlGeneratorFactory
-
-        try:
-            generator = SqlGeneratorFactory.create(self.dialect)
-            if not hasattr(generator, "generate_create_statement"):
-                raise AttributeError("generator has no generate_create_statement")
-            return str(generator.generate_create_statement(self))
-        except (ValueError, ImportError, AttributeError):
-            return BasicTableDdlGenerator(self).generate_create_statement()
-
-    @property
-    def drop_statement(self) -> str:
-        """Generate DROP TABLE statement."""
-        from dblift.core.sql_generator.basic_table_ddl_generator import BasicTableDdlGenerator
-
-        return BasicTableDdlGenerator(self).generate_drop_statement()
-
-    def __str__(self) -> str:
-        """Return string representation of the table."""
-        return self.create_statement
 
     def compare_with_defaults(
         self, other: "SqlObject", schema_defaults: Optional[Dict[str, Any]] = None
@@ -687,6 +645,11 @@ class Table(SqlObject):
             "metadata": self.metadata,
             "dialect_options": self.dialect_options,
             "explicit_properties": self.explicit_properties,
+            **(
+                {"partition_count": self.partition_count}
+                if self.partition_count is not None
+                else {}
+            ),
         }
 
     @classmethod
@@ -771,6 +734,7 @@ class Table(SqlObject):
             tablespace=data.get("tablespace"),
             comment=data.get("comment"),
             object_type=object_type,
+            partition_count=data.get("partition_count"),
             dialect=dialect,
         )
 

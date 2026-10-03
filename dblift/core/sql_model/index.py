@@ -5,22 +5,6 @@ from typing import Any, Dict, List, Optional, Sequence
 from dblift.core.sql_model.base import SqlObject, SqlObjectType
 
 
-def _quirks_for(dialect: Optional[str]) -> Any:
-    """Resolve quirks for *dialect* via the registry.
-
-    Index DDL paths dispatch via plugin Quirks instead of inline
-    ``if dialect in {...}`` branches. Returns ``BaseQuirks`` defaults when
-    the dialect is unknown.
-    """
-    from dblift.db.base_quirks import BaseQuirks
-    from dblift.db.provider_registry import ProviderRegistry
-
-    canonical = ProviderRegistry.canonical_dialect_name(dialect or "")
-    if canonical:
-        return ProviderRegistry.get_quirks(canonical)
-    return BaseQuirks()
-
-
 class Index(SqlObject):
     """Represents a database index."""
 
@@ -98,46 +82,6 @@ class Index(SqlObject):
         self.compression = compression
         self.comment = comment
         self.definition = definition
-
-    @property
-    def create_statement(self) -> str:
-        """Generate CREATE INDEX statement using database-specific generators.
-
-        Returns:
-            Dialect-specific CREATE INDEX statement
-        """
-        from dblift.core.sql_generator.generator_factory import (
-            SqlGeneratorFactory,
-        )
-
-        try:
-            generator = SqlGeneratorFactory.create(self.dialect)
-            return str(generator.generate_create_statement(self))
-        except (ValueError, ImportError, AttributeError):
-            return ""
-
-    @property
-    def drop_statement(self) -> str:
-        """Generate DROP INDEX statement.
-
-        Returns:
-            SQL DROP INDEX statement for this index
-        """
-        schema_prefix = self.format_identifier(self.schema) + "." if self.schema else ""
-        idx_name = self.format_identifier(self.name)
-        table_name = self.format_identifier(self.table_name)
-        table_schema_prefix = (
-            self.format_identifier(self.table_schema) + "." if self.table_schema else ""
-        )
-
-        # DROP INDEX shape comes from plugin Quirks.
-        quirks = _quirks_for(self.dialect)
-        if quirks.index_drop_includes_table:
-            if_exists = "IF EXISTS " if quirks.index_drop_table_form_supports_if_exists else ""
-            return f"DROP INDEX {if_exists}{idx_name} ON {table_schema_prefix}{table_name}"
-        # Standalone form (PostgreSQL, SQLite: IF EXISTS; Oracle, DB2: no IF EXISTS).
-        if_exists = "IF EXISTS " if quirks.index_drop_standalone_supports_if_exists else ""
-        return f"DROP INDEX {if_exists}{schema_prefix}{idx_name}"
 
     @staticmethod
     def _normalize_include_columns(include_columns: Optional[Sequence[Any]]) -> List[str]:

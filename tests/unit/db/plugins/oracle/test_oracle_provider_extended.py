@@ -1062,6 +1062,37 @@ class TestCleanSchema:
         parent_index = next(i for i, s in enumerate(table_drops) if "PARENT" in s)
         assert child_index < parent_index, table_drops
 
+    def test_text_index_support_tables_are_not_dropped_directly(self):
+        """A ``DR$<idx>$*`` support table (created for an Oracle Text /
+        CTXSYS.CONTEXT index) is listed in ALL_TABLES like any other table,
+        but Oracle drops it itself as a side effect of dropping the owning
+        index -- which happens when the indexed table is CASCADE-dropped
+        below. Dropping it here too races that implicit drop and always
+        loses (ORA-00942), even though clean's end state is already correct.
+        """
+        p = _Provider()
+
+        def execute_query(sql, params=None):
+            p.queries.append((sql, params))
+            if "ALL_TABLES t" in sql:
+                return [
+                    {"object_name": "CUSTOMERS"},
+                    {"object_name": "DR$IDX_TEXT$I"},
+                    {"object_name": "DR$IDX_TEXT$K"},
+                    {"object_name": "DR$IDX_TEXT$N"},
+                    {"object_name": "DR$IDX_TEXT$R"},
+                ]
+            return []
+
+        p.execute_query = execute_query
+
+        summary = p.clean_schema("MYSCHEMA")
+
+        table_drops = [s[0] for s in p.statements if s[0].startswith("DROP TABLE")]
+        assert any("CUSTOMERS" in s for s in table_drops)
+        assert not any("DR$" in s for s in table_drops)
+        assert summary.errors == []
+
     def test_reference_partition_query_failure_falls_back_to_unordered_drop(self):
         p = _Provider()
 

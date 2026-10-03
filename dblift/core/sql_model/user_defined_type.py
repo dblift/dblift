@@ -64,38 +64,6 @@ class UserDefinedType(SqlObject):
         """Check if this is a distinct type."""
         return self.type_category == "DISTINCT"
 
-    @property
-    def create_statement(self) -> str:
-        """Generate CREATE TYPE statement using database-specific generators.
-
-        Returns:
-            Dialect-specific CREATE TYPE statement
-        """
-        from dblift.core.sql_generator.generator_factory import SqlGeneratorFactory
-
-        try:
-            generator = SqlGeneratorFactory.create(self.dialect)
-            return str(generator.generate_create_statement(self))
-        except (ValueError, ImportError, AttributeError):
-            return ""
-
-    @property
-    def drop_statement(self) -> str:
-        """
-        Generate DROP TYPE statement.
-
-        Returns:
-            Dialect-specific DROP TYPE statement
-        """
-        schema_name = self.format_identifier(self.schema) if self.schema else ""
-        type_name = self.format_identifier(self.name)
-        schema_prefix = f"{schema_name}." if schema_name else ""
-
-        if self.is_domain:
-            return f"DROP DOMAIN {schema_prefix}{type_name}"
-        else:
-            return f"DROP TYPE {schema_prefix}{type_name}"
-
     def __str__(self) -> str:
         """Return string representation of the type."""
         type_info = f"{self.type_category}"

@@ -369,6 +369,22 @@ class TestExceptionHandling(unittest.TestCase):
             pass
         journal.record_statement_failed.assert_called_once()
 
+    def test_journal_records_driver_error_without_wrapping(self):
+        """The journal keeps the same message the command reports, not str(exc)."""
+        from sqlalchemy.exc import ProgrammingError
+
+        svc, provider, _, _, journal = _make_service(
+            stmt_type=SqlStatementType.DDL.value, has_journal=True
+        )
+        provider.execute_statement.side_effect = ProgrammingError(
+            "DROP TABLE missing", None, Exception('table "missing" does not exist')
+        )
+        with pytest.raises(ProgrammingError):
+            svc.execute_statement("DROP TABLE missing", stmt_index=1)
+
+        _statement, _index, message, _ms = journal.record_statement_failed.call_args[0]
+        assert message == 'table "missing" does not exist\n[SQL: DROP TABLE missing]'
+
     def test_sqlstate_included_in_error_when_available(self):
         svc, provider, _, logger, _ = _make_service(stmt_type=SqlStatementType.DDL.value)
         exc = RuntimeError("error")

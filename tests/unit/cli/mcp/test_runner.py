@@ -347,6 +347,24 @@ def test_an_additional_file_format_keeps_one_text_file_per_call(sqlite_project, 
 
 
 @pytest.mark.unit
+def test_html_log_format_does_not_leave_a_stub_file_per_call(sqlite_project, _clock):
+    """HTML writes its header immediately on construction (unlike JSON, which
+    writes on close). The config-load phase builds its own throwaway logger
+    before this call's format/pattern is known and — in this long-lived
+    server, with LogFactory's format settings still carrying HTML from an
+    earlier call — that logger used to eagerly create its own, never-
+    finalized HTML file on every call. Each call must leave behind exactly
+    the one file ``_configure_logging`` opens for it."""
+    logs = sqlite_project.parent / "logs"
+
+    run_command(["--log-format", "html"], "info", [])
+    run_command(["--log-format", "html"], "info", [])
+    run_command(["--log-format", "html"], "info", [])
+
+    assert len(list(logs.glob("*.html"))) == 3
+
+
+@pytest.mark.unit
 def test_a_call_asking_for_another_format_is_not_forced_onto_the_pinned_file(
     sqlite_project, _clock
 ):

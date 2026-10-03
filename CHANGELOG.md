@@ -7,13 +7,209 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.10.0] - 2026-10-03
+
 ### Added
+
+- **SQL-file models keep a table's partition count and partition list.** A model read from SQL files kept only the partitioning method and columns of `PARTITION BY`; `PARTITIONS n` and an explicit list of partitions are now kept as well, so tools that write DDL from the model can reproduce the partitioning the file declares.
+
+- Sequence data types are now captured, serialized and compared through `Sequence.data_type`.
+
+- `dblift.db.generator_protocol`: `SqlGeneratorProtocol` and
+  `AlterGeneratorProtocol`, runtime-checkable Protocols describing a DDL
+  generator and an ALTER generator. The `ddl_generator_class()` /
+  `alter_generator_class()` quirks hooks (`BaseQuirks`, every bundled
+  plugin, `DdlQuirks`) are now typed against them, and `dblift/db/` no
+  longer imports `dblift.core.sql_generator`. The surviving hooks retain
+  their signatures; migration SQL execution is unchanged.
 
 ### Changed
 
+- `dblift undo` now treats migrations that carry the same `dblift-group-...`
+  filename tag as one unit: a plain `dblift undo` reverts every applied
+  migration in that group, highest version first, instead of stopping after
+  the single most recently applied one, and `--target-version` widens its
+  rollback to cover the whole group when the target would otherwise land in
+  the middle of it. Migrations with no such tag are unaffected.
+
 ### Fixed
 
+- **Models read from SQL files keep column collations and MySQL linear or algorithm-qualified partitioning.** A column's `COLLATE` setting was dropped on every engine, so comparing such a model with the database reported a collation change on each of those columns. A table partitioned by `LINEAR HASH`, `LINEAR KEY` or `KEY ALGORITHM=n` lost its partitioning entirely. Both are now kept.
+- Models read from SQL files keep each index's method and kind. A GIN, hash, GiST or BRIN index was read as a B-tree, an Oracle bitmap index likewise, and MySQL FULLTEXT / SPATIAL indexes, a trailing USING HASH, and SQL Server CLUSTERED / NONCLUSTERED indexes were not read at all. Comparing such a model with the database no longer reports these indexes as changed or missing.
+
+- **HTML run report shows failed migrations as failed**, with the failing
+  statement and its error. A failed undo script now appears in the report and
+  JSON log; Min / Max no longer shows `999999`.
+- **Models read from SQL files keep generated columns, functional and descending indexes, foreign-key actions and triggers.** The SQL parser dropped a generated column's expression, the expression and sort order of an index's key parts, a foreign key's `ON DELETE` / `ON UPDATE` action, and triggers declared on an unqualified table (or with a multi-statement body). These are now kept, so a schema compared against such a model no longer reports them as differences.
+- **CockroachDB `INT` columns compare as the 64-bit integers CockroachDB creates.**
+  A column declared `INT` or `INTEGER` was read as a 4-byte integer, so comparing
+  a CockroachDB schema with its own DDL reported a type change on every such
+  column. They are now read as `BIGINT`, CockroachDB's default size; `INT4` stays
+  4 bytes.
+
+- **Database errors read the same in the run report, command and JSON log**:
+  no driver class prefix or SQLAlchemy link, and MySQL / SQL Server errors drop
+  the `(errno, "...")` tuple.
+
+- **SQL Server `CREATE OR ALTER` statements are recognised.** A migration's
+  `CREATE OR ALTER VIEW`, `PROCEDURE`, `FUNCTION` or `TRIGGER` was not attributed
+  to the object it creates, so anything that tracks a migration's objects treated
+  it as touching none. It is now read as the plain `CREATE` form is.
+
+- **PostgreSQL-family migrations split correctly around `E'...'` escape strings.**
+  A `;` after a backslash-escaped quote inside an `E'...'` literal used to be
+  taken for the end of the statement, so the script ran as two broken statements;
+  the literal is now read to its real end. Applies to PostgreSQL, DuckDB and
+  CockroachDB. Redshift also handles backslash escapes in all single-quoted
+  string literals, including ordinary `'...'` strings without an `E` prefix.
+
+- Oracle identity columns now capture and compare ALWAYS, BY DEFAULT and BY DEFAULT ON NULL. Identity generation is part of column equality and hashing (and therefore table comparison): older snapshots with an unspecified kind (`None`) compare unequal to an explicit kind such as `ALWAYS`, even where that matches the engine default.
+- A comment in front of a statement no longer hides that it must run outside a transaction. A migration such as `-- build online` followed by `CREATE INDEX CONCURRENTLY …` on PostgreSQL (or a SQLite `PRAGMA foreign_keys` after a comment) was classified as transactional, so `migrate` ran it inside the transaction block and PostgreSQL rejected it. Classification now skips leading comments before matching.
+
+- `dblift mcp` tool results no longer carry stray library log output mixed into the command's own console output. Building the MCP server left an unrelated logging handler installed process-wide, which could pick up verbose third-party log lines that the CLI itself never prints and mirror them into a tool's result.
+- `dblift mcp` no longer leaves a small, unfinished log file behind on every call when `--log-format html` or a combined format such as `text,html` is used. A throwaway logger built while a call's configuration loads, before the call's own log format is known, no longer opens a file of its own; the real, per-call logger configured moments later is unaffected.
+- `DBLiftClient.import_flyway()` emits `MIGRATION_FAILED` (matching `migrate()` and `undo()`) instead of `MIGRATION_COMPLETED` when the import returns a failed result without raising an exception, so listeners can tell a failed import from a successful one.
+- Oracle `SqlAnalyzer.split_statements` now strips SQL*Plus `PROMPT` / `REM` directives the same way `migrate` already does, instead of letting them merge with the statement that follows. A script such as `PROMPT Creating the customer's table` / `CREATE TABLE ...` previously either merged the directive's text into the next statement (an apostrophe in the message could even swallow a later `CREATE INDEX`) or dropped statements outright; it now returns every statement, matching what `migrate` executes.
+- Oracle `clean` no longer reports an error for a Text index's `DR$<idx>$*` support tables. Oracle drops them itself when the owning index is cascade-dropped with its table, but they were also listed as ordinary tables and dropped a second time, and the resulting ORA-00942 was counted as a clean failure even though the schema was already fully cleaned.
+- SQL Server's `fail_on_fixed_dbo` message now names the connecting login (e.g. `sa`) instead of repeating the fixed `dbo` database user it maps to, so "SQL Server login 'dbo' maps to the fixed 'dbo' database user" reads correctly as "SQL Server login 'sa' maps to the fixed 'dbo' database user".
+- A SQLite migration whose only statement was `PRAGMA foreign_keys = ON` (or
+  `OFF`) used to run inside `migrate`'s transaction and silently have no
+  effect — SQLite treats that pragma as a no-op while a transaction is open.
+  It is now classified as an autocommit-only statement, the same way
+  PostgreSQL's `CREATE INDEX CONCURRENTLY` already is, so it actually runs
+  outside any transaction and takes effect.
+
+- JSON and HTML file reports now reflect the actual result of `info`, `validate`
+  and `migrate` when the CLI uses `--format json`, including failures. Validation
+  reports also retain every issue and affected script.
+- Repeated JSON or HTML reports no longer overwrite one another when commands
+  run within the same second. Text logs keep their existing naming.
+
+### Deprecated
+
+- `DBLiftClient.generate_undo_script()` / `generate_undo_scripts()` and
+  their `AsyncDBLiftClient` counterparts emit `DeprecationWarning` and will
+  be removed in the next major release. Undo generation works from the
+  migration's SQL text: it inverts additive statements and returns a
+  warning for anything that needs state the file does not hold
+  (`DROP COLUMN`, `DROP CONSTRAINT`, `MODIFY` / `ALTER COLUMN`, any `DROP`,
+  several `CREATE` kinds). That limit is structural to reading the text, so
+  the feature is being retired rather than extended. Generated scripts are
+  unchanged until removal; write `U*__.sql` undo scripts by hand for
+  migrations it cannot reverse.
+
 ### Removed
+
+- Internal schema-discovery modules under `dblift.core.introspection`, the
+  `dblift.core.seams.introspection` registrar, and the NoSQL sampling helper are
+  no longer shipped. Migration execution and the documented Python API are
+  unchanged; direct imports from these internal paths need updating.
+
+- Removed **37 `BaseQuirks` rendering members and their plugin overrides**.
+  The SQL generator that read them left the core in 4.10; nothing in the core
+  reads them. `dblift.db` is not public
+  API (see [the semver policy](docs/semver-policy.md)). A plugin that overrode
+  one of these members has nothing to override any more. Plugins returning a
+  generator from `ddl_generator_class` / `alter_generator_class` are unaffected.
+  Removed members:
+  `column_comment_template`, `index_comment_template`,
+  `table_comment_template`, `proc_drop_supports_if_exists`,
+  `proc_supports_create_or_replace`, `seq_drop_supports_if_exists`,
+  `synonym_keyword`, `synonym_supports_create_or_replace`,
+  `table_check_strip_utf8mb4`, `table_check_via_alter`,
+  `table_create_keyword`, `table_create_supports_if_not_exists`,
+  `table_fk_suppress_on_update`, `table_inline_unique_single_col`,
+  `table_not_null_implicit_on_identity_pk`, `table_not_null_implicit_on_inline_pk`,
+  `table_prefers_inline_single_pk`, `table_self_ref_fk_via_alter`,
+  `table_supports_constraint_nocheck`, `table_supports_constraint_state`,
+  `table_supports_deferrable_constraints`, `table_supports_inline_collate`,
+  `table_tablespace_style`, `table_temporary_style`,
+  `view_create_or_replace_keyword`, `view_drop_supports_if_exists`,
+  `view_supports_create_or_replace`, `normalize_column_data_type`,
+  `render_computed_column`, `render_drop_for_object`,
+  `render_identity_clause`, `render_system_versioning_alter`,
+  `requires_block_delimiter_wrapping`, `requires_dialect_specific_wrapping`,
+  `script_header_session_init`, `unwrap_default_value`,
+  `wrap_dialect_specific_block`.
+
+- **The four `render_column_*_change` ALTER hooks on `BaseQuirks` and their plugin
+  overrides are removed.** They rendered `ALTER TABLE` statements for column diffs;
+  the SQL generator that read them left the core in 4.10 and nothing in the core
+  reads them. `dblift.db` is not public API.
+  Removed: `render_column_nullable_change`, `render_column_default_change`,
+  `render_column_type_change`, `render_column_collation_change`, and the overrides
+  in the cosmosdb, db2, mysql, oracle, postgresql, sqlite and sqlserver plugins.
+  A plugin that returns a generator from `ddl_generator_class` /
+  `alter_generator_class` is unaffected.
+
+- **46 unread `BaseQuirks` members, their plugin overrides, and the
+  `ComparatorQuirks` protocol are removed.** Nothing in the core reads them.
+  `dblift.db` and
+  `dblift.core.dialect_boundary` are not public API
+  (see [the semver policy](docs/semver-policy.md)).
+
+  - Members with no reader: `index_qualifies_with_schema`, `index_supports_bitmap`,
+    `index_supports_local_partitioned`, `index_supports_mysql_typed_keywords`,
+    `index_supports_using_clause`, `index_with_options_style`, `is_script_directive`,
+    `metadata_catalog_mode`, `proc_body_wrap_style`, `proc_function_returns_keyword`,
+    `proc_supports_language_clause`, `seq_cache_one_means_nocache`,
+    `seq_default_nocache_when_unset`, `seq_nocycle_keyword`, `trigger_supports_for_each_row`,
+    `udt_composite_object_modifier`, `udt_distinct_uses_from_syntax`,
+    `udt_object_body_uses_semicolons`, `version_specific_type_mappings`,
+    `view_supports_security_with_clause`.
+  - Protocol members with no caller: `skip_index_ddl`, `skip_index_ddl_comment` and
+    `preserves_object_definition` from `DdlQuirks`; `fk_reference_query` and
+    `index_reference_query` from `ValidatorQuirks`, plus their
+    `BaseQuirks.fk_reference_bind_params` helper; `type_preferences` from `TypeMapQuirks`.
+  - `select_supports_limit`, whose last reader was removed in 4.9.
+  - The schema-diff comparator facts: `computed_column_introspection_incomplete`,
+    `default_index_type`, `index_supports_tablespace`, `proc_skip_empty_comparison`,
+    `proc_uses_definition_field`, `seq_implicit_max_value`, `seq_supports_temp`,
+    `seq_uses_nextval_syntax`, `serial_types_alias_integer`, `supports_constraint_triggers`,
+    `table_column_default_has_on_update`, `table_fk_supports_restrict`,
+    `table_supports_compress`, `table_supports_memory_optimized`,
+    `table_supports_system_versioned`, `view_supports_algorithm`, `view_supports_force_noforce`,
+    `view_supports_unlogged_and_security`. `ComparatorQuirks` is removed, and
+    `event_supports_mysql_schedule` moves to `ModelQuirks`.
+
+  A plugin that overrode one of these has nothing to override any more.
+
+- **11 more unread `BaseQuirks` members with their plugin overrides, the
+  `RowLimitClauses` type, and the `ValidatorQuirks` protocol are removed.**
+  Nothing in the core reads them. `dblift.db` and
+  `dblift.core.dialect_boundary` are not public API
+  (see [the semver policy](docs/semver-policy.md)).
+
+  - Index-build facts: `supports_online_index`, `index_supports_online_offline`,
+    `supports_concurrent_index`.
+  - `existence_check_sql`, removing `ValidatorQuirks`.
+  - Derived-table flags: `update_subquery_requires_derived_table`,
+    `subquery_row_limit_requires_derived_table`.
+  - Row limiting: `row_limit_clauses`, `row_limit_style`, `RowLimitClauses`.
+  - Data binding: `upsert_style`, `json_bind_cast_type`, `json_bind_cast()`.
+
+  The `row_limit_fetch_first` and `json_bind_cast` feature-gate names stay,
+  since feature names are cross-tier API. A plugin that overrode one of
+  these members has nothing to override any more.
+
+- **`table_drop_style` and `pygments_lexer` are removed from `BaseQuirks`, with
+  their plugin overrides.** Nothing in the core reads them: the first described
+  the DROP TABLE form for a DDL generator the core no longer ships, and the second
+  named a lexer for console highlighting the core never does. `dblift.db` is
+  not public API. Overrides are removed from
+  the duckdb, mysql, oracle, sqlite and snowflake plugins (`table_drop_style`)
+  and from the mysql, postgresql, snowflake and sqlserver plugins
+  (`pygments_lexer`). A plugin that set either one has nothing to override any more.
+
+- **`dblift.core.sql_generator` and the SQL model's rendering members are removed.**
+  `create_statement` / `drop_statement` on the model classes and
+  `Table.generate_alter_table_check_constraints` /
+  `generate_alter_table_self_referencing_foreign_keys` are gone, together with
+  the generator package and `dblift.core.seams.sql_generators`. The model
+  classes are data; nothing in the core rendered DDL from them. `dblift.core`
+  is outside the public API (semver policy). Code that rendered DDL through a
+  model reaches a generator through `dblift.db.generator_protocol` instead.
+  This is a MINOR release change.
 
 ## [4.9.0] - 2026-09-27
 

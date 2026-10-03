@@ -11,8 +11,8 @@ one of them moves, so the lists stay current.
 | Package | What it holds | Depends on |
 | --- | --- | --- |
 | `dblift/config/` | Configuration model, YAML/env/CLI merging, the property registry that derives `--flags` and `DBLIFT_*` variables. | `core.constants`, `core.utils`; `db.provider_registry` lazily, for dialect lookup |
-| `dblift/core/` | The engine: migration commands and executors, history and locking, the SQL model, parsers, generators, introspection, validators, logging. Dialect-neutral; it asks the provider's `quirks` for anything dialect-specific. | `config`, `db` |
-| `dblift/db/` | Provider contract and registry, plus one plugin per engine under `db/plugins/<engine>/` (provider, quirks, parser, introspection, history and lock managers). | `config`, `core` (constants, sql_model, sql_parser, logger, sql_generator, utils, migration, among others) |
+| `dblift/core/` | The engine: migration commands and executors, history and locking, the SQL model, parsers, undo generation, validators, logging. Dialect-neutral; it asks the provider's `quirks` for anything dialect-specific. | `config`, `db` |
+| `dblift/db/` | Provider contract and registry, plus one plugin per engine under `db/plugins/<engine>/` (provider, quirks, parser, history and lock managers). | `config`, `core` (constants, sql_model, sql_parser, logger, utils, migration, among others) |
 | `dblift/api/` | `DBLiftClient` and the async client: the programmatic surface, events and callbacks. | `core`, `config`, `db` |
 | `dblift/cli/` | argparse setup, command dispatch, the MCP server. The only package that may import everything else. | all of the above except `db` (see the layer rules below) |
 | `dblift/extensions/` | Stable import paths for third-party plugin code (`logging`, `providers`, `sql_generation`, `sql_model`). Re-exports only. | `core`, `db` |
@@ -124,8 +124,6 @@ At the time of writing that is:
 | `dblift/cli/mcp/server.py` | Drop `load_feature_extensions()` and the `load_mcp_tool_registrars()` loop. |
 | `dblift/api/client.py` | Drop `load_feature_extensions()` and `attach_registered_listeners(...)` in `__init__`, the `_PREMIUM_COMMANDS_BY_API_METHOD` stub methods, and make `_resolve_factory_client_cls` return `cls`; then remove the now-unused imports of `premium_manifest` and `CapabilityDeniedError`. |
 | `dblift/core/migration/executor/execution_engine.py`, `dblift/core/migration/commands/migrate_command.py` | Drop the `run_checks(...)` call and its import. |
-| `dblift/core/sql_generator/generator_factory.py`, `dblift/core/sql_generator/alter/alter_generator_factory.py` | Drop `load_feature_extensions()` / `attach_registered_sql_generators()`. |
-| `dblift/core/introspection/introspector_factory.py`, `dblift/core/introspection/vendor_queries_factory.py` | Drop `attach_registered_introspection()`. |
 | `dblift/core/logger/_formatters.py` | The `license_info` attribute and the banner block are inert without a provider; delete them or leave them. |
 | `dblift/cli/handlers/_shared.py` | `CliCommandContext.license_tier` can stay as an unused field or go. |
 | `dblift/cli/_constants.py` | A comment mentions `cli/premium_manifest.py`; reword or leave. |

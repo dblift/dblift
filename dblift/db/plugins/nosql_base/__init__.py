@@ -20,7 +20,6 @@ What a document-store plugin supplies:
   driver instead of DDL.
 * :class:`DocumentStoreProvider` — document-level reads and writes for
   storage dblift keeps inside the target database.
-* :class:`SamplingIntrospector` — schema inferred by sampling documents.
 
 Its quirks must also declare ``is_nosql = True`` and
 ``supports_sql_migrations = False`` so the framework routes ``.sql``
@@ -28,7 +27,6 @@ migrations to ``DBLIFT-NOSQL-001`` rather than to a translator.
 """
 
 from dblift.db.plugins.nosql_base.history import DocumentHistoryManager
-from dblift.db.plugins.nosql_base.introspection import SamplingIntrospector
 from dblift.db.plugins.nosql_base.locking import DocumentLockingManager
 from dblift.db.plugins.nosql_base.provider import DocumentStoreProvider
 from dblift.db.plugins.nosql_base.snapshot import DocumentSnapshotManager
@@ -38,5 +36,4 @@ __all__ = [
     "DocumentLockingManager",
     "DocumentSnapshotManager",
     "DocumentStoreProvider",
-    "SamplingIntrospector",
 ]

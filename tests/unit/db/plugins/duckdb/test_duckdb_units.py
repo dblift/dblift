@@ -105,7 +105,6 @@ class TestDuckDBQuirks:
         q = DuckDBQuirks()
         assert q.type_equivalents()["INT8"] == "BIGINT"
         assert q.type_equivalents()["BOOL"] == "BOOLEAN"
-        assert q.type_preferences()["VARCHAR"] == "VARCHAR"
 
     def test_parser_class_dispatch(self):
         from dblift.db.plugins.duckdb.parser.duckdb_regex_parser import DuckDBRegexParser

@@ -1090,6 +1090,7 @@ class HybridParser(_SqlglotBuildersMixin, SqlParserInterface):
             "CHECK",
             "DEFAULT",
             "FOREIGN",
+            "COLLATE",
         }
 
         for idx, token in enumerate(tokens):
@@ -1106,6 +1107,13 @@ class HybridParser(_SqlglotBuildersMixin, SqlParserInterface):
         constraint_clause = (
             " ".join(tokens[constraint_start:]) if constraint_start < len(tokens) else ""
         )
+        # Oracle's COLLATE follows the type, before DEFAULT and other constraints.
+        collation_match = re.match(r'COLLATE\s+("[^"]+"|[\w$#]+)', constraint_clause, re.IGNORECASE)
+        collation = None
+        if collation_match:
+            collation = collation_match.group(1).strip('"')
+            if self._quirks.unquoted_identifier_case == "uppercase":
+                collation = collation.upper()
         constraint_clause_upper = constraint_clause.upper()
 
         is_nullable = "NOT NULL" not in constraint_clause_upper
@@ -1116,6 +1124,7 @@ class HybridParser(_SqlglotBuildersMixin, SqlParserInterface):
             data_type=data_type,
             is_nullable=is_nullable,
             is_primary_key=is_primary_key,
+            collation=collation,
             dialect=self.dialect,
         )
 

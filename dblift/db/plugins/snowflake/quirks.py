@@ -7,10 +7,7 @@ from typing import TYPE_CHECKING, Any, Optional, Type
 from dblift.db.base_quirks import BaseQuirks
 
 if TYPE_CHECKING:
-    from dblift.core.sql_generator.alter.base_alter_generator import (
-        BaseAlterGenerator,
-    )
-    from dblift.core.sql_generator.base_generator import BaseSqlGenerator
+    from dblift.db.generator_protocol import AlterGeneratorProtocol, SqlGeneratorProtocol
 
 
 class SnowflakeQuirks(BaseQuirks):
@@ -24,24 +21,12 @@ class SnowflakeQuirks(BaseQuirks):
     sqlglot_dialect = "snowflake"
     default_schema_name = "PUBLIC"
     drop_supports_if_exists = True
-    table_drop_style = "if_exists_cascade"
-    # The constraint grammar accepts ``ON DELETE/UPDATE { CASCADE | SET NULL |
-    # SET DEFAULT | RESTRICT | NO ACTION }`` and the catalogue carries the rule
-    # (INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS.UPDATE_RULE / DELETE_RULE),
-    # so the keyword is written out. Nothing is enforced on standard tables,
-    # and whether the catalogue stores RESTRICT as written or as NO ACTION is
-    # not documented and was not probed; if it normalises, a model that says
-    # RESTRICT will diff against the live schema until the model says
-    # NO ACTION. https://docs.snowflake.com/en/sql-reference/constraints-properties
-    # https://docs.snowflake.com/en/sql-reference/info-schema/referential_constraints
-    table_fk_supports_restrict = True
     unquoted_identifier_case = "uppercase"
     quote_qualified_folds_to_uppercase = True
     connection_identifier_attrs = ("url", "account")
     missing_connection_identifier_hint = "Snowflake requires url or account"
     native_url_schema_params = ("schema",)
     native_driver_display = "snowflake-connector-python"
-    pygments_lexer = "sql"
 
     def __init__(self, dialect_name: str = "snowflake") -> None:
         super().__init__(dialect_name=dialect_name)
@@ -60,20 +45,12 @@ class SnowflakeQuirks(BaseQuirks):
             )
         return bool(str(url or "").strip() or str(account or "").strip())
 
-    def ddl_generator_class(self) -> Optional[Type["BaseSqlGenerator"]]:
+    def ddl_generator_class(self) -> Optional[Type["SqlGeneratorProtocol"]]:
         """Snowflake rich DDL generation is registered by higher tiers."""
         return None
 
-    def alter_generator_class(self) -> Optional[Type["BaseAlterGenerator"]]:
+    def alter_generator_class(self) -> Optional[Type["AlterGeneratorProtocol"]]:
         """Snowflake ALTER generation is registered by higher tiers."""
-        return None
-
-    def introspector_class(self) -> Optional[Type[Any]]:
-        """Snowflake rich introspection is registered by higher tiers."""
-        return None
-
-    def vendor_queries_class(self) -> Optional[Type[Any]]:
-        """Snowflake metadata queries are registered by higher tiers."""
         return None
 
 

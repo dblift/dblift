@@ -243,6 +243,27 @@ class TestSplitStatements(unittest.TestCase):
         stmts = analyzer.split_statements(sql)
         self.assertEqual(len(stmts), 2)
 
+    def test_oracle_sqlplus_prompt_and_rem_directives_are_stripped(self):
+        """PROMPT/REM lines (with apostrophes) must not merge with, or drop,
+        the CREATE/ALTER statements around them (migrate already handles this
+        via the same quirks hooks; split_statements must match)."""
+        analyzer = SqlAnalyzer(dialect="oracle")
+        sql = (
+            "PROMPT Creating the customer's table\n"
+            "CREATE TABLE customers (id NUMBER PRIMARY KEY);\n"
+            "REM it's a supporting index\n"
+            "CREATE INDEX idx_customers_id ON customers(id);\n"
+            "PROMPT Don't forget the audit column\n"
+            "CREATE INDEX idx2 ON customers(id);\n"
+            "ALTER TABLE customers ADD (name VARCHAR2(100));\n"
+        )
+        stmts = analyzer.split_statements(sql)
+        self.assertEqual(len(stmts), 4)
+        self.assertTrue(stmts[0].strip().startswith("CREATE TABLE customers"))
+        self.assertTrue(stmts[1].strip().startswith("CREATE INDEX idx_customers_id"))
+        self.assertTrue(stmts[2].strip().startswith("CREATE INDEX idx2"))
+        self.assertTrue(stmts[3].strip().startswith("ALTER TABLE customers"))
+
     def test_regex_fallback_splits_semicolons(self):
         analyzer = SqlAnalyzer(dialect="postgresql")
         sql = "INSERT INTO t VALUES (1);\nINSERT INTO t VALUES (2);"

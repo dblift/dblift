@@ -9,8 +9,7 @@ from dblift.db.base_quirks import BaseQuirks
 from dblift.db.error import ErrorCategory
 
 if TYPE_CHECKING:
-    from dblift.core.sql_generator.alter.base_alter_generator import BaseAlterGenerator
-    from dblift.core.sql_generator.base_generator import BaseSqlGenerator
+    from dblift.db.generator_protocol import AlterGeneratorProtocol, SqlGeneratorProtocol
 
 
 # Each entry: (compiled regex, ErrorCategory). Sourced by
@@ -111,35 +110,11 @@ class Db2Quirks(BaseQuirks):
         return super().is_schema_history_race_error(error_message)
 
     connection_probe_sql = "SELECT 1 FROM SYSIBM.SYSDUMMY1"
-    select_supports_limit = True
-    # Canonical rendering is trailing ``FETCH FIRST n ROWS ONLY``, but DB2
-    # also accepts a bare trailing ``LIMIT n`` — measured against a live db2
-    # 12.01.0500 server by a capability probe outside this distribution. That
-    # makes this dialect the one exception to the usual correlation between
-    # the two attributes; ``BaseQuirks.select_supports_limit`` records the
-    # evidence, and ``tests/unit/db/test_dialect_capability_quirks.py`` pins
-    # the exception from inside this repository.
-    row_limit_style = "fetch_first"
     unquoted_identifier_case = "uppercase"
     connection_identifier_attrs = ("url", "host", "database")
     missing_connection_identifier_hint = "DB2 connection requires url or host/database fields"
     native_url_schema_params = ("currentSchema", "schema")
-    # Procedure / function DDL.
     proc_param_supports_default = False  # DB2 rejects ``= default``
-    # Synonym DDL. DB2 calls them ALIAS.
-    synonym_keyword = "ALIAS"
-    # Sequence comparison: DB2 uses INT64 max as implicit "no max".
-    seq_implicit_max_value = 9223372036854775807
-    # Table DDL.
-    table_check_via_alter = True
-    table_self_ref_fk_via_alter = True
-    table_temporary_style = "global_temporary"
-    table_not_null_implicit_on_identity_pk = True
-    table_inline_unique_single_col = True
-    table_tablespace_style = "skip"
-    # Wave A hooks.
-    table_supports_compress = True
-    default_index_type = "REGULAR"
     index_drop_standalone_supports_if_exists = False  # DB2 has no DROP INDEX IF EXISTS
     # Wave B hooks.
     native_driver_display = "ibm_db_sa"
@@ -197,79 +172,12 @@ class Db2Quirks(BaseQuirks):
         """DB2 does not support DBLift snapshot table creation."""
         raise NotImplementedError("DB2 does not support DBLift snapshot table creation")
 
-    # Column ALTER hooks. DB2 uses the
-    # same ``ALTER COLUMN`` form as PostgreSQL/SQL Server, but the
-    # type-change clause needs the ``SET DATA TYPE`` keyword and a plain
-    # ``SET NOT NULL`` (not the bare ``NOT NULL`` SQL Server accepts).
-    #
-    # Note: on DB2 either ALTER puts the table into REORG-pending state
-    # (most access paths degraded until ``REORG TABLE`` runs) — that
-    # follow-up step is out of scope here; this hook only renders the ALTER.
-    def render_column_nullable_change(
-        self, col_diff: object, formatted_table: str, formatted_column: str, dialect: str
-    ) -> "Optional[object]":
-        """``ALTER TABLE … ALTER COLUMN <col> SET|DROP NOT NULL`` — DB2 nullable toggle.
-
-        SET NOT NULL emits a pre-check counting NULL rows so a violating migration
-        fails cleanly before the ALTER runs.
-        """
-        from dblift.core.sql_generator.sql_statement import SqlStatement
-
-        nullable_diff = getattr(col_diff, "nullable_diff", None)
-        if nullable_diff is None:
-            return None
-        expected_nullable, _ = nullable_diff
-        if not expected_nullable:
-            return SqlStatement(
-                sql=f"ALTER TABLE {formatted_table} ALTER COLUMN {formatted_column} SET NOT NULL;",
-                statement_type="ALTER",
-                object_type="COLUMN",
-                object_name=f"{formatted_table}.{formatted_column}",
-                dialect=dialect,
-                pre_check=f"SELECT COUNT(*) FROM {formatted_table} WHERE {formatted_column} IS NULL;",
-                error_if_check_fails=True,
-                error_message="Cannot set NOT NULL: column contains NULL values",
-            )
-        return SqlStatement(
-            sql=f"ALTER TABLE {formatted_table} ALTER COLUMN {formatted_column} DROP NOT NULL;",
-            statement_type="ALTER",
-            object_type="COLUMN",
-            object_name=f"{formatted_table}.{formatted_column}",
-            dialect=dialect,
-        )
-
-    def render_column_type_change(
-        self, col_diff: object, formatted_table: str, formatted_column: str, dialect: str
-    ) -> "Optional[object]":
-        """``ALTER TABLE … ALTER COLUMN <col> SET DATA TYPE <type>`` — DB2 column-type change."""
-        from dblift.core.sql_generator.sql_statement import SqlStatement
-
-        data_type_diff = getattr(col_diff, "data_type_diff", None)
-        if data_type_diff is None:
-            return None
-        expected_type, _ = data_type_diff
-        return SqlStatement(
-            sql=f"ALTER TABLE {formatted_table} ALTER COLUMN {formatted_column} SET DATA TYPE {expected_type};",
-            statement_type="ALTER",
-            object_type="COLUMN",
-            object_name=f"{formatted_table}.{formatted_column}",
-            dialect=dialect,
-        )
-
-    def ddl_generator_class(self) -> Optional[Type["BaseSqlGenerator"]]:
+    def ddl_generator_class(self) -> Optional[Type["SqlGeneratorProtocol"]]:
         """DDL generator is supplied by an installed extension package."""
         return None
 
-    def alter_generator_class(self) -> Optional[Type["BaseAlterGenerator"]]:
+    def alter_generator_class(self) -> Optional[Type["AlterGeneratorProtocol"]]:
         """ALTER generator is supplied by an installed extension package."""
-        return None
-
-    def vendor_queries_class(self) -> "Optional[Type[Any]]":
-        """DB2 rich metadata queries are supplied by an installed extension package."""
-        return None
-
-    def introspector_class(self) -> "Optional[Type[Any]]":
-        """DB2 rich introspection is supplied by an installed extension package."""
         return None
 
     def parser_class(self, parser_type: str) -> Optional[type]:
@@ -290,23 +198,9 @@ class Db2Quirks(BaseQuirks):
             return DB2RegexParser
         return None
 
-    # Collapse TIMESTAMP(n) → TIMESTAMP (DB2 ignores fractional-
-    # seconds precision in the DDL round-trip).
-    def normalize_column_data_type(self, col: object, data_type: str) -> str:
-        """Collapse ``TIMESTAMP(n)`` → ``TIMESTAMP`` — Db2 ignores fractional precision."""
-        if data_type.upper().startswith("TIMESTAMP("):
-            return "TIMESTAMP"
-        return data_type
-
-    # DB2 identity — GENERATED ALWAYS AS IDENTITY.
-    def render_identity_clause(self, col: object) -> "Optional[str]":
-        """Db2 identity columns use ``GENERATED ALWAYS AS IDENTITY`` (no seed/increment)."""
-        return "GENERATED ALWAYS AS IDENTITY"
-
     def normalize_view_name(self, name: str) -> str:
         """DB2 returns view names uppercase from SYSCAT.VIEWS but
-        ``_get_object_column_names`` compares against lowercase keys —
-        lowercase here so downstream lookups match."""
+        downstream catalog lookups use lowercase keys."""
         return name.lower()
 
     def apply_vendor_table_properties(self, table: Any, row: Dict[str, Any]) -> None:
@@ -434,34 +328,6 @@ class Db2Quirks(BaseQuirks):
                 return tail
         return expr
 
-    def fk_reference_query(
-        self, schema: str, table: str, col: str
-    ) -> "Tuple[Optional[str], list[Any]]":
-        """Return the Db2 ``SYSCAT.REFERENCES`` query that finds FKs targeting ``col``."""
-        sql = """
-            SELECT
-                constname as constraint_name,
-                tabschema || '.' || tabname as table_name
-            FROM syscat.references
-            WHERE reftabschema = ?
-                AND reftabname = ?
-                AND fk_colnames LIKE '%' || ? || '%'
-        """
-        return (sql, self.fk_reference_bind_params(schema, table, col))
-
-    def index_reference_query(
-        self, schema: str, table: str, col: str
-    ) -> "Tuple[Optional[str], list[Any]]":
-        """Return the Db2 ``SYSCAT.INDEXCOLUSE`` query that lists indexes covering ``col``."""
-        sql = """
-            SELECT indname as index_name
-            FROM syscat.indexcoluse
-            WHERE indschema = ?
-                AND tabname = ?
-                AND colname = ?
-        """
-        return (sql, [schema, table, col])
-
     def type_equivalents(self) -> "dict[str, str]":
         """Db2 alias → canonical type map.
 
@@ -476,13 +342,6 @@ class Db2Quirks(BaseQuirks):
             "LONG VARGRAPHIC": "DBCLOB",
             "DOUBLE PRECISION": "DOUBLE",
         }
-
-    def type_preferences(self) -> "dict[str, str]":
-        """Db2 keeps the ANSI names as preferred output.
-
-        ``INTEGER``, ``VARCHAR``, ``TIMESTAMP`` are preserved verbatim.
-        """
-        return {"INTEGER": "INTEGER", "VARCHAR": "VARCHAR", "TIMESTAMP": "TIMESTAMP"}
 
 
 __all__ = ["Db2Quirks"]

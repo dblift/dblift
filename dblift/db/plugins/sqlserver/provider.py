@@ -174,12 +174,14 @@ class SqlServerProvider(SqlAlchemyProvider):
         """
         try:
             rows = self.execute_query(
-                "SELECT USER_NAME() AS db_user, DEFAULT_SCHEMA_NAME AS default_schema "
+                "SELECT USER_NAME() AS db_user, SUSER_NAME() AS login_name, "
+                "DEFAULT_SCHEMA_NAME AS default_schema "
                 "FROM sys.database_principals WHERE name = USER_NAME()"
             )
             current_user = rows[0].get("db_user") if rows else None
             if not current_user:
                 raise RuntimeError("could not determine the connecting database user")
+            login_name = (rows[0].get("login_name") if rows else None) or current_user
 
             catalog_schema = rows[0].get("default_schema") if rows else None
 
@@ -192,7 +194,7 @@ class SqlServerProvider(SqlAlchemyProvider):
                     self._schema_applied_for = schema
                     return
                 message = (
-                    f"SQL Server login '{current_user}' maps to the fixed 'dbo' "
+                    f"SQL Server login '{login_name}' maps to the fixed 'dbo' "
                     f"database user, whose default schema cannot be changed, so "
                     f"unqualified objects cannot be created in schema '{schema}'. "
                     f"Connect with a login mapped to a non-'dbo' database user."

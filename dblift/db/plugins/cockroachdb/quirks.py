@@ -17,14 +17,6 @@ class CockroachdbQuirks(PostgresqlQuirks):
     # parent dict wholesale — CockroachDB declares no gates.
     feature_gates = {}
 
-    # CockroachDB always builds indexes online: per Cockroach Labs' own
-    # CREATE INDEX reference, "CONCURRENTLY" is "optional, no-op syntax for
-    # PostgreSQL compatibility. All indexes are created concurrently in
-    # CockroachDB." Inheriting PostgreSQL's ``True`` here would recommend
-    # adding a keyword that changes nothing, as though the plain form were
-    # the one that blocks.
-    supports_concurrent_index = False
-
     # CockroachDB is a ground-up reimplementation, not a PostgreSQL fork, so
     # wire compatibility alone isn't evidence for its comment grammar. Run
     # directly against a single-node CockroachDB container: after
@@ -35,6 +27,30 @@ class CockroachdbQuirks(PostgresqlQuirks):
     # so this keeps inheriting the nesting parser unchanged.
     def __init__(self, dialect_name: str = "cockroachdb") -> None:
         super().__init__(dialect_name=dialect_name)
+
+    def type_equivalents(self) -> dict[str, str]:
+        """Normalize aliases using CockroachDB's default integer widths.
+
+        Assumes ``default_int_size = 8`` and ``serial_normalization = rowid``;
+        the normalizer cannot observe these session or cluster settings.
+        With rowid normalization, every SERIAL spelling uses INT8 to fit
+        ``unique_rowid()`` values, regardless of the requested serial size.
+        Explicit INT4 and INT2 retain their PostgreSQL widths.
+        """
+        equivalents = super().type_equivalents()
+        equivalents.update(
+            {
+                "INT": "BIGINT",
+                "INTEGER": "BIGINT",
+                "SERIAL": "BIGINT",
+                "SERIAL2": "BIGINT",
+                "SERIAL4": "BIGINT",
+                "SERIAL8": "BIGINT",
+                "SMALLSERIAL": "BIGINT",
+                "BIGSERIAL": "BIGINT",
+            }
+        )
+        return equivalents
 
 
 __all__ = ["CockroachdbQuirks"]

@@ -35,8 +35,7 @@ _DROP_TRIGGER_ON_RE = re.compile(
 )
 
 if TYPE_CHECKING:
-    from dblift.core.sql_generator.alter.base_alter_generator import BaseAlterGenerator
-    from dblift.core.sql_generator.base_generator import BaseSqlGenerator
+    from dblift.db.generator_protocol import AlterGeneratorProtocol, SqlGeneratorProtocol
 
 
 class PostgresqlQuirks(BaseQuirks):
@@ -60,58 +59,21 @@ class PostgresqlQuirks(BaseQuirks):
     schema_required = True
     uppercase_identifiers = False
     clean_strategy = "introspector"
-    # ``INSERT … ON CONFLICT (col) DO UPDATE SET … EXCLUDED.x``. Inherited by
-    # every PG-wire engine built by ``_pg_compatible`` (Citus, TimescaleDB,
-    # YugabyteDB, AlloyDB, Aurora, Neon) and by CockroachDB — all of which
-    # genuinely support it. Redshift overrides back to ``"none"``. On Citus
-    # specifically, ``ON CONFLICT`` against a *distributed* table also
-    # requires the distribution column to be part of the unique constraint;
-    # the tables dblift creates are small local tables, so this is a
-    # documentation caveat rather than a reason to change the declared value.
-    upsert_style = "on_conflict"
-    # A ``jsonb`` column rejects a bound text parameter without an explicit cast.
-    json_bind_cast_type: Optional[str] = "JSONB"
     sqlglot_dialect = "postgres"
     # PostgreSQL's permissive grammar is the last-resort sqlglot read dialect
     # for dialects that declare none of their own (DB2, CosmosDB). See
     # ``dblift.core.migration.scripting.undo_script_generator._helpers``.
     is_default_sqlglot_read_fallback = True
-    # PostgreSQL is the ANSI/generic reference dialect dblift renders with when
-    # a model has no dialect of its own. The SqlGeneratorFactory resolves a
-    # falsy dialect to this plugin (ADR-26 E).
+    # PostgreSQL is the ANSI/generic rendering reference when a model has no
+    # dialect of its own, resolved via ProviderRegistry.reference_dialect_name.
     is_ansi_reference_dialect = True
-    pygments_lexer = "postgresql"
     default_schema_name = "public"
     drop_supports_if_exists = True
     drop_table_default_cascade = True
-    supports_concurrent_index = True
-    # Procedure / function DDL.
-    proc_supports_create_or_replace = True
-    proc_supports_language_clause = True
-    proc_body_wrap_style = "dollar_quotes"
     # Index DDL.
-    index_qualifies_with_schema = False
-    index_supports_using_clause = True
     index_no_sort_types = frozenset({"GIN", "GIST", "BRIN", "HASH", "SPGIST"})
-    index_with_options_style = "lowercase"
-    # Sequence DDL.
-    seq_supports_temp = True
-    # View DDL.
-    view_supports_security_with_clause = True
-    # View comparison.
-    view_supports_unlogged_and_security = True
-    serial_types_alias_integer = True
-    # Table DDL.
-    table_supports_inline_collate = True
-    table_supports_deferrable_constraints = True
     table_supports_inherits = True
-    # Wave A hooks.
-    supports_constraint_triggers = True
-    seq_uses_nextval_syntax = True
-    computed_column_introspection_incomplete = True
     supports_virtual_computed_columns = False
-    table_prefers_inline_single_pk = True
-    index_comment_template = "COMMENT ON INDEX {schema_prefix}{idx_name} IS '{escaped_comment}';"
     # Wave B hooks.
     native_driver_display = "psycopg"
     connection_identifier_attrs = ("url", "host", "database")
@@ -126,9 +88,6 @@ class PostgresqlQuirks(BaseQuirks):
     # Aurora PostgreSQL, TimescaleDB) — they all keep the postgresql:// scheme.
     lint_placeholder_url = "postgresql://localhost/dblift_validate_sql"
 
-    # Default canonical name; ProviderRegistry.get_quirks() passes the
-    # caller's db_type so that aliases (e.g. "postgres") preserve the
-    # invariant ``provider.config.database.type == provider.quirks.dialect_name``.
     def __init__(self, dialect_name: str = "postgresql") -> None:
         """Initialize PostgreSQL quirks with the dialect name."""
         super().__init__(dialect_name=dialect_name)
@@ -152,20 +111,12 @@ class PostgresqlQuirks(BaseQuirks):
             return True
         return bool(_value("host") and _value("database"))
 
-    def ddl_generator_class(self) -> Optional[Type["BaseSqlGenerator"]]:
+    def ddl_generator_class(self) -> Optional[Type["SqlGeneratorProtocol"]]:
         """DDL generator is supplied by an installed extension package."""
         return None
 
-    def alter_generator_class(self) -> Optional[Type["BaseAlterGenerator"]]:
+    def alter_generator_class(self) -> Optional[Type["AlterGeneratorProtocol"]]:
         """ALTER generator is supplied by an installed extension package."""
-        return None
-
-    def vendor_queries_class(self) -> "Optional[Type[Any]]":
-        """PostgreSQL rich metadata queries are supplied by an installed extension package."""
-        return None
-
-    def introspector_class(self) -> "Optional[Type[Any]]":
-        """PostgreSQL rich introspection is supplied by an installed extension package."""
         return None
 
     def parser_class(self, parser_type: str) -> Optional[type]:
@@ -575,104 +526,12 @@ class PostgresqlQuirks(BaseQuirks):
                 names.add(str(name))
         return names
 
-    def fk_reference_query(
-        self, schema: str, table: str, col: str
-    ) -> "Tuple[Optional[str], list[Any]]":
-        """Return the PostgreSQL ``pg_constraint`` query for FKs targeting ``col``.
-
-        ``information_schema`` is visible only to a table's owner or a grantee
-        holding a privilege other than ``SELECT``; ``pg_catalog.pg_constraint``
-        is visible to any role that can see the table, so a read-only role
-        still finds the referencing key.
-        """
-        sql = """
-            SELECT
-                con.conname AS constraint_name,
-                nsp.nspname || '.' || rel.relname AS table_name
-            FROM pg_catalog.pg_constraint con
-            JOIN pg_catalog.pg_class ref ON ref.oid = con.confrelid
-            JOIN pg_catalog.pg_namespace refn ON refn.oid = ref.relnamespace
-            JOIN pg_catalog.pg_attribute refatt
-                ON refatt.attrelid = con.confrelid
-                AND refatt.attnum = ANY(con.confkey)
-            JOIN pg_catalog.pg_class rel ON rel.oid = con.conrelid
-            JOIN pg_catalog.pg_namespace nsp ON nsp.oid = rel.relnamespace
-            WHERE con.contype = 'f'
-                AND refn.nspname = ?
-                AND ref.relname = ?
-                AND refatt.attname = ?
-                AND NOT refatt.attisdropped
-        """
-        return (sql, self.fk_reference_bind_params(schema, table, col))
-
-    def index_reference_query(
-        self, schema: str, table: str, col: str
-    ) -> "Tuple[Optional[str], list[Any]]":
-        """PostgreSQL ``pg_index`` / ``pg_class`` query listing indexes covering ``col``."""
-        sql = """
-            SELECT i.relname as index_name
-            FROM pg_index ix
-            JOIN pg_class i ON i.oid = ix.indexrelid
-            JOIN pg_class t ON t.oid = ix.indrelid
-            JOIN pg_namespace n ON n.oid = t.relnamespace
-            JOIN pg_attribute a ON a.attrelid = t.oid AND a.attnum = ANY(ix.indkey)
-            WHERE n.nspname = ?
-                AND t.relname = ?
-                AND a.attname = ?
-        """
-        return (sql, [schema, table, col])
-
     def is_sqlglot_opaque_valid_ddl(self, sql_content: str) -> bool:
         """PG ``DROP TRIGGER name ON table`` — sqlglot rejects this valid DDL
         only when the table is schema-qualified (``ON schema.table``).
         Quoting alone — either identifier, or both — does not make sqlglot
         raise; it parses those forms without error."""
         return _DROP_TRIGGER_ON_RE.search(sql_content) is not None
-
-    # PostgreSQL DROP EXTENSION uses extension namespace.
-    def render_drop_for_object(
-        self,
-        obj_type: str,
-        obj_name: str,
-        schema_prefix: str,
-        table_name: Optional[str],
-    ) -> Optional[str]:
-        """``DROP EXTENSION IF EXISTS`` — extensions are unschema-qualified in PostgreSQL.
-
-        Other object types defer to the generic ``DROP ... IF EXISTS`` fallback.
-        """
-        if obj_type == "EXTENSION":
-            return f"DROP EXTENSION IF EXISTS {obj_name}"
-        return None
-
-    # Type normalization — strip precision from fixed-width float
-    # types and reorder TIMESTAMP {WITH|WITHOUT} TIME ZONE(n) → TIMESTAMP(n)
-    # {WITH|WITHOUT} TIME ZONE so downstream comparators see a canonical form.
-    def normalize_column_data_type(self, col: object, data_type: str) -> str:
-        """Strip precision from fixed-width floats; canonicalise ``TIMESTAMP(n) {WITH|WITHOUT} TZ``.
-
-        ``FLOAT4(...)`` / ``FLOAT8(...)`` / ``REAL(...)`` / ``DOUBLE PRECISION(...)`` lose
-        the precision suffix (PostgreSQL ignores it), and ``TIMESTAMP {WITH|WITHOUT} TIME
-        ZONE(n)`` is reordered to ``TIMESTAMP(n) {WITH|WITHOUT} TIME ZONE`` (canonical form).
-        """
-        import re
-
-        dt = data_type.upper()
-        if dt.startswith("FLOAT4("):
-            return "FLOAT4"
-        if dt.startswith("FLOAT8("):
-            return "FLOAT8"
-        if dt.startswith("REAL("):
-            return "REAL"
-        if dt.startswith("DOUBLE PRECISION("):
-            return "DOUBLE PRECISION"
-        m = re.search(r"TIMESTAMP WITHOUT TIME ZONE\((\d+)\)", dt)
-        if m:
-            return f"TIMESTAMP({m.group(1)}) WITHOUT TIME ZONE"
-        m = re.search(r"TIMESTAMP WITH TIME ZONE\((\d+)\)", dt)
-        if m:
-            return f"TIMESTAMP({m.group(1)}) WITH TIME ZONE"
-        return data_type
 
     def enhance_columns(
         self, extractor: Any, schema: str, table: str, columns: "list[Any]"
@@ -691,116 +550,6 @@ class PostgresqlQuirks(BaseQuirks):
             col.identity_seed = None
             col.identity_increment = None
 
-    def unwrap_default_value(self, default_str: str, column: object) -> str:
-        """Normalize PostgreSQL sequence defaults to native ``nextval('seq'::regclass)``."""
-        match = re.match(
-            r"^\s*nextval\s*\(\s*cast\s*\(\s*'([^']+)'\s+as\s+regclass\s*\)\s*\)\s*$",
-            default_str,
-            re.IGNORECASE,
-        )
-        if match:
-            return f"nextval('{match.group(1)}'::regclass)"
-        return default_str
-
-    # Column ALTER hooks.
-    def render_column_nullable_change(
-        self, col_diff: object, formatted_table: str, formatted_column: str, dialect: str
-    ) -> "Optional[object]":
-        """``ALTER TABLE … ALTER COLUMN <c> SET|DROP NOT NULL`` — PostgreSQL nullable toggle.
-
-        SET NOT NULL emits a pre-check counting NULL rows so a violating migration
-        fails cleanly before the ALTER runs.
-        """
-        from dblift.core.sql_generator.sql_statement import SqlStatement
-
-        nullable_diff = getattr(col_diff, "nullable_diff", None)
-        if nullable_diff is None:
-            return None
-        expected_nullable, _ = nullable_diff
-        if not expected_nullable:
-            sql = f"ALTER TABLE {formatted_table} ALTER COLUMN {formatted_column} SET NOT NULL;"
-            return SqlStatement(
-                sql=sql,
-                statement_type="ALTER",
-                object_type="COLUMN",
-                object_name=f"{formatted_table}.{formatted_column}",
-                dialect=dialect,
-                pre_check=f"SELECT COUNT(*) FROM {formatted_table} WHERE {formatted_column} IS NULL;",
-                error_if_check_fails=True,
-                error_message="Cannot set NOT NULL: column contains NULL values",
-            )
-        return SqlStatement(
-            sql=f"ALTER TABLE {formatted_table} ALTER COLUMN {formatted_column} DROP NOT NULL;",
-            statement_type="ALTER",
-            object_type="COLUMN",
-            object_name=f"{formatted_table}.{formatted_column}",
-            dialect=dialect,
-        )
-
-    def render_column_default_change(
-        self, col_diff: object, formatted_table: str, formatted_column: str, dialect: str
-    ) -> "Optional[object]":
-        """``ALTER TABLE … ALTER COLUMN <c> SET|DROP DEFAULT`` — PostgreSQL DEFAULT change."""
-        from dblift.core.sql_generator.sql_statement import SqlStatement
-
-        default_diff = getattr(col_diff, "default_diff", None)
-        if default_diff is None:
-            return None
-        expected_default, _ = default_diff
-        if expected_default:
-            sql = f"ALTER TABLE {formatted_table} ALTER COLUMN {formatted_column} SET DEFAULT {expected_default};"
-        else:
-            sql = f"ALTER TABLE {formatted_table} ALTER COLUMN {formatted_column} DROP DEFAULT;"
-        return SqlStatement(
-            sql=sql,
-            statement_type="ALTER",
-            object_type="COLUMN",
-            object_name=f"{formatted_table}.{formatted_column}",
-            dialect=dialect,
-        )
-
-    def render_column_type_change(
-        self, col_diff: object, formatted_table: str, formatted_column: str, dialect: str
-    ) -> "Optional[object]":
-        """``ALTER TABLE … ALTER COLUMN <c> TYPE <type>`` — PostgreSQL column-type change form."""
-        from dblift.core.sql_generator.sql_statement import SqlStatement
-
-        data_type_diff = getattr(col_diff, "data_type_diff", None)
-        if data_type_diff is None:
-            return None
-        expected_type, _ = data_type_diff
-        return SqlStatement(
-            sql=f"ALTER TABLE {formatted_table} ALTER COLUMN {formatted_column} TYPE {expected_type};",
-            statement_type="ALTER",
-            object_type="COLUMN",
-            object_name=f"{formatted_table}.{formatted_column}",
-            dialect=dialect,
-        )
-
-    def render_column_collation_change(
-        self, col_diff: object, formatted_table: str, formatted_column: str, dialect: str
-    ) -> "Optional[object]":
-        """``ALTER TABLE … ALTER COLUMN <c> SET COLLATION <coll>`` — PG collation change."""
-        from dblift.core.sql_generator.sql_statement import SqlStatement
-
-        collation_diff = getattr(col_diff, "collation_diff", None)
-        if collation_diff is None:
-            return None
-        expected_collation, _ = collation_diff
-        return SqlStatement(
-            sql=f"ALTER TABLE {formatted_table} ALTER COLUMN {formatted_column} SET COLLATION {expected_collation};",
-            statement_type="ALTER",
-            object_type="COLUMN",
-            object_name=f"{formatted_table}.{formatted_column}",
-            dialect=dialect,
-        )
-
-    # Identity clause — PostgreSQL serial types encode the
-    # auto-increment in the type name; GENERATED … AS IDENTITY for plain
-    # integer types.
-    _PG_SERIAL_TYPES = frozenset(
-        {"serial", "serial4", "bigserial", "serial8", "smallserial", "serial2"}
-    )
     _PG_SERIAL_BASE_TYPES = {
         "serial": "INTEGER",
         "serial4": "INTEGER",
@@ -809,42 +558,6 @@ class PostgresqlQuirks(BaseQuirks):
         "smallserial": "SMALLINT",
         "serial2": "SMALLINT",
     }
-
-    def render_identity_clause(self, col: object) -> "Optional[str]":
-        """PostgreSQL identity: ``None`` for ``SERIAL*`` types (auto-increment is in the type name),
-        otherwise ``GENERATED [ALWAYS|BY DEFAULT] AS IDENTITY`` per ``identity_generation``.
-
-        ``identity_generation`` is trimmed and upper-cased before the
-        comparison because only ``ALWAYS`` tightens the clause and
-        everything else falls through to ``BY DEFAULT`` -- a fallback that
-        fails *open*, so an otherwise-correct value carrying padding or a
-        different case would quietly emit the clause that accepts
-        caller-supplied values the column rejects. Normalising here rather
-        than trusting the writer is what makes that fallback safe: this
-        method cannot know who set the field, since ``from_dict`` restores
-        whatever a serialized snapshot carried.
-
-        Sequence options: when either ``identity_seed`` or
-        ``identity_increment`` is set, append
-        ``(START WITH n INCREMENT BY m)``, defaulting only the unset
-        attribute to ``1``. When neither is set, emit the bare identity
-        keyword with no empty parentheses. Generation kind is unchanged.
-        """
-        data_type = (getattr(col, "data_type", "") or "").lower()
-        if data_type in self._PG_SERIAL_TYPES:
-            return None
-        generation = (getattr(col, "identity_generation", None) or "").strip().upper()
-        if generation == "ALWAYS":
-            clause = "GENERATED ALWAYS AS IDENTITY"
-        else:
-            clause = "GENERATED BY DEFAULT AS IDENTITY"
-        seed = getattr(col, "identity_seed", None)
-        increment = getattr(col, "identity_increment", None)
-        if seed is not None or increment is not None:
-            seed_str = str(seed) if seed is not None else "1"
-            inc_str = str(increment) if increment is not None else "1"
-            return f"{clause} (START WITH {seed_str} INCREMENT BY {inc_str})"
-        return clause
 
     def type_equivalents(self) -> "dict[str, str]":
         """PostgreSQL alias → canonical type map.
@@ -876,8 +589,6 @@ class PostgresqlQuirks(BaseQuirks):
             "TIMETZ": "TIME WITH TIME ZONE",
         }
 
-    version_specific_type_mappings = {("postgresql", "9.4+"): {"JSONB": "JSON"}}
-
     # Version-gated features (see core.sql_model.feature_gates). Inherited by
     # the PG-compatible family; divergent engines with their own quirks class
     # (Redshift, CockroachDB) redeclare ``feature_gates`` to opt out.
@@ -890,20 +601,6 @@ class PostgresqlQuirks(BaseQuirks):
             ),
         ),
     }
-
-    def type_preferences(self) -> "dict[str, str]":
-        """PostgreSQL keeps ANSI names — ``INTEGER`` / ``VARCHAR`` / ``TIMESTAMP`` unchanged."""
-        return {"INTEGER": "INTEGER", "VARCHAR": "VARCHAR", "TIMESTAMP": "TIMESTAMP"}
-
-    def render_computed_column(
-        self, col: Any, formatted_col_name: str
-    ) -> Tuple[Optional[str], Optional[str]]:
-        """PostgreSQL: ``GENERATED ALWAYS AS (expr) [STORED]``."""
-        if not getattr(col, "is_computed", False) or not getattr(col, "computed_expression", None):
-            return None, None
-        if getattr(col, "computed_stored", False):
-            return f"GENERATED ALWAYS AS ({col.computed_expression}) STORED", None
-        return f"GENERATED ALWAYS AS ({col.computed_expression})", None
 
 
 __all__ = ["PostgresqlQuirks"]

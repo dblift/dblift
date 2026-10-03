@@ -26,35 +26,6 @@ class RedshiftQuirks(PostgresqlQuirks):
     # parent dict wholesale — Redshift declares no gates.
     feature_gates = {}
 
-    # Redshift has no ``INSERT … ON CONFLICT``: the clause was never
-    # implemented, and its own upsert guidance is a staging table (or, since
-    # 2023, ``MERGE``). Inheriting PostgreSQL's ``"on_conflict"`` here would
-    # emit SQL the server rejects, so it reverts to the portable
-    # UPDATE-then-INSERT fallback.
-    upsert_style = "none"
-
-    # Redshift has no JSONB type: semi-structured JSON is stored as ``SUPER``.
-    # Inheriting PostgreSQL's ``"JSONB"`` here would emit ``CAST(? AS JSONB)``,
-    # which the server rejects outright (*type "jsonb" does not exist*), so a
-    # serialized JSON value binds as plain text with no cast at all — the same
-    # reason ``upsert_style`` reverts to ``"none"`` above.
-    json_bind_cast_type = None
-
-    # Redshift has no ``CREATE INDEX`` at all (it uses sort keys and zone
-    # maps instead of B-tree indexes), so inheriting PostgreSQL's
-    # ``supports_concurrent_index = True`` would recommend a ``CONCURRENTLY``
-    # form the server has no syntax for whatsoever — the same
-    # never-declared-only-inherited gap ``upsert_style``/``json_bind_cast_type``
-    # above already fixed for other capabilities.
-    supports_concurrent_index = False
-
-    # Redshift's foreign-key grammar is ``FOREIGN KEY (...) REFERENCES
-    # reftable [(refcolumn)]`` — there is no referential-action clause of any
-    # kind, so inheriting PostgreSQL's ``True`` would claim syntax this engine
-    # does not have, the same never-declared-only-inherited gap the three
-    # capabilities above already close.
-    table_fk_supports_restrict = False
-
     def __init__(self, dialect_name: str = "redshift") -> None:
         super().__init__(dialect_name=dialect_name)
 
@@ -66,15 +37,13 @@ class RedshiftQuirks(PostgresqlQuirks):
         body's ``$$ ... $$``, not the outer SQL scanner ``split_statements``
         tokenizes — it is not evidence for this). Keep the pre-#333 reader
         (first ``*/`` closes) as the safer default rather than inherit
-        PostgreSQL's nesting unverified; everything else about PostgreSQL
-        parsing still applies.
+        PostgreSQL's nesting unverified. Redshift's tokenizer additionally
+        handles backslash escapes in all single-quoted string literals.
         """
         if parser_type == "regex":
-            from dblift.db.plugins.postgresql.parser.postgresql_regex_parser import (
-                NonNestingPostgreSqlRegexParser,
-            )
+            from dblift.db.plugins.redshift.parser.redshift_regex_parser import RedshiftRegexParser
 
-            return NonNestingPostgreSqlRegexParser
+            return RedshiftRegexParser
         return super().parser_class(parser_type)
 
     def build_snapshot_table_ddl(

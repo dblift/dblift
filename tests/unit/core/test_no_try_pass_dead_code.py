@@ -49,9 +49,7 @@ def test_repair_command_execute_no_pass_in_try():
 def test_get_index_syntax_removed():
     """get_index_syntax nested function removed (logic moved to quirks).
 
-    The ``_generate_basic_create_statement`` method has been relocated to the
-    dialect generators, so we verify the dead helper is absent
-    from the generator instead.
+    Verify the dead helper remains absent from the index model.
     """
     import dblift.core.sql_model.index as index_module
 

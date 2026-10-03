@@ -32,36 +32,6 @@ class Module(SqlObject):
         super().__init__(name, SqlObjectType.PACKAGE, schema, dialect)
         self.definition = definition
 
-    @property
-    def create_statement(self) -> str:
-        """
-        Generate CREATE MODULE statement.
-
-        Returns:
-            DB2 CREATE MODULE statement
-        """
-        # DB2 modules are typically defined in full
-        # Format: CREATE OR REPLACE MODULE schema.module_name
-        #         <module_body>
-        #         END MODULE
-        if not self.definition:
-            # Minimal module template
-            module_name = f'"{self.schema}"."{self.name}"' if self.schema else f'"{self.name}"'
-            return f"CREATE OR REPLACE MODULE {module_name}\n  -- Module body here\nEND MODULE;"
-
-        return self.definition
-
-    @property
-    def drop_statement(self) -> str:
-        """
-        Generate DROP MODULE statement.
-
-        Returns:
-            DB2 DROP MODULE statement
-        """
-        module_name = f'"{self.schema}"."{self.name}"' if self.schema else f'"{self.name}"'
-        return f"DROP MODULE {module_name};"
-
     def __str__(self) -> str:
         """Return string representation of the module."""
         schema_part = f"{self.schema}." if self.schema else ""

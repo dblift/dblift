@@ -1,9 +1,9 @@
 # Semantic versioning policy
 
 dblift follows [Semantic Versioning 2.0.0](https://semver.org/) with
-the public-surface contract defined below. The single source of truth
-for what is public is the `api` package exports plus the symbols
-re-exported via each module's `__all__`.
+the public-surface contract defined below. Only the namespaces and symbols
+enumerated in section 1.1 are stable Python APIs. An internal module's
+`__all__` controls its exports but does not make them public.
 
 ## 1. The public surface
 
@@ -146,6 +146,8 @@ Concrete examples of internal APIs:
   class layout is an implementation detail.
 - `core/sql_parser/**` — parser internals; the stable surface for SQL
   validation is `DBLiftClient.validate_sql`.
+- `core/introspection/**` — internal schema-discovery implementation.
+- `db/plugins/nosql_base.SamplingIntrospector` — internal plugin helper.
 
 ## 2. What triggers each version bump
 
@@ -190,9 +192,8 @@ When a public symbol must be removed or renamed, the process is:
 3. **Remove in a MAJOR release.** The ADR recording the removal
    explicitly cites the minor release that introduced the deprecation.
 
-Fast-path: symbols that were never part of `__all__` / the documented
-surface may be removed without deprecation — they are internal, users
-who imported them accepted the risk.
+Internal symbols outside the section 1.1 contract may be removed without
+deprecation, including symbols listed in an internal module's `__all__`.
 
 ## 4. What about pre-1.0 / 0.x releases?
 

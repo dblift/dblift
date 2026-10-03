@@ -1,7 +1,8 @@
 """Structural-debt ratchet.
 
 Counts six debt signals across ``dblift/`` and compares each with the cap in
-``.debt-ratchet.json``. A count may stay flat or shrink, never grow. Mirrors
+``.debt-ratchet.json``. Counts must stay within their declared caps. Narrow compatibility-boundary
+exceptions must record their measured delta and rationale in the ratchet policy. Mirrors
 ``scripts/check_line_length.py``: exit 0 at or below every cap (with a nudge
 to tighten loose caps), exit 1 when any cap is exceeded.
 
@@ -121,8 +122,9 @@ def main(argv: Optional[List[str]] = None) -> int:
         print(f"\nOffending lines for '{first}':")
         print("\n".join(f"  {line}" for line in hits[first]))
         print(
-            "\nRemove the new occurrence rather than raising the cap; when your change lowers a "
-            "count, lower the cap in the same pull request."
+            "\nRemove new occurrences by default. A compatibility-boundary exception must document "
+            "its measured delta and rationale in _policy before raising a cap. When your change "
+            "lowers a count, lower the cap in the same pull request."
         )
         return 1
     summary = ", ".join(f"{name}={counts[name]}/{caps[name]}" for name in counts)

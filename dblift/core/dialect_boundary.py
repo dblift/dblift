@@ -28,8 +28,6 @@ Sub-protocols:
 * ``DdlQuirks`` — DDL/SQL rendering hooks.
 * ``ParserQuirks`` — parser/tokenizer factory hooks.
 * ``ModelQuirks`` — domain-model rendering hooks.
-* ``ComparatorQuirks`` — schema-diff comparator hooks.
-* ``ValidatorQuirks`` — lint/perf rule hooks.
 * ``TypeMapQuirks`` — type normalisation hooks.
 * ``ErrorQuirks`` — error-classification hooks.
 * ``ConnectionQuirks`` — connection / engine-pool hooks.
@@ -54,8 +52,7 @@ import re
 from typing import TYPE_CHECKING, Any, Optional, Protocol, Type, runtime_checkable
 
 if TYPE_CHECKING:
-    from dblift.core.sql_generator.alter.base_alter_generator import BaseAlterGenerator
-    from dblift.core.sql_generator.base_generator import BaseSqlGenerator
+    from dblift.db.generator_protocol import AlterGeneratorProtocol, SqlGeneratorProtocol
 
 
 @runtime_checkable
@@ -63,82 +60,15 @@ class DdlQuirks(Protocol):
     """DDL / SQL-rendering hooks.
 
     First hooks: the DDL generator class and the ALTER generator class
-    for this dialect. Returning ``None`` means the framework falls back
-    to the dialect-agnostic
-    :class:`dblift.core.sql_generator.sql_generator.SqlGenerator`.
+    for this dialect, consumed by a ``SqlGeneratorProtocol`` implementation.
+    Returning ``None`` means no dialect-specific generator is provided.
     """
 
-    def ddl_generator_class(self) -> Optional[Type["BaseSqlGenerator"]]:
+    def ddl_generator_class(self) -> Optional[Type["SqlGeneratorProtocol"]]:
         """Return the dialect-specific DDL generator class, or ``None``."""
 
-    def alter_generator_class(self) -> Optional[Type["BaseAlterGenerator"]]:
+    def alter_generator_class(self) -> Optional[Type["AlterGeneratorProtocol"]]:
         """Return the dialect-specific ALTER generator class, or ``None``."""
-
-    def render_drop_for_object(
-        self,
-        obj_type: str,
-        obj_name: str,
-        schema_prefix: str,
-        table_name: Optional[str],
-    ) -> Optional[str]:
-        """Render a dialect-specific DROP statement, or ``None`` to defer.
-
-        Used by ``SqlGenerator._generate_drop_statement`` so the
-        framework no longer branches on the dialect name. Returning
-        ``None`` lets the framework emit the generic
-        ``DROP <type> IF EXISTS <schema>.<obj>`` form.
-        """
-
-    def skip_index_ddl(self) -> bool:
-        """True when the dialect manages indexes outside SQL DDL.
-
-        CosmosDB sets this; the framework emits a comment instead of
-        a DDL statement for INDEX objects. Other dialects return False.
-        """
-
-    def skip_index_ddl_comment(self) -> str:
-        """Comment emitted when ``skip_index_ddl()`` returns True.
-
-        Plugins that set ``skip_index_ddl=True`` provide their own
-        explanation here. The default is dialect-agnostic so the
-        framework can stay branch-free.
-        """
-
-    def requires_dialect_specific_wrapping(self, object_type_name: str) -> bool:
-        """True when an object of this type needs delimiter wrapping.
-
-        Used by ``generate_ddl`` (``//`` separator). MySQL covers
-        procedures and functions here. The broader trigger/event set
-        is exposed via :meth:`requires_block_delimiter_wrapping`.
-        """
-
-    def wrap_dialect_specific_block(self, sql: str) -> str:
-        """Wrap a block of SQL in dialect-specific delimiters.
-
-        Default: return ``sql`` unchanged.
-        """
-
-    def requires_block_delimiter_wrapping(self, object_type_name: str) -> bool:
-        """Predicate for the ``$$``-flavoured MySQL DELIMITER helper.
-
-        Distinct from :meth:`requires_dialect_specific_wrapping` so the
-        two code paths can have different object-type sets.
-        """
-
-    def preserves_object_definition(self, object_type_name: str) -> bool:
-        """True when the verbatim object definition must be preserved.
-
-        MySQL views / procedures / functions / triggers / events carry
-        ``DEFINER`` clauses and quirky identifier quoting that the
-        generator should not strip.
-        """
-
-    def introspector_class(self) -> "Optional[type]":
-        """Return the dialect-specific BaseIntrospector class, or None.
-
-        None causes IntrospectorFactory to fall back to SchemaIntrospector.
-        Plugins use a lazy import to avoid circular imports.
-        """
 
     non_transactional_sql_patterns: "tuple[tuple[str, str], ...]"
     native_driver_display: str
@@ -162,6 +92,8 @@ class ModelQuirks(Protocol):
     :meth:`dblift.core.sql_model.trigger.Trigger._format_body`.
     """
 
+    event_supports_mysql_schedule: bool
+
     def wrap_trigger_body(self, body: str) -> str:
         """Wrap a trigger body in dialect-specific delimiters.
 
@@ -170,58 +102,6 @@ class ModelQuirks(Protocol):
         ``BEGIN``.
         """
 
-    def render_computed_column(
-        self, col: Any, formatted_col_name: str
-    ) -> "tuple[Optional[str], Optional[str]]":
-        """Render a computed column to ``(suffix_clause, new_parts0)``.
-
-        ``suffix_clause`` is appended after the column type; ``new_parts0``
-        (when non-None) replaces the column-name+type prefix — used by SQL
-        Server's ``col AS (expr) [PERSISTED]`` shape. Returns ``(None, None)``
-        for non-computed columns.
-        """
-
-
-@runtime_checkable
-class ComparatorQuirks(Protocol):
-    """Schema-diff comparator hooks."""
-
-    view_supports_algorithm: bool
-    view_supports_force_noforce: bool
-    view_supports_unlogged_and_security: bool
-    event_supports_mysql_schedule: bool
-    supports_constraint_triggers: bool
-    index_comment_template: str
-    default_index_type: str
-    serial_types_alias_integer: bool
-    proc_uses_definition_field: bool
-    proc_skip_empty_comparison: bool
-    table_supports_compress: bool
-    table_supports_memory_optimized: bool
-    table_supports_system_versioned: bool
-    table_column_default_has_on_update: bool
-    seq_uses_nextval_syntax: bool
-    computed_column_introspection_incomplete: bool
-    table_prefers_inline_single_pk: bool
-
-
-@runtime_checkable
-class ValidatorQuirks(Protocol):
-    """Lint / perf rule hooks."""
-
-    def existence_check_sql(self, table_name: str) -> str:
-        """Return SQL that checks whether *table_name* has any rows."""
-
-    def fk_reference_query(
-        self, schema: str, table: str, col: str
-    ) -> "tuple[Optional[str], list[Any]]":
-        """Return ``(sql, params)`` for FK reference lookup, or ``(None, [])``."""
-
-    def index_reference_query(
-        self, schema: str, table: str, col: str
-    ) -> "tuple[Optional[str], list[Any]]":
-        """Return ``(sql, params)`` for index reference lookup, or ``(None, [])``."""
-
 
 @runtime_checkable
 class TypeMapQuirks(Protocol):
@@ -229,9 +109,6 @@ class TypeMapQuirks(Protocol):
 
     def type_equivalents(self) -> "dict[str, str]":
         """Return dialect alias→canonical type mapping."""
-
-    def type_preferences(self) -> "dict[str, str]":
-        """Return dialect canonical→preferred type mapping."""
 
 
 @runtime_checkable
@@ -262,8 +139,6 @@ class DialectQuirks(
     DdlQuirks,
     ParserQuirks,
     ModelQuirks,
-    ComparatorQuirks,
-    ValidatorQuirks,
     TypeMapQuirks,
     ErrorQuirks,
     ConnectionQuirks,
@@ -291,8 +166,6 @@ __all__ = [
     "DdlQuirks",
     "ParserQuirks",
     "ModelQuirks",
-    "ComparatorQuirks",
-    "ValidatorQuirks",
     "TypeMapQuirks",
     "ErrorQuirks",
     "ConnectionQuirks",

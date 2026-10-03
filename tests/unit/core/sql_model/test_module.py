@@ -35,45 +35,6 @@ class TestModule:
         module = Module("test_module", "CREATE MODULE test_module END MODULE;", dialect="db2")
         assert module.dialect == "db2"
 
-    def test_create_statement_with_definition(self):
-        """Test create_statement with definition."""
-        definition = "CREATE MODULE test_module\n  PROCEDURE test_proc()\nEND MODULE;"
-        module = Module("test_module", definition)
-        result = module.create_statement
-        assert result == definition
-
-    def test_create_statement_without_definition(self):
-        """Test create_statement without definition (minimal template)."""
-        module = Module("test_module", "")
-        result = module.create_statement
-        assert "CREATE OR REPLACE MODULE" in result
-        assert "test_module" in result
-        assert "END MODULE" in result
-
-    def test_create_statement_without_definition_with_schema(self):
-        """Test create_statement without definition but with schema."""
-        module = Module("test_module", "", schema="test_schema")
-        result = module.create_statement
-        assert "CREATE OR REPLACE MODULE" in result
-        assert "test_schema" in result
-        assert "test_module" in result
-        assert "END MODULE" in result
-
-    def test_drop_statement(self):
-        """Test drop statement generation."""
-        module = Module("test_module", "CREATE MODULE test_module END MODULE;")
-        result = module.drop_statement
-        assert result == 'DROP MODULE "test_module";'
-
-    def test_drop_statement_with_schema(self):
-        """Test drop statement with schema."""
-        module = Module(
-            "test_module", "CREATE MODULE test_module END MODULE;", schema="test_schema"
-        )
-        result = module.drop_statement
-        assert "DROP MODULE" in result
-        assert '"test_schema"."test_module"' in result
-
     def test_str_representation_basic(self):
         """Test string representation without schema."""
         module = Module("test_module", "line1\nline2\nline3")

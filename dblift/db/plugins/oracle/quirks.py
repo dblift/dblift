@@ -3,17 +3,16 @@
 from __future__ import annotations
 
 import re
-from typing import TYPE_CHECKING, Any, Dict, List, Mapping, Optional, Tuple, Type
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Type
 
-from dblift.db.base_quirks import BaseQuirks, RowLimitClauses
+from dblift.db.base_quirks import BaseQuirks
 from dblift.db.error import ErrorCategory
 from dblift.db.feature_gate import FeatureGate
-from dblift.db.object_naming import dictionary_identifier
+from dblift.db.object_naming import configured_identifier_text, dictionary_identifier
 
 if TYPE_CHECKING:
-    from dblift.core.introspection.version_detector import DatabaseVersion
-    from dblift.core.sql_generator.alter.base_alter_generator import BaseAlterGenerator
-    from dblift.core.sql_generator.base_generator import BaseSqlGenerator
+    from dblift.db.generator_protocol import AlterGeneratorProtocol, SqlGeneratorProtocol
+    from dblift.db.version import DatabaseVersion
 
 
 # Each entry: (compiled regex, ErrorCategory). Sourced by
@@ -108,9 +107,6 @@ class OracleQuirks(BaseQuirks):
         "INTERVAL (",
     )
     connection_probe_sql = "SELECT 1 FROM DUAL"
-    select_supports_limit = False
-    # Trailing ``FETCH FIRST n ROWS ONLY`` (Oracle 12c+); no ``LIMIT``.
-    row_limit_style = "fetch_first"
     boolean_false_literal = "0"
     unquoted_identifier_case = "uppercase"
     # quote_qualified upper-cases idents to match Oracle's catalogue folding.
@@ -128,21 +124,12 @@ class OracleQuirks(BaseQuirks):
             return str(username).upper()
         return None
 
-    # Procedure / function DDL.
-    proc_supports_create_or_replace = True
-    proc_function_returns_keyword = "RETURN"  # Oracle: ``RETURN`` (no S)
-    proc_body_wrap_style = "plain"
-    proc_drop_supports_if_exists = True
     # Index DDL.
     index_drop_standalone_supports_if_exists = True  # native since 23ai / 19.28
-    index_supports_bitmap = True
-    index_supports_local_partitioned = True
-    index_supports_tablespace = True
     # Trigger DDL.
     trigger_terminator = "\n/"
     # Engine-internal materialized-view support objects to skip during
-    # table introspection. Non-empty also signals TableExtractor to
-    # preload MV names so it can filter them from the table list.
+    # catalog reads. Non-empty also signals MV-name preloading.
     materialized_view_support_table_prefixes: Tuple[str, ...] = (
         "MLOG$",
         "RUPD$",
@@ -174,37 +161,9 @@ class OracleQuirks(BaseQuirks):
             text = f"{trimmed};"
         return text
 
-    # Sequence DDL.
-    seq_default_nocache_when_unset = True
-    seq_cache_one_means_nocache = True
-    seq_drop_supports_if_exists = True
-    # Synonym DDL.
-    synonym_supports_create_or_replace = True
-    # View DDL.
-    view_drop_supports_if_exists = True
-    # UDT DDL. Oracle ``CREATE TYPE foo AS OBJECT`` uses
-    # semicolons in the body; SQL Server uses different syntax.
-    udt_object_body_uses_semicolons = True
-    udt_composite_object_modifier = " OBJECT"
     # Table DDL.
-    table_drop_style = "if_exists_cascade_constraints"
-    table_create_supports_if_not_exists = True
-    table_temporary_style = "global_temporary"
-    table_not_null_implicit_on_inline_pk = True
-    table_fk_suppress_on_update = True
-    # Oracle's ON DELETE takes only CASCADE or SET NULL; it has no NO ACTION
-    # or RESTRICT keyword, and no ON UPDATE clause (suppressed above).
-    table_fk_supports_restrict = False
-    table_supports_deferrable_constraints = True
-    table_supports_constraint_state = True
-    table_tablespace_style = "quoted"
     table_supports_storage_params = True
     supports_sqlplus_preprocessing = True
-    # Wave A hooks.
-    view_supports_force_noforce = True
-    proc_uses_definition_field = True
-    index_comment_template = "COMMENT ON INDEX {schema_prefix}{idx_name} IS '{escaped_comment}';"
-    default_index_type = "NORMAL"
     # Wave B hooks.
     native_driver_display = "python-oracledb"
     # Oracle TIMESTAMP / TIME accept only fractional-seconds precision.
@@ -273,12 +232,6 @@ class OracleQuirks(BaseQuirks):
             return sql
         return apply_define_substitution(sql, ctx)
 
-    def is_script_directive(self, stmt: str) -> bool:
-        """Return ``True`` for SQL*Plus client-side directives."""
-        from dblift.db.plugins.oracle.parser._sqlplus import is_sqlplus_command
-
-        return is_sqlplus_command(stmt)
-
     def parse_error_policy_directive(self, stmt: str) -> Optional[str]:
         """Return the Oracle ``WHENEVER SQLERROR`` policy encoded in *stmt*, or ``None``."""
         from dblift.db.plugins.oracle.parser._sqlplus import parse_whenever_sqlerror
@@ -297,20 +250,12 @@ class OracleQuirks(BaseQuirks):
 
         read_dbms_output(connection, log)
 
-    def ddl_generator_class(self) -> Optional[Type["BaseSqlGenerator"]]:
+    def ddl_generator_class(self) -> Optional[Type["SqlGeneratorProtocol"]]:
         """DDL generator is supplied by an installed extension package."""
         return None
 
-    def alter_generator_class(self) -> Optional[Type["BaseAlterGenerator"]]:
+    def alter_generator_class(self) -> Optional[Type["AlterGeneratorProtocol"]]:
         """ALTER generator is supplied by an installed extension package."""
-        return None
-
-    def vendor_queries_class(self) -> "Optional[Type[Any]]":
-        """Oracle rich metadata queries are supplied by an installed extension package."""
-        return None
-
-    def introspector_class(self) -> "Optional[Type[Any]]":
-        """Oracle rich introspection is supplied by an installed extension package."""
         return None
 
     def parser_class(self, parser_type: str) -> Optional[type]:
@@ -330,158 +275,42 @@ class OracleQuirks(BaseQuirks):
             return OracleParser
         return None
 
-    # Oracle DROP variants — native IF EXISTS (23ai+/19.28+, no
-    # version gate) for every object type, CASCADE CONSTRAINTS for tables.
-    # TRIGGER/INDEX handled explicitly so they don't fall through the
-    # generic quirks-driven fallback (which would emit a shape keyed on
-    # ``drop_supports_if_exists`` — routing through ``render_drop_for_object``
-    # keeps Oracle's drop grammar owned in one place. PR #241 Bugbot.)
-    def render_drop_for_object(
-        self,
-        obj_type: str,
-        obj_name: str,
-        schema_prefix: str,
-        table_name: Optional[str],
-    ) -> Optional[str]:
-        """Oracle DROP variants — native ``IF EXISTS``; ``CASCADE CONSTRAINTS`` on tables.
-
-        Handles ``VIEW``/``MATERIALIZED_VIEW``/``TABLE``/``INDEX``/``SEQUENCE``/
-        ``PROCEDURE``/``FUNCTION``/``TRIGGER`` so the entire Oracle DROP grammar
-        is owned here.
+    def enhance_columns(
+        self, extractor: Any, schema: str, table: str, columns: "list[Any]"
+    ) -> None:
+        """Capture the generation kind for columns identified as identity columns."""
+        identity_columns = {col.name: col for col in columns if col.is_identity}
+        if not identity_columns:
+            return
+        # GENERATION_TYPE reports ALWAYS/BY DEFAULT; DEFAULT_ON_NULL distinguishes
+        # the ON NULL variant. These identity catalog fields require Oracle 12c+.
+        # https://docs.oracle.com/en/database/oracle/oracle-database/19/refrn/ALL_TAB_IDENTITY_COLS.html
+        # https://docs.oracle.com/en/database/oracle/oracle-database/19/refrn/ALL_TAB_COLUMNS.html
+        query = """
+            SELECT i.COLUMN_NAME, i.GENERATION_TYPE, c.DEFAULT_ON_NULL
+            FROM ALL_TAB_IDENTITY_COLS i
+            JOIN ALL_TAB_COLUMNS c
+              ON c.OWNER = i.OWNER AND c.TABLE_NAME = i.TABLE_NAME
+             AND c.COLUMN_NAME = i.COLUMN_NAME
+            WHERE i.OWNER = ? AND i.TABLE_NAME = ?
         """
-        if obj_type == "VIEW":
-            return f"DROP VIEW IF EXISTS {schema_prefix}{obj_name}"
-        if obj_type == "MATERIALIZED_VIEW":
-            return f"DROP MATERIALIZED VIEW IF EXISTS {schema_prefix}{obj_name}"
-        if obj_type == "TABLE":
-            return f"DROP TABLE IF EXISTS {schema_prefix}{obj_name} CASCADE CONSTRAINTS"
-        if obj_type == "INDEX":
-            return f"DROP INDEX IF EXISTS {schema_prefix}{obj_name}"
-        if obj_type == "SEQUENCE":
-            return f"DROP SEQUENCE IF EXISTS {schema_prefix}{obj_name}"
-        if obj_type in ("PROCEDURE", "FUNCTION"):
-            return f"DROP {obj_type} IF EXISTS {schema_prefix}{obj_name}"
-        if obj_type == "TRIGGER":
-            return f"DROP TRIGGER IF EXISTS {schema_prefix}{obj_name}"
-        return None
-
-    # Column ALTER hooks — Oracle uses MODIFY instead of ALTER COLUMN.
-    def render_column_nullable_change(
-        self, col_diff: object, formatted_table: str, formatted_column: str, dialect: str
-    ) -> "Optional[object]":
-        """``ALTER TABLE … MODIFY <col> NOT NULL|NULL`` — Oracle's nullable-toggle form.
-
-        Setting NOT NULL emits a pre-check counting NULL rows so a violating
-        migration fails cleanly before the ALTER runs.
-        """
-        from dblift.core.sql_generator.sql_statement import SqlStatement
-
-        nullable_diff = getattr(col_diff, "nullable_diff", None)
-        if nullable_diff is None:
-            return None
-        expected_nullable, _ = nullable_diff
-        if not expected_nullable:
-            return SqlStatement(
-                sql=f"ALTER TABLE {formatted_table} MODIFY {formatted_column} NOT NULL;",
-                statement_type="ALTER",
-                object_type="COLUMN",
-                object_name=f"{formatted_table}.{formatted_column}",
-                dialect=dialect,
-                pre_check=f"SELECT COUNT(*) FROM {formatted_table} WHERE {formatted_column} IS NULL;",
-                error_if_check_fails=True,
-                error_message="Cannot set NOT NULL: column contains NULL values",
-            )
-        return SqlStatement(
-            sql=f"ALTER TABLE {formatted_table} MODIFY {formatted_column} NULL;",
-            statement_type="ALTER",
-            object_type="COLUMN",
-            object_name=f"{formatted_table}.{formatted_column}",
-            dialect=dialect,
+        rows = extractor.provider.query_executor.execute_query(
+            extractor.connection,
+            query,
+            [dictionary_identifier(schema, "oracle"), configured_identifier_text(table)],
         )
-
-    def render_column_default_change(
-        self, col_diff: object, formatted_table: str, formatted_column: str, dialect: str
-    ) -> "Optional[object]":
-        """``ALTER TABLE … MODIFY <col> DEFAULT <expr|NULL>`` — Oracle's DEFAULT change form."""
-        from dblift.core.sql_generator.sql_statement import SqlStatement
-
-        default_diff = getattr(col_diff, "default_diff", None)
-        if default_diff is None:
-            return None
-        expected_default, _ = default_diff
-        if expected_default:
-            sql = f"ALTER TABLE {formatted_table} MODIFY {formatted_column} DEFAULT {expected_default};"
-        else:
-            sql = f"ALTER TABLE {formatted_table} MODIFY {formatted_column} DEFAULT NULL;"
-        return SqlStatement(
-            sql=sql,
-            statement_type="ALTER",
-            object_type="COLUMN",
-            object_name=f"{formatted_table}.{formatted_column}",
-            dialect=dialect,
-        )
-
-    def render_column_type_change(
-        self, col_diff: object, formatted_table: str, formatted_column: str, dialect: str
-    ) -> "Optional[object]":
-        """``ALTER TABLE … MODIFY <col> <type>`` — Oracle column-type change form."""
-        from dblift.core.sql_generator.sql_statement import SqlStatement
-
-        data_type_diff = getattr(col_diff, "data_type_diff", None)
-        if data_type_diff is None:
-            return None
-        expected_type, _ = data_type_diff
-        return SqlStatement(
-            sql=f"ALTER TABLE {formatted_table} MODIFY {formatted_column} {expected_type};",
-            statement_type="ALTER",
-            object_type="COLUMN",
-            object_name=f"{formatted_table}.{formatted_column}",
-            dialect=dialect,
-        )
-
-    def unwrap_default_value(self, default_str: str, column: object) -> str:
-        """Strip empty-parens function-call wrapping from Oracle TIMESTAMP defaults.
-
-        Oracle rejects ``CURRENT_TIMESTAMP()`` / ``SYSTIMESTAMP()`` — bare
-        keyword form is required. Precision variants (``CURRENT_TIMESTAMP(6)``)
-        are also collapsed to the bare keyword in DEFAULT clauses where Oracle
-        infers precision from the column type.
-        """
-        text = default_str.strip()
-        upper = text.upper()
-        if upper in ("CURRENT_TIMESTAMP()", "SYSTIMESTAMP()"):
-            return text[:-2]
-        if upper.startswith("CURRENT_TIMESTAMP("):
-            return "CURRENT_TIMESTAMP"
-        if upper.startswith("SYSTIMESTAMP("):
-            return "SYSTIMESTAMP"
-        return text
-
-    # Oracle identity — GENERATED AS IDENTITY with optional
-    # seed/increment from column metadata.
-    def render_identity_clause(self, col: object) -> "Optional[str]":
-        """Oracle identity: ``GENERATED AS IDENTITY`` with optional ``START WITH/INCREMENT BY``.
-
-        Emits the seed/increment clause only when at least one of the two is set
-        on the column; otherwise returns the bare keyword.
-        """
-        seed = getattr(col, "identity_seed", None)
-        increment = getattr(col, "identity_increment", None)
-        if seed is not None or increment is not None:
-            seed_str = str(seed) if seed is not None else "1"
-            inc_str = str(increment) if increment is not None else "1"
-            return f"GENERATED AS IDENTITY (START WITH {seed_str} INCREMENT BY {inc_str})"
-        return "GENERATED AS IDENTITY"
-
-    # Oracle FK reference query uses schema twice.
-    def fk_reference_bind_params(self, schema: str, table: str, column: str) -> "list[str]":
-        """Oracle's FK lookup query references the schema twice (``r_owner`` and ``owner``).
-
-        The schema bind is the catalog spelling. A configured ``"MYSCHEMA"``
-        must not be sent with the quote characters still attached.
-        """
-        catalog_schema = dictionary_identifier(schema, "oracle")
-        return [catalog_schema, catalog_schema, table, column]
+        for row in rows:
+            column = identity_columns.get(extractor.get_row_value(row, "column_name"))
+            generation = extractor.get_row_value(row, "generation_type")
+            if column is None or not generation:
+                continue
+            generation = str(generation).strip().upper()
+            if (
+                generation == "BY DEFAULT"
+                and extractor.get_row_value(row, "default_on_null") == "YES"
+            ):
+                generation = "BY DEFAULT ON NULL"
+            column.identity_generation = generation
 
     def is_internal_sequence(self, sequence: Any) -> bool:
         """Oracle ``IDENTITY`` columns auto-generate backing sequences named
@@ -566,13 +395,6 @@ class OracleQuirks(BaseQuirks):
                     table.set_dialect_option("oracle", attr, int(val))
                 except (ValueError, TypeError):
                     pass
-
-    def existence_check_sql(self, table_name: str) -> str:
-        """``ROWNUM = 1`` + ``FROM DUAL`` — Oracle has no ``LIMIT`` and needs a FROM clause."""
-        return (
-            f"SELECT CASE WHEN EXISTS (SELECT 1 FROM {table_name} WHERE ROWNUM = 1)"
-            f" THEN 1 ELSE 0 END as has_data FROM DUAL"
-        )
 
     def fetch_unique_constraints(
         self, extractor: Any, schema: str, table: str
@@ -679,8 +501,8 @@ class OracleQuirks(BaseQuirks):
     ) -> None:
         """Oracle: backfill missing ``PACKAGE`` / ``PACKAGE BODY`` source.
 
-        Procedure-extractor scans cache the spec text in
-        ``_oracle_package_specs`` (extracted from embedded ``CREATE OR
+        Procedure scans cache the spec text for package lookup
+        (extracted from embedded ``CREATE OR
         REPLACE PACKAGE`` blocks); anything still missing is fetched
         from ``ALL_SOURCE``."""
         for package in packages:
@@ -699,39 +521,6 @@ class OracleQuirks(BaseQuirks):
                 )
                 if source_body:
                     package.body = source_body
-
-    def fk_reference_query(
-        self, schema: str, table: str, col: str
-    ) -> "Tuple[Optional[str], list[Any]]":
-        """Oracle ``ALL_CONS_COLUMNS`` / ``ALL_CONSTRAINTS`` query for FKs targeting ``col``."""
-        sql = """
-            SELECT
-                a.constraint_name,
-                a.owner || '.' || a.table_name as table_name
-            FROM all_cons_columns a
-            JOIN all_constraints c ON a.constraint_name = c.constraint_name
-            WHERE c.constraint_type = 'R'
-                AND c.r_owner = :1
-                AND c.r_constraint_name IN (
-                    SELECT constraint_name FROM all_cons_columns
-                    WHERE owner = :2 AND table_name = :3 AND column_name = :4
-                )
-        """
-        return (sql, self.fk_reference_bind_params(schema, table, col))
-
-    def index_reference_query(
-        self, schema: str, table: str, col: str
-    ) -> "Tuple[Optional[str], list[Any]]":
-        """Return the Oracle ``ALL_IND_COLUMNS`` query listing indexes covering ``col``."""
-        sql = """
-            SELECT index_name
-            FROM all_ind_columns
-            WHERE table_owner = :1
-                AND table_name = :2
-                AND column_name = :3
-        """
-        catalog_schema = dictionary_identifier(schema, "oracle")
-        return (sql, [catalog_schema, table, col])
 
     def type_equivalents(self) -> "dict[str, str]":
         """Oracle alias → canonical type map.
@@ -754,8 +543,6 @@ class OracleQuirks(BaseQuirks):
             "LONG RAW": "BLOB",
         }
 
-    version_specific_type_mappings = {("oracle", "12.2+"): {"JSON": "JSON"}}
-
     # Edition-gated features (see core.sql_model.feature_gates). The pattern
     # matches the v$version banner, which doubles as the captured edition.
     feature_gates = {
@@ -769,7 +556,7 @@ class OracleQuirks(BaseQuirks):
         ),
         "row_limit_fetch_first": FeatureGate(
             min_version="12.1+",
-            description="FETCH FIRST n ROWS ONLY",
+            description="SELECT row limiting with FETCH FIRST n ROWS ONLY",
         ),
         "online_table_move": FeatureGate(
             # Oracle's Database Licensing Information User Manual (Table 1-4,
@@ -786,59 +573,6 @@ class OracleQuirks(BaseQuirks):
         ),
     }
 
-    def row_limit_clauses(
-        self,
-        row_count: int,
-        server_info: Optional[Mapping[str, Any]] = None,
-        ordered: bool = False,
-    ) -> RowLimitClauses:
-        """Oracle's native ``FETCH FIRST n ROWS ONLY`` is 12.1+ only.
-
-        python-oracledb's default thin mode already requires 12.1, but thick
-        mode reaches back to 11.2, so there is a real window where the
-        declared style (``row_limit_style = "fetch_first"``, Oracle's
-        idiomatic form) would be invalid SQL. ``WHERE ROWNUM <= n`` is valid
-        on every Oracle release ever shipped, so it is the fallback: a gate
-        that cannot be evaluated (no server info captured, or an unparseable
-        version) must pick the form valid on the *widest* range of versions,
-        not the narrower one it merely hopes is safe. Only a gate that
-        resolves to ``True`` — a server proven to be 12.1+ — earns the
-        native form; ``False`` and ``None`` both fall back to ``ROWNUM``.
-
-        ``ordered=True`` tells this method the caller's query also carries an
-        ``ORDER BY`` whose result the cap must respect — i.e. the caller
-        wants the true top-*row_count* rows by that ordering. ``ROWNUM`` is
-        assigned *before* ``ORDER BY`` runs, so ``WHERE ROWNUM <= n ORDER BY
-        val`` takes *n* rows in whatever order the access path produced them
-        and only *then* sorts those *n* — it is not the same result as the
-        true ordered top-*n*. There is no way to fix this within the
-        three-fragment shape :class:`RowLimitClauses` offers: the correct
-        pre-12.1 form nests the ordered query in a subquery (``SELECT * FROM
-        (SELECT ... ORDER BY val) WHERE ROWNUM <= n``), which has no bare
-        predicate or suffix to hand back. So when the resolved style would be
-        ``"rownum"`` and ``ordered`` is ``True``, this raises rather than
-        returning a fragment that silently produces the wrong rows: capture
-        ``server_info`` (to prove the server is 12.1+ and unlock the native
-        ``FETCH FIRST`` form) or restructure the query around the nested
-        subquery form directly.
-        """
-        from dblift.core.sql_model.feature_gates import supports_feature
-
-        if supports_feature(self.dialect_name, "row_limit_fetch_first", server_info) is True:
-            return RowLimitClauses("", "", f" FETCH FIRST {row_count} ROWS ONLY")
-        if ordered:
-            raise ValueError(
-                "Cannot express an ordered top-N via ROWNUM: ROWNUM is assigned "
-                "before ORDER BY runs, so 'WHERE ROWNUM <= n ORDER BY ...' caps rows "
-                "in access-path order and sorts them afterward, which is not the "
-                "true ordered top-N. Oracle before 12.1 cannot express this through "
-                "row_limit_clauses() at all — capture server_info proving the "
-                "server is 12.1+ (to unlock native FETCH FIRST), or restructure the "
-                "query as 'SELECT * FROM (SELECT ... ORDER BY ...) WHERE ROWNUM <= n' "
-                "directly."
-            )
-        return RowLimitClauses("", f"ROWNUM <= {row_count}", "")
-
     _MARKETING_VERSION_RE = re.compile(r"\b(\d{2})(?:c|g|ai)\b", re.IGNORECASE)
 
     def parse_server_version(self, raw: "Optional[str]") -> "Optional[DatabaseVersion]":
@@ -846,7 +580,7 @@ class OracleQuirks(BaseQuirks):
         Database 23ai Free"``) still carry a marketing version — fall back
         to its major number when the generic dotted-run parse finds nothing.
         """
-        from dblift.core.introspection.version_detector import DatabaseVersion, parse_version
+        from dblift.db.version import DatabaseVersion, parse_version
 
         version = parse_version(raw)
         if version is not None or not raw:
@@ -855,19 +589,6 @@ class OracleQuirks(BaseQuirks):
         if match is None:
             return None
         return DatabaseVersion(major=int(match.group(1)), full_version=raw)
-
-    def type_preferences(self) -> "dict[str, str]":
-        """Oracle prefers ``NUMBER`` (for ``INTEGER``) and ``VARCHAR2`` (not ``VARCHAR``)."""
-        return {"INTEGER": "NUMBER", "VARCHAR": "VARCHAR2", "TIMESTAMP": "TIMESTAMP"}
-
-    def render_computed_column(
-        self, col: Any, formatted_col_name: str
-    ) -> Tuple[Optional[str], Optional[str]]:
-        """Oracle: ``GENERATED ALWAYS AS (expr) [VIRTUAL]``."""
-        if not getattr(col, "is_computed", False) or not getattr(col, "computed_expression", None):
-            return None, None
-        virtual = "VIRTUAL" if not getattr(col, "computed_stored", False) else ""
-        return f"GENERATED ALWAYS AS ({col.computed_expression}) {virtual}".strip(), None
 
 
 __all__ = ["OracleQuirks"]

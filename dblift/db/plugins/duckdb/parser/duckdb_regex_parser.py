@@ -35,6 +35,7 @@ class DuckDBRegexParser(EnhancedRegexParser):
         statements: List[str] = []
         current: List[str] = []
         in_string = False
+        in_escape_string = False
         in_ident = False  # inside a "double-quoted" identifier
         block_comment_depth = 0
         nested_block_comments = self.tokenizer_class.NESTED_BLOCK_COMMENTS
@@ -107,11 +108,21 @@ class DuckDBRegexParser(EnhancedRegexParser):
 
             if char == "'" and not in_string:
                 in_string = True
+                previous = content[i - 2] if i >= 2 else ""
+                in_escape_string = (
+                    i > 0
+                    and content[i - 1] in ("E", "e")
+                    and (not previous or not (previous.isalnum() or previous in "_$'\""))
+                )
                 current.append(char)
                 i += 1
                 continue
             if in_string:
                 current.append(char)
+                if in_escape_string and char == "\\" and nxt:
+                    current.append(nxt)
+                    i += 2
+                    continue
                 if char == "'":
                     if nxt == "'":  # escaped quote
                         current.append(nxt)

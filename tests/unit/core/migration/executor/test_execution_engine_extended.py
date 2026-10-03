@@ -1311,9 +1311,9 @@ class TestHandleStatementFailure(unittest.TestCase):
         migration script, so the failing '[SQL: ...]' statement must stay
         visible in the message so they can tell which statement broke.
 
-        _strip_driver_exception_prefix (shared with format_connection_error)
+        clean_driver_error_message (shared with format_connection_error)
         must not gain SQL-block stripping — that behavior belongs only to
-        format_connection_error's db_type-specific formatting.
+        strip_sql_statement_block, used for connection and setup errors.
         """
         engine = _make_engine(with_history=False)
         migration = _make_sql_migration()

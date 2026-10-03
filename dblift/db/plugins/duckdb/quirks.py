@@ -2,13 +2,12 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Optional, Type
+from typing import TYPE_CHECKING, Optional, Type
 
 from dblift.db.base_quirks import BaseQuirks
 
 if TYPE_CHECKING:
-    from dblift.core.sql_generator.alter.base_alter_generator import BaseAlterGenerator
-    from dblift.core.sql_generator.base_generator import BaseSqlGenerator
+    from dblift.db.generator_protocol import AlterGeneratorProtocol, SqlGeneratorProtocol
 
 
 class DuckDBQuirks(BaseQuirks):
@@ -29,14 +28,7 @@ class DuckDBQuirks(BaseQuirks):
     sqlglot_dialect = "duckdb"
     default_schema_name = "main"
     boolean_false_literal = "FALSE"  # native BOOLEAN, not 0/1
-    # ``ON CONFLICT (col) DO UPDATE SET`` — DuckDB 0.7+.
-    upsert_style = "on_conflict"
     drop_supports_if_exists = True
-    table_drop_style = "cascade"  # DuckDB supports DROP TABLE ... CASCADE
-    # ON DELETE RESTRICT parses, but the key is then catalogued with
-    # delete_rule = NO ACTION (probed on 1.5.5), so the keyword would claim
-    # a stricter constraint than the engine stores.
-    table_fk_supports_restrict = False
     # Wave B hooks — embedded, file-based, no credentials (mirrors SQLite).
     native_driver_display = "duckdb"
     requires_credentials = False
@@ -67,20 +59,12 @@ class DuckDBQuirks(BaseQuirks):
         return None
 
     # Optional hooks — registered by an installed extension package.
-    def ddl_generator_class(self) -> Optional[Type["BaseSqlGenerator"]]:
+    def ddl_generator_class(self) -> Optional[Type["SqlGeneratorProtocol"]]:
         """DDL generator is supplied by an installed extension package."""
         return None
 
-    def alter_generator_class(self) -> Optional[Type["BaseAlterGenerator"]]:
+    def alter_generator_class(self) -> Optional[Type["AlterGeneratorProtocol"]]:
         """ALTER generator is supplied by an installed extension package."""
-        return None
-
-    def introspector_class(self) -> Optional[Type[Any]]:
-        """DuckDB rich introspection is supplied by an installed extension package."""
-        return None
-
-    def vendor_queries_class(self) -> "Optional[Type[Any]]":
-        """DuckDB metadata queries are supplied by an installed extension package."""
         return None
 
     def type_equivalents(self) -> "dict[str, str]":
@@ -95,10 +79,6 @@ class DuckDBQuirks(BaseQuirks):
             "DECIMAL": "NUMERIC",
             "DOUBLE": "DOUBLE",
         }
-
-    def type_preferences(self) -> "dict[str, str]":
-        """DuckDB keeps ANSI names — ``INTEGER`` / ``VARCHAR`` / ``TIMESTAMP`` unchanged."""
-        return {"INTEGER": "INTEGER", "VARCHAR": "VARCHAR", "TIMESTAMP": "TIMESTAMP"}
 
 
 __all__ = ["DuckDBQuirks"]

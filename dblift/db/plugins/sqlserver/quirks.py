@@ -12,8 +12,7 @@ _PK_CLUSTERED_RE = re.compile(r"(PRIMARY\s+KEY)\s+(CLUSTERED|NONCLUSTERED)", re.
 _UNIQUE_CLUSTERED_RE = re.compile(r"(UNIQUE)\s+(CLUSTERED|NONCLUSTERED)", re.IGNORECASE)
 
 if TYPE_CHECKING:
-    from dblift.core.sql_generator.alter.base_alter_generator import BaseAlterGenerator
-    from dblift.core.sql_generator.base_generator import BaseSqlGenerator
+    from dblift.db.generator_protocol import AlterGeneratorProtocol, SqlGeneratorProtocol
 
 
 class SqlserverQuirks(BaseQuirks):
@@ -73,7 +72,6 @@ class SqlserverQuirks(BaseQuirks):
             return True
         return super().is_schema_history_race_error(error_message)
 
-    pygments_lexer = "tsql"
     connection_identifier_attrs = ("url", "host", "database")
     missing_connection_identifier_hint = (
         "SQL Server connection requires url or host/database fields"
@@ -81,9 +79,6 @@ class SqlserverQuirks(BaseQuirks):
     quote_open = "["
     quote_close = "]"
     boolean_false_literal = "0"
-    select_supports_limit = False  # SQL Server uses TOP, not LIMIT
-    # ``SELECT TOP (n) …`` — a prefix on the select list, not a trailing clause.
-    row_limit_style = "top"
     supports_go_batch_separator = True
 
     def is_batch_separator(self, stmt: str) -> bool:
@@ -101,51 +96,13 @@ class SqlserverQuirks(BaseQuirks):
     drop_supports_if_exists = True  # SQL Server 2016+ supports DROP ... IF EXISTS
     unquoted_identifier_case = "case_insensitive"
     # Procedure / function DDL.
-    proc_body_wrap_style = "begin_end"
     proc_param_inout_keyword = "OUTPUT"
     # Index DDL.
-    index_qualifies_with_schema = False
-    index_with_options_style = "uppercase"
     index_drop_includes_table = True
     index_drop_table_form_supports_if_exists = True
-    # Trigger DDL.
-    trigger_supports_for_each_row = False  # SQL Server has no FOR EACH ROW
-    # Sequence DDL.
-    seq_nocycle_keyword = "NO CYCLE"
     # UDT / Table DDL.
-    udt_distinct_uses_from_syntax = True
     table_uses_filegroup_syntax = True
-    supports_online_index = True
-    metadata_catalog_mode = "catalog+schema"
-    # Table DDL.
-    table_temporary_style = "hash_prefix"
-    table_supports_constraint_nocheck = True
-    # T-SQL's referential-action grammar is ON DELETE/UPDATE { NO ACTION |
-    # CASCADE | SET NULL | SET DEFAULT } -- RESTRICT is not a keyword here.
-    table_fk_supports_restrict = False
-    # Wave A hooks.
-    table_supports_memory_optimized = True
-    table_supports_system_versioned = True
 
-    def render_system_versioning_alter(
-        self,
-        formatted_table: str,
-        enable: bool,
-        history_formatted: Optional[str] = None,
-        formatted_period_start: Optional[str] = None,
-        formatted_period_end: Optional[str] = None,
-    ) -> Optional[str]:
-        """Emit T-SQL to toggle ``SYSTEM_VERSIONING`` on a temporal table."""
-        if not enable:
-            return f"ALTER TABLE {formatted_table} SET (SYSTEM_VERSIONING = OFF);"
-        return (
-            f"ALTER TABLE {formatted_table} "
-            f"ADD PERIOD FOR SYSTEM_TIME ({formatted_period_start}, {formatted_period_end});\n"
-            f"ALTER TABLE {formatted_table} "
-            f"SET (SYSTEM_VERSIONING = ON (HISTORY_TABLE = {history_formatted}));"
-        )
-
-    default_index_type = "NONCLUSTERED"
     # Wave B hooks.
     native_driver_display = "pymssql"
     # SQL Server encodes ``VARCHAR(MAX)`` / ``NVARCHAR(MAX)`` via the
@@ -211,20 +168,12 @@ class SqlserverQuirks(BaseQuirks):
         """Refuse provider-owned snapshot-table DDL for SQL Server."""
         raise NotImplementedError("SQL Server snapshots are not provider-owned")
 
-    def ddl_generator_class(self) -> Optional[Type["BaseSqlGenerator"]]:
+    def ddl_generator_class(self) -> Optional[Type["SqlGeneratorProtocol"]]:
         """DDL generator is supplied by an installed extension package."""
         return None
 
-    def alter_generator_class(self) -> Optional[Type["BaseAlterGenerator"]]:
+    def alter_generator_class(self) -> Optional[Type["AlterGeneratorProtocol"]]:
         """ALTER generator is supplied by an installed extension package."""
-        return None
-
-    def vendor_queries_class(self) -> "Optional[Type[Any]]":
-        """SQL Server rich metadata queries are supplied by an installed extension package."""
-        return None
-
-    def introspector_class(self) -> "Optional[Type[Any]]":
-        """SQL Server rich introspection is supplied by an installed extension package."""
         return None
 
     def parser_class(self, parser_type: str) -> Optional[type]:
@@ -250,105 +199,6 @@ class SqlserverQuirks(BaseQuirks):
         """Strip CLUSTERED/NONCLUSTERED from PK/UNIQUE — sqlglot can't parse them."""
         result = _PK_CLUSTERED_RE.sub(r"\1", sql_content)
         return _UNIQUE_CLUSTERED_RE.sub(r"\1", result)
-
-    # SQL Server DROP INDEX needs an ON-clause.
-    def render_drop_for_object(
-        self,
-        obj_type: str,
-        obj_name: str,
-        schema_prefix: str,
-        table_name: Optional[str],
-    ) -> Optional[str]:
-        """``DROP INDEX IF EXISTS idx ON tbl`` — SQL Server binds the index name to its table."""
-        if obj_type == "INDEX":
-            target = table_name or "unknown"
-            return f"DROP INDEX IF EXISTS {obj_name} ON {schema_prefix}{target}"
-        return None
-
-    # Column ALTER hooks.
-    def render_column_nullable_change(
-        self, col_diff: object, formatted_table: str, formatted_column: str, dialect: str
-    ) -> "Optional[object]":
-        """``ALTER TABLE … ALTER COLUMN <col> NOT NULL|NULL`` — T-SQL nullable toggle.
-
-        Setting NOT NULL emits a pre-check counting NULL rows so the migration
-        fails cleanly when existing data would violate the constraint.
-        """
-        from dblift.core.sql_generator.sql_statement import SqlStatement
-
-        nullable_diff = getattr(col_diff, "nullable_diff", None)
-        if nullable_diff is None:
-            return None
-        expected_nullable, _ = nullable_diff
-        if not expected_nullable:
-            return SqlStatement(
-                sql=f"ALTER TABLE {formatted_table} ALTER COLUMN {formatted_column} NOT NULL;",
-                statement_type="ALTER",
-                object_type="COLUMN",
-                object_name=f"{formatted_table}.{formatted_column}",
-                dialect=dialect,
-                pre_check=f"SELECT COUNT(*) FROM {formatted_table} WHERE {formatted_column} IS NULL;",
-                error_if_check_fails=True,
-                error_message="Cannot set NOT NULL: column contains NULL values",
-            )
-        return SqlStatement(
-            sql=f"ALTER TABLE {formatted_table} ALTER COLUMN {formatted_column} NULL;",
-            statement_type="ALTER",
-            object_type="COLUMN",
-            object_name=f"{formatted_table}.{formatted_column}",
-            dialect=dialect,
-        )
-
-    def render_column_type_change(
-        self, col_diff: object, formatted_table: str, formatted_column: str, dialect: str
-    ) -> "Optional[object]":
-        """``ALTER TABLE … ALTER COLUMN <col> <type>`` — T-SQL column-type change."""
-        from dblift.core.sql_generator.sql_statement import SqlStatement
-
-        data_type_diff = getattr(col_diff, "data_type_diff", None)
-        if data_type_diff is None:
-            return None
-        expected_type, _ = data_type_diff
-        return SqlStatement(
-            sql=f"ALTER TABLE {formatted_table} ALTER COLUMN {formatted_column} {expected_type};",
-            statement_type="ALTER",
-            object_type="COLUMN",
-            object_name=f"{formatted_table}.{formatted_column}",
-            dialect=dialect,
-        )
-
-    # Strip IDENTITY suffix from type string; collapse DATETIME(n).
-    def normalize_column_data_type(self, col: object, data_type: str) -> str:
-        """Strip trailing ``IDENTITY`` on identity cols; collapse ``DATETIME(n)`` → ``DATETIME``."""
-        import re
-
-        result = data_type
-        if getattr(col, "is_identity", False):
-            result = re.sub(r"\s+identity\s*$", "", result, flags=re.IGNORECASE)
-        if re.match(r"^datetime\s*\(", result, re.IGNORECASE):
-            result = "datetime"
-        return result
-
-    # SQL Server identity — IDENTITY(seed, increment).
-    def render_identity_clause(self, col: object) -> "Optional[str]":
-        """SQL Server identity columns use ``IDENTITY(seed, increment)`` (defaults: 1, 1)."""
-        seed = getattr(col, "identity_seed", 1) or 1
-        increment = getattr(col, "identity_increment", 1) or 1
-        return f"IDENTITY({seed},{increment})"
-
-    # SQL Server wraps defaults in parentheses — unwrap when safe.
-    def unwrap_default_value(self, default_str: str, column: object) -> str:
-        """Strip outer ``(`` … ``)`` from a DEFAULT when the inner expression is a literal.
-
-        SQL Server stores defaults wrapped in parens (e.g. ``(0)``); the wrapper is
-        removed when the inner text contains no operators or boolean keywords, so
-        compound expressions like ``(a+b)`` stay quoted.
-        """
-        if default_str.startswith("(") and default_str.endswith(")"):
-            inner = default_str[1:-1].strip()
-            if not any(op in inner for op in ["+", "-", "*", "/", "=", "<", ">", "AND", "OR"]):
-                return inner
-        return default_str
 
     non_transactional_sql_patterns = (
         (
@@ -393,13 +243,6 @@ class SqlserverQuirks(BaseQuirks):
             if period_end:
                 table.set_dialect_option("sqlserver", "period_end_column", period_end)
 
-    def existence_check_sql(self, table_name: str) -> str:
-        """Use ``SELECT TOP 1 1`` — SQL Server has no ``LIMIT`` clause."""
-        return (
-            f"SELECT CASE WHEN EXISTS (SELECT TOP 1 1 FROM {table_name})"
-            f" THEN 1 ELSE 0 END as has_data"
-        )
-
     def apply_routine_volatility_from_row(
         self, extractor: Any, routine: Any, row: Dict[str, Any]
     ) -> None:
@@ -430,21 +273,6 @@ class SqlserverQuirks(BaseQuirks):
         if part_cols:
             table.partition_columns = [c.strip() for c in part_cols.split(",")]
 
-    def script_header_session_init(self) -> "list[str]":
-        """SQL Server: pin ``ANSI_NULLS`` and ``QUOTED_IDENTIFIER`` ON in
-        the script header so the emitted DDL parses consistently
-        regardless of the connection's defaults."""
-        return [
-            "SET ANSI_NULLS ON;",
-            "SET QUOTED_IDENTIFIER ON;",
-            "SET ANSI_PADDING ON;",
-            "SET ANSI_WARNINGS ON;",
-            "SET CONCAT_NULL_YIELDS_NULL ON;",
-            "SET ARITHABORT ON;",
-            "SET NUMERIC_ROUNDABORT OFF;",
-            "--",
-        ]
-
     def fetch_unique_constraints(
         self, extractor: Any, schema: str, table: str
     ) -> "Optional[list[Any]]":
@@ -462,45 +290,6 @@ class SqlserverQuirks(BaseQuirks):
             extractor.log.warning(f"Error getting unique constraints for {schema}.{table}: {e}")
             return []
         return _build_unique_constraints_from_dict(extractor, unique_indexes)
-
-    def fk_reference_query(
-        self, schema: str, table: str, col: str
-    ) -> "Tuple[Optional[str], list[Any]]":
-        """SQL Server ``sys.foreign_keys`` + ``foreign_key_columns`` query for FKs on ``col``."""
-        sql = """
-            SELECT
-                fk.name as constraint_name,
-                OBJECT_SCHEMA_NAME(fk.parent_object_id) + '.'
-                    + OBJECT_NAME(fk.parent_object_id) as table_name
-            FROM sys.foreign_keys fk
-            INNER JOIN sys.foreign_key_columns fkc
-                ON fk.object_id = fkc.constraint_object_id
-            INNER JOIN sys.columns c
-                ON fkc.referenced_column_id = c.column_id
-                AND fkc.referenced_object_id = c.object_id
-            WHERE OBJECT_SCHEMA_NAME(fk.referenced_object_id) = ?
-                AND OBJECT_NAME(fk.referenced_object_id) = ?
-                AND c.name = ?
-        """
-        return (sql, self.fk_reference_bind_params(schema, table, col))
-
-    def index_reference_query(
-        self, schema: str, table: str, col: str
-    ) -> "Tuple[Optional[str], list[Any]]":
-        """SQL Server ``sys.indexes`` + ``sys.index_columns`` query for indexes on ``col``."""
-        sql = """
-            SELECT i.name as index_name
-            FROM sys.indexes i
-            INNER JOIN sys.index_columns ic
-                ON i.object_id = ic.object_id AND i.index_id = ic.index_id
-            INNER JOIN sys.columns c
-                ON ic.object_id = c.object_id AND ic.column_id = c.column_id
-            WHERE OBJECT_SCHEMA_NAME(i.object_id) = ?
-                AND OBJECT_NAME(i.object_id) = ?
-                AND c.name = ?
-                AND i.is_primary_key = 0
-        """
-        return (sql, [schema, table, col])
 
     def type_equivalents(self) -> "dict[str, str]":
         """SQL Server alias → canonical type map.
@@ -521,8 +310,6 @@ class SqlserverQuirks(BaseQuirks):
             "IMAGE": "VARBINARY",
         }
 
-    version_specific_type_mappings = {("sqlserver", "13.0+"): {"JSON": "JSON"}}
-
     # Edition-gated features (see core.sql_model.feature_gates). The edition
     # pattern matches SERVERPROPERTY('Edition') strings; Azure SQL always
     # supports online index builds.
@@ -532,8 +319,7 @@ class SqlserverQuirks(BaseQuirks):
             description="WITH (ONLINE = ON) index builds",
         ),
         # ALTER TABLE ... ALTER COLUMN WITH (ONLINE = ON): introduced in SQL
-        # Server 2016 (internal version 13.0, matching this file's own
-        # version_specific_type_mappings numbering above), same edition set
+        # Server 2016 (internal version 13.0), same edition set
         # as online_index_build (Enterprise/Developer/Evaluation/Azure)
         # only. Without a proven server, callers stay conservative rather
         # than assuming a feature two years newer than online index builds
@@ -544,24 +330,6 @@ class SqlserverQuirks(BaseQuirks):
             description="WITH (ONLINE = ON) ALTER COLUMN",
         ),
     }
-
-    def type_preferences(self) -> "dict[str, str]":
-        """SQL Server prefers ``INT`` (not ``INTEGER``) and ``DATETIME2`` (not ``TIMESTAMP``).
-
-        T-SQL's ``TIMESTAMP`` is a rowversion type, not a datetime; ``DATETIME2``
-        is the correct timestamp-with-precision name.
-        """
-        return {"INTEGER": "INT", "VARCHAR": "VARCHAR", "TIMESTAMP": "DATETIME2"}
-
-    def render_computed_column(
-        self, col: Any, formatted_col_name: str
-    ) -> Tuple[Optional[str], Optional[str]]:
-        """SQL Server: ``col AS (expr) [PERSISTED]`` (replaces the type prefix)."""
-        if not getattr(col, "is_computed", False) or not getattr(col, "computed_expression", None):
-            return None, None
-        persisted = "PERSISTED" if getattr(col, "computed_stored", False) else ""
-        new_parts0 = f"{formatted_col_name} AS ({col.computed_expression})"
-        return (persisted if persisted else None), new_parts0
 
 
 __all__ = ["SqlserverQuirks"]

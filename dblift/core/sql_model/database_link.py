@@ -42,45 +42,6 @@ class DatabaseLink(SqlObject):
         self.connect_string = connect_string
         self.public = public
 
-    @property
-    def create_statement(self) -> str:
-        """
-        Generate CREATE DATABASE LINK statement.
-
-        Note: For security reasons, passwords are not stored or generated.
-        The CREATE statement will need to be completed with credentials.
-
-        Returns:
-            Oracle CREATE DATABASE LINK statement (without password)
-        """
-        # Public or private link
-        link_type = "PUBLIC " if self.public else ""
-        link_name = self.format_identifier(self.name)
-
-        stmt = f"CREATE {link_type}DATABASE LINK {link_name}"
-
-        # Add CONNECT TO clause if username is specified
-        if self.username:
-            stmt += f"\n  CONNECT TO {self.username} IDENTIFIED BY <password>"
-
-        # Add USING clause if connect string is specified
-        if self.connect_string:
-            stmt += f"\n  USING '{self.connect_string}'"
-
-        return stmt
-
-    @property
-    def drop_statement(self) -> str:
-        """
-        Generate DROP DATABASE LINK statement.
-
-        Returns:
-            Oracle DROP DATABASE LINK statement
-        """
-        link_type = "PUBLIC " if self.public else ""
-        link_name = self.format_identifier(self.name)
-        return f"DROP {link_type}DATABASE LINK {link_name}"
-
     def __str__(self) -> str:
         """Return string representation of the database link."""
         link_type = "PUBLIC " if self.public else ""
