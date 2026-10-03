@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.10.0] - 2026-10-03
+
 ### Added
 
 - **SQL-file models keep a table's partition count and partition list.** A model read from SQL files kept only the partitioning method and columns of `PARTITION BY`; `PARTITIONS n` and an explicit list of partitions are now kept as well, so tools that write DDL from the model can reproduce the partitioning the file declares.
@@ -20,6 +22,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   plugin, `DdlQuirks`) are now typed against them, and `dblift/db/` no
   longer imports `dblift.core.sql_generator`. The surviving hooks retain
   their signatures; migration SQL execution is unchanged.
+
 ### Changed
 
 - `dblift undo` now treats migrations that carry the same `dblift-group-...`
@@ -63,7 +66,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Oracle identity columns now capture and compare ALWAYS, BY DEFAULT and BY DEFAULT ON NULL. Identity generation is part of column equality and hashing (and therefore table comparison): older snapshots with an unspecified kind (`None`) compare unequal to an explicit kind such as `ALWAYS`, even where that matches the engine default.
 - A comment in front of a statement no longer hides that it must run outside a transaction. A migration such as `-- build online` followed by `CREATE INDEX CONCURRENTLY …` on PostgreSQL (or a SQLite `PRAGMA foreign_keys` after a comment) was classified as transactional, so `migrate` ran it inside the transaction block and PostgreSQL rejected it. Classification now skips leading comments before matching.
 
-- `validate-sql` infers the dialect from a config's `database.url` when no `database.type` is set, the same way every other command already does. A config with only `database.url: sqlite:///...` (no `type:`) previously failed with "validate-sql requires --dialect for offline validation when no database type is configured." even though the dialect was unambiguous from the URL scheme.
 - `dblift mcp` tool results no longer carry stray library log output mixed into the command's own console output. Building the MCP server left an unrelated logging handler installed process-wide, which could pick up verbose third-party log lines that the CLI itself never prints and mirror them into a tool's result.
 - `dblift mcp` no longer leaves a small, unfinished log file behind on every call when `--log-format html` or a combined format such as `text,html` is used. A throwaway logger built while a call's configuration loads, before the call's own log format is known, no longer opens a file of its own; the real, per-call logger configured moments later is unaffected.
 - `DBLiftClient.import_flyway()` emits `MIGRATION_FAILED` (matching `migrate()` and `undo()`) instead of `MIGRATION_COMPLETED` when the import returns a failed result without raising an exception, so listeners can tell a failed import from a successful one.
@@ -105,7 +107,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Removed **37 `BaseQuirks` rendering members and their plugin overrides**.
   The SQL generator that read them left the core in 4.10; nothing in the core
-  reads them. This is scheduled for a MINOR release; `dblift.db` is not public
+  reads them. `dblift.db` is not public
   API (see [the semver policy](docs/semver-policy.md)). A plugin that overrode
   one of these members has nothing to override any more. Plugins returning a
   generator from `ddl_generator_class` / `alter_generator_class` are unaffected.
@@ -133,7 +135,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **The four `render_column_*_change` ALTER hooks on `BaseQuirks` and their plugin
   overrides are removed.** They rendered `ALTER TABLE` statements for column diffs;
   the SQL generator that read them left the core in 4.10 and nothing in the core
-  reads them. This is scheduled for a MINOR release; `dblift.db` is not public API.
+  reads them. `dblift.db` is not public API.
   Removed: `render_column_nullable_change`, `render_column_default_change`,
   `render_column_type_change`, `render_column_collation_change`, and the overrides
   in the cosmosdb, db2, mysql, oracle, postgresql, sqlite and sqlserver plugins.
@@ -142,7 +144,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **46 unread `BaseQuirks` members, their plugin overrides, and the
   `ComparatorQuirks` protocol are removed.** Nothing in the core reads them.
-  This is scheduled for a MINOR release; `dblift.db` and
+  `dblift.db` and
   `dblift.core.dialect_boundary` are not public API
   (see [the semver policy](docs/semver-policy.md)).
 
@@ -174,8 +176,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **11 more unread `BaseQuirks` members with their plugin overrides, the
   `RowLimitClauses` type, and the `ValidatorQuirks` protocol are removed.**
-  Nothing in the core reads them. This is scheduled for a MINOR release;
-  `dblift.db` and `dblift.core.dialect_boundary` are not public API
+  Nothing in the core reads them. `dblift.db` and
+  `dblift.core.dialect_boundary` are not public API
   (see [the semver policy](docs/semver-policy.md)).
 
   - Index-build facts: `supports_online_index`, `index_supports_online_offline`,
@@ -193,8 +195,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`table_drop_style` and `pygments_lexer` are removed from `BaseQuirks`, with
   their plugin overrides.** Nothing in the core reads them: the first described
   the DROP TABLE form for a DDL generator the core no longer ships, and the second
-  named a lexer for console highlighting the core never does. This is scheduled
-  for a MINOR release; `dblift.db` is not public API. Overrides are removed from
+  named a lexer for console highlighting the core never does. `dblift.db` is
+  not public API. Overrides are removed from
   the duckdb, mysql, oracle, sqlite and snowflake plugins (`table_drop_style`)
   and from the mysql, postgresql, snowflake and sqlserver plugins
   (`pygments_lexer`). A plugin that set either one has nothing to override any more.
