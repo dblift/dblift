@@ -15,6 +15,8 @@ from dblift.cli.handlers._shared import (
     run_json_guarded,
 )
 from dblift.config import DbliftConfig
+from dblift.core.logger.log import FileLog, LogFormat
+from dblift.core.logger.results import OperationResult
 from dblift.core.migration.commands.base_command import PreflightConnectionError
 
 
@@ -79,6 +81,57 @@ def test_run_json_guarded_turns_exception_into_error_payload(capsys):
 
     assert (ok, returned) == (False, None)
     assert json.loads(capsys.readouterr().out) == {"success": False, "error": "RuntimeError: boom"}
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("log_format", [LogFormat.JSON, LogFormat.HTML])
+def test_run_json_guarded_records_failed_result_in_file_report(tmp_path, capsys, log_format):
+    log = FileLog("test", tmp_path, log_format, schema="main", database_name="db")
+    ctx = CliCommandContext(args=SimpleNamespace(format="json"), log=log)
+    result = OperationResult(success=False, error_message="checksum mismatch")
+    result.complete()
+
+    ok, returned = run_json_guarded(
+        ctx, "VALIDATE", lambda: result, lambda r: {"success": r.success}
+    )
+    log.close()
+
+    assert ok is False and returned is result
+    assert json.loads(capsys.readouterr().out) == {"success": False}
+    report = log.log_file.read_text(encoding="utf-8")
+    if log_format == LogFormat.JSON:
+        document = json.loads(report)
+        assert document["status"] == "FAILED"
+        assert document["error"] == "checksum mismatch"
+    else:
+        assert "VALIDATE" in report
+        assert "Failed" in report
+        assert "checksum mismatch" in report
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("log_format", [LogFormat.JSON, LogFormat.HTML])
+def test_run_json_guarded_records_exception_in_file_report(tmp_path, capsys, log_format):
+    log = FileLog("test", tmp_path, log_format, schema="main", database_name="db")
+    ctx = CliCommandContext(args=SimpleNamespace(format="json"), log=log)
+
+    def fail():
+        raise RuntimeError("boom")
+
+    ok, returned = run_json_guarded(ctx, "VALIDATE", fail, lambda r: {})
+    log.close()
+
+    assert (ok, returned) == (False, None)
+    assert json.loads(capsys.readouterr().out) == {"success": False, "error": "RuntimeError: boom"}
+    report = log.log_file.read_text(encoding="utf-8")
+    if log_format == LogFormat.JSON:
+        document = json.loads(report)
+        assert document["status"] == "FAILED"
+        assert document["error"] == "RuntimeError: boom"
+    else:
+        assert "VALIDATE" in report
+        assert "Failed" in report
+        assert "RuntimeError: boom" in report
 
 
 @pytest.mark.unit

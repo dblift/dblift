@@ -7,41 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Removed
-
-- Internal schema-discovery modules under `dblift.core.introspection`, the
-  `dblift.core.seams.introspection` registrar, and the NoSQL sampling helper are
-  no longer shipped. Migration execution and the documented Python API are
-  unchanged; direct imports from these internal paths need updating.
-
 ### Added
 
 - **SQL-file models keep a table's partition count and partition list.** A model read from SQL files kept only the partitioning method and columns of `PARTITION BY`; `PARTITIONS n` and an explicit list of partitions are now kept as well, so tools that write DDL from the model can reproduce the partitioning the file declares.
 
-- Table and column comment templates are now available for PostgreSQL, Oracle and Db2, including escaped quotes; installed DDL generators must wire them into export and replay.
+- Sequence data types are now captured, serialized and compared through `Sequence.data_type`.
 
-- Sequence data types are now captured, serialized and compared through `Sequence.data_type`; `AS <type>` will be rendered once installed DDL generators read this field.
-
-- `BaseQuirks.view_supports_create_or_replace` and
-  `view_create_or_replace_keyword` declare single-statement redefinition support
-  for plain views only. SQL Server uses `CREATE OR ALTER` (2016 SP1+); other
-  supported engines use `CREATE OR REPLACE`. This is an additive MINOR API change;
-  SQL output is unchanged.
 - `dblift.db.generator_protocol`: `SqlGeneratorProtocol` and
   `AlterGeneratorProtocol`, runtime-checkable Protocols describing a DDL
   generator and an ALTER generator. The `ddl_generator_class()` /
   `alter_generator_class()` quirks hooks (`BaseQuirks`, every bundled
   plugin, `DdlQuirks`) are now typed against them, and `dblift/db/` no
-  longer imports `dblift.core.sql_generator`. Annotation-only: the
-  generator factories and SQL output are unchanged.
-- `BaseSqlGenerator.generate_drop_statement(obj, dialect)`: public name for
-  an object's DROP statement. It delegates to `_generate_drop_statement`,
-  which subclasses keep implementing.
-- `dblift.core.sql_generator.dependency_analyzer.table_references(sql)`:
-  public name for the `(schema, table)` references a query reads, sorted
-  with unqualified references first. Same extractor `DependencyAnalyzer`
-  uses for view and procedure dependencies.
-
+  longer imports `dblift.core.sql_generator`. The surviving hooks retain
+  their signatures; migration SQL execution is unchanged.
 ### Changed
 
 - `dblift undo` now treats migrations that carry the same `dblift-group-...`
@@ -82,17 +60,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   CockroachDB. Redshift also handles backslash escapes in all single-quoted
   string literals, including ordinary `'...'` strings without an `E` prefix.
 
-- SQLite column type changes now appear as SQL comments naming the table, column and both types and explaining that a table rebuild is required.
-
-- Oracle identity columns now capture, compare and render ALWAYS, BY DEFAULT and BY DEFAULT ON NULL without changing the legacy output when the generation kind is unspecified. Identity generation is now part of column equality and hashing (and therefore table comparison): older snapshots with an unspecified kind (`None`) compare unequal to an explicit kind such as `ALWAYS`, even where that matches the engine default.
-
-- SQL Server column type changes now preserve NULL/NOT NULL from `nullable_diff`, `expected_nullable` or `expected_column.nullable`. New behavior: when none supplies known nullability, the hook returns `None` so the caller can warn, instead of emitting SQL that silently makes the column nullable.
-
-- SQL Server nullability changes now include the column type and decline to render when it is unknown, preserving the NULL-count pre-check.
-
-- Db2 quirks now declare `proc_supports_create_or_replace` and
-  `synonym_supports_create_or_replace` as true: Db2 LUW 9.7+ supports
-  `CREATE OR REPLACE PROCEDURE` / `FUNCTION` and `CREATE OR REPLACE ALIAS`.
+- Oracle identity columns now capture and compare ALWAYS, BY DEFAULT and BY DEFAULT ON NULL. Identity generation is part of column equality and hashing (and therefore table comparison): older snapshots with an unspecified kind (`None`) compare unequal to an explicit kind such as `ALWAYS`, even where that matches the engine default.
 - A comment in front of a statement no longer hides that it must run outside a transaction. A migration such as `-- build online` followed by `CREATE INDEX CONCURRENTLY …` on PostgreSQL (or a SQLite `PRAGMA foreign_keys` after a comment) was classified as transactional, so `migrate` ran it inside the transaction block and PostgreSQL rejected it. Classification now skips leading comments before matching.
 
 - `validate-sql` infers the dialect from a config's `database.url` when no `database.type` is set, the same way every other command already does. A config with only `database.url: sqlite:///...` (no `type:`) previously failed with "validate-sql requires --dialect for offline validation when no database type is configured." even though the dialect was unambiguous from the URL scheme.
@@ -108,6 +76,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   It is now classified as an autocommit-only statement, the same way
   PostgreSQL's `CREATE INDEX CONCURRENTLY` already is, so it actually runs
   outside any transaction and takes effect.
+
+- JSON and HTML file reports now reflect the actual result of `info`, `validate`
+  and `migrate` when the CLI uses `--format json`, including failures.
+- Separate JSON and HTML reports no longer overwrite one another when commands
+  run within the same second. Text logs keep their existing naming.
+
 ### Deprecated
 
 - `DBLiftClient.generate_undo_script()` / `generate_undo_scripts()` and
@@ -121,9 +95,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   unchanged until removal; write `U*__.sql` undo scripts by hand for
   migrations it cannot reverse.
 
-### Fixed
-
 ### Removed
+
+- Internal schema-discovery modules under `dblift.core.introspection`, the
+  `dblift.core.seams.introspection` registrar, and the NoSQL sampling helper are
+  no longer shipped. Migration execution and the documented Python API are
+  unchanged; direct imports from these internal paths need updating.
 
 - Removed **37 `BaseQuirks` rendering members and their plugin overrides**.
   The SQL generator that read them left the core in 4.10; nothing in the core
