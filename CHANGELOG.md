@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Removed
+
+- Internal schema-discovery modules under `dblift.core.introspection`, the
+  `dblift.core.seams.introspection` registrar, and the NoSQL sampling helper are
+  no longer shipped. Migration execution and the documented Python API are
+  unchanged; direct imports from these internal paths need updating.
+
 ### Added
 
 - **SQL-file models keep a table's partition count and partition list.** A model read from SQL files kept only the partitioning method and columns of `PARTITION BY`; `PARTITIONS n` and an explicit list of partitions are now kept as well, so tools that write DDL from the model can reproduce the partitioning the file declares.

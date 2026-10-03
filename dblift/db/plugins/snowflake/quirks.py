@@ -53,13 +53,5 @@ class SnowflakeQuirks(BaseQuirks):
         """Snowflake ALTER generation is registered by higher tiers."""
         return None
 
-    def introspector_class(self) -> Optional[Type[Any]]:
-        """Snowflake rich introspection is registered by higher tiers."""
-        return None
-
-    def vendor_queries_class(self) -> Optional[Type[Any]]:
-        """Snowflake metadata queries are registered by higher tiers."""
-        return None
-
 
 __all__ = ["SnowflakeQuirks"]

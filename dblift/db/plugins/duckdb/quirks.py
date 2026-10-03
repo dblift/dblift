@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Optional, Type
+from typing import TYPE_CHECKING, Optional, Type
 
 from dblift.db.base_quirks import BaseQuirks
 
@@ -65,14 +65,6 @@ class DuckDBQuirks(BaseQuirks):
 
     def alter_generator_class(self) -> Optional[Type["AlterGeneratorProtocol"]]:
         """ALTER generator is supplied by an installed extension package."""
-        return None
-
-    def introspector_class(self) -> Optional[Type[Any]]:
-        """DuckDB rich introspection is supplied by an installed extension package."""
-        return None
-
-    def vendor_queries_class(self) -> "Optional[Type[Any]]":
-        """DuckDB metadata queries are supplied by an installed extension package."""
         return None
 
     def type_equivalents(self) -> "dict[str, str]":

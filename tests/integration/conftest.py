@@ -16,9 +16,6 @@ import pytest
 
 from dblift.config import DbliftConfig
 from dblift.core.logger import DbliftLogger, LogFormat, LogLevel
-from dblift.core.seams.introspection import attach_registered_introspection
-
-attach_registered_introspection()
 
 # Container-readiness helpers extracted in PR-B6. Re-exported here so
 # every test that imports from ``tests.integration.conftest`` keeps

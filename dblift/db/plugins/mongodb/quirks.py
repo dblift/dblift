@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Dict, Optional, Type
+from typing import TYPE_CHECKING, Dict, Optional, Type
 
 from dblift.db.base_quirks import BaseQuirks
 
@@ -74,10 +74,6 @@ class MongodbQuirks(BaseQuirks):
         ``HybridParser`` cannot stand in because it falls back to a regex SQL
         parser that would match nothing meaningful.
         """
-        return None
-
-    def introspector_class(self) -> "Optional[Type[Any]]":
-        """Introspection is supplied by an installed extension package."""
         return None
 
     def type_equivalents(self) -> "Dict[str, str]":

@@ -2,8 +2,7 @@
 
 These pin the ``dialect-string-literal`` rule's scope contract: ``db/`` is
 now scanned for hardcoded dialect-name literals, *except* plugin code under
-``db/plugins/<X>/**`` (plugins own their dialect) and ``core/introspection/``
-(capability matrices). The rule function only inspects ``path.parts`` /
+``db/plugins/<X>/**`` (plugins own their dialect). The rule function only inspects ``path.parts`` /
 ``path.as_posix()``, so the synthetic paths below need not exist on disk.
 """
 
@@ -63,14 +62,6 @@ def test_same_line_annotation_skips() -> None:
 def test_previous_line_annotation_skips() -> None:
     src = '# lint: allow-dialect-string: registry key\nX = "oracle"'
     assert run_rule("db/foo.py", src) == []
-
-
-def test_core_introspection_now_scanned() -> None:
-    # ADR-26 B2: core/introspection is no longer exempt — its dialect-specific
-    # filters moved to plugin quirks, so it is scanned like the rest of core/.
-    violations = run_rule("core/introspection/x.py", 'X = "oracle"')
-    assert len(violations) == 1
-    assert violations[0].rule == "dialect-string-literal"
 
 
 def test_existing_core_root_still_flagged() -> None:

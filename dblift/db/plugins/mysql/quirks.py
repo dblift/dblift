@@ -229,14 +229,6 @@ class MysqlQuirks(BaseQuirks):
         """ALTER generator is supplied by an installed extension package."""
         return None
 
-    def vendor_queries_class(self) -> "Optional[Type[Any]]":
-        """MySQL-family rich metadata queries are supplied by an installed extension package."""
-        return None
-
-    def introspector_class(self) -> "Optional[Type[Any]]":
-        """MySQL-family rich introspection is supplied by an installed extension package."""
-        return None
-
     def parser_class(self, parser_type: str) -> Optional[type]:
         """MySQL parser dispatch: hybrid → :class:`HybridParser`, sqlglot →
         :class:`SqlGlotParser`, regex → :class:`MySqlRegexParser`."""

@@ -16,28 +16,6 @@ from unittest.mock import MagicMock, patch
 
 
 # ---------------------------------------------------------------------------
-# PG partial unique indexes must not vanish from snapshots
-# ---------------------------------------------------------------------------
-class TestPostgresPartialUniqueIndexes(unittest.TestCase):
-    def test_postgres_uses_pg_constraint_query_not_getindexinfo(self) -> None:
-        """``get_unique_constraints`` must hit pg_constraint for postgresql,
-        otherwise standalone partial unique indexes collapse into named UNIQUE
-        constraints with the WHERE predicate stripped."""
-        from dblift.core.introspection.extractors.constraint_extractor import ConstraintExtractor
-
-        self.assertTrue(
-            hasattr(ConstraintExtractor, "_get_unique_constraints_postgresql"),
-            "PG-specific unique-constraint path must exist so getIndexInfo is "
-            "not used for postgresql.",
-        )
-
-
-# ---------------------------------------------------------------------------
-# PG DOMAIN must ship base type + CHECK through introspection
-# ---------------------------------------------------------------------------
-
-
-# ---------------------------------------------------------------------------
 # Strict mode must raise on out-of-order migrations, non-strict warn
 # ---------------------------------------------------------------------------
 class TestStrictOutOfOrder(unittest.TestCase):

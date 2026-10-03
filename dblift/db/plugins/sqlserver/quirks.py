@@ -176,14 +176,6 @@ class SqlserverQuirks(BaseQuirks):
         """ALTER generator is supplied by an installed extension package."""
         return None
 
-    def vendor_queries_class(self) -> "Optional[Type[Any]]":
-        """SQL Server rich metadata queries are supplied by an installed extension package."""
-        return None
-
-    def introspector_class(self) -> "Optional[Type[Any]]":
-        """SQL Server rich introspection is supplied by an installed extension package."""
-        return None
-
     def parser_class(self, parser_type: str) -> Optional[type]:
         """SQL Server parser dispatch: hybrid → :class:`HybridParser`, sqlglot →
         :class:`SqlGlotParser` (``tsql`` dialect), regex → :class:`SqlServerRegexParser`."""
