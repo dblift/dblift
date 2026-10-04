@@ -28,6 +28,9 @@ urls = { Homepage = "https://github.com/dblift/dblift" }
 [project.optional-dependencies]
 dev = ["pytest>=7.3", "httpx>=0.27"]
 
+[project.entry-points."dblift.terminal_commands"]
+ui = "dblift_ui.cli:terminal_commands"
+
 [tool.setuptools.packages.find]
 include = ["dblift_ui*"]
 
