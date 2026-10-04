@@ -158,6 +158,11 @@ class MigrationUI:
             "failed_migrations": total_failed,
         }
 
+        if isinstance(self.log, NullLog):
+            for log in getattr(self.log, "logs", [self.log]):
+                setattr(log, "migration_data", migrations_data)
+            return
+
         summary = self.table_renderer.format_summary_stats(stats)
         # Single emit through DbliftLogger covers both console and file sinks,
         # replacing the previous ``print(summary) + file_only_info(summary)`` pair.

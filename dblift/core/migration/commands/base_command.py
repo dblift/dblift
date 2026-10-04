@@ -135,20 +135,9 @@ class BaseCommandContext:
 
 def _props_text(*lines: str) -> Text:
     """Build a multi-line Text where 'Key: value' lines have bold keys."""
-    from rich.text import Text
+    from dblift.core.migration.ui.command_panels import props_text
 
-    body = Text()
-    for i, line in enumerate(lines):
-        line = str(line) if line is not None else ""
-        if ": " in line:
-            key, _, val = line.partition(": ")
-            body.append(key + ": ", style="bold")
-            body.append(val)
-        else:
-            body.append(line)
-        if i < len(lines) - 1:
-            body.append("\n")
-    return body
+    return props_text(*lines)
 
 
 def _render_main_header_panel(raw_header: str) -> str:
@@ -157,23 +146,9 @@ def _render_main_header_panel(raw_header: str) -> str:
     Shared by BaseCommand._print_main_header_once and higher-tier command
     modules so they render the same styled banner.
     """
-    from rich import box
-    from rich.panel import Panel
+    from dblift.core.migration.ui.command_panels import render_main_header_panel
 
-    from dblift.core.logger.console import render_panel_to_str
-
-    _skip = {"DBLIFT DATABASE MIGRATION LOG"}
-    body_lines = [
-        line
-        for line in raw_header.splitlines()
-        if line and not line.startswith("=") and not line.startswith("-") and line not in _skip
-    ]
-    return render_panel_to_str(
-        Panel(
-            "\n".join(body_lines), title="DBLIFT DATABASE MIGRATION LOG", box=box.HEAVY, expand=True
-        ),
-        width=80,
-    )
+    return render_main_header_panel(raw_header)
 
 
 # Maps ``_execute_callbacks``' ``event_prefix`` argument to the matching
@@ -440,6 +415,9 @@ class BaseCommand:
         if result.end_time is None:
             result.complete()
 
+        if isinstance(self.log, NullLog):
+            return
+
         execution_time_ms = result.execution_time()
 
         # Format execution time appropriately
@@ -560,40 +538,11 @@ class BaseCommand:
         applied_scripts: Optional[List[Any]] = None,
     ) -> "Panel":
         """Build the footer Rich Panel. Returns (Panel, border_style)."""
-        from rich import box
-        from rich.panel import Panel
-        from rich.text import Text
+        from dblift.core.migration.ui.command_panels import build_footer_panel
 
-        _STATUS_STYLE = {"SUCCESS": "bold green", "WARNING": "yellow", "FAILED": "bold red"}
-
-        title = "SUCCESS" if success else "FAILED"
-        border_style = _STATUS_STYLE.get(title, "default")
-
-        status_msg = (
-            f"Command {command_name.upper()} completed successfully (Execution time: {execution_time})"
-            if success
-            else f"Command {command_name.upper()} failed (Execution time: {execution_time})"
+        return build_footer_panel(
+            command_name, success, execution_time, error_message, schema_version, applied_scripts
         )
-
-        body = Text()
-        if applied_scripts:
-            for script in applied_scripts:
-                body.append(f"  - {script}\n")
-        body.append(str(status_msg))
-        if not success and error_message:
-            body.append("\n")
-            body.append("Error: ", style="bold")
-            fmt = str(error_message).rstrip()
-            if "\n" in fmt:
-                body.append("\n" + "\n".join("  " + ln for ln in fmt.splitlines()))
-            else:
-                body.append(fmt)
-        if schema_version:
-            body.append("\n")
-            body.append("Schema Version: ", style="bold")
-            body.append(str(schema_version))
-
-        return Panel(body, title=title, box=box.HEAVY, border_style=border_style, expand=True)
 
     def _format_command_footer(
         self,
@@ -943,41 +892,17 @@ class BaseCommand:
         schema_name: Optional[str] = None,
     ) -> "Panel":
         """Build the command header as a Rich Panel (with bold keys, no color strip)."""
-        from rich import box
-        from rich.panel import Panel
+        from dblift.core.migration.ui.command_panels import build_command_header_panel
 
-        lines: List[str] = []
-
-        if connection_info:
-            lines.append(connection_info)
-
-        if database_name:
-            lines.append(f"Database: {database_name}")
-        elif hasattr(self, "config") and hasattr(self.config, "database"):
-            db_name = getattr(self.config.database, "database_name", None) or getattr(
-                self.config.database, "database", None
-            )
-            if db_name:
-                lines.append(f"Database: {db_name}")
-
-        if schema_name:
-            lines.append(f"Schema: {schema_name}")
-        elif hasattr(self, "config") and hasattr(self.config, "database"):
-            schema = getattr(self.config.database, "schema", None)
-            if schema:
-                lines.append(f"Schema: {schema}")
-
-        lines.append(f"Schema Version: {schema_version or '<none>'}")
-        lines.append(f"Database URL: {database_url or '<not available>'}")
-
-        if filters:
-            lines.append(f"Filtering Options: {' '.join(filters)}")
-
-        return Panel(
-            _props_text(*lines),
-            title=f"DBLIFT COMMAND: {command_name.upper()}",
-            box=box.HEAVY,
-            expand=True,
+        return build_command_header_panel(
+            command_name,
+            filters,
+            schema_version,
+            database_url,
+            connection_info,
+            database_name,
+            schema_name,
+            getattr(getattr(self, "config", None), "database", None),
         )
 
     def _build_filters_list(
@@ -1177,6 +1102,9 @@ class BaseCommand:
         )
         database_url = self._resolve_database_url_masked()
         connection_info = self._resolve_connection_info()
+
+        if isinstance(self.log, NullLog):
+            return
 
         should_print_header = self._is_console_output()
         if should_print_header:

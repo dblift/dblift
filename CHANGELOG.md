@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- An explicit `NullLog` now runs SQLite migrations and API info, validation, and
+  undo without loading Rich or Jinja2, writing presentation output, or creating
+  reports; results and migration history remain available.
 - Importing `dblift.extensions` now loads its category modules only when accessed.
   The existing category exports and their module identities remain unchanged.
 - Importing provider contracts no longer loads Rich, Jinja2, or sqlglot through
