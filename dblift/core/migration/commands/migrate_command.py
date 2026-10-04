@@ -702,6 +702,9 @@ class MigrateCommand(BaseCommand):
         """
         from dblift.core.seams.runtime_checks import run_checks
 
+        if not dry_run and not mark_as_executed:
+            self._prepare_required_analysis()
+
         # A dry run applies nothing, so the pre-migrate checks that gate
         # applying a migration do not run for it — the same reason the
         # per-statement migration.pre_execution checks never fire in dry-run.

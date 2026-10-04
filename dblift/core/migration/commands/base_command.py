@@ -27,6 +27,7 @@ from dblift.core.logger.log import LogFormat
 from dblift.core.logger.results import CallbackExecution
 from dblift.core.migration.executor.execution_engine import ExecutionEngine
 from dblift.core.migration.executor.migration_helpers import MigrationHelpers
+from dblift.core.migration.formats.migration_format import MigrationFormat
 from dblift.core.migration.history.migration_history_manager import MigrationHistoryManager
 from dblift.core.migration.rules.migration_rules import MigrationRules
 from dblift.core.migration.scripting.migration_script_manager import MigrationScriptManager
@@ -667,6 +668,37 @@ class BaseCommand:
             # must propagate unchanged.
             exc.result = result
             raise
+
+    def _prepare_required_analysis(self) -> None:
+        """Prepare enriched SQL journaling before this command can write."""
+        service = getattr(getattr(self, "execution_engine", None), "sql_execution_service", None)
+        prepare = getattr(service, "prepare_analysis", None)
+        if prepare is not None:
+            prepare()
+
+    def _prepare_analysis_for_sql_callbacks(
+        self,
+        scripts_dir: Path,
+        events: tuple[str, ...],
+        recursive: bool,
+        additional_dirs: Optional[List[Path]],
+        dir_recursive_map: Optional[Dict[Path, bool]],
+    ) -> None:
+        """Prepare only when this command's callback catalog contains SQL."""
+        snapshot = self.state_manager.new_callback_snapshot()
+        self._callback_snapshot = snapshot
+        for event in events:
+            callbacks = self.state_manager.get_callbacks_by_event(
+                scripts_dir,
+                event,
+                read_snapshot=snapshot,
+                recursive=recursive,
+                additional_dirs=additional_dirs,
+                dir_recursive_map=dir_recursive_map,
+            )
+            if any(callback.format == MigrationFormat.SQL for callback in callbacks):
+                self._prepare_required_analysis()
+                return
 
     def _run_preflight(
         self,

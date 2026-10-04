@@ -4,6 +4,7 @@ import logging
 import re
 from typing import Any, Dict, List, Optional, Tuple
 
+from dblift.core.exceptions import ParserNotAvailableError
 from dblift.core.logger import Log
 from dblift.core.migration.sql.statement_splitter import StatementSplitter
 from dblift.core.sql_model._base_sql_object import SqlObjectType
@@ -380,6 +381,18 @@ class SqlAnalyzer:
     def parser_factory(self, value: Any) -> None:
         """Keep explicit parser factory replacements available to consumers."""
         self._parser_factory = value
+
+    def prepare_object_analysis(self) -> None:
+        """Load the parser selected for object extraction before SQL is applied."""
+        get_parser = getattr(self.parser_factory, "get_parser", None)
+        if get_parser is None:
+            return  # An injected factory without a preparation hook is opaque.
+        try:
+            get_parser()
+        except ParserNotAvailableError as exc:
+            if isinstance(exc.__cause__, ModuleNotFoundError):
+                raise exc.__cause__ from None
+            raise
 
     def get_statement_type(self, sql: str) -> str:
         """Get the high-level type of SQL statement (DDL, DML, QUERY, UNKNOWN).
