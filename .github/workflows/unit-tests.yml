@@ -35,8 +35,8 @@ jobs:
           cache: pip
       - name: Install artifact test tools
         run: python -m pip install build pytest
-      - name: Qualify installed wheel and sdist
-        run: python -m pytest tests/artifacts/test_lightweight_distribution.py -q
+      - name: Qualify installed wheel, sdist, and additive extensions
+        run: python -m pytest tests/artifacts/ -q
 
   unit-tests:
     runs-on: ubuntu-latest
