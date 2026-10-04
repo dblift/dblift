@@ -1,0 +1,198 @@
+[
+  {
+    "dialect": "postgresql",
+    "sql": "SELECT E'it\\'s; x'; SELECT 2;",
+    "strict": false,
+    "statements": [
+      "SELECT E'it\\'s; x';",
+      "SELECT 2;"
+    ],
+    "error_type": null
+  },
+  {
+    "dialect": "postgresql",
+    "sql": "CREATE OR REPLACE FUNCTION greet()\nRETURNS TEXT AS $$\nBEGIN\n RETURN 'Hello';\nEND;\n$$ LANGUAGE plpgsql;\n",
+    "strict": false,
+    "statements": [
+      "CREATE OR REPLACE FUNCTION greet()\nRETURNS TEXT AS $$\nBEGIN\n RETURN 'Hello';\nEND;\n$$ LANGUAGE plpgsql;"
+    ],
+    "error_type": null
+  },
+  {
+    "dialect": "postgresql",
+    "sql": "DO $body$ BEGIN PERFORM 1; PERFORM 2; END $body$; SELECT 3;",
+    "strict": false,
+    "statements": [
+      "DO $body$ BEGIN PERFORM 1; PERFORM 2; END $body$;",
+      "SELECT 3;"
+    ],
+    "error_type": null
+  },
+  {
+    "dialect": "postgresql",
+    "sql": "/* outer /* nested; */ still comment */\nSELECT 1;",
+    "strict": false,
+    "statements": [
+      "SELECT 1;"
+    ],
+    "error_type": null
+  },
+  {
+    "dialect": "postgresql",
+    "sql": "COPY t (id) FROM stdin;\n1\n\\.\nSELECT 1;\n",
+    "strict": false,
+    "statements": [
+      "COPY t (id) FROM stdin;\n1\n\\.",
+      "SELECT 1;"
+    ],
+    "error_type": null
+  },
+  {
+    "dialect": "postgresql",
+    "sql": "\\i other.sql\nSELECT 1;\n",
+    "strict": false,
+    "statements": null,
+    "error_type": "UnsupportedMetaCommandError"
+  },
+  {
+    "dialect": "postgresql",
+    "sql": "\\i other.sql\nSELECT 1;\n",
+    "strict": true,
+    "statements": null,
+    "error_type": "UnsupportedMetaCommandError"
+  },
+  {
+    "dialect": "postgresql",
+    "sql": "-- just a comment\n",
+    "strict": false,
+    "statements": [],
+    "error_type": null
+  },
+  {
+    "dialect": "postgresql",
+    "sql": "",
+    "strict": false,
+    "statements": [],
+    "error_type": null
+  },
+  {
+    "dialect": "oracle",
+    "sql": "CREATE OR REPLACE PROCEDURE p AS BEGIN NULL; END;\n/\n",
+    "strict": false,
+    "statements": [
+      "CREATE OR REPLACE PROCEDURE p AS BEGIN NULL; END;"
+    ],
+    "error_type": null
+  },
+  {
+    "dialect": "oracle",
+    "sql": "PROMPT Ready\nREM note\nCREATE TABLE t (id NUMBER);\n",
+    "strict": false,
+    "statements": [
+      "CREATE TABLE t (id NUMBER);"
+    ],
+    "error_type": null
+  },
+  {
+    "dialect": "oracle",
+    "sql": "SPOOL /tmp/dblift_test.log;\nCREATE TABLE t (id NUMBER);\n",
+    "strict": false,
+    "statements": [
+      "CREATE TABLE t (id NUMBER);"
+    ],
+    "error_type": null
+  },
+  {
+    "dialect": "oracle",
+    "sql": "INSERT INTO t VALUES ('a '\n'b');\n",
+    "strict": false,
+    "statements": [
+      "INSERT INTO t VALUES ('a '\n'b');"
+    ],
+    "error_type": null
+  },
+  {
+    "dialect": "mysql",
+    "sql": "DELIMITER //\nCREATE PROCEDURE p() BEGIN SELECT 1; END //\nDELIMITER ;",
+    "strict": false,
+    "statements": [
+      "CREATE PROCEDURE p() BEGIN SELECT 1; END"
+    ],
+    "error_type": null
+  },
+  {
+    "dialect": "mysql",
+    "sql": "CREATE DEFINER=`root`@`%` VIEW v AS SELECT id FROM parent;\n",
+    "strict": false,
+    "statements": [
+      "CREATE DEFINER=`root`@`%` VIEW v AS SELECT id FROM parent"
+    ],
+    "error_type": null
+  },
+  {
+    "dialect": "mysql",
+    "sql": "SELECT 'it''s; x'; SELECT 2;",
+    "strict": false,
+    "statements": [
+      "SELECT 'it''s; x'",
+      "SELECT 2"
+    ],
+    "error_type": null
+  },
+  {
+    "dialect": "mariadb",
+    "sql": "DELIMITER //\nSELECT 1 //\nDELIMITER ;",
+    "strict": false,
+    "statements": [
+      "SELECT 1"
+    ],
+    "error_type": null
+  },
+  {
+    "dialect": "sqlserver",
+    "sql": "CREATE TABLE t (id INT);\nGO\nGO\nSELECT 1;\n",
+    "strict": false,
+    "statements": [
+      "CREATE TABLE t (id INT);",
+      "SELECT 1;"
+    ],
+    "error_type": null
+  },
+  {
+    "dialect": "sqlserver",
+    "sql": "INSERT INTO t VALUES ('a '\n'b');\n",
+    "strict": false,
+    "statements": [
+      "INSERT INTO t VALUES ('a '\n'b');"
+    ],
+    "error_type": null
+  },
+  {
+    "dialect": "sqlite",
+    "sql": "SELECT 'a;b'; SELECT 2;",
+    "strict": false,
+    "statements": [
+      "SELECT 'a;b';",
+      "SELECT 2;"
+    ],
+    "error_type": null
+  },
+  {
+    "dialect": "duckdb",
+    "sql": "/* just a comment */",
+    "strict": false,
+    "statements": [
+      "/* just a comment */"
+    ],
+    "error_type": null
+  },
+  {
+    "dialect": "db2",
+    "sql": "/* outer /* nested */ still comment */\nSELECT 1;",
+    "strict": false,
+    "statements": [
+      "/* outer /* nested */ still comment */\nSELECT 1"
+    ],
+    "error_type": null
+  }
+]

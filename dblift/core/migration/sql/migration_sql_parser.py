@@ -6,7 +6,7 @@ from typing import Any, List, Optional
 from dblift.core.constants import ENV_PREFIX
 from dblift.core.exceptions import UnsupportedMetaCommandError
 from dblift.core.logger import Log
-from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
+from dblift.core.migration.sql.execution_contracts import ExecutionSqlParser
 
 
 def _default_splitter_dialect() -> str:
@@ -55,7 +55,7 @@ def fallback_migration_sql(content: str, log: Log, error: Exception) -> List[str
     return statements
 
 
-def parse_migration_sql(analyzer: SqlAnalyzer, content: str, log: Log) -> List[str]:
+def parse_migration_sql(analyzer: ExecutionSqlParser, content: str, log: Log) -> List[str]:
     """Split the supplied content without modifying migration state."""
     try:
         statements = analyzer.split_statements(content)
