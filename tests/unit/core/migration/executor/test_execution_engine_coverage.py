@@ -861,6 +861,23 @@ class TestExecuteCallbackAdditional(unittest.TestCase):
 class TestQueryResultCapture(unittest.TestCase):
     """--show-query-results: rows from a SELECT are captured on the OperationResult."""
 
+    def test_migration_query_respects_existing_renderer_patch_target(self):
+        engine = _make_engine()
+        engine.sql_execution_service = MagicMock()
+        engine.sql_execution_service.execute_statement.return_value = (True, [{"id": 1}])
+        result = OperationResult()
+        result.show_query_results = True
+
+        with patch(
+            "dblift.core.migration.executor.execution_engine.render_records_table",
+            return_value="patched table",
+        ):
+            assert engine._execute_statements(
+                ["SELECT id FROM t"], _make_sql_migration(), result, time.time()
+            )
+
+        engine.log.info.assert_any_call("patched table")
+
     def test_migration_query_captures_columns_and_rows_when_enabled(self):
         engine = _make_engine()
         mock_ses = MagicMock()

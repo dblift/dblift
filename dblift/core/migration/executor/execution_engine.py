@@ -5,9 +5,10 @@ This module contains the low-level execution logic for individual migrations,
 callbacks, and SQL statements.
 """
 
+import sys
 import time
 from enum import Enum
-from typing import Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 from dblift.config.dblift_config import DbliftConfig
 from dblift.core.constants import (
@@ -17,8 +18,8 @@ from dblift.core.constants import (
 )
 from dblift.core.exceptions import CallbackExecutionError, TransactionAbortedError
 from dblift.core.logger import Log, NullLog
-from dblift.core.logger.console import render_records_table, rows_to_columns_and_values
 from dblift.core.logger.results import CallbackExecution, MigrationInfo, OperationResult
+from dblift.core.logger.tabular_data import rows_to_columns_and_values
 from dblift.core.migration.executor.transaction_policy import (
     TransactionPolicy,
     TransactionPolicyDecision,
@@ -45,6 +46,18 @@ from dblift.db.error import clean_driver_error_message
 from dblift.db.provider_interfaces import TransactionalProvider
 from dblift.db.provider_registry import ProviderRegistry
 from dblift.db.value_utils import to_python_string
+
+if TYPE_CHECKING:
+    from dblift.core.logger.console import render_records_table  # noqa: F401
+
+
+def __getattr__(name: str) -> Any:
+    if name == "render_records_table":
+        from dblift.core.logger.console import render_records_table as renderer
+
+        globals()[name] = renderer
+        return renderer
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
 def _is_ddl_statement_for_success_log(statement: str) -> bool:
@@ -663,8 +676,9 @@ class ExecutionEngine:
                                 columns,
                                 table_rows,
                             )
+                            render_table = getattr(sys.modules[__name__], "render_records_table")
                             self.log.info(
-                                render_records_table(
+                                render_table(
                                     [(c, "left") for c in columns],
                                     table_rows,
                                     title=f"Query result ({len(table_rows)} rows)",
@@ -1180,8 +1194,11 @@ class ExecutionEngine:
                                     table_rows,
                                 )
                                 if table_rows:
+                                    render_table = getattr(
+                                        sys.modules[__name__], "render_records_table"
+                                    )
                                     self.log.info(
-                                        render_records_table(
+                                        render_table(
                                             [(c, "left") for c in columns],
                                             table_rows,
                                             title=f"Query result ({len(table_rows)} rows)",
@@ -1227,8 +1244,11 @@ class ExecutionEngine:
                                     table_rows,
                                 )
                                 if table_rows:
+                                    render_table = getattr(
+                                        sys.modules[__name__], "render_records_table"
+                                    )
                                     self.log.info(
-                                        render_records_table(
+                                        render_table(
                                             [(c, "left") for c in columns],
                                             table_rows,
                                             title=f"Query result ({len(table_rows)} rows)",
