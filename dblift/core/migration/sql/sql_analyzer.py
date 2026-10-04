@@ -366,11 +366,20 @@ class SqlAnalyzer:
             self.dialect, logger=self.logger
         )
 
-        # Set up rich parser factory for object extraction and schema analysis.
-        if parser_factory is not None:
-            self.parser_factory = parser_factory
-        else:
-            self.parser_factory = SqlParserFactory(self.dialect)
+        # Rich parser construction is needed only by explicit analysis consumers.
+        self._parser_factory: Any = parser_factory
+
+    @property
+    def parser_factory(self) -> Any:
+        """Return the rich parser factory, constructing it on first access."""
+        if self._parser_factory is None:
+            self._parser_factory = SqlParserFactory(self.dialect)
+        return self._parser_factory
+
+    @parser_factory.setter
+    def parser_factory(self, value: Any) -> None:
+        """Keep explicit parser factory replacements available to consumers."""
+        self._parser_factory = value
 
     def get_statement_type(self, sql: str) -> str:
         """Get the high-level type of SQL statement (DDL, DML, QUERY, UNKNOWN).
