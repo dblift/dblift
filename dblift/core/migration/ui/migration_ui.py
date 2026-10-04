@@ -6,7 +6,7 @@ to use specialized components for better separation of concerns.
 """
 
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 from dblift.core.logger import Log, NullLog
 from dblift.core.logger.results import is_failed_migration_status
@@ -15,7 +15,18 @@ from dblift.core.migration.scripting.migration_script_manager import MigrationSc
 from dblift.core.migration.state.migration_state import MigrationState
 
 from .data_collector import MigrationDataCollector
-from .table_renderer import TableRenderer
+
+if TYPE_CHECKING:
+    from .table_renderer import TableRenderer
+
+
+def __getattr__(name: str) -> Any:
+    if name == "TableRenderer":
+        from .table_renderer import TableRenderer
+
+        globals()[name] = TableRenderer
+        return TableRenderer
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
 class MigrationUI:
@@ -32,7 +43,21 @@ class MigrationUI:
 
         # Initialize specialized components
         self.data_collector = MigrationDataCollector(log)
-        self.table_renderer = TableRenderer(log)
+        self._table_renderer: Optional["TableRenderer"] = None
+
+    @property
+    def table_renderer(self) -> "TableRenderer":
+        """Return this UI's renderer, creating it on first display."""
+        if self._table_renderer is None:
+            from .migration_ui import TableRenderer
+
+            self._table_renderer = TableRenderer(self.log)
+        return self._table_renderer
+
+    @table_renderer.setter
+    def table_renderer(self, renderer: "TableRenderer") -> None:
+        """Use an injected renderer for subsequent displays."""
+        self._table_renderer = renderer
 
     def get_migration_data(
         self,

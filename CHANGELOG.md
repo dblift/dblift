@@ -14,6 +14,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Importing provider contracts no longer loads Rich, Jinja2, or sqlglot through
   logger and DML helpers. HTML formatting and SQL analysis still load these
   libraries when called.
+- Importing `dblift.api` no longer loads Rich or Jinja2. Query-result data
+  shaping stays available without presentation libraries; table rendering is
+  loaded when requested.
 
 ## [4.10.0] - 2026-10-03
 
