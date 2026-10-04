@@ -300,6 +300,7 @@ def test_installed_silent_api_without_presentation_dependencies(candidate_wheel,
     assert diagnostic["venv_verified_before_uninstall"] is True
     assert "rich" in diagnostic["pip_check_output"].lower()
     assert diagnostic["silent_sqlite"] is True
+    assert diagnostic["no_implicit_report_files"] is True
 
 
 def test_installed_low_level_sqlite_without_sqlglot(candidate_wheel, tmp_path):

@@ -18,6 +18,8 @@ def _run(args: list[str]) -> subprocess.CompletedProcess[str]:
 
 
 def _presentation() -> bool:
+    work = Path.cwd()
+    before = {path.relative_to(work) for path in work.rglob("*") if path.is_file()}
     assert importlib.util.find_spec("rich") is None
     assert importlib.util.find_spec("jinja2") is None
     import dblift
@@ -58,6 +60,13 @@ def _presentation() -> bool:
             ).fetchall()
             == []
         )
+    added = {path.relative_to(work) for path in work.rglob("*") if path.is_file()} - before
+    expected = {
+        Path("diagnostic_migrations/V1__create.sql"),
+        Path("diagnostic_migrations/U1__create.sql"),
+        Path("diagnostic.sqlite"),
+    }
+    assert added == expected, added
     return True
 
 
@@ -132,8 +141,9 @@ def main() -> None:
     assert pip_check.returncode != 0
     sqlglot_evidence = None
     if profile == "presentation":
-        assert _presentation()
+        presentation_verified = _presentation()
     else:
+        presentation_verified = False
         sqlglot_evidence = _sqlglot()
     import dblift
 
@@ -149,6 +159,7 @@ def main() -> None:
                 "pip_check_returncode": pip_check.returncode,
                 "pip_check_output": pip_check.stdout + pip_check.stderr,
                 "silent_sqlite": profile == "presentation",
+                "no_implicit_report_files": presentation_verified,
                 "low_level_v_u": profile == "sqlglot",
                 "standard_client_failed_before_mutation": profile == "sqlglot",
                 "standard_client_failure": sqlglot_evidence,
