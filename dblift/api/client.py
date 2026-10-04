@@ -1246,6 +1246,7 @@ class DBLiftClient:
         config_path: str,
         logger: Optional[Any] = None,
         environment: Optional[str] = None,
+        relative_to_config: bool = False,
         **overrides: Any,
     ) -> Self:
         """Create a client instance from config file path.
@@ -1257,6 +1258,10 @@ class DBLiftClient:
                 section, deep-merged over the root sections before overrides.
                 When ``None``, selection still honors ``DBLIFT_ENV`` (or
                 ``resolve.env_var``) and ``resolve.branch_map``.
+            relative_to_config: When ``True``, relative paths in the file
+                (migration directories, a file database such as SQLite, the
+                log directory) resolve from the folder containing
+                ``config_path`` rather than the working directory.
             **overrides: Configuration overrides (database_url, ...).
         """
         if environment is not None:
@@ -1264,7 +1269,11 @@ class DBLiftClient:
         return cast(
             Self,
             client_from_config_file(
-                config_path, logger, client_cls=cls._resolve_factory_client_cls(), **overrides
+                config_path,
+                logger,
+                client_cls=cls._resolve_factory_client_cls(),
+                relative_to_config=relative_to_config,
+                **overrides,
             ),
         )
 

@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`DBLiftClient.from_config_file(..., relative_to_config=True)`.** Relative paths in the configuration file (migration directories, a file database such as SQLite, the log directory) resolve from the folder that holds the file instead of the working directory. Lets a long-running process open several projects without changing directory. Off by default; existing behaviour is unchanged.
+
 ### Changed
 
 - Provider contracts no longer carry internal schema-snapshot and data-storage

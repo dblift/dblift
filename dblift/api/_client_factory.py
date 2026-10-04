@@ -15,6 +15,7 @@ from dblift.config import DbliftConfig
 from dblift.config.config_builder import ConfigBuilder
 from dblift.config.database_config import BaseDatabaseConfig
 from dblift.config.errors import ConfigurationError
+from dblift.config.path_anchoring import anchor_config_paths
 from dblift.core.logger import DbliftLogger, LogFormat, LogLevel
 from dblift.db.native_connection_manager import NativeConnectionManager
 from dblift.db.provider_registry import ProviderRegistry
@@ -297,6 +298,7 @@ def client_from_config_file(
     logger: Optional[Any] = None,
     *,
     client_cls: Optional[type] = None,
+    relative_to_config: bool = False,
     **overrides: Any,
 ) -> Any:
     """Create a client instance from config file path.
@@ -305,12 +307,17 @@ def client_from_config_file(
         config_path: Path to configuration file
         logger: Optional logger instance
         client_cls: Concrete client class (defaults to :class:`~api.client.DBLiftClient`)
+        relative_to_config: Resolve the file's relative paths (migration
+            directories, file database, log directory) from the folder that
+            holds ``config_path`` instead of the working directory.
         **overrides: Configuration overrides (database_url, database_schema, etc.)
 
     Returns:
         An instance of ``client_cls`` (or ``DBLiftClient`` when ``client_cls`` is omitted)
     """
     config = ConfigBuilder.build(file_path=config_path, **overrides)
+    if relative_to_config:
+        anchor_config_paths(config, Path(config_path).expanduser().resolve().parent)
     # Keys already merged into ``config`` by ConfigBuilder.build must not be passed again
     # to DBLiftClient (would re-apply or confuse nested database_* aliases).
     passthrough = {
