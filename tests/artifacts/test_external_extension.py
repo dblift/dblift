@@ -11,6 +11,8 @@ from pathlib import Path
 
 import pytest
 
+from tests.artifacts._clean_source import archived_source
+
 ROOT = Path(__file__).resolve().parents[2]
 FIXTURES = ROOT / "tests" / "fixtures"
 PROBE = Path(__file__).with_name("installed_extension_probe.py")
@@ -37,7 +39,12 @@ def _run(args, cwd):
 @pytest.fixture(scope="module")
 def wheels(tmp_path_factory):
     wheel_dir = tmp_path_factory.mktemp("extension-wheels")
-    for source in (ROOT, FIXTURES / "lightweight_extension", FIXTURES / "lightweight_listener"):
+    source = archived_source(ROOT, wheel_dir / "source")
+    for package in (
+        source,
+        source / "tests" / "fixtures" / "lightweight_extension",
+        source / "tests" / "fixtures" / "lightweight_listener",
+    ):
         result = _run(
             [
                 sys.executable,
@@ -47,7 +54,7 @@ def wheels(tmp_path_factory):
                 "--no-deps",
                 "--wheel-dir",
                 str(wheel_dir),
-                str(source),
+                str(package),
             ],
             wheel_dir,
         )

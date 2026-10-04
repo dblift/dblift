@@ -6,9 +6,12 @@ import os
 import shutil
 import subprocess
 import sys
+import zipfile
 from pathlib import Path
 
 import pytest
+
+from tests.artifacts._clean_source import archived_source
 
 ROOT = Path(__file__).resolve().parents[2]
 QUALIFIER = ROOT / "scripts" / "qualify_lightweight_core.py"
@@ -32,8 +35,9 @@ def _retain(source: Path, name: str) -> None:
 @pytest.fixture(scope="module")
 def candidate_wheel(tmp_path_factory):
     dist = tmp_path_factory.mktemp("corpus-wheel")
+    source = archived_source(ROOT, dist / "source")
     subprocess.run(
-        [sys.executable, "-m", "pip", "wheel", "--no-deps", "--wheel-dir", str(dist), str(ROOT)],
+        [sys.executable, "-m", "pip", "wheel", "--no-deps", "--wheel-dir", str(dist), str(source)],
         check=True,
         capture_output=True,
         text=True,
@@ -41,6 +45,17 @@ def candidate_wheel(tmp_path_factory):
     wheel = next(dist.glob("dblift-*.whl"))
     _retain(wheel, wheel.name)
     return wheel
+
+
+def test_candidate_wheel_excludes_retired_storage_modules(candidate_wheel):
+    retired = (
+        "dblift/db/plugins/base_snapshot_manager.py",
+        "dblift/db/plugins/cosmosdb/cosmosdb/snapshot_manager.py",
+        "dblift/db/plugins/mongodb/mongodb/snapshot_manager.py",
+    )
+    assert all(not (ROOT / path).exists() for path in retired)
+    with zipfile.ZipFile(candidate_wheel) as archive:
+        assert not set(retired).intersection(archive.namelist())
 
 
 def test_corpus_probe_uses_the_installed_wheel_and_neutral_workdir(candidate_wheel, tmp_path):

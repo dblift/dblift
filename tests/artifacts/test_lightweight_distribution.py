@@ -10,6 +10,8 @@ from pathlib import Path
 
 import pytest
 
+from tests.artifacts._clean_source import archived_source
+
 ROOT = Path(__file__).resolve().parents[2]
 QUALIFIER = ROOT / "scripts" / "qualify_lightweight_core.py"
 
@@ -50,6 +52,7 @@ def test_standard_distribution_outside_checkout(tmp_path, artifact):
     """The wheel built from the sdist gets its own fresh target environment."""
     build = tmp_path / "build"
     build.mkdir()
+    source = archived_source(ROOT, tmp_path / "source")
     if artifact == "wheel":
         subprocess.run(
             [
@@ -60,7 +63,7 @@ def test_standard_distribution_outside_checkout(tmp_path, artifact):
                 "--no-deps",
                 "--wheel-dir",
                 str(build),
-                str(ROOT),
+                str(source),
             ],
             check=True,
             capture_output=True,
@@ -68,7 +71,7 @@ def test_standard_distribution_outside_checkout(tmp_path, artifact):
         )
     else:
         subprocess.run(
-            [sys.executable, "-m", "build", "--sdist", "--outdir", str(build), str(ROOT)],
+            [sys.executable, "-m", "build", "--sdist", "--outdir", str(build), str(source)],
             check=True,
             capture_output=True,
             text=True,
@@ -141,6 +144,7 @@ def test_standard_distribution_outside_checkout(tmp_path, artifact):
 @pytest.fixture(scope="module")
 def candidate_wheel(tmp_path_factory):
     directory = tmp_path_factory.mktemp("candidate-wheel")
+    source = archived_source(ROOT, directory / "source")
     subprocess.run(
         [
             sys.executable,
@@ -150,7 +154,7 @@ def candidate_wheel(tmp_path_factory):
             "--no-deps",
             "--wheel-dir",
             str(directory),
-            str(ROOT),
+            str(source),
         ],
         check=True,
         capture_output=True,
