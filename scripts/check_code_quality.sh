@@ -67,7 +67,8 @@ fi
 mypy_exit_code=0
 if [ -d "dblift" ]; then
     echo "Type checking source directories..."
-    "$PYTHON_BIN" -m mypy dblift/ --config-file pyproject.toml --show-error-codes || mypy_exit_code=$?
+    "$PYTHON_BIN" -m mypy dblift/ tests/typing/lightweight_extension.py \
+        --config-file pyproject.toml --show-error-codes || mypy_exit_code=$?
 else
     echo "⚠️  Source directories not found, skipping mypy..."
 fi
