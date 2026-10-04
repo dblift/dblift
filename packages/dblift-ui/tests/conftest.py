@@ -2,6 +2,7 @@ from pathlib import Path
 from typing import Callable
 
 import pytest
+from dblift_ui.registry import ProjectRegistry
 from dblift_ui.server import TOKEN_HEADER, create_app
 from fastapi.testclient import TestClient
 
@@ -25,9 +26,14 @@ def auth() -> dict:
 
 
 @pytest.fixture
-def make_client() -> Callable[[str], TestClient]:
+def registry(tmp_path: Path) -> ProjectRegistry:
+    return ProjectRegistry(tmp_path / "state" / "projects.json")
+
+
+@pytest.fixture
+def make_client(registry: ProjectRegistry) -> Callable[[str], TestClient]:
     def factory(base_url: str) -> TestClient:
-        app = create_app(token=TOKEN, port=PORT)
+        app = create_app(token=TOKEN, port=PORT, registry=registry)
         return TestClient(app, base_url=base_url)
 
     return factory
