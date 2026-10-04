@@ -1,6 +1,7 @@
 """Run in a fresh environment with the candidate and fixture wheels installed."""
 
 import importlib.util
+import json
 import sqlite3
 import sys
 from importlib import metadata
@@ -132,6 +133,19 @@ def main() -> None:
     finally:
         second.close()
     assert not second.provider.is_connected()
+    print(
+        json.dumps(
+            {
+                "status": "pass",
+                "origins": [
+                    str(Path(module.__file__).resolve())
+                    for module in (dblift, fixture_sqlite, fixture_listener)
+                ],
+                "provider_events": [event.event_type.value for event in provider_events],
+                "listener_events": [event.event_type.value for event in listener_events],
+            }
+        )
+    )
 
 
 if __name__ == "__main__":

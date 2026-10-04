@@ -1,16 +1,31 @@
 """Prove provider and event registration from separately installed wheels."""
 
 import ast
+import hashlib
+import json
 import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
 
 import pytest
 
+from tests.artifacts._clean_source import archived_source
+
 ROOT = Path(__file__).resolve().parents[2]
 FIXTURES = ROOT / "tests" / "fixtures"
 PROBE = Path(__file__).with_name("installed_extension_probe.py")
+
+
+def _retain(source: Path, name: str) -> None:
+    directory = os.environ.get("E4_EVIDENCE_DIR")
+    if directory:
+        target = Path(directory)
+        target.mkdir(parents=True, exist_ok=True)
+        destination = target / name
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source, destination)
 
 
 def _run(args, cwd):
@@ -24,7 +39,12 @@ def _run(args, cwd):
 @pytest.fixture(scope="module")
 def wheels(tmp_path_factory):
     wheel_dir = tmp_path_factory.mktemp("extension-wheels")
-    for source in (ROOT, FIXTURES / "lightweight_extension", FIXTURES / "lightweight_listener"):
+    source = archived_source(ROOT, wheel_dir / "source")
+    for package in (
+        source,
+        source / "tests" / "fixtures" / "lightweight_extension",
+        source / "tests" / "fixtures" / "lightweight_listener",
+    ):
         result = _run(
             [
                 sys.executable,
@@ -34,12 +54,12 @@ def wheels(tmp_path_factory):
                 "--no-deps",
                 "--wheel-dir",
                 str(wheel_dir),
-                str(source),
+                str(package),
             ],
             wheel_dir,
         )
         assert result.returncode == 0, result.stderr
-    return {
+    wheels = {
         name: next(wheel_dir.glob(pattern))
         for name, pattern in {
             "dblift": "dblift-[0-9]*.whl",
@@ -47,6 +67,9 @@ def wheels(tmp_path_factory):
             "listener": "dblift_lightweight_listener_fixture-*.whl",
         }.items()
     }
+    for wheel in wheels.values():
+        _retain(wheel, f"extension/{wheel.name}")
+    return wheels
 
 
 @pytest.mark.parametrize("order", [("provider", "listener"), ("listener", "provider")])
@@ -65,6 +88,25 @@ def test_installed_extension_adds_provider_and_independent_listeners(wheels, tmp
         assert installed.returncode == 0, installed.stderr
     after = _run([str(python), "-I", str(PROBE), "after"], tmp_path)
     assert after.returncode == 0, after.stderr
+    installed = json.loads(after.stdout)
+    assert installed["status"] == "pass"
+    assert all(
+        Path(origin).resolve().is_relative_to(environment.resolve())
+        for origin in installed["origins"]
+    )
+    if os.environ.get("E4_EVIDENCE_DIR"):
+        result = {
+            "order": order,
+            "wheel_sha256": {
+                name: hashlib.sha256(path.read_bytes()).hexdigest() for name, path in wheels.items()
+            },
+            "installed": installed,
+            "before_returncode": before.returncode,
+            "after_returncode": after.returncode,
+        }
+        output = tmp_path / "extension-result.json"
+        output.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n")
+        _retain(output, f"extension-{'-'.join(order)}.json")
 
 
 @pytest.mark.parametrize(

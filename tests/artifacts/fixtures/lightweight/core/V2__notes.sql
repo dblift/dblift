@@ -1,0 +1,2 @@
+CREATE TABLE notes (id INTEGER PRIMARY KEY, item_id INTEGER NOT NULL);
+INSERT INTO notes (id, item_id) VALUES (1, 1);

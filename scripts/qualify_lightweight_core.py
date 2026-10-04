@@ -73,7 +73,13 @@ def _candidate_version(wheel: Path) -> str | None:
     return version
 
 
-def qualify(wheel: Path, output: Path, probe: Path) -> int:
+def qualify(
+    wheel: Path,
+    output: Path,
+    probe: Path,
+    corpus_probe: Path | None = None,
+    corpus_fixtures: Path | None = None,
+) -> int:
     result: dict = {
         "artifact_sha256": None,
         "python": None,
@@ -87,6 +93,12 @@ def qualify(wheel: Path, output: Path, probe: Path) -> int:
             return 1
         if not probe.is_file():
             result["error"] = "installed probe is missing"
+            return 1
+        if corpus_probe is not None and not corpus_probe.is_file():
+            result["error"] = "corpus probe is missing"
+            return 1
+        if corpus_fixtures is not None and (corpus_probe is None or not corpus_fixtures.is_dir()):
+            result["error"] = "corpus fixtures require a probe and directory"
             return 1
         candidate_version = _candidate_version(wheel)
         if candidate_version is None:
@@ -138,6 +150,30 @@ def qualify(wheel: Path, output: Path, probe: Path) -> int:
                 except (ValueError, KeyError, TypeError):
                     result["error"] = "installed probe returned malformed JSON"
                     ok = False
+            if ok and corpus_probe is not None:
+                copied_corpus = work / "corpus_probe.py"
+                shutil.copyfile(corpus_probe, copied_corpus)
+                if corpus_fixtures is not None:
+                    shutil.copytree(corpus_fixtures, work / "fixtures")
+                ok = _record(
+                    result,
+                    "corpus",
+                    [str(python), "-I", str(copied_corpus), candidate_version],
+                    work,
+                )
+                if ok:
+                    try:
+                        corpus = json.loads(result["probes"]["corpus"]["stdout"])
+                        if corpus["status"] != "pass":
+                            raise ValueError("corpus probe did not pass")
+                        if not Path(corpus["origin"]).resolve().is_relative_to(env_path.resolve()):
+                            raise ValueError("corpus origin is outside target environment")
+                        if Path(corpus["workdir"]).resolve() != work.resolve():
+                            raise ValueError("corpus workdir is not neutral")
+                        result["corpus"] = corpus
+                    except (ValueError, KeyError, TypeError):
+                        result["error"] = "corpus probe returned malformed JSON"
+                        ok = False
             if ok:
                 result["status"] = "pass"
             return 0 if ok else 1
@@ -156,8 +192,10 @@ def main() -> int:
     parser.add_argument(
         "--probe", type=Path, default=Path(__file__).with_name("lightweight_installed_probe.py")
     )
+    parser.add_argument("--corpus-probe", type=Path)
+    parser.add_argument("--corpus-fixtures", type=Path)
     args = parser.parse_args()
-    return qualify(args.wheel, args.output, args.probe)
+    return qualify(args.wheel, args.output, args.probe, args.corpus_probe, args.corpus_fixtures)
 
 
 if __name__ == "__main__":
