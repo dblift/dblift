@@ -10,18 +10,8 @@ from dblift.core.logger import Log, NullLog
 class DocumentSnapshotManager(ABC):
     """Creates the snapshot collection through the vendor driver.
 
-    The relational sibling, ``db/plugins/base_snapshot_manager.py``, renders
-    a ``CREATE TABLE`` and sends it to the provider. That is the default a
-    provider inherits, which makes it a trap for a document store: forget to
-    override ``create_snapshot_table_if_not_exists`` and the plugin looks
-    complete, discovers fine, migrates fine, and fails only when something
-    first tries to persist a snapshot — with a SQL error from a store that
-    has no SQL.
-
-    Declaring :meth:`create_snapshot_collection` abstract turns that
-    omission into a ``TypeError`` at construction. Same reasoning that made
-    ``delete_failed_migration_entry`` abstract on
-    :class:`DocumentHistoryManager`.
+    Declaring :meth:`create_snapshot_collection` abstract turns an omitted
+    implementation into a ``TypeError`` at construction.
 
     Retry policy is deliberately not here. Cosmos DB retries because the
     Azure emulator answers 503 during warmup; that is one engine's operational

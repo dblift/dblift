@@ -16,7 +16,6 @@ from dblift.db.plugins.mongodb.mongodb import (
     MongoDbLockingManager,
     MongoDbQueryExecutor,
     MongoDbSchemaOperations,
-    MongoDbSnapshotManager,
 )
 from dblift.db.provider_interfaces import DroppableObject
 
@@ -36,7 +35,6 @@ class MongoDbProvider(NativeProvider):
             self.query_executor, self.schema_operations, config, log=self.log
         )
         self.locking_manager = MongoDbLockingManager(self.query_executor, log=self.log)
-        self.snapshot_manager = MongoDbSnapshotManager(self, log=self.log)
 
     # --- connection -------------------------------------------------------
 
@@ -139,12 +137,6 @@ class MongoDbProvider(NativeProvider):
     def table_exists(self, schema: str, table_name: str) -> bool:
         """Whether *table_name* exists as a collection."""
         return self.schema_operations.collection_exists(table_name)
-
-    def create_snapshot_table_if_not_exists(
-        self, schema: str, table_name: Optional[str] = None
-    ) -> None:
-        """Create the snapshot collection through the driver, never via DDL."""
-        self.snapshot_manager.create_snapshot_table_if_not_exists(schema, table_name)
 
     # --- schema (no schema layer) ------------------------------------------
 

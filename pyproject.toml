@@ -863,7 +863,6 @@ module = [
     "dblift.db.plugins.mongodb.mongodb.locking_manager",
     "dblift.db.plugins.mongodb.mongodb.query_executor",
     "dblift.db.plugins.mongodb.mongodb.schema_operations",
-    "dblift.db.plugins.mongodb.mongodb.snapshot_manager",
 ]
 disallow_any_generics = true
 disallow_subclassing_any = true

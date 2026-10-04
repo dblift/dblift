@@ -62,7 +62,6 @@ class MysqlQuirks(BaseQuirks):
     quote_open = "`"
     quote_close = "`"
     drop_supports_if_exists = True
-    provider_compat_snapshot_skips_existence_check = True
     tinyint1_is_boolean = True
     # Index DDL.
     index_drop_includes_table = True
@@ -133,93 +132,6 @@ class MysqlQuirks(BaseQuirks):
     def engine_pool_options(self) -> "dict[str, Any]":
         """MySQL/MariaDB: disable pool reset-on-return to avoid connection-state churn."""
         return {"pool_reset_on_return": None}
-
-    def build_snapshot_table_ddl(
-        self,
-        qualified_table: str,
-        snapshot_id_size: int,
-        checksum_size: int,
-    ) -> str:
-        """MySQL does not support DBLift-managed snapshot table DDL."""
-        raise NotImplementedError("MySQL does not support DBLift-managed snapshot table DDL")
-
-    def build_provider_compat_snapshot_ddl(
-        self, qualified_table: str, snapshot_id_size: int, checksum_size: int
-    ) -> "Optional[str]":
-        """Legacy MySQL provider-compat snapshot DDL (idempotent, InnoDB)."""
-        return (
-            f"CREATE TABLE IF NOT EXISTS {qualified_table} ("
-            f"snapshot_id VARCHAR({snapshot_id_size}) PRIMARY KEY, "
-            "captured_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, "
-            f"checksum VARCHAR({checksum_size}), "
-            "model_data LONGTEXT NOT NULL"
-            ") ENGINE=InnoDB"
-        )
-
-    def build_data_history_table_ddl(
-        self,
-        qualified_table: str,
-        id_size: int = 100,
-        checksum_size: int = 128,
-    ) -> str:
-        """MySQL-specific DDL for data history table (with ENGINE)."""
-        return (
-            f"CREATE TABLE {qualified_table} ("
-            f"id VARCHAR({id_size}) PRIMARY KEY, "
-            f"dataset VARCHAR(100), "
-            f"sql_checksum VARCHAR({checksum_size}), "
-            f"installed_by VARCHAR(100), "
-            f"installed_on TIMESTAMP DEFAULT CURRENT_TIMESTAMP, "
-            f"status VARCHAR(20), "
-            f"plan_fingerprint VARCHAR(128), "
-            f"summary TEXT, "
-            f"vcs_ref VARCHAR(200), "
-            f"note TEXT"
-            ") ENGINE=InnoDB"
-        )
-
-    def build_data_change_set_table_ddl(
-        self,
-        qualified_table: str,
-        history_id_size: int = 100,
-        checksum_size: int = 128,
-    ) -> str:
-        """MySQL-specific DDL for data change-set table using LONGTEXT.
-
-        ``(dataset, history_id)`` primary key enforces one change-set row per
-        applied correction (the table is shared across datasets).
-        """
-        return (
-            f"CREATE TABLE {qualified_table} ("
-            f"dataset VARCHAR(100) NOT NULL, "
-            f"history_id VARCHAR({history_id_size}) NOT NULL, "
-            f"checksum VARCHAR({checksum_size}), "
-            f"model_data LONGTEXT NOT NULL, "
-            f"PRIMARY KEY (dataset, history_id)"
-            ") ENGINE=InnoDB"
-        )
-
-    def build_data_audit_table_ddl(
-        self,
-        qualified_table: str,
-        history_id_size: int = 100,
-        checksum_size: int = 128,
-    ) -> str:
-        """MySQL-specific append-only audit-log DDL (InnoDB)."""
-        return (
-            f"CREATE TABLE {qualified_table} ("
-            f"dataset VARCHAR(100) NOT NULL, "
-            f"seq INTEGER NOT NULL, "
-            f"history_id VARCHAR({history_id_size}) NOT NULL, "
-            f"event VARCHAR(20) NOT NULL, "
-            f"sql_checksum VARCHAR({checksum_size}), "
-            f"installed_by VARCHAR(100), "
-            f"recorded_on TIMESTAMP DEFAULT CURRENT_TIMESTAMP, "
-            f"prev_hash VARCHAR(64) NOT NULL, "
-            f"row_hash VARCHAR(64) NOT NULL, "
-            f"PRIMARY KEY (dataset, seq)"
-            ") ENGINE=InnoDB"
-        )
 
     def ddl_generator_class(self) -> Optional[Type["SqlGeneratorProtocol"]]:
         """DDL generator is supplied by an installed extension package."""

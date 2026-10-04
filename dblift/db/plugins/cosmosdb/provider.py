@@ -17,7 +17,6 @@ from dblift.db.plugins.cosmosdb.cosmosdb import (
     CosmosDbLockingManager,
     CosmosDbQueryExecutor,
     CosmosDbSchemaOperations,
-    CosmosDbSnapshotManager,
 )
 from dblift.db.provider_interfaces import DroppableObject
 
@@ -44,7 +43,6 @@ class CosmosDbProvider(NativeProvider):
         self.history_manager = CosmosDbHistoryManager(
             self.query_executor, self.schema_operations, config, log
         )
-        self.snapshot_manager = CosmosDbSnapshotManager(self, log=self.log)
 
     def create_connection(self) -> Any:
         """Create a connection to Cosmos DB using Azure SDK."""
@@ -94,8 +92,7 @@ class CosmosDbProvider(NativeProvider):
         ``execute_query``): the query executor reaches the container through
         ``connection_manager.get_container_client`` rather than the
         ``connection`` object, the same reason
-        ``create_snapshot_table_if_not_exists`` below calls into
-        ``schema_operations`` directly without fetching one.
+        ``schema_operations`` can access its SDK client directly.
         """
         return self.query_executor.upsert_native_item(container_name, document)
 
@@ -324,24 +321,6 @@ class CosmosDbProvider(NativeProvider):
     ) -> None:
         """Create migration history container if it doesn't exist."""
         self.history_manager.create_history_container_if_not_exists(schema, table_name)
-
-    def create_snapshot_table_if_not_exists(
-        self,
-        schema: str,
-        table_name: Optional[str] = None,
-    ) -> None:
-        """Create the snapshot container through the SDK.
-
-        Provisioning lives on ``CosmosDbSnapshotManager`` so every document
-        store implements the same contract instead of re-deriving it from
-        this provider. See ``db/plugins/nosql_base/snapshot.py``.
-        """
-        # Guards providers built via __new__ (bypassing __init__, as some
-        # tests do) rather than the normal constructor, where this would
-        # already be set.
-        if getattr(self, "snapshot_manager", None) is None:
-            self.snapshot_manager = CosmosDbSnapshotManager(self, log=self.log)
-        self.snapshot_manager.create_snapshot_table_if_not_exists(schema, table_name)
 
     def close(self) -> None:
         """Close the Cosmos DB connection."""

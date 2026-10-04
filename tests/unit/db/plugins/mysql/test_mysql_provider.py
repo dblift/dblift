@@ -301,16 +301,6 @@ def test_check_baseline_safety_passes_with_empty_history():
     provider._check_baseline_safety("mydb", "dblift_schema_history")  # no exception
 
 
-def test_create_snapshot_table_if_not_exists():
-    provider = _Provider()
-
-    provider.create_snapshot_table_if_not_exists("mydb")
-
-    sql = provider.statements[-1][0]
-    assert "dblift_schema_snapshots" in sql
-    assert "ENGINE=InnoDB" in sql
-
-
 def test_get_applied_migrations_no_table():
     provider = _Provider()
     provider.table_exists_value = False

@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Provider contracts no longer carry internal schema-snapshot and data-storage
+  table creation. Migration history, cleanup names, and document snapshot
+  interfaces remain available.
 - An explicit `NullLog` now runs SQLite migrations and API info, validation, and
   undo without loading Rich or Jinja2, writing presentation output, or creating
   reports; results and migration history remain available.

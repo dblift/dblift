@@ -160,12 +160,9 @@ class CosmosDbQueryExecutor(BaseQueryExecutor):
         ``execute_statement`` only accepts ``SELECT`` — the Cosmos DB SQL API
         is read-only, and pretending otherwise (the pseudo-SQL emulator this
         module used to have) was actively wrong, which is why the ADR
-        removing pseudo-SQL deleted it. Container *creation* was ported to a
-        native SDK call at the time (see
-        ``CosmosDbProvider.create_snapshot_table_if_not_exists``, which calls
-        ``CosmosDbSchemaOperations.create_container_if_not_exists`` instead of
-        rendering ``CREATE TABLE``), but the matching write for a single
-        document was missed: an internal caller such as the schema-snapshot
+        removing pseudo-SQL deleted it. Container creation now uses a native
+        SDK call, but the matching write for a single document was missed:
+        an internal caller such as the schema-snapshot
         repository still built a plain SQL ``INSERT`` and routed it through
         ``execute_statement``, which now raises
         ``NoSqlWriteNotSupportedError`` for anything but a ``SELECT``. That

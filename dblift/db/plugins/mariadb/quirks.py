@@ -22,10 +22,6 @@ class MariadbQuirks(MysqlQuirks):
     type from 10.2+, native sequences and system-versioned tables on
     modern versions.
 
-    Provider-compat snapshot DDL is inherited from :class:`MysqlQuirks`
-    (InnoDB + LONGTEXT, ``CREATE TABLE IF NOT EXISTS``, skip existence
-    probe). Managed snapshot DDL still raises via the MySQL parent so
-    :class:`BaseSnapshotManager` falls through to the compat path.
     """
 
     # Plain-view redefinition inherits MySQL's CREATE OR REPLACE support.

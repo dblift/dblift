@@ -75,20 +75,6 @@ class OracleQuirks(BaseQuirks):
     # import-flyway reads the verbatim-cased Flyway source table directly,
     # because get_applied_migrations would uppercase the name and miss it.
     flyway_source_table_case_sensitive = True
-    # Data-set ledger DDL: Oracle has no TEXT type (use CLOB) and defaults the
-    # install timestamp from SYSTIMESTAMP.
-    data_history_text_type = "CLOB"
-    data_change_set_blob_type = "CLOB"
-    data_timestamp_column_ddl = "TIMESTAMP DEFAULT SYSTIMESTAMP"
-
-    def is_data_history_table_already_exists_error(self, error_message: str) -> bool:
-        """The data-history ledger DDL doesn't use IF NOT EXISTS (shared across
-        dialects); Oracle raises ORA-00955 when the table already exists."""
-        return "ORA-00955" in (error_message or "")
-
-    def is_data_change_set_table_already_exists_error(self, error_message: str) -> bool:
-        """Same ORA-00955 detection as the data history table."""
-        return self.is_data_history_table_already_exists_error(error_message)
 
     def is_schema_history_race_error(self, error_message: str) -> bool:
         """Oracle's ``CREATE TABLE`` for the migration history table has no
@@ -179,27 +165,6 @@ class OracleQuirks(BaseQuirks):
     def error_patterns(self) -> "List[Tuple[re.Pattern[str], ErrorCategory]]":
         """Oracle ORA-code error-classification patterns (ADR-26 A2)."""
         return _ERROR_PATTERNS
-
-    def build_snapshot_table_ddl(
-        self,
-        qualified_table: str,
-        snapshot_id_size: int,
-        checksum_size: int,
-    ) -> str:
-        """Oracle snapshot table DDL is not owned by the Oracle plugin."""
-        raise NotImplementedError("Oracle snapshot table DDL is not plugin-owned")
-
-    def build_provider_compat_snapshot_ddl(
-        self, qualified_table: str, snapshot_id_size: int, checksum_size: int
-    ) -> "Optional[str]":
-        """Legacy Oracle provider-compat snapshot DDL (VARCHAR2/CLOB, uppercase)."""
-        return (
-            f"CREATE TABLE {qualified_table} ("
-            f"SNAPSHOT_ID VARCHAR2({snapshot_id_size}) PRIMARY KEY, "
-            f"CAPTURED_AT VARCHAR2({snapshot_id_size}) NOT NULL, "
-            f"CHECKSUM VARCHAR2({checksum_size}) NOT NULL, "
-            "MODEL_DATA CLOB NOT NULL)"
-        )
 
     # ------------------------------------------------------------------
     # Migration-script preprocessing hooks (Tier 1 plugin-isolation).

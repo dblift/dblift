@@ -7,7 +7,6 @@ quirks (JSON type mapping).
 
 from dblift.db.plugins.mariadb.plugin import PLUGIN as MARIADB_PLUGIN
 from dblift.db.plugins.mariadb.provider import MariadbProvider
-from dblift.db.plugins.mariadb.quirks import MariadbQuirks
 from dblift.db.plugins.mysql.provider import MySqlProvider
 from dblift.db.sqlalchemy_provider import SqlAlchemyProvider
 
@@ -34,28 +33,6 @@ def test_mariadb_provider_does_not_own_snapshot_hooks() -> None:
     assert "supports_snapshots" not in MariadbProvider.__dict__
     assert "create_snapshot_table_if_not_exists" not in MariadbProvider.__dict__
     assert "create_snapshot_table_if_not_exists" not in MariadbProvider.__abstractmethods__
-
-
-def test_mariadb_quirks_inherit_mysql_provider_compat_snapshot_ddl() -> None:
-    """MariaDB uses the MySQL-family InnoDB LONGTEXT snapshot table DDL."""
-    ddl = MariadbQuirks().build_provider_compat_snapshot_ddl("db.snap", 100, 128)
-    assert ddl is not None
-    assert "CREATE TABLE IF NOT EXISTS db.snap" in ddl
-    assert "ENGINE=InnoDB" in ddl
-    assert "model_data LONGTEXT NOT NULL" in ddl
-
-
-def test_mariadb_skips_existence_check_like_mysql() -> None:
-    # Compat path uses IF NOT EXISTS; skip the separate existence probe.
-    assert MariadbQuirks().provider_compat_snapshot_skips_existence_check is True
-
-
-def test_mariadb_managed_snapshot_table_ddl_opts_out() -> None:
-    """Managed DDL still raises; BaseSnapshotManager falls through to compat."""
-    import pytest
-
-    with pytest.raises(NotImplementedError):
-        MariadbQuirks().build_snapshot_table_ddl("app.dblift_schema_snapshots", 128, 64)
 
 
 def test_mariadb_plugin_sqlalchemy_url_builder_rejects_jdbc() -> None:
