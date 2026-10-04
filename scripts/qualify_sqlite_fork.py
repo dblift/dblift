@@ -147,7 +147,12 @@ def _transform(source: Path) -> tuple[list[str], list[str], str]:
     return original_plugins, removed, "".join(changes)
 
 
-def qualify(revision: str, output: Path) -> int:
+def qualify(
+    revision: str,
+    output: Path,
+    corpus_probe: Path | None = None,
+    corpus_fixtures: Path | None = None,
+) -> int:
     result: dict[str, Any] = {"status": "fail", "revision": revision}
     try:
         if not re.fullmatch(r"[0-9a-f]{40}", revision):
@@ -157,6 +162,10 @@ def qualify(revision: str, output: Path) -> int:
         ).stdout.strip()
         if resolved != revision:
             raise ValueError("revision does not resolve to the exact requested commit")
+        if corpus_probe is not None and not corpus_probe.is_file():
+            raise ValueError("corpus probe is missing")
+        if corpus_fixtures is not None and (corpus_probe is None or not corpus_fixtures.is_dir()):
+            raise ValueError("corpus fixtures require a probe and directory")
         status_before = _run(["git", "status", "--short"], ROOT).stdout
         archive = subprocess.run(
             ["git", "archive", "--format=tar", revision],
@@ -203,6 +212,34 @@ def qualify(revision: str, output: Path) -> int:
             )
             if installed["providers"] != ["sqlite"] or not installed["sqlite_migrate"]:
                 raise ValueError("Installed fork did not qualify SQLite")
+            if corpus_probe is not None:
+                copied_corpus = work / "corpus_probe.py"
+                shutil.copyfile(corpus_probe, copied_corpus)
+                if corpus_fixtures is not None:
+                    shutil.copytree(corpus_fixtures, work / "fixtures")
+                version = tomllib.loads((source / "pyproject.toml").read_text(encoding="utf-8"))[
+                    "project"
+                ]["version"]
+                corpus = json.loads(
+                    _run(
+                        [
+                            str(python),
+                            "-I",
+                            str(copied_corpus),
+                            version,
+                            json.dumps(removed),
+                        ],
+                        work,
+                    ).stdout
+                )
+                if (
+                    corpus["status"] != "pass"
+                    or not Path(corpus["origin"]).resolve().is_relative_to(venv.resolve())
+                    or Path(corpus["workdir"]).resolve() != work.resolve()
+                    or corpus["history_table"] != "forklift_schema_history"
+                    or not corpus["removed_imports_blocked"]
+                ):
+                    raise ValueError("Installed fork corpus did not qualify")
             status_after = _run(["git", "status", "--short"], ROOT).stdout
             if status_before != status_after:
                 raise ValueError("Source checkout changed during fork qualification")
@@ -220,6 +257,7 @@ def qualify(revision: str, output: Path) -> int:
                 original_plugins=original_plugins,
                 removed_plugins=removed,
                 installed=installed,
+                **({"corpus": corpus} if corpus_probe is not None else {}),
                 source_status_unchanged=True,
             )
             return 0
@@ -243,8 +281,10 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--revision", required=True)
     parser.add_argument("--output", required=True, type=Path)
+    parser.add_argument("--corpus-probe", type=Path)
+    parser.add_argument("--corpus-fixtures", type=Path)
     args = parser.parse_args()
-    return qualify(args.revision, args.output)
+    return qualify(args.revision, args.output, args.corpus_probe, args.corpus_fixtures)
 
 
 if __name__ == "__main__":

@@ -1,0 +1,2 @@
+DROP VIEW IF EXISTS item_view;
+DROP TABLE items;

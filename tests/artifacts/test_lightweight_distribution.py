@@ -1,6 +1,8 @@
 """Installed distribution checks, including the qualifier's failure contract."""
 
 import json
+import os
+import shutil
 import subprocess
 import sys
 import zipfile
@@ -10,6 +12,16 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
 QUALIFIER = ROOT / "scripts" / "qualify_lightweight_core.py"
+
+
+def _retain(source: Path, name: str) -> None:
+    directory = os.environ.get("E4_EVIDENCE_DIR")
+    if directory:
+        target = Path(directory)
+        target.mkdir(parents=True, exist_ok=True)
+        destination = target / name
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source, destination)
 
 
 def test_missing_wheel_fails_without_pass_result(tmp_path):
@@ -64,6 +76,7 @@ def test_standard_distribution_outside_checkout(tmp_path, artifact):
         import tarfile
 
         archive = next(build.glob("*.tar.gz"))
+        _retain(archive, f"standard-sdist/{archive.name}")
         extracted = tmp_path / "extracted"
         extracted.mkdir()
         with tarfile.open(archive) as tar:
@@ -86,6 +99,7 @@ def test_standard_distribution_outside_checkout(tmp_path, artifact):
             cwd=tmp_path,
         )
     wheel = next(build.glob("*.whl"))
+    _retain(wheel, f"standard-{artifact}/{wheel.name}")
     output = tmp_path / "result.json"
     run = subprocess.run(
         [sys.executable, str(QUALIFIER), "--wheel", str(wheel.resolve()), "--output", str(output)],
@@ -96,6 +110,7 @@ def test_standard_distribution_outside_checkout(tmp_path, artifact):
     assert run.returncode == 0, run.stderr + output.read_text() if output.exists() else run.stderr
     result = json.loads(output.read_text())
     assert result["status"] == "pass"
+    _retain(output, f"{artifact}-distribution.json")
     assert result["installed"]["dblift"]
     assert result["probes"]["installed"]["returncode"] == 0
     if artifact == "wheel":

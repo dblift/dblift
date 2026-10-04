@@ -27,6 +27,7 @@ jobs:
         python-version: ["3.11", "3.12"]
     env:
       PIP_CONSTRAINT: ${{ github.workspace }}/constraints-ci.txt
+      E4_EVIDENCE_DIR: ${{ github.workspace }}/e4-evidence/${{ matrix.python-version }}
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-python@v6
@@ -36,7 +37,43 @@ jobs:
       - name: Install artifact test tools
         run: python -m pip install build pytest tomlkit
       - name: Qualify installed wheel, sdist, and additive extensions
-        run: python -m pytest tests/artifacts/ -q
+        run: |
+          set -o pipefail
+          mkdir -p "$E4_EVIDENCE_DIR"
+          python -m pytest tests/artifacts/ -q 2>&1 | tee "$E4_EVIDENCE_DIR/pytest.log"
+      - name: Record tested artifact and evidence hashes
+        if: always()
+        run: |
+          python - <<'PY'
+          import hashlib
+          import json
+          import os
+          import subprocess
+          import sys
+          from pathlib import Path
+
+          directory = Path(os.environ["E4_EVIDENCE_DIR"])
+          hashes = {
+              str(path.relative_to(directory)): hashlib.sha256(path.read_bytes()).hexdigest()
+              for path in directory.rglob("*") if path.is_file()
+          }
+          (directory / "manifest.json").write_text(
+              json.dumps({
+                  "source_revision": subprocess.check_output(
+                      ["git", "rev-parse", "HEAD"], text=True
+                  ).strip(),
+                  "python": sys.version,
+                  "sha256": hashes,
+              }, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          PY
+      - name: Upload installed-artifact evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lightweight-core-${{ matrix.python-version }}
+          path: ${{ env.E4_EVIDENCE_DIR }}
 
   unit-tests:
     runs-on: ubuntu-latest
