@@ -82,6 +82,13 @@ jobs:
             -p no:benchmark \
             --timeout=120
 
+      - name: Install dblift-ui
+        run: python -m pip install -e "packages/dblift-ui[dev]"
+
+      - name: Run dblift-ui tests
+        # No -W error::DeprecationWarning: the web test client raises a third-party deprecation.
+        run: python -m pytest packages/dblift-ui/tests
+
       - name: Upload coverage to Codecov
         if: matrix.python-version == '3.12' && github.event_name != 'schedule'
         uses: codecov/codecov-action@v5
