@@ -11,7 +11,6 @@ This file was extracted from the monolithic
 from pathlib import Path
 from typing import Any, Dict, Optional, Type
 
-from dblift.core.logger.console import render_records_table
 from dblift.core.logger.formatters.jsonformatter import JsonFormatter
 from dblift.core.logger.results import (
     BaselineResult,
@@ -196,6 +195,8 @@ class OutputFormatter:
             result, "query_results", None
         ):
             return
+
+        from dblift.core.logger.console import render_records_table
 
         output.append("")
         output.append("Query Results:")

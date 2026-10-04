@@ -13,12 +13,10 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Sequence, Set, Tuple
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Sequence, Set, Tuple
 
-import sqlglot
-from sqlglot import exp
-
-from dblift.core.sql_model.dialect import get_sqlglot_dialect
+if TYPE_CHECKING:
+    from sqlglot import exp
 
 #: Quote delimiters understood by the scanner: opening char -> closing char.
 #: Union of every dialect's string/identifier quoting so the mechanics are
@@ -82,6 +80,9 @@ def _analyze_dml_sqlglot(statement: str, dialect: Optional[str]) -> Optional[Dml
     text = strip_leading_sql_comments(statement).lstrip()
     if not text:
         return DmlMutation(table="", events=set(), updated_columns=[])
+    import sqlglot
+    from sqlglot import exp
+
     try:
         ast = sqlglot.parse_one(text, read=dialect)
     except Exception:
@@ -105,6 +106,8 @@ def _sqlglot_table(ast: "exp.Expression") -> str:
 def _dml_target_table(ast: "exp.Expression") -> Optional["exp.Table"]:
     """The table a DML statement writes to: resolves ``DELETE <alias> FROM`` and
     ``UPDATE <alias> ... FROM <table> AS <alias>`` (T-SQL) targets to the table."""
+    from sqlglot import exp
+
     source: Optional[exp.Expression] = ast.this
     if source is None:
         return None
@@ -134,6 +137,8 @@ def _dml_target_table(ast: "exp.Expression") -> Optional["exp.Table"]:
 
 
 def _sqlglot_events(ast: "exp.Expression") -> Optional[Set[str]]:
+    from sqlglot import exp
+
     if isinstance(ast, exp.Update):
         return {"UPDATE"}
     if isinstance(ast, exp.Delete):
@@ -158,6 +163,8 @@ def _sqlglot_events(ast: "exp.Expression") -> Optional[Set[str]]:
 
 
 def _sqlglot_updated_columns(ast: "exp.Expression") -> List[str]:
+    from sqlglot import exp
+
     if isinstance(ast, exp.Update):
         return _eq_target_columns(ast.args.get("expressions"))
     if isinstance(ast, exp.Insert):
@@ -179,6 +186,8 @@ def _merge_then_clauses(ast: "exp.Merge") -> List["exp.Expression"]:
 
 
 def _eq_target_columns(expressions: Any) -> List[str]:
+    from sqlglot import exp
+
     columns: List[str] = []
     for assignment in expressions or []:
         if isinstance(assignment, exp.EQ):
@@ -206,6 +215,9 @@ def dml_where_predicate(
     text = strip_leading_sql_comments(statement).lstrip()
     if not text:
         return None
+    import sqlglot
+    from sqlglot import exp
+
     try:
         ast = sqlglot.parse_one(text, read=sqlglot_dialect)
     except Exception:
@@ -223,6 +235,8 @@ _UNRESOLVED = object()
 
 def _literal_python_value(node: "exp.Expression") -> Any:
     """Python value of a literal AST node, or ``_UNRESOLVED`` for non-literals."""
+    from sqlglot import exp
+
     if isinstance(node, exp.Null):
         return None
     if isinstance(node, exp.Boolean):
@@ -265,6 +279,9 @@ def insert_value_rows(
     text = strip_leading_sql_comments(statement).lstrip()
     if not text:
         return None
+    import sqlglot
+    from sqlglot import exp
+
     try:
         ast = sqlglot.parse_one(text, read=sqlglot_dialect)
     except Exception:
@@ -331,6 +348,9 @@ def is_full_table_dml(
     text = strip_leading_sql_comments(statement).lstrip()
     if not text:
         return False
+    import sqlglot
+    from sqlglot import exp
+
     try:
         ast = sqlglot.parse_one(text, read=sqlglot_dialect)
     except Exception:
@@ -397,6 +417,9 @@ def cte_outer_statement_type(
     text = strip_leading_sql_comments(statement).lstrip()
     if not text:
         return None
+    import sqlglot
+    from sqlglot import exp
+
     try:
         ast = sqlglot.parse_one(text, read=sqlglot_dialect)
     except Exception:
@@ -454,6 +477,8 @@ def statement_dml_table(statement: str, dialect: Optional[str] = None) -> str:
     """
     text = strip_leading_sql_comments(statement).lstrip()
     if dialect:
+        from dblift.core.sql_model.dialect import get_sqlglot_dialect
+
         ast_table = _sqlglot_dml_table_sql(text, get_sqlglot_dialect(dialect) or dialect)
         if ast_table:
             return ast_table
@@ -476,6 +501,9 @@ def _sqlglot_dml_table_sql(text: str, dialect: str) -> str:
     bare unquoted name for table *matching* — this preserves quoting because the
     result is interpolated into raw SQL (e.g. a capture ``SELECT ... FROM``).
     """
+    import sqlglot
+    from sqlglot import exp
+
     try:
         ast = sqlglot.parse_one(text, read=dialect)
     except Exception:
