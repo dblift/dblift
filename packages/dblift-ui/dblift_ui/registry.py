@@ -18,6 +18,10 @@ class RegistryError(Exception):
     """The registry file or a requested change is not acceptable."""
 
 
+class RegistryFileError(RegistryError):
+    """The registry file itself cannot be read."""
+
+
 @dataclass(frozen=True)
 class Project:
     id: str
@@ -40,14 +44,27 @@ class ProjectRegistry:
     def list(self) -> List[Project]:
         if not self.path.exists():
             return []
-        data = json.loads(self.path.read_text())
+        try:
+            data = json.loads(self.path.read_text())
+        except json.JSONDecodeError as exc:
+            raise self._invalid(f"not JSON ({exc})") from exc
+        if not isinstance(data, dict):
+            raise self._invalid("not a JSON object")
         version = data.get("schema_version", 0)
+        if not isinstance(version, int):
+            raise self._invalid(f"schema_version {version!r} is not an integer")
         if version > SCHEMA_VERSION:
-            raise RegistryError(
+            raise RegistryFileError(
                 f"{self.path} was written by a newer version of dblift-ui "
                 f"(schema {version}, this version reads up to {SCHEMA_VERSION})"
             )
-        return [Project(**entry) for entry in data.get("projects", [])]
+        entries = data.get("projects", [])
+        if not isinstance(entries, list):
+            raise self._invalid("projects is not a list")
+        try:
+            return [Project(**entry) for entry in entries]
+        except TypeError as exc:
+            raise self._invalid(f"bad project entry ({exc})") from exc
 
     def add(self, name: str, config_path: str) -> Project:
         resolved = Path(config_path).expanduser().resolve()
@@ -78,6 +95,9 @@ class ProjectRegistry:
         updated = replace(self.get(project_id), last_environment=environment)
         self._write([updated if p.id == project_id else p for p in self.list()])
         return updated
+
+    def _invalid(self, reason: str) -> RegistryFileError:
+        return RegistryFileError(f"{self.path} is not a valid registry file: {reason}")
 
     def _write(self, projects: List[Project]) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)

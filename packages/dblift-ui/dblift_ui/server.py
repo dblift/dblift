@@ -7,7 +7,12 @@ from typing import Any, Awaitable, Callable, Dict, List, Optional
 
 import yaml
 from dblift_ui import __version__
-from dblift_ui.registry import Project, ProjectRegistry, RegistryError
+from dblift_ui.registry import (
+    Project,
+    ProjectRegistry,
+    RegistryError,
+    RegistryFileError,
+)
 from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel
@@ -28,7 +33,12 @@ def describe(project: Project) -> Dict[str, Any]:
     error: Optional[str] = None
     try:
         data = yaml.safe_load(Path(project.config_path).read_text()) or {}
-        environments = list((data.get("environments") or {}).keys())
+        if not isinstance(data, dict):
+            error = "config is not a mapping"
+        elif not isinstance(data.get("environments") or {}, dict):
+            error = "environments is not a mapping"
+        else:
+            environments = list((data.get("environments") or {}).keys())
     except (OSError, yaml.YAMLError) as exc:
         error = str(exc)
     return {**asdict(project), "environments": environments, "error": error}
@@ -63,6 +73,10 @@ def create_app(token: str, port: int, registry: Optional[ProjectRegistry] = None
                 return JSONResponse({"detail": "invalid token"}, status_code=401)
         return await call_next(request)
 
+    @app.exception_handler(RegistryFileError)
+    async def registry_file_error(request: Request, exc: RegistryFileError) -> JSONResponse:
+        return JSONResponse({"detail": str(exc)}, status_code=500)
+
     @app.get("/api/health")
     def health() -> dict:
         return {"status": "ok", "version": __version__}
@@ -75,6 +89,8 @@ def create_app(token: str, port: int, registry: Optional[ProjectRegistry] = None
     def add_project(body: NewProject) -> Dict[str, Any]:
         try:
             return describe(projects.add(body.name, body.config_path))
+        except RegistryFileError:
+            raise
         except RegistryError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 

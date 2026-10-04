@@ -1,7 +1,12 @@
 import json
 
 import pytest
-from dblift_ui.registry import SCHEMA_VERSION, ProjectRegistry, RegistryError
+from dblift_ui.registry import (
+    SCHEMA_VERSION,
+    ProjectRegistry,
+    RegistryError,
+    RegistryFileError,
+)
 
 
 def test_empty_when_file_is_missing(tmp_path):
@@ -65,3 +70,25 @@ def test_file_from_a_newer_version_is_refused(tmp_path):
 def test_default_location_honours_override(tmp_path, monkeypatch):
     monkeypatch.setenv("DBLIFT_UI_HOME", str(tmp_path))
     assert ProjectRegistry.default().path == tmp_path / "projects.json"
+
+
+def test_invalid_json_is_a_registry_file_error(tmp_path):
+    path = tmp_path / "projects.json"
+    path.write_text("{not json")
+    with pytest.raises(RegistryFileError, match="not a valid registry file"):
+        ProjectRegistry(path).list()
+
+
+def test_unknown_key_in_an_entry_is_a_registry_file_error(tmp_path):
+    path = tmp_path / "projects.json"
+    entry = {"id": "a", "name": "n", "config_path": "/x.yaml", "password": "secret"}
+    path.write_text(json.dumps({"schema_version": SCHEMA_VERSION, "projects": [entry]}))
+    with pytest.raises(RegistryFileError, match="not a valid registry file"):
+        ProjectRegistry(path).list()
+
+
+def test_non_integer_schema_version_is_a_registry_file_error(tmp_path):
+    path = tmp_path / "projects.json"
+    path.write_text(json.dumps({"schema_version": "one", "projects": []}))
+    with pytest.raises(RegistryFileError, match="not a valid registry file"):
+        ProjectRegistry(path).list()

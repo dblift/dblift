@@ -45,3 +45,55 @@ def test_unreadable_config_is_reported_not_raised(client, auth, sqlite_project):
     assert listed[0]["id"] == project_id
     assert listed[0]["environments"] == []
     assert listed[0]["error"]
+
+
+def test_config_that_is_not_a_mapping_is_reported(client, auth, sqlite_project):
+    project_id = client.post(
+        "/api/projects", headers=auth, json={"name": "shop", "config_path": str(sqlite_project)}
+    ).json()["id"]
+    sqlite_project.write_text("- just\n- a list\n")
+
+    response = client.get("/api/projects", headers=auth)
+
+    assert response.status_code == 200
+    listed = response.json()
+    assert listed[0]["id"] == project_id
+    assert listed[0]["environments"] == []
+    assert listed[0]["error"]
+
+
+def test_environments_that_is_not_a_mapping_is_reported(client, auth, sqlite_project):
+    project_id = client.post(
+        "/api/projects", headers=auth, json={"name": "shop", "config_path": str(sqlite_project)}
+    ).json()["id"]
+    sqlite_project.write_text("database:\n  type: sqlite\nenvironments:\n  - staging\n")
+
+    response = client.get("/api/projects", headers=auth)
+
+    assert response.status_code == 200
+    listed = response.json()
+    assert listed[0]["id"] == project_id
+    assert listed[0]["environments"] == []
+    assert listed[0]["error"]
+
+
+def test_damaged_registry_file_is_a_500_naming_the_file(client, auth, registry):
+    registry.path.parent.mkdir(parents=True, exist_ok=True)
+    registry.path.write_text("{not json")
+
+    response = client.get("/api/projects", headers=auth)
+
+    assert response.status_code == 500
+    assert str(registry.path) in response.json()["detail"]
+
+
+def test_add_with_a_damaged_registry_file_is_a_500(client, auth, registry, sqlite_project):
+    registry.path.parent.mkdir(parents=True, exist_ok=True)
+    registry.path.write_text("{not json")
+
+    response = client.post(
+        "/api/projects", headers=auth, json={"name": "shop", "config_path": str(sqlite_project)}
+    )
+
+    assert response.status_code == 500
+    assert str(registry.path) in response.json()["detail"]

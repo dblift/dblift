@@ -15,6 +15,7 @@ dependencies = [
     "fastapi>=0.110",
     "uvicorn>=0.27",
     "platformdirs>=4.0",
+    "PyYAML>=6.0.1",
 ]
 classifiers = [
     "License :: OSI Approved :: Apache Software License",
