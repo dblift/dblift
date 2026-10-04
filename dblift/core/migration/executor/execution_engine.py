@@ -676,14 +676,17 @@ class ExecutionEngine:
                                 columns,
                                 table_rows,
                             )
-                            render_table = getattr(sys.modules[__name__], "render_records_table")
-                            self.log.info(
-                                render_table(
-                                    [(c, "left") for c in columns],
-                                    table_rows,
-                                    title=f"Query result ({len(table_rows)} rows)",
+                            if not isinstance(self.log, NullLog):
+                                render_table = getattr(
+                                    sys.modules[__name__], "render_records_table"
                                 )
-                            )
+                                self.log.info(
+                                    render_table(
+                                        [(c, "left") for c in columns],
+                                        table_rows,
+                                        title=f"Query result ({len(table_rows)} rows)",
+                                    )
+                                )
                     else:
                         if not isinstance(result_data, int):
                             raise TypeError(
@@ -1193,7 +1196,7 @@ class ExecutionEngine:
                                     columns,
                                     table_rows,
                                 )
-                                if table_rows:
+                                if table_rows and not isinstance(self.log, NullLog):
                                     render_table = getattr(
                                         sys.modules[__name__], "render_records_table"
                                     )
@@ -1243,7 +1246,7 @@ class ExecutionEngine:
                                     columns,
                                     table_rows,
                                 )
-                                if table_rows:
+                                if table_rows and not isinstance(self.log, NullLog):
                                     render_table = getattr(
                                         sys.modules[__name__], "render_records_table"
                                     )

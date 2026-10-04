@@ -35,6 +35,7 @@ from dblift.core.migration.state.migration_state_manager import (
 )
 from dblift.core.migration.state.rank_wins import installed_rank, latest_successful_ranks
 from dblift.core.migration.ui.migration_ui import MigrationUI
+from dblift.core.migration.ui.progress import migration_progress
 from dblift.core.migration.version_utils import compare_versions, is_migration_success
 from dblift.core.sql_validator.migration_validator import MigrationValidator
 from dblift.db.base_provider import BaseProvider
@@ -590,33 +591,12 @@ class MigrateCommand(BaseCommand):
         result: MigrateResult,
     ) -> None:
         """Execute the main migration loop."""
-        from rich.progress import (
-            BarColumn,
-            MofNCompleteColumn,
-            Progress,
-            SpinnerColumn,
-            TextColumn,
-            TimeElapsedColumn,
-        )
-
-        from dblift.core.logger.console import get_stderr_console, is_progress_disabled
-
         self.log.debug(
             f"Starting execution loop for {len(pending_migrations)} pending migration(s)"
         )
-        with Progress(
-            SpinnerColumn(),
-            TextColumn("[progress.description]{task.description}"),
-            BarColumn(),
-            MofNCompleteColumn(),
-            TimeElapsedColumn(),
-            console=get_stderr_console(),
-            transient=True,
-            disable=is_progress_disabled(),
-        ) as progress:
-            task = progress.add_task("Migrating", total=len(pending_migrations))
+        with migration_progress(self.log, len(pending_migrations)) as progress:
             for migration in pending_migrations:
-                progress.update(task, description=f"{migration.script_name}")
+                progress.describe(f"{migration.script_name}")
                 self.log.debug(
                     f"About to execute migration: {migration.script_name} (version: {migration.version})"
                 )
@@ -637,7 +617,7 @@ class MigrateCommand(BaseCommand):
                     # the bar would read "3/5 done" while only 2 actually
                     # completed. Stop without advancing.
                     break
-                progress.advance(task)
+                progress.advance()
 
     def _update_final_state(
         self,
