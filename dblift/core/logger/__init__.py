@@ -4,10 +4,9 @@ import os
 import traceback
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Any, Callable, Dict, Generator, List, Optional
+from typing import TYPE_CHECKING, Any, Callable, Dict, Generator, List, Optional
 
 from dblift.core.logger.formatters import OutputFormatter, OutputFormatterFactory
-from dblift.core.logger.formatters.htmlformatter import HtmlFormatter
 from dblift.core.logger.log import (
     AbstractLog,
     ConsoleLog,
@@ -32,6 +31,22 @@ from dblift.core.logger.results import (
     ValidateResult,
 )
 from dblift.core.utils.url_masking import mask_database_url
+
+if TYPE_CHECKING:
+    from dblift.core.logger.formatters.htmlformatter import HtmlFormatter
+
+
+def __getattr__(name: str) -> Any:
+    if name == "HtmlFormatter":
+        from dblift.core.logger.formatters.htmlformatter import HtmlFormatter
+
+        globals()[name] = HtmlFormatter
+        return HtmlFormatter
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
+
+def __dir__() -> List[str]:
+    return sorted(set(globals()) | set(__all__))
 
 
 class DbliftLogger(Log):

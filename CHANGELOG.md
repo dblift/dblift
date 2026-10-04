@@ -11,6 +11,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Importing `dblift.extensions` now loads its category modules only when accessed.
   The existing category exports and their module identities remain unchanged.
+- Importing provider contracts no longer loads Rich, Jinja2, or sqlglot through
+  logger and DML helpers. HTML formatting and SQL analysis still load these
+  libraries when called.
 
 ## [4.10.0] - 2026-10-03
 
