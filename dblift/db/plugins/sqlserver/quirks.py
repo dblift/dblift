@@ -35,11 +35,6 @@ class SqlserverQuirks(BaseQuirks):
     clean_strategy = "introspector"
     sqlglot_dialect = "tsql"
     is_sqlserver_family = True
-    # Data-set ledger DDL: tsql TIMESTAMP is a rowversion (no default allowed)
-    # and TEXT is a deprecated LOB; use DATETIME2 and VARCHAR(MAX).
-    data_history_text_type = "VARCHAR(MAX)"
-    data_change_set_blob_type = "VARCHAR(MAX)"
-    data_timestamp_column_ddl = "DATETIME2 DEFAULT GETDATE()"
     # sqlglot's tsql grammar rejects DROP INDEX's modern form
     # ("DROP INDEX index ON table") when the table is schema-qualified —
     # the ordinary, everyday spelling, not an edge case. It parses the
@@ -54,14 +49,6 @@ class SqlserverQuirks(BaseQuirks):
     # batch (e.g. a JOIN clause) — this must describe the one DROP INDEX
     # statement, not the whole blob it may be embedded in.
     sqlglot_unsupported_sql_regex_patterns = (r"DROP\s+INDEX\s+[^;]+\bON\s+[^\s;,()]*\.",)
-
-    def is_data_history_table_already_exists_error(self, error_message: str) -> bool:
-        """SQL Server raises "There is already an object named ..." (Msg 2714)."""
-        return "already an object named" in (error_message or "").lower()
-
-    def is_data_change_set_table_already_exists_error(self, error_message: str) -> bool:
-        """Same Msg 2714 detection as the data history table."""
-        return self.is_data_history_table_already_exists_error(error_message)
 
     def is_schema_history_race_error(self, error_message: str) -> bool:
         """SQL Server's ``CREATE TABLE`` for the migration history table has
@@ -158,15 +145,6 @@ class SqlserverQuirks(BaseQuirks):
     def __init__(self, dialect_name: str = "sqlserver") -> None:
         """Initialize SQL Server quirks with the dialect name."""
         super().__init__(dialect_name=dialect_name)
-
-    def build_snapshot_table_ddl(
-        self,
-        qualified_table: str,
-        snapshot_id_size: int,
-        checksum_size: int,
-    ) -> str:
-        """Refuse provider-owned snapshot-table DDL for SQL Server."""
-        raise NotImplementedError("SQL Server snapshots are not provider-owned")
 
     def ddl_generator_class(self) -> Optional[Type["SqlGeneratorProtocol"]]:
         """DDL generator is supplied by an installed extension package."""

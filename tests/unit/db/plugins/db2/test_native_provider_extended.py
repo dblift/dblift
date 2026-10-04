@@ -275,16 +275,6 @@ class TestCheckBaselineSafety:
         provider._check_baseline_safety("APP", "DBLIFT_SCHEMA_HISTORY")  # no exception
 
 
-class TestCreateSnapshotTable:
-    def test_returns_early_when_table_exists(self) -> None:
-        provider = DummyDb2Provider()
-        provider.table_exists = lambda schema, table_name: True
-
-        provider.create_snapshot_table_if_not_exists("APP")
-
-        assert not any(c[0] == "statement" and "CREATE TABLE" in c[1] for c in provider.calls)
-
-
 class TestGetAppliedMigrations:
     def test_returns_empty_when_table_missing(self) -> None:
         provider = DummyDb2Provider()

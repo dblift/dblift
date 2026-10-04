@@ -59,46 +59,6 @@ class Db2Quirks(BaseQuirks):
     # import-flyway reads Flyway's quoted lowercase source table directly, as on
     # Oracle; get_applied_migrations would uppercase the name and miss it.
     flyway_source_table_case_sensitive = True
-    # Data-set ledger DDL: DB2 has no TEXT type (use CLOB) and defaults the
-    # install timestamp from the CURRENT TIMESTAMP special register.
-    data_history_text_type = "CLOB"
-    data_change_set_blob_type = "CLOB"
-    data_timestamp_column_ddl = "TIMESTAMP DEFAULT CURRENT TIMESTAMP"
-
-    def is_data_history_table_already_exists_error(self, error_message: str) -> bool:
-        """DB2 reports a duplicate object with SQLSTATE 42710 (SQL0601N)."""
-        return "42710" in (error_message or "")
-
-    def is_data_change_set_table_already_exists_error(self, error_message: str) -> bool:
-        """Same SQLSTATE 42710 detection as the data history table."""
-        return self.is_data_history_table_already_exists_error(error_message)
-
-    def build_data_history_table_ddl(
-        self,
-        qualified_table: str,
-        id_size: int = 100,
-        checksum_size: int = 128,
-    ) -> str:
-        """Render the ``CREATE TABLE`` SQL for a per-dataset data history ledger.
-
-        DB2 requires an explicit ``NOT NULL`` on a ``PRIMARY KEY`` column
-        (SQL0542N otherwise) — unlike the base dialects, where ``PRIMARY KEY``
-        implies it. Otherwise identical to :meth:`BaseQuirks.build_data_history_table_ddl`.
-        """
-        return (
-            f"CREATE TABLE {qualified_table} ("
-            f"id VARCHAR({id_size}) NOT NULL PRIMARY KEY, "
-            f"dataset VARCHAR(100), "
-            f"sql_checksum VARCHAR({checksum_size}), "
-            f"installed_by VARCHAR(100), "
-            f"installed_on {self.data_timestamp_column_ddl}, "
-            f"status VARCHAR(20), "
-            f"plan_fingerprint VARCHAR(128), "
-            f"summary {self.data_history_text_type}, "
-            f"vcs_ref VARCHAR(200), "
-            f"note {self.data_history_text_type}"
-            ")"
-        )
 
     def is_schema_history_race_error(self, error_message: str) -> bool:
         """DB2 has no ``CREATE TABLE IF NOT EXISTS``; a concurrent migration
@@ -162,15 +122,6 @@ class Db2Quirks(BaseQuirks):
     def error_patterns(self) -> "List[Tuple[re.Pattern[str], ErrorCategory]]":
         """DB2 SQLSTATE / errorcode error-classification patterns (ADR-26 A2)."""
         return _ERROR_PATTERNS
-
-    def build_snapshot_table_ddl(
-        self,
-        qualified_table: str,
-        snapshot_id_size: int,
-        checksum_size: int,
-    ) -> str:
-        """DB2 does not support DBLift snapshot table creation."""
-        raise NotImplementedError("DB2 does not support DBLift snapshot table creation")
 
     def ddl_generator_class(self) -> Optional[Type["SqlGeneratorProtocol"]]:
         """DDL generator is supplied by an installed extension package."""

@@ -799,26 +799,6 @@ class TestCheckBaselineSafety:
         p._check_baseline_safety("MYSCHEMA", "dblift_schema_history")  # no exception
 
 
-class TestCreateSnapshotTableIfNotExists:
-    def test_creates_when_missing(self):
-        p = _Provider(username="MYSCHEMA")
-        p.query_results["FROM ALL_USERS WHERE username"] = [{"user_count": 1}]
-        p.query_results["TABLE_NAME = ?"] = [{"cnt": 0}]
-
-        p.create_snapshot_table_if_not_exists("MYSCHEMA")
-
-        assert any("MODEL_DATA CLOB" in s[0] for s in p.statements)
-
-    def test_skips_when_exists(self):
-        p = _Provider(username="MYSCHEMA")
-        p.query_results["FROM ALL_USERS WHERE username"] = [{"user_count": 1}]
-        p.query_results["TABLE_NAME = ?"] = [{"cnt": 1}]
-
-        p.create_snapshot_table_if_not_exists("MYSCHEMA")
-
-        assert p.statements == []
-
-
 class TestRecordMigration:
     def test_inserts_row_success(self):
         p = _Provider(username="MYSCHEMA")

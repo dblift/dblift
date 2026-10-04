@@ -5,7 +5,6 @@ from dblift.db.plugins.mongodb.mongodb.history_manager import MongoDbHistoryMana
 from dblift.db.plugins.mongodb.mongodb.locking_manager import MongoDbLockingManager
 from dblift.db.plugins.mongodb.mongodb.query_executor import MongoDbQueryExecutor
 from dblift.db.plugins.mongodb.mongodb.schema_operations import MongoDbSchemaOperations
-from dblift.db.plugins.mongodb.mongodb.snapshot_manager import MongoDbSnapshotManager
 
 __all__ = [
     "MongoDbConnectionManager",
@@ -13,5 +12,4 @@ __all__ = [
     "MongoDbLockingManager",
     "MongoDbQueryExecutor",
     "MongoDbSchemaOperations",
-    "MongoDbSnapshotManager",
 ]

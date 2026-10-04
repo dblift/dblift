@@ -17,9 +17,7 @@ from dblift.core.migration.history.migration_history_manager import MigrationHis
 from dblift.core.migration.migration import Migration, MigrationType
 from dblift.core.migration.sql.execution_statement import ExecutionStatement
 from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
-from dblift.db.base_provider import BaseProvider
 from dblift.db.base_quirks import BaseQuirks
-from dblift.db.plugins.base_snapshot_manager import BaseSnapshotManager
 from dblift.db.provider_interfaces import DroppableObject, TransactionalProvider
 
 
@@ -175,21 +173,6 @@ def test_history_creation_race_retries_without_rollback(monkeypatch):
     MigrationHistoryManager(provider, "main", "tester", NullLog()).create_schema_and_history_table()
     assert len(attempts) == 2
     assert provider.transaction_lookups == []
-
-
-def test_data_table_creation_does_not_probe_transaction_methods():
-    provider = NonTransactionalProvider()
-    BaseProvider._create_data_table_if_not_exists(provider, "main", "data_history")
-    assert len(provider.statements) == 1
-    assert provider.transaction_lookups == []
-
-
-def test_snapshot_creation_does_not_probe_document_connection():
-    provider = NonTransactionalProvider()
-    provider.connection = MagicMock()
-    BaseSnapshotManager(provider).create_snapshot_table_if_not_exists("main")
-    assert len(provider.statements) == 1
-    assert provider.connection.mock_calls == []
 
 
 @pytest.mark.parametrize("failure", [False, True])
