@@ -9,6 +9,7 @@ from sqlalchemy import create_engine
 from dblift.api import DBLiftClient
 from dblift.config import DbliftConfig
 from dblift.config.errors import ConfigurationError
+from dblift.core.logger import NullLog
 
 
 def test_from_sqlalchemy_migrate_sqlite(tmp_path):
@@ -86,6 +87,36 @@ def test_from_sqlalchemy_in_memory_connection_shares_database(tmp_path):
     # Caller's connection is untouched by client.close()
     assert conn.exec_driver_sql("SELECT 1").scalar() == 1
     conn.close()
+
+
+def test_silent_client_exception_keeps_injected_connection_and_logger(tmp_path):
+    migrations = tmp_path / "migrations"
+    migrations.mkdir()
+    (migrations / "V1__init.sql").write_text("CREATE TABLE t (id INTEGER PRIMARY KEY);")
+    engine = create_engine("sqlite:///:memory:")
+    connection = engine.connect()
+
+    class TrackingNullLog(NullLog):
+        def __init__(self):
+            self.closed = False
+
+        def close(self):
+            self.closed = True
+
+    logger = TrackingNullLog()
+    with pytest.raises(RuntimeError, match="host failure"):
+        with DBLiftClient.from_sqlalchemy(
+            connection=connection, migrations_dir=migrations, logger=logger
+        ) as client:
+            assert client.migrate().success
+            raise RuntimeError("host failure")
+
+    assert connection.exec_driver_sql("SELECT 1").scalar_one() == 1
+    assert logger.closed is False
+    connection.close()
+    with engine.connect() as reopened:
+        assert reopened.exec_driver_sql("SELECT 1").scalar_one() == 1
+    engine.dispose()
 
 
 def test_from_sqlalchemy_engine_not_disposed(tmp_path):
