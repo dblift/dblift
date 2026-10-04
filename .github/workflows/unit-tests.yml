@@ -34,7 +34,7 @@ jobs:
           python-version: ${{ matrix.python-version }}
           cache: pip
       - name: Install artifact test tools
-        run: python -m pip install build pytest
+        run: python -m pip install build pytest tomlkit
       - name: Qualify installed wheel, sdist, and additive extensions
         run: python -m pytest tests/artifacts/ -q
 
