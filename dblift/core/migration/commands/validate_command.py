@@ -88,6 +88,14 @@ class ValidateCommand(BaseCommand):
 
         read_snapshot = self.state_manager.new_read_snapshot()
 
+        self._prepare_analysis_for_sql_callbacks(
+            scripts_dir,
+            ("beforeValidate", "afterValidate"),
+            recursive,
+            additional_dirs,
+            dir_recursive_map,
+        )
+
         # Ensure the schema history table exists before validating, the same
         # way info/migrate/undo/baseline do. A failure here (e.g. missing DB
         # privileges) is a real command failure and must propagate rather

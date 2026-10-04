@@ -115,6 +115,9 @@ class UndoCommand(BaseCommand):
         result.show_query_results = show_query_results
         result.target_schema = self.config.database.schema
 
+        if not dry_run:
+            self._prepare_required_analysis()
+
         try:
             # Canonical preflight (ADR-0011): connect → ensure schema/history
             # table → populate connection info. undo() has no prior

@@ -70,6 +70,7 @@ class SqlExecutionService:
         self.journal = journal
         self.schema = schema
         self._quirks: Optional[BaseQuirks] = quirks
+        self._analysis_prepared = False
 
     @property
     def quirks(self) -> BaseQuirks:
@@ -80,6 +81,25 @@ class SqlExecutionService:
                 provider_quirks if isinstance(provider_quirks, BaseQuirks) else BaseQuirks()
             )
         return self._quirks
+
+    def prepare_analysis(self) -> None:
+        """Prepare dependencies required by the active object-change journal."""
+        if self._analysis_prepared or not (
+            self.journal and hasattr(self.journal, "record_object_changes")
+        ):
+            return
+
+        prepare = getattr(self.sql_analyzer, "prepare_object_analysis", None)
+        if prepare is not None:
+            prepare()
+
+        # Native quirks use the shared AST-first DML analyzer, including on
+        # dialects whose DDL parser is regex-only. Plugin overrides own this path.
+        analyze_dml = self.quirks.analyze_dml
+        if getattr(analyze_dml, "__func__", analyze_dml) is BaseQuirks.analyze_dml:
+            import sqlglot  # noqa: F401 - fail before any user or history write
+
+        self._analysis_prepared = True
 
     def execute_statement(
         self,
@@ -107,6 +127,8 @@ class SqlExecutionService:
         if self.quirks.is_batch_separator(statement):
             self.log.debug("Skipping dialect batch separator statement")
             return False, 0
+
+        self.prepare_analysis()
 
         # Log statement for debugging
         if len(statement) > LOG_STATEMENT_PREVIEW_LENGTH:

@@ -65,6 +65,15 @@ class CleanCommand(BaseCommand):
             result.complete()
             return result
 
+        if scripts_dir and not dry_run:
+            self._prepare_analysis_for_sql_callbacks(
+                scripts_dir,
+                ("beforeClean", "afterClean", "afterCleanError"),
+                recursive,
+                additional_dirs,
+                dir_recursive_map,
+            )
+
         # Connect and read connection metadata (clean needs no history table).
         # Needed for both dry-run enumeration and the actual clean: a failed
         # connection must be reported, not hidden, otherwise a dry run shows
