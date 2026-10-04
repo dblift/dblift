@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Importing `dblift.extensions` now loads its category modules only when accessed.
+  The existing category exports and their module identities remain unchanged.
+
 ## [4.10.0] - 2026-10-03
 
 ### Added
