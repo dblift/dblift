@@ -5,6 +5,8 @@ from pathlib import Path
 import pytest
 
 from dblift.api.client import DBLiftClient
+from dblift.config.dblift_config import DbliftConfig, DirectoryConfig
+from dblift.config.path_anchoring import anchor_config_paths
 
 
 def _project(root: Path) -> Path:
@@ -82,3 +84,43 @@ class TestRelativeToConfig:
             pending = [m.script for m in client.info().migrations]
 
         assert pending == ["V1_0_0__create_a.sql"]
+
+    def test_dict_directory_entry_is_anchored_and_keeps_recursive(self, tmp_path, monkeypatch):
+        config = _project(tmp_path)
+        (config.parent / "migrations" / "sub").mkdir()
+        (config.parent / "migrations" / "sub" / "V2_0_0__create_b.sql").write_text(
+            "CREATE TABLE b (id INTEGER PRIMARY KEY);\n"
+        )
+        config.write_text(
+            "database:\n"
+            "  type: sqlite\n"
+            "  path: ./app.db\n"
+            "migrations:\n"
+            "  directories:\n"
+            "    - path: ./migrations\n"
+            "      recursive: false\n"
+        )
+        elsewhere = tmp_path / "elsewhere"
+        elsewhere.mkdir()
+        monkeypatch.chdir(elsewhere)
+
+        with DBLiftClient.from_config_file(str(config), relative_to_config=True) as client:
+            pending = [m.script for m in client.info().migrations]
+
+        assert pending == ["V1_0_0__create_a.sql"]
+
+
+@pytest.mark.unit
+def test_anchor_converts_raw_dict_entry(tmp_path):
+    config = DbliftConfig.from_dict(
+        {
+            "database": {"type": "sqlite", "path": "./app.db"},
+            "migrations": {"directories": [{"directory": "./migrations", "recursive": False}]},
+        }
+    )
+
+    anchor_config_paths(config, tmp_path)
+
+    expected = DirectoryConfig(path=str((tmp_path / "migrations").resolve()), recursive=False)
+    assert config.migrations.directories == [expected]
+    assert config.migrations.get_directory_configs() == [expected]

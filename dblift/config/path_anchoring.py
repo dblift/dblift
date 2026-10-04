@@ -1,7 +1,7 @@
 """Resolve the relative paths of a loaded configuration from a chosen folder."""
 
 from pathlib import Path
-from typing import Any
+from typing import Any, Dict, List, Union
 
 from dblift.config.dblift_config import DbliftConfig, DirectoryConfig
 
@@ -23,14 +23,16 @@ def anchor_config_paths(config: DbliftConfig, base_dir: Path) -> None:
         return str(path if path.is_absolute() else (base / path).resolve())
 
     migrations = config.migrations
-    anchored = []
+    anchored: List[Union[str, DirectoryConfig]] = []
+    entry: Union[str, DirectoryConfig, Dict[str, Any]]
     for entry in migrations.directories or []:
+        if isinstance(entry, dict):
+            # A hand-built config may still hold the raw ``{path, recursive}``
+            # mapping; normalise it the way ``get_directory_configs`` would.
+            entry = DirectoryConfig.from_dict(entry)
         if isinstance(entry, DirectoryConfig):
             entry.path = anchor(entry.path)
             anchored.append(entry)
-        elif isinstance(entry, dict):
-            key = "path" if "path" in entry else "directory"
-            anchored.append({**entry, key: anchor(entry[key])})
         else:
             anchored.append(anchor(entry))
     migrations.directories = anchored
@@ -38,7 +40,8 @@ def anchor_config_paths(config: DbliftConfig, base_dir: Path) -> None:
 
     database_path = getattr(config.database, "path", None)
     if isinstance(database_path, str) and database_path and database_path != _IN_MEMORY:
-        config.database.path = anchor(database_path)
+        # Only file-based engines (e.g. SQLite) define ``path``.
+        setattr(config.database, "path", anchor(database_path))
 
     if getattr(config, "log_dir", None):
         config.log_dir = anchor(config.log_dir)
