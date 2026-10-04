@@ -41,7 +41,7 @@ jobs:
         run: flake8 --config=.flake8 dblift/
 
       - name: Type check
-        run: mypy dblift/ --config-file pyproject.toml --show-error-codes
+        run: mypy dblift/ tests/typing/lightweight_extension.py --config-file pyproject.toml --show-error-codes
 
       - name: Check internal layering
         run: lint-imports --config .importlinter
