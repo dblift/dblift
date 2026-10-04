@@ -104,6 +104,8 @@ dev = [
     "docker>=6.1.2",
     "types-PyYAML>=6.0.12.12",
     "types-setuptools",
+    # Qualification script rewrites the archived fork's TOML; not a runtime dependency.
+    "tomlkit>=0.13",
     "pre-commit>=4.0.0",
     "Cython>=3.0.0",
     # Security and quality tooling (see .github/workflows/security.yml,

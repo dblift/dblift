@@ -41,3 +41,14 @@ def test_guide_names_at_least_the_core_files() -> None:
 def test_every_path_named_in_guide_exists() -> None:
     missing = [p for p in _paths_named_in_guide() if not (ROOT / p).exists()]
     assert missing == []
+
+
+def test_guide_documents_the_qualified_temporary_fork() -> None:
+    guide = " ".join(GUIDE.read_text(encoding="utf-8").split())
+    assert "scripts/qualify_sqlite_fork.py" in guide
+    assert "dblift-sqlite-fork-fixture" in guide
+    assert "dblift-fork-fixture" in guide
+    assert "FORKLIFT_DB_URL" in guide
+    assert "separate environment" in guide
+    assert "not published" in guide
+    assert "retains the premium manifest" in guide

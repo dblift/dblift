@@ -6,6 +6,39 @@ hooks that exist for optional add-on packages. Everything below refers to
 files in this repository; `tests/unit/docs/test_forking_guide.py` fails if
 one of them moves, so the lists stay current.
 
+## Executed SQLite-only fork fixture
+
+The reproducible recipe is `scripts/qualify_sqlite_fork.py`. In a development
+environment installed with `pip install -e '.[dev]'` (which supplies the
+qualification-only TOML writer), run it from a committed revision:
+
+```bash
+python scripts/qualify_sqlite_fork.py --revision "$(git rev-parse HEAD)" --output /tmp/sqlite-fork-result.json
+```
+
+The script archives that revision into a temporary directory, keeps SQLite and
+the common files under `dblift/db/plugins/`, removes the other provider
+directories and entry points in that copy, then builds
+`dblift-sqlite-fork-fixture` with the `dblift-fork-fixture` executable. It
+retains the Python `dblift` namespace and all shared dependencies. The JSON
+result records the wheel hash, removed plugin directories, installed origin,
+SQLite migration result and a transformation diff beside the result file.
+The fixture is **not published**. Because the Python namespace stays `dblift`,
+install the fixture in a **separate environment** from the original DBLift
+distribution; the qualifier creates one automatically.
+
+The temporary fork changes the documented identity constants to
+`forklift_schema_history`, `forklift_migration_lock`,
+`forklift_schema_snapshots`, `forklift_data_change_set`,
+`forklift_data_audit`, and the `FORKLIFT_` environment prefix. For example,
+`FORKLIFT_DB_URL` selects its SQLite URL, while `DBLIFT_DB_URL` does not
+override it. The installed-wheel probe verifies the history and lock table
+names in a real SQLite database and resolves the fork environment variable.
+The remaining identity constants are changed in the archived source copy.
+The main OSS checkout is left unchanged. This fork retains the premium
+manifest and license/discovery seams; removing them is unnecessary for a
+SQLite-only distribution.
+
 ## 1. The package map
 
 | Package | What it holds | Depends on |
@@ -87,6 +120,11 @@ DBLIFT_UPDATE_CONTRACTS=1 python -m pytest tests/unit/contracts
 ```
 
 ## 3. Removing the extension hooks
+
+The executed SQLite fixture retains the premium manifest, license seams and
+extension contracts. The following is an optional manual path for an
+independent fork; it is outside the qualified recipe above.
+
 
 The open-source tree ships seams that an installed add-on package can
 register into. A fork that will never install such a package can delete
