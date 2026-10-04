@@ -1,3 +1,5 @@
+import pytest
+
 from tests.unit.lightweight_core._support import run_python
 
 
@@ -40,3 +42,13 @@ def test_probe_really_blocks_imports():
     result = run_python("import jinja2", blocked=("jinja2",))
     assert result.returncode != 0
     assert "contract blocked: jinja2" in result.stderr
+
+
+def test_package_introspection_and_unknown_attribute():
+    import dblift.extensions as ext
+
+    assert set(ext.__all__) <= set(dir(ext))
+    with pytest.raises(
+        AttributeError, match="module 'dblift.extensions' has no attribute 'not_a_category'"
+    ):
+        ext.not_a_category
