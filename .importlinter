@@ -45,3 +45,12 @@ forbidden_modules =
 # meaningful if the lower layers also stay out of cli. api/ is the documented
 # programmatic surface and must stay importable without dragging in the
 # command-line entry points. Currently at zero across all four roots.
+
+[importlinter:contract:execution-contracts-are-light]
+name = execution contracts do not depend on rendering or schema models
+type = forbidden
+source_modules =
+    dblift.core.migration.sql.execution_contracts
+forbidden_modules =
+    dblift.core.logger.console
+    dblift.core.sql_model

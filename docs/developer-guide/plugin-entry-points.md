@@ -43,6 +43,32 @@ snowflake = "dblift.db.plugins.snowflake.plugin:PLUGIN"
 The plugin supplies provider classes, URL builders, optional quirks/config
 classes, native driver metadata, and dialect aliases.
 
+An installed provider package can also expose a dialect alias while reusing
+an existing provider implementation. The test fixture under
+`tests/fixtures/lightweight_extension/` registers `fixture_sqlite` this way;
+it delegates execution to SQLite and imports `PluginInfo` from
+`dblift.extensions.providers`. A new database engine needs its own provider.
+
+### `dblift.event_listeners`
+
+Value: a callable `register(emitter) -> None`. Use `EventEmitter.on` to subscribe
+to events; each `DBLiftClient` gets its own emitter. Independent installed
+packages can contribute listeners to the same client:
+
+```python
+from dblift.api.events import EventType
+
+def register(emitter):
+    emitter.on(EventType.MIGRATION_COMPLETED, on_completed)
+```
+
+Declare the registrar in the package metadata:
+
+```toml
+[project.entry-points."dblift.event_listeners"]
+my_events = "my_package:register"
+```
+
 ### `dblift.commands`
 
 Value: a callable that receives an `argparse.ArgumentParser` and mutates it.

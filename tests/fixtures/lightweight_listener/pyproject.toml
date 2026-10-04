@@ -1,0 +1,15 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "dblift-lightweight-listener-fixture"
+version = "0.0.1"
+requires-python = ">=3.11"
+dependencies = ["dblift"]
+
+[project.entry-points."dblift.event_listeners"]
+fixture_listener_events = "fixture_listener:register"
+
+[tool.setuptools.packages.find]
+include = ["fixture_listener*"]
