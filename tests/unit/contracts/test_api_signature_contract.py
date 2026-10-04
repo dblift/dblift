@@ -1,4 +1,8 @@
-"""Freeze the parameters of every public ``DBLiftClient`` callable."""
+"""Freeze the parameters of every public ``DBLiftClient`` callable.
+
+A parameter's position is recorded only when it can be passed by position:
+for keyword-only and variadic parameters no caller can rely on it.
+"""
 
 from __future__ import annotations
 
@@ -12,6 +16,8 @@ from dblift.api import DBLiftClient
 from ._snapshot import assert_matches_snapshot
 
 pytestmark = [pytest.mark.unit]
+
+_POSITIONAL = (inspect.Parameter.POSITIONAL_ONLY, inspect.Parameter.POSITIONAL_OR_KEYWORD)
 
 
 def _default(param: inspect.Parameter) -> str:
@@ -33,7 +39,10 @@ def _facts() -> Iterator[str]:
             if p.name not in ("self", "cls")
         ]
         for index, param in enumerate(params):
-            yield f"DBLiftClient.{name} :: {index}:{param.name}|{param.kind.name}|{_default(param)}"
+            fact = f"{param.name}|{param.kind.name}|{_default(param)}"
+            if param.kind in _POSITIONAL:
+                fact = f"{index}:{fact}"
+            yield f"DBLiftClient.{name} :: {fact}"
 
 
 def test_client_signatures_match_snapshot() -> None:
