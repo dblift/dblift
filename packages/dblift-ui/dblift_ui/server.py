@@ -1,12 +1,14 @@
 """HTTP application: security guard and route wiring."""
 
+import json
 import secrets
 from dataclasses import asdict
 from pathlib import Path
-from typing import Any, Awaitable, Callable, Dict, List, Optional
+from typing import Any, Awaitable, Callable, Dict, Iterator, List, Optional
 
 import yaml
 from dblift_ui import __version__
+from dblift_ui.jobs import JobRunner
 from dblift_ui.registry import (
     Project,
     ProjectRegistry,
@@ -14,7 +16,7 @@ from dblift_ui.registry import (
     RegistryFileError,
 )
 from fastapi import FastAPI, HTTPException, Request, Response
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from pydantic import BaseModel
 
 TOKEN_HEADER = "X-DBLift-Token"
@@ -25,6 +27,11 @@ _SAFE_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
 class NewProject(BaseModel):
     name: str = ""
     config_path: str = ""
+
+
+class NewJob(BaseModel):
+    command: str
+    environment: str = ""
 
 
 def describe(project: Project) -> Dict[str, Any]:
@@ -54,6 +61,7 @@ def create_app(token: str, port: int, registry: Optional[ProjectRegistry] = None
     """
     app = FastAPI(title="DBLift UI", docs_url=None, redoc_url=None, openapi_url=None)
     projects = registry or ProjectRegistry.default()
+    runner = JobRunner(projects)
     hosts = frozenset({f"127.0.0.1:{port}", f"localhost:{port}"})
     origins = frozenset(f"http://{host}" for host in hosts)
 
@@ -101,6 +109,33 @@ def create_app(token: str, port: int, registry: Optional[ProjectRegistry] = None
         except KeyError as exc:
             raise HTTPException(status_code=404, detail="unknown project") from exc
         return Response(status_code=204)
+
+    @app.post("/api/projects/{project_id}/jobs", status_code=202)
+    def start_job(project_id: str, body: NewJob) -> Dict[str, str]:
+        try:
+            job = runner.start(project_id, body.command, body.environment)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="unknown project") from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return {"job_id": job.id}
+
+    @app.get("/api/jobs/{job_id}/events")
+    def job_events(job_id: str) -> StreamingResponse:
+        try:
+            events = runner.stream(job_id)
+            first = next(events)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="unknown job") from exc
+
+        def lines() -> Iterator[str]:
+            yield f"data: {json.dumps(first)}\n\n"
+            for event in events:
+                yield f"data: {json.dumps(event)}\n\n"
+
+        return StreamingResponse(
+            lines(), media_type="text/event-stream", headers={"Cache-Control": "no-store"}
+        )
 
     @app.get("/")
     def index() -> FileResponse:
