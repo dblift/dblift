@@ -1246,6 +1246,7 @@ class DBLiftClient:
         config_path: str,
         logger: Optional[Any] = None,
         environment: Optional[str] = None,
+        *,
         relative_to_config: bool = False,
         **overrides: Any,
     ) -> Self:
