@@ -29,6 +29,52 @@ assert len(analyzer.split_statements("SELECT 'a;b'; SELECT 2;")) == 2
     assert list(tmp_path.iterdir()) == []
 
 
+def test_real_sqlite_explicit_v_and_u_execute_without_detailed_analysis(tmp_path):
+    result = run_python(
+        """
+from dblift.config import DbliftConfig
+from dblift.core.logger import NullLog
+from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
+from dblift.core.migration.sql.sql_execution_service import SqlExecutionService
+from dblift.db.plugins.sqlite.provider import SQLiteProvider
+
+config = DbliftConfig.from_dict({'database': {'type': 'sqlite', 'url': 'sqlite:///:memory:'}})
+provider = SQLiteProvider(config, NullLog())
+provider.create_connection()
+sent = []
+execute_statement = provider.execute_statement
+execute_query = provider.execute_query
+def record_statement(sql, schema=None, params=None):
+    sent.append(('statement', sql, params))
+    return execute_statement(sql, schema=schema, params=params)
+def record_query(sql, params=None):
+    sent.append(('query', sql, params))
+    return execute_query(sql, params=params)
+provider.execute_statement = record_statement
+provider.execute_query = record_query
+try:
+    service = SqlExecutionService(provider, SqlAnalyzer('sqlite'), journal=None)
+    assert service.execute_statement('CREATE TABLE t (id INTEGER)')[0] is False
+    assert service.execute_statement('INSERT INTO t VALUES (?)', params=[7])[0] is False
+    is_query, rows = service.execute_statement('SELECT id FROM t WHERE id = ?', params=[7])
+    assert is_query and rows == [{'id': 7}]
+    assert service.execute_statement('DROP TABLE t')[0] is False
+    assert sent == [
+        ('statement', 'CREATE TABLE t (id INTEGER)', None),
+        ('statement', 'INSERT INTO t VALUES (?)', [7]),
+        ('query', 'SELECT id FROM t WHERE id = ?', [7]),
+        ('statement', 'DROP TABLE t', None),
+    ], sent
+    assert execute_query("SELECT name FROM sqlite_master WHERE name='t'") == []
+finally:
+    provider.close()
+""",
+        blocked=("sqlglot",),
+        cwd=tmp_path,
+    )
+    assert result.returncode == 0, result.stderr
+
+
 def test_oracle_keeps_configured_logger_with_rich_available():
     result = run_python("""
 from pathlib import Path
