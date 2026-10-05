@@ -627,6 +627,15 @@ input {
     max-width: 100%;
   }
 
+  /* A repository's group takes the width of its projects; only the strip above scrolls. */
+  .sidebar__item:has(> .sidebar__repo) {
+    max-width: none;
+  }
+
+  .sidebar__repo .sidebar__list {
+    overflow: visible;
+  }
+
   .sidebar__add {
     margin-top: 0;
     margin-left: auto;
