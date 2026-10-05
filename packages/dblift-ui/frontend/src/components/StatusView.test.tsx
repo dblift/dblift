@@ -28,6 +28,9 @@ const project: Project = {
   environments: ["staging"],
   engine: "postgresql",
   error: null,
+  missing: false,
+  repository: "shop",
+  repository_path: "/work/shop",
 };
 
 const status: JobResult = {

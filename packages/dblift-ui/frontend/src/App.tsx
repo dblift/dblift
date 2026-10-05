@@ -3,6 +3,7 @@ import { useRef, useState } from "react";
 
 import { listProjects, setEnvironment } from "./api/projects";
 import type { Project } from "./api/types";
+import AddProject from "./components/AddProject";
 import EmptyState from "./components/EmptyState";
 import Sidebar from "./components/Sidebar";
 import StatusView, { type StatusViewHandle } from "./components/StatusView";
@@ -14,6 +15,7 @@ const queryClient = new QueryClient({
 function Shell() {
   const { data: projects = [], error, isPending } = useQuery({ queryKey: ["projects"], queryFn: listProjects });
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [adding, setAdding] = useState(false);
   const selected = projects.find((p) => p.id === selectedId) ?? projects[0] ?? null;
   const client = useQueryClient();
   // Leaving the open project goes through its view, which asks first when a script has unsaved edits.
@@ -34,7 +36,13 @@ function Shell() {
 
   return (
     <div className="app" role="application" aria-label="DBLift UI">
-      <Sidebar projects={projects} selectedId={selected?.id ?? null} onSelect={select} onLeave={leave} />
+      <Sidebar
+        projects={projects}
+        selectedId={selected?.id ?? null}
+        onSelect={select}
+        onAdd={() => leave(() => setAdding(true))}
+        onLeave={leave}
+      />
       <main className="app__main">
         {error && (
           <p className="notice notice--error" role="alert">
@@ -52,6 +60,9 @@ function Shell() {
           />
         )}
       </main>
+      {adding && (
+        <AddProject projects={projects} onClose={() => setAdding(false)} onAdded={(ids) => setSelectedId(ids[0])} />
+      )}
     </div>
   );
 }

@@ -19,6 +19,7 @@ vi.mock("../api/scripts", () => scripts);
 
 const project: Project = {
   id: "p1", name: "shop-api", config_path: "/w/dblift.yaml", last_environment: "", environments: [], engine: "sqlite", error: null,
+  missing: false, repository: "w", repository_path: "/w",
 };
 const A = "V1_0_0__create_customers.sql";
 const B = "V1_0_1__create_orders.sql";

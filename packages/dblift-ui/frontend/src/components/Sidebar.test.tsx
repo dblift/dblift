@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ReactNode } from "react";
 import { beforeEach, expect, it, vi } from "vitest";
@@ -7,10 +7,10 @@ import { beforeEach, expect, it, vi } from "vitest";
 import type { Project } from "../api/types";
 import Sidebar from "./Sidebar";
 
-const api = vi.hoisted(() => ({ addProject: vi.fn(), removeProject: vi.fn() }));
+const api = vi.hoisted(() => ({ removeProject: vi.fn() }));
 vi.mock("../api/projects", () => api);
 
-const shop: Project = { id: "p1", name: "shop-api", config_path: "/work/shop/dblift.yaml", last_environment: "", environments: [], engine: "sqlite", error: null };
+const shop: Project = { id: "p1", name: "shop-api", config_path: "/work/shop/dblift.yaml", last_environment: "", environments: [], engine: "sqlite", error: null, missing: false, repository: "shop", repository_path: "/work/shop" };
 const billing: Project = { ...shop, id: "p2", name: "billing", engine: "postgresql" };
 
 function wrap(children: ReactNode) {
@@ -18,12 +18,11 @@ function wrap(children: ReactNode) {
 }
 
 beforeEach(() => {
-  api.addProject.mockReset();
   api.removeProject.mockReset();
 });
 
 it("lists projects and marks the selected one", () => {
-  render(wrap(<Sidebar projects={[shop, billing]} selectedId="p2" onSelect={() => {}} />));
+  render(wrap(<Sidebar projects={[shop, billing]} selectedId="p2" onSelect={() => {}} onAdd={() => {}} />));
 
   expect(screen.getByRole("button", { name: /^shop-api/ })).not.toHaveAttribute("aria-current");
   expect(screen.getByRole("button", { name: /^billing/ })).toHaveAttribute("aria-current", "true");
@@ -32,42 +31,42 @@ it("lists projects and marks the selected one", () => {
 
 it("selects a project on click", async () => {
   const onSelect = vi.fn();
-  render(wrap(<Sidebar projects={[shop, billing]} selectedId="p1" onSelect={onSelect} />));
+  render(wrap(<Sidebar projects={[shop, billing]} selectedId="p1" onSelect={onSelect} onAdd={() => {}} />));
 
   await userEvent.click(screen.getByRole("button", { name: /^billing/ }));
 
   expect(onSelect).toHaveBeenCalledWith("p2");
 });
 
-it("adds a project from a name and a config path", async () => {
-  api.addProject.mockResolvedValue({ ...shop, id: "p3", name: "analytics" });
-  const onSelect = vi.fn();
-  render(wrap(<Sidebar projects={[shop]} selectedId="p1" onSelect={onSelect} />));
+it("asks to open the add-project dialog", async () => {
+  const onAdd = vi.fn();
+  render(wrap(<Sidebar projects={[shop]} selectedId="p1" onSelect={() => {}} onAdd={onAdd} />));
 
   await userEvent.click(screen.getByRole("button", { name: "Add project" }));
-  await userEvent.type(screen.getByLabelText("Name"), "analytics");
-  await userEvent.type(screen.getByLabelText("Config file path"), "/work/analytics/dblift.yaml");
-  await userEvent.click(screen.getByRole("button", { name: "Add" }));
 
-  expect(api.addProject).toHaveBeenCalledWith("analytics", "/work/analytics/dblift.yaml");
-  expect(onSelect).toHaveBeenCalledWith("p3");
+  expect(onAdd).toHaveBeenCalledTimes(1);
+  expect(screen.queryByLabelText("Config file path")).not.toBeInTheDocument();
 });
 
-it("shows the server's reason when adding fails", async () => {
-  api.addProject.mockRejectedValue(new Error("config file not found: /nope.yaml"));
-  render(wrap(<Sidebar projects={[]} selectedId={null} onSelect={() => {}} />));
+it("groups the projects of one repository under its name", () => {
+  const billing = { ...shop, id: "p2", name: "billing", repository: "platform", repository_path: "/work/platform" };
+  const reporting = { ...shop, id: "p3", name: "reporting", repository: "platform", repository_path: "/work/platform" };
+  render(wrap(<Sidebar projects={[shop, billing, reporting]} selectedId="p1" onSelect={() => {}} onAdd={() => {}} />));
 
-  await userEvent.click(screen.getByRole("button", { name: "Add project" }));
-  await userEvent.type(screen.getByLabelText("Name"), "x");
-  await userEvent.type(screen.getByLabelText("Config file path"), "/nope.yaml");
-  await userEvent.click(screen.getByRole("button", { name: "Add" }));
+  const group = screen.getByRole("group", { name: "platform" });
+  expect(within(group).getAllByRole("button", { name: /^(billing|reporting)/ })).toHaveLength(2);
+  expect(screen.queryByRole("group", { name: shop.repository })).not.toBeInTheDocument();
+});
 
-  expect(await screen.findByRole("alert")).toHaveTextContent("config file not found: /nope.yaml");
+it("says when a project's config is not on this branch", () => {
+  render(wrap(<Sidebar projects={[{ ...shop, missing: true, error: "…" }]} selectedId="p1" onSelect={() => {}} onAdd={() => {}} />));
+
+  expect(screen.getByRole("button", { name: /^shop-api/ })).toHaveTextContent("not on this branch");
 });
 
 it("removes a project after a confirmation in place", async () => {
   api.removeProject.mockResolvedValue(undefined);
-  render(wrap(<Sidebar projects={[shop]} selectedId="p1" onSelect={() => {}} />));
+  render(wrap(<Sidebar projects={[shop]} selectedId="p1" onSelect={() => {}} onAdd={() => {}} />));
 
   await userEvent.click(screen.getByRole("button", { name: "Remove shop-api" }));
   expect(api.removeProject).not.toHaveBeenCalled();
@@ -80,7 +79,7 @@ it("removes a project after a confirmation in place", async () => {
 });
 
 it("keeps the project when the removal is cancelled or the user clicks elsewhere", async () => {
-  render(wrap(<Sidebar projects={[shop]} selectedId="p1" onSelect={() => {}} />));
+  render(wrap(<Sidebar projects={[shop]} selectedId="p1" onSelect={() => {}} onAdd={() => {}} />));
 
   await userEvent.click(screen.getByRole("button", { name: "Remove shop-api" }));
   await userEvent.click(screen.getByRole("button", { name: "Cancel" }));
@@ -96,7 +95,7 @@ it("keeps the project when the removal is cancelled or the user clicks elsewhere
 
 it("shows the server's reason when removing fails", async () => {
   api.removeProject.mockRejectedValue(new Error("registry file is read-only"));
-  render(wrap(<Sidebar projects={[shop]} selectedId="p1" onSelect={() => {}} />));
+  render(wrap(<Sidebar projects={[shop]} selectedId="p1" onSelect={() => {}} onAdd={() => {}} />));
 
   await userEvent.click(screen.getByRole("button", { name: "Remove shop-api" }));
   await userEvent.click(screen.getByRole("button", { name: "Remove" }));

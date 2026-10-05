@@ -15,11 +15,25 @@ const runJob = vi.hoisted(() => vi.fn());
 vi.mock("./api/jobs", () => ({ runJob }));
 const scripts = vi.hoisted(() => ({ listScripts: vi.fn(), readScript: vi.fn() }));
 vi.mock("./api/scripts", () => scripts);
+const discovery = vi.hoisted(() => ({
+  getDefaults: vi.fn(async () => ({ clone_parent: "/home/dev/dblift-projects", git: true })),
+  discoverFolder: vi.fn(async () => ({
+    root: "/work/platform", name: "platform", repository: true, branch: "main", truncated: false, flyway: [], script_folders: [],
+    configs: [{ path: "dblift.yaml", kind: "named", problem: null, registered: false }],
+  })),
+  cloneRepository: vi.fn(),
+}));
+vi.mock("./api/discovery", () => discovery);
 vi.mock("./components/CodeEditor", () => ({
   default: ({ value, onChange, label }: { value: string; onChange: (v: string) => void; label: string }) => (
     <textarea aria-label={label} value={value} onChange={(e) => onChange(e.target.value)} />
   ),
 }));
+
+const first = {
+  id: "p1", name: "shop-api", config_path: "/w/dblift.yaml", last_environment: "", environments: [], engine: "sqlite", error: null,
+  missing: false, repository: "w", repository_path: "/w",
+};
 
 beforeEach(() => {
   api.listProjects.mockReset();
@@ -43,12 +57,25 @@ it("invites the user to add a project when there is none", async () => {
 });
 
 it("opens the first project", async () => {
-  api.listProjects.mockResolvedValue([
-    { id: "p1", name: "shop-api", config_path: "/w/dblift.yaml", last_environment: "", environments: [], engine: "sqlite", error: null },
-  ]);
+  api.listProjects.mockResolvedValue([first]);
   render(<App />);
 
   expect(await screen.findByRole("heading", { name: "shop-api" })).toBeInTheDocument();
+});
+
+it("adds a project through the dialog and opens it", async () => {
+  api.listProjects.mockResolvedValueOnce([]).mockResolvedValue([{ ...first, id: "new", name: "platform" }]);
+  api.addProject.mockResolvedValue({ ...first, id: "new", name: "platform" });
+  render(<App />);
+  await screen.findByRole("heading", { name: /Add your first project/ });
+
+  await userEvent.click(screen.getByRole("button", { name: "Add project" }));
+  await userEvent.type(screen.getByLabelText("Folder path"), "/work/platform");
+  await userEvent.click(screen.getByRole("button", { name: "Look for configs" }));
+  await userEvent.click(await screen.findByRole("button", { name: "Add 1 project" }));
+
+  expect(await screen.findByRole("heading", { name: "platform" })).toBeInTheDocument();
+  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
 });
 
 it("explains a rejected token instead of showing an empty screen", async () => {
@@ -59,7 +86,7 @@ it("explains a rejected token instead of showing an empty screen", async () => {
 });
 
 it("keeps the chosen environment when the user comes back to a project", async () => {
-  const alpha = { id: "a1", name: "alpha", config_path: "/a/dblift.yaml", last_environment: "", environments: ["staging"], engine: "sqlite", error: null };
+  const alpha = { id: "a1", name: "alpha", config_path: "/a/dblift.yaml", last_environment: "", environments: ["staging"], engine: "sqlite", error: null, missing: false, repository: "a", repository_path: "/a" };
   const beta = { ...alpha, id: "b1", name: "beta" };
   api.listProjects.mockResolvedValue([alpha, beta]);
   api.setEnvironment.mockResolvedValue({ ...alpha, last_environment: "staging" });
@@ -79,7 +106,7 @@ it("keeps the chosen environment when the user comes back to a project", async (
 });
 
 it("says so when the chosen environment cannot be saved", async () => {
-  const gamma = { id: "g1", name: "gamma", config_path: "/g/dblift.yaml", last_environment: "", environments: ["staging"], engine: "sqlite", error: null };
+  const gamma = { id: "g1", name: "gamma", config_path: "/g/dblift.yaml", last_environment: "", environments: ["staging"], engine: "sqlite", error: null, missing: false, repository: "g", repository_path: "/g" };
   api.listProjects.mockResolvedValue([gamma]);
   api.setEnvironment.mockRejectedValue(new Error("registry file is read-only"));
   render(<App />);
@@ -93,8 +120,8 @@ it("says so when the chosen environment cannot be saved", async () => {
 });
 
 describe("unsaved edits in the open script", () => {
-  const delta = { id: "d1", name: "delta", config_path: "/d/dblift.yaml", last_environment: "", environments: [], engine: "sqlite", error: null };
-  const epsilon = { ...delta, id: "e1", name: "epsilon", config_path: "/e/dblift.yaml" };
+  const delta = { id: "d1", name: "delta", config_path: "/d/dblift.yaml", last_environment: "", environments: [], engine: "sqlite", error: null, missing: false, repository: "d", repository_path: "/d" };
+  const epsilon = { ...delta, id: "e1", name: "epsilon", config_path: "/e/dblift.yaml", repository: "e", repository_path: "/e" };
   const A = "V1_0_0__create_accounts.sql";
 
   beforeEach(() => {
@@ -129,6 +156,17 @@ describe("unsaved edits in the open script", () => {
     await userEvent.click(screen.getByRole("button", { name: "Discard" }));
     expect(await screen.findByRole("heading", { name: "epsilon" })).toBeInTheDocument();
     expect(screen.queryByLabelText(`Content of ${A}`)).not.toBeInTheDocument();
+  });
+
+  it("asks before opening the add-project dialog", async () => {
+    await editInDelta();
+
+    await userEvent.click(screen.getByRole("button", { name: "Add project" }));
+    expect(screen.getByText("Discard your changes?")).toBeInTheDocument();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "Discard" }));
+    expect(screen.getByRole("dialog", { name: "Add project" })).toBeInTheDocument();
   });
 
   it("asks before removing the open project", async () => {
