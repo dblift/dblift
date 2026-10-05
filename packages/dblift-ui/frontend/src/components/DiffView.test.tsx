@@ -68,3 +68,13 @@ it("hides the header of a new file", () => {
 
   expect(lines().map((l) => l.textContent)).toEqual(["@@ -0,0 +1 @@", "+SELECT 1;"]);
 });
+
+it("says so when a change has no lines to show", () => {
+  render(<DiffView diff={"diff --git a/V1.sql b/V1.sql\nold mode 100644\nnew mode 100755\n"} />);
+
+  expect(screen.getByText("This change cannot be shown as text.")).toBeVisible();
+  expect(screen.queryByLabelText("Changes since the last commit")).toBeNull();
+
+  render(<DiffView diff={"diff --git a/V2.sql b/V2.sql\nindex 3b18e51..a5c1f2d 100644\nBinary files a/V2.sql and b/V2.sql differ\n"} />);
+  expect(screen.getAllByText("This change cannot be shown as text.")).toHaveLength(2);
+});

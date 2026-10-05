@@ -29,10 +29,15 @@ function hunkLines(diff: string): Line[] {
 }
 
 export default function DiffView({ diff }: Props) {
+  const lines = hunkLines(diff);
+  // A binary or mode-only change has no hunk.
+  if (lines.length === 0) {
+    return <p className="script__message">This change cannot be shown as text.</p>;
+  }
   return (
     // Focusable, so that the keyboard can scroll a long line into view.
     <pre className="diff mono" role="region" aria-label="Changes since the last commit" tabIndex={0}>
-      {hunkLines(diff).map((line, index) => (
+      {lines.map((line, index) => (
         <span key={index} className={line.kind === "context" ? "diff-line" : `diff-line diff-${line.kind}`}>
           {line.text}
         </span>
