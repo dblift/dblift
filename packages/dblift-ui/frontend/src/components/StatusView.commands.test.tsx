@@ -22,7 +22,7 @@ function view(children: ReactNode) {
 
 const project: Project = {
   id: "p1", name: "shop-api", config_path: "/work/shop/dblift.yaml", last_environment: "",
-  environments: ["staging"], engine: "sqlite", error: null,
+  environments: ["staging"], engine: "sqlite", error: null, missing: false, repository: "shop", repository_path: "/work/shop",
 };
 
 function migration(script: string, status: string): Migration {

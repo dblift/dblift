@@ -6,6 +6,32 @@ export interface Project {
   environments: string[];
   engine: string;
   error: string | null;
+  repository: string;
+  repository_path: string;
+  missing: boolean;
+}
+
+export interface FoundConfig {
+  path: string;
+  kind: "named" | "content" | "template";
+  problem: string | null;
+  registered: boolean;
+}
+
+export interface Discovery {
+  root: string;
+  name: string;
+  repository: boolean;
+  branch: string;
+  configs: FoundConfig[];
+  flyway: string[];
+  script_folders: string[];
+  truncated: boolean;
+}
+
+export interface Defaults {
+  clone_parent: string;
+  git: boolean;
 }
 
 export interface Migration {

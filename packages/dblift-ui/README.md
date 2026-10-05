@@ -8,9 +8,11 @@ Local web interface for DBLift migrations.
 The command starts a server on `127.0.0.1`, prints a one-time URL and opens it
 in the browser. Nothing is sent anywhere else.
 
-Status: early development. The interface shows a list of projects, added by
-the path of their config file, and the migration status of each project per
-environment. From the status view you can preview the SQL of pending migrations
+Status: early development. The interface shows a list of projects and the
+migration status of each project per environment. Projects are added by
+opening a folder or cloning a repository; the config files in it are found
+automatically, a repository may hold several, and projects of one repository
+are grouped together in the list. From the status view you can preview the SQL of pending migrations
 and apply them, undo the last migration, validate, repair the history after a
 failed run, and baseline a database that has no history yet. Nothing that
 changes a database runs without a confirming click. A run's full log can be
